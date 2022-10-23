@@ -39,7 +39,7 @@ pub trait VariableItem: Display + Hash {
             id >>= 1;
         }
         let mut index = self.index();
-        
+
         while index != 0 {
             if index & 1 == 1 {
                 code ^= bit;
@@ -110,7 +110,7 @@ pub struct CombinedVariableItem<Type: VariableType, const D: usize> {
     pub range: VariableRange<Type>,
     _parent: Weak<VariableItemCombinationImpl<Type, D>>,
     _index: usize,
-    _vector_view: Option<Vec<usize>>
+    _vector_view: Option<Vec<usize>>,
 }
 
 pub struct VariableItemCombinationImpl<Type: VariableType, const D: usize> {
@@ -120,14 +120,14 @@ pub struct VariableItemCombinationImpl<Type: VariableType, const D: usize> {
 }
 
 pub struct VariableItemCombination<Type: VariableType, const D: usize> {
-    _impl: Rc<VariableItemCombinationImpl<Type, D>>
+    _impl: Rc<VariableItemCombinationImpl<Type, D>>,
 }
 
 impl<Type: VariableType, const D: usize> CombinedVariableItem<Type, D> {
     fn parent(&self) -> Rc<VariableItemCombinationImpl<Type, D>> {
         match self._parent.upgrade() {
             Option::Some(rc) => rc,
-            Option::None => panic!("")
+            Option::None => panic!(""),
         }
     }
 
@@ -174,7 +174,8 @@ impl<Type: VariableType, const D: usize> VariableItem for CombinedVariableItem<T
 
     fn vector_view(&self) -> &Vec<usize> {
         if self._vector_view.is_none() {
-            unsafe {  & mut * ( self as * const Self as * mut Self) }._vector_view = Option::Some(self.get_vector());
+            unsafe { &mut *(self as *const Self as *mut Self) }._vector_view =
+                Option::Some(self.get_vector());
         }
         self._vector_view.as_ref().unwrap()
     }
@@ -185,7 +186,7 @@ impl<Type: VariableType, const D: usize> VariableItemCombinationImpl<Type, D> {
         Self {
             identifier: new_identifier(),
             name: name.to_string(),
-            _items: MultiArray::new()
+            _items: MultiArray::new(),
         }
     }
 
@@ -201,13 +202,12 @@ impl<Type: VariableType, const D: usize> VariableItemCombination<Type, D> {
     pub fn new() -> Self {
         Self {
             _impl: Rc::new(VariableItemCombinationImpl::<Type, D>::new("")),
-            
         }
     }
 
     pub fn new_with_name(_name: &str) -> Self {
         Self {
-            _impl: Rc::new(VariableItemCombinationImpl::<Type, D>::new(_name))
+            _impl: Rc::new(VariableItemCombinationImpl::<Type, D>::new(_name)),
         }
     }
 }

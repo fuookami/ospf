@@ -7,7 +7,7 @@ struct Company {
     index: usize,
     property: f64,
     liability: f64,
-    profit: f64
+    profit: f64,
 }
 
 impl Company {
@@ -16,7 +16,7 @@ impl Company {
             index: index,
             property: property,
             liability: liability,
-            profit: profit
+            profit: profit,
         }
     }
 }
@@ -25,7 +25,7 @@ struct Demo1 {
     scip: *mut SCIP,
     min_property: f64,
     max_libability: f64,
-    companies: Vec<Company>
+    companies: Vec<Company>,
 }
 
 impl Demo1 {
@@ -41,7 +41,7 @@ impl Demo1 {
             scip: 0 as *mut SCIP,
             min_property: 10.,
             max_libability: 5.,
-            companies: companies
+            companies: companies,
         }
     }
 }

@@ -3,8 +3,4 @@
 #![feature(specialization)]
 #![feature(const_generics)]
 #![feature(const_evaluatable_checked)]
-pub mod meta_programming;
-pub mod data_structure;
-pub mod math;
-pub mod variable;
-pub mod solvers;
+pub mod core;

@@ -1,11 +1,12 @@
 [package]
-name = "sfa-opf-rust-minimum"
+name = "ospf-rust"
 version = "0.1.0"
-authors = ["李伟文 <liweiwen@sf-express.com>"]
-edition = "2018"
+authors = ["fuookami <fuookami@163.com>"]
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-concat-idents = "*"
 libc = "*"
+meta_programming = { git = "https://github.com/fuookami/rust-meta-programming.git" }
+multiarray = { git = "https://github.com/fuookami/rust-multiarray.git" }
