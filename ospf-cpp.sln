@@ -17,6 +17,14 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ospf-cpp-core-frontend", "o
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ospf-cpp-framework", "ospf-cpp-framework\ospf-cpp-framework.vcxproj", "{6BFE834F-0B07-4905-B757-12AF04748ED8}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ospf-cpp-base", "ospf-cpp-base\ospf-cpp-base.vcxproj", "{955610BB-C8D8-464C-BE5A-9BC90145B39A}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ospf-cpp-math", "ospf-cpp-math\ospf-cpp-math.vcxproj", "{B7A810E5-99C0-49BE-8B7D-4775ECA5147B}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ospf-cpp-physics", "ospf-cpp-physics\ospf-cpp-physics.vcxproj", "{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ospf-cpp-multiarray", "ospf-cpp-multiarray\ospf-cpp-multiarray.vcxproj", "{379E3531-2DF9-4C85-8758-B7EA08B78210}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -81,6 +89,38 @@ Global
 		{6BFE834F-0B07-4905-B757-12AF04748ED8}.Release|x64.Build.0 = Release|x64
 		{6BFE834F-0B07-4905-B757-12AF04748ED8}.Release|x86.ActiveCfg = Release|Win32
 		{6BFE834F-0B07-4905-B757-12AF04748ED8}.Release|x86.Build.0 = Release|Win32
+		{955610BB-C8D8-464C-BE5A-9BC90145B39A}.Debug|x64.ActiveCfg = Debug|x64
+		{955610BB-C8D8-464C-BE5A-9BC90145B39A}.Debug|x64.Build.0 = Debug|x64
+		{955610BB-C8D8-464C-BE5A-9BC90145B39A}.Debug|x86.ActiveCfg = Debug|Win32
+		{955610BB-C8D8-464C-BE5A-9BC90145B39A}.Debug|x86.Build.0 = Debug|Win32
+		{955610BB-C8D8-464C-BE5A-9BC90145B39A}.Release|x64.ActiveCfg = Release|x64
+		{955610BB-C8D8-464C-BE5A-9BC90145B39A}.Release|x64.Build.0 = Release|x64
+		{955610BB-C8D8-464C-BE5A-9BC90145B39A}.Release|x86.ActiveCfg = Release|Win32
+		{955610BB-C8D8-464C-BE5A-9BC90145B39A}.Release|x86.Build.0 = Release|Win32
+		{B7A810E5-99C0-49BE-8B7D-4775ECA5147B}.Debug|x64.ActiveCfg = Debug|x64
+		{B7A810E5-99C0-49BE-8B7D-4775ECA5147B}.Debug|x64.Build.0 = Debug|x64
+		{B7A810E5-99C0-49BE-8B7D-4775ECA5147B}.Debug|x86.ActiveCfg = Debug|Win32
+		{B7A810E5-99C0-49BE-8B7D-4775ECA5147B}.Debug|x86.Build.0 = Debug|Win32
+		{B7A810E5-99C0-49BE-8B7D-4775ECA5147B}.Release|x64.ActiveCfg = Release|x64
+		{B7A810E5-99C0-49BE-8B7D-4775ECA5147B}.Release|x64.Build.0 = Release|x64
+		{B7A810E5-99C0-49BE-8B7D-4775ECA5147B}.Release|x86.ActiveCfg = Release|Win32
+		{B7A810E5-99C0-49BE-8B7D-4775ECA5147B}.Release|x86.Build.0 = Release|Win32
+		{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}.Debug|x64.ActiveCfg = Debug|x64
+		{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}.Debug|x64.Build.0 = Debug|x64
+		{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}.Debug|x86.ActiveCfg = Debug|Win32
+		{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}.Debug|x86.Build.0 = Debug|Win32
+		{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}.Release|x64.ActiveCfg = Release|x64
+		{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}.Release|x64.Build.0 = Release|x64
+		{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}.Release|x86.ActiveCfg = Release|Win32
+		{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}.Release|x86.Build.0 = Release|Win32
+		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Debug|x64.ActiveCfg = Debug|x64
+		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Debug|x64.Build.0 = Debug|x64
+		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Debug|x86.ActiveCfg = Debug|Win32
+		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Debug|x86.Build.0 = Debug|Win32
+		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Release|x64.ActiveCfg = Release|x64
+		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Release|x64.Build.0 = Release|x64
+		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Release|x86.ActiveCfg = Release|Win32
+		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
