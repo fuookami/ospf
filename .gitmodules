@@ -1,0 +1,15 @@
+[submodule "cpp"]
+	path = cpp
+	url = https://github.com/fuookami/ospf-cpp.git
+[submodule "kotlin"]
+	path = kotlin
+	url = https://github.com/fuookami/ospf-kotlin.git
+[submodule "rust"]
+	path = rust
+	url = https://github.com/fuookami/ospf-rust.git
+[submodule "csharp"]
+	path = csharp
+	url = https://github.com/fuookami/ospf-csharp.git
+[submodule "python"]
+	path = python
+	url = https://github.com/fuookami/ospf-python.git
