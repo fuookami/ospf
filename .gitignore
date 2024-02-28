@@ -361,3 +361,16 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+[Tt]arget/
+
+.idea/
+.vs/
+.vscode/
+*.opm
+*.lp
+node_modules/
+dist/
+package-lock.json
+Cargo.lock
+.VSCodeCounter/
