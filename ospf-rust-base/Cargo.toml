@@ -1,0 +1,17 @@
+[package]
+name = "ospf-rust-base"
+version = "0.1.0"
+authors = ["fuookami <fuookami@163.com>"]
+edition = "2021"
+description = "Base definition for ospf-rust."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+strum = { version = "*", features = ["derive"] }
+concat-idents = "*"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3

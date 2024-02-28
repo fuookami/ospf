@@ -1,12 +1,2 @@
-[package]
-name = "ospf-rust"
-version = "0.1.0"
-authors = ["fuookami <fuookami@163.com>"]
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-libc = "*"
-meta_programming = { git = "https://github.com/fuookami/rust-meta-programming.git" }
-multiarray = { git = "https://github.com/fuookami/rust-multiarray.git" }
+[workspace]
+members = [ "ospf-rust-base", "ospf-rust-math", "ospf-rust-physics", "ospf-rust-multiarray", "ospf-rust-core"]
