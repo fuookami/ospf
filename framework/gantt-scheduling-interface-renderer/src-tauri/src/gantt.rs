@@ -37,12 +37,21 @@ pub struct GanttItem {
 impl<T: TaskDTO> From<&T> for GanttItem {
     fn from(task: &T) -> Self {
         let mut produces = Vec::new();
-        produces.push((String::from("订单"), String::from(task.order())));
-        if let Some(produce) = task.produce() {
-            produces.push((String::from("工序"), String::from(produce)));
+        if let Some(order) = task.order() {
+            produces.push((String::from("order"), String::from(order)));
         }
-        if let Some(material) = task.material() {
-            produces.push((String::from("原料"), String::from(material)));
+        if let Some(produce) = task.produce() {
+            produces.push((String::from("produce"), String::from(produce)));
+        }
+        if let Some(products) = task.products() {
+            for (product, quantity) in products {
+                produces.push((String::from("product"), format!("{}, {}", product, quantity)));
+            }
+        }
+        if let Some(materials) = task.materials() {
+            for (material, quantity) in materials {
+                produces.push((String::from("material"), format!("{}, {}", material, quantity)));
+            }
         }
 
         return Self {
