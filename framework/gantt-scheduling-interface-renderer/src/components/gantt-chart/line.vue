@@ -67,7 +67,7 @@ export default {
         })
       }
 
-      this.$nextTick(function () {
+      await this.$nextTick(function () {
         for (let i in ganttItems) {
           const item = ganttItems[i];
           this.$refs.bar[i].init(item, widthPerUnit, linkedKey);

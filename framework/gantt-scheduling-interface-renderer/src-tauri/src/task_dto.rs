@@ -63,6 +63,7 @@ pub struct SubTaskDTO {
     pub start_time: NaiveDateTime,
     #[serde(rename = "endTime", deserialize_with = "naive_date_time_from_str")]
     pub end_time: NaiveDateTime,
+    #[serde(default)]
     #[serde(deserialize_with = "list_from_key_value")]
     pub info: Vec<(String, String)>,
 }
@@ -97,30 +98,39 @@ pub struct NormalTaskDTO {
     pub name: String,
     pub category: String,
     pub executor: String,
+    #[serde(default)]
     pub order: Option<String>,
+    #[serde(default)]
     pub produce: Option<String>,
+    #[serde(default)]
     #[serde(deserialize_with = "optional_list_from_key_value")]
     pub products: Option<Vec<(String, String)>>,
+    #[serde(default)]
     #[serde(deserialize_with = "optional_list_from_key_value")]
     pub materials: Option<Vec<(String, String)>>,
+    #[serde(default)]
     #[serde(deserialize_with = "list_from_key_value")]
     pub resources: Vec<(String, String)>,
+    #[serde(default)]
     #[serde(
-    rename = "scheduledStartTime",
-    deserialize_with = "optional_naive_date_time_from_str"
+        rename = "scheduledStartTime",
+        deserialize_with = "optional_naive_date_time_from_str"
     )]
     pub scheduled_start_time: Option<NaiveDateTime>,
+    #[serde(default)]
     #[serde(
-    rename = "scheduledEndTime",
-    deserialize_with = "optional_naive_date_time_from_str"
+        rename = "scheduledEndTime",
+        deserialize_with = "optional_naive_date_time_from_str"
     )]
     pub scheduled_end_time: Option<NaiveDateTime>,
     #[serde(rename = "startTime", deserialize_with = "naive_date_time_from_str")]
     pub start_time: NaiveDateTime,
     #[serde(rename = "endTime", deserialize_with = "naive_date_time_from_str")]
     pub end_time: NaiveDateTime,
+    #[serde(default)]
     #[serde(deserialize_with = "list_from_key_value")]
     pub info: Vec<(String, String)>,
+    #[serde(default)]
     pub sub_tasks: Vec<SubTaskDTO>,
 }
 

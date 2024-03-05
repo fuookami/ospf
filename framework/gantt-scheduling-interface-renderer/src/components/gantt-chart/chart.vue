@@ -152,6 +152,7 @@ export default {
     stepHours: 1,
     scales: basicScale,
     linkedKey: null,
+    enabledLinkedKeys: []
   }),
 
   methods: {
@@ -159,7 +160,7 @@ export default {
       this.width = width;
       this.chartHeight = height - this.$refs.metaLine.offsetHeight - this.$refs.metaAssistantLine.offsetHeight;
       this.ganttHeight = 0;
-      this.linkedKey = data.link_info;
+      this.enabledLinkedKeys = data.link_info;
 
       this.lines = [];
       this.maxNameWidth = 0;
@@ -196,18 +197,18 @@ export default {
       }
       this.chartWidth = this.width - this.maxNameWidth * 16;
 
-      this.$nextTick(function () {
+      await this.$nextTick(function () {
         for (let i in data.lines) {
           const line = data.lines[i];
           const items = [];
           for (const item of line.items) {
             items.push(dump(item, this.startTime));
           }
-          this.$refs.line[i].init(items, this.ganttWidth, this.widthPerHour, data.link_info);
+          this.$refs.line[i].init(items, this.ganttWidth, this.widthPerHour, this.linkedKey);
         }
       })
 
-      this.$nextTick(function () {
+      await this.$nextTick(function () {
         for (let i in data.lines) {
           this.lines[i].height = this.$refs.line[i].height;
           this.ganttHeight += this.$refs.line[i].height * 16;
@@ -236,7 +237,7 @@ export default {
       if (this.startTime != null && this.endTime != null) {
         let diffHours = dayjs.duration(this.endTime.diff(this.startTime)).asHours();
         const newWidthPerHour = Math.ceil(Math.max(minWidthPerHour, this.width / diffHours));
-        if (newWidthPerHour != this.widthPerHour) {
+        if (newWidthPerHour !== this.widthPerHour) {
           const scale = newWidthPerHour / this.widthPerHour;
           this.ganttWidth = this.ganttWidth * scale;
           this.widthPerHour = newWidthPerHour;
@@ -260,7 +261,7 @@ export default {
       for (let i in this.lines) {
         this.$refs.line[i].rescale(scale);
       }
-      if (newStepHours == this.stepHours) {
+      if (newStepHours === this.stepHours) {
         for (const header of this.metaHeaders) {
           header.width = header.width * scale;
         }
@@ -284,7 +285,7 @@ export default {
 
     async setVisibleLines(visibleLines) {
       for (const line of this.lines) {
-        if (visibleLines.find((value) => line.name == value)) {
+        if (visibleLines.find((value) => line.name === value)) {
           line.visible = "";
         } else {
           line.visible = "none";

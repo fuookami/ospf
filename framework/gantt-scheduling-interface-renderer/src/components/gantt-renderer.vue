@@ -68,7 +68,6 @@ export default {
 
   watch: {
     visibleLines(newVisibleLines) {
-      console.log(newVisibleLines);
       this.$refs.ganttChart.setVisibleLines(newVisibleLines);
     }
   },
@@ -77,9 +76,9 @@ export default {
     async renderData(data) {
       this.data = data;
       this.height = this.$el.offsetHeight - this.$refs.toolbar.$el.offsetHeight;
-      this.$refs.ganttChart.init(data, this.$el.offsetWidth, this.height);
+      await this.$refs.ganttChart.init(data, this.$el.offsetWidth, this.height);
       this.minScale = 0 - Math.floor(this.$refs.ganttChart.scales.length / 2);
-      this.maxScale = 0 + Math.floor(this.$refs.ganttChart.scales.length / 2);
+      this.maxScale = Math.floor(this.$refs.ganttChart.scales.length / 2);
       this.scale = 0;
 
       this.lines = [];
@@ -96,15 +95,15 @@ export default {
         }
       });
 
-      this.$nextTick(function () {
+      await this.$nextTick(function () {
         this.visibleLines = this.lines;
       });
     },
 
     async resize(width, height) {
-      if (this.$refs.ganttChart != undefined) {
+      if (this.$refs.ganttChart !== undefined) {
         this.height = height - this.$refs.toolbar.$el.offsetHeight;
-        this.$refs.ganttChart.resize(width, this.height);
+        await this.$refs.ganttChart.resize(width, this.height);
       }
     },
 
@@ -116,8 +115,8 @@ export default {
       if (newScale < this.minScale) {
         newScale = this.minScale;
       }
-      if (newScale != this.scale) {
-        this.$refs.ganttChart.rescale(this.scale - this.minScale, newScale - this.minScale);
+      if (newScale !== this.scale) {
+        await this.$refs.ganttChart.rescale(this.scale - this.minScale, newScale - this.minScale);
       }
       this.scale += diff;
     },

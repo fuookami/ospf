@@ -44,7 +44,7 @@ export default {
   methods: {
     async renderData(data) {
       this.rendererVisibility = "visible";
-      this.$refs.ganttRenderer.renderData(data);
+      await this.$refs.ganttRenderer.renderData(data);
     },
 
     async showMessage(message) {
@@ -53,7 +53,7 @@ export default {
     },
 
     async resized(event) {
-      this.$refs.ganttRenderer.resize(this.$refs.ganttRenderer.$el.offsetWidth, this.$el.offsetHeight - this.$refs.fileSelector.$el.offsetHeight);
+      await this.$refs.ganttRenderer.resize(this.$refs.ganttRenderer.$el.offsetWidth, this.$el.offsetHeight - this.$refs.fileSelector.$el.offsetHeight);
     }
   }
 }

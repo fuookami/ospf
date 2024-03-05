@@ -66,11 +66,11 @@ import useClipboard from 'vue-clipboard3'
 const { toClipboard } = useClipboard()
 
 function needSubBar(subItems) {
-  if (subItems.length == 0) {
+  if (subItems.length === 0) {
     return false;
   } else {
     for (const subItem of subItems) {
-      if (subItem.startTime != subItem.endTime) {
+      if (subItem.startTime !== subItem.endTime) {
         return true;
       }
     }
@@ -103,17 +103,16 @@ export default {
       this.name = ganttItem.name;
       this.infoList = ganttItem.info;
       if (linkedKey != null) {
-        this.linkedInfo = this.infoList.find((value) => value.key == linkedKey).value;
+        this.linkedInfo = this.infoList.find((value) => value.key === linkedKey).value;
       }
       const duration = ganttItem.endTime - ganttItem.startTime;
-      const width = duration * widthPerUnit;
-      this.width = width;
+      this.width = duration * widthPerUnit;
 
-      if (ganttItem.category == "Normal") {
+      if (ganttItem.category === "Normal") {
         this.isNormal = true;
-      } else if (ganttItem.category == "Testing") {
+      } else if (ganttItem.category === "Testing") {
         this.isTesting = true;
-      } else if (ganttItem.category == "Unavailable") {
+      } else if (ganttItem.category === "Unavailable") {
         this.isUnavailable = true;
       }
 
@@ -124,7 +123,7 @@ export default {
 
         for (let i in ganttItem.subItems) {
           const subItem = ganttItem.subItems[i];
-          if (subItem.startTime == subItem.endTime) {
+          if (subItem.startTime === subItem.endTime) {
             continue;
           }
 
