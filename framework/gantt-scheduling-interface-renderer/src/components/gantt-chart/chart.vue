@@ -59,21 +59,21 @@ dayjs.extend(duration);
 
 function dump(item, startTime) {
   const subItems = [];
-  for (const subItem of item.sub_items) {
+  for (const subItem of item.subItems) {
     subItems.push({
       name: subItem.name,
       category: subItem.category,
-      startTime: dayjs.duration(dayjs(subItem.start_time, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
-      endTime: dayjs.duration(dayjs(subItem.end_time, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours()
+      startTime: dayjs.duration(dayjs(subItem.startTime, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
+      endTime: dayjs.duration(dayjs(subItem.endTime, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours()
     })
   }
   return {
     name: item.name,
     category: item.category,
-    scheduledStartTime: dayjs.duration(dayjs(item.scheduled_start_time, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
-    scheduledEndTime: dayjs.duration(dayjs(item.scheduled_end_time, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
-    startTime: dayjs.duration(dayjs(item.start_time, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
-    endTime: dayjs.duration(dayjs(item.end_time, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
+    scheduledStartTime: dayjs.duration(dayjs(item.scheduledStartTime, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
+    scheduledEndTime: dayjs.duration(dayjs(item.scheduledEndTime, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
+    startTime: dayjs.duration(dayjs(item.startTime, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
+    endTime: dayjs.duration(dayjs(item.endTime, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
     info: item.info,
     subItems: subItems
   };
@@ -88,14 +88,14 @@ function generateHeader(startTime, endTime, widthPerHour, stepHours) {
   const metaHeaders = [];
   for (let date = startDate; date <= endDate; date = date.add(1, "day")) {
     let hours = Math.min(diffHours, 24 - dayHours);
-    if (hours == 0) {
+    if (hours === 0) {
       break;
     }
     const width = widthPerHour * hours;
 
-    if (hours % stepHours != 0 && dayHours != 0) {
+    if (hours % stepHours !== 0 && dayHours !== 0) {
       const thisStepHours = stepHours + hours % stepHours;
-      if (hours == thisStepHours) {
+      if (hours === thisStepHours) {
         metaSubHeaders.push({
           width: width,
           name: `${dayHours % 24}`
@@ -160,15 +160,15 @@ export default {
       this.width = width;
       this.chartHeight = height - this.$refs.metaLine.offsetHeight - this.$refs.metaAssistantLine.offsetHeight;
       this.ganttHeight = 0;
-      this.enabledLinkedKeys = data.link_info;
+      this.enabledLinkedKeys = data.linkInfo;
 
       this.lines = [];
       this.maxNameWidth = 0;
       this.metaHeaders = [];
       this.metaSubHeaders = [];
 
-      this.startTime = dayjs(data.start_time, "%Y-%m-%d %H:%M:%S").subtract(1, "hour").startOf("hour");
-      this.endTime = dayjs(data.end_time, "%Y-%m-%d %H:%M:%S").add(2, "hour").startOf("hour");
+      this.startTime = dayjs(data.startTime, "%Y-%m-%d %H:%M:%S").subtract(1, "hour").startOf("hour");
+      this.endTime = dayjs(data.endTime, "%Y-%m-%d %H:%M:%S").add(2, "hour").startOf("hour");
       let diffHours = dayjs.duration(this.endTime.diff(this.startTime)).asHours();
 
       this.widthPerHour = Math.ceil(Math.max(minWidthPerHour, width / diffHours));

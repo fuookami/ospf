@@ -1,6 +1,8 @@
 use chrono::NaiveDateTime;
-use serde::{de, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
+
+use super::serializer::*;
 
 fn list_from_key_value<'de, D>(deserializer: D) -> Result<Vec<(String, String)>, D::Error>
     where
@@ -22,30 +24,6 @@ fn optional_list_from_key_value<'de, D>(deserializer: D) -> Result<Option<Vec<(S
     Ok(m.map(|m| m.iter().map(|entry| (entry.0.to_owned(), entry.1.to_owned())).collect()))
 }
 
-fn naive_date_time_from_str<'de, D>(deserializer: D) -> Result<NaiveDateTime, D::Error>
-    where
-        D: Deserializer<'de>,
-{
-    let s: String = Deserialize::deserialize(deserializer)?;
-    NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S").map_err(de::Error::custom)
-}
-
-fn optional_naive_date_time_from_str<'de, D>(
-    deserializer: D,
-) -> Result<Option<NaiveDateTime>, D::Error>
-    where
-        D: Deserializer<'de>,
-{
-    let s: Option<String> = Deserialize::deserialize(deserializer)?;
-    match s {
-        Some(s) => NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S")
-            .map(|result| Some(result))
-            .map_err(de::Error::custom),
-
-        None => Ok(None),
-    }
-}
-
 pub trait TaskBaseDTO: Sized {
     fn name(&self) -> &str;
 
@@ -59,9 +37,15 @@ pub trait TaskBaseDTO: Sized {
 pub struct SubTaskDTO {
     pub name: String,
     pub category: String,
-    #[serde(rename = "startTime", deserialize_with = "naive_date_time_from_str")]
+    #[serde(
+        rename = "startTime",
+        deserialize_with = "naive_date_time_from_str"
+    )]
     pub start_time: NaiveDateTime,
-    #[serde(rename = "endTime", deserialize_with = "naive_date_time_from_str")]
+    #[serde(
+        rename = "endTime",
+        deserialize_with = "naive_date_time_from_str"
+    )]
     pub end_time: NaiveDateTime,
     #[serde(default)]
     #[serde(deserialize_with = "list_from_key_value")]
@@ -123,9 +107,15 @@ pub struct NormalTaskDTO {
         deserialize_with = "optional_naive_date_time_from_str"
     )]
     pub scheduled_end_time: Option<NaiveDateTime>,
-    #[serde(rename = "startTime", deserialize_with = "naive_date_time_from_str")]
+    #[serde(
+        rename = "startTime",
+        deserialize_with = "naive_date_time_from_str"
+    )]
     pub start_time: NaiveDateTime,
-    #[serde(rename = "endTime", deserialize_with = "naive_date_time_from_str")]
+    #[serde(
+        rename = "endTime",
+        deserialize_with = "naive_date_time_from_str"
+    )]
     pub end_time: NaiveDateTime,
     #[serde(default)]
     #[serde(deserialize_with = "list_from_key_value")]

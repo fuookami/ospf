@@ -1,12 +1,25 @@
-use crate::gantt::*;
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+
+use crate::gantt::*;
+use crate::serializer::*;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GanttSubItemDTO {
     pub name: String,
     pub category: String,
-    pub start_time: String,
-    pub end_time: String,
+    #[serde(
+        rename = "startTime",
+        serialize_with = "native_date_time_to_str",
+        deserialize_with = "naive_date_time_from_str"
+    )]
+    pub start_time: NaiveDateTime,
+    #[serde(
+        rename = "endTime",
+        serialize_with = "native_date_time_to_str",
+        deserialize_with = "naive_date_time_from_str"
+    )]
+    pub end_time: NaiveDateTime,
 }
 
 impl From<&GanttSubItem> for GanttSubItemDTO {
@@ -14,8 +27,8 @@ impl From<&GanttSubItem> for GanttSubItemDTO {
         Self {
             name: value.name.clone(),
             category: value.category.clone(),
-            start_time: value.time.start.format("%Y-%m-%d %H:%M:%S").to_string(),
-            end_time: value.time.end.format("%Y-%m-%d %H:%M:%S").to_string(),
+            start_time: value.time.start,
+            end_time: value.time.end,
         }
     }
 }
@@ -30,11 +43,32 @@ pub struct GanttItemInfoDTO {
 pub struct GanttItemDTO {
     pub name: String,
     pub category: String,
+    #[serde(rename="subItems")]
     pub sub_items: Vec<GanttSubItemDTO>,
-    pub scheduled_start_time: String,
-    pub scheduled_end_time: String,
-    pub start_time: String,
-    pub end_time: String,
+    #[serde(
+        rename = "scheduledStartTime",
+        serialize_with = "native_date_time_to_str",
+        deserialize_with = "naive_date_time_from_str"
+    )]
+    pub scheduled_start_time: NaiveDateTime,
+    #[serde(
+        rename = "scheduledEndTime",
+        serialize_with = "native_date_time_to_str",
+        deserialize_with = "naive_date_time_from_str"
+    )]
+    pub scheduled_end_time: NaiveDateTime,
+    #[serde(
+        rename = "startTime",
+        serialize_with = "native_date_time_to_str",
+        deserialize_with = "naive_date_time_from_str"
+    )]
+    pub start_time: NaiveDateTime,
+    #[serde(
+        rename = "endTime",
+        serialize_with = "native_date_time_to_str",
+        deserialize_with = "naive_date_time_from_str"
+    )]
+    pub end_time: NaiveDateTime,
     pub produces: Vec<GanttItemInfoDTO>,
     pub resources: Vec<GanttItemInfoDTO>,
     pub info: Vec<GanttItemInfoDTO>,
@@ -50,18 +84,10 @@ impl From<&GanttItem> for GanttItemDTO {
                 .iter()
                 .map(|sub_item| GanttSubItemDTO::from(sub_item))
                 .collect(),
-            scheduled_start_time: value
-                .scheduled_time
-                .start
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string(),
-            scheduled_end_time: value
-                .scheduled_time
-                .end
-                .format("%Y-%m-%d %H:%M:%S")
-                .to_string(),
-            start_time: value.time.start.format("%Y-%m-%d %H:%M:%S").to_string(),
-            end_time: value.time.end.format("%Y-%m-%d %H:%M:%S").to_string(),
+            scheduled_start_time: value.scheduled_time.start,
+            scheduled_end_time: value.scheduled_time.end,
+            start_time: value.time.start,
+            end_time: value.time.end,
             produces: value
                 .produces
                 .iter()
@@ -113,8 +139,19 @@ impl From<&GanttLine> for GanttLineDTO {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GanttDTO {
-    pub start_time: String,
-    pub end_time: String,
+    #[serde(
+        rename = "startTime",
+        serialize_with = "native_date_time_to_str",
+        deserialize_with = "naive_date_time_from_str"
+    )]
+    pub start_time: NaiveDateTime,
+    #[serde(
+        rename = "endTime",
+        serialize_with = "native_date_time_to_str",
+        deserialize_with = "naive_date_time_from_str"
+    )]
+    pub end_time: NaiveDateTime,
+    #[serde(rename = "linkInfo")]
     pub link_info: Vec<String>,
     pub lines: Vec<GanttLineDTO>,
 }
@@ -122,8 +159,8 @@ pub struct GanttDTO {
 impl From<&Gantt> for GanttDTO {
     fn from(value: &Gantt) -> Self {
         Self {
-            start_time: value.time.start.format("%Y-%m-%d %H:%M:%S").to_string(),
-            end_time: value.time.end.format("%Y-%m-%d %H:%M:%S").to_string(),
+            start_time: value.time.start,
+            end_time: value.time.end,
             link_info: value.link_info.clone(),
             lines: value
                 .lines

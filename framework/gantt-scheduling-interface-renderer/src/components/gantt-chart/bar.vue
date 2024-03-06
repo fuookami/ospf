@@ -13,7 +13,7 @@
       height: mainHeight + 'em',
       'margin-bottom': mainMarginBottom + 'em'
     }" style="
-      min-width: 0px;
+      min-width: 0;
       padding: 0;
     " @click="click()"
     >
@@ -36,7 +36,7 @@
         margin: 0; 
         padding: 0; 
         position: relative; 
-        min-width: 0px;
+        min-width: 0;
     ">
       <div v-for="(subItem, _) in subItems" class="gantt_item" :style="{
         left: subItem.x + 'px',
@@ -145,9 +145,9 @@ export default {
     async click() {
       try {
         await toClipboard(this.name);
-        this.snackbarText = `${this.name} 复制成功`
+        this.snackbarText = `${this.name} Copy Successfully`
       } catch(e) {
-        this.snackbarText = `${this.name} 复制失败`
+        this.snackbarText = `${this.name} Copy Failed`
       }
       this.snackbar = true;
       if (this.linkedInfo != null) {
@@ -165,11 +165,7 @@ export default {
     },
 
     async setToFocus(linkedKey, linkedInfo) {
-      if (this.infoList.find((value) => value.key == linkedKey).value == linkedInfo) {
-        this.isFocused = true;
-      } else {
-        this.isFocused = false;
-      }
+      this.isFocused = this.infoList.find((value) => value.key === linkedKey).value === linkedInfo;
     }
   }
 }

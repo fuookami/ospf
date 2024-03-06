@@ -80,7 +80,7 @@ export default {
         item.x = item.x * scale;
       }
       for (let i in this.items) {
-        this.$refs.bar[i].rescale(scale);
+        await this.$refs.bar[i].rescale(scale);
       }
     },
 
@@ -90,7 +90,7 @@ export default {
 
     async setToFocus(linkedKey, linkedInfo) {
       for (let i in this.items) {
-        this.$refs.bar[i].setToFocus(linkedKey, linkedInfo);
+        await this.$refs.bar[i].setToFocus(linkedKey, linkedInfo);
       }
     }
   }

@@ -5,6 +5,7 @@ mod gantt;
 mod gantt_dto;
 mod task_dto;
 mod time_range;
+mod serializer;
 
 use gantt::*;
 use gantt_dto::*;
@@ -77,7 +78,6 @@ fn load_data(path: String) -> Result<GanttDTO, String> {
             .iter()
             .flat_map(|task| task.resources.iter().map(|resource| resource.0.as_str()))
             .collect::<HashSet<&str>>();
-        link_info.insert("订单");
 
         let lines = executors
             .iter()

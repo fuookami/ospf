@@ -17,7 +17,7 @@ export default {
 
   async mounted() {
     this.data = JSON.parse(await invoke('load_sub_chart_data',),);
-    this.$refs.ganttChart.init(this.data.data, this.data.width, this.data.height);
+    await this.$refs.ganttChart.init(this.data.data, this.data.width, this.data.height);
   },
 
   data: () => ({

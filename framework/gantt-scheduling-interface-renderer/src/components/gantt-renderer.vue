@@ -122,13 +122,13 @@ export default {
     },
 
     async focus(linkedInfo) {
-      this.linkedLines = selectedLinkedLines(this.data.lines, this.data.link_info, linkedInfo);
-      // const lines = selectLinkItems(this.data.lines, this.data.link_info, linkedInfo);
+      this.linkedLines = selectedLinkedLines(this.data.lines, this.data.linkInfo, linkedInfo);
+      // const lines = selectLinkItems(this.data.lines, this.data.linkInfo, linkedInfo);
       // const thisData = {
-      //   start_time: this.data.start_time,
-      //   end_time: this.data.end_time,
+      //   startTime: this.data.startTime,
+      //   endTime: this.data.endTime,
       //   lines: lines,
-      //   link_info: null
+      //   linkInfo: null
       // };
 
       // if (this.currentFocusSubChart != null) {

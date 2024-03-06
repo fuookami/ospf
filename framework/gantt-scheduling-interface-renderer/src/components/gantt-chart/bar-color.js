@@ -35,7 +35,7 @@ const subItemMapper = [];
 
 export function getSubItemColor(category) {
   let index = subItemMapper.indexOf(category);
-  if (index == -1) {
+  if (index === -1) {
     index = subItemMapper.length;
     subItemMapper.push(category);
   }
