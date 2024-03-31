@@ -23,7 +23,10 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ospf-cpp-math", "ospf-cpp-m
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ospf-cpp-physics", "ospf-cpp-physics\ospf-cpp-physics.vcxproj", "{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ospf-cpp-multiarray", "ospf-cpp-multiarray\ospf-cpp-multiarray.vcxproj", "{379E3531-2DF9-4C85-8758-B7EA08B78210}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "解决方案项", "解决方案项", "{B0257DCC-CB18-4D40-9CC1-E4C6AF30E495}"
+	ProjectSection(SolutionItems) = preProject
+		vcpkg.json = vcpkg.json
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -113,14 +116,6 @@ Global
 		{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}.Release|x64.Build.0 = Release|x64
 		{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}.Release|x86.ActiveCfg = Release|Win32
 		{241CF2C6-D346-4C23-8E9B-9A05AFE12FDC}.Release|x86.Build.0 = Release|Win32
-		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Debug|x64.ActiveCfg = Debug|x64
-		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Debug|x64.Build.0 = Debug|x64
-		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Debug|x86.ActiveCfg = Debug|Win32
-		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Debug|x86.Build.0 = Debug|Win32
-		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Release|x64.ActiveCfg = Release|x64
-		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Release|x64.Build.0 = Release|x64
-		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Release|x86.ActiveCfg = Release|Win32
-		{379E3531-2DF9-4C85-8758-B7EA08B78210}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

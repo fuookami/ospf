@@ -1,0 +1,264 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{b7a810e5-99c0-49be-8b7d-4775eca5147b}</ProjectGuid>
+    <RootNamespace>ospfcppmath</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <IncludePath>$(SolutionDir)ospf-cpp-base\src;$(ProjectDir)src;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <IncludePath>$(SolutionDir)ospf-cpp-base\src;$(ProjectDir)src;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg">
+    <VcpkgEnableManifest>true</VcpkgEnableManifest>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <VcpkgAdditionalInstallOptions>--keep-going</VcpkgAdditionalInstallOptions>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <VcpkgAdditionalInstallOptions>--keep-going</VcpkgAdditionalInstallOptions>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="src\ospf\math.hpp" />
+    <ClInclude Include="src\ospf\math\algebra.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\concepts.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\concepts\arithmetic.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\concepts\bounded.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\concepts\field.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\concepts\precision.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\concepts\real_number.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\concepts\scalar.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\concepts\signed.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\concepts\variant.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\matrix.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\numeric_integer.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\abs.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\add.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\cross.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\div.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\mul.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\neg.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\pow.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\reciprocal.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\rem.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\sqrt.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\sub.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\chaotic.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\chaotic\lorenz_attractor.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\equal.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\greater.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\greater_equal.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\in.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\less.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\less_equal.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\unequal.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\zero.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\fractal.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\operator\fractal\mandelbar_set.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\rational.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\rational\dyn_rational.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\rational\rational.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\scale.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\scale\dyn_scale.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\scale\scale.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\tensor.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\value_range.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\value_range\bound.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\value_range\interval.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\value_range\value_range.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\value_range\value_wrapper.hpp" />
+    <ClInclude Include="src\ospf\math\algebra\vector.hpp" />
+    <ClInclude Include="src\ospf\math\combinatorics.hpp" />
+    <ClInclude Include="src\ospf\math\combinatorics\permutations.hpp" />
+    <ClInclude Include="src\ospf\math\functional\operator.hpp" />
+    <ClInclude Include="src\ospf\math\functional\predicate.hpp" />
+    <ClInclude Include="src\ospf\math\funtional.hpp" />
+    <ClInclude Include="src\ospf\math\geometry.hpp" />
+    <ClInclude Include="src\ospf\math\geometry\circle.hpp" />
+    <ClInclude Include="src\ospf\math\geometry\edge.hpp" />
+    <ClInclude Include="src\ospf\math\geometry\point.hpp" />
+    <ClInclude Include="src\ospf\math\geometry\projection.hpp" />
+    <ClInclude Include="src\ospf\math\geometry\rectangle.hpp" />
+    <ClInclude Include="src\ospf\math\geometry\triangle.hpp" />
+    <ClInclude Include="src\ospf\math\geometry\triangulation.hpp" />
+    <ClInclude Include="src\ospf\math\graph.hpp" />
+    <ClInclude Include="src\ospf\math\graph\edge.hpp" />
+    <ClInclude Include="src\ospf\math\graph\graph.hpp" />
+    <ClInclude Include="src\ospf\math\graph\node.hpp" />
+    <ClInclude Include="src\ospf\math\ospf_math_api.hpp" />
+    <ClInclude Include="src\ospf\math\symbol.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\category.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\expression.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\function.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\inequality.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\inequality\inequality.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\inequality\sign.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\monomial.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\monomial\concepts.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\monomial\linear.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\monomial\quadratic.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\monomial\standard.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\polynomial.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\polynomial\concepts.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\polynomial\linear.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\polynomial\quadratic.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\polynomial\standard.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\symbol.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\symbol\concepts.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\symbol\expression.hpp" />
+    <ClInclude Include="src\ospf\math\symbol\symbol\pure.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\equal.cpp" />
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\greater.cpp" />
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\greater_equal.cpp" />
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\less.cpp" />
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\less_equal.cpp" />
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\unequal.cpp" />
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\zero.cpp" />
+    <ClCompile Include="src\ospf\math\algebra\value_range\value_range.cpp" />
+    <ClCompile Include="src\ospf\math\algebra\value_range\value_wrapper.cpp" />
+    <ClCompile Include="src\ospf\math\algebra\vector.cpp" />
+    <ClCompile Include="src\ospf\math\geometry\circle.cpp" />
+    <ClCompile Include="src\ospf\math\geometry\edge.cpp" />
+    <ClCompile Include="src\ospf\math\geometry\point.cpp" />
+    <ClCompile Include="src\ospf\math\geometry\rectangle.cpp" />
+    <ClCompile Include="src\ospf\math\geometry\triangle.cpp" />
+    <ClCompile Include="src\ospf\math\geometry\triangulation.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

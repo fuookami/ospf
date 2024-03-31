@@ -1,0 +1,402 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{27f19974-5225-4bbb-a167-8b094072232a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf">
+      <UniqueIdentifier>{e8106ca2-093f-4e99-9a3a-8a83c0b3ee10}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math">
+      <UniqueIdentifier>{9cc4fa94-eb2b-46ca-93d4-0b815f45b2d4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\algebra">
+      <UniqueIdentifier>{c80bc4c8-5e2d-41e0-8418-1a8e1603f5a6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\functional">
+      <UniqueIdentifier>{3a039acd-e334-4ea9-8882-82c79cd71f9b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\combinatorics">
+      <UniqueIdentifier>{e39144cf-065c-43f1-8606-fe8857e46e64}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\geometry">
+      <UniqueIdentifier>{154b7904-31d1-4b9f-90c6-08e38eeb2078}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\algebra\operator">
+      <UniqueIdentifier>{27c2aa96-0f02-44a2-abf9-29555eeba4e2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\algebra\rational">
+      <UniqueIdentifier>{61296e49-c80e-4ccb-81d8-786aa32998d0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\algebra\scale">
+      <UniqueIdentifier>{275d9e06-fbe7-4c72-802a-7db980096ec8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\algebra\value_range">
+      <UniqueIdentifier>{740f3624-4be8-4fac-b3fd-d589f0eacf88}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\algebra\operator\comparison">
+      <UniqueIdentifier>{34f45e38-2ccd-4b32-b49d-c727e05c1582}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\algebra\operator\arithmetic">
+      <UniqueIdentifier>{5bae3216-2b41-421b-ac1d-41ec9ed0373f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\algebra\concepts">
+      <UniqueIdentifier>{29ed3657-f542-4ec4-8982-152611a1e614}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\algebra\numeric_integer">
+      <UniqueIdentifier>{8f05c135-eba0-41e2-971b-ddaa14a4e2ef}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\algebra\operator\fractal">
+      <UniqueIdentifier>{8f6a2f7c-a69e-48f3-8230-46247d73cd29}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\algebra\operator\chaotic">
+      <UniqueIdentifier>{20aa70b7-5add-4053-af67-0777774caf37}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\graph">
+      <UniqueIdentifier>{60a033d4-7c48-469f-99db-fb832c3b8ed2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\symbol">
+      <UniqueIdentifier>{09879233-59fa-4758-97a3-a5bc7dcf44a5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\symbol\inequality">
+      <UniqueIdentifier>{8e95ff9f-02a1-4296-a629-dbf8aca6a3ec}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\symbol\monomial">
+      <UniqueIdentifier>{9815fc10-980d-484a-8b49-47de24b70d97}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\symbol\polynomial">
+      <UniqueIdentifier>{fc68061f-81c0-4cfc-bfde-857f29cf0a93}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\symbol\function">
+      <UniqueIdentifier>{edbcad20-d161-45e0-a896-44e2e25b7e23}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\math\symbol\symbol">
+      <UniqueIdentifier>{b1299c75-84d2-473a-9958-5cf8f85eab67}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\ospf\math\ospf_math_api.hpp">
+      <Filter>src\ospf\math</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\zero.hpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\equal.hpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\unequal.hpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\less.hpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\less_equal.hpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\greater.hpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\greater_equal.hpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison\in.hpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\concepts.hpp">
+      <Filter>src\ospf\math\algebra</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator.hpp">
+      <Filter>src\ospf\math\algebra</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\value_range\interval.hpp">
+      <Filter>src\ospf\math\algebra\value_range</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\value_range\bound.hpp">
+      <Filter>src\ospf\math\algebra\value_range</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\value_range\value_range.hpp">
+      <Filter>src\ospf\math\algebra\value_range</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\value_range.hpp">
+      <Filter>src\ospf\math\algebra</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\comparison.hpp">
+      <Filter>src\ospf\math\algebra\operator</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic.hpp">
+      <Filter>src\ospf\math\algebra\operator</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\abs.hpp">
+      <Filter>src\ospf\math\algebra\operator\arithmetic</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\functional\operator.hpp">
+      <Filter>src\ospf\math\functional</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\functional\predicate.hpp">
+      <Filter>src\ospf\math\functional</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra.hpp">
+      <Filter>src\ospf\math</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\funtional.hpp">
+      <Filter>src\ospf\math</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\concepts\arithmetic.hpp">
+      <Filter>src\ospf\math\algebra\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\concepts\bounded.hpp">
+      <Filter>src\ospf\math\algebra\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\concepts\precision.hpp">
+      <Filter>src\ospf\math\algebra\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\concepts\real_number.hpp">
+      <Filter>src\ospf\math\algebra\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\concepts\scalar.hpp">
+      <Filter>src\ospf\math\algebra\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\concepts\signed.hpp">
+      <Filter>src\ospf\math\algebra\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\concepts\variant.hpp">
+      <Filter>src\ospf\math\algebra\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\value_range\value_wrapper.hpp">
+      <Filter>src\ospf\math\algebra\value_range</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\add.hpp">
+      <Filter>src\ospf\math\algebra\operator\arithmetic</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\sub.hpp">
+      <Filter>src\ospf\math\algebra\operator\arithmetic</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\mul.hpp">
+      <Filter>src\ospf\math\algebra\operator\arithmetic</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\div.hpp">
+      <Filter>src\ospf\math\algebra\operator\arithmetic</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\rem.hpp">
+      <Filter>src\ospf\math\algebra\operator\arithmetic</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\concepts\field.hpp">
+      <Filter>src\ospf\math\algebra\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\cross.hpp">
+      <Filter>src\ospf\math\algebra\operator\arithmetic</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\numeric_integer.hpp">
+      <Filter>src\ospf\math\algebra</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\rational.hpp">
+      <Filter>src\ospf\math\algebra</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\scale.hpp">
+      <Filter>src\ospf\math\algebra</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\neg.hpp">
+      <Filter>src\ospf\math\algebra\operator\arithmetic</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\pow.hpp">
+      <Filter>src\ospf\math\algebra\operator\arithmetic</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\chaotic\lorenz_attractor.hpp">
+      <Filter>src\ospf\math\algebra\operator\chaotic</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\fractal\mandelbar_set.hpp">
+      <Filter>src\ospf\math\algebra\operator\fractal</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\scale\scale.hpp">
+      <Filter>src\ospf\math\algebra\scale</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\scale\dyn_scale.hpp">
+      <Filter>src\ospf\math\algebra\scale</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\rational\rational.hpp">
+      <Filter>src\ospf\math\algebra\rational</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\rational\dyn_rational.hpp">
+      <Filter>src\ospf\math\algebra\rational</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\combinatorics\permutations.hpp">
+      <Filter>src\ospf\math\combinatorics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\combinatorics.hpp">
+      <Filter>src\ospf\math</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\geometry.hpp">
+      <Filter>src\ospf\math</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\chaotic.hpp">
+      <Filter>src\ospf\math\algebra\operator</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\fractal.hpp">
+      <Filter>src\ospf\math\algebra\operator</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\reciprocal.hpp">
+      <Filter>src\ospf\math\algebra\operator\arithmetic</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\geometry\point.hpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\geometry\rectangle.hpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\geometry\triangle.hpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\geometry\projection.hpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\vector.hpp">
+      <Filter>src\ospf\math\algebra</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\matrix.hpp">
+      <Filter>src\ospf\math\algebra</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\tensor.hpp">
+      <Filter>src\ospf\math\algebra</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\geometry\edge.hpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\algebra\operator\arithmetic\sqrt.hpp">
+      <Filter>src\ospf\math\algebra\operator\arithmetic</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\graph\node.hpp">
+      <Filter>src\ospf\math\graph</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\graph\edge.hpp">
+      <Filter>src\ospf\math\graph</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\graph\graph.hpp">
+      <Filter>src\ospf\math\graph</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\graph.hpp">
+      <Filter>src\ospf\math</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\geometry\circle.hpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\geometry\triangulation.hpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\symbol.hpp">
+      <Filter>src\ospf\math\symbol</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\monomial.hpp">
+      <Filter>src\ospf\math\symbol</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\polynomial.hpp">
+      <Filter>src\ospf\math\symbol</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\inequality.hpp">
+      <Filter>src\ospf\math\symbol</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol.hpp">
+      <Filter>src\ospf\math</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\category.hpp">
+      <Filter>src\ospf\math\symbol</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\inequality\sign.hpp">
+      <Filter>src\ospf\math\symbol\inequality</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\expression.hpp">
+      <Filter>src\ospf\math\symbol</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\monomial\concepts.hpp">
+      <Filter>src\ospf\math\symbol\monomial</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\monomial\linear.hpp">
+      <Filter>src\ospf\math\symbol\monomial</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\monomial\quadratic.hpp">
+      <Filter>src\ospf\math\symbol\monomial</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\monomial\standard.hpp">
+      <Filter>src\ospf\math\symbol\monomial</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\polynomial\concepts.hpp">
+      <Filter>src\ospf\math\symbol\polynomial</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\polynomial\linear.hpp">
+      <Filter>src\ospf\math\symbol\polynomial</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\polynomial\quadratic.hpp">
+      <Filter>src\ospf\math\symbol\polynomial</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\polynomial\standard.hpp">
+      <Filter>src\ospf\math\symbol\polynomial</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\inequality\inequality.hpp">
+      <Filter>src\ospf\math\symbol\inequality</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\function.hpp">
+      <Filter>src\ospf\math\symbol</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\symbol\concepts.hpp">
+      <Filter>src\ospf\math\symbol\symbol</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\symbol\pure.hpp">
+      <Filter>src\ospf\math\symbol\symbol</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\math\symbol\symbol\expression.hpp">
+      <Filter>src\ospf\math\symbol\symbol</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\equal.cpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\greater.cpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\greater_equal.cpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\less.cpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\less_equal.cpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\unequal.cpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\algebra\operator\comparison\zero.cpp">
+      <Filter>src\ospf\math\algebra\operator\comparison</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\algebra\value_range\value_wrapper.cpp">
+      <Filter>src\ospf\math\algebra\value_range</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\algebra\value_range\value_range.cpp">
+      <Filter>src\ospf\math\algebra\value_range</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\algebra\vector.cpp">
+      <Filter>src\ospf\math\algebra</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\geometry\point.cpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\geometry\edge.cpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\geometry\triangulation.cpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\geometry\triangle.cpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\geometry\circle.cpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\math\geometry\rectangle.cpp">
+      <Filter>src\ospf\math\geometry</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

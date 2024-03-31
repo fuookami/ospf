@@ -1,0 +1,657 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{8d710873-749d-420d-9e12-0ed0c8c15e82}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf">
+      <UniqueIdentifier>{88d9b749-b317-448b-b14e-c2e6194e8d1c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\error">
+      <UniqueIdentifier>{b198b56c-5522-45f8-80e4-78b4ccb19b32}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\concepts">
+      <UniqueIdentifier>{fa80492a-74bb-4a00-ae20-a8eefa0f5155}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\meta-programming">
+      <UniqueIdentifier>{ba90517a-8ea4-4897-a236-bca5b67bbd0e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\jni">
+      <UniqueIdentifier>{50eaa5f4-3ee5-4028-bdcb-746dedbdd2f5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\memory">
+      <UniqueIdentifier>{f341628c-d2db-4d75-9ea9-0a6760dc4a13}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\string">
+      <UniqueIdentifier>{a03798d5-63c1-4763-9863-03707b2a6b03}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\memory\pointer">
+      <UniqueIdentifier>{44922e6c-f128-4348-83d1-cff0f62a97f1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\memory\reference">
+      <UniqueIdentifier>{33ac8114-ccee-42e6-9e65-249a05b5e6eb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\memory\pool">
+      <UniqueIdentifier>{3d5fcd89-7348-4e96-b432-55ded8517d1d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\functional">
+      <UniqueIdentifier>{5627778e-5830-40b1-90fb-cffafbfd7bc7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\data-structure">
+      <UniqueIdentifier>{4dd03cd0-aec4-40cf-ac8c-b7a9d700d928}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\parallelism">
+      <UniqueIdentifier>{931b7fc2-16ee-4b49-b5d7-94598a214ef2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\log">
+      <UniqueIdentifier>{f0129573-eb25-424b-8e37-0a7d98b0f528}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\serialization">
+      <UniqueIdentifier>{356c576d-4b5f-469d-a0a7-0db69daaa18a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\serialization\json">
+      <UniqueIdentifier>{a74699df-9260-45a0-a781-a40b5644675f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\serialization\bytes">
+      <UniqueIdentifier>{befd4f11-3f27-4d6d-9cef-60dd552e20f2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\serialization\csv">
+      <UniqueIdentifier>{2c3c0249-cf8c-40f7-9ff4-e757d838568d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="test">
+      <UniqueIdentifier>{291efce0-4047-4dd2-854e-c4e4570eedd1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\bytes">
+      <UniqueIdentifier>{6453fc76-fa01-4198-ac12-5f8445eacd66}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\bytes\encryption">
+      <UniqueIdentifier>{f6ecf6f0-3a2f-4bb9-83dd-7aa4b70322c5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\meta-programming\meta-info">
+      <UniqueIdentifier>{d961ff5a-f540-4b6a-82d2-e06a08a66ec1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\meta-programming\name-transfer">
+      <UniqueIdentifier>{313702bc-88e0-495a-bb6a-17b74df45993}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\data-structure\data-table">
+      <UniqueIdentifier>{717e68a7-81b6-4c3d-968f-ca66e86d1a99}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\data-structure\multi-array">
+      <UniqueIdentifier>{12d393c7-fc42-47c5-a6ff-3043158092b0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="test\ospf">
+      <UniqueIdentifier>{21136fa8-192d-4850-9217-1de0dda6ed34}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="test\ospf\meta-programming">
+      <UniqueIdentifier>{14d32ac4-0628-4144-8f1a-2c1f12e26d5e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="test\ospf\meta-programming\name-transfer">
+      <UniqueIdentifier>{dec245de-1174-4bbe-a967-ec8ac1813f43}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\ospf\basic_definition.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\literal_constant.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\auto_link.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\system_info.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\local_info.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\ospf_base_api.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\error\code.hpp">
+      <Filter>src\ospf\error</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\error\error.hpp">
+      <Filter>src\ospf\error</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\concepts.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\concepts\with_default.hpp">
+      <Filter>src\ospf\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\concepts\copy_faster.hpp">
+      <Filter>src\ospf\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\variable_type_list.hpp">
+      <Filter>src\ospf\meta-programming</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\function_trait.hpp">
+      <Filter>src\ospf\meta-programming</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\crtp.hpp">
+      <Filter>src\ospf\meta-programming</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\type_family.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\jni.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\jni\jstring.hpp">
+      <Filter>src\ospf\jni</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\jni\auto_link.hpp">
+      <Filter>src\ospf\jni</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\naming_system.hpp">
+      <Filter>src\ospf\meta-programming</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\name_transfer\frontend.hpp">
+      <Filter>src\ospf\meta-programming\name-transfer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\name_transfer\backend.hpp">
+      <Filter>src\ospf\meta-programming\name-transfer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\string\hasher.hpp">
+      <Filter>src\ospf\string</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\string.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\name_transfer.hpp">
+      <Filter>src\ospf\meta-programming</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\pointer.hpp">
+      <Filter>src\ospf\memory</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\reference.hpp">
+      <Filter>src\ospf\memory</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\pool.hpp">
+      <Filter>src\ospf\memory</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\pointer\category.hpp">
+      <Filter>src\ospf\memory\pointer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\pointer\impl.hpp">
+      <Filter>src\ospf\memory\pointer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\pointer\raw.hpp">
+      <Filter>src\ospf\memory\pointer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\pointer\shared.hpp">
+      <Filter>src\ospf\memory\pointer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\pointer\weak.hpp">
+      <Filter>src\ospf\memory\pointer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\pointer\unique.hpp">
+      <Filter>src\ospf\memory\pointer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\reference\category.hpp">
+      <Filter>src\ospf\memory\reference</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\exception.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\concepts\base.hpp">
+      <Filter>src\ospf\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\error.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\reference\impl.hpp">
+      <Filter>src\ospf\memory\reference</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\concepts\with_tag.hpp">
+      <Filter>src\ospf\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\reference\raw.hpp">
+      <Filter>src\ospf\memory\reference</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\reference\borrow.hpp">
+      <Filter>src\ospf\memory\reference</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\reference\unique_borrow.hpp">
+      <Filter>src\ospf\memory\reference</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\named_flag.hpp">
+      <Filter>src\ospf\meta-programming</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\pool\concept.hpp">
+      <Filter>src\ospf\memory\pool</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\pool\half_multi_thread.hpp">
+      <Filter>src\ospf\memory\pool</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\pool\multi_thread.hpp">
+      <Filter>src\ospf\memory\pool</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory\pool\single_thread.hpp">
+      <Filter>src\ospf\memory\pool</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\config.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\uuid.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\random.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\functional\either.hpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\functional.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\tagged_map.hpp">
+      <Filter>src\ospf\data-structure</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\parallelism\guard_thread.hpp">
+      <Filter>src\ospf\parallelism</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\parallelism\thread_pool.hpp">
+      <Filter>src\ospf\parallelism</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\parallelism\task.hpp">
+      <Filter>src\ospf\parallelism</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\pointer_array.hpp">
+      <Filter>src\ospf\data-structure</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\reference_array.hpp">
+      <Filter>src\ospf\data-structure</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\optional_array.hpp">
+      <Filter>src\ospf\data-structure</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\functional\result.hpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\log\level.hpp">
+      <Filter>src\ospf\log</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\functional\value_or_reference.hpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\value_or_reference_array.hpp">
+      <Filter>src\ospf\data-structure</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\bytes\deserializer.hpp">
+      <Filter>src\ospf\serialization\bytes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\bytes\serializer.hpp">
+      <Filter>src\ospf\serialization\bytes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\json\deserializer.hpp">
+      <Filter>src\ospf\serialization\json</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\json\serializer.hpp">
+      <Filter>src\ospf\serialization\json</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\variadic_macro.hpp">
+      <Filter>src\ospf\meta-programming</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\data_table.hpp">
+      <Filter>src\ospf\data-structure</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\csv\table.hpp">
+      <Filter>src\ospf\serialization\csv</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\type_info.hpp">
+      <Filter>src\ospf\meta-programming</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\store_type.hpp">
+      <Filter>src\ospf\data-structure</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\data_table\header.hpp">
+      <Filter>src\ospf\data-structure\data-table</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\csv\serializer.hpp">
+      <Filter>src\ospf\serialization\csv</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\csv\deserializer.hpp">
+      <Filter>src\ospf\serialization\csv</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\functional\range_bounds.hpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\infix_function.hpp">
+      <Filter>src\ospf\meta-programming</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\multi_array.hpp">
+      <Filter>src\ospf\data-structure</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\multi_array\shape.hpp">
+      <Filter>src\ospf\data-structure\multi-array</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\functional\integer_iterator.hpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\multi_array\dummy_index.hpp">
+      <Filter>src\ospf\data-structure\multi-array</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\multi_array\map_index.hpp">
+      <Filter>src\ospf\data-structure\multi-array</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\multi_array\impl.hpp">
+      <Filter>src\ospf\data-structure\multi-array</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\multi_array\dynamic_dimension.hpp">
+      <Filter>src\ospf\data-structure\multi-array</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\multi_array\map_view.hpp">
+      <Filter>src\ospf\data-structure\multi-array</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\concepts\container.hpp">
+      <Filter>src\ospf\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\multi_array\view.hpp">
+      <Filter>src\ospf\data-structure\multi-array</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\memory.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\parallelism.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\multi_array\static_dimension.hpp">
+      <Filter>src\ospf\data-structure\multi-array</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\multi_array\one_dimension.hpp">
+      <Filter>src\ospf\data-structure\multi-array</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\multi_array\concepts.hpp">
+      <Filter>src\ospf\data-structure\multi-array</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\data_table\static_column.hpp">
+      <Filter>src\ospf\data-structure\data-table</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\data_table\dynamic_column.hpp">
+      <Filter>src\ospf\data-structure\data-table</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\data_table\impl.hpp">
+      <Filter>src\ospf\data-structure\data-table</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\data_table\concepts.hpp">
+      <Filter>src\ospf\data-structure\data-table</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\data_table\single_type.hpp">
+      <Filter>src\ospf\data-structure\data-table</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\functional\sequence_tuple.hpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\functional\iterator.hpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\functional\array.hpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\csv\to_value.hpp">
+      <Filter>src\ospf\serialization\csv</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\csv\from_value.hpp">
+      <Filter>src\ospf\serialization\csv</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\json\to_value.hpp">
+      <Filter>src\ospf\serialization\json</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\json\from_value.hpp">
+      <Filter>src\ospf\serialization\json</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\json\io.hpp">
+      <Filter>src\ospf\serialization\json</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\json.hpp">
+      <Filter>src\ospf\serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\csv.hpp">
+      <Filter>src\ospf\serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\bytes.hpp">
+      <Filter>src\ospf\serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\dto.hpp">
+      <Filter>src\ospf\serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\nullable.hpp">
+      <Filter>src\ospf\serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\bytes\from_value.hpp">
+      <Filter>src\ospf\serialization\bytes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\bytes\to_value.hpp">
+      <Filter>src\ospf\serialization\bytes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\meta_info\meta_item.hpp">
+      <Filter>src\ospf\meta-programming\meta-info</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\meta_info\meta_info.hpp">
+      <Filter>src\ospf\meta-programming\meta-info</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\meta_info.hpp">
+      <Filter>src\ospf\meta-programming</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\log.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\bytes\header.hpp">
+      <Filter>src\ospf\serialization\bytes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\log\record.hpp">
+      <Filter>src\ospf\log</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\log\multi_thread_impl.hpp">
+      <Filter>src\ospf\log</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\log\console.hpp">
+      <Filter>src\ospf\log</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\log\file.hpp">
+      <Filter>src\ospf\log</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\log\string.hpp">
+      <Filter>src\ospf\log</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\data_table\cell.hpp">
+      <Filter>src\ospf\data-structure\data-table</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\string\split.hpp">
+      <Filter>src\ospf\string</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\functional\optional.hpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\json\concepts.hpp">
+      <Filter>src\ospf\serialization\json</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\string\regex.hpp">
+      <Filter>src\ospf\string</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\concepts\enum.hpp">
+      <Filter>src\ospf\concepts</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\bytes\concepts.hpp">
+      <Filter>src\ospf\serialization\bytes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\writable.hpp">
+      <Filter>src\ospf\serialization</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\csv\concepts.hpp">
+      <Filter>src\ospf\serialization\csv</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\serialization\csv\io.hpp">
+      <Filter>src\ospf\serialization\csv</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\parallelism\result.hpp">
+      <Filter>src\ospf\parallelism</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\parallelism\async.hpp">
+      <Filter>src\ospf\parallelism</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\string\transcoding.hpp">
+      <Filter>src\ospf\string</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\log\interface.hpp">
+      <Filter>src\ospf\log</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\string\format.hpp">
+      <Filter>src\ospf\string</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\log\logger.hpp">
+      <Filter>src\ospf\log</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\bytes\abstraction.hpp">
+      <Filter>src\ospf\bytes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\bytes\encryption.hpp">
+      <Filter>src\ospf\bytes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\bytes\bits.hpp">
+      <Filter>src\ospf\bytes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\bytes\bytes.hpp">
+      <Filter>src\ospf\bytes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\bytes\encoding.hpp">
+      <Filter>src\ospf\bytes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\bytes.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\bytes\compaction.hpp">
+      <Filter>src\ospf\bytes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\mail.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\bytes\encryption\rsa.hpp">
+      <Filter>src\ospf\bytes\encryption</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\meta_programming\named_type.hpp">
+      <Filter>src\ospf\meta-programming</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\functional\pointer_or_reference.hpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\data_structure\pointer_or_reference_array.hpp">
+      <Filter>src\ospf\data-structure</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\context.hpp">
+      <Filter>src\ospf</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ospf\bytes\auto_link.hpp">
+      <Filter>src\ospf\bytes</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\ospf\system_info.cpp">
+      <Filter>src\ospf</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\jni\jstring.cpp">
+      <Filter>src\ospf\jni</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\meta_programming\name_transfer\frontend.cpp">
+      <Filter>src\ospf\meta-programming\name-transfer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\meta_programming\name_transfer.cpp">
+      <Filter>src\ospf\meta-programming</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\error\error.cpp">
+      <Filter>src\ospf\error</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\exception.cpp">
+      <Filter>src\ospf</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\uuid.cpp">
+      <Filter>src\ospf</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\parallelism\guard_thread.cpp">
+      <Filter>src\ospf\parallelism</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\functional\result.cpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\data_structure\multi_array\shape.cpp">
+      <Filter>src\ospf\data-structure\multi-array</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\functional\integer_iterator.cpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\functional\range_bounds.cpp">
+      <Filter>src\ospf\functional</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\data_structure\multi_array\dummy_index.cpp">
+      <Filter>src\ospf\data-structure\multi-array</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\serialization\csv\table.cpp">
+      <Filter>src\ospf\serialization\csv</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\serialization\csv\to_value_csv.cpp">
+      <Filter>src\ospf\serialization\csv</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\serialization\csv\from_value_csv.cpp">
+      <Filter>src\ospf\serialization\csv</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\serialization\csv\concepts.cpp">
+      <Filter>src\ospf\serialization\csv</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\serialization\json\from_value_json.cpp">
+      <Filter>src\ospf\serialization\json</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\serialization\json\to_value_json.cpp">
+      <Filter>src\ospf\serialization\json</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\string\regex.cpp">
+      <Filter>src\ospf\string</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\string\hasher.cpp">
+      <Filter>src\ospf\string</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\meta_programming\name_transfer\backend.cpp">
+      <Filter>src\ospf\meta-programming\name-transfer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\data_structure\data_table\data_table_header.cpp">
+      <Filter>src\ospf\data-structure\data-table</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\serialization\bytes\bytes_header.cpp">
+      <Filter>src\ospf\serialization\bytes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\log\record.cpp">
+      <Filter>src\ospf\log</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\log\multi_thread_impl.cpp">
+      <Filter>src\ospf\log</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\log\console_logger.cpp">
+      <Filter>src\ospf\log</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\log\string_logger.cpp">
+      <Filter>src\ospf\log</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\log\file_logger.cpp">
+      <Filter>src\ospf\log</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\bytes\bits.cpp">
+      <Filter>src\ospf\bytes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ospf\bytes\encryption\rsa.cpp">
+      <Filter>src\ospf\bytes\encryption</Filter>
+    </ClCompile>
+    <ClCompile Include="test\meta_programming\name_transfer\frontend_unit_test.cpp">
+      <Filter>test\ospf\meta-programming\name-transfer</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
