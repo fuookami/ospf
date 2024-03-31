@@ -245,6 +245,7 @@ each OSPF implementation consists of the following components:
         <th>Kotlin</th>
         <th>Python</th>
         <th>Rust</th>
+        <th>Visualization</th>
       </tr>
     </thead>
     <tbody>
@@ -255,9 +256,11 @@ each OSPF implementation consists of the following components:
         <td>✔️</td>
         <td>❌</td>
         <td>❗</td>
+        <td></td>
       </tr>
       <tr>
         <td>bpp1d</td>
+        <td>❌</td>
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
@@ -271,25 +274,29 @@ each OSPF implementation consists of the following components:
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
+        <td>❌</td>
       </tr>
       <tr>
         <td>bpp3d</td>
         <td>❌</td>
         <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
         <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>csp1d</td>
         <td>❌</td>
         <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
         <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>csp2d</td>
+        <td>❌</td>
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
@@ -303,6 +310,7 @@ each OSPF implementation consists of the following components:
         <td>⭕</td>
         <td>❌</td>
         <td>❌</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>network-scheduling</td>
@@ -311,10 +319,11 @@ each OSPF implementation consists of the following components:
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
+        <td>❌</td>
       </tr>
       <tr>
         <td>else</td>
-        <td colspan=5>planing</td>
+        <td colspan=6>planing</td>
       </tr>
     </tbody>
   </table>

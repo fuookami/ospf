@@ -244,6 +244,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <th>Kotlin</th>
         <th>Python</th>
         <th>Rust</th>
+        <th>可视化</th>
       </tr>
     </thead>
     <tbody>
@@ -254,9 +255,11 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>✔️</td>
         <td>❌</td>
         <td>❗</td>
+        <td></td>
       </tr>
       <tr>
         <td>一维装箱</td>
+        <td>❌</td>
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
@@ -270,25 +273,29 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
+        <td>❌</td>
       </tr>
       <tr>
         <td>三维装箱</td>
         <td>❌</td>
         <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
         <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>一维下料</td>
         <td>❌</td>
         <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
         <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>二维下料</td>
+        <td>❌</td>
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
@@ -302,6 +309,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>⭕</td>
         <td>❌</td>
         <td>❌</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>网络流调度</td>
@@ -310,10 +318,11 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
+        <td>❌</td>
       </tr>
       <tr>
         <td>其它</td>
-        <td colspan=5>计划中</td>
+        <td colspan=6>计划中</td>
       </tr>
     </tbody>
   </table>
