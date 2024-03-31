@@ -111,8 +111,241 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
 
 ## 特性与进度
 
+- ✔️：稳定版本。
+- ⭕：开发完成，未稳定版本。
+- ❗：正在开发，未完成版本。
+- ❌：计划中，未开始。
+
 ### Core
+
+<div style="width: auto; display: table; margin-left: auto; margin-right: auto;">
+  <table style="text-align: center;">
+    <thead>
+      <tr>
+        <th>特性</th>
+        <th>C++</th>
+        <th>C#</th>
+        <th>Kotlin</th>
+        <th>Python</th>
+        <th>Rust</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td colspan=6>建模语言</td>
+      </tr>
+      <tr>
+        <td>MILP</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>QMILP</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>NLMILP</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td colspan=6>求解器接口</td>
+      </tr>
+      <tr>
+        <td>GUROBI</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>CPLEX</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>COPT</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>SCIP</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>COPIN-OR</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>其它</td>
+        <td colspan=5>计划中</td>
+      </tr>
+      <tr>
+        <td colspan=6>元启发式算法</td>
+      </tr>
+      <tr>
+        <td>PSO</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>GA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>其它</td>
+        <td colspan=5>计划中</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
 
 ### Framework
 
+<div style="width: auto; display: table; margin-left: auto; margin-right: auto;">
+  <table style="text-align: center;">
+    <thead>
+      <tr>
+        <th>特性</th>
+        <th>C++</th>
+        <th>C#</th>
+        <th>Kotlin</th>
+        <th>Python</th>
+        <th>Rust</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>基础框架</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>一维装箱</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>二维装箱</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>三维装箱</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>一维下料</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>二维下料</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>甘特图调度</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>⭕</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>网络流调度</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>其它</td>
+        <td colspan=5>计划中</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
 ### Remote
+
+<div style="width: auto; display: table; margin-left: auto; margin-right: auto;">
+  <table style="text-align: center;">
+    <thead>
+      <tr>
+        <th>特性</th>
+        <td></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>求解器服务端</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>元启发式算法服务端</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>调度器</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>时间片轮转</td>
+        <td>❌</td>
+      </tr>
+    </tbody>
+  </table>
+</div>

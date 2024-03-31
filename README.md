@@ -112,8 +112,241 @@ each OSPF implementation consists of the following components:
 
 ## Features And Progress
 
+- ✔️：Stable version.
+- ⭕：Development completed, unstable version.
+- ❗：Under development, incomplete version.
+- ❌：Planned, not started.
+
 ### Core
+
+<div style="width: auto; display: table; margin-left: auto; margin-right: auto;">
+  <table style="text-align: center;">
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th>C++</th>
+        <th>C#</th>
+        <th>Kotlin</th>
+        <th>Python</th>
+        <th>Rust</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td colspan=6>Modeling Language</td>
+      </tr>
+      <tr>
+        <td>MILP</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>QMILP</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>NLMILP</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td colspan=6>Solver Wrapper</td>
+      </tr>
+      <tr>
+        <td>GUROBI</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>CPLEX</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>COPT</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>SCIP</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>COPIN-OR</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>else</td>
+        <td colspan=5>planing</td>
+      </tr>
+      <tr>
+        <td colspan=6>Meta-Heuristic Algorithm</td>
+      </tr>
+      <tr>
+        <td>PSO</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>GA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>else</td>
+        <td colspan=5>planing</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
 
 ### Framework
 
+<div style="width: auto; display: table; margin-left: auto; margin-right: auto;">
+  <table style="text-align: center;">
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th>C++</th>
+        <th>C#</th>
+        <th>Kotlin</th>
+        <th>Python</th>
+        <th>Rust</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Basic Framework</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>bpp1d</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>bpp2d</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>bpp3d</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>csp1d</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>csp2d</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>gantt-scheduling</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>⭕</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>network-scheduling</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>else</td>
+        <td colspan=5>planing</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
 ### Remote
+
+<div style="width: auto; display: table; margin-left: auto; margin-right: auto;">
+  <table style="text-align: center;">
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <td></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Solver Serivce</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>Meta-Heuristic Algorithm Service</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>Dispatcher</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>Time Slice Cycle</td>
+        <td>❌</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
