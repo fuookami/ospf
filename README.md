@@ -26,8 +26,8 @@ ospf introduces a concept called "intermediate expression" to facilitate DDD-bas
 The initial purpose of designing intermediate expressions was to reduce redundancy in mathematical models. Therefore, the most basic arithmetic intermediate expressions are constructed using a polynomial, allowing users to replace all identical polynomials with this intermediate expression anywhere in the model.
 
 $$
-ExprSymbol = \sum_{i} x_{i} \\ \; \\
-min \quad ExprSymbol \\ \; \\
+ExprSymbol = \sum_{i} x_{i} \\\\\\ \\\; \\\\\\
+min \quad ExprSymbol \\\\\\ \\\; \\\\\\
 s.t. \quad ExprSymbol \leq 1
 $$
 
@@ -42,19 +42,19 @@ This engineering practice is similar to <strong><em>Object-Oriented Design</em><
 Building upon the concept of arithmetic intermediate expressions, ospf can also encapsulate non-arithmetic expressions such as logical operations into intermediate expressions.
 
 $$
-FuncSymbol = \bigvee_{i} x_{i} = Or(x_{1}, \, x_{2}, \, .. \, , \, x_{i}) \\ \; \\
+FuncSymbol = \bigvee_{i} x_{i} = Or(x_{1}, \, x_{2}, \, .. \, , \, x_{i}) \\\\\\ \\\; \\\\\\
 s.t. \quad FuncSymbol = 1
 $$
 
 When ospf translates the model into interfaces for specific solvers, it automatically adds the intermediate variables and constraints required for each intermediate expressions. This translation process is transparent to the users, so the users don't need to know how the intermediate expressions are implemented through which intermediate variables and constraints. For example, the expression $FuncSymbol = \bigvee_{i} x_{i}$ will be translated as follows:
 
 $$
-s.t. \quad y = 1, \; \\ \; \\
+s.t. \quad y = 1 \\\\\\ \\\; \\\\\\
 \begin{cases}
-  y \geq \frac{x_{i}}{\sup_{\leq}(x_{i})}, & \sup_{\leq}(x_{i}) > 1 \\ \;
+  y \geq \frac{x_{i}}{\sup_{\leq}(x_{i})}, & \sup_{\leq}(x_{i}) > 1 \\\\\\
   y \geq x_{i}, & else
-\end{cases} \\ \; \\
-y \leq \sum_{i} x_{i}, \; \forall i \\ \; \\
+\end{cases} \\\\\\ \\\; \\\\\\
+y \leq \sum_{i} x_{i}, \; \forall i \\\\\\ \\\; \\\\\\
 y \in \{ 0, 1 \}
 $$
 
