@@ -48,7 +48,7 @@ This engineering practice is similar to <strong><em>Object-Oriented Design</em><
 Building upon the concept of arithmetic intermediate expressions, ospf can also encapsulate non-arithmetic expressions such as logical operations into intermediate expressions.
 
 $$
-FuncSymbol = \bigvee_{i} x_{i} = Or(x_{1}, \, x_{2}, \, .. \, , \, x_{i})
+FuncSymbol = \bigvee_{i} x_{i} = Or(x_{1}, \\, x_{2}, \\, .. \\, , \\, x_{i})
 $$
 
 $$
@@ -69,7 +69,7 @@ $$
 $$
 
 $$
-y \leq \sum_{i} x_{i}, \; \forall i
+y \leq \sum_{i} x_{i}, \\; \forall i
 $$
 
 $$

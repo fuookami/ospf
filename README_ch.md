@@ -47,7 +47,7 @@ ospf 会在将模型翻译到具体求解器的接口时，自动将把每个算
 基于算术中间值的思想，ospf 同样可以把类似逻辑运算表达式等非算术表达式封装到中间值中。
 
 $$
-FuncSymbol = \bigvee_{i} x_{i} = Or(x_{1}, \, x_{2}, \, .. \, , \, x_{i})
+FuncSymbol = \bigvee_{i} x_{i} = Or(x_{1}, \\, x_{2}, \\, .. \\, , \\, x_{i})
 $$
 
 $$
@@ -68,7 +68,7 @@ $$
 $$
 
 $$
-y \leq \sum_{i} x_{i}, \; \forall i
+y \leq \sum_{i} x_{i}, \\; \forall i
 $$
 
 $$

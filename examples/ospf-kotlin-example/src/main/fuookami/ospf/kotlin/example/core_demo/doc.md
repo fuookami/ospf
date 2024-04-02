@@ -105,13 +105,13 @@ $$
 ##### (2) 企业是否被指派
 
 $$
-Assignment^{Company}_{c} = \sum_{p \in P}x_{cp}, \; \forall c \in C
+Assignment^{Company}_{c} = \sum_{p \in P}x_{cp}, \\; \forall c \in C
 $$
 
 ##### (3) 产品是否被指派
 
 $$
-Assignment^{Product}_{p} = \sum_{p \in P}x_{cp}, \; \forall p \in P
+Assignment^{Product}_{p} = \sum_{p \in P}x_{cp}, \\; \forall p \in P
 $$
 
 #### 3) 目标函数
@@ -127,13 +127,13 @@ $$
 ##### (1) 每个企业最多生产一个产品
 
 $$
-s.t. \quad Assignment^{Company}_{c} \leq 1, \; \forall c \in C
+s.t. \quad Assignment^{Company}_{c} \leq 1, \\; \forall c \in C
 $$
 
 ##### (2) 每个产品必须要被生产
 
 $$
-s.t. \quad Assignment^{Product}_{p} = 1, \; \forall p \in P
+s.t. \quad Assignment^{Product}_{p} = 1, \\; \forall p \in P
 $$
 
 ### 3. 期望结果
