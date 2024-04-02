@@ -73,7 +73,7 @@ y \leq \sum_{i} x_{i}, \\; \forall i
 $$
 
 $$
-y \in \{ 0, 1 \}
+y \in \\{ 0, 1 \\}
 $$
 
 Of course, you can also extend these intermediate expressions according to your own business requirements. At this point, you need to implement some interfaces to let ospf know which intermediate variables and constraints need to be added for these intermediate expressions.
