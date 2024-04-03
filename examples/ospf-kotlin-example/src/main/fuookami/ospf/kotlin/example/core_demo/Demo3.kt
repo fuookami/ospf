@@ -14,43 +14,39 @@ import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 
 data object Demo3 {
-    data class Product(
-        override val index: Int,
-        val minYield: Flt64
-    ) : Indexed
+    data class Product(val minYield: Flt64) : AutoIndexed(Product::class)
 
     data class Material(
-        override val index: Int,
         val cost: Flt64,
         val yieldValue: Map<Product, Flt64>
-    ) : Indexed
+    ) : AutoIndexed(Material::class)
 
     private val products = listOf(
-        Product(0, Flt64(15000.0)),
-        Product(1, Flt64(15000.0)),
-        Product(2, Flt64(10000.0))
+        Product(Flt64(15000.0)),
+        Product(Flt64(15000.0)),
+        Product(Flt64(10000.0))
     )
     private val materials = listOf(
         Material(
-            0, Flt64(115.0), mapOf(
+            Flt64(115.0), mapOf(
                 products[0] to Flt64(30.0),
                 products[1] to Flt64(10.0)
             )
         ),
         Material(
-            1, Flt64(97.0), mapOf(
+            Flt64(97.0), mapOf(
                 products[0] to Flt64(15.0),
                 products[2] to Flt64(20.0)
             )
         ),
         Material(
-            2, Flt64(82.0), mapOf(
+            Flt64(82.0), mapOf(
                 products[1] to Flt64(25.0),
                 products[2] to Flt64(15.0)
             )
         ),
         Material(
-            3, Flt64(76.0), mapOf(
+            Flt64(76.0), mapOf(
                 products[0] to Flt64(15.0),
                 products[1] to Flt64(15.0),
                 products[2] to Flt64(15.0)
@@ -77,11 +73,11 @@ data object Demo3 {
     suspend operator fun invoke(): Try {
         for (process in subProcesses) {
             when (val result = process()) {
+                is Ok -> {}
+
                 is Failed -> {
                     return Failed(result.error)
                 }
-
-                else -> {}
             }
         }
         return ok

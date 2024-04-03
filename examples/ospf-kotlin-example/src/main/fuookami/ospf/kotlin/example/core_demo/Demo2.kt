@@ -74,11 +74,11 @@ data object Demo2 {
     suspend operator fun invoke(): Try {
         for (process in subProcesses) {
             when (val result = process()) {
+                is Ok -> {}
+
                 is Failed -> {
                     return Failed(result.error)
                 }
-
-                else -> {}
             }
         }
         return ok

@@ -24,4 +24,9 @@ class CoreDemoTest {
     fun runDemo4() {
         assert(runBlocking { Demo4().ok })
     }
+
+    @Test
+    fun runDemo5() {
+        assert(runBlocking { Demo5().ok })
+    }
 }
