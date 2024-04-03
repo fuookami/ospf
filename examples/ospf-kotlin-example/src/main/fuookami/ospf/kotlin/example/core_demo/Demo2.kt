@@ -19,17 +19,50 @@ data object Demo2 {
         val cost: Map<Product, Flt64>
     ) : AutoIndexed(Company::class)
 
-    val products: ArrayList<Product> = ArrayList()
-    val companies: ArrayList<Company> = ArrayList()
+    private val products = listOf(Product(), Product(), Product(), Product())
+    private val companies = listOf(
+        Company(
+            mapOf(
+                products[0] to Flt64(920.0),
+                products[1] to Flt64(480.0),
+                products[2] to Flt64(650.0),
+                products[3] to Flt64(340.0)
+            )
+        ),
+        Company(
+            mapOf(
+                products[0] to Flt64(870.0),
+                products[1] to Flt64(510.0),
+                products[2] to Flt64(700.0),
+                products[3] to Flt64(350.0)
+            )
+        ),
+        Company(
+            mapOf(
+                products[0] to Flt64(880.0),
+                products[1] to Flt64(500.0),
+                products[2] to Flt64(720.0),
+                products[3] to Flt64(400.0)
+            )
+        ),
+        Company(
+            mapOf(
+                products[0] to Flt64(930.0),
+                products[1] to Flt64(490.0),
+                products[2] to Flt64(680.0),
+                products[3] to Flt64(410.0)
+            )
+        )
+    )
 
-    lateinit var x: BinVariable2
-    lateinit var cost: LinearExpressionSymbol
-    lateinit var assignmentCompany: LinearExpressionSymbols1
-    lateinit var assignmentProduct: LinearExpressionSymbols1
+    private lateinit var x: BinVariable2
+    private lateinit var cost: LinearExpressionSymbol
+    private lateinit var assignmentCompany: LinearExpressionSymbols1
+    private lateinit var assignmentProduct: LinearExpressionSymbols1
 
     private val metaModel: LinearMetaModel = LinearMetaModel("demo2")
 
-    private val subProcesses = arrayListOf(
+    private val subProcesses = listOf(
         Demo2::initVariable,
         Demo2::initSymbol,
         Demo2::initObject,
@@ -37,57 +70,6 @@ data object Demo2 {
         Demo2::solve,
         Demo2::analyzeSolution
     )
-
-    init {
-        products.add(Product())
-        products.add(Product())
-        products.add(Product())
-        products.add(Product())
-
-        companies.add(
-            Company(
-                mapOf(
-                    products[0] to Flt64(920.0),
-                    products[1] to Flt64(480.0),
-                    products[2] to Flt64(650.0),
-                    products[3] to Flt64(340.0)
-                )
-            )
-        )
-
-        companies.add(
-            Company(
-                mapOf(
-                    products[0] to Flt64(870.0),
-                    products[1] to Flt64(510.0),
-                    products[2] to Flt64(700.0),
-                    products[3] to Flt64(350.0)
-                )
-            )
-        )
-
-        companies.add(
-            Company(
-                mapOf(
-                    products[0] to Flt64(880.0),
-                    products[1] to Flt64(500.0),
-                    products[2] to Flt64(720.0),
-                    products[3] to Flt64(400.0)
-                )
-            )
-        )
-
-        companies.add(
-            Company(
-                mapOf(
-                    products[0] to Flt64(930.0),
-                    products[1] to Flt64(490.0),
-                    products[2] to Flt64(680.0),
-                    products[3] to Flt64(410.0)
-                )
-            )
-        )
-    }
 
     suspend operator fun invoke(): Try {
         for (process in subProcesses) {

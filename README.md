@@ -86,7 +86,7 @@ ospf is designed and implemented using an internal <strong><em>Domain Specific L
 
 ### Shared Components
 
-- <strong>[examples](examples)</strong>: examples demonstrating how to use OSPF for modeling and solving.
+- <strong>[examples](examples)</strong>: examples demonstrating how to use ospf for modeling and solving.
 
 - <strong>[framework](framework)</strong>: a set of common components developed for specific problem domains, including visualization tools for results.
 
@@ -94,7 +94,7 @@ ospf is designed and implemented using an internal <strong><em>Domain Specific L
 
 ### Components In Host Language Implementation 
 
-each OSPF implementation consists of the following components:
+each ospf implementation consists of the following components:
 
 - <strong>utils</strong>: utilities containing classes and functions required for implementing ospf DSL.
 - <strong>core</strong>: core components containing essential functionalities such as modeling, solver interfaces, result processing, etc.

@@ -25,8 +25,38 @@ data object Demo3 {
         val yieldValue: Map<Product, Flt64>
     ) : Indexed
 
-    private val products: ArrayList<Product> = ArrayList()
-    private val materials: ArrayList<Material> = ArrayList()
+    private val products = listOf(
+        Product(0, Flt64(15000.0)),
+        Product(1, Flt64(15000.0)),
+        Product(2, Flt64(10000.0))
+    )
+    private val materials = listOf(
+        Material(
+            0, Flt64(115.0), mapOf(
+                products[0] to Flt64(30.0),
+                products[1] to Flt64(10.0)
+            )
+        ),
+        Material(
+            1, Flt64(97.0), mapOf(
+                products[0] to Flt64(15.0),
+                products[2] to Flt64(20.0)
+            )
+        ),
+        Material(
+            2, Flt64(82.0), mapOf(
+                products[1] to Flt64(25.0),
+                products[2] to Flt64(15.0)
+            )
+        ),
+        Material(
+            3, Flt64(76.0), mapOf(
+                products[0] to Flt64(15.0),
+                products[1] to Flt64(15.0),
+                products[2] to Flt64(15.0)
+            )
+        )
+    )
 
     private lateinit var x: UIntVariable1
 
@@ -35,7 +65,7 @@ data object Demo3 {
 
     private val metaModel: LinearMetaModel = LinearMetaModel("demo3")
 
-    private val subProcesses = arrayListOf(
+    private val subProcesses = listOf(
         Demo3::initVariable,
         Demo3::initSymbol,
         Demo3::initObject,
@@ -43,46 +73,6 @@ data object Demo3 {
         Demo3::solve,
         Demo3::analyzeSolution
     )
-
-    init {
-        products.add(Product(0, Flt64(15000.0)))
-        products.add(Product(1, Flt64(15000.0)))
-        products.add(Product(2, Flt64(10000.0)))
-
-        materials.add(
-            Material(
-                0, Flt64(115.0), mapOf(
-                    products[0] to Flt64(30.0),
-                    products[1] to Flt64(10.0)
-                )
-            )
-        )
-        materials.add(
-            Material(
-                1, Flt64(97.0), mapOf(
-                    products[0] to Flt64(15.0),
-                    products[2] to Flt64(20.0)
-                )
-            )
-        )
-        materials.add(
-            Material(
-                2, Flt64(82.0), mapOf(
-                    products[1] to Flt64(25.0),
-                    products[2] to Flt64(15.0)
-                )
-            )
-        )
-        materials.add(
-            Material(
-                3, Flt64(76.0), mapOf(
-                    products[0] to Flt64(15.0),
-                    products[1] to Flt64(15.0),
-                    products[2] to Flt64(15.0)
-                )
-            )
-        )
-    }
 
     suspend operator fun invoke(): Try {
         for (process in subProcesses) {
@@ -137,8 +127,6 @@ data object Demo3 {
     }
 
     private suspend fun solve(): Try {
-        metaModel.export("1.opm")
-
         val solver = SCIPLinearSolver()
         when (val ret = solver(metaModel)) {
             is Ok -> {
