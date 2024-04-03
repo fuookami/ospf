@@ -144,7 +144,7 @@ each OSPF implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>QMILP</td>
+        <td>MIQCQP</td>
         <td>❌</td>
         <td>❌</td>
         <td>❗</td>
@@ -152,7 +152,7 @@ each OSPF implementation consists of the following components:
         <td>❌</td>
       </tr>
       <tr>
-        <td>NLMILP</td>
+        <td>MINLP</td>
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>

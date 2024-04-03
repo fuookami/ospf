@@ -7,13 +7,16 @@ import fuookami.ospf.kotlin.example.core_demo.*
 class CoreDemoTest {
     @Test
     fun runDemo1() {
-        val demo = Demo1()
-        assert(runBlocking { demo().ok })
+        assert(runBlocking { Demo1().ok })
     }
 
     @Test
     fun runDemo2() {
-        val demo = Demo2()
-        assert(runBlocking { demo().ok })
+        assert(runBlocking { Demo2().ok })
+    }
+
+    @Test
+    fun runDemo3() {
+        assert(runBlocking { Demo3().ok })
     }
 }

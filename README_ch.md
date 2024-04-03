@@ -143,7 +143,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>QMILP</td>
+        <td>MIQCQP</td>
         <td>❌</td>
         <td>❌</td>
         <td>❗</td>
@@ -151,7 +151,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
       </tr>
       <tr>
-        <td>NLMILP</td>
+        <td>MINLP</td>
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>

@@ -61,6 +61,6 @@ class NodeBandwidth(
         }
         model.addSymbols(outFlow)
 
-        return Ok(success)
+        return ok
     }
 }

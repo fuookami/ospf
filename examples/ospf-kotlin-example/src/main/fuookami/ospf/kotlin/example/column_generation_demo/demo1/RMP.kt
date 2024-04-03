@@ -84,7 +84,7 @@ class RMP(
 
     // solve lp
     suspend operator fun invoke(iteration: UInt64): Ret<SPM> {
-        return when (val result = solver.solveLP("demo1-rmp-$iteration", metaModel, true)) {
+        return when (val result = solver.solveLP("demo1-rmp-$iteration", metaModel)) {
             is Ok -> {
                 Ok(extractShadowPriceMap(result.value.dualSolution))
             }

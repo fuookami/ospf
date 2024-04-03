@@ -19,6 +19,6 @@ class DemandConstraint(
                 "${name}_$node"
             )
         }
-        return Ok(success)
+        return ok
     }
 }

@@ -11,9 +11,8 @@ import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-import fuookami.ospf.kotlin.core.backend.solver.config.*
 
-class Demo2 {
+data object Demo2 {
     class Product : AutoIndexed(Product::class)
 
     data class Company(
@@ -30,16 +29,14 @@ class Demo2 {
 
     private val metaModel: LinearMetaModel = LinearMetaModel("demo2")
 
-    companion object {
-        val subProcesses = arrayListOf(
-            Demo2::initVariable,
-            Demo2::initSymbol,
-            Demo2::initObject,
-            Demo2::initConstraint,
-            Demo2::solve,
-            Demo2::analyzeSolution
-        )
-    }
+    private val subProcesses = arrayListOf(
+        Demo2::initVariable,
+        Demo2::initSymbol,
+        Demo2::initObject,
+        Demo2::initConstraint,
+        Demo2::solve,
+        Demo2::analyzeSolution
+    )
 
     init {
         products.add(Product())
@@ -94,7 +91,7 @@ class Demo2 {
 
     suspend operator fun invoke(): Try {
         for (process in subProcesses) {
-            when (val result = process(this)) {
+            when (val result = process()) {
                 is Failed -> {
                     return Failed(result.error)
                 }
@@ -102,10 +99,10 @@ class Demo2 {
                 else -> {}
             }
         }
-        return Ok(success)
+        return ok
     }
 
-    suspend fun initVariable(): Try {
+    private suspend fun initVariable(): Try {
         x = BinVariable2("x", Shape2(companies.size, products.size))
         for (c in companies) {
             for (p in products) {
@@ -113,10 +110,10 @@ class Demo2 {
             }
         }
         metaModel.addVars(x)
-        return Ok(success)
+        return ok
     }
 
-    suspend fun initSymbol(): Try {
+    private suspend fun initSymbol(): Try {
         cost = LinearExpressionSymbol(flatSum(companies) { c ->
             products.map { p ->
                 c.cost[p]?.let { it * x[c, p] }
@@ -140,25 +137,25 @@ class Demo2 {
         )
         metaModel.addSymbols(assignmentProduct)
 
-        return Ok(success)
+        return ok
     }
 
-    suspend fun initObject(): Try {
+    private suspend fun initObject(): Try {
         metaModel.minimize(cost)
-        return Ok(success)
+        return ok
     }
 
-    suspend fun initConstraint(): Try {
+    private suspend fun initConstraint(): Try {
         for (c in companies) {
             metaModel.addConstraint(assignmentCompany[c] leq 1)
         }
         for (p in products) {
             metaModel.addConstraint(assignmentProduct[p] eq 1)
         }
-        return Ok(success)
+        return ok
     }
 
-    suspend fun solve(): Try {
+    private suspend fun solve(): Try {
         val solver = SCIPLinearSolver()
         when (val ret = solver(metaModel)) {
             is Ok -> {
@@ -169,10 +166,10 @@ class Demo2 {
                 return Failed(ret.error)
             }
         }
-        return Ok(success)
+        return ok
     }
 
-    suspend fun analyzeSolution(): Try {
+    private suspend fun analyzeSolution(): Try {
         val ret = ArrayList<Pair<Company, Product>>()
         for (token in metaModel.tokens.tokens) {
             if (token.result!! eq Flt64.one
@@ -181,6 +178,6 @@ class Demo2 {
                 ret.add(Pair(companies[token.variable.vectorView[0]], products[token.variable.vectorView[1]]))
             }
         }
-        return Ok(success)
+        return ok
     }
 }

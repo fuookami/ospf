@@ -23,6 +23,6 @@ class Aggregation(
                 is Ok -> {}
             }
         }
-        return Ok(success)
+        return ok
     }
 }

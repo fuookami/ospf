@@ -67,6 +67,6 @@ class ServiceBandwidth(
         }
         model.addSymbols(outFlow)
 
-        return Ok(success)
+        return ok
     }
 }

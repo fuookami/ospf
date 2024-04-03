@@ -19,6 +19,6 @@ class ServiceAssignmentConstraint(
                 "${name}_$service"
             )
         }
-        return Ok(success)
+        return ok
     }
 }

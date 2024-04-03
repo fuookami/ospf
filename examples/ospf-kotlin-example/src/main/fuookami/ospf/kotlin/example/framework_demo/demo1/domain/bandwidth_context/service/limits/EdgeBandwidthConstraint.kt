@@ -28,6 +28,6 @@ class EdgeBandwidthConstraint(
                 )
             }
         }
-        return Ok(success)
+        return ok
     }
 }

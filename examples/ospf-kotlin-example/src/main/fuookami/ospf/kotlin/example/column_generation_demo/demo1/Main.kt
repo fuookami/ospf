@@ -63,7 +63,7 @@ class CSP {
                     })
             }
         }
-        return Ok(success)
+        return ok
     }
 
     private fun reducedCost(cuttingPlan: CuttingPlan, shadowPrices: SPM) = Flt64.one -

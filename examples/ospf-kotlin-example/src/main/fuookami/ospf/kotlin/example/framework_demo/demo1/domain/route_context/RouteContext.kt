@@ -69,7 +69,7 @@ class RouteContext {
 
         val graph = Graph(nodes, edges)
         aggregation = Aggregation(graph, services, Assignment(graph.nodes, services))
-        return Ok(success)
+        return ok
     }
 
     fun register(model: LinearMetaModel): Try {
@@ -94,6 +94,6 @@ class RouteContext {
                 }
             }
         }
-        return Ok(success)
+        return ok
     }
 }

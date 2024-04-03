@@ -52,6 +52,6 @@ class Demo2 {
         val callBackModel = CallBackModel(model)
         val solver = PSO(policy = CommonPSOPolicy(timeLimit = 10.seconds))
         val result = solver(callBackModel)
-        return Ok(success)
+        return ok
     }
 }

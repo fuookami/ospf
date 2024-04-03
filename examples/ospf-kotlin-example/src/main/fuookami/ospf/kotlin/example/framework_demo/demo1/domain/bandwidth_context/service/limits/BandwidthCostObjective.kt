@@ -18,6 +18,6 @@ class BandwidthCostObjective(
             sum(edges.filter(from(normal))) { it.costPerBandwidth * edgeBandwidth.bandwidth[it] },
             "bandwidth cost"
         )
-        return Ok(success)
+        return ok
     }
 }

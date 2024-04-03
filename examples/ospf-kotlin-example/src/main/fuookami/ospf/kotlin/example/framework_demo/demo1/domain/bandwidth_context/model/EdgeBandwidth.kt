@@ -47,6 +47,6 @@ class EdgeBandwidth(
         }
         model.addSymbols(bandwidth)
 
-        return Ok(success)
+        return ok
     }
 }

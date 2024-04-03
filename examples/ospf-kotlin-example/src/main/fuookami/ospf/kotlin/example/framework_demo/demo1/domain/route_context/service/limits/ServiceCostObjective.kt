@@ -17,6 +17,6 @@ class ServiceCostObjective(
             sum(services) { it.cost * assignment.serviceAssignment[it] },
             "service cost"
         )
-        return Ok(success)
+        return ok
     }
 }

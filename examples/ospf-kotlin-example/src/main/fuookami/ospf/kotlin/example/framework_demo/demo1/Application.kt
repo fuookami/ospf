@@ -69,7 +69,7 @@ class SSP {
             is Ok -> {}
         }
 
-        return Ok(success)
+        return ok
     }
 
     private fun construct(model: LinearMetaModel): Try {
@@ -103,7 +103,7 @@ class SSP {
             is Ok -> {}
         }
 
-        return Ok(success)
+        return ok
     }
 
     private suspend fun solve(metaModel: LinearMetaModel): Ret<List<Flt64>> {

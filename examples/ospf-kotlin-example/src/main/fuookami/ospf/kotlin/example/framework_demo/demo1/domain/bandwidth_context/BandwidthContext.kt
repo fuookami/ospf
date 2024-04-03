@@ -33,7 +33,7 @@ class BandwidthContext(
             serviceBandwidth
         )
         aggregation = Aggregation(edgeBandwidth, serviceBandwidth, nodeBandwidth)
-        return Ok(success)
+        return ok
     }
 
     fun register(model: LinearMetaModel): Try {
@@ -65,7 +65,7 @@ class BandwidthContext(
                 }
             }
         }
-        return Ok(success)
+        return ok
     }
 
     fun analyze(model: LinearMetaModel, result: List<Flt64>): Ret<List<List<Node>>> {

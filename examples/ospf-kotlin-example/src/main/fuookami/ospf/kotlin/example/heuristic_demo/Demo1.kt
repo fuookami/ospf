@@ -17,6 +17,6 @@ class Demo1 {
         model.addObject(ObjectCategory.Minimum, { solution: Solution -> (solution[0] - Flt64.one).pow(2) })
         val solver = PSO(policy = CommonPSOPolicy(timeLimit = 10.seconds))
         val result = solver(model)
-        return Ok(success)
+        return ok
     }
 }

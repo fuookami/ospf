@@ -59,6 +59,6 @@ class Assignment(
         }
         model.addSymbols(serviceAssignment)
 
-        return Ok(success)
+        return ok
     }
 }

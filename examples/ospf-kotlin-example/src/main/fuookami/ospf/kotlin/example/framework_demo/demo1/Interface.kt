@@ -76,7 +76,7 @@ class ConsoleApplication {
             is Ok -> {
                 val prob = SSP()
                 val ret = prob(input.value)
-                Ok(success)
+                ok
             }
         }
     }

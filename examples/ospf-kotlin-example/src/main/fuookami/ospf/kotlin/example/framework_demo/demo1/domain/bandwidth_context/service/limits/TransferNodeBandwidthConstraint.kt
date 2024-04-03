@@ -30,6 +30,6 @@ class TransferNodeBandwidthConstraint(
                 "${name}_$node"
             )
         }
-        return Ok(success)
+        return ok
     }
 }
