@@ -12,34 +12,34 @@ import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 
-data object Demo5 {
+data object Demo6 {
     data class Cargo(
         val weight: UInt64,
-        val value: UInt64
+        val value: UInt64,
+        val amount: UInt64
     ) : AutoIndexed(Cargo::class)
 
-    private val cargos = listOf(
-        Cargo(UInt64(2U), UInt64(6U)),
-        Cargo(UInt64(2U), UInt64(3U)),
-        Cargo(UInt64(6U), UInt64(5U)),
-        Cargo(UInt64(5U), UInt64(4U)),
-        Cargo(UInt64(4U), UInt64(6U))
+    private val cargos: List<Cargo> = listOf(
+        Cargo(UInt64(1), UInt64(6), UInt64(10)),
+        Cargo(UInt64(2), UInt64(10), UInt64(10)),
+        Cargo(UInt64(2), UInt64(20), UInt64(10))
     )
-    private val maxWeight = UInt64(10U)
+    private val maxWeight = UInt64(10)
 
-    private lateinit var x: BinVariable1
+    private lateinit var x: UIntVariable1
+
     private lateinit var cargoWeight: LinearSymbol
     private lateinit var cargoValue: LinearSymbol
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo5")
+    private val metaModel: LinearMetaModel = LinearMetaModel("demo6")
 
     private val subProcesses = listOf(
-        Demo5::initVariable,
-        Demo5::initSymbol,
-        Demo5::initObject,
-        Demo5::initConstraint,
-        Demo5::solve,
-        Demo5::analyzeSolution
+        Demo6::initVariable,
+        Demo6::initSymbol,
+        Demo6::initObject,
+        Demo6::initConstraint,
+        Demo6::solve,
+        Demo6::analyzeSolution
     )
 
     suspend operator fun invoke(): Try {
@@ -56,12 +56,12 @@ data object Demo5 {
     }
 
     private suspend fun initVariable(): Try {
-        x = BinVariable1("x", Shape1(cargos.size))
+        x = UIntVariable1("x", Shape1(cargos.size))
         for (c in cargos) {
             x[c].name = "${x.name}_${c.index}"
         }
         metaModel.addVars(x)
-        return ok
+        return Ok(success)
     }
 
     private suspend fun initSymbol(): Try {
@@ -70,6 +70,7 @@ data object Demo5 {
 
         cargoWeight = LinearExpressionSymbol(sum(cargos) { c -> c.weight * x[c] }, "weight")
         metaModel.addSymbol(cargoWeight)
+
         return ok
     }
 
@@ -79,6 +80,10 @@ data object Demo5 {
     }
 
     private suspend fun initConstraint(): Try {
+        for(c in cargos){
+            x[c].range.ls(c.amount)
+        }
+
         metaModel.addConstraint(
             cargoWeight leq maxWeight,"weight"
         )
@@ -100,12 +105,12 @@ data object Demo5 {
     }
 
     private suspend fun analyzeSolution(): Try {
-        val ret = HashSet<Cargo>()
+        val ret = HashMap<Cargo, UInt64>()
         for (token in metaModel.tokens.tokens) {
             if (token.result!! eq Flt64.one
                 && token.variable.belongsTo(x)
             ) {
-                ret.add(cargos[token.variable.vectorView[0]])
+                ret[cargos[token.variable.vectorView[0]]] = token.result!!.round().toUInt64()
             }
         }
         return ok
