@@ -68,7 +68,7 @@ $$
 $$
 
 $$
-y \leq \sum_{i} x_{i}, \\; \forall i
+y \leq \sum_{i} x_{i}
 $$
 
 $$
