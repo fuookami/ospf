@@ -32,9 +32,9 @@ class QuadraticTest {
         val result2 = runBlocking { solver2(model) }
         assert(result2.value!!.solution[0] eq -Flt64.two)
 
-//        val solver3 = GurobiQuadraticSolver()
-//        val result3 = runBlocking { solver3(model) }
-//        assert(result3.value!!.solution[0] eq -Flt64.two)
+        val solver3 = GurobiQuadraticSolver()
+        val result3 = runBlocking { solver3(model) }
+        assert(result3.value!!.solution[0] eq -Flt64.two)
     }
 
     @Test
@@ -56,9 +56,9 @@ class QuadraticTest {
         val result2 = runBlocking { solver2(model) }
         assert(result2.value!!.solution[0] eq Flt64.two)
 
-//        val solver3 = GurobiQuadraticSolver()
-//        val result3 = runBlocking { solver3(model) }
-//        assert(result3.value!!.solution[0] eq Flt64.two)
+        val solver3 = GurobiQuadraticSolver()
+        val result3 = runBlocking { solver3(model) }
+        assert(result3.value!!.solution[0] eq Flt64.two)
     }
 
     @Test
@@ -69,14 +69,32 @@ class QuadraticTest {
 
         val model = QuadraticMetaModel()
         model.addVar(x)
-        model.maximize(x * x)
+        model.minimize(x * x)
         model.addConstraint(x * x leq Flt64(4.0))
 
-        model.export("1.opm")
+        val solver1 = SCIPQuadraticSolver()
+        val result1 = runBlocking { solver1(model) }
+        assert(result1.value!!.solution[0] eq Flt64.zero)
 
-        val himodel = runBlocking { QuadraticModel(model).value!! }
-        val limodel = runBlocking { QuadraticTetradModel(himodel) }
-        limodel.export("1.lp", ModelFileFormat.LP)
+        val solver2 = CplexQuadraticSolver()
+        val result2 = runBlocking { solver2(model) }
+        assert(result2.value!!.solution[0].abs() leq Flt64(1e-5))
+
+        val solver3 = GurobiQuadraticSolver()
+        val result3 = runBlocking { solver3(model) }
+        assert(result3.value!!.solution[0] eq Flt64.zero)
+    }
+
+    @Test
+    fun notConvexQcqp() {
+        val x = RealVar("x")
+        x.range.leq(Flt64.two)
+        x.range.geq(-Flt64.two)
+
+        val model = QuadraticMetaModel()
+        model.addVar(x)
+        model.maximize(x * x + x)
+        model.addConstraint(x * x leq Flt64(4.0))
 
         val solver1 = SCIPQuadraticSolver()
         val result1 = runBlocking { solver1(model) }
@@ -84,6 +102,10 @@ class QuadraticTest {
 
         val solver2 = CplexQuadraticSolver()
         val result2 = runBlocking { solver2(model) }
-        assert(result2.value!!.solution[0] eq Flt64.two)
+        assert(result2.failed)
+
+        val solver3 = GurobiQuadraticSolver()
+        val result3 = runBlocking { solver3(model) }
+        assert(result3.value!!.solution[0] eq Flt64.two)
     }
 }
