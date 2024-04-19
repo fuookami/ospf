@@ -20,94 +20,84 @@ class LinearPiecewiseTest {
         x.range.leq(Flt64.two)
         x.range.geq(-Flt64.two)
         val abs = AbsFunction(LinearPolynomial(x), name = "abs")
-        val solver = SCIPLinearSolver(LinearSolverConfig())
+        val solver = SCIPLinearSolver()
 
-        val metaModel1 = LinearMetaModel()
-        metaModel1.addVar(x)
-        metaModel1.addSymbol(abs)
-        metaModel1.minimize(abs)
-        val model1 = runBlocking { LinearModel(metaModel1).value!! }
-        val result1 = runBlocking { solver(LinearTriadModel(model1)) }
+        val model1 = LinearMetaModel()
+        model1.addVar(x)
+        model1.addSymbol(abs)
+        model1.minimize(abs)
+        val result1 = runBlocking { solver(model1) }
         assert(result1.value!!.obj eq Flt64.zero)
 
-        val metaModel2 = LinearMetaModel()
-        metaModel2.addVar(x)
-        metaModel2.addSymbol(abs)
-        metaModel2.maximize(abs)
-        val model2 = runBlocking { LinearModel(metaModel2).value!! }
-        val result2 = runBlocking { solver(LinearTriadModel(model2)) }
+        val model2 = LinearMetaModel()
+        model2.addVar(x)
+        model2.addSymbol(abs)
+        model2.maximize(abs)
+        val result2 = runBlocking { solver(model2) }
         assert(result2.value!!.obj eq Flt64.two)
 
-        val metaModel3 = LinearMetaModel()
-        metaModel3.addVar(x)
-        metaModel3.addSymbol(abs)
-        metaModel3.addConstraint(x geq Flt64.one)
-        metaModel3.minimize(abs)
-        val model3 = runBlocking { LinearModel(metaModel3).value!! }
-        val result3 = runBlocking { solver(LinearTriadModel(model3)) }
+        val model3 = LinearMetaModel()
+        model3.addVar(x)
+        model3.addSymbol(abs)
+        model3.addConstraint(x geq Flt64.one)
+        model3.minimize(abs)
+        val result3 = runBlocking { solver(model3) }
         assert((result3.value!!.obj - Flt64.one).toFlt32() eq Flt32.zero)
 
-        val metaModel4 = LinearMetaModel()
-        metaModel4.addVar(x)
-        metaModel4.addSymbol(abs)
-        metaModel4.addConstraint(x geq Flt64.one)
-        metaModel4.maximize(abs)
-        val model4 = runBlocking { LinearModel(metaModel4).value!! }
-        val result4 = runBlocking { solver(LinearTriadModel(model4)) }
+        val model4 = LinearMetaModel()
+        model4.addVar(x)
+        model4.addSymbol(abs)
+        model4.addConstraint(x geq Flt64.one)
+        model4.maximize(abs)
+        val result4 = runBlocking { solver(model4) }
         assert(result4.value!!.obj eq Flt64.two)
 
-        val metaModel5 = LinearMetaModel()
-        metaModel5.addVar(x)
-        metaModel5.addSymbol(abs)
-        metaModel5.addConstraint(x leq -Flt64.one)
-        metaModel5.minimize(abs)
-        val model5 = runBlocking { LinearModel(metaModel5).value!! }
-        val result5 = runBlocking { solver(LinearTriadModel(model5)) }
+        val model5 = LinearMetaModel()
+        model5.addVar(x)
+        model5.addSymbol(abs)
+        model5.addConstraint(x leq -Flt64.one)
+        model5.minimize(abs)
+        val result5 = runBlocking { solver(model5) }
         assert((result5.value!!.obj - Flt64.one).toFlt32() eq Flt32.zero)
 
-        val metaModel6 = LinearMetaModel()
-        metaModel6.addVar(x)
-        metaModel6.addSymbol(abs)
-        metaModel6.addConstraint(x leq -Flt64.one)
-        metaModel6.maximize(abs)
-        val model6 = runBlocking { LinearModel(metaModel6).value!! }
-        val result6 = runBlocking { solver(LinearTriadModel(model6)) }
+        val model6 = LinearMetaModel()
+        model6.addVar(x)
+        model6.addSymbol(abs)
+        model6.addConstraint(x leq -Flt64.one)
+        model6.maximize(abs)
+        val result6 = runBlocking { solver(model6) }
         assert(result6.value!!.obj eq Flt64.two)
 
-        val metaModel7 = LinearMetaModel()
-        metaModel7.addVar(x)
-        metaModel7.addSymbol(abs)
-        metaModel7.addConstraint(abs eq Flt64.one)
-        metaModel7.maximize(x)
-        val model7 = runBlocking { LinearModel(metaModel7).value!! }
-        val result7 = runBlocking { solver(LinearTriadModel(model7)) }
+        val model7 = LinearMetaModel()
+        model7.addVar(x)
+        model7.addSymbol(abs)
+        model7.addConstraint(abs eq Flt64.one)
+        model7.maximize(x)
+        val result7 = runBlocking { solver(model7) }
         assert((result7.value!!.obj - Flt64.one).toFlt32() eq Flt32.zero)
 
-        val metaModel8 = LinearMetaModel()
-        metaModel8.addVar(x)
-        metaModel8.addSymbol(abs)
-        metaModel8.addConstraint(abs eq Flt64.one)
-        metaModel8.minimize(x)
-        val model8 = runBlocking { LinearModel(metaModel8).value!! }
-        val result8 = runBlocking { solver(LinearTriadModel(model8)) }
+        val model8 = LinearMetaModel()
+        model8.addVar(x)
+        model8.addSymbol(abs)
+        model8.addConstraint(abs eq Flt64.one)
+        model8.minimize(x)
+        val result8 = runBlocking { solver(model8) }
         assert((result8.value!!.obj + Flt64.one).toFlt32() eq Flt32.zero)
 
-        val metaModel9 = LinearMetaModel()
-        metaModel9.addVar(x)
-        metaModel9.addSymbol(abs)
-        metaModel9.addConstraint(abs geq Flt64.one)
-        metaModel9.maximize(x)
-        val model9 = runBlocking { LinearModel(metaModel9).value!! }
-        val result9 = runBlocking { solver(LinearTriadModel(model9)) }
+        val model9 = LinearMetaModel()
+        model9.addVar(x)
+        model9.addSymbol(abs)
+        model9.addConstraint(abs geq Flt64.one)
+        model9.maximize(x)
+        val result9 = runBlocking { solver(model9) }
         assert(result9.value!!.obj eq Flt64.two)
 
-        val metaModel10 = LinearMetaModel()
-        metaModel10.addVar(x)
-        metaModel10.addSymbol(abs)
-        metaModel10.addConstraint(abs geq Flt64.one)
-        metaModel10.minimize(x)
-        val model10 = runBlocking { LinearModel(metaModel10).value!! }
-        val result10 = runBlocking { solver(LinearTriadModel(model10)) }
+        val model10 = LinearMetaModel()
+        model10.addVar(x)
+        model10.addSymbol(abs)
+        model10.addConstraint(abs geq Flt64.one)
+        model10.minimize(x)
+        val result10 = runBlocking { solver(model10) }
         assert(result10.value!!.obj eq -Flt64.two)
     }
 
@@ -118,26 +108,24 @@ class LinearPiecewiseTest {
         val y = UIntVar("y")
         y.range.leq(UInt64.two)
         val and = AndFunction(listOf(LinearPolynomial(x), LinearPolynomial(y)), "and")
-        val solver = SCIPLinearSolver(LinearSolverConfig())
+        val solver = SCIPLinearSolver()
 
-        val metaModel1 = LinearMetaModel()
-        metaModel1.addVar(x)
-        metaModel1.addVar(y)
-        metaModel1.addSymbol(and)
-        metaModel1.addConstraint(and)
-        metaModel1.maximize(x + y)
-        val model1 = runBlocking { LinearModel(metaModel1).value!! }
-        val result1 = runBlocking { solver(LinearTriadModel(model1)) }
+        val model1 = LinearMetaModel()
+        model1.addVar(x)
+        model1.addVar(y)
+        model1.addSymbol(and)
+        model1.addConstraint(and)
+        model1.maximize(x + y)
+        val result1 = runBlocking { solver(model1) }
         assert(result1.value!!.obj eq Flt64.three)
 
-        val metaModel2 = LinearMetaModel()
-        metaModel2.addVar(x)
-        metaModel2.addVar(y)
-        metaModel2.addSymbol(and)
-        metaModel2.addConstraint(and)
-        metaModel2.minimize(x + y)
-        val model2 = runBlocking { LinearModel(metaModel2).value!! }
-        val result2 = runBlocking { solver(LinearTriadModel(model2)) }
+        val model2 = LinearMetaModel()
+        model2.addVar(x)
+        model2.addVar(y)
+        model2.addSymbol(and)
+        model2.addConstraint(and)
+        model2.minimize(x + y)
+        val result2 = runBlocking { solver(model2) }
         assert(result2.value!!.obj eq Flt64.two)
     }
 
@@ -146,40 +134,36 @@ class LinearPiecewiseTest {
         val x = URealVar("x")
         x.range.leq(Flt64.two)
         val bin = BinaryzationFunction(LinearPolynomial(x), name = "bin")
-        val solver = SCIPLinearSolver(LinearSolverConfig())
+        val solver = SCIPLinearSolver()
 
-        val metaModel1 = LinearMetaModel()
-        metaModel1.addVar(x)
-        metaModel1.addSymbol(bin)
-        metaModel1.minimize(bin)
-        val model1 = runBlocking { LinearModel(metaModel1).value!! }
-        val result1 = runBlocking { solver(LinearTriadModel(model1)) }
+        val model1 = LinearMetaModel()
+        model1.addVar(x)
+        model1.addSymbol(bin)
+        model1.minimize(bin)
+        val result1 = runBlocking { solver(model1) }
         assert(result1.value!!.obj eq Flt64.zero)
 
-        val metaModel2 = LinearMetaModel()
-        metaModel2.addVar(x)
-        metaModel2.addSymbol(bin)
-        metaModel2.maximize(bin)
-        val model2 = runBlocking { LinearModel(metaModel2).value!! }
-        val result2 = runBlocking { solver(LinearTriadModel(model2)) }
+        val model2 = LinearMetaModel()
+        model2.addVar(x)
+        model2.addSymbol(bin)
+        model2.maximize(bin)
+        val result2 = runBlocking { solver(model2) }
         assert(result2.value!!.obj eq Flt64.one)
 
-        val metaModel3 = LinearMetaModel()
-        metaModel3.addVar(x)
-        metaModel3.addSymbol(bin)
-        metaModel3.addConstraint(x eq Flt64.zero)
-        metaModel3.maximize(bin)
-        val model3 = runBlocking { LinearModel(metaModel3).value!! }
-        val result3 = runBlocking { solver(LinearTriadModel(model3)) }
+        val model3 = LinearMetaModel()
+        model3.addVar(x)
+        model3.addSymbol(bin)
+        model3.addConstraint(x eq Flt64.zero)
+        model3.maximize(bin)
+        val result3 = runBlocking { solver(model3) }
         assert(result3.value!!.obj eq Flt64.zero)
 
-        val metaModel4 = LinearMetaModel()
-        metaModel4.addVar(x)
-        metaModel4.addSymbol(bin)
-        metaModel4.addConstraint(x eq Flt64(0.3))
-        metaModel4.maximize(bin)
-        val model4 = runBlocking { LinearModel(metaModel4).value!! }
-        val result4 = runBlocking { solver(LinearTriadModel(model4)) }
+        val model4 = LinearMetaModel()
+        model4.addVar(x)
+        model4.addSymbol(bin)
+        model4.addConstraint(x eq Flt64(0.3))
+        model4.maximize(bin)
+        val result4 = runBlocking { solver(model4) }
         assert(result4.value!!.obj eq Flt64.one)
     }
 
@@ -188,40 +172,36 @@ class LinearPiecewiseTest {
         val x = UIntVar("x")
         x.range.leq(UInt64.two)
         val bin = BinaryzationFunction(LinearPolynomial(x), name = "bin")
-        val solver = SCIPLinearSolver(LinearSolverConfig())
+        val solver = SCIPLinearSolver()
 
-        val metaModel1 = LinearMetaModel()
-        metaModel1.addVar(x)
-        metaModel1.addSymbol(bin)
-        metaModel1.minimize(bin)
-        val model1 = runBlocking { LinearModel(metaModel1).value!! }
-        val result1 = runBlocking { solver(LinearTriadModel(model1)) }
+        val model1 = LinearMetaModel()
+        model1.addVar(x)
+        model1.addSymbol(bin)
+        model1.minimize(bin)
+        val result1 = runBlocking { solver(model1) }
         assert(result1.value!!.obj eq Flt64.zero)
 
-        val metaModel2 = LinearMetaModel()
-        metaModel2.addVar(x)
-        metaModel2.addSymbol(bin)
-        metaModel2.maximize(bin)
-        val model2 = runBlocking { LinearModel(metaModel2).value!! }
-        val result2 = runBlocking { solver(LinearTriadModel(model2)) }
+        val model2 = LinearMetaModel()
+        model2.addVar(x)
+        model2.addSymbol(bin)
+        model2.maximize(bin)
+        val result2 = runBlocking { solver(model2) }
         assert(result2.value!!.obj eq Flt64.one)
 
-        val metaModel3 = LinearMetaModel()
-        metaModel3.addVar(x)
-        metaModel3.addSymbol(bin)
-        metaModel3.addConstraint(x eq Flt64.zero)
-        metaModel3.maximize(bin)
-        val model3 = runBlocking { LinearModel(metaModel3).value!! }
-        val result3 = runBlocking { solver(LinearTriadModel(model3)) }
+        val model3 = LinearMetaModel()
+        model3.addVar(x)
+        model3.addSymbol(bin)
+        model3.addConstraint(x eq Flt64.zero)
+        model3.maximize(bin)
+        val result3 = runBlocking { solver(model3) }
         assert(result3.value!!.obj eq Flt64.zero)
 
-        val metaModel4 = LinearMetaModel()
-        metaModel4.addVar(x)
-        metaModel4.addSymbol(bin)
-        metaModel4.addConstraint(x eq Flt64.zero)
-        metaModel4.minimize(bin)
-        val model4 = runBlocking { LinearModel(metaModel4).value!! }
-        val result4 = runBlocking { solver(LinearTriadModel(model4)) }
+        val model4 = LinearMetaModel()
+        model4.addVar(x)
+        model4.addSymbol(bin)
+        model4.addConstraint(x eq Flt64.zero)
+        model4.minimize(bin)
+        val result4 = runBlocking { solver(model4) }
         assert(result4.value!!.obj eq Flt64.zero)
     }
 
@@ -231,76 +211,68 @@ class LinearPiecewiseTest {
         x.range.leq(Flt64.two)
         x.range.geq(-Flt64.two)
         val bter = BalanceTernaryzationFunction(LinearPolynomial(x), name = "bter")
-        val solver = SCIPLinearSolver(LinearSolverConfig())
+        val solver = SCIPLinearSolver()
 
-        val metaModel1 = LinearMetaModel()
-        metaModel1.addVar(x)
-        metaModel1.addSymbol(bter)
-        metaModel1.minimize(bter)
-        val model1 = runBlocking { LinearModel(metaModel1).value!! }
-        val result1 = runBlocking { solver(LinearTriadModel(model1)) }
+        val model1 = LinearMetaModel()
+        model1.addVar(x)
+        model1.addSymbol(bter)
+        model1.minimize(bter)
+        val result1 = runBlocking { solver(model1) }
         assert(result1.value!!.obj eq -Flt64.one)
 
-        val metaModel2 = LinearMetaModel()
-        metaModel2.addVar(x)
-        metaModel2.addSymbol(bter)
-        metaModel2.maximize(bter)
-        val model2 = runBlocking { LinearModel(metaModel2).value!! }
-        val result2 = runBlocking { solver(LinearTriadModel(model2)) }
+        val model2 = LinearMetaModel()
+        model2.addVar(x)
+        model2.addSymbol(bter)
+        model2.maximize(bter)
+        val result2 = runBlocking { solver(model2) }
         assert(result2.value!!.obj eq Flt64.one)
 
-        val metaModel3 = LinearMetaModel()
-        metaModel3.addVar(x)
-        metaModel3.addSymbol(bter)
-        metaModel3.addConstraint(x geq Flt64.zero)
-        metaModel3.minimize(bter)
-        val model3 = runBlocking { LinearModel(metaModel3).value!! }
-        val result3 = runBlocking { solver(LinearTriadModel(model3)) }
+        val model3 = LinearMetaModel()
+        model3.addVar(x)
+        model3.addSymbol(bter)
+        model3.addConstraint(x geq Flt64.zero)
+        model3.minimize(bter)
+        val result3 = runBlocking { solver(model3) }
         assert(result3.value!!.obj eq Flt64.zero)
 
-        val metaModel4 = LinearMetaModel()
-        metaModel4.addVar(x)
-        metaModel4.addSymbol(bter)
-        metaModel4.addConstraint(x geq Flt64.zero)
-        metaModel4.maximize(bter)
-        val model4 = runBlocking { LinearModel(metaModel4).value!! }
-        val result4 = runBlocking { solver(LinearTriadModel(model4)) }
+        val model4 = LinearMetaModel()
+        model4.addVar(x)
+        model4.addSymbol(bter)
+        model4.addConstraint(x geq Flt64.zero)
+        model4.maximize(bter)
+        val result4 = runBlocking { solver(model4) }
         assert(result4.value!!.obj eq Flt64.one)
 
-        val metaModel5 = LinearMetaModel()
-        metaModel5.addVar(x)
-        metaModel5.addSymbol(bter)
-        metaModel5.addConstraint(x leq Flt64.zero)
-        metaModel5.minimize(bter)
-        val model5 = runBlocking { LinearModel(metaModel5).value!! }
-        val result5 = runBlocking { solver(LinearTriadModel(model5)) }
+        val model5 = LinearMetaModel()
+        model5.addVar(x)
+        model5.addSymbol(bter)
+        model5.addConstraint(x leq Flt64.zero)
+        model5.minimize(bter)
+        val result5 = runBlocking { solver(model5) }
         assert(result5.value!!.obj eq -Flt64.one)
 
-        val metaModel6 = LinearMetaModel()
-        metaModel6.addVar(x)
-        metaModel6.addSymbol(bter)
-        metaModel6.addConstraint(x leq Flt64.zero)
-        metaModel6.maximize(bter)
-        val model6 = runBlocking { LinearModel(metaModel6).value!! }
-        val result6 = runBlocking { solver(LinearTriadModel(model6)) }
+        val model6 = LinearMetaModel()
+        model6.addVar(x)
+        model6.addSymbol(bter)
+        model6.addConstraint(x leq Flt64.zero)
+        model6.maximize(bter)
+        val result6 = runBlocking { solver(model6) }
         assert(result6.value!!.obj eq Flt64.zero)
 
-        val metaModel7 = LinearMetaModel()
-        metaModel7.addVar(x)
-        metaModel7.addSymbol(bter)
-        metaModel7.addConstraint(x leq Flt64(0.3))
-        metaModel7.maximize(bter)
-        val model7 = runBlocking { LinearModel(metaModel7).value!! }
-        val result7 = runBlocking { solver(LinearTriadModel(model7)) }
+        val model7 = LinearMetaModel()
+        model7.addVar(x)
+        model7.addSymbol(bter)
+        model7.addConstraint(x leq Flt64(0.3))
+        model7.maximize(bter)
+        val result7 = runBlocking { solver(model7) }
         assert(result7.value!!.obj eq Flt64.one)
 
-        val metaModel8 = LinearMetaModel()
-        metaModel8.addVar(x)
-        metaModel8.addSymbol(bter)
-        metaModel8.addConstraint(x geq -Flt64(0.3))
-        metaModel8.minimize(bter)
-        val model8 = runBlocking { LinearModel(metaModel8).value!! }
-        val result8 = runBlocking { solver(LinearTriadModel(model8)) }
+        val model8 = LinearMetaModel()
+        model8.addVar(x)
+        model8.addSymbol(bter)
+        model8.addConstraint(x geq -Flt64(0.3))
+        model8.minimize(bter)
+        val result8 = runBlocking { solver(model8) }
         assert(result8.value!!.obj eq -Flt64.one)
     }
 
@@ -310,91 +282,84 @@ class LinearPiecewiseTest {
         x.range.leq(Int64.two)
         x.range.geq(-Int64.two)
         val bter = BalanceTernaryzationFunction(LinearPolynomial(x), name = "bter")
-        val solver = SCIPLinearSolver(LinearSolverConfig())
+        val solver = SCIPLinearSolver()
 
-        val metaModel1 = LinearMetaModel()
-        metaModel1.addVar(x)
-        metaModel1.addSymbol(bter)
-        metaModel1.minimize(bter)
-        val model1 = runBlocking { LinearModel(metaModel1).value!! }
-        val result1 = runBlocking { solver(LinearTriadModel(model1)) }
+        val model1 = LinearMetaModel()
+        model1.addVar(x)
+        model1.addSymbol(bter)
+        model1.minimize(bter)
+        val result1 = runBlocking { solver(model1) }
         assert(result1.value!!.obj eq -Flt64.one)
 
-        val metaModel2 = LinearMetaModel()
-        metaModel2.addVar(x)
-        metaModel2.addSymbol(bter)
-        metaModel2.maximize(bter)
-        val model2 = runBlocking { LinearModel(metaModel2).value!! }
-        val result2 = runBlocking { solver(LinearTriadModel(model2)) }
+        val model2 = LinearMetaModel()
+        model2.addVar(x)
+        model2.addSymbol(bter)
+        model2.maximize(bter)
+        val result2 = runBlocking { solver(model2) }
         assert(result2.value!!.obj eq Flt64.one)
 
-        val metaModel3 = LinearMetaModel()
-        metaModel3.addVar(x)
-        metaModel3.addSymbol(bter)
-        metaModel3.addConstraint(x geq Flt64.zero)
-        metaModel3.minimize(bter)
-        val model3 = runBlocking { LinearModel(metaModel3).value!! }
-        val result3 = runBlocking { solver(LinearTriadModel(model3)) }
+        val model3 = LinearMetaModel()
+        model3.addVar(x)
+        model3.addSymbol(bter)
+        model3.addConstraint(x geq Flt64.zero)
+        model3.minimize(bter)
+        val result3 = runBlocking { solver(model3) }
         assert(result3.value!!.obj eq Flt64.zero)
 
-        val metaModel4 = LinearMetaModel()
-        metaModel4.addVar(x)
-        metaModel4.addSymbol(bter)
-        metaModel4.addConstraint(x geq Flt64.zero)
-        metaModel4.maximize(bter)
-        val model4 = runBlocking { LinearModel(metaModel4).value!! }
-        val result4 = runBlocking { solver(LinearTriadModel(model4)) }
+        val model4 = LinearMetaModel()
+        model4.addVar(x)
+        model4.addSymbol(bter)
+        model4.addConstraint(x geq Flt64.zero)
+        model4.maximize(bter)
+        val result4 = runBlocking { solver(model4) }
         assert(result4.value!!.obj eq Flt64.one)
 
-        val metaModel5 = LinearMetaModel()
-        metaModel5.addVar(x)
-        metaModel5.addSymbol(bter)
-        metaModel5.addConstraint(x leq Flt64.zero)
-        metaModel5.minimize(bter)
-        val model5 = runBlocking { LinearModel(metaModel5).value!! }
-        val result5 = runBlocking { solver(LinearTriadModel(model5)) }
+        val model5 = LinearMetaModel()
+        model5.addVar(x)
+        model5.addSymbol(bter)
+        model5.addConstraint(x leq Flt64.zero)
+        model5.minimize(bter)
+        val result5 = runBlocking { solver(model5) }
         assert(result5.value!!.obj eq -Flt64.one)
 
-        val metaModel6 = LinearMetaModel()
-        metaModel6.addVar(x)
-        metaModel6.addSymbol(bter)
-        metaModel6.addConstraint(x leq Flt64.zero)
-        metaModel6.maximize(bter)
-        val model6 = runBlocking { LinearModel(metaModel6).value!! }
-        val result6 = runBlocking { solver(LinearTriadModel(model6)) }
+        val model6 = LinearMetaModel()
+        model6.addVar(x)
+        model6.addSymbol(bter)
+        model6.addConstraint(x leq Flt64.zero)
+        model6.maximize(bter)
+        val result6 = runBlocking { solver(model6) }
         assert(result6.value!!.obj eq Flt64.zero)
     }
 
     @Test
     fun semi() {
-        val metaModel = LinearMetaModel()
+        val model = LinearMetaModel()
 
         val x = URealVar("x")
         x.range.leq(Flt64.two)
-        metaModel.addVar(x)
+        model.addVar(x)
 
         val y = URealVar("y")
         y.range.geq(Flt64.three)
-        metaModel.addVar(y)
+        model.addVar(y)
 
         val semi = SemiURealFunction(LinearPolynomial(x - y), name = "semi")
-        metaModel.addSymbol(semi)
+        model.addSymbol(semi)
 
-        metaModel.minimize(semi)
+        model.minimize(semi)
 
-        val solver = SCIPLinearSolver(LinearSolverConfig())
-        val model = runBlocking { LinearTriadModel(LinearModel(metaModel).value!!) }
+        val solver = SCIPLinearSolver()
         val result = runBlocking { solver(model) }
         assert(result.value!!.obj eq Flt64.zero)
     }
 
     @Test
     fun univariate() {
-        val metaModel = LinearMetaModel()
+        val model = LinearMetaModel()
 
         val x = URealVar("x")
         x.range.leq(Flt64.two)
-        metaModel.addVar(x)
+        model.addVar(x)
 
         val ulp = UnivariateLinearPiecewiseFunction(
             x = LinearPolynomial(x),
@@ -405,26 +370,25 @@ class LinearPiecewiseTest {
             ),
             name = "y"
         )
-        metaModel.addSymbol(ulp)
+        model.addSymbol(ulp)
 
-        metaModel.maximize(LinearPolynomial(ulp))
+        model.maximize(LinearPolynomial(ulp))
 
-        val solver = SCIPLinearSolver(LinearSolverConfig())
-        val model = runBlocking { LinearTriadModel(LinearModel(metaModel).value!!) }
+        val solver = SCIPLinearSolver()
         val result = runBlocking { solver(model) }
         assert(result.value!!.solution[0] eq Flt64.one)
     }
 
     @Test
     fun bivariate() {
-        val metaModel = LinearMetaModel()
+        val model = LinearMetaModel()
 
         val x = URealVar("x")
         val y = URealVar("y")
         x.range.leq(Flt64.two)
         y.range.leq(Flt64.two)
-        metaModel.addVar(x)
-        metaModel.addVar(y)
+        model.addVar(x)
+        model.addVar(y)
 
         val blp = BivariateLinearPiecewiseFunction(
             x = LinearPolynomial(x),
@@ -438,12 +402,11 @@ class LinearPiecewiseTest {
             ),
             name = "z"
         )
-        metaModel.addSymbol(blp)
+        model.addSymbol(blp)
 
-        metaModel.maximize(LinearPolynomial(blp))
+        model.maximize(LinearPolynomial(blp))
 
-        val solver = SCIPLinearSolver(LinearSolverConfig())
-        val model = runBlocking { LinearTriadModel(LinearModel(metaModel).value!!) }
+        val solver = SCIPLinearSolver()
         val result = runBlocking { solver(model) }
         assert(result.value!!.solution[0] eq Flt64.one)
         assert(result.value!!.solution[1] eq Flt64.one)

@@ -38,8 +38,8 @@ class Demo2 {
                 return Failed(result.error)
             }
         }
-//        val solver = CplexLinearSolver(LinearSolverConfig())
-//        val result = when (val ret = solver(runBlocking { LinearTriadModel(model) })) {
+//        val solver = CplexLinearSolver()
+//        val result = when (val ret = runBlocking { solver(model) }) {
 //            is Ok -> {
 //                metaModel.tokens.setSolution(ret.value.results)
 //                ret.value.results
