@@ -60,16 +60,16 @@ data object Demo6 {
         for (c in cargos) {
             x[c].name = "${x.name}_${c.index}"
         }
-        metaModel.addVars(x)
-        return Ok(success)
+        metaModel.add(x)
+        return ok
     }
 
     private suspend fun initSymbol(): Try {
         cargoValue = LinearExpressionSymbol(sum(cargos) { c -> c.value * x[c] }, "value")
-        metaModel.addSymbol(cargoValue)
+        metaModel.add(cargoValue)
 
         cargoWeight = LinearExpressionSymbol(sum(cargos) { c -> c.weight * x[c] }, "weight")
-        metaModel.addSymbol(cargoWeight)
+        metaModel.add(cargoWeight)
 
         return ok
     }

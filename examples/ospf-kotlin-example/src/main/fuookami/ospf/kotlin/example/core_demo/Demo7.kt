@@ -93,7 +93,7 @@ data object Demo7 {
                 x[w, s].name = "${x.name}_(${w.index},${s.index})"
             }
         }
-        metaModel.addVars(x)
+        metaModel.add(x)
         return ok
     }
 
@@ -103,7 +103,7 @@ data object Demo7 {
                 w.cost[s]!! * x[w, s]
             })
         }), "cost")
-        metaModel.addSymbol(cost)
+        metaModel.add(cost)
 
         shipment = LinearSymbols1(
             "shipment",
@@ -115,7 +115,7 @@ data object Demo7 {
                 "shipment_${w.index}"
             )
         }
-        metaModel.addSymbols(shipment)
+        metaModel.add(shipment)
 
         purchase = LinearSymbols1(
             "purchase",
@@ -127,7 +127,7 @@ data object Demo7 {
                 "purchase_${s.index}"
             )
         }
-        metaModel.addSymbols(purchase)
+        metaModel.add(purchase)
         return ok
     }
 
@@ -152,8 +152,6 @@ data object Demo7 {
     }
 
     private suspend fun solve(): Try {
-        metaModel.export("1.opm")
-
         val solver = SCIPLinearSolver()
         when (val ret = solver(metaModel)) {
             is Ok -> {

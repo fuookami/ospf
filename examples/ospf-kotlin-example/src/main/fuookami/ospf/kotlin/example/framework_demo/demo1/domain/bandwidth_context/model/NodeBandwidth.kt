@@ -27,7 +27,7 @@ class NodeBandwidth(
                 { (_, n) -> "$n" }
             )
         }
-        model.addSymbols(inDegree)
+        model.add(inDegree)
 
         if (!::outDegree.isInitialized) {
             outDegree = flatMap(
@@ -43,7 +43,7 @@ class NodeBandwidth(
                 { (_, n) -> "$n" }
             )
         }
-        model.addSymbols(outDegree)
+        model.add(outDegree)
 
         if (!::outFlow.isInitialized) {
             outFlow = flatMap(
@@ -59,7 +59,7 @@ class NodeBandwidth(
                 { (_, n) -> "$n" }
             )
         }
-        model.addSymbols(outFlow)
+        model.add(outFlow)
 
         return ok
     }

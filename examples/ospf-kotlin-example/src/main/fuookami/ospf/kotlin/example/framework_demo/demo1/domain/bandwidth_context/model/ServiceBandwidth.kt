@@ -31,7 +31,7 @@ class ServiceBandwidth(
                 { (_, n), (_, s) -> "${n}_$s" }
             )
         }
-        model.addSymbols(inDegree)
+        model.add(inDegree)
 
         if (!::outDegree.isInitialized) {
             outDegree = flatMap(
@@ -48,7 +48,7 @@ class ServiceBandwidth(
                 { (_, n), (_, s) -> "${n}_$s" }
             )
         }
-        model.addSymbols(outDegree)
+        model.add(outDegree)
 
         if (!::outFlow.isInitialized) {
             outFlow = flatMap(
@@ -65,7 +65,7 @@ class ServiceBandwidth(
                 { (_, n), (_, s) -> "${n}_$s" }
             )
         }
-        model.addSymbols(outFlow)
+        model.add(outFlow)
 
         return ok
     }

@@ -23,13 +23,13 @@ class Demo2 {
         val y = URealVar("y")
         x.range.leq(Flt64.two)
         y.range.leq(Flt64.two)
-        metaModel.addVar(x)
-        metaModel.addVar(y)
+        metaModel.add(x)
+        metaModel.add(y)
 //        val abs = AbsFunction(x - Flt64.one)
-//        metaModel.addSymbol(abs)
+//        metaModel.add(abs)
 //        metaModel.addObject(ObjectCategory.Minimum, LinearPolynomial(abs))
         metaModel.addObject(ObjectCategory.Maximum, x + y)
-        val model = when (val result = runBlocking { LinearModel(metaModel) }) {
+        val model = when (val result = runBlocking { LinearMechanismModel(metaModel) }) {
             is Ok -> {
                 result.value
             }

@@ -39,10 +39,10 @@ class SP {
         for (product in products) {
             y[product].name = "${y.name}_${product.index}"
         }
-        model.addVars(y)
+        model.add(y)
 
         val use = LinearExpressionSymbol(sum(products) { p -> p.length * y[p] }, "use")
-        model.addSymbol(use)
+        model.add(use)
 
         model.minimize(Flt64.one - sum(products) { p -> shadowPrice(p) * y[p] })
         model.addConstraint(use leq length, "use")

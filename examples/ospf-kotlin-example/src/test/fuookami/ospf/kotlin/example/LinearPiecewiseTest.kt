@@ -23,78 +23,78 @@ class LinearPiecewiseTest {
         val solver = SCIPLinearSolver()
 
         val model1 = LinearMetaModel()
-        model1.addVar(x)
-        model1.addSymbol(abs)
+        model1.add(x)
+        model1.add(abs)
         model1.minimize(abs)
         val result1 = runBlocking { solver(model1) }
         assert(result1.value!!.obj eq Flt64.zero)
 
         val model2 = LinearMetaModel()
-        model2.addVar(x)
-        model2.addSymbol(abs)
+        model2.add(x)
+        model2.add(abs)
         model2.maximize(abs)
         val result2 = runBlocking { solver(model2) }
         assert(result2.value!!.obj eq Flt64.two)
 
         val model3 = LinearMetaModel()
-        model3.addVar(x)
-        model3.addSymbol(abs)
+        model3.add(x)
+        model3.add(abs)
         model3.addConstraint(x geq Flt64.one)
         model3.minimize(abs)
         val result3 = runBlocking { solver(model3) }
         assert((result3.value!!.obj - Flt64.one).toFlt32() eq Flt32.zero)
 
         val model4 = LinearMetaModel()
-        model4.addVar(x)
-        model4.addSymbol(abs)
+        model4.add(x)
+        model4.add(abs)
         model4.addConstraint(x geq Flt64.one)
         model4.maximize(abs)
         val result4 = runBlocking { solver(model4) }
         assert(result4.value!!.obj eq Flt64.two)
 
         val model5 = LinearMetaModel()
-        model5.addVar(x)
-        model5.addSymbol(abs)
+        model5.add(x)
+        model5.add(abs)
         model5.addConstraint(x leq -Flt64.one)
         model5.minimize(abs)
         val result5 = runBlocking { solver(model5) }
         assert((result5.value!!.obj - Flt64.one).toFlt32() eq Flt32.zero)
 
         val model6 = LinearMetaModel()
-        model6.addVar(x)
-        model6.addSymbol(abs)
+        model6.add(x)
+        model6.add(abs)
         model6.addConstraint(x leq -Flt64.one)
         model6.maximize(abs)
         val result6 = runBlocking { solver(model6) }
         assert(result6.value!!.obj eq Flt64.two)
 
         val model7 = LinearMetaModel()
-        model7.addVar(x)
-        model7.addSymbol(abs)
+        model7.add(x)
+        model7.add(abs)
         model7.addConstraint(abs eq Flt64.one)
         model7.maximize(x)
         val result7 = runBlocking { solver(model7) }
         assert((result7.value!!.obj - Flt64.one).toFlt32() eq Flt32.zero)
 
         val model8 = LinearMetaModel()
-        model8.addVar(x)
-        model8.addSymbol(abs)
+        model8.add(x)
+        model8.add(abs)
         model8.addConstraint(abs eq Flt64.one)
         model8.minimize(x)
         val result8 = runBlocking { solver(model8) }
         assert((result8.value!!.obj + Flt64.one).toFlt32() eq Flt32.zero)
 
         val model9 = LinearMetaModel()
-        model9.addVar(x)
-        model9.addSymbol(abs)
+        model9.add(x)
+        model9.add(abs)
         model9.addConstraint(abs geq Flt64.one)
         model9.maximize(x)
         val result9 = runBlocking { solver(model9) }
         assert(result9.value!!.obj eq Flt64.two)
 
         val model10 = LinearMetaModel()
-        model10.addVar(x)
-        model10.addSymbol(abs)
+        model10.add(x)
+        model10.add(abs)
         model10.addConstraint(abs geq Flt64.one)
         model10.minimize(x)
         val result10 = runBlocking { solver(model10) }
@@ -111,18 +111,18 @@ class LinearPiecewiseTest {
         val solver = SCIPLinearSolver()
 
         val model1 = LinearMetaModel()
-        model1.addVar(x)
-        model1.addVar(y)
-        model1.addSymbol(and)
+        model1.add(x)
+        model1.add(y)
+        model1.add(and)
         model1.addConstraint(and)
         model1.maximize(x + y)
         val result1 = runBlocking { solver(model1) }
         assert(result1.value!!.obj eq Flt64.three)
 
         val model2 = LinearMetaModel()
-        model2.addVar(x)
-        model2.addVar(y)
-        model2.addSymbol(and)
+        model2.add(x)
+        model2.add(y)
+        model2.add(and)
         model2.addConstraint(and)
         model2.minimize(x + y)
         val result2 = runBlocking { solver(model2) }
@@ -137,30 +137,30 @@ class LinearPiecewiseTest {
         val solver = SCIPLinearSolver()
 
         val model1 = LinearMetaModel()
-        model1.addVar(x)
-        model1.addSymbol(bin)
+        model1.add(x)
+        model1.add(bin)
         model1.minimize(bin)
         val result1 = runBlocking { solver(model1) }
         assert(result1.value!!.obj eq Flt64.zero)
 
         val model2 = LinearMetaModel()
-        model2.addVar(x)
-        model2.addSymbol(bin)
+        model2.add(x)
+        model2.add(bin)
         model2.maximize(bin)
         val result2 = runBlocking { solver(model2) }
         assert(result2.value!!.obj eq Flt64.one)
 
         val model3 = LinearMetaModel()
-        model3.addVar(x)
-        model3.addSymbol(bin)
+        model3.add(x)
+        model3.add(bin)
         model3.addConstraint(x eq Flt64.zero)
         model3.maximize(bin)
         val result3 = runBlocking { solver(model3) }
         assert(result3.value!!.obj eq Flt64.zero)
 
         val model4 = LinearMetaModel()
-        model4.addVar(x)
-        model4.addSymbol(bin)
+        model4.add(x)
+        model4.add(bin)
         model4.addConstraint(x eq Flt64(0.3))
         model4.maximize(bin)
         val result4 = runBlocking { solver(model4) }
@@ -175,30 +175,30 @@ class LinearPiecewiseTest {
         val solver = SCIPLinearSolver()
 
         val model1 = LinearMetaModel()
-        model1.addVar(x)
-        model1.addSymbol(bin)
+        model1.add(x)
+        model1.add(bin)
         model1.minimize(bin)
         val result1 = runBlocking { solver(model1) }
         assert(result1.value!!.obj eq Flt64.zero)
 
         val model2 = LinearMetaModel()
-        model2.addVar(x)
-        model2.addSymbol(bin)
+        model2.add(x)
+        model2.add(bin)
         model2.maximize(bin)
         val result2 = runBlocking { solver(model2) }
         assert(result2.value!!.obj eq Flt64.one)
 
         val model3 = LinearMetaModel()
-        model3.addVar(x)
-        model3.addSymbol(bin)
+        model3.add(x)
+        model3.add(bin)
         model3.addConstraint(x eq Flt64.zero)
         model3.maximize(bin)
         val result3 = runBlocking { solver(model3) }
         assert(result3.value!!.obj eq Flt64.zero)
 
         val model4 = LinearMetaModel()
-        model4.addVar(x)
-        model4.addSymbol(bin)
+        model4.add(x)
+        model4.add(bin)
         model4.addConstraint(x eq Flt64.zero)
         model4.minimize(bin)
         val result4 = runBlocking { solver(model4) }
@@ -214,62 +214,62 @@ class LinearPiecewiseTest {
         val solver = SCIPLinearSolver()
 
         val model1 = LinearMetaModel()
-        model1.addVar(x)
-        model1.addSymbol(bter)
+        model1.add(x)
+        model1.add(bter)
         model1.minimize(bter)
         val result1 = runBlocking { solver(model1) }
         assert(result1.value!!.obj eq -Flt64.one)
 
         val model2 = LinearMetaModel()
-        model2.addVar(x)
-        model2.addSymbol(bter)
+        model2.add(x)
+        model2.add(bter)
         model2.maximize(bter)
         val result2 = runBlocking { solver(model2) }
         assert(result2.value!!.obj eq Flt64.one)
 
         val model3 = LinearMetaModel()
-        model3.addVar(x)
-        model3.addSymbol(bter)
+        model3.add(x)
+        model3.add(bter)
         model3.addConstraint(x geq Flt64.zero)
         model3.minimize(bter)
         val result3 = runBlocking { solver(model3) }
         assert(result3.value!!.obj eq Flt64.zero)
 
         val model4 = LinearMetaModel()
-        model4.addVar(x)
-        model4.addSymbol(bter)
+        model4.add(x)
+        model4.add(bter)
         model4.addConstraint(x geq Flt64.zero)
         model4.maximize(bter)
         val result4 = runBlocking { solver(model4) }
         assert(result4.value!!.obj eq Flt64.one)
 
         val model5 = LinearMetaModel()
-        model5.addVar(x)
-        model5.addSymbol(bter)
+        model5.add(x)
+        model5.add(bter)
         model5.addConstraint(x leq Flt64.zero)
         model5.minimize(bter)
         val result5 = runBlocking { solver(model5) }
         assert(result5.value!!.obj eq -Flt64.one)
 
         val model6 = LinearMetaModel()
-        model6.addVar(x)
-        model6.addSymbol(bter)
+        model6.add(x)
+        model6.add(bter)
         model6.addConstraint(x leq Flt64.zero)
         model6.maximize(bter)
         val result6 = runBlocking { solver(model6) }
         assert(result6.value!!.obj eq Flt64.zero)
 
         val model7 = LinearMetaModel()
-        model7.addVar(x)
-        model7.addSymbol(bter)
+        model7.add(x)
+        model7.add(bter)
         model7.addConstraint(x leq Flt64(0.3))
         model7.maximize(bter)
         val result7 = runBlocking { solver(model7) }
         assert(result7.value!!.obj eq Flt64.one)
 
         val model8 = LinearMetaModel()
-        model8.addVar(x)
-        model8.addSymbol(bter)
+        model8.add(x)
+        model8.add(bter)
         model8.addConstraint(x geq -Flt64(0.3))
         model8.minimize(bter)
         val result8 = runBlocking { solver(model8) }
@@ -285,46 +285,46 @@ class LinearPiecewiseTest {
         val solver = SCIPLinearSolver()
 
         val model1 = LinearMetaModel()
-        model1.addVar(x)
-        model1.addSymbol(bter)
+        model1.add(x)
+        model1.add(bter)
         model1.minimize(bter)
         val result1 = runBlocking { solver(model1) }
         assert(result1.value!!.obj eq -Flt64.one)
 
         val model2 = LinearMetaModel()
-        model2.addVar(x)
-        model2.addSymbol(bter)
+        model2.add(x)
+        model2.add(bter)
         model2.maximize(bter)
         val result2 = runBlocking { solver(model2) }
         assert(result2.value!!.obj eq Flt64.one)
 
         val model3 = LinearMetaModel()
-        model3.addVar(x)
-        model3.addSymbol(bter)
+        model3.add(x)
+        model3.add(bter)
         model3.addConstraint(x geq Flt64.zero)
         model3.minimize(bter)
         val result3 = runBlocking { solver(model3) }
         assert(result3.value!!.obj eq Flt64.zero)
 
         val model4 = LinearMetaModel()
-        model4.addVar(x)
-        model4.addSymbol(bter)
+        model4.add(x)
+        model4.add(bter)
         model4.addConstraint(x geq Flt64.zero)
         model4.maximize(bter)
         val result4 = runBlocking { solver(model4) }
         assert(result4.value!!.obj eq Flt64.one)
 
         val model5 = LinearMetaModel()
-        model5.addVar(x)
-        model5.addSymbol(bter)
+        model5.add(x)
+        model5.add(bter)
         model5.addConstraint(x leq Flt64.zero)
         model5.minimize(bter)
         val result5 = runBlocking { solver(model5) }
         assert(result5.value!!.obj eq -Flt64.one)
 
         val model6 = LinearMetaModel()
-        model6.addVar(x)
-        model6.addSymbol(bter)
+        model6.add(x)
+        model6.add(bter)
         model6.addConstraint(x leq Flt64.zero)
         model6.maximize(bter)
         val result6 = runBlocking { solver(model6) }
@@ -337,14 +337,14 @@ class LinearPiecewiseTest {
 
         val x = URealVar("x")
         x.range.leq(Flt64.two)
-        model.addVar(x)
+        model.add(x)
 
         val y = URealVar("y")
         y.range.geq(Flt64.three)
-        model.addVar(y)
+        model.add(y)
 
         val semi = SemiURealFunction(LinearPolynomial(x - y), name = "semi")
-        model.addSymbol(semi)
+        model.add(semi)
 
         model.minimize(semi)
 
@@ -359,7 +359,7 @@ class LinearPiecewiseTest {
 
         val x = URealVar("x")
         x.range.leq(Flt64.two)
-        model.addVar(x)
+        model.add(x)
 
         val ulp = UnivariateLinearPiecewiseFunction(
             x = LinearPolynomial(x),
@@ -370,7 +370,7 @@ class LinearPiecewiseTest {
             ),
             name = "y"
         )
-        model.addSymbol(ulp)
+        model.add(ulp)
 
         model.maximize(LinearPolynomial(ulp))
 
@@ -387,8 +387,8 @@ class LinearPiecewiseTest {
         val y = URealVar("y")
         x.range.leq(Flt64.two)
         y.range.leq(Flt64.two)
-        model.addVar(x)
-        model.addVar(y)
+        model.add(x)
+        model.add(y)
 
         val blp = BivariateLinearPiecewiseFunction(
             x = LinearPolynomial(x),
@@ -402,7 +402,7 @@ class LinearPiecewiseTest {
             ),
             name = "z"
         )
-        model.addSymbol(blp)
+        model.add(blp)
 
         model.maximize(LinearPolynomial(blp))
 

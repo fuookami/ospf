@@ -88,13 +88,13 @@ data object Demo3 {
         for (c in materials) {
             x[c].name = "${x.name}_${c.index}"
         }
-        metaModel.addVars(x)
+        metaModel.add(x)
         return ok
     }
 
     private suspend fun initSymbol(): Try {
         cost = LinearExpressionSymbol(sum(materials) { it.cost * x[it] }, "cost")
-        metaModel.addSymbol(cost)
+        metaModel.add(cost)
 
         yieldSymbols = LinearSymbols1("yield", Shape1(products.size)) { (p, _) ->
             val product = products[p]
@@ -105,7 +105,7 @@ data object Demo3 {
                 "yieldProduct_${p}"
             )
         }
-        metaModel.addSymbols(yieldSymbols)
+        metaModel.add(yieldSymbols)
 
         return ok
     }

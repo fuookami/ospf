@@ -91,7 +91,7 @@ data object Demo2 {
                 x[c, p].name = "${x.name}_${c.index},${p.index}"
             }
         }
-        metaModel.addVars(x)
+        metaModel.add(x)
         return ok
     }
 
@@ -101,7 +101,7 @@ data object Demo2 {
                 c.cost[p]?.let { it * x[c, p] }
             }
         }, "cost")
-        metaModel.addSymbol(cost)
+        metaModel.add(cost)
 
         assignmentCompany = LinearSymbols(
             "assignment_company",
@@ -110,14 +110,14 @@ data object Demo2 {
         for (c in companies) {
             assignmentCompany[c].asMutable() += sumVars(products) { p -> c.cost[p]?.let { x[c, p] } }
         }
-        metaModel.addSymbols(assignmentCompany)
+        metaModel.add(assignmentCompany)
 
         assignmentProduct = flatMap(
             "assignment_product",
             products,
             { p -> sumVars(companies) { c -> c.cost[p]?.let { x[c, p] } } }
         )
-        metaModel.addSymbols(assignmentProduct)
+        metaModel.add(assignmentProduct)
 
         return ok
     }

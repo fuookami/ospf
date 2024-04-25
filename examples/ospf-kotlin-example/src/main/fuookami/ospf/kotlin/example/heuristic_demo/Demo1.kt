@@ -13,7 +13,7 @@ class Demo1 {
     operator fun invoke(): Try {
         val model = CallBackModel()
         val x = RealVar("x")
-        model.addVar(x)
+        model.add(x)
         model.addObject(ObjectCategory.Minimum, { solution: Solution -> (solution[0] - Flt64.one).pow(2) })
         val solver = PSO(policy = CommonPSOPolicy(timeLimit = 10.seconds))
         val result = solver(model)

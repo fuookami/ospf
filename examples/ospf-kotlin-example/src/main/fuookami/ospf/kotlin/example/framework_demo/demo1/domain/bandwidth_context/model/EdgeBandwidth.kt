@@ -29,7 +29,7 @@ class EdgeBandwidth(
                 }
             }
         }
-        model.addVars(y)
+        model.add(y)
 
         if (!::bandwidth.isInitialized) {
             bandwidth = flatMap(
@@ -45,7 +45,7 @@ class EdgeBandwidth(
                 { (_, e) -> "$e" }
             )
         }
-        model.addSymbols(bandwidth)
+        model.add(bandwidth)
 
         return ok
     }

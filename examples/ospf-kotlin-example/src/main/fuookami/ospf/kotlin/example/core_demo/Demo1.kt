@@ -63,19 +63,19 @@ data object Demo1 {
         for (c in companies) {
             x[c].name = "${x.name}_${c.index}"
         }
-        metaModel.addVars(x)
+        metaModel.add(x)
         return ok
     }
 
     private suspend fun initSymbol(): Try {
         capital = LinearExpressionSymbol(sum(companies) { it.capital * x[it] }, "capital")
-        metaModel.addSymbol(capital)
+        metaModel.add(capital)
 
         liability = LinearExpressionSymbol(sum(companies) { it.liability * x[it] }, "liability")
-        metaModel.addSymbol(liability)
+        metaModel.add(liability)
 
         profit = LinearExpressionSymbol(sum(companies) { it.profit * x[it] }, "profit")
-        metaModel.addSymbol(profit)
+        metaModel.add(profit)
         return ok
     }
 

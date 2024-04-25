@@ -147,7 +147,7 @@ each ospf implementation consists of the following components:
         <td>MIQCQP</td>
         <td>❌</td>
         <td>❌</td>
-        <td>⭕</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❌</td>
       </tr>

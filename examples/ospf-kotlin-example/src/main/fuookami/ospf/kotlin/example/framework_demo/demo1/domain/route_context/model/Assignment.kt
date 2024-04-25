@@ -31,7 +31,7 @@ class Assignment(
                 }
             }
         }
-        model.addVars(x)
+        model.add(x)
 
         if (!::nodeAssignment.isInitialized) {
             nodeAssignment = flatMap(
@@ -47,7 +47,7 @@ class Assignment(
                 { (_, n) -> "$n" }
             )
         }
-        model.addSymbols(nodeAssignment)
+        model.add(nodeAssignment)
 
         if (!::serviceAssignment.isInitialized) {
             serviceAssignment = flatMap(
@@ -57,7 +57,7 @@ class Assignment(
                 { (_, s) -> "$s" }
             )
         }
-        model.addSymbols(serviceAssignment)
+        model.add(serviceAssignment)
 
         return ok
     }

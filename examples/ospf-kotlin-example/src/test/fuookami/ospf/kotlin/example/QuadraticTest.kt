@@ -21,7 +21,7 @@ class QuadraticTest {
         x.range.geq(-Flt64.two)
 
         val model = QuadraticMetaModel()
-        model.addVar(x)
+        model.add(x)
         model.maximize((Flt64.one - x) * (Flt64.one - x))
 
         val solver1 = SCIPQuadraticSolver()
@@ -44,7 +44,7 @@ class QuadraticTest {
         x.range.geq(-Flt64.two)
 
         val model = QuadraticMetaModel()
-        model.addVar(x)
+        model.add(x)
         model.maximize(x)
         model.addConstraint(x * x leq Flt64(4.0))
 
@@ -68,7 +68,7 @@ class QuadraticTest {
         x.range.geq(-Flt64.two)
 
         val model = QuadraticMetaModel()
-        model.addVar(x)
+        model.add(x)
         model.minimize(x * x)
         model.addConstraint(x * x leq Flt64(4.0))
 
@@ -92,7 +92,7 @@ class QuadraticTest {
         x.range.geq(-Flt64.two)
 
         val model = QuadraticMetaModel()
-        model.addVar(x)
+        model.add(x)
         model.maximize(x * x + x)
         model.addConstraint(x * x leq Flt64(4.0))
 

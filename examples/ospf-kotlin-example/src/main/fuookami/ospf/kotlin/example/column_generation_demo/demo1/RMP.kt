@@ -39,8 +39,8 @@ class RMP(
         }
 
     init {
-        metaModel.addSymbol(rest)
-        metaModel.addSymbols(yield)
+        metaModel.add(rest)
+        metaModel.add(yield)
 
         metaModel.minimize(rest)
         metaModel.registerConstraintGroup("product_demand")
@@ -61,7 +61,7 @@ class RMP(
         val x = UIntVar("x_${cuttingPlan.index}")
         x.range.leq(cuttingPlan.products.maxOf { (product, amount) -> product.demand / amount + UInt64.one })
         this.x.add(x)
-        metaModel.addVar(x)
+        metaModel.add(x)
 
         rest.asMutable() += (length - cuttingPlan.products.sumOf { it.key.length * it.value }) * x
         rest.flush()
