@@ -1,9 +1,9 @@
 <template>
   <v-app>
     <v-main style="height: 100%; display:flex; flex-direction: column;">
-      <file-selector @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage" />
+      <file-selector @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage"/>
 
-      <bin-renderer ref="binRenderer" style="width: 100%; flex: 1;" :style="{ 'visibility': rendererVisibility }" />
+      <bin-renderer ref="binRenderer" style="width: 100%; flex: 1;" :style="{ 'visibility': rendererVisibility }"/>
 
       <v-dialog v-model="dialog" persistent max-width="30%">
         <v-card>

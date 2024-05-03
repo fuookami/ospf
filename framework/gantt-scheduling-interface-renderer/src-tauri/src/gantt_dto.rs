@@ -9,15 +9,15 @@ pub struct GanttSubItemDTO {
     pub name: String,
     pub category: String,
     #[serde(
-        rename = "startTime",
-        serialize_with = "native_date_time_to_str",
-        deserialize_with = "naive_date_time_from_str"
+    rename = "startTime",
+    serialize_with = "native_date_time_to_str",
+    deserialize_with = "naive_date_time_from_str"
     )]
     pub start_time: NaiveDateTime,
     #[serde(
-        rename = "endTime",
-        serialize_with = "native_date_time_to_str",
-        deserialize_with = "naive_date_time_from_str"
+    rename = "endTime",
+    serialize_with = "native_date_time_to_str",
+    deserialize_with = "naive_date_time_from_str"
     )]
     pub end_time: NaiveDateTime,
 }
@@ -43,30 +43,30 @@ pub struct GanttItemInfoDTO {
 pub struct GanttItemDTO {
     pub name: String,
     pub category: String,
-    #[serde(rename="subItems")]
+    #[serde(rename = "subItems")]
     pub sub_items: Vec<GanttSubItemDTO>,
     #[serde(
-        rename = "scheduledStartTime",
-        serialize_with = "native_date_time_to_str",
-        deserialize_with = "naive_date_time_from_str"
+    rename = "scheduledStartTime",
+    serialize_with = "native_date_time_to_str",
+    deserialize_with = "naive_date_time_from_str"
     )]
     pub scheduled_start_time: NaiveDateTime,
     #[serde(
-        rename = "scheduledEndTime",
-        serialize_with = "native_date_time_to_str",
-        deserialize_with = "naive_date_time_from_str"
+    rename = "scheduledEndTime",
+    serialize_with = "native_date_time_to_str",
+    deserialize_with = "naive_date_time_from_str"
     )]
     pub scheduled_end_time: NaiveDateTime,
     #[serde(
-        rename = "startTime",
-        serialize_with = "native_date_time_to_str",
-        deserialize_with = "naive_date_time_from_str"
+    rename = "startTime",
+    serialize_with = "native_date_time_to_str",
+    deserialize_with = "naive_date_time_from_str"
     )]
     pub start_time: NaiveDateTime,
     #[serde(
-        rename = "endTime",
-        serialize_with = "native_date_time_to_str",
-        deserialize_with = "naive_date_time_from_str"
+    rename = "endTime",
+    serialize_with = "native_date_time_to_str",
+    deserialize_with = "naive_date_time_from_str"
     )]
     pub end_time: NaiveDateTime,
     pub produces: Vec<GanttItemInfoDTO>,
@@ -140,15 +140,15 @@ impl From<&GanttLine> for GanttLineDTO {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GanttDTO {
     #[serde(
-        rename = "startTime",
-        serialize_with = "native_date_time_to_str",
-        deserialize_with = "naive_date_time_from_str"
+    rename = "startTime",
+    serialize_with = "native_date_time_to_str",
+    deserialize_with = "naive_date_time_from_str"
     )]
     pub start_time: NaiveDateTime,
     #[serde(
-        rename = "endTime",
-        serialize_with = "native_date_time_to_str",
-        deserialize_with = "naive_date_time_from_str"
+    rename = "endTime",
+    serialize_with = "native_date_time_to_str",
+    deserialize_with = "naive_date_time_from_str"
     )]
     pub end_time: NaiveDateTime,
     #[serde(rename = "linkInfo")]

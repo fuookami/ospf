@@ -1,14 +1,14 @@
 <template>
   <v-app>
     <v-main :style="{ height: height + 'px' }" style="display:flex; flex-direction: column;" v-resize="resized">
-      <gantt-chart ref="ganttChart" :style="{ height: height + 'px' }" />
+      <gantt-chart ref="ganttChart" :style="{ height: height + 'px' }"/>
     </v-main>
   </v-app>
 </template>
 
 <script>
 import GanttChart from "./chart.vue";
-import { invoke } from '@tauri-apps/api/tauri';
+import {invoke} from '@tauri-apps/api/tauri';
 
 export default {
   components: {

@@ -1,8 +1,8 @@
 <template>
   <v-app>
     <v-main :style="{ height: height + 'px' }" style="display:flex; flex-direction: column;" v-resize="resized">
-      <file-selector ref="fileSelector" @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage" />
-      <gantt-renderer ref="ganttRenderer" :style="{ 'visibility': rendererVisibility }" style="width: 100%; flex: 1;" />
+      <file-selector ref="fileSelector" @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage"/>
+      <gantt-renderer ref="ganttRenderer" :style="{ 'visibility': rendererVisibility }" style="width: 100%; flex: 1;"/>
 
       <v-dialog v-model="dialog" persistent max-width="30%">
         <v-card>

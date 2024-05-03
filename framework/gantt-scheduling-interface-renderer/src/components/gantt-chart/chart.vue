@@ -1,13 +1,14 @@
 <template>
   <div class="gantt_header" ref="header" :style="{ width: width + 'px' }">
-    <div class="gantt_meta_line" ref="metaLine" :style="{ width: ganttWidth + 'px', 'margin-left': maxNameWidth + 'em' }">
+    <div class="gantt_meta_line" ref="metaLine"
+         :style="{ width: ganttWidth + 'px', 'margin-left': maxNameWidth + 'em' }">
       <p v-for="(header, _) in metaHeaders" :style="{ 'min-width': header.width + 'px' }">
         {{ header.name }}
       </p>
     </div>
 
     <div class="gantt_meta_line" ref="metaAssistantLine"
-      :style="{ width: ganttWidth + 'px', 'margin-left': maxNameWidth + 'em' }">
+         :style="{ width: ganttWidth + 'px', 'margin-left': maxNameWidth + 'em' }">
       <p v-for="(header, _) in metaSubHeaders" :style="{ 'min-width': header.width + 'px' }">
         {{ header.name }}
       </p>
@@ -16,8 +17,8 @@
 
   <div :style="{ width: width + 'px' }" style="padding: 0; display: flex;">
     <div class="gantt_actor" ref="actor" :style="{ height: chartHeight + 'px' }" @mousewheel.prevent>
-      <p v-for="(line, _) in lines" 
-        :style="{
+      <p v-for="(line, _) in lines"
+         :style="{
           width: maxNameWidth + 'em',
           'line-height': line.height,
           display: line.visible
@@ -26,12 +27,12 @@
         {{ line.name }}
       </p>
     </div>
-    <div ref="chart" 
-      :style="{width: chartWidth + 'px', height: chartHeight + 'px'}"
-      style="overflow-x: auto; overflow-y: auto;" @scroll="chartScroll()"
+    <div ref="chart"
+         :style="{width: chartWidth + 'px', height: chartHeight + 'px'}"
+         style="overflow-x: auto; overflow-y: auto;" @scroll="chartScroll()"
     >
-      <div v-for="(line, _) in lines" 
-        :style="{
+      <div v-for="(line, _) in lines"
+           :style="{
           width: ganttWidth + 'px',
           display: line.visible
         }" style="

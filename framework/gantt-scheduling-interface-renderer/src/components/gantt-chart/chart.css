@@ -17,13 +17,13 @@
     border-bottom: 1px dotted #5a5a5a;
 }
 
-.gantt_meta_line>* {
+.gantt_meta_line > * {
     display: block;
     text-align: center;
     border-right: 1px dotted #5a5a5a;
 }
 
-.gantt_meta_line>*:first-child {
+.gantt_meta_line > *:first-child {
     border-left: 1px dotted #5a5a5a;
 }
 
@@ -36,7 +36,7 @@
     display: none;
 }
 
-.gantt_actor>* {
+.gantt_actor > * {
     text-align: center;
     min-height: 3.5em;
     padding: .25em 0 .25em 0;
@@ -44,10 +44,10 @@
     border-right: 1px dotted #5a5a5a;
 }
 
-.gantt_actor>*:first-child {
+.gantt_actor > *:first-child {
     border-top: 1px dotted #5a5a5a;
 }
 
-.gantt_actor>*:last-child {
+.gantt_actor > *:last-child {
     margin-bottom: 1.1em;
 }

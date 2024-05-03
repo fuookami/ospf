@@ -63,7 +63,7 @@ import Color from 'color';
 import * as BarColor from "./bar-color";
 import useClipboard from 'vue-clipboard3'
 
-const { toClipboard } = useClipboard()
+const {toClipboard} = useClipboard()
 
 function needSubBar(subItems) {
   if (subItems.length === 0) {
@@ -146,7 +146,7 @@ export default {
       try {
         await toClipboard(this.name);
         this.snackbarText = `${this.name} Copy Successfully`
-      } catch(e) {
+      } catch (e) {
         this.snackbarText = `${this.name} Copy Failed`
       }
       this.snackbar = true;

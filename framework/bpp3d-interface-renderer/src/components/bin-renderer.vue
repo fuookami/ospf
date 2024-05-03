@@ -1,84 +1,61 @@
 <template>
   <div style="width: 100%; height: 100%; display:flex; flex-direction: column;">
-    <p class="transition-swing text-body-1" v-html="renderMessage" />
+    <p class="transition-swing text-body-1" v-html="renderMessage"/>
     <div class="d-flex flex-row">
       <v-select style="max-width: 15em;" v-model="selectedBin" label="选择货柜" :items="bins" no-data-text="没有货柜"
-        hide-details />
-      <p class="transition-swing text-body-2 align-self-end" v-html="selectedBinMessage" />
+                hide-details/>
+      <p class="transition-swing text-body-2 align-self-end" v-html="selectedBinMessage"/>
     </div>
     <v-row style="height: 100%; width: 100%; position: relative;">
       <v-card class="mx-auto" max-width="25em" :style="{ 'visibility': selectedItemInfoVisibility }"
-        style="position: absolute; z-index: 1000; top: 1em; left: 1em; ">
+              style="position: absolute; z-index: 1000; top: 1em; left: 1em; ">
         <v-card-text>
-          <p v-html='`批次：${selectedItemLotNo}`' />
-          <p style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">     
-            物料编码：{{ selectedItemBomNo }}
-            <v-tooltip activator="parent" location="top" max-width="500px">{{ selectedItemBomNo }}</v-tooltip>
-          </p>
           <p style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
             物料名称：{{ selectedItemName }}
             <v-tooltip activator="parent" location="top" max-width="500px">{{ selectedItemName }}</v-tooltip>
           </p>
-          <p v-html='`物料字首：${selectedItemPrefix}`' />
-          <p v-html='`包装类型：${selectedItemPackageType}`' />
-          <p v-html='`包装尺寸：${selectedItemSize}`' />
-          <p v-html='`装载位置：${selectedItemPosition}`' />
-          <p v-html='`装载顺序：${selectedItemLoadingOrder}`' />
-          <p v-html='`箱数：${selectedItemAmount}`' />
-          <p v-html='`重量：${selectedItemWeight}kg`' />
-          <p v-html='`所在仓库：${selectedItemWarehouse}`' />
+          <p v-html='`包装类型：${selectedItemPackageType}`'/>
+          <p v-html='`包装尺寸：${selectedItemSize}`'/>
+          <p v-html='`装载位置：${selectedItemPosition}`'/>
+          <p v-html='`装载顺序：${selectedItemLoadingOrder}`'/>
+          <p v-html='`箱数：${selectedItemAmount}`'/>
+          <p v-html='`重量：${selectedItemWeight}kg`'/>
+          <p v-html='`所在仓库：${selectedItemWarehouse}`'/>
+        </v-card-text>
+        <v-card-text v-for="(key, value) in selectedItemInfo">
+          <p v-html='`${key}：${value}`'/>
         </v-card-text>
       </v-card>
 
-      <v-col cols="9" id="renderer" height="100%" />
-      <v-col id="tabContainer" cols="3" height="100%">
+      <v-col cols="9" id="renderer" height="100%"/>
+      <v-col id="tabContainer" cols="2" height="100%">
         <v-tabs id="tabList" v-model="tab" color="deep-purple-accent-4" align-tabs="center">
           <v-tab :value="0">货物统计</v-tab>
-          <v-tab :value="1">批次统计</v-tab>
-          <v-tab :value="2">装柜步骤</v-tab>
+          <v-tab :value="1">装柜步骤</v-tab>
         </v-tabs>
 
         <div :style="{ 'visibility': tabVisibility[0], 'height': tabHeight, 'width': tabWidth }"
-          style="position: absolute; overflow-y: auto;">
+             style="position: absolute; overflow-y: auto;">
         </div>
 
         <div :style="{ 'visibility': tabVisibility[1], 'height': tabHeight, 'width': tabWidth }"
-          style="position: absolute; overflow-y: auto;">
-          <v-table density="compact" :style="{ 'width': tabWidth }">
-            <thead>
-              <tr>
-                <th class="text-center">批次</th>
-                <th class="text-center">货物</th>
-                <th class="text-center">数量</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="counter in lotCounter" :order='`${counter.order}`'>
-                <td class="text-center">{{ counter.lot }}</td>
-                <td class="text-center">{{ counter.model }}</td>
-                <td class="text-center">{{ counter.amount }}</td>
-              </tr>
-            </tbody>
-          </v-table>
-        </div>
-
-        <div :style="{ 'visibility': tabVisibility[2], 'height': tabHeight, 'width': tabWidth }"
-          style="position: absolute; overflow: auto;">
+             style="position: absolute; overflow: auto;">
           <v-table id="loadingStepTable" density="compact" style="table-layout: fixed;">
             <thead>
-              <tr>
-                <th class="text-center" style="width: 2em; padding: 0;">步骤</th>
-                <th class="text-center" style="width: 2em; padding: 0;">数量</th>
-                <th class="text-center" :style="{ 'width': loadingStepNameWidth }">汇总信息</th>
-              </tr>
+            <tr>
+              <th class="text-center" style="width: 2em; padding: 0;">步骤</th>
+              <th class="text-center" style="width: 2em; padding: 0;">数量</th>
+              <th class="text-center" :style="{ 'width': loadingStepNameWidth }">汇总信息</th>
+            </tr>
             </thead>
             <tbody>
-              <tr v-for="step in loadingStep" :order='`${step.order}`' style="background-color: '#00000050;">
-                <td class="text-center" style="width: 2em;">{{ step.order }}</td>
-                <td class="text-center" style="width: 2em;">{{ step.amount }}</td>
-                <td :style="{ 'width': loadingStepNameWidth }"
-                  style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ step.name }}</td>
-              </tr>
+            <tr v-for="step in loadingStep" :order='`${step.order}`' style="background-color: '#00000050;">
+              <td class="text-center" style="width: 2em;">{{ step.order }}</td>
+              <td class="text-center" style="width: 2em;">{{ step.amount }}</td>
+              <td :style="{ 'width': loadingStepNameWidth }"
+                  style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ step.name }}
+              </td>
+            </tr>
             </tbody>
           </v-table>
         </div>
@@ -89,7 +66,7 @@
 
 <script>
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 
 const itemColors = [
   '#01DDFF',
@@ -133,7 +110,9 @@ function getBinKeys(bins) {
 }
 
 function getItemType(itemData) {
-  return `${itemData.itemPrefix}-${itemData.bomNo}-${itemData.packageType}-${itemData.warehouse}-${itemData.width.toFixed(0)}*${itemData.height.toFixed(0)}*${itemData.depth.toFixed(0)}-${itemData.weight.toFixed(2)}`;
+  return `${itemData.packageType}-${itemData.warehouse}`
+      `-${itemData.width.toFixed(0)}*${itemData.height.toFixed(0)}*${itemData.depth.toFixed(0)}`
+      `-${itemData.weight.toFixed(2)}`;
 }
 
 function getItemsInfo(itemsData = []) {
@@ -152,35 +131,6 @@ function getItemsInfo(itemsData = []) {
     }
   }
   return items;
-}
-
-function getLotCounters(itemsData = []) {
-  let lotCounter = {};
-  for (const itemData of itemsData) {
-    if (itemData.lotNo in lotCounter) {
-      // todo
-      lotCounter[itemData.lotNo].amount += 1;
-    } else {
-      lotCounter[itemData.lotNo] = {
-        lot: itemData.lotNo,
-        model: "",
-        amount: 1
-      }
-    }
-  }
-
-  let ret = [];
-  for (const lotNo in lotCounter) {
-    let counter = lotCounter[lotNo];
-    ret.push({
-      order: 0,
-      lot: counter.lot,
-      model: counter.model,
-      amount: counter.amount
-    })
-  }
-  ret.sort((lhs, rhs) => lhs.amount > rhs.amount);
-  return ret;
 }
 
 function getLoadingSteps(itemsData = []) {
@@ -237,9 +187,9 @@ function createItems(itemsData = [], binData, items) {
     }));
     cube.add(line);
     cube.position.set(
-      itemData.x + itemData.width / 2 - binData.width / 2,
-      itemData.y + itemData.height / 2 - binData.height / 2,
-      itemData.z + itemData.depth / 2 - binData.depth / 2
+        itemData.x + itemData.width / 2 - binData.width / 2,
+        itemData.y + itemData.height / 2 - binData.height / 2,
+        itemData.z + itemData.depth / 2 - binData.depth / 2
     );
     cube.item = itemData;
     cubes.push(cube);
@@ -321,10 +271,10 @@ function createCamera(scene, window, bin) {
   const height = window.offsetHeight;
 
   const camera = new THREE.PerspectiveCamera(
-    50,
-    width / height,
-    20,
-    bin.depth * 10
+      50,
+      width / height,
+      20,
+      bin.depth * 10
   );
   camera.position.x = bin.width * 1.5;
   camera.position.y = bin.height * 1.5;
@@ -334,13 +284,13 @@ function createCamera(scene, window, bin) {
 }
 
 function lighten(color, offset) {
-  const hsl = { h: 0, s: 0, l: 0 };
+  const hsl = {h: 0, s: 0, l: 0};
   color.getHSL(hsl);
   return color.clone().offsetHSL(0, 0, hsl.l * offset);
 }
 
 function darken(color, offset) {
-  const hsl = { h: 0, s: 0, l: 0 };
+  const hsl = {h: 0, s: 0, l: 0};
   color.getHSL(hsl);
   return color.clone().offsetHSL(0, 0, -hsl.l * offset);
 }
@@ -359,8 +309,6 @@ export default {
     lotCounter: [],
     loadingStep: [],
     selectedItemInfoVisibility: "hidden",
-    selectedItemLotNo: "",
-    selectedItemBomNo: "",
     selectedItemPrefix: "",
     selectedItemName: "",
     selectedItemPackageType: "",
@@ -370,7 +318,8 @@ export default {
     selectedItemAmount: "",
     selectedItemWeight: "",
     selectedItemWarehouse: "",
-    tabVisibility: ["hidden", "hidden", "hidden"],
+    selectedItemInfo: {},
+    tabVisibility: ["hidden", "hidden"],
     tabHeight: '500px',
     tabWidth: '500px',
     loadingStepNameWidth: '160px'
@@ -417,7 +366,7 @@ export default {
     },
 
     async renderBinData(binData) {
-      this.tabHeight = `${document.getElementById("tabContainer").offsetHeight - document.getElementById("tabList").offsetHeight}px`;
+      this.tabHeight = `${document.getElementById("tabContainer").offsetHeight - document.getElementById("tabHeader").offsetHeight}px`;
       this.tabWidth = `${document.getElementById("tabContainer").offsetWidth}px`;
       this.loadingStepNameWidth = `${this.tabWidth - 32}px`;
       this.selectedItemInfoVisibility = "hidden";
@@ -430,7 +379,6 @@ export default {
       scene.background = new THREE.Color('#e7e7e7');
 
       this.items = getItemsInfo(binData.items);
-      this.lotCounter = getLotCounters(binData.items);
       this.loadingStep = getLoadingSteps(binData.items);
       for (const item of createItems(binData.items, binData, this.items)) {
         scene.add(item);
@@ -461,6 +409,7 @@ export default {
 
       const control = new OrbitControls(camera, renderer.domElement);
       control.saveState();
+
       function animate() {
         requestAnimationFrame(animate);
         renderer.render(scene, camera);
@@ -496,9 +445,6 @@ export default {
           }
 
           this.selectedItemInfoVisibility = "visible";
-          this.selectedItemLotNo = selectedItem.item.lotNo;
-          this.selectedItemBomNo = selectedItem.item.bomNo;
-          this.selectedItemPrefix = selectedItem.item.itemPrefix;
           this.selectedItemName = selectedItem.item.name;
           this.selectedItemPackageType = selectedItem.item.packageType;
           this.selectedItemSize = `${selectedItem.item.depth.toFixed(0)}*${selectedItem.item.width.toFixed(0)}*${selectedItem.item.height.toFixed(0)}`;
@@ -507,6 +453,7 @@ export default {
           this.selectedItemAmount = `${this.items[type].amount}`;
           this.selectedItemWeight = `${selectedItem.item.weight.toFixed(2)}`;
           this.selectedItemWarehouse = selectedItem.item.warehouse;
+          this.selectedItemInfo = selectedItem.item.info;
         } else {
           control.reset();
           for (const obj of scene.children) {

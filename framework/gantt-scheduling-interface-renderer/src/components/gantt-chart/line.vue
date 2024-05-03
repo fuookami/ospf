@@ -1,9 +1,10 @@
 <template>
-  <v-container :style="{ width: width + 'px', height: height + 'em' }" style=" margin: 0; padding: 0; position: relative;">
-    <gantt-bar v-for="(item, _) of items" ref="bar" 
-      :style="{ left: item.x + 'px', top: item.y + 'em' }" 
-      style="position: absolute;"
-      @focus="focus"
+  <v-container :style="{ width: width + 'px', height: height + 'em' }"
+               style=" margin: 0; padding: 0; position: relative;">
+    <gantt-bar v-for="(item, _) of items" ref="bar"
+               :style="{ left: item.x + 'px', top: item.y + 'em' }"
+               style="position: absolute;"
+               @focus="focus"
     />
   </v-container>
 </template>

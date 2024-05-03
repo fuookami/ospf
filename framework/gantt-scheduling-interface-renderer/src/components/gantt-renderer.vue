@@ -1,8 +1,8 @@
 <template>
   <v-container fluid style="margin: 0; padding: 0;">
     <v-container ref="toolbar" fluid class="d-flex flex-row-reverse" style="margin: 0; padding: 0;">
-      <v-btn density="compact" icon="mdi-plus" style="margin-right: .5em;" @click="rescale(1)" />
-      <v-btn density="compact" icon="mdi-minus" style="margin-right: .5em;" @click="rescale(-1)" />
+      <v-btn density="compact" icon="mdi-plus" style="margin-right: .5em;" @click="rescale(1)"/>
+      <v-btn density="compact" icon="mdi-minus" style="margin-right: .5em;" @click="rescale(-1)"/>
       <v-select v-model="visibleLines" :items="lines" label="可见行" multiple="true">
         <template v-slot:prepend-item>
           <v-list-item title="选择全部" @click="setAllLineVisible"/>
@@ -16,7 +16,7 @@
 
 <script>
 import GanttChart from "./gantt-chart/chart.vue"
-import { WebviewWindow, PhysicalSize } from '@tauri-apps/api/window'
+import {WebviewWindow, PhysicalSize} from '@tauri-apps/api/window'
 
 function selectLinkItems(lines, linkedKey, linkedInfo) {
   const ret = [];
