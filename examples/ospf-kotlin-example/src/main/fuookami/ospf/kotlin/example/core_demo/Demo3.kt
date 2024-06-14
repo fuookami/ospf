@@ -96,7 +96,7 @@ data object Demo3 {
         cost = LinearExpressionSymbol(sum(materials) { it.cost * x[it] }, "cost")
         metaModel.add(cost)
 
-        yieldSymbols = LinearSymbols1("yield", Shape1(products.size)) { (p, _) ->
+        yieldSymbols = LinearSymbols1("yield", Shape1(products.size)) { p, _ ->
             val product = products[p]
             LinearExpressionSymbol(
                 sum(materials.filter { it.yieldValue.contains(product) }) { m ->

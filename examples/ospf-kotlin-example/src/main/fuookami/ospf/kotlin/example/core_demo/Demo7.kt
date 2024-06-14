@@ -108,7 +108,7 @@ data object Demo7 {
         shipment = LinearSymbols1(
             "shipment",
             Shape1(warehouses.size)
-        ) { (i, _) ->
+        ) { i, _ ->
             val w = warehouses[i]
             LinearExpressionSymbol(
                 sum(stores.filter { w.cost.contains(it) }.map { s -> x[w, s] }),
@@ -120,7 +120,7 @@ data object Demo7 {
         purchase = LinearSymbols1(
             "purchase",
             Shape1(stores.size)
-        ) { (i, _) ->
+        ) { i, _ ->
             val s = stores[i]
             LinearExpressionSymbol(
                 sum(warehouses.filter { w -> w.cost.contains(s) }.map { w -> x[w, s] }),

@@ -83,7 +83,7 @@ data object Demo4 {
         profit = LinearExpressionSymbol(sum(products) { p -> p.profit * x[p] }, "profit")
         metaModel.add(profit)
 
-        use = LinearSymbols1("use", Shape1(materials.size)) { (m, _) ->
+        use = LinearSymbols1("use", Shape1(materials.size)) { m, _ ->
             val material = materials[m]
             val ps = products.filter { it.use.contains(material) }
             LinearExpressionSymbol(
