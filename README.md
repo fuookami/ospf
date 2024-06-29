@@ -226,6 +226,30 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
+        <td>SAA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>HCA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>NMS</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
         <td>else</td>
         <td colspan=5>planing</td>
       </tr>

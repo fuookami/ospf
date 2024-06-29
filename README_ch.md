@@ -225,6 +225,30 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
+        <td>SAA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>HCA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>NMS</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
         <td>其它</td>
         <td colspan=5>计划中</td>
       </tr>
