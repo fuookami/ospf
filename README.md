@@ -171,6 +171,14 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
+        <td>GUROBI-11</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
         <td>CPLEX</td>
         <td>❗</td>
         <td>❌</td>
@@ -331,7 +339,7 @@ each ospf implementation consists of the following components:
         <td>gantt-scheduling</td>
         <td>❌</td>
         <td>❌</td>
-        <td>⭕</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❌</td>
         <td>✔️</td>

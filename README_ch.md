@@ -170,6 +170,14 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
+        <td>GUROBI-11</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
         <td>CPLEX</td>
         <td>❗</td>
         <td>❌</td>
@@ -330,7 +338,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>甘特图调度</td>
         <td>❌</td>
         <td>❌</td>
-        <td>⭕</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❌</td>
         <td>✔️</td>
