@@ -368,7 +368,7 @@ each ospf implementation consists of the following components:
     <thead>
       <tr>
         <th>Feature</th>
-        <td></th>
+        <th></th>
       </tr>
     </thead>
     <tbody>

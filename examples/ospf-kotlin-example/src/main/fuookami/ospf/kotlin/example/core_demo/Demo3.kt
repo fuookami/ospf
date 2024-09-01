@@ -123,7 +123,7 @@ data object Demo3 {
     }
 
     private suspend fun solve(): Try {
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
         when (val ret = solver(metaModel)) {
             is Ok -> {
                 metaModel.tokens.setSolution(ret.value.solution)

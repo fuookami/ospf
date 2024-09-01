@@ -26,7 +26,7 @@ class QuadraticTest {
         model.add(x)
         model.maximize((Flt64.one - x) * (Flt64.one - x))
 
-        val solver1 = SCIPQuadraticSolver()
+        val solver1 = ScipQuadraticSolver()
         val result1 = runBlocking { solver1(model) }
         assert(result1.value!!.solution[0] eq -Flt64.two)
 
@@ -50,7 +50,7 @@ class QuadraticTest {
         model.maximize(x)
         model.addConstraint(x * x leq Flt64(4.0))
 
-        val solver1 = SCIPQuadraticSolver()
+        val solver1 = ScipQuadraticSolver()
         val result1 = runBlocking { solver1(model) }
         assert(result1.value!!.solution[0] eq Flt64.two)
 
@@ -74,7 +74,7 @@ class QuadraticTest {
         model.minimize(x * x)
         model.addConstraint(x * x leq Flt64(4.0))
 
-        val solver1 = SCIPQuadraticSolver()
+        val solver1 = ScipQuadraticSolver()
         val result1 = runBlocking { solver1(model) }
         assert(result1.value!!.solution[0] eq Flt64.zero)
 
@@ -98,7 +98,7 @@ class QuadraticTest {
         model.maximize(x * x + x)
         model.addConstraint(x * x leq Flt64(4.0))
 
-        val solver1 = SCIPQuadraticSolver()
+        val solver1 = ScipQuadraticSolver()
         val result1 = runBlocking { solver1(model) }
         assert(result1.value!!.solution[0] eq Flt64.two)
 
@@ -134,7 +134,7 @@ class QuadraticTest {
 
         model.maximize(sum(x[_a, _a]))
 
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
         val result = runBlocking {
             solver(model)
         }
