@@ -75,7 +75,7 @@ data object Demo6 {
     }
 
     private suspend fun initObject(): Try {
-        metaModel.maximize(LinearPolynomial(cargoValue),"value")
+        metaModel.maximize(cargoValue,"value")
         return ok
     }
 
@@ -107,9 +107,7 @@ data object Demo6 {
     private suspend fun analyzeSolution(): Try {
         val ret = HashMap<Cargo, UInt64>()
         for (token in metaModel.tokens.tokens) {
-            if (token.result!! neq Flt64.one
-                && token.variable.belongsTo(x)
-            ) {
+            if (token.result!! geq Flt64.one && token.variable.belongsTo(x)) {
                 ret[cargos[token.variable.vectorView[0]]] = token.result!!.round().toUInt64()
             }
         }

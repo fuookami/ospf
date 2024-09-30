@@ -74,7 +74,7 @@ data object Demo5 {
     }
 
     private suspend fun initObject(): Try {
-        metaModel.maximize(LinearPolynomial(cargoValue),"value")
+        metaModel.maximize(cargoValue,"value")
         return ok
     }
 

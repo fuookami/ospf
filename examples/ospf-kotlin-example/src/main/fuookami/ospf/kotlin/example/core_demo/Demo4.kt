@@ -97,7 +97,7 @@ data object Demo4 {
 
 
     private suspend fun initObject(): Try {
-        metaModel.maximize(LinearPolynomial(profit), "maxProfit")
+        metaModel.maximize(profit, "maxProfit")
         return ok
     }
 

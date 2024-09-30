@@ -111,7 +111,7 @@ data object Demo3 {
     }
 
     private suspend fun initObject(): Try {
-        metaModel.minimize(LinearPolynomial(cost))
+        metaModel.minimize(cost)
         return ok
     }
 
