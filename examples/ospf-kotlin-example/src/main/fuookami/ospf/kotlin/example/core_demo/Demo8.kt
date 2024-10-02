@@ -69,7 +69,7 @@ data object Demo8 {
     private lateinit var profit: LinearSymbol
     private lateinit var manHours: LinearSymbols1
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo8")
+    private val metaModel = LinearMetaModel("demo8")
 
     private val subProcesses = listOf(
         Demo8::initVariable,

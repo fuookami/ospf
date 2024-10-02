@@ -59,7 +59,7 @@ data object Demo3 {
     private lateinit var cost: LinearSymbol
     private lateinit var yieldSymbols: LinearSymbols1
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo3")
+    private val metaModel = LinearMetaModel("demo3")
 
     private val subProcesses = listOf(
         Demo3::initVariable,

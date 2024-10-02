@@ -60,7 +60,7 @@ data object Demo2 {
     private lateinit var assignmentCompany: LinearExpressionSymbols1
     private lateinit var assignmentProduct: LinearExpressionSymbols1
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo2")
+    private val metaModel = LinearMetaModel("demo2")
 
     private val subProcesses = listOf(
         Demo2::initVariable,

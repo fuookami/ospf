@@ -19,22 +19,22 @@ data object Demo1 {
         val profit: Flt64
     ) : AutoIndexed(Company::class)
 
-    private val companies: List<Company> = listOf(
+    private val companies = listOf(
         Company(Flt64(3.48), Flt64(1.28), Flt64(5400.0)),
         Company(Flt64(5.62), Flt64(2.53), Flt64(2300.0)),
         Company(Flt64(7.33), Flt64(1.02), Flt64(4600.0)),
         Company(Flt64(6.27), Flt64(3.55), Flt64(3300.0)),
         Company(Flt64(2.14), Flt64(0.53), Flt64(980.0))
     )
-    private val minCapital: Flt64 = Flt64(10.0)
-    private val maxLiability: Flt64 = Flt64(5.0)
+    private val minCapital = Flt64(10.0)
+    private val maxLiability = Flt64(5.0)
 
     private lateinit var x: BinVariable1
     private lateinit var capital: LinearExpressionSymbol
     private lateinit var liability: LinearExpressionSymbol
     private lateinit var profit: LinearExpressionSymbol
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo1")
+    private val metaModel = LinearMetaModel("demo1")
 
     private val subProcesses = listOf(
         Demo1::initVariable,

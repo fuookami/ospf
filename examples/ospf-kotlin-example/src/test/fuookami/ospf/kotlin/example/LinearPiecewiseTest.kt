@@ -246,7 +246,7 @@ class LinearPiecewiseTest {
         val model5 = LinearMetaModel()
         model5.add(x)
         model5.add(bter)
-        model5.addConstraint(x leq Flt64.zero)
+        model5.addConstraint(x leq 0)
         model5.minimize(bter)
         val result5 = runBlocking { solver(model5) }
         assert(result5.value!!.obj eq -Flt64.one)
@@ -254,7 +254,7 @@ class LinearPiecewiseTest {
         val model6 = LinearMetaModel()
         model6.add(x)
         model6.add(bter)
-        model6.addConstraint(x leq Flt64.zero)
+        model6.addConstraint(x leq 0)
         model6.maximize(bter)
         val result6 = runBlocking { solver(model6) }
         assert(result6.value!!.obj eq Flt64.zero)
@@ -317,7 +317,7 @@ class LinearPiecewiseTest {
         val model5 = LinearMetaModel()
         model5.add(x)
         model5.add(bter)
-        model5.addConstraint(x leq Flt64.zero)
+        model5.addConstraint(x leq 0)
         model5.minimize(bter)
         val result5 = runBlocking { solver(model5) }
         assert(result5.value!!.obj eq -Flt64.one)
@@ -325,7 +325,7 @@ class LinearPiecewiseTest {
         val model6 = LinearMetaModel()
         model6.add(x)
         model6.add(bter)
-        model6.addConstraint(x leq Flt64.zero)
+        model6.addConstraint(x leq 0)
         model6.maximize(bter)
         val result6 = runBlocking { solver(model6) }
         assert(result6.value!!.obj eq Flt64.zero)

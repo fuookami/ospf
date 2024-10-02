@@ -62,7 +62,7 @@ data object Demo10 {
     lateinit var depart: LinearSymbols1
     lateinit var reached: LinearSymbols1
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo10")
+    private val metaModel = LinearMetaModel("demo10")
 
     private val subProcesses = listOf(
         Demo10::initVariable,
@@ -95,7 +95,7 @@ data object Demo10 {
                 if (city1 != city2) {
                     metaModel.add(xi)
                 } else {
-                    xi.range.eq(UInt8.zero)
+                    xi.range.eq(false)
                 }
             }
         }

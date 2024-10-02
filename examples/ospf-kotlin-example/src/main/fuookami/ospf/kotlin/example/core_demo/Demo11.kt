@@ -60,7 +60,7 @@ data object Demo11 {
     lateinit var flowIn: LinearSymbols1
     lateinit var flowOut: LinearSymbols1
 
-    val metaModel: LinearMetaModel = LinearMetaModel("demo11")
+    val metaModel = LinearMetaModel("demo11")
 
     private val subProcesses = listOf(
         Demo11::initVariable,

@@ -35,7 +35,7 @@ data object Demo12 {
     lateinit var premium: LinearSymbols1
     lateinit var yield: LinearSymbol
 
-    val metaModel: LinearMetaModel = LinearMetaModel("demo12")
+    val metaModel = LinearMetaModel("demo12")
 
     private val subProcesses = listOf(
         Demo12::initVariable,

@@ -27,7 +27,7 @@ class Assignment(
                 for (node in nodes.filter(client)) {
                     val variable = x[node, service]
                     variable.name = "${x.name}_${node}_$service"
-                    variable.range.eq(UInt8.zero)
+                    variable.range.eq(false)
                 }
             }
         }

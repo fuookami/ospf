@@ -31,7 +31,7 @@ data object Demo5 {
     private lateinit var cargoWeight: LinearSymbol
     private lateinit var cargoValue: LinearSymbol
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo5")
+    private val metaModel = LinearMetaModel("demo5")
 
     private val subProcesses = listOf(
         Demo5::initVariable,

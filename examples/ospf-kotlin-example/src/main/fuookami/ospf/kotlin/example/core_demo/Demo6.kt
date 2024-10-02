@@ -19,7 +19,7 @@ data object Demo6 {
         val amount: UInt64
     ) : AutoIndexed(Cargo::class)
 
-    private val cargos: List<Cargo> = listOf(
+    private val cargos = listOf(
         Cargo(UInt64(1), UInt64(6), UInt64(10)),
         Cargo(UInt64(2), UInt64(10), UInt64(10)),
         Cargo(UInt64(2), UInt64(20), UInt64(10))
@@ -31,7 +31,7 @@ data object Demo6 {
     private lateinit var cargoWeight: LinearSymbol
     private lateinit var cargoValue: LinearSymbol
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo6")
+    private val metaModel = LinearMetaModel("demo6")
 
     private val subProcesses = listOf(
         Demo6::initVariable,

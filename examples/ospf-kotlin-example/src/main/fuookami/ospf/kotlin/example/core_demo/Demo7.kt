@@ -61,7 +61,7 @@ data object Demo7 {
     private lateinit var shipment: LinearSymbols1
     private lateinit var purchase: LinearSymbols1
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo7")
+    private val metaModel = LinearMetaModel("demo7")
 
     private val subProcesses = listOf(
         Demo7::initVariable,
