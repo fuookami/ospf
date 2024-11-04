@@ -28,8 +28,8 @@ data object Demo6 {
 
     private lateinit var x: UIntVariable1
 
-    private lateinit var cargoWeight: LinearSymbol
-    private lateinit var cargoValue: LinearSymbol
+    private lateinit var cargoWeight: LinearIntermediateSymbol
+    private lateinit var cargoValue: LinearIntermediateSymbol
 
     private val metaModel = LinearMetaModel("demo6")
 

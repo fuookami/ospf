@@ -43,7 +43,7 @@ data object Demo4 {
     private val maxDiff = Int64(1)
 
     private lateinit var x: RealVariable1
-    private lateinit var profit: LinearSymbol
+    private lateinit var profit: LinearIntermediateSymbol
     private lateinit var use: LinearSymbols1
 
     private val metaModel = LinearMetaModel("demo4")

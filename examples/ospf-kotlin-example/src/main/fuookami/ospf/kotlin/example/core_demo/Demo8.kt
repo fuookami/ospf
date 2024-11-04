@@ -66,7 +66,7 @@ data object Demo8 {
 
     private lateinit var x: UIntVariable1
 
-    private lateinit var profit: LinearSymbol
+    private lateinit var profit: LinearIntermediateSymbol
     private lateinit var manHours: LinearSymbols1
 
     private val metaModel = LinearMetaModel("demo8")

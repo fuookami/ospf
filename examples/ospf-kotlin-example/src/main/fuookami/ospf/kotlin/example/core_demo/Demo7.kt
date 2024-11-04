@@ -57,7 +57,7 @@ data object Demo7 {
 
     private lateinit var x: UIntVariable2
 
-    private lateinit var cost: LinearSymbol
+    private lateinit var cost: LinearIntermediateSymbol
     private lateinit var shipment: LinearSymbols1
     private lateinit var purchase: LinearSymbols1
 

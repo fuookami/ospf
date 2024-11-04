@@ -34,9 +34,9 @@ data object Demo16 {
 
     lateinit var produce: LinearSymbols1
     lateinit var supply: LinearSymbols1
-    lateinit var delayDeliveryCost: LinearSymbol
-    lateinit var stowageCost: LinearSymbol
-    lateinit var produceCost: LinearSymbol
+    lateinit var delayDeliveryCost: LinearIntermediateSymbol
+    lateinit var stowageCost: LinearIntermediateSymbol
+    lateinit var produceCost: LinearIntermediateSymbol
 
     val metaModel = LinearMetaModel("demo16")
 

@@ -28,8 +28,8 @@ data object Demo5 {
     private val maxWeight = UInt64(10U)
 
     private lateinit var x: BinVariable1
-    private lateinit var cargoWeight: LinearSymbol
-    private lateinit var cargoValue: LinearSymbol
+    private lateinit var cargoWeight: LinearIntermediateSymbol
+    private lateinit var cargoValue: LinearIntermediateSymbol
 
     private val metaModel = LinearMetaModel("demo5")
 

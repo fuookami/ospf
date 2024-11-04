@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.core_demo
 
+import fuookami.ospf.kotlin.core.backend.plugins.gurobi.GurobiLinearSolver
 import kotlin.time.Duration.Companion.seconds
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.math.geometry.*
@@ -348,7 +349,7 @@ data object Demo17 {
     }
 
     private suspend fun solve(): Try {
-        val solver = ScipLinearSolver(config = SolverConfig(time = 300.seconds))
+        val solver = GurobiLinearSolver(config = SolverConfig(time = 300.seconds))
         when (val ret = solver(metaModel)) {
             is Ok -> {
                 metaModel.tokens.setSolution(ret.value.solution)

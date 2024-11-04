@@ -58,7 +58,7 @@ data object Demo10 {
     lateinit var x: BinVariable2
     lateinit var u: IntVariable1
 
-    lateinit var distance: LinearSymbol
+    lateinit var distance: LinearIntermediateSymbol
     lateinit var depart: LinearSymbols1
     lateinit var reached: LinearSymbols1
 

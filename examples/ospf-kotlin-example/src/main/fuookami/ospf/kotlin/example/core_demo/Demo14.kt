@@ -68,7 +68,7 @@ data object Demo14 {
 
     lateinit var x: UIntVariable2
 
-    lateinit var cost: LinearSymbol
+    lateinit var cost: LinearIntermediateSymbol
     lateinit var transOut: LinearSymbols1
     lateinit var transIn: LinearSymbols1
 
