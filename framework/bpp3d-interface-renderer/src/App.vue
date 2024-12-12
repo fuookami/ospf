@@ -1,9 +1,7 @@
 <template>
   <v-app>
-    <v-main style="height: 100%; display:flex; flex-direction: column;">
-      <file-selector @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage"/>
-
-      <bin-renderer ref="binRenderer" style="width: 100%; flex: 1;" :style="{ 'visibility': rendererVisibility }"/>
+    <v-main :style="{ height: windowHeight + 'px' }" style="display:flex; flex-direction: column;">
+      <FileSelector ref="fileSelector" @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage"/>
 
       <v-dialog v-model="dialog" persistent max-width="30%">
         <v-card>
@@ -11,7 +9,7 @@
           <v-card-text v-html="message"></v-card-text>
           <v-card-actions>
             <v-spacer></v-spacer>
-            <v-btn color="green darken-1" text @click="dialog = false">关闭</v-btn>
+            <v-btn color="green darken-1" @click="dialog = false">关闭</v-btn>
           </v-card-actions>
         </v-card>
       </v-dialog>
@@ -19,32 +17,95 @@
   </v-app>
 </template>
 
-<script>
-import FileSelector from './components/file-selector.vue';
-import BinRenderer from './components/bin-renderer.vue';
+<script lang="ts">
+import {defineComponent, ComponentPublicInstance, HTMLAttributes, onMounted, ref} from "vue";
 
-export default {
+import FileSelector from "./components/file-selector.vue";
+
+export default defineComponent({
+  name: "App",
+
   components: {
-    FileSelector,
-    BinRenderer
+    FileSelector
   },
 
-  data: () => ({
-    rendererVisibility: "hidden",
-    message: "",
-    dialog: false,
-  }),
+  setup() {
+    const windowHeight = ref(0);
+    const windowWidth = ref(0);
+    const rendererVisibility = ref("hidden");
+    const message = ref("");
+    const dialog = ref(false);
 
-  methods: {
-    async renderData(data) {
-      this.rendererVisibility = "visible";
-      this.$refs.binRenderer.renderData(data);
-    },
+    const groups = ref<Array<Array<String>>>([]);
 
-    async showMessage(message) {
-      this.message = message;
-      this.dialog = true;
+    onMounted(() => {
+      resized();
+      window.addEventListener("resize", () => {
+        resized();
+      });
+    })
+
+    function isSameGroup(group1: Array<String>, group2: Array<String>): boolean {
+      if(group1.length !== group2.length) {
+        return false;
+      }
+
+      for(let i = 0; i < group1.length; i++) {
+        if(group1[i] !== group2[i]) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    function distinctGroups(groups: Array<Array<String>>): Array<Array<String>> {
+      const result: Array<Array<String>> = [];
+      for(let i = 0; i < groups.length; i++) {
+        if (groups[i].length === 0) {
+          result.push(groups[i]);
+        } else {
+          let isDistinct = true;
+          for(let j = 0; j < result.length; j++) {
+            if(isSameGroup(groups[i], result[j])) {
+              isDistinct = false;
+              break;
+            }
+          }
+          if(isDistinct) {
+            result.push(groups[i]);
+          }
+        }
+      }
+      return result;
+    }
+
+    function resized() {
+      windowWidth.value = window.innerWidth;
+      windowHeight.value = window.innerHeight;
+
+    }
+
+    function renderData() {
+    }
+
+
+    function showMessage(msg: string) {
+      message.value = msg;
+      dialog.value = true;
+    }
+
+    return {
+      windowHeight,
+      windowWidth,
+      rendererVisibility,
+      message,
+      dialog,
+      groups,
+      resized,
+      renderData,
+      showMessage
     }
   }
-}
+});
 </script>

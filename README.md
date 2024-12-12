@@ -163,7 +163,23 @@ each ospf implementation consists of the following components:
         <td colspan=6>Solver Wrapper</td>
       </tr>
       <tr>
-        <td>GUROBI</td>
+        <td>Coin-OR</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>Copt</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>Cplex</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -171,7 +187,7 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>CPLEX</td>
+        <td>Gurobi</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -179,15 +195,7 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>COPT</td>
-        <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
-      </tr>
-      <tr>
-        <td>SCIP</td>
+        <td>Gurobi11+</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -195,10 +203,42 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>COPIN-OR</td>
+        <td>Hexaly</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>Lingo</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>Mosek</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>OptVerse</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>Scip</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❗</td>
       </tr>
@@ -210,6 +250,14 @@ each ospf implementation consists of the following components:
         <td colspan=6>Meta-Heuristic Algorithm</td>
       </tr>
       <tr>
+        <td>GA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
         <td>PSO</td>
         <td>❗</td>
         <td>❌</td>
@@ -218,7 +266,7 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>GA</td>
+        <td>SAA</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>

@@ -162,7 +162,15 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td colspan=6>求解器接口</td>
       </tr>
       <tr>
-        <td>GUROBI</td>
+        <td>Coin-OR</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>Copt</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -170,7 +178,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>CPLEX</td>
+        <td>Cplex</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -178,15 +186,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>COPT</td>
-        <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
-      </tr>
-      <tr>
-        <td>SCIP</td>
+        <td>Gurobi</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -194,10 +194,50 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>COPIN-OR</td>
+        <td>Gurobi11+</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>Hexaly</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>Lingo</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>Mosek</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>OptVerse</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>Scip</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❗</td>
       </tr>
@@ -209,6 +249,14 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td colspan=6>元启发式算法</td>
       </tr>
       <tr>
+        <td>GA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
         <td>PSO</td>
         <td>❗</td>
         <td>❌</td>
@@ -217,7 +265,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>GA</td>
+        <td>SAA</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
