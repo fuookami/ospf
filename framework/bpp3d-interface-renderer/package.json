@@ -14,9 +14,9 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.0.1",
     "@tauri-apps/plugin-shell": "^2",
-    "color": "^4.2.3",
     "roboto-fontface": "^0.10.0",
     "three": "^0.171.0",
+    "@types/three": "^0.171.0",
     "vue": "^3.5.12",
     "vuetify": "^3.7.4",
     "webfontloader": "^1.6.28"
