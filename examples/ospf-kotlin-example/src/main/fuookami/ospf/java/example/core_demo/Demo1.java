@@ -6,6 +6,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 import fuookami.ospf.kotlin.utils.math.*;
 import fuookami.ospf.kotlin.utils.error.Error;
@@ -72,7 +73,7 @@ public class Demo1 {
     private void initVariable() {
         x = new BinVariable1("x", new Shape1(this.companies.size()));
         for (Company c : companies) {
-            x.get(c.index).setName("%s_%d".formatted(x.getName(), c.index));
+            x.get(c.index).setName(String.format("%s_%d", x.getName(), c.index));
         }
         x.forEach(xi -> metaModel.add(xi));
     }
@@ -80,7 +81,7 @@ public class Demo1 {
     private void initSymbol() {
         capital = LinearExpressionSymbol.Companion.invoke(
                 LinearPolynomialKt.sumLinearMonomials(
-                    companies.stream().map(c -> LinearMonomialKt.times(c.capital, x.get(c.index))).toList()
+                    companies.stream().map(c -> LinearMonomialKt.times(c.capital, x.get(c.index))).collect(Collectors.toList())
                 ).toMutable(),
                 "capital",
                 null
@@ -89,7 +90,7 @@ public class Demo1 {
 
         liability = LinearExpressionSymbol.Companion.invoke(
                 LinearPolynomialKt.sumLinearMonomials(
-                    companies.stream().map(c -> LinearMonomialKt.times(c.liability, x.get(c.index))).toList()
+                    companies.stream().map(c -> LinearMonomialKt.times(c.liability, x.get(c.index))).collect(Collectors.toList())
                 ).toMutable(),
                 "liability",
                 null
@@ -98,7 +99,7 @@ public class Demo1 {
 
         profit = LinearExpressionSymbol.Companion.invoke(
                 LinearPolynomialKt.sumLinearMonomials(
-                    companies.stream().map(c -> LinearMonomialKt.times(c.profit, x.get(c.index))).toList()
+                    companies.stream().map(c -> LinearMonomialKt.times(c.profit, x.get(c.index))).collect(Collectors.toList())
                 ).toMutable(),
                 "profit",
                 null
@@ -133,7 +134,7 @@ public class Demo1 {
         if (result != null && result.getOk()) {
             List<Flt64> solution = Objects.requireNonNull(result.getValue()).getSolution();
             metaModel.setSolution(solution);
-            return solution.stream().map(Flt64::toDouble).toList();
+            return solution.stream().map(Flt64::toDouble).collect(Collectors.toList());
         } else {
             return null;
         }
