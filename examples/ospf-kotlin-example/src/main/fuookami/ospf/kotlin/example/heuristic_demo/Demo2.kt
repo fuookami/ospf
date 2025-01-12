@@ -50,7 +50,7 @@ class Demo2 {
 //            }
 //        }
         val callBackModel = CallBackModel(model)
-        val solver = PSO(policy = CommonPSOPolicy(timeLimit = 10.seconds))
+        val solver = PSO(policy = PSOPolicy(timeLimit = 10.seconds))
         val result = solver(callBackModel)
         return ok
     }
