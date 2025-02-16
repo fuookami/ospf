@@ -1,0 +1,26 @@
+[package]
+name = "ospf-rust-core"
+version = "0.1.0"
+authors = ["fuookami <fuookami@163.com>"]
+edition = "2021"
+
+[dependencies]
+libc = "*"
+
+[dependencies.ospf-rust-base]
+path = "../ospf-rust-base"
+version = "0.1.0"
+
+[dependencies.ospf-rust-math]
+path = "../ospf-rust-math"
+version = "0.1.0"
+
+[dependencies.ospf-rust-multiarray]
+path = "../ospf-rust-multiarray"
+version = "0.1.0"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3

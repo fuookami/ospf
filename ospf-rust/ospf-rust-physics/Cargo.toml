@@ -1,0 +1,16 @@
+[package]
+name = "ospf-rust-physics"
+version = "0.1.0"
+edition = "2021"
+authors = ["fuookami <fuookami@163.com>"]
+description = "A physics utils for ospf-rust."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+concat-idents = "*"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3

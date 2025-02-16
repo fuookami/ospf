@@ -1,0 +1,21 @@
+[package]
+name = "ospf-rust-math"
+version = "0.1.1"
+authors = ["fuookami <fuookami@163.com>"]
+edition = "2021"
+description = "A math utils for ospf-rust."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+num = "*"
+bigdecimal = "*"
+
+[dependencies.ospf-rust-base]
+path = "../ospf-rust-base"
+version = "0.1.0"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3

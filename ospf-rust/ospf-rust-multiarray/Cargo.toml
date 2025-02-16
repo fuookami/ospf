@@ -1,0 +1,17 @@
+[package]
+name = "ospf-rust-multiarray"
+version = "0.1.0"
+edition = "2021"
+authors = ["fuookami <fuookami@163.com>"]
+description = "A multi-array utils for ospf-rust."
+license = "MIT OR Apache-2.0"
+
+[dependencies.ospf-rust-base]
+path = "../ospf-rust-base"
+version = "0.1.0"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
