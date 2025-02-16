@@ -10,6 +10,14 @@ ospf is a solution for the modeling and coding process in developing complex ope
 
 ospf: https://github.com/fuookami/ospf
 
+The implementation for each host language can be found in the following code repository directories:：
+
+- C++：https://github.com/fuookami/ospf-cpp
+- C#：https://github.com/fuookami/ospf-csharp
+- Kotlin：https://github.com/fuookami/ospf-kotlin
+- Python：https://github.com/fuookami/ospf-python
+- Rust：https://github.com/fuookami/ospf-rust
+
 :us: English | :cn: [简体中文](README_ch.md)
 
 ## Intermediate Expression

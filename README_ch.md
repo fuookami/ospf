@@ -10,6 +10,14 @@ ospf 是一个针对复杂的运筹优化算法中建模与编码过程的解决
 
 文档：https://fuookami.github.io/ospf/
 
+各宿主语言的实现可以参考以下代码仓库目录：
+
+- C++：https://github.com/fuookami/ospf-cpp
+- C#：https://github.com/fuookami/ospf-csharp
+- Kotlin：https://github.com/fuookami/ospf-kotlin
+- Python：https://github.com/fuookami/ospf-python
+- Rust：https://github.com/fuookami/ospf-rust
+
 :us: [English](README.md) | :cn: 简体中文
 
 ## 中间值
