@@ -2,7 +2,7 @@
 
 [![GitHub license](https://img.shields.io/badge/license-Apache%20License%202.0-green.svg?style=flat)](http://www.apache.org/licenses/LICENSE-2.0)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.fuookami.ospf.kotlin/ospf-kotlin)](https://mvnrepository.com/artifact/io.github.fuookami.ospf.kotlin/ospf-kotlin)
-[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.22-yellow.svg?logo=kotlin)](http://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-yellow.svg?logo=kotlin)](http://kotlinlang.org)
 
 ## Introduction
 
@@ -163,6 +163,30 @@ each ospf implementation consists of the following components:
         <td colspan=6>Solver Wrapper</td>
       </tr>
       <tr>
+        <td>COPIN-OR</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>COPT</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>CPLEX</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
         <td>GUROBI</td>
         <td>❗</td>
         <td>❌</td>
@@ -179,7 +203,7 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>CPLEX</td>
+        <td>HEXALY</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -187,26 +211,42 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>COPT</td>
+        <td>LINGO</td>
+        <td>❗</td>
         <td>❌</td>
+        <td>❗</td>
         <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>MINDOPT</td>
+        <td>❗</td>
         <td>❌</td>
+        <td>✔️</td>
         <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>MOSEK</td>
+        <td>❗</td>
         <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>OPTVERSE</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
       </tr>
       <tr>
         <td>SCIP</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
-        <td>❌</td>
-        <td>❗</td>
-      </tr>
-      <tr>
-        <td>COPIN-OR</td>
-        <td>❗</td>
-        <td>❌</td>
-        <td>❗</td>
         <td>❌</td>
         <td>❗</td>
       </tr>
@@ -237,7 +277,7 @@ each ospf implementation consists of the following components:
         <td>SAA</td>
         <td>❗</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❗</td>
       </tr>
@@ -312,7 +352,7 @@ each ospf implementation consists of the following components:
         <td>bpp3d</td>
         <td>❌</td>
         <td>❌</td>
-        <td>⭕</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❌</td>
         <td>✔️</td>

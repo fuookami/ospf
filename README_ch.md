@@ -2,7 +2,7 @@
 
 [![GitHub license](https://img.shields.io/badge/license-Apache%20License%202.0-green.svg?style=flat)](http://www.apache.org/licenses/LICENSE-2.0)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.fuookami.ospf.kotlin/ospf-kotlin)](https://mvnrepository.com/artifact/io.github.fuookami.ospf.kotlin/ospf-kotlin)
-[![Kotlin](https://img.shields.io/badge/kotlin-1.9.22-yellow.svg?logo=kotlin)](http://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/kotlin-1.9.24-yellow.svg?logo=kotlin)](http://kotlinlang.org)
 
 ## 介绍
 
@@ -162,6 +162,30 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td colspan=6>求解器接口</td>
       </tr>
       <tr>
+        <td>COPIN-OR</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>COPT</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>CPLEX</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
         <td>GUROBI</td>
         <td>❗</td>
         <td>❌</td>
@@ -178,7 +202,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>CPLEX</td>
+        <td>HEXALY</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -186,26 +210,42 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>COPT</td>
+        <td>LINGO</td>
+        <td>❗</td>
         <td>❌</td>
+        <td>❗</td>
         <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>MINDOPT</td>
+        <td>❗</td>
         <td>❌</td>
+        <td>✔️</td>
         <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>MOSEK</td>
+        <td>❗</td>
         <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>OPTVERSE</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
       </tr>
       <tr>
         <td>SCIP</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
-        <td>❌</td>
-        <td>❗</td>
-      </tr>
-      <tr>
-        <td>COPIN-OR</td>
-        <td>❗</td>
-        <td>❌</td>
-        <td>❗</td>
         <td>❌</td>
         <td>❗</td>
       </tr>
@@ -236,7 +276,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>SAA</td>
         <td>❗</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❗</td>
       </tr>
@@ -311,7 +351,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>三维装箱</td>
         <td>❌</td>
         <td>❌</td>
-        <td>⭕</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❌</td>
         <td>✔️</td>
@@ -367,7 +407,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
     <thead>
       <tr>
         <th>特性</th>
-        <td></th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
