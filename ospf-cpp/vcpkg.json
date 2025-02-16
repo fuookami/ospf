@@ -1,0 +1,17 @@
+{
+    "dependencies": [
+        "boost-algorithm",
+        "boost-bimap",
+        "boost-iterator",
+        "boost-locale",
+        "boost-multiprecision",
+        "boost-pool",
+        "boost-preprocessor",
+        "boost-uuid",
+        "boost-system",
+        "boost-test",
+        "cryptopp",
+        "magic-enum",
+        "rapidjson"
+    ]
+}
