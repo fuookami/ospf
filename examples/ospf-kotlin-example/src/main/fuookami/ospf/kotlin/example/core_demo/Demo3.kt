@@ -56,10 +56,10 @@ data object Demo3 {
 
     private lateinit var x: UIntVariable1
 
-    private lateinit var cost: LinearSymbol
+    private lateinit var cost: LinearIntermediateSymbol
     private lateinit var yieldSymbols: LinearSymbols1
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo3")
+    private val metaModel = LinearMetaModel("demo3")
 
     private val subProcesses = listOf(
         Demo3::initVariable,
@@ -96,7 +96,7 @@ data object Demo3 {
         cost = LinearExpressionSymbol(sum(materials) { it.cost * x[it] }, "cost")
         metaModel.add(cost)
 
-        yieldSymbols = LinearSymbols1("yield", Shape1(products.size)) { (p, _) ->
+        yieldSymbols = LinearSymbols1("yield", Shape1(products.size)) { p, _ ->
             val product = products[p]
             LinearExpressionSymbol(
                 sum(materials.filter { it.yieldValue.contains(product) }) { m ->
@@ -111,7 +111,7 @@ data object Demo3 {
     }
 
     private suspend fun initObject(): Try {
-        metaModel.minimize(LinearPolynomial(cost))
+        metaModel.minimize(cost)
         return ok
     }
 
@@ -123,7 +123,7 @@ data object Demo3 {
     }
 
     private suspend fun solve(): Try {
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
         when (val ret = solver(metaModel)) {
             is Ok -> {
                 metaModel.tokens.setSolution(ret.value.solution)

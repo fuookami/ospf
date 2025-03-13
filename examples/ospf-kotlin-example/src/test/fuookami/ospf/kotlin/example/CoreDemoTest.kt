@@ -39,4 +39,54 @@ class CoreDemoTest {
     fun runDemo7() {
         assert(runBlocking { Demo7().ok })
     }
+
+    @Test
+    fun runDemo8() {
+        assert(runBlocking { Demo8().ok })
+    }
+
+    @Test
+    fun runDemo9() {
+        assert(runBlocking { Demo9().ok })
+    }
+
+    @Test
+    fun runDemo10() {
+        assert(runBlocking { Demo10().ok })
+    }
+
+    @Test
+    fun runDemo11() {
+        assert(runBlocking { Demo11().ok })
+    }
+
+    @Test
+    fun runDemo12() {
+        assert(runBlocking { Demo12().ok })
+    }
+
+    @Test
+    fun runDemo13() {
+        assert(runBlocking { Demo13().ok })
+    }
+
+    @Test
+    fun runDemo14() {
+        assert(runBlocking { Demo14().ok })
+    }
+
+    @Test
+    fun runDemo15() {
+        assert(runBlocking { Demo15().ok })
+    }
+
+    @Test
+    fun runDemo16() {
+        assert(runBlocking { Demo16().ok })
+    }
+
+    @Test
+    fun runDemo17() {
+        assert(runBlocking { Demo17().ok })
+    }
 }

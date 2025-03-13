@@ -25,7 +25,7 @@ object InitialSolutionGenerator {
 }
 
 class SP {
-    private val solver: ColumnGenerationSolver = SCIPColumnGenerationSolver()
+    private val solver: ColumnGenerationSolver = ScipColumnGenerationSolver()
 
     suspend operator fun invoke(
         iteration: UInt64,

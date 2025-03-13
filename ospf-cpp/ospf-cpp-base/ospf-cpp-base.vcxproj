@@ -1,0 +1,352 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\ospf\auto_link.hpp" />
+    <ClInclude Include="src\ospf\basic_definition.hpp" />
+    <ClInclude Include="src\ospf\bytes.hpp" />
+    <ClInclude Include="src\ospf\bytes\abstraction.hpp" />
+    <ClInclude Include="src\ospf\bytes\auto_link.hpp" />
+    <ClInclude Include="src\ospf\bytes\bits.hpp" />
+    <ClInclude Include="src\ospf\bytes\bytes.hpp" />
+    <ClInclude Include="src\ospf\bytes\compaction.hpp" />
+    <ClInclude Include="src\ospf\bytes\encoding.hpp" />
+    <ClInclude Include="src\ospf\bytes\encryption.hpp" />
+    <ClInclude Include="src\ospf\bytes\encryption\rsa.hpp" />
+    <ClInclude Include="src\ospf\concepts.hpp" />
+    <ClInclude Include="src\ospf\concepts\container.hpp" />
+    <ClInclude Include="src\ospf\concepts\copy_faster.hpp" />
+    <ClInclude Include="src\ospf\concepts\base.hpp" />
+    <ClInclude Include="src\ospf\concepts\enum.hpp" />
+    <ClInclude Include="src\ospf\concepts\with_default.hpp" />
+    <ClInclude Include="src\ospf\concepts\with_tag.hpp" />
+    <ClInclude Include="src\ospf\config.hpp" />
+    <ClInclude Include="src\ospf\context.hpp" />
+    <ClInclude Include="src\ospf\data_structure.hpp" />
+    <ClInclude Include="src\ospf\data_structure\data_table.hpp" />
+    <ClInclude Include="src\ospf\data_structure\data_table\cell.hpp" />
+    <ClInclude Include="src\ospf\data_structure\data_table\concepts.hpp" />
+    <ClInclude Include="src\ospf\data_structure\data_table\dynamic_column.hpp" />
+    <ClInclude Include="src\ospf\data_structure\data_table\header.hpp" />
+    <ClInclude Include="src\ospf\data_structure\data_table\impl.hpp" />
+    <ClInclude Include="src\ospf\data_structure\data_table\single_type.hpp" />
+    <ClInclude Include="src\ospf\data_structure\data_table\static_column.hpp" />
+    <ClInclude Include="src\ospf\data_structure\multi_array.hpp" />
+    <ClInclude Include="src\ospf\data_structure\multi_array\concepts.hpp" />
+    <ClInclude Include="src\ospf\data_structure\multi_array\dummy_index.hpp" />
+    <ClInclude Include="src\ospf\data_structure\multi_array\impl.hpp" />
+    <ClInclude Include="src\ospf\data_structure\multi_array\map_index.hpp" />
+    <ClInclude Include="src\ospf\data_structure\multi_array\one_dimension.hpp" />
+    <ClInclude Include="src\ospf\data_structure\multi_array\shape.hpp" />
+    <ClInclude Include="src\ospf\data_structure\multi_array\dynamic_dimension.hpp" />
+    <ClInclude Include="src\ospf\data_structure\multi_array\map_view.hpp" />
+    <ClInclude Include="src\ospf\data_structure\multi_array\static_dimension.hpp" />
+    <ClInclude Include="src\ospf\data_structure\multi_array\view.hpp" />
+    <ClInclude Include="src\ospf\data_structure\optional_array.hpp" />
+    <ClInclude Include="src\ospf\data_structure\pointer_array.hpp" />
+    <ClInclude Include="src\ospf\data_structure\pointer_or_reference_array.hpp" />
+    <ClInclude Include="src\ospf\data_structure\reference_array.hpp" />
+    <ClInclude Include="src\ospf\data_structure\store_type.hpp" />
+    <ClInclude Include="src\ospf\data_structure\tagged_map.hpp" />
+    <ClInclude Include="src\ospf\data_structure\value_or_reference_array.hpp" />
+    <ClInclude Include="src\ospf\error.hpp" />
+    <ClInclude Include="src\ospf\error\code.hpp" />
+    <ClInclude Include="src\ospf\error\error.hpp" />
+    <ClInclude Include="src\ospf\exception.hpp" />
+    <ClInclude Include="src\ospf\functional.hpp" />
+    <ClInclude Include="src\ospf\functional\array.hpp" />
+    <ClInclude Include="src\ospf\functional\integer_iterator.hpp" />
+    <ClInclude Include="src\ospf\functional\iterator.hpp" />
+    <ClInclude Include="src\ospf\functional\optional.hpp" />
+    <ClInclude Include="src\ospf\functional\range_bounds.hpp" />
+    <ClInclude Include="src\ospf\functional\either.hpp" />
+    <ClInclude Include="src\ospf\functional\sequence_tuple.hpp" />
+    <ClInclude Include="src\ospf\functional\pointer_or_reference.hpp" />
+    <ClInclude Include="src\ospf\functional\value_or_reference.hpp" />
+    <ClInclude Include="src\ospf\functional\result.hpp" />
+    <ClInclude Include="src\ospf\jni.hpp" />
+    <ClInclude Include="src\ospf\jni\auto_link.hpp" />
+    <ClInclude Include="src\ospf\jni\jstring.hpp" />
+    <ClInclude Include="src\ospf\literal_constant.hpp" />
+    <ClInclude Include="src\ospf\local_info.hpp" />
+    <ClInclude Include="src\ospf\log.hpp" />
+    <ClInclude Include="src\ospf\log\console.hpp" />
+    <ClInclude Include="src\ospf\log\file.hpp" />
+    <ClInclude Include="src\ospf\log\interface.hpp" />
+    <ClInclude Include="src\ospf\log\logger.hpp" />
+    <ClInclude Include="src\ospf\log\multi_thread_impl.hpp" />
+    <ClInclude Include="src\ospf\log\level.hpp" />
+    <ClInclude Include="src\ospf\log\record.hpp" />
+    <ClInclude Include="src\ospf\log\string.hpp" />
+    <ClInclude Include="src\ospf\mail.hpp" />
+    <ClInclude Include="src\ospf\memory.hpp" />
+    <ClInclude Include="src\ospf\memory\pointer.hpp" />
+    <ClInclude Include="src\ospf\memory\pointer\category.hpp" />
+    <ClInclude Include="src\ospf\memory\pointer\impl.hpp" />
+    <ClInclude Include="src\ospf\memory\pointer\raw.hpp" />
+    <ClInclude Include="src\ospf\memory\pointer\shared.hpp" />
+    <ClInclude Include="src\ospf\memory\pointer\unique.hpp" />
+    <ClInclude Include="src\ospf\memory\pointer\weak.hpp" />
+    <ClInclude Include="src\ospf\memory\pool.hpp" />
+    <ClInclude Include="src\ospf\memory\pool\concept.hpp" />
+    <ClInclude Include="src\ospf\memory\pool\half_multi_thread.hpp" />
+    <ClInclude Include="src\ospf\memory\pool\multi_thread.hpp" />
+    <ClInclude Include="src\ospf\memory\pool\single_thread.hpp" />
+    <ClInclude Include="src\ospf\memory\reference.hpp" />
+    <ClInclude Include="src\ospf\memory\reference\borrow.hpp" />
+    <ClInclude Include="src\ospf\memory\reference\category.hpp" />
+    <ClInclude Include="src\ospf\memory\reference\impl.hpp" />
+    <ClInclude Include="src\ospf\memory\reference\raw.hpp" />
+    <ClInclude Include="src\ospf\memory\reference\unique_borrow.hpp" />
+    <ClInclude Include="src\ospf\meta_programming.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\crtp.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\function_trait.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\infix_function.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\meta_info.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\meta_info\meta_info.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\meta_info\meta_item.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\named_flag.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\named_type.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\name_transfer.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\name_transfer\backend.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\name_transfer\frontend.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\naming_system.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\type_info.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\variable_type_list.hpp" />
+    <ClInclude Include="src\ospf\meta_programming\variadic_macro.hpp" />
+    <ClInclude Include="src\ospf\ospf_base_api.hpp" />
+    <ClInclude Include="src\ospf\parallelism.hpp" />
+    <ClInclude Include="src\ospf\parallelism\async.hpp" />
+    <ClInclude Include="src\ospf\parallelism\guard_thread.hpp" />
+    <ClInclude Include="src\ospf\parallelism\result.hpp" />
+    <ClInclude Include="src\ospf\parallelism\task.hpp" />
+    <ClInclude Include="src\ospf\parallelism\thread_pool.hpp" />
+    <ClInclude Include="src\ospf\random.hpp" />
+    <ClInclude Include="src\ospf\serialization.hpp" />
+    <ClInclude Include="src\ospf\serialization\bytes.hpp" />
+    <ClInclude Include="src\ospf\serialization\bytes\concepts.hpp" />
+    <ClInclude Include="src\ospf\serialization\bytes\deserializer.hpp" />
+    <ClInclude Include="src\ospf\serialization\bytes\from_value.hpp" />
+    <ClInclude Include="src\ospf\serialization\bytes\header.hpp" />
+    <ClInclude Include="src\ospf\serialization\bytes\serializer.hpp" />
+    <ClInclude Include="src\ospf\serialization\bytes\to_value.hpp" />
+    <ClInclude Include="src\ospf\serialization\csv.hpp" />
+    <ClInclude Include="src\ospf\serialization\csv\concepts.hpp" />
+    <ClInclude Include="src\ospf\serialization\csv\deserializer.hpp" />
+    <ClInclude Include="src\ospf\serialization\csv\from_value.hpp" />
+    <ClInclude Include="src\ospf\serialization\csv\io.hpp" />
+    <ClInclude Include="src\ospf\serialization\csv\serializer.hpp" />
+    <ClInclude Include="src\ospf\serialization\csv\table.hpp" />
+    <ClInclude Include="src\ospf\serialization\csv\to_value.hpp" />
+    <ClInclude Include="src\ospf\serialization\dto.hpp" />
+    <ClInclude Include="src\ospf\serialization\json.hpp" />
+    <ClInclude Include="src\ospf\serialization\json\concepts.hpp" />
+    <ClInclude Include="src\ospf\serialization\json\deserializer.hpp" />
+    <ClInclude Include="src\ospf\serialization\json\from_value.hpp" />
+    <ClInclude Include="src\ospf\serialization\json\io.hpp" />
+    <ClInclude Include="src\ospf\serialization\json\serializer.hpp" />
+    <ClInclude Include="src\ospf\serialization\json\to_value.hpp" />
+    <ClInclude Include="src\ospf\serialization\nullable.hpp" />
+    <ClInclude Include="src\ospf\serialization\writable.hpp" />
+    <ClInclude Include="src\ospf\string.hpp" />
+    <ClInclude Include="src\ospf\string\format.hpp" />
+    <ClInclude Include="src\ospf\string\hasher.hpp" />
+    <ClInclude Include="src\ospf\string\regex.hpp" />
+    <ClInclude Include="src\ospf\string\split.hpp" />
+    <ClInclude Include="src\ospf\string\transcoding.hpp" />
+    <ClInclude Include="src\ospf\system_info.hpp" />
+    <ClInclude Include="src\ospf\type_family.hpp" />
+    <ClInclude Include="src\ospf\uuid.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\ospf\bytes\bits.cpp" />
+    <ClCompile Include="src\ospf\bytes\encryption\rsa.cpp" />
+    <ClCompile Include="src\ospf\data_structure\data_table\data_table_header.cpp" />
+    <ClCompile Include="src\ospf\data_structure\multi_array\dummy_index.cpp" />
+    <ClCompile Include="src\ospf\data_structure\multi_array\shape.cpp" />
+    <ClCompile Include="src\ospf\error\error.cpp" />
+    <ClCompile Include="src\ospf\exception.cpp" />
+    <ClCompile Include="src\ospf\functional\integer_iterator.cpp" />
+    <ClCompile Include="src\ospf\functional\range_bounds.cpp" />
+    <ClCompile Include="src\ospf\functional\result.cpp" />
+    <ClCompile Include="src\ospf\jni\jstring.cpp" />
+    <ClCompile Include="src\ospf\log\console_logger.cpp" />
+    <ClCompile Include="src\ospf\log\file_logger.cpp" />
+    <ClCompile Include="src\ospf\log\multi_thread_impl.cpp" />
+    <ClCompile Include="src\ospf\log\record.cpp" />
+    <ClCompile Include="src\ospf\log\string_logger.cpp" />
+    <ClCompile Include="src\ospf\meta_programming\name_transfer.cpp" />
+    <ClCompile Include="src\ospf\meta_programming\name_transfer\backend.cpp" />
+    <ClCompile Include="src\ospf\meta_programming\name_transfer\frontend.cpp" />
+    <ClCompile Include="src\ospf\parallelism\guard_thread.cpp" />
+    <ClCompile Include="src\ospf\serialization\bytes\bytes_header.cpp" />
+    <ClCompile Include="src\ospf\serialization\csv\from_value_csv.cpp" />
+    <ClCompile Include="src\ospf\serialization\csv\concepts.cpp" />
+    <ClCompile Include="src\ospf\serialization\csv\to_value_csv.cpp" />
+    <ClCompile Include="src\ospf\serialization\csv\table.cpp" />
+    <ClCompile Include="src\ospf\serialization\json\from_value_json.cpp" />
+    <ClCompile Include="src\ospf\serialization\json\to_value_json.cpp" />
+    <ClCompile Include="src\ospf\string\hasher.cpp" />
+    <ClCompile Include="src\ospf\string\regex.cpp" />
+    <ClCompile Include="src\ospf\system_info.cpp" />
+    <ClCompile Include="src\ospf\uuid.cpp" />
+    <ClCompile Include="test\meta_programming\name_transfer\frontend_unit_test.cpp" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{955610bb-c8d8-464c-be5a-9bc90145b39a}</ProjectGuid>
+    <RootNamespace>ospfcppbase</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <IncludePath>$(ProjectDir)src;$(JAVA_HOME)\include\win32;$(JAVA_HOME)\include;$(IncludePath)</IncludePath>
+    <TargetName>$(ProjectName)d</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <IncludePath>$(ProjectDir)src;$(JAVA_HOME)\include\win32;$(JAVA_HOME)\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg">
+    <VcpkgEnableManifest>true</VcpkgEnableManifest>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <VcpkgAdditionalInstallOptions>--keep-going</VcpkgAdditionalInstallOptions>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <VcpkgAdditionalInstallOptions>--keep-going</VcpkgAdditionalInstallOptions>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;BOOST_ALL_DYN_LINK;OSPF_MULTI_THREAD;OSPF_BASE_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>
+      </AdditionalLibraryDirectories>
+      <LinkTimeCodeGeneration>
+      </LinkTimeCodeGeneration>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;BOOST_ALL_DYN_LINK;OSPF_MULTI_THREAD;OSPF_BASE_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>
+      </AdditionalLibraryDirectories>
+      <LinkTimeCodeGeneration>UseFastLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+    </Link>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

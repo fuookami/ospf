@@ -43,10 +43,10 @@ data object Demo4 {
     private val maxDiff = Int64(1)
 
     private lateinit var x: RealVariable1
-    private lateinit var profit: LinearSymbol
+    private lateinit var profit: LinearIntermediateSymbol
     private lateinit var use: LinearSymbols1
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo4")
+    private val metaModel = LinearMetaModel("demo4")
 
     private val subProcesses = listOf(
         Demo4::initVariable,
@@ -83,7 +83,7 @@ data object Demo4 {
         profit = LinearExpressionSymbol(sum(products) { p -> p.profit * x[p] }, "profit")
         metaModel.add(profit)
 
-        use = LinearSymbols1("use", Shape1(materials.size)) { (m, _) ->
+        use = LinearSymbols1("use", Shape1(materials.size)) { m, _ ->
             val material = materials[m]
             val ps = products.filter { it.use.contains(material) }
             LinearExpressionSymbol(
@@ -97,7 +97,7 @@ data object Demo4 {
 
 
     private suspend fun initObject(): Try {
-        metaModel.maximize(LinearPolynomial(profit), "maxProfit")
+        metaModel.maximize(profit, "maxProfit")
         return ok
     }
 
@@ -123,7 +123,7 @@ data object Demo4 {
     }
 
     private suspend fun solve(): Try {
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
         when (val ret = solver(metaModel)) {
             is Ok -> {
                 metaModel.tokens.setSolution(ret.value.solution)

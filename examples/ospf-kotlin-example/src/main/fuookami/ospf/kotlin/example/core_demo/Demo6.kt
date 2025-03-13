@@ -19,7 +19,7 @@ data object Demo6 {
         val amount: UInt64
     ) : AutoIndexed(Cargo::class)
 
-    private val cargos: List<Cargo> = listOf(
+    private val cargos = listOf(
         Cargo(UInt64(1), UInt64(6), UInt64(10)),
         Cargo(UInt64(2), UInt64(10), UInt64(10)),
         Cargo(UInt64(2), UInt64(20), UInt64(10))
@@ -28,10 +28,10 @@ data object Demo6 {
 
     private lateinit var x: UIntVariable1
 
-    private lateinit var cargoWeight: LinearSymbol
-    private lateinit var cargoValue: LinearSymbol
+    private lateinit var cargoWeight: LinearIntermediateSymbol
+    private lateinit var cargoValue: LinearIntermediateSymbol
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo6")
+    private val metaModel = LinearMetaModel("demo6")
 
     private val subProcesses = listOf(
         Demo6::initVariable,
@@ -75,7 +75,7 @@ data object Demo6 {
     }
 
     private suspend fun initObject(): Try {
-        metaModel.maximize(LinearPolynomial(cargoValue),"value")
+        metaModel.maximize(cargoValue,"value")
         return ok
     }
 
@@ -92,7 +92,7 @@ data object Demo6 {
     }
 
     private suspend fun solve(): Try {
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
         when (val ret = solver(metaModel)) {
             is Ok -> {
                 metaModel.tokens.setSolution(ret.value.solution)
@@ -108,9 +108,7 @@ data object Demo6 {
     private suspend fun analyzeSolution(): Try {
         val ret = HashMap<Cargo, UInt64>()
         for (token in metaModel.tokens.tokens) {
-            if (token.result!! eq Flt64.one
-                && token.variable.belongsTo(x)
-            ) {
+            if (token.result!! geq Flt64.one && token.variable.belongsTo(x)) {
                 ret[cargos[token.variable.vectorView[0]]] = token.result!!.round().toUInt64()
             }
         }

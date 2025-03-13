@@ -1,7 +1,6 @@
 package fuookami.ospf.kotlin.example.core_demo
 
 import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.concept.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.utils.multi_array.*
@@ -58,11 +57,11 @@ data object Demo7 {
 
     private lateinit var x: UIntVariable2
 
-    private lateinit var cost: LinearSymbol
+    private lateinit var cost: LinearIntermediateSymbol
     private lateinit var shipment: LinearSymbols1
     private lateinit var purchase: LinearSymbols1
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo7")
+    private val metaModel = LinearMetaModel("demo7")
 
     private val subProcesses = listOf(
         Demo7::initVariable,
@@ -108,7 +107,7 @@ data object Demo7 {
         shipment = LinearSymbols1(
             "shipment",
             Shape1(warehouses.size)
-        ) { (i, _) ->
+        ) { i, _ ->
             val w = warehouses[i]
             LinearExpressionSymbol(
                 sum(stores.filter { w.cost.contains(it) }.map { s -> x[w, s] }),
@@ -120,7 +119,7 @@ data object Demo7 {
         purchase = LinearSymbols1(
             "purchase",
             Shape1(stores.size)
-        ) { (i, _) ->
+        ) { i, _ ->
             val s = stores[i]
             LinearExpressionSymbol(
                 sum(warehouses.filter { w -> w.cost.contains(s) }.map { w -> x[w, s] }),
@@ -132,7 +131,7 @@ data object Demo7 {
     }
 
     private suspend fun initObject(): Try {
-        metaModel.minimize(LinearPolynomial(cost),"cost")
+        metaModel.minimize(cost,"cost")
         return ok
     }
 
@@ -152,7 +151,7 @@ data object Demo7 {
     }
 
     private suspend fun solve(): Try {
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
         when (val ret = solver(metaModel)) {
             is Ok -> {
                 metaModel.tokens.setSolution(ret.value.solution)

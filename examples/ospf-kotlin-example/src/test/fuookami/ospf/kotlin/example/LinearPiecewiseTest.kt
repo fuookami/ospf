@@ -20,7 +20,7 @@ class LinearPiecewiseTest {
         x.range.leq(Flt64.two)
         x.range.geq(-Flt64.two)
         val abs = AbsFunction(LinearPolynomial(x), name = "abs")
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
 
         val model1 = LinearMetaModel()
         model1.add(x)
@@ -108,7 +108,7 @@ class LinearPiecewiseTest {
         val y = UIntVar("y")
         y.range.leq(UInt64.two)
         val and = AndFunction(listOf(LinearPolynomial(x), LinearPolynomial(y)), "and")
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
 
         val model1 = LinearMetaModel()
         model1.add(x)
@@ -134,7 +134,7 @@ class LinearPiecewiseTest {
         val x = URealVar("x")
         x.range.leq(Flt64.two)
         val bin = BinaryzationFunction(LinearPolynomial(x), name = "bin")
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
 
         val model1 = LinearMetaModel()
         model1.add(x)
@@ -172,7 +172,7 @@ class LinearPiecewiseTest {
         val x = UIntVar("x")
         x.range.leq(UInt64.two)
         val bin = BinaryzationFunction(LinearPolynomial(x), name = "bin")
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
 
         val model1 = LinearMetaModel()
         model1.add(x)
@@ -211,7 +211,7 @@ class LinearPiecewiseTest {
         x.range.leq(Flt64.two)
         x.range.geq(-Flt64.two)
         val bter = BalanceTernaryzationFunction(LinearPolynomial(x), name = "bter")
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
 
         val model1 = LinearMetaModel()
         model1.add(x)
@@ -246,7 +246,7 @@ class LinearPiecewiseTest {
         val model5 = LinearMetaModel()
         model5.add(x)
         model5.add(bter)
-        model5.addConstraint(x leq Flt64.zero)
+        model5.addConstraint(x leq 0)
         model5.minimize(bter)
         val result5 = runBlocking { solver(model5) }
         assert(result5.value!!.obj eq -Flt64.one)
@@ -254,7 +254,7 @@ class LinearPiecewiseTest {
         val model6 = LinearMetaModel()
         model6.add(x)
         model6.add(bter)
-        model6.addConstraint(x leq Flt64.zero)
+        model6.addConstraint(x leq 0)
         model6.maximize(bter)
         val result6 = runBlocking { solver(model6) }
         assert(result6.value!!.obj eq Flt64.zero)
@@ -282,7 +282,7 @@ class LinearPiecewiseTest {
         x.range.leq(Int64.two)
         x.range.geq(-Int64.two)
         val bter = BalanceTernaryzationFunction(LinearPolynomial(x), name = "bter")
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
 
         val model1 = LinearMetaModel()
         model1.add(x)
@@ -317,7 +317,7 @@ class LinearPiecewiseTest {
         val model5 = LinearMetaModel()
         model5.add(x)
         model5.add(bter)
-        model5.addConstraint(x leq Flt64.zero)
+        model5.addConstraint(x leq 0)
         model5.minimize(bter)
         val result5 = runBlocking { solver(model5) }
         assert(result5.value!!.obj eq -Flt64.one)
@@ -325,7 +325,7 @@ class LinearPiecewiseTest {
         val model6 = LinearMetaModel()
         model6.add(x)
         model6.add(bter)
-        model6.addConstraint(x leq Flt64.zero)
+        model6.addConstraint(x leq 0)
         model6.maximize(bter)
         val result6 = runBlocking { solver(model6) }
         assert(result6.value!!.obj eq Flt64.zero)
@@ -348,7 +348,7 @@ class LinearPiecewiseTest {
 
         model.minimize(semi)
 
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
         val result = runBlocking { solver(model) }
         assert(result.value!!.obj eq Flt64.zero)
     }
@@ -374,7 +374,7 @@ class LinearPiecewiseTest {
 
         model.maximize(LinearPolynomial(ulp))
 
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
         val result = runBlocking { solver(model) }
         assert(result.value!!.solution[0] eq Flt64.one)
     }
@@ -406,7 +406,7 @@ class LinearPiecewiseTest {
 
         model.maximize(LinearPolynomial(blp))
 
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
         val result = runBlocking { solver(model) }
         assert(result.value!!.solution[0] eq Flt64.one)
         assert(result.value!!.solution[1] eq Flt64.one)

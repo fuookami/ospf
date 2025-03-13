@@ -15,7 +15,7 @@ class NodeAssignmentConstraint(
     override fun invoke(model: LinearMetaModel): Try {
         for (node in nodes.filter(normal)) {
             model.addConstraint(
-                assignment.nodeAssignment[node] leq UInt64.one,
+                assignment.nodeAssignment[node] leq 1,
                 "${name}_$node"
             )
         }

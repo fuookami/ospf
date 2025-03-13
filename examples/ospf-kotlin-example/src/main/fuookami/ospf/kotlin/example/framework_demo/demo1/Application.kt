@@ -107,7 +107,7 @@ class SSP {
     }
 
     private suspend fun solve(metaModel: LinearMetaModel): Ret<List<Flt64>> {
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
         return when (val ret = solver(metaModel)) {
             is Ok -> {
                 metaModel.tokens.setSolution(ret.value.solution)

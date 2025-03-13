@@ -1,0 +1,30 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{830d4be5-b7ef-4b47-8c32-e75528f564ea}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf">
+      <UniqueIdentifier>{f9e1ed4c-cbdb-44dc-aed7-f9f6bbef9450}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\core">
+      <UniqueIdentifier>{f231eed9-5987-4ce6-95c7-9e64bca89dd3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\core\frontend">
+      <UniqueIdentifier>{fb1e70c9-1c40-447a-87d3-0ab01db48101}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ospf\core\frontend\variable">
+      <UniqueIdentifier>{c0c64e53-b107-4328-b0ad-2e1aea3b9cd5}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\ospf\core\frontend\variable\variable_type.hpp">
+      <Filter>src\ospf\core\frontend\variable</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\ospf\core\frontend\variable\variable_type.cpp">
+      <Filter>src\ospf\core\frontend\variable</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

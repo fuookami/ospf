@@ -15,7 +15,7 @@ class ServiceAssignmentConstraint(
     override fun invoke(model: LinearMetaModel): Try {
         for (service in services) {
             model.addConstraint(
-                assignment.serviceAssignment[service] leq UInt64.one,
+                assignment.serviceAssignment[service] leq 1,
                 "${name}_$service"
             )
         }

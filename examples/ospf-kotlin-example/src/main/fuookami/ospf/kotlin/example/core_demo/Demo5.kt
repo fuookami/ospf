@@ -28,10 +28,10 @@ data object Demo5 {
     private val maxWeight = UInt64(10U)
 
     private lateinit var x: BinVariable1
-    private lateinit var cargoWeight: LinearSymbol
-    private lateinit var cargoValue: LinearSymbol
+    private lateinit var cargoWeight: LinearIntermediateSymbol
+    private lateinit var cargoValue: LinearIntermediateSymbol
 
-    private val metaModel: LinearMetaModel = LinearMetaModel("demo5")
+    private val metaModel = LinearMetaModel("demo5")
 
     private val subProcesses = listOf(
         Demo5::initVariable,
@@ -74,7 +74,7 @@ data object Demo5 {
     }
 
     private suspend fun initObject(): Try {
-        metaModel.maximize(LinearPolynomial(cargoValue),"value")
+        metaModel.maximize(cargoValue,"value")
         return ok
     }
 
@@ -86,7 +86,7 @@ data object Demo5 {
     }
 
     private suspend fun solve(): Try {
-        val solver = SCIPLinearSolver()
+        val solver = ScipLinearSolver()
         when (val ret = solver(metaModel)) {
             is Ok -> {
                 metaModel.tokens.setSolution(ret.value.solution)

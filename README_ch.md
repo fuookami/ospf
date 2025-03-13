@@ -2,13 +2,21 @@
 
 [![GitHub license](https://img.shields.io/badge/license-Apache%20License%202.0-green.svg?style=flat)](http://www.apache.org/licenses/LICENSE-2.0)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.fuookami.ospf.kotlin/ospf-kotlin)](https://mvnrepository.com/artifact/io.github.fuookami.ospf.kotlin/ospf-kotlin)
-[![Kotlin](https://img.shields.io/badge/kotlin-1.9.22-yellow.svg?logo=kotlin)](http://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/kotlin-1.9.24-yellow.svg?logo=kotlin)](http://kotlinlang.org)
 
 ## 介绍
 
 ospf 是一个针对复杂的运筹优化算法中建模与编码过程的解决方案及其开发组件。ospf 旨在提供一种基于<strong><em>领域驱动设计</em></strong>（DDD）的建模方式，以便使用者能够在整个软件生命周期都能简单、高效地开发、维护数学模型、求解算法及其实现代码。更详细的介绍、设计以及文档可以参考文档页面：
 
 文档：https://fuookami.github.io/ospf/
+
+各宿主语言的实现可以参考以下代码仓库目录：
+
+- C++：https://github.com/fuookami/ospf-cpp
+- C#：https://github.com/fuookami/ospf-csharp
+- Kotlin：https://github.com/fuookami/ospf-kotlin
+- Python：https://github.com/fuookami/ospf-python
+- Rust：https://github.com/fuookami/ospf-rust
 
 :us: [English](README.md) | :cn: 简体中文
 
@@ -162,7 +170,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td colspan=6>求解器接口</td>
       </tr>
       <tr>
-        <td>Coin-OR</td>
+        <td>COPIN-OR</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
@@ -170,7 +178,15 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>Copt</td>
+        <td>COPT</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❌</td>
+      </tr>
+      <tr>
+        <td>CPLEX</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -178,7 +194,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>Cplex</td>
+        <td>GUROBI</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -186,7 +202,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>Gurobi</td>
+        <td>GUROBI-11</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -194,7 +210,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>Gurobi11+</td>
+        <td>HEXALY</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -202,7 +218,15 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>Hexaly</td>
+        <td>LINGO</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>MINDOPT</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -210,7 +234,15 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>Lingo</td>
+        <td>MOSEK</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>OPTVERSE</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
@@ -218,23 +250,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
-        <td>Mosek</td>
-        <td>❗</td>
-        <td>❌</td>
-        <td>❗</td>
-        <td>❌</td>
-        <td>❗</td>
-      </tr>
-      <tr>
-        <td>OptVerse</td>
-        <td>❗</td>
-        <td>❌</td>
-        <td>❗</td>
-        <td>❌</td>
-        <td>❗</td>
-      </tr>
-      <tr>
-        <td>Scip</td>
+        <td>SCIP</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -249,14 +265,6 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td colspan=6>元启发式算法</td>
       </tr>
       <tr>
-        <td>GA</td>
-        <td>❗</td>
-        <td>❌</td>
-        <td>❗</td>
-        <td>❌</td>
-        <td>❗</td>
-      </tr>
-      <tr>
         <td>PSO</td>
         <td>❗</td>
         <td>❌</td>
@@ -265,7 +273,31 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
+        <td>GA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
         <td>SAA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>HCA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>NMS</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
@@ -327,7 +359,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>三维装箱</td>
         <td>❌</td>
         <td>❌</td>
-        <td>⭕</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❌</td>
         <td>✔️</td>
@@ -354,7 +386,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>甘特图调度</td>
         <td>❌</td>
         <td>❌</td>
-        <td>⭕</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❌</td>
         <td>✔️</td>
@@ -383,7 +415,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
     <thead>
       <tr>
         <th>特性</th>
-        <td></th>
+        <th></th>
       </tr>
     </thead>
     <tbody>

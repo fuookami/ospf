@@ -2,13 +2,21 @@
 
 [![GitHub license](https://img.shields.io/badge/license-Apache%20License%202.0-green.svg?style=flat)](http://www.apache.org/licenses/LICENSE-2.0)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.fuookami.ospf.kotlin/ospf-kotlin)](https://mvnrepository.com/artifact/io.github.fuookami.ospf.kotlin/ospf-kotlin)
-[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.22-yellow.svg?logo=kotlin)](http://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-yellow.svg?logo=kotlin)](http://kotlinlang.org)
 
 ## Introduction
 
 ospf is a solution for the modeling and coding process in developing complex operational research algorithm software, along with its development components. It aims to provide a modeling approach based on <strong><em>Domain Driven Design</em></strong> (DDD), enabling users to efficiently develop and maintain mathematical models, solution algorithms, and their implementation code throughout the entire software lifecycle. For more detailed information, design or documentation, please refer to the documentation page:
 
 ospf: https://github.com/fuookami/ospf
+
+The implementation for each host language can be found in the following code repository directories:：
+
+- C++：https://github.com/fuookami/ospf-cpp
+- C#：https://github.com/fuookami/ospf-csharp
+- Kotlin：https://github.com/fuookami/ospf-kotlin
+- Python：https://github.com/fuookami/ospf-python
+- Rust：https://github.com/fuookami/ospf-rust
 
 :us: English | :cn: [简体中文](README_ch.md)
 
@@ -163,7 +171,7 @@ each ospf implementation consists of the following components:
         <td colspan=6>Solver Wrapper</td>
       </tr>
       <tr>
-        <td>Coin-OR</td>
+        <td>COPIN-OR</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
@@ -171,7 +179,7 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>Copt</td>
+        <td>COPT</td>
         <td>❌</td>
         <td>❌</td>
         <td>✔️</td>
@@ -179,7 +187,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
       </tr>
       <tr>
-        <td>Cplex</td>
+        <td>CPLEX</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -187,7 +195,7 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>Gurobi</td>
+        <td>GUROBI</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -195,7 +203,7 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>Gurobi11+</td>
+        <td>GUROBI-11</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -203,7 +211,7 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>Hexaly</td>
+        <td>HEXALY</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -211,7 +219,7 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>Lingo</td>
+        <td>LINGO</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
@@ -219,7 +227,23 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>Mosek</td>
+        <td>MINDOPT</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>MOSEK</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>OPTVERSE</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
@@ -227,15 +251,7 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>OptVerse</td>
-        <td>❗</td>
-        <td>❌</td>
-        <td>❗</td>
-        <td>❌</td>
-        <td>❗</td>
-      </tr>
-      <tr>
-        <td>Scip</td>
+        <td>SCIP</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
@@ -250,14 +266,6 @@ each ospf implementation consists of the following components:
         <td colspan=6>Meta-Heuristic Algorithm</td>
       </tr>
       <tr>
-        <td>GA</td>
-        <td>❗</td>
-        <td>❌</td>
-        <td>❗</td>
-        <td>❌</td>
-        <td>❗</td>
-      </tr>
-      <tr>
         <td>PSO</td>
         <td>❗</td>
         <td>❌</td>
@@ -266,7 +274,31 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
+        <td>GA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
         <td>SAA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>HCA</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
+        <td>NMS</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
@@ -328,7 +360,7 @@ each ospf implementation consists of the following components:
         <td>bpp3d</td>
         <td>❌</td>
         <td>❌</td>
-        <td>⭕</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❌</td>
         <td>✔️</td>
@@ -355,7 +387,7 @@ each ospf implementation consists of the following components:
         <td>gantt-scheduling</td>
         <td>❌</td>
         <td>❌</td>
-        <td>⭕</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❌</td>
         <td>✔️</td>
@@ -384,7 +416,7 @@ each ospf implementation consists of the following components:
     <thead>
       <tr>
         <th>Feature</th>
-        <td></th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
