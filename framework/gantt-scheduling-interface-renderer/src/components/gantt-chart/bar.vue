@@ -1,9 +1,10 @@
 <template>
-  <v-container style="height: 3em; min-width: 0px; padding: 0;">
+  <v-container style="height: 3em; min-width: 0; padding: 0;">
     <v-btn class="gantt_item" :class="{
       'normal_item': isNormal,
       'testing_item': isTesting,
       'unavailable_item': isUnavailable,
+      'unknown_item': isUnknown,
       'elevation-0': !isFocused,
       'evelation-1': isFocused,
       'focused_item': isFocused
@@ -93,6 +94,7 @@ export default {
     isNormal: false,
     isTesting: false,
     isUnavailable: false,
+    isUnknown: false,
     isFocused: false,
     snackbarText: "",
     snackbar: false
@@ -114,6 +116,8 @@ export default {
         this.isTesting = true;
       } else if (ganttItem.category === "Unavailable") {
         this.isUnavailable = true;
+      } else if (ganttItem.category === "Unknown") {
+        this.isUnknow = true;
       }
 
       if (needSubBar(ganttItem.subItems)) {

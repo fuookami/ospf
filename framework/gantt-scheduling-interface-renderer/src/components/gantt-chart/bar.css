@@ -15,6 +15,10 @@
     background: #757575;
 }
 
+.gantt_item.unknown_item {
+    background: #505050;
+}
+
 .gantt_item.focused_item {
     font-weight: bold;
     border: 3px solid #E6981E;

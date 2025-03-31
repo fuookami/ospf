@@ -71,6 +71,10 @@ fn load_response<T: serde::de::DeserializeOwned>(path: String) -> Option<T> {
 #[tauri::command]
 fn load_data(path: String) -> Result<GanttDTO, String> {
     if let Some(data) = load_response::<ResponseDTO>(path.clone()) {
+        if (data.tasks.is_empty()) {
+            return Err(String::from("数据文件中没有任务"));
+        }
+
         let tasks = TaskDTO::group(&data.tasks);
         let executors = tasks.keys().map(|executor| executor.as_str()).collect::<HashSet<&str>>();
         let mut link_info = data
@@ -122,13 +126,13 @@ fn load_data(path: String) -> Result<GanttDTO, String> {
         );
         return Ok(GanttDTO::from(&gantt));
     }
-    return Err(String::from("无法识别的数据文件"));
+    Err(String::from("无法识别的数据文件"))
 }
 
 #[tauri::command]
 fn load_sub_chart_data() -> Result<String, String> {
     unsafe {
-        return Ok(CURRENT_SUB_CHART_DATA.as_ref().unwrap().clone());
+        Ok(CURRENT_SUB_CHART_DATA.as_ref().unwrap().clone())
     }
 }
 
