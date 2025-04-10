@@ -105,9 +105,9 @@ data object Demo15 {
     lateinit var x: UIntVariable3
     lateinit var y: Map<DistributionCenter, PctVariable1>
 
-    lateinit var receive: LinearSymbols2
-    lateinit var demand: LinearSymbols2
-    lateinit var trans: LinearSymbols2
+    lateinit var receive: LinearIntermediateSymbols2
+    lateinit var demand: LinearIntermediateSymbols2
+    lateinit var trans: LinearIntermediateSymbols2
     lateinit var cost: LinearIntermediateSymbol
 
     val metaModel = LinearMetaModel("demo15")
@@ -165,13 +165,13 @@ data object Demo15 {
     }
 
     private suspend fun initSymbol(): Try {
-        receive = LinearSymbols2("receive", Shape2(distributionCenters.size, carModels.size)) { _, v ->
+        receive = LinearIntermediateSymbols2("receive", Shape2(distributionCenters.size, carModels.size)) { _, v ->
             val d = distributionCenters[v[0]]
             val c = carModels[v[1]]
             LinearExpressionSymbol(sum(x[_a, d, c]), "receive_${d.name}_${c.name}")
         }
         metaModel.add(receive)
-        demand = LinearSymbols2("demand", Shape2(distributionCenters.size, carModels.size)) { _, v ->
+        demand = LinearIntermediateSymbols2("demand", Shape2(distributionCenters.size, carModels.size)) { _, v ->
             val d = distributionCenters[v[0]]
             val c = carModels[v[1]]
             val replacedDemand = if (d.demands[c]?.let { it gr UInt64.zero } == true) {
@@ -199,7 +199,7 @@ data object Demo15 {
             LinearExpressionSymbol((d.demands[c] ?: UInt64.zero) - replacedDemand + replacedToDemand, "demand_${d.name}_${c.name}")
         }
         metaModel.add(demand)
-        trans = LinearSymbols2("trans", Shape2(manufacturers.size, carModels.size)) { _, v ->
+        trans = LinearIntermediateSymbols2("trans", Shape2(manufacturers.size, carModels.size)) { _, v ->
             val m = manufacturers[v[0]]
             val c = carModels[v[1]]
             LinearExpressionSymbol(sum(x[m, _a, c]), "trans_${m.name}_${c.name}")

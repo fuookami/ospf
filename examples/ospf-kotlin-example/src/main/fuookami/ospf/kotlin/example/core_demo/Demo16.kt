@@ -32,8 +32,8 @@ data object Demo16 {
 
     lateinit var x: UIntVariable2
 
-    lateinit var produce: LinearSymbols1
-    lateinit var supply: LinearSymbols1
+    lateinit var produce: LinearIntermediateSymbols1
+    lateinit var supply: LinearIntermediateSymbols1
     lateinit var delayDeliveryCost: LinearIntermediateSymbol
     lateinit var stowageCost: LinearIntermediateSymbol
     lateinit var produceCost: LinearIntermediateSymbol
@@ -69,12 +69,12 @@ data object Demo16 {
     }
 
     private suspend fun initSymbol(): Try {
-        produce = LinearSymbols1("produce", Shape1(produces.size)) { i, _ ->
+        produce = LinearIntermediateSymbols1("produce", Shape1(produces.size)) { i, _ ->
             val p = produces[i]
             LinearExpressionSymbol(sum(x[p, _a]), "produce_${p.month}")
         }
         metaModel.add(produce)
-        supply = LinearSymbols1("supply", Shape1(produces.size)) { i, _ ->
+        supply = LinearIntermediateSymbols1("supply", Shape1(produces.size)) { i, _ ->
             val p = produces[i]
             LinearExpressionSymbol(sum(x[_a, p]), "supply_${p.month}")
         }

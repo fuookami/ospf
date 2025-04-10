@@ -14,8 +14,8 @@ class Assignment(
     private val services: List<Service>
 ) {
     lateinit var x: BinVariable2
-    lateinit var nodeAssignment: LinearSymbols1
-    lateinit var serviceAssignment: LinearSymbols1
+    lateinit var nodeAssignment: LinearIntermediateSymbols1
+    lateinit var serviceAssignment: LinearIntermediateSymbols1
 
     fun register(model: LinearMetaModel): Try {
         if (!::x.isInitialized) {

@@ -170,12 +170,12 @@ data object Demo17 {
     lateinit var x: BinVariable3
     lateinit var s: URealVariable2
 
-    lateinit var origin: LinearSymbols1
-    lateinit var destination: LinearSymbols1
-    lateinit var inFlow: LinearSymbols2
-    lateinit var outFlow: LinearSymbols2
-    lateinit var service: LinearSymbols1
-    lateinit var capacity: LinearSymbols1
+    lateinit var origin: LinearIntermediateSymbols1
+    lateinit var destination: LinearIntermediateSymbols1
+    lateinit var inFlow: LinearIntermediateSymbols2
+    lateinit var outFlow: LinearIntermediateSymbols2
+    lateinit var service: LinearIntermediateSymbols1
+    lateinit var capacity: LinearIntermediateSymbols1
 
     val metaModel = LinearMetaModel("demo17")
 
@@ -228,17 +228,17 @@ data object Demo17 {
     }
 
     private suspend fun initSymbol(): Try {
-        origin = LinearSymbols1("origin", Shape1(vehicles.size)) { i, _ ->
+        origin = LinearIntermediateSymbols1("origin", Shape1(vehicles.size)) { i, _ ->
             val v = vehicles[i]
             LinearExpressionSymbol(sum(nodes.filterIsInstance<OriginNode>().flatMap { n1 -> x[n1, _a, v] }), "origin_${v.index}")
         }
         metaModel.add(origin)
-        destination = LinearSymbols1("destination", Shape1(vehicles.size)) { i, _ ->
+        destination = LinearIntermediateSymbols1("destination", Shape1(vehicles.size)) { i, _ ->
             val v = vehicles[i]
             LinearExpressionSymbol(sum(nodes.filterIsInstance<EndNode>().flatMap { n2 -> x[_a, n2, v] }), "destination_${v.index}")
         }
         metaModel.add(destination)
-        inFlow = LinearSymbols2("in", Shape2(nodes.size, vehicles.size)) { _, vec ->
+        inFlow = LinearIntermediateSymbols2("in", Shape2(nodes.size, vehicles.size)) { _, vec ->
             val n2 = nodes[vec[0]]
             val v = vehicles[vec[1]]
             if (n2 is OriginNode) {
@@ -248,7 +248,7 @@ data object Demo17 {
             }
         }
         metaModel.add(inFlow)
-        outFlow = LinearSymbols2("out", Shape2(nodes.size, vehicles.size)) { _, vec ->
+        outFlow = LinearIntermediateSymbols2("out", Shape2(nodes.size, vehicles.size)) { _, vec ->
             val n1 = nodes[vec[0]]
             val v = vehicles[vec[1]]
             if (n1 is EndNode) {
@@ -258,7 +258,7 @@ data object Demo17 {
             }
         }
         metaModel.add(outFlow)
-        service = LinearSymbols1("service", Shape1(nodes.size)) { i, _ ->
+        service = LinearIntermediateSymbols1("service", Shape1(nodes.size)) { i, _ ->
             val n1 = nodes[i]
             if (n1 is OriginNode || n1 is EndNode) {
                 LinearExpressionSymbol(LinearPolynomial(), name = "service_(${n1.index})")
@@ -267,7 +267,7 @@ data object Demo17 {
             }
         }
         metaModel.add(service)
-        capacity = LinearSymbols1("capacity", Shape1(vehicles.size)) { i, _ ->
+        capacity = LinearIntermediateSymbols1("capacity", Shape1(vehicles.size)) { i, _ ->
             val v = vehicles[i]
             LinearExpressionSymbol(sum(nodes.flatMap { n1 ->
                 nodes.mapNotNull { n2 ->

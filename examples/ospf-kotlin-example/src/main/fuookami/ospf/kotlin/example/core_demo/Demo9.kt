@@ -28,8 +28,8 @@ data object Demo9 {
 
     lateinit var x: IntVar
     lateinit var y: IntVar
-    lateinit var dX: LinearSymbols1
-    lateinit var dY: LinearSymbols1
+    lateinit var dX: LinearIntermediateSymbols1
+    lateinit var dY: LinearIntermediateSymbols1
 
     private val metaModel = LinearMetaModel("demo9")
 
@@ -64,7 +64,7 @@ data object Demo9 {
     }
 
     private suspend fun initSymbol(): Try {
-        dX = LinearSymbols1("dx", Shape1(settlements.size)) { i, _ ->
+        dX = LinearIntermediateSymbols1("dx", Shape1(settlements.size)) { i, _ ->
             SlackFunction(
                 type = UInteger,
                 x = LinearPolynomial(x),
@@ -74,7 +74,7 @@ data object Demo9 {
         }
         metaModel.add(dX)
 
-        dY = LinearSymbols1("dy", Shape1(settlements.size)) { i, _ ->
+        dY = LinearIntermediateSymbols1("dy", Shape1(settlements.size)) { i, _ ->
             SlackFunction(
                 type = UInteger,
                 x = LinearPolynomial(y),
