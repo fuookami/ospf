@@ -1,8 +1,7 @@
 <template>
   <v-app>
-    <v-main :style="{ height: height + 'px' }" style="display:flex; flex-direction: column;" v-resize="resized">
-      <file-selector ref="fileSelector" @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage"/>
-      <gantt-renderer ref="ganttRenderer" :style="{ 'visibility': rendererVisibility }" style="width: 100%; flex: 1;"/>
+    <v-main :style="{ height: windowHeight + 'px' }" style="display:flex; flex-direction: column;">
+      <FileSelector ref="fileSelector" @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage"/>
 
       <v-dialog v-model="dialog" persistent max-width="30%">
         <v-card>
@@ -10,7 +9,7 @@
           <v-card-text v-html="message"></v-card-text>
           <v-card-actions>
             <v-spacer></v-spacer>
-            <v-btn color="green darken-1" text @click="dialog = false">关闭</v-btn>
+            <v-btn color="green darken-1" @click="dialog = false">关闭</v-btn>
           </v-card-actions>
         </v-card>
       </v-dialog>
@@ -18,43 +17,95 @@
   </v-app>
 </template>
 
-<script>
-import FileSelector from './components/file-selector.vue';
-import GanttRenderer from './components/gantt-renderer.vue';
+<script lang="ts">
+import {defineComponent, ComponentPublicInstance, HTMLAttributes, onMounted, ref} from "vue";
 
-export default {
+import FileSelector from "./components/file-selector.vue";
+
+export default defineComponent({
+  name: "App",
+
   components: {
-    FileSelector,
-    GanttRenderer
+    FileSelector
   },
 
-  data: () => ({
-    height: 0,
-    rendererVisibility: "hidden",
-    message: "",
-    dialog: false,
-  }),
+  setup() {
+    const windowHeight = ref(0);
+    const windowWidth = ref(0);
+    const rendererVisibility = ref("hidden");
+    const message = ref("");
+    const dialog = ref(false);
 
-  mounted() {
-    window.onresize = function () {
-      this.height = window.height;
+    const groups = ref<Array<Array<String>>>([]);
+
+    onMounted(() => {
+      resized();
+      window.addEventListener("resize", () => {
+        resized();
+      });
+    })
+
+    function isSameGroup(group1: Array<String>, group2: Array<String>): boolean {
+      if(group1.length !== group2.length) {
+        return false;
+      }
+
+      for(let i = 0; i < group1.length; i++) {
+        if(group1[i] !== group2[i]) {
+          return false;
+        }
+      }
+
+      return true;
     }
-  },
 
-  methods: {
-    async renderData(data) {
-      this.rendererVisibility = "visible";
-      await this.$refs.ganttRenderer.renderData(data);
-    },
+    function distinctGroups(groups: Array<Array<String>>): Array<Array<String>> {
+      const result: Array<Array<String>> = [];
+      for(let i = 0; i < groups.length; i++) {
+        if (groups[i].length === 0) {
+          result.push(groups[i]);
+        } else {
+          let isDistinct = true;
+          for(let j = 0; j < result.length; j++) {
+            if(isSameGroup(groups[i], result[j])) {
+              isDistinct = false;
+              break;
+            }
+          }
+          if(isDistinct) {
+            result.push(groups[i]);
+          }
+        }
+      }
+      return result;
+    }
 
-    async showMessage(message) {
-      this.message = message;
-      this.dialog = true;
-    },
+    function resized() {
+      windowWidth.value = window.innerWidth;
+      windowHeight.value = window.innerHeight;
 
-    async resized(event) {
-      await this.$refs.ganttRenderer.resize(this.$refs.ganttRenderer.$el.offsetWidth, this.$el.offsetHeight - this.$refs.fileSelector.$el.offsetHeight);
+    }
+
+    function renderData() {
+    }
+
+
+    function showMessage(msg: string) {
+      message.value = msg;
+      dialog.value = true;
+    }
+
+    return {
+      windowHeight,
+      windowWidth,
+      rendererVisibility,
+      message,
+      dialog,
+      groups,
+      resized,
+      renderData,
+      showMessage
     }
   }
-}
+});
 </script>
