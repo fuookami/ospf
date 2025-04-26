@@ -375,3 +375,4 @@ package-lock.json
 Cargo.lock
 .VSCodeCounter/
 *.ilp
+docs/.vitepress/cache/
