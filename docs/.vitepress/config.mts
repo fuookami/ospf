@@ -3,7 +3,8 @@ import { defineConfig } from 'vitepress'
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   title: "ospf",
-  description: "ospf document",
+  description: "ospf reference document",
+  base: '/ospf/',
 
   locales: {
     root: {
