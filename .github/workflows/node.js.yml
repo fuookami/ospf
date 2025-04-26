@@ -25,14 +25,3 @@ jobs:
         with:
           branch: docs
           folder: docs/.vitepress/dist
-  
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
-    runs-on: windows-latest
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
