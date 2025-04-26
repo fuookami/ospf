@@ -4,7 +4,7 @@ on:
     branches:
       - main
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout  ️ 
@@ -20,8 +20,18 @@ jobs:
           npm install
           npm run docs:build
 
-      - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@v4.3.3
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          branch: docs
-          folder: docs/.vitepress/dist
+          path: docs/.vitepress/dist   #构建输出目录
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
