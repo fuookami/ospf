@@ -281,6 +281,14 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❗</td>
       </tr>
       <tr>
+        <td>MVO</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+      </tr>
+      <tr>
         <td>SAA</td>
         <td>❗</td>
         <td>❌</td>

@@ -5,6 +5,11 @@ export default defineConfig({
   title: "ospf",
   description: "ospf document",
 
+  markdown: {
+    math: true,
+    lineNumbers: true
+  },
+
   locales: {
     root: {
       label: 'English',
@@ -12,7 +17,8 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: 'Home', link: '/' },
-          { text: 'Guide', link: '/guide/what-is-ospf' }
+          { text: 'Guide', link: '/guide/what-is-ospf' },
+          { text: 'Examples', link: '/examples/example1' }
         ],
         sidebar: {
           '/guide': [
@@ -24,10 +30,22 @@ export default defineConfig({
               ]
             }
           ],
+          '/examples': [
+            {
+              text: 'Simple Examples',
+              items: [
+                { 'text': 'Example 1: Assigning problem', link: '/examples/example1' },
+                { 'text': 'Example 2: Assigning problem', link: '/examples/example2' }
+              ]
+            }
+          ]
         },
         socialLinks: [
           { icon: 'github', link: 'https://github.com/fuookami/ospf' }
-        ]
+        ],
+        outline: {
+          level: [2, 3]
+        }
       }
     },
     'zh-cn': {
@@ -36,7 +54,8 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: '主页', link: '/zh-cn/' },
-          { text: '指南', link: '/zh-cn/guide/what-is-ospf' }
+          { text: '指南', link: '/zh-cn/guide/what-is-ospf' },
+          { text: '示例', link: '/zh-cn/examples/example1' }
         ],
         sidebar: {
           '/zh-cn/guide': [
@@ -48,10 +67,22 @@ export default defineConfig({
               ]
             }
           ],
+          '/zh-cn/examples': [
+            {
+              text: '简单示例',
+              items: [
+                { 'text': '示例 1：指派问题', link: '/zh-cn/examples/example1' },
+                { 'text': '示例 2：指派问题', link: '/zh-cn/examples/example2' }
+              ]
+            }
+          ]
         },
         socialLinks: [
           { icon: 'github', link: 'https://github.com/fuookami/ospf' }
-        ]
+        ],
+        outline: {
+          level: [2, 3]
+        }
       }
     }
   }

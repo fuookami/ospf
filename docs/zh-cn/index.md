@@ -5,7 +5,7 @@ layout: home
 hero:
   name: "ospf"
   text: "让运筹学像积木一样自由拼装"
-  tagline: "可插拔的约束、算子与算法，积木式搭建运筹学工作流，构建最优世界的榫卯结构"
+  tagline: "可插拔的约束、算子与算法，积木式搭建运筹学工作流，构建最优化领域的榫卯结构"
 
   actions:
     - theme: brand

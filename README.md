@@ -10,7 +10,7 @@ ospf is a solution for the modeling and coding process in developing complex ope
 
 ospf: https://github.com/fuookami/ospf
 
-The implementation for each host language can be found in the following code repository directories:：
+The implementation for each host language can be found in the following code repository directories:
 
 - C++：https://github.com/fuookami/ospf-cpp
 - C#：https://github.com/fuookami/ospf-csharp
@@ -277,7 +277,15 @@ each ospf implementation consists of the following components:
         <td>GA</td>
         <td>❗</td>
         <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
         <td>❗</td>
+      </tr>
+      <tr>
+        <td>MVO</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
         <td>❌</td>
         <td>❗</td>
       </tr>
