@@ -84,11 +84,11 @@ ospf is designed and implemented using an internal <strong><em>Domain Specific L
 
 ### Shared Components
 
-- <strong>[examples](examples)</strong>: examples demonstrating how to use ospf for modeling and solving.
+- <strong>[examples](https://github.com/fuookami/ospf/tree/main/examples)</strong>: examples demonstrating how to use ospf for modeling and solving.
 
-- <strong>[framework](framework)</strong>: a set of common components developed for specific problem domains, including visualization tools for results.
+- <strong>[framework](https://github.com/fuookami/ospf/tree/main/framework)</strong>: a set of common components developed for specific problem domains, including visualization tools for results.
 
-- <strong>[remote](remote)</strong>: a remote solver scheduler and server used to execute solvers on a server and retrieve results through a network interface.
+- <strong>[remote](https://github.com/fuookami/ospf/tree/main/remote)</strong>: a remote solver scheduler and server used to execute solvers on a server and retrieve results through a network interface.
 
 ### Components In Host Language Implementation 
 
