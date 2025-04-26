@@ -4,7 +4,7 @@ layout: home
 hero:
   name: "ospf"
   text: "Modularize Operations Research Like Blocks"
-  tagline: "Pluggable Constraints, Operators & Algorithms for Building OR Workflows, Constructing the Optimal World Through Dovetailed Architecture"
+  tagline: "Pluggable Constraints, Operators & Algorithms for Building OR Workflows, Constructing the Operational Research Algorithm Software Through Dovetailed Architecture"
 
   actions:
     - theme: brand
