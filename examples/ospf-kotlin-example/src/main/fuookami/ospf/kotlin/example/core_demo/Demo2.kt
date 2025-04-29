@@ -103,7 +103,7 @@ data object Demo2 {
         }, "cost")
         metaModel.add(cost)
 
-        assignmentCompany = LinearSymbols(
+        assignmentCompany = LinearIntermediateSymbols(
             "assignment_company",
             Shape1(companies.size)
         )

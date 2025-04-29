@@ -11,6 +11,7 @@ import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols1
 
 data object Demo14 {
     sealed interface Node : Indexed {
@@ -69,8 +70,8 @@ data object Demo14 {
     lateinit var x: UIntVariable2
 
     lateinit var cost: LinearIntermediateSymbol
-    lateinit var transOut: LinearSymbols1
-    lateinit var transIn: LinearSymbols1
+    lateinit var transOut: LinearIntermediateSymbols1
+    lateinit var transIn: LinearIntermediateSymbols1
 
     val metaModel = LinearMetaModel("demo14")
 
@@ -125,12 +126,12 @@ data object Demo14 {
             }), "cost"
         )
         metaModel.add(cost)
-        transOut = LinearSymbols1("out", Shape1(nodes.size)) { i, _ ->
+        transOut = LinearIntermediateSymbols1("out", Shape1(nodes.size)) { i, _ ->
             val node = nodes[i]
             LinearExpressionSymbol(sum(x[node, _a]), "out_${node.name}")
         }
         metaModel.add(transOut)
-        transIn = LinearSymbols1("in", Shape1(nodes.size)) { i, _ ->
+        transIn = LinearIntermediateSymbols1("in", Shape1(nodes.size)) { i, _ ->
             val node = nodes[i]
             LinearExpressionSymbol(sum(x[_a, node]), "in_${node.name}")
         }

@@ -83,11 +83,11 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
 
 ### 公共组件
 
-- examples: 样例，用于展示如何使用 ospf 进行建模、求解。
+- <strong>[examples](https://github.com/fuookami/ospf/tree/main/examples)</strong>: 样例，用于展示如何使用 ospf 进行建模、求解。
 
-- framework: 面向特定问题开发包的公用组件，包含结果可视化工具。
+- <strong>[framework](https://github.com/fuookami/ospf/tree/main/framework)</strong>: 面向特定问题开发包的公用组件，包含结果可视化工具。
 
-- remote: 远程求解调度器与服务端，用于在服务器上运行求解器，并通过网络接口获取结果。
+- <strong>[remote](https://github.com/fuookami/ospf/tree/main/remote)</strong>: 远程求解调度器与服务端，用于在服务器上运行求解器，并通过网络接口获取结果。
 
 ### 宿主语言实现组件
 

@@ -14,9 +14,9 @@ class NodeBandwidth(
     private val services: List<Service>,
     private val serviceBandwidth: ServiceBandwidth
 ) {
-    lateinit var inDegree: LinearSymbols1
-    lateinit var outDegree: LinearSymbols1
-    lateinit var outFlow: LinearSymbols1
+    lateinit var inDegree: LinearIntermediateSymbols1
+    lateinit var outDegree: LinearIntermediateSymbols1
+    lateinit var outFlow: LinearIntermediateSymbols1
 
     fun register(model: LinearMetaModel): Try {
         if (!::inDegree.isInitialized) {

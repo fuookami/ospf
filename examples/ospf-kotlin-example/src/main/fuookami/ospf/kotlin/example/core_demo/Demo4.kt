@@ -44,7 +44,7 @@ data object Demo4 {
 
     private lateinit var x: RealVariable1
     private lateinit var profit: LinearIntermediateSymbol
-    private lateinit var use: LinearSymbols1
+    private lateinit var use: LinearIntermediateSymbols1
 
     private val metaModel = LinearMetaModel("demo4")
 
@@ -83,7 +83,7 @@ data object Demo4 {
         profit = LinearExpressionSymbol(sum(products) { p -> p.profit * x[p] }, "profit")
         metaModel.add(profit)
 
-        use = LinearSymbols1("use", Shape1(materials.size)) { m, _ ->
+        use = LinearIntermediateSymbols1("use", Shape1(materials.size)) { m, _ ->
             val material = materials[m]
             val ps = products.filter { it.use.contains(material) }
             LinearExpressionSymbol(

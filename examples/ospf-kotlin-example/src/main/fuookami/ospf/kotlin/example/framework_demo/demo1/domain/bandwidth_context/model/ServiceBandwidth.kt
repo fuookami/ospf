@@ -13,9 +13,9 @@ class ServiceBandwidth(
     private val services: List<Service>,
     private val edgeBandwidth: EdgeBandwidth
 ) {
-    lateinit var inDegree: LinearSymbols2
-    lateinit var outDegree: LinearSymbols2
-    lateinit var outFlow: LinearSymbols2
+    lateinit var inDegree: LinearIntermediateSymbols2
+    lateinit var outDegree: LinearIntermediateSymbols2
+    lateinit var outFlow: LinearIntermediateSymbols2
 
     fun register(model: LinearMetaModel): Try {
         val y = edgeBandwidth.y

@@ -58,8 +58,8 @@ data object Demo7 {
     private lateinit var x: UIntVariable2
 
     private lateinit var cost: LinearIntermediateSymbol
-    private lateinit var shipment: LinearSymbols1
-    private lateinit var purchase: LinearSymbols1
+    private lateinit var shipment: LinearIntermediateSymbols1
+    private lateinit var purchase: LinearIntermediateSymbols1
 
     private val metaModel = LinearMetaModel("demo7")
 
@@ -104,7 +104,7 @@ data object Demo7 {
         }), "cost")
         metaModel.add(cost)
 
-        shipment = LinearSymbols1(
+        shipment = LinearIntermediateSymbols1(
             "shipment",
             Shape1(warehouses.size)
         ) { i, _ ->
@@ -116,7 +116,7 @@ data object Demo7 {
         }
         metaModel.add(shipment)
 
-        purchase = LinearSymbols1(
+        purchase = LinearIntermediateSymbols1(
             "purchase",
             Shape1(stores.size)
         ) { i, _ ->

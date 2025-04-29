@@ -11,6 +11,7 @@ import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols1
 
 data object Demo13 {
     data class Dealer(
@@ -65,8 +66,8 @@ data object Demo13 {
     lateinit var x: UIntVariable2
     lateinit var y: UIntVariable2
 
-    lateinit var trans: LinearSymbols1
-    lateinit var receive: LinearSymbols1
+    lateinit var trans: LinearIntermediateSymbols1
+    lateinit var receive: LinearIntermediateSymbols1
     lateinit var cost: LinearIntermediateSymbol
 
     val metaModel = LinearMetaModel("demo13")
@@ -102,12 +103,12 @@ data object Demo13 {
     }
 
     private suspend fun initSymbol(): Try {
-        trans = LinearSymbols1("trans", Shape1(distributionCenters.size)) { i, _ ->
+        trans = LinearIntermediateSymbols1("trans", Shape1(distributionCenters.size)) { i, _ ->
             val distributionCenter = distributionCenters[i]
             LinearExpressionSymbol(sum(x[_a, distributionCenter]), "trans_${distributionCenter.index}")
         }
         metaModel.add(trans)
-        receive = LinearSymbols1("receive", Shape1(dealers.size)) { i, _ ->
+        receive = LinearIntermediateSymbols1("receive", Shape1(dealers.size)) { i, _ ->
             val dealer = dealers[i]
             LinearExpressionSymbol(sum(x[dealer, _a]), "receive_${dealer.index}")
         }

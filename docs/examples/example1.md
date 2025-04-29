@@ -14,8 +14,8 @@ Several companies have their own capital, liabilities, and profits.
 
 Select a subset of companies to maximize total profit, while satisfying:
 
-1. Total capital is greater or equal than $10$ ；
-2. Total liabilities is less or equal than $5$ 。
+1. Total capital is greater than or equal to $10$ ；
+2. Total liabilities is less than or equal to $5$ 。
 
 ## 2. Mathematical Model
 

@@ -7,7 +7,11 @@ export default defineConfig({
 
   markdown: {
     math: true,
-    lineNumbers: true
+    lineNumbers: true,
+    theme: {
+      dark: "material-theme-darker",
+      light: "material-theme-lighter"
+    }
   },
 
   locales: {
