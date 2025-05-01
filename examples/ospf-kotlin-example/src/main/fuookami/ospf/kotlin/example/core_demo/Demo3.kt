@@ -57,7 +57,7 @@ data object Demo3 {
     private lateinit var x: UIntVariable1
 
     private lateinit var cost: LinearIntermediateSymbol
-    private lateinit var yieldSymbols: LinearSymbols1
+    private lateinit var yieldSymbols: LinearIntermediateSymbols1
 
     private val metaModel = LinearMetaModel("demo3")
 
@@ -96,7 +96,7 @@ data object Demo3 {
         cost = LinearExpressionSymbol(sum(materials) { it.cost * x[it] }, "cost")
         metaModel.add(cost)
 
-        yieldSymbols = LinearSymbols1("yield", Shape1(products.size)) { p, _ ->
+        yieldSymbols = LinearIntermediateSymbols1("yield", Shape1(products.size)) { p, _ ->
             val product = products[p]
             LinearExpressionSymbol(
                 sum(materials.filter { it.yieldValue.contains(product) }) { m ->

@@ -1,0 +1,29 @@
+.container {
+    min-width: 1240px !important;
+}
+
+.content-container {
+    min-width: 900px !important;
+}
+
+.content-container .main {
+    min-width: 900px !important;
+}
+
+.content-container .main .vp-doc {
+    min-width: 900px !important;
+}
+
+mjx-container {
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.mermaid {
+    display: flex;
+    justify-content: center;
+}
+
+.mermaid svg {
+    width: 75%;
+}

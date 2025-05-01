@@ -1,6 +1,6 @@
 # Example 1: Assignment Problem
 
-## 1. Problem Description
+## Problem Description
 
 Several companies have their own capital, liabilities, and profits.
 
@@ -14,62 +14,62 @@ Several companies have their own capital, liabilities, and profits.
 
 Select a subset of companies to maximize total profit, while satisfying:
 
-1. Total capital is greater or equal than $10$ ；
-2. Total liabilities is less or equal than $5$ 。
+1. Total capital is greater than or equal to $10$ ；
+2. Total liabilities is less than or equal to $5$ 。
 
-## 2. Mathematical Model
+## Mathematical Model
 
-### 1) Variables
+### Variables
 
 $x_{c}$ ：to select company $c$ 。
 
-### 2) Intermediate Expressions
+### Intermediate Expressions
 
-#### (1) Total Capital
+#### Total Capital
 
 $$
 Capital = \sum_{c \in C} Capital_{c} \cdot x_{c}
 $$
 
-#### (2) Total Liabilities
+#### Total Liabilities
 
 $$
 Liability = \sum_{c \in C} Liability_{c} \cdot x_{c}
 $$
 
-#### (3) Total Profit
+#### Total Profit
 
 $$
 Profit = \sum_{c \in C} Profit_{c} \cdot x_{c}
 $$
 
-### 3) Objective Function
+### Objective Function
 
-#### (1) Maximize Total Profit
+#### Maximize Total Profit
 
 $$
 max \quad Profit
 $$
 
-### 4) Constraints
+### Constraints
 
-#### (1) Minimum Capital Limit
+#### Minimum Capital Limit
 
 $$
 s.t. \quad Capital \geq Capital^{Min}
 $$
 
-#### (2) Maximum Liability Limit
+#### Maximum Liability Limit
 
 $$
 s.t. \quad Liability \leq Liability^{Max}
 $$
 
-## 3. Expected Result
+## Expected Result
 
 Optimal selection: companies A, B and C 。
 
-## 4. Code Implementation
+## Code Implementation
 
 ::: code-group
 

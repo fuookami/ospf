@@ -67,7 +67,7 @@ data object Demo8 {
     private lateinit var x: UIntVariable1
 
     private lateinit var profit: LinearIntermediateSymbol
-    private lateinit var manHours: LinearSymbols1
+    private lateinit var manHours: LinearIntermediateSymbols1
 
     private val metaModel = LinearMetaModel("demo8")
 
@@ -108,7 +108,7 @@ data object Demo8 {
         }), "profit")
         metaModel.add(profit)
 
-        manHours = LinearSymbols1(
+        manHours = LinearIntermediateSymbols1(
             "man_hours",
             Shape1(equipments.size)
         ) { i, _ ->

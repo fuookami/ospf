@@ -12,6 +12,7 @@ import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols1
 
 data object Demo12 {
     data class Product(
@@ -32,7 +33,7 @@ data object Demo12 {
 
     lateinit var x: UIntVariable1
 
-    lateinit var premium: LinearSymbols1
+    lateinit var premium: LinearIntermediateSymbols1
     lateinit var yield: LinearIntermediateSymbol
 
     val metaModel = LinearMetaModel("demo12")
@@ -66,7 +67,7 @@ data object Demo12 {
     }
 
     private suspend fun initSymbol(): Try {
-        premium = LinearSymbols1("premium", Shape1(products.size)) { i, _ ->
+        premium = LinearIntermediateSymbols1("premium", Shape1(products.size)) { i, _ ->
             val product = products[i]
             MaxFunction(
                 listOf(

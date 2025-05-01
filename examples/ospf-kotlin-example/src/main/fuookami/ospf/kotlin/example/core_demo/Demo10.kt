@@ -12,6 +12,7 @@ import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols1
 
 data object Demo10 {
     data class City(
@@ -59,8 +60,8 @@ data object Demo10 {
     lateinit var u: IntVariable1
 
     lateinit var distance: LinearIntermediateSymbol
-    lateinit var depart: LinearSymbols1
-    lateinit var reached: LinearSymbols1
+    lateinit var depart: LinearIntermediateSymbols1
+    lateinit var reached: LinearIntermediateSymbols1
 
     private val metaModel = LinearMetaModel("demo10")
 
@@ -123,11 +124,11 @@ data object Demo10 {
                 }
             }
         }), "distance")
-        depart = LinearSymbols1("depart", Shape1(cities.size)) { i, _ ->
+        depart = LinearIntermediateSymbols1("depart", Shape1(cities.size)) { i, _ ->
             val city = cities[i]
             LinearExpressionSymbol(sum(x[city, _a]), "depart_${city.name}")
         }
-        reached = LinearSymbols1("reached", Shape1(cities.size)) { i, _ ->
+        reached = LinearIntermediateSymbols1("reached", Shape1(cities.size)) { i, _ ->
             val city = cities[i]
             LinearExpressionSymbol(sum(x[_a, city]), "reached_${city.name}")
         }

@@ -10,6 +10,7 @@ import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols1
 
 data object Demo11 {
     sealed class Node : AutoIndexed(Node::class)
@@ -57,8 +58,8 @@ data object Demo11 {
     lateinit var x: UIntVariable2
     lateinit var flow: UIntVar
 
-    lateinit var flowIn: LinearSymbols1
-    lateinit var flowOut: LinearSymbols1
+    lateinit var flowIn: LinearIntermediateSymbols1
+    lateinit var flowOut: LinearIntermediateSymbols1
 
     val metaModel = LinearMetaModel("demo11")
 
@@ -104,11 +105,11 @@ data object Demo11 {
     }
 
     private suspend fun initSymbol(): Try {
-        flowIn = LinearSymbols1("flow_in", Shape1(nodes.size)) { i, _ ->
+        flowIn = LinearIntermediateSymbols1("flow_in", Shape1(nodes.size)) { i, _ ->
             LinearExpressionSymbol(sum(x[_a, i]), "flow_in_$i")
         }
         metaModel.add(flowIn)
-        flowOut = LinearSymbols1("flow_out", Shape1(nodes.size)) { i, _ ->
+        flowOut = LinearIntermediateSymbols1("flow_out", Shape1(nodes.size)) { i, _ ->
             LinearExpressionSymbol(sum(x[i, _a]), "flow_out_$i")
         }
         metaModel.add(flowOut)
