@@ -1,4 +1,4 @@
-# What is ospf?
+# What is ospf ?
 
 ospf is a solution for the modeling and coding process in developing complex operational research algorithm software, along with its development components. It aims to provide a modeling approach based on <strong><em>Domain Driven Design</em></strong> (DDD), enabling users to efficiently develop and maintain mathematical models, solution algorithms, and their implementation code throughout the entire software lifecycle.
 
@@ -9,6 +9,83 @@ The implementation for each host language can be found in the following code rep
 - Kotlin：https://github.com/fuookami/ospf-kotlin
 - Python：https://github.com/fuookami/ospf-python
 - Rust：https://github.com/fuookami/ospf-rust
+
+## Prologue
+
+When building complex systems, software engineers intentionally or unintentionally apply numerous cognitive models. It is precisely these effective cognitive models that enable us to construct today's highly intricate information systems, ushering us into the era of digital intelligence. These cognitive models include, but are not limited to: abstraction, layering, divide-and-conquer, evolution, protocols, and more. They are now ubiquitous in the architectural design of our various information systems.
+
+During the execution of cognitive tasks, we inevitably need to temporarily store and process information, a process that engages what cognitive psychology refers to as working memory —— the central hub of human cognition. However, working memory has its limits; in other words, there is a cap on the number of things we can process simultaneously. It is generally believed that we can handle up to four "chunks" at a time. These "chunks" can be numbers, letters, words, or other forms. Yet, once we master a mathematical or scientific technique, or a certain concept, the space it occupies in working memory shrinks. The freed-up mental capacity then allows us to more easily handle other ideas.
+
+So, how is abstraction applied in our software architecture design? Simply put, abstraction involves assembling basic elements into a composite element and then using that composite element directly. Below, we can see three code snippets that express the same semantic meaning—comparing the sizes of two rectangles—with progressively increasing levels of abstraction.
+
+<b>Procedure Oriented 1</b>:
+```rust
+fn main() {
+    let length1: f64 = 10.;
+    let width1: f64 = 8.;
+    let area1 = length1 * width1;
+    let length2: f64 = 11.;
+    let width2: f64 = 7.;
+    let area2 = length2 * width2;
+    assert (area1 > area2);
+}
+```
+
+<b>Procedure Oriented 2</b>:
+```rust
+fn area(length: f64, width: f64) -> f64 {
+    length * width
+}
+
+fn bigger_than(length1: f64, width1: f64, length2: f64, width: f64) -> bool {
+    area(length1, width1) > area(length2, width2)
+}
+
+fn main() {
+    let length1: f64 = 10.;
+    let width1: f64 = 8.;
+    let length2: f64 = 11.;
+    let width2: f64 = 7.;
+    assert (bigger_than(length1, width1, length2, width2));
+}
+```
+
+<b>Object Oriented</b>
+```rust
+struct Rectangle {
+    length: f64,
+    width: f64
+}
+
+impl Rectangle {
+    fn new(l: f64, w: f64) -> Self {
+        Self {
+            length: l,
+            width: w
+        }
+    }
+
+    fn area(&self) -> f64 {
+        self.length * self.width
+    }
+
+    fn bigger_than(&self, rhs: &Self) -> bool {
+        self.area() > rhs.area()
+    }
+}
+
+fn main() {
+    let r1 = Rectangle::new(10., 8.);
+    let r2 = Rectangle::new(11., 7.);
+    assert (r1.bigger_than(&r2));
+}
+```
+
+The first segment has no abstraction at all. The second segment abstracts the computational process and then utilizes these processes, which we generally refer to as <b>Procedural-Oriented</b>. The third segment abstracts both the concept of a rectangle and the computational processes around it, then employs this concept and these processes, which we generally call <b>Object-Oriented</b>.
+
+As the level of abstraction increases, we can easily observe that the amount of code in the main function gradually decreases while the semantic clarity improves. Even though the final segment has the largest actual code volume, in modern practice, nearly all programmers adopt the third approach. Since compilers can translate it into the same machine code, developers naturally prefer a more human-readable coding style.
+
+Traditional operations research algorithm development lacks such abstraction methods. Without abstraction, product engineers and algorithm engineers, or even algorithm engineers among themselves, struggle to communicate effectively due to the absence of a unified common language. Moreover, without applying software architecture design techniques in practice, the implementation code of mathematical models becomes difficult to reuse. In large-scale OR algorithm development, this leads to significant wasted effort on repetitive tasks. Additionally, the coding style of mathematical model implementations tends to be heavily influenced by individual algorithm engineers, making collaboration between them challenging.
 
 ## Intermediate Expression
 
@@ -77,6 +154,289 @@ $$
 Of course, you can also extend these intermediate expressions according to your own business requirements. At this point, you need to implement some interfaces to let ospf know which intermediate variables and constraints need to be added for these intermediate expressions.
 
 The <em>ospf-core</em> only maintains arithmetic and logical functions. In fact, we can design and implement functional intermediate expressions based entirely on the domain, as part of domain engineering. For specific references, you can refer to the development package for specific problem domains in the <em>ospf-framework</em>.
+
+## Changes when Modeling with ospf
+
+### Problem Description
+
+In a given telecommunications network structure, in order to deliver video content to each residential area quickly and at low cost, it is necessary to place video content storage servers near selected network nodes within this predefined network architecture.
+
+<div align="center">
+  <img src="/images/framework-example1.png">
+</div>
+
+It is now known that:
+1. Each link has a bandwidth $Bandwidth^{Max}$ and bandwidth cost $Cost^{Bandwidth}$ ;
+2. Each server has a capacity $Capacity$ and service cost $Cost^{Service}$ ;
+3. Each consumer node has a demand $Demand$ .
+
+Determine the placement locations of video content storage servers and the bandwidth links to minimize server usage costs and link usage costs, while satisfying the following conditions:
+1. At most one server can be deployed at each node;
+2. Each server can be deployed to at most one node;
+3. All residential area video playback demands must be met;
+4. The traffic at transit nodes must be balanced.
+
+### Tranditional Modeling
+
+#### Sets
+
+$N$: set of nodes.
+
+$N^{N}$: set of normal (non-consumer) nodes.
+
+$N^{C}$: set of consumer nodes.
+
+$S$: set of services.
+
+$E$: set of links.
+
+#### Constants
+
+$Cost^{Service}_{s}$: service cost of service $s$.
+
+$Cost^{Bandwidth}_{e_{ij}}$: bandwidth cost of link between node $i$ and node $j$.
+
+$Bandwidth^{Max}_{e_{ij}}$: maximum bandwidth of link between node $i$ and node $j$.
+
+$Capacity_{s}$: capacity of server $s$.
+
+$Demand_{i}$: bandwidth demand of node $i$.
+
+#### Variables
+
+$x_{is}$: whether server $s$ is deployed on node $i$.
+
+$y_{e_{ij}, s}$: whether link $e_{ij}$ is used by server $s$.
+
+#### Objective Function
+
+$$
+\begin{align} Min \quad
+& \sum_{s \in S} Cost^{Service}_{s} \cdot \sum_{i \in N^{N}} x_{is} \tag{1} \\
+& + \sum_{i \in N^{N}}\sum_{j \in N^{N}} Cost^{Bandwidth}_{e_{ij}} \cdot \sum_{s \in S} y_{e_{ij}, s} \tag{2}
+\end{align}
+$$
+
+Here, $(1)$ represents the server usage cost, and $(2)$ represents the bandwidth usage cost.
+
+#### Constraints
+
+$$
+\begin{align}
+s.t. \quad & \sum_{s \in S} x_{is} \leq 1, & \; \forall i \in N^{N} \tag{3} \\
+& \sum_{i \in N^{N}} x_{is} \leq 1, & \; \forall s \in S \tag{4} \\
+& y_{e_{ij}, s} \leq Bandwidth^{Max}_{e_{ij}} \cdot \sum_{i \in N^{N}} x_{is}, & \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S \tag{5} \\
+& \sum_{s \in S}\sum_{i \in N^{N}} y_{e_{ij}, s} \geq Demand_{i}, & \; \forall j \in N^{C} \tag{6} \\
+& \sum_{j \in N} y_{e_{ij}, s} - \sum_{j \in N^{N}} y_{e_{ji}, s} \leq \sum_{j \in N} Bandwidth^{Max}_{e_{ij}} \cdot \sum_{s \in S} x_{js}, & \; \forall i \in N^{N} \tag{7} \\
+& \sum_{j \in N} y_{e_{ij}, s} - \sum_{j \in N^{N}} y_{e_{ji}, s} \leq Capacity_{s} \cdot x_{is}, & \; \forall i \in N^{N}, \; \forall s \in S \tag{8} \\
+& x_{is} \in \{0, 1\}, & \; \forall i \in N^{N}, \; \forall s \in S \tag{9} \\
+& y_{e_{ij}, s} \in R^{\ast}, & \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S \tag{10}
+\end{align}
+$$
+
+Here, $(3)$ ensures that at most one server can be deployed on each node, $(4)$ restricts each server to be deployed on at most one node, $(5)$ constrains the bandwidth usage of each link not to exceed its maximum capacity and ensures that only servers can consume bandwidth, $(6)$ enforces the satisfaction of consumer node demands, $(7)$ imposes flow balance constraints on transit nodes, $(8)$ limits the net output of server nodes to their capacity, and $(9)$ and $(10)$ define the feasible ranges of the variables.
+
+### Modeling with ospf: Abstract and Encapsulate Duplicate Parts Using Intermediate Expression
+
+#### Overview
+
+The design method for mathematical models based on large-scale reuse is essentially an approach that abstracts and modularizes mathematical models using intermediate values. The intermediate values extracted within each bounded context serve as the interfaces for that context, which other contexts can then utilize.
+
+In this problem, we can easily identify two interdependent business domains: route and bandwidth. The route domain describes whether a server is in use and, if so, where it is deployed. The bandwidth domain builds upon the route domain, describing the bandwidth occupied on each link given such a deployment of server clusters. We will proceed with mathematical modeling based on this bounded context partitioning approach.
+
+#### Route Domain
+
+##### Variables
+
+$x_{is} \in \{0, 1\}$: whether server $s$ is deployed on node $i$.
+
+##### Intermediate Expressions
+
+###### Whether Any Server is Deployed on Node
+
+$$
+Assignment^{Node}_{i} = \sum_{s \in S} x_{is}, \; \forall i \in N^{N}
+$$
+
+###### Whether Server is Deployed on Any Node
+
+$$
+Assignment^{Server}_{s} = \sum_{i \in N^{N}} x_{is}, \; \forall s \in S
+$$
+
+##### Objective Function
+
+###### Minimize Server Cost
+
+**Description**: Minimize the total cost of deploying servers on nodes.
+
+$$
+min \quad \sum_{s \in S} Cost^{Service}_{s} \cdot Assignment^{Service}_{s}
+$$
+
+##### Constraints
+
+###### Node Deployment Limit
+
+**Description**: At most one server can be deployed on each node.
+
+$$
+s.t. \quad Assignment^{Node}_{i} \leq 1, \; \forall i \in N^{N}
+$$
+
+###### Server Deployment Limit
+
+**Description**: Each server can be deployed to at most one node.
+
+$$
+s.t. \quad Assignment^{Server}_{s} \leq 1, \; \forall s \in S
+$$
+
+#### Bandwidth Domain
+
+##### Variables
+
+$y_{e_{ij}, s} \in R^{\ast}$: whether server $s$ occupies the bandwidth of the ordinary link from node $i$ to node $j$.
+
+##### Intermediate Expressions
+
+###### Bandwidth Usage
+
+$$
+Bandwidth_{e_{ij}} = \sum_{s \in S} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall j \in N
+$$
+
+###### Indegree Bandwidth
+
+$$
+Bandwidth^{Indegree, Service}_{js} = \sum_{i \in N^{N}} y_{e_{ij}, s}, \; \forall j \in N, \; \forall s \in S
+$$
+
+$$
+Bandwidth^{Indegree, Node}_{j} = \sum_{s \in S} Bandwidth^{Indegree, Service}_{js}, \; \forall j \in N
+$$
+
+###### Outdegree Bandwidth
+
+$$
+Bandwidth^{Outdegree, Service}_{is} = \sum_{j \in N} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall s \in S
+$$
+
+$$
+Bandwidth^{Outdegree, Node}_{i} = \sum_{s \in S} Bandwidth^{Outdegree, Service}_{js}, \; \forall i \in N^{N}
+$$
+
+###### OutFlow Bandwidth
+
+$$
+Bandwidth^{OutFlow, Service}_{is} = Bandwidth^{Outdegree, Service}_{is} - Bandwidth^{Indegree, Service}_{is}, \; \forall i \in N^{N}, \; \forall s \in S
+$$
+
+$$
+Bandwidth^{OutFlow, Node}_{i} = \sum_{s \in S} Bandwidth^{OutFlow, Service}_{is}, \; \forall i \in N^{N}
+$$
+
+##### Objective Function
+
+###### Minimize Bandwidth Usage Cost
+
+**Description**: Minimize the total cost of using bandwidth on links.
+
+$$
+min \quad \sum_{i \in N^{N}}\sum_{j \in N^{N}} Cost^{Bandwidth}_{e_{ij}} \cdot Bandwidth_{e_{ij}}
+$$
+
+##### Constraints
+
+###### Bandwidth Usage Limit
+
+**Description**: The bandwidth usage of each link not to exceed its maximum capacity and ensures that only servers can consume bandwidth.
+
+$$
+s.t. \quad y_{e_{ij}, s} \leq Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S
+$$
+
+###### Demand Satisfaction Limit
+
+**Description**: Enforce the satisfaction of consumer node demands.
+
+$$
+s.t. \quad \sum_{s \in S} Bandwidth^{OutFlow, Service}_{is} \geq Demand_{i}, \; \forall i \in N^{C}
+$$
+
+###### Flow Balance Limit
+
+**Description**: Impose flow balance constraints on transit nodes.
+
+$$
+s.t. \quad \sum_{j \in N} y_{e_{ij}, s} - \sum_{j \in N^{N}} y_{e_{ji}, s} \leq \sum_{j \in N} Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall s \in S
+$$
+
+###### Server Capacity Limit
+
+**Description**: Limit the outflow of server nodes to their capacity.
+
+$$
+s.t. \quad \sum_{j \in N} y_{e_{ij}, s} - \sum_{j \in N^{N}} y_{e_{ji}, s} \leq Capacity_{s} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall s \in S
+$$
+
+Code implementation refers to [example page](/examples/framework-example1)
+
+#### Business Architecture and Integration Architecture
+
+The mathematical model design method based on large-scale reuse divides the model into two bounded contexts: route and bandwidth, effectively splitting the monolithic server placement business into these two distinct themes. The final delivered algorithmic application is responsible for integrating these two parts to provide a complete algorithmic service. This process is generally referred to as <b> mapping the problem space to the solution space</b>. A key characteristic of this approach is that the domain layer and application layer of the integration architecture align structurally with the business architecture.
+
+```mermaid
+C4Context
+  System_Boundary(ServiceLayer, "Service Layer") {
+    System(AlgorithmService, "Algorithm Service")
+  }
+  System_Boundary(ApplicationLayer, "Application Layer") {
+    System(Application, "Algorithm Application")
+  }
+  System_Boundary(DomainLayer, "Domain Layer") {
+    System(RouteContext, "Route Context")
+    System(BandwidthContext, "Bandwidth Context")
+  }
+
+  Rel(AlgorithmService, Application, "", "")
+  Rel(Application, RouteContext, "", "")
+  Rel(Application, BandwidthContext, "", "")
+  Rel(BandwidthContext, RouteContext, "", "")
+
+  UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
+```
+
+If we also have different users with multi-active requirements on top of these foundational services, we can similarly decouple the multi-active logic and implement it as a multi-active bounded context. By constructing an algorithmic application that integrates route context, bandwidth context, and multi-active context, we can deliver a multi-active-aware solution relatively quickly—leveraging the existing route and bandwidth contexts instead of reimplementing them from scratch.
+
+```mermaid
+C4Context
+  System_Boundary(ServiceLayer, "Service Layer") {
+    System(AlgorithmService, "Algorithm Service")
+  }
+  System_Boundary(ApplicationLayer, "Application Layer") {
+    System(NormalApplication, "Normal Algorithm Application")
+    System(MultiActiveApplication, "Multi Active Application")
+  }
+  System_Boundary(DomainLayer, "Domain Layer") {
+    System(RouteContext, "Route Context")
+    System(BandwidthContext, "Bandwidth Context")
+    System(MultiActiveContext, "Multi Active Context")
+  }
+
+  Rel(AlgorithmService, NormalApplication, "", "")
+  Rel(NormalApplication, RouteContext, "", "")
+  Rel(NormalApplication, BandwidthContext, "", "")
+  Rel(MultiActiveApplication, RouteContext, "", "")
+  Rel(MultiActiveApplication, BandwidthContext, "", "")
+  Rel(MultiActiveApplication, MultiActiveContext, "", "")
+  Rel(BandwidthContext, RouteContext, "", "")
+  Rel(MultiActiveContext, RouteContext, "", "")
+
+  UpdateLayoutConfig($c4ShapeInRow="4", $c4BoundaryInRow="1")
+```
+
+More broadly, if we carefully plan and implement the bounded contexts in the domain layer to construct an operations research mathematical model library—akin to a knowledge base—we can then integrate these bounded contexts to rapidly deliver the algorithmic applications users require. The process of building these library components is generally referred to as <b> domain engineering </b>.
 
 ## Components
 

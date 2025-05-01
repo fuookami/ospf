@@ -1,6 +1,6 @@
 # Example 2: Assignment Problem
 
-## 1. Problem Description
+## Problem Description
 
 There are several companies and products. Each company incurs a specific cost to produce each product.
 
@@ -13,59 +13,59 @@ There are several companies and products. Each company incurs a specific cost to
 
 The goal is to assign distinct companies to produce different products such that the total cost is minimized.
 
-## 2. Mathematical Model
+## Mathematical Model
 
-### 1) Variables
+### Variables
 
 $x_{cp}$ ：whether company $c$ is assigned to produce product $p$ 。
 
-### 2) Intermediate Expressions
+### Intermediate Expressions
 
-#### (1) Total Cost
+#### Total Cost
 
 $$
 Cost = \sum_{c \in C}\sum_{p \in P}Cost_{cp} \cdot x_{cp}
 $$
 
-#### (2) Company Assignment
+#### Company Assignment
 
 $$
 Assignment^{Company}_{c} = \sum_{p \in P}x_{cp}, \; \forall c \in C
 $$
 
-#### (3) Product Assignment
+#### Product Assignment
 
 $$
 Assignment^{Product}_{p} = \sum_{p \in P}x_{cp}, \; \forall p \in P
 $$
 
-### 3) Objective Function
+### Objective Function
 
-#### (1) Minimize Total Cost
+#### Minimize Total Cost
 
 $$
 min \quad Cost
 $$
 
-### 4) Constraints
+### Constraints
 
-#### (1) Company Assignment Limit
+#### Company Assignment Limit
 
 $$
 s.t. \quad Assignment^{Company}_{c} \leq 1, \; \forall c \in C
 $$
 
-#### (2) Product Assignment Limit
+#### Product Assignment Limit
 
 $$
 s.t. \quad Assignment^{Product}_{p} = 1, \; \forall p \in P
 $$
 
-## 3. Expected Result
+## Expected Result
 
 Company A produces product C, company B produces product D, company C produces product A, and company D produces product B.
 
-## 4. Code Implementation
+## Code Implementation
 
 ::: code-group
 
