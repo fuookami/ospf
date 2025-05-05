@@ -21,27 +21,27 @@ $x_{cp}$ ：whether company $c$ is assigned to produce product $p$ 。
 
 ### Intermediate Expressions
 
-#### Total Cost
+#### 1. Total Cost
 
 $$
-Cost = \sum_{c \in C}\sum_{p \in P}Cost_{cp} \cdot x_{cp}
+Cost = \sum_{c \in C} \sum_{p \in P} Cost_{cp} \cdot x_{cp}
 $$
 
-#### Company Assignment
+#### 2. Company Assignment
 
 $$
-Assignment^{Company}_{c} = \sum_{p \in P}x_{cp}, \; \forall c \in C
+Assignment^{Company}_{c} = \sum_{p \in P} x_{cp}, \; \forall c \in C
 $$
 
-#### Product Assignment
+#### 3. Product Assignment
 
 $$
-Assignment^{Product}_{p} = \sum_{p \in P}x_{cp}, \; \forall p \in P
+Assignment^{Product}_{p} = \sum_{p \in P} x_{cp}, \; \forall p \in P
 $$
 
 ### Objective Function
 
-#### Minimize Total Cost
+#### 1. Minimize Total Cost
 
 $$
 min \quad Cost
@@ -49,13 +49,13 @@ $$
 
 ### Constraints
 
-#### Company Assignment Limit
+#### 1. Company Assignment Limit
 
 $$
 s.t. \quad Assignment^{Company}_{c} \leq 1, \; \forall c \in C
 $$
 
-#### Product Assignment Limit
+#### 2. Product Assignment Limit
 
 $$
 s.t. \quad Assignment^{Product}_{p} = 1, \; \forall p \in P
@@ -197,6 +197,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-完整实现请参考：
+For the complete implementation, please refer to:
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo2.kt)

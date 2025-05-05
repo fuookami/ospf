@@ -25,19 +25,19 @@ $x_{c}$ ：to select company $c$ 。
 
 ### Intermediate Expressions
 
-#### Total Capital
+#### 1. Total Capital
 
 $$
 Capital = \sum_{c \in C} Capital_{c} \cdot x_{c}
 $$
 
-#### Total Liabilities
+#### 2. Total Liabilities
 
 $$
 Liability = \sum_{c \in C} Liability_{c} \cdot x_{c}
 $$
 
-#### Total Profit
+#### 3. Total Profit
 
 $$
 Profit = \sum_{c \in C} Profit_{c} \cdot x_{c}
@@ -45,7 +45,7 @@ $$
 
 ### Objective Function
 
-#### Maximize Total Profit
+#### 1. Maximize Total Profit
 
 $$
 max \quad Profit
@@ -53,13 +53,13 @@ $$
 
 ### Constraints
 
-#### Minimum Capital Limit
+#### 1. Minimum Capital Limit
 
 $$
 s.t. \quad Capital \geq Capital^{Min}
 $$
 
-#### Maximum Liability Limit
+#### 2. Maximum Liability Limit
 
 $$
 s.t. \quad Liability \leq Liability^{Max}

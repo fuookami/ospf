@@ -1,7 +1,6 @@
 package fuookami.ospf.kotlin.example.core_demo
 
 import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.concept.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.utils.multi_array.*
@@ -18,7 +17,7 @@ data object Demo3 {
 
     data class Material(
         val cost: Flt64,
-        val yieldValue: Map<Product, Flt64>
+        val yieldQuantity: Map<Product, Flt64>
     ) : AutoIndexed(Material::class)
 
     private val products = listOf(
@@ -57,7 +56,7 @@ data object Demo3 {
     private lateinit var x: UIntVariable1
 
     private lateinit var cost: LinearIntermediateSymbol
-    private lateinit var yieldSymbols: LinearIntermediateSymbols1
+    private lateinit var yield: LinearIntermediateSymbols1
 
     private val metaModel = LinearMetaModel("demo3")
 
@@ -96,16 +95,16 @@ data object Demo3 {
         cost = LinearExpressionSymbol(sum(materials) { it.cost * x[it] }, "cost")
         metaModel.add(cost)
 
-        yieldSymbols = LinearIntermediateSymbols1("yield", Shape1(products.size)) { p, _ ->
+        yield = LinearIntermediateSymbols1("yield", Shape1(products.size)) { p, _ ->
             val product = products[p]
             LinearExpressionSymbol(
-                sum(materials.filter { it.yieldValue.contains(product) }) { m ->
-                    m.yieldValue[product]!! * x[m]
+                sum(materials.filter { it.yieldQuantity.contains(product) }) { m ->
+                    m.yieldQuantity[product]!! * x[m]
                 },
                 "yieldProduct_${p}"
             )
         }
-        metaModel.add(yieldSymbols)
+        metaModel.add(yield)
 
         return ok
     }
@@ -117,7 +116,7 @@ data object Demo3 {
 
     private suspend fun initConstraint(): Try {
         for (p in products) {
-            metaModel.addConstraint(yieldSymbols[p.index] geq p.minYield)
+            metaModel.addConstraint(yield[p.index] eq p.minYield)
         }
         return ok
     }

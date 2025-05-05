@@ -21,27 +21,27 @@ $x_{cp}$ ：选择企业 $c$ 生产产品 $p$ 。
 
 ### 中间值
 
-#### 总成本
+#### 1. 总成本
 
 $$
-Cost = \sum_{c \in C}\sum_{p \in P}Cost_{cp} \cdot x_{cp}
+Cost = \sum_{c \in C} \sum_{p \in P} Cost_{cp} \cdot x_{cp}
 $$
 
-#### 企业是否被指派
+#### 2. 企业是否被指派
 
 $$
-Assignment^{Company}_{c} = \sum_{p \in P}x_{cp}, \; \forall c \in C
+Assignment^{Company}_{c} = \sum_{p \in P} x_{cp}, \; \forall c \in C
 $$
 
-#### 产品是否被指派
+#### 3. 产品是否被指派
 
 $$
-Assignment^{Product}_{p} = \sum_{p \in P}x_{cp}, \; \forall p \in P
+Assignment^{Product}_{p} = \sum_{p \in P} x_{cp}, \; \forall p \in P
 $$
 
 ### 目标函数
 
-#### 总成本最小
+#### 1. 总成本最小
 
 $$
 min \quad Cost
@@ -49,13 +49,13 @@ $$
 
 ### 约束
 
-#### 每个企业最多生产一个产品
+#### 1. 每个企业最多生产一个产品
 
 $$
 s.t. \quad Assignment^{Company}_{c} \leq 1, \; \forall c \in C
 $$
 
-#### 每个产品必须要被生产
+#### 2. 每个产品必须要被生产
 
 $$
 s.t. \quad Assignment^{Product}_{p} = 1, \; \forall p \in P
@@ -86,8 +86,8 @@ data class Company(
     val cost: Map<Product, Flt64>
 ) : AutoIndexed(Company::class)
 
-private val products = listOf(Product(), Product(), Product(), Product())
-private val companies = listOf(
+val products = listOf(Product(), Product(), Product(), Product())
+val companies = listOf(
     Company(
         mapOf(
             products[0] to Flt64(920.0),

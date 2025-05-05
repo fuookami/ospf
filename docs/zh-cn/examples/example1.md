@@ -25,19 +25,19 @@ $x_{c}$ ：是否选择企业 $c$ 。
 
 ### 中间值
 
-#### 总财产数量
+#### 1. 总财产数量
 
 $$
 Capital = \sum_{c \in C} Capital_{c} \cdot x_{c}
 $$
 
-#### 总债务量
+#### 2. 总债务量
 
 $$
 Liability = \sum_{c \in C} Liability_{c} \cdot x_{c}
 $$
 
-#### 总收益量
+#### 3. 总收益量
 
 $$
 Profit = \sum_{c \in C} Profit_{c} \cdot x_{c}
@@ -45,7 +45,7 @@ $$
 
 ### 目标函数
 
-#### 总收益量最大
+#### 1. 总收益量最大
 
 $$
 max \quad Profit
@@ -53,13 +53,13 @@ $$
 
 ### 约束
 
-#### 总财产数量要大于最小值
+#### 1. 总财产数量要大于最小值
 
 $$
 s.t. \quad Capital \geq Capital^{Min}
 $$
 
-#### (2) 总债务数量要小于最大值
+#### 2. 总债务数量要小于最大值
 
 $$
 s.t. \quad Liability \leq Liability^{Max}

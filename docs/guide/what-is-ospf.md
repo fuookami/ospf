@@ -252,13 +252,13 @@ $x_{is} \in \{0, 1\}$: whether server $s$ is deployed on node $i$.
 
 ##### Intermediate Expressions
 
-###### Whether Any Server is Deployed on Node
+###### 1. Whether Any Server is Deployed on Node
 
 $$
 Assignment^{Node}_{i} = \sum_{s \in S} x_{is}, \; \forall i \in N^{N}
 $$
 
-###### Whether Server is Deployed on Any Node
+###### 2. Whether Server is Deployed on Any Node
 
 $$
 Assignment^{Server}_{s} = \sum_{i \in N^{N}} x_{is}, \; \forall s \in S
@@ -266,7 +266,7 @@ $$
 
 ##### Objective Function
 
-###### Minimize Server Cost
+###### 1. Minimize Server Cost
 
 **Description**: Minimize the total cost of deploying servers on nodes.
 
@@ -276,7 +276,7 @@ $$
 
 ##### Constraints
 
-###### Node Deployment Limit
+###### 1. Node Deployment Limit
 
 **Description**: At most one server can be deployed on each node.
 
@@ -284,7 +284,7 @@ $$
 s.t. \quad Assignment^{Node}_{i} \leq 1, \; \forall i \in N^{N}
 $$
 
-###### Server Deployment Limit
+###### 2. Server Deployment Limit
 
 **Description**: Each server can be deployed to at most one node.
 
@@ -296,17 +296,17 @@ $$
 
 ##### Variables
 
-$y_{e_{ij}, s} \in R^{\ast}$: whether server $s$ occupies the bandwidth of the ordinary link from node $i$ to node $j$.
+$y_{e_{ij}, s} \in R^{\ast}$: whether link $e_{ij}$ is used by server $s$.
 
 ##### Intermediate Expressions
 
-###### Bandwidth Usage
+###### 1. Bandwidth Usage
 
 $$
 Bandwidth_{e_{ij}} = \sum_{s \in S} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall j \in N
 $$
 
-###### Indegree Bandwidth
+###### 2. Indegree Bandwidth
 
 $$
 Bandwidth^{Indegree, Service}_{js} = \sum_{i \in N^{N}} y_{e_{ij}, s}, \; \forall j \in N, \; \forall s \in S
@@ -316,7 +316,7 @@ $$
 Bandwidth^{Indegree, Node}_{j} = \sum_{s \in S} Bandwidth^{Indegree, Service}_{js}, \; \forall j \in N
 $$
 
-###### Outdegree Bandwidth
+###### 3. Outdegree Bandwidth
 
 $$
 Bandwidth^{Outdegree, Service}_{is} = \sum_{j \in N} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall s \in S
@@ -326,7 +326,7 @@ $$
 Bandwidth^{Outdegree, Node}_{i} = \sum_{s \in S} Bandwidth^{Outdegree, Service}_{js}, \; \forall i \in N^{N}
 $$
 
-###### OutFlow Bandwidth
+###### 4. OutFlow Bandwidth
 
 $$
 Bandwidth^{OutFlow, Service}_{is} = Bandwidth^{Outdegree, Service}_{is} - Bandwidth^{Indegree, Service}_{is}, \; \forall i \in N^{N}, \; \forall s \in S
@@ -338,7 +338,7 @@ $$
 
 ##### Objective Function
 
-###### Minimize Bandwidth Usage Cost
+###### 1. Minimize Bandwidth Usage Cost
 
 **Description**: Minimize the total cost of using bandwidth on links.
 
@@ -348,7 +348,7 @@ $$
 
 ##### Constraints
 
-###### Bandwidth Usage Limit
+###### 1. Bandwidth Usage Limit
 
 **Description**: The bandwidth usage of each link not to exceed its maximum capacity and ensures that only servers can consume bandwidth.
 
@@ -356,7 +356,7 @@ $$
 s.t. \quad y_{e_{ij}, s} \leq Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S
 $$
 
-###### Demand Satisfaction Limit
+###### 2. Demand Satisfaction Limit
 
 **Description**: Enforce the satisfaction of consumer node demands.
 
@@ -364,7 +364,7 @@ $$
 s.t. \quad \sum_{s \in S} Bandwidth^{OutFlow, Service}_{is} \geq Demand_{i}, \; \forall i \in N^{C}
 $$
 
-###### Flow Balance Limit
+###### 3. Flow Balance Limit
 
 **Description**: Impose flow balance constraints on transit nodes.
 
@@ -372,7 +372,7 @@ $$
 s.t. \quad \sum_{j \in N} y_{e_{ij}, s} - \sum_{j \in N^{N}} y_{e_{ji}, s} \leq \sum_{j \in N} Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall s \in S
 $$
 
-###### Server Capacity Limit
+###### 4. Server Capacity Limit
 
 **Description**: Limit the outflow of server nodes to their capacity.
 
@@ -380,7 +380,9 @@ $$
 s.t. \quad \sum_{j \in N} y_{e_{ij}, s} - \sum_{j \in N^{N}} y_{e_{ji}, s} \leq Capacity_{s} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall s \in S
 $$
 
-Code implementation refers to [example page](/examples/framework-example1)
+#### Code Implementation
+
+Code implementation refers to [example page](/examples/framework-example1#code-implementation)
 
 #### Business Architecture and Integration Architecture
 
@@ -407,7 +409,7 @@ C4Context
   UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
-If we also have different users with multi-active requirements on top of these foundational services, we can similarly decouple the multi-active logic and implement it as a multi-active bounded context. By constructing an algorithmic application that integrates route context, bandwidth context, and multi-active context, we can deliver a multi-active-aware solution relatively quickly—leveraging the existing route and bandwidth contexts instead of reimplementing them from scratch.
+If we also have different users with multi-active requirements on top of these foundational services, we can similarly decouple the multi-active logic and implement it as a multi-active bounded context. By constructing an application that integrates route context, bandwidth context, and multi-active context, we can deliver a multi-active-aware solution relatively quickly -- leveraging the existing route and bandwidth contexts instead of reimplementing them from scratch.
 
 ```mermaid
 C4Context
@@ -419,12 +421,13 @@ C4Context
     System(MultiActiveApplication, "Multi Active Application")
   }
   System_Boundary(DomainLayer, "Domain Layer") {
-    System(RouteContext, "Route Context")
     System(BandwidthContext, "Bandwidth Context")
+    System(RouteContext, "Route Context")
     System(MultiActiveContext, "Multi Active Context")
   }
 
   Rel(AlgorithmService, NormalApplication, "", "")
+  Rel(AlgorithmService, MultiActiveApplication, "", "")
   Rel(NormalApplication, RouteContext, "", "")
   Rel(NormalApplication, BandwidthContext, "", "")
   Rel(MultiActiveApplication, RouteContext, "", "")
@@ -433,10 +436,10 @@ C4Context
   Rel(BandwidthContext, RouteContext, "", "")
   Rel(MultiActiveContext, RouteContext, "", "")
 
-  UpdateLayoutConfig($c4ShapeInRow="4", $c4BoundaryInRow="1")
+  UpdateLayoutConfig($c4ShapeInRow="6", $c4BoundaryInRow="1")
 ```
 
-More broadly, if we carefully plan and implement the bounded contexts in the domain layer to construct an operations research mathematical model library—akin to a knowledge base—we can then integrate these bounded contexts to rapidly deliver the algorithmic applications users require. The process of building these library components is generally referred to as <b> domain engineering </b>.
+More broadly, if we carefully plan and implement the bounded contexts in the domain layer to construct an operations research mathematical model librar -- akin to a knowledge bas -- we can then integrate these bounded contexts to rapidly deliver the algorithmic applications users require. The process of building these library components is generally referred to as <b> domain engineering </b>.
 
 ## Components
 
