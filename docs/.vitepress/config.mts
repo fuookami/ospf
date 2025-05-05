@@ -28,6 +28,9 @@ export default withMermaid({
       label: 'English',
       lang: 'en-us',
       themeConfig: {
+        search: {
+          provider: "local"
+        },
         nav: [
           { text: 'Home', link: '/' },
           { text: 'Guide', link: '/guide/what-is-ospf' },
@@ -40,6 +43,7 @@ export default withMermaid({
               items: [
                 { 'text': 'What is OSPF?', link: '/guide/what-is-ospf' },
                 { 'text': 'Getting Started', link: '/guide/getting-started' },
+                { 'text': 'Use Domain Driven Design Architecture', link: '/guide/use-ddd-architecture' }
               ]
             },
             {
@@ -59,15 +63,18 @@ export default withMermaid({
               text: 'Simple Examples',
               items: [
                 { 'text': 'Example 1: Assigning Problem', link: '/examples/example1' },
-                { 'text': 'Example 2: Assigning Problem', link: '/examples/example2' }
+                { 'text': 'Example 2: Assigning Problem', link: '/examples/example2' },
+                { 'text': 'Example 3: Ingredient Problem', link: '/examples/example3' },
+                { 'text': 'Example 4: Ingredient Problem', link: '/examples/example4' },
               ]
             },
             {
               text: 'Complex Examples (with DDD Architecture)',
               items: [
                 { 'text': 'Framework Example 1: Service Placement Problem', link: '/examples/framework-example1' },
-                { 'text': 'Framework Example 2: Aircraft Cargo Load Planning Problem', link: '/examples/framework-example2' },
-                { 'text': 'Framework Example 3: Flight Recovery Problem', link: '/examples/framework-example3' }
+                { 'text': 'Framework Example 2: Aircraft Cargo Load Planning Problem (with benders decomposition algorithm)', link: '/examples/framework-example2' },
+                { 'text': 'Framework Example 3: Cutting Stock Problem 1D (with column generation algorithm)', link: '/examples/framework-example3' },
+                { 'text': 'Framework Example 4: Flight Recovery Problem (with column generation algorithm)', link: '/examples/framework-example4' }
               ]
             }
           ]
@@ -76,7 +83,7 @@ export default withMermaid({
           { icon: 'github', link: 'https://github.com/fuookami/ospf' }
         ],
         outline: {
-          level: [2, 4]
+          level: [2, 5]
         }
       }
     },
@@ -84,6 +91,9 @@ export default withMermaid({
       label: '简体中文',
       lang: 'zh-cn',
       themeConfig: {
+        search: {
+          provider: "local"
+        },
         nav: [
           { text: '主页', link: '/zh-cn/' },
           { text: '指南', link: '/zh-cn/guide/what-is-ospf' },
@@ -96,6 +106,7 @@ export default withMermaid({
               items: [
                 { 'text': 'OSPF 是什么?', link: '/zh-cn/guide/what-is-ospf' },
                 { 'text': '快速开始', link: '/zh-cn/guide/getting-started' },
+                { 'text': '使用领域驱动设计架构', link: '/zh-cn/guide/use-ddd-architecture' }
               ]
             },
             {
@@ -105,8 +116,8 @@ export default withMermaid({
                 { 'text': '二次型函数中间值', link: '/zh-cn/guide/quadratic-functional-intermediate-expression' },
                 { 'text': '数学模型的演绎逻辑表达', link: '/zh-cn/guide/deductive-logic-expression' },
                 { 'text': '形式化设计与形式化验证', link: '/zh-cn/guide/formal-design-and-formal-verification' },
-                { 'text': '云端求解器', link: '/guide/remote-solver' },
-                { 'text': '时间片轮转求解器', link: '/guide/time-slice-cycle-solver' }
+                { 'text': '云端求解器', link: '/zh-cn/guide/remote-solver' },
+                { 'text': '时间片轮转求解器', link: '/zh-cn/guide/time-slice-cycle-solver' }
               ]
             }
           ],
@@ -115,15 +126,18 @@ export default withMermaid({
               text: '简单示例',
               items: [
                 { 'text': '示例 1：指派问题', link: '/zh-cn/examples/example1' },
-                { 'text': '示例 2：指派问题', link: '/zh-cn/examples/example2' }
+                { 'text': '示例 2：指派问题', link: '/zh-cn/examples/example2' },
+                { 'text': '示例 3：配料问题', link: '/zh-cn/examples/example3' },
+                { 'text': '示例 4：配料问题', link: '/zh-cn/examples/example4' }
               ]
             },
             {
               text: '复杂示例（使用领域驱动设计架构）',
               items: [
-                { 'text': '复杂示例 1: 服务器放置问题', link: '/zh-cn/examples/framework-example1' },
-                { 'text': '复杂示例 2：航空货运装载规划问题', link: '/zh-cn/examples/framework-example2' },
-                { 'text': '复杂示例 3: 航班恢复问题', link: '/zh-cn/examples/framework-example3' }
+                { 'text': '复杂示例 1：服务器放置问题', link: '/zh-cn/examples/framework-example1' },
+                { 'text': '复杂示例 2：航空货运装载规划问题（使用 Benders 分解算法）', link: '/zh-cn/examples/framework-example2' },
+                { 'text': '复杂示例 3：一维分切问题（使用列生成算法）', link: '/zh-cn/examples/framework-example3' },
+                { 'text': '复杂示例 4：航班恢复问题（使用列生成算法）', link: '/zh-cn/examples/framework-example4' }
               ]
             }
           ]
@@ -132,7 +146,7 @@ export default withMermaid({
           { icon: 'github', link: 'https://github.com/fuookami/ospf' }
         ],
         outline: {
-          level: [2, 4]
+          level: [2, 5]
         }
       }
     }

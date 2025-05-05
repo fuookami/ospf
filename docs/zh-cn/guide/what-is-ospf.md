@@ -158,8 +158,7 @@ ospf-core 本身只维护有算术运算符以及逻辑运算符，实际上我�
 
 ### 问题描述
 
-在给定结构的电信网络中，为了视频内容快速低成本的传送到每个住户小区，需要在这个给定网络结构中选择一些网络节点附近放置视频内容
-存储务器。
+在给定结构的电信网络中，为了视频内容快速低成本的传送到每个住户小区，需要在这个给定网络结构中选择一些网络节点附近放置视频内容存储服务器。
 
 <div align="center">
   <img src="/images/framework-example1.png">
@@ -252,13 +251,13 @@ $x_{is} \in \{0, 1\}$：在普通节点 $i$ 部署服务器 $s$ 。
 
 ##### 中间值
 
-###### 是否在节点部署服务器
+###### 1. 是否在节点部署服务器
 
 $$
 Assignment^{Node}_{i} = \sum_{s \in S} x_{is}, \; \forall i \in N^{N}
 $$
 
-###### 是否部署了服务器
+###### 2. 是否部署了服务器
 
 $$
 Assignment^{Service}_{s} = \sum_{i \in N^{N}} x_{is}, \; \forall s \in S
@@ -266,7 +265,7 @@ $$
 
 ##### 目标函数
 
-###### 服务器部署成本最小
+###### 1. 服务器部署成本最小
 
 **描述**：服务器的使用成本尽可能少。
 
@@ -276,7 +275,7 @@ $$
 
 ##### 约束
 
-###### 节点部署约束
+###### 1. 节点部署约束
 
 **描述**：每个节点最多部署一台服务器。
 
@@ -284,7 +283,7 @@ $$
 s.t. \quad Assignment^{Node}_{i} \leq 1, \; \forall i \in N^{N}
 $$
 
-###### 服务器部署约束
+###### 2. 服务器部署约束
 
 **描述**：每个服务器最多部署到一个节点。
 
@@ -300,13 +299,13 @@ $y_{e_{ij}, s} \in R^{\ast}$：服务器 $s$ 占用普通节点 $i$ 到节点 $j
 
 ##### 中间值
 
-###### 使用带宽
+###### 1. 使用带宽
 
 $$
 Bandwidth_{e_{ij}} = \sum_{s \in S} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall j \in N
 $$
 
-###### 下行带宽
+###### 2. 下行带宽
 
 $$
 Bandwidth^{Indegree, Service}_{js} = \sum_{i \in N^{N}} y_{e_{ij}, s}, \; \forall j \in N, \; \forall s \in S
@@ -316,7 +315,7 @@ $$
 Bandwidth^{Indegree, Node}_{j} = \sum_{s \in S} Bandwidth^{Indegree, Service}_{js}, \; \forall j \in N
 $$
 
-###### 上行带宽
+###### 3. 上行带宽
 
 $$
 Bandwidth^{Outdegree, Service}_{is} = \sum_{j \in N} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall s \in S
@@ -326,7 +325,7 @@ $$
 Bandwidth^{Outdegree, Node}_{i} = \sum_{s \in S} Bandwidth^{Outdegree, Service}_{js}, \; \forall i \in N^{N}
 $$
 
-###### 净流出带宽
+###### 4. 净流出带宽
 
 $$
 Bandwidth^{OutFlow, Service}_{is} = Bandwidth^{Outdegree, Service}_{is} - Bandwidth^{Indegree, Service}_{is}, \; \forall i \in N^{N}, \; \forall s \in S
@@ -338,7 +337,7 @@ $$
 
 ##### 目标函数
 
-###### 链路带宽使用成本最小
+###### 1. 链路带宽使用成本最小
 
 **描述**：链路带宽的使用成本尽可能少。
 
@@ -348,7 +347,7 @@ $$
 
 ##### 约束
 
-###### 链路带宽约束
+###### 1. 链路带宽约束
 
 **描述**：链路使用带宽不超过链路最大值，且只有服务器可以使用带宽。
 
@@ -356,7 +355,7 @@ $$
 s.t. \quad y_{e_{ij}, s} \leq Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S
 $$
 
-###### 终端节点需求约束
+###### 2. 终端节点需求约束
 
 **描述**：要满足消费节点需求。
 
@@ -364,7 +363,7 @@ $$
 s.t. \quad Bandwidth^{Indegree, Node}_{i} \geq Demand_{i}, \; \forall i \in N^{C}
 $$
 
-###### 中转节点流量约束
+###### 3. 中转节点流量约束
 
 **描述**：中转节点流量要平衡。
 
@@ -386,7 +385,9 @@ $$
 s.t. \quad Bandwidth^{OutFlow, Service}_{is} \leq Capacity_{s} \cdot x_{is}, \; \forall i \in N^{N}, \; \forall s \in S
 $$
 
-代码实现可参考：[示例页面](/zh-cn/examples/framework-example1)
+#### 代码实现
+
+代码实现可参考：[示例页面](/zh-cn/examples/framework-example1#code-implementation)
 
 #### 业务架构与集成架构
 
@@ -395,19 +396,19 @@ $$
 ```mermaid
 C4Context
   System_Boundary(服务层, "服务层") {
-    System(算法服务, "算法服务")
+    System(服务, "服务")
   }
   System_Boundary(应用层, "应用层") {
-    System(算法应用, "算法应用")
+    System(应用, "应用")
   }
   System_Boundary(领域层, "领域层") {
-    System(回路上下文, "回路上下文")
     System(带宽上下文, "带宽上下文")
+    System(回路上下文, "回路上下文")
   }
 
-  Rel(算法服务, 算法应用, "", "")
-  Rel(算法应用, 回路上下文, "", "")
-  Rel(算法应用, 带宽上下文, "", "")
+  Rel(服务, 应用, "", "")
+  Rel(应用, 回路上下文, "", "")
+  Rel(应用, 带宽上下文, "", "")
   Rel(带宽上下文, 回路上下文, "", "")
 
   UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
@@ -418,11 +419,11 @@ C4Context
 ```mermaid
 C4Context
   System_Boundary(服务层, "服务层") {
-    System(算法服务, "算法服务")
+    System(服务, "服务")
   }
   System_Boundary(应用层, "应用层") {
-    System(普通算法应用, "普通算法应用")
-    System(带多活的算法应用, "带多活的算法应用")
+    System(普通应用, "普通应用")
+    System(带多活的应用, "带多活的应用")
   }
   System_Boundary(领域层, "领域层") {
     System(带宽上下文, "带宽上下文")
@@ -430,16 +431,17 @@ C4Context
     System(多活上下文, "多活上下文")
   }
 
-  Rel(算法服务, 普通算法应用, "", "")
-  Rel(普通算法应用, 回路上下文, "", "")
-  Rel(普通算法应用, 带宽上下文, "", "")
-  Rel(带多活的算法应用, 回路上下文, "", "")
-  Rel(带多活的算法应用, 带宽上下文, "", "")
-  Rel(带多活的算法应用, 多活上下文, "", "")
+  Rel(服务, 普通应用, "", "")
+  Rel(服务, 带多活的应用, "", "")
+  Rel(普通应用, 回路上下文, "", "")
+  Rel(普通应用, 带宽上下文, "", "")
+  Rel(带多活的应用, 回路上下文, "", "")
+  Rel(带多活的应用, 带宽上下文, "", "")
+  Rel(带多活的应用, 多活上下文, "", "")
   Rel(带宽上下文, 回路上下文, "", "")
   Rel(多活上下文, 回路上下文, "", "")
 
-  UpdateLayoutConfig($c4ShapeInRow="4", $c4BoundaryInRow="1")
+  UpdateLayoutConfig($c4ShapeInRow="6", $c4BoundaryInRow="1")
 ```
 
 泛化地说，假如我们能仔细规划领域层中上下文的划分并实现，构造一个类似知识库的运筹学数学模型库，我们就能基于这些限界上下文进行集成并快速交付用户所需的算法应用。一般称构筑这些库组件的过程为<b>领域工程</b>。
