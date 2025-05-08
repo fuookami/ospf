@@ -13,6 +13,9 @@ import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols2
 
+/**
+ * @see     https://fuookami.github.io/ospf/examples/example15.html
+ */
 data object Demo15 {
     data class CarModel(
         val name: String

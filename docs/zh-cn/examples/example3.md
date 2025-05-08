@@ -86,38 +86,8 @@ data class Material(
     val yieldQuantity: Map<Product, Flt64>
 ) : AutoIndexed(Material::class)
 
-val products = listOf(
-    Product(Flt64(15000.0)),
-    Product(Flt64(15000.0)),
-    Product(Flt64(10000.0))
-)
-val materials = listOf(
-    Material(
-        Flt64(115.0), mapOf(
-            products[0] to Flt64(30.0),
-            products[1] to Flt64(10.0)
-        )
-    ),
-    Material(
-        Flt64(97.0), mapOf(
-            products[0] to Flt64(15.0),
-            products[2] to Flt64(20.0)
-        )
-    ),
-    Material(
-        Flt64(82.0), mapOf(
-            products[1] to Flt64(25.0),
-            products[2] to Flt64(15.0)
-        )
-    ),
-    Material(
-        Flt64(76.0), mapOf(
-            products[0] to Flt64(15.0),
-            products[1] to Flt64(15.0),
-            products[2] to Flt64(15.0)
-        )
-    )
-)
+val products = ...  // 产品数据
+val materials = ... // 原料数据
 
 // 创建模型实例
 val metaModel = LinearMetaModel("demo3")

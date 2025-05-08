@@ -82,45 +82,14 @@ import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 
+class Product : AutoIndexed(Product::class)
+
 data class Company(
     val cost: Map<Product, Flt64>
 ) : AutoIndexed(Company::class)
 
-private val products = listOf(Product(), Product(), Product(), Product())
-private val companies = listOf(
-    Company(
-        mapOf(
-            products[0] to Flt64(920.0),
-            products[1] to Flt64(480.0),
-            products[2] to Flt64(650.0),
-            products[3] to Flt64(340.0)
-        )
-    ),
-    Company(
-        mapOf(
-            products[0] to Flt64(870.0),
-            products[1] to Flt64(510.0),
-            products[2] to Flt64(700.0),
-            products[3] to Flt64(350.0)
-        )
-    ),
-    Company(
-        mapOf(
-            products[0] to Flt64(880.0),
-            products[1] to Flt64(500.0),
-            products[2] to Flt64(720.0),
-            products[3] to Flt64(400.0)
-        )
-    ),
-    Company(
-        mapOf(
-            products[0] to Flt64(930.0),
-            products[1] to Flt64(490.0),
-            products[2] to Flt64(680.0),
-            products[3] to Flt64(410.0)
-        )
-    )
-)
+private val products = ...  // product data
+private val companies = ... // company data
 
 // create a model instance
 val metaModel = LinearMetaModel("demo2")

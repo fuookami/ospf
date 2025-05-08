@@ -1,4 +1,4 @@
-# 示例 2: 指派问题
+# 示例 2：指派问题
 
 ## 问题描述
 
@@ -82,45 +82,14 @@ import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 
+class Product : AutoIndexed(Product::class)
+
 data class Company(
     val cost: Map<Product, Flt64>
 ) : AutoIndexed(Company::class)
 
-val products = listOf(Product(), Product(), Product(), Product())
-val companies = listOf(
-    Company(
-        mapOf(
-            products[0] to Flt64(920.0),
-            products[1] to Flt64(480.0),
-            products[2] to Flt64(650.0),
-            products[3] to Flt64(340.0)
-        )
-    ),
-    Company(
-        mapOf(
-            products[0] to Flt64(870.0),
-            products[1] to Flt64(510.0),
-            products[2] to Flt64(700.0),
-            products[3] to Flt64(350.0)
-        )
-    ),
-    Company(
-        mapOf(
-            products[0] to Flt64(880.0),
-            products[1] to Flt64(500.0),
-            products[2] to Flt64(720.0),
-            products[3] to Flt64(400.0)
-        )
-    ),
-    Company(
-        mapOf(
-            products[0] to Flt64(930.0),
-            products[1] to Flt64(490.0),
-            products[2] to Flt64(680.0),
-            products[3] to Flt64(410.0)
-        )
-    )
-)
+val products = ...  // 产品数据
+val companies = ... // 企业数据
 
 // 创建模型实例
 val metaModel = LinearMetaModel("demo2")

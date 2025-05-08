@@ -13,6 +13,9 @@ import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols1
 
+/**
+ * @see     https://fuookami.github.io/ospf/examples/example13.html
+ */
 data object Demo13 {
     data class Dealer(
         val demand: UInt64

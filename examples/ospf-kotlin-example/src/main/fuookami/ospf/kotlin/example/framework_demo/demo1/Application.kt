@@ -10,6 +10,9 @@ import fuookami.ospf.kotlin.example.framework_demo.demo1.infrastructure.*
 import fuookami.ospf.kotlin.example.framework_demo.demo1.domain.route_context.*
 import fuookami.ospf.kotlin.example.framework_demo.demo1.domain.bandwidth_context.*
 
+/**
+ * @see     https://fuookami.github.io/ospf/examples/framework-example1.html
+ */
 class SSP {
     lateinit var routeContext: RouteContext
     lateinit var bandwidthContext: BandwidthContext

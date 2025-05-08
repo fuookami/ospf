@@ -18,6 +18,9 @@ import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 import fuookami.ospf.kotlin.core.backend.solver.config.SolverConfig
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols1
 
+/**
+ * @see     https://fuookami.github.io/ospf/examples/example17.html
+ */
 data object Demo17 {
     sealed interface Node : Indexed {
         val demand: UInt64 get() = UInt64.zero
