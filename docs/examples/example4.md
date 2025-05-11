@@ -119,12 +119,12 @@ for (p in products) {
 metaModel.add(x)
 
 // define intermediate expressions
-profit = LinearExpressionSymbol(sum(products) { 
+val profit = LinearExpressionSymbol(sum(products) { 
     p -> p.profit * x[p] 
 }, "profit")
 metaModel.add(profit)
 
-use = LinearIntermediateSymbols1("use", Shape1(materials.size)) { m, _ ->
+val use = LinearIntermediateSymbols1("use", Shape1(materials.size)) { m, _ ->
     val material = materials[m]
     val ps = products.filter { it.use.contains(material) }
     LinearExpressionSymbol(

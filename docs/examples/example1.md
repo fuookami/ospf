@@ -112,11 +112,13 @@ val capital = LinearExpressionSymbol(
     "capital"
 )
 metaModel.add(capital)
+
 val liability = LinearExpressionSymbol(
     sum(companies) { it.liability * x[it] }, 
     "liability"
 )
 metaModel.add(liability)
+
 val profit = LinearExpressionSymbol(
     sum(companies) { it.profit * x[it] }, 
     "profit"

@@ -95,7 +95,7 @@ val companies = ... // 企业数据
 val metaModel = LinearMetaModel("demo2")
 
 // 定义变量
-x = BinVariable2("x", Shape2(companies.size, products.size))
+val x = BinVariable2("x", Shape2(companies.size, products.size))
 for (c in companies) {
     for (p in products) {
         x[c, p].name = "${x.name}_${c.index},${p.index}"
@@ -104,14 +104,14 @@ for (c in companies) {
 metaModel.add(x)
 
 // 定义中间值
-cost = LinearExpressionSymbol(flatSum(companies) { c ->
+val cost = LinearExpressionSymbol(flatSum(companies) { c ->
     products.map { p ->
         c.cost[p]?.let { it * x[c, p] }
     }
 }, "cost")
 metaModel.add(cost)
 
-assignmentCompany = LinearIntermediateSymbols(
+val assignmentCompany = LinearIntermediateSymbols(
     "assignment_company",
     Shape1(companies.size)
 )
@@ -122,7 +122,7 @@ for (c in companies) {
 }
 metaModel.add(assignmentCompany)
 
-assignmentProduct = flatMap(
+val assignmentProduct = flatMap(
     "assignment_product",
     products,
     { p -> sumVars(companies) { c -> c.cost[p]?.let { x[c, p] } } }
@@ -161,7 +161,6 @@ for (token in metaModel.tokens.tokens) {
         solution.add(company to product)
     }
 }
-
 ```
 
 :::

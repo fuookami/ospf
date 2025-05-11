@@ -77,13 +77,14 @@ data object Demo5 {
     }
 
     private suspend fun initObject(): Try {
-        metaModel.maximize(cargoValue,"value")
+        metaModel.maximize(cargoValue, "value")
         return ok
     }
 
     private suspend fun initConstraint(): Try {
         metaModel.addConstraint(
-            cargoWeight leq maxWeight,"weight"
+            cargoWeight leq maxWeight,
+            "weight"
         )
         return ok
     }
