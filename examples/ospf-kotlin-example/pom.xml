@@ -19,6 +19,11 @@
         </dependency>
         <dependency>
             <groupId>io.github.fuookami.ospf.kotlin.core.plugin</groupId>
+            <artifactId>ospf-kotlin-core-plugin-scip</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.fuookami.ospf.kotlin.core.plugin</groupId>
             <artifactId>ospf-kotlin-core-plugin-gurobi</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -29,13 +34,26 @@
         </dependency>
         <dependency>
             <groupId>io.github.fuookami.ospf.kotlin.core.plugin</groupId>
-            <artifactId>ospf-kotlin-core-plugin-scip</artifactId>
+            <artifactId>ospf-kotlin-core-plugin-heuristic</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.github.fuookami.ospf.kotlin.core.plugin</groupId>
-            <artifactId>ospf-kotlin-core-plugin-heuristic</artifactId>
-            <version>${project.version}</version>
+             <groupId>scip</groupId>
+             <artifactId>jscip</artifactId>
+             <version>1.0.0</version>
+             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>gurobi</groupId>
+            <artifactId>gurobi</artifactId>
+            <version>1.0.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>ilog</groupId>
+            <artifactId>cplex</artifactId>
+            <version>1.0.0</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 

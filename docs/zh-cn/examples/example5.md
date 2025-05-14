@@ -78,10 +78,6 @@ data class Cargo(
 val cargos = ... // 货物列表
 val maxWeight = UInt64(10U)
 
-val x: BinVariable1
-val cargoWeight: LinearIntermediateSymbol
-val cargoValue: LinearIntermediateSymbol
-
 // 创建模型实例
 val metaModel = LinearMetaModel("demo5")
 

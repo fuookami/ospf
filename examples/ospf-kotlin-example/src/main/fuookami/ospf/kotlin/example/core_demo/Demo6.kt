@@ -24,10 +24,10 @@ data object Demo6 {
 
     private val cargos = listOf(
         Cargo(UInt64(1), UInt64(6), UInt64(10)),
-        Cargo(UInt64(2), UInt64(10), UInt64(10)),
-        Cargo(UInt64(2), UInt64(20), UInt64(10))
+        Cargo(UInt64(2), UInt64(10), UInt64(5)),
+        Cargo(UInt64(2), UInt64(20), UInt64(2))
     )
-    private val maxWeight = UInt64(10)
+    private val maxWeight = UInt64(8)
 
     private lateinit var x: UIntVariable1
 
@@ -78,7 +78,7 @@ data object Demo6 {
     }
 
     private suspend fun initObject(): Try {
-        metaModel.maximize(cargoValue,"value")
+        metaModel.maximize(cargoValue, "value")
         return ok
     }
 
@@ -88,7 +88,8 @@ data object Demo6 {
         }
 
         metaModel.addConstraint(
-            cargoWeight leq maxWeight,"weight"
+            cargoWeight leq maxWeight,
+            "weight"
         )
         return ok
     }

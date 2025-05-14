@@ -11,11 +11,11 @@ There are some goods, each with a value and a weight.
 
 Select a subset of these goods to maximize the total value while satisfying the following conditions:
 
-1. The total weight of the selected goods must not exceed 10 kg.
+1. The total weight of the selected goods must not exceed $10\,kg$.
 
 ## Mathematical Model
 
-### Variables
+### Variables 
 
 $x_{c}$：whether to select good $c$。
 
@@ -75,12 +75,8 @@ data class Cargo(
     val value: UInt64
 ) : AutoIndexed(Cargo::class)
 
-val cargos = ... // 货物列表
+val cargos = ... // cargo data
 val maxWeight = UInt64(10U)
-
-val x: BinVariable1
-val cargoWeight: LinearIntermediateSymbol
-val cargoValue: LinearIntermediateSymbol
 
 // create a model instance
 val metaModel = LinearMetaModel("demo5")

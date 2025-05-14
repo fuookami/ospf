@@ -1,6 +1,5 @@
 package fuookami.ospf.kotlin.example.core_demo
 
-import fuookami.ospf.kotlin.core.backend.plugins.gurobi.GurobiLinearSolver
 import kotlin.time.Duration.Companion.seconds
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.math.geometry.*
@@ -14,9 +13,8 @@ import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
+import fuookami.ospf.kotlin.core.backend.solver.config.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-import fuookami.ospf.kotlin.core.backend.solver.config.SolverConfig
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols1
 
 /**
  * @see     https://fuookami.github.io/ospf/examples/example17.html
@@ -353,7 +351,7 @@ data object Demo17 {
     }
 
     private suspend fun solve(): Try {
-        val solver = GurobiLinearSolver(config = SolverConfig(time = 300.seconds))
+        val solver = ScipLinearSolver(config = SolverConfig(time = 300.seconds))
         when (val ret = solver(metaModel)) {
             is Ok -> {
                 metaModel.tokens.setSolution(ret.value.solution)
