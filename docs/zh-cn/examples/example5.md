@@ -49,11 +49,11 @@ $$
 s.t. \quad Weight \leq Weight^{Max}
 $$
 
-### 期望结果
+## 期望结果
 
 选择货物 A、B、E。
 
-### 代码实现
+## 代码实现
 
 ::: code-group
 

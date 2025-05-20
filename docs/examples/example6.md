@@ -6,9 +6,9 @@ There are some goods, each with a value, a weight and an amount.
 
 |        | Good A  | Good B  | Good C  |
 | :----: | :-----: | :-----: | :-----: |
-| Weight  | $1\,kg$ | $2\,kg$ | $2\,kg$ |
+| Weight | $1\,kg$ | $2\,kg$ | $2\,kg$ |
 | Value  |   $6$   |  $10$   |  $20$   |
-| Amount  |  $10$   |   $5$   |   $2$   |
+| Amount |  $10$   |   $5$   |   $2$   |
 
 Select a portion of the goods from these items to maximize the total value while satisfying the following conditions:
 
@@ -60,7 +60,7 @@ $$
 
 Select $4$ units of Good A, $0$ units of Good B, and $2$ units of Good C.
 
-### Code Implementation
+## Code Implementation
 
 ::: code-group
 

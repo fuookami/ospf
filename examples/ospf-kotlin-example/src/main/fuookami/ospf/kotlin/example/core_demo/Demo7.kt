@@ -134,20 +134,22 @@ data object Demo7 {
     }
 
     private suspend fun initObject(): Try {
-        metaModel.minimize(cost,"cost")
+        metaModel.minimize(cost, "cost")
         return ok
     }
 
     private suspend fun initConstraint(): Try {
         for(w in warehouses){
             metaModel.addConstraint(
-                shipment[w] leq w.stowage,"stowage_${w.index}"
+                shipment[w] leq w.stowage,
+                "stowage_${w.index}"
             )
         }
 
         for(s in stores){
             metaModel.addConstraint(
-                purchase[s] geq s.demand ,"demand_${s.index}"
+                purchase[s] geq s.demand,
+                "demand_${s.index}"
             )
         }
         return ok
