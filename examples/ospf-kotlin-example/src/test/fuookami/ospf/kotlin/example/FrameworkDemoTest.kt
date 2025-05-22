@@ -10,4 +10,10 @@ class FrameworkDemoTest {
         val demo = Demo1()
         assert(runBlocking { demo().ok })
     }
+
+    @Test
+    fun runDemo3() {
+        val demo = Demo3()
+        assert(runBlocking { demo().ok })
+    }
 }

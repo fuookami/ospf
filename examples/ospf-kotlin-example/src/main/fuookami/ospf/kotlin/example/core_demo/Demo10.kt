@@ -120,7 +120,7 @@ data object Demo10 {
     private suspend fun initSymbol(): Try {
         distance = LinearExpressionSymbol(sum(cities.flatMap { city1 ->
             cities.mapNotNull { city2 ->
-                if (city1 == city2) {在
+                if (city1 == city2) {
                     null
                 } else {
                     distances[city1 to city2]?.let { it * x[city1, city2] }

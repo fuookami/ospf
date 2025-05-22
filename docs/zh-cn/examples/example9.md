@@ -59,7 +59,7 @@ data class Settlement(
     val y: Flt64
 ) : AutoIndexed(Settlement::class)
 
-val settlements = ... // 居民点列表
+val settlements: List<Settlement> = ... // 居民点列表
 
 // 创建模型实例
 val metaModel = LinearMetaModel("demo9")

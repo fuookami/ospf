@@ -86,8 +86,8 @@ data class Material(
     val yieldQuantity: Map<Product, Flt64>
 ) : AutoIndexed(Material::class)
 
-val products = ...  // product data
-val materials = ... // material data
+val products: List<Product> = ...  // product data
+val materials: List<Material> = ... // material data
 
 // create a model instance
 val metaModel = LinearMetaModel("demo3")

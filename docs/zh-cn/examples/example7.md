@@ -102,8 +102,8 @@ data class Warehouse(
     val cost: Map<Store, Flt64>
 ) : AutoIndexed(Warehouse::class)
 
-val stores = ... // 商店列表
-val warehouses = ... // 仓库列表
+val stores: List<Store> = ... // 商店列表
+val warehouses: List<Warehouse> = ... // 仓库列表
 
 // 创建模型实例
 val metaModel = LinearMetaModel("demo7")

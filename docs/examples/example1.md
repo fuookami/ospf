@@ -92,7 +92,7 @@ data class Company(
     val profit: Flt64
 ) : AutoIndexed(Company::class)
 
-val companies = ... // company data
+val companies: List<Company> = ... // company data
 val minCapital = Flt64(10.0)
 val maxLiability = Flt64(5.0)
 

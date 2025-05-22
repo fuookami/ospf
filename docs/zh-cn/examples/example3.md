@@ -86,8 +86,8 @@ data class Material(
     val yieldQuantity: Map<Product, Flt64>
 ) : AutoIndexed(Material::class)
 
-val products = ...  // 产品数据
-val materials = ... // 原料数据
+val products: List<Product> = ...  // 产品列表
+val materials: List<Material> = ... // 原料列表
 
 // 创建模型实例
 val metaModel = LinearMetaModel("demo3")
