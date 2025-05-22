@@ -88,8 +88,8 @@ data class Company(
     val cost: Map<Product, Flt64>
 ) : AutoIndexed(Company::class)
 
-val products = ...  // 产品数据
-val companies = ... // 企业数据
+val products: List<Product> = ...  // 产品列表
+val companies: List<Company> = ... // 企业列表
 
 // 创建模型实例
 val metaModel = LinearMetaModel("demo2")

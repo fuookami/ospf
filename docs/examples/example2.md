@@ -88,8 +88,8 @@ data class Company(
     val cost: Map<Product, Flt64>
 ) : AutoIndexed(Company::class)
 
-private val products = ...  // product data
-private val companies = ... // company data
+private val products: List<Product> = ...  // product data
+private val companies: List<Company> = ... // company data
 
 // create a model instance
 val metaModel = LinearMetaModel("demo2")

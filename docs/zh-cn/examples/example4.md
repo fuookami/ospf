@@ -104,8 +104,8 @@ data class Product(
     val use: Map<Material, Flt64>
 ) : AutoIndexed(Product::class)
 
-val materials = ... // 原料数据
-val products = ...  // 产品数据
+val materials: List<Material> = ... // 原料列表
+val products: List<Product> = ...  // 产品列表
 val maxDiff = Int64(1)
 
 // 创建模型实例

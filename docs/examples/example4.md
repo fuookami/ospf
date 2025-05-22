@@ -104,8 +104,8 @@ data class Product(
     val use: Map<Material, Flt64>
 ) : AutoIndexed(Product::class)
 
-val materials = ... // material data
-val products = ...  // product data
+val materials: List<Material> = ... // material data
+val products: List<Product> = ...  // product data
 val maxDiff = Int64(1)
 
 // create a model instance

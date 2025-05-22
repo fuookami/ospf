@@ -83,7 +83,7 @@ data class Cargo(
     val amount: UInt64
 ) : AutoIndexed(Cargo::class)
 
-private val cargos = ... // cargo data
+private val cargos: List<Cargo> = ... // cargo data
 private val maxWeight = UInt64(8)
 
 // create a model instance

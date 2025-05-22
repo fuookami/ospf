@@ -85,8 +85,8 @@ data class City(
 ) : AutoIndexed(City::class)
 
 val beginCity = "北京"
-val cities = ... \\ 城市列表
-val distances = ... \\ 距离矩阵
+val cities: List<City> = ... \\ 城市列表
+val distances: Map<Pair<City, City>, Flt64> = ... \\ 距离矩阵
 
 // 创建模型实例
 val metaModel = LinearMetaModel("demo10")

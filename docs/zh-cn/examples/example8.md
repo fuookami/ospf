@@ -78,8 +78,8 @@ data class Equipment(
 ) : AutoIndexed(Equipment::class)
 
 private val maxManHours = Flt64(2000)
-private val products = ... // 产品列表
-private val equipments = ... // 设备列表
+private val products: List<Product> = ... // 产品列表
+private val equipments: List<Equipment> = ... // 设备列表
 
 // 创建模型实例
 val metaModel = LinearMetaModel("demo8")

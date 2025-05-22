@@ -75,7 +75,7 @@ data class Cargo(
     val value: UInt64
 ) : AutoIndexed(Cargo::class)
 
-val cargos = ... // 货物列表
+val cargos: List<Cargo> = ... // 货物列表
 val maxWeight = UInt64(10U)
 
 // 创建模型实例
