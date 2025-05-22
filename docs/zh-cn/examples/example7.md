@@ -31,19 +31,19 @@ $x_{ws}$ ：仓库 $w$ 往商店 $s$ 的货物运输量。
 #### 1. 总成本
 
 $$
-Cost = \sum_{w \in W}\sum_{s \in S}Cost_{ws} \cdot x_{ws}
+Cost = \sum_{w \in W}\sum_{s \in S} Cost_{ws} \cdot x_{ws}
 $$
 
 #### 2. 仓库的出货量
 
 $$
-Shipment_{w} = \sum_{s \in S}x_{ws}, \; \forall w \in W
+Shipment_{w} = \sum_{s \in S} x_{ws}, \; \forall w \in W
 $$
 
 #### 3. 商店的进货量
 
 $$
-Purchase_{s} = \sum_{w \in W}x_{ws}, \; \forall s \in S
+Purchase_{s} = \sum_{w \in W} x_{ws}, \; \forall s \in S
 $$
 
 ### 目标函数

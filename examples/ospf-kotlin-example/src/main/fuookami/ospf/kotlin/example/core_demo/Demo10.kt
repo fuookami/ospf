@@ -22,9 +22,9 @@ data object Demo10 {
         val name: String
     ) : AutoIndexed(City::class)
 
-    val beginCity = "北京"
+    private const val beginCity = "北京"
 
-    val cities = listOf(
+    private val cities = listOf(
         City("上海"),
         City("合肥"),
         City("广州"),
@@ -32,7 +32,7 @@ data object Demo10 {
         City("北京")
     )
 
-    val distances = mapOf(
+    private val distances = mapOf(
         Pair(cities[0], cities[1]) to Flt64(472.0),
         Pair(cities[0], cities[2]) to Flt64(1520.0),
         Pair(cities[0], cities[3]) to Flt64(2095.0),
@@ -59,12 +59,12 @@ data object Demo10 {
         Pair(cities[4], cities[3]) to Flt64(1854.0)
     )
 
-    lateinit var x: BinVariable2
-    lateinit var u: IntVariable1
+    private lateinit var x: BinVariable2
+    private lateinit var u: IntVariable1
 
-    lateinit var distance: LinearIntermediateSymbol
-    lateinit var depart: LinearIntermediateSymbols1
-    lateinit var reached: LinearIntermediateSymbols1
+    private lateinit var distance: LinearIntermediateSymbol
+    private lateinit var depart: LinearIntermediateSymbols1
+    private lateinit var reached: LinearIntermediateSymbols1
 
     private val metaModel = LinearMetaModel("demo10")
 
@@ -120,7 +120,7 @@ data object Demo10 {
     private suspend fun initSymbol(): Try {
         distance = LinearExpressionSymbol(sum(cities.flatMap { city1 ->
             cities.mapNotNull { city2 ->
-                if (city1 == city2) {
+                if (city1 == city2) {在
                     null
                 } else {
                     distances[city1 to city2]?.let { it * x[city1, city2] }
@@ -145,10 +145,16 @@ data object Demo10 {
 
     private suspend fun initConstraint(): Try {
         for (city in cities) {
-            metaModel.addConstraint(depart[city] eq Flt64.one, "depart_${city.name}")
+            metaModel.addConstraint(
+                depart[city] eq Flt64.one,
+                "depart_${city.name}"
+            )
         }
         for (city in cities) {
-            metaModel.addConstraint(reached[city] eq Flt64.one, "reached_${city.name}")
+            metaModel.addConstraint(
+                reached[city] eq Flt64.one,
+                "reached_${city.name}"
+            )
         }
         val notBeginCities = cities.filter { it.name != beginCity }
         for (city1 in notBeginCities) {

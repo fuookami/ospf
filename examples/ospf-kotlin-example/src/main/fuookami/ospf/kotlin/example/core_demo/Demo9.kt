@@ -20,7 +20,7 @@ data object Demo9 {
         val y: Flt64
     ) : AutoIndexed(Settlement::class)
 
-    val settlements = listOf(
+    private val settlements = listOf(
         Settlement(Flt64(9.0), Flt64(2.0)),
         Settlement(Flt64(2.0), Flt64(1.0)),
         Settlement(Flt64(3.0), Flt64(8.0)),
@@ -29,10 +29,11 @@ data object Demo9 {
         Settlement(Flt64(4.0), Flt64(-2.0))
     )
 
-    lateinit var x: IntVar
-    lateinit var y: IntVar
-    lateinit var dX: LinearIntermediateSymbols1
-    lateinit var dY: LinearIntermediateSymbols1
+    private lateinit var x: IntVar
+    private lateinit var y: IntVar
+    private lateinit var dx: LinearIntermediateSymbols1
+    private lateinit var dy: LinearIntermediateSymbols1
+    private lateinit var distance: LinearIntermediateSymbols1
 
     private val metaModel = LinearMetaModel("demo9")
 
@@ -67,7 +68,7 @@ data object Demo9 {
     }
 
     private suspend fun initSymbol(): Try {
-        dX = LinearIntermediateSymbols1("dx", Shape1(settlements.size)) { i, _ ->
+        dx = LinearIntermediateSymbols1("dx", Shape1(settlements.size)) { i, _ ->
             SlackFunction(
                 type = UInteger,
                 x = LinearPolynomial(x),
@@ -75,9 +76,9 @@ data object Demo9 {
                 name = "dx_$i"
             )
         }
-        metaModel.add(dX)
+        metaModel.add(dx)
 
-        dY = LinearIntermediateSymbols1("dy", Shape1(settlements.size)) { i, _ ->
+        dy = LinearIntermediateSymbols1("dy", Shape1(settlements.size)) { i, _ ->
             SlackFunction(
                 type = UInteger,
                 x = LinearPolynomial(y),
@@ -85,12 +86,20 @@ data object Demo9 {
                 name = "dy_$i"
             )
         }
-        metaModel.add(dY)
+        metaModel.add(dy)
+
+        distance = LinearIntermediateSymbols1("distance", Shape1(settlements.size)) { i, _ ->
+            LinearExpressionSymbol(
+                dx[i] + dy[i],
+                name = "distance_$i"
+            )
+        }
+        metaModel.add(distance)
         return ok
     }
 
     private suspend fun initObject(): Try {
-        metaModel.minimize(sum(dX[_a]) + sum(dY[_a]))
+        metaModel.minimize(sum(distance[_a]))
         return ok
     }
 
