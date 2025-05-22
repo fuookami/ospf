@@ -1,15 +1,15 @@
-# 示例 2: 指派问题
+# 示例 2：指派问题
 
 ## 问题描述
 
 有一些企业与一些产品，每个企业生产每个产品有一定的成本。
 
-|       | 产品A | 产品B | 产品C | 产品D |
-| :---: | :---: | :---: | :---: | :---: |
-| 企业A | $920$ | $480$ | $650$ | $340$ |
-| 企业B | $870$ | $510$ | $700$ | $350$ |
-| 企业C | $880$ | $500$ | $720$ | $400$ |
-| 企业D | $930$ | $490$ | $680$ | $410$ |
+|        | 产品 A | 产品 B | 产品 C | 产品 D |
+| :----: | :----: | :----: | :----: | :----: |
+| 企业 A | $920$  | $480$  | $650$  | $340$  |
+| 企业 B | $870$  | $510$  | $700$  | $350$  |
+| 企业 C | $880$  | $500$  | $720$  | $400$  |
+| 企业 D | $930$  | $490$  | $680$  | $410$  |
 
 从这些企业中指定不同企业生产不同的产品，令总成本最小。
 
@@ -82,51 +82,20 @@ import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 
+class Product : AutoIndexed(Product::class)
+
 data class Company(
     val cost: Map<Product, Flt64>
 ) : AutoIndexed(Company::class)
 
-val products = listOf(Product(), Product(), Product(), Product())
-val companies = listOf(
-    Company(
-        mapOf(
-            products[0] to Flt64(920.0),
-            products[1] to Flt64(480.0),
-            products[2] to Flt64(650.0),
-            products[3] to Flt64(340.0)
-        )
-    ),
-    Company(
-        mapOf(
-            products[0] to Flt64(870.0),
-            products[1] to Flt64(510.0),
-            products[2] to Flt64(700.0),
-            products[3] to Flt64(350.0)
-        )
-    ),
-    Company(
-        mapOf(
-            products[0] to Flt64(880.0),
-            products[1] to Flt64(500.0),
-            products[2] to Flt64(720.0),
-            products[3] to Flt64(400.0)
-        )
-    ),
-    Company(
-        mapOf(
-            products[0] to Flt64(930.0),
-            products[1] to Flt64(490.0),
-            products[2] to Flt64(680.0),
-            products[3] to Flt64(410.0)
-        )
-    )
-)
+val products = ...  // 产品数据
+val companies = ... // 企业数据
 
 // 创建模型实例
 val metaModel = LinearMetaModel("demo2")
 
 // 定义变量
-x = BinVariable2("x", Shape2(companies.size, products.size))
+val x = BinVariable2("x", Shape2(companies.size, products.size))
 for (c in companies) {
     for (p in products) {
         x[c, p].name = "${x.name}_${c.index},${p.index}"
@@ -135,14 +104,14 @@ for (c in companies) {
 metaModel.add(x)
 
 // 定义中间值
-cost = LinearExpressionSymbol(flatSum(companies) { c ->
+val cost = LinearExpressionSymbol(flatSum(companies) { c ->
     products.map { p ->
         c.cost[p]?.let { it * x[c, p] }
     }
 }, "cost")
 metaModel.add(cost)
 
-assignmentCompany = LinearIntermediateSymbols(
+val assignmentCompany = LinearIntermediateSymbols(
     "assignment_company",
     Shape1(companies.size)
 )
@@ -153,7 +122,7 @@ for (c in companies) {
 }
 metaModel.add(assignmentCompany)
 
-assignmentProduct = flatMap(
+val assignmentProduct = flatMap(
     "assignment_product",
     products,
     { p -> sumVars(companies) { c -> c.cost[p]?.let { x[c, p] } } }
@@ -192,7 +161,6 @@ for (token in metaModel.tokens.tokens) {
         solution.add(company to product)
     }
 }
-
 ```
 
 :::

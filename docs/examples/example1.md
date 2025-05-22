@@ -92,13 +92,7 @@ data class Company(
     val profit: Flt64
 ) : AutoIndexed(Company::class)
 
-val companies = listOf(
-    Company(Flt64(3.48), Flt64(1.28), Flt64(5400.0)),
-    Company(Flt64(5.62), Flt64(2.53), Flt64(2300.0)),
-    Company(Flt64(7.33), Flt64(1.02), Flt64(4600.0)),
-    Company(Flt64(6.27), Flt64(3.55), Flt64(3300.0)),
-    Company(Flt64(2.14), Flt64(0.53), Flt64(980.0))
-)
+val companies = ... // company data
 val minCapital = Flt64(10.0)
 val maxLiability = Flt64(5.0)
 
@@ -118,11 +112,13 @@ val capital = LinearExpressionSymbol(
     "capital"
 )
 metaModel.add(capital)
+
 val liability = LinearExpressionSymbol(
     sum(companies) { it.liability * x[it] }, 
     "liability"
 )
 metaModel.add(liability)
+
 val profit = LinearExpressionSymbol(
     sum(companies) { it.profit * x[it] }, 
     "profit"

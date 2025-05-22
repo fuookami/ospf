@@ -3,13 +3,14 @@ package fuookami.ospf.kotlin.example.framework_demo.demo1
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.cplex.*
-import fuookami.ospf.kotlin.core.backend.plugins.gurobi.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 import fuookami.ospf.kotlin.example.framework_demo.demo1.infrastructure.*
 import fuookami.ospf.kotlin.example.framework_demo.demo1.domain.route_context.*
 import fuookami.ospf.kotlin.example.framework_demo.demo1.domain.bandwidth_context.*
 
+/**
+ * @see     https://fuookami.github.io/ospf/examples/framework-example1.html
+ */
 class SSP {
     lateinit var routeContext: RouteContext
     lateinit var bandwidthContext: BandwidthContext

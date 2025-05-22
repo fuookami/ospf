@@ -12,6 +12,9 @@ import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 
+/**
+ * @see     https://fuookami.github.io/ospf/examples/example4.html
+ */
 data object Demo4 {
     data class Material(val available: Flt64) : AutoIndexed(Material::class)
 

@@ -1,16 +1,16 @@
-# 示例 1: 指派问题
+# 示例 1：指派问题
 
 ## 问题描述
 
 有一些企业，每家企业有自己的财产数量、债务数量以及收益量。
 
-|       | 财产数量 | 债务数量 | 收益量 |
-| :---: | :------: | :------: | :----: |
-| 企业A |  $3.48$  |  $1.28$  | $5400$ |
-| 企业B |  $5.62$  |  $2.53$  | $2300$ |
-| 企业C |  $7.33$  |  $1.02$  | $4600$ |
-| 企业D |  $6.27$  |  $3.55$  | $3300$ |
-| 企业E |  $2.14$  |  $0.53$  | $980$  |
+|        | 财产数量 | 债务数量 | 收益量 |
+| :----: | :------: | :------: | :----: |
+| 企业 A |  $3.48$  |  $1.28$  | $5400$ |
+| 企业 B |  $5.62$  |  $2.53$  | $2300$ |
+| 企业 C |  $7.33$  |  $1.02$  | $4600$ |
+| 企业 D |  $6.27$  |  $3.55$  | $3300$ |
+| 企业 E |  $2.14$  |  $0.53$  | $980$  |
 
 从这些企业中选出部分企业，令总收益量最大，且满足以下条件：
 
@@ -92,13 +92,7 @@ data class Company(
     val profit: Flt64
 ) : AutoIndexed(Company::class)
 
-val companies = listOf(
-    Company(Flt64(3.48), Flt64(1.28), Flt64(5400.0)),
-    Company(Flt64(5.62), Flt64(2.53), Flt64(2300.0)),
-    Company(Flt64(7.33), Flt64(1.02), Flt64(4600.0)),
-    Company(Flt64(6.27), Flt64(3.55), Flt64(3300.0)),
-    Company(Flt64(2.14), Flt64(0.53), Flt64(980.0))
-)
+val companies = ... // 企业数据
 val minCapital = Flt64(10.0)
 val maxLiability = Flt64(5.0)
 
@@ -118,11 +112,13 @@ val capital = LinearExpressionSymbol(
     "capital"
 )
 metaModel.add(capital)
+
 val liability = LinearExpressionSymbol(
     sum(companies) { it.liability * x[it] }, 
     "liability"
 )
 metaModel.add(liability)
+
 val profit = LinearExpressionSymbol(
     sum(companies) { it.profit * x[it] }, 
     "profit"

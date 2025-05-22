@@ -1,17 +1,24 @@
-.container {
-    min-width: 1240px !important;
+@media screen and (min-width: 1280px) {
+    .container {
+        min-width: 1240px !important;
+    }
+    
+    .content-container {
+        min-width: 900px !important;
+    }
+    
+    .content-container .main {
+        min-width: 900px !important;
+    }
+    
+    .content-container .main .vp-doc {
+        min-width: 900px !important;
+    }
 }
 
-.content-container {
-    min-width: 900px !important;
-}
-
-.content-container .main {
-    min-width: 900px !important;
-}
-
-.content-container .main .vp-doc {
-    min-width: 900px !important;
+mjx-container {
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
 .vp-doc h5 {
@@ -20,11 +27,6 @@
 
 .vp-doc h6 {
     margin-top: 0.5em;
-}
-
-mjx-container {
-    overflow-x: auto;
-    overflow-y: hidden;
 }
 
 .mermaid {

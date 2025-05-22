@@ -70,7 +70,7 @@ $$
 #### 3. Yield Difference Limit
 
 $$
-s.t. \quad x_{p} - x_{p^{\prime}} \leq Diff^{Max}, \; \forall (p, p^{\prime}) \in (P^{2} - \Delta P)
+s.t. \quad x_{p} - x_{p^{\prime}} \leq Diff^{Max}, \; \forall (p, \, p^{\prime}) \in (P^{2} - \Delta P)
 $$
 
 ## Expected Result
@@ -104,24 +104,8 @@ data class Product(
     val use: Map<Material, Flt64>
 ) : AutoIndexed(Product::class)
 
-val materials = listOf(
-    Material(Flt64(24.0)),
-    Material(Flt64(8.0))
-)
-val products = listOf(
-    Product(
-        Flt64(5.0), Flt64(3.0), mapOf(
-            materials[0] to Flt64(6.0),
-            materials[1] to Flt64(1.0),
-        )
-    ),
-    Product(
-        Flt64(4.0), Flt64(2.0), mapOf(
-            materials[0] to Flt64(4.0),
-            materials[1] to Flt64(2.0),
-        )
-    )
-)
+val materials = ... // material data
+val products = ...  // product data
 val maxDiff = Int64(1)
 
 // create a model instance
@@ -135,12 +119,12 @@ for (p in products) {
 metaModel.add(x)
 
 // define intermediate expressions
-profit = LinearExpressionSymbol(sum(products) { 
+val profit = LinearExpressionSymbol(sum(products) { 
     p -> p.profit * x[p] 
 }, "profit")
 metaModel.add(profit)
 
-use = LinearIntermediateSymbols1("use", Shape1(materials.size)) { m, _ ->
+val use = LinearIntermediateSymbols1("use", Shape1(materials.size)) { m, _ ->
     val material = materials[m]
     val ps = products.filter { it.use.contains(material) }
     LinearExpressionSymbol(

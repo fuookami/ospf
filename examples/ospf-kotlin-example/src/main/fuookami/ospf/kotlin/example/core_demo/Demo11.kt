@@ -12,6 +12,9 @@ import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols1
 
+/**
+ * @see     https://fuookami.github.io/ospf/examples/example11.html
+ */
 data object Demo11 {
     sealed class Node : AutoIndexed(Node::class)
     class RootNode : Node()

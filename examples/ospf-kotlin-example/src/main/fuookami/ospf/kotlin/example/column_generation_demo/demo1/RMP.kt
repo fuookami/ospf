@@ -10,8 +10,7 @@ import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.cplex.*
-import fuookami.ospf.kotlin.core.backend.plugins.gurobi.*
+import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 import fuookami.ospf.kotlin.framework.model.*
 import fuookami.ospf.kotlin.framework.solver.*
 
@@ -31,12 +30,7 @@ class RMP(
         LinearExpressionSymbol(MutableLinearPolynomial(), "output_${v[0]}")
     }
     private val metaModel = LinearMetaModel("demo1")
-    private val solver: ColumnGenerationSolver =
-        if (System.getProperty("os.name").lowercase(Locale.getDefault()).contains("win")) {
-            CplexColumnGenerationSolver()
-        } else {
-            GurobiColumnGenerationSolver()
-        }
+    private val solver: ColumnGenerationSolver = ScipColumnGenerationSolver()
 
     init {
         metaModel.add(rest)

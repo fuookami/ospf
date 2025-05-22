@@ -4,19 +4,19 @@
 
 有一些产品和一些原料，每个产品有给定的需求量，每个原料有成本，每个原料可以生产多个多种产品。
 
-|        |  产品A  |  产品B  |  产品C  |
+|        | 产品 A  | 产品 B  | 产品 C  |
 | :----: | :-----: | :-----: | :-----: |
 | 需求量 | $15000$ | $15000$ | $10000$ |
 
-|       | 原料A | 原料B | 原料C | 原料D |
-| :---: | :---: | :---: | :---: | :---: |
-| 成本  | $115$ | $97$  | $82$  | $76$  |
+|       | 原料 A | 原料 B | 原料 C | 原料 D |
+| :---: | :----: | :----: | :----: | :----: |
+| 成本  | $115$  |  $97$  |  $82$  |  $76$  |
 
-|       | 原料A | 原料B | 原料C | 原料D |
-| :---: | :---: | :---: | :---: | :---: |
-| 产品A | $30$  | $15$  |  $-$  | $15$  |
-| 产品B | $10$  |  $-$  | $25$  | $15$  |
-| 产品C |  $-$  | $20$  | $15$  | $15$  |
+|        | 原料 A | 原料 B | 原料 C | 原料 D |
+| :----: | :----: | :----: | :----: | :----: |
+| 产品 A |  $30$  |  $15$  |  $-$   |  $15$  |
+| 产品 B |  $10$  |  $-$   |  $25$  |  $15$  |
+| 产品 C |  $-$   |  $20$  |  $15$  |  $15$  |
 
 给出每个原料的使用量，令总成本最小。
 
@@ -86,38 +86,8 @@ data class Material(
     val yieldQuantity: Map<Product, Flt64>
 ) : AutoIndexed(Material::class)
 
-val products = listOf(
-    Product(Flt64(15000.0)),
-    Product(Flt64(15000.0)),
-    Product(Flt64(10000.0))
-)
-val materials = listOf(
-    Material(
-        Flt64(115.0), mapOf(
-            products[0] to Flt64(30.0),
-            products[1] to Flt64(10.0)
-        )
-    ),
-    Material(
-        Flt64(97.0), mapOf(
-            products[0] to Flt64(15.0),
-            products[2] to Flt64(20.0)
-        )
-    ),
-    Material(
-        Flt64(82.0), mapOf(
-            products[1] to Flt64(25.0),
-            products[2] to Flt64(15.0)
-        )
-    ),
-    Material(
-        Flt64(76.0), mapOf(
-            products[0] to Flt64(15.0),
-            products[1] to Flt64(15.0),
-            products[2] to Flt64(15.0)
-        )
-    )
-)
+val products = ...  // 产品数据
+val materials = ... // 原料数据
 
 // 创建模型实例
 val metaModel = LinearMetaModel("demo3")

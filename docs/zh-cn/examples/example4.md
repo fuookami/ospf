@@ -4,22 +4,22 @@
 
 有一些产品和一些原料，每个原料有给定的可用量，每个产品有收益，每个产品有最大生产量，每个产品需要多个多种原料。
 
-|        | 原料A | 原料B |
-| :----: | :---: | :---: |
-| 可用量 | $24$  |  $8$  |
+|        | 原料 A | 原料 B |
+| :----: | :----: | :----: |
+| 可用量 |  $24$  |  $8$   |
 
-|       | 产品A | 产品B |
-| :---: | :---: | :---: |
-| 收益  |  $5$  |  $4$  |
+|       | 产品 A | 产品 B |
+| :---: | :----: | :----: |
+| 收益  |  $5$   |  $4$   |
 
-|            | 产品A | 产品B |
-| :--------: | :---: | :---: |
-| 最大生产量 |  $3$  |  $2$  |
+|            | 产品 A | 产品 B |
+| :--------: | :----: | :----: |
+| 最大生产量 |  $3$   |  $2$   |
 
-|       | 原料A | 原料B |
-| :---: | :---: | :---: |
-| 产品A |  $6$  |  $1$  |
-| 产品B |  $4$  |  $2$  |
+|        | 原料 A | 原料 B |
+| :----: | :----: | :----: |
+| 产品 A |  $6$   |  $1$   |
+| 产品 B |  $4$   |  $2$   |
 
 给出每个产品的生产量，令总收益最大，且满足以下条件：
 
@@ -70,7 +70,7 @@ $$
 #### 3. 每个产品之间的生产量之差不能大于一个单位
 
 $$
-s.t. \quad x_{p} - x_{p^{\prime}} \leq Diff^{Max}, \; \forall (p, p^{\prime}) \in (P^{2} - \Delta P)
+s.t. \quad x_{p} - x_{p^{\prime}} \leq Diff^{Max}, \; \forall (p, \, p^{\prime}) \in (P^{2} - \Delta P)
 $$
 
 ## 期望结果
@@ -104,24 +104,8 @@ data class Product(
     val use: Map<Material, Flt64>
 ) : AutoIndexed(Product::class)
 
-val materials = listOf(
-    Material(Flt64(24.0)),
-    Material(Flt64(8.0))
-)
-val products = listOf(
-    Product(
-        Flt64(5.0), Flt64(3.0), mapOf(
-            materials[0] to Flt64(6.0),
-            materials[1] to Flt64(1.0),
-        )
-    ),
-    Product(
-        Flt64(4.0), Flt64(2.0), mapOf(
-            materials[0] to Flt64(4.0),
-            materials[1] to Flt64(2.0),
-        )
-    )
-)
+val materials = ... // 原料数据
+val products = ...  // 产品数据
 val maxDiff = Int64(1)
 
 // 创建模型实例
@@ -135,12 +119,12 @@ for (p in products) {
 metaModel.add(x)
 
 // 定义中间值
-profit = LinearExpressionSymbol(sum(products) { 
+val profit = LinearExpressionSymbol(sum(products) { 
     p -> p.profit * x[p] 
 }, "profit")
 metaModel.add(profit)
 
-use = LinearIntermediateSymbols1("use", Shape1(materials.size)) { m, _ ->
+val use = LinearIntermediateSymbols1("use", Shape1(materials.size)) { m, _ ->
     val material = materials[m]
     val ps = products.filter { it.use.contains(material) }
     LinearExpressionSymbol(
@@ -190,7 +174,6 @@ for (token in metaModel.tokens.tokens) {
         solution[materials[token.variable.vectorView[0]]] = token.result!!
     }
 }
-
 ```
 
 :::
