@@ -145,7 +145,7 @@ when (val ret = solver(metaModel)) {
 // parse results
 val solution = ArrayList<Company>()
 for (token in metaModel.tokens.tokens) {
-    if (token.result!! eq Flt64.one) {
+    if (token.result!! eq Flt64.one && token.variable.belongsTo(x)) {
         solution.add(companies[token.variable.index])
     }
 }

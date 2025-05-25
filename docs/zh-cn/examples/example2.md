@@ -153,9 +153,7 @@ when (val ret = solver(metaModel)) {
 // 解析结果
 val solution = ArrayList<Pair<Company, Product>>()
 for (token in metaModel.tokens.tokens) {
-    if (token.result!! eq Flt64.one
-        && token.variable.belongsTo(x)
-    ) {
+    if (token.result!! eq Flt64.one && token.variable.belongsTo(x)) {
         val company = companies[token.variable.vectorView[0]]
         val product = products[token.variable.vectorView[1]]
         solution.add(company to product)

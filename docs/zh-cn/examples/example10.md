@@ -85,8 +85,8 @@ data class City(
 ) : AutoIndexed(City::class)
 
 val beginCity = "北京"
-val cities: List<City> = ... \\ 城市列表
-val distances: Map<Pair<City, City>, Flt64> = ... \\ 距离矩阵
+val cities: List<City> = ... // 城市列表
+val distances: Map<Pair<City, City>, Flt64> = ... // 距离矩阵
 
 // 创建模型实例
 val metaModel = LinearMetaModel("demo10")
@@ -181,9 +181,7 @@ when (val ret = solver(metaModel)) {
 // 解析结果
 val route: MutableMap<City, City> = hashMapOf()
 for (token in metaModel.tokens.tokens) {
-    if (token.result!! eq Flt64.one 
-        && token.variable.belongsTo(x)
-    ) {
+    if (token.result!! eq Flt64.one && token.variable.belongsTo(x)) {
         val vector = token.variable.vectorView
         val city1 = cities[vector[0]]
         val city2 = cities[vector[1]]

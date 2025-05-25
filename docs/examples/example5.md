@@ -117,9 +117,7 @@ when (val ret = solver(metaModel)) {
 // parse results
 val solution = HashSet<Cargo>()
 for (token in metaModel.tokens.tokens) {
-    if (token.result!! eq Flt64.one
-        && token.variable.belongsTo(x)
-    ) {
+    if (token.result!! eq Flt64.one && token.variable.belongsTo(x)) {
         solution.add(cargos[token.variable.vectorView[0]])
     }
 }

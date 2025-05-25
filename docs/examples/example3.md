@@ -138,9 +138,7 @@ when (val ret = solver(metaModel)) {
 // parse results
 val solution = HashMap<Material, UInt64>()
 for (token in metaModel.tokens.tokens) {
-    if (token.result!! eq Flt64.one
-        && token.variable.belongsTo(x)
-    ) {
+    if (token.result!! eq Flt64.one && token.variable.belongsTo(x)) {
         val material = materials[token.variable.vectorView[0]]
         solution[material] = token.result!!.round().toUInt64()
     }
