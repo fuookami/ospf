@@ -69,15 +69,26 @@ $$
 s.t. \quad \sum_{i \in S} Risk_{i} \leq Risk^{Max}
 $$
 
-### 期望结果
+## 期望结果
 
 $S_{4}$ 投资 $494505$ 元，$S_{2}$ 投资 $476191$ 元。
 
-### 代码实现
+## 代码实现
 
 ::: code-group
 
 ```kotlin
+import fuookami.ospf.kotlin.utils.math.*
+import fuookami.ospf.kotlin.utils.concept.*
+import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.utils.multi_array.*
+import fuookami.ospf.kotlin.core.frontend.variable.*
+import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
+import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
+import fuookami.ospf.kotlin.core.frontend.inequality.*
+import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
+import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+
 data class Product(
     val yield: Flt64,
     val risk: Flt64,
@@ -96,6 +107,7 @@ val metaModel = LinearMetaModel("demo12")
 val x = UIntVariable1("x", Shape1(products.size))
 metaModel.add(x)
 
+// 定义中间值
 val assignment = LinearIntermediateSymbols1(
     "assignment",
     Shape1(products.size)
@@ -159,12 +171,12 @@ when (val ret = solver(metaModel)) {
 }
 
 // 解析结果
-val ret = HashMap<Product, UInt64>()
+val solution = HashMap<Product, UInt64>()
 for (token in metaModel.tokens.tokens) {
     if (token.result!! geq Flt64.one && token.variable.belongsTo(x)) {
         val vector = token.variable.vectorView
         val product = products[vector[0]]
-        ret[product] = token.result!!.round().toUInt64()
+        solution[product] = token.result!!.round().toUInt64()
     }
 }
 ```
