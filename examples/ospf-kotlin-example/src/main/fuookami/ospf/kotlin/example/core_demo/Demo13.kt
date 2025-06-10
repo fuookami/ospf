@@ -141,6 +141,7 @@ data object Demo13 {
 
     private suspend fun initObject(): Try {
         metaModel.minimize(cost, "cost")
+
         return ok
     }
 
@@ -182,6 +183,7 @@ data object Demo13 {
                 return Failed(ret.error)
             }
         }
+
         return ok
     }
 
@@ -195,6 +197,7 @@ data object Demo13 {
                 trans.getOrPut(distributionCenter) { hashMapOf() }[dealer] = token.result!!.round().toUInt64()
             }
         }
+
         return ok
     }
 }
