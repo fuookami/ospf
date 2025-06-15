@@ -11,7 +11,6 @@ import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols1
 
 /**
  * @see     https://fuookami.github.io/ospf/examples/example14.html
@@ -115,6 +114,7 @@ data object Demo14 {
                 }
             }
         }
+
         return ok
     }
 
@@ -129,21 +129,25 @@ data object Demo14 {
             }), "cost"
         )
         metaModel.add(cost)
+
         transOut = LinearIntermediateSymbols1("out", Shape1(nodes.size)) { i, _ ->
             val node = nodes[i]
             LinearExpressionSymbol(sum(x[node, _a]), "out_${node.name}")
         }
         metaModel.add(transOut)
+
         transIn = LinearIntermediateSymbols1("in", Shape1(nodes.size)) { i, _ ->
             val node = nodes[i]
             LinearExpressionSymbol(sum(x[_a, node]), "in_${node.name}")
         }
         metaModel.add(transIn)
+
         return ok
     }
 
     private suspend fun initObject(): Try {
         metaModel.minimize(cost)
+
         return ok
     }
 
@@ -154,18 +158,21 @@ data object Demo14 {
                 "out_${node.name}"
             )
         }
+
         for (node in nodes.filterIsInstance<Sale>()) {
             metaModel.addConstraint(
                 transIn[node] geq node.demand,
                 "in_${node.name}"
             )
         }
+
         for (node in nodes.filterIsInstance<Distribution>()) {
             metaModel.addConstraint(
                 transOut[node] eq transIn[node],
                 "balance_${node.name}"
             )
         }
+
         return ok
     }
 
@@ -180,6 +187,7 @@ data object Demo14 {
                 return Failed(ret.error)
             }
         }
+
         return ok
     }
 
@@ -193,6 +201,7 @@ data object Demo14 {
                 trans.getOrPut(from) { hashMapOf() }[to] = token.result!!.round().toUInt64()
             }
         }
+
         return ok
     }
 }

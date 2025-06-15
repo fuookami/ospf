@@ -204,7 +204,10 @@ data object Demo17 {
     }
 
     private suspend fun initVariable(): Try {
-        x = BinVariable3("x", Shape3(nodes.size, nodes.size, vehicles.size))
+        x = BinVariable3(
+            "x",
+            Shape3(nodes.size, nodes.size, vehicles.size)
+        )
         for (n1 in nodes) {
             for (n2 in nodes) {
                 for (v in vehicles) {
@@ -218,7 +221,11 @@ data object Demo17 {
                 }
             }
         }
-        s = URealVariable2("s", Shape2(nodes.size, vehicles.size))
+
+        s = URealVariable2(
+            "s",
+            Shape2(nodes.size, vehicles.size)
+        )
         for (n in nodes) {
             for (v in vehicles) {
                 val si = s[n, v]
@@ -226,50 +233,98 @@ data object Demo17 {
             }
         }
         metaModel.add(s)
+
         return ok
     }
 
     private suspend fun initSymbol(): Try {
-        origin = LinearIntermediateSymbols1("origin", Shape1(vehicles.size)) { i, _ ->
+        origin = LinearIntermediateSymbols1(
+            "origin",
+            Shape1(vehicles.size)
+        ) { i, _ ->
             val v = vehicles[i]
-            LinearExpressionSymbol(sum(nodes.filterIsInstance<OriginNode>().flatMap { n1 -> x[n1, _a, v] }), "origin_${v.index}")
+            LinearExpressionSymbol(
+                sum(nodes.filterIsInstance<OriginNode>().flatMap { n1 -> x[n1, _a, v] }),
+                "origin_${v.index}"
+            )
         }
         metaModel.add(origin)
-        destination = LinearIntermediateSymbols1("destination", Shape1(vehicles.size)) { i, _ ->
+
+        destination = LinearIntermediateSymbols1(
+            "destination",
+            Shape1(vehicles.size)
+        ) { i, _ ->
             val v = vehicles[i]
-            LinearExpressionSymbol(sum(nodes.filterIsInstance<EndNode>().flatMap { n2 -> x[_a, n2, v] }), "destination_${v.index}")
+            LinearExpressionSymbol(
+                sum(nodes.filterIsInstance<EndNode>().flatMap { n2 -> x[_a, n2, v] }),
+                "destination_${v.index}"
+            )
         }
         metaModel.add(destination)
-        inFlow = LinearIntermediateSymbols2("in", Shape2(nodes.size, vehicles.size)) { _, vec ->
+
+        inFlow = LinearIntermediateSymbols2(
+            "in",
+            Shape2(nodes.size, vehicles.size)
+        ) { _, vec ->
             val n2 = nodes[vec[0]]
             val v = vehicles[vec[1]]
             if (n2 is OriginNode) {
-                LinearExpressionSymbol(LinearPolynomial(), name = "in_(${n2.index},${v.index})")
+                LinearExpressionSymbol(
+                    LinearPolynomial(),
+                    "in_(${n2.index},${v.index})"
+                )
             } else {
-                LinearExpressionSymbol(sum(nodes.filterIsNotInstance<EndNode, Node>().map { n1 -> x[n1, n2, v] }), "in_(${n2.index},${v.index})")
+                LinearExpressionSymbol(
+                    sum(nodes.filterIsNotInstance<EndNode, Node>().map { n1 -> x[n1, n2, v] }),
+                    "in_(${n2.index},${v.index})"
+                )
             }
         }
         metaModel.add(inFlow)
-        outFlow = LinearIntermediateSymbols2("out", Shape2(nodes.size, vehicles.size)) { _, vec ->
+
+        outFlow = LinearIntermediateSymbols2(
+            "out",
+            Shape2(nodes.size, vehicles.size)
+        ) { _, vec ->
             val n1 = nodes[vec[0]]
             val v = vehicles[vec[1]]
             if (n1 is EndNode) {
-                LinearExpressionSymbol(LinearPolynomial(), name = "out_(${n1.index},${v.index})")
+                LinearExpressionSymbol(
+                    LinearPolynomial(),
+                    "out_(${n1.index},${v.index})"
+                )
             } else {
-                LinearExpressionSymbol(sum(nodes.filterIsNotInstance<OriginNode, Node>().map { n2 -> x[n1, n2, v] }), "out_(${n1.index},${v.index})")
+                LinearExpressionSymbol(
+                    sum(nodes.filterIsNotInstance<OriginNode, Node>().map { n2 -> x[n1, n2, v] }),
+                    "out_(${n1.index},${v.index})"
+                )
             }
         }
         metaModel.add(outFlow)
-        service = LinearIntermediateSymbols1("service", Shape1(nodes.size)) { i, _ ->
+
+        service = LinearIntermediateSymbols1(
+            "service",
+            Shape1(nodes.size)
+        ) { i, _ ->
             val n1 = nodes[i]
             if (n1 is OriginNode || n1 is EndNode) {
-                LinearExpressionSymbol(LinearPolynomial(), name = "service_(${n1.index})")
+                LinearExpressionSymbol(
+                    LinearPolynomial(),
+                    "service_(${n1.index})"
+                )
             } else {
-                LinearExpressionSymbol(sum(nodes.filterIsNotInstance<OriginNode, Node>().flatMap { n2 -> x[n1, n2, _a] }), "service_(${n1.index})")
+                LinearExpressionSymbol(sum(
+                    nodes.filterIsNotInstance<OriginNode, Node>().flatMap { n2 -> x[n1, n2, _a] }),
+                    "service_(${n1.index})"
+                )
             }
         }
         metaModel.add(service)
-        capacity = LinearIntermediateSymbols1("capacity", Shape1(vehicles.size)) { i, _ ->
+
+        capacity = LinearIntermediateSymbols1(
+            "capacity",
+            Shape1(vehicles.size)
+        ) { i, _ ->
             val v = vehicles[i]
             LinearExpressionSymbol(sum(nodes.flatMap { n1 ->
                 nodes.mapNotNull { n2 ->
@@ -278,16 +333,25 @@ data object Demo17 {
             }), "capacity_${v.index}")
         }
         metaModel.add(capacity)
+
         return ok
     }
 
     private suspend fun initObject(): Try {
-        metaModel.minimize(sum(vehicles.map { v -> v.fixedUsedCost * origin[v] }), "used cost")
-        metaModel.minimize(sum(nodes.flatMap { n1 ->
-            nodes.map { n2 ->
-                n1.cost(n2) * sum(x[n1, n2, _a])
-            }
-        }), "trans cost")
+        metaModel.minimize(
+            sum(vehicles.map { v -> v.fixedUsedCost * origin[v] }),
+            "used cost"
+        )
+
+        metaModel.minimize(
+            sum(nodes.flatMap { n1 ->
+                nodes.map { n2 ->
+                    n1.cost(n2) * sum(x[n1, n2, _a])
+                }
+            }),
+            "trans cost"
+        )
+
         return ok
     }
 
@@ -298,6 +362,7 @@ data object Demo17 {
                 "origin_${v.index}"
             )
         }
+
         for (n in nodes.filterIsInstance<DemandNode>()) {
             for (v in vehicles) {
                 metaModel.addConstraint(
@@ -306,18 +371,21 @@ data object Demo17 {
                 )
             }
         }
+
         for (v in vehicles) {
             metaModel.addConstraint(
                 destination[v] leq 1,
                 "destination_${v.index}"
             )
         }
+
         for (n in nodes.filterIsInstance<DemandNode>()) {
             metaModel.addConstraint(
                 service[n] eq 1,
                 "service_${n.index}"
             )
         }
+
         val m = nodes.filterIsInstance<EndNode>().maxOf { it.timeWindow.upperBound.value.unwrap() }
         for (n1 in nodes) {
             for (n2 in nodes) {
@@ -329,6 +397,7 @@ data object Demo17 {
                 }
             }
         }
+
         for (n in nodes) {
             for (v in vehicles) {
                 metaModel.addConstraint(
@@ -341,12 +410,14 @@ data object Demo17 {
                 )
             }
         }
+
         for (v in vehicles) {
             metaModel.addConstraint(
                 capacity[v] leq v.capacity,
                 "capacity_${v.index}"
             )
         }
+
         return ok
     }
 
@@ -361,6 +432,7 @@ data object Demo17 {
                 return Failed(ret.error)
             }
         }
+
         return ok
     }
 
@@ -384,6 +456,7 @@ data object Demo17 {
                 time.getOrPut(v) { HashMap() }[n] = token.result!!.round().toUInt64()
             }
         }
+
         return ok
     }
 }

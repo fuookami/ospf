@@ -133,9 +133,7 @@ when (val ret = solver(metaModel)) {
 // 解析结果
 val solution = HashMap<Product, UInt64>()
 for (token in metaModel.tokens.tokens) {
-    if (token.result!! neq Flt64.one
-        && token.variable.belongsTo(x)
-    ) {
+    if (token.result!! neq Flt64.one && token.variable.belongsTo(x)) {
         solution[products[token.variable.vectorView[0]]] = token.result!!.round().toUInt64()
     }
 }

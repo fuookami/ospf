@@ -11,7 +11,6 @@ import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols1
 
 /**
  * @see     https://fuookami.github.io/ospf/examples/example16.html
@@ -39,7 +38,7 @@ data object Demo16 {
     lateinit var produce: LinearIntermediateSymbols1
     lateinit var supply: LinearIntermediateSymbols1
     lateinit var delayDeliveryCost: LinearIntermediateSymbol
-    lateinit var stowageCost: LinearIntermediateSymbol
+    lateinit var storageCost: LinearIntermediateSymbol
     lateinit var produceCost: LinearIntermediateSymbol
 
     val metaModel = LinearMetaModel("demo16")
@@ -69,47 +68,78 @@ data object Demo16 {
     private suspend fun initVariable(): Try {
         x = UIntVariable2("x", Shape2(produces.size, produces.size))
         metaModel.add(x)
+
         return ok
     }
 
     private suspend fun initSymbol(): Try {
-        produce = LinearIntermediateSymbols1("produce", Shape1(produces.size)) { i, _ ->
+        produce = LinearIntermediateSymbols1(
+            "produce",
+            Shape1(produces.size)
+        ) { i, _ ->
             val p = produces[i]
-            LinearExpressionSymbol(sum(x[p, _a]), "produce_${p.month}")
+            LinearExpressionSymbol(
+                sum(x[p, _a]),
+                "produce_${p.month}"
+            )
         }
         metaModel.add(produce)
-        supply = LinearIntermediateSymbols1("supply", Shape1(produces.size)) { i, _ ->
+
+        supply = LinearIntermediateSymbols1(
+            "supply",
+            Shape1(produces.size)
+        ) { i, _ ->
             val p = produces[i]
-            LinearExpressionSymbol(sum(x[_a, p]), "supply_${p.month}")
+            LinearExpressionSymbol(
+                sum(x[_a, p]),
+                "supply_${p.month}"
+            )
         }
         metaModel.add(supply)
-        delayDeliveryCost = LinearExpressionSymbol(sum(produces.withIndex().flatMap { (i, _) ->
-            produces.withIndex().mapNotNull { (j, _) ->
-                if (i < j) {
-                    Flt64(j - i) * delayDeliveryPrice * x[j, i]
-                } else {
-                    null
+
+        delayDeliveryCost = LinearExpressionSymbol(
+            sum(produces.withIndex().flatMap { (i, _) ->
+                produces.withIndex().mapNotNull { (j, _) ->
+                    if (i < j) {
+                        Flt64(j - i).sqr() * delayDeliveryPrice * x[j, i]
+                    } else {
+                        null
+                    }
                 }
-            }
-        }), "delay_delivery_cost")
+            }),
+            "delay_delivery_cost"
+        )
         metaModel.add(delayDeliveryCost)
-        stowageCost = LinearExpressionSymbol(sum(produces.withIndex().flatMap { (i, _) ->
-            produces.withIndex().mapNotNull { (j, _) ->
-                if (i < j) {
-                    Flt64(j - i) * stowagePrice * x[i, j]
-                } else {
-                    null
+
+        storageCost = LinearExpressionSymbol(
+            sum(produces.withIndex().flatMap { (i, _) ->
+                produces.withIndex().mapNotNull { (j, _) ->
+                    if (i < j) {
+                        Flt64(j - i) * stowagePrice * x[i, j]
+                    } else {
+                        null
+                    }
                 }
-            }
-        }), "storage_cost")
-        metaModel.add(stowageCost)
-        produceCost = LinearExpressionSymbol(productPrice * sum(x[_a, _a]), "produce_cost")
+            }),
+            "storage_cost"
+        )
+        metaModel.add(storageCost)
+
+        produceCost = LinearExpressionSymbol(
+            productPrice * sum(x[_a, _a]),
+            "produce_cost"
+        )
         metaModel.add(produceCost)
+
         return ok
     }
 
     private suspend fun initObject(): Try {
-        metaModel.minimize(delayDeliveryCost + stowageCost + produceCost, "cost")
+        metaModel.minimize(
+            delayDeliveryCost + storageCost + produceCost,
+            "cost"
+        )
+
         return ok
     }
 
@@ -120,12 +150,14 @@ data object Demo16 {
                 "demand_${p.month}"
             )
         }
+
         for (p in produces) {
             metaModel.addConstraint(
                 produce[p] leq p.productivity,
                 "productivity_${p.month}"
             )
         }
+
         return ok
     }
 
@@ -140,19 +172,21 @@ data object Demo16 {
                 return Failed(ret.error)
             }
         }
+
         return ok
     }
 
     private suspend fun analyzeSolution(): Try {
-        val produce = HashMap<UInt64, HashMap<UInt64, UInt64>>()
+        val solution = HashMap<UInt64, HashMap<UInt64, UInt64>>()
         for (token in metaModel.tokens.tokens) {
             if (token.result!! geq Flt64.one && token.variable belongsTo x) {
                 val vector = token.variable.vectorView
                 val i = UInt64(vector[0])
                 val j = UInt64(vector[1])
-                produce.getOrPut(i) { HashMap() }[j] = token.result!!.round().toUInt64()
+                solution.getOrPut(i) { HashMap() }[j] = token.result!!.round().toUInt64()
             }
         }
+
         return ok
     }
 }

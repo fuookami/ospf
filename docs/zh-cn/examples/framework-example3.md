@@ -2,7 +2,7 @@
 
 ## 问题描述
 
-原材料长 $1000$ 个单位，需要把原材料切分以下的成品材料, 且满足每种成品材料对应的需求量，目标是最小化所需原材料的数量：
+原材料长 $1000$ 个单位，需要把原材料切分以下的成品材料，且满足每种成品材料对应的需求量，目标是最小化所需原材料的数量：
 
 |        | 长度  | 需求量 |
 | :----: | :---: | :----: |
@@ -17,20 +17,20 @@
 
 #### 变量
 
-$x_{j} \in N$：使用第 $j$ 个切割方案的数量。
+$x_{ij} \in N$：使用第 $i$ 次迭代第 $j$ 个切割方案的数量。
 
 #### 中间值
 
 ##### 1. 原材料总使用量
 
 $$
-Cost_{i} = Cost_{i - 1} + \sum_{j \in Plan_{i}} x_{ij}, \; \forall i \in N
+Cost_{i} = Cost_{i - 1} + \sum_{j \in N_{i}} x_{ij}, \; \forall j \in N_{i}
 $$
 
 ##### 2. 成品材料生产量
 
 $$
-Output_{ip} = Output_{i - 1, \, p} + \sum_{j \in Plan_{i}} Amount_{ijp} \cdot x_{ij}, \; \forall i \in N
+Output_{ip} = Output_{i - 1, \, p} + \sum_{j \in N_{i}} Amount_{ijp} \cdot x_{ij}, \; \forall j \in N_{i}, \; \forall p \in P
 $$
 
 #### 目标函数

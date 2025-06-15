@@ -12,7 +12,6 @@ import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.LinearIntermediateSymbols1
 
 /**
  * @see     https://fuookami.github.io/ospf/examples/example12.html
@@ -33,10 +32,13 @@ data object Demo12 {
         Product(Flt64(0.05), Flt64(0.0), Flt64(0.0), Flt64(0.0))
     )
     val funds = Flt64(1000000.0)
+    val maxRisk = Flt64(0.02)
 
     lateinit var x: UIntVariable1
 
+    lateinit var assignment: LinearIntermediateSymbols1
     lateinit var premium: LinearIntermediateSymbols1
+    lateinit var risk: LinearExpressionSymbol
     lateinit var yield: LinearIntermediateSymbol
 
     val metaModel = LinearMetaModel("demo12")
@@ -70,22 +72,44 @@ data object Demo12 {
     }
 
     private suspend fun initSymbol(): Try {
-        premium = LinearIntermediateSymbols1("premium", Shape1(products.size)) { i, _ ->
+        assignment = LinearIntermediateSymbols1(
+            "assignment",
+            Shape1(products.size)
+        ) { i, _ ->
+            BinaryzationFunction(
+                x = LinearPolynomial(x[i]),
+                name = "assignment_$i"
+            )
+        }
+        metaModel.add(assignment)
+
+        premium = LinearIntermediateSymbols1(
+            "premium",
+            Shape1(products.size)
+        ) { i, _ ->
             val product = products[i]
             MaxFunction(
                 listOf(
                     LinearPolynomial(product.premium * x[i]),
-                    LinearPolynomial(product.minPremium)
+                    LinearPolynomial(product.minPremium * assignment[i])
                 ),
                 "premium_$i"
             )
         }
         metaModel.add(premium)
+
+        risk = LinearExpressionSymbol(
+            sum(products.map { p -> p.risk * x[p] / funds }),
+            "risk"
+        )
+        metaModel.add(risk)
+
         yield = LinearExpressionSymbol(
-            sum(products.map { p -> (p.yield - p.risk) * x[p] - premium[p] }),
+            sum(products.map { p -> p.yield * x[p] - premium[p] }),
             "yield"
         )
         metaModel.add(yield)
+
         return ok
     }
 
@@ -97,8 +121,14 @@ data object Demo12 {
     private suspend fun initConstraint(): Try {
         metaModel.addConstraint(
             sum(products.map { p -> x[p] + premium[p] }) eq funds,
-            "pay"
+            "funs"
         )
+
+        metaModel.addConstraint(
+            risk leq maxRisk,
+            "risk"
+        )
+
         return ok
     }
 

@@ -180,9 +180,7 @@ when (val ret = solver(metaModel)) {
 // 解析结果
 val solution = stores.associateWith { warehouses.associateWith { Flt64.zero }.toMutableMap() }
 for (token in metaModel.tokens.tokens) {
-    if (token.result!! geq Flt64.one
-        && token.variable.belongsTo(x)
-    ) {
+    if (token.result!! geq Flt64.one && token.variable.belongsTo(x)) {
         val warehouse = warehouses[token.variable.vectorView[0]]
         val store = stores[token.variable.vectorView[1]]
         solution[store]!![warehouse] = solution[store]!![warehouse]!! + token.result!!
