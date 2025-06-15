@@ -162,7 +162,7 @@ data object Demo15 {
             }
             y
         }
-        metaModel.add(y.values)
+        metaModel.add(y.values.flatten())
 
         return ok
     }
