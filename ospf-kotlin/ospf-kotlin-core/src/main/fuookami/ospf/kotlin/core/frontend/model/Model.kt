@@ -1,6 +1,7 @@
 package fuookami.ospf.kotlin.core.frontend.model
 
 import fuookami.ospf.kotlin.utils.math.*
+import fuookami.ospf.kotlin.utils.physics.quantity.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.frontend.variable.*
 import fuookami.ospf.kotlin.core.frontend.expression.monomial.*
@@ -17,6 +18,22 @@ interface Model {
     fun add(item: AbstractVariableItem<*, *>): Try
     fun add(items: Iterable<AbstractVariableItem<*, *>>): Try
     fun remove(item: AbstractVariableItem<*, *>)
+
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("addQuantityVariable")
+    fun add(item: Quantity<AbstractVariableItem<*, *>>): Try {
+        return add(item.value)
+    }
+
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("addQuantityVariables")
+    fun add(items: Iterable<Quantity<AbstractVariableItem<*, *>>>): Try {
+        return add(items.map { it.value })
+    }
+
+    fun remove(item: Quantity<AbstractVariableItem<*, *>>) {
+        return remove(item.value)
+    }
 
     fun addObject(
         category: ObjectCategory,
@@ -71,25 +88,84 @@ interface Model {
 
 interface LinearModel : Model {
     fun addConstraint(
-        constraint: LinearLogicFunctionSymbol,
+        constraint: AbstractVariableItem<*, *>,
         name: String? = null,
-        displayName: String? = null
+        displayName: String? = null,
+        withRangeSet: Boolean? = false
     ): Try {
-        return addConstraint(constraint eq Flt64.one, name, displayName)
+        return addConstraint(constraint eq true, name, displayName, withRangeSet)
+    }
+
+    fun addConstraint(
+        constraint: LinearMonomial,
+        name: String? = null,
+        displayName: String? = null,
+        withRangeSet: Boolean? = false
+    ): Try {
+        return addConstraint(constraint eq true, name, displayName, withRangeSet)
+    }
+
+    fun addConstraint(
+        constraint: AbstractLinearPolynomial<*>,
+        name: String? = null,
+        displayName: String? = null,
+        withRangeSet: Boolean? = false
+    ): Try {
+        return addConstraint(constraint eq true, name, displayName, withRangeSet)
+    }
+
+    fun addConstraint(
+        constraint: LinearIntermediateSymbol,
+        name: String? = null,
+        displayName: String? = null,
+        withRangeSet: Boolean? = false
+    ): Try {
+        return addConstraint(constraint eq true, name, displayName, withRangeSet)
     }
 
     fun addConstraint(
         constraint: LinearInequality,
         name: String? = null,
-        displayName: String? = null
+        displayName: String? = null,
+        withRangeSet: Boolean? = false
     ): Try
+
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("partitionVariables")
+    fun partition(
+        variables: Iterable<AbstractVariableItem<*, *>>,
+        name: String? = null,
+        displayName: String? = null
+    ): Try {
+        return partition(sum(variables), name, displayName)
+    }
+
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("partitionLinearSymbols")
+    fun partition(
+        symbols: Iterable<LinearIntermediateSymbol>,
+        name: String? = null,
+        displayName: String? = null
+    ): Try {
+        return partition(sum(symbols), name, displayName)
+    }
+
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("partitionLinearMonomials")
+    fun partition(
+        monomials: Iterable<LinearMonomial>,
+        name: String? = null,
+        displayName: String? = null
+    ): Try {
+        return partition(sum(monomials), name, displayName)
+    }
 
     fun partition(
         polynomial: AbstractLinearPolynomial<*>,
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addConstraint(polynomial eq Flt64.one, name, displayName)
+        return addConstraint(polynomial eq true, name, displayName)
     }
 
     override fun addObject(
@@ -185,27 +261,68 @@ interface LinearModel : Model {
 }
 
 interface QuadraticModel : LinearModel {
+    fun addConstraint(
+        constraint: QuadraticMonomial,
+        name: String? = null,
+        displayName: String? = null,
+        withRangeSet: Boolean? = null
+    ): Try {
+        return addConstraint(constraint eq true, name, displayName, withRangeSet)
+    }
+
     override fun addConstraint(
         constraint: LinearInequality,
         name: String?,
-        displayName: String?
+        displayName: String?,
+        withRangeSet: Boolean?
     ): Try {
-        return addConstraint(QuadraticInequality(constraint), name, displayName)
+        return addConstraint(QuadraticInequality(constraint), name, displayName, withRangeSet)
     }
 
     fun addConstraint(
-        constraint: QuadraticFunctionSymbol,
+        constraint: AbstractQuadraticPolynomial<*>,
         name: String? = null,
-        displayName: String? = null
+        displayName: String? = null,
+        withRangeSet: Boolean? = null
     ): Try {
-        return addConstraint(constraint eq Flt64.one, name, displayName)
+        return addConstraint(constraint eq true, name, displayName, withRangeSet)
+    }
+
+    fun addConstraint(
+        constraint: QuadraticIntermediateSymbol,
+        name: String? = null,
+        displayName: String? = null,
+        withRangeSet: Boolean? = null
+    ): Try {
+        return addConstraint(constraint eq true, name, displayName, withRangeSet)
     }
 
     fun addConstraint(
         constraint: QuadraticInequality,
         name: String? = null,
-        displayName: String? = null
+        displayName: String? = null,
+        withRangeSet: Boolean? = null
     ): Try
+
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("partitionQuadraticMonomials")
+    fun partition(
+        monomials: Iterable<QuadraticMonomial>,
+        name: String? = null,
+        displayName: String? = null
+    ): Try {
+        return partition(qsum(monomials), name, displayName)
+    }
+
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("partitionQuadraticSymbols")
+    fun partition(
+        symbols: Iterable<QuadraticIntermediateSymbol>,
+        name: String? = null,
+        displayName: String? = null
+    ): Try {
+        return partition(qsum(symbols), name, displayName)
+    }
 
     fun partition(
         polynomial: AbstractQuadraticPolynomial<*>,

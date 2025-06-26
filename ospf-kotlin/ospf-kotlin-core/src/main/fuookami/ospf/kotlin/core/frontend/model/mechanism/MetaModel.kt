@@ -12,6 +12,7 @@ import fuookami.ospf.kotlin.core.frontend.expression.monomial.*
 import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
+import fuookami.ospf.kotlin.core.frontend.inequality.Sign
 import fuookami.ospf.kotlin.core.frontend.model.*
 
 sealed interface MetaModel : Model {
@@ -62,10 +63,20 @@ sealed interface MetaModel : Model {
         return tokens.add(symbol)
     }
 
+    fun add(symbol: QuantityIntermediateSymbol): Try {
+        return tokens.add(symbol.value)
+    }
+
     @Suppress("INAPPLICABLE_JVM_NAME")
     @JvmName("addSymbols")
     fun add(symbols: Iterable<IntermediateSymbol>): Try {
         return tokens.add(symbols)
+    }
+
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("addQuantitySymbols")
+    fun add(symbols: Iterable<QuantityIntermediateSymbol>): Try {
+        return tokens.add(symbols.map { it.value })
     }
 
     fun remove(symbol: IntermediateSymbol) {
@@ -111,7 +122,15 @@ sealed interface MetaModel : Model {
         return export(Path(".").resolve(name))
     }
 
-    suspend fun export(path: Path, unfold: Boolean = false): Try {
+    suspend fun export(path: String, unfold: Boolean): Try {
+        return export(Path(".").resolve(name), if (unfold) { UInt64.zero } else { UInt64.maximum })
+    }
+
+    suspend fun export(path: String, unfold: UInt64): Try {
+        return export(Path(".").resolve(name), unfold)
+    }
+
+    suspend fun export(path: Path, unfold: UInt64 = UInt64.zero): Try {
         val file = if (path.isDirectory()) {
             path.resolve("$name.opm").toFile()
         } else {
@@ -141,7 +160,7 @@ sealed interface MetaModel : Model {
         return result
     }
 
-    private suspend fun exportOpm(writer: FileWriter, unfold: Boolean): Try {
+    private suspend fun exportOpm(writer: FileWriter, unfold: UInt64): Try {
         when (val result = when (tokens) {
             is MutableTokenTable -> {
                 val temp = tokens.copy() as MutableTokenTable
@@ -197,7 +216,7 @@ sealed interface MetaModel : Model {
             writer.append("Symbols:\n")
             for (symbol in tokens.symbols.toList().sortedBy { it.name }) {
                 val range = symbol.range
-                writer.append("$symbol = ${symbol.toRawString(unfold)}, ")
+                writer.append("$symbol = ${symbol.toRawString(UInt64.one)}, ")
                 if (range.empty) {
                     writer.append("empty")
                 } else {
@@ -229,7 +248,9 @@ interface AbstractQuadraticMetaModel : MetaModel, QuadraticModel
 abstract class AbstractMetaModel(
     val category: Category,
     manualTokenAddition: Boolean = true,
-    internal val concurrent: Boolean = true
+    internal val concurrent: Boolean = true,
+    internal val dumpBlocking: Boolean = false,
+    internal val withRangeSet: Boolean = false
 ) : MetaModel {
     override val tokens: AbstractMutableTokenTable = if (concurrent) {
         if (manualTokenAddition) {
@@ -277,8 +298,10 @@ class LinearMetaModel(
     override var name: String = "",
     override val objectCategory: ObjectCategory = ObjectCategory.Minimum,
     manualTokenAddition: Boolean = true,
-    concurrent: Boolean = true
-) : AbstractMetaModel(Linear, manualTokenAddition, concurrent), AbstractLinearMetaModel {
+    concurrent: Boolean = true,
+    dumpBlocking: Boolean = false,
+    withRangeSet: Boolean = true
+) : AbstractMetaModel(Linear, manualTokenAddition, concurrent, dumpBlocking, withRangeSet), AbstractLinearMetaModel {
     internal val _constraints: MutableList<LinearInequality> = ArrayList()
     override val constraints: List<Inequality<*, *>> by ::_constraints
     internal val _subObjects: MutableList<MetaModel.SubObject<LinearPolynomial, LinearMonomial, LinearMonomialCell>> = ArrayList()
@@ -287,11 +310,37 @@ class LinearMetaModel(
     override fun addConstraint(
         constraint: LinearInequality,
         name: String?,
-        displayName: String?
+        displayName: String?,
+        withRangeSet: Boolean?
     ): Try {
         name?.let { constraint.name = it }
         displayName?.let { constraint.name = it }
         _constraints.add(constraint)
+        
+        if (withRangeSet ?: this.withRangeSet
+            && constraint.lhs.monomials.size == 1
+            && !constraint.lhs.monomials.first().pure
+            && constraint.rhs.monomials.isEmpty()
+        ) {
+            val symbol = constraint.lhs.monomials.first().symbol.exprSymbol!!
+            val constant = constraint.rhs.constant - constraint.lhs.constant
+            when (constraint.sign) {
+                Sign.Less, Sign.LessEqual -> {
+                    symbol.range.leq(constant)
+                }
+
+                Sign.Greater, Sign.GreaterEqual -> {
+                    symbol.range.geq(constant)
+                }
+
+                Sign.Equal -> {
+                    symbol.range.eq(constant)
+                }
+
+                Sign.Unequal -> {}
+            }
+        }
+
         return ok
     }
 
@@ -317,8 +366,10 @@ class QuadraticMetaModel(
     override var name: String = "",
     override val objectCategory: ObjectCategory = ObjectCategory.Minimum,
     manualTokenAddition: Boolean = true,
-    concurrent: Boolean = true
-) : AbstractMetaModel(Quadratic, manualTokenAddition, concurrent), AbstractLinearMetaModel, AbstractQuadraticMetaModel {
+    concurrent: Boolean = true,
+    dumpBlocking: Boolean = false,
+    withRangeSet: Boolean = true
+) : AbstractMetaModel(Quadratic, manualTokenAddition, concurrent, dumpBlocking, withRangeSet), AbstractLinearMetaModel, AbstractQuadraticMetaModel {
     internal val _constraints: MutableList<QuadraticInequality> = ArrayList()
     override val constraints: List<Inequality<*, *>> by ::_constraints
     internal val _subObjects: MutableList<MetaModel.SubObject<QuadraticPolynomial, QuadraticMonomial, QuadraticMonomialCell>> = ArrayList()
@@ -327,11 +378,38 @@ class QuadraticMetaModel(
     override fun addConstraint(
         constraint: QuadraticInequality,
         name: String?,
-        displayName: String?
+        displayName: String?,
+        withRangeSet: Boolean?
     ): Try {
         name?.let { constraint.name = it }
         displayName?.let { constraint.name = it }
         _constraints.add(constraint)
+
+        if (withRangeSet ?: this.withRangeSet
+            && !constraint.lhs.monomials.first().pure
+            && constraint.lhs.monomials.first().symbol.symbol2 == null
+            && constraint.rhs.monomials.isEmpty()
+        ) {
+            val symbol = constraint.lhs.monomials.first().symbol.symbol1.v2
+                ?: constraint.lhs.monomials.first().symbol.symbol1.v3!!
+            val constant = constraint.rhs.constant - constraint.lhs.constant
+            when (constraint.sign) {
+                Sign.Less, Sign.LessEqual -> {
+                    symbol.range.leq(constant)
+                }
+
+                Sign.Greater, Sign.GreaterEqual -> {
+                    symbol.range.geq(constant)
+                }
+
+                Sign.Equal -> {
+                    symbol.range.eq(constant)
+                }
+
+                Sign.Unequal -> {}
+            }
+        }
+
         return ok
     }
 

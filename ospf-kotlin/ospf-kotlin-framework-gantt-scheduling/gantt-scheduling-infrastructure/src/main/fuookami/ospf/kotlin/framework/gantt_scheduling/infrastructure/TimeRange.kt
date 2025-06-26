@@ -1,7 +1,7 @@
 package fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure
 
-import kotlin.math.min
 import kotlin.time.*
+import kotlin.time.Duration.Companion.days
 import kotlin.reflect.*
 import kotlinx.datetime.*
 import kotlinx.coroutines.*
@@ -28,6 +28,25 @@ data class TimeRange(
     val start: Instant = Instant.DISTANT_PAST,
     val end: Instant = Instant.DISTANT_FUTURE
 ) {
+    companion object {
+        operator fun invoke(date: LocalDate): TimeRange {
+            val start = date.atStartOfDayIn(TimeZone.currentSystemDefault())
+            return TimeRange(
+                start = start,
+                end = start + 1.days
+            )
+        }
+
+        operator fun invoke(fromDate: LocalDate, toDate: LocalDate): TimeRange {
+            val start = fromDate.atStartOfDayIn(TimeZone.currentSystemDefault())
+            val end = toDate.atStartOfDayIn(TimeZone.currentSystemDefault()) + 1.days
+            return TimeRange(
+                start = start,
+                end = end
+            )
+        }
+    }
+
     val empty: Boolean get() = start >= end
     val duration: Duration get() = end - start
 
@@ -150,6 +169,18 @@ data class TimeRange(
         return timeRanges
     }
 
+    fun continuousBefore(time: TimeRange): Boolean {
+        return end == time.start
+    }
+
+    fun continuousAfter(time: TimeRange): Boolean {
+        return start == time.end
+    }
+
+    fun continuousWith(time: TimeRange): Boolean {
+        return continuousBefore(time) || continuousAfter(time)
+    }
+
     operator fun plus(rhs: Duration): TimeRange {
         return TimeRange(start + rhs, end + rhs)
     }
@@ -160,10 +191,14 @@ data class TimeRange(
 }
 
 fun List<TimeRange>.merge(): List<TimeRange> {
+    if (this.isEmpty()) {
+        return emptyList()
+    }
+
     val times = this.sortedBy { it.start }
     val mergedTimes = ArrayList<TimeRange>()
     var currentTime = times.first()
-    for (i in 1 until (times.size - 1)) {
+    for (i in 1 until times.size) {
         if (times[i].start <= currentTime.end) {
             currentTime = TimeRange(currentTime.start, times[i].end)
         } else {
@@ -171,6 +206,7 @@ fun List<TimeRange>.merge(): List<TimeRange> {
             currentTime = times[i]
         }
     }
+    mergedTimes.add(currentTime)
     return mergedTimes
 }
 

@@ -12,6 +12,9 @@ import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 
+/**
+ * @see     https://fuookami.github.io/ospf/examples/example13.html
+ */
 data object Demo13 {
     data class Dealer(
         val demand: UInt64
@@ -96,34 +99,49 @@ data object Demo13 {
     private suspend fun initVariable(): Try {
         x = UIntVariable2("x", Shape2(dealers.size, distributionCenters.size))
         metaModel.add(x)
+
         y = UIntVariable2("y", Shape2(dealers.size, distributionCenters.size))
         metaModel.add(y)
+
         return ok
     }
 
     private suspend fun initSymbol(): Try {
         trans = LinearIntermediateSymbols1("trans", Shape1(distributionCenters.size)) { i, _ ->
             val distributionCenter = distributionCenters[i]
-            LinearExpressionSymbol(sum(x[_a, distributionCenter]), "trans_${distributionCenter.index}")
+            LinearExpressionSymbol(
+                sum(x[_a, distributionCenter]),
+                "trans_${distributionCenter.index}"
+            )
         }
         metaModel.add(trans)
+
         receive = LinearIntermediateSymbols1("receive", Shape1(dealers.size)) { i, _ ->
             val dealer = dealers[i]
-            LinearExpressionSymbol(sum(x[dealer, _a]), "receive_${dealer.index}")
+            LinearExpressionSymbol(
+                sum(x[dealer, _a]),
+                "receive_${dealer.index}"
+            )
         }
         metaModel.add(receive)
-        cost = LinearExpressionSymbol(sum(dealers.flatMap { dealer ->
-            distributionCenters.mapNotNull { distributionCenter ->
-                val distance = distributionCenter.distance[dealer] ?: return@mapNotNull null
-                distance * y[dealer, distributionCenter]
-            }
-        }), "cost")
+
+        cost = LinearExpressionSymbol(
+            sum(dealers.flatMap { dealer ->
+                distributionCenters.mapNotNull { distributionCenter ->
+                    val distance = distributionCenter.distance[dealer] ?: return@mapNotNull null
+                    distance * y[dealer, distributionCenter]
+                }
+            }),
+            "cost"
+        )
         metaModel.add(cost)
+
         return ok
     }
 
     private suspend fun initObject(): Try {
         metaModel.minimize(cost, "cost")
+
         return ok
     }
 
@@ -134,12 +152,14 @@ data object Demo13 {
                 "supply_${distributionCenter.index}"
             )
         }
+
         for (dealer in dealers) {
             metaModel.addConstraint(
                 receive[dealer] geq dealer.demand,
                 "demand_${dealer.index}"
             )
         }
+
         for (dealer in dealers) {
             for (distributionCenter in distributionCenters) {
                 metaModel.addConstraint(
@@ -148,6 +168,7 @@ data object Demo13 {
                 )
             }
         }
+
         return ok
     }
 
@@ -162,6 +183,7 @@ data object Demo13 {
                 return Failed(ret.error)
             }
         }
+
         return ok
     }
 
@@ -175,6 +197,7 @@ data object Demo13 {
                 trans.getOrPut(distributionCenter) { hashMapOf() }[dealer] = token.result!!.round().toUInt64()
             }
         }
+
         return ok
     }
 }

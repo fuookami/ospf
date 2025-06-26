@@ -12,6 +12,9 @@ import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 
+/**
+ * @see     https://fuookami.github.io/ospf/examples/example6.html
+ */
 data object Demo6 {
     data class Cargo(
         val weight: UInt64,
@@ -21,10 +24,10 @@ data object Demo6 {
 
     private val cargos = listOf(
         Cargo(UInt64(1), UInt64(6), UInt64(10)),
-        Cargo(UInt64(2), UInt64(10), UInt64(10)),
-        Cargo(UInt64(2), UInt64(20), UInt64(10))
+        Cargo(UInt64(2), UInt64(10), UInt64(5)),
+        Cargo(UInt64(2), UInt64(20), UInt64(2))
     )
-    private val maxWeight = UInt64(10)
+    private val maxWeight = UInt64(8)
 
     private lateinit var x: UIntVariable1
 
@@ -75,7 +78,7 @@ data object Demo6 {
     }
 
     private suspend fun initObject(): Try {
-        metaModel.maximize(cargoValue,"value")
+        metaModel.maximize(cargoValue, "value")
         return ok
     }
 

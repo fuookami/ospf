@@ -1,0 +1,1 @@
+# Quadratic Functional Intermediate Expression

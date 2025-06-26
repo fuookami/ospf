@@ -12,6 +12,9 @@ import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 
+/**
+ * @see     https://fuookami.github.io/ospf/examples/example15.html
+ */
 data object Demo15 {
     data class CarModel(
         val name: String
@@ -149,6 +152,7 @@ data object Demo15 {
                 }
             }
         }
+
         y = distributionCenters.associateWith { d ->
             val y = PctVariable1("y_${d.name}", Shape1(d.replacements.size))
             for ((r, replacement) in d.replacements.withIndex()) {
@@ -158,20 +162,26 @@ data object Demo15 {
             }
             y
         }
-        for ((_, yi) in y) {
-            metaModel.add(yi)
-        }
+        metaModel.add(y.values.flatten())
+
         return ok
     }
 
     private suspend fun initSymbol(): Try {
-        receive = LinearIntermediateSymbols2("receive", Shape2(distributionCenters.size, carModels.size)) { _, v ->
+        receive = LinearIntermediateSymbols2(
+            "receive",
+            Shape2(distributionCenters.size, carModels.size)
+        ) { _, v ->
             val d = distributionCenters[v[0]]
             val c = carModels[v[1]]
             LinearExpressionSymbol(sum(x[_a, d, c]), "receive_${d.name}_${c.name}")
         }
         metaModel.add(receive)
-        demand = LinearIntermediateSymbols2("demand", Shape2(distributionCenters.size, carModels.size)) { _, v ->
+
+        demand = LinearIntermediateSymbols2(
+            "demand",
+            Shape2(distributionCenters.size, carModels.size)
+        ) { _, v ->
             val d = distributionCenters[v[0]]
             val c = carModels[v[1]]
             val replacedDemand = if (d.demands[c]?.let { it gr UInt64.zero } == true) {
@@ -199,12 +209,17 @@ data object Demo15 {
             LinearExpressionSymbol((d.demands[c] ?: UInt64.zero) - replacedDemand + replacedToDemand, "demand_${d.name}_${c.name}")
         }
         metaModel.add(demand)
-        trans = LinearIntermediateSymbols2("trans", Shape2(manufacturers.size, carModels.size)) { _, v ->
+
+        trans = LinearIntermediateSymbols2(
+            "trans",
+            Shape2(manufacturers.size, carModels.size)
+        ) { _, v ->
             val m = manufacturers[v[0]]
             val c = carModels[v[1]]
             LinearExpressionSymbol(sum(x[m, _a, c]), "trans_${m.name}_${c.name}")
         }
         metaModel.add(trans)
+
         cost = LinearExpressionSymbol(sum(manufacturers.flatMap { m ->
             distributionCenters.flatMap { d ->
                 m.logisticsCost[d]?.let {
@@ -219,11 +234,13 @@ data object Demo15 {
             }
         }))
         metaModel.add(cost)
+
         return ok
     }
 
     private suspend fun initObject(): Try {
         metaModel.minimize(cost, "cost")
+
         return ok
     }
 
@@ -238,6 +255,7 @@ data object Demo15 {
                 }
             }
         }
+
         for (m in manufacturers) {
             for (c in carModels) {
                 m.productivity[c]?.let {
@@ -248,6 +266,7 @@ data object Demo15 {
                 }
             }
         }
+
         return ok
     }
 
@@ -262,6 +281,7 @@ data object Demo15 {
                 return Failed(ret.error)
             }
         }
+
         return ok
     }
 
@@ -285,6 +305,7 @@ data object Demo15 {
                 }
             }
         }
+
         return ok
     }
 }

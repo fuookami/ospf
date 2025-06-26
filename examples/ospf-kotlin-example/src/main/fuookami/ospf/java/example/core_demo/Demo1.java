@@ -119,18 +119,20 @@ public class Demo1 {
         metaModel.addConstraint(
                 LinearInequalityKt.geq(capital, minCapital),
                 "capital_constraint",
-                null
+                null,
+                false
         );
         metaModel.addConstraint(
                 LinearInequalityKt.leq(liability, maxLiability),
                 "liability_constraint",
-                null
+                null,
+                false
         );
     }
 
     private List<Double> solve() throws ExecutionException, InterruptedException {
         LinearSolver solver = new ScipLinearSolver();
-        Result<SolverOutput, Error> result = solver.solveAsync(metaModel, null).get();
+        Result<SolverOutput, Error> result = solver.solveAsync(metaModel, null, null).get();
         if (result != null && result.getOk()) {
             List<Flt64> solution = Objects.requireNonNull(result.getValue()).getSolution();
             metaModel.setSolution(solution);

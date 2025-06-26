@@ -25,6 +25,10 @@ class SameAsFunction(
         inequalities.map { it.normalize() }
     }
 
+    private val k: PctVariable2 by lazy {
+        PctVariable2("${name}_k", Shape2(inequalities.size, 3))
+    }
+
     private val u: BinVariable1 by lazy {
         BinVariable1("${name}_u", Shape1(inequalities.size))
     }
@@ -138,7 +142,7 @@ class SameAsFunction(
     override fun register(model: AbstractLinearMechanismModel): Try {
         if (!constraint && inequalities.size > 1) {
             for ((i, inequality) in inequalities.withIndex()) {
-                when (val result = inequality.register(name, u[i], model)) {
+                when (val result = inequality.register(name, k[i, _a], u[i], model)) {
                     is Ok -> {}
 
                     is Failed -> {
@@ -169,8 +173,8 @@ class SameAsFunction(
                 }
             }
         } else {
-            for (inequality in inequalities) {
-                when (val result = inequality.register(name, y, model)) {
+            for ((i, inequality) in inequalities.withIndex()) {
+                when (val result = inequality.register(name, k[i, _a], y, model)) {
                     is Ok -> {}
 
                     is Failed -> {
@@ -187,8 +191,12 @@ class SameAsFunction(
         return displayName ?: name
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return "sane_as(${inequalities.joinToString(", ") { it.toRawString(unfold) }})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "sane_as(${inequalities.joinToString(", ") { it.toRawString(unfold - UInt64.one) }})"
+        }
     }
 
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {

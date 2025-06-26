@@ -1,7 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo1
 
 import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.example.framework_demo.demo1.infrastructure.*
 
@@ -66,7 +65,7 @@ const val data = """28 45 12
     11 24 23
     """
 
-class ConsoleApplication {
+class SPP {
     suspend operator fun invoke(): Try {
         return when (val input = read(data)) {
             is Failed -> {
