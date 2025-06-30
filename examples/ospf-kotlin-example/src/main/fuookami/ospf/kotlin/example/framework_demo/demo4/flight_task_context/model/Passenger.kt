@@ -6,9 +6,11 @@ enum class PassengerClass: Indexed {
     First {
         override fun toShortString() = "F"
     },
+
     Business {
         override fun toShortString() = "B"
     },
+
     Economy {
         override fun toShortString() = "E"
     };
