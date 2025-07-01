@@ -17,7 +17,9 @@
     "roboto-fontface": "^0.10.0",
     "vue": "^3.5.12",
     "vuetify": "^3.7.4",
-    "webfontloader": "^1.6.28"
+    "webfontloader": "^1.6.28",
+    "dayjs": "^1.11.13",
+    "color": "^5.0.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",
