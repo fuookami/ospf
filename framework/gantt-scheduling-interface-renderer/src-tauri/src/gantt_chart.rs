@@ -27,6 +27,7 @@ pub struct GanttSubItemDTO {
 pub struct GanttItemDTO {
     pub name: String,
     pub category: String,
+    pub sub_items: Vec<GanttSubItemDTO>,
     #[serde(
         serialize_with = "native_date_time_to_str",
         deserialize_with = "naive_date_time_from_str"

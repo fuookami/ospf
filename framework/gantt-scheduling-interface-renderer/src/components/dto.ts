@@ -9,6 +9,7 @@ export type GanttSubItem = {
 export type GanttItem = {
     name: string
     category: string,
+    subItems: GanttSubItem[],
     scheduledStartTime: string,
     scheduledEndTime: string,
     startTime: string,
@@ -24,7 +25,7 @@ export type GanttLine = {
     items: GanttItem[]
 }
 
-export type GanttChart = {
+export type Schema = {
     startTime: string
     endTime: string
     linkInfo: string[]

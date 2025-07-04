@@ -2,7 +2,9 @@
   <v-app>
     <v-main :style="{ height: windowHeight + 'px' }" style="display:flex; flex-direction: column;">
       <FileSelector ref="fileSelector" @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage"/>
-      <gantt-chart ref="ganttChart" :style="{ 'visibility': rendererVisibility }" style="width: 100%; flex: 1;"/>
+      <v-container :style="{ 'visibility': rendererVisibility }" style="width: 100%; max-width: 100%; padding: 0; margin: 0;">
+        <CuttingPlanGroupView v-for="group of groups" :ref="(el) => setViewRefs(el, group)" style="width: 100%;"/>
+      </v-container>
 
       <v-dialog v-model="dialog" persistent max-width="30%">
         <v-card>
@@ -21,15 +23,16 @@
 <script lang="ts">
 import {defineComponent, ComponentPublicInstance, HTMLAttributes, onMounted, ref} from "vue";
 
+import {Schema} from "./components/dto.ts";
 import FileSelector from "./components/file-selector.vue";
-import GanttChart from "./components/gantt-chart.vue";
+import CuttingPlanGroupView from "./components/cutting-plan-group-view.vue";
 
 export default defineComponent({
   name: "App",
 
   components: {
     FileSelector,
-    GanttChart
+    CuttingPlanGroupView
   },
 
   setup() {
@@ -39,7 +42,12 @@ export default defineComponent({
     const message = ref("");
     const dialog = ref(false);
 
-    const groups = ref<Array<Array<String>>>([]);
+    const schema = ref<Schema>({
+      cuttingPlans: [],
+      kpi: new Map()
+    })
+    const groups = ref<Array<Array<string>>>([]);
+    const cuttingPlanViews: Array<typeof CuttingPlanGroupView> = [];
 
     onMounted(() => {
       resized();
@@ -48,7 +56,7 @@ export default defineComponent({
       });
     })
 
-    function isSameGroup(group1: Array<String>, group2: Array<String>): boolean {
+    function isSameGroup(group1: Array<string>, group2: Array<string>): boolean {
       if(group1.length !== group2.length) {
         return false;
       }
@@ -62,8 +70,8 @@ export default defineComponent({
       return true;
     }
 
-    function distinctGroups(groups: Array<Array<String>>): Array<Array<String>> {
-      const result: Array<Array<String>> = [];
+    function distinctGroups(groups: Array<Array<string>>): Array<Array<string>> {
+      const result: Array<Array<string>> = [];
       for(let i = 0; i < groups.length; i++) {
         if (groups[i].length === 0) {
           result.push(groups[i]);
@@ -83,15 +91,31 @@ export default defineComponent({
       return result;
     }
 
+    function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, group: Array<string>) {
+      if(el) {
+        const view = el as typeof CuttingPlanGroupView;
+        view.windowHeight = windowHeight.value;
+        view.windowWidth = windowWidth.value;
+        view.group = group;
+        view.cuttingPlans = schema.value.cuttingPlans.filter((p) => isSameGroup(p.group, group));
+        cuttingPlanViews.push(view);
+      }
+    }
+
     function resized() {
       windowWidth.value = window.innerWidth;
       windowHeight.value = window.innerHeight;
 
+      for (const view of cuttingPlanViews) {
+        view.resized(windowHeight.value, windowWidth.value);
+      }
     }
 
-    function renderData() {
+    function renderData(targetSchema: Schema) {
+      rendererVisibility.value = "visible";
+      schema.value = targetSchema;
+      groups.value = distinctGroups(targetSchema.cuttingPlans.map((p) => p.group));
     }
-
 
     function showMessage(msg: string) {
       message.value = msg;
@@ -104,8 +128,10 @@ export default defineComponent({
       rendererVisibility,
       message,
       dialog,
+      schema,
       groups,
-      resized,
+      cuttingPlanViews,
+      setViewRefs,
       renderData,
       showMessage
     }
