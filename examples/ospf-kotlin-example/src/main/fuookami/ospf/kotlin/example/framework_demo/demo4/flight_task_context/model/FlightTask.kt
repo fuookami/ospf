@@ -5,6 +5,7 @@ import kotlin.reflect.*
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.datetime.*
 import fuookami.ospf.kotlin.utils.math.*
+import fuookami.ospf.kotlin.utils.concept.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task.model.*
 
@@ -73,7 +74,7 @@ enum class FlightTaskStatus {
     StrongLimitIgnored
 }
 
-abstract class FlightTaskAssignment(
+open class FlightTaskAssignment(
     val aircraft: Aircraft?,
     time: TimeRange?,
     val route: Route?
@@ -113,11 +114,15 @@ abstract class FlightTaskPlan(
     }
 
     abstract val aircraft: Aircraft?
+    abstract val enabledAircrafts: Set<Aircraft>
     abstract val dep: Airport
     abstract val arr: Airport
     open val depBackup: List<Airport> get() = listOf()
     open val arrBackup: List<Airport> get() = listOf()
     open fun actualArr(dep: Airport): Airport? = arr
+
+    override val executor = aircraft
+    override val enabledExecutors = enabledAircrafts
 
     open fun connectionTime(succTask: FlightTask?): Duration? {
         return aircraft?.let { connectionTime(it, succTask) }
@@ -147,35 +152,35 @@ abstract class FlightTaskPlan(
 abstract class FlightTask(
     override val type: FlightTaskType,
     private val origin: FlightTask? = null
-) : AbstractTask<Aircraft, FlightTaskAssignment> {
+) : ManualIndexed(), AbstractTask<Aircraft, FlightTaskAssignment> {
     val isFlight: Boolean = type.isFlightType
 
     abstract val plan: FlightTaskPlan
 
-    override val id: String by plan::id
-    override val actualId: String by plan::actualId
-    override val name: String by plan::name
-    override val displayName: String by plan::displayName
+    override val id: String get() = plan.id
+    override val actualId: String get() = plan.actualId
+    override val name: String get() = plan.name
+    override val displayName: String get() = plan.displayName
     override val key: TaskKey get() = TaskKey(id, type)
 
-    open val aircraft: Aircraft? by plan::aircraft
+    open val aircraft: Aircraft? get() = plan.aircraft
     open val capacity: AircraftCapacity?
         get() = if (isFlight) {
             aircraft?.capacity
         } else {
             null
         }
-    open val dep: Airport by plan::dep
-    open val arr: Airport by plan::arr
-    open val depBackup: List<Airport> by plan::depBackup
-    open val arrBackup: List<Airport> by plan::arrBackup
+    open val dep: Airport get() = plan.dep
+    open val arr: Airport get() = plan.arr
+    open val depBackup: List<Airport> get() = plan.depBackup
+    open val arrBackup: List<Airport> get() = plan.arrBackup
     open fun actualArr(dep: Airport): Airport? {
         return plan.actualArr(dep)
     }
 
     override val timeWindow: TimeRange? get() = null
-    override val scheduledTime: TimeRange? by plan::scheduledTime
-    override val time: TimeRange? by plan::time
+    override val scheduledTime: TimeRange? get() = plan.scheduledTime
+    override val time: TimeRange? get() = plan.time
     override val duration: Duration? get() = plan.duration
     open fun duration(aircraft: Aircraft): Duration {
         return plan.duration(aircraft)
@@ -250,16 +255,16 @@ abstract class FlightTask(
         } else {
             null
         }
-    override val cancelEnabled by plan::cancelEnabled
-    override val notCancelPreferred by plan::notCancelPreferred
-    open val aircraftChangeEnabled by plan::aircraftChangeEnabled
-    open val aircraftTypeChangeEnabled by plan::aircraftTypeChangeEnabled
-    open val aircraftMinorTypeChangeEnabled by plan::aircraftMinorTypeChangeEnabled
-    override val delayEnabled by plan::delayEnabled
-    override val advanceEnabled by plan::advanceEnabled
-    open val routeChangeEnabled by plan::terminalChangeEnabled
-    open val weight by plan::weight
-    open val strongLimitIgnored: Boolean by plan::strongLimitIgnored
+    override val cancelEnabled get() = plan.cancelEnabled
+    override val notCancelPreferred get() = plan.notCancelPreferred
+    open val aircraftChangeEnabled get() = plan.aircraftChangeEnabled
+    open val aircraftTypeChangeEnabled get() = plan.aircraftTypeChangeEnabled
+    open val aircraftMinorTypeChangeEnabled get() = plan.aircraftMinorTypeChangeEnabled
+    override val delayEnabled get() = plan.delayEnabled
+    override val advanceEnabled get() = plan.advanceEnabled
+    open val routeChangeEnabled get() = plan.terminalChangeEnabled
+    open val weight get() = plan.weight
+    open val strongLimitIgnored: Boolean get() = plan.strongLimitIgnored
 
     abstract val recovered: Boolean
     abstract val recoveryPolicy: FlightTaskAssignment
@@ -381,6 +386,14 @@ abstract class FlightTask(
                 }
             )
         )
+    }
+
+    override fun partialEq(rhs: AbstractTask<Aircraft, FlightTaskAssignment>): Boolean? {
+        return if (rhs is FlightTask) {
+            plan == rhs.plan && recoveryPolicy == rhs.recoveryPolicy
+        } else {
+            false
+        }
     }
 
     override fun hashCode(): Int {
