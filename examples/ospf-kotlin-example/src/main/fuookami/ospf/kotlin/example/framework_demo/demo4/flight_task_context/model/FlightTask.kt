@@ -75,9 +75,9 @@ enum class FlightTaskStatus {
 }
 
 open class FlightTaskAssignment(
-    val aircraft: Aircraft?,
-    time: TimeRange?,
-    val route: Route?
+    val aircraft: Aircraft? = null,
+    time: TimeRange? = null,
+    val route: Route? = null
 ) : AssignmentPolicy<Aircraft>() {
     override val empty by lazy {
         aircraft == null && time == null && route == null
