@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid style="margin: 0; padding: 0;">
+  <v-container ref="container" fluid style="margin: 0; padding: 0;">
     <v-container ref="toolbar" fluid class="d-flex flex-row-reverse" style="margin: 0; padding: 0;">
       <v-btn density="compact" icon="mdi-plus" style="margin-right: .5em;" @click="rescale(1)" />
       <v-btn density="compact" icon="mdi-minus" style="margin-right: .5em;" @click="rescale(-1)" />
@@ -10,23 +10,40 @@
         </template>
       </v-select>
     </v-container>
-    <gantt-chart ref="ganttChart" :style="{ height: height + 'px' }" @focus="focus" />
+    <gantt-chart-view ref="ganttChart" :style="{ height: height + 'px' }" @focus="focus" />
   </v-container>
 </template>
 
 <script lang="ts">
 import {defineComponent, ref} from "vue";
-import GanttChart from "./gantt-chart/chart.vue"
-import { Schema } from "./dto.ts";
+import GanttChartView from "./gantt-chart/chart.vue"
+import { Schema, GanttLine } from "./dto.ts";
+
+function selectedLinkedLines(lines: Array<GanttLine>, linkedInfo: Map<string, string>) {
+  const ret = [];
+  for (const line of lines) {
+    for (const [linkedKey, linkedValue] of linkedInfo.entries()) {
+      if (line.items.find((item) => Array.from(item.info.entries()).find(([key, value]) => key === linkedKey && value === linkedValue))) {
+        ret.push(line.name);
+        break
+      }
+    }
+  }
+  return ret;
+}
 
 export default defineComponent({
   name: "GanttChart",
 
   components: {
-    GanttChart
+    GanttChartView
   },
 
   setup() {
+    const container = ref<HTMLDivElement>();
+    const toolbar = ref<HTMLDivElement>();
+    const ganttChart = ref<typeof GanttChartView | null>();
+
     const schema = ref<Schema>();
     const height = ref(0);
     const minScale = ref(0);
@@ -36,6 +53,51 @@ export default defineComponent({
     const visibleLines = ref<Array<String>>([]);
     const linkedLines = ref<Array<String>>([]);
 
+    function render(data: Schema) {
+      schema.value = data;
+      height.value = container.value!!.offsetHeight - toolbar.value!!.offsetHeight;
+      ganttChart.value!!.init(data, container.value!!.offsetWidth, height.value);
+      minScale.value = 0 - Math.floor(ganttChart.value!!.scales.length / 2);
+      maxScale.value = minScale.value + ganttChart.value!!.scales.length - 1;
+      scale.value = 0;
+      lines.value = schema.value!!.lines.map(line => line.name);
+    }
+
+    function resize(newWidth: number, newHeight: number) {
+      if (ganttChart.value) {
+        height.value = newHeight - toolbar.value!!.offsetHeight;
+        ganttChart.value.resize(newWidth, height.value);
+      }
+    }
+
+    function rescale(diff: number) {
+      let newScale = scale.value + diff;
+      if (newScale > maxScale.value) {
+        newScale = maxScale.value;
+      }
+      if (newScale < minScale.value) {
+        newScale = minScale.value;
+      }
+      if (newScale !== scale.value) {
+        ganttChart.value!!.rescale(scale.value - minScale.value, newScale - minScale.value);
+      }
+      scale.value += diff;
+    }
+
+    function focus(linkeInfo: Map<string, string>) {
+      linkedLines.value = selectedLinkedLines(schema.value!!.lines, linkeInfo);
+    }
+
+    function setAllLineVisible() {
+      visibleLines.value = schema.value!!.lines.map(line => line.name);
+      ganttChart.value!!.setVisibleLines(schema.value!!.lines.map(line => line.name));
+    }
+
+    function setLinkedLineVisible() {
+      visibleLines.value = linkedLines.value;
+      ganttChart.value!!.setVisibleLines(linkedLines.value);
+    }
+
     return {
       schema,
       height,
@@ -44,7 +106,13 @@ export default defineComponent({
       scale,
       lines,
       visibleLines,
-      linkedLines
+      linkedLines,
+      render,
+      resize,
+      rescale,
+      focus,
+      setAllLineVisible,
+      setLinkedLineVisible
     }
   }
 });

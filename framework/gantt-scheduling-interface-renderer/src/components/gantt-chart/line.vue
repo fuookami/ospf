@@ -113,15 +113,15 @@ export default defineComponent({
       }
     }
 
-    function focus(linkedKey: string, linkedInfo: string) {
+    function focus(linkedInfo: Map<string, string>) {
       for (const item of items.value) {
         if (item.view != null) {
-          item.view.focus(linkedKey, linkedInfo);
+          item.view.focus(linkedInfo);
         }
       }
     }
 
-    async function focused(linkedInfo: string) {
+    async function focused(linkedInfo: Map<string, string>) {
       emit("focused", linkedInfo)
     }
 

@@ -376,3 +376,4 @@ Cargo.lock
 .VSCodeCounter/
 *.ilp
 docs/.vitepress/cache/
+*.mjs

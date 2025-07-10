@@ -142,7 +142,7 @@ export default defineComponent({
 
     const name = ref<string>("");
     const infoList = ref<Array<{ key: string, value: string }>>([]);
-    const linkedInfo = ref<string>();
+    const linkedInfo = ref<Map<string, string>>(new Map());
 
     const x = ref<number>(0);
     const y = ref<number>(0);
@@ -163,11 +163,22 @@ export default defineComponent({
     const emit = defineEmits(['focused']);
     const { toClipboard } = clipoard3();
 
-    function init(item: GanttItem, widthPerUnit: number, linkedKey: string) {
+    function init(item: GanttItem, widthPerUnit: number, linkedKeys: Array<string>) {
       name.value = item.name;
       infoList.value = Array.from(item.info.entries()).map(([key, value]) => ({ key, value }));
-      if (linkedKey != null) {
-        linkedInfo.value = item.info.get(linkedKey);
+      if (linkedKeys != null && linkedKeys.length > 0) {
+        const newLinkedInfo = new Map<string, string>();
+        for (const key of linkedKeys) {
+          const value = item.info.get(key);
+          if (value != null) {
+            newLinkedInfo.set(key, value);
+          } else {
+            newLinkedInfo.set(key, "");
+          }
+        }
+        linkedInfo.value = newLinkedInfo;
+      } else {
+        linkedInfo.value = new Map();
       }
       const startTime = dayjs(item.startTime, "%Y-%m-%d %H:%M:%S");
       const endTime = dayjs(item.endTime, "%Y-%m-%d %H:%M:%S");
@@ -219,10 +230,15 @@ export default defineComponent({
       }
     }
 
-    function focus(linkedKey: string, linkedInfo: string) {
-      if (infoList.value.some(info => info.key === linkedKey && info.value === linkedInfo)) {
-        isFocused.value = true;
+    function focus(linkedInfo: Map<string, string>) {
+      let newIsFocused = false;
+      for (const [linkedKey, linkedValue] of linkedInfo.entries()) {
+        if (infoList.value.some(info => info.key === linkedKey && info.value === linkedValue)) {
+          newIsFocused = true;
+          break;
+        }
       }
+      isFocused.value = newIsFocused;
     }
 
     async function click() {

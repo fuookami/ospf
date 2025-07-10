@@ -66,7 +66,7 @@ import GanttChartLine from "./line.vue";
 import { Schema, GanttLine } from "../dto";
 
 const minWidthPerHour = 32;
-const basicScale = [1 / 12, 1 / 8, 1 / 6, 1 / 4, 1 / 3, 1 / 2, 1, 2, 4, 8, 16, 32, 64];
+const scales = [1 / 12, 1 / 8, 1 / 6, 1 / 4, 1 / 3, 1 / 2, 1, 2, 4, 8, 16, 32, 64];
 
 type GanttLineView = {
   name: string
@@ -138,7 +138,7 @@ function generateHeader(
 }
 
 export default defineComponent({
-  name: "GanttChart",
+  name: "GanttChartView",
 
   components: {
     GanttChartLine
@@ -169,7 +169,7 @@ export default defineComponent({
     const endTime = ref<dayjs.Dayjs>();
     const stepHours = ref<number>(1);
 
-    const linkedKey = ref<string>();
+    const linkedKeys = ref<Array<string>>([]);
     const enabledLinkedKeys = ref<Array<string>>([]);
 
     const emit = defineEmits(['focused']);
@@ -207,6 +207,7 @@ export default defineComponent({
       chartWidth.value = width.value - maxNameWidth.value * 16;
       ganttWidth.value = widthPerHour.value * diffHours.value;
       ganttHeight.value = 0;
+      linkedKeys.value = schema.linkInfo;
       enabledLinkedKeys.value = schema.linkInfo;
       
       const [subHeaders, headers] = generateHeader(startTime.value, endTime.value, widthPerHour.value, stepHours.value);
@@ -218,7 +219,7 @@ export default defineComponent({
       if (el) {
         const view = el as typeof GanttChartLine;
         line.view = view;
-        line.view.init(startTime.value, line.line.items, chartWidth.value, widthPerHour.value / 60, linkedKey.value);
+        line.view.init(startTime.value, line.line.items, chartWidth.value, widthPerHour.value / 60, linkedKeys.value);
         let newHeight = 0;
         for (const line of lines.value) {
           line.height = line.view!!.height.value;
@@ -253,12 +254,33 @@ export default defineComponent({
     }
 
     function rescale(currentScale: number, newScale: number) {
+      const scale = scales[newScale] / scales[currentScale];
+      const newWidthPerHour = widthPerHour.value * scale;
+      const newStepHours = Math.ceil(minWidthPerHour / newWidthPerHour);
+
+      ganttWidth.value = ganttWidth.value * scale;
+      widthPerHour.value = newWidthPerHour;
+      for (const line of lines.value) {
+        line.view!!.rescale(scale);
+      }
+      if (newStepHours === stepHours.value) {
+        for (const header of metaHeaders.value) {
+          header.width = header.width * scale;
+        }
+        for (const header of metaSubHeaders.value) {
+          header.width = header.width * scale;
+        }
+      } else {
+        const [newMetaSubHeaders, newMetaHeaders] = generateHeader(startTime.value!!, endTime.value!!, newWidthPerHour, newStepHours);
+        metaHeaders.value = newMetaHeaders;
+        metaSubHeaders.value = newMetaSubHeaders;
+      }
     }
 
     function setVisibleLines(visibleLines: Array<string>) {
       for (const line of lines.value) {
         if (visibleLines.includes(line.name)) {
-          line.visible = "";
+          line.visible = "visible";
         } else {
           line.visible = "none";
         }
@@ -266,12 +288,22 @@ export default defineComponent({
     }
 
     async function chartScroll() {
+      const maxScrollX = ganttWidth.value - width.value + maxNameWidth.value * 16;
+      const maxScrollY = ganttHeight.value;
+      if (chart.value!!.scrollLeft > maxScrollX) {
+        chart.value!!.scrollLeft = maxScrollX;
+      }
+      if (chart.value!!.scrollTop > maxScrollY) {
+        chart.value!!.scrollTop = maxScrollY;
+      }
+      header.value!!.scrollLeft = chart.value!!.scrollLeft;
+      actor.value!!.scrollTop = chart.value!!.scrollTop;
     }
 
-    async function focused(linkedInfo: string) {
+    async function focused(linkedInfo: Map<string, string>) {
       emit("focused", linkedInfo);
       for (const line of lines.value) {
-        line.view!!.focus(linkedKey.value, linkedInfo);
+        line.view!!.focus(linkedInfo);
       }
     }
 
@@ -290,6 +322,7 @@ export default defineComponent({
       maxNameWidth,
       metaHeaders,
       metaSubHeaders,
+      scales,
       init,
       setViewRefs,
       resize,

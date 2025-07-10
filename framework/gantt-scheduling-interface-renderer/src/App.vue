@@ -1,8 +1,12 @@
 <template>
   <v-app>
-    <v-main :style="{ height: windowHeight + 'px' }" style="display:flex; flex-direction: column;">
-      <FileSelector ref="fileSelector" @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage"/>
-      <gantt-chart ref="ganttChart" :style="{ 'visibility': rendererVisibility }" style="width: 100%; flex: 1;"/>
+    <v-main ref="main" :style="{ height: windowHeight + 'px' }" style="display:flex; flex-direction: column;">
+      <FileSelector ref="fileSelector" @fileLoadingSucceeded="render" @fileLoadingFailed="showMessage" />
+      <gantt-chart-render 
+        ref="ganttChart" 
+        :style="{ 'visibility': rendererVisibility }"
+        style="width: 100%; flex: 1;" 
+      />
 
       <v-dialog v-model="dialog" persistent max-width="30%">
         <v-card>
@@ -19,27 +23,30 @@
 </template>
 
 <script lang="ts">
-import {defineComponent, ComponentPublicInstance, HTMLAttributes, onMounted, ref} from "vue";
+import { onMounted, defineComponent, ref } from "vue";
 
 import FileSelector from "./components/file-selector.vue";
-import GanttChart from "./components/gantt-chart.vue";
+import GanttChartRender from "./components/gantt-chart.vue";
+import { Schema } from "./components/dto";
 
 export default defineComponent({
   name: "App",
 
   components: {
     FileSelector,
-    GanttChart
+    GanttChartRender
   },
 
   setup() {
+    const main = ref<HTMLDivElement>();
+    const fileSelector = ref<typeof FileSelector | null>();
+    const ganttChart = ref<typeof GanttChartRender | null>();
+
     const windowHeight = ref(0);
     const windowWidth = ref(0);
     const rendererVisibility = ref("hidden");
     const message = ref("");
     const dialog = ref(false);
-
-    const groups = ref<Array<Array<String>>>([]);
 
     onMounted(() => {
       resized();
@@ -48,50 +55,20 @@ export default defineComponent({
       });
     })
 
-    function isSameGroup(group1: Array<String>, group2: Array<String>): boolean {
-      if(group1.length !== group2.length) {
-        return false;
+    function render(data: Schema) {
+      if (ganttChart.value) {
+        rendererVisibility.value = "visible";
+        ganttChart.value!!.reder(data)
       }
-
-      for(let i = 0; i < group1.length; i++) {
-        if(group1[i] !== group2[i]) {
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    function distinctGroups(groups: Array<Array<String>>): Array<Array<String>> {
-      const result: Array<Array<String>> = [];
-      for(let i = 0; i < groups.length; i++) {
-        if (groups[i].length === 0) {
-          result.push(groups[i]);
-        } else {
-          let isDistinct = true;
-          for(let j = 0; j < result.length; j++) {
-            if(isSameGroup(groups[i], result[j])) {
-              isDistinct = false;
-              break;
-            }
-          }
-          if(isDistinct) {
-            result.push(groups[i]);
-          }
-        }
-      }
-      return result;
     }
 
     function resized() {
       windowWidth.value = window.innerWidth;
       windowHeight.value = window.innerHeight;
-
+      if (ganttChart.value) {
+        ganttChart.value!!.resize(ganttChart.value!!.offsetWidth, main.value!!.offsetHeight - fileSelector.value!!.offsetHeight);
+      }
     }
-
-    function renderData() {
-    }
-
 
     function showMessage(msg: string) {
       message.value = msg;
@@ -104,9 +81,8 @@ export default defineComponent({
       rendererVisibility,
       message,
       dialog,
-      groups,
+      render,
       resized,
-      renderData,
       showMessage
     }
   }
