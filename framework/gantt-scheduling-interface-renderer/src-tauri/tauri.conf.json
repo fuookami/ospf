@@ -12,24 +12,30 @@
   "app": {
     "windows": [
       {
+        "fullscreen": false,
+        "resizable": true,
         "title": "gantt-scheduling-interface-renderer",
-        "width": 800,
-        "height": 600
+        "width": 1600,
+        "height": 900,
+        "minWidth": 1280,
+        "minHeight": 720
       }
     ],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
-    "targets": "all",
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "targets": "all",
+    "windows": {
+      "wix": {
+        "language": ["zh-CN"]
+      }
+    }
   }
 }

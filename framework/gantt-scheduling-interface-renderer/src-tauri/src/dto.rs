@@ -37,6 +37,7 @@ pub struct TaskDTO {
         deserialize_with = "naive_date_time_from_str"
     )]
     pub end_time: NaiveDateTime,
+    pub resources: BTreeMap<String, String>,
     pub info: BTreeMap<String, String>,
     pub executor: String,
     pub order: Option<String>,

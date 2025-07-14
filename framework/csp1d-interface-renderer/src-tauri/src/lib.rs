@@ -5,8 +5,8 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
-mod cutting_plan;
-use crate::cutting_plan::SchemaDTO;
+mod dto;
+use crate::dto::SchemaDTO;
 
 static mut CURRENT_DIR: SyncUnsafeCell<Cell<Option<String>>> = SyncUnsafeCell::new(Cell::new(None));
 

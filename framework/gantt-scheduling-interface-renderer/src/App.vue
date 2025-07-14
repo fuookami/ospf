@@ -27,7 +27,8 @@ import { onMounted, defineComponent, ref } from "vue";
 
 import FileSelector from "./components/file-selector.vue";
 import GanttChartRender from "./components/gantt-chart.vue";
-import { Schema } from "./components/dto";
+import { SchemaDTO } from "./components/dto.ts";
+import { dump } from "./components/vo";
 
 export default defineComponent({
   name: "App",
@@ -55,10 +56,10 @@ export default defineComponent({
       });
     })
 
-    function render(data: Schema) {
+    function render(data: SchemaDTO) {
       if (ganttChart.value) {
         rendererVisibility.value = "visible";
-        ganttChart.value!!.reder(data)
+        ganttChart.value!!.reder(dump(data));
       }
     }
 

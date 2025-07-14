@@ -24,6 +24,21 @@
         {{ name }}
       </span>
       <v-tooltip activator="parent" location="top">
+        <p>Produce</p>
+        <v-row v-for="(info, _) in produceList" style="margin: .25em 0 .25em 0; width: 20em;">
+          <v-col cols="4" style="padding: 0;">{{ info.key }}</v-col>
+          <v-col cols="1" style="padding: 0;">：</v-col>
+          <v-col cols="7" style="padding: 0;">{{ info.value }}</v-col>
+        </v-row>
+
+        <p>Consumption</p>
+        <v-row v-for="(info, _) in consumptionList" style="margin: .25em 0 .25em 0; width: 20em;">
+          <v-col cols="4" style="padding: 0;">{{ info.key }}</v-col>
+          <v-col cols="1" style="padding: 0;">：</v-col>
+          <v-col cols="7" style="padding: 0;">{{ info.value }}</v-col>
+        </v-row>
+
+        <p>Info</p>
         <v-row v-for="(info, _) in infoList" style="margin: .25em 0 .25em 0; width: 20em;">
           <v-col cols="4" style="padding: 0;">{{ info.key }}</v-col>
           <v-col cols="1" style="padding: 0;">：</v-col>
@@ -63,11 +78,11 @@
 </template>
 
 <script lang="ts">
-import "./bar.css"
+import "./item.css"
 import { defineComponent, defineEmits, ref } from "vue";
 import clipoard3 from "vue-clipboard3";
 import dayjs from "dayjs";
-import { GanttItem, GanttSubItem } from "../dto.ts";
+import { GanttItemVO, GanttSubItemVO } from "../vo.ts";
 
 const subItemColors: number[] = [
   0x01DDFF,
@@ -120,7 +135,7 @@ function getSubItemColor(category: string): number {
   return subItemColors[index % subItemColors.length];
 }
 
-function needSubBar(subItems: Array<GanttSubItem>): boolean {
+function needSubBar(subItems: Array<GanttSubItemVO>): boolean {
   if (subItems.length == 0) {
     return false;
   } else {
@@ -134,13 +149,15 @@ function needSubBar(subItems: Array<GanttSubItem>): boolean {
 }
 
 export default defineComponent({
-  name: "GanttChartBar",
+  name: "GanttChartItemView",
 
   setup() {
-    const item = ref<GanttItem>();
+    const item = ref<GanttItemVO>();
     const subItems = ref<Array<GanttSubItemView>>([]);
 
     const name = ref<string>("");
+    const produceList = ref<Array<{ key: string, value: string }>>([]);
+    const consumptionList = ref<Array<{ key: string, value: string }>>([]);
     const infoList = ref<Array<{ key: string, value: string }>>([]);
     const linkedInfo = ref<Map<string, string>>(new Map());
 
@@ -163,7 +180,7 @@ export default defineComponent({
     const emit = defineEmits(['focused']);
     const { toClipboard } = clipoard3();
 
-    function init(item: GanttItem, widthPerUnit: number, linkedKeys: Array<string>) {
+    function init(item: GanttItemVO, widthPerUnit: number, linkedKeys: Array<string>) {
       name.value = item.name;
       infoList.value = Array.from(item.info.entries()).map(([key, value]) => ({ key, value }));
       if (linkedKeys != null && linkedKeys.length > 0) {
@@ -258,6 +275,8 @@ export default defineComponent({
       item,
       subItems,
       name,
+      produceList,
+      consumptionList,
       infoList,
       linkedInfo,
       x,
@@ -281,3 +300,4 @@ export default defineComponent({
   }
 });
 </script>
+../vo.ts

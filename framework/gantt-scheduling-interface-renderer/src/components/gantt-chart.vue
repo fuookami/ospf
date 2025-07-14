@@ -17,9 +17,9 @@
 <script lang="ts">
 import {defineComponent, ref} from "vue";
 import GanttChartView from "./gantt-chart/chart.vue"
-import { Schema, GanttLine } from "./dto.ts";
+import { GanttChartVO, GanttLineVO } from "./vo.ts";
 
-function selectedLinkedLines(lines: Array<GanttLine>, linkedInfo: Map<string, string>) {
+function selectedLinkedLines(lines: Array<GanttLineVO>, linkedInfo: Map<string, string>) {
   const ret = [];
   for (const line of lines) {
     for (const [linkedKey, linkedValue] of linkedInfo.entries()) {
@@ -44,7 +44,7 @@ export default defineComponent({
     const toolbar = ref<HTMLDivElement>();
     const ganttChart = ref<typeof GanttChartView | null>();
 
-    const schema = ref<Schema>();
+    const schema = ref<GanttChartVO>();
     const height = ref(0);
     const minScale = ref(0);
     const maxScale = ref(0);
@@ -53,7 +53,7 @@ export default defineComponent({
     const visibleLines = ref<Array<String>>([]);
     const linkedLines = ref<Array<String>>([]);
 
-    function render(data: Schema) {
+    function render(data: GanttChartVO) {
       schema.value = data;
       height.value = container.value!!.offsetHeight - toolbar.value!!.offsetHeight;
       ganttChart.value!!.init(data, container.value!!.offsetWidth, height.value);
@@ -118,3 +118,4 @@ export default defineComponent({
 });
 
 </script>
+./vo.ts

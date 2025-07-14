@@ -23,7 +23,7 @@
 <script lang="ts">
 import {defineComponent, ComponentPublicInstance, HTMLAttributes, onMounted, ref} from "vue";
 
-import {Schema} from "./components/dto.ts";
+import {SchemaDTO} from "./components/dto.ts";
 import FileSelector from "./components/file-selector.vue";
 import CuttingPlanGroupView from "./components/cutting-plan-group-view.vue";
 
@@ -42,7 +42,7 @@ export default defineComponent({
     const message = ref("");
     const dialog = ref(false);
 
-    const schema = ref<Schema>({
+    const schema = ref<SchemaDTO>({
       cuttingPlans: [],
       kpi: new Map()
     })
@@ -111,7 +111,7 @@ export default defineComponent({
       }
     }
 
-    function renderData(targetSchema: Schema) {
+    function renderData(targetSchema: SchemaDTO) {
       rendererVisibility.value = "visible";
       schema.value = targetSchema;
       groups.value = distinctGroups(targetSchema.cuttingPlans.map((p) => p.group));

@@ -6,7 +6,7 @@
 <script lang="ts">
 import {ComponentPublicInstance, defineComponent, HTMLAttributes, ref} from "vue";
 import CuttingPlanView from "./cutting-plan-view.vue";
-import {offset, CuttingPlan, CuttingPlanProduction} from "./dto.ts";
+import {offset, CuttingPlanDTO, CuttingPlanProductionDTO} from "./dto.ts";
 
 const defectCostarColor: number = 0x757575;
 const costarColor: number = 0xEC4141;
@@ -66,10 +66,10 @@ export default defineComponent({
     const windowWidth = ref(0);
 
     const group = ref<Array<string>>([]);
-    const cuttingPlans = ref<Array<CuttingPlan>>([]);
+    const cuttingPlans = ref<Array<CuttingPlanDTO>>([]);
     const cuttingPlanViews: Array<typeof CuttingPlanView> = [];
 
-    function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, cuttingPlan: CuttingPlan) {
+    function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, cuttingPlan: CuttingPlanDTO) {
       if(el) {
         const view = el as typeof CuttingPlanView;
         view.cuttingPlan = cuttingPlan;
@@ -87,7 +87,7 @@ export default defineComponent({
         const scale = view.standardWidth / (windowWidth.value - offset);
 
         view.standardWidth = view.standardWidth / scale;
-        view.productions.forEach((p: CuttingPlanProduction) => {
+        view.productions.forEach((p: CuttingPlanProductionDTO) => {
           p.x = (p.x - offset) / scale + offset;
           p.width = p.width / scale;
         });
@@ -101,7 +101,7 @@ export default defineComponent({
       for (let i = 0; i < cuttingPlanViews.length; i++) {
         const view = cuttingPlanViews[i];
         view.standardWidth = view.cuttingPlan.standardWidth / scale;
-        view.productions = view.cuttingPlan.productions.map((p: CuttingPlanProduction) => {
+        view.productions = view.cuttingPlan.productions.map((p: CuttingPlanProductionDTO) => {
           const info = new Map(Object.entries(p.info));
           let color = 0x000000;
           if (p.productionType == "Costar") {
@@ -121,7 +121,7 @@ export default defineComponent({
             }
             color = getProductColor(category);
           }
-          const result: CuttingPlanProduction = {
+          const result: CuttingPlanProductionDTO = {
             name: p.name,
             x: p.x / scale + offset,
             width: p.width / scale,

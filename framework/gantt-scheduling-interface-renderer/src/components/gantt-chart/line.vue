@@ -3,7 +3,7 @@
     :style="{ width: width + 'px', height: height + 'em' }"
     style=" margin: 0; padding: 0; position: relative;
   ">
-    <gantt-bar v-for="(item, _) of items" 
+    <gantt-chart-item-view v-for="(item, _) of items" 
       :ref="(el) => setViewRefs(el, item)"
       :style="{ left: item.x + 'px', top: item.y + 'em' }" 
       style="position: absolute;"
@@ -16,19 +16,19 @@
 import "./chart.css"
 import { ComponentPublicInstance, HTMLAttributes, defineComponent, defineEmits, ref } from "vue";
 import dayjs from "dayjs";
-import GanttBar from "./bar.vue";
-import { GanttItem } from "../dto.ts";
+import GanttChartItemView from "./item.vue";
+import { GanttItemVO } from "../vo.ts";
 
 const baseLineHeight = 3.5;
 
 type GanttItemView = {
   x: number
   y: number
-  item: GanttItem
-  view: typeof GanttBar | null
+  item: GanttItemVO
+  view: typeof GanttChartItemView | null
 }
 
-function calculateHeights(startTime: dayjs.Dayjs, items: Array<GanttItem>): Array<number> {
+function calculateHeights(startTime: dayjs.Dayjs, items: Array<GanttItemVO>): Array<number> {
   let ends: Array<number> = [0];
   let heights: Array<number> = [];
   for (let i in items) {
@@ -55,10 +55,10 @@ function calculateHeights(startTime: dayjs.Dayjs, items: Array<GanttItem>): Arra
 }
 
 export default defineComponent({
-  name: "GanttChartLine",
+  name: "GanttChartLineView",
 
   components: {
-    GanttBar
+    GanttChartItemView
   },
 
   setup() {
@@ -72,7 +72,7 @@ export default defineComponent({
 
     function init(
       startTime: dayjs.Dayjs,
-      ganttItems: Array<GanttItem>,
+      ganttItems: Array<GanttItemVO>,
       charWidth: number,
       chartWidthPerUnit: number,
       chartLinkedKey: string
@@ -98,7 +98,7 @@ export default defineComponent({
 
     function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, item: GanttItemView) {
       if (el) {
-        const view = el as typeof GanttBar;
+        const view = el as typeof GanttChartItemView;
         item.view = view;
         item.view.init(item.item, widthPerUnit.value, linkedKey.value);
       }
@@ -138,3 +138,4 @@ export default defineComponent({
   }
 });
 </script>
+../vo.ts

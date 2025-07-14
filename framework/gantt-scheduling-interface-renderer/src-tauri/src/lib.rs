@@ -5,10 +5,9 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
-mod task;
-mod gantt_chart;
 mod serializer;
-use task::SchemaDTO;
+mod dto;
+use dto::SchemaDTO;
 
 static mut CURRENT_DIR: SyncUnsafeCell<Cell<Option<String>>> = SyncUnsafeCell::new(Cell::new(None));
 
@@ -32,7 +31,9 @@ fn get_current_directory() -> Option<&'static String> {
 fn load_json<T: serde::de::DeserializeOwned>(path: String) -> Option<T> {
     unsafe {
         let parent_path = Path::new(&path).parent().unwrap();
-        CURRENT_DIR.get_mut().set(Some(String::from(parent_path.to_str().unwrap())));
+        CURRENT_DIR
+            .get_mut()
+            .set(Some(String::from(parent_path.to_str().unwrap())));
     }
 
     let file = File::open(path).unwrap();

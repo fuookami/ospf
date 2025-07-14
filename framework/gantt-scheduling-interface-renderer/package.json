@@ -19,6 +19,8 @@
     "vuetify": "^3.7.4",
     "vue-clipboard3": "^2.0.0",
     "webfontloader": "^1.6.28",
+    "lodash": "^4.17.20",
+    "@types/lodash": "^4.17.20",
     "dayjs": "^1.11.13",
     "color": "^5.0.0"
   },

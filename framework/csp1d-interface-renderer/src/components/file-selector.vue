@@ -11,7 +11,7 @@ import {invoke} from '@tauri-apps/api/core';
 import {open} from '@tauri-apps/plugin-dialog';
 
 export default defineComponent({
-  name: "FileSelector",
+  name: "FileSelectorView",
 
   setup(_, context) {
     const fileName = ref("");

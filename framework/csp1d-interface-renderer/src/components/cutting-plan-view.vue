@@ -25,13 +25,13 @@
 
 <script lang="ts">
 import {defineComponent, ref} from 'vue';
-import {offset, CuttingPlan, CuttingPlanProduction} from "./dto.ts";
+import {offset, CuttingPlanDTO, CuttingPlanProductionDTO} from "./dto.ts";
 
 export default defineComponent({
   name: 'CuttingPlanView',
 
   setup() {
-    const cuttingPlan = ref<CuttingPlan>({
+    const cuttingPlan = ref<CuttingPlanDTO>({
       group: [],
       amount: 0,
       width: 0,
@@ -40,7 +40,7 @@ export default defineComponent({
       info: new Map()
     });
     const standardWidth = ref(0);
-    const productions = ref<Array<CuttingPlanProduction>>([]);
+    const productions = ref<Array<CuttingPlanProductionDTO>>([]);
 
     return {
       offset,

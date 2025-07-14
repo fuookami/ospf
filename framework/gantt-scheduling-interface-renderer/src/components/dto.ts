@@ -1,33 +1,29 @@
-export type GanttSubItem = {
+export type GanttSubTaskDTO = {
     name: string
-    category: string,
-    startTime: string,
-    endTime: string,
-    info: Map<string, string>
-}
-
-export type GanttItem = {
-    name: string
-    category: string,
-    subItems: GanttSubItem[],
-    scheduledStartTime: string,
-    scheduledEndTime: string,
-    startTime: string,
-    endTime: string,
-    produces: Map<string, string>,
-    consumption: Map<string, string>,
-    info: Map<string, string>
-}
-
-export type GanttLine = {
-    name: string
-    category: string,
-    items: GanttItem[]
-}
-
-export type Schema = {
+    category: string
     startTime: string
     endTime: string
-    linkInfo: string[]
-    lines: GanttLine[]
+    info: Map<string, string>
+}
+
+export type GanttTaskDTO = {
+    name: string
+    category: string
+    startTime: string
+    endTime: string
+    resources: Map<string, string>
+    info: Map<string, string>
+    executor: string
+    order: string | null
+    produce: string | null
+    products: Map<string, string> | null
+    materials: Map<string, string> | null
+    consumption: Map<string, string>
+    scheduledStartTime: string | null
+    scheduledEndTime: string | null
+    subTasks: GanttSubTaskDTO[]
+}
+
+export type SchemaDTO = {
+    tasks: GanttTaskDTO[]
 }

@@ -45,4 +45,3 @@ pub(crate) fn optional_naive_date_time_from_str<'de, D>(
         None => Ok(None),
     }
 }
-

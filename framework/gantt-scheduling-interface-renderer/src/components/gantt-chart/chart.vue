@@ -49,7 +49,7 @@
           display: line.visible
         }"
       >
-        <gantt-line 
+        <gantt-chart-line-view 
           :ref="(el) => setViewRefs(el, line)"
           @focused="focused"
         />
@@ -62,8 +62,8 @@
 import "./chart.css"
 import { ComponentPublicInstance, HTMLAttributes, defineComponent, defineEmits, ref } from "vue";
 import dayjs from "dayjs";
-import GanttChartLine from "./line.vue";
-import { Schema, GanttLine } from "../dto";
+import GanttChartLineView from "./line.vue";
+import { GanttChartVO, GanttLineVO } from "../vo.ts";
 
 const minWidthPerHour = 32;
 const scales = [1 / 12, 1 / 8, 1 / 6, 1 / 4, 1 / 3, 1 / 2, 1, 2, 4, 8, 16, 32, 64];
@@ -72,8 +72,8 @@ type GanttLineView = {
   name: string
   height: number
   visible: string
-  line: GanttLine
-  view: typeof GanttChartLine | null
+  line: GanttLineVO
+  view: typeof GanttChartLineView | null
 }
 
 type GanttHeader = {
@@ -141,7 +141,7 @@ export default defineComponent({
   name: "GanttChartView",
 
   components: {
-    GanttChartLine
+    GanttChartLineView
   },
 
   setup() {
@@ -174,8 +174,8 @@ export default defineComponent({
 
     const emit = defineEmits(['focused']);
 
-    function init(schema: Schema, windowWidth: number, windowHeight: number) {
-      schema.lines.sort(function (lhs, rhs) {
+    function init(schema: GanttChartVO, windowWidth: number, windowHeight: number) {
+      schema.lines.sort((lhs, rhs) => {
         if (lhs.name < rhs.name) {
           return -1;
         } else if (lhs.name > rhs.name) {
@@ -217,7 +217,7 @@ export default defineComponent({
 
     function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, line: GanttLineView) {
       if (el) {
-        const view = el as typeof GanttChartLine;
+        const view = el as typeof GanttChartLineView;
         line.view = view;
         line.view.init(startTime.value, line.line.items, chartWidth.value, widthPerHour.value / 60, linkedKeys.value);
         let newHeight = 0;
@@ -334,3 +334,4 @@ export default defineComponent({
   }
 });
 </script>
+../vo
