@@ -1,4 +1,177 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo4.rule_context.model
 
-class FlowControl {
+import java.util.*
+import kotlin.time.*
+import fuookami.ospf.kotlin.utils.math.*
+import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.*
+import fuookami.ospf.kotlin.example.framework_demo.demo4.infrastructure.*
+import fuookami.ospf.kotlin.example.framework_demo.demo4.flight_task_context.model.*
+
+interface AbstractFlowControlCondition {
+    operator fun invoke(task: FlightTask): Boolean
+}
+
+data class FlowControlCondition(
+    val flightTypes: Set<FlightType> = emptySet(),
+    val aircraftMinorTypes: Set<AircraftMinorType> = emptySet()
+) : AbstractFlowControlCondition {
+    override operator fun invoke(task: FlightTask): Boolean {
+        if (task.isFlight) {
+            return false
+        }
+
+        if (flightTypes.isNotEmpty()) {
+            val type = when (task) {
+                is FlightLeg -> {
+                    task.plan.type
+                }
+
+                else -> {
+                    FlightType(task.dep, task.arr)
+                }
+            }
+            if (!flightTypes.contains(type)) {
+                return false
+            }
+        }
+
+        if (task.aircraft != null && aircraftMinorTypes.isNotEmpty()) {
+            if (!aircraftMinorTypes.contains(task.aircraft!!.minorType)) {
+                return false
+            }
+        }
+
+        return true
+    }
+}
+
+enum class FlowControlScene {
+    Departure {
+        override operator fun invoke(
+            prevTask: FlightTask?,
+            task: FlightTask?,
+            airport: Airport,
+            time: TimeRange,
+            condition: AbstractFlowControlCondition?
+        ): Boolean {
+            return task != null
+                    && condition?.invoke(task) != false
+                    && task.departedWhen(airport, time)
+        }
+    },
+
+    Arrival {
+        override fun invoke(
+            prevTask: FlightTask?,
+            task: FlightTask?,
+            airport: Airport,
+            time: TimeRange,
+            condition: AbstractFlowControlCondition?
+        ): Boolean {
+            return task != null
+                    && condition?.invoke(task) != false
+                    && task.arrivedWhen(airport, time)
+        }
+    },
+
+    DepartureArrival {
+        override fun invoke(
+            prevTask: FlightTask?,
+            task: FlightTask?,
+            airport: Airport,
+            time: TimeRange,
+            condition: AbstractFlowControlCondition?
+        ): Boolean {
+            return task != null
+                    && condition?.invoke(task) != false
+                    && (task.departedWhen(airport, time) || task.arrivedWhen(airport, time))
+        }
+    },
+
+    Stay {
+        override fun invoke(
+            prevTask: FlightTask?,
+            task: FlightTask?,
+            airport: Airport,
+            time: TimeRange,
+            condition: AbstractFlowControlCondition?
+        ): Boolean {
+            return if (prevTask != null && task != null && condition?.invoke(task) != false) {
+                task.locatedWhen(prevTask, airport, time)
+            } else if (prevTask != null && condition?.invoke(prevTask) != false) {
+                prevTask.arrivedWhen(airport, time)
+            } else if (task != null && condition?.invoke(task) != false) {
+                task.departedWhen(airport, time)
+            } else {
+                false
+            }
+        }
+    };
+
+    abstract operator fun invoke(
+        prevTask: FlightTask?,
+        task: FlightTask?,
+        airport: Airport,
+        time: TimeRange,
+        condition: AbstractFlowControlCondition? = null
+    ): Boolean
+
+    open operator fun invoke(
+        bunch: FlightTaskBunch,
+        airport: Airport,
+        time: TimeRange,
+        condition: AbstractFlowControlCondition
+    ): UInt64 {
+        return UInt64(bunch.tasks.indices.count { i ->
+            if (i == 0) {
+                this(null, bunch.tasks[i], airport, time, condition)
+            } else {
+                this(bunch.tasks[i - 1], bunch.tasks[i], airport, time, condition)
+            }
+        })
+    }
+}
+
+data class FlowControlCapacity(
+    val amount: UInt64,
+    val interval: Duration,
+) {
+    companion object {
+        fun close(time: TimeRange) = FlowControlCapacity(UInt64.zero, time.duration)
+    }
+
+    val closed = amount == UInt64.zero
+
+    override fun toString() = if (closed) "closed" else "${amount}_${interval.toInt(DurationUnit.MINUTES)}m"
+}
+
+data class FlowControl(
+    val id: String = UUID.randomUUID().toString(),
+    val airport: Airport,
+    val time: TimeRange,
+    val condition: AbstractFlowControlCondition? = null,
+    val scene: FlowControlScene,
+    val capacity: FlowControlCapacity,
+    val name: String = "${airport.icao}_${scene}_${capacity}_${time.start.toShortString()}_${time.end.toShortString()}"
+) {
+    val closed by capacity::closed
+
+    override fun hashCode(): Int {
+        return id.hashCode()
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as FlowControl
+
+        if (airport != other.airport) return false
+        if (time != other.time) return false
+        if (condition != other.condition) return false
+        if (scene != other.scene) return false
+        if (capacity != other.capacity) return false
+
+        return true
+    }
 }
