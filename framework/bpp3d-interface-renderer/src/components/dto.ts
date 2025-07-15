@@ -1,4 +1,4 @@
-export type LoadingPlanItem = {
+export type LoadingPlanItemDTO = {
     name: string
     packageType: string
     width: number
@@ -10,10 +10,9 @@ export type LoadingPlanItem = {
     weight: number
     loadingOrder: number
     info: Map<string, string>
-    color: string | null
 }
 
-export type LoadingPlan = {
+export type LoadingPlanDTO = {
     group: string[]
     typeCode: string
     width: number
@@ -22,11 +21,11 @@ export type LoadingPlan = {
     loadingRate: number
     weight: number
     volume: number
-    items: LoadingPlanItem[]
+    items: LoadingPlanItemDTO[]
     info: Map<string, string>
 }
 
-export type Schema = {
+export type SchemaDTO = {
     kpi: Map<string, string>,
-    loadingPlan: LoadingPlan[]
+    loadingPlan: LoadingPlanDTO[]
 }

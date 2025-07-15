@@ -13,7 +13,7 @@ static mut CURRENT_DIR: SyncUnsafeCell<Cell<Option<String>>> = SyncUnsafeCell::n
 #[tauri::command]
 fn get_current_directory() -> Option<&'static String> {
     unsafe {
-        if (*CURRENT_DIR.get()).is_none() {
+        if (*(*CURRENT_DIR.get()).as_ptr()).is_none() {
             CURRENT_DIR.get_mut().set(Some(String::from(
                 std::env::current_dir()
                     .unwrap()
@@ -23,7 +23,7 @@ fn get_current_directory() -> Option<&'static String> {
                     .unwrap(),
             )));
         }
-        (*CURRENT_DIR.get().as_ptr()).as_ref()
+        (*(*CURRENT_DIR.get()).as_ptr()).as_ref()
     }
 }
 
@@ -55,8 +55,8 @@ fn load_data(path: String) -> Result<SchemaDTO, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![get_current_directory, load_data])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
