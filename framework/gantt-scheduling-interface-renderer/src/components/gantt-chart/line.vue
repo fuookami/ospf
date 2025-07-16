@@ -14,10 +14,10 @@
 
 <script lang="ts">
 import "./chart.css"
-import { ComponentPublicInstance, HTMLAttributes, defineComponent, defineEmits, ref } from "vue";
+import {ComponentPublicInstance, defineComponent, defineExpose, defineEmits, HTMLAttributes, ref} from "vue";
 import dayjs from "dayjs";
 import GanttChartItemView from "./item.vue";
-import { GanttItemVO } from "../vo.ts";
+import {GanttItemVO} from "../vo.ts";
 
 const baseLineHeight = 3.5;
 
@@ -84,7 +84,7 @@ export default defineComponent({
       linkedKey.value = chartLinkedKey;
 
       items.value = ganttItems.map((item, i) => {
-        const x = dayjs(item.startTime, "%Y-%m-%d %H:%M:%S").diff(startTime, 'minute');
+        const x = dayjs(item.startTime, "%Y-%m-%d %H:%M:%S").diff(startTime, 'minute') * chartWidthPerUnit;
         const y = .25 + heights[i] * baseLineHeight;
         const result: GanttItemView = {
           x: x,
@@ -98,8 +98,7 @@ export default defineComponent({
 
     function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, item: GanttItemView) {
       if (el) {
-        const view = el as typeof GanttChartItemView;
-        item.view = view;
+        item.view = el as typeof GanttChartItemView;
         item.view.init(item.item, widthPerUnit.value, linkedKey.value);
       }
     }
@@ -124,6 +123,10 @@ export default defineComponent({
     async function focused(linkedInfo: Map<string, string>) {
       emit("focused", linkedInfo)
     }
+
+    defineExpose({
+      height
+    });
 
     return {
       width,

@@ -14,6 +14,7 @@ export type LoadingPlanItemDTO = {
 
 export type LoadingPlanDTO = {
     group: string[]
+    name: string
     typeCode: string
     width: number
     height: number

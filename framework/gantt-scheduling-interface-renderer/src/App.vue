@@ -2,7 +2,7 @@
   <v-app>
     <v-main ref="main" :style="{ height: windowHeight + 'px' }" style="display:flex; flex-direction: column;">
       <FileSelector ref="fileSelector" @fileLoadingSucceeded="render" @fileLoadingFailed="showMessage" />
-      <gantt-chart-render 
+      <gantt-chart 
         ref="ganttChart" 
         :style="{ 'visibility': rendererVisibility }"
         style="width: 100%; flex: 1;" 
@@ -26,7 +26,7 @@
 import { onMounted, defineComponent, ref } from "vue";
 
 import FileSelector from "./components/file-selector.vue";
-import GanttChartRender from "./components/gantt-chart.vue";
+import GanttChart from "./components/gantt-chart.vue";
 import { SchemaDTO } from "./components/dto.ts";
 import { dump } from "./components/vo";
 
@@ -35,13 +35,13 @@ export default defineComponent({
 
   components: {
     FileSelector,
-    GanttChartRender
+    GanttChart
   },
 
   setup() {
-    const main = ref<HTMLDivElement>();
+    const main = ref<HTMLElement>();
     const fileSelector = ref<typeof FileSelector | null>();
-    const ganttChart = ref<typeof GanttChartRender | null>();
+    const ganttChart = ref<typeof GanttChart | null>();
 
     const windowHeight = ref(0);
     const windowWidth = ref(0);
@@ -59,7 +59,7 @@ export default defineComponent({
     function render(data: SchemaDTO) {
       if (ganttChart.value) {
         rendererVisibility.value = "visible";
-        ganttChart.value!!.reder(dump(data));
+        ganttChart.value!!.render(dump(data));
       }
     }
 
@@ -67,7 +67,7 @@ export default defineComponent({
       windowWidth.value = window.innerWidth;
       windowHeight.value = window.innerHeight;
       if (ganttChart.value) {
-        ganttChart.value!!.resize(ganttChart.value!!.offsetWidth, main.value!!.offsetHeight - fileSelector.value!!.offsetHeight);
+        ganttChart.value!!.resize(ganttChart.value!!.$el.offsetWidth, main.value!!.offsetHeight - fileSelector.value!!.$el.offsetHeight);
       }
     }
 
@@ -77,6 +77,9 @@ export default defineComponent({
     }
 
     return {
+      main,
+      fileSelector,
+      ganttChart,
       windowHeight,
       windowWidth,
       rendererVisibility,

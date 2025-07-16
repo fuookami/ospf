@@ -182,7 +182,7 @@ export default defineComponent({
 
     function init(item: GanttItemVO, widthPerUnit: number, linkedKeys: Array<string>) {
       name.value = item.name;
-      infoList.value = Array.from(item.info.entries()).map(([key, value]) => ({ key, value }));
+      infoList.value = Array.from(item.info).map(([key, value]) => ({ key, value }));
       if (linkedKeys != null && linkedKeys.length > 0) {
         const newLinkedInfo = new Map<string, string>();
         for (const key of linkedKeys) {

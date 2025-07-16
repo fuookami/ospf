@@ -22,6 +22,7 @@ pub struct LoadingPlanItemDTO {
 #[serde(rename_all = "camelCase")]
 pub struct LoadingPlanDTO {
     group: Vec<String>,
+    name: String,
     type_code: String,
     width: f64,
     height: f64,

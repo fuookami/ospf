@@ -15,7 +15,7 @@
 </template>
 
 <script lang="ts">
-import {defineComponent, ref} from "vue";
+import {defineComponent, ref, watch} from "vue";
 import GanttChartView from "./gantt-chart/chart.vue"
 import { GanttChartVO, GanttLineVO } from "./vo.ts";
 
@@ -40,8 +40,8 @@ export default defineComponent({
   },
 
   setup() {
-    const container = ref<HTMLDivElement>();
-    const toolbar = ref<HTMLDivElement>();
+    const container = ref<HTMLElement>();
+    const toolbar = ref<HTMLElement>();
     const ganttChart = ref<typeof GanttChartView | null>();
 
     const schema = ref<GanttChartVO>();
@@ -55,12 +55,13 @@ export default defineComponent({
 
     function render(data: GanttChartVO) {
       schema.value = data;
-      height.value = container.value!!.offsetHeight - toolbar.value!!.offsetHeight;
-      ganttChart.value!!.init(data, container.value!!.offsetWidth, height.value);
+      height.value = container.value!!.$el.offsetHeight - toolbar.value!!.$el.offsetHeight;
+      ganttChart.value!!.init(data, container.value!!.$el.offsetWidth, height.value);
       minScale.value = 0 - Math.floor(ganttChart.value!!.scales.length / 2);
       maxScale.value = minScale.value + ganttChart.value!!.scales.length - 1;
       scale.value = 0;
       lines.value = schema.value!!.lines.map(line => line.name);
+      visibleLines.value = schema.value!!.lines.map(line => line.name);
     }
 
     function resize(newWidth: number, newHeight: number) {
@@ -84,8 +85,8 @@ export default defineComponent({
       scale.value += diff;
     }
 
-    function focus(linkeInfo: Map<string, string>) {
-      linkedLines.value = selectedLinkedLines(schema.value!!.lines, linkeInfo);
+    function focus(linkedInfo: Map<string, string>) {
+      linkedLines.value = selectedLinkedLines(schema.value!!.lines, linkedInfo);
     }
 
     function setAllLineVisible() {
@@ -98,7 +99,14 @@ export default defineComponent({
       ganttChart.value!!.setVisibleLines(linkedLines.value);
     }
 
+    watch(visibleLines, (newVisibleLines): void => {
+      ganttChart.value!!.setVisibleLines(newVisibleLines);
+    });
+
     return {
+      container,
+      toolbar,
+      ganttChart,
       schema,
       height,
       minScale,
@@ -118,4 +126,3 @@ export default defineComponent({
 });
 
 </script>
-./vo.ts

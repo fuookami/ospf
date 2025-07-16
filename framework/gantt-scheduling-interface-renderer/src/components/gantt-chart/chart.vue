@@ -19,7 +19,7 @@
 
   <div :style="{ width: width + 'px' }" style="padding: 0; display: flex;">
     <div class="gantt_actor" ref="actor" :style="{ height: chartHeight + 'px' }" @mousewheel.prevent>
-      <p 
+      <p
         v-for="(line, _) in lines" 
         :style="{
           width: maxNameWidth + 'em',
@@ -28,16 +28,16 @@
         }"
       >
         {{ line.name }}
-      </p>
+      </p >
     </div>
 
-    <div 
+    <div
       ref="chart" 
       :style="{ width: chartWidth + 'px', height: chartHeight + 'px' }"
       style="overflow-x: auto; overflow-y: auto;" 
       @scroll="chartScroll()"
     >
-      <div 
+      <div
         v-for="(line, _) in lines"
         style="
           min-height: 3.5em;
@@ -60,10 +60,10 @@
 
 <script lang="ts">
 import "./chart.css"
-import { ComponentPublicInstance, HTMLAttributes, defineComponent, defineEmits, ref } from "vue";
+import {ComponentPublicInstance, defineComponent, defineExpose, defineEmits, HTMLAttributes, ref} from "vue";
 import dayjs from "dayjs";
 import GanttChartLineView from "./line.vue";
-import { GanttChartVO, GanttLineVO } from "../vo.ts";
+import {GanttChartVO, GanttLineVO} from "../vo.ts";
 
 const minWidthPerHour = 32;
 const scales = [1 / 12, 1 / 8, 1 / 6, 1 / 4, 1 / 3, 1 / 2, 1, 2, 4, 8, 16, 32, 64];
@@ -145,11 +145,11 @@ export default defineComponent({
   },
 
   setup() {
-    const chart = ref<HTMLDivElement>();
-    const header = ref<HTMLDivElement>();
-    const metaLine = ref<HTMLDivElement>();
-    const metaAssistantLine = ref<HTMLDivElement>();
-    const actor = ref<HTMLDivElement>();
+    const chart = ref<HTMLElement>();
+    const header = ref<HTMLElement>();
+    const metaLine = ref<HTMLElement>();
+    const metaAssistantLine = ref<HTMLElement>();
+    const actor = ref<HTMLElement>();
 
     const width = ref(0);
     const chartWidth = ref(0);
@@ -195,12 +195,17 @@ export default defineComponent({
         const newLine: GanttLineView = {
           name: line.name,
           height: 16,
-          visible: "visible",
+          visible: "",
           line: line,
           view: null
         }
         newLines.push(newLine);
       }
+      lines.value = newLines;
+
+      const [subHeaders, headers] = generateHeader(startTime.value, endTime.value, widthPerHour.value, stepHours.value);
+      metaSubHeaders.value = subHeaders;
+      metaHeaders.value = headers;
 
       width.value = windowWidth;
       chartHeight.value = windowHeight - metaLine.value!!.offsetHeight - metaAssistantLine.value!!.offsetHeight;
@@ -209,21 +214,18 @@ export default defineComponent({
       ganttHeight.value = 0;
       linkedKeys.value = schema.linkInfo;
       enabledLinkedKeys.value = schema.linkInfo;
-      
-      const [subHeaders, headers] = generateHeader(startTime.value, endTime.value, widthPerHour.value, stepHours.value);
-      metaSubHeaders.value = subHeaders;
-      metaHeaders.value = headers;
     }
 
     function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, line: GanttLineView) {
       if (el) {
-        const view = el as typeof GanttChartLineView;
-        line.view = view;
+        line.view = el as typeof GanttChartLineView;
         line.view.init(startTime.value, line.line.items, chartWidth.value, widthPerHour.value / 60, linkedKeys.value);
         let newHeight = 0;
         for (const line of lines.value) {
-          line.height = line.view!!.height.value;
-          newHeight += line.height * 16;
+          if (line.view) {
+            line.height = line.view!!.height;
+            newHeight += line.height * 16;
+          }
         }
         ganttHeight.value = newHeight;
       }
@@ -280,7 +282,8 @@ export default defineComponent({
     function setVisibleLines(visibleLines: Array<string>) {
       for (const line of lines.value) {
         if (visibleLines.includes(line.name)) {
-          line.visible = "visible";
+          console.log(line.name);
+          line.visible = "";
         } else {
           line.visible = "none";
         }
@@ -306,6 +309,10 @@ export default defineComponent({
         line.view!!.focus(linkedInfo);
       }
     }
+
+    defineExpose({
+      scales
+    });
 
     return {
       chart,
