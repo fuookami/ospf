@@ -1,7 +1,8 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo4.rule_context.model
 
 import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.example.framework_demo.demo4.infrastructure.*
+import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.*
+import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task.model.*
 import fuookami.ospf.kotlin.example.framework_demo.demo4.flight_task_context.model.*
 
 enum class RestrictionType {
@@ -94,9 +95,148 @@ class RelationRestriction(
 
     private fun dump(hit: Boolean): RestrictionCheckingResult {
         return if (violated(hit)) {
-            ViolableViolate(this)
+            when (type) {
+                RestrictionType.Strong -> {
+                    if (cost != null) {
+                        ViolableViolate(this)
+                    } else {
+                        Violate(this)
+                    }
+                }
+
+                else -> {
+                    ViolableViolate(this)
+                }
+            }
         } else {
             NotViolate(this)
+        }
+    }
+}
+
+typealias AbstractGeneralRestrictionCondition = (task: FlightTask, recoveryPolicy: FlightTaskAssignment?) -> Boolean
+
+infix fun AbstractGeneralRestrictionCondition.and(other: AbstractGeneralRestrictionCondition): AbstractGeneralRestrictionCondition {
+    return { task, recoveryPolicy -> this(task, recoveryPolicy) && other(task, recoveryPolicy) }
+}
+
+fun List<AbstractGeneralRestrictionCondition>.combine(): AbstractGeneralRestrictionCondition {
+    return { task, recoveryPolicy -> this.isEmpty() || this.all { it(task, recoveryPolicy) } }
+}
+
+data class FlightGeneralRestrictionCondition(
+    val flights: Set<TaskKey>
+) : AbstractGeneralRestrictionCondition {
+    override operator fun invoke(task: FlightTask, recoveryPolicy: FlightTaskAssignment?): Boolean {
+        return flights.contains(task.key)
+    }
+}
+
+data class DepartureAirportGeneralRestrictionCondition(
+    val airports: Set<Airport>,
+    val time: TimeRange? = null
+) : AbstractGeneralRestrictionCondition {
+    override operator fun invoke(task: FlightTask, recoveryPolicy: FlightTaskAssignment?): Boolean {
+        return airports.contains(task.dep)
+                && (time == null || (recoveryPolicy?.time ?: task.time)?.let { time.contains(it.start) } == true)
+    }
+}
+
+data class ArrivalAirportGeneralRestrictionCondition(
+    val airports: Set<Airport>,
+    val time: TimeRange? = null
+) : AbstractGeneralRestrictionCondition {
+    override operator fun invoke(task: FlightTask, recoveryPolicy: FlightTaskAssignment?): Boolean {
+        return airports.contains(task.arr)
+                && (time == null || (recoveryPolicy?.time ?: task.time)?.let { time.contains(it.end) } == true)
+    }
+}
+
+data class BidirectionalAirportGeneralRestrictionCondition(
+    val airports1: Set<Airport>,
+    val airports2: Set<Airport>,
+    val time: TimeRange? = null
+) : AbstractGeneralRestrictionCondition {
+    override operator fun invoke(task: FlightTask, recoveryPolicy: FlightTaskAssignment?): Boolean {
+        val from = airports1.contains(task.dep) && airports2.contains(task.arr)
+        val to = airports1.contains(task.arr) && airports2.contains(task.dep)
+        return (from || to)
+                && (time == null || (recoveryPolicy?.time ?: task.time)?.let { time.contains(it) } == true)
+    }
+}
+
+data class EnabledAircraftGeneralRestrictionCondition(
+    val aircrafts: Set<Aircraft>
+) : AbstractGeneralRestrictionCondition {
+    override operator fun invoke(task: FlightTask, recoveryPolicy: FlightTaskAssignment?): Boolean {
+        return aircrafts.contains(task.aircraft)
+    }
+}
+
+data class DisabledAircraftGeneralRestrictionCondition(
+    val aircrafts: Set<Aircraft>
+) : AbstractGeneralRestrictionCondition {
+    override operator fun invoke(task: FlightTask, recoveryPolicy: FlightTaskAssignment?): Boolean {
+        return !aircrafts.contains(task.aircraft)
+    }
+}
+
+class GeneralRestriction(
+    override val type: RestrictionType,
+    condition: AbstractGeneralRestrictionCondition? = null,
+    val enabledAircrafts: Set<Aircraft>? = null,
+    val disabledAircrafts: Set<Aircraft>? = null,
+    val weight: Flt64 = Flt64.one,
+    val cost: Flt64? = null
+) : Restriction {
+    val condition by lazy {
+        var ret = condition
+        if (ret != null && enabledAircrafts != null) {
+            ret = ret and EnabledAircraftGeneralRestrictionCondition(enabledAircrafts)
+        } else if (enabledAircrafts != null) {
+            ret = EnabledAircraftGeneralRestrictionCondition(enabledAircrafts)
+        }
+        if (ret != null && disabledAircrafts != null) {
+            ret = ret and DisabledAircraftGeneralRestrictionCondition(disabledAircrafts)
+        } else if (enabledAircrafts != null) {
+            ret = EnabledAircraftGeneralRestrictionCondition(enabledAircrafts)
+        }
+        ret
+    }
+
+    override fun related(aircraft: Aircraft): Boolean {
+        return enabledAircrafts?.contains(aircraft) == true || disabledAircrafts?.contains(aircraft) == true
+    }
+
+    override fun check(task: FlightTask): RestrictionCheckingResult {
+        return dump(condition?.invoke(task, null) ?: false)
+    }
+
+    override fun check(task: FlightTask, aircraft: Aircraft): RestrictionCheckingResult {
+        return dump(condition?.invoke(task, FlightTaskAssignment(aircraft = aircraft)) ?: false)
+    }
+
+    override fun check(task: FlightTask, recoveryPolicy: FlightTaskAssignment): RestrictionCheckingResult {
+        return dump(condition?.invoke(task, recoveryPolicy) ?: false)
+    }
+
+    private fun dump(violated: Boolean): RestrictionCheckingResult {
+        return if (violated) {
+            when (type) {
+                RestrictionType.Strong -> {
+                    if (cost != null) {
+                        ViolableViolate(this)
+                    } else {
+                        Violate(this)
+                    }
+                }
+
+                else -> {
+                    ViolableViolate(this)
+                }
+            }
+        } else {
+            NotMatter(this)
         }
     }
 }
