@@ -57,7 +57,7 @@
       <div 
         v-for="(subItem, _) in subItems"
         class="gantt_item"
-        style="position: absolute; height: 100%; position: absolute; text-align: center;"
+        style="position: absolute; height: 100%; text-align: center;"
         :style="{
           left: subItem.x + 'px',
           width: subItem.width + 'px',
@@ -66,7 +66,7 @@
         }"
       >
         <span 
-          style="position: relative; top: -.75em; font-size: .5em;"
+          style="position: relative; top: -1em; font-size: .5em;"
           :style="{ width: width + 'px' }" 
         >
           {{ subItem.name }}
@@ -199,7 +199,7 @@ export default defineComponent({
       }
       const startTime = dayjs(item.startTime, "%Y-%m-%d %H:%M:%S");
       const endTime = dayjs(item.endTime, "%Y-%m-%d %H:%M:%S");
-      const duration = endTime.diff(startTime, 'minute');
+      const duration = endTime.diff(startTime, "minute");
       width.value = duration * widthPerUnit;
 
       if (item.category === "Normal") {
@@ -223,14 +223,13 @@ export default defineComponent({
             continue;
           }
 
-          const startTime = dayjs(item.startTime, "%Y-%m-%d %H:%M:%S");
           const subStartTime = dayjs(subItem.startTime, "%Y-%m-%d %H:%M:%S");
           const subEndTime = dayjs(subItem.endTime, "%Y-%m-%d %H:%M:%S");
-          const subDuration = subEndTime.diff(subStartTime, 'minute');
+          const subDuration = subEndTime.diff(subStartTime, "minute");
           subItemViews.push({
             name: subItem.name,
-            x: (subStartTime.diff(startTime, 'minute') * widthPerUnit) / duration,
-            width: subDuration * widthPerUnit / duration,
+            x: subStartTime.diff(startTime, "minute") * widthPerUnit,
+            width: subDuration * widthPerUnit,
             color: getSubItemColor(subItem.category)
           })
         }
