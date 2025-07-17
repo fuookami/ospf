@@ -24,26 +24,32 @@
         {{ name }}
       </span>
       <v-tooltip activator="parent" location="top">
-        <p>Produce</p>
-        <v-row v-for="(info, _) in produceList" style="margin: .25em 0 .25em 0; width: 20em;">
-          <v-col cols="4" style="padding: 0;">{{ info.key }}</v-col>
-          <v-col cols="1" style="padding: 0;">：</v-col>
-          <v-col cols="7" style="padding: 0;">{{ info.value }}</v-col>
-        </v-row>
+        <v-container :style="{ 'visibility': produceListVisible }">
+          <p>Produce</p>
+          <v-row v-for="(info, _) in produceList" style="margin: .25em 0 .25em 0; width: 20em;">
+            <v-col cols="4" style="padding: 0;">{{ info.key }}</v-col>
+            <v-col cols="1" style="padding: 0;">：</v-col>
+            <v-col cols="7" style="padding: 0;">{{ info.value }}</v-col>
+          </v-row>
+        </v-container>
 
-        <p>Consumption</p>
-        <v-row v-for="(info, _) in consumptionList" style="margin: .25em 0 .25em 0; width: 20em;">
-          <v-col cols="4" style="padding: 0;">{{ info.key }}</v-col>
-          <v-col cols="1" style="padding: 0;">：</v-col>
-          <v-col cols="7" style="padding: 0;">{{ info.value }}</v-col>
-        </v-row>
+        <v-container :style="{ 'visibility': consumptionListVisible }">
+          <p>Consumption</p>
+          <v-row v-for="(info, _) in consumptionList" style="margin: .25em 0 .25em 0; width: 20em;">
+            <v-col cols="4" style="padding: 0;">{{ info.key }}</v-col>
+            <v-col cols="1" style="padding: 0;">：</v-col>
+            <v-col cols="7" style="padding: 0;">{{ info.value }}</v-col>
+          </v-row>
+        </v-container>
 
-        <p>Info</p>
-        <v-row v-for="(info, _) in infoList" style="margin: .25em 0 .25em 0; width: 20em;">
-          <v-col cols="4" style="padding: 0;">{{ info.key }}</v-col>
-          <v-col cols="1" style="padding: 0;">：</v-col>
-          <v-col cols="7" style="padding: 0;">{{ info.value }}</v-col>
-        </v-row>
+        <v-container :style="{ 'visibility': infoListVisible }">
+          <p>Info</p>
+          <v-row v-for="(info, _) in infoList" style="margin: .25em 0 .25em 0; width: 20em;">
+            <v-col cols="4" style="padding: 0;">{{ info.key }}</v-col>
+            <v-col cols="1" style="padding: 0;">：</v-col>
+            <v-col cols="7" style="padding: 0;">{{ info.value }}</v-col>
+          </v-row>
+        </v-container>
       </v-tooltip>
       <v-snackbar v-model="snackbar" :timeout="2000">{{ snackbarText }}</v-snackbar>
     </v-btn>
@@ -57,7 +63,7 @@
       <div 
         v-for="(subItem, _) in subItems"
         class="gantt_item"
-        style="position: absolute; height: 100%; position: absolute; text-align: center;"
+        style="position: absolute; height: 100%; text-align: center;"
         :style="{
           left: subItem.x + 'px',
           width: subItem.width + 'px',
@@ -66,7 +72,7 @@
         }"
       >
         <span 
-          style="position: relative; top: -.75em; font-size: .5em;"
+          style="position: relative; top: -1em; font-size: .5em;"
           :style="{ width: width + 'px' }" 
         >
           {{ subItem.name }}
@@ -156,8 +162,11 @@ export default defineComponent({
     const subItems = ref<Array<GanttSubItemView>>([]);
 
     const name = ref<string>("");
+    const produceListVisible = ref<string>("hidden");
     const produceList = ref<Array<{ key: string, value: string }>>([]);
+    const consumptionListVisible = ref<string>("hidden");
     const consumptionList = ref<Array<{ key: string, value: string }>>([]);
+    const infoListVisible = ref<string>("hidden");
     const infoList = ref<Array<{ key: string, value: string }>>([]);
     const linkedInfo = ref<Map<string, string>>(new Map());
 
@@ -182,6 +191,23 @@ export default defineComponent({
 
     function init(item: GanttItemVO, widthPerUnit: number, linkedKeys: Array<string>) {
       name.value = item.name;
+      if (item.produces.size > 0) {
+        produceListVisible.value = "visible";
+      } else {
+        produceListVisible.value = "hidden";
+      }
+      produceList.value = Array.from(item.produces).map(([key, value]) => ({ key, value }));
+      if (item.consumption.size > 0) {
+        consumptionListVisible.value = "visible";
+      } else {
+        consumptionListVisible.value = "hidden";
+      }
+      consumptionList.value = Array.from(item.consumption).map(([key, value]) => ({ key, value }));
+      if (item.info.size > 0) {
+        infoListVisible.value = "visible";
+      } else {
+        infoListVisible.value = "hidden";
+      }
       infoList.value = Array.from(item.info).map(([key, value]) => ({ key, value }));
       if (linkedKeys != null && linkedKeys.length > 0) {
         const newLinkedInfo = new Map<string, string>();
@@ -199,7 +225,7 @@ export default defineComponent({
       }
       const startTime = dayjs(item.startTime, "%Y-%m-%d %H:%M:%S");
       const endTime = dayjs(item.endTime, "%Y-%m-%d %H:%M:%S");
-      const duration = endTime.diff(startTime, 'minute');
+      const duration = endTime.diff(startTime, "minute");
       width.value = duration * widthPerUnit;
 
       if (item.category === "Normal") {
@@ -223,14 +249,13 @@ export default defineComponent({
             continue;
           }
 
-          const startTime = dayjs(item.startTime, "%Y-%m-%d %H:%M:%S");
           const subStartTime = dayjs(subItem.startTime, "%Y-%m-%d %H:%M:%S");
           const subEndTime = dayjs(subItem.endTime, "%Y-%m-%d %H:%M:%S");
-          const subDuration = subEndTime.diff(subStartTime, 'minute');
+          const subDuration = subEndTime.diff(subStartTime, "minute");
           subItemViews.push({
             name: subItem.name,
-            x: (subStartTime.diff(startTime, 'minute') * widthPerUnit) / duration,
-            width: subDuration * widthPerUnit / duration,
+            x: subStartTime.diff(startTime, "minute") * widthPerUnit,
+            width: subDuration * widthPerUnit,
             color: getSubItemColor(subItem.category)
           })
         }
@@ -275,8 +300,11 @@ export default defineComponent({
       item,
       subItems,
       name,
+      produceListVisible,
       produceList,
+      consumptionListVisible,
       consumptionList,
+      infoListVisible,
       infoList,
       linkedInfo,
       x,

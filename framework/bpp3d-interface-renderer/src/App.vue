@@ -1,7 +1,8 @@
 <template>
   <v-app>
     <v-main :style="{ height: windowHeight + 'px' }" style="display:flex; flex-direction: column;">
-      <FileSelector ref="fileSelector" @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage"/>
+      <file-selector ref="fileSelector" @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage" />
+      <loading-plan ref="loadingPlan" :style="{ visibility: rendererVisibility }" />
 
       <v-dialog v-model="dialog" persistent max-width="30%">
         <v-card>
@@ -18,18 +19,22 @@
 </template>
 
 <script lang="ts">
-import {defineComponent, ComponentPublicInstance, HTMLAttributes, onMounted, ref} from "vue";
-
+import { defineComponent, onMounted, ref } from "vue";
 import FileSelector from "./components/file-selector.vue";
+import LoadingPlan from "./components/loading-plan.vue";
+import { SchemaDTO } from "./components/dto.ts";
 
 export default defineComponent({
   name: "App",
 
   components: {
-    FileSelector
+    FileSelector,
+    LoadingPlan
   },
 
   setup() {
+    const loadingPlan = ref<typeof LoadingPlan | null>();
+
     const windowHeight = ref(0);
     const windowWidth = ref(0);
     const rendererVisibility = ref("hidden");
@@ -38,64 +43,30 @@ export default defineComponent({
 
     const groups = ref<Array<Array<String>>>([]);
 
-    onMounted(() => {
-      resized();
-      window.addEventListener("resize", () => {
-        resized();
-      });
-    })
-
-    function isSameGroup(group1: Array<String>, group2: Array<String>): boolean {
-      if(group1.length !== group2.length) {
-        return false;
-      }
-
-      for(let i = 0; i < group1.length; i++) {
-        if(group1[i] !== group2[i]) {
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    function distinctGroups(groups: Array<Array<String>>): Array<Array<String>> {
-      const result: Array<Array<String>> = [];
-      for(let i = 0; i < groups.length; i++) {
-        if (groups[i].length === 0) {
-          result.push(groups[i]);
-        } else {
-          let isDistinct = true;
-          for(let j = 0; j < result.length; j++) {
-            if(isSameGroup(groups[i], result[j])) {
-              isDistinct = false;
-              break;
-            }
-          }
-          if(isDistinct) {
-            result.push(groups[i]);
-          }
-        }
-      }
-      return result;
-    }
-
     function resized() {
       windowWidth.value = window.innerWidth;
       windowHeight.value = window.innerHeight;
-
     }
 
-    function renderData() {
+    function renderData(schema: SchemaDTO) {
+      loadingPlan.value!!.init(schema);
+      rendererVisibility.value = "visible";
     }
-
 
     function showMessage(msg: string) {
       message.value = msg;
       dialog.value = true;
     }
 
+    onMounted(() => {
+      resized();
+      window.addEventListener("resize", () => {
+        resized();
+      });
+    });
+
     return {
+      loadingPlan,
       windowHeight,
       windowWidth,
       rendererVisibility,

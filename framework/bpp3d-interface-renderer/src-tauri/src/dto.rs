@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct LoadingPlanItemDTO {
     name: String,
+    #[serde(default)]
     package_type: Option<String>,
     width: f64,
     height: f64,
@@ -15,12 +16,14 @@ pub struct LoadingPlanItemDTO {
     z: f64,
     weight: f64,
     loading_order: usize,
+    #[serde(default)]
     info: BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadingPlanDTO {
+    #[serde(default)]
     group: Vec<String>,
     name: String,
     type_code: String,
@@ -30,13 +33,17 @@ pub struct LoadingPlanDTO {
     loading_rate: f64,
     weight: f64,
     volume: f64,
+    #[serde(default)]
     items: Vec<LoadingPlanItemDTO>,
+    #[serde(default)]
     info: BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemaDTO {
+    #[serde(default)]
     kpi: BTreeMap<String, String>,
+    #[serde(default)]
     loading_plans: Vec<LoadingPlanDTO>
 }

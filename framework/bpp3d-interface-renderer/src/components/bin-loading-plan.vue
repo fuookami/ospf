@@ -22,9 +22,9 @@
       </v-card-text>
     </v-card>
 
-    <v-col cols="9" id="renderer" height="100%" />
-    <v-col id="tabContainer" cols="2" height="100%">
-      <v-tabs id="tabList" v-model="tab" color="deep-purple-accent-4" align-tabs="center">
+    <v-col cols="9" ref="rendererContainer" height="100%" />
+    <v-col ref="tabContainer" cols="2" height="100%">
+      <v-tabs ref="tabList" v-model="tab" color="deep-purple-accent-4" align-tabs="center">
         <v-tab :value="0">货物统计</v-tab>
         <v-tab :value="1">装柜步骤</v-tab>
       </v-tabs>
@@ -39,7 +39,7 @@
         :style="{ 'visibility': tabVisibility[1], 'height': tabHeight, 'width': tabWidth }"
         style="position: absolute; overflow: auto;"
       >
-        <v-table id="loadingStepTable" density="compact" style="table-layout: fixed;">
+        <v-table ref="loadingStepTable" density="compact" style="table-layout: fixed;">
           <thead>
             <tr>
               <th class="text-center" style="width: 2em; padding: 0;">步骤</th>
@@ -66,7 +66,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref } from "vue";
+import {defineComponent, ref, toRaw, watch} from "vue";
 import lodash from "lodash";
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls';
@@ -118,17 +118,15 @@ const itemColors = [
   '#F5FBB1'
 ];
 
-
-
 function getItemType(item: LoadingPlanItemDTO): string {
   return `${item.packageType}-${item.width.toFixed(0)}*${item.height.toFixed(0)}*${item.depth.toFixed(0)}-${item.weight.toFixed(2)}`;
 }
 
 function getLoadingSteps(items: Array<LoadingPlanItemDTO>): Array<LoadingStepVO> {
-  var maxStep = lodash.maxBy(items, 'loadingOrder')!!.loadingOrder;
+  const maxStep = lodash.maxBy(items, 'loadingOrder')!!.loadingOrder;
 
   const steps: Array<LoadingStepVO> = [];
-  for (var i = 0; i <= maxStep; i++) {
+  for (let i = 0; i <= maxStep; i++) {
     const names = [];
     for (const item of items) {
       if (item.loadingOrder == i) {
@@ -327,7 +325,7 @@ export default defineComponent({
     const loadingStepNameWidth = ref<string>('160px');
 
     function init(loadingPlan: LoadingPlanDTO) {
-      rendererContainer.value!!.innerHTML = '';
+      rendererContainer.value!!.$el.innerHTML = '';
 
       const renderer = new THREE.WebGLRenderer();
       const scene = new THREE.Scene();
@@ -337,10 +335,10 @@ export default defineComponent({
       loadingSteps.value = getLoadingSteps(loadingPlan.items);
       const binLines = createBinLines(loadingPlan);
       for (const [obj, _] of items.value) {
-        scene.add(obj);
+        scene.add(toRaw(obj));
       }
       for (const line of binLines) {
-        scene.add(line);
+        scene.add(toRaw(line));
       }
 
       const light = new THREE.AmbientLight(new THREE.Color('#999999'))
@@ -349,14 +347,14 @@ export default defineComponent({
       scene.add(light)
       scene.add(directionalLight)
 
-      renderer.setSize(rendererContainer.value!!.offsetWidth, rendererContainer.value!!.offsetHeight);
-      const camera = createCamera(scene, rendererContainer.value!!, loadingPlan);
-      renderer.render(scene, camera);
-      rendererContainer.value!!.append(renderer.domElement);
+      renderer.setSize(rendererContainer.value!!.$el.offsetWidth, rendererContainer.value!!.$el.offsetHeight);
+      const camera = createCamera(scene, rendererContainer.value!!.$el, loadingPlan);
+      renderer.render(scene, toRaw(camera));
+      rendererContainer.value!!.$el.append(renderer.domElement);
 
-      rendererContainer.value!!.addEventListener("resize", (_) => {
-        renderer.setSize(rendererContainer.value!!.offsetWidth, rendererContainer.value!!.offsetHeight);
-        camera.aspect = rendererContainer.value!!.offsetWidth / rendererContainer.value!!.offsetHeight;
+      rendererContainer.value!!.$el.addEventListener("resize", (_) => {
+        renderer.setSize(rendererContainer.value!!.$el.offsetWidth, rendererContainer.value!!.$el.offsetHeight);
+        camera.aspect = rendererContainer.value!!.$el.offsetWidth / rendererContainer.value!!.$el.offsetHeight;
         camera.updateProjectionMatrix();
       });
 
@@ -365,14 +363,14 @@ export default defineComponent({
       function animate() {
         requestAnimationFrame(animate);
         renderer.render(scene, camera);
-      };
+      }
 
-      rendererContainer.value!!.addEventListener("dblclick", (event) => {
+      rendererContainer.value!!.$el.addEventListener("dblclick", (event) => {
         event.preventDefault();
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
-        mouse.x = (event.offsetX / rendererContainer.value!!.offsetWidth) * 2 - 1;
-        mouse.y = -(event.offsetY / rendererContainer.value!!.offsetHeight) * 2 + 1;
+        mouse.x = (event.offsetX / rendererContainer.value!!.$el.offsetWidth) * 2 - 1;
+        mouse.y = -(event.offsetY / rendererContainer.value!!.$el.offsetHeight) * 2 + 1;
         raycaster.setFromCamera(mouse, camera);
         const intersects = raycaster.intersectObjects(scene.children);
         if (intersects.length != 0 && intersects[0].object instanceof THREE.Mesh) {
@@ -426,7 +424,7 @@ export default defineComponent({
         }
       });
 
-      loadingStepTable.value!!.addEventListener("click", (event) => {
+      loadingStepTable.value!!.$el.addEventListener("click", (event) => {
         let target = event.target!! as HTMLElement;
         if (target.nodeName == "TD") {
           target = target.parentNode as HTMLElement;
@@ -457,7 +455,24 @@ export default defineComponent({
       animate();
     }
 
+    watch(tab, (newTab, _) => {
+      if (newTab) {
+        tabVisibility.value[newTab] = 'visible';
+        for (let i = 0; i < tabVisibility.value.length; i++) {
+          if (i != newTab) {
+            tabVisibility.value[i] = 'hidden';
+          }
+        }
+      } else {
+        for (let i = 0; i < tabVisibility.value.length; i++) {
+          tabVisibility.value[i] = 'hidden';
+        }
+      }
+    });
+
     return {
+      rendererContainer,
+      loadingStepTable,
       selectedItemInfoVisibility,
       selectedItemName,
       selectedItemPackageType,
