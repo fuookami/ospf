@@ -10,11 +10,15 @@ import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.math.ordinary.*
 import fuookami.ospf.kotlin.utils.operator.*
 
+operator fun <K, V> List<Pair<K, V>>.get(key: K): V? {
+    return this.firstOrNull { it.first == key }?.second
+}
+
 fun <T> List<T>.shuffle(
     randomGenerator: Generator<Int> = { Random.nextInt(0, this.size) }
 ): List<T> {
     val list = this.toMutableList()
-    for (i in list.size - 1 downTo 1) {
+    for (i in list.lastIndex downTo 1) {
         val j = randomGenerator()!! % list.size
         val temp = list[i]
         list[i] = list[j]
@@ -1231,4 +1235,150 @@ inline fun <T, reified U> Sequence<T>.sumOfOrNull(
         sum += value
     }
     return sum
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <reified T> Iterable<T>.average(): Flt64 where T : RealNumber<T> {
+    var sum = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    var count = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    for (element in this) {
+        sum += element
+        count += (T::class.companionObjectInstance!! as ArithmeticConstants<T>).one
+    }
+    return sum.toFlt64() / count.toFlt64()
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <reified T> Iterable<T>.average(): T where T : RealNumber<T>, T : Div<T, T> {
+    var sum = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    var count = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    for (element in this) {
+        sum += element
+        count += (T::class.companionObjectInstance!! as ArithmeticConstants<T>).one
+    }
+    return sum / count
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <reified T> Iterable<T?>.averageOrNull(): Flt64? where T : RealNumber<T> {
+    var sum = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    var count = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    for (element in this) {
+        if (element == null) {
+            return null
+        }
+        sum += element
+        count += (T::class.companionObjectInstance!! as ArithmeticConstants<T>).one
+    }
+    return sum.toFlt64() / count.toFlt64()
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <reified T> Iterable<T?>.averageOrNull(): T? where T : RealNumber<T>, T : Div<T, T> {
+    var sum = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    var count = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    for (element in this) {
+        if (element == null) {
+            return null
+        }
+        sum += element
+        count += (T::class.companionObjectInstance!! as ArithmeticConstants<T>).one
+    }
+    return sum / count
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <K, reified V> Map<K, V>.average(): Flt64 where V : RealNumber<V> {
+    var sum = (V::class.companionObjectInstance!! as ArithmeticConstants<V>).zero
+    var count = (V::class.companionObjectInstance!! as ArithmeticConstants<V>).zero
+    for (element in this) {
+        sum += element.value
+        count += (V::class.companionObjectInstance!! as ArithmeticConstants<V>).one
+    }
+    return sum.toFlt64() / count.toFlt64()
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <K, reified V> Map<K, V>.average(): V where V : RealNumber<V>, V : Div<V, V> {
+    var sum = (V::class.companionObjectInstance!! as ArithmeticConstants<V>).zero
+    var count = (V::class.companionObjectInstance!! as ArithmeticConstants<V>).zero
+    for (element in this) {
+        sum += element.value
+        count += (V::class.companionObjectInstance!! as ArithmeticConstants<V>).one
+    }
+    return sum / count
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <K, reified V> Map<K, V?>.averageOrNull(): Flt64? where V : RealNumber<V> {
+    var sum = (V::class.companionObjectInstance!! as ArithmeticConstants<V>).zero
+    var count = (V::class.companionObjectInstance!! as ArithmeticConstants<V>).zero
+    for (element in this) {
+        val value = element.value ?: return null
+        sum += value
+        count += (V::class.companionObjectInstance!! as ArithmeticConstants<V>).one
+    }
+    return sum.toFlt64() / count.toFlt64()
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <K, reified V> Map<K, V?>.averageOrNull(): V? where V : RealNumber<V>, V : Div<V, V> {
+    var sum = (V::class.companionObjectInstance!! as ArithmeticConstants<V>).zero
+    var count = (V::class.companionObjectInstance!! as ArithmeticConstants<V>).zero
+    for (element in this) {
+        val value = element.value ?: return null
+        sum += value
+        count += (V::class.companionObjectInstance!! as ArithmeticConstants<V>).one
+    }
+    return sum / count
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <reified T> Sequence<T>.average(): Flt64 where T : RealNumber<T> {
+    var sum = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    var count = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    for (element in this) {
+        sum += element
+        count += (T::class.companionObjectInstance!! as ArithmeticConstants<T>).one
+    }
+    return sum.toFlt64() / count.toFlt64()
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <reified T> Sequence<T>.average(): T where T : RealNumber<T>, T : Div<T, T> {
+    var sum = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    var count = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    for (element in this) {
+        sum += element
+        count += (T::class.companionObjectInstance!! as ArithmeticConstants<T>).one
+    }
+    return sum / count
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <reified T> Sequence<T?>.averageOrNull(): Flt64? where T : RealNumber<T> {
+    var sum = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    var count = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    for (element in this) {
+        if (element == null) {
+            return null
+        }
+        sum += element
+        count += (T::class.companionObjectInstance!! as ArithmeticConstants<T>).one
+    }
+    return sum.toFlt64() / count.toFlt64()
+}
+
+@Suppress("UNCHECKED_CAST")
+inline fun <reified T> Sequence<T?>.averageOrNull(): T? where T : RealNumber<T>, T : Div<T, T> {
+    var sum = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    var count = (T::class.companionObjectInstance!! as ArithmeticConstants<T>).zero
+    for (element in this) {
+        if (element == null) {
+            return null
+        }
+        sum += element
+        count += (T::class.companionObjectInstance!! as ArithmeticConstants<T>).one
+    }
+    return sum / count
 }

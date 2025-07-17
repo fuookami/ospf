@@ -19,7 +19,8 @@ sealed class AbstractSemiFunction<V : Variable<*>>(
     protected val flag: AbstractLinearPolynomial<*>?,
     override var name: String,
     override var displayName: String? = null,
-    private val ctor: (String) -> V
+    private val ctor: (String) -> V,
+    private val rangeSetting: (V, Flt64) -> Unit
 ) : LinearFunctionSymbol {
     private val logger = logger()
 
@@ -30,7 +31,9 @@ sealed class AbstractSemiFunction<V : Variable<*>>(
     }
 
     private val y: V by lazy {
-        ctor("${name}_y")
+        val y = ctor("${name}_y")
+        rangeSetting(y, possibleRange.upperBound.value.unwrap() + offset)
+        y
     }
 
     private val u: BinVar by lazy {
@@ -73,15 +76,16 @@ sealed class AbstractSemiFunction<V : Variable<*>>(
         polyY.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         x.cells
         flag?.cells
 
-        if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            val xValue = x.evaluate(tokenTable) ?: return
+        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+            val xValue = x.evaluate(tokenTable) ?: return null
 
             val bin = if (flag != null) {
-                (flag.evaluate(tokenTable) ?: return) gr Flt64.zero
+                val value = flag.evaluate(tokenTable) ?: return null
+                value gr Flt64.zero
             } else {
                 val bin = xValue gr Flt64.zero
                 logger.trace { "Setting SemiFunction ${name}.u to $bin" }
@@ -106,7 +110,9 @@ sealed class AbstractSemiFunction<V : Variable<*>>(
                 token._result = yValue + offset
             }
 
-            tokenTable.cache(this, null, yValue)
+            yValue
+        } else {
+            null
         }
     }
 
@@ -133,10 +139,6 @@ sealed class AbstractSemiFunction<V : Variable<*>>(
     }
 
     override fun register(model: AbstractLinearMechanismModel): Try {
-        if (x.lowerBound!!.value.unwrap() ls Flt64.zero) {
-            return Failed(Err(ErrorCode.ApplicationFailed, "$name's domain of definition unsatisfied: $x"))
-        }
-
         if (flag != null) {
             if (flag.lowerBound!!.value.unwrap() ls Flt64.zero || flag.upperBound!!.value.unwrap() gr Flt64.one) {
                 return Failed(Err(ErrorCode.ApplicationFailed, "$name's domain of definition unsatisfied: $flag"))
@@ -378,7 +380,7 @@ class SemiIntegerFunction(
     flag: AbstractLinearPolynomial<*>?,
     name: String,
     displayName: String? = null
-) : AbstractSemiFunction<UIntVar>(x, flag, name, displayName, { UIntVar(it) }) {
+) : AbstractSemiFunction<UIntVar>(x, flag, name, displayName, { UIntVar(it) }, { v, ub -> v.range.leq(ub.floor().toUInt64()) }) {
     constructor(
         x: AbstractLinearPolynomial<*>,
         name: String,
@@ -400,7 +402,7 @@ class SemiRealFunction(
     flag: AbstractLinearPolynomial<*>?,
     name: String,
     displayName: String? = null
-) : AbstractSemiFunction<URealVar>(x, flag, name, displayName, { URealVar(it) }) {
+) : AbstractSemiFunction<URealVar>(x, flag, name, displayName, { URealVar(it) }, { v, ub -> v.range.leq(ub) }) {
     constructor(
         x: AbstractLinearPolynomial<*>,
         name: String,
@@ -419,7 +421,7 @@ class ReluFunction(
     x: AbstractLinearPolynomial<*>,
     name: String = "${x}_relu",
     displayName: String? = "Relu(${x})"
-) : AbstractSemiFunction<URealVar>(x, null, name, displayName, { URealVar(it) }) {
+) : AbstractSemiFunction<URealVar>(x, null, name, displayName, { URealVar(it) }, { v, ub -> v.range.leq(ub) }) {
     override fun toRawString(unfold: UInt64): String {
         return if (unfold eq UInt64.zero) {
             displayName ?: name

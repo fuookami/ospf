@@ -5,23 +5,8 @@ import kotlin.time.Duration.Companion.days
 import kotlin.reflect.*
 import kotlinx.datetime.*
 import kotlinx.coroutines.*
+import fuookami.ospf.kotlin.utils.*
 import fuookami.ospf.kotlin.utils.functional.*
-
-fun max(lhs: Instant, rhs: Instant): Instant {
-    return if (lhs <= rhs) {
-        rhs
-    } else {
-        lhs
-    }
-}
-
-fun min(lhs: Instant, rhs: Instant): Instant {
-    return if (lhs <= rhs) {
-        lhs
-    } else {
-        rhs
-    }
-}
 
 // [b, e)
 data class TimeRange(
@@ -144,29 +129,216 @@ data class TimeRange(
     }
 
     fun differenceWith(ano: List<TimeRange>): List<TimeRange> {
-        var rest: List<TimeRange> = arrayListOf(this)
-        for (rhs in ano) {
-            rest = rest.flatMap { it.differenceWith(rhs) }
+        val mergedTimes = ano
+            .filter{ it.withIntersection(this) }
+            .map {
+                TimeRange(
+                    max(it.start, start),
+                    min(it.end, end)
+                )
+            }.merge()
+        if (mergedTimes.isEmpty()) {
+            return listOf(this)
         }
-        return rest
+
+        val result = ArrayList<TimeRange>()
+        var currentTime = start
+        for (i in mergedTimes.indices) {
+            if (currentTime < mergedTimes[i].start) {
+                result.add(
+                    TimeRange(
+                        currentTime,
+                        mergedTimes[i].start
+                    )
+                )
+            }
+            currentTime = mergedTimes[i].end
+            if (i == mergedTimes.lastIndex) {
+                if (currentTime < end) {
+                    result.add(
+                        TimeRange(
+                            currentTime,
+                            end
+                        )
+                    )
+                }
+            }
+        }
+        return result
     }
 
-    fun contains(time: Instant): Boolean {
+    operator fun contains(time: Instant): Boolean {
         return start <= time && time < end;
     }
 
-    fun contains(time: TimeRange): Boolean {
+    operator fun contains(time: TimeRange): Boolean {
         return start <= time.start && time.end <= end;
     }
 
-    fun split(unit: Duration): List<TimeRange> {
-        val timeRanges = ArrayList<TimeRange>()
-        var currentTime = start
-        while (currentTime < end) {
-            timeRanges.add(TimeRange(currentTime, currentTime + min(unit, end - currentTime)))
-            currentTime += unit
+    fun split(
+        times: List<Instant>
+    ): List<TimeRange> {
+        val result = ArrayList<TimeRange>()
+        val containsTimes = times
+            .filter { it != start && contains(it) }
+            .sorted()
+            .distinct()
+        if (containsTimes.isEmpty()) {
+            return listOf(this)
         }
-        return timeRanges
+        for (i in containsTimes.indices) {
+            if (i == 0) {
+                result.add(TimeRange(start, containsTimes[i]))
+            }
+            if (i == containsTimes.lastIndex) {
+                result.add(TimeRange(containsTimes[i], end))
+            } else {
+                result.add(TimeRange(containsTimes[i], containsTimes[i + 1]))
+            }
+        }
+        return result
+    }
+
+    data class SplitTimeRanges(
+        val times: List<TimeRange>,
+        val breakTimes: List<TimeRange>
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is SplitTimeRanges) return false
+
+            if (times != other.times) return false
+            if (!(breakTimes.toTypedArray() contentEquals other.breakTimes.toTypedArray())) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = times.hashCode()
+            result = 31 * result + breakTimes.hashCode()
+            return result
+        }
+    }
+
+    fun split(
+        unit: DurationRange,
+        currentDuration: Duration = Duration.ZERO,
+        maxDuration: Duration? = null,
+        breakTime: Duration? = null
+    ): SplitTimeRanges {
+        val times = ArrayList<TimeRange>()
+        val breakTimes = ArrayList<TimeRange>()
+        var currentTime = start
+        var totalDuration = Duration.ZERO
+        while (currentTime < end && (maxDuration == null || totalDuration < maxDuration)) {
+            if (currentTime == start && currentDuration >= unit.lb && breakTime != null) {
+                val duration = min(
+                    end - currentTime,
+                    maxDuration ?: Duration.INFINITE
+                )
+                if (currentDuration + duration <= unit.ub) {
+                    times.add(
+                        TimeRange(
+                            currentTime,
+                            currentTime + duration
+                        )
+                    )
+                    currentTime = currentTime + duration
+                    totalDuration += duration
+                    break
+                } else {
+                    breakTimes.add(
+                        TimeRange(
+                            currentTime,
+                            currentTime + breakTime
+                        )
+                    )
+                    currentTime = currentTime + breakTime
+                    continue
+                }
+            } else {
+                val duration = listOf(
+                    unit.lb - if (breakTime != null && currentTime == start) { currentDuration } else { Duration.ZERO },
+                    end - currentTime,
+                    maxDuration?.let { it - totalDuration } ?: Duration.INFINITE
+                ).min()
+                if (maxDuration != null
+                    && ((duration + totalDuration + (unit.ub - unit.lb)) >= maxDuration || (currentTime + duration + (unit.ub - unit.lb)) >= end)
+                ) {
+                    val extraDuration = min(
+                        maxDuration - totalDuration,
+                        end - currentTime
+                    )
+                    times.add(
+                        TimeRange(
+                            currentTime,
+                            currentTime + extraDuration
+                        )
+                    )
+                    totalDuration += extraDuration
+                    currentTime = currentTime + extraDuration
+                } else if (breakTime != null
+                    && duration + if (currentTime == start) { currentDuration } else { Duration.ZERO } == unit.lb
+                    && (currentTime + duration) != end
+                ) {
+                    if (currentTime + duration + breakTime + (unit.ub - unit.lb) >= end
+                        || currentTime + duration + breakTime >= end
+                    ) {
+                        times.add(
+                            TimeRange(
+                                currentTime,
+                                end - breakTime
+                            )
+                        )
+                        breakTimes.add(
+                            TimeRange(
+                                end - breakTime,
+                                end
+                            )
+                        )
+                        totalDuration += (end - breakTime) - currentTime
+                        currentTime = end
+                    } else {
+                        times.add(
+                            TimeRange(
+                                currentTime,
+                                currentTime + duration
+                            )
+                        )
+                        breakTimes.add(
+                            TimeRange(
+                                currentTime + duration,
+                                currentTime + duration + breakTime
+                            )
+                        )
+                        totalDuration += duration
+                        currentTime += duration + breakTime
+                    }
+                } else {
+                    times.add(
+                        TimeRange(
+                            currentTime,
+                            currentTime + duration
+                        )
+                    )
+                    totalDuration += duration
+                    currentTime += duration
+                }
+            }
+        }
+        return SplitTimeRanges(times, breakTimes)
+    }
+
+    fun rsplit(
+        unit: DurationRange,
+        maxDuration: Duration? = null,
+        breakTime: Duration? = null
+    ): SplitTimeRanges {
+        if (maxDuration == null || maxDuration <= duration) {
+            return split(unit, Duration.ZERO, maxDuration, breakTime)
+        }
+
+        TODO("not implemented yet")
     }
 
     fun continuousBefore(time: TimeRange): Boolean {
@@ -200,7 +372,10 @@ fun List<TimeRange>.merge(): List<TimeRange> {
     var currentTime = times.first()
     for (i in 1 until times.size) {
         if (times[i].start <= currentTime.end) {
-            currentTime = TimeRange(currentTime.start, times[i].end)
+            currentTime = TimeRange(
+                currentTime.start,
+                max(currentTime.end, times[i].end)
+            )
         } else {
             mergedTimes.add(currentTime)
             currentTime = times[i]
@@ -219,7 +394,7 @@ fun List<TimeRange>.frontAt(i: Int): TimeRange {
 }
 
 fun List<TimeRange>.backAt(i: Int): TimeRange {
-    return if (i == (this.size - 1)) {
+    return if (i == this.lastIndex) {
         this[i].back!!
     } else {
         this[i].backBetween(this[i + 1])!!

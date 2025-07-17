@@ -60,10 +60,14 @@ sealed class AbstractMinFunction(
     override val cached get() = y.cached
 
     private val possibleRange
-        get() = ValueRange(
-            polynomials.minOf { it.lowerBound!!.value.unwrap() },
-            polynomials.maxOf { it.upperBound!!.value.unwrap() }
-        ).value!!
+        get() = if (polynomials.isNotEmpty()) {
+            ValueRange(
+                polynomials.minOf { it.lowerBound!!.value.unwrap() },
+                polynomials.maxOf { it.upperBound!!.value.unwrap() }
+            ).value!!
+        } else {
+            ValueRange(Flt64.zero, Flt64.zero).value!!
+        }
     private var m = possibleRange
 
     override fun flush(force: Boolean) {
@@ -78,16 +82,16 @@ sealed class AbstractMinFunction(
         }
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         for (polynomial in polynomials) {
             polynomial.cells
         }
 
-        if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
             val values = polynomials.map { it.evaluate(tokenTable) }
 
-            if (values.all { it != null }) {
-                val min = values.withIndex().minByOrNull { it.value!! } ?: return
+            return if (values.all { it != null }) {
+                val min = values.withIndex().minByOrNull { it.value!! } ?: return null
 
                 logger.trace { "Setting MinFunction ${name}.maxmin to ${min.value}" }
                 tokenTable.find(maxmin)?.let { token ->
@@ -110,8 +114,12 @@ sealed class AbstractMinFunction(
                     }
                 }
 
-                tokenTable.cache(this, null, min.value!!)
+                min.value!!
+            } else {
+                null
             }
+        } else {
+            null
         }
     }
 
@@ -185,19 +193,23 @@ sealed class AbstractMinFunction(
     }
 
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return polynomials.minOf { it.evaluate(tokenList, zeroIfNone) ?: return null }
+        return polynomials.minOfOrNull { it.evaluate(tokenList, zeroIfNone) ?: return null }
+            ?: Flt64.zero
     }
 
     override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return polynomials.minOf { it.evaluate(results, tokenList, zeroIfNone) ?: return null }
+        return polynomials.minOfOrNull { it.evaluate(results, tokenList, zeroIfNone) ?: return null }
+            ?: Flt64.zero
     }
 
     override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return polynomials.minOf { it.evaluate(tokenTable, zeroIfNone) ?: return null }
+        return polynomials.minOfOrNull { it.evaluate(tokenTable, zeroIfNone) ?: return null }
+            ?: Flt64.zero
     }
 
     override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return polynomials.minOf { it.evaluate(results, tokenTable, zeroIfNone) ?: return null }
+        return polynomials.minOfOrNull { it.evaluate(results, tokenTable, zeroIfNone) ?: return null }
+            ?: Flt64.zero
     }
 }
 

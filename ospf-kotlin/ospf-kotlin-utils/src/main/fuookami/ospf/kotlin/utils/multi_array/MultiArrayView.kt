@@ -25,7 +25,11 @@ class MultiArrayView<out T : Any, S : Shape>(
         }
 
         override fun hasNext(): Boolean {
-            return current == null || view.shape.next(current!!) != null
+            return if (current == null) {
+                view.isNotEmpty()
+            } else {
+                view.shape.next(current!!) != null
+            }
         }
 
         override fun equals(other: Any?): Boolean {
@@ -113,6 +117,10 @@ class MultiArrayView<out T : Any, S : Shape>(
         return origin[shape.vector(i)]
     }
 
+    operator fun get(i: UInt64): T {
+        return get(i.toInt())
+    }
+
     operator fun get(e: Indexed): T {
         return origin[shape.vector(e.index)]
     }
@@ -125,6 +133,10 @@ class MultiArrayView<out T : Any, S : Shape>(
     @JvmName("getByInts")
     operator fun get(vararg v: Int): T {
         return origin[actualVector(v)]
+    }
+
+    operator fun get(v: Iterable<UInt64>): T {
+        return origin[actualVector(v.map { it.toInt() }.toIntArray())]
     }
 
     operator fun get(vararg v: Indexed): T {

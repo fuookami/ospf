@@ -32,7 +32,7 @@ class ProductFunction(
     }
 
     private val y: RealVariable1 by lazy {
-        RealVariable1("${name}_y", Shape1(polynomials.size - 1))
+        RealVariable1("${name}_y", Shape1(polynomials.lastIndex))
     }
 
     private val polyY: AbstractQuadraticPolynomial<*> by lazy {
@@ -75,13 +75,15 @@ class ProductFunction(
         polyY.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         for (polynomial in polynomials) {
             polynomial.cells
         }
 
-        if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            val values = polynomials.map { it.evaluate(tokenTable) ?: return }
+        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+            val values = polynomials.map {
+                it.evaluate(tokenTable) ?: return null
+            }
 
             var yValue = values[0]
             for (i in y.indices) {
@@ -93,7 +95,9 @@ class ProductFunction(
                 }
             }
 
-            tokenTable.cache(this, null, yValue)
+            yValue
+        } else {
+            null
         }
     }
 
