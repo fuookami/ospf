@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "gantt-scheduling-interface-renderer",
   "version": "0.1.0",
-  "identifier": "fuookami.ospf.gantt_scheduling.interface.renderer",
+  "identifier": "fuookami.ospf.gantt-scheduling.interface.renderer",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:14000",

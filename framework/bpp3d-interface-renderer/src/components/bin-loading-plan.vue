@@ -22,9 +22,9 @@
       </v-card-text>
     </v-card>
 
-    <v-col cols="9" id="renderer" height="100%" />
-    <v-col id="tabContainer" cols="2" height="100%">
-      <v-tabs id="tabList" v-model="tab" color="deep-purple-accent-4" align-tabs="center">
+    <v-col cols="9" ref="rendererContainer" height="100%" />
+    <v-col ref="tabContainer" cols="2" height="100%">
+      <v-tabs ref="tabList" v-model="tab" color="deep-purple-accent-4" align-tabs="center">
         <v-tab :value="0">货物统计</v-tab>
         <v-tab :value="1">装柜步骤</v-tab>
       </v-tabs>
@@ -39,7 +39,7 @@
         :style="{ 'visibility': tabVisibility[1], 'height': tabHeight, 'width': tabWidth }"
         style="position: absolute; overflow: auto;"
       >
-        <v-table id="loadingStepTable" density="compact" style="table-layout: fixed;">
+        <v-table ref="loadingStepTable" density="compact" style="table-layout: fixed;">
           <thead>
             <tr>
               <th class="text-center" style="width: 2em; padding: 0;">步骤</th>
@@ -66,7 +66,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref } from "vue";
+import {defineComponent, ref, toRaw} from "vue";
 import lodash from "lodash";
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls';
@@ -125,10 +125,10 @@ function getItemType(item: LoadingPlanItemDTO): string {
 }
 
 function getLoadingSteps(items: Array<LoadingPlanItemDTO>): Array<LoadingStepVO> {
-  var maxStep = lodash.maxBy(items, 'loadingOrder')!!.loadingOrder;
+  const maxStep = lodash.maxBy(items, 'loadingOrder')!!.loadingOrder;
 
   const steps: Array<LoadingStepVO> = [];
-  for (var i = 0; i <= maxStep; i++) {
+  for (let i = 0; i <= maxStep; i++) {
     const names = [];
     for (const item of items) {
       if (item.loadingOrder == i) {
@@ -327,7 +327,7 @@ export default defineComponent({
     const loadingStepNameWidth = ref<string>('160px');
 
     function init(loadingPlan: LoadingPlanDTO) {
-      rendererContainer.value!!.innerHTML = '';
+      rendererContainer.value!!.$el.innerHTML = '';
 
       const renderer = new THREE.WebGLRenderer();
       const scene = new THREE.Scene();
@@ -337,10 +337,10 @@ export default defineComponent({
       loadingSteps.value = getLoadingSteps(loadingPlan.items);
       const binLines = createBinLines(loadingPlan);
       for (const [obj, _] of items.value) {
-        scene.add(obj);
+        scene.add(toRaw(obj));
       }
       for (const line of binLines) {
-        scene.add(line);
+        scene.add(toRaw(line));
       }
 
       const light = new THREE.AmbientLight(new THREE.Color('#999999'))
@@ -352,9 +352,9 @@ export default defineComponent({
       renderer.setSize(rendererContainer.value!!.offsetWidth, rendererContainer.value!!.offsetHeight);
       const camera = createCamera(scene, rendererContainer.value!!, loadingPlan);
       renderer.render(scene, camera);
-      rendererContainer.value!!.append(renderer.domElement);
+      rendererContainer.value!!.$el.append(renderer.domElement);
 
-      rendererContainer.value!!.addEventListener("resize", (_) => {
+      rendererContainer.value!!.$el.addEventListener("resize", (_) => {
         renderer.setSize(rendererContainer.value!!.offsetWidth, rendererContainer.value!!.offsetHeight);
         camera.aspect = rendererContainer.value!!.offsetWidth / rendererContainer.value!!.offsetHeight;
         camera.updateProjectionMatrix();
@@ -365,9 +365,9 @@ export default defineComponent({
       function animate() {
         requestAnimationFrame(animate);
         renderer.render(scene, camera);
-      };
+      }
 
-      rendererContainer.value!!.addEventListener("dblclick", (event) => {
+      rendererContainer.value!!.$el.addEventListener("dblclick", (event) => {
         event.preventDefault();
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
@@ -426,7 +426,7 @@ export default defineComponent({
         }
       });
 
-      loadingStepTable.value!!.addEventListener("click", (event) => {
+      loadingStepTable.value!!.$el.addEventListener("click", (event) => {
         let target = event.target!! as HTMLElement;
         if (target.nodeName == "TD") {
           target = target.parentNode as HTMLElement;
@@ -458,6 +458,8 @@ export default defineComponent({
     }
 
     return {
+      rendererContainer,
+      loadingStepTable,
       selectedItemInfoVisibility,
       selectedItemName,
       selectedItemPackageType,

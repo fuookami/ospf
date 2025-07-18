@@ -28,5 +28,5 @@ export type LoadingPlanDTO = {
 
 export type SchemaDTO = {
     kpi: Map<string, string>,
-    loadingPlan: LoadingPlanDTO[]
+    loadingPlans: LoadingPlanDTO[]
 }
