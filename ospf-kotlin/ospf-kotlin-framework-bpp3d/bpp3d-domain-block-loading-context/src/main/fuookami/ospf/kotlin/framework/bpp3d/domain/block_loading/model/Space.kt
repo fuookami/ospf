@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.framework.bpp3d.domain.block_loading.model
 
+import fuookami.ospf.kotlin.utils.*
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.math.geometry.*
 import fuookami.ospf.kotlin.framework.bpp3d.infrastructure.*
@@ -26,7 +27,10 @@ data class Space(
             val spaces = ArrayList<Space>()
             val stack = arrayListOf(Space(position = offset, shape = shape))
             while (stack.isNotEmpty()) {
-                val top = stack.removeAt(stack.size - 1)
+                if (memoryUseOver()) {
+                    System.gc()
+                }
+                val top = stack.removeAt(stack.lastIndex)
                 val block = absoluteBlocks.find { it.position == top.position } ?: continue
                 val space = top.put(block.unit) ?: continue
                 spaces.add(space)

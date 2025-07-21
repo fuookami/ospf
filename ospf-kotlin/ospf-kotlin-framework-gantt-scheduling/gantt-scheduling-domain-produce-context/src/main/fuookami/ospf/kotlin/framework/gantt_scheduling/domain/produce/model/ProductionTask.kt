@@ -6,10 +6,19 @@ import fuookami.ospf.kotlin.utils.concept.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task.model.*
 
-interface Product : Indexed
-interface Material : Indexed
+interface Material : AbstractMaterial {
+    override val material get() = this
+}
 
-data class ProductDemand(
+interface AbstractMaterial : Indexed {
+    val material: Material
+}
+
+interface Product : Material
+interface SemiProduct : Material
+interface RawMaterial : Material
+
+data class MaterialDemand(
     val quantity: ValueRange<Flt64>,
     val lessQuantity: Flt64? = null,
     val overQuantity: Flt64? = null
@@ -29,16 +38,23 @@ open class MaterialReserves(
 
 interface ProductionTask<
     out E : Executor,
-    out A : AssignmentPolicy<E>
+    out A : AssignmentPolicy<E>,
+    P: AbstractMaterial,
+    C: AbstractMaterial
 > : AbstractTask<E, A> {
-    val produce: Map<Product, Flt64>
-    val consumption: Map<Material, Flt64>
+    val produce: Map<P, Flt64>
+    val consumption: Map<C, Flt64>
 }
 
-fun <T : AbstractTask<E, A>, E : Executor, A : AssignmentPolicy<E>> AbstractTaskBunch<T, E, A>.produce(product: Product): Flt64 {
+fun <
+    T : AbstractTask<E, A>,
+    E : Executor,
+    A : AssignmentPolicy<E>,
+    P: AbstractMaterial
+> AbstractTaskBunch<T, E, A>.produce(product: P): Flt64 {
     return tasks.mapNotNull {
         when (it) {
-            is ProductionTask<*, *> -> {
+            is ProductionTask<*, *, *, *> -> {
                 it.produce[product]
             }
 
@@ -49,10 +65,15 @@ fun <T : AbstractTask<E, A>, E : Executor, A : AssignmentPolicy<E>> AbstractTask
     }.sumOf { it }
 }
 
-fun <T : AbstractTask<E, A>, E : Executor, A : AssignmentPolicy<E>> AbstractTaskBunch<T, E, A>.consumption(material: Material): Flt64 {
+fun <
+    T : AbstractTask<E, A>,
+    E : Executor,
+    A : AssignmentPolicy<E>,
+    C: AbstractMaterial
+> AbstractTaskBunch<T, E, A>.consumption(material: C): Flt64 {
     return tasks.mapNotNull {
         when (it) {
-            is ProductionTask<*, *> -> {
+            is ProductionTask<*, *, *, *> -> {
                 it.consumption[material]
             }
 

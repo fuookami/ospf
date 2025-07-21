@@ -1,70 +1,41 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "gantt-scheduling-interface-renderer",
+  "version": "0.1.0",
+  "identifier": "fuookami.ospf.gantt-scheduling.interface.renderer",
   "build": {
     "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:14000",
     "beforeBuildCommand": "npm run build",
-    "devPath": "http://localhost:12000",
-    "distDir": "../dist",
-    "withGlobalTauri": false
+    "frontendDist": "../dist"
   },
-  "package": {
-    "productName": "ospf-framework-gantt-scheduling-interface-renderer",
-    "version": "0.0.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "window": {
-        "all": false,
-        "close": true,
-        "create": true,
-        "setSize": true,
-        "setTitle": true
-      },
-      "shell": {
-        "all": false,
-        "open": true
-      },
-      "dialog": {
-        "all": false,
-        "open": true,
-        "save": true
-      },
-      "path": {
-        "all": true
-      }
-    },
-    "bundle": {
-      "active": true,
-      "icon": [
-        "icons/icon.ico"
-      ],
-      "identifier": "com.tauri.build",
-      "targets": "all",
-      "windows": {
-        "wix": {
-          "language": [
-            "zh-CN"
-          ]
-        }
-      }
-    },
-    "security": {
-      "csp": null
-    },
-    "updater": {
-      "active": false
-    },
+  "app": {
     "windows": [
       {
-        "label": "main",
         "fullscreen": false,
         "resizable": true,
-        "title": "ospf-framework-gantt-scheduling-interface-renderer",
+        "title": "gantt-scheduling-interface-renderer",
         "width": 1600,
         "height": 900,
         "minWidth": 1280,
         "minHeight": 720
       }
-    ]
+    ],
+    "security": {
+      "csp": null
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "targets": "all",
+    "windows": {
+      "wix": {
+        "language": ["zh-CN"]
+      }
+    }
   }
 }

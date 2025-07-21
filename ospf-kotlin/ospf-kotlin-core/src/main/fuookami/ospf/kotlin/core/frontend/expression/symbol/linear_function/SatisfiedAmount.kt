@@ -64,17 +64,22 @@ abstract class AbstractSatisfiedAmountPolynomialFunctionImpl(
         polyY.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         for (polynomial in polynomials) {
             polynomial.cells
         }
+        return null
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return if (amount != null) {
-            "satisfied_amount_${amount}(${polynomials.joinToString(", ") { it.toRawString(unfold) }})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
         } else {
-            "satisfied_amount(${polynomials.joinToString(", ") { it.toRawString(unfold) }})"
+            if (amount != null) {
+                "satisfied_amount_${amount}(${polynomials.joinToString(", ") { it.toTidyRawString(unfold - UInt64.one) }})"
+            } else {
+                "satisfied_amount(${polynomials.joinToString(", ") { it.toTidyRawString(unfold - UInt64.one) }})"
+            }
         }
     }
 
@@ -180,19 +185,19 @@ private class SatisfiedAmountPolynomialFunctionAnyImpl(
         or.flush(force)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
-        super.prepare(tokenTable)
-        or.prepare(tokenTable)
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+        super.prepareAndCache(tokenTable)
+        or.prepareAndCache(tokenTable)
 
-        if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
-            val bin = or.evaluate(tokenTable) ?: return
-            val yValue = if (bin eq Flt64.one) {
+        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
+            val bin = or.evaluate(tokenTable) ?: return null
+            if (bin eq Flt64.one) {
                 Flt64.one
             } else {
                 Flt64.zero
             }
-
-            tokenTable.cache(parent, null, yValue)
+        } else {
+            null
         }
     }
 
@@ -242,19 +247,19 @@ private class SatisfiedAmountPolynomialFunctionAllImpl(
         and.flush(force)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
-        super.prepare(tokenTable)
-        and.prepare(tokenTable)
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+        super.prepareAndCache(tokenTable)
+        and.prepareAndCache(tokenTable)
 
-        if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
-            val bin = and.evaluate(tokenTable) ?: return
-            val yValue = if (bin eq Flt64.one) {
+        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
+            val bin = and.evaluate(tokenTable) ?: return null
+            if (bin eq Flt64.one) {
                 Flt64.one
             } else {
                 Flt64.zero
             }
-
-            tokenTable.cache(parent, null, yValue)
+        } else {
+            null
         }
     }
 
@@ -322,14 +327,24 @@ private class SatisfiedAmountPolynomialFunctionSomeImpl(
         }
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
-        super.prepare(tokenTable)
-        for (bin in bins) {
-            bin.prepare(tokenTable)
-        }
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+        super.prepareAndCache(tokenTable)
+        tokenTable.cache(
+            bins.mapNotNull {
+                val value = it.prepare(tokenTable)
+                if (value != null) {
+                    (it as IntermediateSymbol) to value
+                } else {
+                    null
+                }
+            }.toMap()
+        )
 
-        if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
-            val count = bins.count { (it.evaluate(tokenTable) ?: return) eq Flt64.one }
+        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
+            val count = bins.count {
+                val value = it.evaluate(tokenTable) ?: return null
+                value eq Flt64.one
+            }
 
             val yValue = if (amount != null) {
                 val bin = UInt64(count) >= amount
@@ -348,7 +363,9 @@ private class SatisfiedAmountPolynomialFunctionSomeImpl(
                 Flt64(count)
             }
 
-            tokenTable.cache(parent, null, yValue)
+            yValue
+        } else {
+            null
         }
     }
 
@@ -458,8 +475,8 @@ sealed class AbstractSatisfiedAmountPolynomialFunction(
         impl.flush(force)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
-        impl.prepare(tokenTable)
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+        return impl.prepare(tokenTable)
     }
 
     override fun register(tokenTable: AbstractMutableTokenTable): Try {
@@ -490,11 +507,15 @@ sealed class AbstractSatisfiedAmountPolynomialFunction(
         return displayName ?: name
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return if (amount != null) {
-            "satisfied_amount_${amount}(${polynomials.joinToString(", ") { it.toRawString(unfold) }})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
         } else {
-            "satisfied_amount(${polynomials.joinToString(", ") { it.toRawString(unfold) }})"
+            if (amount != null) {
+                "satisfied_amount_${amount}(${polynomials.joinToString(", ") { it.toTidyRawString(unfold - UInt64.one) }})"
+            } else {
+                "satisfied_amount(${polynomials.joinToString(", ") { it.toTidyRawString(unfold - UInt64.one) }})"
+            }
         }
     }
 
@@ -535,8 +556,12 @@ class AtLeastPolynomialFunction(
         assert(UInt64(polynomials.size) geq amount)
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return "at_least_${amount}(${polynomials.joinToString(", ") { it.toRawString(unfold) }})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "at_least_${amount}(${polynomials.joinToString(", ") { it.toTidyRawString(unfold - UInt64.one) }})"
+        }
     }
 }
 

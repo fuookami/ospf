@@ -111,15 +111,15 @@ sealed class AbstractSlackRangeFunction<V : Variable<*>>(
         }
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         x.cells
         lb.cells
         ub.cells
 
-        if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            val xValue = x.evaluate(tokenTable) ?: return
-            val lbValue = lb.evaluate(tokenTable) ?: return
-            val ubValue = ub.evaluate(tokenTable) ?: return
+        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+            val xValue = x.evaluate(tokenTable) ?: return null
+            val lbValue = lb.evaluate(tokenTable) ?: return null
+            val ubValue = ub.evaluate(tokenTable) ?: return null
 
             val posValue = if (xValue geq ubValue) {
                 xValue - ubValue
@@ -141,8 +141,9 @@ sealed class AbstractSlackRangeFunction<V : Variable<*>>(
                 token._result = posValue
             }
 
-            val yValue = posValue + negValue
-            tokenTable.cache(this, null, yValue)
+            posValue + negValue
+        } else {
+            null
         }
     }
 
@@ -207,8 +208,12 @@ sealed class AbstractSlackRangeFunction<V : Variable<*>>(
         return displayName ?: name
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return "slack_range(${x.toRawString(unfold)}, [${lb.toRawString(unfold)}, ${ub.toRawString(unfold)}])"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "slack_range(${x.toTidyRawString(unfold - UInt64.one)}, [${lb.toTidyRawString(unfold - UInt64.one)}, ${ub.toTidyRawString(unfold - UInt64.one)}])"
+        }
     }
 
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {

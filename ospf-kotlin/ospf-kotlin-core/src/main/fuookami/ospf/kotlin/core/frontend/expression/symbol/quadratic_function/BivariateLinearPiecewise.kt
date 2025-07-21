@@ -18,7 +18,7 @@ import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 sealed class AbstractBivariateLinearPiecewiseFunction(
     private val x: AbstractQuadraticPolynomial<*>,
     private val y: AbstractQuadraticPolynomial<*>,
-    protected val triangles: List<Triangle3>,
+    val triangles: List<Triangle3>,
     override var name: String,
     override var displayName: String? = null
 ) : QuadraticFunctionSymbol {
@@ -121,13 +121,13 @@ sealed class AbstractBivariateLinearPiecewiseFunction(
         polyZ.flush(force)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         x.cells
         y.cells
 
-        if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            val xValue = x.evaluate(tokenTable) ?: return
-            val yValue = y.evaluate(tokenTable) ?: return
+        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+            val xValue = x.evaluate(tokenTable) ?: return null
+            val yValue = y.evaluate(tokenTable) ?: return null
 
             var zValue: Flt64? = null
             for (i in indices) {
@@ -167,9 +167,10 @@ sealed class AbstractBivariateLinearPiecewiseFunction(
                     }
                 }
             }
-            if (zValue != null) {
-                tokenTable.cache(this, null, zValue)
-            }
+
+            zValue
+        } else {
+            null
         }
     }
 
@@ -382,8 +383,12 @@ sealed class AbstractBivariateLinearPiecewiseFunction(
         return displayName ?: name
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return "${name}(${x.toRawString(unfold)}, ${y.toRawString(unfold)})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "${name}(${x.toTidyRawString(unfold - UInt64.one)}, ${y.toTidyRawString(unfold - UInt64.one)})"
+        }
     }
 
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
@@ -414,7 +419,7 @@ sealed class AbstractBivariateLinearPiecewiseFunction(
 class BivariateLinearPiecewiseFunction(
     x: AbstractQuadraticPolynomial<*>,
     y: AbstractQuadraticPolynomial<*>,
-    private val points: List<Point3>,
+    val points: List<Point3>,
     triangles: List<Triangle3>,
     name: String,
     displayName: String? = null
@@ -444,7 +449,7 @@ class BivariateLinearPiecewiseFunction(
 class IsolineBivariateLinearPiecewiseFunction(
     x: AbstractQuadraticPolynomial<*>,
     y: AbstractQuadraticPolynomial<*>,
-    private val isolines: List<Pair<Flt64, List<Point2>>>,
+    val isolines: List<Pair<Flt64, List<Point2>>>,
     triangles: List<Triangle3>,
     name: String,
     displayName: String? = null

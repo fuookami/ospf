@@ -1,8 +1,12 @@
 <template>
   <v-app>
-    <v-main :style="{ height: height + 'px' }" style="display:flex; flex-direction: column;" v-resize="resized">
-      <file-selector ref="fileSelector" @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage" />
-      <gantt-renderer ref="ganttRenderer" :style="{ 'visibility': rendererVisibility }" style="width: 100%; flex: 1;" />
+    <v-main ref="main" :style="{ height: windowHeight + 'px' }" style="display:flex; flex-direction: column;">
+      <FileSelector ref="fileSelector" @fileLoadingSucceeded="render" @fileLoadingFailed="showMessage" />
+      <gantt-chart 
+        ref="ganttChart" 
+        :style="{ 'visibility': rendererVisibility }"
+        style="width: 100%; flex: 1;" 
+      />
 
       <v-dialog v-model="dialog" persistent max-width="30%">
         <v-card>
@@ -10,7 +14,7 @@
           <v-card-text v-html="message"></v-card-text>
           <v-card-actions>
             <v-spacer></v-spacer>
-            <v-btn color="green darken-1" text @click="dialog = false">关闭</v-btn>
+            <v-btn color="green darken-1" @click="dialog = false">关闭</v-btn>
           </v-card-actions>
         </v-card>
       </v-dialog>
@@ -18,43 +22,73 @@
   </v-app>
 </template>
 
-<script>
-import FileSelector from './components/file-selector.vue';
-import GanttRenderer from './components/gantt-renderer.vue';
+<script lang="ts">
+import { onMounted, defineComponent, ref } from "vue";
 
-export default {
+import FileSelector from "./components/file-selector.vue";
+import GanttChart from "./components/gantt-chart.vue";
+import { SchemaDTO } from "./components/dto.ts";
+import { dump } from "./components/vo";
+
+export default defineComponent({
+  name: "App",
+
   components: {
     FileSelector,
-    GanttRenderer
+    GanttChart
   },
 
-  data: () => ({
-    height: 0,
-    rendererVisibility: "hidden",
-    message: "",
-    dialog: false,
-  }),
+  setup() {
+    const main = ref<HTMLElement>();
+    const fileSelector = ref<typeof FileSelector | null>();
+    const ganttChart = ref<typeof GanttChart | null>();
 
-  mounted() {
-    window.onresize = function () {
-      this.height = window.height;
+    const windowHeight = ref(0);
+    const windowWidth = ref(0);
+    const rendererVisibility = ref("hidden");
+    const message = ref("");
+    const dialog = ref(false);
+
+    onMounted(() => {
+      resized();
+      window.addEventListener("resize", () => {
+        resized();
+      });
+    })
+
+    function render(data: SchemaDTO) {
+      if (ganttChart.value) {
+        rendererVisibility.value = "visible";
+        ganttChart.value!!.render(dump(data));
+      }
     }
-  },
 
-  methods: {
-    async renderData(data) {
-      this.rendererVisibility = "visible";
-      await this.$refs.ganttRenderer.renderData(data);
-    },
+    function resized() {
+      windowWidth.value = window.innerWidth;
+      windowHeight.value = window.innerHeight;
+      if (ganttChart.value) {
+        ganttChart.value!!.resize(ganttChart.value!!.$el.offsetWidth, main.value!!.offsetHeight - fileSelector.value!!.$el.offsetHeight);
+      }
+    }
 
-    async showMessage(message) {
-      this.message = message;
-      this.dialog = true;
-    },
+    function showMessage(msg: string) {
+      message.value = msg;
+      dialog.value = true;
+    }
 
-    async resized(event) {
-      await this.$refs.ganttRenderer.resize(this.$refs.ganttRenderer.$el.offsetWidth, this.$el.offsetHeight - this.$refs.fileSelector.$el.offsetHeight);
+    return {
+      main,
+      fileSelector,
+      ganttChart,
+      windowHeight,
+      windowWidth,
+      rendererVisibility,
+      message,
+      dialog,
+      render,
+      resized,
+      showMessage
     }
   }
-}
+});
 </script>

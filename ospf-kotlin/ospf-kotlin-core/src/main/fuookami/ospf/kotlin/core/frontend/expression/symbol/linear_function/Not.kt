@@ -51,8 +51,12 @@ abstract class AbstractNotFunctionImpl(
         polyY.range.set(possibleRange.toFlt64())
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return "not(${x.toRawString(unfold)})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "not(${x.toTidyRawString(unfold - UInt64.one)})"
+        }
     }
 
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
@@ -106,19 +110,19 @@ class NotFunctionImpl(
         Flt64.one - x
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         x.cells
 
-        if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
+        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
             x.evaluate(tokenTable)?.let { xValue ->
-                val yValue = if (xValue eq Flt64.zero) {
+                if (xValue eq Flt64.zero) {
                     Flt64.one
                 } else {
                     Flt64.zero
                 }
-
-                tokenTable.cache(parent, null, yValue)
             }
+        } else {
+            null
         }
     }
 
@@ -162,14 +166,14 @@ class NotFunctionPiecewiseImpl(
         piecewiseFunction.flush(force)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         x.cells
-        piecewiseFunction.prepare(tokenTable)
+        piecewiseFunction.prepareAndCache(tokenTable)
 
-        if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
-            piecewiseFunction.evaluate(tokenTable)?.let { yValue ->
-                tokenTable.cache(parent, null, yValue)
-            }
+        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
+            piecewiseFunction.evaluate(tokenTable)
+        } else {
+            null
         }
     }
 
@@ -219,10 +223,10 @@ class NotFunctionDiscreteImpl(
         polyY
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         x.cells
 
-        if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
+        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
             x.evaluate(tokenTable)?.let { xValue ->
                 val bin = xValue eq Flt64.zero
                 val yValue = if (bin) {
@@ -236,8 +240,10 @@ class NotFunctionDiscreteImpl(
                     token._result = yValue
                 }
 
-                tokenTable.cache(parent, null, yValue)
+                yValue
             }
+        } else {
+            null
         }
     }
 
@@ -307,10 +313,10 @@ class NotFunctionExtractAndNotDiscreteImpl(
         polyY
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         x.cells
 
-        if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
+        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
             x.evaluate(tokenTable)?.let { xValue ->
                 val pct = xValue / x.upperBound!!.value.unwrap()
                 val bin = xValue eq Flt64.zero
@@ -329,8 +335,10 @@ class NotFunctionExtractAndNotDiscreteImpl(
                     token._result = yValue
                 }
 
-                tokenTable.cache(parent, null, yValue)
+                yValue
             }
+        } else {
+            null
         }
     }
 
@@ -410,7 +418,7 @@ class NotFunction(
             NotFunctionImpl(x, this, name, displayName)
         } else if (x.discrete) {
             NotFunctionDiscreteImpl(x, this, extract, name, displayName)
-        } else if (extract && !x.discrete && (piecewise || epsilon geq BinaryzationFunction.piecewiseThreshold)) {
+        } else if (extract && !x.discrete && (piecewise || epsilon geq piecewiseThreshold)) {
             NotFunctionPiecewiseImpl(x, this, epsilon, name, displayName)
         } else {
             NotFunctionExtractAndNotDiscreteImpl(x, this, epsilon, name, displayName)
@@ -433,8 +441,8 @@ class NotFunction(
         impl.flush(force)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
-        impl.prepare(tokenTable)
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+        return impl.prepare(tokenTable)
     }
 
     override fun register(tokenTable: AbstractMutableTokenTable): Try {
@@ -465,8 +473,12 @@ class NotFunction(
         return displayName ?: name
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return "not(${x.toRawString(unfold)})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "not(${x.toTidyRawString(unfold - UInt64.one)})"
+        }
     }
 
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {

@@ -1,13 +1,16 @@
 <template>
   <div class="gantt_header" ref="header" :style="{ width: width + 'px' }">
-    <div class="gantt_meta_line" ref="metaLine" :style="{ width: ganttWidth + 'px', 'margin-left': maxNameWidth + 'em' }">
+    <div class="gantt_meta_line" ref="metaLine"
+      :style="{ width: ganttWidth + 'px', 'margin-left': maxNameWidth + 'em' }"
+    >
       <p v-for="(header, _) in metaHeaders" :style="{ 'min-width': header.width + 'px' }">
         {{ header.name }}
       </p>
     </div>
 
     <div class="gantt_meta_line" ref="metaAssistantLine"
-      :style="{ width: ganttWidth + 'px', 'margin-left': maxNameWidth + 'em' }">
+      :style="{ width: ganttWidth + 'px', 'margin-left': maxNameWidth + 'em' }
+    ">
       <p v-for="(header, _) in metaSubHeaders" :style="{ 'min-width': header.width + 'px' }">
         {{ header.name }}
       </p>
@@ -16,7 +19,8 @@
 
   <div :style="{ width: width + 'px' }" style="padding: 0; display: flex;">
     <div class="gantt_actor" ref="actor" :style="{ height: chartHeight + 'px' }" @mousewheel.prevent>
-      <p v-for="(line, _) in lines" 
+      <p
+        v-for="(line, _) in lines" 
         :style="{
           width: maxNameWidth + 'em',
           'line-height': line.height,
@@ -24,68 +28,71 @@
         }"
       >
         {{ line.name }}
-      </p>
+      </p >
     </div>
-    <div ref="chart" 
-      :style="{width: chartWidth + 'px', height: chartHeight + 'px'}"
-      style="overflow-x: auto; overflow-y: auto;" @scroll="chartScroll()"
+
+    <div
+      ref="chart" 
+      :style="{ width: chartWidth + 'px', height: chartHeight + 'px' }"
+      style="overflow-x: auto; overflow-y: auto;" 
+      @scroll="chartScroll()"
     >
-      <div v-for="(line, _) in lines" 
-        :style="{
-          width: ganttWidth + 'px',
-          display: line.visible
-        }" style="
+      <div
+        v-for="(line, _) in lines"
+        style="
           min-height: 3.5em;
           padding: .25em 0 .25em 0;
           border-bottom: 1px dotted #5a5a5a;
-      "
+        "
+        :style="{
+          width: ganttWidth + 'px',
+          display: line.visible
+        }"
       >
-        <gantt-line ref="line" @focus="focus"/>
+        <gantt-chart-line-view 
+          :ref="(el) => setViewRefs(el, line)"
+          @focused="focused"
+        />
       </div>
     </div>
   </div>
 </template>
 
-<script>
+<script lang="ts">
 import "./chart.css"
-import dayjs from "dayjs"
-import duration from "dayjs/plugin/duration"
-import GanttLine from "./line.vue"
+import {ComponentPublicInstance, defineComponent, defineExpose, defineEmits, HTMLAttributes, ref} from "vue";
+import dayjs from "dayjs";
+import GanttChartLineView from "./line.vue";
+import {GanttChartVO, GanttLineVO} from "../vo.ts";
 
 const minWidthPerHour = 32;
-const basicScale = [1 / 12, 1 / 8, 1 / 6, 1 / 4, 1 / 3, 1 / 2, 1, 2, 4, 8, 16, 32, 64];
+const scales = [1 / 12, 1 / 8, 1 / 6, 1 / 4, 1 / 3, 1 / 2, 1, 2, 4, 8, 16, 32, 64];
 
-dayjs.extend(duration);
-
-function dump(item, startTime) {
-  const subItems = [];
-  for (const subItem of item.subItems) {
-    subItems.push({
-      name: subItem.name,
-      category: subItem.category,
-      startTime: dayjs.duration(dayjs(subItem.startTime, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
-      endTime: dayjs.duration(dayjs(subItem.endTime, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours()
-    })
-  }
-  return {
-    name: item.name,
-    category: item.category,
-    scheduledStartTime: dayjs.duration(dayjs(item.scheduledStartTime, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
-    scheduledEndTime: dayjs.duration(dayjs(item.scheduledEndTime, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
-    startTime: dayjs.duration(dayjs(item.startTime, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
-    endTime: dayjs.duration(dayjs(item.endTime, "%Y-%m-%d %H:%M:%S").diff(startTime)).asHours(),
-    info: item.info,
-    subItems: subItems
-  };
+type GanttLineView = {
+  name: string
+  height: number
+  visible: string
+  line: GanttLineVO
+  view: typeof GanttChartLineView | null
 }
 
-function generateHeader(startTime, endTime, widthPerHour, stepHours) {
-  let diffHours = dayjs.duration(endTime.diff(startTime)).asHours();
+type GanttHeader = {
+  name: string
+  width: number
+}
+
+function generateHeader(
+  startTime: dayjs.Dayjs, 
+  endTime: dayjs.Dayjs, 
+  widthPerHour: number, 
+  stepHours: number
+): Array<Array<GanttHeader>> {
+  let diffHours = endTime.diff(startTime, "hour");
   const startDate = startTime.startOf("day");
   const endDate = endTime.startOf("day");
   let dayHours = startTime.hour();
-  const metaSubHeaders = [];
-  const metaHeaders = [];
+  const metaSubHeaders: Array<GanttHeader> = [];
+  const metaHeaders: Array<GanttHeader> = [];
   for (let date = startDate; date <= endDate; date = date.add(1, "day")) {
     let hours = Math.min(diffHours, 24 - dayHours);
     if (hours === 0) {
@@ -130,55 +137,45 @@ function generateHeader(startTime, endTime, widthPerHour, stepHours) {
   return [metaSubHeaders, metaHeaders];
 }
 
-export default {
+export default defineComponent({
+  name: "GanttChartView",
+
   components: {
-    GanttLine
+    GanttChartLineView
   },
 
-  data: () => ({
-    width: 0,
-    chartWidth: 0,
-    chartHeight: 0,
-    ganttWidth: 0,
-    ganttHeight: 0,
-    diffHours: 0,
-    lines: [],
-    maxNameWidth: 0,
-    metaHeaders: [],
-    metaSubHeaders: [],
-    widthPerHour: minWidthPerHour,
-    startTime: null,
-    endTime: null,
-    stepHours: 1,
-    scales: basicScale,
-    linkedKey: null,
-    enabledLinkedKeys: []
-  }),
+  setup() {
+    const chart = ref<HTMLElement>();
+    const header = ref<HTMLElement>();
+    const metaLine = ref<HTMLElement>();
+    const metaAssistantLine = ref<HTMLElement>();
+    const actor = ref<HTMLElement>();
 
-  methods: {
-    async init(data, width, height) {
-      this.width = width;
-      this.chartHeight = height - this.$refs.metaLine.offsetHeight - this.$refs.metaAssistantLine.offsetHeight;
-      this.ganttHeight = 0;
-      this.enabledLinkedKeys = data.linkInfo;
+    const width = ref(0);
+    const chartWidth = ref(0);
+    const chartHeight = ref(0);
+    const ganttWidth = ref(0);
+    const ganttHeight = ref(0);
+    const diffHours = ref(0);
 
-      this.lines = [];
-      this.maxNameWidth = 0;
-      this.metaHeaders = [];
-      this.metaSubHeaders = [];
+    const lines = ref<Array<GanttLineView>>([]);
+    const maxNameWidth = ref(0);
 
-      this.startTime = dayjs(data.startTime, "%Y-%m-%d %H:%M:%S").subtract(1, "hour").startOf("hour");
-      this.endTime = dayjs(data.endTime, "%Y-%m-%d %H:%M:%S").add(2, "hour").startOf("hour");
-      let diffHours = dayjs.duration(this.endTime.diff(this.startTime)).asHours();
+    const metaHeaders = ref<Array<GanttHeader>>([]);
+    const metaSubHeaders = ref<Array<GanttHeader>>([]);
 
-      this.widthPerHour = Math.ceil(Math.max(minWidthPerHour, width / diffHours));
-      this.ganttWidth = this.widthPerHour * diffHours;
+    const widthPerHour = ref<number>(minWidthPerHour);
+    const startTime = ref<dayjs.Dayjs>();
+    const endTime = ref<dayjs.Dayjs>();
+    const stepHours = ref<number>(1);
 
-      const [metaSubHeaders, metaHeaders] = generateHeader(this.startTime, this.endTime, this.widthPerHour, this.stepHours);
-      this.metaSubHeaders = metaSubHeaders;
-      this.metaHeaders = metaHeaders;
+    const linkedKeys = ref<Array<string>>([]);
+    const enabledLinkedKeys = ref<Array<string>>([]);
 
-      data.lines.sort(function (lhs, rhs) {
+    const emit = defineEmits(['focused']);
+
+    function init(schema: GanttChartVO, windowWidth: number, windowHeight: number) {
+      schema.lines.sort((lhs, rhs) => {
         if (lhs.name < rhs.name) {
           return -1;
         } else if (lhs.name > rhs.name) {
@@ -187,111 +184,161 @@ export default {
           return 0;
         }
       });
-      for (const line of data.lines) {
-        this.maxNameWidth = Math.max(this.maxNameWidth, line.name.length);
-        this.lines.push({
+      startTime.value = dayjs(schema.startTime, "%Y-%m-%d %H:%M:%S").subtract(1, "hour").startOf("hour");
+      endTime.value = dayjs(schema.endTime, "%Y-%m-%d %H:%M:%S").add(2, "hour").startOf("hour");
+      diffHours.value = endTime.value.diff(startTime.value, "hour");
+      widthPerHour.value = Math.ceil(Math.max(minWidthPerHour, windowWidth / diffHours.value));
+      maxNameWidth.value = 0;
+      const newLines: Array<GanttLineView> = [];
+      for (const line of schema.lines) {
+        maxNameWidth.value = Math.max(maxNameWidth.value, line.name.length);
+        const newLine: GanttLineView = {
           name: line.name,
           height: 16,
-          visible: "visible"
-        });
-      }
-      this.chartWidth = this.width - this.maxNameWidth * 16;
-
-      await this.$nextTick(function () {
-        for (let i in data.lines) {
-          const line = data.lines[i];
-          const items = [];
-          for (const item of line.items) {
-            items.push(dump(item, this.startTime));
-          }
-          this.$refs.line[i].init(items, this.ganttWidth, this.widthPerHour, this.linkedKey);
+          visible: "",
+          line: line,
+          view: null
         }
-      })
-
-      await this.$nextTick(function () {
-        for (let i in data.lines) {
-          this.lines[i].height = this.$refs.line[i].height;
-          this.ganttHeight += this.$refs.line[i].height * 16;
-        }
-      })
-    },
-
-    async chartScroll() {
-      let maxScrollX = this.ganttWidth - this.width + this.maxNameWidth * 16;
-      let maxScrollY = this.ganttHeight;
-      if (this.$refs.chart.scrollLeft > maxScrollX) {
-        this.$refs.chart.scrollLeft = maxScrollX;
+        newLines.push(newLine);
       }
-      if (this.$refs.chart.scrollTop > maxScrollY) {
-        this.$refs.chart.scrollTop = maxScrollY;
-      }
-      this.$refs.header.scrollLeft = this.$refs.chart.scrollLeft;
-      this.$refs.actor.scrollTop = this.$refs.chart.scrollTop;
-    },
+      lines.value = newLines;
 
-    async resize(width, height) {
-      this.width = width;
-      this.chartHeight = height - this.$refs.metaLine.offsetHeight - this.$refs.metaAssistantLine.offsetHeight;
-      this.chartWidth = this.width - this.maxNameWidth * 16;
+      const [subHeaders, headers] = generateHeader(startTime.value, endTime.value, widthPerHour.value, stepHours.value);
+      metaSubHeaders.value = subHeaders;
+      metaHeaders.value = headers;
 
-      if (this.startTime != null && this.endTime != null) {
-        let diffHours = dayjs.duration(this.endTime.diff(this.startTime)).asHours();
-        const newWidthPerHour = Math.ceil(Math.max(minWidthPerHour, this.width / diffHours));
-        if (newWidthPerHour !== this.widthPerHour) {
-          const scale = newWidthPerHour / this.widthPerHour;
-          this.ganttWidth = this.ganttWidth * scale;
-          this.widthPerHour = newWidthPerHour;
-          for (let i in this.lines) {
-            this.$refs.line[i].rescale(scale);
+      width.value = windowWidth;
+      chartHeight.value = windowHeight - metaLine.value!!.offsetHeight - metaAssistantLine.value!!.offsetHeight;
+      chartWidth.value = width.value - maxNameWidth.value * 16;
+      ganttWidth.value = widthPerHour.value * diffHours.value;
+      ganttHeight.value = 0;
+      linkedKeys.value = schema.linkInfo;
+      enabledLinkedKeys.value = schema.linkInfo;
+    }
+
+    function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, line: GanttLineView) {
+      if (el) {
+        line.view = el as typeof GanttChartLineView;
+        line.view.init(startTime.value, line.line.items, chartWidth.value, widthPerHour.value / 60, linkedKeys.value);
+        let newHeight = 0;
+        for (const line of lines.value) {
+          if (line.view) {
+            line.height = line.view!!.height;
+            newHeight += line.height * 16;
           }
         }
-        const [metaSubHeaders, metaHeaders] = generateHeader(this.startTime, this.endTime, newWidthPerHour, this.stepHours);
-        this.metaSubHeaders = metaSubHeaders;
-        this.metaHeaders = metaHeaders;
+        ganttHeight.value = newHeight;
       }
-    },
+    }
 
-    async rescale(currentScale, newScale) {
-      let scale = this.scales[newScale] / this.scales[currentScale];
-      const newWidthPerHour = this.widthPerHour * scale;
+    function resize(newWidth: number, newHeight: number) {
+      width.value = newWidth;
+      chartHeight.value = newHeight - metaLine.value!!.offsetHeight - metaAssistantLine.value!!.offsetHeight;
+      chartWidth.value = width.value - maxNameWidth.value * 16;
+
+      if (startTime != null && endTime != null) {
+        const newWidthPerHour = Math.ceil(Math.max(minWidthPerHour, width.value / diffHours.value));
+        if (newWidthPerHour !== widthPerHour.value) {
+          const scale = newWidthPerHour / widthPerHour.value;
+          ganttWidth.value = ganttWidth.value * scale;
+          widthPerHour.value = newWidthPerHour;
+          for (const line of lines.value) {
+            line.view!!.rescale(scale);
+          }
+          for (const header of metaHeaders.value) {
+            header.width = header.width * scale;
+          }
+          for (const header of metaSubHeaders.value) {
+            header.width = header.width * scale;
+          }
+        }
+      }
+    }
+
+    function rescale(currentScale: number, newScale: number) {
+      const scale = scales[newScale] / scales[currentScale];
+      const newWidthPerHour = widthPerHour.value * scale;
       const newStepHours = Math.ceil(minWidthPerHour / newWidthPerHour);
 
-      this.ganttWidth = this.ganttWidth * scale;
-      this.widthPerHour = newWidthPerHour;
-      for (let i in this.lines) {
-        this.$refs.line[i].rescale(scale);
+      ganttWidth.value = ganttWidth.value * scale;
+      widthPerHour.value = newWidthPerHour;
+      for (const line of lines.value) {
+        line.view!!.rescale(scale);
       }
-      if (newStepHours === this.stepHours) {
-        for (const header of this.metaHeaders) {
+      if (newStepHours === stepHours.value) {
+        for (const header of metaHeaders.value) {
           header.width = header.width * scale;
         }
-        for (const header of this.metaSubHeaders) {
+        for (const header of metaSubHeaders.value) {
           header.width = header.width * scale;
         }
       } else {
-        this.startHours = newStepHours;
-        const [metaSubHeaders, metaHeaders] = generateHeader(this.startTime, this.endTime, newWidthPerHour, newStepHours);
-        this.metaSubHeaders = metaSubHeaders;
-        this.metaHeaders = metaHeaders;
+        const [newMetaSubHeaders, newMetaHeaders] = generateHeader(startTime.value!!, endTime.value!!, newWidthPerHour, newStepHours);
+        metaHeaders.value = newMetaHeaders;
+        metaSubHeaders.value = newMetaSubHeaders;
       }
-    },
+    }
 
-    async focus(linkedInfo) {
-      this.$emit("focus", linkedInfo);
-      for (let i in this.lines) {
-        this.$refs.line[i].setToFocus(this.linkedKey, linkedInfo);
-      }
-    },
-
-    async setVisibleLines(visibleLines) {
-      for (const line of this.lines) {
-        if (visibleLines.find((value) => line.name === value)) {
+    function setVisibleLines(visibleLines: Array<string>) {
+      for (const line of lines.value) {
+        if (visibleLines.includes(line.name)) {
+          console.log(line.name);
           line.visible = "";
         } else {
           line.visible = "none";
         }
       }
     }
+
+    async function chartScroll() {
+      const maxScrollX = ganttWidth.value - width.value + maxNameWidth.value * 16;
+      const maxScrollY = ganttHeight.value;
+      if (chart.value!!.scrollLeft > maxScrollX) {
+        chart.value!!.scrollLeft = maxScrollX;
+      }
+      if (chart.value!!.scrollTop > maxScrollY) {
+        chart.value!!.scrollTop = maxScrollY;
+      }
+      header.value!!.scrollLeft = chart.value!!.scrollLeft;
+      actor.value!!.scrollTop = chart.value!!.scrollTop;
+    }
+
+    async function focused(linkedInfo: Map<string, string>) {
+      emit("focused", linkedInfo);
+      for (const line of lines.value) {
+        line.view!!.focus(linkedInfo);
+      }
+    }
+
+    defineExpose({
+      scales
+    });
+
+    return {
+      chart,
+      header,
+      metaLine,
+      metaAssistantLine,
+      actor,
+      width,
+      chartWidth,
+      chartHeight,
+      ganttWidth,
+      ganttHeight,
+      lines,
+      maxNameWidth,
+      metaHeaders,
+      metaSubHeaders,
+      scales,
+      init,
+      setViewRefs,
+      resize,
+      rescale,
+      setVisibleLines,
+      chartScroll,
+      focused
+    };
   }
-}
+});
 </script>
+../vo

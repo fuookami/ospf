@@ -60,10 +60,14 @@ sealed class AbstractMaxFunction(
     override val cached get() = y.cached
 
     private val possibleRange
-        get() = ValueRange(
-            polynomials.minOf { it.lowerBound!!.value.unwrap() },
-            polynomials.maxOf { it.upperBound!!.value.unwrap() }
-        ).value!!
+        get() = if (polynomials.isNotEmpty()) {
+            ValueRange(
+                polynomials.minOf { it.lowerBound!!.value.unwrap() },
+                polynomials.maxOf { it.upperBound!!.value.unwrap() }
+            ).value!!
+        } else {
+            ValueRange(Flt64.zero, Flt64.zero).value!!
+        }
     private var m = possibleRange
 
     override fun flush(force: Boolean) {
@@ -78,16 +82,16 @@ sealed class AbstractMaxFunction(
         }
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         for (polynomial in polynomials) {
             polynomial.cells
         }
 
-        if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
             val values = polynomials.map { it.evaluate(tokenTable) }
 
             if (values.all { it != null }) {
-                val max = values.withIndex().maxByOrNull { it.value!! } ?: return
+                val max = values.withIndex().maxByOrNull { it.value!! } ?: return null
 
                 logger.trace { "Setting MaxFunction ${name}.minmax to ${max.value}" }
                 tokenTable.find(minmax)?.let { token ->
@@ -110,8 +114,12 @@ sealed class AbstractMaxFunction(
                     }
                 }
 
-                tokenTable.cache(this, null, max.value!!)
+                max.value!!
+            } else {
+                null
             }
+        } else {
+            null
         }
     }
 
@@ -185,19 +193,23 @@ sealed class AbstractMaxFunction(
     }
 
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return polynomials.maxOf { it.evaluate(tokenList, zeroIfNone) ?: return null }
+        return polynomials.maxOfOrNull { it.evaluate(tokenList, zeroIfNone) ?: return null }
+            ?: Flt64.zero
     }
 
     override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return polynomials.maxOf { it.evaluate(results, tokenList, zeroIfNone) ?: return null }
+        return polynomials.maxOfOrNull { it.evaluate(results, tokenList, zeroIfNone) ?: return null }
+            ?: Flt64.zero
     }
 
     override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return polynomials.maxOf { it.evaluate(tokenTable, zeroIfNone) ?: return null }
+        return polynomials.maxOfOrNull { it.evaluate(tokenTable, zeroIfNone) ?: return null }
+            ?: Flt64.zero
     }
 
     override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return polynomials.maxOf { it.evaluate(results, tokenTable, zeroIfNone) ?: return null }
+        return polynomials.maxOfOrNull { it.evaluate(results, tokenTable, zeroIfNone) ?: return null }
+            ?: Flt64.zero
     }
 }
 
@@ -206,8 +218,12 @@ class MinMaxFunction(
     name: String,
     displayName: String? = name
 ) : AbstractMaxFunction(polynomials, true, name, displayName) {
-    override fun toRawString(unfold: Boolean): String {
-        return "max(${polynomials.joinToString(", ") { it.toRawString(unfold) }})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "minmax(${polynomials.joinToString(", ") { it.toTidyRawString(unfold - UInt64.one) }})"
+        }
     }
 }
 
@@ -216,7 +232,11 @@ class MaxFunction(
     name: String,
     displayName: String? = name
 ) : AbstractMaxFunction(polynomials, false, name, displayName) {
-    override fun toRawString(unfold: Boolean): String {
-        return "minmax(${polynomials.joinToString(", ") { it.toRawString(unfold) }})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "max(${polynomials.joinToString(", ") { it.toTidyRawString(unfold - UInt64.one) }})"
+        }
     }
 }

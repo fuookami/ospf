@@ -5,6 +5,7 @@ import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.math.symbol.*
 import fuookami.ospf.kotlin.utils.math.value_range.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.utils.multi_array.*
 import fuookami.ospf.kotlin.core.frontend.variable.*
 import fuookami.ospf.kotlin.core.frontend.expression.monomial.*
 import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
@@ -22,8 +23,30 @@ class IfThenFunction(
     private val p by lazy { p.normalize() }
     private val q by lazy { q.normalize() }
 
+    private val pk: PctVariable1 by lazy {
+        PctVariable1(
+            if (p.name.isEmpty()) {
+                "${name}_pk"
+            } else {
+                "${p.name}_k"
+            },
+            Shape1(3)
+        )
+    }
+
     private val pu: BinVar by lazy {
         BinVar(p.name.ifEmpty { "${name}_pu" })
+    }
+
+    private val qk: PctVariable1 by lazy {
+        PctVariable1(
+            if (q.name.isEmpty()) {
+                "${name}_qk"
+            } else {
+                "${q.name}_k"
+            },
+            Shape1(3)
+        )
     }
 
     private val qu: BinVar by lazy {
@@ -85,16 +108,16 @@ class IfThenFunction(
         polyY.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         p.lhs.cells
         p.rhs.cells
         q.lhs.cells
         q.rhs.cells
-        y.prepare(tokenTable)
+        y.prepareAndCache(tokenTable)
 
-        if (!constraint && tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            val pBin = p.isTrue(tokenTable) ?: return
-            val qBin = q.isTrue(tokenTable) ?: return
+        return if (!constraint && tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+            val pBin = p.isTrue(tokenTable) ?: return null
+            val qBin = q.isTrue(tokenTable) ?: return null
 
             logger.trace { "Setting IfThenFunction ${name}.pu initial solution: $pBin" }
             tokenTable.find(pu)?.let { token ->
@@ -121,13 +144,13 @@ class IfThenFunction(
             }
 
             val bin = uValue neq Flt64.zero
-            val yValue = if (bin) {
+            if (bin) {
                 Flt64.one
             } else {
                 Flt64.zero
             }
-
-            tokenTable.cache(this, null, yValue)
+        } else {
+            null
         }
     }
 
@@ -136,7 +159,23 @@ class IfThenFunction(
     }
 
     override fun register(tokenTable: AbstractMutableTokenTable): Try {
+        when (val result = tokenTable.add(pk)) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
         when (val result = tokenTable.add(pu)) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        when (val result = tokenTable.add(qk)) {
             is Ok -> {}
 
             is Failed -> {
@@ -174,7 +213,7 @@ class IfThenFunction(
     }
 
     override fun register(model: AbstractLinearMechanismModel): Try {
-        when (val result = p.register(name, pu, model)) {
+        when (val result = p.register(name, pk, pu, model)) {
             is Ok -> {}
 
             is Failed -> {
@@ -182,7 +221,7 @@ class IfThenFunction(
             }
         }
 
-        when (val result = q.register(name, qu, model)) {
+        when (val result = q.register(name, qk, qu, model)) {
             is Ok -> {}
 
             is Failed -> {
@@ -217,8 +256,12 @@ class IfThenFunction(
         return ok
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return "if_then(${p.toRawString(unfold)}, ${q.toRawString(unfold)})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "if_then(${p.toRawString(unfold - UInt64.one)}, ${q.toRawString(unfold - UInt64.one)})"
+        }
     }
 
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {

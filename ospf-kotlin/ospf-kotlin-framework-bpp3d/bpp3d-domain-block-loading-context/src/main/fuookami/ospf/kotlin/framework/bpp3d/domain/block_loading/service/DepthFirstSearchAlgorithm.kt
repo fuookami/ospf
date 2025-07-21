@@ -268,7 +268,7 @@ class DepthFirstSearchAlgorithm(
                 break
             }
 
-            val (enabledSpaces, thisFixedSpaces) = stack.removeAt(stack.size - 1)
+            val (enabledSpaces, thisFixedSpaces) = stack.removeAt(stack.lastIndex)
             val restItems = items.toMutableMap()
             for (space in thisFixedSpaces) {
                 for ((item, amount) in space.block!!.amounts) {
@@ -279,7 +279,7 @@ class DepthFirstSearchAlgorithm(
 
             var flag = false
             while (enabledSpaces.isNotEmpty()) {
-                val enabledSpace = enabledSpaces.removeAt(stack.size - 1)
+                val enabledSpace = enabledSpaces.removeAt(stack.lastIndex)
 
                 val thisBlocks = if (cache.containsKey(enabledSpace)) {
                     cache[enabledSpace]!!
@@ -381,7 +381,7 @@ class DepthFirstSearchAlgorithm(
                                 break
                             }
                         }
-                        return@coroutineScope results.reversed().subList(0, min(branch, UInt64(results.size)).toInt())
+                        return@coroutineScope results.reversed().take(branch.toInt())
                     }
                     null
                 } ?: continue
@@ -448,7 +448,7 @@ class DepthFirstSearchAlgorithm(
                 break
             }
 
-            val (top, usedSpace, thisEnabledSpaces) = stack.removeAt(stack.size - 1)
+            val (top, usedSpace, thisEnabledSpaces) = stack.removeAt(stack.lastIndex)
             val i = top + 1
             if (i >= blocks.size) {
                 if (promise.isClosedForSend) {
@@ -493,7 +493,7 @@ class DepthFirstSearchAlgorithm(
             val promises = ArrayList<Deferred<Triple<Int, Space?, List<Space>>?>>()
             for (enabledSpace in enabledSpaces
                 .sortedWithThreeWayComparator { lhs, rhs -> config.spaceComparator(lhs, rhs, block) }
-                .subList(0, min(UInt64(enabledSpaces.size), config.branch).toInt())
+                .take(config.branch.toInt())
             ) {
                 promises.add(async(Dispatchers.Default) {
                     val thisUsedSpace = enabledSpace.put(block) ?: return@async null

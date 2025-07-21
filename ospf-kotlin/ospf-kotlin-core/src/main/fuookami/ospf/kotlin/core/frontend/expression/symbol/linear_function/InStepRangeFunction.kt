@@ -63,19 +63,19 @@ class InStepRangeFunction(
         y.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         lb.cells
         ub.cells
-        q.prepare(tokenTable)
+        q.prepareAndCache(tokenTable)
 
-        if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
             lb.evaluate(tokenTable)?.let { lbValue ->
                 q.evaluate(tokenTable)?.let { qValue ->
-                    val yValue = lbValue + qValue * step
-
-                    tokenTable.cache(this, null, yValue)
+                    lbValue + qValue * step
                 }
             }
+        } else {
+            null
         }
     }
 
@@ -107,8 +107,12 @@ class InStepRangeFunction(
         return displayName ?: name
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return "inStepRange(${lb.toRawString(unfold)}, ${ub.toRawString(unfold)}, $step)"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "inStepRange(${lb.toTidyRawString(unfold - UInt64.one)}, ${ub.toTidyRawString(unfold - UInt64.one)}, $step)"
+        }
     }
 
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {

@@ -4,7 +4,8 @@ import { withMermaid } from 'vitepress-plugin-mermaid'
 // https://vitepress.dev/reference/site-config
 export default withMermaid({
   title: "ospf",
-  description: "ospf document",
+  description: "ospf reference document",
+  base: '/ospf/',
 
   markdown: {
     math: true,

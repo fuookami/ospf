@@ -60,8 +60,12 @@ abstract class AbstractAndFunctionImpl(
         polyY.range.set(possibleRange)
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return "and(${polynomials.joinToString(", ") { it.toRawString(unfold) }})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "and(${polynomials.joinToString(", ") { it.toTidyRawString(unfold - UInt64.zero) }})"
+        }
     }
 
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
@@ -130,14 +134,14 @@ private class AndFunctionOnePolynomialImpl(
         bin.flush(force)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         polynomial.cells
-        bin.prepare(tokenTable)
+        bin.prepareAndCache(tokenTable)
 
-        if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
-            bin.evaluate(tokenTable)?.let { binValue ->
-                tokenTable.cache(parent, null, binValue)
-            }
+        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
+            bin.evaluate(tokenTable)
+        } else {
+            null
         }
     }
 
@@ -192,17 +196,17 @@ private class AndFunctionMultiPolynomialImpl(
         bin.flush(force)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         for (polynomial in polynomials) {
             polynomial.cells
         }
-        maxmin.prepare(tokenTable)
-        bin.prepare(tokenTable)
+        maxmin.prepareAndCache(tokenTable)
+        bin.prepareAndCache(tokenTable)
 
-        if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
-            bin.evaluate(tokenTable)?.let { binValue ->
-                tokenTable.cache(parent, null, binValue)
-            }
+        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
+            bin.evaluate(tokenTable)
+        } else {
+            null
         }
     }
 
@@ -263,14 +267,14 @@ private class AndFunctionMultiPolynomialBinaryImpl(
         polyY
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         for (polynomial in polynomials) {
             polynomial.cells
         }
 
-        if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
+        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
             val yValue = polynomials.all { polynomial ->
-                val thisValue = polynomial.evaluate(tokenTable) ?: return
+                val thisValue = polynomial.evaluate(tokenTable) ?: return null
                 thisValue eq Flt64.zero
             }
             logger.trace { "Setting AndFunction ${name}.y to $yValue" }
@@ -282,13 +286,13 @@ private class AndFunctionMultiPolynomialBinaryImpl(
                 }
             }
 
-            tokenTable.cache(
-                parent, null, if (yValue) {
-                    Flt64.one
-                } else {
-                    Flt64.zero
-                }
-            )
+            if (yValue) {
+                Flt64.one
+            } else {
+                Flt64.zero
+            }
+        } else {
+            null
         }
     }
 
@@ -320,7 +324,7 @@ private class AndFunctionMultiPolynomialBinaryImpl(
         }
         // if all polynomial are not zero, y will be not zero
         when (val result = model.addConstraint(
-            y geq (sum(polynomials) - Flt64(polynomials.size - 1)),
+            y geq (sum(polynomials) - Flt64(polynomials.lastIndex)),
             "${name}_lb"
         )) {
             is Ok -> {}
@@ -366,8 +370,8 @@ class AndFunction(
         impl.flush(force)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
-        impl.prepare(tokenTable)
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+        return impl.prepare(tokenTable)
     }
 
     override fun register(tokenTable: AbstractMutableTokenTable): Try {
@@ -405,8 +409,12 @@ class AndFunction(
         return displayName ?: name
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return "and(${polynomials.joinToString(", ") { it.toRawString(unfold) }})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "and(${polynomials.joinToString(", ") { it.toTidyRawString(unfold - UInt64.one) }})"
+        }
     }
 
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {

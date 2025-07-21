@@ -161,13 +161,13 @@ sealed class AbstractSlackFunction<V : Variable<*>>(
         }
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         x.cells
         y.cells
 
-        if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            val xValue = x.evaluate(tokenTable) ?: return
-            val yValue = y.evaluate(tokenTable) ?: return
+        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+            val xValue = x.evaluate(tokenTable) ?: return null
+            val yValue = y.evaluate(tokenTable) ?: return null
             val negValue = max(Flt64.zero, yValue - xValue)
             val posValue = max(Flt64.zero, xValue - yValue)
 
@@ -184,8 +184,9 @@ sealed class AbstractSlackFunction<V : Variable<*>>(
                 }
             }
 
-            val slackValue = negValue + posValue
-            tokenTable.cache(this, null, slackValue)
+            negValue + posValue
+        } else {
+            null
         }
     }
 
@@ -260,8 +261,12 @@ sealed class AbstractSlackFunction<V : Variable<*>>(
         return displayName ?: name
     }
 
-    override fun toRawString(unfold: Boolean): String {
-        return "slack(${x.toRawString(unfold)}, ${y.toRawString(unfold)})"
+    override fun toRawString(unfold: UInt64): String {
+        return if (unfold eq UInt64.zero) {
+            displayName ?: name
+        } else {
+            "slack(${x.toTidyRawString(unfold - UInt64.one)}, ${y.toTidyRawString(unfold - UInt64.one)})"
+        }
     }
 
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
