@@ -122,7 +122,7 @@ enum class FlowControlScene {
         bunch: FlightTaskBunch,
         airport: Airport,
         time: TimeRange,
-        condition: AbstractFlowControlCondition
+        condition: AbstractFlowControlCondition? = null
     ): UInt64 {
         return UInt64(bunch.tasks.indices.count { i ->
             if (i == 0) {
@@ -180,5 +180,37 @@ data class FlowControl(
         if (capacity != other.capacity) return false
 
         return true
+    }
+}
+
+class Flow(
+    id: String = UUID.randomUUID().toString(),
+    val airport: Airport,
+    val scene: FlowControlScene,
+    capacities: List<FlowControl>,
+) : ConnectionResource<FlowControl>(
+    id = id,
+    name = "${airport}_flow",
+    capacities = capacities,
+    initialQuantity = Flt64.zero,
+) {
+    init {
+        assert(capacities.all { it.airport == airport && it.scene == scene })
+    }
+
+    override fun <T : AbstractTask<E, A>, E : Executor, A : AssignmentPolicy<E>> usedBy(
+        prevTask: T?,
+        task: T?,
+        time: TimeRange
+    ): Flt64 {
+        return Flt64(capacities.count {
+            scene(
+                prevTask = prevTask as FlightTask?,
+                task = task as FlightTask?,
+                airport = airport,
+                time = time,
+                condition = it.condition
+            )
+        })
     }
 }
