@@ -1,0 +1,33 @@
+{
+  "name": "csp1d-interface-renderer",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@mdi/font": "^7.4.47",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.0.1",
+    "@tauri-apps/plugin-shell": "^2",
+    "roboto-fontface": "^0.10.0",
+    "vue": "^3.5.12",
+    "vuetify": "^3.7.4",
+    "webfontloader": "^1.6.28"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0",
+    "@types/webfontloader": "^1.0.0",
+    "@vitejs/plugin-vue": "^5.0.5",
+    "typescript": "^5.2.2",
+    "vite": "^5.3.1",
+    "vite-plugin-tauri": "^3.3.0",
+    "vite-plugin-vuetify": "^2.0.4",
+    "vue-cli-plugin-vuetify": "~2.5.8",
+    "vue-tsc": "^2.0.22"
+  },
+  "type": "module"
+}

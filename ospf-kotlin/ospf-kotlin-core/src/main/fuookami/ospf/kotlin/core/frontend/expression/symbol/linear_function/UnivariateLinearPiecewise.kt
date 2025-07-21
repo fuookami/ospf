@@ -70,7 +70,7 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
     }
 
     internal val b: BinVariable1 by lazy {
-        BinVariable1("${name}_b", Shape1(points.size - 1))
+        BinVariable1("${name}_b", Shape1(points.lastIndex))
     }
 
     private val polyY: LinearPolynomial by lazy {
@@ -97,11 +97,11 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
         polyY.flush(force)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         x.cells
 
-        if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            val xValue = x.evaluate(tokenTable) ?: return
+        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+            val xValue = x.evaluate(tokenTable) ?: return null
             var yValue: Flt64? = null
             for (i in indices) {
                 if (i == (size - 1)) {
@@ -139,9 +139,10 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
                     }
                 }
             }
-            if (yValue != null) {
-                tokenTable.cache(this, null, yValue)
-            }
+
+            yValue
+        } else {
+            null
         }
     }
 

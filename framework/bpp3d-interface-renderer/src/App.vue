@@ -1,9 +1,8 @@
 <template>
   <v-app>
-    <v-main style="height: 100%; display:flex; flex-direction: column;">
-      <file-selector @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage" />
-
-      <bin-renderer ref="binRenderer" style="width: 100%; flex: 1;" :style="{ 'visibility': rendererVisibility }" />
+    <v-main :style="{ height: windowHeight + 'px' }" style="display:flex; flex-direction: column;">
+      <file-selector ref="fileSelector" @fileLoadingSucceeded="renderData" @fileLoadingFailed="showMessage" />
+      <loading-plan ref="loadingPlan" :style="{ visibility: rendererVisibility }" />
 
       <v-dialog v-model="dialog" persistent max-width="30%">
         <v-card>
@@ -11,7 +10,7 @@
           <v-card-text v-html="message"></v-card-text>
           <v-card-actions>
             <v-spacer></v-spacer>
-            <v-btn color="green darken-1" text @click="dialog = false">关闭</v-btn>
+            <v-btn color="green darken-1" @click="dialog = false">关闭</v-btn>
           </v-card-actions>
         </v-card>
       </v-dialog>
@@ -19,32 +18,65 @@
   </v-app>
 </template>
 
-<script>
-import FileSelector from './components/file-selector.vue';
-import BinRenderer from './components/bin-renderer.vue';
+<script lang="ts">
+import { defineComponent, onMounted, ref } from "vue";
+import FileSelector from "./components/file-selector.vue";
+import LoadingPlan from "./components/loading-plan.vue";
+import { SchemaDTO } from "./components/dto.ts";
 
-export default {
+export default defineComponent({
+  name: "App",
+
   components: {
     FileSelector,
-    BinRenderer
+    LoadingPlan
   },
 
-  data: () => ({
-    rendererVisibility: "hidden",
-    message: "",
-    dialog: false,
-  }),
+  setup() {
+    const loadingPlan = ref<typeof LoadingPlan | null>();
 
-  methods: {
-    async renderData(data) {
-      this.rendererVisibility = "visible";
-      this.$refs.binRenderer.renderData(data);
-    },
+    const windowHeight = ref(0);
+    const windowWidth = ref(0);
+    const rendererVisibility = ref("hidden");
+    const message = ref("");
+    const dialog = ref(false);
 
-    async showMessage(message) {
-      this.message = message;
-      this.dialog = true;
+    const groups = ref<Array<Array<String>>>([]);
+
+    function resized() {
+      windowWidth.value = window.innerWidth;
+      windowHeight.value = window.innerHeight;
+    }
+
+    function renderData(schema: SchemaDTO) {
+      loadingPlan.value!!.init(schema);
+      rendererVisibility.value = "visible";
+    }
+
+    function showMessage(msg: string) {
+      message.value = msg;
+      dialog.value = true;
+    }
+
+    onMounted(() => {
+      resized();
+      window.addEventListener("resize", () => {
+        resized();
+      });
+    });
+
+    return {
+      loadingPlan,
+      windowHeight,
+      windowWidth,
+      rendererVisibility,
+      message,
+      dialog,
+      groups,
+      resized,
+      renderData,
+      showMessage
     }
   }
-}
+});
 </script>

@@ -1,33 +1,38 @@
 {
-  "name": "ospf-framework-gantt-scheduling-interface-renderer",
+  "name": "gantt-scheduling-interface-renderer",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "type": "module",
   "scripts": {
-    "serve": "vite preview",
+    "dev": "vite",
     "build": "vite build",
-    "dev": "vite --port 12000 --open",
     "preview": "vite preview",
     "tauri": "tauri"
   },
   "dependencies": {
-    "@mdi/font": "5.9.55",
-    "@tauri-apps/api": "^1.2.0",
-    "color": "^4.2.3",
-    "dayjs": "^1.11.7",
-    "roboto-fontface": "*",
-    "vue": "^3.2.45",
+    "@mdi/font": "^7.4.47",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.0.1",
+    "@tauri-apps/plugin-shell": "^2",
+    "roboto-fontface": "^0.10.0",
+    "vue": "^3.5.12",
+    "vuetify": "^3.7.4",
     "vue-clipboard3": "^2.0.0",
-    "vue-resize-observer": "^2.0.15",
-    "vuetify": "^3.3.2",
-    "webfontloader": "^1.0.0"
+    "webfontloader": "^1.6.28",
+    "lodash": "^4.17.20",
+    "@types/lodash": "^4.17.20",
+    "dayjs": "^1.11.13",
+    "color": "^5.0.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^1.2.2",
-    "@vitejs/plugin-vue": "^4.0.0",
-    "vite": "^4.0.0",
-    "vite-plugin-vuetify": "^1.0.0-alpha.12",
+    "@tauri-apps/cli": "^2.1.0",
+    "@types/webfontloader": "^1.0.0",
+    "@vitejs/plugin-vue": "^5.0.5",
+    "typescript": "^5.2.2",
+    "vite": "^5.3.1",
+    "vite-plugin-tauri": "^3.3.0",
+    "vite-plugin-vuetify": "^2.0.4",
     "vue-cli-plugin-vuetify": "~2.5.8",
-    "webpack-plugin-vuetify": "^2.0.0-alpha.0"
-  },
-  "type": "module"
+    "vue-tsc": "^2.0.22"
+  }
 }

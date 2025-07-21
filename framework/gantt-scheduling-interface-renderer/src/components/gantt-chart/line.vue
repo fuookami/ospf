@@ -1,25 +1,40 @@
 <template>
-  <v-container :style="{ width: width + 'px', height: height + 'em' }" style=" margin: 0; padding: 0; position: relative;">
-    <gantt-bar v-for="(item, _) of items" ref="bar" 
+  <v-container 
+    :style="{ width: width + 'px', height: height + 'em' }"
+    style=" margin: 0; padding: 0; position: relative;
+  ">
+    <gantt-chart-item-view v-for="(item, _) of items" 
+      :ref="(el) => setViewRefs(el, item)"
       :style="{ left: item.x + 'px', top: item.y + 'em' }" 
       style="position: absolute;"
-      @focus="focus"
+      @focused="focused"
     />
   </v-container>
 </template>
 
-<script>
-import GanttBar from "./bar.vue"
+<script lang="ts">
+import "./chart.css"
+import {ComponentPublicInstance, defineComponent, defineExpose, defineEmits, HTMLAttributes, ref} from "vue";
+import dayjs from "dayjs";
+import GanttChartItemView from "./item.vue";
+import {GanttItemVO} from "../vo.ts";
 
 const baseLineHeight = 3.5;
 
-function calculateHeights(items) {
-  let ends = [0];
-  let heights = [];
+type GanttItemView = {
+  x: number
+  y: number
+  item: GanttItemVO
+  view: typeof GanttChartItemView | null
+}
+
+function calculateHeights(startTime: dayjs.Dayjs, items: Array<GanttItemVO>): Array<number> {
+  let ends: Array<number> = [0];
+  let heights: Array<number> = [];
   for (let i in items) {
     let item = items[i];
-    let start = item.startTime;
-    let end = item.endTime;
+    let start = dayjs(item.startTime, "%Y-%m-%d %H:%M:%S").diff(startTime, 'minute');
+    let end = dayjs(item.endTime, "%Y-%m-%d %H:%M:%S").diff(startTime, 'minute');
 
     let flag = false;
     for (let j in ends) {
@@ -39,60 +54,91 @@ function calculateHeights(items) {
   return heights;
 }
 
-export default {
+export default defineComponent({
+  name: "GanttChartLineView",
+
   components: {
-    GanttBar
+    GanttChartItemView
   },
 
-  data: () => ({
-    width: 0,
-    height: baseLineHeight,
-    items: []
-  }),
+  setup() {
+    const width = ref<number>(0);
+    const height = ref<number>(baseLineHeight);
+    const items = ref<Array<GanttItemView>>([]);
+    const widthPerUnit = ref<number>(0);
+    const linkedKey = ref<string>();
 
-  methods: {
-    async init(ganttItems, width, widthPerUnit, linkedKey) {
-      this.width = width;
-      const heights = calculateHeights(ganttItems);
-      this.items = [];
-      this.height = .25 + (Math.max.apply(Math, heights) + 1) * baseLineHeight;
+    const emit = defineEmits(['focused']);
 
-      for (let i in ganttItems) {
-        const item = ganttItems[i];
-        const x = item.startTime * widthPerUnit;
-        const y = 0.25 + heights[i] * baseLineHeight;
-        this.items.push({
+    function init(
+      startTime: dayjs.Dayjs,
+      ganttItems: Array<GanttItemVO>,
+      charWidth: number,
+      chartWidthPerUnit: number,
+      chartLinkedKey: string
+    ) {
+      width.value = charWidth;
+      const heights = calculateHeights(startTime, ganttItems);
+      height.value = .25 + (Math.max.apply(Math, heights) + 1) * baseLineHeight;
+      widthPerUnit.value = chartWidthPerUnit;
+      linkedKey.value = chartLinkedKey;
+
+      items.value = ganttItems.map((item, i) => {
+        const x = dayjs(item.startTime, "%Y-%m-%d %H:%M:%S").diff(startTime, 'minute') * chartWidthPerUnit;
+        const y = .25 + heights[i] * baseLineHeight;
+        const result: GanttItemView = {
           x: x,
-          y: y
-        })
-      }
-
-      await this.$nextTick(function () {
-        for (let i in ganttItems) {
-          const item = ganttItems[i];
-          this.$refs.bar[i].init(item, widthPerUnit, linkedKey);
-        }
+          y: y,
+          item: item,
+          view: null
+        };
+        return result;
       });
-    },
+    }
 
-    async rescale(scale) {
-      for (const item of this.items) {
-        item.x = item.x * scale;
-      }
-      for (let i in this.items) {
-        await this.$refs.bar[i].rescale(scale);
-      }
-    },
-
-    async focus(linkInfo) {
-      this.$emit("focus", linkInfo);
-    },
-
-    async setToFocus(linkedKey, linkedInfo) {
-      for (let i in this.items) {
-        await this.$refs.bar[i].setToFocus(linkedKey, linkedInfo);
+    function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, item: GanttItemView) {
+      if (el) {
+        item.view = el as typeof GanttChartItemView;
+        item.view.init(item.item, widthPerUnit.value, linkedKey.value);
       }
     }
+
+    function rescale(scale: number) {
+      for (const item of items.value) {
+        item.x = item.x * scale;
+        if (item.view != null) {
+          item.view.rescale(scale);
+        }
+      }
+    }
+
+    function focus(linkedInfo: Map<string, string>) {
+      for (const item of items.value) {
+        if (item.view != null) {
+          item.view.focus(linkedInfo);
+        }
+      }
+    }
+
+    async function focused(linkedInfo: Map<string, string>) {
+      emit("focused", linkedInfo)
+    }
+
+    defineExpose({
+      height
+    });
+
+    return {
+      width,
+      height,
+      items,
+      init,
+      setViewRefs,
+      rescale,
+      focus,
+      focused
+    };
   }
-}
+});
 </script>
+../vo.ts

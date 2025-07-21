@@ -92,14 +92,16 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
         polyY.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable) {
+    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
         for (inequality in inequalities) {
             inequality.lhs.cells
             inequality.rhs.cells
         }
 
-        if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            val count = inequalities.count { (it.isTrue(tokenTable) ?: return) }
+        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+            val count = inequalities.count {
+                it.isTrue(tokenTable) ?: return null
+            }
 
             val yValue = if (amount != null) {
                 if (!constraint) {
@@ -122,7 +124,9 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
                 Flt64(count)
             }
 
-            tokenTable.cache(this, null, yValue)
+            yValue
+        } else {
+            null
         }
     }
 
@@ -237,7 +241,8 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
     override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
         var counter = UInt64.zero
         for (inequality in inequalities) {
-            if (inequality.isTrue(tokenList, zeroIfNone) ?: return null) {
+            val value = inequality.isTrue(tokenList, zeroIfNone) ?: return null
+            if (value) {
                 counter += UInt64.one
             }
         }
@@ -255,7 +260,8 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
     override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
         var counter = UInt64.zero
         for (inequality in inequalities) {
-            if (inequality.isTrue(results, tokenList, zeroIfNone) ?: return null) {
+            val value = inequality.isTrue(results, tokenList, zeroIfNone) ?: return null
+            if (value) {
                 counter += UInt64.one
             }
         }
@@ -273,7 +279,8 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
     override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
         var counter = UInt64.zero
         for (inequality in inequalities) {
-            if (inequality.isTrue(tokenTable, zeroIfNone) ?: return null) {
+            val value = inequality.isTrue(tokenTable, zeroIfNone) ?: return null
+            if (value) {
                 counter += UInt64.one
             }
         }
@@ -291,7 +298,8 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
     override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
         var counter = UInt64.zero
         for (inequality in inequalities) {
-            if (inequality.isTrue(results, tokenTable, zeroIfNone) ?: return null) {
+            val value = inequality.isTrue(results, tokenTable, zeroIfNone) ?: return null
+            if (value) {
                 counter += UInt64.one
             }
         }
@@ -338,7 +346,7 @@ class NotAllFunction(
     displayName: String? = null
 ) : AbstractSatisfiedAmountInequalityFunction(inequalities, name = name, displayName = displayName),
     LinearLogicFunctionSymbol {
-    override val amount: ValueRange<UInt64> = ValueRange(UInt64.one, UInt64(inequalities.size - 1)).value!!
+    override val amount: ValueRange<UInt64> = ValueRange(UInt64.one, UInt64(inequalities.lastIndex)).value!!
 
     override fun toRawString(unfold: UInt64): String {
         return if (unfold eq UInt64.zero) {
