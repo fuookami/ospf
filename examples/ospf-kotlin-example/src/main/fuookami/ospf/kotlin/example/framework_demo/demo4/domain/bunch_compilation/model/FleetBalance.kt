@@ -13,7 +13,7 @@ import fuookami.ospf.kotlin.example.framework_demo.demo4.domain.task.model.*
 class FleetBalance(
     aircrafts: List<Aircraft>,
     originBunches: List<FlightTaskBunch>,
-    val compilation: Compilation
+    private val compilation: Compilation
 ) {
     data class CheckPoint(
         val airport: Airport,
@@ -96,7 +96,7 @@ class FleetBalance(
 
             if (!::slack.isInitialized) {
                 slack = LinearIntermediateSymbols1(
-                    "slack",
+                    "fleet_slack",
                     Shape1(limits.size)
                 ) { l, _ ->
                     SlackFunction(
@@ -120,7 +120,7 @@ class FleetBalance(
     }
 
     fun addColumns(
-        iteration: Int64,
+        iteration: UInt64,
         bunches: List<FlightTaskBunch>,
     ): Try {
         val xi = compilation.x[iteration.toInt()]

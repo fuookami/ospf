@@ -1,7 +1,8 @@
-package fuookami.ospf.kotlin.example.framework_demo.demo4.infrastructure
+package fuookami.ospf.kotlin.example.framework_demo.demo2.infrastructure
 
 import java.util.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.backend.solver.*
 import fuookami.ospf.kotlin.core.backend.solver.config.*
 import fuookami.ospf.kotlin.core.backend.plugins.gurobi.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
@@ -11,19 +12,20 @@ data object LinearSolverBuilder {
     operator fun invoke(
         solver: String? = null,
         config: SolverConfig = SolverConfig(),
+        gurobiConfig: GurobiSolverConfig? = null,
         callBack: Any? = null
-    ): ColumnGenerationSolver {
+    ): AbstractLinearSolver {
         return (if (callBack != null) {
             when (callBack) {
                 is GurobiLinearSolverCallBack -> {
-                    GurobiColumnGenerationSolver(
+                    GurobiLinearSolver(
                         config = config,
                         callBack = callBack
                     )
                 }
 
                 is ScipSolverCallBack -> {
-                    ScipColumnGenerationSolver(
+                    ScipLinearSolver(
                         config = config,
                         callBack = callBack
                     )
@@ -36,11 +38,11 @@ data object LinearSolverBuilder {
         } else if (solver != null) {
             when (solver) {
                 "gurobi" -> {
-                    GurobiColumnGenerationSolver(config = config)
+                    GurobiLinearSolver(config = config)
                 }
 
                 "scip" -> {
-                    ScipColumnGenerationSolver(config = config)
+                    ScipLinearSolver(config = config)
                 }
 
                 else -> {
@@ -50,17 +52,32 @@ data object LinearSolverBuilder {
         } else {
             null
         }) ?: if (System.getProperty("os.name").lowercase(Locale.getDefault()).contains("win")) {
-            GurobiColumnGenerationSolver(
-                config = config,
-                callBack = GurobiLinearSolverCallBack().afterFailure { grbModel, _, _ ->
-                    grbModel.computeIIS()
-                    grbModel.write("iis.ilp")
-                    ok
-                }
+            SerialCombinatorialLinearSolver(
+                solvers = listOf(
+                    GurobiLinearSolver(
+                        config = config.copy(extraConfig = gurobiConfig),
+                        callBack = GurobiLinearSolverCallBack().afterFailure { grbModel, _, _ ->
+                            grbModel.computeIIS()
+                            grbModel.write("iis.ilp")
+                            ok
+                        }
+                    ),
+                    ScipLinearSolver(
+                        config = config,
+                    )
+                )
             )
+
         } else {
-            GurobiColumnGenerationSolver(
-                config = config
+            SerialCombinatorialLinearSolver(
+                solvers = listOf(
+                    GurobiLinearSolver(
+                        config = config
+                    ),
+                    ScipLinearSolver(
+                        config = config,
+                    )
+                )
             )
         }
     }
