@@ -24,7 +24,7 @@ class FlightLink(
     }
 
     lateinit var link: LinearExpressionSymbols1
-    lateinit var slack: LinearIntermediateSymbols1
+    lateinit var slack: SymbolCombination<AbstractSlackFunction<*>, Shape1>
 
     fun register(model: AbstractLinearMetaModel): Try {
         if (links.isNotEmpty()) {
@@ -48,13 +48,15 @@ class FlightLink(
             }
 
             if (!::slack.isInitialized) {
-                slack = LinearIntermediateSymbols1(
+                slack = SymbolCombination(
                     "link_slack",
                     Shape1(slack.size)
                 ) { k, _ ->
                     SlackFunction(
                         x = link[k] + compilation.y[links[k].prevTask] / 2 + compilation.y[links[k].succTask] / 2,
                         threshold = LinearPolynomial(Flt64.one),
+                        withPositive = false,
+                        constraint = false,
                         name = "link_slack_$k"
                     )
                 }

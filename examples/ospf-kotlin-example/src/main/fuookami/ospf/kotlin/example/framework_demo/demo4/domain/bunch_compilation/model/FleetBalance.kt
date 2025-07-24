@@ -66,7 +66,7 @@ class FleetBalance(
     }
 
     lateinit var fleet: LinearExpressionSymbols1
-    lateinit var slack: LinearIntermediateSymbols1
+    lateinit var slack: SymbolCombination<AbstractSlackFunction<*>, Shape1>
 
     fun register(model: AbstractLinearMetaModel): Try {
         if (limits.isNotEmpty()) {
@@ -95,14 +95,15 @@ class FleetBalance(
             }
 
             if (!::slack.isInitialized) {
-                slack = LinearIntermediateSymbols1(
+                slack = SymbolCombination(
                     "fleet_slack",
                     Shape1(limits.size)
                 ) { l, _ ->
                     SlackFunction(
                         x = LinearPolynomial(fleet[l]),
                         threshold = LinearPolynomial(limits[l].second.amount),
-                        withPositive = true,
+                        withPositive = false,
+                        constraint = false,
                         name = "fleet_slack_$l"
                     )
                 }

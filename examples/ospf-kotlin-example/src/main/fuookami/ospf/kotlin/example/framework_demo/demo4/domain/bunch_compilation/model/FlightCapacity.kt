@@ -74,26 +74,30 @@ class FlightCapacity(
         if (withPassenger) {
             for ((task, thisPassengers) in passenger) {
                 for ((cls, thisPassenger) in thisPassengers) {
-                    val thisBunches = bunches.filter {
+                    val thisBunches = bunches.mapNotNull {
                         val thisTask = it.get(task)
-                        thisTask != null && thisTask.aircraft!!.capacity.let { capacity ->
+                        val capacity = thisTask?.aircraft?.capacity?.let { capacity ->
                             when (capacity) {
                                 is AircraftCapacity.Passenger -> {
-                                    capacity[cls] neq UInt64.zero
+                                    val thisCapacity = capacity[cls]
+                                    if (thisCapacity neq UInt64.zero) {
+                                        thisCapacity
+                                    } else {
+                                        null
+                                    }
                                 }
 
                                 else -> {
-                                    false
+                                    null
                                 }
                             }
-                        }
+                        } ?: return@mapNotNull null
+                        it to capacity
                     }
                     if (thisBunches.isNotEmpty()) {
                         thisPassenger.flush()
                         thisPassenger.asMutable() += sum(thisBunches.map {
-                            val thisTask = it.get(task)
-                            val thisCapacity = (thisTask!!.aircraft!!.capacity as AircraftCapacity.Passenger)[cls]
-                            thisCapacity * xi[it]
+                            it.second * xi[it.first]
                         })
                     }
                 }
@@ -102,26 +106,29 @@ class FlightCapacity(
 
         if (withCargo) {
             for ((task, thisCargo) in cargo) {
-                val thisBunches = bunches.filter {
+                val thisBunches = bunches.mapNotNull {
                     val thisTask = it.get(task)
-                    thisTask != null && thisTask.aircraft!!.capacity.let { capacity ->
+                    val capacity = thisTask?.aircraft?.capacity?.let { capacity ->
                         when (capacity) {
                             is AircraftCapacity.Cargo -> {
-                                capacity.capacity neq Flt64.zero
+                                if (capacity.capacity neq Flt64.zero) {
+                                    capacity.capacity
+                                } else {
+                                    null
+                                }
                             }
 
                             else -> {
-                                false
+                                null
                             }
                         }
-                    }
+                    } ?: return@mapNotNull null
+                    it to capacity
                 }
                 if (thisBunches.isNotEmpty()) {
                     thisCargo.flush()
                     thisCargo.asMutable() += sum(thisBunches.map {
-                        val thisTask = it.get(task)
-                        val thisCapacity = (thisTask!!.aircraft!!.capacity as AircraftCapacity.Cargo).capacity
-                        thisCapacity * xi[it]
+                        it.second * xi[it.first]
                     })
                 }
             }

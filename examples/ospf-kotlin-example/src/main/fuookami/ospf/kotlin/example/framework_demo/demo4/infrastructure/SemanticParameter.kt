@@ -1,7 +1,5 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo4.infrastructure
 
-import kotlinx.serialization.*
-
 @JvmInline
 value class IATA(val code: String) {
     init {

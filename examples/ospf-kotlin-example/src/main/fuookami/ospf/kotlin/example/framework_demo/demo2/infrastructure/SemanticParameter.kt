@@ -14,7 +14,7 @@ value class RegNo(val no: String)
 value class FlightNo(val no: String)
 
 @JvmInline
-value class IATACode(val code: String)
+value class IATA(val code: String)
 
 @JvmInline
 value class MAC(val mac: Flt64): PartialOrd<MAC>, Ord<MAC> {

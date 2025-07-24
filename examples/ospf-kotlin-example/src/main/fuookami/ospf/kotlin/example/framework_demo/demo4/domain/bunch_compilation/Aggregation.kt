@@ -12,8 +12,8 @@ import fuookami.ospf.kotlin.example.framework_demo.demo4.domain.bunch_compilatio
 
 class Aggregation(
     timeWindow: TimeWindow,
-    recoveryNeededAircrafts: List<Aircraft>,
-    recoveryNeededFlightTasks: List<FlightTask>,
+    val recoveryNeededAircrafts: List<Aircraft>,
+    val recoveryNeededFlightTasks: List<FlightTask>,
     val originBunches: List<FlightTaskBunch>,
     val flows: List<Flow>,
     val links: LinkMap
