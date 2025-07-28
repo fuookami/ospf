@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo4.domain.task.model
 
+import kotlin.time.*
 import fuookami.ospf.kotlin.example.framework_demo.demo4.infrastructure.*
 
 enum class AirportType {
@@ -15,6 +16,8 @@ enum class AirportType {
 data class Airport(
     val icao: ICAO,
     val type: AirportType,
+    val passengerTransferTime: Duration = Duration.ZERO,
+    val cargoTransferTime: Duration = Duration.ZERO,
     val base: Boolean = false
 ) {
     companion object {

@@ -51,8 +51,10 @@ class Aggregation(
         compilation = compilation
     )
 
-    fun register(model: AbstractLinearMetaModel): Try {
-        when (val result = compilation.register(model)) {
+    override fun register(model: MetaModel): Try {
+        model as AbstractLinearMetaModel
+
+        when (val result = super.register(model)) {
             is Ok -> {}
 
             is Failed -> {
