@@ -80,7 +80,7 @@ class FlightLink(
         val xi = compilation.x[iteration.toInt()]
 
         for (link in links) {
-            val thisBunches = bunches.filter { it.contains(link.prevTask to link.succTask) }
+            val thisBunches = bunches.filter { it.contains(link.prevTask, link.succTask) }
             if (thisBunches.isNotEmpty()) {
                 val thisLink = this.link[link]
                 thisLink.flush()

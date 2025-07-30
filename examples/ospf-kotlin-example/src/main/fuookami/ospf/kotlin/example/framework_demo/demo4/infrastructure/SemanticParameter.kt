@@ -52,3 +52,23 @@ value class AircraftRegisterNumber(val no: String) {
 value class PassengerClass(val cls: String) {
     override fun toString() = cls
 }
+
+@JvmInline
+value class PilotRankNo(val no: String) {
+    override fun toString() = no
+}
+
+@JvmInline
+value class PilotCode(val code: String) {
+    override fun toString() = code
+}
+
+@JvmInline
+value class CrewManRankNo(val no: String) {
+    override fun toString() = no
+}
+
+@JvmInline
+value class WorkerNo(val no: String) {
+    override fun toString() = no
+}

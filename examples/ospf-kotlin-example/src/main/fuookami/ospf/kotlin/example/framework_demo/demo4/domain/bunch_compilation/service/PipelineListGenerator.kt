@@ -38,7 +38,7 @@ class PipelineListGenerator(
             ExecutorLeisureMinimization(
                 executors = aggregation.recoveryNeededAircrafts,
                 compilation = aggregation.compilation,
-                executorLeisureCostCalculator = { aircraft: Aircraft ->
+                coefficient = { aircraft: Aircraft ->
                     TODO("not implemented yet")
                 }
             )

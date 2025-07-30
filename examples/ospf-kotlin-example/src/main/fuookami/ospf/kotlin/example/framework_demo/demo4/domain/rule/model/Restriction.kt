@@ -116,14 +116,6 @@ class RelationRestriction(
 
 typealias AbstractGeneralRestrictionCondition = (task: FlightTask, recoveryPolicy: FlightTaskAssignment?) -> Boolean
 
-infix fun AbstractGeneralRestrictionCondition.and(other: AbstractGeneralRestrictionCondition): AbstractGeneralRestrictionCondition {
-    return { task, recoveryPolicy -> this(task, recoveryPolicy) && other(task, recoveryPolicy) }
-}
-
-fun List<AbstractGeneralRestrictionCondition>.combine(): AbstractGeneralRestrictionCondition {
-    return { task, recoveryPolicy -> this.isEmpty() || this.all { it(task, recoveryPolicy) } }
-}
-
 data class FlightGeneralRestrictionCondition(
     val flights: Set<TaskKey>
 ) : AbstractGeneralRestrictionCondition {
@@ -190,18 +182,25 @@ class GeneralRestriction(
     val cost: Flt64? = null
 ) : Restriction {
     val condition by lazy {
-        var ret = condition
-        if (ret != null && enabledAircrafts != null) {
-            ret = ret and EnabledAircraftGeneralRestrictionCondition(enabledAircrafts)
-        } else if (enabledAircrafts != null) {
-            ret = EnabledAircraftGeneralRestrictionCondition(enabledAircrafts)
+        val condition1 = if (enabledAircrafts != null) {
+            EnabledAircraftGeneralRestrictionCondition(enabledAircrafts)
+        } else {
+            null
         }
-        if (ret != null && disabledAircrafts != null) {
-            ret = ret and DisabledAircraftGeneralRestrictionCondition(disabledAircrafts)
-        } else if (enabledAircrafts != null) {
-            ret = EnabledAircraftGeneralRestrictionCondition(enabledAircrafts)
+        val condition2 = if (disabledAircrafts != null) {
+            DisabledAircraftGeneralRestrictionCondition(disabledAircrafts)
+        } else {
+            null
         }
-        ret
+        if (condition != null || condition1 != null || condition2 != null) {
+            { task: FlightTask, recoveryPolicy: FlightTaskAssignment? ->
+                condition?.invoke(task, recoveryPolicy) != false
+                        && condition1?.invoke(task, recoveryPolicy) != false
+                        && condition2?.invoke(task, recoveryPolicy) != false
+            }
+        } else {
+            null
+        }
     }
 
     override fun related(aircraft: Aircraft): Boolean {

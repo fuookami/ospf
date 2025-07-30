@@ -68,10 +68,6 @@ class FlightTaskBunch(
         }
     }
 
-    fun contains(taskPair: Pair<FlightTask, FlightTask>): Boolean {
-        return contains(taskPair.first, taskPair.second)
-    }
-
     fun get(originTask: FlightTask): FlightTask? {
         val task = keys[originTask.key]
         return if (task != null) {
