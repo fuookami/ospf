@@ -15,7 +15,7 @@ class PipelineListGenerator(
     operator fun invoke(
         stowageMode: StowageMode
     ): Ret<PipelineList<AbstractLinearMetaModel>> {
-        val pipelines = kotlin.collections.ArrayList<Pipeline<AbstractLinearMetaModel>>()
+        val pipelines = ArrayList<Pipeline<AbstractLinearMetaModel>>()
 
         pipelines.add(
             LongitudinalBalanceLimit(

@@ -7,13 +7,12 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.infrastructure.*
 import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.aircraft.model.*
 import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.*
 import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.service.limits.*
-import kotlin.collections.any
 
 data class PipelineListGenerator(
     private val aggregation: Aggregation
 ) {
     operator fun invoke(stowageMode: StowageMode): Ret<PipelineList<AbstractLinearMetaModel>> {
-        val pipelines = kotlin.collections.ArrayList<Pipeline<AbstractLinearMetaModel>>()
+        val pipelines = ArrayList<Pipeline<AbstractLinearMetaModel>>()
 
         pipelines.add(
             ItemAssignmentLimit(

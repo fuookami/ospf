@@ -3,14 +3,8 @@ package fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.serv
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.Aggregation
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Assignment
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.ClientNode
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Edge
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Graph
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Node
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Service
-import kotlin.collections.iterator
+import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.*
+import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.*
 
 private typealias NodeSolution = HashMap<Service, Node>
 private typealias EdgeSolution = HashMap<Service, ArrayList<Pair<Edge, UInt64>>>
