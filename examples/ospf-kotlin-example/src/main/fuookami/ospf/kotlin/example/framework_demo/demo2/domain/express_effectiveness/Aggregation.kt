@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.express_effectiveness
 
+import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.example.framework_demo.demo2.infrastructure.*
@@ -57,5 +58,25 @@ class Aggregation(
         }
 
         return ok
+    }
+
+    fun registerForBendersMP(
+        model: AbstractLinearMetaModel
+    ): Try {
+        TODO("not implemented yet")
+    }
+
+    fun registerForBendersSP(
+        model: AbstractLinearMetaModel,
+        solution: List<Flt64>
+    ): Try {
+        TODO("not implemented yet")
+    }
+
+    private fun flushForBendersSP(
+        model: AbstractLinearMetaModel,
+        solution: List<Flt64>
+    ): Try {
+        TODO("not implemented yet")
     }
 }
