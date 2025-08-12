@@ -12,7 +12,8 @@ data class PipelineListGenerator(
     private val aggregation: Aggregation
 ) {
     operator fun invoke(
-        stowageMode: StowageMode
+        stowageMode: StowageMode,
+        parameter: Parameter
     ): Ret<PipelineList<AbstractLinearMetaModel>> {
         val pipelines = ArrayList<Pipeline<AbstractLinearMetaModel>>()
 

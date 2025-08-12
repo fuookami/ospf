@@ -4,7 +4,7 @@ import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.model.*
 
 data class PriorityAppointment(
-    private val appointment: HashMap<CargoPriorityType, Set<UInt8>>
+    private val appointment: HashMap<CargoPriority, Set<UInt8>>
 ) {
     companion object {
         operator fun invoke(
@@ -19,7 +19,7 @@ data class PriorityAppointment(
         }
     }
 
-    operator fun invoke(priority: CargoPriorityType, position: Position): Boolean {
+    operator fun invoke(priority: CargoPriority, position: Position): Boolean {
         return appointment[priority]?.contains(position.loadingOrder.precDepth) == true
     }
 }

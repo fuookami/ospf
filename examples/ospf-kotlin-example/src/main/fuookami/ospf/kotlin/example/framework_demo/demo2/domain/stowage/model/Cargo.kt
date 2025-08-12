@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.model
 
+import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.operator.*
 
 enum class CargoCode {
@@ -68,46 +69,13 @@ enum class CargoPriorityCategory {
     Low
 }
 
-enum class CargoPriorityType {
-    HighTransfer {
-        override val category = CargoPriorityCategory.High
-        override val transfer = true
-    },
+data class CargoPriority(
+    val name: String,
+    val priority: UInt64,
+    val category: CargoPriorityCategory,
+    val transfer: Boolean = false
+)
 
-    CCD {
-        override val category = CargoPriorityCategory.High
-    },
-
-    MediumTransfer {
-        override val category = CargoPriorityCategory.High
-        override val transfer = true
-    },
-
-    HUB {
-        override val category = CargoPriorityCategory.High
-    },
-
-    LowTransfer {
-        override val category = CargoPriorityCategory.High
-        override val transfer = true
-    },
-
-    NormalWithoutOrder {
-        override val category = CargoPriorityCategory.Normal
-    },
-
-    NormalWithOrder {
-        override val category = CargoPriorityCategory.Normal
-    },
-
-    SameACTransfer {
-        override val category = CargoPriorityCategory.Low
-    };
-
-    abstract val category: CargoPriorityCategory
-    open val transfer: Boolean = false
-}
-
-infix fun CargoPriorityType.ord(rhs: CargoPriorityType): Order {
-    return orderOf(this.category.ordinal compareTo rhs.ordinal)
+infix fun CargoPriority.ord(rhs: CargoPriority): Order {
+    return orderOf(this.priority compareTo rhs.priority)
 }

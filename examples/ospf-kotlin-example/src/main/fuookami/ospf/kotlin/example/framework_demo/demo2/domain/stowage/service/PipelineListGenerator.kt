@@ -11,7 +11,9 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.service.
 data class PipelineListGenerator(
     private val aggregation: Aggregation
 ) {
-    operator fun invoke(stowageMode: StowageMode): Ret<PipelineList<AbstractLinearMetaModel>> {
+    operator fun invoke(
+        stowageMode: StowageMode
+    ): Ret<PipelineList<AbstractLinearMetaModel>> {
         val pipelines = ArrayList<Pipeline<AbstractLinearMetaModel>>()
 
         pipelines.add(

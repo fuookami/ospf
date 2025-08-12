@@ -1,4 +1,4 @@
-package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.airworthiness_security
+package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.mac_optimization
 
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.functional.*
@@ -8,13 +8,13 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.infrastructure.dto.*
 import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.aircraft.AircraftContext
 import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.StowageContext
 import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.mac.MacContext
-import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.airworthiness_security.service.*
+import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.mac_optimization.service.*
 
 internal typealias AircraftAggregation = fuookami.ospf.kotlin.example.framework_demo.demo2.domain.aircraft.Aggregation
 internal typealias StowageAggregation = fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.Aggregation
 internal typealias MACAggregation = fuookami.ospf.kotlin.example.framework_demo.demo2.domain.mac.Aggregation
 
-class AirworthinessSecurityContext {
+class MacOptimizationContext {
     lateinit var aggregation: Aggregation
 
     fun init(
@@ -24,7 +24,7 @@ class AirworthinessSecurityContext {
         input: RequestDTO
     ): Try {
         if (!::aggregation.isInitialized) {
-            when (val result = AggregationInitializer.invoke(
+            when (val result = AggregationInitializer(
                 aircraftAggregation = aircraftContext.aggregation,
                 stowageAggregation = stowageContext.aggregation,
                 macAggregation = macContext.aggregation,
@@ -45,6 +45,7 @@ class AirworthinessSecurityContext {
 
     fun register(
         stowageMode: StowageMode,
+        parameter: Parameter,
         model: AbstractLinearMetaModel
     ): Try {
         when (val result = aggregation.register(
@@ -59,7 +60,10 @@ class AirworthinessSecurityContext {
         }
 
         val generator = PipelineListGenerator(aggregation)
-        val pipelines = when (val result = generator.invoke(stowageMode)) {
+        val pipelines = when (val result = generator.invoke(
+            stowageMode = stowageMode,
+            parameter = parameter
+        )) {
             is Ok -> {
                 result.value
             }

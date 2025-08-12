@@ -116,15 +116,23 @@ class Aggregation(
         return ok
     }
 
-    fun registerForBendersMP(model: AbstractLinearMetaModel): Try {
+    fun registerForBendersMP(
+        model: AbstractLinearMetaModel
+    ): Try {
         TODO("not implemented yet")
     }
 
-    fun registerForBendersSP(model: AbstractLinearMetaModel, solution: List<Flt64>): Try {
+    fun registerForBendersSP(
+        model: AbstractLinearMetaModel,
+        solution: List<Flt64>
+    ): Try {
         TODO("not implemented yet")
     }
 
-    private fun flushForBendersSP(model: AbstractLinearMetaModel, solution: List<Flt64>): Try {
+    private fun flushForBendersSP(
+        model: AbstractLinearMetaModel,
+        solution: List<Flt64>
+    ): Try {
         TODO("not implemented yet")
     }
 }

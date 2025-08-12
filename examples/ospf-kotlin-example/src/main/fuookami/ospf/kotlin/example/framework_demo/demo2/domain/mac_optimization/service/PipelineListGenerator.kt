@@ -4,16 +4,15 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.framework.model.*
 import fuookami.ospf.kotlin.example.framework_demo.demo2.infrastructure.*
-import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.aircraft.model.*
 import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.mac_optimization.*
-import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.mac_optimization.model.MACRange
 import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.mac_optimization.service.limits.*
 
 class PipelineListGenerator(
     private val aggregation: Aggregation
 ) {
     operator fun invoke(
-        stowageMode: StowageMode
+        stowageMode: StowageMode,
+        parameter: Parameter
     ): Ret<PipelineList<AbstractLinearMetaModel>> {
         val pipelines = ArrayList<Pipeline<AbstractLinearMetaModel>>()
 
@@ -26,7 +25,6 @@ class PipelineListGenerator(
                 }
             )
         )
-
 
         if (aggregation.lateralBalance != null) {
             pipelines.add(

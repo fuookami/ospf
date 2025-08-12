@@ -114,7 +114,7 @@ enum class ItemStatus {
 
 data class ItemCargo(
     val types: Set<CargoType>,
-    val priority: CargoPriorityType
+    val priority: CargoPriority
 ) {
     operator fun contains(cargo: CargoType): Boolean {
         return types.contains(cargo)
