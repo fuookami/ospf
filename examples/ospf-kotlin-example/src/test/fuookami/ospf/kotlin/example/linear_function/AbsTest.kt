@@ -31,6 +31,7 @@ class AbsTest {
         model2.add(abs)
         model2.maximize(abs)
         val result2 = runBlocking { solver(model2) }
+        assert(result2.value!!.solution[0] eq -Flt64.three)
         assert(result2.value!!.obj eq Flt64.three)
 
         val model3 = LinearMetaModel()

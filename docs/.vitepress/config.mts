@@ -152,8 +152,8 @@ export default withMermaid({
                     { text: '绝对值', link: '/zh-cn/guide/linear-functional/abs' },
                     { text: '松弛', link: '/zh-cn/guide/linear-functional/slack' },
                     { text: '松弛（范围）', link: '/zh-cn/guide/linear-functional/slack-range' },
-                    { text: '一元线性分段', link: '/zh-cn/guide/linear-functional/ulp' },
-                    { text: '二元线性分段', link: '/zh-cn/guide/linear-functional/blp' }
+                    { text: '一元分段线性', link: '/zh-cn/guide/linear-functional/ulp' },
+                    { text: '二元分段线性', link: '/zh-cn/guide/linear-functional/blp' }
                   ]
                 },
                 { 

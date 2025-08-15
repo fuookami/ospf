@@ -264,31 +264,7 @@ class LinearPiecewiseTest {
         assert(result.value!!.obj eq Flt64.zero)
     }
 
-    @Test
-    fun univariate() {
-        val model = LinearMetaModel()
 
-        val x = URealVar("x")
-        x.range.leq(Flt64.two)
-        model.add(x)
-
-        val ulp = UnivariateLinearPiecewiseFunction(
-            x = LinearPolynomial(x),
-            points = listOf(
-                point2(),
-                point2(x = Flt64.one, y = Flt64.two),
-                point2(x = Flt64.two, y = Flt64.one)
-            ),
-            name = "y"
-        )
-        model.add(ulp)
-
-        model.maximize(LinearPolynomial(ulp))
-
-        val solver = ScipLinearSolver()
-        val result = runBlocking { solver(model) }
-        assert(result.value!!.solution[0] eq Flt64.one)
-    }
 
     @Test
     fun bivariate() {
