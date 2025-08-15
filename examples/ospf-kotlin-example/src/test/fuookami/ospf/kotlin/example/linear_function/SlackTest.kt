@@ -16,8 +16,8 @@ class SlackTest {
         x.range.leq(Flt64.two)
         x.range.geq(-Flt64.three)
         val slack = SlackFunction(
-            x = LinearPolynomial(x),
-            y = LinearPolynomial(Flt64.five),
+            x = x,
+            y = Flt64.five,
             name = "slack"
         )
 

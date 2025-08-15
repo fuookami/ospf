@@ -264,8 +264,6 @@ class LinearPiecewiseTest {
         assert(result.value!!.obj eq Flt64.zero)
     }
 
-
-
     @Test
     fun bivariate() {
         val model = LinearMetaModel()

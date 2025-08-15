@@ -51,7 +51,7 @@ val x = URealVar("x")
 x.range.leq(Flt64.two)
 
 val ulp = UnivariateLinearPiecewiseFunction(
-    x = LinearPolynomial(x),
+    x = x,
     points = listOf(
         point2(),
         point2(x = Flt64.one, y = Flt64.two),

@@ -59,7 +59,7 @@ import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 
 val x = RealVar("x")
-val abs = AbsFunction(LinearPolynomial(x), name = "abs")
+val abs = AbsFunction(x, name = "abs")
 
 x.range.leq(Flt64.two)
 x.range.geq(-Flt64.three)

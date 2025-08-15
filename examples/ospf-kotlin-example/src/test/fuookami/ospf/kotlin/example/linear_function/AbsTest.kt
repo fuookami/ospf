@@ -16,7 +16,7 @@ class AbsTest {
         val x = RealVar("x")
         x.range.leq(Flt64.two)
         x.range.geq(-Flt64.three)
-        val abs = AbsFunction(LinearPolynomial(x), name = "abs")
+        val abs = AbsFunction(x, name = "abs")
         val solver = ScipLinearSolver()
 
         val model1 = LinearMetaModel()
