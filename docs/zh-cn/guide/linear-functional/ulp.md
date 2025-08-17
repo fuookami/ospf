@@ -51,7 +51,7 @@ val x = URealVar("x")
 x.range.leq(Flt64.two)
 
 val ulp = UnivariateLinearPiecewiseFunction(
-    x = LinearPolynomial(x),
+    x = x,
     points = listOf(
         point2(),
         point2(x = Flt64.one, y = Flt64.two),
@@ -79,4 +79,4 @@ assert(result.value!!.solution[0] eq Flt64.one)
 
 完整样例请参考：
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/ULP.kt)
+- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/ULPTest.kt)

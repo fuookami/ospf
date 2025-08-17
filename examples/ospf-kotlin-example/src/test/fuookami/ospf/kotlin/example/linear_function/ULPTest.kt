@@ -5,7 +5,6 @@ import org.junit.jupiter.api.*
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.math.geometry.*
 import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
@@ -17,7 +16,7 @@ class ULPTest {
         x.range.leq(Flt64.two)
 
         val ulp = UnivariateLinearPiecewiseFunction(
-            x = LinearPolynomial(x),
+            x = x,
             points = listOf(
                 point2(),
                 point2(x = Flt64.one, y = Flt64.two),

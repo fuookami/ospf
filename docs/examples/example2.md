@@ -17,7 +17,7 @@ The goal is to assign distinct companies to produce different products such that
 
 ### Variables
 
-$x_{cp}$ ：whether company $c$ is assigned to produce product $p$ 。
+$x_{cp}$ ：whether company $c$ is assigned to produce product $p$.
 
 ### Intermediate Expressions
 

@@ -59,6 +59,8 @@ export default withMermaid({
                     { text: 'Slack Range', link: '/guide/linear-functional/slack-range' },
                     { text: 'Univariate Linear Piecewise', link: '/guide/linear-functional/ulp' },
                     { text: 'Bivariate Linear Piecewise', link: '/guide/linear-functional/blp' },
+                    { text: 'Semi Function (Semi Variable)', link: '/guide/linear-functional/semi' },
+                    { text: 'Masking Function', link: '/guide/linear-functional/masking' },
                   ]
                 },
                 { 
@@ -67,6 +69,7 @@ export default withMermaid({
                   items: [
                     { text: 'Slack', link: '/guide/quadratic-functional/slack' },
                     { text: 'Slack Range', link: '/guide/quadratic-functional/slack-range' },
+                    { text: 'Semi Function (Semi Variable)', link: '/guide/quadratic-functional/semi' },
                   ]
                 },
                 { text: 'Linear Functional Intermediate Expression', link: '/guide/linear-functional-intermediate-expression' },
@@ -153,7 +156,9 @@ export default withMermaid({
                     { text: '松弛', link: '/zh-cn/guide/linear-functional/slack' },
                     { text: '松弛（范围）', link: '/zh-cn/guide/linear-functional/slack-range' },
                     { text: '一元分段线性', link: '/zh-cn/guide/linear-functional/ulp' },
-                    { text: '二元分段线性', link: '/zh-cn/guide/linear-functional/blp' }
+                    { text: '二元分段线性', link: '/zh-cn/guide/linear-functional/blp' },
+                    { text: '半函数（半变量）', link: '/zh-cn/guide/linear-functional/semi' },
+                    { text: '掩码函数', link: '/zh-cn/guide/linear-functional/masking' },
                   ]
                 },
                 { 
@@ -162,6 +167,7 @@ export default withMermaid({
                   items: [
                     { text: '松弛', link: '/zh-cn/guide/quadratic-functional/slack' },
                     { text: '松弛（范围）', link: '/zh-cn/guide/quadratic-functional/slack-range' },
+                    { text: '半函数（半变量）', link: '/zh-cn/guide/quadratic-functional/semi' },
                   ]
                 },
                 { text: '数学模型的演绎逻辑表达', link: '/zh-cn/guide/deductive-logic-expression' },

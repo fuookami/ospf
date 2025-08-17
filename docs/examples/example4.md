@@ -29,7 +29,7 @@ Determine the production quantity for each product to maximize total revenue, wh
 
 ### Variables
 
-$x_{p}$: yield of product $p$。
+$x_{p}$: yield of product $p$.
 
 ### Intermediate Expressions
 

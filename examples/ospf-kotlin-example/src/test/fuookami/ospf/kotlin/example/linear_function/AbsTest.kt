@@ -4,7 +4,6 @@ import kotlinx.coroutines.*
 import org.junit.jupiter.api.*
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
@@ -16,7 +15,7 @@ class AbsTest {
         val x = RealVar("x")
         x.range.leq(Flt64.two)
         x.range.geq(-Flt64.three)
-        val abs = AbsFunction(LinearPolynomial(x), name = "abs")
+        val abs = AbsFunction(x, name = "abs")
         val solver = ScipLinearSolver()
 
         val model1 = LinearMetaModel()

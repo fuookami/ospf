@@ -4,7 +4,6 @@ import kotlinx.coroutines.*
 import org.junit.jupiter.api.*
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
@@ -16,8 +15,8 @@ class SlackTest {
         x.range.leq(Flt64.two)
         x.range.geq(-Flt64.three)
         val slack = SlackFunction(
-            x = LinearPolynomial(x),
-            y = LinearPolynomial(Flt64.five),
+            x = x,
+            y = Flt64.five,
             name = "slack"
         )
 
