@@ -24,7 +24,7 @@ Determine the amount of each raw material used to minimize the total cost.
 
 ### Variables
 
-$x_{m}$ : usage of raw material $m$。
+$x_{m}$ : usage of raw material $m$.
 
 ### Intermediate Expressions
 

@@ -18,7 +18,7 @@ Select a portion of the goods from these items to maximize the total value while
 
 ### Variables
 
-$x_{c}$ ：amount of good $c$。
+$x_{c}$ ：amount of good $c$.
 
 ### Intermediate Expressions
 

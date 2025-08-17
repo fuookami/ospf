@@ -17,7 +17,7 @@ Select a subset of these goods to maximize the total value while satisfying the 
 
 ### Variables 
 
-$x_{c}$：whether to select good $c$。
+$x_{c}$：whether to select good $c$.
 
 ### Intermediate Expressions
 

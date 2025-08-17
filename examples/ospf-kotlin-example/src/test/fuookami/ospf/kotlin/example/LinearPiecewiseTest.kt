@@ -243,28 +243,6 @@ class LinearPiecewiseTest {
     }
 
     @Test
-    fun semi() {
-        val model = LinearMetaModel()
-
-        val x = URealVar("x")
-        x.range.leq(Flt64.two)
-        model.add(x)
-
-        val y = URealVar("y")
-        y.range.geq(Flt64.three)
-        model.add(y)
-
-        val semi = SemiRealFunction(LinearPolynomial(x - y), name = "semi")
-        model.add(semi)
-
-        model.minimize(semi)
-
-        val solver = ScipLinearSolver()
-        val result = runBlocking { solver(model) }
-        assert(result.value!!.obj eq Flt64.zero)
-    }
-
-    @Test
     fun bivariate() {
         val model = LinearMetaModel()
 

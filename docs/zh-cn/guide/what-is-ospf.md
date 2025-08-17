@@ -137,7 +137,7 @@ $$
 
 $$
 \begin{cases}
-  y \geq \frac{x_{i}}{\sup_{\leq}(x_{i})}, & \sup_{\leq}(x_{i}) > 1 \\\\\\
+  y \geq \frac{x_{i}}{\max(x_{i})}, & \max(x_{i}) > 1 \\ \; \\
   y \geq x_{i}, & else
 \end{cases}
 $$
