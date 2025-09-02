@@ -72,6 +72,8 @@ export default withMermaid({
                     { text: 'Semi Function (Semi Variable)', link: '/guide/quadratic-functional/semi' },
                   ]
                 },
+                { text: 'Use Domain Driven Design Architecture With Column Generation Algorithm', link: '/guide/use-ddd-architecture-with-column-generation' },
+                { text: 'Use Domain Driven Design Architecture With Benders Decomposition Algorithm', link: '/guide/use-ddd-architecture-with-benders' },
                 { text: 'Linear Functional Intermediate Expression', link: '/guide/linear-functional-intermediate-expression' },
                 { text: 'Quadratic Functional Intermediate Expression', link: '/guide/quadratic-functional-intermediate-expression' },
                 { text: 'The Deductive Logic Expression of the Mathematical Model', link: '/guide/deductive-logic-expression' },
@@ -170,6 +172,8 @@ export default withMermaid({
                     { text: '半函数（半变量）', link: '/zh-cn/guide/quadratic-functional/semi' },
                   ]
                 },
+                { text: '使用领域驱动设计架构（列生成算法）', link: '/zh-cn/guide/use-ddd-architecture-with-column-generation' },
+                { text: '使用领域驱动设计架构（Benders 分解算法）', link: '/zh-cn/guide/use-ddd-architecture-with-benders' },
                 { text: '数学模型的演绎逻辑表达', link: '/zh-cn/guide/deductive-logic-expression' },
                 { text: '形式化设计与形式化验证', link: '/zh-cn/guide/formal-design-and-formal-verification' },
                 { text: '云端求解器', link: '/zh-cn/guide/remote-solver' },
