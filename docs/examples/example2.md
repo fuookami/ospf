@@ -2,7 +2,7 @@
 
 ## Problem Description
 
-There are several companies and products. Each company incurs a specific cost to produce each product.
+Given a set of companies and products. Each company incurs a specific cost to produce each product.
 
 |       | Product A | Product B | Product C | Product D |
 | :---: | :-------: | :-------: | :-------: | :-------: |
@@ -11,7 +11,7 @@ There are several companies and products. Each company incurs a specific cost to
 | Co. C |   $880$   |   $500$   |   $720$   |   $400$   |
 | Co. D |   $930$   |   $490$   |   $680$   |   $410$   |
 
-The goal is to assign distinct companies to produce different products such that the total cost is minimized.
+Determine which company produce each product. The goal is to assign distinct companies to produce different products such that the total cost is minimized.
 
 ## Mathematical Model
 

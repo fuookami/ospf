@@ -2,7 +2,7 @@
 
 ## Problem Description
 
-There are some goods, each with a value, a weight and an amount.
+Given a set of goods, each with a value, a weight and an amount.
 
 |        | Good A  | Good B  | Good C  |
 | :----: | :-----: | :-----: | :-----: |

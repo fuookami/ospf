@@ -2,7 +2,7 @@
 
 ## Problem Description
 
-There are a number of products and raw materials. Each product has a specified production quantity, each raw material has a cost, and each raw material can be used to produce multiple different products.
+Given a set of products and raw materials. Each product has a specified production quantity, each raw material has a cost, and each raw material can be used to produce multiple different products.
 
 |        | Product A | Product B | Product C |
 | :----: | :-------: | :-------: | :-------: |

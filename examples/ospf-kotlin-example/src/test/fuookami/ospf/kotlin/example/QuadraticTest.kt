@@ -12,7 +12,6 @@ import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.intermediate_model.*
 import fuookami.ospf.kotlin.core.backend.plugins.gurobi.*
-import fuookami.ospf.kotlin.core.backend.plugins.cplex.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 
 class QuadraticTest {
@@ -30,13 +29,9 @@ class QuadraticTest {
         val result1 = runBlocking { solver1(model) }
         assert(result1.value!!.solution[0] eq -Flt64.two)
 
-        val solver2 = CplexQuadraticSolver()
+        val solver2 = GurobiQuadraticSolver()
         val result2 = runBlocking { solver2(model) }
         assert(result2.value!!.solution[0] eq -Flt64.two)
-
-        val solver3 = GurobiQuadraticSolver()
-        val result3 = runBlocking { solver3(model) }
-        assert(result3.value!!.solution[0] eq -Flt64.two)
     }
 
     @Test
@@ -54,13 +49,9 @@ class QuadraticTest {
         val result1 = runBlocking { solver1(model) }
         assert(result1.value!!.solution[0] eq Flt64.two)
 
-        val solver2 = CplexQuadraticSolver()
+        val solver2 = GurobiQuadraticSolver()
         val result2 = runBlocking { solver2(model) }
         assert(result2.value!!.solution[0] eq Flt64.two)
-
-        val solver3 = GurobiQuadraticSolver()
-        val result3 = runBlocking { solver3(model) }
-        assert(result3.value!!.solution[0] eq Flt64.two)
     }
 
     @Test
@@ -78,13 +69,9 @@ class QuadraticTest {
         val result1 = runBlocking { solver1(model) }
         assert(result1.value!!.solution[0] eq Flt64.zero)
 
-        val solver2 = CplexQuadraticSolver()
+        val solver2 = GurobiQuadraticSolver()
         val result2 = runBlocking { solver2(model) }
-        assert(result2.value!!.solution[0].abs() leq Flt64(1e-5))
-
-        val solver3 = GurobiQuadraticSolver()
-        val result3 = runBlocking { solver3(model) }
-        assert(result3.value!!.solution[0] eq Flt64.zero)
+        assert(result2.value!!.solution[0] eq Flt64.zero)
     }
 
     @Test
@@ -102,13 +89,9 @@ class QuadraticTest {
         val result1 = runBlocking { solver1(model) }
         assert(result1.value!!.solution[0] eq Flt64.two)
 
-        val solver2 = CplexQuadraticSolver()
+        val solver2 = GurobiQuadraticSolver()
         val result2 = runBlocking { solver2(model) }
-        assert(result2.failed)
-
-        val solver3 = GurobiQuadraticSolver()
-        val result3 = runBlocking { solver3(model) }
-        assert(result3.value!!.solution[0] eq Flt64.two)
+        assert(result2.value!!.solution[0] eq Flt64.two)
     }
 
     @Test
