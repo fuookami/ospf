@@ -5,7 +5,10 @@ import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.math.ordinary.*
 import fuookami.ospf.kotlin.utils.operator.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.utils.multi_array.*
 import fuookami.ospf.kotlin.core.frontend.variable.*
+import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
+import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.solver.output.*
 import fuookami.ospf.kotlin.core.backend.solver.config.*
@@ -32,7 +35,7 @@ class SSP {
             is Ok -> {}
         }
 
-        return solveByBenders()
+        return solveByMILP()
     }
 
     private suspend fun solveByMILP(): Ret<Output> {
@@ -44,15 +47,18 @@ class SSP {
 
             is Ok -> {}
         }
-        val result = solve(model)
-        when (result) {
+        val solver = GurobiLinearSolver()
+        val result = when (val result = solver(model)) {
+            is Ok -> {
+                model.tokens.setSolution(result.value.solution)
+                result.value.solution
+            }
+
             is Failed -> {
                 return Failed(result.error)
             }
-
-            is Ok -> {}
         }
-        val solution = when (val result = bandwidthContext.analyze(model, result.value)) {
+        val solution = when (val result = bandwidthContext.analyze(model, result)) {
             is Ok -> {
                 result.value
             }
@@ -98,6 +104,7 @@ class SSP {
         var currentGap = Flt64.maximum
         var masterResult: SolverOutput
         var subResult: SolverOutput? = null
+        var fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>
         do {
             masterResult = solver.solveMaster("master-${i}", masterModel).value!!
             lb = max(lb, masterResult.obj)
@@ -111,7 +118,7 @@ class SSP {
                 }
             }
 
-            val fixedVariables = routeContext.aggregation.graph.nodes.withIndex().flatMap { (i, node) ->
+            fixedVariables = routeContext.aggregation.graph.nodes.withIndex().flatMap { (i, node) ->
                 routeContext.aggregation.services.withIndex().map { (j, service) ->
                     routeContext.aggregation.assignment.x[i, j] to if (masterSolution[service] == node) {
                         Flt64.one
@@ -122,7 +129,7 @@ class SSP {
             }.toMap<AbstractVariableItem<*, *>, Flt64>()
             val thisSubResult = solver.solveSub("sub-${i}", subModel, objVar, fixedVariables, true).value!!
             if (thisSubResult is BendersDecompositionSolver.FeasibleResult) {
-                ub = min(ub, thisSubResult.obj)
+                ub = min(ub, thisSubResult.obj + masterSolution.sumOf { it.key.cost }.toFlt64())
                 subResult = thisSubResult.result
             }
             thisSubResult.cuts!!.forEach {
@@ -136,6 +143,7 @@ class SSP {
             } else {
                 j += UInt64.one
             }
+            println("lb: ${lb}, ub: ${ub}, gap: $currentGap")
         } while (currentGap gr Flt64.epsilon && j leq UInt64.two)
 
         val masterSolution = when (val result = routeContext.analyze(masterModel, masterResult.solution)) {
@@ -147,7 +155,7 @@ class SSP {
                 return Failed(result.error)
             }
         }
-        val subSolution = when (val result = bandwidthContext.analyze(masterSolution, subModel, subResult!!.solution)) {
+        val subSolution = when (val result = bandwidthContext.analyze(masterSolution, subModel, subResult!!.solution, fixedVariables.keys)) {
             is Ok -> {
                 result.value
             }
@@ -234,20 +242,6 @@ class SSP {
         }
 
         return ok
-    }
-
-    private suspend fun solve(metaModel: LinearMetaModel): Ret<List<Flt64>> {
-        val solver = ScipLinearSolver()
-        return when (val ret = solver(metaModel)) {
-            is Ok -> {
-                metaModel.tokens.setSolution(ret.value.solution)
-                Ok(ret.value.solution)
-            }
-
-            is Failed -> {
-                Failed(ret.error)
-            }
-        }
     }
 
     private fun gap(lb: Flt64, ub: Flt64): Flt64 {

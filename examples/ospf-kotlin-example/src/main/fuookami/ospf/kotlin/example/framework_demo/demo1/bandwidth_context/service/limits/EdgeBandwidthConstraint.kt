@@ -2,16 +2,13 @@ package fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.serv
 
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.utils.multi_array.*
 import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.model.EdgeBandwidth
 import fuookami.ospf.kotlin.framework.model.*
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Assignment
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Edge
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Service
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.from
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.normal
+import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.*
+import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.model.*
 
 class EdgeBandwidthConstraint(
     private val edges: List<Edge>,
@@ -32,6 +29,14 @@ class EdgeBandwidthConstraint(
                 )
             }
         }
+
+        for (edge in edges.filter(from(normal))) {
+            model.addConstraint(
+                sum(y[edge, _a]) leq edge.maxBandwidth,
+                "${name}_($edge)"
+            )
+        }
+
         return ok
     }
 }

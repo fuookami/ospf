@@ -2,6 +2,7 @@ package fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.serv
 
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.frontend.variable.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.*
 import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.*
@@ -55,26 +56,27 @@ class SolutionAnalyzer(
         return Ok(dump(nodeSolution, edgeSolution))
     }
 
-    operator fun invoke(nodeSolution: Map<Service, Node>, model: LinearMetaModel, result: List<Flt64>): Ret<List<List<Node>>> {
+    operator fun invoke(nodeSolution: Map<Service, Node>, model: LinearMetaModel, result: List<Flt64>, fixedVariables: Set<AbstractVariableItem<*, *>>): Ret<List<List<Node>>> {
         val edgeSolution = EdgeSolution()
 
+        val index = model.tokens.tokenIndexMapWithout(fixedVariables)
         for (token in model.tokens.tokens) {
             if (token.variable.belongsTo(aggregation.edgeBandwidth.y)) {
-                if (result[token.solverIndex] gr Flt64.zero) {
+                if (result[index[token]!!] gr Flt64.zero) {
                     val vector = token.variable.vectorView
                     val service = services[vector[1]]
                     if (edgeSolution.containsKey(service)) {
                         edgeSolution[service]!!.add(
                             Pair(
                                 graph.edges.find { it.index == vector[0] }!!,
-                                result[token.solverIndex].toUInt64()
+                                result[index[token]!!].toUInt64()
                             )
                         )
                     } else {
                         edgeSolution[service] = arrayListOf(
                             Pair(
                                 graph.edges.find { it.index == vector[0] }!!,
-                                result[token.solverIndex].toUInt64()
+                                result[index[token]!!].toUInt64()
                             )
                         )
                     }
