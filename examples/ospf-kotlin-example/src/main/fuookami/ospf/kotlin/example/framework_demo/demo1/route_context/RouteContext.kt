@@ -4,14 +4,8 @@ import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.example.framework_demo.demo1.infrastructure.*
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Assignment
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.ClientNode
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Edge
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Graph
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Node
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.NormalNode
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Service
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.service.PipelineListGenerator
+import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.*
+import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.service.*
 import fuookami.ospf.kotlin.framework.model.invoke
 
 class RouteContext {
@@ -101,5 +95,10 @@ class RouteContext {
             }
         }
         return ok
+    }
+
+    fun analyze(model: LinearMetaModel, result: List<Flt64>): Ret<Map<Service, Node>> {
+        val analyzer = SolutionAnalyzer(aggregation)
+        return analyzer(model, result)
     }
 }

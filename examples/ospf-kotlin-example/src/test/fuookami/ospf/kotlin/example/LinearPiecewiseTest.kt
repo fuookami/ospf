@@ -343,7 +343,7 @@ class LinearPiecewiseTest {
         y.range.geq(Flt64.three)
         model.add(y)
 
-        val semi = SemiRealFunction(LinearPolynomial(x - y), name = "semi")
+        val semi = SemiFunction(LinearPolynomial(x - y), name = "semi")
         model.add(semi)
 
         model.minimize(semi)

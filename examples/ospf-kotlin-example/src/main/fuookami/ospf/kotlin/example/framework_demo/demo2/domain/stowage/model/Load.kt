@@ -110,7 +110,6 @@ class Load(
                         assert(position.mla eq UInt64.one)
                         if (position.status.stowageNeeded || position.status.adjustmentNeeded) {
                             SlackRangeFunction(
-                                UContinuous,
                                 x = LinearPolynomial(y[j].to(aircraftModel.weightUnit)!!.value),
                                 lb = LinearPolynomial(loadAmount[j] * position.plw!!.min.to(aircraftModel.weightUnit)!!.value),
                                 ub = LinearPolynomial(loadAmount[j] * position.plw.max.to(aircraftModel.weightUnit)!!.value),
@@ -118,7 +117,6 @@ class Load(
                             )
                         } else {
                             SlackRangeFunction(
-                                UContinuous,
                                 x = LinearPolynomial(y[j].to(aircraftModel.weightUnit)!!.value),
                                 lb = LinearPolynomial(position.plw!!.min.to(aircraftModel.weightUnit)!!.value),
                                 ub = LinearPolynomial(position.plw.max.to(aircraftModel.weightUnit)!!.value),

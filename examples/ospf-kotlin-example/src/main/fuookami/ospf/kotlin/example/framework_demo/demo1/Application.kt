@@ -1,12 +1,20 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo1
 
+import kotlin.time.Duration.Companion.seconds
 import fuookami.ospf.kotlin.utils.math.*
+import fuookami.ospf.kotlin.utils.math.ordinary.*
+import fuookami.ospf.kotlin.utils.operator.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.frontend.variable.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
+import fuookami.ospf.kotlin.core.backend.solver.output.*
+import fuookami.ospf.kotlin.core.backend.solver.config.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+import fuookami.ospf.kotlin.core.backend.plugins.gurobi.*
+import fuookami.ospf.kotlin.framework.solver.*
+import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.RouteContext
 import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.BandwidthContext
 import fuookami.ospf.kotlin.example.framework_demo.demo1.infrastructure.*
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.RouteContext
 
 /**
  * @see     https://fuookami.github.io/ospf/examples/framework-example1.html
@@ -23,6 +31,11 @@ class SSP {
 
             is Ok -> {}
         }
+
+        return solveByBenders()
+    }
+
+    private suspend fun solveByMILP(): Ret<Output> {
         val model = LinearMetaModel("demo1")
         when (val result = construct(model)) {
             is Failed -> {
@@ -39,16 +52,112 @@ class SSP {
 
             is Ok -> {}
         }
-        val solution = bandwidthContext.analyze(model, result.value)
-        when (solution) {
-            is Failed -> {
-                return Failed(solution.error)
+        val solution = when (val result = bandwidthContext.analyze(model, result.value)) {
+            is Ok -> {
+                result.value
             }
 
-            is Ok -> {}
+            is Failed -> {
+                return Failed(result.error)
+            }
         }
 
-        return Ok(Output(solution.value.map { list -> list.map { it.id } }))
+        return Ok(Output(solution.map { list -> list.map { it.id } }))
+    }
+
+    private suspend fun solveByBenders(): Ret<Output> {
+        val masterModel = LinearMetaModel("demo1-master")
+        when (val result = constructMaster(masterModel)) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+        val objVar = RealVar("obj")
+        masterModel.add(objVar)
+
+        val subModel = LinearMetaModel("demo1-sub")
+        when (val result = construct(subModel)) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        val solver = GurobiBendersDecompositionSolver(
+            config = SolverConfig(
+                notImprovementTime = 5.seconds,
+            )
+        )
+        var lb = Flt64.minimum
+        var ub = Flt64.maximum
+        var i = UInt64.zero
+        var j = UInt64.zero
+        var currentGap = Flt64.maximum
+        var masterResult: SolverOutput
+        var subResult: SolverOutput? = null
+        do {
+            masterResult = solver.solveMaster("master-${i}", masterModel).value!!
+            lb = max(lb, masterResult.obj)
+            val masterSolution = when (val result = routeContext.analyze(masterModel, masterResult.solution)) {
+                is Ok -> {
+                    result.value
+                }
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            val fixedVariables = routeContext.aggregation.graph.nodes.withIndex().flatMap { (i, node) ->
+                routeContext.aggregation.services.withIndex().map { (j, service) ->
+                    routeContext.aggregation.assignment.x[i, j] to if (masterSolution[service] == node) {
+                        Flt64.one
+                    } else {
+                        Flt64.zero
+                    }
+                }
+            }.toMap<AbstractVariableItem<*, *>, Flt64>()
+            val thisSubResult = solver.solveSub("sub-${i}", subModel, objVar, fixedVariables, true).value!!
+            if (thisSubResult is BendersDecompositionSolver.FeasibleResult) {
+                ub = min(ub, thisSubResult.obj)
+                subResult = thisSubResult.result
+            }
+            thisSubResult.cuts!!.forEach {
+                masterModel.addConstraint(it)
+            }
+            i += UInt64.one
+            val newGap = gap(lb, ub)
+            if (subResult == null || newGap ls currentGap) {
+                currentGap = newGap
+                j = UInt64.zero
+            } else {
+                j += UInt64.one
+            }
+        } while (currentGap gr Flt64.epsilon && j leq UInt64.two)
+
+        val masterSolution = when (val result = routeContext.analyze(masterModel, masterResult.solution)) {
+            is Ok -> {
+                result.value
+            }
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+        val subSolution = when (val result = bandwidthContext.analyze(masterSolution, subModel, subResult!!.solution)) {
+            is Ok -> {
+                result.value
+            }
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        return Ok(Output(subSolution.map { list -> list.map { it.id } }))
     }
 
     private fun init(input: Input): Try {
@@ -107,6 +216,26 @@ class SSP {
         return ok
     }
 
+    private fun constructMaster(model: LinearMetaModel): Try {
+        when (val result = routeContext.register(model)) {
+            is Failed -> {
+                return Failed(result.error)
+            }
+
+            is Ok -> {}
+        }
+
+        when (val result = routeContext.construct(model)) {
+            is Failed -> {
+                return Failed(result.error)
+            }
+
+            is Ok -> {}
+        }
+
+        return ok
+    }
+
     private suspend fun solve(metaModel: LinearMetaModel): Ret<List<Flt64>> {
         val solver = ScipLinearSolver()
         return when (val ret = solver(metaModel)) {
@@ -118,6 +247,16 @@ class SSP {
             is Failed -> {
                 Failed(ret.error)
             }
+        }
+    }
+
+    private fun gap(lb: Flt64, ub: Flt64): Flt64 {
+        return if (lb eq ub) {
+            Flt64.zero
+        } else if (lb eq Flt64.zero || lb == Flt64.minimum || ub == Flt64.maximum) {
+            Flt64.infinity
+        } else {
+            abs((ub - lb) / lb)
         }
     }
 }

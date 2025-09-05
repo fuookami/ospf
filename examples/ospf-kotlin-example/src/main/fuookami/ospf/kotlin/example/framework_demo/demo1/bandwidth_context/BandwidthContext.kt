@@ -3,14 +3,11 @@ package fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.model.EdgeBandwidth
-import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.model.NodeBandwidth
-import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.model.ServiceBandwidth
-import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.service.PipelineListGenerator
-import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.service.SolutionAnalyzer
 import fuookami.ospf.kotlin.example.framework_demo.demo1.infrastructure.*
 import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.RouteContext
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.Node
+import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.model.*
+import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.model.*
+import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.service.*
 import fuookami.ospf.kotlin.framework.model.invoke
 
 class BandwidthContext(
@@ -81,5 +78,17 @@ class BandwidthContext(
             aggregation
         )
         return analyzer(model, result)
+    }
+
+    fun analyze(nodeSolution: Map<Service, Node>, model: LinearMetaModel, result: List<Flt64>): Ret<List<List<Node>>> {
+        val routeAggregation = routeContext.aggregation
+
+        val analyzer = SolutionAnalyzer(
+            routeAggregation.graph,
+            routeAggregation.services,
+            routeAggregation.assignment,
+            aggregation
+        )
+        return analyzer(nodeSolution, model, result)
     }
 }

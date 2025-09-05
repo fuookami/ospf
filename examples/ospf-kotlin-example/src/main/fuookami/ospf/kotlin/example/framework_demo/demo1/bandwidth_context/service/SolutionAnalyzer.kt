@@ -55,7 +55,37 @@ class SolutionAnalyzer(
         return Ok(dump(nodeSolution, edgeSolution))
     }
 
-    private fun dump(nodeSolution: NodeSolution, edgeSolution: EdgeSolution): List<List<Node>> {
+    operator fun invoke(nodeSolution: Map<Service, Node>, model: LinearMetaModel, result: List<Flt64>): Ret<List<List<Node>>> {
+        val edgeSolution = EdgeSolution()
+
+        for (token in model.tokens.tokens) {
+            if (token.variable.belongsTo(aggregation.edgeBandwidth.y)) {
+                if (result[token.solverIndex] gr Flt64.zero) {
+                    val vector = token.variable.vectorView
+                    val service = services[vector[1]]
+                    if (edgeSolution.containsKey(service)) {
+                        edgeSolution[service]!!.add(
+                            Pair(
+                                graph.edges.find { it.index == vector[0] }!!,
+                                result[token.solverIndex].toUInt64()
+                            )
+                        )
+                    } else {
+                        edgeSolution[service] = arrayListOf(
+                            Pair(
+                                graph.edges.find { it.index == vector[0] }!!,
+                                result[token.solverIndex].toUInt64()
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        return Ok(dump(nodeSolution, edgeSolution))
+    }
+
+    private fun dump(nodeSolution: Map<Service, Node>, edgeSolution: EdgeSolution): List<List<Node>> {
         val links = ArrayList<List<Node>>()
         for (pair in nodeSolution) {
             val service = pair.key
