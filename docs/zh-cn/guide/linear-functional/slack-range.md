@@ -26,7 +26,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & x - pos \leq ub,
+s.t. \quad & x - pos \leq ub \\ \; \\
 & x + neg \geq lb
 \end{align}
 $$
