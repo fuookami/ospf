@@ -26,10 +26,10 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & x = \sum_{i \in P} k_{i} \cdot x_{i} \\
-& \sum_{i \in P} k_{i} = 1 \\
-& \sum_{i \in P} b_{i} = 1 \\
-& k_{i} \leq b_{i - 1} + b_{i}, \; \forall i \in P 
+s.t. \quad & x & = & \; \sum_{i \in P} k_{i} \cdot x_{i} \\
+& \sum_{i \in P} k_{i} & = & \; 1 \\
+& \sum_{i \in P} b_{i} & = & \; 1 \\
+& k_{i} & \leq & \; b_{i - 1} + b_{i}, & \; \forall i \in P 
 \end{align}
 $$
 

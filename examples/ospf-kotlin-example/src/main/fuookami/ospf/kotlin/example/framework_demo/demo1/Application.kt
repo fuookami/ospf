@@ -4,9 +4,9 @@ import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.BandwidthContext
 import fuookami.ospf.kotlin.example.framework_demo.demo1.infrastructure.*
-import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.RouteContext
+import fuookami.ospf.kotlin.example.framework_demo.demo1.route_context.*
+import fuookami.ospf.kotlin.example.framework_demo.demo1.bandwidth_context.*
 
 /**
  * @see     https://fuookami.github.io/ospf/examples/framework-example1.html

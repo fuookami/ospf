@@ -2,7 +2,7 @@
 
 ## Problem Description
 
-Several companies have their own capital, liabilities, and profits.
+Given a set of companies with their own capital, liabilities, and profits.
 
 |       | CAPITAL | LIABILITIES | PROFIT |
 | :---: | :-----: | :---------: | :----: |

@@ -39,7 +39,7 @@ class AbsTest {
         model3.addConstraint(x geq Flt64.one)
         model3.minimize(abs)
         val result3 = runBlocking { solver(model3) }
-        assert((result3.value!!.obj - Flt64.one).toFlt32() eq Flt32.zero)
+        assert((result3.value!!.obj - Flt64.one) eq Flt64.zero)
 
         val model4 = LinearMetaModel()
         model4.add(x)
@@ -55,7 +55,7 @@ class AbsTest {
         model5.addConstraint(x leq -Flt64.one)
         model5.minimize(abs)
         val result5 = runBlocking { solver(model5) }
-        assert((result5.value!!.obj - Flt64.one).toFlt32() eq Flt32.zero)
+        assert((result5.value!!.obj - Flt64.one) eq Flt64.zero)
 
         val model6 = LinearMetaModel()
         model6.add(x)
@@ -71,7 +71,7 @@ class AbsTest {
         model7.addConstraint(abs eq Flt64.one)
         model7.maximize(x)
         val result7 = runBlocking { solver(model7) }
-        assert((result7.value!!.obj - Flt64.one).toFlt32() eq Flt32.zero)
+        assert((result7.value!!.obj - Flt64.one) eq Flt64.zero)
 
         val model8 = LinearMetaModel()
         model8.add(x)
@@ -79,7 +79,7 @@ class AbsTest {
         model8.addConstraint(abs eq Flt64.one)
         model8.minimize(x)
         val result8 = runBlocking { solver(model8) }
-        assert((result8.value!!.obj + Flt64.one).toFlt32() eq Flt32.zero)
+        assert((result8.value!!.obj + Flt64.one) eq Flt64.zero)
 
         val model9 = LinearMetaModel()
         model9.add(x)

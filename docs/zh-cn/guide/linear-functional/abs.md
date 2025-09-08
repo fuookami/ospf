@@ -9,7 +9,7 @@ $$
 ## 常量
 
 $$
-m = \max(|x|)
+M = \max(|x|)
 $$
 
 ## 额外变量
@@ -23,14 +23,14 @@ $p \in \{ 0, \, 1 \}$：正数标记。
 ## 导出符号
 
 $$
-y = m \cdot pos + m \cdot neg
+y = M \cdot pos + M \cdot neg
 $$
 
 ## 数学模型
 
 $$
 \begin{align}
-s.t. \quad & x = -m \cdot neg + m \cdot pos
+s.t. \quad & x = -M \cdot neg + M \cdot pos
 \end{align}
 $$
 
@@ -38,9 +38,9 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & neg + pos \leq 1 \\
-& p \geq pos \\
-& neg \leq 1 - p
+s.t. \quad & neg + pos & \leq & \; 1 \\
+& pos & \leq & \; p \\
+& neg & \leq & \; 1 - p
 \end{align}
 $$
 

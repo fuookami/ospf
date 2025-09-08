@@ -59,8 +59,21 @@ export default withMermaid({
                     { text: 'Slack Range', link: '/guide/linear-functional/slack-range' },
                     { text: 'Univariate Linear Piecewise', link: '/guide/linear-functional/ulp' },
                     { text: 'Bivariate Linear Piecewise', link: '/guide/linear-functional/blp' },
-                    { text: 'Semi Function (Semi Variable)', link: '/guide/linear-functional/semi' },
-                    { text: 'Masking Function', link: '/guide/linear-functional/masking' },
+                    { text: 'Semi (Semi Variable)', link: '/guide/linear-functional/semi' },
+                    { text: 'Masking', link: '/guide/linear-functional/masking' },
+                    { text: 'Ceiling', link: '/guide/linear-functional/ceiling' },
+                    { text: 'Floor', link: '/guide/linear-functional/floor' },
+                    { text: 'Rounding', link: '/guide/linear-functional/rounding' },
+                    { text: 'Mod', link: '/guide/linear-functional/mod' },
+                    { text: 'Min (Lower Bound, Infimum)', link: '/guide/linear-functional/min' },
+                    { text: 'Max (Upper Bound, Supremum)', link: '/guide/linear-functional/max' },
+                    { text: 'Binaryzation', link: '/guide/linear-functional/bin' },
+                    { text: 'Balance Ternaryzation', link: '/guide/linear-functional/bter' },
+                    { text: 'And', link: '/guide/linear-functional/and' },
+                    { text: 'Or', link: '/guide/linear-functional/or' },
+                    { text: 'Not', link: '/guide/linear-functional/not' },
+                    { text: 'Xor', link: '/guide/linear-functional/xor' },
+                    { text: 'If', link: '/guide/linear-functional/if' }
                   ]
                 },
                 { 
@@ -72,6 +85,8 @@ export default withMermaid({
                     { text: 'Semi Function (Semi Variable)', link: '/guide/quadratic-functional/semi' },
                   ]
                 },
+                { text: 'Use Domain Driven Design Architecture With Column Generation Algorithm', link: '/guide/use-ddd-architecture-with-column-generation' },
+                { text: 'Use Domain Driven Design Architecture With Benders Decomposition Algorithm', link: '/guide/use-ddd-architecture-with-benders' },
                 { text: 'Linear Functional Intermediate Expression', link: '/guide/linear-functional-intermediate-expression' },
                 { text: 'Quadratic Functional Intermediate Expression', link: '/guide/quadratic-functional-intermediate-expression' },
                 { text: 'The Deductive Logic Expression of the Mathematical Model', link: '/guide/deductive-logic-expression' },
@@ -159,6 +174,19 @@ export default withMermaid({
                     { text: '二元分段线性', link: '/zh-cn/guide/linear-functional/blp' },
                     { text: '半函数（半变量）', link: '/zh-cn/guide/linear-functional/semi' },
                     { text: '掩码函数', link: '/zh-cn/guide/linear-functional/masking' },
+                    { text: '整除（向上取整）', link: '/zh-cn/guide/linear-functional/ceiling' },
+                    { text: '整除（向下取整）', link: '/zh-cn/guide/linear-functional/floor' },
+                    { text: '整除（四舍五入）', link: '/zh-cn/guide/linear-functional/rounding' },
+                    { text: '整除（取余）', link: '/zh-cn/guide/linear-functional/mod' },
+                    { text: '最小值（下界、下确界）', link: '/zh-cn/guide/linear-functional/min' },
+                    { text: '最大值（上界、上确界）', link: '/zh-cn/guide/linear-functional/max' },
+                    { text: '二值化', link: '/zh-cn/guide/linear-functional/bin' },
+                    { text: '平衡三值化', link: '/zh-cn/guide/linear-functional/bter' },
+                    { text: '逻辑与', link: '/zh-cn/guide/linear-functional/and' },
+                    { text: '逻辑或', link: '/zh-cn/guide/linear-functional/or' },
+                    { text: '逻辑非', link: '/zh-cn/guide/linear-functional/not' },
+                    { text: '逻辑异或', link: '/zh-cn/guide/linear-functional/xor' },
+                    { text: '如果', link: '/zh-cn/guide/linear-functional/if' }
                   ]
                 },
                 { 
@@ -170,6 +198,8 @@ export default withMermaid({
                     { text: '半函数（半变量）', link: '/zh-cn/guide/quadratic-functional/semi' },
                   ]
                 },
+                { text: '使用领域驱动设计架构（列生成算法）', link: '/zh-cn/guide/use-ddd-architecture-with-column-generation' },
+                { text: '使用领域驱动设计架构（Benders 分解算法）', link: '/zh-cn/guide/use-ddd-architecture-with-benders' },
                 { text: '数学模型的演绎逻辑表达', link: '/zh-cn/guide/deductive-logic-expression' },
                 { text: '形式化设计与形式化验证', link: '/zh-cn/guide/formal-design-and-formal-verification' },
                 { text: '云端求解器', link: '/zh-cn/guide/remote-solver' },

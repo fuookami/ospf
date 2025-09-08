@@ -2,7 +2,7 @@
 
 ## Problem Description
 
-There are some products and some raw materials, each raw material has a given available quantity, each product has a revenue, each product has a maximum production quantity, and each product requires multiple types of raw materials.
+Given a set of products and raw materials, each raw material has a given available quantity, each product has a revenue, each product has a maximum production quantity, and each product requires multiple types of raw materials.
 
 |                    | Raw Material A | Raw Material B |
 | :----------------: | :------------: | :------------: |

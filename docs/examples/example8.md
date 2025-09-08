@@ -121,7 +121,7 @@ val manHours = LinearIntermediateSymbols1(
 }
 metaModel.add(manHours)
 
-// define intermediate expressions
+// define objective function
 metaModel.maximize(profit, "profit")
 
 // define constraints
