@@ -51,7 +51,7 @@ $$
 
 ## 推理过程
 
-1. 基本原理
+### 基本原理
 
 $$
 (\vec{P_{0}P} = u \cdot \vec{P_{0}P_{1}} + v \cdot \vec{P_{0}P_{2}}) \wedge (u \geq 0) \wedge (v \geq 0) \wedge (u + v \leq 1)) \Rightarrow (P \in \triangle P_{0}P_{1}P_{2})
@@ -61,7 +61,7 @@ $$
 (\exists t \in T((P \in t) \wedge (\not \exists t^{\prime} \in T((t \neq t^{\prime}) \wedge (P \in t^{\prime})))))
 $$
 
-2. 代数化基本原理
+### 代数化基本原理
 
 $$
 \begin{align}
@@ -71,7 +71,7 @@ fv_{t}(x, y) = \frac{1}{2S_{t}} \cdot (x_{t, 0} \cdot y_{t, 1} - y_{t, 0} \cdot 
 \end{align}
 $$
 
-3. 逻辑特性：
+### 逻辑特性：
 
 $$
 \forall t \in T(w_{t} \in \{ 0, 1 \})
@@ -89,7 +89,7 @@ $$
 \forall t \in T(((w_{t} = 1) \Rightarrow ((u_{t} = fu_{t}(x, y)) \wedge (v_{t} = fv_{t}(x, y)))) \wedge ((w_{t} = 0) \Rightarrow ((u_{t} = 0) \wedge (v_{t} = 0))))
 $$
 
-4. （非线性）数学模型：
+### （二次型）数学模型：
 
 $$
 \begin{align}

@@ -73,7 +73,10 @@ export default withMermaid({
                     { text: 'Or', link: '/guide/linear-functional/or' },
                     { text: 'Not', link: '/guide/linear-functional/not' },
                     { text: 'Xor', link: '/guide/linear-functional/xor' },
-                    { text: 'If', link: '/guide/linear-functional/if' }
+                    { text: 'If', link: '/guide/linear-functional/if' },
+                    { text: 'If In', link: '/guide/linear-functional/if-in' },
+                    { text: 'If Then', link: '/guide/linear-functional/if-then' },
+                    { text: 'One Of', link: '/guide/linear-functional/one-of' }
                   ]
                 },
                 { 
@@ -186,7 +189,10 @@ export default withMermaid({
                     { text: '逻辑或', link: '/zh-cn/guide/linear-functional/or' },
                     { text: '逻辑非', link: '/zh-cn/guide/linear-functional/not' },
                     { text: '逻辑异或', link: '/zh-cn/guide/linear-functional/xor' },
-                    { text: '如果', link: '/zh-cn/guide/linear-functional/if' }
+                    { text: '如果', link: '/zh-cn/guide/linear-functional/if' },
+                    { text: '如果属于', link: '/zh-cn/guide/linear-functional/if-in' },
+                    { text: '蕴含', link: '/zh-cn/guide/linear-functional/if-then' },
+                    { text: '选择', link: '/zh-cn/guide/linear-functional/one-of' }
                   ]
                 },
                 { 
