@@ -11,12 +11,12 @@ $$
 
 ## 额外变量
 
-$y \in \{0, 1\}$ ：逻辑或值。
+$y^{\prime} \in \{0, 1\}$ ：逻辑或值。
 
 ## 导出符号
 
 $$
-y = y
+y = y^{\prime}
 $$
 
 ## 数学模型
@@ -25,10 +25,10 @@ $$
 \begin{align}
 s.t. \quad & 
 \begin{cases}
-  \, y \geq \frac{x_{i}}{\max(x_{i})}, & \max(x_{i}) > 1 \\ \; \\
-  \, y \geq x_{i}, & else
+  \, y^{\prime} \geq \frac{x_{i}}{\max(x_{i})}, & \max(x_{i}) > 1 \\ \; \\
+  \, y^{\prime} \geq x_{i}, & else
 \end{cases} \\ \; \\
-& \quad y \leq \sum_{i} x_{i} &
+& \quad y^{\prime} \leq \sum_{i} x_{i} &
 \end{align} 
 $$
 

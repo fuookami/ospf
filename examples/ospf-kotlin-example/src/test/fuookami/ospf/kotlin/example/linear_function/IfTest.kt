@@ -16,8 +16,8 @@ class IfTest {
         x.range.geq(Flt64.two)
         x.range.leq(Flt64.five)
         val condition1 = IfFunction(x geq Flt64.three, name = "c1")
-        val condition2 = IfFunction(x geq Flt64.three, epsilon = Flt64.zero, name = "c1")
-        val condition3 = IfFunction(x leq Flt64.one, name = "c2")
+        val condition2 = IfFunction(x geq Flt64.three, epsilon = Flt64.zero, name = "c2")
+        val condition3 = IfFunction(x leq Flt64.one, name = "c3")
         val solver = ScipLinearSolver()
 
         val model1 = LinearMetaModel()
