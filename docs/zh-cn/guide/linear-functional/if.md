@@ -15,12 +15,12 @@ $$
 
 $k_{i} \in [0, 1]$ ：线性分段权重。
 
-$y \in \{0, 1\}$ ：不等式的逻辑值。
+$y^{\prime} \in \{0, 1\}$ ：不等式的逻辑值。
 
 ## 导出符号
 
 $$
-y = y
+y = y^{\prime}
 $$
 
 ## 数学模型
@@ -31,11 +31,11 @@ $$
 s.t. \quad \begin{cases}
   \begin{cases}
     x = k_{0} \cdot \min(x) + k_{1} \cdot rhs + k_{2} \cdot \max(x) \\ \; \\
-    k_{0} \leq y \\ \; \\
-    k_{2} \leq 1 - y \\ \; \\
-    k_{2} \geq \epsilon \cdot (1 - y)
+    k_{0} \leq y^{\prime} \\ \; \\
+    k_{2} \leq 1 - y^{\prime} \\ \; \\
+    k_{2} \geq \epsilon \cdot (1 - y^{\prime})
   \end{cases}, & \; rhs \in [\min(x), \, \max(x)] \\ \; \\
-  \quad y = bin(max(x) \leq rhs), & \; rhs \notin [\min(x), \, \max(x)]
+  \quad y^{\prime} = bin(max(x) \leq rhs), & \; rhs \notin [\min(x), \, \max(x)]
 \end{cases}
 $$
 
@@ -45,11 +45,11 @@ $$
 s.t. \quad \begin{cases}
   \begin{cases}
     x = k_{0} \cdot \min(x) + k_{1} \cdot rhs + k_{2} \cdot \max(x) \\ \; \\
-    k_{0} \leq 1 - y \\ \; \\
-    k_{0} \geq \epsilon \cdot (1 - y) \\ \; \\
-    k_{2} \geq y
+    k_{0} \leq 1 - y^{\prime} \\ \; \\
+    k_{0} \geq \epsilon \cdot (1 - y^{\prime}) \\ \; \\
+    k_{2} \geq y^{\prime}
   \end{cases}, & \; rhs \in [\min(x), \, \max(x)] \\ \; \\
-  \quad y = bin(max(x) \leq rhs), & \; rhs \notin [\min(x), \, \max(x)]
+  \quad y^{\prime} = bin(max(x) \leq rhs), & \; rhs \notin [\min(x), \, \max(x)]
 \end{cases}
 $$
 
@@ -59,10 +59,10 @@ $$
 s.t. \quad \begin{cases}
   \begin{cases}
     x = k_{0} \cdot \min(x) + k_{1} \cdot rhs + k_{2} \cdot \max(x) \\ \; \\
-    k_{0} + k_{2} \leq 1 - y \\ \; \\
-    k_{0} + k_{2} \geq \epsilon \cdot (1 - y)
+    k_{0} + k_{2} \leq 1 - y^{\prime} \\ \; \\
+    k_{0} + k_{2} \geq \epsilon \cdot (1 - y^{\prime})
   \end{cases}, & \; rhs \in [\min(x), \, \max(x)] \\ \; \\
-  \quad y = bin(max(x) \leq rhs), & \; rhs \notin [\min(x), \, \max(x)]
+  \quad y^{\prime} = bin(max(x) \leq rhs), & \; rhs \notin [\min(x), \, \max(x)]
 \end{cases}
 $$
 
