@@ -12,7 +12,7 @@ $$
 ## 常量
 
 $$
-M = \max(|x|)
+m = \max(|x|)
 $$
 
 ## 额外变量
@@ -32,8 +32,8 @@ $$
 $$
 \begin{align}
 s.t. \quad & y \geq x \\ \; \\
-& y \leq x + M \cdot u \\ \; \\
-& y \leq M \cdot (1 - u)
+& y \leq x + m \cdot u \\ \; \\
+& y \leq m \cdot (1 - u)
 \end{align}
 $$
 
