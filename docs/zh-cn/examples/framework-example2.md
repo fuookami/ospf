@@ -157,8 +157,8 @@ $$
 **描述**：如果是预配算法族，计算总业载使用预计总业载；如果是全配算法族，计算总业载使用实时总业载。
 $$
 Payload^{Computed} = \begin{cases}
-Payload^{Plan},& Predistribution \\ \; \\
-Payload^{Boarded},& FullLoad
+Payload^{Plan},& \text{Predistribution} \\ \; \\
+Payload^{Boarded},& \text{FullLoad}
 \end{cases}
 $$
 
@@ -167,8 +167,8 @@ $$
 **描述**：当前舱位计算载重量之和	。
 $$
 Payload^{Estimate} = \begin{cases}
-Payload^{Computed},& FullLoad \; \& \; Predistribution \\ \; \\
-\sum_{d \in D} Payload^{Estimate}_{d},& else
+Payload^{Computed},& \text{FullLoad \; \& \; Predistribution} \\ \; \\
+\sum_{d \in D} Payload^{Estimate}_{d},& \text{otherwise}
 \end{cases}
 $$
 
@@ -178,8 +178,8 @@ $$
 
 $$
 Payload^{Actual} = \begin{cases}
-Payload^{Boarded},& FullLoad \; \& \; RecommendWeight \\ \; \\
-\sum_{d \in D} Payload^{Actual},& else
+Payload^{Boarded},& \text{FullLoad \; \& \; RecommendWeight} \\ \; \\
+\sum_{d \in D} Payload^{Actual},& \text{otherwise}
 \end{cases}
 $$
 

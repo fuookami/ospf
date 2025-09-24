@@ -4,9 +4,9 @@
 
 $$
 z = slack(x, \, y) = \begin{cases}
-max(0, \, x - y), & 计算正松弛\\
-max(0, \, y - x), & 计算负松弛\\
-|x - y|, & 计算正负松弛
+max(0, \, x - y), & \text{计算正松弛} \\ \; \\
+max(0, \, y - x), & \text{计算负松弛} \\ \; \\
+|x - y|, & \text{计算正负松弛}
 \end{cases}
 $$
 
