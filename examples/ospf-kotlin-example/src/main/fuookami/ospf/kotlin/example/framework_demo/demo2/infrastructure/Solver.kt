@@ -56,7 +56,7 @@ data object LinearSolverBuilder {
                 solvers = listOf(
                     GurobiLinearSolver(
                         config = config.copy(extraConfig = gurobiConfig),
-                        callBack = GurobiLinearSolverCallBack().afterFailure { grbModel, _, _ ->
+                        callBack = GurobiLinearSolverCallBack().afterFailure { _, grbModel, _, _ ->
                             grbModel.computeIIS()
                             grbModel.write("iis.ilp")
                             ok

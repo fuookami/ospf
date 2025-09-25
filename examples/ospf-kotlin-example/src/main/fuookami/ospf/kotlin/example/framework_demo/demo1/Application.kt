@@ -92,7 +92,7 @@ class SSP {
             }
         }
 
-        val solver = GurobiBendersDecompositionSolver(
+        val solver = GurobiLinearBendersDecompositionSolver(
             config = SolverConfig(
                 notImprovementTime = 5.seconds,
             )
@@ -126,9 +126,9 @@ class SSP {
                         Flt64.zero
                     }
                 }
-            }.toMap<AbstractVariableItem<*, *>, Flt64>()
+            }.toMap()
             val thisSubResult = solver.solveSub("sub-${i}", subModel, objVar, fixedVariables, true).value!!
-            if (thisSubResult is BendersDecompositionSolver.FeasibleResult) {
+            if (thisSubResult is LinearBendersDecompositionSolver.LinearFeasibleResult) {
                 ub = min(ub, thisSubResult.obj + masterSolution.sumOf { it.key.cost }.toFlt64())
                 subResult = thisSubResult.result
             }

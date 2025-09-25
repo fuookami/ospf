@@ -79,16 +79,18 @@ class FleetBalanceLimit(
     override fun refresh(
         map: ShadowPriceMap,
         model: AbstractLinearMetaModel,
-        shadowPrices: List<Flt64>
+        shadowPrices: MetaDualSolution
     ): Try {
         for ((l, j) in model.indicesOfConstraintGroup(name)!!.withIndex()) {
             val checkPoint = fleetBalance.limits[l].first
-            map.put(
-                ShadowPrice(
-                    key = FleetBalanceShadowPriceKey(checkPoint.airport, checkPoint.aircraftMinorType),
-                    price = shadowPrices[j]
+            shadowPrices[model.constraints[j]]?.let { price ->
+                map.put(
+                    ShadowPrice(
+                        key = FleetBalanceShadowPriceKey(checkPoint.airport, checkPoint.aircraftMinorType),
+                        price = price
+                    )
                 )
-            )
+            }
         }
 
         return ok

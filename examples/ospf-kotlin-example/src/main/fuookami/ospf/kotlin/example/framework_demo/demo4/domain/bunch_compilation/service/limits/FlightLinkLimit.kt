@@ -84,15 +84,17 @@ class FlightLinkLimit(
     override fun refresh(
         map: ShadowPriceMap,
         model: AbstractLinearMetaModel,
-        shadowPrices: List<Flt64>
+        shadowPrices: MetaDualSolution
     ): Try {
         for ((k, j) in model.indicesOfConstraintGroup(name)!!.withIndex()) {
-            map.put(
-                ShadowPrice(
-                    key = FlightLinkShadowPriceKey(flightLink.links[k]),
-                    price = shadowPrices[j]
+            shadowPrices[model.constraints[j]]?.let { price ->
+                map.put(
+                    ShadowPrice(
+                        key = FlightLinkShadowPriceKey(flightLink.links[k]),
+                        price = price
+                    )
                 )
-            )
+            }
         }
 
         return ok

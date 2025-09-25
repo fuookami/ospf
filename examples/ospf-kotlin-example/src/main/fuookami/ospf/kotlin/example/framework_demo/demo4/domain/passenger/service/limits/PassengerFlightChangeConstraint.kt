@@ -26,7 +26,7 @@ class PassengerFlightChangeConstraint(
                     val earliestStartTime = time.estimateEndTime[passenger.prev.flight] + timeWindow.valueOf(passenger.prev.flight.arr.passengerTransferTime)
                     val estCondition = IfFunction(
                         earliestStartTime leq time.estimateStartTime[passenger.flight],
-                        "${passenger}_${toFlight}_est"
+                        name = "${passenger}_${toFlight}_est"
                     )
                     when (val result = model.add(estCondition)) {
                         is Ok -> {}
@@ -57,7 +57,7 @@ class PassengerFlightChangeConstraint(
                     val lastestEndTime = time.estimateStartTime[next.flight] - timeWindow.valueOf(next.flight.dep.passengerTransferTime)
                     val eetCondition = IfFunction(
                         time.estimateEndTime[passenger.flight] leq lastestEndTime,
-                        "${passenger}_${toFlight}_eet"
+                        name = "${passenger}_${toFlight}_eet"
                     )
                     when (val result = model.add(eetCondition)) {
                         is Ok -> {}

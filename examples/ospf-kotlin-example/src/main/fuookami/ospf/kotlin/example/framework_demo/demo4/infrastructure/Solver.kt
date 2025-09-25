@@ -52,7 +52,7 @@ data object LinearSolverBuilder {
         }) ?: if (System.getProperty("os.name").lowercase(Locale.getDefault()).contains("win")) {
             GurobiColumnGenerationSolver(
                 config = config,
-                callBack = GurobiLinearSolverCallBack().afterFailure { grbModel, _, _ ->
+                callBack = GurobiLinearSolverCallBack().afterFailure { _, grbModel, _, _ ->
                     grbModel.computeIIS()
                     grbModel.write("iis.ilp")
                     ok

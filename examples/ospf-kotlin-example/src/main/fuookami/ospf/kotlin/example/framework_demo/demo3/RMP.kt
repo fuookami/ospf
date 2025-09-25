@@ -80,7 +80,7 @@ class RMP(
     suspend operator fun invoke(iteration: UInt64): Ret<ShadowPriceMap> {
         return when (val result = solver.solveLP("demo1-rmp-$iteration", metaModel)) {
             is Ok -> {
-                Ok(extractShadowPriceMap(result.value.dualSolution))
+                Ok(extractShadowPriceMap(result.value.dualSolution.toMeta()))
             }
 
             is Failed -> {
@@ -102,11 +102,13 @@ class RMP(
         }
     }
 
-    private fun extractShadowPriceMap(dualResult: List<Flt64>): ShadowPriceMap {
+    private fun extractShadowPriceMap(shadowPrices: MetaDualSolution): ShadowPriceMap {
         val ret = ShadowPriceMap()
 
         for ((i, j) in metaModel.indicesOfConstraintGroup("product_demand")!!.withIndex()) {
-            ret.put(ShadowPrice(ProductDemandShadowPriceKey(products[i]), dualResult[j]))
+            shadowPrices[metaModel.constraints[j]]?.let { price ->
+                ret.put(ShadowPrice(ProductDemandShadowPriceKey(products[i]), price))
+            }
         }
         ret.put { map, args ->
             map.map[ProductDemandShadowPriceKey(args)]?.price ?: Flt64.zero
