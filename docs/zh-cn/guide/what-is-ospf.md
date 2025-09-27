@@ -705,6 +705,48 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td></td>
       </tr>
       <tr>
+        <td colspan=7>算法能力/框架</td>
+      </tr>
+      <tr>
+        <td>IIS</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>列生成</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>自动 Benders 分解<br>（线性）</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>自动 Benders 分解<br>（二次型）</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td colspan=7>应用框架</td>
+      </tr>
+      <tr>
         <td>一维装箱</td>
         <td>❌</td>
         <td>❌</td>
