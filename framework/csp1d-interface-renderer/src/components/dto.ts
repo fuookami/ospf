@@ -1,5 +1,17 @@
 export const offset: number = 80;
 
+export type CuttingPlanProductionView = {
+    name: string
+    x: number
+    displayFromX: string
+    displayToX: string
+    width: number
+    displayWidth: string
+    productionType: string
+    info: Map<string, string>
+    color: string | null
+}
+
 export type CuttingPlanProductionDTO = {
     name: string
     x: number

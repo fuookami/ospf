@@ -1,12 +1,12 @@
 <template>
   <h4 v-for="title in group">{{ title }}</h4>
-  <CuttingPlanView v-for="cuttingPlan of cuttingPlans" :ref="(el) => setViewRefs(el, cuttingPlan)" style="width: 100%; max-width: 100%; height: 1.5em; "/>
+  <CuttingPlanView v-for="cuttingPlan of cuttingPlans" :ref="(el) => setViewRefs(el, cuttingPlan)" style="width: 100%; max-width: 100%; height: 3em; "/>
 </template>
 
 <script lang="ts">
 import {ComponentPublicInstance, defineComponent, HTMLAttributes, ref} from "vue";
 import CuttingPlanView from "./cutting-plan-view.vue";
-import {offset, CuttingPlanDTO, CuttingPlanProductionDTO} from "./dto.ts";
+import {offset, CuttingPlanDTO, CuttingPlanProductionDTO, CuttingPlanProductionView} from "./dto.ts";
 
 const defectCostarColor: number = 0x757575;
 const costarColor: number = 0xEC4141;
@@ -121,10 +121,13 @@ export default defineComponent({
             }
             color = getProductColor(category);
           }
-          const result: CuttingPlanProductionDTO = {
+          const result: CuttingPlanProductionView = {
             name: p.name,
             x: p.x / scale + offset,
+            displayFromX: p.x.toFixed(0).toString(),
+            displayToX: (p.x + p.width).toFixed(0).toString(),
             width: p.width / scale,
+            displayWidth: p.width.toFixed(0).toString(),
             productionType: p.productionType,
             info: info,
             color: "#" + color.toString(16).padStart(6, '0'),
