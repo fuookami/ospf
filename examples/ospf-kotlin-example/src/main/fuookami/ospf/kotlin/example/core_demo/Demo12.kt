@@ -93,7 +93,7 @@ data object Demo12 {
                     LinearPolynomial(product.premium * x[i]),
                     LinearPolynomial(product.minPremium * assignment[i])
                 ),
-                "premium_$i"
+                name = "premium_$i"
             )
         }
         metaModel.add(premium)
