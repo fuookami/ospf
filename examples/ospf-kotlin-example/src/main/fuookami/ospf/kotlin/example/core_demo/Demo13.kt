@@ -149,14 +149,14 @@ data object Demo13 {
         for (distributionCenter in distributionCenters) {
             metaModel.addConstraint(
                 trans[distributionCenter] leq distributionCenter.supply,
-                "supply_${distributionCenter.index}"
+                name = "supply_${distributionCenter.index}"
             )
         }
 
         for (dealer in dealers) {
             metaModel.addConstraint(
                 receive[dealer] geq dealer.demand,
-                "demand_${dealer.index}"
+                name = "demand_${dealer.index}"
             )
         }
 
@@ -164,7 +164,7 @@ data object Demo13 {
             for (distributionCenter in distributionCenters) {
                 metaModel.addConstraint(
                     x[dealer, distributionCenter] leq carCapacity * y[dealer, distributionCenter],
-                    "car_limit_${dealer.index}_${distributionCenter.index}"
+                    name = "car_limit_${dealer.index}_${distributionCenter.index}"
                 )
             }
         }

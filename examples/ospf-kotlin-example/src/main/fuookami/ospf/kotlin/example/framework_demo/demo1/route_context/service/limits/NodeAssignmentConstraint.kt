@@ -17,7 +17,7 @@ class NodeAssignmentConstraint(
         for (node in nodes.filter(normal)) {
             model.addConstraint(
                 assignment.nodeAssignment[node] leq 1,
-                "${name}_$node"
+                name = "${name}_$node"
             )
         }
         return ok

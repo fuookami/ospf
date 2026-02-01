@@ -18,7 +18,7 @@ class DemandConstraint(
         for (node in nodes.filter(client)) {
             model.addConstraint(
                 nodeBandwidth.inDegree[node] geq (node as ClientNode).demand,
-                "${name}_$node"
+                name = "${name}_$node"
             )
         }
         return ok

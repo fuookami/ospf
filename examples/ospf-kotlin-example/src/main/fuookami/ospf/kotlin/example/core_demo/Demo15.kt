@@ -250,7 +250,7 @@ data object Demo15 {
                 d.demands[c]?.let {
                     metaModel.addConstraint(
                         receive[d, c] geq it,
-                        "demand_${d.name}_${c.name}"
+                        name = "demand_${d.name}_${c.name}"
                     )
                 }
             }
@@ -261,7 +261,7 @@ data object Demo15 {
                 m.productivity[c]?.let {
                     metaModel.addConstraint(
                         trans[m, c] geq it,
-                        "produce_${m.name}_${c.name}"
+                        name = "produce_${m.name}_${c.name}"
                     )
                 }
             }

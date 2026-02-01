@@ -147,14 +147,14 @@ data object Demo16 {
         for (p in produces) {
             metaModel.addConstraint(
                 supply[p] geq p.demand,
-                "demand_${p.month}"
+                name = "demand_${p.month}"
             )
         }
 
         for (p in produces) {
             metaModel.addConstraint(
                 produce[p] leq p.productivity,
-                "productivity_${p.month}"
+                name = "productivity_${p.month}"
             )
         }
 

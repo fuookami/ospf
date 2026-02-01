@@ -359,7 +359,7 @@ data object Demo17 {
         for (v in vehicles) {
             metaModel.addConstraint(
                 origin[v] leq 1,
-                "origin_${v.index}"
+                name = "origin_${v.index}"
             )
         }
 
@@ -367,7 +367,7 @@ data object Demo17 {
             for (v in vehicles) {
                 metaModel.addConstraint(
                     inFlow[n, v] eq outFlow[n, v],
-                    "balance_${n.index}_${v.index}",
+                    name = "balance_${n.index}_${v.index}",
                 )
             }
         }
@@ -375,14 +375,14 @@ data object Demo17 {
         for (v in vehicles) {
             metaModel.addConstraint(
                 destination[v] leq 1,
-                "destination_${v.index}"
+                name = "destination_${v.index}"
             )
         }
 
         for (n in nodes.filterIsInstance<DemandNode>()) {
             metaModel.addConstraint(
                 service[n] eq 1,
-                "service_${n.index}"
+                name = "service_${n.index}"
             )
         }
 
@@ -392,7 +392,7 @@ data object Demo17 {
                 for (v in vehicles) {
                     metaModel.addConstraint(
                         s[n1, v] + ((n1 as? DemandNode)?.serviceTime ?: UInt64.zero) + n1.time(n2) - m * (1 - x[n1, n2, v]) leq s[n2, v],
-                        "time_window_${n1.index}_${n2.index}_${v.index}"
+                        name = "time_window_${n1.index}_${n2.index}_${v.index}"
                     )
                 }
             }
@@ -402,11 +402,11 @@ data object Demo17 {
             for (v in vehicles) {
                 metaModel.addConstraint(
                     s[n, v] geq n.timeWindow.lowerBound.value.unwrap(),
-                    "time_window_lb_${n.index}_${v.index}"
+                    name = "time_window_lb_${n.index}_${v.index}"
                 )
                 metaModel.addConstraint(
                     s[n, v] leq n.timeWindow.upperBound.value.unwrap(),
-                    "time_window_ub_${n.index}_${v.index}"
+                    name = "time_window_ub_${n.index}_${v.index}"
                 )
             }
         }
@@ -414,7 +414,7 @@ data object Demo17 {
         for (v in vehicles) {
             metaModel.addConstraint(
                 capacity[v] leq v.capacity,
-                "capacity_${v.index}"
+                name = "capacity_${v.index}"
             )
         }
 

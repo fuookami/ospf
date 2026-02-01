@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.github.fuookami.ospf.kotlin</groupId>
         <artifactId>ospf-kotlin-parent</artifactId>
-        <version>1.0.59</version>
+        <version>1.0.68</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -23,6 +23,11 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>io.github.fuookami.ospf.kotlin</groupId>
+            <artifactId>ospf-kotlin-starter-csp1d</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>io.github.fuookami.ospf.kotlin.core.plugin</groupId>
             <artifactId>ospf-kotlin-core-plugin-gurobi</artifactId>
             <version>${project.version}</version>
@@ -37,16 +42,16 @@
             <artifactId>ospf-kotlin-core-plugin-heuristic</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <dependency>
-             <groupId>scip</groupId>
-             <artifactId>jscip</artifactId>
-             <version>1.0.0</version>
-        </dependency>
-        <dependency>
-            <groupId>gurobi</groupId>
-            <artifactId>gurobi</artifactId>
-            <version>1.0.0</version>
-        </dependency>
+<!--        <dependency>-->
+<!--             <groupId>scip</groupId>-->
+<!--             <artifactId>jscip</artifactId>-->
+<!--             <version>1.0.0</version>-->
+<!--        </dependency>-->
+<!--        <dependency>-->
+<!--            <groupId>gurobi</groupId>-->
+<!--            <artifactId>gurobi</artifactId>-->
+<!--            <version>1.0.0</version>-->
+<!--        </dependency>-->
     </dependencies>
 
     <build>

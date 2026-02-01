@@ -127,17 +127,17 @@ data object Demo11 {
         val rootNode = nodes.first { it is RootNode }
         metaModel.addConstraint(
             flowOut[rootNode] - flowIn[rootNode] eq flow,
-            "flow_${rootNode.index}"
+            name = "flow_${rootNode.index}"
         )
         val endNode = nodes.first { it is EndNode }
         metaModel.addConstraint(
             flowIn[endNode] - flowOut[endNode] eq flow,
-            "flow_${endNode.index}"
+            name = "flow_${endNode.index}"
         )
         for (node in nodes.filterIsInstance<NormalNode>()) {
             metaModel.addConstraint(
                 flowOut[node] eq flowIn[node],
-                "flow_${node.index}"
+                name = "flow_${node.index}"
             )
         }
         return ok

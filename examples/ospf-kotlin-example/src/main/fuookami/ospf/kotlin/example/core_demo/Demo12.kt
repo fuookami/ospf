@@ -121,12 +121,12 @@ data object Demo12 {
     private suspend fun initConstraint(): Try {
         metaModel.addConstraint(
             sum(products.map { p -> x[p] + premium[p] }) eq funds,
-            "funs"
+            name = "funs"
         )
 
         metaModel.addConstraint(
             risk leq maxRisk,
-            "risk"
+            name = "risk"
         )
 
         return ok

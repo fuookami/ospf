@@ -135,7 +135,7 @@ data object Demo8 {
         for (e in equipments) {
             metaModel.addConstraint(
                 manHours[e] leq e.amount.toFlt64() * maxManHours,
-                "eq_man_hours_${e.index}"
+                name = "eq_man_hours_${e.index}"
             )
         }
         return ok

@@ -142,14 +142,14 @@ data object Demo7 {
         for(w in warehouses){
             metaModel.addConstraint(
                 shipment[w] leq w.stowage,
-                "stowage_${w.index}"
+                name = "stowage_${w.index}"
             )
         }
 
         for(s in stores){
             metaModel.addConstraint(
                 purchase[s] geq s.demand,
-                "demand_${s.index}"
+                name = "demand_${s.index}"
             )
         }
         return ok

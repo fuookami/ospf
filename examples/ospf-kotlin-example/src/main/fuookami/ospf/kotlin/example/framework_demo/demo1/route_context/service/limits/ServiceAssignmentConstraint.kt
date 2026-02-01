@@ -16,7 +16,7 @@ class ServiceAssignmentConstraint(
         for (service in services) {
             model.addConstraint(
                 assignment.serviceAssignment[service] leq 1,
-                "${name}_$service"
+                name = "${name}_$service"
             )
         }
         return ok

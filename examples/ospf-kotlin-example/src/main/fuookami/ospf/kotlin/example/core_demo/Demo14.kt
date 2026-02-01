@@ -155,21 +155,21 @@ data object Demo14 {
         for (node in nodes.filterIsInstance<Product>()) {
             metaModel.addConstraint(
                 transOut[node] leq node.storage,
-                "out_${node.name}"
+                name = "out_${node.name}"
             )
         }
 
         for (node in nodes.filterIsInstance<Sale>()) {
             metaModel.addConstraint(
                 transIn[node] geq node.demand,
-                "in_${node.name}"
+                name = "in_${node.name}"
             )
         }
 
         for (node in nodes.filterIsInstance<Distribution>()) {
             metaModel.addConstraint(
                 transOut[node] eq transIn[node],
-                "balance_${node.name}"
+                name = "balance_${node.name}"
             )
         }
 

@@ -89,7 +89,7 @@ data object Demo6 {
 
         metaModel.addConstraint(
             cargoWeight leq maxWeight,
-            "weight"
+            name = "weight"
         )
         return ok
     }

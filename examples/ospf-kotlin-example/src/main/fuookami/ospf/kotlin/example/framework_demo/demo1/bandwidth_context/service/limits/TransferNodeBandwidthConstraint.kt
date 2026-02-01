@@ -29,7 +29,7 @@ class TransferNodeBandwidthConstraint(
         for (node in nodes.filter(normal)) {
             model.addConstraint(
                 node.maxOutDegree() * (UInt64.one - assignment[node]) + outFlow[node] leq node.maxOutDegree(),
-                "${name}_$node"
+                name = "${name}_$node"
             )
         }
         return ok

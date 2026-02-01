@@ -84,7 +84,7 @@ data object Demo5 {
     private suspend fun initConstraint(): Try {
         metaModel.addConstraint(
             cargoWeight leq maxWeight,
-            "weight"
+            name = "weight"
         )
         return ok
     }
