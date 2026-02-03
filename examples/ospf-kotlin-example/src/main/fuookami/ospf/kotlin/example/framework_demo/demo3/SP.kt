@@ -41,7 +41,10 @@ class SP {
         }
         model.add(y)
 
-        val use = LinearExpressionSymbol(sum(products) { p -> p.length * y[p] }, "use")
+        val use = LinearExpressionSymbol(
+            sum(products) { p -> p.length * y[p] },
+            name = "use"
+        )
         model.add(use)
 
         model.minimize(Flt64.one - sum(products) { p -> shadowPrice(p) * y[p] })

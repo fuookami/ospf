@@ -118,22 +118,34 @@ data object Demo10 {
     }
 
     private suspend fun initSymbol(): Try {
-        distance = LinearExpressionSymbol(sum(cities.flatMap { city1 ->
-            cities.mapNotNull { city2 ->
-                if (city1 == city2) {
-                    null
-                } else {
-                    distances[city1 to city2]?.let { it * x[city1, city2] }
+        distance = LinearExpressionSymbol(
+            sum(cities.flatMap { city1 ->
+                cities.mapNotNull { city2 ->
+                    if (city1 == city2) {
+                        null
+                    } else {
+                        distances[city1 to city2]?.let { it * x[city1, city2] }
+                    }
                 }
-            }
-        }), "distance")
-        depart = LinearIntermediateSymbols1("depart", Shape1(cities.size)) { i, _ ->
+            }),
+            name = "distance"
+        )
+        depart = LinearIntermediateSymbols1(
+            "depart",
+            Shape1(cities.size)
+        ) { i, _ ->
             val city = cities[i]
-            LinearExpressionSymbol(sum(x[city, _a]), "depart_${city.name}")
+            LinearExpressionSymbol(
+                sum(x[city, _a]),
+                name = "depart_${city.name}"
+            )
         }
         reached = LinearIntermediateSymbols1("reached", Shape1(cities.size)) { i, _ ->
             val city = cities[i]
-            LinearExpressionSymbol(sum(x[_a, city]), "reached_${city.name}")
+            LinearExpressionSymbol(
+                sum(x[_a, city]),
+                name = "reached_${city.name}"
+            )
         }
         return ok
     }

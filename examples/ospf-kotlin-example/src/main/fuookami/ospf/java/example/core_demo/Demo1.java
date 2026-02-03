@@ -83,6 +83,7 @@ public class Demo1 {
                 LinearPolynomialKt.sumLinearMonomials(
                     companies.stream().map(c -> LinearMonomialKt.times(c.capital, x.get(c.index))).collect(Collectors.toList())
                 ).toMutable(),
+                null,
                 "capital",
                 null
         );
@@ -92,6 +93,7 @@ public class Demo1 {
                 LinearPolynomialKt.sumLinearMonomials(
                     companies.stream().map(c -> LinearMonomialKt.times(c.liability, x.get(c.index))).collect(Collectors.toList())
                 ).toMutable(),
+                null,
                 "liability",
                 null
         );
@@ -101,6 +103,7 @@ public class Demo1 {
                 LinearPolynomialKt.sumLinearMonomials(
                     companies.stream().map(c -> LinearMonomialKt.times(c.profit, x.get(c.index))).collect(Collectors.toList())
                 ).toMutable(),
+                null,
                 "profit",
                 null
         );

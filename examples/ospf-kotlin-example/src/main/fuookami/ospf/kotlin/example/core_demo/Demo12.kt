@@ -100,13 +100,13 @@ data object Demo12 {
 
         risk = LinearExpressionSymbol(
             sum(products.map { p -> p.risk * x[p] / funds }),
-            "risk"
+            name = "risk"
         )
         metaModel.add(risk)
 
         yield = LinearExpressionSymbol(
             sum(products.map { p -> p.yield * x[p] - premium[p] }),
-            "yield"
+            name = "yield"
         )
         metaModel.add(yield)
 

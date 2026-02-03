@@ -83,7 +83,10 @@ data object Demo4 {
     }
 
     private suspend fun initSymbol(): Try {
-        profit = LinearExpressionSymbol(sum(products) { p -> p.profit * x[p] }, "profit")
+        profit = LinearExpressionSymbol(
+            sum(products) { p -> p.profit * x[p] },
+            name = "profit"
+        )
         metaModel.add(profit)
 
         use = LinearIntermediateSymbols1("use", Shape1(materials.size)) { m, _ ->
@@ -91,7 +94,7 @@ data object Demo4 {
             val ps = products.filter { it.use.contains(material) }
             LinearExpressionSymbol(
                 sum(ps) { p -> p.use[material]!! * x[p] },
-                "use_${m}"
+                name = "use_${m}"
             )
         }
         metaModel.add(use)

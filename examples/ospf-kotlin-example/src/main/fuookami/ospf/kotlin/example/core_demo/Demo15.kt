@@ -174,7 +174,10 @@ data object Demo15 {
         ) { _, v ->
             val d = distributionCenters[v[0]]
             val c = carModels[v[1]]
-            LinearExpressionSymbol(sum(x[_a, d, c]), "receive_${d.name}_${c.name}")
+            LinearExpressionSymbol(
+                sum(x[_a, d, c]),
+                name = "receive_${d.name}_${c.name}"
+            )
         }
         metaModel.add(receive)
 
@@ -206,7 +209,10 @@ data object Demo15 {
                     }
                 }
             })
-            LinearExpressionSymbol((d.demands[c] ?: UInt64.zero) - replacedDemand + replacedToDemand, "demand_${d.name}_${c.name}")
+            LinearExpressionSymbol(
+                (d.demands[c] ?: UInt64.zero) - replacedDemand + replacedToDemand,
+                name = "demand_${d.name}_${c.name}"
+            )
         }
         metaModel.add(demand)
 
@@ -216,7 +222,10 @@ data object Demo15 {
         ) { _, v ->
             val m = manufacturers[v[0]]
             val c = carModels[v[1]]
-            LinearExpressionSymbol(sum(x[m, _a, c]), "trans_${m.name}_${c.name}")
+            LinearExpressionSymbol(
+                sum(x[m, _a, c]),
+                name = "trans_${m.name}_${c.name}"
+            )
         }
         metaModel.add(trans)
 

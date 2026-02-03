@@ -99,11 +99,14 @@ data object Demo2 {
     }
 
     private suspend fun initSymbol(): Try {
-        cost = LinearExpressionSymbol(flatSum(companies) { c ->
-            products.map { p ->
-                c.cost[p]?.let { it * x[c, p] }
-            }
-        }, "cost")
+        cost = LinearExpressionSymbol(
+            flatSum(companies) { c ->
+                products.map { p ->
+                    c.cost[p]?.let { it * x[c, p] }
+                }
+            },
+            name = "cost"
+        )
         metaModel.add(cost)
 
         assignmentCompany = LinearIntermediateSymbols(

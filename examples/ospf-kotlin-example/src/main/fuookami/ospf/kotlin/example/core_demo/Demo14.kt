@@ -120,25 +120,40 @@ data object Demo14 {
 
     private suspend fun initSymbol(): Try {
         cost = LinearExpressionSymbol(
-            sum(nodes.flatMap { node1 ->
-                nodes.mapNotNull { node2 ->
-                    unitCost[node1]?.get(node2)?.let {
-                        it * x[node1, node2]
+            sum(
+                nodes.flatMap { node1 ->
+                    nodes.mapNotNull { node2 ->
+                        unitCost[node1]?.get(node2)?.let {
+                            it * x[node1, node2]
+                        }
                     }
                 }
-            }), "cost"
+            ),
+            name = "cost"
         )
         metaModel.add(cost)
 
-        transOut = LinearIntermediateSymbols1("out", Shape1(nodes.size)) { i, _ ->
+        transOut = LinearIntermediateSymbols1(
+            "out",
+            Shape1(nodes.size)
+        ) { i, _ ->
             val node = nodes[i]
-            LinearExpressionSymbol(sum(x[node, _a]), "out_${node.name}")
+            LinearExpressionSymbol(
+                sum(x[node, _a]),
+                name = "out_${node.name}"
+            )
         }
         metaModel.add(transOut)
 
-        transIn = LinearIntermediateSymbols1("in", Shape1(nodes.size)) { i, _ ->
+        transIn = LinearIntermediateSymbols1(
+            "in",
+            Shape1(nodes.size)
+        ) { i, _ ->
             val node = nodes[i]
-            LinearExpressionSymbol(sum(x[_a, node]), "in_${node.name}")
+            LinearExpressionSymbol(
+                sum(x[_a, node]),
+                name = "in_${node.name}"
+            )
         }
         metaModel.add(transIn)
 

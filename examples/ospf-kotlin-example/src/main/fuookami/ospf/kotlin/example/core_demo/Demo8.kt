@@ -106,9 +106,12 @@ data object Demo8 {
     }
 
     private suspend fun initSymbol(): Try {
-        profit = LinearExpressionSymbol(sum(products.map { p ->
-            p.profit * x[p]
-        }), "profit")
+        profit = LinearExpressionSymbol(
+            sum(products.map { p ->
+                p.profit * x[p]
+            }),
+            name = "profit"
+        )
         metaModel.add(profit)
 
         manHours = LinearIntermediateSymbols1(
@@ -118,7 +121,7 @@ data object Demo8 {
             val e = equipments[i]
             LinearExpressionSymbol(
                 sum(products.mapNotNull { p -> e.manHours[p]?.let { it * x[p] } }),
-                "man_hours_${e.index}"
+                name = "man_hours_${e.index}"
             )
         }
         metaModel.add(manHours)

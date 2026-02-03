@@ -100,11 +100,14 @@ data object Demo7 {
     }
 
     private suspend fun initSymbol(): Try {
-        cost = LinearExpressionSymbol(sum(warehouses.map { w ->
-            sum(stores.filter { w.cost.contains(it) }.map { s ->
-                w.cost[s]!! * x[w, s]
-            })
-        }), "cost")
+        cost = LinearExpressionSymbol(
+            sum(warehouses.map { w ->
+                sum(stores.filter { w.cost.contains(it) }.map { s ->
+                    w.cost[s]!! * x[w, s]
+                })
+            }),
+            name = "cost"
+        )
         metaModel.add(cost)
 
         shipment = LinearIntermediateSymbols1(
@@ -114,7 +117,7 @@ data object Demo7 {
             val w = warehouses[i]
             LinearExpressionSymbol(
                 sum(stores.filter { w.cost.contains(it) }.map { s -> x[w, s] }),
-                "shipment_${w.index}"
+                name = "shipment_${w.index}"
             )
         }
         metaModel.add(shipment)
@@ -126,7 +129,7 @@ data object Demo7 {
             val s = stores[i]
             LinearExpressionSymbol(
                 sum(warehouses.filter { w -> w.cost.contains(s) }.map { w -> x[w, s] }),
-                "purchase_${s.index}"
+                name = "purchase_${s.index}"
             )
         }
         metaModel.add(purchase)

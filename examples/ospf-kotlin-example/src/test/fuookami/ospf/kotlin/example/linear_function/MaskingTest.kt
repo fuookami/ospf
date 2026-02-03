@@ -38,10 +38,12 @@ class MaskingTest {
         model2.add(x)
         model2.add(mask)
         model2.add(masking)
+        model2.addConstraint(x eq -Flt64.one)
         model2.addConstraint(mask eq false)
         model2.minimize(masking)
 
         val result2 = runBlocking { solver(model2) }
         assert(result2.value!!.obj eq Flt64.zero)
+        assert(result2.value!!.solution[0] eq Flt64.one)
     }
 }

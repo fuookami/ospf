@@ -71,13 +71,22 @@ data object Demo1 {
     }
 
     private suspend fun initSymbol(): Try {
-        capital = LinearExpressionSymbol(sum(companies) { it.capital * x[it] }, "capital")
+        capital = LinearExpressionSymbol(
+            sum(companies) { it.capital * x[it] },
+            name = "capital"
+        )
         metaModel.add(capital)
 
-        liability = LinearExpressionSymbol(sum(companies) { it.liability * x[it] }, "liability")
+        liability = LinearExpressionSymbol(
+            sum(companies) { it.liability * x[it] },
+            name = "liability"
+        )
         metaModel.add(liability)
 
-        profit = LinearExpressionSymbol(sum(companies) { it.profit * x[it] }, "profit")
+        profit = LinearExpressionSymbol(
+            sum(companies) { it.profit * x[it] },
+            name = "profit"
+        )
         metaModel.add(profit)
         return ok
     }

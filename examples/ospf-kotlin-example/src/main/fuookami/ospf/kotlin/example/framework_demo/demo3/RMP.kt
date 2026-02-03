@@ -25,9 +25,9 @@ class RMP(
 ) {
     private val cuttingPlans: MutableList<CuttingPlan> = ArrayList()
     private val x: MutableList<UIntVar> = ArrayList()
-    private val rest = LinearExpressionSymbol(MutableLinearPolynomial(), "rest")
+    private val rest = LinearExpressionSymbol(name = "rest")
     private val yield = LinearExpressionSymbols1("output", Shape1(products.size)) { _, v ->
-        LinearExpressionSymbol(MutableLinearPolynomial(), "output_${v[0]}")
+        LinearExpressionSymbol(name = "output_${v[0]}")
     }
     private val metaModel = LinearMetaModel("demo3")
     private val solver: ColumnGenerationSolver = ScipColumnGenerationSolver()
