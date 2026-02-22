@@ -3,7 +3,6 @@ package fuookami.ospf.kotlin.core.backend.plugins.scip
 import kotlin.time.*
 import kotlinx.datetime.*
 import kotlinx.coroutines.*
-import jscip.*
 import fuookami.ospf.kotlin.utils.*
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.error.*
@@ -32,9 +31,13 @@ class ScipQuadraticSolver(
 
     override suspend operator fun invoke(
         model: QuadraticTetradModelView,
-        statusCallBack: SolvingStatusCallBack?
-    ): Ret<SolverOutput> {
-        val impl = ScipQuadraticSolverImpl(config, callBack, statusCallBack)
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<FeasibleSolverOutput> {
+        val impl = ScipQuadraticSolverImpl(
+            config = config,
+            callBack = callBack,
+            statusCallBack = solvingStatusCallBack
+        )
         val result = impl(model)
         System.gc()
         return result
@@ -43,23 +46,23 @@ class ScipQuadraticSolver(
     override suspend fun invoke(
         model: QuadraticTetradModelView,
         solutionAmount: UInt64,
-        statusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<SolverOutput, List<Solution>>> {
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<Pair<FeasibleSolverOutput, List<Solution>>> {
         return if (solutionAmount leq UInt64.one) {
             this(model).map { it to emptyList() }
         } else {
             val results = ArrayList<Solution>()
             val impl = ScipQuadraticSolverImpl(
                 config = config,
-                callBack
+                callBack = callBack
                     .copyIfNotNullOr { ScipSolverCallBack() }
-                    .configuration { scip, _, _ ->
+                    .configuration { _, scip, _, _ ->
                         if (solutionAmount gr UInt64.one) {
                             scip.setIntParam("heuristics/dins/solnum", solutionAmount.toInt())
                         }
                         ok
                     }
-                    .analyzingSolution { scip, variables, _ ->
+                    .analyzingSolution { _, scip, variables, _ ->
                         val bestSol = scip.bestSol
                         val sols = scip.sols
                         var i = UInt64.zero
@@ -80,7 +83,7 @@ class ScipQuadraticSolver(
                         }
                         ok
                     },
-                statusCallBack = statusCallBack
+                statusCallBack = solvingStatusCallBack
             )
             val result = impl(model).map { it to results }
             System.gc()
@@ -100,9 +103,9 @@ private class ScipQuadraticSolverImpl(
     private lateinit var scipConstraints: List<jscip.Constraint>
     private lateinit var scipQuadraticObjectiveVars: List<jscip.Variable>
     private lateinit var scipQuadraticObjectiveTransformers: List<jscip.Constraint>
-    private lateinit var output: SolverOutput
+    private lateinit var output: FeasibleSolverOutput
 
-    override fun finalize() {
+    override fun close() {
         for (constraint in scipConstraints) {
             scip.releaseCons(constraint)
         }
@@ -115,10 +118,10 @@ private class ScipQuadraticSolverImpl(
         for (variable in scipQuadraticObjectiveVars) {
             scip.releaseVar(variable)
         }
-        super.finalize()
+        super.close()
     }
 
-    suspend operator fun invoke(model: QuadraticTetradModelView): Ret<SolverOutput> {
+    suspend operator fun invoke(model: QuadraticTetradModelView): Ret<FeasibleSolverOutput> {
         mip = model.containsNotBinaryInteger
         val processes = arrayOf(
             { it.init(model.name) },
@@ -126,7 +129,7 @@ private class ScipQuadraticSolverImpl(
             ScipQuadraticSolverImpl::configure,
             { it.solve(config.threadNum) },
             ScipQuadraticSolverImpl::analyzeStatus,
-            ScipQuadraticSolverImpl::analyzeSolution
+            { it.analyzeSolution(model) }
         )
         for (process in processes) {
             when (val result = process(this)) {
@@ -293,7 +296,7 @@ private class ScipQuadraticSolverImpl(
 
         val qovars = ArrayList<jscip.Variable>()
         val qocons = ArrayList<jscip.Constraint>()
-        for (cell in model.objective.obj) {
+        for (cell in model.objective.objective) {
             if (cell.colIndex2 == null) {
                 scip.changeVarObj(scipVars[cell.colIndex1], cell.coefficient.toDouble())
             } else {
@@ -302,7 +305,7 @@ private class ScipQuadraticSolverImpl(
                     -Double.MAX_VALUE,
                     Double.MAX_VALUE,
                     0.0,
-                    SCIP_Vartype.SCIP_VARTYPE_CONTINUOUS
+                    jscip.SCIP_Vartype.SCIP_VARTYPE_CONTINUOUS
                 )
                 val qocon = scip.createConsQuadratic(
                     "${scipVars[cell.colIndex1].name}_${scipVars[cell.colIndex2!!]}",
@@ -333,7 +336,13 @@ private class ScipQuadraticSolverImpl(
             }
         }
 
-        when (val result = callBack?.execIfContain(Point.AfterModeling, scip, scipVars, scipConstraints)) {
+        when (val result = callBack?.execIfContain(
+            point = Point.AfterModeling,
+            status = null,
+            scip = scip,
+            variables = scipVars,
+            constraints = scipConstraints
+        )) {
             is Failed -> {
                 return Failed(result.error)
             }
@@ -353,7 +362,13 @@ private class ScipQuadraticSolverImpl(
             scip.setRealParam("limits/stallnodes", config.notImprovementTime!!.toDouble(DurationUnit.MILLISECONDS))
         }
 
-        when (val result = callBack?.execIfContain(Point.Configuration, scip, scipVars, scipConstraints)) {
+        when (val result = callBack?.execIfContain(
+            point = Point.Configuration,
+            status = null,
+            scip = scip,
+            variables = scipVars,
+            constraints = scipConstraints
+        )) {
             is Failed -> {
                 return Failed(result.error)
             }
@@ -368,7 +383,7 @@ private class ScipQuadraticSolverImpl(
         if (config.threadNum gr UInt64.one) {
             scip.solveConcurrent()
             val stage = scip.stage
-            if (stage.swigValue() < SCIP_Stage.SCIP_STAGE_INITPRESOLVE.swigValue()) {
+            if (stage.swigValue() < jscip.SCIP_Stage.SCIP_STAGE_INITPRESOLVE.swigValue()) {
                 scip.solve()
             }
         } else {
@@ -379,21 +394,21 @@ private class ScipQuadraticSolverImpl(
         return ok
     }
 
-    private suspend fun analyzeSolution(): Try {
+    private suspend fun analyzeSolution(model: QuadraticTetradModelView): Try {
         return if (status.succeeded) {
             val solution = scip.bestSol
             val results = ArrayList<Flt64>()
             for (scipVar in scipVars) {
                 results.add(Flt64(scip.getSolVal(solution, scipVar)))
             }
-            val obj = Flt64(scip.getSolOrigObj(solution))
-            val possibleBestObj = Flt64(scip.dualbound)
+            val obj = Flt64(scip.getSolOrigObj(solution)) + model.objective.constant
+            val possibleBestObj = Flt64(scip.dualbound) + model.objective.constant
             val gap = if (mip) {
-                (obj - possibleBestObj + Flt64.decimalPrecision) / (obj + Flt64.decimalPrecision)
+                gap(obj, possibleBestObj)
             } else {
                 Flt64.zero
             }
-            output = SolverOutput(
+            output = FeasibleSolverOutput(
                 obj = obj,
                 solution = results,
                 time = solvingTime!!,
@@ -401,7 +416,13 @@ private class ScipQuadraticSolverImpl(
                 gap = gap
             )
 
-            when (val result = callBack?.execIfContain(Point.AnalyzingSolution, scip, scipVars, scipConstraints)) {
+            when (val result = callBack?.execIfContain(
+                point = Point.AnalyzingSolution,
+                status = status,
+                scip = scip,
+                variables = scipVars,
+                constraints = scipConstraints
+            )) {
                 is Failed -> {
                     return Failed(result.error)
                 }
@@ -410,6 +431,19 @@ private class ScipQuadraticSolverImpl(
             }
             return ok
         } else {
+            when (val result = callBack?.execIfContain(
+                point = Point.AfterFailure,
+                status = status,
+                scip = scip,
+                variables = scipVars,
+                constraints = scipConstraints
+            )) {
+                is Failed -> {
+                    return Failed(result.error)
+                }
+
+                else -> {}
+            }
             Failed(Err(status.errCode!!))
         }
     }

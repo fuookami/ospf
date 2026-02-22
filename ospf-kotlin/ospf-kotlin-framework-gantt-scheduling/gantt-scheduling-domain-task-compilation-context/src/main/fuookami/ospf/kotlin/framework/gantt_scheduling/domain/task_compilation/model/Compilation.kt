@@ -50,7 +50,10 @@ class TaskCompilation<
 
     override fun register(model: MetaModel): Try {
         if (!::x.isInitialized) {
-            x = BinVariable2("x", Shape2(tasks.size, executors.size))
+            x = BinVariable2(
+                "x",
+                Shape2(tasks.size, executors.size)
+            )
             for (task in tasks) {
                 for (executor in executors) {
                     x[task, executor].name = "${x.name}_${task}_${executor}"
@@ -82,16 +85,20 @@ class TaskCompilation<
         }
 
         if (!::taskAssignment.isInitialized) {
-            taskAssignment = map(
-                "task_assignment",
-                tasks,
-                executors,
-                { t, e -> LinearMonomial(x[t, e]) },
-                { (_, t), (_, e) -> "${t}_$e" }
-            )
+            taskAssignment = LinearIntermediateSymbols2(
+                name = "task_assignment",
+                shape = Shape2(tasks.size, executors.size)
+            ) { _, v ->
+                LinearExpressionSymbol(
+                    item = x[v],
+                    name = "task_assignment_${v.joinToString("_")}"
+                )
+            }
             for (task in tasks) {
                 for (executor in executors) {
-                    taskAssignment[task, executor].range.set(ValueRange(Flt64.zero, Flt64.one).value!!)
+                    taskAssignment[task, executor].range.set(
+                        ValueRange(Flt64.zero, Flt64.one).value!!
+                    )
                 }
             }
         }
@@ -105,7 +112,10 @@ class TaskCompilation<
 
         if (taskCancelEnabled) {
             if (!::y.isInitialized) {
-                y = BinVariable1("y", Shape1(tasks.size))
+                y = BinVariable1(
+                    "y",
+                    Shape1(tasks.size)
+                )
                 for (task in tasks) {
                     y[task].name = ""
                     if (!task.cancelEnabled) {
@@ -126,18 +136,19 @@ class TaskCompilation<
         }
 
         if (!::taskCompilation.isInitialized) {
-            taskCompilation = flatMap(
-                "task_compilation",
-                tasks,
-                { t ->
-                    if (taskCancelEnabled) {
+            taskCompilation = LinearIntermediateSymbols1(
+                name = "task_compilation",
+                shape = Shape1(tasks.size)
+            ) { t, _ ->
+                LinearExpressionSymbol(
+                    polynomial = if (taskCancelEnabled) {
                         y[t] + sum(x[t, _a])
                     } else {
                         sum(x[t, _a])
-                    }
-                },
-                { (_, t) -> "$t" }
-            )
+                    },
+                    name = "task_compilation_${t}"
+                )
+            }
             for (task in tasks) {
                 taskCompilation[task].range.set(ValueRange(Flt64.one, Flt64.one).value!!)
             }
@@ -169,13 +180,13 @@ class TaskCompilation<
         if (!::executorCompilation.isInitialized) {
             try {
                 executorCompilation = LinearIntermediateSymbols1(
-                    "executor_compilation",
-                    Shape1(executors.size)
+                    name = "executor_compilation",
+                    shape = Shape1(executors.size)
                 ) { i, _ ->
                     if (withExecutorLeisure) {
                         val or = OrFunction(
-                            tasks.map { LinearPolynomial(x[it, executors[i]]) },
-                            "executor_compilation_or_${executors[i]}"
+                            polynomials = tasks.map { LinearPolynomial(x[it, executors[i]]) },
+                            name = "executor_compilation_or_${executors[i]}"
                         )
                         when (val result = model.add(or)) {
                             is Ok -> {}
@@ -184,11 +195,14 @@ class TaskCompilation<
                                 throw ApplicationException(result.error)
                             }
                         }
-                        LinearExpressionSymbol(or + z[executors[i]], "executor_compilation_${executors[i]}")
+                        LinearExpressionSymbol(
+                            polynomial = or + z[executors[i]],
+                            name = "executor_compilation_${executors[i]}"
+                        )
                     } else {
                         OrFunction(
-                            tasks.map { LinearPolynomial(x[it, executors[i]]) },
-                            "executor_compilation_${executors[i]}"
+                            polynomials = tasks.map { LinearPolynomial(x[it, executors[i]]) },
+                            name = "executor_compilation_${executors[i]}"
                         )
                     }
                 }
@@ -216,7 +230,7 @@ open class IterativeTaskCompilation<
 >(
     private val originTasks: List<T>,
     private val executors: List<E>,
-    private val lockCancelTasks: Set<T> = emptySet(),
+    private val lockedCancelTasks: Set<T> = emptySet(),
 ) : Compilation {
     init {
         if (!executors.all { it.indexed }) {
@@ -256,11 +270,14 @@ open class IterativeTaskCompilation<
 
     override fun register(model: MetaModel): Try {
         if (!::y.isInitialized) {
-            y = BinVariable1("y", Shape1(tasks.size))
+            y = BinVariable1(
+                name = "y",
+                shape = Shape1(tasks.size)
+            )
             for (task in originTasks) {
                 y[task].name = "${y.name}_${task}"
 
-                if (lockCancelTasks.contains(task)) {
+                if (lockedCancelTasks.contains(task)) {
                     y[task].range.eq(true)
                 }
             }
@@ -274,7 +291,9 @@ open class IterativeTaskCompilation<
         }
 
         if (!::taskCost.isInitialized) {
-            taskCost = LinearExpressionSymbol(LinearPolynomial(), "bunch_cost")
+            taskCost = LinearExpressionSymbol(
+                name = "bunch_cost"
+            )
         }
         when (val result = model.add(taskCost)) {
             is Ok -> {}
@@ -285,13 +304,14 @@ open class IterativeTaskCompilation<
         }
 
         if (!::taskAssignment.isInitialized) {
-            taskAssignment = flatMap(
-                "task_compilation",
-                tasks,
-                executors,
-                { _, _ -> LinearPolynomial() },
-                { (_, t), (_, e) -> "${t}_$e" }
-            )
+            taskAssignment = LinearExpressionSymbols2(
+                "task_assignment",
+                Shape2(tasks.size, executors.size)
+            ) { _, v ->
+                LinearExpressionSymbol(
+                    name = "task_assignment_${v.joinToString("_")}"
+                )
+            }
         }
         when (val result = model.add(taskAssignment)) {
             is Ok -> {}
@@ -302,12 +322,15 @@ open class IterativeTaskCompilation<
         }
 
         if (!::taskCompilation.isInitialized) {
-            taskCompilation = flatMap(
+            taskCompilation = LinearExpressionSymbols1(
                 "task_compilation",
-                tasks,
-                { t -> LinearPolynomial(y[t]) },
-                { (_, t) -> "$t" }
-            )
+                Shape1(tasks.size)
+            ) { t, _ ->
+                LinearExpressionSymbol(
+                    item = y[t],
+                    name = "task_compilation_${t}"
+                )
+            }
         }
         when (val result = model.add(taskCompilation)) {
             is Ok -> {}
@@ -342,18 +365,19 @@ open class IterativeTaskCompilation<
         }
 
         if (!::executorCompilation.isInitialized) {
-            executorCompilation = flatMap(
+            executorCompilation = LinearExpressionSymbols1(
                 "executor_compilation",
-                executors,
-                { e ->
-                    if (withExecutorLeisure) {
+                Shape1(executors.size)
+            ) { e, _ ->
+                LinearExpressionSymbol(
+                    polynomial = if (withExecutorLeisure) {
                         LinearPolynomial(xor[e] + z[e])
                     } else {
                         LinearPolynomial(xor[e])
-                    }
-                },
-                { e -> "$e" }
-            )
+                    },
+                    name = "executor_compilation_${e}"
+                )
+            }
         }
         when (val result = model.add(executorCompilation)) {
             is Ok -> {}
@@ -418,7 +442,7 @@ open class IterativeTaskCompilation<
             for (task in thisTasks) {
                 when (val result = model.addConstraint(
                     xor[executor] geq xi[task],
-                    "xor_${executor}_${iteration}_${task}"
+                    name = "xor_${executor}_${iteration}_${task}"
                 )) {
                     is Ok -> {}
 
@@ -435,7 +459,7 @@ open class IterativeTaskCompilation<
                     if (task1 != task2 && conflict(task1, task2)) {
                         when (val result = model.addConstraint(
                             xi[task1] + x[otherIteration][task2] leq Flt64.one,
-                            "task_conflict_${task1}_${otherIteration}_${task2}"
+                            name = "task_conflict_${task1}_${otherIteration}_${task2}"
                         )) {
                             is Ok -> {}
 

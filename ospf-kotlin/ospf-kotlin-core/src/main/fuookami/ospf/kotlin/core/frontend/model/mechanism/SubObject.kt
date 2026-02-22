@@ -20,10 +20,10 @@ sealed class SubObject(
         return ret
     }
 
-    fun evaluate(results: Solution): Flt64 {
+    fun evaluate(results: Solution): Flt64? {
         var ret = constant
         for (cell in cells) {
-            ret += cell.evaluate(results)
+            ret += cell.evaluate(results) ?: return null
         }
         return ret
     }
@@ -55,7 +55,12 @@ class LinearSubObject(
                     constant = cell.constant!!
                 }
             }
-            return LinearSubObject(category, cells, constant, name)
+            return LinearSubObject(
+                category = category,
+                cells = cells,
+                constant = constant,
+                name = name
+            )
         }
     }
 }
@@ -91,7 +96,12 @@ class QuadraticSubObject(
                     constant = cell.constant!!
                 }
             }
-            return QuadraticSubObject(category, cells, constant, name)
+            return QuadraticSubObject(
+                category = category,
+                cells = cells,
+                constant = constant,
+                name = name
+            )
         }
     }
 }

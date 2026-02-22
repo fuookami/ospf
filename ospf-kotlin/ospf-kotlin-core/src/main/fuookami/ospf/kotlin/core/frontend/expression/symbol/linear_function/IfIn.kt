@@ -16,10 +16,121 @@ class IfInFunction(
     private val x: AbstractLinearPolynomial<*>,
     lowerBound: AbstractLinearPolynomial<*>,
     upperBound: AbstractLinearPolynomial<*>,
+    private val epsilon: Flt64 = Flt64(1e-6),
+    override val parent: IntermediateSymbol? = null,
+    args: Any? = parent?.args,
     override var name: String,
     override var displayName: String? = null
-) : LinearLogicFunctionSymbol {
+) : LinearLogicFunctionSymbol() {
     private val logger = logger()
+
+    companion object {
+        operator fun <
+            T : ToLinearPolynomial<Poly>,
+            Poly : AbstractLinearPolynomial<Poly>
+        > invoke(
+            x: T,
+            lowerBound: Int,
+            upperBound: Int,
+            epsilon: Flt64 = Flt64(1e-6),
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): IfInFunction {
+            return IfInFunction(
+                x = x.toLinearPolynomial(),
+                lowerBound = LinearPolynomial(lowerBound),
+                upperBound = LinearPolynomial(upperBound),
+                epsilon = epsilon,
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        operator fun <
+            T : ToLinearPolynomial<Poly>,
+            Poly : AbstractLinearPolynomial<Poly>
+        > invoke(
+            x: T,
+            lowerBound: Double,
+            upperBound: Double,
+            epsilon: Flt64 = Flt64(1e-6),
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): IfInFunction {
+            return IfInFunction(
+                x = x.toLinearPolynomial(),
+                lowerBound = LinearPolynomial(lowerBound),
+                upperBound = LinearPolynomial(upperBound),
+                epsilon = epsilon,
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        operator fun <
+            T1 : ToLinearPolynomial<Poly>,
+            Poly : AbstractLinearPolynomial<Poly>,
+            T2 : RealNumber<T2>,
+            T3 : RealNumber<T3>
+        > invoke (
+            x: T1,
+            lowerBound: T2,
+            upperBound: T3,
+            epsilon: Flt64 = Flt64(1e-6),
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): IfInFunction {
+            return IfInFunction(
+                x = x.toLinearPolynomial(),
+                lowerBound = LinearPolynomial(lowerBound),
+                upperBound = LinearPolynomial(upperBound),
+                epsilon = epsilon,
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        operator fun <
+            T1 : ToLinearPolynomial<Poly1>,
+            Poly1 : AbstractLinearPolynomial<Poly1>,
+            T2 : ToLinearPolynomial<Poly2>,
+            Poly2 : AbstractLinearPolynomial<Poly2>,
+            T3 : ToLinearPolynomial<Poly3>,
+            Poly3 : AbstractLinearPolynomial<Poly3>
+        > invoke(
+            x: T1,
+            lowerBound: T2,
+            upperBound: T3,
+            epsilon: Flt64 = Flt64(1e-6),
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): IfInFunction {
+            return IfInFunction(
+                x = x.toLinearPolynomial(),
+                lowerBound = lowerBound.toLinearPolynomial(),
+                upperBound = upperBound.toLinearPolynomial(),
+                epsilon = epsilon,
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
 
     private val lb = lowerBound
     private val ub = upperBound
@@ -32,6 +143,9 @@ class IfInFunction(
         upperBoundInequality.name = "${name}_ub"
     }
 
+    internal val _args = args
+    override val args get() = _args ?: parent?.args
+
     private val lbk: PctVariable1 by lazy {
         PctVariable1("${name}_lbk", Shape1(3))
     }
@@ -40,8 +154,20 @@ class IfInFunction(
         PctVariable1("${name}_ubk", Shape1(3))
     }
 
-    private val y: BinVar by lazy {
-        BinVar("${name}_y")
+    private val lby: BinVar by lazy {
+        BinVar("${name}_lby")
+    }
+
+    private val uby: BinVar by lazy {
+        BinVar("${name}_uby")
+    }
+
+    private val y: AndFunction by lazy {
+        AndFunction(
+            polynomials = listOf(lby, uby),
+            parent = parent ?: this,
+            name = "${name}_y"
+        )
     }
 
     private val polyY: AbstractLinearPolynomial<*> by lazy {
@@ -85,42 +211,84 @@ class IfInFunction(
         polyY.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         x.cells
         lb.cells
         ub.cells
         lowerBoundInequality.cells
         upperBoundInequality.cells
 
-        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            val bins = listOf(
-                lowerBoundInequality.isTrue(tokenTable),
-                upperBoundInequality.isTrue(tokenTable)
-            )
-            if (bins.all { it != null }) {
-                val bin = bins.all { it == true }
-                val yValue = if (bin) {
-                    Flt64.one
-                } else {
-                    Flt64.zero
-                }
-
-                logger.trace { "Setting IfInFunction ${name}.y initial solution: $bin" }
-                tokenTable.find(y)?.let { token ->
-                    token._result = yValue
-                }
-
-                yValue
+        return if ((!values.isNullOrEmpty() || tokenTable.cachedSolution) && if (values.isNullOrEmpty()) {
+            tokenTable.cached(this)
+        } else {
+            tokenTable.cached(this, values)
+        } == false) {
+            val lbBin = if (values.isNullOrEmpty()) {
+                lowerBoundInequality.isTrue(tokenTable)
             } else {
-                null
+                lowerBoundInequality.isTrue(values, tokenTable)
+            } ?: return null
+            val lbyValue = if (lbBin) {
+                Flt64.one
+            } else {
+                Flt64.zero
             }
+
+            val ubBin = if (values.isNullOrEmpty()) {
+                upperBoundInequality.isTrue(tokenTable)
+            } else {
+                upperBoundInequality.isTrue(values, tokenTable)
+            } ?: return null
+            val ubyValue = if (ubBin) {
+                Flt64.one
+            } else {
+                Flt64.zero
+            }
+
+            logger.trace { "Setting IfInFunction ${name}.lby initial solution: $lbBin" }
+            tokenTable.find(lby)?.let { token ->
+                token._result = lbyValue
+            }
+
+            logger.trace { "Setting IfInFunction ${name}.uby initial solution: $ubBin" }
+            tokenTable.find(uby)?.let { token ->
+                token._result = ubyValue
+            }
+
+            y.prepare(values, tokenTable)
         } else {
             null
         }
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
-        when (val result = tokenTable.add(y)) {
+    override fun register(tokenTable: AddableTokenCollection): Try {
+        when (val result = lowerBoundInequality.register(
+            parentName = name,
+            k = lbk,
+            flag = lby,
+            tokenTable = tokenTable
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        when (val result = upperBoundInequality.register(
+            parentName = name,
+            k = ubk,
+            flag = uby,
+            tokenTable = tokenTable
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        when (val result = y.register(tokenTable)) {
             is Ok -> {}
 
             is Failed -> {
@@ -132,7 +300,14 @@ class IfInFunction(
     }
 
     override fun register(model: AbstractLinearMechanismModel): Try {
-        when (val result = lowerBoundInequality.register(name, lbk, y, model)) {
+        when (val result = lowerBoundInequality.register(
+            parent = parent ?: this,
+            parentName = name,
+            k = lbk,
+            flag = lby,
+            epsilon = epsilon,
+            model = model
+        )) {
             is Ok -> {}
 
             is Failed -> {
@@ -140,7 +315,76 @@ class IfInFunction(
             }
         }
 
-        when (val result = upperBoundInequality.register(name, ubk, y, model)) {
+        when (val result = upperBoundInequality.register(
+            parent = parent ?: this,
+            parentName = name,
+            k = ubk,
+            flag = uby,
+            epsilon = epsilon,
+            model = model
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        when (val result = y.register(model)) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        return ok
+    }
+
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        return register(tokenTable)
+    }
+
+    override fun register(
+        model: AbstractLinearMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        when (val result = lowerBoundInequality.register(
+            parent = parent ?: this,
+            parentName = name,
+            k = lbk,
+            flag = lby,
+            epsilon = epsilon,
+            model = model,
+            fixedValues = fixedValues
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        when (val result = upperBoundInequality.register(
+            parent = parent ?: this,
+            parentName = name,
+            k = ubk,
+            flag = uby,
+            epsilon = epsilon,
+            model = model,
+            fixedValues = fixedValues
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        when (val result = y.register(model, fixedValues)) {
             is Ok -> {}
 
             is Failed -> {
@@ -163,7 +407,10 @@ class IfInFunction(
         }
     }
 
-    override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         val xValue = x.evaluate(tokenList, zeroIfNone) ?: return null
         val lbValue = lb.evaluate(tokenList, zeroIfNone) ?: return null
         val ubValue = ub.evaluate(tokenList, zeroIfNone) ?: return null
@@ -174,10 +421,26 @@ class IfInFunction(
         }
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        val xValue = x.evaluate(results, tokenList, zeroIfNone) ?: return null
-        val lbValue = lb.evaluate(results, tokenList, zeroIfNone) ?: return null
-        val ubValue = ub.evaluate(results, tokenList, zeroIfNone) ?: return null
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val xValue = x.evaluate(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val lbValue = lb.evaluate(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val ubValue = ub.evaluate(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
         return if (lbValue leq xValue && xValue leq ubValue) {
             Flt64.one
         } else {
@@ -185,7 +448,37 @@ class IfInFunction(
         }
     }
 
-    override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenList: AbstractTokenList?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val xValue = x.evaluate(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val lbValue = lb.evaluate(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val ubValue = ub.evaluate(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        return if (lbValue leq xValue && xValue leq ubValue) {
+            Flt64.one
+        } else {
+            Flt64.zero
+        }
+    }
+
+    override fun calculateValue(
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
         val xValue = x.evaluate(tokenTable, zeroIfNone) ?: return null
         val lbValue = lb.evaluate(tokenTable, zeroIfNone) ?: return null
         val ubValue = ub.evaluate(tokenTable, zeroIfNone) ?: return null
@@ -196,10 +489,53 @@ class IfInFunction(
         }
     }
 
-    override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        val xValue = x.evaluate(results, tokenTable, zeroIfNone) ?: return null
-        val lbValue = lb.evaluate(results, tokenTable, zeroIfNone) ?: return null
-        val ubValue = ub.evaluate(results, tokenTable, zeroIfNone) ?: return null
+    override fun calculateValue(
+        results: List<Flt64>,
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val xValue = x.evaluate(
+            results = results,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val lbValue = lb.evaluate(
+            results = results,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val ubValue = ub.evaluate(
+            results = results,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        return if (lbValue leq xValue && xValue leq ubValue) {
+            Flt64.one
+        } else {
+            Flt64.zero
+        }
+    }
+
+    override fun calculateValue(
+        values: Map<Symbol, Flt64>,
+        tokenTable: AbstractTokenTable?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val xValue = x.evaluate(
+            values = values,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val lbValue = lb.evaluate(
+            values = values,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val ubValue = ub.evaluate(
+            values = values,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
         return if (lbValue leq xValue && xValue leq ubValue) {
             Flt64.one
         } else {

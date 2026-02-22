@@ -12,40 +12,42 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.utils.serialization.*
 
 interface Pushing {
-    operator fun <T: Any> invoke(serializer: KSerializer<T>, value: LogRecordPO<T>): Try {
+    operator fun <T: Any> invoke(value: LogRecordPO<T>, serializer: KSerializer<T>): Try {
         val json = Json {
             ignoreUnknownKeys = true
         }
-        return this({ json.encodeToString(LogRecordPO.serializer(serializer), it) }, value)
+        return this(value) {
+            json.encodeToString(LogRecordPO.serializer(serializer), it)
+        }
     }
 
-    operator fun <T: Any> invoke(serializer: (LogRecordPO<T>) -> String, value: LogRecordPO<T>): Try
+    operator fun <T: Any> invoke(value: LogRecordPO<T>, serializer: (LogRecordPO<T>) -> String): Try
 }
 
 @OptIn(InternalSerializationApi::class)
 inline operator fun <reified T: Any> Pushing.invoke(value: LogRecordPO<T>): Try {
-    return this(T::class.serializer(), value)
+    return this(value, T::class.serializer())
 }
 
 interface Saving {
-    operator fun <T: Any> invoke(serializer: KSerializer<T>, value: LogRecordPO<T>): Try
+    operator fun <T: Any> invoke(value: LogRecordPO<T>, serializer: KSerializer<T>): Try
 
     @Suppress("INAPPLICABLE_JVM_NAME")
     @JvmName("saveAsString")
-    operator fun <T: Any> invoke(serializer: (T) -> String, value: LogRecordPO<T>): Try {
+    operator fun <T: Any> invoke(value: LogRecordPO<T>, serializer: (T) -> String): Try {
         return ok
     }
 
     @Suppress("INAPPLICABLE_JVM_NAME")
     @JvmName("saveAsBytes")
-    operator fun <T: Any> invoke(serializer: (T) -> ByteArray, value: LogRecordPO<T>): Try {
+    operator fun <T: Any> invoke(value: LogRecordPO<T>, serializer: (T) -> ByteArray): Try {
         return ok
     }
 }
 
 @OptIn(InternalSerializationApi::class)
 inline operator fun <reified T: Any> Saving.invoke(value: LogRecordPO<T>): Try {
-    return this(T::class.serializer(), value)
+    return this(value, T::class.serializer())
 }
 
 data class LogContextBuilder(
@@ -72,7 +74,7 @@ class LogContext private constructor(
     val serviceId: String,
     val pushing: Pushing? = null,
     val saving: Saving? = null
-) : Cloneable {
+) : Cloneable, AutoCloseable {
     private val logger = logger()
 
     companion object {
@@ -100,6 +102,12 @@ class LogContext private constructor(
         }
     }
 
+    override fun close() {
+        if (saving is AutoCloseable) {
+            saving.close()
+        }
+    }
+
     @OptIn(InternalSerializationApi::class)
     inline fun <reified T : Any> push(
         step: String,
@@ -107,7 +115,18 @@ class LogContext private constructor(
         type: LogRecordType = LogRecordType.Info,
         availableTime: Duration = 90.days
     ) {
-        return push(step, { writeJson(LogRecordPO.serializer(T::class.serializer()), it) }, value, type, availableTime)
+        return push(
+            step = step,
+            serializer = {
+                writeJson(
+                    serializer = LogRecordPO.serializer(T::class.serializer()),
+                    value = it
+                )
+            },
+            value = value,
+            type = type,
+            availableTime = availableTime
+        )
     }
 
     fun <T : Any> push(
@@ -117,7 +136,18 @@ class LogContext private constructor(
         type: LogRecordType = LogRecordType.Info,
         availableTime: Duration = 90.days
     ) {
-        return push(step, { writeJson(LogRecordPO.serializer(serializer), it) }, value, type, availableTime)
+        return push(
+            step = step,
+            serializer = {
+                writeJson(
+                    serializer = LogRecordPO.serializer(serializer),
+                    value = it
+                )
+            },
+            value = value,
+            type = type,
+            availableTime = availableTime
+        )
     }
 
     fun <T : Any> push(
@@ -161,7 +191,13 @@ class LogContext private constructor(
         type: LogRecordType = LogRecordType.Info,
         availableTime: Duration = 90.days
     ) {
-        return save(step, T::class.serializer(), value, type, availableTime)
+        return save(
+            step = step,
+            serializer = T::class.serializer(),
+            value = value,
+            type = type,
+            availableTime = availableTime
+        )
     }
 
     fun <T : Any> save(

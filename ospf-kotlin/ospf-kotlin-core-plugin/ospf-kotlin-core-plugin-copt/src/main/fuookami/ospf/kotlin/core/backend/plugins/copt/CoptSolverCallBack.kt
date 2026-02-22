@@ -4,11 +4,12 @@ import java.util.*
 import copt.*
 import fuookami.ospf.kotlin.utils.concept.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.backend.solver.output.*
 
 typealias CreatingEnvironmentFunction = (EnvrConfig) -> Try
 typealias NativeCallback = CallbackBase.() -> Unit
-typealias LinearFunction = (Model, List<Var>, List<Constraint>) -> Try
-typealias QuadraticFunction = (Model, List<Var>, List<QConstraint>) -> Try
+typealias LinearFunction = suspend (SolverStatus?, Model, List<Var>, List<Constraint>) -> Try
+typealias QuadraticFunction = suspend (SolverStatus?, Model, List<Var>, List<QConstraint>) -> Try
 
 enum class Point {
     AfterModeling,
@@ -20,7 +21,7 @@ enum class Point {
 class CoptLinearSolverCallBack(
     internal var nativeCallback: NativeCallback? = null,
     internal var creatingEnvironmentFunction: CreatingEnvironmentFunction? = null,
-    private val map: MutableMap<Point, LinearFunction> = EnumMap(Point::class.java)
+    private val map: MutableMap<Point, MutableList<LinearFunction>> = EnumMap(Point::class.java)
 ) : Copyable<CoptLinearSolverCallBack> {
     @JvmName("setNativeCallback")
     fun set(function: NativeCallback) {
@@ -33,7 +34,7 @@ class CoptLinearSolverCallBack(
     }
 
     operator fun set(point: Point, function: LinearFunction): CoptLinearSolverCallBack {
-        map[point] = function
+        map.getOrPut(point) { ArrayList() }.add(function)
         return this
     }
 
@@ -43,26 +44,42 @@ class CoptLinearSolverCallBack(
     fun analyzingSolution(function: LinearFunction) = set(Point.AnalyzingSolution, function)
     fun afterFailure(function: LinearFunction) = set(Point.AfterFailure, function)
 
-    fun contain(point: Point) = map.containsKey(point)
-    fun get(point: Point): LinearFunction? = map[point]
+    fun contains(point: Point) = map.containsKey(point)
+    fun get(point: Point): List<LinearFunction>? = map[point]
 
     fun execIfContain(env: EnvrConfig): Try? {
         return creatingEnvironmentFunction?.invoke(env)
     }
 
-    fun execIfContain(point: Point, copt: Model, variables: List<Var>, constraints: List<Constraint>): Try? {
-        return map[point]?.invoke(copt, variables, constraints)
+    suspend fun execIfContain(
+        point: Point,
+        status: SolverStatus?,
+        copt: Model,
+        variables: List<Var>,
+        constraints: List<Constraint>
+    ): Try? {
+        return if (!map[point].isNullOrEmpty()) {
+            syncRun(map[point]!!.map {
+                { it(status, copt, variables, constraints) }
+            })
+        } else {
+            null
+        }
     }
 
     override fun copy(): CoptLinearSolverCallBack {
-        return CoptLinearSolverCallBack(nativeCallback, creatingEnvironmentFunction, map.toMutableMap())
+        return CoptLinearSolverCallBack(
+            nativeCallback = nativeCallback,
+            creatingEnvironmentFunction = creatingEnvironmentFunction,
+            map = map.toMutableMap()
+        )
     }
 }
 
 class CoptQuadraticSolverCallBack(
     internal var nativeCallback: NativeCallback? = null,
     internal var creatingEnvironmentFunction: CreatingEnvironmentFunction? = null,
-    private val map: MutableMap<Point, QuadraticFunction> = EnumMap(Point::class.java)
+    private val map: MutableMap<Point, MutableList<QuadraticFunction>> = EnumMap(Point::class.java)
 ) : Copyable<CoptQuadraticSolverCallBack> {
     @JvmName("setNativeCallback")
     fun set(function: NativeCallback) {
@@ -75,7 +92,7 @@ class CoptQuadraticSolverCallBack(
     }
 
     operator fun set(point: Point, function: QuadraticFunction): CoptQuadraticSolverCallBack {
-        map[point] = function
+        map.getOrPut(point) { ArrayList() }.add(function)
         return this
     }
 
@@ -85,18 +102,34 @@ class CoptQuadraticSolverCallBack(
     fun analyzingSolution(function: QuadraticFunction) = set(Point.AnalyzingSolution, function)
     fun afterFailure(function: QuadraticFunction) = set(Point.AfterFailure, function)
 
-    fun contain(point: Point) = map.containsKey(point)
-    fun get(point: Point): QuadraticFunction? = map[point]
+    fun contains(point: Point) = map.containsKey(point)
+    fun get(point: Point): List<QuadraticFunction>? = map[point]
 
     fun execIfContain(env: EnvrConfig): Try? {
         return creatingEnvironmentFunction?.invoke(env)
     }
 
-    fun execIfContain(point: Point, copt: Model, variables: List<Var>, constraints: List<QConstraint>): Try? {
-        return map[point]?.invoke(copt, variables, constraints)
+    suspend fun execIfContain(
+        point: Point,
+        status: SolverStatus?,
+        copt: Model,
+        variables: List<Var>,
+        constraints: List<QConstraint>
+    ): Try? {
+        return if (!map[point].isNullOrEmpty()) {
+            syncRun(map[point]!!.map {
+                { it(status, copt, variables, constraints) }
+            })
+        } else {
+            null
+        }
     }
 
     override fun copy(): CoptQuadraticSolverCallBack {
-        return CoptQuadraticSolverCallBack(nativeCallback, creatingEnvironmentFunction, map.toMutableMap())
+        return CoptQuadraticSolverCallBack(
+            nativeCallback = nativeCallback,
+            creatingEnvironmentFunction = creatingEnvironmentFunction,
+            map = map.toMutableMap()
+        )
     }
 }

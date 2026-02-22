@@ -37,7 +37,8 @@ class TaskOverMaxAdvanceTimeConstraint<
         for (task in tasks) {
             when (val result = model.addConstraint(
                 taskTime.advanceTime[task] leq with(timeWindow) { task.maxAdvance!!.value },
-                "${name}_$task"
+                name = "${name}_${task}",
+                args = TaskOverMaxAdvanceShadowPriceKey(task)
             )) {
                 is Ok -> {}
 
@@ -76,22 +77,19 @@ class TaskOverMaxAdvanceTimeConstraint<
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
     override fun refresh(
         map: AbstractGanttSchedulingShadowPriceMap<Args, E, A>,
         model: AbstractLinearMetaModel,
-        shadowPrices: List<Flt64>
+        shadowPrices: MetaDualSolution
     ): Try {
-        val indices = model.indicesOfConstraintGroup(name) ?: model.constraints.indices
-        val iterator = tasks.iterator()
-        for (j in indices) {
-            if (model.constraints[j].name.startsWith(name)) {
-                map.put(ShadowPrice(TaskOverMaxAdvanceShadowPriceKey(iterator.next()), shadowPrices[j]))
-            }
-
-            if (!iterator.hasNext()) {
-                break
+        for (constraint in model.constraintsOfGroup()) {
+            val task = (constraint.args as? TaskOverMaxAdvanceShadowPriceKey<E, A>)?.task ?: continue
+            shadowPrices.constraints[constraint]?.let { price ->
+                map.put(ShadowPrice(TaskOverMaxAdvanceShadowPriceKey(task), price))
             }
         }
+
         return ok
     }
 }

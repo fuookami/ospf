@@ -4,51 +4,91 @@ import kotlinx.coroutines.*
 import org.apache.logging.log4j.kotlin.*
 import fuookami.ospf.kotlin.utils.*
 import fuookami.ospf.kotlin.utils.math.*
+import fuookami.ospf.kotlin.utils.math.symbol.*
 import fuookami.ospf.kotlin.utils.operator.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.frontend.variable.*
+import fuookami.ospf.kotlin.core.frontend.expression.monomial.*
+import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.QuadraticConstraint
 
-sealed interface MechanismModel {
+sealed interface MechanismModel: AutoCloseable {
     val name: String
     val constraints: List<Constraint>
     val objectFunction: Object
     val tokens: AbstractTokenTable
+
+    override fun close() {
+        tokens.close()
+    }
 }
 
 interface AbstractLinearMechanismModel : MechanismModel {
     fun addConstraint(
         constraint: LinearInequality,
-        name: String? = null
+        name: String? = null,
+        from: Pair<IntermediateSymbol, Boolean>? = null,
     ): Try
+
+    fun addConstraint(
+        constraint: LinearInequality,
+        name: String? = null,
+        from: IntermediateSymbol?,
+    ): Try {
+        return addConstraint(
+            constraint = constraint,
+            name = name,
+            from = from?.let { it to false }
+        )
+    }
 }
 
 interface AbstractQuadraticMechanismModel : AbstractLinearMechanismModel {
     override fun addConstraint(
         constraint: LinearInequality,
-        name: String?
+        name: String?,
+        from: Pair<IntermediateSymbol, Boolean>?
     ): Try {
-        return addConstraint(QuadraticInequality(constraint), name)
+        return addConstraint(
+            constraint = QuadraticInequality(constraint),
+            name = name,
+            from = from
+        )
     }
 
     fun addConstraint(
         constraint: QuadraticInequality,
-        name: String? = null
+        name: String? = null,
+        from: Pair<IntermediateSymbol, Boolean>? = null
     ): Try
+
+    fun addConstraint(
+        constraint: QuadraticInequality,
+        name: String? = null,
+        from: IntermediateSymbol?
+    ): Try {
+        return addConstraint(
+            constraint = constraint,
+            name = name,
+            from = from?.let { it to false }
+        )
+    }
 }
 
 interface SingleObjectMechanismModel : MechanismModel {
-    override val objectFunction: SingleObject
+    override val objectFunction: SingleObject<*>
 }
 
 class LinearMechanismModel(
     internal val parent: LinearMetaModel,
     override var name: String,
-    private val _constraints: MutableList<LinearConstraint>,
-    override val objectFunction: SingleObject,
+    constraints: List<LinearConstraint>,
+    override val objectFunction: SingleObject<LinearSubObject>,
     override val tokens: AbstractTokenTable
 ) : AbstractLinearMechanismModel, SingleObjectMechanismModel {
+    private val logger = logger()
+
     companion object {
         private val logger = logger()
 
@@ -56,12 +96,18 @@ class LinearMechanismModel(
             metaModel: LinearMetaModel,
             concurrent: Boolean? = null,
             blocking: Boolean? = null,
-            registrationStatusCallBack: RegistrationStatusCallBack? = null
+            fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
+            registrationStatusCallBack: RegistrationStatusCallBack? = null,
+            dumpingStatusCallBack: MechanismModelDumpingStatusCallBack? = null
         ): Ret<LinearMechanismModel> {
             logger.info { "Creating LinearMechanismModel for $metaModel" }
 
             logger.trace { "Unfolding tokens for $metaModel" }
-            val tokens = when (val result = unfold(metaModel.tokens, registrationStatusCallBack)) {
+            val tokens = when (val result = unfold(
+                tokens = metaModel.tokens,
+                fixedVariables = fixedVariables,
+                callBack = registrationStatusCallBack
+            )) {
                 is Ok -> {
                     result.value
                 }
@@ -72,39 +118,75 @@ class LinearMechanismModel(
             }
             logger.trace { "Tokens unfolded for $metaModel" }
 
-            val model = if (Runtime.getRuntime().availableProcessors() > 2 && concurrent ?: metaModel.concurrent) {
-                if (blocking ?: metaModel.dumpBlocking) {
+            val model = if (Runtime.getRuntime().availableProcessors() > 2 && concurrent ?: metaModel.configuration.concurrent) {
+                if (blocking ?: metaModel.configuration.dumpBlocking) {
                     runBlocking {
-                        dumpAsync(metaModel, tokens, this)
+                        dumpAsync(
+                            metaModel = metaModel,
+                            tokens = tokens,
+                            scope = this,
+                            callBack = dumpingStatusCallBack
+                        )
                     }
                 } else {
                     coroutineScope {
-                        dumpAsync(metaModel, tokens, this)
+                        dumpAsync(
+                            metaModel = metaModel,
+                            tokens = tokens,
+                            scope = this,
+                            callBack = dumpingStatusCallBack
+                        )
                     }
                 }
             } else {
                 LinearMechanismModel(
-                    metaModel,
-                    metaModel.name,
-                    metaModel._constraints.map {
-                        LinearConstraint(it, tokens)
+                    parent = metaModel,
+                    name = metaModel.name,
+                    constraints = metaModel._constraints.map {
+                        LinearConstraint(
+                            inequality = it,
+                            tokens = tokens
+                        )
                     }.toMutableList(),
-                    SingleObject(metaModel.objectCategory, metaModel._subObjects.map {
+                    objectFunction = SingleObject(metaModel.objectCategory, metaModel._subObjects.map {
                         LinearSubObject(
-                            it.category,
-                            it.polynomial,
-                            tokens,
-                            it.name
+                            category = it.category,
+                            poly = it.polynomial,
+                            tokens = tokens,
+                            name = it.name
                         )
                     }),
-                    tokens
+                    tokens = tokens
                 )
             }
             System.gc()
 
             logger.trace { "Registering symbols for $metaModel" }
-            for (symbol in tokens.symbols) {
-                (symbol as? LinearFunctionSymbol)?.register(model)
+            for ((i, symbol) in tokens.symbols.withIndex()) {
+                (symbol as? LinearFunctionSymbol)?.let { sym ->
+                    if (fixedVariables.isNullOrEmpty()) {
+                        sym.register(model)
+                    } else {
+                        sym.register(model, fixedVariables.mapKeys { it.key as Symbol })
+                    }
+                }
+
+                if (dumpingStatusCallBack != null && i % 100 == 0) {
+                    dumpingStatusCallBack(
+                        MechanismModelDumpingStatus.dumpingSymbols(
+                            ready = UInt64(i),
+                            model = metaModel
+                        )
+                    )
+                }
+            }
+            if (dumpingStatusCallBack != null) {
+                dumpingStatusCallBack(
+                    MechanismModelDumpingStatus.dumpingSymbols(
+                        ready = tokens.symbols.usize,
+                        model = metaModel
+                    )
+                )
             }
             logger.trace { "Symbols registered for $metaModel" }
 
@@ -116,10 +198,13 @@ class LinearMechanismModel(
         private suspend fun dumpAsync(
             metaModel: LinearMetaModel,
             tokens: AbstractTokenTable,
-            scope: CoroutineScope
+            scope: CoroutineScope,
+            callBack: MechanismModelDumpingStatusCallBack? = null
         ): LinearMechanismModel {
             val factor1 = Flt64(metaModel._constraints.size / (Runtime.getRuntime().availableProcessors() - 1)).lg()!!.floor().toUInt64().toInt()
             val constraints = if (factor1 >= 1) {
+                val thisCompletedConstraintAmountLock = Any()
+                var thisCompletedConstraintAmount = UInt64.zero
                 val segment = pow(UInt64.ten, factor1).toInt()
                 (0..(metaModel._constraints.size / segment)).map { i ->
                     scope.async(Dispatchers.Default) {
@@ -135,6 +220,17 @@ class LinearMechanismModel(
                             }
                         if (memoryUseOver()) {
                             System.gc()
+                        }
+                        if (callBack != null) {
+                            synchronized(thisCompletedConstraintAmountLock) {
+                                thisCompletedConstraintAmount += result.usize
+                                callBack(
+                                    MechanismModelDumpingStatus.dumpingConstrains(
+                                        ready = thisCompletedConstraintAmount,
+                                        model = metaModel
+                                    )
+                                )
+                            }
                         }
                         result
                     }
@@ -197,23 +293,37 @@ class LinearMechanismModel(
                 }
             }
 
+            if (callBack != null) {
+                callBack(
+                    MechanismModelDumpingStatus.dumpingConstrains(
+                        ready = metaModel.constraints.usize,
+                        model = metaModel
+                    )
+                )
+            }
+
             return LinearMechanismModel(
-                metaModel,
-                metaModel.name,
-                constraints.flatMap { it.await() }.toMutableList(),
-                SingleObject(metaModel.objectCategory, subObjects.flatMap { it.await() }),
-                tokens
+                parent = metaModel,
+                name = metaModel.name,
+                constraints = constraints.flatMap { it.await() }.toMutableList(),
+                objectFunction = SingleObject(metaModel.objectCategory, subObjects.flatMap { it.await() }),
+                tokens = tokens
             )
         }
 
         private suspend fun unfold(
             tokens: AbstractMutableTokenTable,
+            fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
             callBack: RegistrationStatusCallBack? = null
         ): Ret<AbstractTokenTable> {
             return when (tokens) {
                 is MutableTokenTable -> {
                     val temp = tokens.copy() as MutableTokenTable
-                    when (val result = tokens.symbols.register(temp, callBack)) {
+                    when (val result = tokens.symbols.register(
+                        tokenTable = temp,
+                        fixedValues = fixedVariables?.mapKeys { it.key as Symbol },
+                        callBack = callBack
+                    )) {
                         is Ok -> {
                             Ok(TokenTable(temp))
                         }
@@ -226,7 +336,11 @@ class LinearMechanismModel(
 
                 is ConcurrentMutableTokenTable -> {
                     val temp = tokens.copy() as ConcurrentMutableTokenTable
-                    when (val result = tokens.symbols.register(temp, callBack)) {
+                    when (val result = tokens.symbols.register(
+                        tokenTable = temp,
+                        fixedValues = fixedVariables?.mapKeys { it.key as Symbol },
+                        callBack = callBack
+                    )) {
                         is Ok -> {
                             Ok(ConcurrentTokenTable(temp))
                         }
@@ -240,16 +354,101 @@ class LinearMechanismModel(
         }
     }
 
-    internal val concurrent by parent::concurrent
+    private val _constraints = constraints.toMutableList()
+    internal val concurrent by parent.configuration::concurrent
     override val constraints by ::_constraints
 
     override fun addConstraint(
         constraint: LinearInequality,
-        name: String?
+        name: String?,
+        from: Pair<IntermediateSymbol, Boolean>?
     ): Try {
         name?.let { constraint.name = it }
-        _constraints.add(LinearConstraint(constraint, tokens))
+        _constraints.add(
+            LinearConstraint(
+                inequality = constraint,
+                tokens = tokens,
+                from = from
+            )
+        )
         return ok
+    }
+
+    fun generateOptimalCut(
+        objectVariable: AbstractVariableItem<*, *>,
+        fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>,
+        dualSolution: LinearDualSolution
+    ): List<LinearInequality> {
+        val constants = constraints.foldIndexed(Flt64.zero) { i, acc, constraint ->
+            acc + (dualSolution[constraint] ?: Flt64.zero) * constraint.rhs
+        }
+        val polynomials = HashMap<AbstractVariableItem<*, *>, Flt64>()
+        for (constraint in constraints) {
+            val dual = dualSolution[constraint] ?: continue
+            if (dual eq Flt64.zero) {
+                continue
+            }
+
+            for (cell in constraint.lhs) {
+                val variable = cell.token.variable
+                if (variable in fixedVariables) {
+                    val coefficient = (dualSolution[constraint] ?: Flt64.zero) * cell.coefficient
+                    if (coefficient neq Flt64.zero) {
+                        polynomials[variable] = (polynomials[variable] ?: Flt64.zero) - coefficient
+                    }
+                }
+            }
+        }
+        val rhs = LinearPolynomial(polynomials.map { LinearMonomial(it.value, it.key) }, constants)
+        return when (this.objectFunction.category) {
+            ObjectCategory.Maximum -> {
+                listOf((objectVariable leq rhs).normalize())
+            }
+
+            ObjectCategory.Minimum -> {
+                listOf((objectVariable geq rhs).normalize())
+            }
+        }
+    }
+
+    fun generateFeasibleCut(
+        fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>,
+        farkasDualSolution: LinearDualSolution
+    ): List<LinearInequality> {
+        var value = Flt64.zero
+        var constants = Flt64.zero
+        val polynomials = HashMap<AbstractVariableItem<*, *>, Flt64>()
+        for (constraint in constraints) {
+            val dual = farkasDualSolution[constraint] ?: continue
+            if (dual eq Flt64.zero) {
+                continue
+            }
+
+            value += dual * constraint.rhs
+            constants += dual * constraint.rhs
+            for (cell in constraint.lhs) {
+                val variable = cell.token.variable
+                if (variable in fixedVariables) {
+                    val coefficient = dual * cell.coefficient
+                    if (coefficient neq Flt64.zero) {
+                        polynomials[variable] = (polynomials[variable] ?: Flt64.zero) - coefficient
+                    }
+                    value -= dual * cell.coefficient * fixedVariables[variable]!!
+                }
+            }
+        }
+        if (value ls Flt64.zero) {
+            logger.warn { "farkas dual solution is infeasible, value = ${value}, set negative" }
+            constants *= -Flt64.one
+            polynomials.replaceAll { _, v -> -v }
+        }
+        val lhs = LinearPolynomial(polynomials.map { LinearMonomial(it.value, it.key) }, constants)
+        return listOf((lhs leq Flt64.zero).normalize())
+    }
+
+    override fun close() {
+        _constraints.clear()
+        super<AbstractLinearMechanismModel>.close()
     }
 
     override fun toString(): String {
@@ -260,10 +459,12 @@ class LinearMechanismModel(
 class QuadraticMechanismModel(
     internal val parent: QuadraticMetaModel,
     override var name: String,
-    private val _constraints: MutableList<QuadraticConstraint>,
-    override val objectFunction: SingleObject,
+    constraints: List<QuadraticConstraint>,
+    override val objectFunction: SingleObject<QuadraticSubObject>,
     override val tokens: AbstractTokenTable
 ) : AbstractQuadraticMechanismModel, SingleObjectMechanismModel {
+    private val logger = logger()
+
     companion object {
         private val logger = logger()
 
@@ -271,12 +472,18 @@ class QuadraticMechanismModel(
             metaModel: QuadraticMetaModel,
             concurrent: Boolean? = null,
             blocking: Boolean? = null,
-            registrationStatusCallBack: RegistrationStatusCallBack? = null
+            fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
+            registrationStatusCallBack: RegistrationStatusCallBack? = null,
+            dumpingStatusCallBack: MechanismModelDumpingStatusCallBack? = null
         ): Ret<QuadraticMechanismModel> {
             logger.info { "Creating QuadraticMechanismModel for $metaModel" }
 
             logger.trace { "Unfolding tokens for $metaModel" }
-            val tokens = when (val result = unfold(metaModel.tokens, registrationStatusCallBack)) {
+            val tokens = when (val result = unfold(
+                tokens = metaModel.tokens,
+                fixedVariables = fixedVariables,
+                callBack = registrationStatusCallBack
+            )) {
                 is Ok -> {
                     result.value
                 }
@@ -287,40 +494,82 @@ class QuadraticMechanismModel(
             }
             logger.trace { "Tokens unfolded for $metaModel" }
 
-            val model = if (Runtime.getRuntime().availableProcessors() > 2 && concurrent ?: metaModel.concurrent) {
-                if (blocking ?: metaModel.dumpBlocking) {
+            val model = if (Runtime.getRuntime().availableProcessors() > 2 && concurrent ?: metaModel.configuration.concurrent) {
+                if (blocking ?: metaModel.configuration.dumpBlocking) {
                     runBlocking {
-                        dumpAsync(metaModel, tokens, this)
+                        dumpAsync(
+                            metaModel = metaModel,
+                            tokens = tokens,
+                            scope = this,
+                            callBack = dumpingStatusCallBack
+                        )
                     }
                 } else {
                     coroutineScope {
-                        dumpAsync(metaModel, tokens, this)
+                        dumpAsync(
+                            metaModel = metaModel,
+                            tokens = tokens,
+                            scope = this,
+                            callBack = dumpingStatusCallBack
+                        )
                     }
                 }
             } else {
                 QuadraticMechanismModel(
-                    metaModel,
-                    metaModel.name,
-                    metaModel._constraints.map {
-                        QuadraticConstraint(it, tokens)
+                    parent = metaModel,
+                    name = metaModel.name,
+                    constraints = metaModel._constraints.map {
+                        QuadraticConstraint(
+                            inequality = it,
+                            tokens = tokens
+                        )
                     }.toMutableList(),
-                    SingleObject(metaModel.objectCategory, metaModel._subObjects.map {
+                    objectFunction = SingleObject(metaModel.objectCategory, metaModel._subObjects.map {
                         QuadraticSubObject(
-                            it.category,
-                            it.polynomial,
-                            tokens,
-                            it.name
+                            category = it.category,
+                            poly = it.polynomial,
+                            tokens = tokens,
+                            name = it.name
                         )
                     }),
-                    tokens
+                    tokens = tokens
                 )
             }
             System.gc()
 
             logger.trace { "Registering symbols for $metaModel" }
-            for (symbol in tokens.symbols) {
-                (symbol as? LinearFunctionSymbol)?.register(model)
-                (symbol as? QuadraticFunctionSymbol)?.register(model)
+            for ((i, symbol) in tokens.symbols.withIndex()) {
+                (symbol as? LinearFunctionSymbol)?.let { sym ->
+                    if (fixedVariables.isNullOrEmpty()) {
+                        sym.register(model)
+                    } else {
+                        sym.register(model, fixedVariables.mapKeys { it.key as Symbol })
+                    }
+                }
+                (symbol as? QuadraticFunctionSymbol)?.let { sym ->
+                    if (fixedVariables.isNullOrEmpty()) {
+                        sym.register(model)
+                    } else {
+                        sym.register(model, fixedVariables.mapKeys { it.key as Symbol })
+                    }
+                }
+
+                if (dumpingStatusCallBack != null && i % 100 == 0) {
+                    dumpingStatusCallBack(
+                        MechanismModelDumpingStatus.dumpingSymbols(
+                            ready = UInt64(i),
+                            model = metaModel
+                        )
+                    )
+                }
+            }
+            if (dumpingStatusCallBack != null) {
+                dumpingStatusCallBack(
+                    MechanismModelDumpingStatus.dumpingSymbols(
+                        ready = tokens.symbols.usize,
+                        model = metaModel
+                    )
+                )
             }
             logger.trace { "Symbols registered for $metaModel" }
 
@@ -332,10 +581,13 @@ class QuadraticMechanismModel(
         private suspend fun dumpAsync(
             metaModel: QuadraticMetaModel,
             tokens: AbstractTokenTable,
-            scope: CoroutineScope
+            scope: CoroutineScope,
+            callBack: MechanismModelDumpingStatusCallBack? = null
         ): QuadraticMechanismModel {
             val factor1 = Flt64(metaModel._constraints.size / (Runtime.getRuntime().availableProcessors() - 1)).lg()!!.floor().toUInt64().toInt()
             val constraints = if (factor1 >= 1) {
+                val thisCompletedConstraintAmountLock = Any()
+                var thisCompletedConstraintAmount = UInt64.zero
                 val segment = pow(UInt64.ten, factor1).toInt()
                 (0..(metaModel._constraints.size / segment)).map { i ->
                     scope.async(Dispatchers.Default) {
@@ -351,6 +603,17 @@ class QuadraticMechanismModel(
                             }
                         if (memoryUseOver()) {
                             System.gc()
+                        }
+                        if (callBack != null) {
+                            synchronized(thisCompletedConstraintAmountLock) {
+                                thisCompletedConstraintAmount += result.usize
+                                callBack(
+                                    MechanismModelDumpingStatus.dumpingConstrains(
+                                        ready = thisCompletedConstraintAmount,
+                                        model = metaModel
+                                    )
+                                )
+                            }
                         }
                         result
                     }
@@ -407,23 +670,37 @@ class QuadraticMechanismModel(
                 }
             }
 
+            if (callBack != null) {
+                callBack(
+                    MechanismModelDumpingStatus.dumpingConstrains(
+                        ready = metaModel.constraints.usize,
+                        model = metaModel
+                    )
+                )
+            }
+
             return QuadraticMechanismModel(
-                metaModel,
-                metaModel.name,
-                constraints.flatMap { it.await() }.toMutableList(),
-                SingleObject(metaModel.objectCategory, subObjects.flatMap { it.await() }),
-                tokens
+                parent = metaModel,
+                name = metaModel.name,
+                constraints = constraints.flatMap { it.await() }.toMutableList(),
+                objectFunction = SingleObject(metaModel.objectCategory, subObjects.flatMap { it.await() }),
+                tokens = tokens
             )
         }
 
         private suspend fun unfold(
             tokens: AbstractMutableTokenTable,
+            fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
             callBack: RegistrationStatusCallBack? = null
         ): Ret<AbstractTokenTable> {
             return when (tokens) {
                 is MutableTokenTable -> {
                     val temp = tokens.copy() as MutableTokenTable
-                    when (val result = tokens.symbols.register(temp, callBack)) {
+                    when (val result = tokens.symbols.register(
+                        tokenTable = temp,
+                        fixedValues = fixedVariables?.mapKeys { it.key as Symbol },
+                        callBack = callBack
+                    )) {
                         is Ok -> {
                             Ok(TokenTable(temp))
                         }
@@ -436,7 +713,11 @@ class QuadraticMechanismModel(
 
                 is ConcurrentMutableTokenTable -> {
                     val temp = tokens.copy() as ConcurrentMutableTokenTable
-                    when (val result = tokens.symbols.register(temp, callBack)) {
+                    when (val result = tokens.symbols.register(
+                        tokenTable = temp,
+                        fixedValues = fixedVariables?.mapKeys { it.key as Symbol },
+                        callBack = callBack
+                    )) {
                         is Ok -> {
                             Ok(ConcurrentTokenTable(temp))
                         }
@@ -450,15 +731,48 @@ class QuadraticMechanismModel(
         }
     }
 
-    internal val concurrent by parent::concurrent
+    private val _constraints = constraints.toMutableList()
+    internal val concurrent by parent.configuration::concurrent
     override val constraints by ::_constraints
 
     override fun addConstraint(
         constraint: QuadraticInequality,
-        name: String?
+        name: String?,
+        from: Pair<IntermediateSymbol, Boolean>?
     ): Try {
         name?.let { constraint.name = it }
-        _constraints.add(QuadraticConstraint(constraint, tokens))
+        _constraints.add(
+            QuadraticConstraint(
+                inequality = constraint,
+                tokens = tokens,
+                from = from
+            )
+        )
         return ok
+    }
+
+    fun generateOptimalCut(
+        objective: Flt64,
+        objectVariable: AbstractVariableItem<*, *>,
+        fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>,
+        dualSolution: QuadraticDualSolution,
+    ): Ret<List<Inequality<*, *>>> {
+        TODO("not implemented yet")
+    }
+
+    fun generateFeasibleCut(
+        fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>,
+        farkasDualSolution: QuadraticDualSolution,
+    ): Ret<List<Inequality<*, *>>> {
+        TODO("not implemented yet")
+    }
+
+    override fun close() {
+        _constraints.clear()
+        super<AbstractQuadraticMechanismModel>.close()
+    }
+
+    override fun toString(): String {
+        return name
     }
 }

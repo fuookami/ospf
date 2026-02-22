@@ -9,7 +9,7 @@ import fuookami.ospf.kotlin.core.backend.solver.output.*
 
 class SerialCombinatorialColumnGenerationSolver(
     private val solvers: List<Lazy<ColumnGenerationSolver>>,
-    private val stopErrorCode: Set<ErrorCode> = setOf(ErrorCode.ORModelNoSolution, ErrorCode.ORModelUnbounded)
+    private val stopErrorCode: Set<ErrorCode> = setOf(ErrorCode.ORModelInfeasible, ErrorCode.ORModelUnbounded)
 ): ColumnGenerationSolver {
     private val logger = logger()
 
@@ -17,7 +17,7 @@ class SerialCombinatorialColumnGenerationSolver(
         @JvmName("constructBySolvers")
         operator fun invoke(
             solvers: List<ColumnGenerationSolver>,
-            stopErrorCode: Set<ErrorCode> = setOf(ErrorCode.ORModelNoSolution, ErrorCode.ORModelUnbounded)
+            stopErrorCode: Set<ErrorCode> = setOf(ErrorCode.ORModelInfeasible, ErrorCode.ORModelUnbounded)
         ): SerialCombinatorialColumnGenerationSolver {
             return SerialCombinatorialColumnGenerationSolver(solvers.map { lazy { it } }, stopErrorCode)
         }
@@ -25,7 +25,7 @@ class SerialCombinatorialColumnGenerationSolver(
         @JvmName("constructBySolverExtractors")
         operator fun invoke(
             solvers: List<() -> ColumnGenerationSolver>,
-            stopErrorCode: Set<ErrorCode> = setOf(ErrorCode.ORModelNoSolution, ErrorCode.ORModelUnbounded)
+            stopErrorCode: Set<ErrorCode> = setOf(ErrorCode.ORModelInfeasible, ErrorCode.ORModelUnbounded)
         ): SerialCombinatorialColumnGenerationSolver {
             return SerialCombinatorialColumnGenerationSolver(solvers.map { lazy { it() } }, stopErrorCode)
         }
@@ -39,11 +39,17 @@ class SerialCombinatorialColumnGenerationSolver(
         toLogModel: Boolean,
         registrationStatusCallBack: RegistrationStatusCallBack?,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<SolverOutput> {
+    ): Ret<FeasibleSolverOutput> {
         for ((i, solver) in solvers.withIndex()) {
-            when (val result = solver.value.solveMILP(name, metaModel, toLogModel, registrationStatusCallBack, solvingStatusCallBack?.let {
-                { status: SolvingStatus -> it(status.copy(solver = solver.value.name, solverIndex = UInt64(i))) }
-            })) {
+            when (val result = solver.value.solveMILP(
+                name = name,
+                metaModel = metaModel,
+                toLogModel = toLogModel,
+                registrationStatusCallBack = registrationStatusCallBack,
+                solvingStatusCallBack = solvingStatusCallBack?.let {
+                    { status: SolvingStatus -> it(status.copy(solver = solver.value.name, solverIndex = UInt64(i))) }
+                }
+            )) {
                 is Ok -> {
                     return Ok(result.value)
                 }
@@ -68,9 +74,15 @@ class SerialCombinatorialColumnGenerationSolver(
         solvingStatusCallBack: SolvingStatusCallBack?
     ): Ret<ColumnGenerationSolver.LPResult> {
         for ((i, solver) in solvers.withIndex()) {
-            when (val result = solver.value.solveLP(name, metaModel, toLogModel, registrationStatusCallBack, solvingStatusCallBack?.let {
-                { status: SolvingStatus -> it(status.copy(solver = solver.value.name, solverIndex = UInt64(i))) }
-            })) {
+            when (val result = solver.value.solveLP(
+                name = name,
+                metaModel = metaModel,
+                toLogModel = toLogModel,
+                registrationStatusCallBack = registrationStatusCallBack,
+                solvingStatusCallBack = solvingStatusCallBack?.let {
+                    { status: SolvingStatus -> it(status.copy(solver = solver.value.name, solverIndex = UInt64(i))) }
+                }
+            )) {
                 is Ok -> {
                     return Ok(result.value)
                 }

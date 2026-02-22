@@ -4,11 +4,12 @@ import java.util.*
 import com.alibaba.damo.mindopt.*
 import fuookami.ospf.kotlin.utils.concept.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.backend.solver.output.*
 
 typealias CreatingEnvironmentFunction = (MDOEnv) -> Try
 typealias NativeCallback = MDOCallback.() -> Unit
-typealias LinearFunction = (MDOModel, List<MDOVar>, List<MDOConstr>) -> Try
-typealias QuadraticFunction = (MDOModel, List<MDOVar>, List<MDOQConstr>) -> Try
+typealias LinearFunction = suspend (SolverStatus?, MDOModel, List<MDOVar>, List<MDOConstr>) -> Try
+typealias QuadraticFunction = suspend (SolverStatus?, MDOModel, List<MDOVar>, List<MDOQConstr>) -> Try
 
 enum class Point {
     AfterModeling,
@@ -20,7 +21,7 @@ enum class Point {
 class MindOPTLinearSolverCallBack(
     internal var nativeCallback: NativeCallback? = null,
     internal var creatingEnvironmentFunction: CreatingEnvironmentFunction? = null,
-    private val map: MutableMap<Point, LinearFunction> = EnumMap(Point::class.java)
+    private val map: MutableMap<Point, MutableList<LinearFunction>> = EnumMap(Point::class.java)
 ) : Copyable<MindOPTLinearSolverCallBack> {
     @JvmName("setNativeCallback")
     fun set(function: NativeCallback) {
@@ -33,7 +34,7 @@ class MindOPTLinearSolverCallBack(
     }
 
     operator fun set(point: Point, function: LinearFunction): MindOPTLinearSolverCallBack {
-        map[point] = function
+        map.getOrPut(point) { ArrayList() }.add(function)
         return this
     }
 
@@ -43,26 +44,42 @@ class MindOPTLinearSolverCallBack(
     fun analyzingSolution(function: LinearFunction) = set(Point.AnalyzingSolution, function)
     fun afterFailure(function: LinearFunction) = set(Point.AfterFailure, function)
 
-    fun contain(point: Point) = map.containsKey(point)
-    fun get(point: Point): LinearFunction? = map[point]
+    fun contains(point: Point) = map.containsKey(point)
+    fun get(point: Point): List<LinearFunction>? = map[point]
 
     fun execIfContain(env: MDOEnv): Try? {
         return creatingEnvironmentFunction?.invoke(env)
     }
 
-    fun execIfContain(point: Point, mindopt: MDOModel, variables: List<MDOVar>, constraints: List<MDOConstr>): Try? {
-        return map[point]?.invoke(mindopt, variables, constraints)
+    suspend fun execIfContain(
+        point: Point,
+        status: SolverStatus?,
+        mindopt: MDOModel,
+        variables: List<MDOVar>,
+        constraints: List<MDOConstr>
+    ): Try? {
+        return if (!map[point].isNullOrEmpty()) {
+            syncRun(map[point]!!.map {
+                { it(status, mindopt, variables, constraints) }
+            })
+        } else {
+            null
+        }
     }
 
     override fun copy(): MindOPTLinearSolverCallBack {
-        return MindOPTLinearSolverCallBack(nativeCallback, creatingEnvironmentFunction, map.toMutableMap())
+        return MindOPTLinearSolverCallBack(
+            nativeCallback = nativeCallback,
+            creatingEnvironmentFunction = creatingEnvironmentFunction,
+            map = map.toMutableMap()
+        )
     }
 }
 
 class MindOPTQuadraticSolverCallBack(
     internal var nativeCallback: NativeCallback? = null,
     internal var creatingEnvironmentFunction: CreatingEnvironmentFunction? = null,
-    private val map: MutableMap<Point, QuadraticFunction> = EnumMap(Point::class.java)
+    private val map: MutableMap<Point, MutableList<QuadraticFunction>> = EnumMap(Point::class.java)
 ) : Copyable<MindOPTQuadraticSolverCallBack> {
     @JvmName("setNativeCallback")
     fun set(function: NativeCallback) {
@@ -75,7 +92,7 @@ class MindOPTQuadraticSolverCallBack(
     }
 
     operator fun set(point: Point, function: QuadraticFunction): MindOPTQuadraticSolverCallBack {
-        map[point] = function
+        map.getOrPut(point) { ArrayList() }.add(function)
         return this
     }
 
@@ -85,18 +102,34 @@ class MindOPTQuadraticSolverCallBack(
     fun analyzingSolution(function: QuadraticFunction) = set(Point.AnalyzingSolution, function)
     fun afterFailure(function: QuadraticFunction) = set(Point.AfterFailure, function)
 
-    fun contain(point: Point) = map.containsKey(point)
-    fun get(point: Point): QuadraticFunction? = map[point]
+    fun contains(point: Point) = map.containsKey(point)
+    fun get(point: Point): List<QuadraticFunction>? = map[point]
 
     fun execIfContain(env: MDOEnv): Try? {
         return creatingEnvironmentFunction?.invoke(env)
     }
 
-    fun execIfContain(point: Point, mindopt: MDOModel, variables: List<MDOVar>, constraints: List<MDOQConstr>): Try? {
-        return map[point]?.invoke(mindopt, variables, constraints)
+    suspend fun execIfContain(
+        point: Point,
+        status: SolverStatus?,
+        mindopt: MDOModel,
+        variables: List<MDOVar>,
+        constraints: List<MDOQConstr>
+    ): Try? {
+        return if (!map[point].isNullOrEmpty()) {
+            syncRun(map[point]!!.map {
+                { it(status, mindopt, variables, constraints) }
+            })
+        } else {
+            null
+        }
     }
 
     override fun copy(): MindOPTQuadraticSolverCallBack {
-        return MindOPTQuadraticSolverCallBack(nativeCallback, creatingEnvironmentFunction, map.toMutableMap())
+        return MindOPTQuadraticSolverCallBack(
+            nativeCallback = nativeCallback,
+            creatingEnvironmentFunction = creatingEnvironmentFunction,
+            map = map.toMutableMap()
+        )
     }
 }

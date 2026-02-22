@@ -6,12 +6,12 @@ import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.backend.solver.output.*
 
-abstract class GurobiSolver {
+abstract class GurobiSolver : AutoCloseable {
     protected lateinit var env: GRBEnv
     protected lateinit var grbModel: GRBModel
     protected lateinit var status: SolverStatus
 
-    protected fun finalize() {
+    override fun close() {
         grbModel.dispose()
         env.dispose()
     }
@@ -98,14 +98,14 @@ abstract class GurobiSolver {
                 }
 
                 GRB.INF_OR_UNBD -> {
-                    SolverStatus.Infeasible
+                    SolverStatus.InfeasibleOrUnbounded
                 }
 
                 else -> {
                     if (grbModel.get(GRB.IntAttr.SolCount) > 0) {
                         SolverStatus.Feasible
                     } else {
-                        SolverStatus.Infeasible
+                        SolverStatus.SolvingException
                     }
                 }
             }

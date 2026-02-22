@@ -2,9 +2,11 @@ package fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function
 
 import org.apache.logging.log4j.kotlin.*
 import fuookami.ospf.kotlin.utils.math.*
+import fuookami.ospf.kotlin.utils.math.ordinary.*
 import fuookami.ospf.kotlin.utils.math.symbol.*
 import fuookami.ospf.kotlin.utils.math.geometry.*
 import fuookami.ospf.kotlin.utils.math.value_range.*
+import fuookami.ospf.kotlin.utils.operator.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.utils.multi_array.*
 import fuookami.ospf.kotlin.core.frontend.variable.*
@@ -14,10 +16,37 @@ import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 
+data class BalanceTernaryzationFunctionImplBuilderParams(
+    val x: AbstractLinearPolynomial<*>,
+    val self: BalanceTernaryzationFunction,
+    val name: String,
+    val displayName: String? = null
+) {
+    companion object {
+        operator fun <
+            T : ToLinearPolynomial<Poly>,
+            Poly : AbstractLinearPolynomial<Poly>
+        > invoke(
+            x: T,
+            self: BalanceTernaryzationFunction,
+            name: String,
+            displayName: String? = null
+        ): BalanceTernaryzationFunctionImplBuilderParams {
+            return BalanceTernaryzationFunctionImplBuilderParams(
+                x = x.toLinearPolynomial(),
+                self = self,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+}
+typealias BalanceTernaryzationFunctionImplBuilder = (BalanceTernaryzationFunctionImplBuilderParams) -> AbstractBalanceTernaryzationFunctionImpl
+
 abstract class AbstractBalanceTernaryzationFunctionImpl(
     protected val x: AbstractLinearPolynomial<*>,
-    protected val parent: LinearFunctionSymbol
-) : LinearFunctionSymbol {
+    protected val self: BalanceTernaryzationFunction
+) : LinearFunctionSymbol() {
     protected abstract val polyY: AbstractLinearPolynomial<*>
 
     override val discrete = true
@@ -28,6 +57,8 @@ abstract class AbstractBalanceTernaryzationFunctionImpl(
 
     override val category = Linear
 
+    override val parent get() = self.parent
+    override val args get() = self.args
     override val dependencies get() = x.dependencies
     override val cells get() = polyY.cells
     override val cached get() = polyY.cached
@@ -50,12 +81,6 @@ abstract class AbstractBalanceTernaryzationFunctionImpl(
             }
         ).value!!
 
-    override fun flush(force: Boolean) {
-        x.flush(force)
-        polyY.flush(force)
-        polyY.range.set(possibleRange.toFlt64())
-    }
-
     override fun toRawString(unfold: UInt64): String {
         return if (unfold eq UInt64.zero) {
             displayName ?: name
@@ -64,7 +89,10 @@ abstract class AbstractBalanceTernaryzationFunctionImpl(
         }
     }
 
-    override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         val value = x.evaluate(tokenList, zeroIfNone)
             ?: return null
         return if (value ls Flt64.zero) {
@@ -76,8 +104,16 @@ abstract class AbstractBalanceTernaryzationFunctionImpl(
         }
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        val value = x.evaluate(results, tokenList, zeroIfNone)
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val value = x.evaluate(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        )
             ?: return null
         return if (value ls Flt64.zero) {
             -Flt64.one
@@ -88,7 +124,30 @@ abstract class AbstractBalanceTernaryzationFunctionImpl(
         }
     }
 
-    override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenList: AbstractTokenList?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val value = x.evaluate(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        )
+            ?: return null
+        return if (value ls Flt64.zero) {
+            -Flt64.one
+        } else if (value gr Flt64.zero) {
+            Flt64.one
+        } else {
+            Flt64.zero
+        }
+    }
+
+    override fun calculateValue(
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
         val value = x.evaluate(tokenTable, zeroIfNone)
             ?: return null
         return if (value ls Flt64.zero) {
@@ -100,8 +159,36 @@ abstract class AbstractBalanceTernaryzationFunctionImpl(
         }
     }
 
-    override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        val value = x.evaluate(results, tokenTable, zeroIfNone)
+    override fun calculateValue(
+        results: List<Flt64>,
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val value = x.evaluate(
+            results = results,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        )
+            ?: return null
+        return if (value ls Flt64.zero) {
+            -Flt64.one
+        } else if (value gr Flt64.zero) {
+            Flt64.one
+        } else {
+            Flt64.zero
+        }
+    }
+
+    override fun calculateValue(
+        values: Map<Symbol, Flt64>,
+        tokenTable: AbstractTokenTable?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val value = x.evaluate(
+            values = values,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        )
             ?: return null
         return if (value ls Flt64.zero) {
             -Flt64.one
@@ -115,56 +202,151 @@ abstract class AbstractBalanceTernaryzationFunctionImpl(
 
 class BalanceTernaryzationFunctionImpl(
     x: AbstractLinearPolynomial<*>,
-    parent: LinearFunctionSymbol,
+    self: BalanceTernaryzationFunction,
     override var name: String,
     override var displayName: String? = null
-) : AbstractBalanceTernaryzationFunctionImpl(x, parent) {
+) : AbstractBalanceTernaryzationFunctionImpl(x, self) {
+    companion object : BalanceTernaryzationFunctionImplBuilder {
+        operator fun <
+            T : ToLinearPolynomial<Poly>,
+            Poly : AbstractLinearPolynomial<*>
+        > invoke(
+            x: T,
+            self: BalanceTernaryzationFunction,
+            name: String,
+            displayName: String? = null,
+        ): BalanceTernaryzationFunctionImpl {
+            return BalanceTernaryzationFunctionImpl(
+                x = x.toLinearPolynomial(),
+                self = self,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        override operator fun invoke(params: BalanceTernaryzationFunctionImplBuilderParams): AbstractBalanceTernaryzationFunctionImpl {
+            return BalanceTernaryzationFunctionImpl(
+                x = params.x,
+                self = params.self,
+                name = params.name,
+                displayName = params.displayName
+            )
+        }
+    }
+
     override val polyY: AbstractLinearPolynomial<*> by lazy {
         x.copy()
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun flush(force: Boolean) {
+        x.flush(force)
+        polyY.flush(force)
+        polyY.range.set(possibleRange.toFlt64())
+    }
+
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         x.cells
 
-        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
-            x.evaluate(tokenTable)?.let { xValue ->
-                val pos = xValue gr Flt64.zero
-                val neg = xValue ls Flt64.zero
-                val yValue = if (pos) {
-                    Flt64.one
-                } else if (neg) {
-                    -Flt64.one
-                } else {
-                    Flt64.zero
-                }
+        return if ((!values.isNullOrEmpty() || tokenTable.cachedSolution) && if (values.isNullOrEmpty()) {
+            tokenTable.cached(self)
+        } else {
+            tokenTable.cached(self, values)
+        } == false) {
+            val xValue = if (values.isNullOrEmpty()) {
+                x.evaluate(tokenTable)
+            } else {
+                x.evaluate(
+                    values = values,
+                    tokenTable = tokenTable
+                )
+            } ?: return null
 
-                yValue
+            val pos = xValue gr Flt64.zero
+            val neg = xValue ls Flt64.zero
+            val yValue = if (pos) {
+                Flt64.one
+            } else if (neg) {
+                -Flt64.one
+            } else {
+                Flt64.zero
             }
+
+            yValue
         } else {
             null
         }
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
+    override fun register(tokenTable: AddableTokenCollection): Try {
         return ok
     }
 
     override fun register(model: AbstractLinearMechanismModel): Try {
         return ok
     }
+
+    override fun register(
+        model: AbstractLinearMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        return ok
+    }
+
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        return ok
+    }
 }
 
 class BalanceTernaryzationFunctionPiecewiseImpl(
     x: AbstractLinearPolynomial<*>,
-    parent: LinearFunctionSymbol,
-    private val epsilon: Flt64 = Flt64(1e-6),
+    self: BalanceTernaryzationFunction,
+    private val epsilon: Flt64 = self.epsilon,
     override var name: String,
     override var displayName: String? = null
-) : AbstractBalanceTernaryzationFunctionImpl(x, parent) {
+) : AbstractBalanceTernaryzationFunctionImpl(x, self) {
+    companion object : BalanceTernaryzationFunctionImplBuilder {
+        operator fun <
+            T : ToLinearPolynomial<Poly>,
+            Poly : AbstractLinearPolynomial<*>
+        > invoke(
+            x: T,
+            self: BalanceTernaryzationFunction,
+            epsilon: Flt64 = self.epsilon,
+            name: String,
+            displayName: String? = null,
+        ): BalanceTernaryzationFunctionPiecewiseImpl {
+            return BalanceTernaryzationFunctionPiecewiseImpl(
+                x = x.toLinearPolynomial(),
+                self = self,
+                epsilon = epsilon,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        override operator fun invoke(params: BalanceTernaryzationFunctionImplBuilderParams): AbstractBalanceTernaryzationFunctionImpl {
+            return BalanceTernaryzationFunctionPiecewiseImpl(params, params.self.epsilon)
+        }
+    }
+
+    constructor(
+        params: BalanceTernaryzationFunctionImplBuilderParams,
+        epsilon: Flt64
+    ): this(
+        x = params.x,
+        self = params.self,
+        epsilon = epsilon,
+        name = params.name,
+        displayName = params.displayName
+    )
+
     private val piecewiseFunction: UnivariateLinearPiecewiseFunction by lazy {
         UnivariateLinearPiecewiseFunction(
-            x,
-            listOf(
+            x = x,
+            points = listOf(
                 Point2(x.lowerBound!!.value.unwrap(), -Flt64.one),
                 Point2(-epsilon, -Flt64.one),
                 Point2(-epsilon + Flt32.decimalPrecision.toFlt64(), Flt64.zero),
@@ -172,7 +354,8 @@ class BalanceTernaryzationFunctionPiecewiseImpl(
                 Point2(epsilon, Flt64.one),
                 Point2(x.upperBound!!.value.unwrap(), Flt64.one)
             ),
-            "${name}_piecewise"
+            parent = parent ?: self,
+            name = "${name}_piecewise"
         )
     }
 
@@ -183,22 +366,32 @@ class BalanceTernaryzationFunctionPiecewiseImpl(
     }
 
     override fun flush(force: Boolean) {
-        super.flush(force)
+        x.flush(force)
         piecewiseFunction.flush(force)
+        polyY.flush(force)
+        polyY.range.set(possibleRange.toFlt64())
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         x.cells
-        piecewiseFunction.prepareAndCache(tokenTable)
+        piecewiseFunction.prepareAndCache(values, tokenTable)
 
-        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
-            piecewiseFunction.evaluate(tokenTable)
+        return if ((!values.isNullOrEmpty() || tokenTable.cachedSolution) && if (values.isNullOrEmpty()) {
+            tokenTable.cached(self)
+        } else {
+            tokenTable.cached(self, values)
+        } == false) {
+            if (values.isNullOrEmpty()) {
+                piecewiseFunction.evaluate(tokenTable)
+            } else {
+                piecewiseFunction.evaluate(values, tokenTable)
+            }
         } else {
             null
         }
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
+    override fun register(tokenTable: AddableTokenCollection): Try {
         when (val result = piecewiseFunction.register(tokenTable)) {
             is Ok -> {}
 
@@ -221,16 +414,96 @@ class BalanceTernaryzationFunctionPiecewiseImpl(
 
         return ok
     }
+
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>,
+    ): Try {
+        when (val result = piecewiseFunction.register(tokenTable, fixedValues)) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        return ok
+    }
+
+    override fun register(
+        model: AbstractLinearMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        when (val result = piecewiseFunction.register(model, fixedValues)) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        return ok
+    }
 }
 
 class BalanceTernaryzationFunctionDiscreteImpl(
     x: AbstractLinearPolynomial<*>,
-    parent: LinearFunctionSymbol,
-    private val extract: Boolean = true,
+    self: BalanceTernaryzationFunction,
+    private val extract: Boolean = self.extract,
+    m: Flt64? = null,
     override var name: String,
     override var displayName: String? = null
-) : AbstractBalanceTernaryzationFunctionImpl(x, parent) {
+) : AbstractBalanceTernaryzationFunctionImpl(x, self) {
     private val logger = logger()
+
+    companion object : BalanceTernaryzationFunctionImplBuilder {
+        operator fun <
+            T : ToLinearPolynomial<Poly>,
+            Poly : AbstractLinearPolynomial<Poly>
+        > invoke(
+            x: T,
+            self: BalanceTernaryzationFunction,
+            extract: Boolean = self.extract,
+            name: String,
+            displayName: String? = null,
+        ): BalanceTernaryzationFunctionDiscreteImpl {
+            return BalanceTernaryzationFunctionDiscreteImpl(
+                x = x.toLinearPolynomial(),
+                self = self,
+                extract = extract,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        override fun invoke(params: BalanceTernaryzationFunctionImplBuilderParams): AbstractBalanceTernaryzationFunctionImpl {
+            return BalanceTernaryzationFunctionDiscreteImpl(
+                params = params,
+                extract = params.self.extract,
+                m = null
+            )
+        }
+    }
+
+    constructor(
+        params: BalanceTernaryzationFunctionImplBuilderParams,
+        extract: Boolean,
+        m: Flt64? = null
+    ): this(
+        x = params.x,
+        self = params.self,
+        extract = extract,
+        m = m,
+        name = params.name,
+        displayName = params.displayName
+    )
+
+    private val possibleUpperBound get() = max(
+        abs(x.lowerBound!!.value.unwrap()),
+        abs(x.upperBound!!.value.unwrap())
+    )
+    private val mFixed = m != null
+    private var m = m ?: possibleUpperBound
 
     private val y: BinVariable1 by lazy {
         val y = BinVariable1("${name}_y", Shape1(2))
@@ -245,44 +518,55 @@ class BalanceTernaryzationFunctionDiscreteImpl(
         polyY
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun flush(force: Boolean) {
+        x.flush(force)
+        if (!mFixed) {
+            m = possibleUpperBound
+        }
+        y[0].range.set(ValueRange(UInt8.zero, (x.lowerBound!!.value.unwrap() ls Flt64.zero).toUInt8()).value!!)
+        y[1].range.set(ValueRange(UInt8.zero, (x.upperBound!!.value.unwrap() gr Flt64.zero).toUInt8()).value!!)
+        polyY.flush(force)
+        polyY.range.set(possibleRange.toFlt64())
+    }
+
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         x.cells
 
-        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
-            x.evaluate(tokenTable)?.let { xValue ->
-                val pos = xValue gr Flt64.zero
-                val neg = xValue ls Flt64.zero
+        return if ((!values.isNullOrEmpty() || tokenTable.cachedSolution) && if (values.isNullOrEmpty()) {
+            tokenTable.cached(self)
+        } else {
+            tokenTable.cached(self, values)
+        } == false) {
+            val xValue = if (values.isNullOrEmpty()) {
+                x.evaluate(tokenTable)
+            } else {
+                x.evaluate(values, tokenTable)
+            } ?: return null
 
-                logger.trace { "Setting BalanceTernaryzationFunction ${name}.y initial solution: $pos, $neg" }
-                tokenTable.find(y[0])?.let { token ->
-                    token._result = if (pos) {
-                        Flt64.one
-                    } else {
-                        Flt64.zero
-                    }
-                }
-                tokenTable.find(y[1])?.let { token ->
-                    token._result = if (neg) {
-                        Flt64.one
-                    } else {
-                        Flt64.zero
-                    }
-                }
+            val pos = xValue gr Flt64.zero
+            val neg = xValue ls Flt64.zero
 
-                if (pos) {
-                    Flt64.one
-                } else if (neg) {
-                    -Flt64.one
-                } else {
-                    Flt64.zero
-                }
+            logger.trace { "Setting BalanceTernaryzationFunction ${name}.y initial solution: $pos, $neg" }
+            tokenTable.find(y[0])?.let { token ->
+                token._result = pos.toFlt64()
+            }
+            tokenTable.find(y[1])?.let { token ->
+                token._result = neg.toFlt64()
+            }
+
+            if (pos) {
+                Flt64.one
+            } else if (neg) {
+                -Flt64.one
+            } else {
+                Flt64.zero
             }
         } else {
             null
         }
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
+    override fun register(tokenTable: AddableTokenCollection): Try {
         when (val result = tokenTable.add(y)) {
             is Ok -> {}
 
@@ -296,8 +580,9 @@ class BalanceTernaryzationFunctionDiscreteImpl(
 
     override fun register(model: AbstractLinearMechanismModel): Try {
         when (val result = model.addConstraint(
-            x.upperBound!!.value.unwrap() * y[1] geq x,
-            "${name}_plb"
+            constraint = m * y[1] geq x,
+            name = "${name}_pub",
+            from = parent ?: self
         )) {
             is Ok -> {}
 
@@ -307,8 +592,9 @@ class BalanceTernaryzationFunctionDiscreteImpl(
         }
 
         when (val result = model.addConstraint(
-            x.lowerBound!!.value.unwrap() * y[0] leq x,
-            "${name}_nlb"
+            constraint = -m * y[0] leq x,
+            name = "${name}_nlb",
+            from = parent ?: self
         )) {
             is Ok -> {}
 
@@ -319,8 +605,9 @@ class BalanceTernaryzationFunctionDiscreteImpl(
 
         if (extract) {
             when (val result = model.addConstraint(
-                x geq (x.lowerBound!!.value.unwrap() - Flt64.one) * (Flt64.one - y[1]) + Flt64.one,
-                "${name}_pub"
+                constraint = x geq (-m - Flt64.one) * (Flt64.one - y[1]) + Flt64.one,
+                name = "${name}_plb",
+                from = parent ?: self
             )) {
                 is Ok -> {}
 
@@ -330,8 +617,9 @@ class BalanceTernaryzationFunctionDiscreteImpl(
             }
 
             when (val result = model.addConstraint(
-                x leq (x.upperBound!!.value.unwrap() + Flt64.one) * (Flt64.one - y[0]) - Flt64.one,
-                "${name}_nlb"
+                constraint = x leq (m + Flt64.one) * (Flt64.one - y[0]) - Flt64.one,
+                name = "${name}_nub",
+                from = parent ?: self
             )) {
                 is Ok -> {}
 
@@ -341,8 +629,9 @@ class BalanceTernaryzationFunctionDiscreteImpl(
             }
 
             when (val result = model.addConstraint(
-                sum(y) leq Flt64.one,
-                "${name}_y"
+                constraint = sum(y) leq Flt64.one,
+                name = "${name}_y",
+                from = parent ?: self
             )) {
                 is Ok -> {}
 
@@ -354,16 +643,178 @@ class BalanceTernaryzationFunctionDiscreteImpl(
 
         return ok
     }
+
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        val xValue = when (tokenTable) {
+            is AbstractTokenTable -> {
+                x.evaluate(
+                    values = fixedValues,
+                    tokenTable = tokenTable
+                ) ?: return register(tokenTable)
+            }
+
+            is FunctionSymbolRegistrationScope -> {
+                x.evaluate(
+                    values = fixedValues,
+                    tokenTable = tokenTable.origin
+                ) ?: return register(tokenTable)
+            }
+
+            else -> {
+                return register(tokenTable)
+            }
+        }
+        val ter = if (xValue gr Flt64.zero) {
+            Flt64.one
+        } else if (xValue ls Flt64.zero) {
+            -Flt64.one
+        } else {
+            Flt64.zero
+        }
+
+        if (ter eq Flt64.one) {
+            when (val result = tokenTable.add(y[1])) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+        } else if (ter eq -Flt64.one) {
+            when (val result = tokenTable.add(y[0])) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+        }
+
+        return ok
+    }
+
+    override fun register(
+        model: AbstractLinearMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        val xValue = x.evaluate(fixedValues, model.tokens) ?: return register(model)
+        val ter = if (xValue gr Flt64.zero) {
+            Flt64.one
+        } else if (xValue ls Flt64.zero) {
+            -Flt64.one
+        } else {
+            Flt64.zero
+        }
+
+        if (ter eq Flt64.one) {
+            when (val result = model.addConstraint(
+                constraint = m * y[1] geq x,
+                name = "${name}_ub",
+                from = parent ?: self
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            when (val result = model.addConstraint(
+                constraint = y[1] eq Flt64.one,
+                name = "${name}_y",
+                from = parent ?: self
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            model.tokens.find(y[1])?.let { token ->
+                token._result = Flt64.one
+            }
+        } else if (ter eq -Flt64.one) {
+            when (val result = model.addConstraint(
+                constraint = -m * y[0] leq x,
+                name = "${name}_lb",
+                from = parent ?: self
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            when (val result = model.addConstraint(
+                constraint = y[0] eq Flt64.one,
+                name = "${name}_y",
+                from = parent ?: self
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            model.tokens.find(y[0])?.let { token ->
+                token._result = Flt64.one
+            }
+        }
+
+        return ok
+    }
 }
 
 class BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(
     x: AbstractLinearPolynomial<*>,
-    parent: LinearFunctionSymbol,
-    private val epsilon: Flt64 = Flt64(1e-6),
+    self: BalanceTernaryzationFunction,
+    private val epsilon: Flt64 = self.epsilon,
     override var name: String,
     override var displayName: String? = null
-) : AbstractBalanceTernaryzationFunctionImpl(x, parent) {
+) : AbstractBalanceTernaryzationFunctionImpl(x, self) {
     private val logger = logger()
+
+    companion object : BalanceTernaryzationFunctionImplBuilder {
+        operator fun <
+            T : ToLinearPolynomial<Poly>,
+            Poly : AbstractLinearPolynomial<Poly>
+        > invoke(
+            x: T,
+            self: BalanceTernaryzationFunction,
+            epsilon: Flt64 = self.epsilon,
+            name: String,
+            displayName: String? = null,
+        ): BalanceTernaryzationFunctionExtractAndNotDiscreteImpl {
+            return BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(
+                x = x.toLinearPolynomial(),
+                self = self,
+                epsilon = epsilon,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        override operator fun invoke(params: BalanceTernaryzationFunctionImplBuilderParams): AbstractBalanceTernaryzationFunctionImpl {
+            return BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(params, params.self.epsilon)
+        }
+    }
+
+    constructor(
+        params: BalanceTernaryzationFunctionImplBuilderParams,
+        epsilon: Flt64
+    ): this(
+        x = params.x,
+        self = params.self,
+        epsilon = epsilon,
+        name = params.name,
+        displayName = params.displayName
+    )
 
     private val b: PctVariable1 by lazy {
         PctVariable1(name = "${name}_b", Shape1(2))
@@ -382,62 +833,70 @@ class BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(
         polyY
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun flush(force: Boolean) {
+        x.flush(force)
+        y[0].range.set(ValueRange(UInt8.zero, (x.lowerBound!!.value.unwrap() ls Flt64.zero).toUInt8()).value!!)
+        y[1].range.set(ValueRange(UInt8.zero, (x.upperBound!!.value.unwrap() gr Flt64.zero).toUInt8()).value!!)
+        polyY.flush(force)
+        polyY.range.set(possibleRange.toFlt64())
+    }
+
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         x.cells
 
-        return if (tokenTable.cachedSolution && tokenTable.cached(parent) == false) {
-            x.evaluate(tokenTable)?.let { xValue ->
-                val pos = xValue gr Flt64.zero
-                val pocPct = if (pos) {
-                    xValue / x.upperBound!!.value.unwrap()
-                } else {
-                    Flt64.zero
-                }
-                val neg = xValue ls Flt64.zero
-                val negPct = if (neg) {
-                    xValue / x.lowerBound!!.value.unwrap()
-                } else {
-                    Flt64.zero
-                }
-                val yValue = if (pos) {
-                    Flt64.one
-                } else if (neg) {
-                    -Flt64.one
-                } else {
-                    Flt64.zero
-                }
+        return if ((!values.isNullOrEmpty() || tokenTable.cachedSolution) && if (values.isNullOrEmpty()) {
+            tokenTable.cached(self)
+        } else {
+            tokenTable.cached(self, values)
+        } == false) {
+            val xValue =  if (values.isNullOrEmpty()) {
+                x.evaluate(tokenTable)
+            } else {
+                x.evaluate(values, tokenTable)
+            } ?: return null
 
-                logger.trace { "Setting BalanceTernaryzationFunction ${name}.b initial solution: $pocPct, $negPct" }
-                tokenTable.find(b[0])?.let { token ->
-                    token._result = pocPct
-                }
-                tokenTable.find(b[1])?.let { token ->
-                    token._result = negPct
-                }
-                logger.trace { "Setting BalanceTernaryzationFunction ${name}.y initial solution: $pos, $neg" }
-                tokenTable.find(y[0])?.let { token ->
-                    token._result = if (pos) {
-                        Flt64.one
-                    } else {
-                        Flt64.zero
-                    }
-                }
-                tokenTable.find(y[1])?.let { token ->
-                    token._result = if (neg) {
-                        Flt64.one
-                    } else {
-                        Flt64.zero
-                    }
-                }
-
-                yValue
+            val pos = xValue gr Flt64.zero
+            val pocPct = if (pos) {
+                xValue / x.upperBound!!.value.unwrap()
+            } else {
+                Flt64.zero
             }
+            val neg = xValue ls Flt64.zero
+            val negPct = if (neg) {
+                xValue / x.lowerBound!!.value.unwrap()
+            } else {
+                Flt64.zero
+            }
+            val yValue = if (pos) {
+                Flt64.one
+            } else if (neg) {
+                -Flt64.one
+            } else {
+                Flt64.zero
+            }
+
+            logger.trace { "Setting BalanceTernaryzationFunction ${name}.b initial solution: $pocPct, $negPct" }
+            tokenTable.find(b[0])?.let { token ->
+                token._result = pocPct
+            }
+            tokenTable.find(b[1])?.let { token ->
+                token._result = negPct
+            }
+            logger.trace { "Setting BalanceTernaryzationFunction ${name}.y initial solution: $pos, $neg" }
+            tokenTable.find(y[0])?.let { token ->
+                token._result = pos.toFlt64()
+            }
+            tokenTable.find(y[1])?.let { token ->
+                token._result = neg.toFlt64()
+            }
+
+            yValue
         } else {
             null
         }
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
+    override fun register(tokenTable: AddableTokenCollection): Try {
         when (val result = tokenTable.add(b)) {
             is Ok -> {}
 
@@ -459,8 +918,9 @@ class BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(
 
     override fun register(model: AbstractLinearMechanismModel): Try {
         when (val result = model.addConstraint(
-            x eq x.lowerBound!!.value.unwrap() * b[0] + x.upperBound!!.value.unwrap() * b[1],
-            "${name}_xb"
+            constraint = x eq x.lowerBound!!.value.unwrap() * b[0] + x.upperBound!!.value.unwrap() * b[1],
+            name = "${name}_xb",
+            from = parent ?: self
         )) {
             is Ok -> {}
 
@@ -470,8 +930,9 @@ class BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(
         }
 
         when (val result = model.addConstraint(
-            y[1] geq b[1],
-            "${name}_yb_pos_lb"
+            constraint = y[1] geq b[1],
+            name = "${name}_yb_pos_lb",
+            from = parent ?: self
         )) {
             is Ok -> {}
 
@@ -481,8 +942,9 @@ class BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(
         }
 
         when (val result = model.addConstraint(
-            y[1] leq (Flt64.one / epsilon) * b[1],
-            "${name}_yb_pos_ub"
+            constraint = y[1] leq (Flt64.one / epsilon) * b[1],
+            name = "${name}_yb_pos_ub",
+            from = parent ?: self
         )) {
             is Ok -> {}
 
@@ -492,8 +954,9 @@ class BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(
         }
 
         when (val result = model.addConstraint(
-            y[0] geq b[0],
-            "${name}_yb_neg_lb"
+            constraint = y[0] geq b[0],
+            name = "${name}_yb_neg_lb",
+            from = parent ?: self
         )) {
             is Ok -> {}
 
@@ -503,8 +966,9 @@ class BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(
         }
 
         when (val result = model.addConstraint(
-            y[0] leq (Flt64.one / epsilon) * b[0],
-            "${name}_yb_neg_ub"
+            constraint = y[0] leq (Flt64.one / epsilon) * b[0],
+            name = "${name}_yb_neg_ub",
+            from = parent ?: self
         )) {
             is Ok -> {}
 
@@ -514,8 +978,9 @@ class BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(
         }
 
         when (val result = model.addConstraint(
-            b[0] + y[1] leq Flt64.one,
-            "${name}_yb_pos"
+            constraint = b[0] + y[1] leq Flt64.one,
+            name = "${name}_yb_pos",
+            from = parent ?: self
         )) {
             is Ok -> {}
 
@@ -525,8 +990,9 @@ class BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(
         }
 
         when (val result = model.addConstraint(
-            b[1] + y[0] leq Flt64.one,
-            "${name}_yb_neg"
+            constraint = b[1] + y[0] leq Flt64.one,
+            name = "${name}_yb_neg",
+            from = parent ?: self
         )) {
             is Ok -> {}
 
@@ -537,32 +1003,256 @@ class BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(
 
         return ok
     }
+
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        val xValue = when (tokenTable) {
+            is AbstractTokenTable -> {
+                x.evaluate(fixedValues, tokenTable) ?: return register(tokenTable)
+            }
+
+            is FunctionSymbolRegistrationScope -> {
+                x.evaluate(fixedValues, tokenTable.origin) ?: return register(tokenTable)
+            }
+
+            else -> {
+                return register(tokenTable)
+            }
+        }
+        val ter = if (xValue gr Flt64.zero) {
+            Flt64.one
+        } else if (xValue ls Flt64.zero) {
+            -Flt64.one
+        } else {
+            Flt64.zero
+        }
+
+        if (ter eq Flt64.one) {
+            when (val result = tokenTable.add(listOf(y[1], b[1]))) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+        } else if (ter eq -Flt64.one) {
+            when (val result = tokenTable.add(listOf(y[0], b[0]))) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+        }
+
+        return ok
+    }
+
+    override fun register(
+        model: AbstractLinearMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        val xValue = x.evaluate(fixedValues, model.tokens) ?: return register(model)
+        val ter = if (xValue gr Flt64.zero) {
+            Flt64.one
+        } else if (xValue ls Flt64.zero) {
+            -Flt64.one
+        } else {
+            Flt64.zero
+        }
+
+        if (ter eq Flt64.one) {
+            when (val result = model.addConstraint(
+                constraint = x eq x.upperBound!!.value.unwrap() * b[1],
+                name = "${name}_xb",
+                from = parent ?: self
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            when (val result = model.addConstraint(
+                constraint = y[1] eq Flt64.one,
+                name = "${name}_y",
+                from = parent ?: self
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            model.tokens.find(y[1])?.let { token ->
+                token._result = Flt64.one
+            }
+
+            val bValue = xValue / x.upperBound!!.value.unwrap()
+            when (val result = model.addConstraint(
+                constraint = b[1] eq bValue,
+                name = "${name}_b",
+                from = parent ?: self
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            model.tokens.find(b[1])?.let { token ->
+                token._result = bValue
+            }
+        } else if (ter eq -Flt64.one) {
+            when (val result = model.addConstraint(
+                constraint = x eq x.lowerBound!!.value.unwrap() * b[0],
+                name = "${name}_xb",
+                from = parent ?: self
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            when (val result = model.addConstraint(
+                constraint = y[0] eq Flt64.one,
+                name = "${name}_y",
+                from = parent ?: self
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            model.tokens.find(y[0])?.let { token ->
+                token._result = Flt64.one
+            }
+
+            val bValue = xValue / x.lowerBound!!.value.unwrap()
+            when (val result = model.addConstraint(
+                constraint = b[0] eq bValue,
+                name = "${name}_b",
+                from = parent ?: self
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            model.tokens.find(b[0])?.let { token ->
+                token._result = bValue
+            }
+        } else {
+            when (val result = model.addConstraint(
+                constraint = x eq Flt64.zero,
+                name = "${name}_x",
+                from = parent ?: self
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+        }
+
+        return ok
+    }
 }
 
 class BalanceTernaryzationFunction(
     val x: AbstractLinearPolynomial<*>,
-    private val extract: Boolean = true,
-    private val epsilon: Flt64 = Flt64(1e-6),
-    private val piecewise: Boolean = false,
-    impl: AbstractBalanceTernaryzationFunctionImpl? = null,
+    internal val extract: Boolean = true,
+    internal val epsilon: Flt64 = Flt64(1e-6),
+    internal val piecewise: Boolean = false,
+    m: Flt64? = null,
+    override val parent: IntermediateSymbol? = null,
+    args: Any? = null,
+    impl: BalanceTernaryzationFunctionImplBuilder? = null,
     override var name: String,
     override var displayName: String? = null
-) : LinearFunctionSymbol {
+) : LinearFunctionSymbol() {
     companion object {
         val piecewiseThreshold: Flt64 = Flt64(1e-5)
+
+        operator fun <
+            T : ToLinearPolynomial<Poly>,
+            Poly : AbstractLinearPolynomial<Poly>
+        > invoke(
+            x : T,
+            extract: Boolean = true,
+            epsilon: Flt64 = Flt64(1e-6),
+            piecewise: Boolean = false,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            impl: BalanceTernaryzationFunctionImplBuilder? = null,
+            name: String,
+            displayName: String? = null
+        ): BalanceTernaryzationFunction {
+            return BalanceTernaryzationFunction(
+                x = x.toLinearPolynomial(),
+                extract = extract,
+                epsilon = epsilon,
+                piecewise = piecewise,
+                parent = parent,
+                args = args,
+                impl = impl,
+                name = name,
+                displayName = displayName
+            )
+        }
     }
 
     private val impl: AbstractBalanceTernaryzationFunctionImpl by lazy {
-        impl ?: if (x.discrete && ValueRange(-Flt64.one, Flt64.one).value!! contains x.range.range!!) {
-            BalanceTernaryzationFunctionImpl(x, this, name, displayName)
-        } else if (x.discrete) {
-            BalanceTernaryzationFunctionDiscreteImpl(x, this, extract, name, displayName)
-        } else if (extract && !x.discrete && (piecewise || epsilon geq piecewiseThreshold)) {
-            BalanceTernaryzationFunctionPiecewiseImpl(x, this, epsilon, name, displayName)
-        } else {
-            BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(x, this, epsilon, name, displayName)
-        }
+        impl?.invoke(BalanceTernaryzationFunctionImplBuilderParams(x, this, name, displayName))
+            ?: if (x.discrete && ValueRange(-Flt64.one, Flt64.one).value!! contains x.range.range!!) {
+                BalanceTernaryzationFunctionImpl(
+                    x = x,
+                    self = this,
+                    name = name,
+                    displayName = displayName
+                )
+            } else if (x.discrete) {
+                BalanceTernaryzationFunctionDiscreteImpl(
+                    x = x,
+                    self = this,
+                    extract = extract,
+                    m = m,
+                    name = name,
+                    displayName = displayName
+                )
+            } else if (extract && !x.discrete && (piecewise || epsilon geq piecewiseThreshold)) {
+                BalanceTernaryzationFunctionPiecewiseImpl(
+                    x = x,
+                    self = this,
+                    epsilon = epsilon,
+                    name = name,
+                    displayName = displayName
+                )
+            } else {
+                BalanceTernaryzationFunctionExtractAndNotDiscreteImpl(
+                    x = x,
+                    self = this,
+                    epsilon = epsilon,
+                    name = name,
+                    displayName = displayName
+                )
+            }
     }
+
+    internal val _args = args
+    override val args get() = _args ?: parent?.args
 
     override val discrete = true
 
@@ -580,11 +1270,11 @@ class BalanceTernaryzationFunction(
         impl.flush(force)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
-        return impl.prepare(tokenTable)
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
+        return impl.prepare(values, tokenTable)
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
+    override fun register(tokenTable: AddableTokenCollection): Try {
         when (val result = impl.register(tokenTable)) {
             is Ok -> {}
 
@@ -608,6 +1298,36 @@ class BalanceTernaryzationFunction(
         return ok
     }
 
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        when (val result = impl.register(tokenTable, fixedValues)) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        return ok
+    }
+
+    override fun register(
+        model: AbstractLinearMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        when (val result = impl.register(model, fixedValues)) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        return ok
+    }
+
     override fun toString(): String {
         return displayName ?: name
     }
@@ -616,19 +1336,65 @@ class BalanceTernaryzationFunction(
         return "bter(${x.toRawString(unfold)})"
     }
 
-    override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         return impl.evaluate(tokenList, zeroIfNone)
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return impl.evaluate(results, tokenList, zeroIfNone)
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return impl.evaluate(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        )
     }
 
-    override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenList: AbstractTokenList?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return impl.evaluate(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        )
+    }
+
+    override fun calculateValue(
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
         return impl.calculateValue(tokenTable, zeroIfNone)
     }
 
-    override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return impl.calculateValue(results, tokenTable, zeroIfNone)
+    override fun calculateValue(
+        results: List<Flt64>,
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return impl.calculateValue(
+            results = results,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        )
+    }
+
+    override fun calculateValue(
+        values: Map<Symbol, Flt64>,
+        tokenTable: AbstractTokenTable?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return impl.calculateValue(
+            values = values,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        )
     }
 }

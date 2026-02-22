@@ -30,39 +30,117 @@ internal fun Polynomial<*, *, *>.toTidyRawString(unfold: UInt64): String {
     }
 }
 
-interface IntermediateSymbol : Expression {
+interface IntermediateSymbol : Symbol, Expression {
     val category: Category
     val operationCategory: Category get() = category
 
     val cached: Boolean
+    val parent: IntermediateSymbol? get() = null
+    val args: Any? get() = parent?.args
     val dependencies: Set<IntermediateSymbol>
 
+    val identifier: UInt64
+    val index: Int
+
     fun flush(force: Boolean = false)
-    fun prepare(tokenTable: AbstractTokenTable): Flt64?
-    fun prepareAndCache(tokenTable: AbstractTokenTable) {
-        prepare(tokenTable)?.let {
-            tokenTable.cache(this, null, it)
+
+    fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64?
+    fun prepareAndCache(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable) {
+        if (values.isNullOrEmpty()) {
+            prepare(null, tokenTable)?.let {
+                tokenTable.cache(
+                    symbol = this,
+                    solution = null,
+                    value = it
+                )
+            }
+        } else {
+            prepare(values, tokenTable)?.let {
+                tokenTable.cache(
+                    symbol = this,
+                    fixedValues = values,
+                    value = it
+                )
+            }
         }
     }
 
     fun toRawString(unfold: UInt64 = UInt64.zero): String
 }
 
-interface LinearIntermediateSymbol : IntermediateSymbol {
+interface LinearIntermediateSymbol : IntermediateSymbol, ToLinearPolynomial<LinearPolynomial>, ToQuadraticPolynomial<QuadraticPolynomial> {
+    companion object {
+        fun empty(
+            parent: IntermediateSymbol? = null,
+            name: String = "",
+            displayName: String? = null
+        ): LinearIntermediateSymbol {
+            return LinearExpressionSymbol(
+                _polynomial = MutableLinearPolynomial(
+                    name = name,
+                    displayName = displayName
+                ),
+                parent = parent,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+
     val cells: List<LinearMonomialCell>
+
+    override fun toLinearPolynomial(): LinearPolynomial {
+        return LinearPolynomial(this)
+    }
+
+    override fun toQuadraticPolynomial(): QuadraticPolynomial {
+        return QuadraticPolynomial(this)
+    }
 }
 
-interface QuadraticIntermediateSymbol : IntermediateSymbol {
+interface QuadraticIntermediateSymbol : IntermediateSymbol, ToQuadraticPolynomial<QuadraticPolynomial> {
+    companion object {
+        fun empty(
+            parent: IntermediateSymbol? = null,
+            name: String = "",
+            displayName: String? = null
+        ): QuadraticIntermediateSymbol {
+            return QuadraticExpressionSymbol(
+                _polynomial = MutableQuadraticPolynomial(
+                    name = name,
+                    displayName = displayName
+                ),
+                parent = parent,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+
     val cells: List<QuadraticMonomialCell>
+
+    override fun toQuadraticPolynomial(): QuadraticPolynomial {
+        return QuadraticPolynomial(this)
+    }
 }
 
 abstract class ExpressionSymbol(
     open val _polynomial: MutablePolynomial<*, *, *>,
     override val category: Category = _polynomial.category,
+    override val parent: IntermediateSymbol? = null,
     override var name: String = "",
     override var displayName: String? = null
 ) : IntermediateSymbol {
     open val polynomial: Polynomial<*, *, *> by ::_polynomial
+
+    internal var _group: AbstractSymbolCombination<*>? = null
+    internal var _index: Int? = null
+    override val identifier: UInt64 by lazy {
+        _group?.identifier ?: IdentifierGenerator.gen()
+    }
+    override val index: Int by lazy {
+        _index ?: 0
+    }
 
     open fun asMutable(): MutablePolynomial<*, *, *> {
         return _polynomial
@@ -93,61 +171,156 @@ abstract class ExpressionSymbol(
         return polynomial.evaluate(tokenList, zeroIfNone)
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return polynomial.evaluate(results, tokenList, zeroIfNone)
-    }
-
     override fun evaluate(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return if (tokenTable.cachedSolution && tokenTable.cached(this, null) == false) {
-            for (dependency in dependencies) {
-                if (tokenTable.cachedSolution && tokenTable.cached(dependency, null) == false) {
-                    dependency.evaluate(tokenTable, zeroIfNone)
+        return if (tokenTable.cachedSolution) {
+            tokenTable.cacheIfNotCached(this, null) {
+                for (dependency in dependencies) {
+                    if (tokenTable.cachedSolution) {
+                        dependency.evaluate(
+                            tokenTable = tokenTable,
+                            zeroIfNone = zeroIfNone
+                        )
+                    }
                 }
+                polynomial.evaluate(
+                    tokenTable = tokenTable,
+                    zeroIfNone = zeroIfNone
+                )
             }
-            val value = polynomial.evaluate(tokenTable, zeroIfNone) ?: return null
-            tokenTable.cache(this, null, value)
         } else {
             tokenTable.cachedValue(this, null)
         }
     }
 
+    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+        return polynomial.evaluate(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        )
+    }
+
     override fun evaluate(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return if (tokenTable.cached(this, results) == false) {
-            for (dependency in dependencies) {
-                if (tokenTable.cached(dependency, results) == false) {
-                    dependency.evaluate(tokenTable, zeroIfNone)
+        return if (tokenTable.cachedSolution) {
+            tokenTable.cacheIfNotCached(this, results) {
+                for (dependency in dependencies) {
+                    if (tokenTable.cachedSolution) {
+                        dependency.evaluate(
+                            results = results,
+                            tokenTable = tokenTable,
+                            zeroIfNone = zeroIfNone
+                        )
+                    }
                 }
+                polynomial.evaluate(
+                    results = results,
+                    tokenTable = tokenTable,
+                    zeroIfNone = zeroIfNone
+                )
             }
-            val value = polynomial.evaluate(results, tokenTable, zeroIfNone) ?: return null
-            tokenTable.cache(this, results, value)
         } else {
             tokenTable.cachedValue(this, results)
+        }
+    }
+
+    override fun evaluate(values: Map<Symbol, Flt64>, tokenList: AbstractTokenList?, zeroIfNone: Boolean): Flt64? {
+        return if (values.containsKey(this)) {
+            values[this]!!
+        } else {
+            polynomial.evaluate(
+                values = values,
+                tokenList = tokenList,
+                zeroIfNone = zeroIfNone
+            )
+        }
+    }
+
+    override fun evaluate(values: Map<Symbol, Flt64>, tokenTable: AbstractTokenTable?, zeroIfNone: Boolean): Flt64? {
+        return if (values.containsKey(this)) {
+            tokenTable?.cache(
+                symbol = this,
+                fixedValues = values,
+                value = values[this]!!
+            )
+            values[this]!!
+        } else if (tokenTable != null) {
+            if (values.isNotEmpty() || tokenTable.cachedSolution) {
+                tokenTable.cacheIfNotCached(this, values) {
+                    for (dependency in dependencies) {
+                        if (values.isNotEmpty() || tokenTable.cachedSolution) {
+                            dependency.evaluate(
+                                values = values,
+                                tokenTable = tokenTable,
+                                zeroIfNone = zeroIfNone
+                            )
+                        }
+                    }
+                    polynomial.evaluate(
+                        values = values,
+                        tokenTable = tokenTable,
+                        zeroIfNone = zeroIfNone
+                    )
+                }
+            } else {
+                tokenTable.cachedValue(this, values)
+            }
+        } else {
+            polynomial.evaluate(
+                values = values,
+                tokenTable = tokenTable as AbstractTokenTable?,
+                zeroIfNone = zeroIfNone
+            )
         }
     }
 
     override fun toString(): String {
         return displayName ?: name
     }
+
+    override fun hashCode(): Int {
+        return identifier.toInt() * 31 + index
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is ExpressionSymbol) return false
+
+        if (identifier != other.identifier) return false
+        if (index != other.index) return false
+        if (name != other.name) return false
+
+        return true
+    }
 }
 
 class LinearExpressionSymbol(
     override val _polynomial: MutableLinearPolynomial,
     category: Category = _polynomial.category,
+    parent: IntermediateSymbol? = null,
     name: String = "",
     displayName: String? = null
-) : LinearIntermediateSymbol, ExpressionSymbol(_polynomial, category, name, displayName) {
+) : LinearIntermediateSymbol, ExpressionSymbol(
+    _polynomial = _polynomial,
+    category = category,
+    parent = parent,
+    name = name,
+    displayName = displayName
+) {
     companion object {
         operator fun invoke(
             item: AbstractVariableItem<*, *>,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): LinearExpressionSymbol {
             return LinearExpressionSymbol(
-                MutableLinearPolynomial(
+                _polynomial = MutableLinearPolynomial(
                     monomials = mutableListOf(LinearMonomial(item)),
                     name = name.ifEmpty { item.name },
                     displayName = displayName
                 ),
+                category = Linear,
+                parent = parent,
                 name = name.ifEmpty { item.name },
                 displayName = displayName
             )
@@ -155,15 +328,18 @@ class LinearExpressionSymbol(
 
         operator fun invoke(
             symbol: LinearIntermediateSymbol,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): LinearExpressionSymbol {
             return LinearExpressionSymbol(
-                MutableLinearPolynomial(
+                _polynomial = MutableLinearPolynomial(
                     monomials = mutableListOf(LinearMonomial(symbol)),
                     name = name.ifEmpty { symbol.name },
                     displayName = displayName ?: symbol.displayName
                 ),
+                category = Linear,
+                parent = parent,
                 name = name.ifEmpty { symbol.name },
                 displayName = displayName ?: symbol.displayName
             )
@@ -171,15 +347,18 @@ class LinearExpressionSymbol(
 
         operator fun invoke(
             monomial: LinearMonomial,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): LinearExpressionSymbol {
             return LinearExpressionSymbol(
-                MutableLinearPolynomial(
+                _polynomial = MutableLinearPolynomial(
                     monomials = mutableListOf(monomial.copy()),
                     name = name.ifEmpty { monomial.name },
                     displayName = displayName ?: monomial.displayName
                 ),
+                category = Linear,
+                parent = parent,
                 name = name.ifEmpty { monomial.name },
                 displayName = displayName ?: monomial.displayName
             )
@@ -187,16 +366,19 @@ class LinearExpressionSymbol(
 
         operator fun invoke(
             polynomial: AbstractLinearPolynomial<*>,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): LinearExpressionSymbol {
             return LinearExpressionSymbol(
-                MutableLinearPolynomial(
+                _polynomial = MutableLinearPolynomial(
                     monomials = polynomial.monomials.map { it.copy() }.toMutableList(),
                     constant = polynomial.constant,
                     name = name.ifEmpty { polynomial.name },
                     displayName = displayName ?: polynomial.displayName
                 ),
+                category = Linear,
+                parent = parent,
                 name = name.ifEmpty { polynomial.name },
                 displayName = displayName ?: polynomial.displayName
             )
@@ -204,15 +386,18 @@ class LinearExpressionSymbol(
 
         operator fun invoke(
             constant: Int,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): LinearExpressionSymbol {
             return LinearExpressionSymbol(
-                MutableLinearPolynomial(
+                _polynomial = MutableLinearPolynomial(
                     constant = constant,
                     name = name,
                     displayName = displayName
                 ),
+                category = Linear,
+                parent = parent,
                 name = name,
                 displayName = displayName
             )
@@ -220,15 +405,18 @@ class LinearExpressionSymbol(
 
         operator fun invoke(
             constant: Double,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): LinearExpressionSymbol {
             return LinearExpressionSymbol(
-                MutableLinearPolynomial(
+                _polynomial = MutableLinearPolynomial(
                     constant = constant,
                     name = name,
                     displayName = displayName
                 ),
+                category = Linear,
+                parent = parent,
                 name = name,
                 displayName = displayName
             )
@@ -236,15 +424,18 @@ class LinearExpressionSymbol(
 
         operator fun invoke(
             constant: Boolean,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): LinearExpressionSymbol {
             return LinearExpressionSymbol(
-                MutableLinearPolynomial(
+                _polynomial = MutableLinearPolynomial(
                     constant = constant,
                     name = name,
                     displayName = displayName
                 ),
+                category = Linear,
+                parent = parent,
                 name = name,
                 displayName = displayName
             )
@@ -252,15 +443,18 @@ class LinearExpressionSymbol(
 
         operator fun invoke(
             constant: Trivalent,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): LinearExpressionSymbol {
             return LinearExpressionSymbol(
-                MutableLinearPolynomial(
+                _polynomial = MutableLinearPolynomial(
                     constant = constant,
                     name = name,
                     displayName = displayName
                 ),
+                category = Linear,
+                parent = parent,
                 name = name,
                 displayName = displayName
             )
@@ -268,15 +462,18 @@ class LinearExpressionSymbol(
 
         operator fun invoke(
             constant: BalancedTrivalent,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): LinearExpressionSymbol {
             return LinearExpressionSymbol(
-                MutableLinearPolynomial(
+                _polynomial = MutableLinearPolynomial(
                     constant = constant,
                     name = name,
                     displayName = displayName
                 ),
+                category = Linear,
+                parent = parent,
                 name = name,
                 displayName = displayName
             )
@@ -284,15 +481,36 @@ class LinearExpressionSymbol(
 
         operator fun <T : RealNumber<T>> invoke(
             constant: T,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): LinearExpressionSymbol {
             return LinearExpressionSymbol(
-                MutableLinearPolynomial(
+                _polynomial = MutableLinearPolynomial(
                     constant = constant,
                     name = name,
                     displayName = displayName
                 ),
+                category = Linear,
+                parent = parent,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        operator fun invoke(
+            parent: IntermediateSymbol? = null,
+            name: String = "",
+            displayName: String? = null
+        ): LinearExpressionSymbol {
+            return LinearExpressionSymbol(
+                _polynomial = MutableLinearPolynomial(
+                    constant = Flt64.zero,
+                    name = name,
+                    displayName = displayName
+                ),
+                category = Linear,
+                parent = parent,
                 name = name,
                 displayName = displayName
             )
@@ -307,30 +525,44 @@ class LinearExpressionSymbol(
         return _polynomial
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         cells
-        return _polynomial.evaluate(tokenTable)
+        return if (values.isNullOrEmpty()) {
+            _polynomial.evaluate(tokenTable)
+        } else {
+            _polynomial.evaluate(values, tokenTable)
+        }
     }
 }
 
 class QuadraticExpressionSymbol(
     override val _polynomial: MutableQuadraticPolynomial,
     category: Category = _polynomial.category,
+    parent: IntermediateSymbol? = null,
     name: String = "",
     displayName: String? = null
-) : QuadraticIntermediateSymbol, ExpressionSymbol(_polynomial, category, name, displayName) {
+) : QuadraticIntermediateSymbol, ExpressionSymbol(
+    _polynomial = _polynomial,
+    category = category,
+    parent = parent,
+    name = name,
+    displayName = displayName
+) {
     companion object {
         operator fun invoke(
             item: AbstractVariableItem<*, *>,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     monomials = mutableListOf(QuadraticMonomial(item)),
                     name = name.ifEmpty { item.name },
                     displayName = displayName
                 ),
+                category = Quadratic,
+                parent = parent,
                 name = name.ifEmpty { item.name },
                 displayName = displayName
             )
@@ -338,15 +570,18 @@ class QuadraticExpressionSymbol(
 
         operator fun invoke(
             symbol: LinearIntermediateSymbol,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     monomials = mutableListOf(QuadraticMonomial(symbol)),
                     name = name.ifEmpty { symbol.name },
                     displayName = displayName ?: symbol.displayName
                 ),
+                category = Quadratic,
+                parent = parent,
                 name = name.ifEmpty { symbol.name },
                 displayName = displayName ?: symbol.displayName
             )
@@ -354,15 +589,18 @@ class QuadraticExpressionSymbol(
 
         operator fun invoke(
             symbol: QuadraticIntermediateSymbol,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     monomials = mutableListOf(QuadraticMonomial(symbol)),
                     name = name.ifEmpty { symbol.name },
                     displayName = displayName ?: symbol.displayName
                 ),
+                category = Quadratic,
+                parent = parent,
                 name = name.ifEmpty { symbol.name },
                 displayName = displayName ?: symbol.displayName
             )
@@ -370,15 +608,18 @@ class QuadraticExpressionSymbol(
 
         operator fun invoke(
             monomial: LinearMonomial,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     monomials = mutableListOf(QuadraticMonomial(monomial)),
                     name = name.ifEmpty { monomial.name },
                     displayName = displayName ?: monomial.displayName
                 ),
+                category = Quadratic,
+                parent = parent,
                 name = name.ifEmpty { monomial.name },
                 displayName = displayName ?: monomial.displayName
             )
@@ -386,15 +627,18 @@ class QuadraticExpressionSymbol(
 
         operator fun invoke(
             monomial: QuadraticMonomial,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     monomials = mutableListOf(monomial.copy()),
                     name = name.ifEmpty { monomial.name },
                     displayName = displayName ?: monomial.displayName
                 ),
+                category = Quadratic,
+                parent = parent,
                 name = name.ifEmpty { monomial.name },
                 displayName = displayName ?: monomial.displayName
             )
@@ -402,16 +646,19 @@ class QuadraticExpressionSymbol(
 
         operator fun invoke(
             polynomial: AbstractLinearPolynomial<*>,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     monomials = polynomial.monomials.map { QuadraticMonomial(it) }.toMutableList(),
                     constant = polynomial.constant,
                     name = name.ifEmpty { polynomial.name },
                     displayName = displayName ?: polynomial.displayName
                 ),
+                category = Quadratic,
+                parent = parent,
                 name = name.ifEmpty { polynomial.name },
                 displayName = displayName ?: polynomial.displayName
             )
@@ -419,16 +666,19 @@ class QuadraticExpressionSymbol(
 
         operator fun invoke(
             polynomial: AbstractQuadraticPolynomial<*>,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     monomials = polynomial.monomials.map { it.copy() }.toMutableList(),
                     constant = polynomial.constant,
                     name = name.ifEmpty { polynomial.name },
                     displayName = displayName ?: polynomial.displayName
                 ),
+                category = Quadratic,
+                parent = parent,
                 name = name.ifEmpty { polynomial.name },
                 displayName = displayName ?: polynomial.displayName
             )
@@ -436,15 +686,18 @@ class QuadraticExpressionSymbol(
 
         operator fun invoke(
             constant: Int,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     constant = constant,
                     name = name,
                     displayName = displayName
                 ),
+                category = Quadratic,
+                parent = parent,
                 name = name,
                 displayName = displayName
             )
@@ -452,15 +705,18 @@ class QuadraticExpressionSymbol(
 
         operator fun invoke(
             constant: Double,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     constant = constant,
                     name = name,
                     displayName = displayName
                 ),
+                category = Quadratic,
+                parent = parent,
                 name = name,
                 displayName = displayName
             )
@@ -468,15 +724,18 @@ class QuadraticExpressionSymbol(
 
         operator fun invoke(
             constant: Boolean,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     constant = constant,
                     name = name,
                     displayName = displayName
                 ),
+                category = Quadratic,
+                parent = parent,
                 name = name,
                 displayName = displayName
             )
@@ -484,15 +743,18 @@ class QuadraticExpressionSymbol(
 
         operator fun invoke(
             constant: Trivalent,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     constant = constant,
                     name = name,
                     displayName = displayName
                 ),
+                category = Quadratic,
+                parent = parent,
                 name = name,
                 displayName = displayName
             )
@@ -500,15 +762,18 @@ class QuadraticExpressionSymbol(
 
         operator fun invoke(
             constant: BalancedTrivalent,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     constant = constant,
                     name = name,
                     displayName = displayName
                 ),
+                category = Quadratic,
+                parent = parent,
                 name = name,
                 displayName = displayName
             )
@@ -516,15 +781,35 @@ class QuadraticExpressionSymbol(
 
         operator fun <T : RealNumber<T>> invoke(
             constant: T,
+            parent: IntermediateSymbol? = null,
             name: String = "",
             displayName: String? = null
         ): QuadraticExpressionSymbol {
             return QuadraticExpressionSymbol(
-                MutableQuadraticPolynomial(
+                _polynomial = MutableQuadraticPolynomial(
                     constant = constant,
                     name = name,
                     displayName = displayName
                 ),
+                category = Quadratic,
+                parent = parent,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        operator fun invoke(
+            parent: IntermediateSymbol? = null,
+            name: String = "",
+            displayName: String? = null
+        ): QuadraticExpressionSymbol {
+            return QuadraticExpressionSymbol(
+                _polynomial = MutableQuadraticPolynomial(
+                    name = name,
+                    displayName = displayName
+                ),
+                category = Quadratic,
+                parent = parent,
                 name = name,
                 displayName = displayName
             )
@@ -539,68 +824,224 @@ class QuadraticExpressionSymbol(
         return _polynomial
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         cells
-        return _polynomial.evaluate(tokenTable)
+        return if (values.isNullOrEmpty()) {
+            _polynomial.evaluate(tokenTable)
+        } else {
+            _polynomial.evaluate(values, tokenTable)
+        }
+    }
+}
+
+data class FunctionSymbolRegistrationScope(
+    val tokens: MutableList<AbstractVariableItem<*, *>> = mutableListOf(),
+    val origin: AbstractTokenTable? = null
+) : AddableTokenCollection {
+    override fun add(item: AbstractVariableItem<*, *>): Try {
+        tokens.add(item)
+        return ok
+    }
+
+    override fun add(items: Iterable<AbstractVariableItem<*, *>>): Try {
+        tokens.addAll(items)
+        return ok
     }
 }
 
 interface FunctionSymbol : IntermediateSymbol {
-    fun register(tokenTable: AbstractMutableTokenTable): Try
+    fun register(tokenTable: AddableTokenCollection): Try
+
+    fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        return register(tokenTable)
+    }
 
     override fun evaluate(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return if (tokenTable.cachedSolution && tokenTable.cached(this, null) == false) {
-            for (dependency in dependencies) {
-                if (tokenTable.cached(dependency, null) == false) {
-                    dependency.evaluate(tokenTable, zeroIfNone)
+        return if (tokenTable.cachedSolution) {
+            tokenTable.cacheIfNotCached(this, null) {
+                for (dependency in dependencies) {
+                    if (tokenTable.cachedSolution) {
+                        dependency.evaluate(
+                            tokenTable = tokenTable,
+                            zeroIfNone = zeroIfNone
+                        )
+                    }
                 }
+                calculateValue(
+                    tokenTable = tokenTable,
+                    zeroIfNone = zeroIfNone
+                )
             }
-            val value = calculateValue(tokenTable, zeroIfNone) ?: return null
-            tokenTable.cache(this, null, value)
         } else {
             tokenTable.cachedValue(this, null)
         }
     }
 
     override fun evaluate(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return if (tokenTable.cached(this, results) == false) {
-            for (dependency in dependencies) {
-                if (tokenTable.cached(dependency, results) == false) {
-                    dependency.evaluate(tokenTable, zeroIfNone)
+        return if (tokenTable.cachedSolution) {
+            tokenTable.cacheIfNotCached(this, results) {
+                for (dependency in dependencies) {
+                    if (tokenTable.cachedSolution) {
+                        dependency.evaluate(
+                            results = results,
+                            tokenTable = tokenTable,
+                            zeroIfNone = zeroIfNone
+                        )
+                    }
                 }
+                calculateValue(
+                    results = results,
+                    tokenTable = tokenTable,
+                    zeroIfNone = zeroIfNone
+                )
             }
-            val value = calculateValue(results, tokenTable, zeroIfNone) ?: return null
-            tokenTable.cache(this, results, value)
         } else {
             tokenTable.cachedValue(this, results)
         }
     }
 
+    override fun evaluate(values: Map<Symbol, Flt64>, tokenTable: AbstractTokenTable?, zeroIfNone: Boolean): Flt64? {
+        return if (values.containsKey(this)) {
+            tokenTable?.cache(
+                symbol = this,
+                fixedValues = values,
+                value = values[this]!!
+            )
+            values[this]!!
+        } else if (tokenTable != null) {
+            if (values.isNotEmpty() || tokenTable.cachedSolution) {
+                tokenTable.cacheIfNotCached(this, values) {
+                    for (dependency in dependencies) {
+                        if (values.isNotEmpty() || tokenTable.cachedSolution) {
+                            dependency.evaluate(
+                                values = values,
+                                tokenTable = tokenTable,
+                                zeroIfNone = zeroIfNone
+                            )
+                        }
+                    }
+                    calculateValue(
+                        values = values,
+                        tokenTable = tokenTable,
+                        zeroIfNone = zeroIfNone
+                    )
+                }
+            } else {
+                tokenTable.cachedValue(this, values)
+            }
+        } else {
+            calculateValue(
+                values = values,
+                tokenTable = tokenTable,
+                zeroIfNone = zeroIfNone
+            )
+        }
+    }
+
     fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64?
     fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64?
+    fun calculateValue(values: Map<Symbol, Flt64>, tokenTable: AbstractTokenTable?, zeroIfNone: Boolean): Flt64?
 }
 
 interface LogicFunctionSymbol : FunctionSymbol {
     fun isTrue(tokenList: AbstractTokenList, zeroIfNone: Boolean): Boolean? {
-        return this.evaluate(tokenList, zeroIfNone)?.let { it eq Flt64.one }
+        return this.evaluate(
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        )?.let { it eq Flt64.one }
     }
 
     fun isTrue(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Boolean? {
-        return this.evaluate(results, tokenList, zeroIfNone)?.let { it eq Flt64.one }
+        return this.evaluate(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        )?.let { it eq Flt64.one }
+    }
+
+    fun isTrue(values: Map<Symbol, Flt64>, tokenList: AbstractTokenList?, zeroIfNone: Boolean): Boolean? {
+        return this.evaluate(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        )?.let { it eq Flt64.one }
     }
 }
 
-interface LinearFunctionSymbol : LinearIntermediateSymbol, FunctionSymbol {
-    fun register(model: AbstractLinearMechanismModel): Try
+abstract class LinearFunctionSymbol : LinearIntermediateSymbol, FunctionSymbol {
+    internal var _group: AbstractSymbolCombination<*>? = null
+    internal var _index: Int? = null
+    override val identifier: UInt64 by lazy {
+        _group?.identifier ?: IdentifierGenerator.gen()
+    }
+    override val index: Int by lazy {
+        _index ?: 0
+    }
+
+    abstract fun register(model: AbstractLinearMechanismModel): Try
+    open fun register(
+        model: AbstractLinearMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        return register(model)
+    }
+
+    override fun hashCode(): Int {
+        return identifier.toInt() * 31 + index
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is LinearFunctionSymbol) return false
+
+        if (identifier != other.identifier) return false
+        if (index != other.index) return false
+        if (name != other.name) return false
+
+        return true
+    }
 }
 
-interface LinearLogicFunctionSymbol : LinearFunctionSymbol, LogicFunctionSymbol {}
+abstract class LinearLogicFunctionSymbol : LinearFunctionSymbol(), LogicFunctionSymbol {}
 
-interface QuadraticFunctionSymbol : QuadraticIntermediateSymbol, FunctionSymbol {
-    fun register(model: AbstractQuadraticMechanismModel): Try
+abstract class QuadraticFunctionSymbol : QuadraticIntermediateSymbol, FunctionSymbol {
+    internal var _group: AbstractSymbolCombination<*>? = null
+    internal var _index: Int? = null
+    override val identifier: UInt64 by lazy {
+        _group?.identifier ?: IdentifierGenerator.gen()
+    }
+    override val index: Int by lazy {
+        _index ?: 0
+    }
+
+    abstract fun register(model: AbstractQuadraticMechanismModel): Try
+    open fun register(
+        model: AbstractQuadraticMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        return register(model)
+    }
+
+    override fun hashCode(): Int {
+        return identifier.toInt() * 31 + index
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is QuadraticFunctionSymbol) return false
+
+        if (identifier != other.identifier) return false
+        if (index != other.index) return false
+        if (name != other.name) return false
+
+        return true
+    }
 }
 
-interface QuadraticLogicFunctionSymbol : QuadraticFunctionSymbol, LogicFunctionSymbol {}
+abstract class QuadraticLogicFunctionSymbol : QuadraticFunctionSymbol(), LogicFunctionSymbol {}
 
 operator fun LinearIntermediateSymbol.times(rhs: PhysicalUnit): Quantity<LinearIntermediateSymbol> {
     return Quantity(this, rhs)

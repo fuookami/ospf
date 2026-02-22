@@ -10,9 +10,9 @@ import fuookami.ospf.kotlin.utils.functional.*
 
 // [b, e)
 data class TimeRange(
-    val start: Instant = Instant.DISTANT_PAST,
-    val end: Instant = Instant.DISTANT_FUTURE
-) {
+    override val start: Instant = Instant.DISTANT_PAST,
+    override val end: Instant = Instant.DISTANT_FUTURE
+) : TimeSlot {
     companion object {
         operator fun invoke(date: LocalDate): TimeRange {
             val start = date.atStartOfDayIn(TimeZone.currentSystemDefault())
@@ -32,8 +32,9 @@ data class TimeRange(
         }
     }
 
+    override val time: TimeRange get() = this
     val empty: Boolean get() = start >= end
-    val duration: Duration get() = end - start
+    override val duration: Duration get() = end - start
 
     val front: TimeRange?
         get() = if (start != Instant.DISTANT_PAST) {
@@ -199,6 +200,10 @@ data class TimeRange(
         return result
     }
 
+    override fun subOf(subTime: TimeRange): TimeSlot? {
+        return intersect(subTime)
+    }
+
     data class SplitTimeRanges(
         val times: List<TimeRange>,
         val breakTimes: List<TimeRange>
@@ -335,7 +340,12 @@ data class TimeRange(
         breakTime: Duration? = null
     ): SplitTimeRanges {
         if (maxDuration == null || maxDuration <= duration) {
-            return split(unit, Duration.ZERO, maxDuration, breakTime)
+            return split(
+                unit = unit,
+                currentDuration = Duration.ZERO,
+                maxDuration = maxDuration,
+                breakTime = breakTime
+            )
         }
 
         TODO("not implemented yet")
@@ -518,8 +528,16 @@ inline fun <T> List<T>.findImpl(
             null
         }
     } else {
-        val lowerBound = _findLowerBoundImpl(this@findImpl, time, extractor)
-        val upperBound = _findUpperBoundImpl(this@findImpl, time, extractor)
+        val lowerBound = _findLowerBoundImpl(
+            list = this@findImpl,
+            time = time,
+            extractor = extractor
+        )
+        val upperBound = _findUpperBoundImpl(
+            list = this@findImpl,
+            time = time,
+            extractor = extractor
+        )
         Pair(lowerBound, upperBound)
     }
 }
@@ -539,10 +557,18 @@ suspend inline fun <T> List<T>.findParallellyImpl(
     } else {
         coroutineScope {
             val lowerBoundPromise = async(Dispatchers.Default) {
-                _findLowerBoundParallellyImpl(this@findParallellyImpl, time, extractor)
+                _findLowerBoundParallellyImpl(
+                    list = this@findParallellyImpl,
+                    time = time,
+                    extractor = extractor
+                )
             }
             val upperBoundPromise = async(Dispatchers.Default) {
-                _findUpperBoundParallellyImpl(this@findParallellyImpl, time, extractor)
+                _findUpperBoundParallellyImpl(
+                    list = this@findParallellyImpl,
+                    time = time,
+                    extractor = extractor
+                )
             }
             Pair(lowerBoundPromise.await(), upperBoundPromise.await())
         }

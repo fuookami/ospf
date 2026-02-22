@@ -1,8 +1,6 @@
 package fuookami.ospf.kotlin.core.backend.plugins.mosek
 
-import kotlin.math.*
 import kotlin.time.*
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.*
 import mosek.*
 import fuookami.ospf.kotlin.utils.*
@@ -26,37 +24,44 @@ class MosekLinearSolver(
 
     override suspend operator fun invoke(
         model: LinearTriadModelView,
-        statusCallBack: SolvingStatusCallBack?
-    ): Ret<SolverOutput> {
-        val impl = MosekLinearSolverImpl(config, callBack, statusCallBack)
-        val result = impl(model)
-        System.gc()
-        return result
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<FeasibleSolverOutput> {
+        return MosekLinearSolverImpl(
+            config = config,
+            callBack = callBack,
+            statusCallBack = solvingStatusCallBack
+        ).use { impl ->
+            val result = impl(model)
+            System.gc()
+            result
+        }
     }
 
     override suspend fun invoke(
         model: LinearTriadModelView,
         solutionAmount: UInt64,
-        statusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<SolverOutput, List<Solution>>> {
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<Pair<FeasibleSolverOutput, List<Solution>>> {
         return if (solutionAmount leq UInt64.one) {
             this(model).map { it to emptyList() }
         } else {
             val results = ArrayList<Solution>()
-            val impl = MosekLinearSolverImpl(
+            MosekLinearSolverImpl(
                 config = config,
                 callBack = callBack
                     .copyIfNotNullOr { MosekSolverCallBack() }
-                    .configuration { mosek ->
+                    .configuration { _, mosek ->
                         ok
-                    }.analyzingSolution { mosek ->
+                    }
+                    .analyzingSolution { _, mosek ->
                         ok
                     },
-                statusCallBack = statusCallBack
-            )
-            val result = impl(model).map { it to results }
-            System.gc()
-            return result
+                statusCallBack = solvingStatusCallBack
+            ).use { impl ->
+                val result = impl(model).map { it to results }
+                System.gc()
+                result
+            }
         }
     }
 }
@@ -66,13 +71,13 @@ class MosekLinearSolverImpl(
     private val callBack: MosekSolverCallBack? = null,
     private val statusCallBack: SolvingStatusCallBack? = null
 ) : MosekSolver() {
-    private lateinit var output: SolverOutput
+    private lateinit var output: FeasibleSolverOutput
 
     private var bestObj: Flt64? = null
     private var bestBound: Flt64? = null
     private var bestTime: Duration = Duration.ZERO
 
-    suspend operator fun invoke(model: LinearTriadModelView): Ret<SolverOutput> {
+    suspend operator fun invoke(model: LinearTriadModelView): Ret<FeasibleSolverOutput> {
         val processes = arrayOf(
             { it.init(model.name, callBack?.creatingEnvironmentFunction) },
             { it.dump(model) },
@@ -229,7 +234,7 @@ class MosekLinearSolverImpl(
             }
             System.gc()
 
-            for (cell in model.objective.obj) {
+            for (cell in model.objective.objective) {
                 mosekModel.putcj(cell.colIndex, cell.coefficient.toDouble())
             }
             when (model.objective.category) {

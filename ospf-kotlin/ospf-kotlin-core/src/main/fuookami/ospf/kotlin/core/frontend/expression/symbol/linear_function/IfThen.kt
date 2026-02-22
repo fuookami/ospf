@@ -17,9 +17,42 @@ class IfThenFunction(
     p: LinearInequality,
     q: LinearInequality,
     private val constraint: Boolean = true,
+    private val epsilon: Flt64 = Flt64(1e-6),
+    override val parent: IntermediateSymbol? = null,
+    args: Any? = parent?.args,
     override var name: String,
     override var displayName: String? = null
-) : LinearFunctionSymbol {
+) : LinearFunctionSymbol() {
+    companion object {
+        operator fun <
+            T1 : ToLinearInequality,
+            T2 : ToLinearInequality
+        > invoke(
+            p: T1,
+            q: T2,
+            constraint: Boolean = true,
+            epsilon: Flt64 = Flt64(1e-6),
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): IfThenFunction {
+            return IfThenFunction(
+                p = p.toLinearInequality(),
+                q = q.toLinearInequality(),
+                constraint = constraint,
+                epsilon = epsilon,
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+
+    internal val _args = args
+    override val args get() = _args ?: parent?.args
+
     private val p by lazy { p.normalize() }
     private val q by lazy { q.normalize() }
 
@@ -60,6 +93,7 @@ class IfThenFunction(
     private val y: BinaryzationFunction by lazy {
         BinaryzationFunction(
             x = LinearPolynomial(Flt64.two * u),
+            parent = parent ?: this,
             name = "${name}_y"
         )
     }
@@ -108,33 +142,42 @@ class IfThenFunction(
         polyY.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         p.lhs.cells
         p.rhs.cells
         q.lhs.cells
         q.rhs.cells
-        y.prepareAndCache(tokenTable)
+        if (values.isNullOrEmpty()) {
+            y.prepareAndCache(null, tokenTable)
+        } else {
+            y.prepareAndCache(values, tokenTable)
+        }
 
-        return if (!constraint && tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            val pBin = p.isTrue(tokenTable) ?: return null
-            val qBin = q.isTrue(tokenTable) ?: return null
+        return if (!constraint && tokenTable.cachedSolution && if (values.isNullOrEmpty()) {
+            tokenTable.cached(this)
+        } else {
+            tokenTable.cached(this, values)
+        } == false) {
+            val pBin = if (values.isNullOrEmpty()) {
+                p.isTrue(tokenTable)
+            } else {
+                p.isTrue(values, tokenTable)
+            } ?: return null
+
+            val qBin = if (values.isNullOrEmpty()) {
+                q.isTrue(tokenTable)
+            } else {
+                q.isTrue(values, tokenTable)
+            } ?: return null
 
             logger.trace { "Setting IfThenFunction ${name}.pu initial solution: $pBin" }
             tokenTable.find(pu)?.let { token ->
-                token._result = if (pBin) {
-                    Flt64.one
-                } else {
-                    Flt64.zero
-                }
+                token._result = pBin.toFlt64()
             }
 
             logger.trace { "Setting IfThenFunction ${name}.qu initial solution: $qBin" }
             tokenTable.find(qu)?.let { token ->
-                token._result = if (qBin) {
-                    Flt64.one
-                } else {
-                    Flt64.zero
-                }
+                token._result = qBin.toFlt64()
             }
 
             val uValue = UInt8(qBin).toFlt64() - UInt8(pBin).toFlt64() + Flt64.one
@@ -158,8 +201,13 @@ class IfThenFunction(
         return displayName ?: name
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
-        when (val result = tokenTable.add(pk)) {
+    override fun register(tokenTable: AddableTokenCollection): Try {
+        when (val result = p.register(
+            parentName = name,
+            k = pk,
+            flag = pu,
+            tokenTable = tokenTable
+        )) {
             is Ok -> {}
 
             is Failed -> {
@@ -167,23 +215,12 @@ class IfThenFunction(
             }
         }
 
-        when (val result = tokenTable.add(pu)) {
-            is Ok -> {}
-
-            is Failed -> {
-                return Failed(result.error)
-            }
-        }
-
-        when (val result = tokenTable.add(qk)) {
-            is Ok -> {}
-
-            is Failed -> {
-                return Failed(result.error)
-            }
-        }
-
-        when (val result = tokenTable.add(qu)) {
+        when (val result = q.register(
+            parentName = name,
+            k = qk,
+            flag = qu,
+            tokenTable = tokenTable
+        )) {
             is Ok -> {}
 
             is Failed -> {
@@ -200,7 +237,7 @@ class IfThenFunction(
                 }
             }
 
-            when (val result = tokenTable.add(y)) {
+            when (val result = y.register(tokenTable)) {
                 is Ok -> {}
 
                 is Failed -> {
@@ -213,7 +250,14 @@ class IfThenFunction(
     }
 
     override fun register(model: AbstractLinearMechanismModel): Try {
-        when (val result = p.register(name, pk, pu, model)) {
+        when (val result = p.register(
+            parent = parent ?: this,
+            parentName = name,
+            k = pk,
+            flag = pu,
+            epsilon = epsilon,
+            model = model
+        )) {
             is Ok -> {}
 
             is Failed -> {
@@ -221,7 +265,90 @@ class IfThenFunction(
             }
         }
 
-        when (val result = q.register(name, qk, qu, model)) {
+        when (val result = q.register(
+            parent = parent ?: this,
+            parentName = name,
+            k = qk,
+            flag = qu,
+            epsilon = epsilon,
+            model = model
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        if (constraint) {
+            when (val result = model.addConstraint(
+                constraint = pu leq qu,
+                name = "${name}_u",
+                from = parent ?: this
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+        } else {
+            when (val result = model.addConstraint(
+                constraint = u eq (qu - pu + Flt64.one),
+                name = "${name}_u",
+                from = parent ?: this
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+        }
+
+        return ok
+    }
+
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        return register(tokenTable)
+    }
+
+    override fun register(
+        model: AbstractLinearMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        val pValue = p.isTrue(fixedValues, model.tokens) ?: return register(model)
+        val qValue = q.isTrue(fixedValues, model.tokens) ?: return register(model)
+        val bin = !pValue || qValue
+
+        when (val result = p.register(
+            parent = parent ?: this,
+            parentName = name,
+            k = pk,
+            flag = pu,
+            epsilon = epsilon,
+            model = model,
+            fixedValues = fixedValues
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        when (val result = q.register(
+            parent = parent ?: this,
+            parentName = name,
+            k = qk,
+            flag = qu,
+            epsilon = epsilon,
+            model = model,
+            fixedValues = fixedValues
+        )) {
             is Ok -> {}
 
             is Failed -> {
@@ -232,7 +359,8 @@ class IfThenFunction(
         if (constraint) {
             when (val result = model.addConstraint(
                 pu leq qu,
-                "${name}_u"
+                name = "${name}_u",
+                from = parent ?: this
             )) {
                 is Ok -> {}
 
@@ -243,13 +371,30 @@ class IfThenFunction(
         } else {
             when (val result = model.addConstraint(
                 u eq (qu - pu + Flt64.one),
-                "${name}_u"
+                name = "${name}_u",
+                from = parent ?: this
             )) {
                 is Ok -> {}
 
                 is Failed -> {
                     return Failed(result.error)
                 }
+            }
+
+            when (val result = model.addConstraint(
+                u eq bin,
+                name = "${name}_uv",
+                from = parent ?: this
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            model.tokens.find(u)?.let { token ->
+                token._result = bin.toFlt64()
             }
         }
 
@@ -264,7 +409,10 @@ class IfThenFunction(
         }
     }
 
-    override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         val pv = p.isTrue(tokenList, zeroIfNone) ?: return null
         val qv = q.isTrue(tokenList, zeroIfNone) ?: return null
         return if (UInt8(qv) geq UInt8(pv)) {
@@ -274,9 +422,21 @@ class IfThenFunction(
         }
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        val pv = p.isTrue(results, tokenList, zeroIfNone) ?: return null
-        val qv = q.isTrue(results, tokenList, zeroIfNone) ?: return null
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val pv = p.isTrue(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val qv = q.isTrue(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
         return if (UInt8(qv) geq UInt8(pv)) {
             Flt64.one
         } else {
@@ -284,7 +444,32 @@ class IfThenFunction(
         }
     }
 
-    override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenList: AbstractTokenList?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val pv = p.isTrue(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val qv = q.isTrue(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        return if (UInt8(qv) geq UInt8(pv)) {
+            Flt64.one
+        } else {
+            Flt64.zero
+        }
+    }
+
+    override fun calculateValue(
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
         val pv = p.isTrue(tokenTable, zeroIfNone) ?: return null
         val qv = q.isTrue(tokenTable, zeroIfNone) ?: return null
         return if (UInt8(qv) geq UInt8(pv)) {
@@ -294,9 +479,43 @@ class IfThenFunction(
         }
     }
 
-    override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        val pv = p.isTrue(results, tokenTable, zeroIfNone) ?: return null
-        val qv = q.isTrue(results, tokenTable, zeroIfNone) ?: return null
+    override fun calculateValue(
+        results: List<Flt64>,
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val pv = p.isTrue(
+            results = results,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val qv = q.isTrue(
+            results = results,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        return if (UInt8(qv) geq UInt8(pv)) {
+            Flt64.one
+        } else {
+            Flt64.zero
+        }
+    }
+
+    override fun calculateValue(
+        values: Map<Symbol, Flt64>,
+        tokenTable: AbstractTokenTable?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val pv = p.isTrue(
+            values = values,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val qv = q.isTrue(
+            values = values,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
         return if (UInt8(qv) geq UInt8(pv)) {
             Flt64.one
         } else {

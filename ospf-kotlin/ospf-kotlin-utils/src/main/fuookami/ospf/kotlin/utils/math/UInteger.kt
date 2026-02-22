@@ -644,6 +644,18 @@ value class UIntX(internal val value: BigInteger) : UIntegerNumberImpl<UIntX>, C
     override fun toFltX() = FltX(value.toBigDecimal())
 }
 
+fun Boolean.toUInt8() = if (this) {
+    UInt8.one
+} else {
+    UInt8.zero
+}
+
+fun Boolean.toUInt64() = if (this) {
+    UInt64.one
+} else {
+    UInt64.zero
+}
+
 fun String.toUInt8() = UInt8(toUByte())
 fun String.toUInt8OrNull() = toUByteOrNull()?.let { UInt8(it) }
 fun String.toUInt16() = UInt16(toUShort())

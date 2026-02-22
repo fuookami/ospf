@@ -32,6 +32,10 @@ abstract class PhysicalUnit {
         }
     }
 
+    fun from(unit: PhysicalUnit): Scale? {
+        return unit.to(this)
+    }
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is PhysicalUnit) return false
@@ -53,6 +57,14 @@ abstract class PhysicalUnit {
     override fun toString(): String {
         return symbol ?: TODO("not implemented yet")
     }
+}
+
+abstract class DerivedPhysicalUnit(
+    private val unit: PhysicalUnit,
+) : PhysicalUnit() {
+    override val system by unit::system
+    override val quantity by unit::quantity
+    override val scale by unit::scale
 }
 
 data class AnonymousPhysicalUnit(
@@ -81,11 +93,11 @@ data class AnonymousPhysicalUnit(
     }
 
     override fun toString(): String {
-        return symbol ?: TODO("not implemented yet")
+        return symbol ?: ""
     }
 }
 
-data object NoneUnit : PhysicalUnit() {
+object NoneUnit : PhysicalUnit() {
     override val system = SI
     override val quantity = DerivedQuantity(emptyList())
     override val scale = Scale()
@@ -100,6 +112,86 @@ data class QuantityUnit(
 ) : PhysicalUnit() {
     override val quantity = DerivedQuantity(emptyList())
     override val scale = Scale()
+}
+
+operator fun PhysicalUnit.times(scale: Int): PhysicalUnit {
+    return AnonymousPhysicalUnit(
+        system = this.system,
+        quantity = this.quantity,
+        scale = this.scale * Scale(scale)
+    )
+}
+
+operator fun PhysicalUnit.div(scale: Int): PhysicalUnit {
+    return AnonymousPhysicalUnit(
+        system = this.system,
+        quantity = this.quantity,
+        scale = this.scale / Scale(scale)
+    )
+}
+
+operator fun PhysicalUnit.times(scale: Double): PhysicalUnit {
+    return AnonymousPhysicalUnit(
+        system = this.system,
+        quantity = this.quantity,
+        scale = this.scale * Scale(scale)
+    )
+}
+
+operator fun PhysicalUnit.div(scale: Double): PhysicalUnit {
+    return AnonymousPhysicalUnit(
+        system = this.system,
+        quantity = this.quantity,
+        scale = this.scale / Scale(scale)
+    )
+}
+
+operator fun PhysicalUnit.times(scale: FltX): PhysicalUnit {
+    return AnonymousPhysicalUnit(
+        system = this.system,
+        quantity = this.quantity,
+        scale = this.scale * Scale(scale)
+    )
+}
+
+operator fun PhysicalUnit.div(scale: FltX): PhysicalUnit {
+    return AnonymousPhysicalUnit(
+        system = this.system,
+        quantity = this.quantity,
+        scale = this.scale / Scale(scale)
+    )
+}
+
+operator fun PhysicalUnit.times(scale: RtnX): PhysicalUnit {
+    return AnonymousPhysicalUnit(
+        system = this.system,
+        quantity = this.quantity,
+        scale = this.scale * Scale(scale)
+    )
+}
+
+operator fun PhysicalUnit.div(scale: RtnX): PhysicalUnit {
+    return AnonymousPhysicalUnit(
+        system = this.system,
+        quantity = this.quantity,
+        scale = this.scale / Scale(scale)
+    )
+}
+
+operator fun PhysicalUnit.times(scale: Scale): PhysicalUnit {
+    return AnonymousPhysicalUnit(
+        system = this.system,
+        quantity = this.quantity,
+        scale = this.scale * scale,
+    )
+}
+
+operator fun PhysicalUnit.div(scale: Scale): PhysicalUnit {
+    return AnonymousPhysicalUnit(
+        system = this.system,
+        quantity = this.quantity,
+        scale = this.scale / scale,
+    )
 }
 
 operator fun PhysicalUnit.times(other: PhysicalUnit): PhysicalUnit {
@@ -123,6 +215,16 @@ operator fun PhysicalUnit.div(other: PhysicalUnit): PhysicalUnit {
             quantity = this.quantity / other.quantity,
             scale = this.scale / other.scale
         )
+    }
+}
+
+fun PhysicalUnit.pow(index: Int): PhysicalUnit {
+    return if (index > 0) {
+        pow(index - 1) * this
+    } else if (index < 0) {
+        pow(index + 1) / this
+    } else {
+        NoneUnit
     }
 }
 

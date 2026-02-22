@@ -20,13 +20,25 @@ interface MongoPersistenceApiController {
         GlobalScope.launch(Dispatchers.IO) {
             val cls = request::class
             val serializer = cls.serializer() as KSerializer<Req>
-            mongoClient?.insertRequest(api, "", "", "", serializer, request)
+            mongoClient?.insertRequest(
+                path = api,
+                app = "",
+                requester = requester,
+                version = version,
+                serializer = serializer,
+                request = request)
         }
         val response = process(request)
         GlobalScope.launch(Dispatchers.IO) {
             val cls = response::class
             val serializer = cls.serializer() as KSerializer<Rep>
-            mongoClient?.insertResponse(api, app, requester, version, serializer, response)
+            mongoClient?.insertResponse(
+                path = api,
+                app = app,
+                requester = requester,
+                version = version,
+                serializer = serializer,
+                response = response)
         }
         return response
     }
@@ -46,14 +58,26 @@ interface MongoPersistenceApiController {
         GlobalScope.launch(Dispatchers.IO) {
             val cls = request::class
             val serializer = cls.serializer() as KSerializer<Req>
-            mongoClient?.insertRequest(api, "", "", "", serializer, request)
+            mongoClient?.insertRequest(
+                path = api,
+                app = "",
+                requester = requester,
+                version = version,
+                serializer = serializer,
+                request = request)
         }
         GlobalScope.launch(Dispatchers.Default) {
             val response = process(request)
             GlobalScope.launch(Dispatchers.IO) {
                 val cls = response::class
                 val serializer = cls.serializer() as KSerializer<Rep>
-                mongoClient?.insertResponse(api, app, requester, version, serializer, response)
+                mongoClient?.insertResponse(
+                    path = api,
+                    app = app,
+                    requester = requester,
+                    version = version,
+                    serializer = serializer,
+                    response = response)
             }
             asyncResponse(response)
         }
@@ -103,7 +127,7 @@ interface MongoPersistenceApiController {
 //                    MongoDB()
 //                }
 //                    ?.getDatabase(annotation.dataBase)
-//                    ?.insertRequest("hztv_offline", "", "", serializer, request)
+//                    ?.insertRequest("", "", "", serializer, request)
 //            }
 //        }
 //        val response = point.proceed(args)
@@ -121,7 +145,7 @@ interface MongoPersistenceApiController {
 //                    MongoDB()
 //                }
 //                    ?.getDatabase(annotation.dataBase)
-//                    ?.insertResponse("hztv_offline", "", serializer, response as Rep)
+//                    ?.insertResponse("", "", serializer, response as Rep)
 //            }
 //        }
 //        return response
@@ -146,8 +170,8 @@ interface MongoPersistenceApiController {
 //                } else {
 //                    MongoDB()
 //                }
-//                    ?.getDatabase("bpp3d")
-//                    ?.insertRequest("hztv_scm", "", "", serializer, request)
+//                    ?.getDatabase("")
+//                    ?.insertRequest("", "", "", serializer, request)
 //            }
 //        }
 //        GlobalScope.launch {
@@ -165,8 +189,8 @@ interface MongoPersistenceApiController {
 //                } else {
 //                    MongoDB()
 //                }
-//                    ?.getDatabase("bpp3d")
-//                    ?.insertResponse("hztv_scm", "", serializer, response)
+//                    ?.getDatabase("")
+//                    ?.insertResponse("", "", serializer, response)
 //                annotation.response(response)
 //            }
 //        }

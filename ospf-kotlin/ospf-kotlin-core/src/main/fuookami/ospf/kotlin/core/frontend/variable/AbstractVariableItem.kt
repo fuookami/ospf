@@ -1,27 +1,17 @@
 package fuookami.ospf.kotlin.core.frontend.variable
 
 import fuookami.ospf.kotlin.utils.math.*
+import fuookami.ospf.kotlin.utils.math.symbol.*
 import fuookami.ospf.kotlin.utils.math.value_range.*
 import fuookami.ospf.kotlin.utils.operator.*
 import fuookami.ospf.kotlin.utils.physics.unit.*
 import fuookami.ospf.kotlin.utils.physics.quantity.*
+import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
 
 data class VariableItemKey(
     val identifier: UInt64,
     val index: Int
 ) : Ord<VariableItemKey> {
-    companion object {
-        private fun reverseBit(v: UInt64): Int {
-            var value = v.toInt32().value
-            value = value and -0x55555556 shr 1 or (value and 0x55555555 shl 1)
-            value = value and -0x33333334 shr 2 or (value and 0x33333333 shl 2)
-            value = value and -0xf0f0f10 shr 4 or (value and 0x0F0F0F0F shl 4)
-            value = value and -0xff0100 shr 8 or (value and 0x00FF00FF shl 8)
-            value = value and -0x10000 shr 16 or (value and 0x0000FFFF shl 16)
-            return value
-        }
-    }
-
     override fun partialOrd(rhs: VariableItemKey): Order {
         return if (this.identifier < rhs.identifier) {
             Order.Less()
@@ -33,7 +23,7 @@ data class VariableItemKey(
     }
 
     override fun hashCode(): Int {
-        return reverseBit(identifier) or index
+        return identifier.toInt() * 31 + index
     }
 
     override fun equals(other: Any?): Boolean {
@@ -49,13 +39,15 @@ data class VariableItemKey(
 
 abstract class AbstractVariableItem<T, Type : VariableType<T>>(
     val type: Type,
-    var name: String,
+    override var name: String,
     val constants: RealNumberConstants<T>
-) where T : RealNumber<T>, T : NumberField<T> {
+): Symbol, ToLinearPolynomial<LinearPolynomial>, ToQuadraticPolynomial<QuadraticPolynomial>
+        where T : RealNumber<T>, T : NumberField<T> {
     abstract val dimension: Int
     abstract val identifier: UInt64
     abstract val index: Int
     abstract val vectorView: IntArray
+    override val displayName get() = name
 
     val uindex get() = UInt64(index)
     val uvector by lazy { vectorView.map { UInt64(it) } }
@@ -73,6 +65,14 @@ abstract class AbstractVariableItem<T, Type : VariableType<T>>(
 
     open infix fun belongsTo(combination: VariableCombination<*, *, *>): Boolean {
         return identifier == combination.identifier
+    }
+
+    override fun toLinearPolynomial(): LinearPolynomial {
+        return LinearPolynomial(this)
+    }
+
+    override fun toQuadraticPolynomial(): QuadraticPolynomial {
+        return QuadraticPolynomial(this)
     }
 
     override fun hashCode() = key.hashCode()

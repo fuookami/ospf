@@ -24,15 +24,15 @@ class ProduceQuantityMaximization<
 ) : AbstractGanttSchedulingCGPipeline<Args, E, A> {
     override fun invoke(model: AbstractLinearMetaModel): Try {
         when (val result = model.maximize(
-            sum(products.map {
+            polynomial = sum(products.map {
                 val thresholdValue = threshold(it)
                 if (thresholdValue eq Flt64.zero) {
                     coefficient(it) * produce.quantity[it]
                 } else {
                     val slack = SlackFunction(
-                        UContinuous,
-                        x = LinearPolynomial(produce.quantity[it]),
-                        threshold = LinearPolynomial(thresholdValue),
+                        x = produce.quantity[it],
+                        threshold = thresholdValue,
+                        type = UContinuous,
                         name = "produce_quantity_minimization_threshold_$it"
                     )
                     when (val result = model.add(slack)) {
@@ -45,7 +45,7 @@ class ProduceQuantityMaximization<
                     coefficient(it) * slack
                 }
             }),
-            "produce quantity"
+            name = "produce quantity"
         )) {
             is Ok -> {}
 

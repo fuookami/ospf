@@ -90,3 +90,131 @@ typealias Ret<T> = Result<T, Error>
 
 val ok = Ok<Success, Error>(success)
 fun <E : Error> ok(): Result<Success, E> = Ok(success)
+
+fun run(
+    vararg blocks: () -> Try
+): Try {
+    for (block in blocks) {
+        when (val result = block()) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+    }
+    return ok
+}
+
+suspend fun syncRun(
+    vararg blocks: suspend () -> Try
+): Try {
+    for (block in blocks) {
+        when (val result = block()) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+    }
+    return ok
+}
+
+fun run(
+    blocks: Iterable<() -> Try>
+): Try {
+    for (block in blocks) {
+        when (val result = block()) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+    }
+    return ok
+}
+
+suspend fun syncRun(
+    blocks: Iterable<suspend () -> Try>
+): Try {
+    for (block in blocks) {
+        when (val result = block()) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+    }
+    return ok
+}
+
+fun <T> run(
+    vararg blocks: () -> Try,
+    lastBlock: () -> Ret<T>
+): Ret<T> {
+    for (block in blocks) {
+        when (val result = block()) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+    }
+
+    return lastBlock()
+}
+
+suspend fun <T> syncRun(
+    vararg blocks: suspend () -> Try,
+    lastBlock: suspend () -> Ret<T>
+): Ret<T> {
+    for (block in blocks) {
+        when (val result = block()) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+    }
+
+    return lastBlock()
+}
+
+fun <T> run(
+    blocks: Iterable<() -> Try>,
+    lastBlock: () -> Ret<T>
+): Ret<T> {
+    for (block in blocks) {
+        when (val result = block()) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+    }
+
+    return lastBlock()
+}
+
+suspend fun <T> syncRun(
+    blocks: Iterable<suspend () -> Try>,
+    lastBlock: suspend () -> Ret<T>
+): Ret<T> {
+    for (block in blocks) {
+        when (val result = block()) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+    }
+
+    return lastBlock()
+}

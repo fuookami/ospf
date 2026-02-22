@@ -1,6 +1,5 @@
 package fuookami.ospf.kotlin.core.backend.plugins.hexaly
 
-import kotlin.math.*
 import kotlin.time.*
 import kotlinx.datetime.*
 import kotlinx.coroutines.*
@@ -26,37 +25,44 @@ class HexalyQuadraticSolver(
 
     override suspend operator fun invoke(
         model: QuadraticTetradModelView,
-        statusCallBack: SolvingStatusCallBack?
-    ): Ret<SolverOutput> {
-        val impl = HexalyQuadraticSolverImpl(config, callBack, statusCallBack)
-        val result = impl(model)
-        System.gc()
-        return result
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<FeasibleSolverOutput> {
+        return HexalyQuadraticSolverImpl(
+            config = config,
+            callBack = callBack,
+            statusCallBack = solvingStatusCallBack
+        ).let { impl ->
+            val result = impl(model)
+            System.gc()
+            result
+        }
     }
 
     override suspend fun invoke(
         model: QuadraticTetradModelView,
         solutionAmount: UInt64,
-        statusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<SolverOutput, List<Solution>>> {
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<Pair<FeasibleSolverOutput, List<Solution>>> {
         return if (solutionAmount leq UInt64.one) {
             this(model).map { it to emptyList() }
         } else {
             val results = ArrayList<Solution>()
-            val impl = HexalyQuadraticSolverImpl(
+            HexalyQuadraticSolverImpl(
                 config = config,
                 callBack = callBack
                     .copyIfNotNullOr { HexalySolverCallBack() }
-                    .configuration { hexaly, _, _ ->
+                    .configuration { _, hexaly, _, _ ->
                         ok
-                    }.analyzingSolution { hexaly, variables, _ ->
+                    }
+                    .analyzingSolution { _, hexaly, variables, _ ->
                         ok
                     },
-                statusCallBack = statusCallBack
-            )
-            val result = impl(model).map { it to results }
-            System.gc()
-            return result
+                statusCallBack = solvingStatusCallBack
+            ).use { impl ->
+                val result = impl(model).map { it to results }
+                System.gc()
+                result
+            }
         }
     }
 }
@@ -69,17 +75,18 @@ private class HexalyQuadraticSolverImpl(
     private lateinit var hexalyVars: List<HxExpression>
     private lateinit var hexalyConstraints: List<HxExpression>
     private lateinit var hexalyObjective: HxExpression
-    private lateinit var output: SolverOutput
+    private lateinit var output: FeasibleSolverOutput
 
+    private var initialBestObj: Flt64? = null
     private var bestObj: Flt64? = null
     private var bestBound: Flt64? = null
     private var bestTime: Duration = Duration.ZERO
 
-    suspend operator fun invoke(model: QuadraticTetradModelView): Ret<SolverOutput> {
+    suspend operator fun invoke(model: QuadraticTetradModelView): Ret<FeasibleSolverOutput> {
         val processes = arrayOf(
             { it.init(model.name, callBack?.creatingEnvironmentFunction) },
             { it.dump(model) },
-            HexalyQuadraticSolverImpl::configure,
+            { it.configure(model) },
             HexalyQuadraticSolverImpl::solve,
             HexalyQuadraticSolverImpl::analyzeStatus,
             HexalyQuadraticSolverImpl::analyzeSolution
@@ -204,7 +211,7 @@ private class HexalyQuadraticSolverImpl(
             hexalyConstraints = constraints
 
             val obj = hexalyModel.sum()
-            for (cell in model.objective.obj) {
+            for (cell in model.objective.objective) {
                 if (cell.colIndex2 != null) {
                     obj.addOperands(
                         hexalyModel.prod(
@@ -218,6 +225,7 @@ private class HexalyQuadraticSolverImpl(
                     )
                 }
             }
+            obj.addOperand(model.objective.constant.toDouble())
             when (model.objective.category) {
                 ObjectCategory.Maximum -> {
                     hexalyModel.maximize(obj)
@@ -229,7 +237,13 @@ private class HexalyQuadraticSolverImpl(
             }
             hexalyObjective = obj
 
-            when (val result = callBack?.execIfContain(Point.AfterModeling, optimizer, hexalyVars, hexalyConstraints)) {
+            when (val result = callBack?.execIfContain(
+                point = Point.AfterModeling,
+                status = null,
+                hexaly = optimizer,
+                variables = hexalyVars,
+                constraints = hexalyConstraints
+            )) {
                 is Failed -> {
                     return Failed(result.error)
                 }
@@ -244,7 +258,7 @@ private class HexalyQuadraticSolverImpl(
         }
     }
 
-    private suspend fun configure(): Try {
+    private suspend fun configure(model: QuadraticTetradModelView): Try {
         return try {
             optimizer.param.timeLimit = config.time.toInt(DurationUnit.SECONDS)
             optimizer.param.nbThreads = config.threadNum.toInt()
@@ -259,9 +273,18 @@ private class HexalyQuadraticSolverImpl(
                         val currentObj = Flt64(currentSolution.getDoubleValue(hexalyObjective))
                         val currentBound = Flt64(currentSolution.getDoubleObjectiveBound(0))
                         val currentTime = Clock.System.now() - beginTime!!
+                        val currentBestSolution = hexalyVars.map { Flt64(currentSolution.getDoubleValue(it)) }
+
+                        if (initialBestObj == null) {
+                            initialBestObj = currentObj
+                        }
 
                         if (config.notImprovementTime != null) {
-                            if (bestObj == null || bestBound == null || currentObj neq bestObj!! || currentBound neq bestBound!!) {
+                            if (bestObj == null
+                                || bestBound == null
+                                || (currentObj - bestObj!!).abs() geq config.improveThreshold
+                                || (currentBound - bestBound!!).abs() geq config.improveThreshold
+                            ) {
                                 bestObj = currentObj
                                 bestBound = currentBound
                                 bestTime = currentTime
@@ -274,9 +297,29 @@ private class HexalyQuadraticSolverImpl(
                             when (it(
                                 SolvingStatus(
                                     solver = "hexaly",
+                                    solverConfig = config,
+                                    intermediateModel = model,
+                                    solverModel = hexalyModel,
+                                    solverCallBack = this,
+                                    objectCategory = when (hexalyModel.getObjectiveDirection(0)) {
+                                        HxObjectiveDirection.Minimize -> {
+                                            ObjectCategory.Minimum
+                                        }
+
+                                        HxObjectiveDirection.Maximize -> {
+                                            ObjectCategory.Maximum
+                                        }
+
+                                        else -> {
+                                            null
+                                        }
+                                    },
+                                    time = currentTime,
                                     obj = currentObj,
                                     possibleBestObj = currentBound,
-                                    gap = (currentObj - currentBound + Flt64.decimalPrecision) / (currentObj + Flt64.decimalPrecision)
+                                    initialBestObj = initialBestObj ?: currentObj,
+                                    gap = (currentObj - currentBound + Flt64.decimalPrecision) / (currentObj + Flt64.decimalPrecision),
+                                    currentBestSolution = currentBestSolution
                                 )
                             )) {
                                 is Ok -> {}
@@ -290,7 +333,13 @@ private class HexalyQuadraticSolverImpl(
                 }
             }
 
-            when (val result = callBack?.execIfContain(Point.Configuration, optimizer, hexalyVars, hexalyConstraints)) {
+            when (val result = callBack?.execIfContain(
+                point = Point.Configuration,
+                status = null,
+                hexaly = optimizer,
+                variables = hexalyVars,
+                constraints = hexalyConstraints
+            )) {
                 is Failed -> {
                     return Failed(result.error)
                 }
@@ -312,7 +361,7 @@ private class HexalyQuadraticSolverImpl(
                 for (hexalyVar in hexalyVars) {
                     results.add(Flt64(hexalyVar.doubleValue))
                 }
-                output = SolverOutput(
+                output = FeasibleSolverOutput(
                     obj = Flt64(hexalyObjective.doubleValue),
                     solution = results,
                     time = solvingTime!!,
@@ -320,7 +369,13 @@ private class HexalyQuadraticSolverImpl(
                     gap = Flt64(hexalySolution.getObjectiveGap(0))
                 )
 
-                when (val result = callBack?.execIfContain(Point.AnalyzingSolution, optimizer, hexalyVars, hexalyConstraints)) {
+                when (val result = callBack?.execIfContain(
+                    point = Point.AnalyzingSolution,
+                    status = status,
+                    hexaly = optimizer,
+                    variables = hexalyVars,
+                    constraints = hexalyConstraints
+                )) {
                     is Failed -> {
                         return Failed(result.error)
                     }
@@ -329,7 +384,13 @@ private class HexalyQuadraticSolverImpl(
                 }
                 ok
             } else {
-                when (val result = callBack?.execIfContain(Point.AfterFailure, optimizer, hexalyVars, hexalyConstraints)) {
+                when (val result = callBack?.execIfContain(
+                    point = Point.AfterFailure,
+                    status = status,
+                    hexaly = optimizer,
+                    variables = hexalyVars,
+                    constraints = hexalyConstraints
+                )) {
                     is Failed -> {
                         return Failed(result.error)
                     }

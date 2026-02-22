@@ -2,12 +2,13 @@ package fuookami.ospf.kotlin.framework.gantt_scheduling.domain.bunch_compilation
 
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.frontend.model.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.framework.model.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task.model.*
+import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task_compilation.model.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.bunch_compilation.model.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.bunch_compilation.service.*
-import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task_compilation.model.Solution
 
 interface BunchCompilationContext<
     Args : AbstractGanttSchedulingShadowPriceArguments<E, A>,
@@ -84,7 +85,7 @@ interface BunchCompilationContext<
     fun extractShadowPrice(
         shadowPriceMap: AbstractGanttSchedulingShadowPriceMap<Args, E, A>,
         model: AbstractLinearMetaModel,
-        shadowPrices: List<Flt64>
+        shadowPrices: MetaDualSolution
     ): Try {
         for (pipeline in pipelineList) {
             when (val ret = pipeline.refresh(shadowPriceMap, model, shadowPrices)) {
@@ -144,35 +145,65 @@ interface BunchCompilationContext<
         fixedBunches: Set<B>,
         model: AbstractLinearMetaModel
     ): Ret<Set<B>> {
-        return aggregation.locallyFix(iteration, bar, fixedBunches, model)
+        return aggregation.locallyFix(
+            iteration = iteration,
+            bar = bar,
+            fixedBunches = fixedBunches,
+            model = model
+        )
     }
 
     fun logResult(iteration: UInt64, model: AbstractLinearMetaModel): Try {
-        return aggregation.logResult(iteration, model)
+        return aggregation.logResult(
+            iteration = iteration,
+            model = model
+        )
     }
 
     fun logBunchCost(iteration: UInt64, model: AbstractLinearMetaModel): Try {
-        return aggregation.logBunchCost(iteration, model)
+        return aggregation.logBunchCost(
+            iteration = iteration,
+            model = model
+        )
     }
 
     fun flush(iteration: UInt64): Try {
-        return aggregation.flush(iteration, emptyList())
+        return aggregation.flush(
+            iteration = iteration,
+            tasks = emptyList()
+        )
     }
 
     fun analyzeTaskSolution(
         iteration: UInt64,
         tasks: List<T>,
-        model: AbstractLinearMetaModel
-    ): Ret<Solution<T, E, A>> {
-        return TaskSolutionAnalyzer(iteration, tasks, aggregation.bunchesIteration, aggregation.compilation, model)
+        model: AbstractLinearMetaModel,
+        solution: Solution? = null
+    ): Ret<TaskSolution<T, E, A>> {
+        return TaskSolutionAnalyzer(
+            iteration = iteration,
+            tasks = tasks,
+            bunches = aggregation.bunchesIteration,
+            compilation = aggregation.compilation,
+            model = model,
+            solution = solution
+        )
     }
 
     fun analyzeBunchSolution(
         iteration: UInt64,
         tasks: List<T>,
-        model: AbstractLinearMetaModel
+        model: AbstractLinearMetaModel,
+        solution: Solution? = null
     ): Ret<BunchSolution<B, T, E, A>> {
-        return BunchSolutionAnalyzer(iteration, tasks, aggregation.bunchesIteration, aggregation.compilation, model)
+        return BunchSolutionAnalyzer(
+            iteration = iteration,
+            tasks = tasks,
+            bunches = aggregation.bunchesIteration,
+            compilation = aggregation.compilation,
+            model = model,
+            solution = solution
+        )
     }
 }
 
@@ -196,7 +227,7 @@ interface ExtractBunchCompilationContext<
     fun extractShadowPrice(
         shadowPriceMap: AbstractGanttSchedulingShadowPriceMap<Args, E, A>,
         model: AbstractLinearMetaModel,
-        shadowPrices: List<Flt64>
+        shadowPrices: MetaDualSolution
     ): Try
 
     fun logResult(iteration: UInt64, model: AbstractLinearMetaModel): Try {

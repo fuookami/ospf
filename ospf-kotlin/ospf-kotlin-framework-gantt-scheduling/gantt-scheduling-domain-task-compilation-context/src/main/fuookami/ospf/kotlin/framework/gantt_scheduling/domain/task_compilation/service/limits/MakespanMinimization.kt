@@ -26,7 +26,10 @@ class MakespanMinimization<
     override operator fun invoke(model: AbstractLinearMetaModel): Try {
         val thresholdValue = with(timeWindow) { threshold.value }
         if (thresholdValue eq Flt64.zero) {
-            when (val result = model.minimize(coefficient * makespan.makespan, "makespan")) {
+            when (val result = model.minimize(
+                monomial = coefficient * makespan.makespan,
+                name = "makespan"
+            )) {
                 is Ok -> {}
 
                 is Failed -> {
@@ -35,13 +38,13 @@ class MakespanMinimization<
             }
         } else {
             val slack = SlackFunction(
-                if (timeWindow.continues) {
+                x = makespan.makespan,
+                threshold = thresholdValue,
+                type = if (timeWindow.continues) {
                     UContinuous
                 } else {
                     UInteger
                 },
-                x = LinearPolynomial(makespan.makespan),
-                threshold = LinearPolynomial(thresholdValue),
                 name = "makespan_threshold"
             )
             when (val result = model.add(slack)) {
@@ -51,7 +54,10 @@ class MakespanMinimization<
                     return Failed(result.error)
                 }
             }
-            when (val result = model.minimize(coefficient * slack, "makespan")) {
+            when (val result = model.minimize(
+                monomial = coefficient * slack,
+                name = "makespan"
+            )) {
                 is Ok -> {}
 
                 is Failed -> {
@@ -59,6 +65,7 @@ class MakespanMinimization<
                 }
             }
         }
+
         return ok
     }
 }

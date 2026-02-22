@@ -4,8 +4,9 @@ import java.util.*
 import jscip.*
 import fuookami.ospf.kotlin.utils.concept.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.backend.solver.output.*
 
-typealias Function = (Scip, List<Variable>, List<Constraint>) -> Try
+typealias Function = suspend (SolverStatus?, Scip, List<Variable>, List<Constraint>) -> Try
 
 enum class Point {
     AfterModeling,
@@ -15,10 +16,10 @@ enum class Point {
 }
 
 class ScipSolverCallBack(
-    private val map: MutableMap<Point, Function> = EnumMap(Point::class.java)
+    private val map: MutableMap<Point, MutableList<Function>> = EnumMap(Point::class.java)
 ) : Copyable<ScipSolverCallBack> {
     fun set(point: Point, function: Function): ScipSolverCallBack {
-        map[point] = function
+        map.getOrPut(point) { ArrayList() }.add(function)
         return this
     }
 
@@ -27,11 +28,23 @@ class ScipSolverCallBack(
     fun analyzingSolution(function: Function) = set(Point.AnalyzingSolution, function)
     fun afterFailure(function: Function) = set(Point.AfterFailure, function)
 
-    fun contain(point: Point) = map.containsKey(point)
-    fun get(point: Point): Function? = map[point]
+    fun contains(point: Point) = map.containsKey(point)
+    fun get(point: Point): List<Function>? = map[point]
 
-    fun execIfContain(point: Point, scip: Scip, variables: List<Variable>, constraints: List<Constraint>): Try? {
-        return map[point]?.invoke(scip, variables, constraints)
+    suspend fun execIfContain(
+        point: Point,
+        status: SolverStatus?,
+        scip: Scip,
+        variables: List<Variable>,
+        constraints: List<Constraint>
+    ): Try? {
+        return if (!map[point].isNullOrEmpty()) {
+            syncRun(map[point]!!.map {
+                { it(status, scip, variables, constraints) }
+            })
+        } else {
+            null
+        }
     }
 
     override fun copy(): ScipSolverCallBack {

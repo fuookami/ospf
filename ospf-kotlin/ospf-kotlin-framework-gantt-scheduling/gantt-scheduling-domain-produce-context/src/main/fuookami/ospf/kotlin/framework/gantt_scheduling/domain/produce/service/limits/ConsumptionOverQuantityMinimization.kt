@@ -37,9 +37,9 @@ class ConsumptionOverQuantityMinimization<
                     cost += coefficient(material) * consumption.overQuantity[material]
                 } else {
                     val slack = SlackFunction(
-                        UContinuous,
-                        x = LinearPolynomial(consumption.overQuantity[material]),
-                        threshold = LinearPolynomial(thresholdValue),
+                        x = consumption.overQuantity[material],
+                        threshold = thresholdValue,
+                        type = UContinuous,
                         name = "consumption_over_quantity_minimization_threshold_$material"
                     )
                     when (val result = model.add(slack)) {
@@ -53,8 +53,8 @@ class ConsumptionOverQuantityMinimization<
                 }
             }
             when (val result = model.minimize(
-                cost,
-                "consumption over quantity"
+                polynomial = cost,
+                name = "consumption over quantity"
             )) {
                 is Ok -> {}
 

@@ -1,9 +1,7 @@
 package fuookami.ospf.kotlin.core.backend.plugins.scip
 
 import kotlin.time.*
-import kotlinx.datetime.*
 import kotlinx.coroutines.*
-import jscip.*
 import fuookami.ospf.kotlin.utils.*
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.error.*
@@ -32,34 +30,39 @@ class ScipLinearSolver(
 
     override suspend operator fun invoke(
         model: LinearTriadModelView,
-        statusCallBack: SolvingStatusCallBack?
-    ): Ret<SolverOutput> {
-        val impl = ScipLinearSolverImpl(config, callBack, statusCallBack)
-        val result = impl(model)
-        System.gc()
-        return result
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<FeasibleSolverOutput> {
+        return ScipLinearSolverImpl(
+            config = config,
+            callBack = callBack,
+            statusCallBack = solvingStatusCallBack
+        ).use { impl ->
+            val result = impl(model)
+            System.gc()
+            result
+        }
     }
 
     override suspend fun invoke(
         model: LinearTriadModelView,
         solutionAmount: UInt64,
-        statusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<SolverOutput, List<Solution>>> {
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<Pair<FeasibleSolverOutput, List<Solution>>> {
         return if (solutionAmount leq UInt64.one) {
             this(model).map { it to emptyList() }
         } else {
             val results = ArrayList<Solution>()
-            val impl = ScipLinearSolverImpl(
+            ScipLinearSolverImpl(
                 config = config,
                 callBack = callBack
                     .copyIfNotNullOr { ScipSolverCallBack() }
-                    .configuration { scip, _, _ ->
+                    .configuration { _, scip, _, _ ->
                         if (solutionAmount gr UInt64.one) {
                             scip.setIntParam("heuristics/dins/solnum", solutionAmount.toInt())
                         }
                         ok
                     }
-                    .analyzingSolution { scip, variables, _ ->
+                    .analyzingSolution { _, scip, variables, _ ->
                         val bestSol = scip.bestSol
                         val sols = scip.sols
                         var i = UInt64.zero
@@ -80,11 +83,12 @@ class ScipLinearSolver(
                         }
                         ok
                     },
-                statusCallBack = statusCallBack
-            )
-            val result = impl(model).map { it to results }
-            System.gc()
-            return result
+                statusCallBack = solvingStatusCallBack
+            ).use { impl ->
+                val result = impl(model).map { it to results }
+                System.gc()
+                result
+            }
         }
     }
 }
@@ -98,19 +102,19 @@ private class ScipLinearSolverImpl(
 
     private lateinit var scipVars: List<jscip.Variable>
     private lateinit var scipConstraints: List<jscip.Constraint>
-    private lateinit var output: SolverOutput
+    private lateinit var output: FeasibleSolverOutput
 
-    override fun finalize() {
+    override fun close() {
         for (constraint in scipConstraints) {
             scip.releaseCons(constraint)
         }
         for (variable in scipVars) {
             scip.releaseVar(variable)
         }
-        super.finalize()
+        super.close()
     }
 
-    suspend operator fun invoke(model: LinearTriadModelView): Ret<SolverOutput> {
+    suspend operator fun invoke(model: LinearTriadModelView): Ret<FeasibleSolverOutput> {
         mip = model.containsNotBinaryInteger
         val processes = arrayOf(
             { it.init(model.name) },
@@ -118,7 +122,7 @@ private class ScipLinearSolverImpl(
             ScipLinearSolverImpl::configure,
             { it.solve(config.threadNum) },
             ScipLinearSolverImpl::analyzeStatus,
-            ScipLinearSolverImpl::analyzeSolution
+            { it.analyzeSolution(model) }
         )
         for (process in processes) {
             when (val result = process(this)) {
@@ -256,7 +260,7 @@ private class ScipLinearSolverImpl(
         System.gc()
         scipConstraints = constraints
 
-        for (cell in model.objective.obj) {
+        for (cell in model.objective.objective) {
             scip.changeVarObj(scipVars[cell.colIndex], cell.coefficient.toDouble())
         }
         when (model.objective.category) {
@@ -269,7 +273,13 @@ private class ScipLinearSolverImpl(
             }
         }
 
-        when (val result = callBack?.execIfContain(Point.AfterModeling, scip, scipVars, scipConstraints)) {
+        when (val result = callBack?.execIfContain(
+            point = Point.AfterModeling,
+            status = null,
+            scip = scip,
+            variables = scipVars,
+            constraints = scipConstraints
+        )) {
             is Failed -> {
                 return Failed(result.error)
             }
@@ -291,7 +301,13 @@ private class ScipLinearSolverImpl(
 
         scip.messagehdlr
 
-        when (val result = callBack?.execIfContain(Point.Configuration, scip, scipVars, scipConstraints)) {
+        when (val result = callBack?.execIfContain(
+            point = Point.Configuration,
+            status = null,
+            scip = scip,
+            variables = scipVars,
+            constraints = scipConstraints
+        )) {
             is Failed -> {
                 return Failed(result.error)
             }
@@ -301,21 +317,21 @@ private class ScipLinearSolverImpl(
         return ok
     }
 
-    private suspend fun analyzeSolution(): Try {
+    private suspend fun analyzeSolution(model: LinearTriadModelView): Try {
         return if (status.succeeded) {
             val solution = scip.bestSol
             val results = ArrayList<Flt64>()
             for (scipVar in scipVars) {
                 results.add(Flt64(scip.getSolVal(solution, scipVar)))
             }
-            val obj = Flt64(scip.getSolOrigObj(solution))
-            val possibleBestObj = Flt64(scip.dualbound)
+            val obj = Flt64(scip.getSolOrigObj(solution)) + model.objective.constant
+            val possibleBestObj = Flt64(scip.dualbound) + model.objective.constant
             val gap = if (mip) {
-                (obj - possibleBestObj + Flt64.decimalPrecision) / (obj + Flt64.decimalPrecision)
+                gap(obj, possibleBestObj)
             } else {
                 Flt64.zero
             }
-            output = SolverOutput(
+            output = FeasibleSolverOutput(
                 obj = obj,
                 solution = results,
                 time = solvingTime!!,
@@ -323,7 +339,13 @@ private class ScipLinearSolverImpl(
                 gap = gap
             )
 
-            when (val result = callBack?.execIfContain(Point.AnalyzingSolution, scip, scipVars, scipConstraints)) {
+            when (val result = callBack?.execIfContain(
+                point = Point.AnalyzingSolution,
+                status = status,
+                scip = scip,
+                variables = scipVars,
+                constraints = scipConstraints
+            )) {
                 is Failed -> {
                     return Failed(result.error)
                 }
@@ -332,7 +354,13 @@ private class ScipLinearSolverImpl(
             }
             return ok
         } else {
-            when (val result = callBack?.execIfContain(Point.AfterFailure, scip, scipVars, scipConstraints)) {
+            when (val result = callBack?.execIfContain(
+                point = Point.AfterFailure,
+                status = status,
+                scip = scip,
+                variables = scipVars,
+                constraints = scipConstraints
+            )) {
                 is Failed -> {
                     return Failed(result.error)
                 }

@@ -3,7 +3,6 @@ package fuookami.ospf.kotlin.core.backend.solver.config
 import kotlin.time.*
 import kotlin.time.Duration.Companion.seconds
 import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.math.ordinary.*
 
 data class SolverConfig(
     val time: Duration = 30.seconds,
@@ -18,8 +17,11 @@ data class SolverConfig(
     },
     val gap: Flt64 = Flt64.zero,
     val notImprovementTime: Duration? = null,
+    val improveThreshold: Flt64 = Flt64.decimalPrecision,
     val dumpMechanismModelConcurrent: Boolean? = null,
     val dumpMechanismModelBlocking: Boolean? = null,
     val dumpIntermediateModelConcurrent: Boolean? = null,
+    val dumpIntermediateModelBounds: Boolean? = null,
+    val dumpIntermediateModelForceBounds: Boolean? = null,
     val extraConfig: Any? = null
 )

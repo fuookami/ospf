@@ -42,14 +42,14 @@ class TaskDelayTimeMinimization<
                     cost += thisCoefficient * delayTime
                 } else {
                     val slack = SlackFunction(
-                        if (timeWindow.continues) {
+                        x = delayTime,
+                        threshold = thisThreshold,
+                        type = if (timeWindow.continues) {
                             UContinuous
                         } else {
                             UInteger
                         },
-                        x = LinearPolynomial(delayTime),
-                        threshold = LinearPolynomial(thisThreshold),
-                        name = "delay_time_threshold_$task"
+                        name = "delay_time_threshold_${task}"
                     )
                     when (val result = model.add(slack)) {
                         is Ok -> {}
@@ -63,8 +63,8 @@ class TaskDelayTimeMinimization<
             }
 
             when (val result = model.minimize(
-                cost,
-                "task delay time"
+                polynomial = cost,
+                name = "task delay time"
             )) {
                 is Ok -> {}
 

@@ -36,13 +36,13 @@ class SwitchTimeMinimization<
                     cost += thisCoefficient * switchTime
                 } else {
                     val slack = SlackFunction(
-                        if (timeWindow.continues) {
+                        x = switchTime,
+                        threshold = thisThreshold,
+                        type = if (timeWindow.continues) {
                             UContinuous
                         } else {
                             UInteger
                         },
-                        x = LinearPolynomial(switchTime),
-                        threshold = LinearPolynomial(thisThreshold),
                         name = "switch_time_threshold_${task1}_${task2}"
                     )
                     when (val result = model.add(slack)) {
@@ -56,7 +56,10 @@ class SwitchTimeMinimization<
                 }
             }
         }
-        when (val result = model.minimize(cost, "switch time")) {
+        when (val result = model.minimize(
+            polynomial = cost,
+            name = "switch time"
+        )) {
             is Ok -> {}
 
             is Failed -> {

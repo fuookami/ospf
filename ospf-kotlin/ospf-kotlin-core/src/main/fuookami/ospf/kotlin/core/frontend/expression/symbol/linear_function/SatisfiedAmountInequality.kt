@@ -15,10 +15,16 @@ import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 sealed class AbstractSatisfiedAmountInequalityFunction(
     inequalities: List<LinearInequality>,
     private val constraint: Boolean = false,
+    private val epsilon: Flt64 = Flt64(1e-6),
+    override val parent: IntermediateSymbol? = null,
+    args: Any? = null,
     override var name: String,
     override var displayName: String? = null
-) : LinearFunctionSymbol {
+) : LinearFunctionSymbol() {
     private val logger = logger()
+
+    internal val _args = args
+    override val args get() = _args ?: parent?.args
 
     open val amount: ValueRange<UInt64>? = null
 
@@ -92,15 +98,23 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
         polyY.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         for (inequality in inequalities) {
             inequality.lhs.cells
             inequality.rhs.cells
         }
 
-        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+        return if ((!values.isNullOrEmpty() || tokenTable.cachedSolution) && if (values.isNullOrEmpty()) {
+            tokenTable.cached(this)
+        } else {
+            tokenTable.cached(this, values)
+        } == false) {
             val count = inequalities.count {
-                it.isTrue(tokenTable) ?: return null
+                if (values.isNullOrEmpty()) {
+                    it.isTrue(tokenTable)
+                } else {
+                    it.isTrue(values, tokenTable)
+                }?: return null
             }
 
             val yValue = if (amount != null) {
@@ -130,20 +144,19 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
         }
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
-        when (val result = tokenTable.add(k)) {
-            is Ok -> {}
+    override fun register(tokenTable: AddableTokenCollection): Try {
+        for ((i, inequality) in inequalities.withIndex()) {
+            when (val result = inequality.register(
+                parentName = "${name}_i",
+                k = k[i, _a],
+                flag = u[i],
+                tokenTable = tokenTable
+            )) {
+                is Ok -> {}
 
-            is Failed -> {
-                return Failed(result.error)
-            }
-        }
-
-        when (val result = tokenTable.add(u)) {
-            is Ok -> {}
-
-            is Failed -> {
-                return Failed(result.error)
+                is Failed -> {
+                    return Failed(result.error)
+                }
             }
         }
 
@@ -162,7 +175,14 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
 
     override fun register(model: AbstractLinearMechanismModel): Try {
         for ((i, inequality) in inequalities.withIndex()) {
-            when (val result = inequality.register(name, k[i, _a], u[i], model)) {
+            when (val result = inequality.register(
+                parent = parent ?: this,
+                parentName = "${name}_i",
+                k = k[i, _a],
+                flag = u[i],
+                epsilon = epsilon,
+                model = model
+            )) {
                 is Ok -> {}
 
                 is Failed -> {
@@ -174,8 +194,9 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
         if (amount != null) {
             if (!constraint) {
                 when (val result = model.addConstraint(
-                    sum(u) geq amount!!.lowerBound.value.unwrap() - UInt64(inequalities.size) * (Flt64.one - y),
-                    "${name}_lb"
+                    constraint = sum(u) geq amount!!.lowerBound.value.unwrap() - UInt64(inequalities.size) * (Flt64.one - y),
+                    name = "${name}_lb",
+                    from = parent ?: this
                 )) {
                     is Ok -> {}
 
@@ -185,8 +206,9 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
                 }
 
                 when (val result = model.addConstraint(
-                    sum(u) leq amount!!.upperBound.value.unwrap() + UInt64(inequalities.size) * (Flt64.one - y),
-                    "${name}_ub"
+                    constraint = sum(u) leq amount!!.upperBound.value.unwrap() + UInt64(inequalities.size) * (Flt64.one - y),
+                    name = "${name}_ub",
+                    from = parent ?: this
                 )) {
                     is Ok -> {}
 
@@ -196,8 +218,9 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
                 }
             } else {
                 when (val result = model.addConstraint(
-                    sum(u) geq amount!!.lowerBound.value.unwrap(),
-                    "${name}_lb"
+                    constraint = sum(u) geq amount!!.lowerBound.value.unwrap(),
+                    name = "${name}_lb",
+                    from = parent ?: this
                 )) {
                     is Ok -> {}
 
@@ -207,8 +230,116 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
                 }
 
                 when (val result = model.addConstraint(
-                    sum(u) leq amount!!.upperBound.value.unwrap(),
-                    "${name}_ub"
+                    constraint = sum(u) leq amount!!.upperBound.value.unwrap(),
+                    name = "${name}_ub",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+            }
+        }
+
+        return ok
+    }
+
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        return register(tokenTable)
+    }
+
+    override fun register(
+        model: AbstractLinearMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        val values = inequalities.map {
+            it.isTrue(fixedValues, model.tokens) ?: return register(model)
+        }
+        val amountValue = UInt64(values.count { it })
+
+        for ((i, inequality) in inequalities.withIndex()) {
+            when (val result = inequality.register(
+                parent = parent ?: this,
+                parentName = "${name}_i",
+                k = k[i, _a],
+                flag = u[i],
+                epsilon = epsilon,
+                model = model,
+                fixedValues = fixedValues
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+        }
+
+        if (amount != null) {
+            if (!constraint) {
+                when (val result = model.addConstraint(
+                    constraint = sum(u) geq amount!!.lowerBound.value.unwrap() - UInt64(inequalities.size) * (Flt64.one - y),
+                    name = "${name}_lb",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+
+                when (val result = model.addConstraint(
+                    constraint = sum(u) leq amount!!.upperBound.value.unwrap() + UInt64(inequalities.size) * (Flt64.one - y),
+                    name = "${name}_ub",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+
+                val bin = amount!!.contains(amountValue)
+
+                when (val result = model.addConstraint(
+                    constraint = y eq bin,
+                    name = "${name}_y",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+
+                model.tokens.find(y)?.let { token ->
+                    token._result = bin.toFlt64()
+                }
+            } else {
+                when (val result = model.addConstraint(
+                    constraint = sum(u) geq amount!!.lowerBound.value.unwrap(),
+                    name = "${name}_lb",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+
+                when (val result = model.addConstraint(
+                    constraint = sum(u) leq amount!!.upperBound.value.unwrap(),
+                    name = "${name}_ub",
+                    from = parent ?: this
                 )) {
                     is Ok -> {}
 
@@ -238,7 +369,10 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
         }
     }
 
-    override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         var counter = UInt64.zero
         for (inequality in inequalities) {
             val value = inequality.isTrue(tokenList, zeroIfNone) ?: return null
@@ -257,10 +391,18 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
         }
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         var counter = UInt64.zero
         for (inequality in inequalities) {
-            val value = inequality.isTrue(results, tokenList, zeroIfNone) ?: return null
+            val value = inequality.isTrue(
+                results = results,
+                tokenList = tokenList,
+                zeroIfNone = zeroIfNone
+            ) ?: return null
             if (value) {
                 counter += UInt64.one
             }
@@ -276,7 +418,37 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
         }
     }
 
-    override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenList: AbstractTokenList?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        var counter = UInt64.zero
+        for (inequality in inequalities) {
+            val value = inequality.isTrue(
+                values = values,
+                tokenList = tokenList,
+                zeroIfNone = zeroIfNone
+            ) ?: return null
+            if (value) {
+                counter += UInt64.one
+            }
+        }
+        return if (amount != null) {
+            if (amount!!.contains(counter)) {
+                Flt64.one
+            } else {
+                Flt64.zero
+            }
+        } else {
+            counter.toFlt64()
+        }
+    }
+
+    override fun calculateValue(
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
         var counter = UInt64.zero
         for (inequality in inequalities) {
             val value = inequality.isTrue(tokenTable, zeroIfNone) ?: return null
@@ -295,10 +467,45 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
         }
     }
 
-    override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+    override fun calculateValue(
+        results: List<Flt64>,
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
         var counter = UInt64.zero
         for (inequality in inequalities) {
-            val value = inequality.isTrue(results, tokenTable, zeroIfNone) ?: return null
+            val value = inequality.isTrue(
+                results = results,
+                tokenTable = tokenTable,
+                zeroIfNone = zeroIfNone
+            ) ?: return null
+            if (value) {
+                counter += UInt64.one
+            }
+        }
+        return if (amount != null) {
+            if (amount!!.contains(counter)) {
+                Flt64.one
+            } else {
+                Flt64.zero
+            }
+        } else {
+            counter.toFlt64()
+        }
+    }
+
+    override fun calculateValue(
+        values: Map<Symbol, Flt64>,
+        tokenTable: AbstractTokenTable?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        var counter = UInt64.zero
+        for (inequality in inequalities) {
+            val value = inequality.isTrue(
+                values = values,
+                tokenTable = tokenTable,
+                zeroIfNone = zeroIfNone
+            ) ?: return null
             if (value) {
                 counter += UInt64.one
             }
@@ -318,11 +525,36 @@ sealed class AbstractSatisfiedAmountInequalityFunction(
 // todo: optimize
 open class AnyFunction(
     inequalities: List<LinearInequality>,
+    parent: IntermediateSymbol? = null,
+    args: Any? = null,
     name: String,
     displayName: String? = null
-) : AbstractSatisfiedAmountInequalityFunction(inequalities, name = name, displayName = displayName),
-    LinearLogicFunctionSymbol {
-    override val amount: ValueRange<UInt64> = ValueRange(UInt64.one, UInt64(inequalities.size)).value!!
+) : AbstractSatisfiedAmountInequalityFunction(
+    inequalities = inequalities,
+    parent = parent,
+    args = args,
+    name = name,
+    displayName = displayName
+), LogicFunctionSymbol {
+    companion object {
+        operator fun invoke(
+            inequalities: List<ToLinearInequality>,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): AnyFunction {
+            return AnyFunction(
+                inequalities = inequalities.map { it.toLinearInequality() },
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+
+    override val amount = ValueRange(UInt64.one, UInt64(inequalities.size)).value!!
 
     override fun toRawString(unfold: UInt64): String {
         return if (unfold eq UInt64.zero) {
@@ -336,17 +568,73 @@ open class AnyFunction(
 class InListFunction(
     val x: AbstractLinearPolynomial<*>,
     val list: List<AbstractLinearPolynomial<*>>,
+    parent: IntermediateSymbol? = null,
+    args: Any? = null,
     name: String,
     displayName: String? = null
-) : AnyFunction(list.map { x eq it }, name, displayName)
+) : AnyFunction(
+    inequalities = list.map { x eq it },
+    parent = parent,
+    args = args,
+    name = name,
+    displayName = displayName
+) {
+    companion object {
+        operator fun <
+            T : ToLinearPolynomial<Poly>,
+            Poly : AbstractLinearPolynomial<Poly>
+        > invoke(
+            x: T,
+            list: List<ToLinearPolynomial<*>>,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): InListFunction {
+            return InListFunction(
+                x = x.toLinearPolynomial(),
+                list = list.map { it.toLinearInequality().lhs },
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+}
 
 class NotAllFunction(
     inequalities: List<LinearInequality>,
+    parent: IntermediateSymbol? = null,
+    args: Any? = null,
     name: String,
     displayName: String? = null
-) : AbstractSatisfiedAmountInequalityFunction(inequalities, name = name, displayName = displayName),
-    LinearLogicFunctionSymbol {
-    override val amount: ValueRange<UInt64> = ValueRange(UInt64.one, UInt64(inequalities.lastIndex)).value!!
+) : AbstractSatisfiedAmountInequalityFunction(
+    inequalities = inequalities,
+    parent = parent,
+    args = args,
+    name = name,
+    displayName = displayName
+), LogicFunctionSymbol {
+    companion object {
+        operator fun invoke(
+            inequalities: List<ToLinearInequality>,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): NotAllFunction {
+            return NotAllFunction(
+                inequalities = inequalities.map { it.toLinearInequality() },
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+
+    override val amount = ValueRange(UInt64.one, UInt64(inequalities.lastIndex)).value!!
 
     override fun toRawString(unfold: UInt64): String {
         return if (unfold eq UInt64.zero) {
@@ -360,11 +648,36 @@ class NotAllFunction(
 // todo: optimize
 class AllFunction(
     inequalities: List<LinearInequality>,
+    parent: IntermediateSymbol? = null,
+    args: Any? = null,
     name: String,
     displayName: String? = null
-) : AbstractSatisfiedAmountInequalityFunction(inequalities, name = name, displayName = displayName),
-    LinearLogicFunctionSymbol {
-    override val amount: ValueRange<UInt64> = ValueRange(UInt64(inequalities.size), UInt64(inequalities.size)).value!!
+) : AbstractSatisfiedAmountInequalityFunction(
+    inequalities = inequalities,
+    parent = parent,
+    args = args,
+    name = name,
+    displayName = displayName
+), LogicFunctionSymbol {
+    companion object {
+        operator fun invoke(
+            inequalities: List<ToLinearInequality>,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): AllFunction {
+            return AllFunction(
+                inequalities = inequalities.map { it.toLinearInequality() },
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+
+    override val amount = ValueRange(UInt64(inequalities.size), UInt64(inequalities.size)).value!!
 
     override fun toRawString(unfold: UInt64): String {
         return if (unfold eq UInt64.zero) {
@@ -377,23 +690,84 @@ class AllFunction(
 
 class SatisfiedAmountInequalityFunction(
     inequalities: List<LinearInequality>,
+    parent: IntermediateSymbol? = null,
+    args: Any? = null,
     name: String,
     displayName: String? = null
-) : AbstractSatisfiedAmountInequalityFunction(inequalities, name = name, displayName = displayName)
+) : AbstractSatisfiedAmountInequalityFunction(
+    inequalities = inequalities,
+    parent = parent,
+    args = args,
+    name = name,
+    displayName = displayName
+) {
+    companion object {
+        operator fun invoke(
+            inequalities: List<ToLinearInequality>,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): SatisfiedAmountInequalityFunction {
+            return SatisfiedAmountInequalityFunction(
+                inequalities = inequalities.map { it.toLinearInequality() },
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+}
 
 class AtLeastInequalityFunction(
     inequalities: List<LinearInequality>,
     constraint: Boolean = true,
     amount: UInt64,
+    epsilon: Flt64 = Flt64(1e-6),
+    parent: IntermediateSymbol? = null,
+    args: Any? = null,
     name: String,
     displayName: String? = null
-) : AbstractSatisfiedAmountInequalityFunction(inequalities, constraint, name, displayName), LinearLogicFunctionSymbol {
+) : AbstractSatisfiedAmountInequalityFunction(
+    inequalities = inequalities,
+    constraint = constraint,
+    epsilon = epsilon,
+    parent = parent,
+    args = args,
+    name = name,
+    displayName = displayName
+), LogicFunctionSymbol {
+    companion object {
+        operator fun invoke(
+            inequalities: List<ToLinearInequality>,
+            constraint: Boolean = true,
+            amount: UInt64,
+            epsilon: Flt64 = Flt64(1e-6),
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): AtLeastInequalityFunction {
+            return AtLeastInequalityFunction(
+                inequalities = inequalities.map { it.toLinearInequality() },
+                constraint = constraint,
+                amount = amount,
+                epsilon = epsilon,
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+
     init {
         assert(amount != UInt64.zero)
         assert(UInt64(inequalities.size) geq amount)
     }
 
-    override val amount: ValueRange<UInt64> = ValueRange(amount, UInt64(inequalities.size)).value!!
+    override val amount = ValueRange(amount, UInt64(inequalities.size)).value!!
 
     override fun toRawString(unfold: UInt64): String {
         return if (unfold eq UInt64.zero) {
@@ -408,9 +782,44 @@ class NumerableFunction(
     inequalities: List<LinearInequality>,
     override val amount: ValueRange<UInt64>,
     constraint: Boolean = true,
+    epsilon: Flt64 = Flt64(1e-6),
+    parent: IntermediateSymbol? = null,
+    args: Any? = null,
     name: String,
     displayName: String? = null
-) : AbstractSatisfiedAmountInequalityFunction(inequalities, constraint, name, displayName), LinearLogicFunctionSymbol {
+) : AbstractSatisfiedAmountInequalityFunction(
+    inequalities = inequalities,
+    constraint = constraint,
+    epsilon = epsilon,
+    parent = parent,
+    args = args,
+    name = name,
+    displayName = displayName
+), LogicFunctionSymbol {
+    companion object {
+        operator fun invoke(
+            inequalities: List<ToLinearInequality>,
+            amount: ValueRange<UInt64>,
+            constraint: Boolean = true,
+            epsilon: Flt64 = Flt64(1e-6),
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): NumerableFunction {
+            return NumerableFunction(
+                inequalities = inequalities.map { it.toLinearInequality() },
+                amount = amount,
+                constraint = constraint,
+                epsilon = epsilon,
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+
     override fun toRawString(unfold: UInt64): String {
         return if (unfold eq UInt64.zero) {
             displayName ?: name

@@ -4,11 +4,12 @@ import java.util.*
 import com.gurobi.gurobi.*
 import fuookami.ospf.kotlin.utils.concept.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.backend.solver.output.*
 
 typealias CreatingEnvironmentFunction = (GRBEnv) -> Try
-typealias LinearFunction = (GRBModel, List<GRBVar>, List<GRBConstr>) -> Try
 typealias NativeCallback = GRBCallback.() -> Unit
-typealias QuadraticFunction = (GRBModel, List<GRBVar>, List<GRBQConstr>) -> Try
+typealias LinearFunction = suspend (SolverStatus?, GRBModel, List<GRBVar>, List<GRBConstr>) -> Try
+typealias QuadraticFunction = suspend (SolverStatus?, GRBModel, List<GRBVar>, List<GRBQConstr>) -> Try
 
 enum class Point {
     AfterModeling,
@@ -20,7 +21,7 @@ enum class Point {
 class GurobiLinearSolverCallBack(
     internal var nativeCallback: NativeCallback? = null,
     internal var creatingEnvironmentFunction: CreatingEnvironmentFunction? = null,
-    private val map: MutableMap<Point, LinearFunction> = EnumMap(Point::class.java)
+    private val map: MutableMap<Point, MutableList<LinearFunction>> = EnumMap(Point::class.java)
 ) : Copyable<GurobiLinearSolverCallBack> {
     @JvmName("setNativeCallback")
     fun set(function: NativeCallback) {
@@ -33,7 +34,7 @@ class GurobiLinearSolverCallBack(
     }
 
     operator fun set(point: Point, function: LinearFunction): GurobiLinearSolverCallBack {
-        map[point] = function
+        map.getOrPut(point) { ArrayList() }.add(function)
         return this
     }
 
@@ -43,26 +44,42 @@ class GurobiLinearSolverCallBack(
     fun analyzingSolution(function: LinearFunction) = set(Point.AnalyzingSolution, function)
     fun afterFailure(function: LinearFunction) = set(Point.AfterFailure, function)
 
-    fun contain(point: Point) = map.containsKey(point)
-    fun get(point: Point): LinearFunction? = map[point]
+    fun contains(point: Point) = map.containsKey(point)
+    fun get(point: Point): List<LinearFunction>? = map[point]
 
     fun execIfContain(env: GRBEnv): Try? {
         return creatingEnvironmentFunction?.invoke(env)
     }
 
-    fun execIfContain(point: Point, gurobi: GRBModel, variables: List<GRBVar>, constraints: List<GRBConstr>): Try? {
-        return map[point]?.invoke(gurobi, variables, constraints)
+    suspend fun execIfContain(
+        point: Point,
+        status: SolverStatus?,
+        gurobi: GRBModel,
+        variables: List<GRBVar>,
+        constraints: List<GRBConstr>
+    ): Try? {
+        return if (!map[point].isNullOrEmpty()) {
+            syncRun(map[point]!!.map {
+                { it(status, gurobi, variables, constraints) }
+            })
+        } else {
+            null
+        }
     }
 
     override fun copy(): GurobiLinearSolverCallBack {
-        return GurobiLinearSolverCallBack(nativeCallback, creatingEnvironmentFunction, map.toMutableMap())
+        return GurobiLinearSolverCallBack(
+            nativeCallback = nativeCallback,
+            creatingEnvironmentFunction = creatingEnvironmentFunction,
+            map = map.toMutableMap()
+        )
     }
 }
 
 class GurobiQuadraticSolverCallBack(
     internal var nativeCallback: NativeCallback? = null,
     internal var creatingEnvironmentFunction: CreatingEnvironmentFunction? = null,
-    private val map: MutableMap<Point, QuadraticFunction> = EnumMap(Point::class.java)
+    private val map: MutableMap<Point, MutableList<QuadraticFunction>> = EnumMap(Point::class.java)
 ) : Copyable<GurobiQuadraticSolverCallBack> {
     @JvmName("setNativeCallback")
     fun set(function: NativeCallback) {
@@ -75,7 +92,7 @@ class GurobiQuadraticSolverCallBack(
     }
 
     operator fun set(point: Point, function: QuadraticFunction): GurobiQuadraticSolverCallBack {
-        map[point] = function
+        map.getOrPut(point) { ArrayList() }.add(function)
         return this
     }
 
@@ -85,18 +102,34 @@ class GurobiQuadraticSolverCallBack(
     fun analyzingSolution(function: QuadraticFunction) = set(Point.AnalyzingSolution, function)
     fun afterFailure(function: QuadraticFunction) = set(Point.AfterFailure, function)
 
-    fun contain(point: Point) = map.containsKey(point)
-    fun get(point: Point): QuadraticFunction? = map[point]
+    fun contains(point: Point) = map.containsKey(point)
+    fun get(point: Point): List<QuadraticFunction>? = map[point]
 
     fun execIfContain(env: GRBEnv): Try? {
         return creatingEnvironmentFunction?.invoke(env)
     }
 
-    fun execIfContain(point: Point, gurobi: GRBModel, variables: List<GRBVar>, constraints: List<GRBQConstr>): Try? {
-        return map[point]?.invoke(gurobi, variables, constraints)
+    suspend fun execIfContain(
+        point: Point,
+        status: SolverStatus?,
+        gurobi: GRBModel,
+        variables: List<GRBVar>,
+        constraints: List<GRBQConstr>
+    ): Try? {
+        return if (!map[point].isNullOrEmpty()) {
+            syncRun(map[point]!!.map {
+                { it(status, gurobi, variables, constraints) }
+            })
+        } else {
+            null
+        }
     }
 
     override fun copy(): GurobiQuadraticSolverCallBack {
-        return GurobiQuadraticSolverCallBack(nativeCallback, creatingEnvironmentFunction, map.toMutableMap())
+        return GurobiQuadraticSolverCallBack(
+            nativeCallback = nativeCallback,
+            creatingEnvironmentFunction = creatingEnvironmentFunction,
+            map = map.toMutableMap()
+        )
     }
 }
