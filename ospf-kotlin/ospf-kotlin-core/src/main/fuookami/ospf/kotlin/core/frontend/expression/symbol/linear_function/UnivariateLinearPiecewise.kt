@@ -17,24 +17,25 @@ import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 sealed class AbstractUnivariateLinearPiecewiseFunction(
     private val x: AbstractLinearPolynomial<*>,
     val points: List<Point2>,
+    override val parent: IntermediateSymbol? = null,
+    args: Any? = null,
     override var name: String,
     override var displayName: String? = null
-) : LinearFunctionSymbol {
+) : LinearFunctionSymbol() {
     private val logger = logger()
 
     init {
         assert(points.foldIndexed(true) { index, acc, point ->
-            if (!acc) {
-                acc
-            } else {
-                if (index == 0) {
-                    acc
+            acc && if (index == 0) {
+                    true
                 } else {
                     point.x geq points[index - 1].x
                 }
-            }
         })
     }
+
+    internal val _args = args
+    override val args get() = _args ?: parent?.args
 
     val size by points::size
     val indices by points::indices
@@ -59,7 +60,7 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
             if (points[i + 1].x geq x) {
                 val dy = points[i + 1].y - points[i].y
                 val dx = points[i + 1].x - points[i].x
-                return dy / dx * (x - points[i].x)
+                return points[i].y + dy / dx * (x - points[i].x)
             }
         }
         return null
@@ -97,11 +98,20 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
         polyY.flush(force)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         x.cells
 
-        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            val xValue = x.evaluate(tokenTable) ?: return null
+        return if ((!values.isNullOrEmpty() || tokenTable.cachedSolution) && if (values.isNullOrEmpty()) {
+            tokenTable.cached(this)
+        } else {
+            tokenTable.cached(this, values)
+        } == false) {
+            val xValue = if (values.isNullOrEmpty()) {
+                x.evaluate(tokenTable)
+            } else {
+                x.evaluate(values, tokenTable)
+            } ?: return null
+
             var yValue: Flt64? = null
             for (i in indices) {
                 if (i == (size - 1)) {
@@ -110,8 +120,8 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
 
                 if (points[i].x leq xValue && xValue leq points[i + 1].x) {
                     val dx = points[i + 1].x - points[i].x
-                    val lhs = (xValue - points[i].x) / dx
-                    val rhs = (points[i + 1].x - xValue) / dx
+                    val lhs = (points[i + 1].x - xValue) / dx
+                    val rhs = (xValue - points[i].x) / dx
                     yValue = points[i].y * lhs + points[i + 1].y * rhs
 
                     logger.trace { "Setting UnivariateLinearPiecewiseFunction ${name}.b[$i] initial solution: true" }
@@ -146,7 +156,7 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
         }
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
+    override fun register(tokenTable: AddableTokenCollection): Try {
         when (val result = tokenTable.add(k)) {
             is Ok -> {}
 
@@ -168,8 +178,9 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
 
     override fun register(model: AbstractLinearMechanismModel): Try {
         when (val result = model.addConstraint(
-            x eq sum(points.mapIndexed { i, p -> p.x * k[i] }),
-            "${name}_x"
+            constraint = x eq sum(points.mapIndexed { i, p -> p.x * k[i] }),
+            name = "${name}_x",
+            from = parent ?: this
         )) {
             is Ok -> {}
 
@@ -179,8 +190,9 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
         }
 
         when (val result = model.addConstraint(
-            sum(k) eq Flt64.one,
-            "${name}_k"
+            constraint = sum(k) eq Flt64.one,
+            name = "${name}_k",
+            from = parent ?: this
         )) {
             is Ok -> {}
 
@@ -189,8 +201,9 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
             }
         }
         when (val result = model.addConstraint(
-            sum(b) eq Flt64.one,
-            "${name}_b"
+            constraint = sum(b) eq Flt64.one,
+            name = "${name}_b",
+            from = parent ?: this
         )) {
             is Ok -> {}
 
@@ -208,8 +221,9 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
                 poly += b[i]
             }
             when (val result = model.addConstraint(
-                k[i] leq poly,
-                "${name}_kb_i"
+                constraint = k[i] leq poly,
+                name = "${name}_kb_${i}",
+                from = parent ?: this
             )) {
                 is Ok -> {}
 
@@ -217,6 +231,107 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
                     return Failed(result.error)
                 }
             }
+        }
+
+        return ok
+    }
+
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        val xValue = when (tokenTable) {
+            is AbstractTokenTable -> {
+                x.evaluate(fixedValues, tokenTable) ?: return register(tokenTable)
+            }
+
+            is FunctionSymbolRegistrationScope -> {
+                x.evaluate(fixedValues, tokenTable.origin) ?: return register(tokenTable)
+            }
+
+            else -> {
+                return register(tokenTable)
+            }
+        }
+        val i = (0 until (points.size - 1)).indexOfFirst {
+            points[it].x leq xValue && xValue leq points[it + 1].x
+        }
+        if (i == -1) {
+            return register(tokenTable)
+        }
+
+        when (val result = tokenTable.add(listOf(k[i], k[i + 1], b[i]))) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        return ok
+    }
+
+    override fun register(
+        model: AbstractLinearMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        val xValue = x.evaluate(fixedValues, model.tokens) ?: return register(model)
+        val i = (0 until (points.size - 1)).indexOfFirst {
+            points[it].x leq xValue && xValue leq points[it + 1].x
+        }
+        if (i == -1) {
+            return register(model)
+        }
+
+        val dx = points[i + 1].x - points[i].x
+        val lhs = (points[i + 1].x - xValue) / dx
+        val rhs = (xValue - points[i].x)/ dx
+
+        when (val result = model.addConstraint(
+            x eq points[i].x * k[i] + points[i + 1].x * k[i + 1],
+            name = "${name}_x",
+            from = parent ?: this
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        when (val result = model.addConstraint(
+            k[i] + k[i + 1] eq Flt64.one,
+            name = "${name}_k",
+            from = parent ?: this
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        model.tokens.find(k[i])?.let { token ->
+            token._result = lhs
+        }
+        model.tokens.find(k[i + 1])?.let { token ->
+            token._result = rhs
+        }
+
+        when (val result = model.addConstraint(
+            b[i] eq Flt64.one,
+            name = "${name}_b",
+            from = parent ?: this
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        model.tokens.find(b[i])?.let { token ->
+            token._result = Flt64.one
         }
 
         return ok
@@ -234,36 +349,155 @@ sealed class AbstractUnivariateLinearPiecewiseFunction(
         }
     }
 
-    override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return x.evaluate(tokenList, zeroIfNone)?.let { y(it) }
+    override fun evaluate(
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return x.evaluate(tokenList, zeroIfNone)?.let {
+            y(it)
+        }
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return x.evaluate(results, tokenList, zeroIfNone)?.let { y(it) }
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return x.evaluate(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        )?.let {
+            y(it)
+        }
     }
 
-    override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return x.evaluate(tokenTable, zeroIfNone)?.let { y(it) }
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenList: AbstractTokenList?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return x.evaluate(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        )?.let {
+            y(it)
+        }
     }
 
-    override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return x.evaluate(results, tokenTable, zeroIfNone)?.let { y(it) }
+    override fun calculateValue(
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return x.evaluate(tokenTable, zeroIfNone)?.let {
+            y(it)
+        }
+    }
+
+    override fun calculateValue(
+        results: List<Flt64>,
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return x.evaluate(
+            results = results,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        )?.let {
+            y(it)
+        }
+    }
+
+    override fun calculateValue(
+        values: Map<Symbol, Flt64>,
+        tokenTable: AbstractTokenTable?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return x.evaluate(
+            values = values,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        )?.let {
+            y(it)
+        }
     }
 }
 
 open class UnivariateLinearPiecewiseFunction(
     x: AbstractLinearPolynomial<*>,
     points: List<Point2>,
+    parent: IntermediateSymbol? = null,
+    args: Any? = null,
     name: String,
     displayName: String? = null
-) : AbstractUnivariateLinearPiecewiseFunction(x, points.sortedBy { it.x }, name, displayName)
+) : AbstractUnivariateLinearPiecewiseFunction(
+    x = x,
+    points = points.sortedBy { it.x },
+    parent = parent,
+    args = args,
+    name = name,
+    displayName = displayName
+) {
+    companion object {
+        operator fun <
+            T : ToLinearPolynomial<Poly>,
+            Poly : AbstractLinearPolynomial<Poly>
+        > invoke(
+            x: T,
+            points: List<Point2>,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): UnivariateLinearPiecewiseFunction {
+            return UnivariateLinearPiecewiseFunction(
+                x = x.toLinearPolynomial(),
+                points = points,
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+}
 
 open class MonotoneUnivariateLinearPiecewiseFunction(
     x: AbstractLinearPolynomial<*>,
     points: List<Point2>,
+    parent: IntermediateSymbol? = null,
+    args: Any? = null,
     name: String,
     displayName: String? = null
-) : AbstractUnivariateLinearPiecewiseFunction(x, points.sortedBy { it.x }, name, displayName) {
+) : AbstractUnivariateLinearPiecewiseFunction(
+    x = x,
+    points = points.sortedBy { it.x },
+    parent = parent,
+    args = args,
+    name = name,
+    displayName = displayName
+) {
+    companion object {
+        operator fun <T : ToLinearPolynomial<Poly>, Poly : AbstractLinearPolynomial<Poly>> invoke(
+            x: T,
+            points: List<Point2>,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): MonotoneUnivariateLinearPiecewiseFunction {
+            return MonotoneUnivariateLinearPiecewiseFunction(
+                x = x.toLinearPolynomial(),
+                points = points,
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+
     init {
         assert(points.foldIndexed(true) { index, acc, point ->
             acc && (index == 0 || point.y geq points[index - 1].y)

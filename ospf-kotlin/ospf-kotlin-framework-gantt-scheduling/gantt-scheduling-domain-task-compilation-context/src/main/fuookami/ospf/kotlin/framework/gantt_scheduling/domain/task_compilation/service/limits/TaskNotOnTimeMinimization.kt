@@ -26,8 +26,8 @@ class TaskNotOnTimeMinimization<
     override fun invoke(model: AbstractLinearMetaModel): Try {
         if (threshold eq UInt64.zero) {
             when (val result = model.minimize(
-                coefficient * sum(taskTime.notOnTime[_a]),
-                "task not on time"
+                polynomial = coefficient * sum(taskTime.notOnTime[_a]),
+                name = "task not on time"
             )) {
                 is Ok -> {}
 
@@ -37,9 +37,9 @@ class TaskNotOnTimeMinimization<
             }
         } else {
             val slack = SlackFunction(
-                UInteger,
                 x = sum(taskTime.notOnTime[_a]),
-                threshold = LinearPolynomial(threshold),
+                threshold = threshold,
+                type = UInteger,
                 name = "task_not_on_time_threshold"
             )
             when (val result = model.add(slack)) {
@@ -50,8 +50,8 @@ class TaskNotOnTimeMinimization<
                 }
             }
             when (val result = model.minimize(
-                coefficient * slack,
-                "task not on time"
+                monomial = coefficient * slack,
+                name = "task not on time"
             )
             ) {
                 is Ok -> {}

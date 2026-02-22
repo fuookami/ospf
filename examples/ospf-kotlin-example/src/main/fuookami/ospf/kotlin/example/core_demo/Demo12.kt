@@ -93,20 +93,20 @@ data object Demo12 {
                     LinearPolynomial(product.premium * x[i]),
                     LinearPolynomial(product.minPremium * assignment[i])
                 ),
-                "premium_$i"
+                name = "premium_$i"
             )
         }
         metaModel.add(premium)
 
         risk = LinearExpressionSymbol(
             sum(products.map { p -> p.risk * x[p] / funds }),
-            "risk"
+            name = "risk"
         )
         metaModel.add(risk)
 
         yield = LinearExpressionSymbol(
             sum(products.map { p -> p.yield * x[p] - premium[p] }),
-            "yield"
+            name = "yield"
         )
         metaModel.add(yield)
 
@@ -121,12 +121,12 @@ data object Demo12 {
     private suspend fun initConstraint(): Try {
         metaModel.addConstraint(
             sum(products.map { p -> x[p] + premium[p] }) eq funds,
-            "funs"
+            name = "funs"
         )
 
         metaModel.addConstraint(
             risk leq maxRisk,
-            "risk"
+            name = "risk"
         )
 
         return ok

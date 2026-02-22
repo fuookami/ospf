@@ -245,7 +245,7 @@ data object Demo17 {
             val v = vehicles[i]
             LinearExpressionSymbol(
                 sum(nodes.filterIsInstance<OriginNode>().flatMap { n1 -> x[n1, _a, v] }),
-                "origin_${v.index}"
+                name = "origin_${v.index}"
             )
         }
         metaModel.add(origin)
@@ -257,7 +257,7 @@ data object Demo17 {
             val v = vehicles[i]
             LinearExpressionSymbol(
                 sum(nodes.filterIsInstance<EndNode>().flatMap { n2 -> x[_a, n2, v] }),
-                "destination_${v.index}"
+                name = "destination_${v.index}"
             )
         }
         metaModel.add(destination)
@@ -271,12 +271,12 @@ data object Demo17 {
             if (n2 is OriginNode) {
                 LinearExpressionSymbol(
                     LinearPolynomial(),
-                    "in_(${n2.index},${v.index})"
+                    name = "in_(${n2.index},${v.index})"
                 )
             } else {
                 LinearExpressionSymbol(
                     sum(nodes.filterIsNotInstance<EndNode, Node>().map { n1 -> x[n1, n2, v] }),
-                    "in_(${n2.index},${v.index})"
+                    name = "in_(${n2.index},${v.index})"
                 )
             }
         }
@@ -291,12 +291,12 @@ data object Demo17 {
             if (n1 is EndNode) {
                 LinearExpressionSymbol(
                     LinearPolynomial(),
-                    "out_(${n1.index},${v.index})"
+                    name = "out_(${n1.index},${v.index})"
                 )
             } else {
                 LinearExpressionSymbol(
                     sum(nodes.filterIsNotInstance<OriginNode, Node>().map { n2 -> x[n1, n2, v] }),
-                    "out_(${n1.index},${v.index})"
+                    name = "out_(${n1.index},${v.index})"
                 )
             }
         }
@@ -310,12 +310,12 @@ data object Demo17 {
             if (n1 is OriginNode || n1 is EndNode) {
                 LinearExpressionSymbol(
                     LinearPolynomial(),
-                    "service_(${n1.index})"
+                    name = "service_(${n1.index})"
                 )
             } else {
                 LinearExpressionSymbol(sum(
                     nodes.filterIsNotInstance<OriginNode, Node>().flatMap { n2 -> x[n1, n2, _a] }),
-                    "service_(${n1.index})"
+                    name = "service_(${n1.index})"
                 )
             }
         }
@@ -326,11 +326,14 @@ data object Demo17 {
             Shape1(vehicles.size)
         ) { i, _ ->
             val v = vehicles[i]
-            LinearExpressionSymbol(sum(nodes.flatMap { n1 ->
-                nodes.mapNotNull { n2 ->
-                    (n2 as? DemandNode)?.demand?.let { it * x[n1, n2, v] }
-                }
-            }), "capacity_${v.index}")
+            LinearExpressionSymbol(
+                sum(nodes.flatMap { n1 ->
+                    nodes.mapNotNull { n2 ->
+                        (n2 as? DemandNode)?.demand?.let { it * x[n1, n2, v] }
+                    }
+                }),
+                name = "capacity_${v.index}"
+            )
         }
         metaModel.add(capacity)
 
@@ -359,7 +362,7 @@ data object Demo17 {
         for (v in vehicles) {
             metaModel.addConstraint(
                 origin[v] leq 1,
-                "origin_${v.index}"
+                name = "origin_${v.index}"
             )
         }
 
@@ -367,7 +370,7 @@ data object Demo17 {
             for (v in vehicles) {
                 metaModel.addConstraint(
                     inFlow[n, v] eq outFlow[n, v],
-                    "balance_${n.index}_${v.index}",
+                    name = "balance_${n.index}_${v.index}",
                 )
             }
         }
@@ -375,14 +378,14 @@ data object Demo17 {
         for (v in vehicles) {
             metaModel.addConstraint(
                 destination[v] leq 1,
-                "destination_${v.index}"
+                name = "destination_${v.index}"
             )
         }
 
         for (n in nodes.filterIsInstance<DemandNode>()) {
             metaModel.addConstraint(
                 service[n] eq 1,
-                "service_${n.index}"
+                name = "service_${n.index}"
             )
         }
 
@@ -392,7 +395,7 @@ data object Demo17 {
                 for (v in vehicles) {
                     metaModel.addConstraint(
                         s[n1, v] + ((n1 as? DemandNode)?.serviceTime ?: UInt64.zero) + n1.time(n2) - m * (1 - x[n1, n2, v]) leq s[n2, v],
-                        "time_window_${n1.index}_${n2.index}_${v.index}"
+                        name = "time_window_${n1.index}_${n2.index}_${v.index}"
                     )
                 }
             }
@@ -402,11 +405,11 @@ data object Demo17 {
             for (v in vehicles) {
                 metaModel.addConstraint(
                     s[n, v] geq n.timeWindow.lowerBound.value.unwrap(),
-                    "time_window_lb_${n.index}_${v.index}"
+                    name = "time_window_lb_${n.index}_${v.index}"
                 )
                 metaModel.addConstraint(
                     s[n, v] leq n.timeWindow.upperBound.value.unwrap(),
-                    "time_window_ub_${n.index}_${v.index}"
+                    name = "time_window_ub_${n.index}_${v.index}"
                 )
             }
         }
@@ -414,7 +417,7 @@ data object Demo17 {
         for (v in vehicles) {
             metaModel.addConstraint(
                 capacity[v] leq v.capacity,
-                "capacity_${v.index}"
+                name = "capacity_${v.index}"
             )
         }
 

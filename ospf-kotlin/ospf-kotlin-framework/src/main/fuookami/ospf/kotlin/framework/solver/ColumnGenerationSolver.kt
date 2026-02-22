@@ -19,7 +19,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<SolverOutput>
+    ): Ret<FeasibleSolverOutput>
 
     @OptIn(DelicateCoroutinesApi::class)
     fun solveMILPAsync(
@@ -28,9 +28,15 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): CompletableFuture<Ret<SolverOutput>> {
+    ): CompletableFuture<Ret<FeasibleSolverOutput>> {
         return GlobalScope.future {
-            return@future this@ColumnGenerationSolver.solveMILP(name, metaModel, toLogModel, registrationStatusCallBack, solvingStatusCallBack)
+            return@future this@ColumnGenerationSolver.solveMILP(
+                name = name,
+                metaModel = metaModel,
+                toLogModel = toLogModel,
+                registrationStatusCallBack = registrationStatusCallBack,
+                solvingStatusCallBack = solvingStatusCallBack
+            )
         }
     }
 
@@ -41,8 +47,14 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<Pair<SolverOutput, List<Solution>>> {
-        return solveMILP(name, metaModel, toLogModel, registrationStatusCallBack, solvingStatusCallBack)
+    ): Ret<Pair<FeasibleSolverOutput, List<Solution>>> {
+        return solveMILP(
+            name = name,
+            metaModel = metaModel,
+            toLogModel = toLogModel,
+            registrationStatusCallBack = registrationStatusCallBack,
+            solvingStatusCallBack = solvingStatusCallBack
+        )
             .map { Pair(it, listOf(it.solution)) }
     }
 
@@ -54,15 +66,22 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): CompletableFuture<Ret<Pair<SolverOutput, List<Solution>>>> {
+    ): CompletableFuture<Ret<Pair<FeasibleSolverOutput, List<Solution>>>> {
         return GlobalScope.future {
-            return@future this@ColumnGenerationSolver.solveMILP(name, metaModel, amount, toLogModel, registrationStatusCallBack, solvingStatusCallBack)
+            return@future this@ColumnGenerationSolver.solveMILP(
+                name = name,
+                metaModel = metaModel,
+                amount = amount,
+                toLogModel = toLogModel,
+                registrationStatusCallBack = registrationStatusCallBack,
+                solvingStatusCallBack = solvingStatusCallBack
+            )
         }
     }
 
     data class LPResult(
-        val result: SolverOutput,
-        val dualSolution: Solution
+        val result: FeasibleSolverOutput,
+        val dualSolution: LinearDualSolution
     ) {
         val obj: Flt64 by result::obj
         val solution: Solution by result::solution
@@ -88,7 +107,13 @@ interface ColumnGenerationSolver {
         solvingStatusCallBack: SolvingStatusCallBack? = null
     ): CompletableFuture<Ret<LPResult>> {
         return GlobalScope.future {
-            return@future this@ColumnGenerationSolver.solveLP(name, metaModel, toLogModel, registrationStatusCallBack, solvingStatusCallBack)
+            return@future this@ColumnGenerationSolver.solveLP(
+                name = name,
+                metaModel = metaModel,
+                toLogModel = toLogModel,
+                registrationStatusCallBack = registrationStatusCallBack,
+                solvingStatusCallBack = solvingStatusCallBack
+            )
         }
     }
 }

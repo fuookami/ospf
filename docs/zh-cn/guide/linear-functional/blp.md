@@ -9,7 +9,7 @@ $$
 ## 常量
 
 $$
-M = \max_{t \in T}{({\max{(\max_{x \in R, \, y \in R} fu_{t}(x, y), \, \max_{x \in R, \, y \in R} fv_{t}(x, y))}})}
+M = \max_{t \in T}{({\max{(\max_{x \in \mathbb{R}, \, y \in \mathbb{R}} fu_{t}(x, y), \, \max_{x \in \mathbb{R}, \, y \in \mathbb{R}} fv_{t}(x, y))}})}
 $$
 
 ## 额外变量
@@ -30,7 +30,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & u_{t} + M \cdot (1 - w_{t}) & \geq & \; fu_{t}(x, y), & \; \forall t \in T \\ \; \\
+\text{s.t.} \quad & u_{t} + M \cdot (1 - w_{t}) & \geq & \; fu_{t}(x, y), & \; \forall t \in T \\ \; \\
 & u_{t} - M \cdot (1 - w_{t}) & \leq & \; fu_{t}(x, y), & \; \forall t \in T \\ \; \\
 & v_{t} + M \cdot (1 - w_{t}) & \geq & \; fv_{t}(x, y), & \; \forall t \in T \\ \; \\
 & v_{t} - M \cdot (1 - w_{t}) & \leq & \; fv_{t}(x, y), & \; \forall t \in T \\ \; \\
@@ -39,7 +39,7 @@ s.t. \quad & u_{t} + M \cdot (1 - w_{t}) & \geq & \; fu_{t}(x, y), & \; \forall 
 \end{align}
 $$
 
-其中：
+其中�?
 
 $$
 \begin{align}
@@ -82,7 +82,7 @@ $$
 $$
 
 $$
-\forall t \in T((u_{t} \in ([0, 1] \cap R_{+})) \wedge (v_{t} \in ([0, 1] \cap R_{+})))
+\forall t \in T((u_{t} \in ([0, 1] \cap \mathbb{R}_{+})) \wedge (v_{t} \in ([0, 1] \cap \mathbb{R}_{+})))
 $$
 
 $$
@@ -93,7 +93,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & u_{t} & = & \; w_{t} \cdot fu_{t}(x, y), & \; \forall t \in T \\ \; \\
+\text{s.t.} \quad & u_{t} & = & \; w_{t} \cdot fu_{t}(x, y), & \; \forall t \in T \\ \; \\
 & v_{t} & = & \; w_{t} \cdot fv_{t}(x, y), & \; \forall t \in T \\ \; \\
 & \sum_{t \in T} w_{t} & = & \; 1 \\
 & u_{t} + v_{t} & \leq & \; w_{t}, & \; \forall t \in T
@@ -102,7 +102,7 @@ $$
 
 线性化即可得到前述数学模型。
 
-## 样例
+## 代码示例
 
 ::: code-group
 
@@ -148,10 +148,10 @@ assert(result.value!!.solution[1] eq Flt64.one)
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/BivariateLinearPiecewise.kt)
 
-完整样例请参考：
+完整样例参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/BLPTest.kt)

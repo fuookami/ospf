@@ -28,7 +28,7 @@ class EdgeBandwidthConstraint(
             for (service in services) {
                 model.addConstraint(
                     (UInt64.one - assignment[service]) * edge.maxBandwidth + y[edge, service] leq edge.maxBandwidth,
-                    "${name}_($edge,$service)"
+                    name = "${name}_($edge,$service)"
                 )
             }
         }

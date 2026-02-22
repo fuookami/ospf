@@ -1,12 +1,12 @@
 # 绝对值
 
-## 形式
+## 函数形式
 
 $$
-y = Abs(x) = |x|
+y = \text{Abs}(x) = |x|
 $$
 
-## 常量
+## 常量定义
 
 $$
 M = \max(|x|)
@@ -14,11 +14,11 @@ $$
 
 ## 额外变量
 
-$neg \in [0, 1]$：向负数下限的相对距离。
+$neg \in [0, 1]$：表示向负数下限的相对距离。
 
-$pos \in [0, 1]$：向正数上限的相对距离。
+$pos \in [0, 1]$：表示向正数上限的相对距离。
 
-$p \in \{ 0, \, 1 \}$：正数标记。
+$p \in \{ 0, \, 1 \}$：正数标记变量。
 
 ## 导出符号
 
@@ -30,21 +30,21 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & x = -M \cdot neg + M \cdot pos
+\text{s.t.} \quad & x = -M \cdot neg + M \cdot pos
 \end{align}
 $$
 
-上述模型约束了 $y$ 为 $|x|$ 的上界，可用于最小值目标函数。如果需要精确 $y$ 用于约束或者最大值目标函数，会额外追加以下数学模型：
+上述模型约束 $y$ 为 $|x|$ 的上界，适用于最小值目标函数。若需在约束条件或最大值目标函数中使用精确的 $y$ 值，需额外追加以下数学模型：
 
 $$
 \begin{align}
-s.t. \quad & neg + pos & \leq & \; 1 \\
+\text{s.t.} \quad & neg + pos & \leq & \; 1 \\
 & pos & \leq & \; p \\
 & neg & \leq & \; 1 - p
 \end{align}
 $$
 
-## 样例
+## 代码示例
 
 ::: code-group
 
@@ -77,10 +77,10 @@ assert(result.value!!.solution[0] eq -Flt64.three)
 
 :::
 
-完整实现请参考：
+**完整实现参考：**
 
 - [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/Abs.kt)
 
-完整样例请参考：
+**完整样例参考：**
 
 - [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/AbsTest.kt)

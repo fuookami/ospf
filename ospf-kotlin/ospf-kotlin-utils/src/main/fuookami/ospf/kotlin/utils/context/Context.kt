@@ -64,42 +64,109 @@ class ContextVar<T>(
     internal val defaultValue: T
 ) {
     @get:Synchronized
-    internal val stackValues: MutableMap<ContextKey?, T> = hashMapOf(Pair(null, defaultValue))
+    internal val stackValues: MutableMap<ContextKey, T> = hashMapOf()
+    @get:Synchronized
+    internal val customValues: MutableMap<Any, T> = hashMapOf()
 
     @Synchronized
     fun set(value: T): Context<T> {
-        stackValues[ContextKey()] = value
-        return Context(this)
+        val key = ContextKey()
+        stackValues[key] = value
+        return Context(key, this)
     }
 
     @Synchronized
     fun set(builder: () -> T): Context<T> {
-        stackValues[ContextKey()] = builder()
-        return Context(this)
+        val key = ContextKey()
+        stackValues[key] = builder()
+        return Context(key, this)
+    }
+
+    @Synchronized
+    operator fun set(key: Any, value: T): Context<T> {
+        when (key) {
+            is ContextKey -> {
+                stackValues[key] = value
+            }
+
+            else -> {
+                customValues[key] = value
+            }
+        }
+        return Context(key, this)
     }
 
     @Synchronized
     fun get(): T {
-        var key: ContextKey? = ContextKey()
-        while (!stackValues.containsKey(key)) {
-            key = key?.parent
+        return get(ContextKey())
+    }
+
+    @Synchronized
+    operator fun get(key: Any?): T {
+        return when (key) {
+            is ContextKey -> {
+                var k: ContextKey? = key
+                while (k != null && !stackValues.containsKey(k)) {
+                    k = k.parent
+                }
+                k?.let { stackValues[it] } ?: defaultValue
+            }
+
+            null -> {
+                defaultValue
+            }
+
+            else -> {
+                customValues[key] ?: defaultValue
+            }
         }
-        return stackValues[key]!!
+    }
+
+    @Synchronized
+    fun remove(key: Any? = null) {
+        when (key) {
+            is ContextKey -> {
+                val removedKeys = HashSet<ContextKey>()
+                for (ckey in stackValues.keys) {
+                    var childKey: ContextKey? = ckey
+                    while (childKey != null && childKey != key) {
+                        childKey = childKey.parent
+                    }
+                    if (childKey == key) {
+                        removedKeys.add(childKey)
+                    }
+                }
+                removedKeys.forEach {
+                    stackValues.remove(it)?.let { value ->
+                        if (value is AutoCloseable) {
+                            value.close()
+                        }
+                    }
+                }
+            }
+
+            null -> {
+                remove(ContextKey())
+            }
+
+            else -> {
+                customValues.remove(key)?.let { value ->
+                    if (value is AutoCloseable) {
+                        value.close()
+                    }
+                }
+            }
+        }
     }
 }
 
 class Context<T>(
+    private val key: Any,
     private val context: ContextVar<T>
-) {
+) : AutoCloseable {
     @Synchronized
-    protected fun finalize() {
-        var key: ContextKey? = ContextKey()
-        while (!context.stackValues.containsKey(key)) {
-            key = key?.parent
-        }
-        if (key != null) {
-            context.stackValues.remove(key)
-        }
+    override fun close() {
+        context.remove(key)
     }
 }
 

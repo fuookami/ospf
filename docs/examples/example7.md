@@ -1,77 +1,77 @@
-# Example 7: Transport Problem
+# Example 7: Transportation Problem
 
 ## Problem Description
 
-Given a set of warehouses and stores, each warehouse has a supply quantity, and each store has a demand. The cost of shipping $1\,kg$ of goods from each warehouse to each store is specified.
+There are several warehouses and several stores. Each warehouse has a corresponding goods quantity, each store has a corresponding goods demand, and there is a cost for transporting $1\,kg$ of goods from each warehouse to each store.
 
-|         | Warehouse A | Warehouse B | Warehouse C |
-| :-----: | :---------: | :---------: | :---------: |
-| Storage |  $510\,kg$  |  $470\,kg$  |  $520\,kg$  |
+|        | Warehouse A | Warehouse B | Warehouse C |
+| :----: | :---------: | :---------: | :---------: |
+| Goods Quantity | $510\,kg$ | $470\,kg$ | $520\,kg$ |
 
-|        |  Store A  |  Store B  |  Store C  |  Store D  |
-| :----: | :-------: | :-------: | :-------: | :-------: |
-| Demand | $200\,kg$ | $400\,kg$ | $600\,kg$ | $300\,kg$ |
+|            | Store A | Store B | Store C | Store D |
+| :--------: | :-----: | :-----: | :-----: | :-----: |
+| Goods Demand | $200\,kg$ | $400\,kg$ | $600\,kg$ | $300\,kg$ |
 
-|             | Store A | Store B | Store C | Store D |
-| :---------: | :-----: | :-----: | :-----: | :-----: |
-| Warehouse A |  $12$   |  $13$   |  $21$   |   $7$   |
-| Warehouse B |  $14$   |  $17$   |   $8$   |  $18$   |
-| Warehouse C |  $10$   |  $11$   |   $9$   |  $15$   |
+|        | Store A | Store B | Store C | Store D |
+| :----: | :-----: | :-----: | :-----: | :-----: |
+| Warehouse A |  $12$  |  $13$  |  $21$  |  $7$   |
+| Warehouse B |  $14$  |  $17$  |  $8$   |  $18$  |
+| Warehouse C |  $10$  |  $11$  |  $9$   |  $15$  |
 
-Determine the transportation volume from each warehouse to each store that minimizes the total cost.
+Determine the goods transportation quantity from each warehouse to each store to minimize total cost.
 
 ## Mathematical Model
 
 ### Variables
 
-$x_{ws}$ : shipment from warehouse $w$ to store $s$.
+$x_{ws}$: Goods transportation quantity from warehouse $w$ to store $s$.
 
-### Intermediate Expressions
+### Intermediate Values
 
 #### 1. Total Cost
 
 $$
-Cost = \sum_{w \in W}\sum_{s \in S} Cost_{ws} \cdot x_{ws}
+\text{Cost} = \sum_{w \in W}\sum_{s \in S} \text{Cost}_{ws} \cdot x_{ws}
 $$
 
-#### 2. Shipment
+#### 2. Warehouse Shipment Quantity
 
 $$
-Shipment_{w} = \sum_{s \in S} x_{ws}, \; \forall w \in W
+\text{Shipment}_{w} = \sum_{s \in S} x_{ws}, \; \forall w \in W
 $$
 
-#### 3. Purchase
+#### 3. Store Purchase Quantity
 
 $$
-Purchase_{s} = \sum_{w \in W} x_{ws}, \; \forall s \in S
+\text{Purchase}_{s} = \sum_{w \in W} x_{ws}, \; \forall s \in S
 $$
 
 ### Objective Function
 
-#### 1. Minimize Cost
+#### 1. Minimize Total Cost
 
 $$
-min \quad Cost
+\min \quad \text{Cost}
 $$
 
 ### Constraints
 
-#### 1. Shipment Limit
+#### 1. Warehouse Shipment Quantity Cannot Exceed Goods Quantity
 
 $$
-s.t. \quad Shipment_{w} \leq Storage_{w}, \; \forall w \in W
+\text{s.t.} \quad \text{Shipment}_{w} \leq \text{Storage}_{w}, \; \forall w \in W
 $$
 
-#### 2. Purchase Limit
+#### 2. Store Purchase Quantity Must Meet Demand
 
 $$
-s.t. \quad Purchase_{s} \geq Demand_{s}, \; \forall s \in S
+\text{s.t.} \quad \text{Purchase}_{s} \geq \text{Demand}_{s}, \; \forall s \in S
 $$
 
-## Expected Result
+## Expected Results
 
-|             |  Store A  |  Store B  |  Store C  |  Store D  |
-| :---------: | :-------: | :-------: | :-------: | :-------: |
+|        | Store A | Store B | Store C | Store D |
+| :----: | :-----: | :-----: | :-----: | :-----: |
 | Warehouse A | $200\,kg$ | $10\,kg$  |  $0\,kg$  | $300\,kg$ |
 | Warehouse B |  $0\,kg$  |  $0\,kg$  | $470\,kg$ |  $0\,kg$  |
 | Warehouse C |  $0\,kg$  | $390\,kg$ | $130\,kg$ |  $0\,kg$  |
@@ -102,13 +102,13 @@ data class Warehouse(
     val cost: Map<Store, Flt64>
 ) : AutoIndexed(Warehouse::class)
 
-val stores: List<Store> = ... // store data
-val warehouses: List<Warehouse> = ... // warehouse data
+val stores: List<Store> = ... // Store list
+val warehouses: List<Warehouse> = ... // Warehouse list
 
-// create a model instance
+// Create model instance
 val metaModel = LinearMetaModel("demo7")
 
-// define variables
+// Define variables
 val x = UIntVariable2("x", Shape2(warehouses.size, stores.size))
 for (w in warehouses) {
     for (s in stores) {
@@ -117,7 +117,7 @@ for (w in warehouses) {
 }
 metaModel.add(x)
 
-// define intermediate expressions
+// Define intermediate values
 val cost = LinearExpressionSymbol(sum(warehouses.map { w ->
     sum(stores.filter { w.cost.contains(it) }.map { s ->
         w.cost[s]!! * x[w, s]
@@ -125,7 +125,7 @@ val cost = LinearExpressionSymbol(sum(warehouses.map { w ->
 }), "cost")
 metaModel.add(cost)
 
-val shipment = LinearIntermediateSymbo ls1(
+val shipment = LinearIntermediateSymbols1(
     "shipment",
     Shape1(warehouses.size)
 ) { i, _ ->
@@ -149,10 +149,10 @@ val purchase = LinearIntermediateSymbols1(
 }
 metaModel.add(purchase)
 
-// define objective function
+// Define objective function
 metaModel.minimize(cost, "cost")
 
-// define constraints
+// Define constraints
 for(w in warehouses){
     metaModel.addConstraint(
         shipment[w] leq w.stowage,
@@ -167,7 +167,7 @@ for(s in stores){
     )
 }
 
-// solve the model
+// Call solver to solve
 val solver = ScipLinearSolver()
 when (val ret = solver(metaModel)) {
     is Ok -> {
@@ -177,7 +177,7 @@ when (val ret = solver(metaModel)) {
     is Failed -> {}
 }
 
-// parse results
+// Parse results
 val solution = stores.associateWith { warehouses.associateWith { Flt64.zero }.toMutableMap() }
 for (token in metaModel.tokens.tokens) {
     if (token.result!! geq Flt64.one && token.variable.belongsTo(x)) {
@@ -190,6 +190,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-For the complete implementation, please refer to:
+**Complete Implementation Reference:**
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo7.kt)

@@ -1,49 +1,51 @@
-# Example 9: Location Selection Problem
+# Example 9: Facility Location Problem
 
-In a city divided into regular blocks along the east-west and north-south directions, residential areas are scattered across different blocks. The $x$-coordinate represents the east-west direction, while the $y$-coordinate represents the north-south direction. The location of each residential area can be represented by the coordinates $(x, \, y)$.
+## Problem Description
 
-Determine the post office location such that the total distance from the residential areas to the post office is minimized. The distance is measured using the Manhattan distance.
+In a city divided into regular blocks along east-west and north-south directions, residential points are scattered across different blocks. Use $x$ coordinate to represent east-west direction and $y$ coordinate to represent north-south direction. The position of each residential point can be represented by coordinates $(x, \, y)$.
 
-|       | Residential Area A | Residential Area B | Residential Area C | Residential Area D | Residential Area E | Residential F |
-| :---: | :----------------: | :----------------: | :----------------: | :----------------: | :----------------: | :-----------: |
-|  $x$  |      $9\,km$       |      $2\,km$       |      $3\,km$       |      $3\,km$       |      $5\,km$       |    $4\,km$    |
-|  $y$  |      $2\,km$       |      $1\,km$       |      $8\,km$       |      $-2\,km$      |      $9\,km$       |   $-2\,km$    |
+Select a location for building a post office to minimize the total distance from residential points to the post office. Distance is measured using Manhattan distance.
+
+|       | Residential Point A | Residential Point B | Residential Point C | Residential Point D | Residential Point E | Residential Point F |
+| :---: | :-----------------: | :-----------------: | :-----------------: | :-----------------: | :-----------------: | :-----------------: |
+|  $x$  |      $9\,km$        |      $2\,km$        |      $3\,km$        |      $3\,km$        |      $5\,km$        |      $4\,km$        |
+|  $y$  |      $2\,km$        |      $1\,km$        |      $8\,km$        |     $-2\,km$        |      $9\,km$        |     $-2\,km$        |
 
 ## Mathematical Model
 
 ### Variables
 
-$x, \, y$ : Post office location.
+$x, \, y$: Post office coordinates.
 
-### Intermediate Expressions
+### Intermediate Values
 
-#### 1. East-west Distance
-
-$$
-dx_{s} = Slack(x, \, x_{s}) = |x - x_{s}|, \; \forall s \in S
-$$
-
-#### 2. North-south Distance
+#### 1. East-West Distance
 
 $$
-dy_{s} = Slack(y, \, y_{s}) = |y - y_{s}|, \; \forall s \in S
+dx_{s} = \text{Slack}(x, \, x_{s}) = |x - x_{s}|, \; \forall s \in S
+$$
+
+#### 2. North-South Distance
+
+$$
+dy_{s} = \text{Slack}(y, \, y_{s}) = |y - y_{s}|, \; \forall s \in S
 $$
 
 #### 3. Distance
 
 $$
-Distance_{s} = dx_{s} + dy_{s}, \; \forall s \in S
+\text{Distance}_{s} = dx_{s} + dy_{s}, \; \forall s \in S
 $$
 
 ### Objective Function
 
-#### 1. Minimize Distance
+#### 1. Minimize Sum of Distances
 
 $$
-min \quad \sum_{s \in S} Distance_{s}
+\min \quad \sum_{s \in S} \text{Distance}_{s}
 $$
 
-## Expected Result
+## Expected Results
 
 The post office should be located at $(3, \, 1)$.
 
@@ -69,18 +71,18 @@ data class Settlement(
     val y: Flt64
 ) : AutoIndexed(Settlement::class)
 
-val settlements: List<Settlement> = ... // residential area data
+val settlements: List<Settlement> = ... // Residential point list
 
-// create a model instance
+// Create model instance
 val metaModel = LinearMetaModel("demo9")
 
-// define variables
+// Define variables
 val x = IntVar("x")
 val y = IntVar("y")
 metaModel.add(x)
 metaModel.add(y)
 
-// define intermediate expressions
+// Define intermediate values
 val dx = LinearIntermediateSymbols1("dx", Shape1(settlements.size)) { i, _ ->
     SlackFunction(
         type = UInteger,
@@ -109,10 +111,10 @@ val distance = LinearIntermediateSymbols1("distance", Shape1(settlements.size)) 
 }
 metaModel.add(distance)
 
-// define objective function
+// Define objective function
 metaModel.minimize(sum(distance[_a]))
 
-// solve the model
+// Call solver to solve
 val solver = ScipLinearSolver()
 when (val ret = solver(metaModel)) {
     is Ok -> {
@@ -122,7 +124,7 @@ when (val ret = solver(metaModel)) {
     is Failed -> {}
 }
 
-// parse results
+// Parse results
 val position = ArrayList<Flt64>()
 for (token in metaModel.tokens.tokens) {
     if (token.variable.belongsTo(x)) {
@@ -138,6 +140,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-For the complete implementation, please refer to:
+**Complete Implementation Reference:**
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo9.kt)

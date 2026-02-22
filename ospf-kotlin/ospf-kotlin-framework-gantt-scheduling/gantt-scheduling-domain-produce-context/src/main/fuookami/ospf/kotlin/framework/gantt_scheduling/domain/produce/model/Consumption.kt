@@ -40,24 +40,26 @@ abstract class AbstractConsumption<
         if (overEnabled) {
             if (!::overQuantity.isInitialized) {
                 overQuantity = LinearIntermediateSymbols1(
-                    "consumption_over_quantity",
-                    Shape1(materials.size)
+                    name = "consumption_over_quantity",
+                    shape = Shape1(materials.size)
                 ) { i, _ ->
                     val (product, demand) = materials[i]
                     if (demand != null && demand.overEnabled) {
                         val slack = SlackFunction(
-                            UContinuous,
-                            x = LinearPolynomial(quantity[product]),
-                            threshold = LinearPolynomial(demand.quantity.upperBound.value.unwrap()),
+                            x = quantity[product],
+                            threshold = demand.quantity.upperBound.value.unwrap(),
+                            type = UContinuous,
                             constraint = false,
-                            name = "consumption_over_quantity_$product"
+                            name = "consumption_over_quantity_${product}"
                         )
                         demand.overQuantity?.let {
                             slack.pos!!.range.leq(it)
                         }
                         slack
                     } else {
-                        LinearExpressionSymbol(LinearPolynomial(), "consumption_over_quantity_$product")
+                        LinearIntermediateSymbol.empty(
+                            name = "consumption_over_quantity_${product}"
+                        )
                     }
                 }
             }
@@ -73,25 +75,27 @@ abstract class AbstractConsumption<
         if (lessEnabled) {
             if (!::lessQuantity.isInitialized) {
                 lessQuantity = LinearIntermediateSymbols1(
-                    "consumption_less_quantity",
-                    Shape1(materials.size)
+                    name = "consumption_less_quantity",
+                    shape = Shape1(materials.size)
                 ) { i, _ ->
                     val (product, demand) = materials[i]
                     if (demand != null && demand.lessEnabled) {
                         val slack = SlackFunction(
-                            UContinuous,
-                            x = LinearPolynomial(quantity[product]),
-                            threshold = LinearPolynomial(demand.quantity.lowerBound.value.unwrap()),
+                            x = quantity[product],
+                            threshold = demand.quantity.lowerBound.value.unwrap(),
+                            type = UContinuous,
                             withPositive = false,
                             constraint = false,
-                            name = "consumption_less_quantity_$product"
+                            name = "consumption_less_quantity_${product}"
                         )
                         demand.lessQuantity?.let {
                             slack.neg!!.range.leq(it)
                         }
                         slack
                     } else {
-                        LinearExpressionSymbol(LinearPolynomial(), "consumption_less_quantity_$product")
+                        LinearIntermediateSymbol.empty(
+                            name = "consumption_less_quantity_${product}"
+                        )
                     }
                 }
             }
@@ -143,12 +147,15 @@ class BunchSchedulingConsumption<
     override fun register(model: MetaModel): Try {
         if (materials.isNotEmpty()) {
             if (!::quantity.isInitialized) {
-                quantity = flatMap(
-                    "consumption_quantity",
-                    materials,
-                    { _ -> LinearPolynomial() },
-                    { (_, m) -> "$m" }
-                )
+                quantity = LinearExpressionSymbols1(
+                    name = "consumption_quantity",
+                    shape = Shape1(materials.size)
+                ) { m, _ ->
+                    val material = materials[m]
+                    LinearExpressionSymbol(
+                        name = "consumption_quantity_${material}"
+                    )
+                }
                 for ((material, reserve) in materials) {
                     if (reserve != null) {
                         quantity[material].range.set(

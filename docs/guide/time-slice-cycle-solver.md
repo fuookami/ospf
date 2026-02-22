@@ -1,1 +1,1 @@
-# Time Slice Cycle Solver
+# Time Slice Round Robin Solver

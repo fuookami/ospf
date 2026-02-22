@@ -15,21 +15,74 @@ import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 
 class ProductFunction(
     val polynomials: List<AbstractQuadraticPolynomial<*>>,
+    override val parent: IntermediateSymbol? = null,
+    args: Any? = null,
     override var name: String = polynomials.joinToString("*") { "$it" },
     override var displayName: String? = null
-) : QuadraticFunctionSymbol {
+) : QuadraticFunctionSymbol() {
     private val logger = logger()
+
+    companion object {
+        operator fun invoke(
+            polynomials: List<ToQuadraticPolynomial<*>>,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String = polynomials.joinToString("*") { "$it" },
+            displayName: String? = null
+        ): ProductFunction {
+            return ProductFunction(
+                polynomials = polynomials.map { it.toQuadraticPolynomial() },
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        operator fun <
+            T1 : AbstractQuadraticPolynomial<Poly1>,
+            Poly1 : AbstractQuadraticPolynomial<Poly1>,
+            T2 : AbstractQuadraticPolynomial<Poly2>,
+            Poly2 : AbstractQuadraticPolynomial<Poly2>
+        > invoke(
+            x: T1,
+            y: T2,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String = "$x*$y",
+            displayName: String? = null
+        ): ProductFunction {
+            return ProductFunction(
+                polynomials = listOf(x.toQuadraticPolynomial(), y.toQuadraticPolynomial()),
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
 
     constructor(
         x: AbstractQuadraticPolynomial<*>,
         y: AbstractQuadraticPolynomial<*>,
+        parent: IntermediateSymbol? = null,
+        args: Any? = null,
         name: String = "$x*$y",
         displayName: String? = null
-    ) : this(listOf(x, y), name, displayName)
+    ) : this(
+        polynomials = listOf(x, y),
+        parent = parent,
+        args = args,
+        name = name,
+        displayName = displayName
+    )
 
     init {
         assert(polynomials.all { it.category != Quadratic })
     }
+
+    internal val _args = args
+    override val args get() = _args ?: parent?.args
 
     private val y: RealVariable1 by lazy {
         RealVariable1("${name}_y", Shape1(polynomials.lastIndex))
@@ -75,14 +128,22 @@ class ProductFunction(
         polyY.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         for (polynomial in polynomials) {
             polynomial.cells
         }
 
-        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+        return if ((!values.isNullOrEmpty() || tokenTable.cachedSolution) && if (values.isNullOrEmpty()) {
+            tokenTable.cached(this)
+        } else {
+            tokenTable.cached(this, values)
+        } == false) {
             val values = polynomials.map {
-                it.evaluate(tokenTable) ?: return null
+                if (values.isNullOrEmpty()) {
+                    it.evaluate(tokenTable)
+                } else {
+                    it.evaluate(values, tokenTable)
+                } ?: return null
             }
 
             var yValue = values[0]
@@ -101,7 +162,7 @@ class ProductFunction(
         }
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
+    override fun register(tokenTable: AddableTokenCollection): Try {
         if (polynomials.any { it.category == Quadratic }) {
             return Failed(Err(ErrorCode.ApplicationFailed, "Invalid argument of QuadraticPolynomial.times: over quadratic."))
         }
@@ -121,8 +182,9 @@ class ProductFunction(
         for (i in y.indices) {
             if (i == 0) {
                 when (val result = model.addConstraint(
-                    polynomials[i] * polynomials[i + 1] eq y[i],
-                    "${name}_$i"
+                    constraint = polynomials[0] * polynomials[1] eq y[0],
+                    name = "${name}_0",
+                    from = parent ?: this
                 )) {
                     is Ok -> {}
 
@@ -132,14 +194,98 @@ class ProductFunction(
                 }
             } else {
                 when (val result = model.addConstraint(
-                    y[i - 1] * polynomials[i + 1] eq y[i],
-                    "${name}_$i"
+                    constraint = y[i - 1] * polynomials[i + 1] eq y[i],
+                    name = "${name}_$i",
+                    from = parent ?: this
                 )) {
                     is Ok -> {}
 
                     is Failed -> {
                         return Failed(result.error)
                     }
+                }
+            }
+        }
+
+        return ok
+    }
+
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        return register(tokenTable)
+    }
+
+    override fun register(
+        model: AbstractQuadraticMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        val values = polynomials.map {
+            it.evaluate(fixedValues, model.tokens) ?: return register(model)
+        }
+
+        var yValue = Flt64.one
+        for (i in y.indices) {
+            if (i == 0) {
+                yValue *= values[0] * values[1]
+
+                when (val result = model.addConstraint(
+                    constraint = polynomials[0] * polynomials[1] eq y[0],
+                    name = "${name}_$0",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+
+                when (val result = model.addConstraint(
+                    constraint = y[0] eq yValue,
+                    name = "${name}_y_0",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+
+                model.tokens.find(y[0])?.let { token ->
+                    token._result = yValue
+                }
+            } else {
+                yValue *= values[i + 1]
+
+                when (val result = model.addConstraint(
+                    constraint = y[i - 1] * polynomials[i + 1] eq y[i],
+                    name = "${name}_$i",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+
+                when (val result = model.addConstraint(
+                    constraint = y[i] eq yValue,
+                    name = "${name}_y_$i",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+
+                model.tokens.find(y[i])?.let { token ->
+                    token._result = yValue
                 }
             }
         }
@@ -159,34 +305,82 @@ class ProductFunction(
         }
     }
 
-    override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         return polynomials.fold(Flt64.one) { lhs, rhs ->
-            val thisValue = rhs.evaluate(tokenList, zeroIfNone)
-                ?: return null
+            val thisValue = rhs.evaluate(tokenList, zeroIfNone) ?: return null
             lhs * thisValue
         }
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         return polynomials.fold(Flt64.one) { lhs, rhs ->
-            val thisValue = rhs.evaluate(results, tokenList, zeroIfNone)
-                ?: return null
+            val thisValue = rhs.evaluate(
+                results = results,
+                tokenList = tokenList,
+                zeroIfNone = zeroIfNone
+            ) ?: return null
             lhs * thisValue
         }
     }
 
-    override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenList: AbstractTokenList?,
+        zeroIfNone: Boolean
+    ): Flt64? {
         return polynomials.fold(Flt64.one) { lhs, rhs ->
-            val thisValue = rhs.evaluate(tokenTable, zeroIfNone)
-                ?: return null
+            val thisValue = rhs.evaluate(
+                values = values,
+                tokenList = tokenList,
+                zeroIfNone = zeroIfNone
+            ) ?: return null
             lhs * thisValue
         }
     }
 
-    override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+    override fun calculateValue(
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
         return polynomials.fold(Flt64.one) { lhs, rhs ->
-            val thisValue = rhs.evaluate(results, tokenTable, zeroIfNone)
-                ?: return null
+            val thisValue = rhs.evaluate(tokenTable, zeroIfNone) ?: return null
+            lhs * thisValue
+        }
+    }
+
+    override fun calculateValue(
+        results: List<Flt64>,
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return polynomials.fold(Flt64.one) { lhs, rhs ->
+            val thisValue = rhs.evaluate(
+                results = results,
+                tokenTable = tokenTable,
+                zeroIfNone = zeroIfNone
+            ) ?: return null
+            lhs * thisValue
+        }
+    }
+
+    override fun calculateValue(
+        values: Map<Symbol, Flt64>,
+        tokenTable: AbstractTokenTable?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return polynomials.fold(Flt64.one) { lhs, rhs ->
+            val thisValue = rhs.evaluate(
+                values = values,
+                tokenTable = tokenTable,
+                zeroIfNone = zeroIfNone
+            ) ?: return null
             lhs * thisValue
         }
     }

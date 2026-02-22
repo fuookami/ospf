@@ -2,16 +2,16 @@
 
 ## 问题描述
 
-某公司生产背包。产品需求通常出现在每年的 3-6 月，预估这四个月的需求量分别为 $100$、$200$、$180$、$300$。据估 3-6 月各月能生产 $50$、$180$、$280$、$270$ 个背包。因各月生产能力差异，当月需求可通过如下三种方法满足：
+某公司生产背包，产品需求通常出现在每年的 3-6 月，预估这四个月的需求量分别为 $100$、$200$、$180$、$300$。据估 3-6 月各月能生产 $50$、$180$、$280$、$270$ 个背包。因各月生产能力差异，当月需求可通过如下三种方法满足：
 
 1. 当月生产背包的生产费用为 $40$ 美元每个；
 2. 以前某个月多余的产品，每个背包每个月的储存费用为 $0.5$ 美元;
 3. 延期交货，每个背包每月的延期交货费用为 $2$ 美元。
 
-制订四个月的最优生产计划，最小化成本，要求:
+制定四个月的最优生产计划，使得成本最小，同时满足以下条件：
 
-1. 四个月需求都能得到满足；
-2. 每个月生成量不超过估计生产能力。
+1. 四个月的需求都能得到满足；
+2. 每个月的生产量不超过估计生产能力。
 
 ## 数学模型
 
@@ -56,7 +56,7 @@ $$
 #### 1. 最小化背包生产总成本
 
 $$
-min \quad Cost^{d} + Cost^{s} + Cost^{p}
+\min \quad \text{Cost}^{d} + \text{Cost}^{s} + \text{Cost}^{p}
 $$
 
 ### 约束
@@ -64,13 +64,13 @@ $$
 #### 1. 需求都能得到满足
 
 $$
-s.t. \quad Supply_{i} = Demand_{i}, \; \forall i \in M
+\text{s.t.} \quad Supply_{i} = Demand_{i}, \; \forall i \in M
 $$
 
 #### 2. 每月生产量不超预期生产能力
 
 $$
-s.t. \quad Produce_{i} \leq Produce^{e}_{i}, \; \forall i \in M
+\text{s.t.} \quad Produce_{i} \leq Produce^{e}_{i}, \; \forall i \in M
 $$
 
 ## 期望结果
@@ -200,6 +200,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo16.kt)

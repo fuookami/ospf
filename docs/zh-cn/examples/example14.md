@@ -2,7 +2,7 @@
 
 ## 问题描述
 
-设有两个产地向四个经销商运输货物，运输可以是产地直接到经销商的运输，也可以是产地向转运中心运输货物，再由转运中心分批运至各经销商，各地之间的单位运价如表所示：
+现有两个产地向四个经销商运输货物，运输可以是产地直接到经销商，也可以是产地向转运中心运输货物，再由转运中心分批运至各经销商，各地之间的单位运价如表所示：
 
 | 地点  | 上海  | 天津  | 南京  | 济南  | 南昌  | 青岛  |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -23,11 +23,11 @@
 | :----: | :---: | :---: | :---: | :---: |
 | 需求量 | $200$ | $150$ | $350$ | $300$ |
 
-求总运费最小的运输方案:
+确定总运费最小的运输方案，同时满足以下条件：
 
-1) 运输量总量不超过产地的总存储量;
-2) 各销地的运输物资不低于需求量；
-3) 转运中心进出保持平衡
+1. 运输总量不超过产地的总存储量；
+2. 各销地的运输物资不低于需求量；
+3. 转运中心进出保持平衡。
 
 ## 数学模型
 
@@ -60,7 +60,7 @@ $$
 #### 1. 总运费最小
 
 $$
-min \quad Cost
+\min \quad \text{Cost}
 $$
 
 ### 约束
@@ -68,19 +68,19 @@ $$
 #### 1. 运输总量不超过产地总存储量
 
 $$
-s.t. \quad Qut_{i} \leq Store_{i}, \; \forall i \in P
+\text{s.t.} \quad \text{Out}_{i} \leq \text{Store}_{i}, \; \forall i \in P
 $$
 
 #### 2. 销地接收量满足需求
 
 $$
-s.t. \quad In_{i} \geq Require_{i}, \; \forall i \in S
+\text{s.t.} \quad \text{In}_{i} \geq \text{Require}_{i}, \; \forall i \in S
 $$
 
 #### 3. 转运中心流入流出平衡
 
 $$
-s.t. \quad In_{i} = Out_{i}, \; \forall i \in T
+\text{s.t.} \quad \text{In}_{i} = \text{Out}_{i}, \; \forall i \in T
 $$
 
 ## 期望结果
@@ -221,6 +221,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo14.kt)

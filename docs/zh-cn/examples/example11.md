@@ -2,7 +2,7 @@
 
 ## 问题描述
 
-定义有向连通图 $G=(V,E)$，$V$ 为图中的节点集合，$E$ 为图中的弧集合，其中 $r$ 起点，$e$ 为终点，弧边的权表示该弧所能经过的最大流量：
+给定有向连通图 $G=(V,E)$，$V$ 为图中的节点集合，$E$ 为图中的弧集合，其中 $r$ 为起点，$e$ 为终点，弧边的权值表示该弧所能通过的最大流量：
 
 |       |   0   |   1   |   2   |   3   |   4   |   5   |   6   |   7   |   8   |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -20,9 +20,9 @@
 
 ### 变量
 
-$x_{ij} \in Z^{+}$：在节点 $i$ 到 $j$ 流通的流量单位。
+$x_{ij} \in \mathbb{Z}^{+}$：在节点 $i$ 到 $j$ 流通的流量单位。
 
-$f \in Z^{+}f$：流量。
+$f \in \mathbb{Z}^{+}$：流量。
 
 ### 中间值
 
@@ -43,7 +43,7 @@ $$
 #### 1. 最大化通过流量
 
 $$
-max \quad f
+\max \quad f
 $$
 
 ### 约束条件
@@ -189,6 +189,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo11.kt)

@@ -2,12 +2,12 @@
 
 ## 问题描述
 
-原材料长 $1000$ 个单位，需要把原材料切分以下的成品材料，且满足每种成品材料对应的需求量，目标是最小化所需原材料的数量：
+原材料长度为 $1000$ 个单位，需要将原材料切割为以下成品材料，满足每种成品材料对应的需求量，目标是最小化所需原材料的数量：
 
 |        | 长度  | 需求量 |
 | :----: | :---: | :----: |
 | 成品 1 | $450$ |  $97$  |
-| 成本 2 | $360$ | $610$  |
+| 成品 2 | $360$ | $610$  |
 | 成品 3 | $310$ | $395$  |
 | 成品 4 | $140$ | $211$  |
 
@@ -17,7 +17,7 @@
 
 #### 变量
 
-$x_{ij} \in N$：使用第 $i$ 次迭代第 $j$ 个切割方案的数量。
+$x_{ij} \in \mathbb{N}$：使用第 $i$ 次迭代第 $j$ 个切割方案的数量。
 
 #### 中间值
 
@@ -38,7 +38,7 @@ $$
 ##### 1. 原材料使用量最小
 
 $$
-Min \quad Cost_{i}
+\min \quad \text{Cost}_{i}
 $$
 
 #### 约束
@@ -46,14 +46,14 @@ $$
 ##### 1. 成品材料生产量要满足需求量
 
 $$
-s.t. \quad Output_{ip} \geq Demand_{p}, \; \forall p \in P
+\text{s.t.} \quad Output_{ip} \geq Demand_{p}, \; \forall p \in P
 $$
 
 ### SP
 
 #### 变量
 
-$y_{p} \in N$：切割 $p$ 成品材料的数量。
+$y_{p} \in \mathbb{N}$：切割 $p$ 成品材料的数量。
 
 #### 中间值
 
@@ -68,7 +68,7 @@ $$
 ##### 1. Reduced Cost 最小
 
 $$
-Min \quad 1 - \sum_{p \in P} \lambda_{p} \cdot y_{p}
+\min \quad 1 - \sum_{p \in P} \lambda_{p} \cdot y_{p}
 $$
 
 #### 约束
@@ -76,7 +76,7 @@ $$
 ##### 1. 原材料使用量不能大于原材料的长度
 
 $$
-s.t. \quad Use \leq L
+\text{s.t.} \quad Use \leq L
 $$
 
 ## 代码实现
@@ -386,6 +386,6 @@ class CSP {
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo3)

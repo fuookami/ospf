@@ -4,7 +4,7 @@
 
 在一个按照东西和南北方向划分成规整街区的城市里，居民点散乱地分布在不同的街区中。用 $x$ 坐标表示东西向，用 $y$ 坐标表示南北向。各居民点的位置可以由坐标 $(x, \, y)$ 表示。
 
-为建邮局选址，使得居民点到邮局之距离的总和最小。距离使用曼哈顿距离。
+为建邮局选址，使得居民点到邮局的距离总和最小。距离使用曼哈顿距离。
 
 |       | 居民点 A | 居民点 B | 居民点 C | 居民点 D | 居民点 E | 居民点 F |
 | :---: | :------: | :------: | :------: | :------: | :------: | :------: |
@@ -42,7 +42,7 @@ $$
 #### 1. 距离之和最小
 
 $$
-min \quad \sum_{s \in S} Distance_{s}
+\min \quad \sum_{s \in S} \text{Distance}_{s}
 $$
 
 ## 期望结果
@@ -140,6 +140,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo9.kt)

@@ -11,14 +11,14 @@ export type GanttTaskDTO = {
     category: string
     startTime: string
     endTime: string
-    resources: Map<string, string>
-    info: Map<string, string>
+    resources: Object | Map<string, string>
+    info: Object | Map<string, string>
     executor: string
     order: string | null
     produce: string | null
-    products: Map<string, string> | null
-    materials: Map<string, string> | null
-    consumption: Map<string, string>
+    products: Object | Map<string, string> | null
+    materials: Object | Map<string, string> | null
+    consumption: Object | Map<string, string>
     scheduledStartTime: string | null
     scheduledEndTime: string | null
     subTasks: GanttSubTaskDTO[]

@@ -25,9 +25,9 @@ class RMP(
 ) {
     private val cuttingPlans: MutableList<CuttingPlan> = ArrayList()
     private val x: MutableList<UIntVar> = ArrayList()
-    private val rest = LinearExpressionSymbol(MutableLinearPolynomial(), "rest")
+    private val rest = LinearExpressionSymbol(name = "rest")
     private val yield = LinearExpressionSymbols1("output", Shape1(products.size)) { _, v ->
-        LinearExpressionSymbol(MutableLinearPolynomial(), "output_${v[0]}")
+        LinearExpressionSymbol(name = "output_${v[0]}")
     }
     private val metaModel = LinearMetaModel("demo3")
     private val solver: ColumnGenerationSolver = ScipColumnGenerationSolver()
@@ -37,10 +37,14 @@ class RMP(
         metaModel.add(yield)
 
         metaModel.minimize(rest)
-        metaModel.registerConstraintGroup("product_demand")
 
         for (product in products) {
-            metaModel.addConstraint(yield[product] geq product.demand, "product_demand_${product.index}")
+            metaModel.addConstraint(
+                yield[product] geq product.demand,
+                group = null,
+                name = "product_demand_${product.index}",
+                args = product
+            )
         }
 
         addColumns(initialCuttingPlans)
@@ -80,7 +84,7 @@ class RMP(
     suspend operator fun invoke(iteration: UInt64): Ret<ShadowPriceMap> {
         return when (val result = solver.solveLP("demo1-rmp-$iteration", metaModel)) {
             is Ok -> {
-                Ok(extractShadowPriceMap(result.value.dualSolution))
+                Ok(extractShadowPriceMap(result.value.dualSolution.toMeta()))
             }
 
             is Failed -> {
@@ -102,11 +106,14 @@ class RMP(
         }
     }
 
-    private fun extractShadowPriceMap(dualResult: List<Flt64>): ShadowPriceMap {
+    private fun extractShadowPriceMap(dualResult: MetaDualSolution): ShadowPriceMap {
         val ret = ShadowPriceMap()
 
-        for ((i, j) in metaModel.indicesOfConstraintGroup("product_demand")!!.withIndex()) {
-            ret.put(ShadowPrice(ProductDemandShadowPriceKey(products[i]), dualResult[j]))
+        for (constraint in metaModel.constraints) {
+            val product = (constraint.args as? Product) ?: continue
+            dualResult.constraints[constraint]?.let {
+                ret.put(ShadowPrice(ProductDemandShadowPriceKey(product), it))
+            }
         }
         ret.put { map, args ->
             map.map[ProductDemandShadowPriceKey(args)]?.price ?: Flt64.zero

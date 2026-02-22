@@ -118,22 +118,34 @@ data object Demo10 {
     }
 
     private suspend fun initSymbol(): Try {
-        distance = LinearExpressionSymbol(sum(cities.flatMap { city1 ->
-            cities.mapNotNull { city2 ->
-                if (city1 == city2) {
-                    null
-                } else {
-                    distances[city1 to city2]?.let { it * x[city1, city2] }
+        distance = LinearExpressionSymbol(
+            sum(cities.flatMap { city1 ->
+                cities.mapNotNull { city2 ->
+                    if (city1 == city2) {
+                        null
+                    } else {
+                        distances[city1 to city2]?.let { it * x[city1, city2] }
+                    }
                 }
-            }
-        }), "distance")
-        depart = LinearIntermediateSymbols1("depart", Shape1(cities.size)) { i, _ ->
+            }),
+            name = "distance"
+        )
+        depart = LinearIntermediateSymbols1(
+            "depart",
+            Shape1(cities.size)
+        ) { i, _ ->
             val city = cities[i]
-            LinearExpressionSymbol(sum(x[city, _a]), "depart_${city.name}")
+            LinearExpressionSymbol(
+                sum(x[city, _a]),
+                name = "depart_${city.name}"
+            )
         }
         reached = LinearIntermediateSymbols1("reached", Shape1(cities.size)) { i, _ ->
             val city = cities[i]
-            LinearExpressionSymbol(sum(x[_a, city]), "reached_${city.name}")
+            LinearExpressionSymbol(
+                sum(x[_a, city]),
+                name = "reached_${city.name}"
+            )
         }
         return ok
     }
@@ -147,13 +159,13 @@ data object Demo10 {
         for (city in cities) {
             metaModel.addConstraint(
                 depart[city] eq Flt64.one,
-                "depart_${city.name}"
+                name = "depart_${city.name}"
             )
         }
         for (city in cities) {
             metaModel.addConstraint(
                 reached[city] eq Flt64.one,
-                "reached_${city.name}"
+                name = "reached_${city.name}"
             )
         }
         val notBeginCities = cities.filter { it.name != beginCity }
@@ -162,7 +174,7 @@ data object Demo10 {
                 if (city1 != city2) {
                     metaModel.addConstraint(
                         u[city1] - u[city2] + cities.size * x[city1, city2] leq cities.size - 1,
-                        "child_route_(${city1.name},${city2.name})"
+                        name = "child_route_(${city1.name},${city2.name})"
                     )
                 }
             }

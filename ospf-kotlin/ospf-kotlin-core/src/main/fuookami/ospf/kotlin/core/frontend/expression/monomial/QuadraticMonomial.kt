@@ -11,6 +11,7 @@ import fuookami.ospf.kotlin.utils.operator.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.frontend.variable.*
 import fuookami.ospf.kotlin.core.frontend.expression.*
+import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 
@@ -34,7 +35,11 @@ data class QuadraticMonomialCell internal constructor(
         }
 
         operator fun unaryMinus(): QuadraticCellTriple {
-            return QuadraticCellTriple(-coefficient, variable1, variable2)
+            return QuadraticCellTriple(
+                coefficient = -coefficient,
+                variable1 = variable1,
+                variable2 = variable2
+            )
         }
 
         @Throws(IllegalArgumentException::class)
@@ -42,7 +47,11 @@ data class QuadraticMonomialCell internal constructor(
             if (variable1 != rhs.variable1 || variable2 != rhs.variable2) {
                 throw IllegalArgumentException("Invalid argument of QuadraticCellTriple.plus: not same variable.")
             }
-            return QuadraticCellTriple(coefficient + rhs.coefficient, variable1, variable2)
+            return QuadraticCellTriple(
+                coefficient = coefficient + rhs.coefficient,
+                variable1 = variable1,
+                variable2 = variable2
+            )
         }
 
         @Throws(IllegalArgumentException::class)
@@ -50,23 +59,51 @@ data class QuadraticMonomialCell internal constructor(
             if (variable1 != rhs.variable1 || variable2 != rhs.variable2) {
                 throw IllegalArgumentException("Invalid argument of QuadraticCellTriple.minus: not same variable.")
             }
-            return QuadraticCellTriple(coefficient - rhs.coefficient, variable1, variable2)
+            return QuadraticCellTriple(
+                coefficient = coefficient - rhs.coefficient,
+                variable1 = variable1,
+                variable2 = variable2
+            )
         }
 
-        operator fun times(rhs: Flt64) = QuadraticCellTriple(coefficient * rhs, variable1, variable2)
+        operator fun times(rhs: Flt64) = QuadraticCellTriple(
+            coefficient = coefficient * rhs,
+            variable1 = variable1,
+            variable2 = variable2
+        )
 
         @Throws(IllegalArgumentException::class)
         operator fun times(rhs: QuadraticCellTriple): QuadraticCellTriple {
             if (variable2 != null || rhs.variable2 != null) {
                 throw IllegalArgumentException("Invalid argument of QuadraticCellTriple.times: over quadratic.")
             }
-            return QuadraticCellTriple(coefficient * rhs.coefficient, variable1, rhs.variable1)
+            return if ((variable1.key ord rhs.variable1.key) is Order.Greater) {
+                QuadraticCellTriple(
+                    coefficient = coefficient * rhs.coefficient,
+                    variable1 = rhs.variable1,
+                    variable2 = variable1
+                )
+            } else {
+                QuadraticCellTriple(
+                    coefficient = coefficient * rhs.coefficient,
+                    variable1 = variable1,
+                    variable2 = rhs.variable1
+                )
+            }
         }
 
-        operator fun div(rhs: Flt64) = QuadraticCellTriple(coefficient / rhs, variable1, variable2)
+        operator fun div(rhs: Flt64) = QuadraticCellTriple(
+            coefficient = coefficient / rhs,
+            variable1 = variable1,
+            variable2 = variable2
+        )
 
         override fun copy(): QuadraticCellTriple {
-            return QuadraticCellTriple(coefficient, variable1, variable2)
+            return QuadraticCellTriple(
+                coefficient = coefficient,
+                variable1 = variable1,
+                variable2 = variable2
+            )
         }
 
         public override fun clone() = copy()
@@ -98,7 +135,15 @@ data class QuadraticMonomialCell internal constructor(
         ): QuadraticMonomialCell {
             return when (val cell = linearCell.cell) {
                 is Either.Left -> {
-                    QuadraticMonomialCell(Either.Left(QuadraticCellTriple(cell.value.coefficient, cell.value.variable, null)))
+                    QuadraticMonomialCell(
+                        Either.Left(
+                            QuadraticCellTriple(
+                                coefficient = cell.value.coefficient,
+                                variable1 = cell.value.variable,
+                                variable2 = null
+                            )
+                        )
+                    )
                 }
 
                 is Either.Right -> {
@@ -112,12 +157,36 @@ data class QuadraticMonomialCell internal constructor(
             variable2: AbstractVariableItem<*, *>?
         ): QuadraticMonomialCell {
             return if (variable2 == null) {
-                QuadraticMonomialCell(Either.Left(QuadraticCellTriple(Flt64.one, variable1, null)))
+                QuadraticMonomialCell(
+                    Either.Left(
+                        QuadraticCellTriple(
+                            coefficient = Flt64.one,
+                            variable1 = variable1,
+                            variable2 = null
+                        )
+                    )
+                )
             } else {
                 if ((variable1.key ord variable2.key) is Order.Greater) {
-                    QuadraticMonomialCell(Either.Left(QuadraticCellTriple(Flt64.one, variable2, variable1)))
+                    QuadraticMonomialCell(
+                        Either.Left(
+                            QuadraticCellTriple(
+                                coefficient = Flt64.one,
+                                variable1 = variable2,
+                                variable2 = variable1
+                            )
+                        )
+                    )
                 } else {
-                    QuadraticMonomialCell(Either.Left(QuadraticCellTriple(Flt64.one, variable1, variable2)))
+                    QuadraticMonomialCell(
+                        Either.Left(
+                            QuadraticCellTriple(
+                                coefficient = Flt64.one,
+                                variable1 = variable1,
+                                variable2 = variable2
+                            )
+                        )
+                    )
                 }
             }
         }
@@ -128,12 +197,36 @@ data class QuadraticMonomialCell internal constructor(
             variable2: AbstractVariableItem<*, *>?
         ): QuadraticMonomialCell {
             return if (variable2 == null) {
-                QuadraticMonomialCell(Either.Left(QuadraticCellTriple(coefficient, variable1, null)))
+                QuadraticMonomialCell(
+                    Either.Left(
+                        QuadraticCellTriple(
+                            coefficient = coefficient,
+                            variable1 = variable1,
+                            variable2 = null
+                        )
+                    )
+                )
             } else {
                 if ((variable1.key ord variable2.key) is Order.Greater) {
-                    QuadraticMonomialCell(Either.Left(QuadraticCellTriple(coefficient, variable2, variable1)))
+                    QuadraticMonomialCell(
+                        Either.Left(
+                            QuadraticCellTriple(
+                                coefficient = coefficient,
+                                variable1 = variable2,
+                                variable2 = variable1
+                            )
+                        )
+                    )
                 } else {
-                    QuadraticMonomialCell(Either.Left(QuadraticCellTriple(coefficient, variable1, variable2)))
+                    QuadraticMonomialCell(
+                        Either.Left(
+                            QuadraticCellTriple(
+                                coefficient = coefficient,
+                                variable1 = variable1,
+                                variable2 = variable2
+                            )
+                        )
+                    )
                 }
             }
         }
@@ -297,7 +390,11 @@ data class QuadraticMonomialCell internal constructor(
     override fun copy(): QuadraticMonomialCell {
         return when (cell) {
             is Either.Left -> {
-                QuadraticMonomialCell(cell.value.coefficient, cell.value.variable1, cell.value.variable2)
+                return QuadraticMonomialCell(
+                    coefficient = cell.value.coefficient,
+                    variable1 = cell.value.variable1,
+                    variable2 = cell.value.variable2
+                )
             }
 
             is Either.Right -> {
@@ -332,7 +429,10 @@ data class QuadraticMonomialCell internal constructor(
         }
     }
 
-    override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         return when (cell) {
             is Either.Left -> {
                 if (cell.value.variable2 == null) {
@@ -343,19 +443,11 @@ data class QuadraticMonomialCell internal constructor(
                             cell.value.coefficient * result
                         } else {
                             logger.trace { "Unknown result for ${cell.value.variable1}." }
-                            if (zeroIfNone) {
-                                Flt64.zero
-                            } else {
-                                null
-                            }
+                            null
                         }
                     } else {
                         logger.trace { "Unknown token for ${cell.value.variable1}." }
-                        if (zeroIfNone) {
-                            Flt64.zero
-                        } else {
-                            null
-                        }
+                        null
                     }
                 } else {
                     val token1 = tokenList.find(cell.value.variable1)
@@ -369,35 +461,19 @@ data class QuadraticMonomialCell internal constructor(
                                     cell.value.coefficient * result1 * result2
                                 } else {
                                     logger.trace { "Unknown result for ${cell.value.variable1}." }
-                                    if (zeroIfNone) {
-                                        Flt64.zero
-                                    } else {
-                                        null
-                                    }
+                                    null
                                 }
                             } else {
                                 logger.trace { "Unknown result for ${cell.value.variable1}." }
-                                if (zeroIfNone) {
-                                    Flt64.zero
-                                } else {
-                                    null
-                                }
+                                null
                             }
                         } else {
                             logger.trace { "Unknown token for ${cell.value.variable1}." }
-                            if (zeroIfNone) {
-                                Flt64.zero
-                            } else {
-                                null
-                            }
+                            null
                         }
                     } else {
                         logger.trace { "Unknown token for ${cell.value.variable1}." }
-                        if (zeroIfNone) {
-                            Flt64.zero
-                        } else {
-                            null
-                        }
+                        null
                     }
                 }
             }
@@ -412,20 +488,20 @@ data class QuadraticMonomialCell internal constructor(
         }
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         return when (cell) {
             is Either.Left -> {
                 if (cell.value.variable2 == null) {
                     val index = tokenList.indexOf(cell.value.variable1)
-                    if (index != null) {
+                    if (index != null && index != -1) {
                         results[index]
                     } else {
                         logger.trace { "Unknown index for ${cell.value.variable1}." }
-                        if (zeroIfNone) {
-                            Flt64.zero
-                        } else {
-                            null
-                        }
+                        null
                     }
                 } else {
                     val index = tokenList.indexOf(cell.value.variable1)
@@ -435,19 +511,95 @@ data class QuadraticMonomialCell internal constructor(
                             results[index] * results[index2]
                         } else {
                             logger.trace { "Unknown index for ${cell.value.variable2}." }
-                            if (zeroIfNone) {
-                                Flt64.zero
-                            } else {
-                                null
-                            }
+                            null
                         }
                     } else {
                         logger.trace { "Unknown index for ${cell.value.variable1}." }
-                        if (zeroIfNone) {
-                            Flt64.zero
+                        null
+                    }
+                }
+            }
+
+            is Either.Right -> {
+                cell.value
+            }
+        } ?: if (zeroIfNone) {
+            Flt64.zero
+        } else {
+            null
+        }
+    }
+
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenList: AbstractTokenList?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return when (cell) {
+            is Either.Left -> {
+                if (cell.value.variable2 == null) {
+                    if (values.containsKey(cell.value.variable1)) {
+                        values[cell.value.variable1]!!
+                    } else if (tokenList != null) {
+                        val token = tokenList.find(cell.value.variable1)
+                        if (token != null) {
+                            val result = token.result
+                            if (result != null) {
+                                cell.value.coefficient * result
+                            } else {
+                                logger.trace { "Unknown result for ${cell.value.variable1}" }
+                                null
+                            }
                         } else {
+                            logger.trace { "Unknown token for ${cell.value.variable1}" }
                             null
                         }
+                    } else {
+                        null
+                    }
+                } else {
+                    val value1 = if (values.containsKey(cell.value.variable1)) {
+                        values[cell.value.variable1]!!
+                    } else if (tokenList != null) {
+                        val token = tokenList.find(cell.value.variable1)
+                        if (token != null) {
+                            val result = token.result
+                            if (result != null) {
+                                cell.value.coefficient * result
+                            } else {
+                                logger.trace { "Unknown result for ${cell.value.variable1}" }
+                                null
+                            }
+                        } else {
+                            logger.trace { "Unknown token for ${cell.value.variable1}" }
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                    val value2 = if (values.containsKey(cell.value.variable2!!)) {
+                        values[cell.value.variable2!!]!!
+                    } else if (tokenList != null) {
+                        val token = tokenList.find(cell.value.variable2!!)
+                        if (token != null) {
+                            val result = token.result
+                            if (result != null) {
+                                result
+                            } else {
+                                logger.trace { "Unknown result for ${cell.value.variable2}" }
+                                null
+                            }
+                        } else {
+                            logger.trace { "Unknown token for ${cell.value.variable2}" }
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                    if (value1 != null && value2 != null) {
+                        value1 * value2
+                    } else {
+                        null
                     }
                 }
             }
@@ -541,11 +693,17 @@ data class QuadraticMonomialSymbol(
                 is Either.Left -> {
                     when (symbol2.symbol) {
                         is Either.Left -> {
-                            QuadraticMonomialSymbol(symbol1.symbol.value, symbol2.symbol.value)
+                            QuadraticMonomialSymbol(
+                                variable1 = symbol1.symbol.value,
+                                variable2 = symbol2.symbol.value
+                            )
                         }
 
                         is Either.Right -> {
-                            QuadraticMonomialSymbol(symbol1.symbol.value, symbol2.symbol.value)
+                            QuadraticMonomialSymbol(
+                                variable = symbol1.symbol.value,
+                                symbol = symbol2.symbol.value
+                            )
                         }
                     }
                 }
@@ -634,7 +792,13 @@ data class QuadraticMonomialSymbol(
         val QuadraticMonomialSymbolUnit.cells
             get() = when (this) {
                 is Variant3.V1 -> {
-                    listOf(QuadraticMonomialCell(Flt64.one, this.value, null))
+                    listOf(
+                        QuadraticMonomialCell(
+                            coefficient = Flt64.one,
+                            variable1 = this.value,
+                            variable2 = null
+                        )
+                    )
                 }
 
                 is Variant3.V2 -> {
@@ -720,7 +884,10 @@ data class QuadraticMonomialSymbol(
             }
         }
 
-        fun QuadraticMonomialSymbolUnit.value(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+        fun QuadraticMonomialSymbolUnit.value(
+            tokenList: AbstractTokenList,
+            zeroIfNone: Boolean
+        ): Flt64? {
             return when (this) {
                 is Variant3.V1 -> {
                     val token = tokenList.find(this.value)
@@ -730,19 +897,11 @@ data class QuadraticMonomialSymbol(
                             result
                         } else {
                             logger.trace { "Unknown result for ${this.value}." }
-                            if (zeroIfNone) {
-                                Flt64.zero
-                            } else {
-                                null
-                            }
+                            null
                         }
                     } else {
                         logger.trace { "Unknown token for ${this.value}." }
-                        if (zeroIfNone) {
-                            Flt64.zero
-                        } else {
-                            null
-                        }
+                        null
                     }
                 }
 
@@ -753,64 +912,221 @@ data class QuadraticMonomialSymbol(
                 is Variant3.V3 -> {
                     this.value.evaluate(tokenList, zeroIfNone)
                 }
+            } ?: if (zeroIfNone) {
+                Flt64.zero
+            } else {
+                null
             }
         }
 
-        fun QuadraticMonomialSymbolUnit.value(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+        fun QuadraticMonomialSymbolUnit.value(
+            tokenTable: AbstractTokenTable,
+            zeroIfNone: Boolean
+        ): Flt64? {
+            return when (this) {
+                is Variant3.V1 -> {
+                    val token = tokenTable.find(this.value)
+                    if (token != null) {
+                        val result = token.result
+                        if (result != null) {
+                            result
+                        } else {
+                            logger.trace { "Unknown result for ${this.value}." }
+                            null
+                        }
+                    } else {
+                        logger.trace { "Unknown token for ${this.value}." }
+                        null
+                    }
+                }
+
+                is Variant3.V2 -> {
+                    this.value.evaluate(tokenTable, zeroIfNone)
+                }
+
+                is Variant3.V3 -> {
+                    this.value.evaluate(tokenTable, zeroIfNone)
+                }
+            } ?: if (zeroIfNone) {
+                Flt64.zero
+            } else {
+                null
+            }
+        }
+
+        fun QuadraticMonomialSymbolUnit.value(
+            results: List<Flt64>,
+            tokenList: AbstractTokenList,
+            zeroIfNone: Boolean
+        ): Flt64? {
             return when (this) {
                 is Variant3.V1 -> {
                     val index = tokenList.indexOf(this.value)
+                    if (index != null && index != -1) {
+                        results[index]
+                    } else {
+                        logger.trace { "Unknown token for ${this.value}." }
+                        null
+                    }
+                }
+
+                is Variant3.V2 -> {
+                    this.value.evaluate(
+                        results = results,
+                        tokenList = tokenList,
+                        zeroIfNone = zeroIfNone
+                    )
+                }
+
+                is Variant3.V3 -> {
+                    this.value.evaluate(
+                        results = results,
+                        tokenList = tokenList,
+                        zeroIfNone = zeroIfNone
+                    )
+                }
+            } ?: if (zeroIfNone) {
+                Flt64.zero
+            } else {
+                null
+            }
+        }
+
+        fun QuadraticMonomialSymbolUnit.value(
+            results: List<Flt64>,
+            tokenTable: AbstractTokenTable,
+            zeroIfNone: Boolean
+        ): Flt64? {
+            return when (this) {
+                is Variant3.V1 -> {
+                    val index = tokenTable.indexOf(this.value)
                     if (index != null) {
                         results[index]
                     } else {
                         logger.trace { "Unknown token for ${this.value}." }
-                        if (zeroIfNone) {
-                            Flt64.zero
-                        } else {
-                            null
-                        }
+                        null
                     }
                 }
 
                 is Variant3.V2 -> {
-                    this.value.evaluate(results, tokenList, zeroIfNone)
+                    this.value.evaluate(
+                        results = results,
+                        tokenTable = tokenTable,
+                        zeroIfNone = zeroIfNone
+                    )
                 }
 
                 is Variant3.V3 -> {
-                    this.value.evaluate(results, tokenList, zeroIfNone)
+                    this.value.evaluate(
+                        results = results,
+                        tokenTable = tokenTable,
+                        zeroIfNone = zeroIfNone
+                    )
                 }
+            } ?: if (zeroIfNone) {
+                Flt64.zero
+            } else {
+                null
             }
         }
 
-        fun QuadraticMonomialSymbolUnit.value(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+        fun QuadraticMonomialSymbolUnit.value(
+            values: Map<Symbol, Flt64>,
+            tokenList: AbstractTokenList?,
+            zeroIfNone: Boolean
+        ): Flt64? {
             return when (this) {
                 is Variant3.V1 -> {
-                    value(tokenTable.tokenList, zeroIfNone)
+                    if (values.containsKey(this.value)) {
+                        values[this.value]
+                    } else if (tokenList != null) {
+                        val token = tokenList.find(this.value)
+                        if (token != null) {
+                            val result = token.result
+                            if (result != null) {
+                                result
+                            } else {
+                                logger.trace { "Unknown result for ${this.value}." }
+                                null
+                            }
+                        } else {
+                            logger.trace { "Unknown token for ${this.value}." }
+                            null
+                        }
+                    } else {
+                        null
+                    }
                 }
 
                 is Variant3.V2 -> {
-                    this.value.evaluate(tokenTable, zeroIfNone)
+                    values[this.value] ?: this.value.evaluate(
+                        values = values,
+                        tokenList = tokenList,
+                        zeroIfNone = zeroIfNone
+                    )
                 }
 
                 is Variant3.V3 -> {
-                    this.value.evaluate(tokenTable, zeroIfNone)
+                    values[this.value] ?: this.value.evaluate(
+                        values = values,
+                        tokenList = tokenList,
+                        zeroIfNone = zeroIfNone
+                    )
                 }
+            } ?: if (zeroIfNone) {
+                Flt64.zero
+            } else {
+                null
             }
         }
 
-        fun QuadraticMonomialSymbolUnit.value(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+        fun QuadraticMonomialSymbolUnit.value(
+            values: Map<Symbol, Flt64>,
+            tokenTable: AbstractTokenTable?,
+            zeroIfNone: Boolean
+        ): Flt64? {
             return when (this) {
                 is Variant3.V1 -> {
-                    value(results, tokenTable.tokenList, zeroIfNone)
+                    if (values.containsKey(this.value)) {
+                        values[this.value]
+                    } else if (tokenTable != null) {
+                        val token = tokenTable.find(this.value)
+                        if (token != null) {
+                            val result = token.result
+                            if (result != null) {
+                                result
+                            } else {
+                                logger.trace { "Unknown result for ${this.value}." }
+                                null
+                            }
+                        } else {
+                            logger.trace { "Unknown token for ${this.value}." }
+                            null
+                        }
+                    } else {
+                        null
+                    }
                 }
 
                 is Variant3.V2 -> {
-                    this.value.evaluate(results, tokenTable, zeroIfNone)
+                    values[this.value] ?: this.value.evaluate(
+                        values = values,
+                        tokenTable = tokenTable,
+                        zeroIfNone = zeroIfNone
+                    )
                 }
 
                 is Variant3.V3 -> {
-                    this.value.evaluate(results, tokenTable, zeroIfNone)
+                    values[this.value] ?: this.value.evaluate(
+                        values = values,
+                        tokenTable = tokenTable,
+                        zeroIfNone = zeroIfNone
+                    )
                 }
+            } ?: if (zeroIfNone) {
+                Flt64.zero
+            } else {
+                null
             }
         }
     }
@@ -918,7 +1234,10 @@ data class QuadraticMonomialSymbol(
         }
     }
 
-    override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         return if (symbol2 == null) {
             symbol1.value(tokenList, zeroIfNone)
         } else {
@@ -930,19 +1249,10 @@ data class QuadraticMonomialSymbol(
         }
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return if (symbol2 == null) {
-            symbol1.value(results, tokenList, zeroIfNone)
-        } else {
-            symbol1.value(results, tokenList, zeroIfNone)?.let { value1 ->
-                symbol2.value(results, tokenList, zeroIfNone)?.let { value2 ->
-                    value1 * value2
-                }
-            }
-        }
-    }
-
-    override fun evaluate(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
         return if (symbol2 == null) {
             symbol1.value(tokenTable, zeroIfNone)
         } else {
@@ -954,12 +1264,112 @@ data class QuadraticMonomialSymbol(
         }
     }
 
-    override fun evaluate(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         return if (symbol2 == null) {
-            symbol1.value(results, tokenTable, zeroIfNone)
+            symbol1.value(
+                results = results,
+                tokenList = tokenList,
+                zeroIfNone = zeroIfNone
+            )
         } else {
-            symbol1.value(results, tokenTable, zeroIfNone)?.let { value1 ->
-                symbol2.value(results, tokenTable, zeroIfNone)?.let { value2 ->
+            symbol1.value(
+                results = results,
+                tokenList = tokenList,
+                zeroIfNone = zeroIfNone
+            )?.let { value1 ->
+                symbol2.value(
+                    results = results,
+                    tokenList = tokenList,
+                    zeroIfNone = zeroIfNone
+                )?.let { value2 ->
+                    value1 * value2
+                }
+            }
+        }
+    }
+
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return if (symbol2 == null) {
+            symbol1.value(
+                results = results,
+                tokenTable = tokenTable,
+                zeroIfNone = zeroIfNone
+            )
+        } else {
+            symbol1.value(
+                results = results,
+                tokenTable = tokenTable,
+                zeroIfNone = zeroIfNone
+            )?.let { value1 ->
+                symbol2.value(
+                    results = results,
+                    tokenTable = tokenTable,
+                    zeroIfNone = zeroIfNone
+                )?.let { value2 ->
+                    value1 * value2
+                }
+            }
+        }
+    }
+
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenList: AbstractTokenList?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return if (symbol2 == null) {
+            symbol1.value(
+                values = values,
+                tokenList = tokenList,
+                zeroIfNone = zeroIfNone
+            )
+        } else {
+            symbol1.value(
+                values = values,
+                tokenList = tokenList,
+                zeroIfNone = zeroIfNone
+            )?.let { value1 ->
+                symbol2.value(
+                    values = values,
+                    tokenList = tokenList,
+                    zeroIfNone = zeroIfNone
+                )?.let { value2 ->
+                    value1 * value2
+                }
+            }
+        }
+    }
+
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenTable: AbstractTokenTable?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        return if (symbol2 == null) {
+            symbol1.value(
+                values = values,
+                tokenTable = tokenTable,
+                zeroIfNone = zeroIfNone
+            )
+        } else {
+            symbol1.value(
+                values = values,
+                tokenTable = tokenTable,
+                zeroIfNone = zeroIfNone
+            )?.let { value1 ->
+                symbol2.value(
+                    values = values,
+                    tokenTable = tokenTable,
+                    zeroIfNone = zeroIfNone
+                )?.let { value2 ->
                     value1 * value2
                 }
             }
@@ -972,154 +1382,265 @@ class QuadraticMonomial(
     override val symbol: QuadraticMonomialSymbol,
     override var name: String = "",
     override var displayName: String? = null
-) : Monomial<QuadraticMonomial, QuadraticMonomialCell> {
+) : Monomial<QuadraticMonomial, QuadraticMonomialCell>, ToQuadraticPolynomial<QuadraticPolynomial> {
     companion object {
         operator fun invoke(item: AbstractVariableItem<*, *>): QuadraticMonomial {
-            return QuadraticMonomial(Flt64.one, QuadraticMonomialSymbol(item))
+            return QuadraticMonomial(
+                coefficient = Flt64.one,
+                symbol = QuadraticMonomialSymbol(item)
+            )
         }
 
         operator fun invoke(coefficient: Int, item: AbstractVariableItem<*, *>): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(item))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(item)
+            )
         }
 
         operator fun invoke(coefficient: Double, item: AbstractVariableItem<*, *>): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(item))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(item)
+            )
         }
 
         operator fun invoke(coefficient: Flt64, item: AbstractVariableItem<*, *>): QuadraticMonomial {
-            return QuadraticMonomial(coefficient, QuadraticMonomialSymbol(item))
+            return QuadraticMonomial(
+                coefficient = coefficient,
+                symbol = QuadraticMonomialSymbol(item)
+            )
         }
 
         operator fun invoke(item1: AbstractVariableItem<*, *>, item2: AbstractVariableItem<*, *>): QuadraticMonomial {
-            return QuadraticMonomial(Flt64.one, QuadraticMonomialSymbol(item1, item2))
+            return QuadraticMonomial(
+                coefficient = Flt64.one,
+                symbol = QuadraticMonomialSymbol(item1, item2)
+            )
         }
 
         operator fun invoke(coefficient: Int, item1: AbstractVariableItem<*, *>, item2: AbstractVariableItem<*, *>): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(item1, item2))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(item1, item2)
+            )
         }
 
         operator fun invoke(coefficient: Double, item1: AbstractVariableItem<*, *>, item2: AbstractVariableItem<*, *>): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(item1, item2))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(item1, item2)
+            )
         }
 
         operator fun invoke(coefficient: Flt64, item1: AbstractVariableItem<*, *>, item2: AbstractVariableItem<*, *>): QuadraticMonomial {
-            return QuadraticMonomial(coefficient, QuadraticMonomialSymbol(item1, item2))
+            return QuadraticMonomial(
+                coefficient = coefficient,
+                symbol = QuadraticMonomialSymbol(item1, item2)
+            )
         }
 
         operator fun invoke(item: AbstractVariableItem<*, *>, symbol: LinearIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64.one, QuadraticMonomialSymbol(item, symbol))
+            return QuadraticMonomial(
+                coefficient = Flt64.one,
+                symbol = QuadraticMonomialSymbol(item, symbol)
+            )
         }
 
         operator fun invoke(coefficient: Int, item: AbstractVariableItem<*, *>, symbol: LinearIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(item, symbol))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(item, symbol)
+            )
         }
 
         operator fun invoke(coefficient: Double, item: AbstractVariableItem<*, *>, symbol: LinearIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(item, symbol))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(item, symbol)
+            )
         }
 
         operator fun invoke(coefficient: Flt64, item: AbstractVariableItem<*, *>, symbol: LinearIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(coefficient, QuadraticMonomialSymbol(item, symbol))
+            return QuadraticMonomial(
+                coefficient = coefficient,
+                symbol = QuadraticMonomialSymbol(item, symbol)
+            )
         }
 
         operator fun invoke(item: AbstractVariableItem<*, *>, symbol: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64.one, QuadraticMonomialSymbol(item, symbol))
+            return QuadraticMonomial(
+                coefficient = Flt64.one,
+                symbol = QuadraticMonomialSymbol(item, symbol)
+            )
         }
 
         operator fun invoke(coefficient: Int, item: AbstractVariableItem<*, *>, symbol: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(item, symbol))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(item, symbol)
+            )
         }
 
         operator fun invoke(coefficient: Double, item: AbstractVariableItem<*, *>, symbol: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(item, symbol))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(item, symbol)
+            )
         }
 
         operator fun invoke(coefficient: Flt64, item: AbstractVariableItem<*, *>, symbol: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(coefficient, QuadraticMonomialSymbol(item, symbol))
+            return QuadraticMonomial(
+                coefficient = coefficient,
+                symbol = QuadraticMonomialSymbol(item, symbol)
+            )
         }
 
         operator fun invoke(symbol: LinearIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64.one, QuadraticMonomialSymbol(symbol))
+            return QuadraticMonomial(
+                coefficient = Flt64.one,
+                symbol = QuadraticMonomialSymbol(symbol)
+            )
         }
 
         operator fun invoke(coefficient: Int, symbol: LinearIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(symbol))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(symbol)
+            )
         }
 
         operator fun invoke(coefficient: Double, symbol: LinearIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(symbol))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(symbol)
+            )
         }
 
         operator fun invoke(coefficient: Flt64, symbol: LinearIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(coefficient, QuadraticMonomialSymbol(symbol))
+            return QuadraticMonomial(
+                coefficient = coefficient,
+                symbol = QuadraticMonomialSymbol(symbol)
+            )
         }
 
         operator fun invoke(symbol1: LinearIntermediateSymbol, symbol2: LinearIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64.one, QuadraticMonomialSymbol(symbol1, symbol2))
+            return QuadraticMonomial(
+                coefficient = Flt64.one,
+                symbol = QuadraticMonomialSymbol(symbol1, symbol2)
+            )
         }
 
         operator fun invoke(coefficient: Int, symbol1: LinearIntermediateSymbol, symbol2: LinearIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(symbol1, symbol2))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(symbol1, symbol2)
+            )
         }
 
         operator fun invoke(coefficient: Double, symbol1: LinearIntermediateSymbol, symbol2: LinearIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(symbol1, symbol2))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(symbol1, symbol2)
+            )
         }
 
         operator fun invoke(coefficient: Flt64, symbol1: LinearIntermediateSymbol, symbol2: LinearIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(coefficient, QuadraticMonomialSymbol(symbol1, symbol2))
+            return QuadraticMonomial(
+                coefficient = coefficient,
+                symbol = QuadraticMonomialSymbol(symbol1, symbol2)
+            )
         }
 
         operator fun invoke(symbol1: LinearIntermediateSymbol, symbol2: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64.one, QuadraticMonomialSymbol(symbol1, symbol2))
+            return QuadraticMonomial(
+                coefficient = Flt64.one,
+                symbol = QuadraticMonomialSymbol(symbol1, symbol2)
+            )
         }
 
         operator fun invoke(coefficient: Int, symbol1: LinearIntermediateSymbol, symbol2: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(symbol1, symbol2))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(symbol1, symbol2)
+            )
         }
 
         operator fun invoke(coefficient: Double, symbol1: LinearIntermediateSymbol, symbol2: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(symbol1, symbol2))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(symbol1, symbol2)
+            )
         }
 
         operator fun invoke(coefficient: Flt64, symbol1: LinearIntermediateSymbol, symbol2: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(coefficient, QuadraticMonomialSymbol(symbol1, symbol2))
+            return QuadraticMonomial(
+                coefficient = coefficient,
+                symbol = QuadraticMonomialSymbol(symbol1, symbol2)
+            )
         }
 
         operator fun invoke(symbol: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64.one, QuadraticMonomialSymbol(symbol))
+            return QuadraticMonomial(
+                coefficient = Flt64.one,
+                symbol = QuadraticMonomialSymbol(symbol)
+            )
         }
 
         operator fun invoke(coefficient: Int, symbol: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(symbol))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(symbol)
+            )
         }
 
         operator fun invoke(coefficient: Double, symbol: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(symbol))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(symbol)
+            )
         }
 
         operator fun invoke(coefficient: Flt64, symbol: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(coefficient, QuadraticMonomialSymbol(symbol))
+            return QuadraticMonomial(
+                coefficient = coefficient,
+                symbol = QuadraticMonomialSymbol(symbol)
+            )
         }
 
         operator fun invoke(symbol1: QuadraticIntermediateSymbol, symbol2: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64.one, QuadraticMonomialSymbol(symbol1, symbol2))
+            return QuadraticMonomial(
+                coefficient = Flt64.one,
+                symbol = QuadraticMonomialSymbol(symbol1, symbol2)
+            )
         }
 
         operator fun invoke(coefficient: Int, symbol1: QuadraticIntermediateSymbol, symbol2: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(symbol1, symbol2))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(symbol1, symbol2)
+            )
         }
 
         operator fun invoke(coefficient: Double, symbol1: QuadraticIntermediateSymbol, symbol2: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(Flt64(coefficient), QuadraticMonomialSymbol(symbol1, symbol2))
+            return QuadraticMonomial(
+                coefficient = Flt64(coefficient),
+                symbol = QuadraticMonomialSymbol(symbol1, symbol2)
+            )
         }
 
         operator fun invoke(coefficient: Flt64, symbol1: QuadraticIntermediateSymbol, symbol2: QuadraticIntermediateSymbol): QuadraticMonomial {
-            return QuadraticMonomial(coefficient, QuadraticMonomialSymbol(symbol1, symbol2))
+            return QuadraticMonomial(
+                coefficient = coefficient,
+                symbol = QuadraticMonomialSymbol(symbol1, symbol2)
+            )
         }
 
         operator fun invoke(monomial: LinearMonomial): QuadraticMonomial {
-            return QuadraticMonomial(monomial.coefficient, QuadraticMonomialSymbol(monomial.symbol))
+            return QuadraticMonomial(
+                coefficient = monomial.coefficient,
+                symbol = QuadraticMonomialSymbol(monomial.symbol)
+            )
         }
     }
 
@@ -1182,15 +1703,27 @@ class QuadraticMonomial(
         assert(this.symbol.symbol2 == null)
         return when (val symbol = this.symbol.symbol1) {
             is Variant3.V1 -> {
-                QuadraticMonomial(this.coefficient, symbol.value, rhs)
+                QuadraticMonomial(
+                    coefficient = this.coefficient,
+                    item1 = symbol.value,
+                    item2 = rhs
+                )
             }
 
             is Variant3.V2 -> {
-                QuadraticMonomial(this.coefficient, rhs, symbol.value)
+                QuadraticMonomial(
+                    coefficient = this.coefficient,
+                    item = rhs,
+                    symbol = symbol.value
+                )
             }
 
             is Variant3.V3 -> {
-                QuadraticMonomial(this.coefficient, rhs, symbol.value)
+                QuadraticMonomial(
+                    coefficient = this.coefficient,
+                    item = rhs,
+                    symbol = symbol.value
+                )
             }
         }
     }
@@ -1204,15 +1737,27 @@ class QuadraticMonomial(
         assert(this.symbol.symbol2 == null)
         return when (val symbol = this.symbol.symbol1) {
             is Variant3.V1 -> {
-                QuadraticMonomial(this.coefficient, symbol.value, rhs)
+                QuadraticMonomial(
+                    coefficient = this.coefficient,
+                    item = symbol.value,
+                    symbol = rhs
+                )
             }
 
             is Variant3.V2 -> {
-                QuadraticMonomial(this.coefficient, symbol.value, rhs)
+                QuadraticMonomial(
+                    coefficient = this.coefficient,
+                    symbol1 = symbol.value,
+                    symbol2 = rhs
+                )
             }
 
             is Variant3.V3 -> {
-                QuadraticMonomial(this.coefficient, rhs, symbol.value)
+                QuadraticMonomial(
+                    coefficient = this.coefficient,
+                    symbol1 = rhs,
+                    symbol2 = symbol.value
+                )
             }
         }
     }
@@ -1226,15 +1771,27 @@ class QuadraticMonomial(
         assert(this.symbol.symbol2 == null)
         return when (val symbol1 = this.symbol.symbol1) {
             is Variant3.V1 -> {
-                QuadraticMonomial(this.coefficient, symbol1.value, rhs)
+                QuadraticMonomial(
+                    coefficient = this.coefficient,
+                    item = symbol1.value,
+                    symbol = rhs
+                )
             }
 
             is Variant3.V2 -> {
-                QuadraticMonomial(this.coefficient, symbol1.value, rhs)
+                QuadraticMonomial(
+                    coefficient = this.coefficient,
+                    symbol1 = symbol1.value,
+                    symbol2 = rhs
+                )
             }
 
             is Variant3.V3 -> {
-                QuadraticMonomial(this.coefficient, symbol1.value, rhs)
+                QuadraticMonomial(
+                    coefficient = this.coefficient,
+                    symbol1 = symbol1.value,
+                    symbol2 = rhs
+                )
             }
         }
     }
@@ -1250,11 +1807,19 @@ class QuadraticMonomial(
             is Variant3.V1 -> {
                 when (val symbol2 = rhs.symbol.symbol) {
                     is Either.Left -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            item1 = symbol1.value,
+                            item2 = symbol2.value
+                        )
                     }
 
                     is Either.Right -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            item = symbol1.value,
+                            symbol = symbol2.value
+                        )
                     }
                 }
             }
@@ -1262,11 +1827,19 @@ class QuadraticMonomial(
             is Variant3.V2 -> {
                 when (val symbol2 = rhs.symbol.symbol) {
                     is Either.Left -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol2.value, symbol1.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            item = symbol2.value,
+                            symbol = symbol1.value
+                        )
                     }
 
                     is Either.Right -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            symbol1 = symbol1.value,
+                            symbol2 = symbol2.value
+                        )
                     }
                 }
             }
@@ -1274,11 +1847,19 @@ class QuadraticMonomial(
             is Variant3.V3 -> {
                 when (val symbol2 = rhs.symbol.symbol) {
                     is Either.Left -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol2.value, symbol1.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            item = symbol2.value,
+                            symbol = symbol1.value
+                        )
                     }
 
                     is Either.Right -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol2.value, symbol1.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            symbol1 = symbol2.value,
+                            symbol2 = symbol1.value
+                        )
                     }
                 }
             }
@@ -1297,15 +1878,27 @@ class QuadraticMonomial(
             is Variant3.V1 -> {
                 when (val symbol2 = rhs.symbol.symbol1) {
                     is Variant3.V1 -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            item1 = symbol1.value,
+                            item2 = symbol2.value
+                        )
                     }
 
                     is Variant3.V2 -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            item = symbol1.value,
+                            symbol = symbol2.value
+                        )
                     }
 
                     is Variant3.V3 -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            item = symbol1.value,
+                            symbol = symbol2.value
+                        )
                     }
                 }
             }
@@ -1313,15 +1906,27 @@ class QuadraticMonomial(
             is Variant3.V2 -> {
                 when (val symbol2 = rhs.symbol.symbol1) {
                     is Variant3.V1 -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol2.value, symbol1.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            item = symbol2.value,
+                            symbol = symbol1.value
+                        )
                     }
 
                     is Variant3.V2 -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            symbol1 = symbol1.value,
+                            symbol2 = symbol2.value
+                        )
                     }
 
                     is Variant3.V3 -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            symbol1 = symbol1.value,
+                            symbol2 = symbol2.value
+                        )
                     }
                 }
             }
@@ -1329,15 +1934,27 @@ class QuadraticMonomial(
             is Variant3.V3 -> {
                 when (val symbol2 = rhs.symbol.symbol1) {
                     is Variant3.V1 -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol2.value, symbol1.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            item = symbol2.value,
+                            symbol = symbol1.value
+                        )
                     }
 
                     is Variant3.V2 -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol2.value, symbol1.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            symbol1 = symbol2.value,
+                            symbol2 = symbol1.value
+                        )
                     }
 
                     is Variant3.V3 -> {
-                        QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                        QuadraticMonomial(
+                            coefficient = this.coefficient * rhs.coefficient,
+                            symbol1 = symbol1.value,
+                            symbol2 = symbol2.value
+                        )
                     }
                 }
             }
@@ -1356,6 +1973,10 @@ class QuadraticMonomial(
                 "$coefficient * $symbol"
             }
         }
+    }
+
+    override fun toQuadraticPolynomial(): QuadraticPolynomial {
+        return QuadraticPolynomial(this)
     }
 }
 
@@ -1836,11 +2457,19 @@ operator fun <T : RealNumber<T>> Quantity<QuadraticMonomial>.div(rhs: Quantity<T
 operator fun LinearMonomial.times(rhs: AbstractVariableItem<*, *>): QuadraticMonomial {
     return when (val symbol = this.symbol.symbol) {
         is Either.Left -> {
-            QuadraticMonomial(this.coefficient, symbol.value, rhs)
+            QuadraticMonomial(
+                coefficient = this.coefficient,
+                item1 = symbol.value,
+                item2 = rhs
+            )
         }
 
         is Either.Right -> {
-            QuadraticMonomial(this.coefficient, rhs, symbol.value)
+            QuadraticMonomial(
+                coefficient = this.coefficient,
+                item = rhs,
+                symbol = symbol.value
+            )
         }
     }
 }
@@ -1848,11 +2477,19 @@ operator fun LinearMonomial.times(rhs: AbstractVariableItem<*, *>): QuadraticMon
 operator fun AbstractVariableItem<*, *>.times(rhs: LinearMonomial): QuadraticMonomial {
     return when (val symbol = rhs.symbol.symbol) {
         is Either.Left -> {
-            QuadraticMonomial(rhs.coefficient, this, symbol.value)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                item1 = this,
+                item2 = symbol.value
+            )
         }
 
         is Either.Right -> {
-            QuadraticMonomial(rhs.coefficient, this, symbol.value)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                item = this,
+                symbol = symbol.value
+            )
         }
     }
 }
@@ -1866,15 +2503,27 @@ operator fun AbstractVariableItem<*, *>.times(rhs: QuadraticMonomial): Quadratic
     assert(rhs.symbol.symbol2 == null)
     return when (val symbol = rhs.symbol.symbol1) {
         is Variant3.V1 -> {
-            QuadraticMonomial(rhs.coefficient, this, symbol.value)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                item1 = this,
+                item2 = symbol.value
+            )
         }
 
         is Variant3.V2 -> {
-            QuadraticMonomial(rhs.coefficient, this, symbol.value)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                item = this,
+                symbol = symbol.value
+            )
         }
 
         is Variant3.V3 -> {
-            QuadraticMonomial(rhs.coefficient, this, symbol.value)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                item = this,
+                symbol = symbol.value
+            )
         }
     }
 }
@@ -1979,11 +2628,19 @@ operator fun Quantity<AbstractVariableItem<*, *>>.times(rhs: Quantity<QuadraticM
 operator fun LinearIntermediateSymbol.times(rhs: LinearMonomial): QuadraticMonomial {
     return when (val symbol = rhs.symbol.symbol) {
         is Either.Left -> {
-            QuadraticMonomial(rhs.coefficient, symbol.value, this)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                item = symbol.value,
+                symbol = this
+            )
         }
 
         is Either.Right -> {
-            QuadraticMonomial(rhs.coefficient, this, symbol.value)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                symbol1 = this,
+                symbol2 = symbol.value
+            )
         }
     }
 }
@@ -1991,11 +2648,19 @@ operator fun LinearIntermediateSymbol.times(rhs: LinearMonomial): QuadraticMonom
 operator fun LinearMonomial.times(rhs: LinearIntermediateSymbol): QuadraticMonomial {
     return when (val symbol = this.symbol.symbol) {
         is Either.Left -> {
-            QuadraticMonomial(this.coefficient, symbol.value, rhs)
+            QuadraticMonomial(
+                coefficient = this.coefficient,
+                item = symbol.value,
+                symbol = rhs
+            )
         }
 
         is Either.Right -> {
-            QuadraticMonomial(this.coefficient, symbol.value, rhs)
+            QuadraticMonomial(
+                coefficient = this.coefficient,
+                symbol1 = symbol.value,
+                symbol2 = rhs
+            )
         }
     }
 }
@@ -2008,11 +2673,18 @@ operator fun LinearMonomial.times(rhs: QuadraticIntermediateSymbol): QuadraticMo
 
     return when (val symbol = this.symbol.symbol) {
         is Either.Left -> {
-            QuadraticMonomial(this.coefficient, symbol.value, rhs)
+            QuadraticMonomial(
+                coefficient = this.coefficient,
+                item = symbol.value,
+                symbol = rhs)
         }
 
         is Either.Right -> {
-            QuadraticMonomial(this.coefficient, symbol.value, rhs)
+            QuadraticMonomial(
+                coefficient = this.coefficient,
+                symbol1 = symbol.value,
+                symbol2 = rhs
+            )
         }
     }
 }
@@ -2025,11 +2697,19 @@ operator fun QuadraticIntermediateSymbol.times(rhs: LinearMonomial): QuadraticMo
 
     return when (val symbol = rhs.symbol.symbol) {
         is Either.Left -> {
-            QuadraticMonomial(rhs.coefficient, symbol.value, this)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                item = symbol.value,
+                symbol = this
+            )
         }
 
         is Either.Right -> {
-            QuadraticMonomial(rhs.coefficient, symbol.value, this)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                symbol1 = symbol.value,
+                symbol2 = this
+            )
         }
     }
 }
@@ -2043,15 +2723,27 @@ operator fun LinearIntermediateSymbol.times(rhs: QuadraticMonomial): QuadraticMo
     assert(rhs.symbol.symbol2 == null)
     return when (val symbol = rhs.symbol.symbol1) {
         is Variant3.V1 -> {
-            QuadraticMonomial(rhs.coefficient, symbol.value, this)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                item = symbol.value,
+                symbol = this
+            )
         }
 
         is Variant3.V2 -> {
-            QuadraticMonomial(rhs.coefficient, this, symbol.value)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                symbol1 = this,
+                symbol2 = symbol.value
+            )
         }
 
         is Variant3.V3 -> {
-            QuadraticMonomial(rhs.coefficient, this, symbol.value)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                symbol1 = this,
+                symbol2 = symbol.value
+            )
         }
     }
 }
@@ -2065,15 +2757,27 @@ operator fun QuadraticIntermediateSymbol.times(rhs: QuadraticMonomial): Quadrati
     assert(rhs.symbol.symbol2 == null)
     return when (val symbol = rhs.symbol.symbol1) {
         is Variant3.V1 -> {
-            QuadraticMonomial(rhs.coefficient, symbol.value, this)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                item = symbol.value,
+                symbol = this
+            )
         }
 
         is Variant3.V2 -> {
-            QuadraticMonomial(rhs.coefficient, symbol.value, this)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                symbol1 = symbol.value,
+                symbol2 = this
+            )
         }
 
         is Variant3.V3 -> {
-            QuadraticMonomial(rhs.coefficient, this, symbol.value)
+            QuadraticMonomial(
+                coefficient = rhs.coefficient,
+                symbol1 = this,
+                symbol2 = symbol.value
+            )
         }
     }
 }
@@ -2301,11 +3005,19 @@ operator fun LinearMonomial.times(rhs: LinearMonomial): QuadraticMonomial {
         is Either.Left -> {
             when (val symbol2 = rhs.symbol.symbol) {
                 is Either.Left -> {
-                    QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                    QuadraticMonomial(
+                        coefficient = this.coefficient * rhs.coefficient,
+                        item1 = symbol1.value,
+                        item2 = symbol2.value
+                    )
                 }
 
                 is Either.Right -> {
-                    QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                    QuadraticMonomial(
+                        coefficient = this.coefficient * rhs.coefficient,
+                        item = symbol1.value,
+                        symbol = symbol2.value
+                    )
                 }
             }
         }
@@ -2313,11 +3025,19 @@ operator fun LinearMonomial.times(rhs: LinearMonomial): QuadraticMonomial {
         is Either.Right -> {
             when (val symbol2 = rhs.symbol.symbol) {
                 is Either.Left -> {
-                    QuadraticMonomial(this.coefficient * rhs.coefficient, symbol2.value, symbol1.value)
+                    QuadraticMonomial(
+                        coefficient = this.coefficient * rhs.coefficient,
+                        item = symbol2.value,
+                        symbol = symbol1.value
+                    )
                 }
 
                 is Either.Right -> {
-                    QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                    QuadraticMonomial(
+                        coefficient = this.coefficient * rhs.coefficient,
+                        symbol1 = symbol1.value,
+                        symbol2 = symbol2.value
+                    )
                 }
             }
         }
@@ -2335,15 +3055,27 @@ operator fun LinearMonomial.times(rhs: QuadraticMonomial): QuadraticMonomial {
         is Either.Left -> {
             when (val symbol2 = rhs.symbol.symbol1) {
                 is Variant3.V1 -> {
-                    QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                    QuadraticMonomial(
+                        coefficient = this.coefficient * rhs.coefficient,
+                        item1 = symbol1.value,
+                        item2 = symbol2.value
+                    )
                 }
 
                 is Variant3.V2 -> {
-                    QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                    QuadraticMonomial(
+                        coefficient = this.coefficient * rhs.coefficient,
+                        item = symbol1.value,
+                        symbol = symbol2.value
+                    )
                 }
 
                 is Variant3.V3 -> {
-                    QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                    QuadraticMonomial(
+                        coefficient = this.coefficient * rhs.coefficient,
+                        item = symbol1.value,
+                        symbol = symbol2.value
+                    )
                 }
             }
         }
@@ -2351,15 +3083,27 @@ operator fun LinearMonomial.times(rhs: QuadraticMonomial): QuadraticMonomial {
         is Either.Right -> {
             when (val symbol2 = rhs.symbol.symbol1) {
                 is Variant3.V1 -> {
-                    QuadraticMonomial(this.coefficient * rhs.coefficient, symbol2.value, symbol1.value)
+                    QuadraticMonomial(
+                        coefficient = this.coefficient * rhs.coefficient,
+                        item = symbol2.value,
+                        symbol = symbol1.value
+                    )
                 }
 
                 is Variant3.V2 -> {
-                    QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                    QuadraticMonomial(
+                        coefficient = this.coefficient * rhs.coefficient,
+                        symbol1 = symbol1.value,
+                        symbol2 = symbol2.value
+                    )
                 }
 
                 is Variant3.V3 -> {
-                    QuadraticMonomial(this.coefficient * rhs.coefficient, symbol1.value, symbol2.value)
+                    QuadraticMonomial(
+                        coefficient = this.coefficient * rhs.coefficient,
+                        symbol1 = symbol1.value,
+                        symbol2 = symbol2.value
+                    )
                 }
             }
         }

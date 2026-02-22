@@ -4,17 +4,27 @@ import java.io.*
 import java.nio.file.*
 import kotlin.io.path.*
 import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.concept.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.frontend.variable.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
+
+typealias OriginConstraint = fuookami.ospf.kotlin.core.frontend.model.mechanism.Constraint
+
+data class VariableSlack(
+    val constraint: OriginConstraint? = null,
+    val lowerBound: Variable? = null,
+    val upperBound: Variable? = null
+)
 
 class Variable(
     val index: Int,
     lowerBound: Flt64,
     upperBound: Flt64,
     type: VariableType<*>,
+    val origin: AbstractVariableItem<*, *>?,
+    val dualOrigin: OriginConstraint? = null,
+    val slack: VariableSlack? = null,
     val name: String,
     val initialResult: Flt64? = null
 ) : Cloneable, Copyable<Variable> {
@@ -26,92 +36,113 @@ class Variable(
     val upperBound by ::_upperBound
     val type by ::_type
 
-    override fun copy() = Variable(index, lowerBound, upperBound, type, name, initialResult)
+    val free: Boolean
+        get() {
+            return negativeFree && positiveFree
+        }
+
+    val normalized: Boolean
+        get() {
+            return negativeNormalized || positiveNormalized
+        }
+
+    val negativeNormalized: Boolean
+        get() {
+            return negativeFree && upperBound eq Flt64.zero
+        }
+
+    val negativeFree: Boolean
+        get() {
+            return (lowerBound eq Flt64.negativeInfinity || lowerBound leq -Flt64.decimalPrecision.reciprocal())
+        }
+
+    val positiveNormalized: Boolean
+        get() {
+            return positiveFree && lowerBound eq Flt64.zero
+        }
+
+    val positiveFree: Boolean
+        get() {
+            return (upperBound eq Flt64.infinity || upperBound geq Flt64.decimalPrecision.reciprocal())
+        }
+
+    override fun copy() = Variable(index, lowerBound, upperBound, type, origin, dualOrigin, slack, name, initialResult)
     override fun clone() = copy()
 
     override fun toString() = name
 }
 
-interface Cell {
+interface Cell<Self : Cell<Self>> {
     val coefficient: Flt64
+
+    operator fun unaryMinus(): Self
 }
 
-interface ConstraintCell : Cell {
+interface ConstraintCell<Self : ConstraintCell<Self>> : Cell<Self> {
     val rowIndex: Int
 }
 
-class Constraint<Cell>(
+enum class ConstraintSource {
+    Origin,
+    LowerBound,
+    UpperBound,
+    Dual,
+    FarkasDual,
+    Feasibility,
+    Elastic,
+    ElasticLowerBound,
+    ElasticUpperBound,
+    ElasticSlackBinary,
+    ElasticSlackMinmax
+}
+
+abstract class Constraint<Cell>(
     lhs: List<List<Cell>>,
     signs: List<Sign>,
     rhs: List<Flt64>,
-    names: List<String>
-) : Cloneable, Copyable<Constraint<Cell>>
-        where Cell : ConstraintCell, Cell : Copyable<Cell> {
+    names: List<String>,
+    sources: List<ConstraintSource>
+) : Cloneable, Copyable<Constraint<Cell>>, AutoCloseable
+        where Cell : ConstraintCell<Cell>, Cell : Copyable<Cell> {
     internal val _lhs = lhs.toMutableList()
     internal val _signs = signs.toMutableList()
     internal val _rhs = rhs.toMutableList()
     internal val _names = names.toMutableList()
+    internal val _sources = sources.toMutableList()
 
     val lhs: List<List<Cell>> by ::_lhs
     val signs: List<Sign> by ::_signs
     val rhs: List<Flt64> by ::_rhs
     val names: List<String> by ::_names
+    val sources: List<ConstraintSource> by ::_sources
 
     val size: Int get() = rhs.size
     val indices: IntRange get() = rhs.indices
 
-    override fun copy() = Constraint(
-        lhs.map { line -> line.map { it.copy() } },
-        signs.toList(),
-        rhs.map { it.copy() },
-        names.toList()
-    )
-
     override fun clone() = copy()
+
+    override fun close() {
+        _lhs.clear()
+        _signs.clear()
+        _rhs.clear()
+        _names.clear()
+        _sources.clear()
+    }
 }
 
 class Objective<Cell : Copyable<Cell>>(
     val category: ObjectCategory,
-    val obj: List<Cell>
+    val objective: List<Cell>,
+    val constant: Flt64 = Flt64(0.0)
 ) : Cloneable, Copyable<Objective<Cell>> {
-    override fun copy() = Objective(category, obj.toList())
+    override fun copy() = Objective(category, objective.toList())
     override fun clone() = copy()
 }
 
-interface BasicModelView<ConCell>
-        where ConCell : ConstraintCell, ConCell : Copyable<ConCell> {
+interface BasicModelView<ConCell>: AutoCloseable
+        where ConCell : ConstraintCell<ConCell>, ConCell : Copyable<ConCell> {
     val variables: List<Variable>
     val constraints: Constraint<ConCell>
-    val name: String
-
-    val containsContinuous: Boolean
-        get() {
-            return variables.any { it.type.isContinuousType }
-        }
-
-    val containsBinary: Boolean
-        get() {
-            return variables.any { it.type.isBinaryType }
-        }
-
-    val containsInteger: Boolean
-        get() {
-            return variables.any { it.type.isIntegerType }
-        }
-
-    val containsNotBinaryInteger: Boolean
-        get() {
-            return variables.any { it.type.isNotBinaryIntegerType }
-        }
-
-    fun exportLP(writer: OutputStreamWriter): Try
-}
-
-interface ModelView<ConCell, ObjCell>
-        where ConCell : ConstraintCell, ConCell : Copyable<ConCell>, ObjCell : Cell, ObjCell : Copyable<ObjCell> {
-    val variables: List<Variable>
-    val constraints: Constraint<ConCell>
-    val objective: Objective<ObjCell>
     val name: String
 
     val containsContinuous: Boolean
@@ -162,5 +193,14 @@ interface ModelView<ConCell, ObjCell>
         return result
     }
 
-    fun exportLP(writer: FileWriter): Try
+    fun exportLP(writer: OutputStreamWriter): Try
+
+    override fun close() {
+        constraints.close()
+    }
+}
+
+interface ModelView<ConCell, ObjCell> : BasicModelView<ConCell>
+        where ConCell : ConstraintCell<ConCell>, ConCell : Copyable<ConCell>, ObjCell : Cell<ObjCell>, ObjCell : Copyable<ObjCell> {
+    val objective: Objective<ObjCell>
 }

@@ -1,13 +1,12 @@
 # 最大值（上界、上确界）
 
-
-## 形式
+## 函数形式
 
 $$
 y = \max(x_{1}, \, x_{2}, \, \cdots, \, x_{n})
 $$
 
-## 常量
+## 常量定义
 
 $$
 M = \max_{i \in P}(\max(|\min x_{i}|, \, |\max x_{i}|))
@@ -15,33 +14,32 @@ $$
 
 ## 额外变量
 
-$minmax \in R$ ：上界。
+$\text{minmax} \in \mathbb{R}$：上界。
 
-$u_{i} \in \{0, \, 1 \}$ ：上确界是 $x_{i}$ 的标志位。
+$u_{i} \in \{0, \, 1 \}$：表示上确界是否是 $x_{i}$ 的标志位。
 
 ## 导出符号
 
 $$
-y = minmax
+y = \text{minmax}
 $$
 
 ## 数学模型
 
-
 $$
-s.t. \quad minmax \geq x_{i}, \; \forall i \in P
+\text{s.t.} \quad \text{minmax} \geq x_{i}, \; \forall i \in P
 $$
 
-上述模型约束了 $y$ 为 $x_{i}$ 的上界，可用于最小值目标函数。如果需要精确 $y$ 用于约束或者最大值目标函数，会额外追加以下数学模型以确保 $y$ 取到上确界：
+上述模型约束了 $y$ 为 $x_{i}$ 的上界，适用于最小值目标函数。若需在约束条件或最大值目标函数中使用精确的 $y$ 值，需额外追加以下数学模型以确保 $y$ 取到上确界：
 
 $$
 \begin{align}
-s.t. \quad & minmax & \leq & \, x_{i} + M \cdot (1 - u_{i}), & \; \forall i \in P \\ \; \\
+\text{s.t.} \quad & \text{minmax} & \leq & \, x_{i} + M \cdot (1 - u_{i}), & \; \forall i \in P \\ \; \\
 & \sum_{i \in P} u_{i} & = & \, 1
 \end{align}
 $$
 
-## 样例
+## 代码示例
 
 ::: code-group
 
@@ -100,10 +98,10 @@ assert(result4.value!!.obj gr Flt64.ten)    // inf
 
 :::
 
-完整实现请参考：
+**完整实现参考：**
 
 - [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/Max.kt)
 
-完整样例请参考：
+**完整样例参考：**
 
 - [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/MaxTest.kt)

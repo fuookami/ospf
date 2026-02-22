@@ -83,6 +83,7 @@ public class Demo1 {
                 LinearPolynomialKt.sumLinearMonomials(
                     companies.stream().map(c -> LinearMonomialKt.times(c.capital, x.get(c.index))).collect(Collectors.toList())
                 ).toMutable(),
+                null,
                 "capital",
                 null
         );
@@ -92,6 +93,7 @@ public class Demo1 {
                 LinearPolynomialKt.sumLinearMonomials(
                     companies.stream().map(c -> LinearMonomialKt.times(c.liability, x.get(c.index))).collect(Collectors.toList())
                 ).toMutable(),
+                null,
                 "liability",
                 null
         );
@@ -101,6 +103,7 @@ public class Demo1 {
                 LinearPolynomialKt.sumLinearMonomials(
                     companies.stream().map(c -> LinearMonomialKt.times(c.profit, x.get(c.index))).collect(Collectors.toList())
                 ).toMutable(),
+                null,
                 "profit",
                 null
         );
@@ -118,12 +121,14 @@ public class Demo1 {
     private void initConstraint() {
         metaModel.addConstraint(
                 LinearInequalityKt.geq(capital, minCapital),
+                false,
                 "capital_constraint",
                 null,
                 false
         );
         metaModel.addConstraint(
                 LinearInequalityKt.leq(liability, maxLiability),
+                false,
                 "liability_constraint",
                 null,
                 false
@@ -132,7 +137,7 @@ public class Demo1 {
 
     private List<Double> solve() throws ExecutionException, InterruptedException {
         LinearSolver solver = new ScipLinearSolver();
-        Result<SolverOutput, Error> result = solver.solveAsync(metaModel, null, null).get();
+        Result<FeasibleSolverOutput, Error> result = solver.solveAsync(metaModel, null, null, null, null).get();
         if (result != null && result.getOk()) {
             List<Flt64> solution = Objects.requireNonNull(result.getValue()).getSolution();
             metaModel.setSolution(solution);

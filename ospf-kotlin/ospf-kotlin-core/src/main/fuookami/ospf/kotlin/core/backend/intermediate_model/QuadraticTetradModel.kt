@@ -5,30 +5,106 @@ import kotlinx.coroutines.*
 import org.apache.logging.log4j.kotlin.*
 import fuookami.ospf.kotlin.utils.*
 import fuookami.ospf.kotlin.utils.math.*
+import fuookami.ospf.kotlin.utils.math.ordinary.*
+import fuookami.ospf.kotlin.utils.math.ordinary.pow
 import fuookami.ospf.kotlin.utils.concept.*
 import fuookami.ospf.kotlin.utils.operator.*
 import fuookami.ospf.kotlin.utils.functional.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.frontend.variable.*
+import fuookami.ospf.kotlin.core.frontend.model.*
+import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
+import fuookami.ospf.kotlin.core.backend.solver.*
+import fuookami.ospf.kotlin.core.frontend.expression.symbol.IntermediateSymbol
 
-data class QuadraticConstraintCell(
+typealias OriginQuadraticConstraint = fuookami.ospf.kotlin.core.frontend.model.mechanism.QuadraticConstraint
+
+private fun OriginQuadraticConstraint.isBound(): Boolean {
+    return lhs.size == 1
+            && lhs.first().coefficient eq Flt64.one
+            && lhs.first().token2 == null
+            // && from?.second != true
+}
+
+class QuadraticConstraintCell(
     override val rowIndex: Int,
     val colIndex1: Int,
     val colIndex2: Int?,
-    override val coefficient: Flt64
-) : ConstraintCell, Cloneable, Copyable<QuadraticConstraintCell> {
-    override fun copy() = QuadraticConstraintCell(rowIndex, colIndex1, colIndex2, coefficient.copy())
+    coefficient: Flt64
+) : ConstraintCell<QuadraticConstraintCell>, Cloneable, Copyable<QuadraticConstraintCell> {
+    internal var _coefficient = coefficient
+    override val coefficient by ::_coefficient
+
+    override fun unaryMinus(): QuadraticConstraintCell {
+        return QuadraticConstraintCell(
+            rowIndex = rowIndex,
+            colIndex1 = colIndex1,
+            colIndex2 = colIndex2,
+            coefficient = -coefficient
+        )
+    }
+
+    override fun copy() = QuadraticConstraintCell(
+        rowIndex = rowIndex,
+        colIndex1 = colIndex1,
+        colIndex2 = colIndex2,
+        coefficient = coefficient.copy()
+    )
     override fun clone() = copy()
 }
 
-typealias QuadraticConstraint = Constraint<QuadraticConstraintCell>
+class QuadraticConstraint(
+    lhs: List<List<QuadraticConstraintCell>>,
+    signs: List<Sign>,
+    rhs: List<Flt64>,
+    names: List<String>,
+    sources: List<ConstraintSource>,
+    origins: List<OriginQuadraticConstraint?> = (0 until lhs.size).map { null },
+    froms: List<Pair<IntermediateSymbol, Boolean>?> = (0 until lhs.size).map { null }
+) : Constraint<QuadraticConstraintCell>(lhs, signs, rhs, names, sources) {
+    private val _origins: MutableList<OriginQuadraticConstraint?> = origins.toMutableList()
+    val origins: List<OriginQuadraticConstraint?> by ::_origins
 
-data class QuadraticObjectiveCell(
+    private val _froms: MutableList<Pair<IntermediateSymbol, Boolean>?> = froms.toMutableList()
+    val froms: List<Pair<IntermediateSymbol, Boolean>?> by ::_froms
+
+    override fun copy() = QuadraticConstraint(
+        lhs.map { line -> line.map { it.copy() } },
+        signs.toList(),
+        rhs.map { it.copy() },
+        names.toList(),
+        sources.toList(),
+        origins.toList(),
+        froms.toList()
+    )
+
+    override fun close() {
+        _origins.clear()
+        _froms.clear()
+        super.close()
+    }
+}
+
+class QuadraticObjectiveCell(
     val colIndex1: Int,
     val colIndex2: Int?,
-    override val coefficient: Flt64
-) : Cell, Cloneable, Copyable<QuadraticObjectiveCell> {
-    override fun copy() = QuadraticObjectiveCell(colIndex1, colIndex2, coefficient.copy())
+    coefficient: Flt64
+) : Cell<QuadraticObjectiveCell>, Cloneable, Copyable<QuadraticObjectiveCell> {
+    internal var _coefficient = coefficient
+    override val coefficient by ::_coefficient
+
+    override fun unaryMinus(): QuadraticObjectiveCell {
+        return QuadraticObjectiveCell(
+            colIndex1 = colIndex1,
+            colIndex2 = colIndex2,
+            coefficient = -coefficient
+        )
+    }
+
+    override fun copy() = QuadraticObjectiveCell(
+        colIndex1 = colIndex1,
+        colIndex2 = colIndex2,
+        coefficient = coefficient.copy()
+    )
     override fun clone() = copy()
 }
 
@@ -46,13 +122,6 @@ class BasicQuadraticTetradModel(
     )
 
     override fun clone() = copy()
-
-    fun normalized(): Boolean {
-        return variables.any {
-            !(it.lowerBound.isNegativeInfinity() || (it.lowerBound eq Flt64.zero))
-                    || !(it.upperBound.isInfinity() || (it.upperBound eq Flt64.zero))
-        }
-    }
 
     fun linearRelax() {
         variables.forEach {
@@ -74,41 +143,34 @@ class BasicQuadraticTetradModel(
         }
     }
 
-    fun normalize() {
-        for (variable in variables) {
-            if (!(variable.lowerBound.isNegativeInfinity() || (variable.lowerBound eq Flt64.zero))) {
-                constraints._lhs.add(
-                    listOf(
-                        QuadraticConstraintCell(
-                            constraints.size,
-                            variable.index,
-                            null,
-                            Flt64.one
-                        )
-                    )
-                )
-                constraints._signs.add(Sign.GreaterEqual)
-                constraints._rhs.add(variable.lowerBound)
-                constraints._names.add("${variable.name}_lb")
-                variable._lowerBound = Flt64.negativeInfinity
-            }
-            if (!(variable.upperBound.isInfinity() || (variable.upperBound eq Flt64.zero))) {
-                constraints._lhs.add(
-                    listOf(
-                        QuadraticConstraintCell(
-                            constraints.size,
-                            variable.index,
-                            null,
-                            Flt64.one
-                        )
-                    )
-                )
-                constraints._signs.add(Sign.LessEqual)
-                constraints._rhs.add(variable.upperBound)
-                constraints._names.add("${variable.name}_ub")
-                variable._upperBound = Flt64.infinity
-            }
-        }
+    fun linearRelaxed(): BasicQuadraticTetradModel {
+        return BasicQuadraticTetradModel(
+            variables = variables.map {
+                when (it.type) {
+                    is Binary -> {
+                        val ret = it.copy()
+                        ret._type = Percentage
+                        ret
+                    }
+
+                    is Ternary, is UInteger -> {
+                        val ret = it.copy()
+                        ret._type = UContinuous
+                        ret
+                    }
+
+                    is BalancedTernary, is fuookami.ospf.kotlin.core.frontend.variable.Integer -> {
+                        val ret = it.copy()
+                        ret._type = Continuous
+                        ret
+                    }
+
+                    else -> it.copy()
+                }
+            },
+            constraints = constraints.copy(),
+            name = name
+        )
     }
 
     override fun exportLP(writer: OutputStreamWriter): Try {
@@ -117,7 +179,11 @@ class BasicQuadraticTetradModel(
             writer.append(" ${constraints.names[i]}: ")
             var flag = false
             for (j in constraints.lhs[i].indices) {
-                val coefficient = if (j != 0) {
+                if (constraints.lhs[i][j].coefficient eq Flt64.zero) {
+                    continue
+                }
+
+                val coefficient = if (flag) {
                     if (constraints.lhs[i][j].coefficient leq Flt64.zero) {
                         writer.append(" - ")
                     } else {
@@ -191,50 +257,146 @@ class BasicQuadraticTetradModel(
     }
 }
 
-typealias QuadraticTetradModelView = ModelView<QuadraticConstraintCell, QuadraticObjectiveCell>
+interface QuadraticTetradModelView : ModelView<QuadraticConstraintCell, QuadraticObjectiveCell> {
+    override val constraints: QuadraticConstraint
+    val dual: Boolean
+
+    fun linearRelax(): QuadraticTetradModelView
+    fun linearRelaxed(): QuadraticTetradModelView
+    suspend fun farkasDual(): QuadraticTetradModelView
+    fun feasibility(): QuadraticTetradModelView
+    fun elastic(): QuadraticTetradModelView
+
+    fun tidyDualSolution(solution: Solution): QuadraticDualSolution {
+        return if (dual) {
+            variables.associateNotNull {
+                if (it.dualOrigin != null && solution.size > it.index) {
+                    (it.dualOrigin as OriginQuadraticConstraint) to solution[it.index]
+                } else {
+                    null
+                }
+            }
+        } else {
+            constraints.indices.associateNotNull {
+                if (constraints.origins[it] != null && solution.size > it) {
+                    constraints.origins[it]!! to solution[it]
+                } else {
+                    null
+                }
+            }
+        }
+    }
+}
 
 data class QuadraticTetradModel(
     private val impl: BasicQuadraticTetradModel,
+    val tokensInSolver: List<Token>,
     override val objective: QuadraticObjective,
+    internal val dualOrigin: QuadraticTetradModelView? = null
 ) : QuadraticTetradModelView, Cloneable, Copyable<QuadraticTetradModel> {
     override val variables: List<Variable> by impl::variables
     override val constraints: QuadraticConstraint by impl::constraints
     override val name: String by impl::name
+    override val dual get() = dualOrigin != null
 
     companion object {
         private val logger = logger()
 
-        suspend operator fun invoke(model: QuadraticMechanismModel, concurrent: Boolean? = null): QuadraticTetradModel {
+        suspend operator fun invoke(
+            model: QuadraticMechanismModel,
+            fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
+            dumpConstraintsToBounds: Boolean? = null,
+            forceDumpBounds: Boolean? = null,
+            concurrent: Boolean? = null
+        ): QuadraticTetradModel {
             logger.trace("Creating QuadraticTetradModel for $model")
+            val tokensInSolver = if (fixedVariables.isNullOrEmpty()) {
+                model.tokens.tokensInSolver
+            } else {
+                model.tokens.tokensInSolverWithout(fixedVariables.keys)
+            }
+            val tokenIndexMap = tokensInSolver.withIndex().associate { (index, token) -> token to index }
+            val bounds = model.constraints
+                .flatMap { constraint ->
+                    if ((dumpConstraintsToBounds ?: true) && constraint.isBound()) {
+                        listOf(Quadruple(constraint, constraint.lhs.first().token1, constraint.sign, constraint.rhs))
+                    } else if (forceDumpBounds ?: false) {
+                        if (constraint.lhs.size == 1 && constraint.lhs.first().token2 == null) {
+                            listOf(Quadruple(constraint, constraint.lhs.first().token1, constraint.sign, constraint.rhs / constraint.lhs.first().coefficient))
+                        } else if (constraint.lhs.all { it.coefficient eq Flt64.one && it.token2 == null && it.token1.lowerBound!!.value.unwrap() geq Flt64.zero }
+                            && (constraint.sign == Sign.LessEqual || constraint.sign == Sign.Equal)
+                            && constraint.rhs eq Flt64.zero
+                        ) {
+                            constraint.lhs.map { Quadruple(constraint, it.token1, Sign.Equal, Flt64.zero) }
+                        } else if (constraint.lhs.all { it.coefficient eq -Flt64.one && it.token2 == null && it.token1.lowerBound!!.value.unwrap() geq Flt64.zero }
+                            && (constraint.sign == Sign.GreaterEqual || constraint.sign == Sign.Equal)
+                            && constraint.rhs eq Flt64.zero
+                        ) {
+                            constraint.lhs.map { Quadruple(constraint, it.token1, Sign.Equal, Flt64.zero) }
+                        } else {
+                            emptyList()
+                        }
+                    } else {
+                        emptyList()
+                    }
+                }.groupBy { it.second }
             val tetradModel = if (concurrent ?: model.concurrent) {
                 coroutineScope {
                     val variablePromise = async(Dispatchers.Default) {
-                        dumpVariables(model)
+                        dumpVariables(
+                            model = model,
+                            tokenIndexes = tokenIndexMap,
+                            bounds = bounds
+                        )
                     }
                     val constraintPromise = async(Dispatchers.Default) {
-                        dumpConstraintsAsync(model)
+                        dumpConstraintsAsync(
+                            model = model,
+                            tokenIndexes = tokenIndexMap,
+                            bounds = bounds,
+                            fixedVariables = fixedVariables
+                        )
                     }
                     val objectivePromise = async(Dispatchers.Default) {
-                        dumpObjectives(model)
+                        dumpObjectives(
+                            model = model,
+                            tokenIndexes = tokenIndexMap,
+                            fixedVariables = fixedVariables
+                        )
                     }
 
                     QuadraticTetradModel(
-                        BasicQuadraticTetradModel(
-                            variablePromise.await(),
-                            constraintPromise.await(),
-                            model.name
+                        impl = BasicQuadraticTetradModel(
+                            variables = variablePromise.await(),
+                            constraints = constraintPromise.await(),
+                            name = model.name
                         ),
-                        objectivePromise.await()
+                        tokensInSolver = tokensInSolver,
+                        objective = objectivePromise.await()
                     )
                 }
             } else {
                 QuadraticTetradModel(
-                    BasicQuadraticTetradModel(
-                        dumpVariables(model),
-                        dumpConstraints(model),
-                        model.name
+                    impl = BasicQuadraticTetradModel(
+                        variables = dumpVariables(
+                            model = model,
+                            tokenIndexes = tokenIndexMap,
+                            bounds = bounds
+                        ),
+                        constraints = dumpConstraints(
+                            model = model,
+                            tokenIndexes = tokenIndexMap,
+                            bounds = bounds,
+                            fixedVariables = fixedVariables
+                        ),
+                        name = model.name
                     ),
-                    dumpObjectives(model)
+                    tokensInSolver = tokensInSolver,
+                    objective = dumpObjectives(
+                        model = model,
+                        tokenIndexes = tokenIndexMap,
+                        fixedVariables = fixedVariables
+                    )
                 )
             }
 
@@ -243,104 +405,239 @@ data class QuadraticTetradModel(
             return tetradModel
         }
 
-        private fun dumpVariables(model: QuadraticMechanismModel): List<Variable> {
-            val tokens = model.tokens.tokens
-            val tokenIndexes = model.tokens.tokenIndexMap
-
+        private fun dumpVariables(
+            model: QuadraticMechanismModel,
+            tokenIndexes: Map<Token, Int>,
+            bounds: Map<Token, List<Quadruple<OriginQuadraticConstraint, Token, Sign, Flt64>>>
+        ): List<Variable> {
             val variables = ArrayList<Variable?>()
-            for (i in tokens.indices) {
+            for ((_, _) in tokenIndexes) {
                 variables.add(null)
             }
-            for (token in tokens) {
-                val index = tokenIndexes[token]!!
-                variables[index] = Variable(
-                    index,
-                    token.lowerBound!!.value.unwrap(),
-                    token.upperBound!!.value.unwrap(),
-                    token.variable.type,
-                    token.variable.name,
-                    token.result
+
+            for ((token, i) in tokenIndexes) {
+                val thisBounds = bounds[token] ?: emptyList()
+                val lb = thisBounds
+                    .filter { it.third == Sign.GreaterEqual || it.third == Sign.Equal }
+                    .maxOfOrNull { it.fourth }
+                val ub = thisBounds
+                    .filter { it.third == Sign.LessEqual || it.third == Sign.Equal }
+                    .minOfOrNull { it.fourth }
+                variables[i] = Variable(
+                    index = i,
+                    lowerBound = if (lb != null) {
+                        max(lb, token.lowerBound!!.value.unwrap())
+                    } else {
+                        token.lowerBound!!.value.unwrap()
+                    },
+                    upperBound = if (ub != null) {
+                        min(ub, token.upperBound!!.value.unwrap())
+                    } else {
+                        token.upperBound!!.value.unwrap()
+                    },
+                    type = token.variable.type,
+                    origin = token.variable,
+                    dualOrigin = null,
+                    slack = null,
+                    name = token.variable.name,
+                    initialResult = token.result
                 )
             }
             return variables.map { it!! }
         }
 
-        private fun dumpConstraints(model: QuadraticMechanismModel): QuadraticConstraint {
-            val tokenIndexes = model.tokens.tokenIndexMap
+        private fun dumpConstraints(
+            model: QuadraticMechanismModel,
+            tokenIndexes: Map<Token, Int>,
+            bounds: Map<Token, List<Quadruple<OriginQuadraticConstraint, Token, Sign, Flt64>>>,
+            fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null
+        ): QuadraticConstraint {
+            val boundConstraints = bounds.values.flatMap { thisBounds ->
+                thisBounds.map { it.first }
+            }.distinct().toSet()
+            val notBoundConstraints = model.constraints.filter { !boundConstraints.contains(it) }
 
-            val constraints = model.constraints.withIndex().map { (index, constraint) ->
+            val constraints = notBoundConstraints.withIndex().map { (index, constraint) ->
                 val lhs = ArrayList<QuadraticConstraintCell>()
+                var rhs = constraint.rhs
                 for (cell in constraint.lhs) {
-                    val temp = cell as QuadraticCell
-                    lhs.add(
-                        QuadraticConstraintCell(
-                            index,
-                            tokenIndexes[temp.token1]!!,
-                            temp.token2?.let { tokenIndexes[it]!! },
-                            temp.coefficient.let {
-                                if (it.isInfinity()) {
-                                    Flt64.decimalPrecision.reciprocal()
-                                } else if (it.isNegativeInfinity()) {
-                                    -Flt64.decimalPrecision.reciprocal()
-                                } else {
-                                    it
+                    if (tokenIndexes.containsKey(cell.token1) && (cell.token2 == null || tokenIndexes.containsKey(cell.token2))) {
+                        lhs.add(
+                            QuadraticConstraintCell(
+                                rowIndex = index,
+                                colIndex1 = tokenIndexes[cell.token1]!!,
+                                colIndex2 = cell.token2?.let { tokenIndexes[it]!! },
+                                coefficient = cell.coefficient.let { coefficient ->
+                                    if (coefficient.isInfinity() || coefficient geq Flt64.decimalPrecision.reciprocal()) {
+                                        Flt64.decimalPrecision.reciprocal()
+                                    } else if (coefficient.isNegativeInfinity() || coefficient leq -Flt64.decimalPrecision.reciprocal()) {
+                                        -Flt64.decimalPrecision.reciprocal()
+                                    } else {
+                                        coefficient
+                                    }
                                 }
-                            }
+                            )
                         )
-                    )
+                    } else if (tokenIndexes.containsKey(cell.token1)) {
+                        assert(cell.token2 != null)
+                        lhs.add(
+                            QuadraticConstraintCell(
+                                rowIndex = index,
+                                colIndex1 = tokenIndexes[cell.token1]!!,
+                                colIndex2 = null,
+                                coefficient = cell.coefficient.let {
+                                    val coefficient = it * (fixedVariables?.get(cell.token2!!.variable) ?: Flt64.one)
+                                    if (coefficient.isInfinity() || coefficient geq Flt64.decimalPrecision.reciprocal()) {
+                                        Flt64.decimalPrecision.reciprocal()
+                                    } else if (coefficient.isNegativeInfinity() || coefficient leq -Flt64.decimalPrecision.reciprocal()) {
+                                        -Flt64.decimalPrecision.reciprocal()
+                                    } else {
+                                        coefficient
+                                    }
+                                }
+                            )
+                        )
+                    } else if (tokenIndexes.containsKey(cell.token2)) {
+                        assert(cell.token2 != null)
+                        lhs.add(
+                            QuadraticConstraintCell(
+                                rowIndex = index,
+                                colIndex1 = tokenIndexes[cell.token2]!!,
+                                colIndex2 = null,
+                                coefficient = cell.coefficient.let {
+                                    val coefficient = it * (fixedVariables?.get(cell.token1.variable) ?: Flt64.one)
+                                    if (coefficient.isInfinity() || coefficient geq Flt64.decimalPrecision.reciprocal()) {
+                                        Flt64.decimalPrecision.reciprocal()
+                                    } else if (coefficient.isNegativeInfinity() || coefficient leq -Flt64.decimalPrecision.reciprocal()) {
+                                        -Flt64.decimalPrecision.reciprocal()
+                                    } else {
+                                        coefficient
+                                    }
+                                }
+                            )
+                        )
+                    } else {
+                        rhs -= cell.coefficient * (fixedVariables?.get(cell.token1.variable) ?: Flt64.one) * (fixedVariables?.get(cell.token2?.variable) ?: Flt64.one)
+                    }
                 }
-                lhs
+                lhs to rhs
             }
 
             val lhs = ArrayList<List<QuadraticConstraintCell>>()
             val signs = ArrayList<Sign>()
             val rhs = ArrayList<Flt64>()
             val names = ArrayList<String>()
-            for ((index, constraint) in model.constraints.withIndex()) {
-                lhs.add(constraints[index])
+            val sources = ArrayList<ConstraintSource>()
+            val origins = ArrayList<OriginQuadraticConstraint>()
+            val froms = ArrayList<Pair<IntermediateSymbol, Boolean>?>()
+            for ((index, constraint) in notBoundConstraints.withIndex()) {
+                lhs.add(constraints[index].first)
                 signs.add(constraint.sign)
-                rhs.add(constraint.rhs)
+                rhs.add(constraints[index].second)
                 names.add(constraint.name)
+                sources.add(ConstraintSource.Origin)
+                origins.add(constraint)
+                froms.add(constraint.from)
             }
-            return QuadraticConstraint(lhs, signs, rhs, names)
+            return QuadraticConstraint(
+                lhs = lhs,
+                signs = signs,
+                rhs = rhs,
+                names = names,
+                sources = sources,
+                origins = origins,
+                froms = froms
+            )
         }
 
-        private suspend fun dumpConstraintsAsync(model: QuadraticMechanismModel): QuadraticConstraint {
-            val tokenIndexes = model.tokens.tokenIndexMap
-            return if (Runtime.getRuntime().availableProcessors() > 2 && model.constraints.size > Runtime.getRuntime().availableProcessors()) {
-                val factor = Flt64(model.constraints.size / (Runtime.getRuntime().availableProcessors() - 1)).lg()!!.floor().toUInt64().toInt()
+        private suspend fun dumpConstraintsAsync(
+            model: QuadraticMechanismModel,
+            tokenIndexes: Map<Token, Int>,
+            bounds: Map<Token, List<Quadruple<OriginQuadraticConstraint, Token, Sign, Flt64>>>,
+            fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null
+        ): QuadraticConstraint {
+            val boundConstraints = bounds.values.flatMap { thisBounds ->
+                thisBounds.map { it.first }
+            }.distinct().toSet()
+            val notBoundConstraints = model.constraints.filter { !boundConstraints.contains(it) }
+
+            return if (Runtime.getRuntime().availableProcessors() > 2 && notBoundConstraints.size > Runtime.getRuntime().availableProcessors()) {
+                val factor = Flt64(notBoundConstraints.size / (Runtime.getRuntime().availableProcessors() - 1)).lg()!!.floor().toUInt64().toInt()
                 val segment = if (factor >= 1) {
                     pow(UInt64.ten, factor).toInt()
                 } else {
                     10
                 }
                 coroutineScope {
-                    val constraintPromises = (0..(model.constraints.size / segment)).map {
+                    val constraintPromises = (0..(notBoundConstraints.size / segment)).map {
                         async(Dispatchers.Default) {
-                            val constraints = ArrayList<List<QuadraticConstraintCell>>()
-                            for (i in (it * segment) until minOf(model.constraints.size, (it + 1) * segment)) {
-                                val constraint = model.constraints[i]
+                            val constraints = ArrayList<Pair<List<QuadraticConstraintCell>, Flt64>>()
+                            for (i in (it * segment) until minOf(notBoundConstraints.size, (it + 1) * segment)) {
+                                val constraint = notBoundConstraints[i]
                                 val lhs = ArrayList<QuadraticConstraintCell>()
+                                var rhs = constraint.rhs
                                 for (cell in constraint.lhs) {
-                                    val temp = cell as QuadraticCell
-                                    lhs.add(
-                                        QuadraticConstraintCell(
-                                            rowIndex = i,
-                                            colIndex1 = tokenIndexes[temp.token1]!!,
-                                            colIndex2 = temp.token2?.let { token2 -> tokenIndexes[token2]!! },
-                                            coefficient = temp.coefficient.let { coefficient ->
-                                                if (coefficient.isInfinity()) {
-                                                    Flt64.decimalPrecision.reciprocal()
-                                                } else if (coefficient.isNegativeInfinity()) {
-                                                    -Flt64.decimalPrecision.reciprocal()
-                                                } else {
-                                                    coefficient
+                                    if (tokenIndexes.containsKey(cell.token1) && (cell.token2 == null || tokenIndexes.containsKey(cell.token2))) {
+                                        lhs.add(
+                                            QuadraticConstraintCell(
+                                                rowIndex = i,
+                                                colIndex1 = tokenIndexes[cell.token1]!!,
+                                                colIndex2 = cell.token2?.let { token -> tokenIndexes[token]!! },
+                                                coefficient = cell.coefficient.let { coefficient ->
+                                                    if (coefficient.isInfinity() || coefficient geq Flt64.decimalPrecision.reciprocal()) {
+                                                        Flt64.decimalPrecision.reciprocal()
+                                                    } else if (coefficient.isNegativeInfinity() || coefficient leq -Flt64.decimalPrecision.reciprocal()) {
+                                                        -Flt64.decimalPrecision.reciprocal()
+                                                    } else {
+                                                        coefficient
+                                                    }
                                                 }
-                                            }
+                                            )
                                         )
-                                    )
+                                    } else if (tokenIndexes.containsKey(cell.token1)) {
+                                        assert(cell.token2 != null)
+                                        lhs.add(
+                                            QuadraticConstraintCell(
+                                                rowIndex = i,
+                                                colIndex1 = tokenIndexes[cell.token1]!!,
+                                                colIndex2 = null,
+                                                coefficient = cell.coefficient.let { originCoefficient ->
+                                                    val coefficient = originCoefficient * (fixedVariables?.get(cell.token2!!.variable) ?: Flt64.one)
+                                                    if (coefficient.isInfinity() || coefficient geq Flt64.decimalPrecision.reciprocal()) {
+                                                        Flt64.decimalPrecision.reciprocal()
+                                                    } else if (coefficient.isNegativeInfinity() || coefficient leq -Flt64.decimalPrecision.reciprocal()) {
+                                                        -Flt64.decimalPrecision.reciprocal()
+                                                    } else {
+                                                        coefficient
+                                                    }
+                                                }
+                                            )
+                                        )
+                                    } else if (tokenIndexes.containsKey(cell.token2)) {
+                                        assert(cell.token2 != null)
+                                        lhs.add(
+                                            QuadraticConstraintCell(
+                                                rowIndex = i,
+                                                colIndex1 = tokenIndexes[cell.token2]!!,
+                                                colIndex2 = null,
+                                                coefficient = cell.coefficient.let { originCoefficient ->
+                                                    val coefficient = originCoefficient * (fixedVariables?.get(cell.token1.variable) ?: Flt64.one)
+                                                    if (coefficient.isInfinity() || coefficient geq Flt64.decimalPrecision.reciprocal()) {
+                                                        Flt64.decimalPrecision.reciprocal()
+                                                    } else if (coefficient.isNegativeInfinity() || coefficient leq -Flt64.decimalPrecision.reciprocal()) {
+                                                        -Flt64.decimalPrecision.reciprocal()
+                                                    } else {
+                                                        coefficient
+                                                    }
+                                                }
+                                            )
+                                        )
+                                    } else {
+                                        rhs -= cell.coefficient * (fixedVariables?.get(cell.token1.variable) ?: Flt64.one) * (fixedVariables?.get(cell.token2?.variable)
+                                            ?: Flt64.one)
+                                    }
                                 }
-                                constraints.add(lhs)
+                                constraints.add(lhs to rhs)
                             }
                             if (memoryUseOver()) {
                                 System.gc()
@@ -353,93 +650,197 @@ data class QuadraticTetradModel(
                     val signs = ArrayList<Sign>()
                     val rhs = ArrayList<Flt64>()
                     val names = ArrayList<String>()
-                    for ((index, constraint) in model.constraints.withIndex()) {
-                        lhs.add(constraintPromises[index / segment].await()[index % segment])
+                    val sources = ArrayList<ConstraintSource>()
+                    val origins = ArrayList<OriginQuadraticConstraint>()
+                    val froms = ArrayList<Pair<IntermediateSymbol, Boolean>?>()
+                    for ((index, constraint) in notBoundConstraints.withIndex()) {
+                        val (thisLhs, thisRhs) = constraintPromises[index / segment].await()[index % segment]
+                        lhs.add(thisLhs)
                         signs.add(constraint.sign)
-                        rhs.add(constraint.rhs)
+                        rhs.add(thisRhs)
                         names.add(constraint.name)
+                        sources.add(ConstraintSource.Origin)
+                        origins.add(constraint)
+                        froms.add(constraint.from)
                     }
                     System.gc()
-                    QuadraticConstraint(lhs, signs, rhs, names)
+                    QuadraticConstraint(
+                        lhs = lhs,
+                        signs = signs,
+                        rhs = rhs,
+                        names = names,
+                        sources = sources,
+                        origins = origins,
+                        froms = froms
+                    )
                 }
             } else {
                 val lhs = ArrayList<List<QuadraticConstraintCell>>()
                 val signs = ArrayList<Sign>()
                 val rhs = ArrayList<Flt64>()
                 val names = ArrayList<String>()
-
-                for ((index, constraint) in model.constraints.withIndex()) {
+                val sources = ArrayList<ConstraintSource>()
+                val origins = ArrayList<OriginQuadraticConstraint>()
+                val froms = ArrayList<Pair<IntermediateSymbol, Boolean>?>()
+                for ((index, constraint) in notBoundConstraints.withIndex()) {
                     val thisLhs = ArrayList<QuadraticConstraintCell>()
                     for (cell in constraint.lhs) {
-                        val temp = cell as QuadraticCell
-                        thisLhs.add(
-                            QuadraticConstraintCell(
-                                rowIndex = index,
-                                colIndex1 = tokenIndexes[temp.token1]!!,
-                                colIndex2 = temp.token2?.let { tokenIndexes[it]!! },
-                                coefficient = temp.coefficient.let {
-                                    if (it.isInfinity()) {
-                                        Flt64.decimalPrecision.reciprocal()
-                                    } else if (it.isNegativeInfinity()) {
-                                        -Flt64.decimalPrecision.reciprocal()
-                                    } else {
-                                        it
+                        if (tokenIndexes.containsKey(cell.token1) && (cell.token2 == null || tokenIndexes.containsKey(cell.token2))) {
+                            thisLhs.add(
+                                QuadraticConstraintCell(
+                                    rowIndex = index,
+                                    colIndex1 = tokenIndexes[cell.token1]!!,
+                                    colIndex2 = cell.token2?.let { token -> tokenIndexes[token]!! },
+                                    coefficient = cell.coefficient.let { coefficient ->
+                                        if (coefficient.isInfinity() || coefficient geq Flt64.decimalPrecision.reciprocal()) {
+                                            Flt64.decimalPrecision.reciprocal()
+                                        } else if (coefficient.isNegativeInfinity() || coefficient leq -Flt64.decimalPrecision.reciprocal()) {
+                                            -Flt64.decimalPrecision.reciprocal()
+                                        } else {
+                                            coefficient
+                                        }
                                     }
-                                }
+                                )
                             )
-                        )
+                        } else if (tokenIndexes.containsKey(cell.token1)) {
+                            assert(cell.token2 != null)
+                            thisLhs.add(
+                                QuadraticConstraintCell(
+                                    rowIndex = index,
+                                    colIndex1 = tokenIndexes[cell.token1]!!,
+                                    colIndex2 = null,
+                                    coefficient = cell.coefficient.let { originCoefficient ->
+                                        val coefficient = originCoefficient * (fixedVariables?.get(cell.token2!!.variable) ?: Flt64.one)
+                                        if (coefficient.isInfinity() || coefficient geq Flt64.decimalPrecision.reciprocal()) {
+                                            Flt64.decimalPrecision.reciprocal()
+                                        } else if (coefficient.isNegativeInfinity() || coefficient leq -Flt64.decimalPrecision.reciprocal()) {
+                                            -Flt64.decimalPrecision.reciprocal()
+                                        } else {
+                                            coefficient
+                                        }
+                                    }
+                                )
+                            )
+                        } else if (tokenIndexes.containsKey(cell.token2)) {
+                            assert(cell.token2 != null)
+                            thisLhs.add(
+                                QuadraticConstraintCell(
+                                    rowIndex = index,
+                                    colIndex1 = tokenIndexes[cell.token2]!!,
+                                    colIndex2 = null,
+                                    coefficient = cell.coefficient.let { originCoefficient ->
+                                        val coefficient = originCoefficient * (fixedVariables?.get(cell.token1.variable) ?: Flt64.one)
+                                        if (coefficient.isInfinity() || coefficient geq Flt64.decimalPrecision.reciprocal()) {
+                                            Flt64.decimalPrecision.reciprocal()
+                                        } else if (coefficient.isNegativeInfinity() || coefficient leq -Flt64.decimalPrecision.reciprocal()) {
+                                            -Flt64.decimalPrecision.reciprocal()
+                                        } else {
+                                            coefficient
+                                        }
+                                    }
+                                )
+                            )
+                        } else {
+                            rhs -= cell.coefficient * (fixedVariables?.get(cell.token1.variable) ?: Flt64.one) * (fixedVariables?.get(cell.token2?.variable)
+                                ?: Flt64.one)
+                        }
                     }
                     lhs.add(thisLhs)
                     signs.add(constraint.sign)
                     rhs.add(constraint.rhs)
                     names.add(constraint.name)
+                    sources.add(ConstraintSource.Origin)
+                    origins.add(constraint)
+                    froms.add(constraint.from)
                 }
                 System.gc()
-                QuadraticConstraint(lhs, signs, rhs, names)
+                QuadraticConstraint(
+                    lhs = lhs,
+                    signs = signs,
+                    rhs = rhs,
+                    names = names,
+                    sources = sources,
+                    origins = origins,
+                    froms = froms
+                )
             }
         }
 
-        private fun dumpObjectives(model: QuadraticMechanismModel): QuadraticObjective {
-            val tokens = model.tokens.tokens
-            val tokenIndexes = model.tokens.tokenIndexMap
-
+        private fun dumpObjectives(
+            model: QuadraticMechanismModel,
+            tokenIndexes: Map<Token, Int>,
+            fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null
+        ): QuadraticObjective {
             val objectiveCategory = if (model.objectFunction.subObjects.size == 1) {
                 model.objectFunction.subObjects.first().category
             } else {
                 model.objectFunction.category
             }
 
-            val coefficient = tokens.indices.map { HashMap<Int?, Flt64>() }.toMutableList()
+            val coefficient = (0 until tokenIndexes.size).map { HashMap<Int?, Flt64>() }.toMutableList()
+            var constant = Flt64.zero
             for (subObject in model.objectFunction.subObjects) {
                 if (subObject.category == objectiveCategory) {
                     for (cell in subObject.cells) {
-                        val temp = cell as QuadraticCell
-                        val value = coefficient[tokenIndexes[temp.token1]!!][temp.token2?.let { tokenIndexes[it]!! }] ?: Flt64.zero
-                        coefficient[tokenIndexes[temp.token1]!!][temp.token2?.let { tokenIndexes[it]!! }] = value + temp.coefficient
+                        if (fixedVariables?.containsKey(cell.token1.variable) == true && (cell.token2 == null || fixedVariables[cell.token2.variable] != null)) {
+                            constant += cell.coefficient * fixedVariables[cell.token1.variable]!! * (fixedVariables[cell.token2?.variable] ?: Flt64.one)
+                        } else if (fixedVariables?.containsKey(cell.token1.variable) == true) {
+                            assert(cell.token2 != null)
+                            val index = tokenIndexes[cell.token2] ?: continue
+                            coefficient[index][null] = (coefficient[index][null] ?: Flt64.zero) + cell.coefficient * fixedVariables[cell.token1.variable]!!
+                        } else if (fixedVariables?.containsKey(cell.token2?.variable) == true) {
+                            val index = tokenIndexes[cell.token1] ?: continue
+                            coefficient[index][null] = (coefficient[index][null] ?: Flt64.zero) + cell.coefficient * fixedVariables[cell.token2!!.variable]!!
+                        } else {
+                            val index = tokenIndexes[cell.token1] ?: continue
+                            val index2 = if (cell.token2 != null) {
+                                tokenIndexes[cell.token2] ?: continue
+                            } else {
+                                null
+                            }
+                            coefficient[index][index2] = (coefficient[index][index2] ?: Flt64.zero) + cell.coefficient
+                        }
                     }
+                    constant += subObject.constant
                 } else {
                     for (cell in subObject.cells) {
-                        val temp = cell as QuadraticCell
-                        val value = coefficient[tokenIndexes[temp.token1]!!][temp.token2?.let { tokenIndexes[it]!! }] ?: Flt64.zero
-                        coefficient[tokenIndexes[temp.token1]!!][temp.token2?.let { tokenIndexes[it]!! }] = value - temp.coefficient
+                        if (fixedVariables?.containsKey(cell.token1.variable) == true && (cell.token2 == null || fixedVariables[cell.token2.variable] != null)) {
+                            constant -= cell.coefficient * fixedVariables[cell.token1.variable]!! * (fixedVariables[cell.token2?.variable] ?: Flt64.one)
+                        } else if (fixedVariables?.containsKey(cell.token1.variable) == true) {
+                            assert(cell.token2 != null)
+                            val index = tokenIndexes[cell.token2] ?: continue
+                            coefficient[index][null] = (coefficient[index][null] ?: Flt64.zero) - cell.coefficient * fixedVariables[cell.token1.variable]!!
+                        } else if (fixedVariables?.containsKey(cell.token2?.variable) == true) {
+                            val index = tokenIndexes[cell.token1] ?: continue
+                            coefficient[index][null] = (coefficient[index][null] ?: Flt64.zero) - cell.coefficient * fixedVariables[cell.token2!!.variable]!!
+                        } else {
+                            val index = tokenIndexes[cell.token1] ?: continue
+                            val index2 = if (cell.token2 != null) {
+                                tokenIndexes[cell.token2] ?: continue
+                            } else {
+                                null
+                            }
+                            coefficient[index][index2] = (coefficient[index][index2] ?: Flt64.zero) + cell.coefficient
+                        }
                     }
+                    constant -= subObject.constant
                 }
             }
 
             val objective = ArrayList<QuadraticObjectiveCell>()
-            for (i in tokens.indices) {
+            for ((_, i) in tokenIndexes) {
                 for ((j, value) in coefficient[i]) {
                     objective.add(
                         QuadraticObjectiveCell(
-                            i,
-                            j,
-                            value.let {
-                                if (it.isInfinity()) {
+                            colIndex1 = i,
+                            colIndex2 = j,
+                            coefficient = value.let { coefficient ->
+                                if (coefficient.isInfinity() || coefficient geq Flt64.decimalPrecision.reciprocal()) {
                                     Flt64.decimalPrecision.reciprocal()
-                                } else if (it.isNegativeInfinity()) {
+                                } else if (coefficient.isNegativeInfinity() || coefficient leq -Flt64.decimalPrecision.reciprocal()) {
                                     -Flt64.decimalPrecision.reciprocal()
                                 } else {
-                                    it
+                                    coefficient
                                 }
                             }
                         )
@@ -450,25 +851,202 @@ data class QuadraticTetradModel(
         }
     }
 
-    override fun copy() = QuadraticTetradModel(impl.copy(), objective.copy())
+    override fun copy() = QuadraticTetradModel(
+        impl = impl.copy(),
+        tokensInSolver = tokensInSolver,
+        objective = objective.copy()
+    )
     override fun clone() = copy()
 
-    fun normalized() {
-        impl.normalized()
-    }
-
-    fun linearRelax() {
+    override fun linearRelax(): QuadraticTetradModel {
         impl.linearRelax()
+        return this
     }
 
-    fun normalize() {
-        impl.normalize()
+    override fun linearRelaxed(): QuadraticTetradModel {
+        return QuadraticTetradModel(
+            impl = impl.linearRelaxed(),
+            tokensInSolver = tokensInSolver,
+            objective = objective.copy()
+        )
     }
 
-    override fun exportLP(writer: FileWriter): Try {
+    suspend fun dual(): QuadraticTetradModel {
+        TODO("not implemented yet")
+    }
+
+    override suspend fun farkasDual(): QuadraticTetradModel {
+        TODO("not implemented yet")
+    }
+
+    override fun feasibility(): QuadraticTetradModel {
+        var colIndex = this.variables.size
+        val slackVariables = ArrayList<Variable>()
+        val artifactVariables = ArrayList<Variable>()
+        val constraints = QuadraticConstraint(
+            lhs = this.constraints.indices.map {
+                when (if (this.constraints.rhs[it] ls Flt64.zero) {
+                    this.constraints.signs[it].reverse
+                } else {
+                    this.constraints.signs[it]
+                }) {
+                    Sign.LessEqual -> {
+                        val slack = Variable(
+                            index = colIndex,
+                            lowerBound = Flt64.zero,
+                            upperBound = Flt64.infinity,
+                            type = Continuous,
+                            origin = null,
+                            dualOrigin = null,
+                            slack = VariableSlack(
+                                constraint = this.constraints.origins[it]
+                            ),
+                            name = "${this.constraints.names[it].ifEmpty { "cons${it}" }}_slack",
+                            initialResult = Flt64.zero
+                        )
+                        colIndex += 1
+
+                        slackVariables.add(slack)
+                        if (this.constraints.rhs[it] ls Flt64.zero) {
+                            this.constraints.lhs[it].map { cell -> -cell }
+                        } else {
+                            this.constraints.lhs[it]
+                        } + listOf(
+                            QuadraticConstraintCell(
+                                rowIndex = it,
+                                colIndex1 = slack.index,
+                                colIndex2 = null,
+                                coefficient = Flt64.one
+                            )
+                        )
+                    }
+
+                    Sign.GreaterEqual -> {
+                        val slack = Variable(
+                            colIndex,
+                            lowerBound = Flt64.zero,
+                            upperBound = Flt64.infinity,
+                            type = Continuous,
+                            origin = null,
+                            dualOrigin = null,
+                            slack = VariableSlack(
+                                constraint = this.constraints.origins[it]
+                            ),
+                            name = "${this.constraints.names[it].ifEmpty { "cons${it}" }}_slack",
+                            initialResult = Flt64.zero
+                        )
+                        colIndex += 1
+                        val artifact = Variable(
+                            colIndex,
+                            lowerBound = Flt64.zero,
+                            upperBound = Flt64.infinity,
+                            type = Continuous,
+                            origin = null,
+                            dualOrigin = null,
+                            slack = null,
+                            name = "${this.constraints.names[it].ifEmpty { "cons${it}" }}_artifact",
+                            initialResult = Flt64.zero
+                        )
+                        colIndex += 1
+
+                        slackVariables.add(slack)
+                        artifactVariables.add(artifact)
+                        if (this.constraints.rhs[it] ls Flt64.zero) {
+                            this.constraints.lhs[it].map { cell -> -cell }
+                        } else {
+                            this.constraints.lhs[it]
+                        } + listOf(
+                            QuadraticConstraintCell(
+                                rowIndex = it,
+                                colIndex1 = slack.index,
+                                colIndex2 = null,
+                                coefficient = -Flt64.one
+                            ),
+                            QuadraticConstraintCell(
+                                rowIndex = it,
+                                colIndex1 = artifact.index,
+                                colIndex2 = null,
+                                coefficient = Flt64.one
+                            )
+                        )
+                    }
+
+                    Sign.Equal -> {
+                        val artifact = Variable(
+                            colIndex,
+                            lowerBound = Flt64.zero,
+                            upperBound = Flt64.infinity,
+                            type = Continuous,
+                            origin = null,
+                            dualOrigin = null,
+                            slack = null,
+                            name = "${this.constraints.names[it].ifEmpty { "cons${it}" }}_artifact",
+                            initialResult = Flt64.zero
+                        )
+                        colIndex += 1
+
+                        artifactVariables.add(artifact)
+                        if (this.constraints.rhs[it] ls Flt64.zero) {
+                            this.constraints.lhs[it].map { cell -> -cell }
+                        } else {
+                            this.constraints.lhs[it]
+                        } + listOf(
+                            QuadraticConstraintCell(
+                                rowIndex = it,
+                                colIndex1 = artifact.index,
+                                colIndex2 = null,
+                                coefficient = Flt64.one
+                            )
+                        )
+                    }
+                }
+            },
+            signs = this.constraints.indices.map {
+                Sign.Equal
+            },
+            rhs = this.constraints.indices.map {
+                this.constraints.rhs[it]
+            },
+            names = this.constraints.indices.map {
+                this.constraints.names[it].ifEmpty { "cons${it}" }
+            },
+            sources = this.constraints.indices.map {
+                ConstraintSource.Feasibility
+            },
+            origins = this.constraints.indices.map {
+                this.constraints.origins[it]
+            },
+            froms = this.constraints.indices.map {
+                this.constraints.froms[it]
+            }
+        )
+        val objective = artifactVariables.map {
+            QuadraticObjectiveCell(
+                colIndex1 = it.index,
+                colIndex2 = null,
+                coefficient = Flt64.one
+            )
+        }
+
+        return QuadraticTetradModel(
+            impl = BasicQuadraticTetradModel(
+                variables = this.variables + (slackVariables + artifactVariables).sortedBy { it.index },
+                constraints = constraints,
+                name = "$name-feasibility"
+            ),
+            tokensInSolver = tokensInSolver,
+            objective = QuadraticObjective(ObjectCategory.Minimum, objective)
+        )
+    }
+
+    override fun elastic(): QuadraticTetradModel {
+        TODO("not implemented yet")
+    }
+
+    override fun exportLP(writer: OutputStreamWriter): Try {
         writer.write("${objective.category}\n")
         var i = 0
-        for (cell in objective.obj) {
+        for (cell in objective.objective) {
             if (cell.coefficient eq Flt64.zero) {
                 continue
             }
@@ -504,6 +1082,49 @@ data class QuadraticTetradModel(
             is Ok -> {
                 ok
             }
+        }
+    }
+
+    override fun close() {
+        dualOrigin?.close()
+        super.close()
+    }
+
+    override fun toString(): String {
+        return name
+    }
+}
+
+suspend fun solveDual(
+    model: QuadraticTetradModel,
+    solver: QuadraticSolver
+): Ret<QuadraticDualSolution> {
+    val dualModel = model.dual()
+
+    return when (val result = solver(dualModel)) {
+        is Ok -> {
+            Ok(dualModel.tidyDualSolution(result.value.solution))
+        }
+
+        is Failed -> {
+            Failed(result.error)
+        }
+    }
+}
+
+suspend fun solveFarkasDual(
+    model: QuadraticTetradModelView,
+    solver: QuadraticSolver
+): Ret<QuadraticDualSolution> {
+    val dualModel = model.farkasDual()
+
+    return when (val result = solver(dualModel)) {
+        is Ok -> {
+            Ok(dualModel.tidyDualSolution(result.value.solution))
+        }
+
+        is Failed -> {
+            Failed(result.error)
         }
     }
 }

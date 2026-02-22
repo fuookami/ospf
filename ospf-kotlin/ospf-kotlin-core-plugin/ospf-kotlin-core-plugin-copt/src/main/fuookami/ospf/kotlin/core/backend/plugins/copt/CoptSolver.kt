@@ -7,12 +7,12 @@ import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.backend.solver.output.*
 
-abstract class CoptSolver {
+abstract class CoptSolver : AutoCloseable {
     protected lateinit var env: Envr
     protected lateinit var coptModel: Model
     protected lateinit var status: SolverStatus
 
-    protected fun finalize() {
+    override fun close() {
         coptModel.dispose()
         env.dispose()
     }
@@ -106,14 +106,14 @@ abstract class CoptSolver {
                 }
 
                 COPT.Status.InfeasibleOrUnbounded.value -> {
-                    SolverStatus.Infeasible
+                    SolverStatus.InfeasibleOrUnbounded
                 }
 
                 else -> {
                     if (coptModel.get(COPT.IntAttr.PoolSols) > 0) {
                         SolverStatus.Feasible
                     } else {
-                        SolverStatus.Infeasible
+                        SolverStatus.SolvingException
                     }
                 }
             }

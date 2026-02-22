@@ -1,12 +1,12 @@
 # 最小值（下界、下确界）
 
-## 形式
+## 函数形式
 
 $$
 y = \min(x_{1}, \, x_{2}, \, \cdots, \, x_{n})
 $$
 
-## 常量
+## 常量定义
 
 $$
 M = \max_{i \in P}(\max(|x_{i}|))
@@ -14,9 +14,9 @@ $$
 
 ## 额外变量
 
-$maxmin \in R$ ：下界。
+$\text{minmax} \in \mathbb{R}$：下界。
 
-$u_{i} \in \{0, \, 1 \}$ ：下确界是 $x_{i}$ 的标志位。
+$u_{i} \in \{0, \, 1 \}$：表示下确界是否是 $x_{i}$ 的标志位。
 
 ## 导出符号
 
@@ -27,19 +27,19 @@ $$
 ## 数学模型
 
 $$
-s.t. \quad maxmin \leq x_{i}, \; \forall i \in P
+\text{s.t.} \quad maxmin \leq x_{i}, \; \forall i \in P
 $$
 
-上述模型约束了 $y$ 为 $x_{i}$ 的下界，可用于最大值目标函数。如果需要精确 $y$ 用于约束或者最小值目标函数，会额外追加以下数学模型以确保 $y$ 取到下确界：
+上述模型约束了 $y$ 为 $x_{i}$ 的下界，适用于最大值目标函数。若需在约束条件或最小值目标函数中使用精确的 $y$ 值，需额外追加以下数学模型以确保 $y$ 取到下确界：
 
 $$
 \begin{align}
-s.t. \quad & maxmin & \geq & \, x_{i} - M \cdot (1 - u_{i}), & \; \forall i \in P \\ \; \\
+\text{s.t.} \quad & maxmin & \geq & \, x_{i} - M \cdot (1 - u_{i}), & \; \forall i \in P \\ \; \\
 & \sum_{i \in P} u_{i} & = & \, 1
 \end{align}
 $$
 
-## 样例
+## 代码示例
 
 ::: code-group
 
@@ -98,10 +98,10 @@ assert(result4.value!!.obj eq Flt64.five)
 
 :::
 
-完整实现请参考：
+ĺŽć´ĺŽç°čŻˇĺčďź
 
 - [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/Min.kt)
 
-完整样例请参考：
+ĺŽć´ć ˇäžčŻˇĺčďź
 
 - [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/MinTest.kt)

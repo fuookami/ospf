@@ -25,7 +25,7 @@ class TaskStepConflictConstraint<
         for ((i, tasks) in conflictTaskGroup.withIndex()) {
             when (val result = model.addConstraint(
                 sum(tasks.map { t -> compilation.taskCompilation[t] }) leq UInt64.one,
-                "task_step_conflict_$i"
+                name = "task_step_conflict_$i"
             )) {
                 is Ok -> {}
 
@@ -45,7 +45,7 @@ class TaskStepConflictConstraint<
     override fun refresh(
         map: AbstractGanttSchedulingShadowPriceMap<Args, E, A>,
         model: AbstractLinearMetaModel,
-        shadowPrices: List<Flt64>
+        shadowPrices: MetaDualSolution
     ): Try {
         TODO("not implement yet")
     }

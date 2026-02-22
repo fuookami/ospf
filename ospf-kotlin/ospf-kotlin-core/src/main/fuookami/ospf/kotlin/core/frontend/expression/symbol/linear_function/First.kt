@@ -15,12 +15,43 @@ import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 
 class FirstFunction(
     private val polynomials: List<AbstractLinearPolynomial<*>>,
+    override val parent: IntermediateSymbol? = null,
+    args: Any? = null,
     override var name: String,
     override var displayName: String? = null
-) : LinearLogicFunctionSymbol {
+) : LinearLogicFunctionSymbol() {
+    companion object {
+        operator fun invoke(
+            polynomials: List<ToLinearPolynomial<*>>,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): FirstFunction {
+            return FirstFunction(
+                polynomials = polynomials.map { it.toLinearPolynomial() },
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+
+    internal val _args = args
+    override val args get() = _args ?: parent?.args
+    
     private val bins: SymbolCombination<BinaryzationFunction, Shape1> by lazy {
-        SymbolCombination("${name}_bin", Shape1(polynomials.size)) { i, _ ->
-            BinaryzationFunction(polynomials[i], name = "${name}_bin_$i")
+        SymbolCombination(
+            name = "${name}_bin",
+            shape = Shape1(polynomials.size)
+        ) { i, _ ->
+            BinaryzationFunction(
+                x = polynomials[i],
+                parent = parent ?: this,
+                args = parent?.args ?: args,
+                name = "${name}_bin_$i"
+            )
         }
     }
 
@@ -80,13 +111,17 @@ class FirstFunction(
         polyY.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         for (polynomial in polynomials) {
             polynomial.cells
         }
         tokenTable.cache(
             bins.mapNotNull {
-                val value = it.prepare(tokenTable)
+                val value = if (values.isNullOrEmpty()) {
+                    it.prepare(null, tokenTable)
+                } else {
+                    it.prepare(values, tokenTable)
+                }
                 if (value != null) {
                     (it as IntermediateSymbol) to value
                 } else {
@@ -95,23 +130,34 @@ class FirstFunction(
             }.toMap()
         )
 
-        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
+        return if ((!values.isNullOrEmpty() || tokenTable.cachedSolution) && if (values.isNullOrEmpty()) {
+            tokenTable.cached(this)
+        } else {
+            tokenTable.cached(this, values)
+        } == false) {
             var first: Int? = null
             polynomials.withIndex().forEach { (i, polynomial) ->
                 if (first == null) {
-                    polynomial.evaluate(tokenTable)?.let { value ->
-                        val bin = value gr Flt64.zero
+                    val value = if (values.isNullOrEmpty()) {
+                        polynomial.evaluate(tokenTable)
+                    } else {
+                        polynomial.evaluate(
+                            values = values,
+                            tokenTable = tokenTable
+                        )
+                    } ?: return@forEach
 
-                        if (bin) {
-                            first = i
-                        }
-                        logger.trace { "Setting FirstFunction ${name}.y[$i] initial solution: $bin" }
-                        tokenTable.find(y[i])?.let { token ->
-                            token._result = if (bin) {
-                                Flt64.zero
-                            } else {
-                                Flt64.one
-                            }
+                    val bin = value gr Flt64.zero
+
+                    if (bin) {
+                        first = i
+                    }
+                    logger.trace { "Setting FirstFunction ${name}.y[$i] initial solution: $bin" }
+                    tokenTable.find(y[i])?.let { token ->
+                        token._result = if (bin) {
+                            Flt64.zero
+                        } else {
+                            Flt64.one
                         }
                     }
                 } else {
@@ -128,7 +174,7 @@ class FirstFunction(
         }
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
+    override fun register(tokenTable: AddableTokenCollection): Try {
         // all polys must be ∈ (R - R-)
         for (polynomial in polynomials) {
             if (polynomial.lowerBound!!.value.unwrap() ls Flt64.zero) {
@@ -169,32 +215,99 @@ class FirstFunction(
         }
 
         for (i in polynomials.indices) {
+            when (val result = model.addConstraint(
+                constraint = y[i] leq bins[i],
+                name = "${name}_ub1_$i",
+                from = parent ?: this
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
             if (i == 0) {
-                continue
-            }
+                when (val result = model.addConstraint(
+                    constraint = y[i] geq bins[i],
+                    name = "${name}_lb_0",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
 
-            when (val result = model.addConstraint(
-                y[i] geq y[i - 1] - bins[i],
-                "${name}_lb_$i"
-            )) {
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+            } else {
+                when (val result = model.addConstraint(
+                    y[i] geq bins[i] - sum((0 until i).map { y[it] }),
+                    name = "${name}_lb_$i",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+                when (val result = model.addConstraint(
+                    y[i] leq y[i - 1],
+                    name = "${name}_y_$i",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+            }
+        }
+
+        return ok
+    }
+
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        for (bin in bins) {
+            when (val result = bin.register(tokenTable, fixedValues)) {
                 is Ok -> {}
 
                 is Failed -> {
                     return Failed(result.error)
                 }
             }
-            when (val result = model.addConstraint(
-                y[i] leq y[i - 1],
-                "${name}_ub0_$i"
-            )) {
-                is Ok -> {}
+        }
 
-                is Failed -> {
-                    return Failed(result.error)
-                }
+        when (val result = tokenTable.add(y)) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
             }
+        }
+
+        return ok
+    }
+
+    override fun register(
+        model: AbstractLinearMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        val first = bins.indexOfFirst {
+            val bin = it.evaluate(
+                values = fixedValues,
+                tokenTable = model.tokens
+            ) ?: return register(model)
+            bin gr Flt64.zero
+        }
+
+        for (i in polynomials.indices) {
             when (val result = model.addConstraint(
-                y[i] leq Flt64.one - bins[i],
+                y[i] leq bins[i],
                 "${name}_ub1_$i"
             )) {
                 is Ok -> {}
@@ -202,6 +315,48 @@ class FirstFunction(
                 is Failed -> {
                     return Failed(result.error)
                 }
+            }
+
+            if (i == 0) {
+                when (val result = model.addConstraint(
+                    y[i] geq bins[i],
+                    name = "${name}_lb_0",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+            } else if (i < first) {
+                when (val result = model.addConstraint(
+                    y[i] geq bins[i] - sum((0 until i).map { y[it] }),
+                    name = "${name}_lb_$i",
+                    from = parent ?: this
+                )) {
+                    is Ok -> {}
+
+                    is Failed -> {
+                        return Failed(result.error)
+                    }
+                }
+            }
+
+            when (val result = model.addConstraint(
+                y[i] eq (i == first),
+                name = "${name}_y",
+                from = parent ?: this
+            )) {
+                is Ok -> {}
+
+                is Failed -> {
+                    return Failed(result.error)
+                }
+            }
+
+            model.tokens.find(y[i])?.let { token ->
+                token._result = (i == first).toFlt64()
             }
         }
 
@@ -220,7 +375,10 @@ class FirstFunction(
         }
     }
 
-    override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         for ((i, polynomial) in polynomials.withIndex()) {
             val value = polynomial.evaluate(tokenList, zeroIfNone) ?: return null
             if (value neq Flt64.zero) {
@@ -230,9 +388,17 @@ class FirstFunction(
         return -Flt64.one
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
         for ((i, polynomial) in polynomials.withIndex()) {
-            val value = polynomial.evaluate(results, tokenList, zeroIfNone) ?: return null
+            val value = polynomial.evaluate(
+                results = results,
+                tokenList = tokenList,
+                zeroIfNone = zeroIfNone
+            ) ?: return null
             if (value neq Flt64.zero) {
                 return Flt64(i)
             }
@@ -240,7 +406,28 @@ class FirstFunction(
         return -Flt64.one
     }
 
-    override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenList: AbstractTokenList?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        for ((i, polynomial) in polynomials.withIndex()) {
+            val value = polynomial.evaluate(
+                values = values,
+                tokenList = tokenList,
+                zeroIfNone = zeroIfNone
+            ) ?: return null
+            if (value neq Flt64.zero) {
+                return Flt64(i)
+            }
+        }
+        return -Flt64.one
+    }
+
+    override fun calculateValue(
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
         for ((i, polynomial) in polynomials.withIndex()) {
             val value = polynomial.evaluate(tokenTable, zeroIfNone) ?: return null
             if (value neq Flt64.zero) {
@@ -250,9 +437,35 @@ class FirstFunction(
         return -Flt64.one
     }
 
-    override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
+    override fun calculateValue(
+        results: List<Flt64>,
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
         for ((i, polynomial) in polynomials.withIndex()) {
-            val value = polynomial.evaluate(results, tokenTable, zeroIfNone) ?: return null
+            val value = polynomial.evaluate(
+                results = results,
+                tokenTable = tokenTable,
+                zeroIfNone = zeroIfNone
+            ) ?: return null
+            if (value neq Flt64.zero) {
+                return Flt64(i)
+            }
+        }
+        return -Flt64.one
+    }
+
+    override fun calculateValue(
+        values: Map<Symbol, Flt64>,
+        tokenTable: AbstractTokenTable?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        for ((i, polynomial) in polynomials.withIndex()) {
+            val value = polynomial.evaluate(
+                values = values,
+                tokenTable = tokenTable,
+                zeroIfNone = zeroIfNone
+            ) ?: return null
             if (value neq Flt64.zero) {
                 return Flt64(i)
             }

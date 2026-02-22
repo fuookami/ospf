@@ -107,12 +107,24 @@ data object Demo11 {
     }
 
     private suspend fun initSymbol(): Try {
-        flowIn = LinearIntermediateSymbols1("flow_in", Shape1(nodes.size)) { i, _ ->
-            LinearExpressionSymbol(sum(x[_a, i]), "flow_in_$i")
+        flowIn = LinearIntermediateSymbols1(
+            "flow_in",
+            Shape1(nodes.size)
+        ) { i, _ ->
+            LinearExpressionSymbol(
+                sum(x[_a, i]),
+                name = "flow_in_$i"
+            )
         }
         metaModel.add(flowIn)
-        flowOut = LinearIntermediateSymbols1("flow_out", Shape1(nodes.size)) { i, _ ->
-            LinearExpressionSymbol(sum(x[i, _a]), "flow_out_$i")
+        flowOut = LinearIntermediateSymbols1(
+            "flow_out",
+            Shape1(nodes.size)
+        ) { i, _ ->
+            LinearExpressionSymbol(
+                sum(x[i, _a]),
+                name = "flow_out_$i"
+            )
         }
         metaModel.add(flowOut)
         return ok
@@ -127,17 +139,17 @@ data object Demo11 {
         val rootNode = nodes.first { it is RootNode }
         metaModel.addConstraint(
             flowOut[rootNode] - flowIn[rootNode] eq flow,
-            "flow_${rootNode.index}"
+            name = "flow_${rootNode.index}"
         )
         val endNode = nodes.first { it is EndNode }
         metaModel.addConstraint(
             flowIn[endNode] - flowOut[endNode] eq flow,
-            "flow_${endNode.index}"
+            name = "flow_${endNode.index}"
         )
         for (node in nodes.filterIsInstance<NormalNode>()) {
             metaModel.addConstraint(
                 flowOut[node] eq flowIn[node],
-                "flow_${node.index}"
+                name = "flow_${node.index}"
             )
         }
         return ok

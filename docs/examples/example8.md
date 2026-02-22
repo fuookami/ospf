@@ -2,66 +2,66 @@
 
 ## Problem Description
 
-Given a set of machines and products, each product has an associated profit, each machine has a finite capacity, and the production of each product requires a certain number of hours from each machine.
+There are several pieces of equipment and several products. Each product has a corresponding profit, each piece of equipment has a corresponding quantity, and producing each product consumes a certain amount of man-hours from each piece of equipment.
+
+|       | Product A | Product B | Product C | Product D | Product E |
+| :---: | :-------: | :-------: | :-------: | :-------: | :-------: |
+| Value |   $123$   |   $94$    |   $105$   |   $132$   |   $118$   |
+
+|       | Equipment A | Equipment B | Equipment C | Equipment D |
+| :---: | :---------: | :---------: | :---------: | :---------: |
+| Quantity |    $12$    |    $14$    |    $8$     |    $6$     |
 
 |        | Product A | Product B | Product C | Product D | Product E |
 | :----: | :-------: | :-------: | :-------: | :-------: | :-------: |
-| Profit |   $123$   |   $94$    |   $105$   |   $132$   |   $118$   |
-
-|        | Equipment A | Equipment B | Equipment C | Equipment D |
-| :----: | :---------: | :---------: | :---------: | :---------: |
-| Amount |    $12$     |    $14$     |     $8$     |     $6$     |
-
-|             | Product A | Product B | Product C | Product D | Product E |
-| :---------: | :-------: | :-------: | :-------: | :-------: | :-------: |
 | Equipment A | $0.23\,h$ | $0.44\,h$ | $0.17\,h$ | $0.08\,h$ | $0.36\,h$ |
 | Equipment B | $0.13\,h$ |    $-$    | $0.20\,h$ | $0.37\,h$ | $0.19\,h$ |
 | Equipment C |    $-$    | $0.25\,h$ | $0.34\,h$ |    $-$    | $0.18\,h$ |
 | Equipment D | $0.55\,h$ | $0.72\,h$ |    $-$    | $0.61\,h$ |    $-$    |
 
-Determine the production quantities of each product that maximize total revenue, while satisfying the following conditions:
+Determine the production quantity of each product to maximize total profit, while satisfying the following condition:
 
-1. Each machine's manhours must not exceed $2000\,h$.
+1. The man-hours for each piece of equipment are less than $2000\,h$.
 
 ## Mathematical Model
 
 ### Variables
 
-$x_{p}$ : produce of product $p$.
+$x_{p}$: Production quantity of product $p$.
 
-### Intermediate Expressions
+### Intermediate Values
 
 #### 1. Total Profit
 
 $$
-Profit = \sum_{p \in P} Profit_{p} \cdot x_{p}
+\text{Profit} = \sum_{p \in P} \text{Profit}_{p} \cdot x_{p}
 $$
 
-#### 2. Total ManHours
+#### 2. Total Man-Hours per Equipment
 
 $$
-ManHours_{e} = \sum_{p \in P} Cost_{ep} \cdot x_{p}, \; \forall e \in E
+\text{ManHours}_{e} = \sum_{p \in P} \text{Cost}_{ep} \cdot x_{p}, \; \forall e \in E
 $$
 
 ### Objective Function
 
-#### 1. Maximize Profit
+#### 1. Maximize Total Profit
 
 $$
-max \quad Profit
+\max \quad \text{Profit}
 $$
 
 ### Constraints
 
-#### 1. ManHours Limit
+#### 1. Equipment Man-Hours Cannot Exceed Maximum
 
 $$
-s.t. \quad ManHours_{e} \leq Amount_{e} \cdot ManHours^{Max}, \; \forall e \in E
+\text{s.t.} \quad \text{ManHours}_{e} \leq \text{Amount}_{e} \cdot \text{ManHours}^{\text{Max}}, \; \forall e \in E
 $$
 
-## Expected Result
+## Expected Results
 
-Produce $0$ units of Product A, $0$ units of Product B, $18771$ units of Product C, $19672$ units of Product D, and $53431$ units of Product E.
+Produce $0$ of product A, $0$ of product B, $18771$ of product C, $19672$ of product D, and $53431$ of product E.
 
 ## Code Implementation
 
@@ -90,20 +90,20 @@ data class Equipment(
 ) : AutoIndexed(Equipment::class)
 
 private val maxManHours = Flt64(2000)
-private val products: List<Product> = ... // product data
-private val equipments: List<Equipment> = ... // equipment data
+private val products: List<Product> = ... // Product list
+private val equipments: List<Equipment> = ... // Equipment list
 
-// create a model instance
+// Create model instance
 val metaModel = LinearMetaModel("demo8")
 
-// define variables
+// Define variables
 val x = UIntVariable1("x", Shape1(products.size))
 for (p in products) {
     x[p].name = "${x.name}_${p.index}"
 }
 metaModel.add(x)
 
-// define intermediate expressions
+// Define intermediate values
 val profit = LinearExpressionSymbol(sum(products.map { p ->
     p.profit * x[p]
 }), "profit")
@@ -121,10 +121,10 @@ val manHours = LinearIntermediateSymbols1(
 }
 metaModel.add(manHours)
 
-// define objective function
+// Define objective function
 metaModel.maximize(profit, "profit")
 
-// define constraints
+// Define constraints
 for (e in equipments) {
     metaModel.addConstraint(
         manHours[e] leq e.amount.toFlt64() * maxManHours,
@@ -132,7 +132,7 @@ for (e in equipments) {
     )
 }
 
-// solve the model
+// Call solver to solve
 val solver = ScipLinearSolver()
 when (val ret = solver(metaModel)) {
     is Ok -> {
@@ -142,7 +142,7 @@ when (val ret = solver(metaModel)) {
     is Failed -> {}
 }
 
-// parse results
+// Parse results
 val solution = HashMap<Product, UInt64>()
 for (token in metaModel.tokens.tokens) {
     if (token.result!! neq Flt64.one && token.variable.belongsTo(x)) {
@@ -153,6 +153,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-For the complete implementation, please refer to:
+**Complete Implementation Reference:**
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo8.kt)

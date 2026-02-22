@@ -56,14 +56,39 @@ export function dump(schema: SchemaDTO): GanttChartVO {
             produces.set("produce", task.produce);
         }
         if (task.products) {
-            task.products!!.forEach((value, key) => {
-                produces.set("product", `${key}, ${value}`);
-            });
+            if (task.products!! instanceof Map) {
+                task.products!!.forEach((value, key) => {
+                    produces.set(key, value);
+                });
+            } else {
+                Object.entries(task.products!!).forEach(([key, value]) => {
+                    produces.set(key, value);
+                });
+            }
         }
+        const consumption: Map<string, string> = new Map();
         if (task.materials) {
-            task.materials!!.forEach((value, key) => {
-                produces.set("material", `${key}, ${value}`);
-            });
+            if (task.materials!! instanceof Map) {
+                task.materials!!.forEach((value, key) => {
+                    consumption.set(key, value);
+                });
+            } else {
+                Object.entries(task.materials!!).forEach(([key, value]) => {
+                    consumption.set(key, value);
+                });
+            }
+        }
+        const info: Map<string, string> = new Map();
+        if (task.info) {
+            if (task.info!! instanceof Map) {
+                task.info!!.forEach((value, key) => {
+                    info.set(key, value)
+                });
+            } else {
+                Object.entries(task.info!!).forEach(([key, value]) => {
+                    info.set(key, value)
+                });
+            }
         }
         return {
             name: task.name,
@@ -85,8 +110,8 @@ export function dump(schema: SchemaDTO): GanttChartVO {
             renderStartTime: lodash.min([scheduledStartTime, task.startTime]) as string,
             renderEndTime: lodash.max([scheduledEndTime, task.endTime]) as string,
             produces: produces,
-            consumption: task.consumption,
-            info: task.info
+            consumption: consumption,
+            info: info
         };
     });
     const executors = lodash.uniq(items.map(item => item.executor));

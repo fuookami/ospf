@@ -26,7 +26,7 @@ class ServiceCapacityConstraint(
             for (service in services) {
                 model.addConstraint(
                     service.capacity * (UInt64.one - x[node, service]) + outFlow[node, service] leq service.capacity,
-                    "${name}_($node,$service)"
+                    name = "${name}_($node,$service)"
                 )
             }
         }

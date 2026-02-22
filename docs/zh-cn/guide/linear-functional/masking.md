@@ -9,7 +9,7 @@ x, & mask \\ \; \\
 \end{cases}
 $$
 
-其中，$mask \in \{ 0, \, 1 \}$ 。
+其中 $mask \in \{ 0, \, 1 \}$ 。
 
 ## 常量
 
@@ -31,7 +31,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & y^{\prime} \leq x + m \cdot (1 - mask) \\ \; \\
+\text{s.t.} \quad & y^{\prime} \leq x + m \cdot (1 - mask) \\ \; \\
 & y^{\prime} \geq x - m \cdot (1 - mask) \\ \; \\
 & y^{\prime} \leq m \cdot mask \\ \; \\
 & y^{\prime} \geq -m \cdot mask \\ \; \\

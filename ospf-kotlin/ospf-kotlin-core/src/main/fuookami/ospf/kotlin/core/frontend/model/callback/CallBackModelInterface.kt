@@ -6,7 +6,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.frontend.model.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 
-interface AbstractCallBackModelInterface<Obj, V> : Model {
+interface AbstractCallBackModelInterface<Obj, V> : Model, AutoCloseable {
     val defaultObjective: V
 
     val tokens: AbstractMutableTokenTable
@@ -50,7 +50,7 @@ interface AbstractCallBackModelInterface<Obj, V> : Model {
 
     fun constraintSatisfied(solution: Solution): Boolean? {
         for (token in tokens.tokens) {
-            val index = tokens.tokenIndexMap[token] ?: continue
+            val index = tokens.indexOf(token) ?: continue
             if (token.range?.contains(solution[index]) != true) {
                 return false
             }
@@ -71,6 +71,10 @@ interface AbstractCallBackModelInterface<Obj, V> : Model {
     }
 
     fun flush()
+
+    override fun close() {
+        tokens.close()
+    }
 }
 
 interface CallBackModelInterface : AbstractCallBackModelInterface<Flt64, Flt64> {

@@ -12,11 +12,9 @@ import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 
 typealias Solution = List<Flt64>
 
-interface Model {
+interface Model : AddableTokenCollection {
     val objectCategory: ObjectCategory
 
-    fun add(item: AbstractVariableItem<*, *>): Try
-    fun add(items: Iterable<AbstractVariableItem<*, *>>): Try
     fun remove(item: AbstractVariableItem<*, *>)
 
     @Suppress("INAPPLICABLE_JVM_NAME")
@@ -38,15 +36,39 @@ interface Model {
     }
 
     @Suppress("INAPPLICABLE_JVM_NAME")
-    @JvmName("addMapMapVariables")
-    fun <K1, K2> add(items: Map<K1, Map<K2, AbstractVariableItem<*, *>>>): Try {
-        return add(items.values.map { it.values }.flatten())
+    @JvmName("addMultiMap2Variables")
+    fun <K1, K2> add(items: MultiMap2<K1, K2, AbstractVariableItem<*, *>>): Try {
+        return add(items.values.flatMap { it.values })
     }
 
     @Suppress("INAPPLICABLE_JVM_NAME")
-    @JvmName("addMapMapVariableLists")
-    fun <K1, K2> add(items: Map<K1, Map<K2, Iterable<AbstractVariableItem<*, *>>>>): Try {
-        return add(items.values.map { it.values }.flatten())
+    @JvmName("addMultiMap2VariableLists")
+    fun <K1, K2> add(items: MultiMap2<K1, K2, Iterable<AbstractVariableItem<*, *>>>): Try {
+        return add(items.values.flatMap { it.values }.flatten())
+    }
+
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("addMultiMap3Variables")
+    fun <K1, K2, K3> add(items: MultiMap3<K1, K2, K3, AbstractVariableItem<*, *>>): Try {
+        return add(items.values.flatMap { it.values }.flatMap { it.values })
+    }
+
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("addMultiMap3VariableLists")
+    fun <K1, K2, K3> add(items: MultiMap3<K1, K2, K3, Iterable<AbstractVariableItem<*, *>>>): Try {
+        return add(items.values.flatMap { it.values }.flatMap { it.values }.flatten())
+    }
+
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("addMultiMap4Variables")
+    fun <K1, K2, K3, K4> add(items: MultiMap4<K1, K2, K3, K4, AbstractVariableItem<*, *>>): Try {
+        return add(items.values.flatMap { it.values }.flatMap { it.values }.flatMap { it.values })
+    }
+
+    @Suppress("INAPPLICABLE_JVM_NAME")
+    @JvmName("addMultiMap4VariableLists")
+    fun <K1, K2, K3, K4> add(items: MultiMap4<K1, K2, K3, K4, Iterable<AbstractVariableItem<*, *>>>): Try {
+        return add(items.values.flatMap { it.values }.flatMap { it.values }.flatMap { it.values }.flatten())
     }
 
     @Suppress("INAPPLICABLE_JVM_NAME")
@@ -84,7 +106,12 @@ interface Model {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Minimum, variable, name, displayName)
+        return addObject(
+            category = ObjectCategory.Minimum,
+            variable = variable,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun maximize(
@@ -92,7 +119,12 @@ interface Model {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Maximum, variable, name, displayName)
+        return addObject(
+            category = ObjectCategory.Maximum,
+            variable = variable,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun <T : RealNumber<T>> minimize(
@@ -100,7 +132,12 @@ interface Model {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Minimum, constant, name, displayName)
+        return addObject(
+            category = ObjectCategory.Minimum,
+            constant = constant,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun <T : RealNumber<T>> maximize(
@@ -108,7 +145,12 @@ interface Model {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Maximum, constant, name, displayName)
+        return addObject(
+            category = ObjectCategory.Maximum,
+            constant = constant,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun setSolution(solution: Solution)
@@ -119,42 +161,71 @@ interface Model {
 interface LinearModel : Model {
     fun addConstraint(
         constraint: AbstractVariableItem<*, *>,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null,
         withRangeSet: Boolean? = false
     ): Try {
-        return addConstraint(constraint eq true, name, displayName, withRangeSet)
+        return addConstraint(
+            constraint = constraint eq true,
+            lazy = lazy,
+            name = name,
+            displayName = displayName,
+            withRangeSet = withRangeSet
+        )
     }
 
     fun addConstraint(
         constraint: LinearMonomial,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null,
         withRangeSet: Boolean? = false
     ): Try {
-        return addConstraint(constraint eq true, name, displayName, withRangeSet)
+        return addConstraint(
+            constraint = constraint eq true,
+            lazy = lazy,
+            name = name,
+            displayName = displayName,
+            withRangeSet = withRangeSet
+        )
     }
 
     fun addConstraint(
         constraint: AbstractLinearPolynomial<*>,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null,
         withRangeSet: Boolean? = false
     ): Try {
-        return addConstraint(constraint eq true, name, displayName, withRangeSet)
+        return addConstraint(
+            constraint = constraint eq true,
+            lazy = lazy,
+            name = name,
+            displayName = displayName,
+            withRangeSet = withRangeSet
+        )
     }
 
     fun addConstraint(
         constraint: LinearIntermediateSymbol,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null,
         withRangeSet: Boolean? = false
     ): Try {
-        return addConstraint(constraint eq true, name, displayName, withRangeSet)
+        return addConstraint(
+            constraint = constraint eq true,
+            lazy = lazy,
+            name = name,
+            displayName = displayName,
+            withRangeSet = withRangeSet
+        )
     }
 
     fun addConstraint(
         constraint: LinearInequality,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null,
         withRangeSet: Boolean? = false
@@ -164,38 +235,62 @@ interface LinearModel : Model {
     @JvmName("partitionVariables")
     fun partition(
         variables: Iterable<AbstractVariableItem<*, *>>,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return partition(sum(variables), name, displayName)
+        return partition(
+            polynomial = sum(variables),
+            lazy = lazy,
+            name = name,
+            displayName = displayName
+        )
     }
 
     @Suppress("INAPPLICABLE_JVM_NAME")
     @JvmName("partitionLinearSymbols")
     fun partition(
         symbols: Iterable<LinearIntermediateSymbol>,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return partition(sum(symbols), name, displayName)
+        return partition(
+            polynomial = sum(symbols),
+            lazy = lazy,
+            name = name,
+            displayName = displayName
+        )
     }
 
     @Suppress("INAPPLICABLE_JVM_NAME")
     @JvmName("partitionLinearMonomials")
     fun partition(
         monomials: Iterable<LinearMonomial>,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return partition(sum(monomials), name, displayName)
+        return partition(
+            polynomial = sum(monomials),
+            lazy = lazy,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun partition(
         polynomial: AbstractLinearPolynomial<*>,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addConstraint(polynomial eq true, name, displayName)
+        return addConstraint(
+            constraint = polynomial eq true,
+            lazy = lazy,
+            name = name,
+            displayName = displayName
+        )
     }
 
     override fun addObject(
@@ -204,7 +299,12 @@ interface LinearModel : Model {
         name: String?,
         displayName: String?
     ): Try {
-        return addObject(category, LinearPolynomial(variable), name, displayName)
+        return addObject(
+            category = category,
+            polynomial = LinearPolynomial(variable),
+            name = name,
+            displayName = displayName
+        )
     }
 
     override fun <T : RealNumber<T>> addObject(
@@ -213,7 +313,12 @@ interface LinearModel : Model {
         name: String?,
         displayName: String?
     ): Try {
-        return addObject(category, LinearPolynomial(constant), name, displayName)
+        return addObject(
+            category = category,
+            polynomial = LinearPolynomial(constant),
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun addObject(
@@ -222,7 +327,12 @@ interface LinearModel : Model {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(category, LinearPolynomial(monomial), name, displayName)
+        return addObject(
+            category = category,
+            polynomial = LinearPolynomial(monomial),
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun addObject(
@@ -231,7 +341,12 @@ interface LinearModel : Model {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(category, LinearPolynomial(symbol), name, displayName)
+        return addObject(
+            category = category,
+            polynomial = LinearPolynomial(symbol),
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun addObject(
@@ -242,11 +357,16 @@ interface LinearModel : Model {
     ): Try
 
     fun minimize(
-        symbol: LinearMonomial,
+        monomial: LinearMonomial,
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Minimum, symbol, name, displayName)
+        return addObject(
+            category = ObjectCategory.Minimum,
+            monomial = monomial,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun maximize(
@@ -254,15 +374,25 @@ interface LinearModel : Model {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Maximum, monomial, name, displayName)
+        return addObject(
+            category = ObjectCategory.Maximum,
+            monomial = monomial,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun minimize(
-        monomial: LinearIntermediateSymbol,
+        symbol: LinearIntermediateSymbol,
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Minimum, monomial, name, displayName)
+        return addObject(
+            category = ObjectCategory.Minimum,
+            symbol = symbol,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun maximize(
@@ -270,7 +400,12 @@ interface LinearModel : Model {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Maximum, symbol, name, displayName)
+        return addObject(
+            category = ObjectCategory.Maximum,
+            symbol = symbol,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun minimize(
@@ -278,7 +413,12 @@ interface LinearModel : Model {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Minimum, polynomial, name, displayName)
+        return addObject(
+            category = ObjectCategory.Minimum,
+            polynomial = polynomial,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun maximize(
@@ -286,49 +426,83 @@ interface LinearModel : Model {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Maximum, polynomial, name, displayName)
+        return addObject(
+            category = ObjectCategory.Maximum,
+            polynomial = polynomial,
+            name = name,
+            displayName = displayName
+        )
     }
 }
 
 interface QuadraticModel : LinearModel {
     fun addConstraint(
         constraint: QuadraticMonomial,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null,
         withRangeSet: Boolean? = null
     ): Try {
-        return addConstraint(constraint eq true, name, displayName, withRangeSet)
+        return addConstraint(
+            constraint = constraint eq true,
+            lazy = lazy,
+            name = name,
+            displayName = displayName,
+            withRangeSet = withRangeSet
+        )
     }
 
     override fun addConstraint(
         constraint: LinearInequality,
+        lazy: Boolean,
         name: String?,
         displayName: String?,
         withRangeSet: Boolean?
     ): Try {
-        return addConstraint(QuadraticInequality(constraint), name, displayName, withRangeSet)
+        return addConstraint(
+            constraint = QuadraticInequality(constraint),
+            lazy = lazy,
+            name = name,
+            displayName = displayName,
+            withRangeSet = withRangeSet
+        )
     }
 
     fun addConstraint(
         constraint: AbstractQuadraticPolynomial<*>,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null,
         withRangeSet: Boolean? = null
     ): Try {
-        return addConstraint(constraint eq true, name, displayName, withRangeSet)
+        return addConstraint(
+            constraint = constraint eq true,
+            lazy = lazy,
+            name = name,
+            displayName = displayName,
+            withRangeSet = withRangeSet
+        )
     }
 
     fun addConstraint(
         constraint: QuadraticIntermediateSymbol,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null,
         withRangeSet: Boolean? = null
     ): Try {
-        return addConstraint(constraint eq true, name, displayName, withRangeSet)
+        return addConstraint(
+            constraint = constraint eq true,
+            lazy = lazy,
+            name = name,
+            displayName = displayName,
+            withRangeSet = withRangeSet
+        )
     }
 
     fun addConstraint(
         constraint: QuadraticInequality,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null,
         withRangeSet: Boolean? = null
@@ -338,28 +512,46 @@ interface QuadraticModel : LinearModel {
     @JvmName("partitionQuadraticMonomials")
     fun partition(
         monomials: Iterable<QuadraticMonomial>,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return partition(qsum(monomials), name, displayName)
+        return partition(
+            polynomial = qsum(monomials),
+            lazy = lazy,
+            name = name,
+            displayName = displayName
+        )
     }
 
     @Suppress("INAPPLICABLE_JVM_NAME")
     @JvmName("partitionQuadraticSymbols")
     fun partition(
         symbols: Iterable<QuadraticIntermediateSymbol>,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return partition(qsum(symbols), name, displayName)
+        return partition(
+            polynomial = qsum(symbols),
+            lazy = lazy,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun partition(
         polynomial: AbstractQuadraticPolynomial<*>,
+        lazy: Boolean = false,
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addConstraint(polynomial eq Flt64.one, name, displayName)
+        return addConstraint(
+            constraint = polynomial eq Flt64.one,
+            lazy = lazy,
+            name = name,
+            displayName = displayName
+        )
     }
 
     override fun addObject(
@@ -368,7 +560,12 @@ interface QuadraticModel : LinearModel {
         name: String?,
         displayName: String?
     ): Try {
-        return addObject(category, QuadraticPolynomial(variable), name, displayName)
+        return addObject(
+            category = category,
+            polynomial = QuadraticPolynomial(variable),
+            name = name,
+            displayName = displayName
+        )
     }
 
     override fun <T : RealNumber<T>> addObject(
@@ -377,7 +574,12 @@ interface QuadraticModel : LinearModel {
         name: String?,
         displayName: String?
     ): Try {
-        return addObject(category, QuadraticPolynomial(constant), name, displayName)
+        return addObject(
+            category = category,
+            polynomial = QuadraticPolynomial(constant),
+            name = name,
+            displayName = displayName
+        )
     }
 
     override fun addObject(
@@ -386,7 +588,12 @@ interface QuadraticModel : LinearModel {
         name: String?,
         displayName: String?
     ): Try {
-        return addObject(category, QuadraticPolynomial(monomial), name, displayName)
+        return addObject(
+            category = category,
+            polynomial = QuadraticPolynomial(monomial),
+            name = name,
+            displayName = displayName
+        )
     }
 
     override fun addObject(
@@ -395,7 +602,12 @@ interface QuadraticModel : LinearModel {
         name: String?,
         displayName: String?
     ): Try {
-        return addObject(category, QuadraticPolynomial(symbol), name, displayName)
+        return addObject(
+            category = category,
+            polynomial = QuadraticPolynomial(symbol),
+            name = name,
+            displayName = displayName
+        )
     }
 
     override fun addObject(
@@ -403,9 +615,13 @@ interface QuadraticModel : LinearModel {
         polynomial: AbstractLinearPolynomial<*>,
         name: String?,
         displayName: String?
-    )
-            : Try {
-        return addObject(category, QuadraticPolynomial(polynomial), name, displayName)
+    ) : Try {
+        return addObject(
+            category = category,
+            polynomial = QuadraticPolynomial(polynomial),
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun addObject(
@@ -414,7 +630,12 @@ interface QuadraticModel : LinearModel {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(category, QuadraticPolynomial(monomial), name, displayName)
+        return addObject(
+            category = category,
+            polynomial = QuadraticPolynomial(monomial),
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun addObject(
@@ -423,7 +644,12 @@ interface QuadraticModel : LinearModel {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(category, QuadraticPolynomial(symbol), name, displayName)
+        return addObject(
+            category = category,
+            polynomial = QuadraticPolynomial(symbol),
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun addObject(
@@ -438,7 +664,12 @@ interface QuadraticModel : LinearModel {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Minimum, monomial, name, displayName)
+        return addObject(
+            category = ObjectCategory.Minimum,
+            monomial = monomial,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun maximize(
@@ -446,7 +677,12 @@ interface QuadraticModel : LinearModel {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Maximum, monomial, name, displayName)
+        return addObject(
+            category = ObjectCategory.Maximum,
+            monomial = monomial,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun minimize(
@@ -454,7 +690,12 @@ interface QuadraticModel : LinearModel {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Minimum, symbol, name, displayName)
+        return addObject(
+            category = ObjectCategory.Minimum,
+            symbol = symbol,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun maximize(
@@ -462,7 +703,12 @@ interface QuadraticModel : LinearModel {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Maximum, symbol, name, displayName)
+        return addObject(
+            category = ObjectCategory.Maximum,
+            symbol = symbol,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun minimize(
@@ -470,7 +716,12 @@ interface QuadraticModel : LinearModel {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Minimum, polynomial, name, displayName)
+        return addObject(
+            category = ObjectCategory.Minimum,
+            polynomial = polynomial,
+            name = name,
+            displayName = displayName
+        )
     }
 
     fun maximize(
@@ -478,6 +729,11 @@ interface QuadraticModel : LinearModel {
         name: String? = null,
         displayName: String? = null
     ): Try {
-        return addObject(ObjectCategory.Maximum, polynomial, name, displayName)
+        return addObject(
+            category = ObjectCategory.Maximum,
+            polynomial = polynomial,
+            name = name,
+            displayName = displayName
+        )
     }
 }

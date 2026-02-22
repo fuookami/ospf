@@ -107,20 +107,26 @@ data object Demo13 {
     }
 
     private suspend fun initSymbol(): Try {
-        trans = LinearIntermediateSymbols1("trans", Shape1(distributionCenters.size)) { i, _ ->
+        trans = LinearIntermediateSymbols1(
+            "trans",
+            Shape1(distributionCenters.size)
+        ) { i, _ ->
             val distributionCenter = distributionCenters[i]
             LinearExpressionSymbol(
                 sum(x[_a, distributionCenter]),
-                "trans_${distributionCenter.index}"
+                name = "trans_${distributionCenter.index}"
             )
         }
         metaModel.add(trans)
 
-        receive = LinearIntermediateSymbols1("receive", Shape1(dealers.size)) { i, _ ->
+        receive = LinearIntermediateSymbols1(
+            "receive",
+            Shape1(dealers.size)
+        ) { i, _ ->
             val dealer = dealers[i]
             LinearExpressionSymbol(
                 sum(x[dealer, _a]),
-                "receive_${dealer.index}"
+                name = "receive_${dealer.index}"
             )
         }
         metaModel.add(receive)
@@ -132,7 +138,7 @@ data object Demo13 {
                     distance * y[dealer, distributionCenter]
                 }
             }),
-            "cost"
+            name = "cost"
         )
         metaModel.add(cost)
 
@@ -149,14 +155,14 @@ data object Demo13 {
         for (distributionCenter in distributionCenters) {
             metaModel.addConstraint(
                 trans[distributionCenter] leq distributionCenter.supply,
-                "supply_${distributionCenter.index}"
+                name = "supply_${distributionCenter.index}"
             )
         }
 
         for (dealer in dealers) {
             metaModel.addConstraint(
                 receive[dealer] geq dealer.demand,
-                "demand_${dealer.index}"
+                name = "demand_${dealer.index}"
             )
         }
 
@@ -164,7 +170,7 @@ data object Demo13 {
             for (distributionCenter in distributionCenters) {
                 metaModel.addConstraint(
                     x[dealer, distributionCenter] leq carCapacity * y[dealer, distributionCenter],
-                    "car_limit_${dealer.index}_${distributionCenter.index}"
+                    name = "car_limit_${dealer.index}_${distributionCenter.index}"
                 )
             }
         }

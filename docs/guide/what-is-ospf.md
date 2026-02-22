@@ -1,24 +1,24 @@
-# What is ospf ?
+# What is OSPF?
 
-ospf is a solution for the modeling and coding process in developing complex operational research algorithm software, along with its development components. It aims to provide a modeling approach based on <strong><em>Domain Driven Design</em></strong> (DDD), enabling users to efficiently develop and maintain mathematical models, solution algorithms, and their implementation code throughout the entire software lifecycle.
+OSPF is a solution and development component for modeling and coding processes in complex operations research optimization algorithms. OSPF aims to provide a modeling approach based on **Domain-Driven Design (DDD)**, enabling users to simply and efficiently develop and maintain mathematical models, solution algorithms, and their implementation code throughout the entire software lifecycle.
 
-The implementation for each host language can be found in the following code repository directories:
+Implementations for various host languages can be found in the following code repository directories:
 
-- C++：https://github.com/fuookami/ospf-cpp
-- C#：https://github.com/fuookami/ospf-csharp
-- Kotlin：https://github.com/fuookami/ospf-kotlin
-- Python：https://github.com/fuookami/ospf-python
-- Rust：https://github.com/fuookami/ospf-rust
+- C++: https://github.com/fuookami/ospf-cpp
+- C#: https://github.com/fuookami/ospf-csharp
+- Kotlin: https://github.com/fuookami/ospf-kotlin
+- Python: https://github.com/fuookami/ospf-python
+- Rust: https://github.com/fuookami/ospf-rust
 
-## Prologue
+## Introduction
 
-When building complex systems, software engineers intentionally or unintentionally apply numerous cognitive models. It is precisely these effective cognitive models that enable us to construct today's highly intricate information systems, ushering us into the era of digital intelligence. These cognitive models include, but are not limited to: abstraction, layering, divide-and-conquer, evolution, protocols, and more. They are now ubiquitous in the architectural design of our various information systems.
+When software engineers build complex systems, they consciously or unconsciously apply numerous cognitive models. It is these effective cognitive models that help us construct today's incredibly complex information systems, ushering us into the digital intelligence era. These cognitive models include but are not limited to: abstraction, layering, divide and conquer, evolution, protocols, etc., which are already pervasive in the architectural design of our various information systems.
 
-During the execution of cognitive tasks, we inevitably need to temporarily store and process information, a process that engages what cognitive psychology refers to as working memory —— the central hub of human cognition. However, working memory has its limits; in other words, there is a cap on the number of things we can process simultaneously. It is generally believed that we can handle up to four "chunks" at a time. These "chunks" can be numbers, letters, words, or other forms. Yet, once we master a mathematical or scientific technique, or a certain concept, the space it occupies in working memory shrinks. The freed-up mental capacity then allows us to more easily handle other ideas.
+During the execution of cognitive tasks, we certainly need to temporarily store and process information resources. This process utilizes what cognitive psychology calls working memory, the human cognitive center. However, working memory has capacity limitations, meaning we can only simultaneously cognize a limited number of things, generally considered to be at most 4 "chunks". These "chunks" can be numbers, letters, words, or other forms. However, if we master a mathematical or scientific technique, or a concept, it occupies less space in working memory. The freed brain space then allows us to more easily handle other ideas.
 
-So, how is abstraction applied in our software architecture design? Simply put, abstraction involves assembling basic elements into a composite element and then using that composite element directly. Below, we can see three code snippets that express the same semantic meaning—comparing the sizes of two rectangles—with progressively increasing levels of abstraction.
+So how is abstraction applied to our software structure design? Simply put, abstraction is assembling some basic elements into a composite element, then directly using that composite element. We can see the following three code segments, which express the same semantics: comparing the area sizes of two rectangles. Their abstraction level gradually increases.
 
-<b>Procedure Oriented 1</b>:
+**Procedural 1**:
 ```rust
 fn main() {
     let length1: f64 = 10.;
@@ -31,7 +31,7 @@ fn main() {
 }
 ```
 
-<b>Procedure Oriented 2</b>:
+**Procedural 2**:
 ```rust
 fn area(length: f64, width: f64) -> f64 {
     length * width
@@ -50,7 +50,7 @@ fn main() {
 }
 ```
 
-<b>Object Oriented</b>
+**Object-Oriented**:
 ```rust
 struct Rectangle {
     length: f64,
@@ -81,65 +81,64 @@ fn main() {
 }
 ```
 
-The first segment has no abstraction at all. The second segment abstracts the computational process and then utilizes these processes, which we generally refer to as <b>Procedural-Oriented</b>. The third segment abstracts both the concept of a rectangle and the computational processes around it, then employs this concept and these processes, which we generally call <b>Object-Oriented</b>.
+The first segment has no abstraction at all. The second segment abstracts the computation process and then uses these computation processes, which we generally call procedural programming. The third segment abstracts both the concept of a rectangle and the computation processes around rectangles, then uses this concept and these computation processes, which we generally call object-oriented programming.
 
-As the level of abstraction increases, we can easily observe that the amount of code in the main function gradually decreases while the semantic clarity improves. Even though the final segment has the largest actual code volume, in modern practice, nearly all programmers adopt the third approach. Since compilers can translate it into the same machine code, developers naturally prefer a more human-readable coding style.
+As the abstraction level increases, we can easily see that the code volume in the main function gradually decreases, and the semantic level gradually improves. Even though the actual code volume of the last segment is the largest, in modern times, essentially all programmers would use the writing style of the third segment. We can rely on the compiler to translate it into the same machine code, so naturally, during the coding process, we would choose a more human-oriented writing style.
 
-Traditional operations research algorithm development lacks such abstraction methods. Without abstraction, product engineers and algorithm engineers, or even algorithm engineers among themselves, struggle to communicate effectively due to the absence of a unified common language. Moreover, without applying software architecture design techniques in practice, the implementation code of mathematical models becomes difficult to reuse. In large-scale OR algorithm development, this leads to significant wasted effort on repetitive tasks. Additionally, the coding style of mathematical model implementations tends to be heavily influenced by individual algorithm engineers, making collaboration between them challenging.
+Traditional operations research algorithm development lacks abstraction methods. The lack of abstraction methods leads to poor communication between product engineers and algorithm engineers, and between algorithm engineers themselves, due to the absence of a unified common language. Simultaneously, because various software structure design techniques cannot be applied in development practice, the implementation code of mathematical models is difficult to reuse. In large-scale operations research algorithm development, significant human-hours are consumed in repetitive work. Additionally, the code style of mathematical model implementation code is heavily influenced by individual algorithm engineers, making collaboration between algorithm engineers difficult.
 
-## Intermediate Expression
+## Intermediate Values
 
-ospf introduces a concept called "intermediate expression" to facilitate DDD-based modeling. Intermediate expressions are used in mathematical models to represent intermediate results of computations, aiming to simplify the representation of the model and make it easier to understand and maintain. Intermediate expressions possess the following characteristics:
+OSPF provides a concept named "Intermediate Values" to implement DDD-based modeling. Intermediate values in mathematical models represent intermediate results of operations, helping to simplify model representation and make models easier to understand and maintain. Intermediate values have the following characteristics:
 
-- they refer to named polynomials that are stored.
-- they are semantically equivalent to anonymous polynomials.
-- they are grammatically equivalent to variables, having a global scope and static lifetime.
-- they can be constructed through an anonymous polynomial.
+- Refer to a stored, named expression
+- Semantically equivalent to anonymous expressions
+- Grammatically equivalent to variables, with global scope and static lifetime
 
-### Arithmetic Intermediate Expression:
+### Arithmetic Intermediate Values
 
-The initial purpose of designing intermediate expressions was to reduce redundancy in mathematical models. Therefore, the most basic arithmetic intermediate expressions are constructed using a polynomial, allowing users to replace all identical polynomials with this intermediate expression anywhere in the model.
-
-$$
-ExprSymbol = \sum_{i} x_{i}
-$$
+The initial design purpose of intermediate values was to reduce duplication in mathematical models, so the most basic arithmetic intermediate values are constructed through a polynomial. Users can then use this intermediate value anywhere in the model to replace all identical polynomials.
 
 $$
-min \quad ExprSymbol
+\text{ExprSymbol} = \sum_{i} x_{i}
 $$
 
 $$
-s.t. \quad ExprSymbol \leq 1
-$$
-
-ospf automatically replaces each arithmetic intermediate expressions with specific polynomials when translating the model into interfaces for specific solvers. This translation process is transparent to the user, so the user does not need to know how the arithmetic intermediate expressions are implemented through which variables and operations.
-
-Thus, we can divide the maintainers of mathematical models into two roles: <em>"intermediate expressions maintainer"</em> and <em>"user of intermediate expressions"</em>. The intermediate expressions maintainers are responsible for defining and implementing intermediate expressions, while users of intermediate expressions do not concern themselves with the implementation of intermediate expresssions. They only focus on the definition and behavior of intermediate expressions and use these intermediate expressions to describe business logic in mathematical models.
-
-This engineering practice is similar to <strong><em>Object-Oriented Design</em></strong> (OOD), where defining a class encapsulates variables and functions with the same semantics, and users only need to focus on their behavior without concerning themselves with their implementation. With such a foundation, we can then begin to introduce DDD.
-
-### Functional Intermediate Expression:
-
-Building upon the concept of arithmetic intermediate expressions, ospf can also encapsulate non-arithmetic expressions such as logical operations into intermediate expressions.
-
-$$
-FuncSymbol = \bigvee_{i} x_{i} = Or(x_{1}, \, x_{2}, \, .. \, , \, x_{i})
+\min \quad \text{ExprSymbol}
 $$
 
 $$
-s.t. \quad FuncSymbol = 1
+\text{s.t.} \quad \text{ExprSymbol} \leq 1
 $$
 
-When ospf translates the model into interfaces for specific solvers, it automatically adds the intermediate variables and constraints required for each intermediate expressions. This translation process is transparent to the users, so the users don't need to know how the intermediate expressions are implemented through which intermediate variables and constraints. For example, the expression $FuncSymbol = \bigvee_{i} x_{i}$ will be translated as follows:
+OSPF automatically replaces each arithmetic intermediate value with the specific polynomial when translating the model to the specific solver interface. This translation process is transparent to users, so users do not need to know how this arithmetic intermediate value is implemented through which variables and operations.
+
+Thus, we can divide mathematical model maintainers into two roles: "Intermediate Value Maintainers" and "Mathematical Model Maintainers Using Intermediate Values". Intermediate value maintainers are responsible for defining and implementing intermediate values. Mathematical model maintainers using intermediate values do not focus on the implementation of intermediate values, only on their definition and behavior, and use these intermediate values to describe business logic in mathematical models.
+
+This engineering practice is the same as defining a class in Object-Oriented Design (OOD) to encapsulate variables and functions with the same semantics, where users only need to focus on its behavior, not its implementation. With this foundation, we can begin introducing DDD.
+
+### Functional Intermediate Values
+
+Based on the concept of arithmetic intermediate values, OSPF can similarly encapsulate non-arithmetic expressions like logical operation expressions into intermediate values.
 
 $$
-s.t. \quad y = 1
+\text{FuncSymbol} = \bigvee_{i} x_{i} = \text{Or}(x_{1}, \, x_{2}, \, .. \, , \, x_{i})
+$$
+
+$$
+\text{s.t.} \quad \text{FuncSymbol} = 1
+$$
+
+OSPF automatically adds the required intermediate variables and constraints for each functional intermediate value when translating the model to the specific solver interface. This translation process is transparent to users, so users do not need to know how this functional intermediate value is implemented through which intermediate variables and constraints. For example, the above $\text{FuncSymbol} = \bigvee_{i} x_{i}$ would be translated to:
+
+$$
+\text{s.t.} \quad y = 1
 $$
 
 $$
 \begin{cases}
   y \geq \frac{x_{i}}{\max(x_{i})}, & \max(x_{i}) > 1 \\ \; \\
-  y \geq x_{i}, & else
+  y \geq x_{i}, & \text{else}
 \end{cases}
 $$
 
@@ -148,82 +147,82 @@ y \leq \sum_{i} x_{i}
 $$
 
 $$
-y \in \\{ 0, 1 \\}
+y \in \{ 0, 1 \}
 $$
 
-Of course, you can also extend these intermediate expressions according to your own business requirements. At this point, you need to implement some interfaces to let ospf know which intermediate variables and constraints need to be added for these intermediate expressions.
+Of course, you can also extend these functional intermediate values based on your business needs. At this point, you need to implement some interfaces to let OSPF know which intermediate variables and constraints this functional intermediate value requires.
 
-The <em>ospf-core</em> only maintains arithmetic and logical functions. In fact, we can design and implement functional intermediate expressions based entirely on the domain, as part of domain engineering. For specific references, you can refer to the development package for specific problem domains in the <em>ospf-framework</em>.
+OSPF-core itself only maintains arithmetic operators and logical operators. In fact, we can completely design and implement functional intermediate values based on domains as part of domain engineering. For specifics, refer to the development packages for specific problems in ospf-framework.
 
-## Changes when Modeling with ospf
+## Changes in Modeling with OSPF
 
 ### Problem Description
 
-In a given telecommunications network structure, in order to deliver video content to each residential area quickly and at low cost, it is necessary to place video content storage servers near selected network nodes within this predefined network architecture.
+In a given telecommunications network structure, to quickly and cost-effectively deliver video content to each residential area, video content storage servers need to be placed near some network nodes in this given network structure.
 
 <div align="center">
   <img src="/images/framework-example1.png">
 </div>
 
-It is now known that:
-1. Each link has a bandwidth $Bandwidth^{Max}$ and bandwidth cost $Cost^{Bandwidth}$ ;
-2. Each server has a capacity $Capacity$ and service cost $Cost^{Service}$ ;
-3. Each consumer node has a demand $Demand$ .
+Currently known:
+1. Each link has bandwidth $Bandwidth^{Max}$ and bandwidth cost $Cost^{Bandwidth}$;
+2. Each server has load capacity $Capacity$ and usage cost $Cost^{Service}$;
+3. Each consumer node has demand $Demand$.
 
-Determine the placement locations of video content storage servers and the bandwidth links to minimize server usage costs and link usage costs, while satisfying the following conditions:
-1. At most one server can be deployed at each node;
+Determine the placement locations for video content storage servers and bandwidth links to minimize server usage cost and link usage cost, while satisfying the following conditions:
+1. Each node can deploy at most one server;
 2. Each server can be deployed to at most one node;
-3. All residential area video playback demands must be met;
-4. The traffic at transit nodes must be balanced.
+3. Meet all residential area video playback demands;
+4. Transit node traffic must be balanced.
 
-### Tranditional Modeling
+### Traditional Mathematical Model
 
 #### Sets
 
-$N$: set of nodes.
+$N$: Set of nodes.
 
-$N^{N}$: set of normal (non-consumer) nodes.
+$N^{N}$: Set of normal (non-client) nodes.
 
-$N^{C}$: set of consumer nodes.
+$N^{C}$: Set of user nodes.
 
-$S$: set of services.
+$S$: Set of servers.
 
-$E$: set of links.
+$E$: Set of links.
 
 #### Constants
 
-$Cost^{Service}_{s}$: service cost of service $s$.
+$Cost^{Service}_{s}$: Usage cost of server $s$.
 
-$Cost^{Bandwidth}_{e_{ij}}$: bandwidth cost of link between node $i$ and node $j$.
+$Cost^{Bandwidth}_{e_{ij}}$: Unit bandwidth usage cost of the link between node $i$ and node $j$.
 
-$Bandwidth^{Max}_{e_{ij}}$: maximum bandwidth of link between node $i$ and node $j$.
+$Bandwidth^{Max}_{e_{ij}}$: Maximum bandwidth of the link between node $i$ and node $j$.
 
-$Capacity_{s}$: capacity of server $s$.
+$Capacity_{s}$: Carrying capacity of server $s$.
 
-$Demand_{i}$: bandwidth demand of node $i$.
+$Demand_{i}$: Bandwidth demand of node $i$.
 
 #### Variables
 
-$x_{is}$: whether server $s$ is deployed on node $i$.
+$x_{is}$: Deploy server $s$ at normal node $i$.
 
-$y_{e_{ij}, s}$: whether link $e_{ij}$ is used by server $s$.
+$y_{e_{ij}, s}$: Bandwidth occupied by server $s$ on the link between normal node $i$ and node $j$.
 
-#### Objective Function
+#### Optimization Objective
 
 $$
-\begin{align} Min \quad
+\begin{align} \min \quad
 & \sum_{s \in S} Cost^{Service}_{s} \cdot \sum_{i \in N^{N}} x_{is} \tag{1} \\
 & + \sum_{i \in N^{N}}\sum_{j \in N^{N}} Cost^{Bandwidth}_{e_{ij}} \cdot \sum_{s \in S} y_{e_{ij}, s} \tag{2}
 \end{align}
 $$
 
-Here, $(1)$ represents the server usage cost, and $(2)$ represents the bandwidth usage cost.
+Where $(1)$ is server usage cost, and $(2)$ is bandwidth usage cost.
 
 #### Constraints
 
 $$
 \begin{align}
-s.t. \quad & \sum_{s \in S} x_{is} \leq 1, & \; \forall i \in N^{N} \tag{3} \\
+\text{s.t.} \quad & \sum_{s \in S} x_{is} \leq 1, & \; \forall i \in N^{N} \tag{3} \\
 & \sum_{i \in N^{N}} x_{is} \leq 1, & \; \forall s \in S \tag{4} \\
 & y_{e_{ij}, s} \leq Bandwidth^{Max}_{e_{ij}} \cdot \sum_{i \in N^{N}} x_{is}, & \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S \tag{5} \\
 & \sum_{s \in S}\sum_{i \in N^{N}} y_{e_{ij}, s} \geq Demand_{i}, & \; \forall j \in N^{C} \tag{6} \\
@@ -234,249 +233,255 @@ s.t. \quad & \sum_{s \in S} x_{is} \leq 1, & \; \forall i \in N^{N} \tag{3} \\
 \end{align}
 $$
 
-Here, $(3)$ ensures that at most one server can be deployed on each node, $(4)$ restricts each server to be deployed on at most one node, $(5)$ constrains the bandwidth usage of each link not to exceed its maximum capacity and ensures that only servers can consume bandwidth, $(6)$ enforces the satisfaction of consumer node demands, $(7)$ imposes flow balance constraints on transit nodes, $(8)$ limits the net output of server nodes to their capacity, and $(9)$ and $(10)$ define the feasible ranges of the variables.
+Where $(3)$ constrains each node to deploy at most one server, $(4)$ constrains each server to be deployed to at most one node, $(5)$ constrains link used bandwidth not to exceed link maximum, and only servers can use bandwidth, $(6)$ constrains meeting consumer node demands, $(7)$ constrains transit node traffic to be balanced, $(8)$ constrains server node net output not to exceed server capacity, $(9)$ and $(10)$ constrain the value ranges of decision variables.
 
-### Modeling with ospf: Abstract and Encapsulate Duplicate Parts Using Intermediate Expression
+### Modeling with OSPF: Using Intermediate Values to Abstract and Encapsulate Duplicate Parts
 
 #### Overview
 
-The design method for mathematical models based on large-scale reuse is essentially an approach that abstracts and modularizes mathematical models using intermediate values. The intermediate values extracted within each bounded context serve as the interfaces for that context, which other contexts can then utilize.
+The mathematical model design method based on large-scale reuse is essentially using intermediate value-based abstraction design and modularization of mathematical models. The intermediate values refined in each bounded context are the interfaces of that context to the outside, and other contexts can use these interfaces.
 
-In this problem, we can easily identify two interdependent business domains: route and bandwidth. The route domain describes whether a server is in use and, if so, where it is deployed. The bandwidth domain builds upon the route domain, describing the bandwidth occupied on each link given such a deployment of server clusters. We will proceed with mathematical modeling based on this bounded context partitioning approach.
+In this problem, we can easily identify two dependent business domains: routing and bandwidth. The routing domain describes whether servers are used and where they are deployed if used; the bandwidth domain, based on the routing domain, describes the bandwidth occupied on each link if the server cluster is deployed this way. Next, we will perform mathematical modeling using this bounded context division method.
 
-#### Route Domain
+#### Routing Context
 
 ##### Variables
 
-$x_{is} \in \{0, 1\}$: whether server $s$ is deployed on node $i$.
+$x_{is} \in \{0, 1\}$: Deploy server $s$ at normal node $i$.
 
-##### Intermediate Expressions
+##### Intermediate Values
 
-###### 1. Whether Any Server is Deployed on Node
-
-$$
-Assignment^{Node}_{i} = \sum_{s \in S} x_{is}, \; \forall i \in N^{N}
-$$
-
-###### 2. Whether Server is Deployed on Any Node
+###### 1. Whether Server is Deployed at Node
 
 $$
-Assignment^{Server}_{s} = \sum_{i \in N^{N}} x_{is}, \; \forall s \in S
+\text{Assignment}^{\text{Node}}_{i} = \sum_{s \in S} x_{is}, \; \forall i \in N^{N}
+$$
+
+###### 2. Whether Server is Deployed
+
+$$
+\text{Assignment}^{\text{Service}}_{s} = \sum_{i \in N^{N}} x_{is}, \; \forall s \in S
 $$
 
 ##### Objective Function
 
-###### 1. Minimize Server Cost
+###### 1. Minimize Server Deployment Cost
 
-**Description**: Minimize the total cost of deploying servers on nodes.
+**Description**: Server usage cost should be as low as possible.
 
 $$
-min \quad \sum_{s \in S} Cost^{Service}_{s} \cdot Assignment^{Service}_{s}
+\min \quad \sum_{s \in S} \text{Cost}^{\text{Service}}_{s} \cdot \text{Assignment}^{\text{Service}}_{s}
 $$
 
 ##### Constraints
 
-###### 1. Node Deployment Limit
+###### 1. Node Deployment Constraint
 
-**Description**: At most one server can be deployed on each node.
+**Description**: Each node can deploy at most one server.
 
 $$
-s.t. \quad Assignment^{Node}_{i} \leq 1, \; \forall i \in N^{N}
+\text{s.t.} \quad \text{Assignment}^{\text{Node}}_{i} \leq 1, \; \forall i \in N^{N}
 $$
 
-###### 2. Server Deployment Limit
+###### 2. Server Deployment Constraint
 
 **Description**: Each server can be deployed to at most one node.
 
 $$
-s.t. \quad Assignment^{Server}_{s} \leq 1, \; \forall s \in S
+\text{s.t.} \quad \text{Assignment}^{\text{Service}}_{s} \leq 1, \; \forall s \in S
 $$
 
-#### Bandwidth Domain
+#### Bandwidth Context
 
 ##### Variables
 
-$y_{e_{ij}, s} \in R^{\ast}$: whether link $e_{ij}$ is used by server $s$.
+$y_{e_{ij}, s} \in R^{\ast}$: Bandwidth occupied by server $s$ on the link from normal node $i$ to node $j$.
 
-##### Intermediate Expressions
+##### Intermediate Values
 
-###### 1. Bandwidth Usage
-
-$$
-Bandwidth_{e_{ij}} = \sum_{s \in S} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall j \in N
-$$
-
-###### 2. Indegree Bandwidth
+###### 1. Used Bandwidth
 
 $$
-Bandwidth^{Indegree, Service}_{js} = \sum_{i \in N^{N}} y_{e_{ij}, s}, \; \forall j \in N, \; \forall s \in S
+\text{Bandwidth}_{e_{ij}} = \sum_{s \in S} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall j \in N
 $$
 
-$$
-Bandwidth^{Indegree, Node}_{j} = \sum_{s \in S} Bandwidth^{Indegree, Service}_{js}, \; \forall j \in N
-$$
-
-###### 3. Outdegree Bandwidth
+###### 2. Incoming Bandwidth
 
 $$
-Bandwidth^{Outdegree, Service}_{is} = \sum_{j \in N} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall s \in S
+\text{Bandwidth}^{\text{Indegree, Service}}_{js} = \sum_{i \in N^{N}} y_{e_{ij}, s}, \; \forall j \in N, \; \forall s \in S
 $$
 
 $$
-Bandwidth^{Outdegree, Node}_{i} = \sum_{s \in S} Bandwidth^{Outdegree, Service}_{js}, \; \forall i \in N^{N}
+\text{Bandwidth}^{\text{Indegree, Node}}_{j} = \sum_{s \in S} \text{Bandwidth}^{\text{Indegree, Service}}_{js}, \; \forall j \in N
 $$
 
-###### 4. OutFlow Bandwidth
+###### 3. Outgoing Bandwidth
 
 $$
-Bandwidth^{OutFlow, Service}_{is} = Bandwidth^{Outdegree, Service}_{is} - Bandwidth^{Indegree, Service}_{is}, \; \forall i \in N^{N}, \; \forall s \in S
+\text{Bandwidth}^{\text{Outdegree, Service}}_{is} = \sum_{j \in N} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall s \in S
 $$
 
 $$
-Bandwidth^{OutFlow, Node}_{i} = \sum_{s \in S} Bandwidth^{OutFlow, Service}_{is}, \; \forall i \in N^{N}
+\text{Bandwidth}^{\text{Outdegree, Node}}_{i} = \sum_{s \in S} \text{Bandwidth}^{\text{Outdegree, Service}}_{js}, \; \forall i \in N^{N}
+$$
+
+###### 4. Net Outflow Bandwidth
+
+$$
+\text{Bandwidth}^{\text{OutFlow, Service}}_{is} = \text{Bandwidth}^{\text{Outdegree, Service}}_{is} - \text{Bandwidth}^{\text{Indegree, Service}}_{is}, \; \forall i \in N^{N}, \; \forall s \in S
+$$
+
+$$
+\text{Bandwidth}^{\text{OutFlow, Node}}_{i} = \sum_{s \in S} \text{Bandwidth}^{\text{OutFlow, Service}}_{is}, \; \forall i \in N^{N}
 $$
 
 ##### Objective Function
 
-###### 1. Minimize Bandwidth Usage Cost
+###### 1. Minimize Link Bandwidth Usage Cost
 
-**Description**: Minimize the total cost of using bandwidth on links.
+**Description**: Link bandwidth usage cost should be as low as possible.
 
 $$
-min \quad \sum_{i \in N^{N}}\sum_{j \in N^{N}} Cost^{Bandwidth}_{e_{ij}} \cdot Bandwidth_{e_{ij}}
+\min \quad \sum_{i \in N^{N}}\sum_{j \in N^{N}} \text{Cost}^{\text{Bandwidth}}_{e_{ij}} \cdot \text{Bandwidth}_{e_{ij}}
 $$
 
 ##### Constraints
 
-###### 1. Bandwidth Usage Limit
+###### 1. Link Bandwidth Constraint
 
-**Description**: The bandwidth usage of each link not to exceed its maximum capacity and ensures that only servers can consume bandwidth.
-
-$$
-s.t. \quad y_{e_{ij}, s} \leq Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S
-$$
-
-###### 2. Demand Satisfaction Limit
-
-**Description**: Enforce the satisfaction of consumer node demands.
+**Description**: Link used bandwidth does not exceed link maximum, and only servers can use bandwidth.
 
 $$
-s.t. \quad \sum_{s \in S} Bandwidth^{OutFlow, Service}_{is} \geq Demand_{i}, \; \forall i \in N^{C}
+\text{s.t.} \quad y_{e_{ij}, s} \leq \text{Bandwidth}^{Max}_{e_{ij}} \cdot \text{Assignment}^{\text{Service}}_{s}, \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S
 $$
 
-###### 3. Flow Balance Limit
+###### 2. Terminal Node Demand Constraint
 
-**Description**: Impose flow balance constraints on transit nodes.
-
-$$
-s.t. \quad \sum_{j \in N} y_{e_{ij}, s} - \sum_{j \in N^{N}} y_{e_{ji}, s} \leq \sum_{j \in N} Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall s \in S
-$$
-
-###### 4. Server Capacity Limit
-
-**Description**: Limit the outflow of server nodes to their capacity.
+**Description**: Must satisfy consumer node demands.
 
 $$
-s.t. \quad \sum_{j \in N} y_{e_{ij}, s} - \sum_{j \in N^{N}} y_{e_{ji}, s} \leq Capacity_{s} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall s \in S
+\text{s.t.} \quad \text{Bandwidth}^{\text{Indegree, Node}}_{i} \geq \text{Demand}_{i}, \; \forall i \in N^{C}
+$$
+
+###### 3. Transit Node Traffic Constraint
+
+**Description**: Transit node traffic must be balanced.
+
+$$
+\text{s.t.} \quad \text{Bandwidth}^{\text{OutFlow, Node}}_{i} \leq \text{Bandwidth}^{Max, Outdegree}_{i} \cdot \text{Assignment}^{\text{Node}}_{i}, \; \forall i \in N^{N}
+$$
+
+Where:
+
+$$
+\text{Bandwidth}^{Max, Outdegree}_{i} = \sum_{j \in N} \text{Bandwidth}^{Max}_{e_{ij}}, \; \forall i \in N^{N}
+$$
+
+###### 4. Server Capacity Constraint
+
+**Description**: Server node net output does not exceed server capacity.
+
+$$
+\text{s.t.} \quad \text{Bandwidth}^{\text{OutFlow, Service}}_{is} \leq \text{Capacity}_{s} \cdot x_{is}, \; \forall i \in N^{N}, \; \forall s \in S
 $$
 
 #### Code Implementation
 
-Code implementation refers to [example page](/examples/framework-example1#code-implementation)
+Code implementation can be referenced: [Example Page](/examples/framework-example1#code-implementation)
 
 #### Business Architecture and Integration Architecture
 
-The mathematical model design method based on large-scale reuse divides the model into two bounded contexts: route and bandwidth, effectively splitting the monolithic server placement business into these two distinct themes. The final delivered algorithmic application is responsible for integrating these two parts to provide a complete algorithmic service. This process is generally referred to as <b> mapping the problem space to the solution space</b>. A key characteristic of this approach is that the domain layer and application layer of the integration architecture align structurally with the business architecture.
+The mathematical model design method based on large-scale reuse divides the mathematical model into two parts: routing context and bandwidth context. In fact, it also divides the entire server placement business into two themes: routing and bandwidth. The final delivered algorithm application is responsible for combining these two parts to provide a complete algorithm service. This process is generally called **mapping problem space to solution space**. It brings a characteristic that the domain layer and application layer of the integration architecture have the same structure as the business architecture.
 
 ```mermaid
 C4Context
-  System_Boundary(ServiceLayer, "Service Layer") {
-    System(AlgorithmService, "Algorithm Service")
+  System_Boundary(服务层, "Service Layer") {
+    System(服务, "Service")
   }
-  System_Boundary(ApplicationLayer, "Application Layer") {
-    System(Application, "Algorithm Application")
+  System_Boundary(应用层, "Application Layer") {
+    System(应用, "Application")
   }
-  System_Boundary(DomainLayer, "Domain Layer") {
-    System(RouteContext, "Route Context")
-    System(BandwidthContext, "Bandwidth Context")
+  System_Boundary(领域层, "Domain Layer") {
+    System(带宽上下文, "Bandwidth Context")
+    System(回路上下文, "Routing Context")
   }
 
-  Rel(AlgorithmService, Application, "", "")
-  Rel(Application, RouteContext, "", "")
-  Rel(Application, BandwidthContext, "", "")
-  Rel(BandwidthContext, RouteContext, "", "")
+  Rel(服务, 应用, "", "")
+  Rel(应用, 回路上下文, "", "")
+  Rel(应用, 带宽上下文, "", "")
+  Rel(带宽上下文, 回路上下文, "", "")
 
   UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
-If we also have different users with multi-active requirements on top of these foundational services, we can similarly decouple the multi-active logic and implement it as a multi-active bounded context. By constructing an application that integrates route context, bandwidth context, and multi-active context, we can deliver a multi-active-aware solution relatively quickly -- leveraging the existing route and bandwidth contexts instead of reimplementing them from scratch.
+If we have different users with multi-active requirements on these basic businesses, we can similarly decompose the multi-active business and implement it as a multi-active context. By constructing an algorithm application that simultaneously integrates routing context, bandwidth context, and multi-active context, we can relatively quickly deliver this multi-active algorithm application compared to re-implementation, while reusing the routing context and bandwidth context.
 
 ```mermaid
 C4Context
-  System_Boundary(ServiceLayer, "Service Layer") {
-    System(AlgorithmService, "Algorithm Service")
+  System_Boundary(服务层, "Service Layer") {
+    System(服务, "Service")
   }
-  System_Boundary(ApplicationLayer, "Application Layer") {
-    System(NormalApplication, "Normal Algorithm Application")
-    System(MultiActiveApplication, "Multi Active Application")
+  System_Boundary(应用层, "Application Layer") {
+    System(普通应用, "Normal Application")
+    System(带多活的应用, "Multi-Active Application")
   }
-  System_Boundary(DomainLayer, "Domain Layer") {
-    System(BandwidthContext, "Bandwidth Context")
-    System(RouteContext, "Route Context")
-    System(MultiActiveContext, "Multi Active Context")
+  System_Boundary(领域层, "Domain Layer") {
+    System(带宽上下文, "Bandwidth Context")
+    System(回路上下文, "Routing Context")
+    System(多活上下文, "Multi-Active Context")
   }
 
-  Rel(AlgorithmService, NormalApplication, "", "")
-  Rel(AlgorithmService, MultiActiveApplication, "", "")
-  Rel(NormalApplication, RouteContext, "", "")
-  Rel(NormalApplication, BandwidthContext, "", "")
-  Rel(MultiActiveApplication, RouteContext, "", "")
-  Rel(MultiActiveApplication, BandwidthContext, "", "")
-  Rel(MultiActiveApplication, MultiActiveContext, "", "")
-  Rel(BandwidthContext, RouteContext, "", "")
-  Rel(MultiActiveContext, RouteContext, "", "")
+  Rel(服务, 普通应用, "", "")
+  Rel(服务, 带多活的应用, "", "")
+  Rel(普通应用, 回路上下文, "", "")
+  Rel(普通应用, 带宽上下文, "", "")
+  Rel(带多活的应用, 回路上下文, "", "")
+  Rel(带多活的应用, 带宽上下文, "", "")
+  Rel(带多活的应用, 多活上下文, "", "")
+  Rel(带宽上下文, 回路上下文, "", "")
+  Rel(多活上下文, 回路上下文, "", "")
 
   UpdateLayoutConfig($c4ShapeInRow="6", $c4BoundaryInRow="1")
 ```
 
-More broadly, if we carefully plan and implement the bounded contexts in the domain layer to construct an operations research mathematical model librar -- akin to a knowledge bas -- we can then integrate these bounded contexts to rapidly deliver the algorithmic applications users require. The process of building these library components is generally referred to as <b> domain engineering </b>.
+Generally speaking, if we can carefully plan and implement the division of contexts in the domain layer, constructing an operations research mathematical model library similar to a knowledge base, we can integrate based on these bounded contexts and quickly deliver the algorithm applications required by users. The process of constructing these library components is generally called **domain engineering**.
 
 ## Components
 
-ospf is designed and implemented using an internal <strong><em>Domain Specific Language</em></strong> (DSL) format. Apart from some shared components, the rest are implemented in the target host language.
+OSPF adopts the form of internal **Domain-Specific Language (DSL)** for design and implementation. Except for some public components, the rest are implemented on the target host language.
 
-### Shared Components
+### Public Components
 
-- <strong>[examples](https://github.com/fuookami/ospf/tree/main/examples)</strong>: examples demonstrating how to use ospf for modeling and solving.
+- **[examples](https://github.com/fuookami/ospf/tree/main/examples)**: Examples, used to demonstrate how to use OSPF for modeling and solving.
 
-- <strong>[framework](https://github.com/fuookami/ospf/tree/main/framework)</strong>: a set of common components developed for specific problem domains, including visualization tools for results.
+- **[framework](https://github.com/fuookami/ospf/tree/main/framework)**: Common components for development packages targeting specific problems, including result visualization tools.
 
-- <strong>[remote](https://github.com/fuookami/ospf/tree/main/remote)</strong>: a remote solver scheduler and server used to execute solvers on a server and retrieve results through a network interface.
+- **[remote](https://github.com/fuookami/ospf/tree/main/remote)**: Remote solver scheduler and server, used to run solvers on servers and obtain results through network interfaces.
 
-### Components In Host Language Implementation 
+### Host Language Implementation Components
 
-each ospf implementation consists of the following components:
+Each OSPF implementation includes the following components:
 
-- <strong>utils</strong>: utilities containing classes and functions required for implementing ospf DSL.
-- <strong>core</strong>: core components containing essential functionalities such as modeling, solver interfaces, result processing, etc.
-  - <strong>core-plugin-XXX</strong>: solver plugins implementing solver interfaces for specific solvers.
-  - <strong>core-plugin-heuristic</strong>: meta-heuristic algorithm plugins containing implementations of various common meta-heuristic algorithms.
-- <strong>framework</strong>: problem-specific frameworks containing implementations of data processing, mathematical models, and solving algorithms tailored to specific problems. All designs and implementations are non-intrusive, allowing users to use them out of the box or extend them seamlessly, integrating with other frameworks or components.
-  - <strong>framework-plugin-XXX</strong>: framework plugins implementing functionalities requiring middleware involvement, such as data persistence, asynchronous message communication.
-  - <strong>bpp1d</strong>: 1D <strong><em>Bin Packing Problem</em></strong> (BPP) development package containing implementations of data processing, mathematical models, and solving algorithms for various 1D BPPs.
-  - <strong>bpp2d</strong>: 2D <strong><em>Bin Packing Problem</em></strong> (BPP) development package containing implementations of data processing, mathematical models, and solving algorithms for various 2D BPPs.
-  - <strong>bpp3d</strong>: 3D <strong><em>Bin Packing Problem</em></strong> (BPP) development package containing implementations of data processing, mathematical models, and solving algorithms for various 3D BPPs.
-  - <strong>csp1d</strong>: 1D <strong><em>Cutting Stock Problem</em></strong> (CSP) development package containing implementations of data processing, mathematical models, and solving algorithms for various 1D CSPs.
-  - <strong>csp2d</strong>: 2D <strong><em>Cutting Stock Problem</em></strong> (CSP) development package containing implementations of data processing, mathematical models, and solving algorithms for various 2D CSPs.
-  - <strong>gantt-scheduling</strong>: gantt scheduling problem development package containing implementations of data processing, mathematical models, and solving algorithms for various Gantt chart scheduling problems. It can be used for scheduling and planning problems such as <strong><em>Advanced Production Scheduling</em></strong> (APS), <strong><em>Lot Scheduling Problem</em></strong> (LSP), etc.
-  - <strong>network-scheduling</strong>: network scheduling problem development package containing implementations of data processing, mathematical models, and solving algorithms for various network scheduling problems. It can be used for scheduling and planning problems such as <strong><em>Vehicle Routing Problem</em></strong> (VRP), <strong><em>Facility Location Problem</em></strong> (FLP), etc.
+- **utils**: Toolset, containing classes and functions required to implement OSPF DSL.
+- **core**: Core components, containing core functions such as modeling, solver interfaces, result processing, etc.
+  - **core-plugin-XXX**: Solver plugins, used to implement solver interfaces for specific solvers.
+  - **core-plugin-heuristic**: Meta-heuristic algorithm plugins, containing implementations of many common meta-heuristic algorithms.
+- **framework**: Framework for specific problems, containing implementations of data processing, mathematical models, and solution algorithms for specific problems. All designs and implementations are non-intrusive. Users can either use them out-of-the-box or extend based on the framework, seamlessly integrating with other frameworks or components.
+  - **framework-plugin-XXX**: Framework plugins, used to implement functions requiring middleware participation, such as data persistence, asynchronous message communication.
+  - **bpp1d**: One-dimensional bin packing problem development package, containing implementations of data processing, mathematical models, and solution algorithms for many one-dimensional bin packing problems.
+  - **bpp2d**: Two-dimensional bin packing problem development package, containing implementations of data processing, mathematical models, and solution algorithms for many two-dimensional bin packing problems.
+  - **bpp3d**: Three-dimensional bin packing problem development package, containing implementations of data processing, mathematical models, and solution algorithms for many three-dimensional bin packing problems.
+  - **csp1d**: One-dimensional cutting stock problem development package, containing implementations of data processing, mathematical models, and solution algorithms for many one-dimensional cutting stock problems.
+  - **csp2d**: Two-dimensional cutting stock problem development package, containing implementations of data processing, mathematical models, and solution algorithms for many two-dimensional cutting stock problems.
+  - **gantt-scheduling**: Gantt chart scheduling problem development package, containing implementations of data processing, mathematical models, and solution algorithms for many Gantt chart scheduling problems. Can be used for similar scheduling and planning problems like production scheduling (APS), batch production (LSP), etc.
+  - **network-scheduling**: Network scheduling problem development package, containing implementations of data processing, mathematical models, and solution algorithms for many network scheduling problems. Can be used for similar scheduling and planning problems like vehicle routing (VRP), facility location (FLP), etc.
 
-## Features And Progress
+## Features and Progress
 
-- ✔️：Stable version.
-- ⭕：Development completed, unstable version.
-- ❗：Under development, incomplete version.
-- ❌：Planned, not started.
+- ✔️: Stable version.
+- ⭕: Development completed, unstable version.
+- ❗: Under development, incomplete version.
+- ❌: Planned, not started.
 
 ### Core
 
@@ -521,7 +526,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
       </tr>
       <tr>
-        <td colspan=6>Solver Wrapper</td>
+        <td colspan=6>Solver Interfaces</td>
       </tr>
       <tr>
         <td>COPIN-OR</td>
@@ -612,11 +617,11 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>else</td>
-        <td colspan=5>planing</td>
+        <td>Others</td>
+        <td colspan=5>Planned</td>
       </tr>
       <tr>
-        <td colspan=6>Meta-Heuristic Algorithm</td>
+        <td colspan=6>Meta-Heuristic Algorithms</td>
       </tr>
       <tr>
         <td>PSO</td>
@@ -667,8 +672,8 @@ each ospf implementation consists of the following components:
         <td>❗</td>
       </tr>
       <tr>
-        <td>else</td>
-        <td colspan=5>planing</td>
+        <td>Others</td>
+        <td colspan=5>Planned</td>
       </tr>
     </tbody>
   </table>
@@ -700,7 +705,49 @@ each ospf implementation consists of the following components:
         <td></td>
       </tr>
       <tr>
-        <td>bpp1d</td>
+        <td colspan=7>Algorithm Capabilities/Frameworks</td>
+      </tr>
+      <tr>
+        <td>IIS</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>Column Generation</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>Automatic Benders Decomposition<br>(Linear)</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>Automatic Benders Decomposition<br>(Quadratic)</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td colspan=7>Application Frameworks</td>
+      </tr>
+      <tr>
+        <td>1D Bin Packing</td>
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
@@ -709,7 +756,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
       </tr>
       <tr>
-        <td>bpp2d</td>
+        <td>2D Bin Packing</td>
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
@@ -718,7 +765,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
       </tr>
       <tr>
-        <td>bpp3d</td>
+        <td>3D Bin Packing</td>
         <td>❌</td>
         <td>❌</td>
         <td>✔️</td>
@@ -727,7 +774,7 @@ each ospf implementation consists of the following components:
         <td>✔️</td>
       </tr>
       <tr>
-        <td>csp1d</td>
+        <td>1D Cutting Stock</td>
         <td>❌</td>
         <td>❌</td>
         <td>⭕</td>
@@ -736,7 +783,7 @@ each ospf implementation consists of the following components:
         <td>✔️</td>
       </tr>
       <tr>
-        <td>csp2d</td>
+        <td>2D Cutting Stock</td>
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
@@ -745,7 +792,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
       </tr>
       <tr>
-        <td>gantt-scheduling</td>
+        <td>Gantt Scheduling</td>
         <td>❌</td>
         <td>❌</td>
         <td>✔️</td>
@@ -754,7 +801,7 @@ each ospf implementation consists of the following components:
         <td>✔️</td>
       </tr>
       <tr>
-        <td>network-scheduling</td>
+        <td>Network Flow Scheduling</td>
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
@@ -763,8 +810,8 @@ each ospf implementation consists of the following components:
         <td>❌</td>
       </tr>
       <tr>
-        <td>else</td>
-        <td colspan=6>planing</td>
+        <td>Others</td>
+        <td colspan=6>Planned</td>
       </tr>
     </tbody>
   </table>
@@ -782,19 +829,19 @@ each ospf implementation consists of the following components:
     </thead>
     <tbody>
       <tr>
-        <td>Solver Serivce</td>
+        <td>Solver Server</td>
         <td>❗</td>
       </tr>
       <tr>
-        <td>Meta-Heuristic Algorithm Service</td>
+        <td>Meta-Heuristic Algorithm Server</td>
         <td>❌</td>
       </tr>
       <tr>
-        <td>Dispatcher</td>
+        <td>Scheduler</td>
         <td>❗</td>
       </tr>
       <tr>
-        <td>Time Slice Cycle</td>
+        <td>Time Slice Round Robin</td>
         <td>❌</td>
       </tr>
     </tbody>

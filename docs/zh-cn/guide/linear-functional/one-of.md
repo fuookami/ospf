@@ -24,7 +24,7 @@ $masking(x_{i}, \, c_{i})$ 可参考 [掩码函数](/zh-cn/guide/linear-function
 ## 数学模型
 
 $$
-s.t. \quad \sum_{i} c_{i} = 1
+\text{s.t.} \quad \sum_{i} c_{i} = 1
 $$
 
 ## 样例

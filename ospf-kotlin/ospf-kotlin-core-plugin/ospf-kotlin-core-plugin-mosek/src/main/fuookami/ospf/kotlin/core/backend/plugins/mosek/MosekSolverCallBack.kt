@@ -4,10 +4,11 @@ import java.util.*
 import mosek.*
 import fuookami.ospf.kotlin.utils.concept.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.backend.solver.output.*
 
 typealias CreatingEnvironmentFunction = (Task) -> Try
 typealias NativeCallBack = (Task, Callback) -> Unit
-typealias Function = (Task) -> Try
+typealias Function = suspend (SolverStatus?, Task) -> Try
 
 enum class Point {
     AfterModeling,
@@ -19,7 +20,7 @@ enum class Point {
 class MosekSolverCallBack(
     internal var nativeCallback: NativeCallBack? = null,
     internal var creatingEnvironmentFunction: CreatingEnvironmentFunction? = null,
-    private val map: MutableMap<Point, Function> = EnumMap(Point::class.java)
+    private val map: MutableMap<Point, MutableList<Function>> = EnumMap(Point::class.java)
 ) : Copyable<MosekSolverCallBack> {
     @JvmName("setNativeCallback")
     fun set(function: NativeCallBack) {
@@ -32,7 +33,7 @@ class MosekSolverCallBack(
     }
 
     operator fun set(point: Point, function: Function): MosekSolverCallBack {
-        map[point] = function
+        map.getOrPut(point) { ArrayList() }.add(function)
         return this
     }
 
@@ -42,18 +43,32 @@ class MosekSolverCallBack(
     fun analyzingSolution(function: Function) = set(Point.AnalyzingSolution, function)
     fun afterFailure(function: Function) = set(Point.AfterFailure, function)
 
-    fun contain(point: Point) = map.containsKey(point)
-    fun get(point: Point): Function? = map[point]
+    fun contains(point: Point) = map.containsKey(point)
+    fun get(point: Point): List<Function>? = map[point]
 
     fun execIfContain(env: Task): Try? {
         return creatingEnvironmentFunction?.invoke(env)
     }
 
-    fun execIfContain(point: Point, mosekModel: Task): Try? {
-        return map[point]?.invoke(mosekModel)
+    suspend fun execIfContain(
+        point: Point,
+        status: SolverStatus?,
+        mosekModel: Task
+    ): Try? {
+        return if (!map[point].isNullOrEmpty()) {
+            syncRun(map[point]!!.map {
+                { it(status, mosekModel) }
+            })
+        } else {
+            null
+        }
     }
 
     override fun copy(): MosekSolverCallBack {
-        return MosekSolverCallBack(nativeCallback, creatingEnvironmentFunction, map.toMutableMap())
+        return MosekSolverCallBack(
+            nativeCallback = nativeCallback,
+            creatingEnvironmentFunction = creatingEnvironmentFunction,
+            map = map.toMutableMap()
+        )
     }
 }

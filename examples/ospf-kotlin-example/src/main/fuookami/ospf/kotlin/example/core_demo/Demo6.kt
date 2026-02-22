@@ -68,10 +68,16 @@ data object Demo6 {
     }
 
     private suspend fun initSymbol(): Try {
-        cargoValue = LinearExpressionSymbol(sum(cargos) { c -> c.value * x[c] }, "value")
+        cargoValue = LinearExpressionSymbol(
+            sum(cargos) { c -> c.value * x[c] },
+            name = "value"
+        )
         metaModel.add(cargoValue)
 
-        cargoWeight = LinearExpressionSymbol(sum(cargos) { c -> c.weight * x[c] }, "weight")
+        cargoWeight = LinearExpressionSymbol(
+            sum(cargos) { c -> c.weight * x[c] },
+            name = "weight"
+        )
         metaModel.add(cargoWeight)
 
         return ok
@@ -89,7 +95,7 @@ data object Demo6 {
 
         metaModel.addConstraint(
             cargoWeight leq maxWeight,
-            "weight"
+            name = "weight"
         )
         return ok
     }

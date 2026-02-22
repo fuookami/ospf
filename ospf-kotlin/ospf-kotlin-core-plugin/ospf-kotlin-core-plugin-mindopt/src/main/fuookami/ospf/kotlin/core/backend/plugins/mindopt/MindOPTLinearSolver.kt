@@ -26,34 +26,39 @@ class MindOPTLinearSolver(
 
     override suspend operator fun invoke(
         model: LinearTriadModelView,
-        statusCallBack: SolvingStatusCallBack?
-    ): Ret<SolverOutput> {
-        val impl = MindOPTLinearSolverImpl(config, callBack, statusCallBack)
-        val result = impl(model)
-        System.gc()
-        return result
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<FeasibleSolverOutput> {
+        return MindOPTLinearSolverImpl(
+            config = config,
+            callBack = callBack,
+            statusCallBack = solvingStatusCallBack
+        ).use { impl ->
+            val result = impl(model)
+            System.gc()
+            result
+        }
     }
 
     override suspend fun invoke(
         model: LinearTriadModelView,
         solutionAmount: UInt64,
-        statusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<SolverOutput, List<Solution>>> {
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<Pair<FeasibleSolverOutput, List<Solution>>> {
         return if (solutionAmount leq UInt64.one) {
             this(model).map { it to emptyList() }
         } else {
             val results = ArrayList<Solution>()
-            val impl = MindOPTLinearSolverImpl(
+            MindOPTLinearSolverImpl(
                 config = config,
                 callBack = callBack
                     .copyIfNotNullOr { MindOPTLinearSolverCallBack() }
-                    .configuration { mindopt, _, _ ->
+                    .configuration { _, mindopt, _, _ ->
                         if (solutionAmount gr UInt64.one) {
                             mindopt.set(MDO.IntParam.MIP_SolutionPoolSize, solutionAmount.toInt())
                         }
                         ok
                     }
-                    .analyzingSolution { mindopt, variables, _ ->
+                    .analyzingSolution { _, mindopt, variables, _ ->
                         for (i in 0 until min(solutionAmount.toInt(), mindopt.get(MDO.IntAttr.SolCount))) {
                             mindopt.set(MDO.IntParam.MIP_SolutionNumber, i)
                             val thisResults = variables.map { Flt64(it.get(MDO.DoubleAttr.Xn)) }
@@ -63,11 +68,12 @@ class MindOPTLinearSolver(
                         }
                         ok
                     },
-                statusCallBack = statusCallBack
-            )
-            val result = impl(model).map { it to results }
-            System.gc()
-            return result
+                statusCallBack = solvingStatusCallBack
+            ).use { impl ->
+                val result = impl(model).map { it to results }
+                System.gc()
+                result
+            }
         }
     }
 }
@@ -81,19 +87,20 @@ private class MindOPTLinearSolverImpl(
 
     private lateinit var mindoptVars: List<MDOVar>
     private lateinit var mindoptConstraints: List<MDOConstr>
-    private lateinit var output: SolverOutput
+    private lateinit var output: FeasibleSolverOutput
 
+    private var initialBestObj: Flt64? = null
     private var bestObj: Flt64? = null
     private var bestBound: Flt64? = null
     private var bestTime: Duration = Duration.ZERO
 
-    suspend operator fun invoke(model: LinearTriadModelView): Ret<SolverOutput> {
+    suspend operator fun invoke(model: LinearTriadModelView): Ret<FeasibleSolverOutput> {
         mip = model.containsNotBinaryInteger
 
         val processes = arrayOf(
             { it.init(model.name, callBack?.creatingEnvironmentFunction) },
             { it.dump(model) },
-            MindOPTLinearSolverImpl::configure,
+            { it.configure(model) },
             MindOPTLinearSolverImpl::solve,
             MindOPTLinearSolverImpl::analyzeStatus,
             MindOPTLinearSolverImpl::analyzeSolution
@@ -184,9 +191,10 @@ private class MindOPTLinearSolverImpl(
             mindoptConstraints = constraints
 
             val obj = MDOLinExpr()
-            for (cell in model.objective.obj) {
+            for (cell in model.objective.objective) {
                 obj.addTerm(cell.coefficient.toDouble(), mindoptVars[cell.colIndex])
             }
+            obj.addConstant(model.objective.constant.toDouble())
             mindoptModel.setObjective(
                 obj,
                 when (model.objective.category) {
@@ -200,7 +208,13 @@ private class MindOPTLinearSolverImpl(
                 }
             )
 
-            when (val result = callBack?.execIfContain(Point.AfterModeling, mindoptModel, mindoptVars, mindoptConstraints)) {
+            when (val result = callBack?.execIfContain(
+                point = Point.AfterModeling,
+                status = null,
+                mindopt = mindoptModel,
+                variables = mindoptVars,
+                constraints = mindoptConstraints
+            )) {
                 is Failed -> {
                     return Failed(result.error)
                 }
@@ -215,7 +229,7 @@ private class MindOPTLinearSolverImpl(
         }
     }
 
-    private suspend fun configure(): Try {
+    private suspend fun configure(model: LinearTriadModelView): Try {
         return try {
             mindoptModel.set(MDO.DoubleParam.MaxTime, config.time.toDouble(DurationUnit.SECONDS))
             mindoptModel.set(MDO.DoubleParam.MIP_GapAbs, config.gap.toDouble())
@@ -230,9 +244,14 @@ private class MindOPTLinearSolverImpl(
                             val currentObj = Flt64(getDoubleInfo(MDO.CB_MIP_OBJBST))
                             val currentBound = Flt64(getDoubleInfo(MDO.CB_MIP_OBJBND))
                             val currentTime = mindoptModel.get(MDO.DoubleAttr.SolverTime).seconds
+                            val currentBestSolution = this.getSolution(mindoptVars.toTypedArray()).map { Flt64(it) }
 
                             if (config.notImprovementTime != null) {
-                                if (bestObj == null || bestBound == null || currentObj neq bestObj!! || currentBound neq bestBound!!) {
+                                if (bestObj == null
+                                    || bestBound == null
+                                    || (currentObj - bestObj!!).abs() geq config.improveThreshold
+                                    || (currentBound - bestBound!!).abs() geq config.improveThreshold
+                                ) {
                                     bestObj = currentObj
                                     bestBound = currentBound
                                     bestTime = currentTime
@@ -244,10 +263,30 @@ private class MindOPTLinearSolverImpl(
                             statusCallBack?.let {
                                 when (it(
                                     SolvingStatus(
-                                        solver = "gurobi",
+                                        solver = "mindopt",
+                                        solverConfig = config,
+                                        intermediateModel = model,
+                                        solverModel = mindoptModel,
+                                        solverCallBack = this,
+                                        objectCategory = when (mindoptModel.get(MDO.IntAttr.ModelSense)) {
+                                            MDO.MINIMIZE -> {
+                                                ObjectCategory.Minimum
+                                            }
+
+                                            MDO.MAXIMIZE -> {
+                                                ObjectCategory.Maximum
+                                            }
+
+                                            else -> {
+                                                null
+                                            }
+                                        },
+                                        time = currentTime,
                                         obj = currentObj,
                                         possibleBestObj = currentBound,
-                                        gap = (currentObj - currentBound + Flt64.decimalPrecision) / (currentObj + Flt64.decimalPrecision)
+                                        initialBestObj = initialBestObj ?: currentObj,
+                                        gap = (currentObj - currentBound + Flt64.decimalPrecision) / (currentObj + Flt64.decimalPrecision),
+                                        currentBestSolution = currentBestSolution
                                     )
                                 )) {
                                     is Ok -> {}
@@ -262,7 +301,13 @@ private class MindOPTLinearSolverImpl(
                 })
             }
 
-            when (val result = callBack?.execIfContain(Point.Configuration, mindoptModel, mindoptVars, mindoptConstraints)) {
+            when (val result = callBack?.execIfContain(
+                point = Point.Configuration,
+                status = null,
+                mindopt = mindoptModel,
+                variables = mindoptVars,
+                constraints = mindoptConstraints
+            )) {
                 is Failed -> {
                     return Failed(result.error)
                 }
@@ -284,7 +329,7 @@ private class MindOPTLinearSolverImpl(
                 for (mindoptVar in mindoptVars) {
                     results.add(Flt64(mindoptVar.get(MDO.DoubleAttr.X)))
                 }
-                output = SolverOutput(
+                output = FeasibleSolverOutput(
                     obj = Flt64(mindoptModel.get(MDO.DoubleAttr.ObjVal)),
                     solution = results,
                     time = mindoptModel.get(MDO.DoubleAttr.SolverTime).seconds,
@@ -303,7 +348,13 @@ private class MindOPTLinearSolverImpl(
                         }
                     )
                 )
-                when (val result = callBack?.execIfContain(Point.AnalyzingSolution, mindoptModel, mindoptVars, mindoptConstraints)) {
+                when (val result = callBack?.execIfContain(
+                    point = Point.AnalyzingSolution,
+                    status = status,
+                    mindopt = mindoptModel,
+                    variables = mindoptVars,
+                    constraints = mindoptConstraints
+                )) {
                     is Failed -> {
                         return Failed(result.error)
                     }
@@ -312,7 +363,13 @@ private class MindOPTLinearSolverImpl(
                 }
                 ok
             } else {
-                when (val result = callBack?.execIfContain(Point.AfterFailure, mindoptModel, mindoptVars, mindoptConstraints)) {
+                when (val result = callBack?.execIfContain(
+                    point = Point.AfterFailure,
+                    status = status,
+                    mindopt = mindoptModel,
+                    variables = mindoptVars,
+                    constraints = mindoptConstraints
+                )) {
                     is Failed -> {
                         return Failed(result.error)
                     }

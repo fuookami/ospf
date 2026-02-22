@@ -2,7 +2,7 @@
 
 ## 问题描述
 
-从三个分销中心向五个经销商运输汽车，运输费用依据起点到终点的距离而定，与运输卡车满载无关。汇总从分销中心到经销商之间的里程以及相应的月供应量和需求量如下表所示：
+从三个分销中心向五个经销商运输货物，运输费用依据起点到终点的距离确定，与运输卡车满载无关。汇总从分销中心到经销商之间的里程以及相应的月供应量和需求量如下表所示：
 
 | 分销中心 |   经销商A   |   经销商B   |   经销商C   |   经销商D   |   经销商E   |  供应量  |
 | :------: | :---------: | :---------: | :---------: | :---------: | :---------: | :------: |
@@ -11,7 +11,7 @@
 |    3     | $40\,mile$  | $90\,mile$  | $100\,mile$ | $150\,mile$ | $130\,mile$ | $150\,t$ |
 |  需求量  |  $100\,t$   |  $200\,t$   |  $150\,t$   |  $160\,t$   |  $140\,t$   |    --    |
 
-每辆卡车每英里运输费用固定，给出最优运输方案，要求：
+每辆卡车每英里运输费用固定，确定最优运输方案，同时满足以下条件：
 
 1. 分销中心运输量不超过其供应量；
 2. 各经销商的需求需得到满足；
@@ -50,7 +50,7 @@ $$
 #### 1. 运输费用最小
 
 $$
-min \quad Cost
+\min \quad \text{Cost}
 $$
 
 ### 约束
@@ -58,19 +58,19 @@ $$
 #### 1. 运输量不超过分销中心供应量
 
 $$
-s.t. \quad Trans_{i} \leq Supply_{i}, \; \forall i \in DC
+\text{s.t.} \quad \text{Trans}_{i} \leq \text{Supply}_{i}, \; \forall i \in DC
 $$
 
 #### 2. 满足经销商需求
 
 $$
-s.t. \quad Receive_{j} \geq Demand_{j}, \; \forall j \in D
+\text{s.t.} \quad \text{Receive}_{j} \geq \text{Demand}_{j}, \; \forall j \in D
 $$
 
 #### 3. 卡车装载量不超过上限
 
 $$
-s.t. \quad y_{ij} \cdot Capacity \geq x_{ij}, \; \forall i \in DC, \; \forall j \in D
+\text{s.t.} \quad y_{ij} \cdot \text{Capacity} \geq x_{ij}, \; \forall i \in DC, \; \forall j \in D
 $$
 
 ## 期望结果
@@ -201,6 +201,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo13.kt)

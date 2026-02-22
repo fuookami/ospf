@@ -2,41 +2,41 @@
 
 ## Problem Description
 
-Given a set of companies and products. Each company incurs a specific cost to produce each product.
+There are several enterprises and several products. Each enterprise incurs a certain cost when producing each product.
 
-|       | Product A | Product B | Product C | Product D |
-| :---: | :-------: | :-------: | :-------: | :-------: |
-| Co. A |   $920$   |   $480$   |   $650$   |   $340$   |
-| Co. B |   $870$   |   $510$   |   $700$   |   $350$   |
-| Co. C |   $880$   |   $500$   |   $720$   |   $400$   |
-| Co. D |   $930$   |   $490$   |   $680$   |   $410$   |
+|        | Product A | Product B | Product C | Product D |
+| :----: | :-------: | :-------: | :-------: | :-------: |
+| Enterprise A | $920$  | $480$  | $650$  | $340$  |
+| Enterprise B | $870$  | $510$  | $700$  | $350$  |
+| Enterprise C | $880$  | $500$  | $720$  | $400$  |
+| Enterprise D | $930$  | $490$  | $680$  | $410$  |
 
-Determine which company produce each product. The goal is to assign distinct companies to produce different products such that the total cost is minimized.
+The objective is to assign different enterprises to produce different products, minimizing the total cost.
 
 ## Mathematical Model
 
 ### Variables
 
-$x_{cp}$ ：whether company $c$ is assigned to produce product $p$.
+$x_{cp}$: indicates whether enterprise $c$ is assigned to produce product $p$.
 
-### Intermediate Expressions
+### Intermediate Values
 
 #### 1. Total Cost
 
 $$
-Cost = \sum_{c \in C} \sum_{p \in P} Cost_{cp} \cdot x_{cp}
+\text{Cost} = \sum_{c \in C} \sum_{p \in P} \text{Cost}_{cp} \cdot x_{cp}
 $$
 
-#### 2. Company Assignment
+#### 2. Whether an Enterprise is Assigned
 
 $$
-Assignment^{Company}_{c} = \sum_{p \in P} x_{cp}, \; \forall c \in C
+\text{Assignment}^{\text{Company}}_{c} = \sum_{p \in P} x_{cp}, \; \forall c \in C
 $$
 
-#### 3. Product Assignment
+#### 3. Whether a Product is Assigned
 
 $$
-Assignment^{Product}_{p} = \sum_{p \in P} x_{cp}, \; \forall p \in P
+\text{Assignment}^{\text{Product}}_{p} = \sum_{c \in C} x_{cp}, \; \forall p \in P
 $$
 
 ### Objective Function
@@ -44,26 +44,26 @@ $$
 #### 1. Minimize Total Cost
 
 $$
-min \quad Cost
+\min \quad \text{Cost}
 $$
 
 ### Constraints
 
-#### 1. Company Assignment Limit
+#### 1. Each Enterprise Produces at Most One Product
 
 $$
-s.t. \quad Assignment^{Company}_{c} \leq 1, \; \forall c \in C
+\text{s.t.} \quad \text{Assignment}^{\text{Company}}_{c} \leq 1, \; \forall c \in C
 $$
 
-#### 2. Product Assignment Limit
+#### 2. Each Product Must Be Produced
 
 $$
-s.t. \quad Assignment^{Product}_{p} = 1, \; \forall p \in P
+\text{s.t.} \quad \text{Assignment}^{\text{Product}}_{p} = 1, \; \forall p \in P
 $$
 
-## Expected Result
+## Expected Results
 
-Company A produces product C, company B produces product D, company C produces product A, and company D produces product B.
+Enterprise A produces Product C, Enterprise B produces Product D, Enterprise C produces Product A, Enterprise D produces Product B.
 
 ## Code Implementation
 
@@ -88,13 +88,13 @@ data class Company(
     val cost: Map<Product, Flt64>
 ) : AutoIndexed(Company::class)
 
-private val products: List<Product> = ...  // product data
-private val companies: List<Company> = ... // company data
+val products: List<Product> = ...  // Product list
+val companies: List<Company> = ... // Company list
 
-// create a model instance
+// Create model instance
 val metaModel = LinearMetaModel("demo2")
 
-// define variables
+// Define variables
 val x = BinVariable2("x", Shape2(companies.size, products.size))
 for (c in companies) {
     for (p in products) {
@@ -103,7 +103,7 @@ for (c in companies) {
 }
 metaModel.add(x)
 
-// define intermediate expressions
+// Define intermediate values
 val cost = LinearExpressionSymbol(flatSum(companies) { c ->
     products.map { p ->
         c.cost[p]?.let { it * x[c, p] }
@@ -129,10 +129,10 @@ val assignmentProduct = flatMap(
 )
 metaModel.add(assignmentProduct)
 
-// define objective function
+// Define objective function
 metaModel.minimize(cost)
 
-// define constraints
+// Define constraints
 for (c in companies) {
     metaModel.addConstraint(assignmentCompany[c] leq 1)
 }
@@ -140,7 +140,7 @@ for (p in products) {
     metaModel.addConstraint(assignmentProduct[p] eq 1)
 }
 
-// solve the model
+// Invoke solver
 val solver = ScipLinearSolver()
 when (val ret = solver(metaModel)) {
     is Ok -> {
@@ -150,7 +150,7 @@ when (val ret = solver(metaModel)) {
     is Failed -> {}
 }
 
-// parse results
+// Parse results
 val solution = ArrayList<Pair<Company, Product>>()
 for (token in metaModel.tokens.tokens) {
     if (token.result!! eq Flt64.one && token.variable.belongsTo(x)) {
@@ -163,6 +163,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-For the complete implementation, please refer to:
+**Complete Implementation Reference:**
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo2.kt)

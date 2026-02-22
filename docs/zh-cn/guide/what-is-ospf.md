@@ -108,7 +108,7 @@ min \quad ExprSymbol
 $$
 
 $$
-s.t. \quad ExprSymbol \leq 1
+\text{s.t.} \quad ExprSymbol \leq 1
 $$
 
 ospf 会在将模型翻译到具体求解器的接口时，自动将把每个算术中间值替换为具体的多项式，这个翻译过程对于使用者而言是无感知的，因此使用者并不需要知道这个算术中间值是通过什么变量通过什么运算实现的。
@@ -126,13 +126,13 @@ FuncSymbol = \bigvee_{i} x_{i} = Or(x_{1}, \, x_{2}, \, .. \, , \, x_{i})
 $$
 
 $$
-s.t. \quad FuncSymbol = 1
+\text{s.t.} \quad FuncSymbol = 1
 $$
 
 ospf 会在将模型翻译到具体求解器的接口时，自动添加每个函数中间值所需的中间变量以及约束。这个翻译过程对于使用者而言是无感知的，因此使用者并不需要知道这个函数中间值是通过什么中间变量以及约束实现的。比如上面的这个 $FuncSymbol = \bigvee_{i} x_{i}$ 就会被翻译成：
 
 $$
-s.t. \quad y = 1
+\text{s.t.} \quad y = 1
 $$
 
 $$
@@ -222,7 +222,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & \sum_{s \in S} x_{is} \leq 1, & \; \forall i \in N^{N} \tag{3} \\
+\text{s.t.} \quad & \sum_{s \in S} x_{is} \leq 1, & \; \forall i \in N^{N} \tag{3} \\
 & \sum_{i \in N^{N}} x_{is} \leq 1, & \; \forall s \in S \tag{4} \\
 & y_{e_{ij}, s} \leq Bandwidth^{Max}_{e_{ij}} \cdot \sum_{i \in N^{N}} x_{is}, & \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S \tag{5} \\
 & \sum_{s \in S}\sum_{i \in N^{N}} y_{e_{ij}, s} \geq Demand_{i}, & \; \forall j \in N^{C} \tag{6} \\
@@ -280,7 +280,7 @@ $$
 **描述**：每个节点最多部署一台服务器。
 
 $$
-s.t. \quad Assignment^{Node}_{i} \leq 1, \; \forall i \in N^{N}
+\text{s.t.} \quad Assignment^{Node}_{i} \leq 1, \; \forall i \in N^{N}
 $$
 
 ###### 2. 服务器部署约束
@@ -288,7 +288,7 @@ $$
 **描述**：每个服务器最多部署到一个节点。
 
 $$
-s.t. \quad Assignment^{Service}_{s} \leq 1, \; \forall s \in S
+\text{s.t.} \quad Assignment^{Service}_{s} \leq 1, \; \forall s \in S
 $$
 
 #### 带宽上下文
@@ -352,7 +352,7 @@ $$
 **描述**：链路使用带宽不超过链路最大值，且只有服务器可以使用带宽。
 
 $$
-s.t. \quad y_{e_{ij}, s} \leq Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S
+\text{s.t.} \quad y_{e_{ij}, s} \leq Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S
 $$
 
 ###### 2. 终端节点需求约束
@@ -360,7 +360,7 @@ $$
 **描述**：要满足消费节点需求。
 
 $$
-s.t. \quad Bandwidth^{Indegree, Node}_{i} \geq Demand_{i}, \; \forall i \in N^{C}
+\text{s.t.} \quad Bandwidth^{Indegree, Node}_{i} \geq Demand_{i}, \; \forall i \in N^{C}
 $$
 
 ###### 3. 中转节点流量约束
@@ -368,7 +368,7 @@ $$
 **描述**：中转节点流量要平衡。
 
 $$
-s.t. \quad Bandwidth^{OutFlow, Node}_{i} \leq Bandwidth^{Max, Outdegree}_{i} \cdot Assignment^{Node}_{i}, \; \forall i \in N^{N}
+\text{s.t.} \quad Bandwidth^{OutFlow, Node}_{i} \leq Bandwidth^{Max, Outdegree}_{i} \cdot Assignment^{Node}_{i}, \; \forall i \in N^{N}
 $$
 
 其中：
@@ -382,7 +382,7 @@ $$
 **描述**：服务器节点净输出不大于服务器能力。
 
 $$
-s.t. \quad Bandwidth^{OutFlow, Service}_{is} \leq Capacity_{s} \cdot x_{is}, \; \forall i \in N^{N}, \; \forall s \in S
+\text{s.t.} \quad Bandwidth^{OutFlow, Service}_{is} \leq Capacity_{s} \cdot x_{is}, \; \forall i \in N^{N}, \; \forall s \in S
 $$
 
 #### 代码实现
@@ -703,6 +703,48 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>❗</td>
         <td></td>
+      </tr>
+      <tr>
+        <td colspan=7>算法能力/框架</td>
+      </tr>
+      <tr>
+        <td>IIS</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>列生成</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>自动 Benders 分解<br>（线性）</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>自动 Benders 分解<br>（二次型）</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td colspan=7>应用框架</td>
       </tr>
       <tr>
         <td>一维装箱</td>

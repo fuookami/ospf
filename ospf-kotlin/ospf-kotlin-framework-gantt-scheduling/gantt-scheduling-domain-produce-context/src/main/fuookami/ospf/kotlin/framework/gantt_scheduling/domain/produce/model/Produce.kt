@@ -40,24 +40,26 @@ abstract class AbstractProduce<
         if (overEnabled) {
             if (!::overQuantity.isInitialized) {
                 overQuantity = LinearIntermediateSymbols1(
-                    "produce_over_quantity",
-                    Shape1(products.size)
+                    name = "produce_over_quantity",
+                    shape = Shape1(products.size)
                 ) { i, _ ->
                     val (product, demand) = products[i]
                     if (demand != null && demand.overEnabled) {
                         val slack = SlackFunction(
-                            UContinuous,
-                            x = LinearPolynomial(quantity[product]),
-                            threshold = LinearPolynomial(demand.quantity.upperBound.value.unwrap()),
+                            x = quantity[product],
+                            threshold = demand.quantity.upperBound.value.unwrap(),
+                            type = UContinuous,
                             constraint = false,
-                            name = "produce_over_quantity_$product"
+                            name = "produce_over_quantity_${product}"
                         )
                         demand.overQuantity?.let {
                             slack.pos!!.range.leq(it)
                         }
                         slack
                     } else {
-                        LinearExpressionSymbol(LinearPolynomial(), "produce_over_quantity_$product")
+                        LinearIntermediateSymbol.empty(
+                            name = "produce_over_quantity_${product}"
+                        )
                     }
                 }
             }
@@ -73,25 +75,27 @@ abstract class AbstractProduce<
         if (lessEnabled) {
             if (!::lessQuantity.isInitialized) {
                 lessQuantity = LinearIntermediateSymbols1(
-                    "produce_less_quantity",
-                    Shape1(products.size)
+                    name = "produce_less_quantity",
+                    shape = Shape1(products.size)
                 ) { i, _ ->
                     val (product, demand) = products[i]
                     if (demand != null && demand.lessEnabled) {
                         val slack = SlackFunction(
-                            UContinuous,
-                            x = LinearPolynomial(quantity[product]),
-                            threshold = LinearPolynomial(demand.quantity.lowerBound.value.unwrap()),
+                            x = quantity[product],
+                            threshold = demand.quantity.lowerBound.value.unwrap(),
+                            type = UContinuous,
                             withPositive = false,
                             constraint = false,
-                            name = "produce_less_quantity_$product"
+                            name = "produce_less_quantity_${product}"
                         )
                         demand.lessQuantity?.let {
                             slack.neg!!.range.leq(it)
                         }
                         slack
                     } else {
-                        LinearExpressionSymbol(LinearPolynomial(), "produce_less_quantity_$product")
+                        LinearIntermediateSymbol.empty(
+                            name = "produce_less_quantity_${product}"
+                        )
                     }
                 }
             }
@@ -143,12 +147,15 @@ class BunchSchedulingProduce<
     override fun register(model: MetaModel): Try {
         if (products.isNotEmpty()) {
             if (!::quantity.isInitialized) {
-                quantity = flatMap(
-                    "produce_quantity",
-                    products,
-                    { _ -> LinearPolynomial() },
-                    { (_, p) -> "$p" }
-                )
+                quantity = LinearExpressionSymbols1(
+                    name = "produce_quantity",
+                    shape = Shape1(products.size)
+                ) { p, _ ->
+                    val (product, _) = products[p]
+                    LinearExpressionSymbol(
+                        name = "produce_quantity_${product}"
+                    )
+                }
                 for ((product, demand) in products) {
                     if (demand != null) {
                         quantity[product].range.set(

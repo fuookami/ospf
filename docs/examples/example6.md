@@ -1,64 +1,64 @@
-# Example 6: Knapsack Problem
+# Example 6: Knapsack Problem with Multiple Items
 
 ## Problem Description
 
-Given a set of goods, each with a value, a weight and an amount.
+There are several items, each with corresponding value, weight, and quantity.
 
-|        | Good A  | Good B  | Good C  |
-| :----: | :-----: | :-----: | :-----: |
+|       | Item A  | Item B  | Item C  |
+| :---: | :-----: | :-----: | :-----: |
 | Weight | $1\,kg$ | $2\,kg$ | $2\,kg$ |
-| Value  |   $6$   |  $10$   |  $20$   |
-| Amount |  $10$   |   $5$   |   $2$   |
+| Value |   $6$   |  $10$   |  $20$   |
+| Quantity |  $10$   |   $5$   |   $2$   |
 
-Select a portion of the goods from these items to maximize the total value while satisfying the following conditions:
+Select a subset of these items to maximize total value, while satisfying the following condition:
 
-1. The total weight of the selected goods must not exceed $8\,kg$.
+1. The total weight of these items does not exceed $8\,kg$.
 
 ## Mathematical Model
 
 ### Variables
 
-$x_{c}$ ：amount of good $c$.
+$x_{c}$: Quantity of item $c$.
 
-### Intermediate Expressions
+### Intermediate Values
 
 #### 1. Total Value
 
 $$
-Value = \sum_{c \in C} Value_{c} \cdot x_{c}
+\text{Value} = \sum_{c \in C} \text{Value}_{c} \cdot x_{c}
 $$
 
 #### 2. Total Weight
 
 $$
-Weight = \sum_{c \in C} Weight_{c} \cdot x_{c}
+\text{Weight} = \sum_{c \in C} \text{Weight}_{c} \cdot x_{c}
 $$
 
 ### Objective Function
 
-#### 1. Maximize Value
+#### 1. Maximize Total Value
 
 $$
-max \quad Value
+\max \quad \text{Value}
 $$
 
 ### Constraints
 
-#### 1. Total Weight Limit
+#### 1. Total Weight Does Not Exceed Maximum Weight
 
 $$
-s.t. \quad Weight \leq Weight^{Max}
+\text{s.t.} \quad \text{Weight} \leq \text{Weight}^{\text{Max}}
 $$
 
-#### 2. Total Amount Limit
+#### 2. Quantity of Each Item Cannot Exceed Maximum Quantity
 
 $$
-s.t. \quad x_{c} \leq Amount^{Max}_{c}, \; \forall c \in C
+\text{s.t.} \quad x_{c} \leq \text{Amount}^{\text{Max}}_{c}, \; \forall c \in C
 $$
 
-## Expected Result
+## Expected Results
 
-Select $4$ units of Good A, $0$ units of Good B, and $2$ units of Good C.
+Select $4$ of item A, $0$ of item B, and $2$ of item C.
 
 ## Code Implementation
 
@@ -83,39 +83,40 @@ data class Cargo(
     val amount: UInt64
 ) : AutoIndexed(Cargo::class)
 
-private val cargos: List<Cargo> = ... // cargo data
+private val cargos: List<Cargo> = ... // Item list
 private val maxWeight = UInt64(8)
 
-// create a model instance
+// Create model instance
 val metaModel = LinearMetaModel("demo6")
 
-// define variables
+// Define variables
 val x = UIntVariable1("x", Shape1(cargos.size))
 for (c in cargos) {
     x[c].name = "${x.name}_${c.index}"
 }
 metaModel.add(x)
 
-// define intermediate expressions
+// Define intermediate values
 val cargoValue = LinearExpressionSymbol(sum(cargos) { c -> c.value * x[c] }, "value")
 metaModel.add(cargoValue)
 
 val cargoWeight = LinearExpressionSymbol(sum(cargos) { c -> c.weight * x[c] }, "weight")
 metaModel.add(cargoWeight)
 
-// define objective function
-metaModel.maximize(cargoValue,"value")
+// Define objective function
+metaModel.maximize(cargoValue, "value")
 
-// define constraints
+// Define constraints
 for(c in cargos){
     x[c].range.ls(c.amount)
 }
 
 metaModel.addConstraint(
-    cargoWeight leq maxWeight,"weight"
+    cargoWeight leq maxWeight,
+    "weight"
 )
 
-// solve the model
+// Call solver to solve
 val solver = ScipLinearSolver()
 when (val ret = solver(metaModel)) {
     is Ok -> {
@@ -125,7 +126,7 @@ when (val ret = solver(metaModel)) {
     is Failed -> {}
 }
 
-// parse results
+// Parse results
 val solution = HashMap<Cargo, UInt64>()
 for (token in metaModel.tokens.tokens) {
     if (token.result!! geq Flt64.one && token.variable.belongsTo(x)) {
@@ -136,6 +137,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-For the complete implementation, please refer to:
+**Complete Implementation Reference:**
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo6.kt)

@@ -347,6 +347,48 @@ each ospf implementation consists of the following components:
         <td></td>
       </tr>
       <tr>
+        <td colspan=7>Algorithmic Capability / Framework</td>
+      </tr>
+      <tr>
+        <td>IIS</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>Column Generation</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>Auto Benders Decomposition<br>(Linear)</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>Auto Benders Decomposition<br>(Quadratic)</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td>❌</td>
+        <td>❗</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td colspan=7>Application Framework</td>
+      </tr>
+      <tr>
         <td>bpp1d</td>
         <td>❌</td>
         <td>❌</td>

@@ -15,7 +15,10 @@ class OrTest {
     fun or() {
         val x = BinVar("x")
         val y = BinVar("y")
-        val or = OrFunction(listOf(x, y), "or")
+        val or = OrFunction(
+            listOf(x, y),
+            name = "or"
+        )
         val solver = ScipLinearSolver()
 
         val model1 = LinearMetaModel()

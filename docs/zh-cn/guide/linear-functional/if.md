@@ -28,7 +28,7 @@ $$
 如果 $\cdot$ 是 $\leq$，有：
 
 $$
-s.t. \quad \begin{cases}
+\text{s.t.} \quad \begin{cases}
   \begin{cases}
     x = k_{0} \cdot \min(x) + k_{1} \cdot rhs + k_{2} \cdot \max(x) \\ \; \\
     k_{0} \leq y^{\prime} \\ \; \\
@@ -42,7 +42,7 @@ $$
 如果 $\cdot$ 是 $\geq$，有：
 
 $$
-s.t. \quad \begin{cases}
+\text{s.t.} \quad \begin{cases}
   \begin{cases}
     x = k_{0} \cdot \min(x) + k_{1} \cdot rhs + k_{2} \cdot \max(x) \\ \; \\
     k_{0} \leq 1 - y^{\prime} \\ \; \\
@@ -56,7 +56,7 @@ $$
 如果 $\cdot$ 是 $=$，有：
 
 $$
-s.t. \quad \begin{cases}
+\text{s.t.} \quad \begin{cases}
   \begin{cases}
     x = k_{0} \cdot \min(x) + k_{1} \cdot rhs + k_{2} \cdot \max(x) \\ \; \\
     k_{0} + k_{2} \leq 1 - y^{\prime} \\ \; \\
@@ -81,7 +81,7 @@ $$
 (\epsilon = 0) \Leftrightarrow ((x = rhs) \Rightarrow \neg(x \cdot rhs))
 $$
 
-## 样例
+## 代码示例
 
 ::: code-group
 
@@ -137,10 +137,10 @@ assert(result4.value!!.obj eq Flt64.zero)
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/If.kt)
 
-完整样例请参考：
+完整样例参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/IfTest.kt)

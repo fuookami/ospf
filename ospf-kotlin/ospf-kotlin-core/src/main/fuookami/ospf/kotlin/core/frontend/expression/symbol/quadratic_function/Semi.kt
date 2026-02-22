@@ -3,8 +3,8 @@ package fuookami.ospf.kotlin.core.frontend.expression.symbol.quadratic_function
 import org.apache.logging.log4j.kotlin.*
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.math.symbol.*
+import fuookami.ospf.kotlin.utils.math.ordinary.*
 import fuookami.ospf.kotlin.utils.math.value_range.*
-import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.operator.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.frontend.variable.*
@@ -14,34 +14,57 @@ import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 
-sealed class AbstractSemiFunction<V : Variable<*>>(
-    protected val x: AbstractQuadraticPolynomial<*>,
-    protected val flag: AbstractQuadraticPolynomial<*>?,
+class SemiFunction(
+    private val x: AbstractQuadraticPolynomial<*>,
+    override val parent: IntermediateSymbol? = null,
+    args: Any? = null,
     override var name: String,
     override var displayName: String? = null,
-    private val ctor: (String) -> V,
-    private val rangeSetting: (V, Flt64) -> Unit
-) : QuadraticFunctionSymbol {
+) : QuadraticFunctionSymbol() {
     private val logger = logger()
 
-    private val offset = if (x.lowerBound!!.value.unwrap() ls Flt64.zero) {
-        abs(x.lowerBound!!.value.unwrap())
-    } else {
-        Flt64.zero
+    companion object {
+        operator fun <
+            T: ToQuadraticPolynomial<Poly>,
+            Poly : AbstractQuadraticPolynomial<Poly>
+        > invoke(
+            x: T,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null,
+        ): SemiFunction {
+            return SemiFunction(
+                x = x.toQuadraticPolynomial(),
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
     }
 
-    private val y: V by lazy {
-        val y = ctor("${name}_y")
-        rangeSetting(y, possibleRange.upperBound.value.unwrap() + offset)
+    internal val _args = args
+    override val args get() = _args ?: parent?.args
+
+    private val y: URealVar by lazy {
+        val y = URealVar("${name}_y")
+        y.range.leq(possibleRange.upperBound.value.unwrap())
         y
     }
 
     private val u: BinVar by lazy {
-        BinVar("${name}_u")
+        val u = BinVar("${name}_u")
+        if (x.lowerBound!!.value.unwrap() gr Flt64.zero) {
+            u.range.eq(true)
+        } else if (x.upperBound!!.value.unwrap() ls Flt64.zero) {
+            u.range.eq(false)
+        }
+        u
     }
 
     private val polyY: QuadraticPolynomial by lazy {
-        val polyY = QuadraticPolynomial(y, "${name}_y")
+        val polyY = QuadraticPolynomial(y)
         polyY.range.set(possibleRange)
         polyY
     }
@@ -52,59 +75,49 @@ sealed class AbstractSemiFunction<V : Variable<*>>(
 
     override val category = Linear
 
-    override val dependencies: Set<IntermediateSymbol>
-        get() {
-            val dependencies = HashSet<IntermediateSymbol>()
-            dependencies.addAll(x.dependencies)
-            flag?.let { dependencies.addAll(it.dependencies) }
-            return dependencies
-        }
+    override val dependencies: Set<IntermediateSymbol> get() = x.dependencies
     override val cells get() = polyY.cells
     override val cached get() = polyY.cached
 
     private val possibleRange
         get() = ValueRange(
-            (flag?.lowerBound ?: u.lowerBound)!! * x.lowerBound!!,
-            (flag?.upperBound ?: u.upperBound)!! * x.upperBound!!,
-            Flt64
+            max(Flt64.zero, x.lowerBound!!.value.unwrap()),
+            max(Flt64.zero, x.upperBound!!.value.unwrap())
+        ).value!!
+    private val m: Flt64 by lazy {
+        max(
+            abs(x.lowerBound!!.value.unwrap()),
+            abs(x.upperBound!!.value.unwrap())
         )
+    }
 
     override fun flush(force: Boolean) {
         x.flush(force)
-        flag?.flush(force)
         polyY.flush(force)
         polyY.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         x.cells
-        flag?.cells
 
-        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            val xValue = x.evaluate(tokenTable) ?: return null
-
-            val bin = if (flag != null) {
-                val value = flag.evaluate(tokenTable) ?: return null
-                value gr Flt64.zero
+        return if ((!values.isNullOrEmpty() || tokenTable.cachedSolution) && if (values.isNullOrEmpty()) {
+            tokenTable.cached(this)
+        } else {
+            tokenTable.cached(this, values)
+        } == false) {
+            val xValue = if (values.isNullOrEmpty()) {
+                x.evaluate(tokenTable)
             } else {
-                val bin = xValue gr Flt64.zero
-                logger.trace { "Setting SemiFunction ${name}.u to $bin" }
-                tokenTable.find(u)?.let { token ->
-                    token._result = if (bin) {
-                        Flt64.one
-                    } else {
-                        Flt64.zero
-                    }
-                }
-                bin
+                x.evaluate(values, tokenTable)
+            } ?: return null
+
+            val bin = xValue gr Flt64.zero
+            logger.trace { "Setting SemiFunction ${name}.u to $bin" }
+            tokenTable.find(u)?.let { token ->
+                token._result = bin.toFlt64()
             }
 
-            val yValue = if (bin) {
-                xValue
-            } else {
-                Flt64.zero
-            }
-
+            val yValue = max(Flt64.zero, xValue)
             logger.trace { "Setting SemiFunction ${name}.y to $yValue" }
             tokenTable.find(y)?.let { token ->
                 token._result = yValue
@@ -116,7 +129,7 @@ sealed class AbstractSemiFunction<V : Variable<*>>(
         }
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
+    override fun register(tokenTable: AddableTokenCollection): Try {
         when (val result = tokenTable.add(y)) {
             is Ok -> {}
 
@@ -125,13 +138,11 @@ sealed class AbstractSemiFunction<V : Variable<*>>(
             }
         }
 
-        if (flag == null) {
-            when (val result = tokenTable.add(u)) {
-                is Ok -> {}
+        when (val result = tokenTable.add(u)) {
+            is Ok -> {}
 
-                is Failed -> {
-                    return Failed(result.error)
-                }
+            is Failed -> {
+                return Failed(result.error)
             }
         }
 
@@ -139,15 +150,32 @@ sealed class AbstractSemiFunction<V : Variable<*>>(
     }
 
     override fun register(model: AbstractQuadraticMechanismModel): Try {
-        if (flag != null) {
-            if (flag.lowerBound!!.value.unwrap() ls Flt64.zero || flag.upperBound!!.value.unwrap() gr Flt64.one) {
-                return Failed(Err(ErrorCode.ApplicationFailed, "$name's domain of definition unsatisfied: $flag"))
+        when (val result = model.addConstraint(
+            constraint = y geq x,
+            name = "${name}_lb",
+            from = parent ?: this
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
             }
         }
-
         when (val result = model.addConstraint(
-            (y - offset) leq x,
-            "${name}_x"
+            constraint = y leq x + m * u,
+            name = "${name}_ub",
+            from = parent ?: this
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+        when (val result = model.addConstraint(
+            constraint = y leq m * (Flt64.one - u),
+            name = "${name}_yu",
+            from = parent ?: this
         )) {
             is Ok -> {}
 
@@ -156,68 +184,88 @@ sealed class AbstractSemiFunction<V : Variable<*>>(
             }
         }
 
-        if (flag != null) {
-            when (val result = model.addConstraint(
-                (y - offset) geq (x - x.upperBound!!.value.unwrap() * (Flt64.one - flag)),
-                "${name}_xu"
-            )) {
-                is Ok -> {}
+        return ok
+    }
 
-                is Failed -> {
-                    return Failed(result.error)
-                }
-            }
-            when (val result = model.addConstraint(
-                (y - offset) geq (x.lowerBound!!.value.unwrap() * flag),
-                "${name}_lb"
-            )) {
-                is Ok -> {}
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        return register(tokenTable)
+    }
 
-                is Failed -> {
-                    return Failed(result.error)
-                }
-            }
-            when (val result = model.addConstraint(
-                (y - offset) leq (x.upperBound!!.value.unwrap() * flag),
-                "${name}_ub"
-            )) {
-                is Ok -> {}
+    override fun register(
+        model: AbstractQuadraticMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        val xValue = x.evaluate(fixedValues, model.tokens) ?: return register(model)
+        val yValue = max(Flt64.zero, xValue)
+        val bin = xValue gr Flt64.zero
 
-                is Failed -> {
-                    return Failed(result.error)
-                }
-            }
-        } else {
-            when (val result = model.addConstraint(
-                (y - offset) geq (x - x.upperBound!!.value.unwrap() * (Flt64.one - u)),
-                "${name}_xu"
-            )) {
-                is Ok -> {}
+        when (val result = model.addConstraint(
+            constraint = y geq x,
+            name = "${name}_lb",
+            from = parent ?: this
+        )) {
+            is Ok -> {}
 
-                is Failed -> {
-                    return Failed(result.error)
-                }
+            is Failed -> {
+                return Failed(result.error)
             }
-            when (val result = model.addConstraint(
-                (y - offset) geq (x.lowerBound!!.value.unwrap() * u),
-                "${name}_lb"
-            )) {
-                is Ok -> {}
+        }
+        when (val result = model.addConstraint(
+            constraint = y leq x + m * u,
+            name = "${name}_ub",
+            from = parent ?: this
+        )) {
+            is Ok -> {}
 
-                is Failed -> {
-                    return Failed(result.error)
-                }
+            is Failed -> {
+                return Failed(result.error)
             }
-            when (val result = model.addConstraint(
-                (y - offset) leq (x.upperBound!!.value.unwrap() * u),
-                "${name}_ub"
-            )) {
-                is Ok -> {}
+        }
+        when (val result = model.addConstraint(
+            constraint = y leq m * (Flt64.one - u),
+            name = "${name}_yu",
+            from = parent ?: this
+        )) {
+            is Ok -> {}
 
-                is Failed -> {
-                    return Failed(result.error)
-                }
+            is Failed -> {
+                return Failed(result.error)
             }
+        }
+
+        when (val result = model.addConstraint(
+            constraint = y eq yValue,
+            name = "${name}_y",
+            from = parent ?: this
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        model.tokens.find(y)?.let { token ->
+            token._result = yValue
+        }
+
+        when (val result = model.addConstraint(
+            constraint = u eq bin,
+            name = "${name}_u",
+            from = parent ?: this
+        )) {
+            is Ok -> {}
+
+            is Failed -> {
+                return Failed(result.error)
+            }
+        }
+
+        model.tokens.find(u)?.let { token ->
+            token._result = bin.toFlt64()
         }
 
         return ok
@@ -231,202 +279,75 @@ sealed class AbstractSemiFunction<V : Variable<*>>(
         return if (unfold eq UInt64.zero) {
             displayName ?: name
         } else {
-            "semi(${x.toTidyRawString(unfold - UInt64.one)}})"
+            "semi(${x.toTidyRawString(unfold - UInt64.one)})"
         }
     }
 
-    override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return if (flag != null) {
-            val flagValue = flag.evaluate(tokenList, zeroIfNone) ?: return null
-            if (flagValue neq Flt64.zero) {
-                x.evaluate(tokenList, zeroIfNone)
-            } else {
-                Flt64.zero
-            }
-        } else {
-            val flagValue = tokenList.find(u)?.result
-                ?: if (zeroIfNone) {
-                    Flt64.zero
-                } else {
-                    return null
-                }
-            if (flagValue neq Flt64.zero) {
-                x.evaluate(tokenList, zeroIfNone)
-            } else {
-                Flt64.zero
-            }
-        }
+    override fun evaluate(
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val xValue = x.evaluate(tokenList, zeroIfNone) ?: return null
+        return max(Flt64.zero, xValue)
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return if (flag != null) {
-            val flagValue = flag.evaluate(results, tokenList, zeroIfNone) ?: return null
-            if (flagValue neq Flt64.zero) {
-                x.evaluate(results, tokenList, zeroIfNone)
-            } else {
-                Flt64.zero
-            }
-        } else {
-            val flagValue = tokenList.indexOf(u)?.let { results[it] }
-                ?: if (zeroIfNone) {
-                    Flt64.zero
-                } else {
-                    return null
-                }
-            if (flagValue neq Flt64.zero) {
-                x.evaluate(results, tokenList, zeroIfNone)
-            } else {
-                Flt64.zero
-            }
-        }
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val xValue = x.evaluate(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        return max(Flt64.zero, xValue)
     }
 
-    override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return if (flag != null) {
-            val flagValue = flag.evaluate(tokenTable, zeroIfNone) ?: return null
-            if (flagValue neq Flt64.zero) {
-                x.evaluate(tokenTable, zeroIfNone)
-            } else {
-                Flt64.zero
-            }
-        } else {
-            val flagValue = tokenTable.find(u)?.result
-                ?: if (zeroIfNone) {
-                    Flt64.zero
-                } else {
-                    return null
-                }
-            if (flagValue neq Flt64.zero) {
-                x.evaluate(tokenTable, zeroIfNone)
-            } else {
-                Flt64.zero
-            }
-        }
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenList: AbstractTokenList?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val xValue = x.evaluate(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        return max(Flt64.zero, xValue)
     }
 
-    override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return if (flag != null) {
-            val flagValue = flag.evaluate(results, tokenTable, zeroIfNone) ?: return null
-            if (flagValue neq Flt64.zero) {
-                x.evaluate(results, tokenTable, zeroIfNone)
-            } else {
-                Flt64.zero
-            }
-        } else {
-            val flagValue = tokenTable.tokenList.indexOf(u)?.let { results[it] }
-                ?: if (zeroIfNone) {
-                    Flt64.zero
-                } else {
-                    return null
-                }
-            if (flagValue neq Flt64.zero) {
-                x.evaluate(results, tokenTable, zeroIfNone)
-            } else {
-                Flt64.zero
-            }
-        }
-    }
-}
-
-object SemiFunction {
-    operator fun invoke(
-        type: VariableType<*> = UInteger,
-        x: AbstractQuadraticPolynomial<*>,
-        flag: AbstractQuadraticPolynomial<*>?,
-        name: String,
-        displayName: String? = null
-    ): AbstractSemiFunction<*> {
-        return if (type.isIntegerType) {
-            SemiUIntegerFunction(x, flag, name, displayName)
-        } else {
-            SemiURealFunction(x, flag, name, displayName)
-        }
+    override fun calculateValue(
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val xValue = x.evaluate(tokenTable, zeroIfNone) ?: return null
+        return max(Flt64.zero, xValue)
     }
 
-    operator fun invoke(
-        type: VariableType<*> = UInteger,
-        x: AbstractQuadraticPolynomial<*>,
-        flag: BinVar,
-        name: String,
-        displayName: String? = null
-    ): AbstractSemiFunction<*> {
-        return if (type.isIntegerType) {
-            SemiUIntegerFunction(x, flag, name, displayName)
-        } else {
-            SemiURealFunction(x, flag, name, displayName)
-        }
+    override fun calculateValue(
+        results: List<Flt64>,
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val xValue = x.evaluate(
+            results = results,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        return max(Flt64.zero, xValue)
     }
 
-    operator fun invoke(
-        type: VariableType<*> = UInteger,
-        x: AbstractQuadraticPolynomial<*>,
-        name: String,
-        displayName: String? = null
-    ): AbstractSemiFunction<*> {
-        return if (type.isIntegerType) {
-            SemiUIntegerFunction(x, name, displayName)
-        } else {
-            SemiURealFunction(x, name, displayName)
-        }
-    }
-}
-
-class SemiUIntegerFunction(
-    x: AbstractQuadraticPolynomial<*>,
-    flag: AbstractQuadraticPolynomial<*>?,
-    name: String,
-    displayName: String? = null
-) : AbstractSemiFunction<UIntVar>(x, flag, name, displayName, { UIntVar(it) }, { v, ub -> v.range.leq(ub.floor().toUInt64()) }) {
-    constructor(
-        x: AbstractQuadraticPolynomial<*>,
-        name: String,
-        displayName: String? = null
-    ) : this(x, null, name, displayName)
-
-    constructor(
-        x: AbstractQuadraticPolynomial<*>,
-        flag: BinVar,
-        name: String,
-        displayName: String? = null
-    ) : this(x, QuadraticPolynomial(flag), name, displayName)
-
-    override val discrete = true
-}
-
-class SemiURealFunction(
-    x: AbstractQuadraticPolynomial<*>,
-    flag: AbstractQuadraticPolynomial<*>?,
-    name: String,
-    displayName: String? = null
-) : AbstractSemiFunction<URealVar>(x, flag, name, displayName, { URealVar(it) }, { v, ub -> v.range.leq(ub) }) {
-    constructor(
-        x: AbstractQuadraticPolynomial<*>,
-        name: String,
-        displayName: String? = null
-    ) : this(x, null, name, displayName)
-
-    constructor(
-        x: AbstractQuadraticPolynomial<*>,
-        flag: BinVar,
-        name: String,
-        displayName: String? = null
-    ) : this(x, QuadraticPolynomial(flag), name, displayName)
-}
-
-class ReluFunction(
-    x: AbstractQuadraticPolynomial<*>,
-    name: String = "${x}_relu",
-    displayName: String? = "Relu(${x})"
-) : AbstractSemiFunction<URealVar>(x, null, name, displayName, { URealVar(it) }, { v, ub -> v.range.leq(ub) }) {
-    override fun toRawString(unfold: UInt64): String {
-        return if (unfold eq UInt64.zero) {
-            displayName ?: name
-        } else {
-            if (flag != null) {
-                "relu(${x.toTidyRawString(unfold - UInt64.one)}, ${flag.toTidyRawString(unfold - UInt64.one)})"
-            } else {
-                "relu(${x.toTidyRawString(unfold - UInt64.one)})"
-            }
-        }
+    override fun calculateValue(
+        values: Map<Symbol, Flt64>,
+        tokenTable: AbstractTokenTable?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val xValue = x.evaluate(
+            values = values,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        return max(Flt64.zero, xValue)
     }
 }

@@ -1,43 +1,43 @@
-# Example 3: Ingredient Problem
+# Example 3: Blending Problem
 
 ## Problem Description
 
-Given a set of products and raw materials. Each product has a specified production quantity, each raw material has a cost, and each raw material can be used to produce multiple different products.
+There are several products and several raw materials. Each product has a given demand, each raw material has a corresponding cost, and each raw material can be used to produce multiple products.
 
-|        | Product A | Product B | Product C |
-| :----: | :-------: | :-------: | :-------: |
-| Demand |  $15000$  |  $15000$  |  $10000$  |
+|        | Product A  | Product B  | Product C  |
+| :----: | :--------: | :--------: | :--------: |
+| Demand | $15000$ | $15000$ | $10000$ |
 
 |       | Material A | Material B | Material C | Material D |
 | :---: | :--------: | :--------: | :--------: | :--------: |
-| Cost  |   $115$    |    $97$    |    $82$    |    $76$    |
+| Cost  | $115$  |  $97$  |  $82$  |  $76$  |
 
-|           | Material A | Material B | Material C | Material D |
-| :-------: | :--------: | :--------: | :--------: | :--------: |
-| Product A |    $30$    |    $15$    |    $-$     |    $15$    |
-| Product B |    $10$    |    $-$     |    $25$    |    $15$    |
-| Product C |    $-$     |    $20$    |    $15$    |    $15$    |
+|        | Material A | Material B | Material C | Material D |
+| :----: | :--------: | :--------: | :--------: | :--------: |
+| Product A |  $30$  |  $15$  |  $-$   |  $15$  |
+| Product B |  $10$  |  $-$   |  $25$  |  $15$  |
+| Product C |  $-$   |  $20$  |  $15$  |  $15$  |
 
-Determine the amount of each raw material used to minimize the total cost.
+Objective: Determine the usage amount of each raw material to minimize the total cost.
 
 ## Mathematical Model
 
 ### Variables
 
-$x_{m}$ : usage of raw material $m$.
+$x_{m}$: indicates the usage amount of raw material $m$.
 
-### Intermediate Expressions
+### Intermediate Values
 
 #### 1. Total Cost
 
 $$
-Cost = \sum_{m \in M} Cost_{m} \cdot x_{m}
+\text{Cost} = \sum_{m \in M} \text{Cost}_{m} \cdot x_{m}
 $$
 
 #### 2. Product Yield
 
 $$
-Yield^{Product}_{p} = \sum_{m \in M} Yield_{mp} \cdot x_{m}, \; \forall p \in P
+\text{Yield}^{\text{Product}}_{p} = \sum_{m \in M} \text{Yield}_{mp} \cdot x_{m}, \; \forall p \in P
 $$
 
 ### Objective Function
@@ -45,22 +45,22 @@ $$
 #### 1. Minimize Total Cost
 
 $$
-min \quad Cost
+\min \quad \text{Cost}
 $$
 
 ### Constraints
 
-#### 1. Demand Limit
+#### 1. Each Product Yield Must Meet Demand Without Waste
 
 $$
-s.t. \quad Yield^{Product}_{p} = Yield^{Product, Min}_{p}, \; \forall p \in P
+\text{s.t.} \quad \text{Yield}^{\text{Product}}_{p} = \text{Yield}^{\text{Product, Min}}_{p}, \; \forall p \in P
 $$
 
-### Expected Result
+## Expected Results
 
-Raw material A uses $284$ units, raw material B uses $8$ units, raw material C uses $232$ units, raw material D uses $424$ units.
+Material A: $284$ units, Material B: $8$ units, Material C: $232$ units, Material D: $424$ units.
 
-### Code Implementation
+## Code Implementation
 
 ::: code-group
 
@@ -86,20 +86,20 @@ data class Material(
     val yieldQuantity: Map<Product, Flt64>
 ) : AutoIndexed(Material::class)
 
-val products: List<Product> = ...  // product data
-val materials: List<Material> = ... // material data
+val products: List<Product> = ...  // Product list
+val materials: List<Material> = ... // Material list
 
-// create a model instance
+// Create model instance
 val metaModel = LinearMetaModel("demo3")
 
-// define variables
-val x = = UIntVariable1("x", Shape1(materials.size))
+// Define variables
+val x = UIntVariable1("x", Shape1(materials.size))
 for (c in materials) {
     x[c].name = "${x.name}_${c.index}"
 }
 metaModel.add(x)
 
-// define intermediate expressions
+// Define intermediate values
 val cost = LinearExpressionSymbol(
     sum(materials) { it.cost * x[it] }, 
     "cost"
@@ -117,15 +117,15 @@ val yield = LinearIntermediateSymbols1("yield", Shape1(products.size)) { p, _ ->
 }
 metaModel.add(yield)
 
-// define objective function
+// Define objective function
 metaModel.minimize(cost)
 
-// define constraints
+// Define constraints
 for (p in products) {
     metaModel.addConstraint(yield[p.index] eq p.minYield)
 }
 
-// solve the model
+// Invoke solver
 val solver = ScipLinearSolver()
 when (val ret = solver(metaModel)) {
     is Ok -> {
@@ -135,7 +135,7 @@ when (val ret = solver(metaModel)) {
     is Failed -> {}
 }
 
-// parse results
+// Parse results
 val solution = HashMap<Material, UInt64>()
 for (token in metaModel.tokens.tokens) {
     if (token.result!! eq Flt64.one && token.variable.belongsTo(x)) {
@@ -145,6 +145,8 @@ for (token in metaModel.tokens.tokens) {
 }
 ```
 
-For the complete implementation, please refer to:
+:::
+
+**Complete Implementation Reference:**
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo3.kt)

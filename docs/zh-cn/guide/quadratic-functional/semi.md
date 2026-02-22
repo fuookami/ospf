@@ -1,15 +1,15 @@
 # 半函数
 
-## 形式
+## 函数形式
 
 $$
-y = semi(x) = max(0, \, x) = \begin{cases}
+y = \text{semi}(x) = \max(0, \, x) = \begin{cases}
 x, & x > 0 \\ \; \\
 0, & x \leq 0
 \end{cases}
 $$
 
-## 常量
+## 常量定义
 
 $$
 M = \max(|x|)
@@ -17,9 +17,9 @@ $$
 
 ## 额外变量
 
-$u \in \{ 0, 1 \}$：$x > 0$ 的判定。
+$u \in \{ 0, 1 \}$：用于判定 $x > 0$。
 
-$y^{\prime} \in R - R^{-}$：表示 $max(0, x)$。
+$y^{\prime} \in \mathbb{R} - \mathbb{R}^{-}$：表示 $\max(0, x)$。
 
 ## 导出符号
 
@@ -31,13 +31,13 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & y \geq x \\ \; \\
-& y \leq x + m \cdot u \\ \; \\
-& y \leq m \cdot (1 - u)
+\text{s.t.} \quad & y \geq x \\ \; \\
+& y \leq x + M \cdot u \\ \; \\
+& y \leq M \cdot (1 - u)
 \end{align}
 $$
 
-## 样例
+## 代码示例
 
 ::: code-group
 
@@ -90,10 +90,10 @@ assert(result2.value!!.solution[2] eq Flt64.one)
 
 :::
 
-完整实现请参考：
+**完整实现参考：**
 
 - [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/quadratic_function/Semi.kt)
 
-完整样例请参考：
+**完整样例参考：**
 
 - [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/quadratic_function/SemiTest.kt)

@@ -17,7 +17,7 @@ class AndTest {
         val y = BinVar("y")
         val and = AndFunction(
             listOf(x, y),
-            "and"
+            name = "and"
         )
         val solver = ScipLinearSolver()
 
@@ -48,7 +48,7 @@ class AndTest {
         y.range.leq(UInt64.two)
         val and = AndFunction(
             listOf(x, y),
-            "and"
+            name = "and"
         )
         val solver = ScipLinearSolver()
 

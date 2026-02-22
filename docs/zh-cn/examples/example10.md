@@ -1,6 +1,6 @@
 # 示例 10：旅行商问题
 
-有一位商人，他想访问中国的某些城市：
+现有商人需要访问中国的若干城市：
 
 |       |    上海    |    合肥    |    广州    |    成都    |    北京    |
 | :---: | :--------: | :--------: | :--------: | :--------: | :--------: |
@@ -10,7 +10,7 @@
 | 成都  | $2095\,km$ | $1615\,km$ | $1954\,km$ |    $-$     | $1854\,km$ |
 | 北京  | $1244\,km$ | $1044\,km$ | $2174\,km$ | $1854\,km$ |    $-$     |
 
-给出最小距离的路线，并满足以下条件：
+确定最小距离的路线，同时满足以下条件：
 
 1. 每个城市只能访问一次；
 2. 从某城市出发，最后回到该城市。
@@ -28,7 +28,7 @@ $u_{i}$ ：城市 $i$ 是否出现孤立子圈的判定。
 #### 1. 总距离
 
 $$
-Distance = \sum_{i \in C}\sum_{j \in C} Distrance_{ij} \cdot x_{ij}
+\text{Distance} = \sum_{i \in C}\sum_{j \in C} \text{Distance}_{ij} \cdot x_{ij}
 $$
 
 #### 2. 是否从某座城市出发过
@@ -48,7 +48,7 @@ $$
 #### 1. 总距离最小
 
 $$
-min \quad Distance
+\min \quad \text{Distance}
 $$
 
 ### 约束
@@ -56,19 +56,19 @@ $$
 #### 1. 必须从每个城市出发过
 
 $$
-s.t. \quad Depart_{i} = 1, \; \forall i \in C
+\text{s.t.} \quad \text{Depart}_{i} = 1, \; \forall i \in C
 $$
 
 #### 2. 必须到达过每个城市
 
 $$
-s.t. \quad Reached_{j} = 1, \; \forall j \in C
+\text{s.t.} \quad \text{Reached}_{j} = 1, \; \forall j \in C
 $$
 
 #### 3. 不可出现孤立子圈
 
 $$
-s.t. \quad u_{i} - u_{j} + |C| \cdot x_{ij} \leq |C| - 1, \; \forall (i, \, j) \in ((C - C^{Begin})^{2} - \Delta (C - C^{Begin}))
+\text{s.t.} \quad u_{i} - u_{j} + |C| \cdot x_{ij} \leq |C| - 1, \; \forall (i, \, j) \in ((C - C^{\text{Begin}})^{2} - \Delta (C - C^{\text{Begin}}))
 $$
 
 ## 期望结果
@@ -192,6 +192,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo10.kt)

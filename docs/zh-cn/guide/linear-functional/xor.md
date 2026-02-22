@@ -25,14 +25,14 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & y^{\prime} & \geq & \, Bin(x_{i}) - \sum_{i^{\prime} \in \{ i^{\prime} \in P | i^{\prime} \neq i \}} Bin(x_{i^{\prime}}), & \; \forall i \in P \\ \; \\
+\text{s.t.} \quad & y^{\prime} & \geq & \, Bin(x_{i}) - \sum_{i^{\prime} \in \{ i^{\prime} \in P | i^{\prime} \neq i \}} Bin(x_{i^{\prime}}), & \; \forall i \in P \\ \; \\
 & y & \leq & \, \sum_{i \in P} Bin(x_{i}) \\ \; \\
 & y & \leq & \, |P| - \sum_{i \in P} Bin(x_{i})
 & 
 \end{align}
 $$
 
-$Bin(x)$ 可参考 [二值化](/zh-cn/guide/linear-functional/bin) 。
+$Bin(x)$ 可参考 [二值化](/zh-cn/guide/linear-functional/bin)。
 
 ## 任意个多项式
 
@@ -42,7 +42,7 @@ $$
 y = Xor(\min(x_{i}), \max(x_{i}))
 $$
 
-$\min(x)$ 可参考 [最小值](/zh-cn/guide/linear-functional/min) ，$\max(x)$ 可参考 [最大值](/zh-cn/guide/linear-functional/max) 。
+$\min(x)$ 可参考[最小值](/zh-cn/guide/linear-functional/min)，\max(x)$ 可参考[最大值](/zh-cn/guide/linear-functional/max)。
 
 ## 样例
 

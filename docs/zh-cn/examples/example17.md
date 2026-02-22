@@ -2,9 +2,9 @@
 
 ## 问题描述
 
-车辆路径问题（ vehicle routing problem， $VRP$ ）是比较经典的运筹学优化问题，在离散组合优化中研究较多，并在物流行业有着很强的应用价值，通过优化车辆行驶路径，能有效节省物流配送成本。车辆路线问题最早是由 $Dantzig$ 和 $Ramser$ 于1959年首次提出，它是指一定数量有一定数量（ $n$ 个）的客户，各自有不同数量的货物需求（ $q_i$ ），配送中心或车场（ $depot$ ）向客户提供货物，由一个车队（ $K$ 辆车）负责分送货物，组织适当的行车路线，目标是使得客户的需求得到满足，并能在一定的约束下（例如车辆存在载重上限 $Q_k$ 、里程长度上限 $L$ ），达到总旅行成本最小、耗费时间最少等目的。
+车辆路径问题（Vehicle Routing Problem，VRP）是经典的运筹学优化问题，在离散组合优化中研究较多，在物流行业有很强的应用价值，通过优化车辆行驶路径，能有效节省物流配送成本。车辆路线问题最早由 Dantzig 和 Ramser 于1959年首次提出，该问题涉及一定数量（$n$ 个）的客户，各自有不同数量的货物需求（$q_i$），配送中心或车场（depot）向客户提供货物，由一个车队（$K$ 辆车）负责分送货物，组织适当的行车路线，目标是在满足客户需求的同时，在一定的约束下（例如车辆存在载重上限 $Q_k$、里程长度上限 $L$），使得总旅行成本最小、耗费时间最少。
 
-对于 $VRPTW$ 问题来说，首先给出基本定义，在一个 $G(V, A)$ 图，其中 $V = \{ 0, 1, 2, \dots, n + 1 \}$ 为图中所有节点的集合，为了方便建模，虚拟其配送中心为 $0$ 和 $n + 1$ ，表示为起点和终点。 $A$ 为图中所有弧的集合， $(i, j) \in A$ ，且 $\forall i, j \in V, \; i \neq j$ 。弧 $(i, j)$ 的单位运输费用为 $c_{ij}$ ，单位运输时间为 $t_{ij}$ ，节点 $i$ 的物资需求为 $q_{i}$ ，且节点 $i$ 的服务时间窗为 $[e_{i}, l_{i}]$ ，节点 $i$ 的需要的服务时长为 $h_i$ 。在配送中心（ $depot$ ）的车辆集合为 $K$ ，每辆车 $k \in K$ 的载重量为 $Q_k$ ，同时我们规定每辆车的固定使用成本为 $F_k$ 。
+对于 VRPTW 问题，首先给出基本定义：给定图 $G(V, A)$，其中 $V = \{ 0, 1, 2, \dots, n + 1 \}$ 为图中所有节点的集合，为了方便建模，虚拟配送中心为 $0$ 和 $n + 1$，分别表示起点和终点。$A$ 为图中所有弧的集合，$(i, j) \in A$，且 $\forall i, j \in V, \; i \neq j$。弧 $(i, j)$ 的单位运输费用为 $c_{ij}$，单位运输时间为 $t_{ij}$，节点 $i$ 的物资需求为 $q_{i}$，节点 $i$ 的服务时间窗为 $[e_{i}, l_{i}]$，节点 $i$ 的需要的服务时长为 $h_i$。在配送中心（depot）的车辆集合为 $K$，每辆车 $k \in K$ 的载重量为 $Q_k$，同时规定每辆车的固定使用成本为 $F_k$。
 
 ## 数学模型
 
@@ -80,18 +80,18 @@ $$
 Capcity_{k} = \sum_{i \in V} \sum_{j \in V} q_{j} \cdot x_{ijk}, \; \forall k \in K
 $$
 
-### 目标
+### 目标函数
 
 #### 1. 车辆使用成本最少
 
 $$
-min \quad \sum_{k \in K} Origin_{k} \cdot F_k
+\min \quad \sum_{k \in K} \text{Origin}_{k} \cdot F_k
 $$
 
 #### 2. 运输成本最低
 
 $$
-min \quad \sum_{k \in K} \sum_{i \in V} \sum_{j \in V} c_{ij} \cdot x_{ijk}
+\min \quad \sum_{k \in K} \sum_{i \in V} \sum_{j \in V} c_{ij} \cdot x_{ijk}
 $$
 
 ### 约束
@@ -99,43 +99,43 @@ $$
 #### 1. 表示车辆从配送中心出发只能到达一个节点（车辆必须从配送中心出发或者不使用）
 
 $$
-s.t. \quad Origin_{k} \leq 1, \; \forall k \in K
+\text{s.t.} \quad Origin_{k} \leq 1, \; \forall k \in K
 $$
 
 #### 2. 表示流量平衡约束，即车辆到达一个节点，则必须从该节点出来
 
 $$
-s.t. \quad In_{ik} - Out_{ik} = 0, \; \forall k \in K, \; \forall i \in (V - (O \cup E))
+\text{s.t.} \quad In_{ik} - Out_{ik} = 0, \; \forall k \in K, \; \forall i \in (V - (O \cup E))
 $$
 
 #### 3. 表示如果车辆被使用，则必须回到配送中心
 
 $$
-s.t. \quad Destination_{k} \leq 1, \; \forall k \in K
+\text{s.t.} \quad Destination_{k} \leq 1, \; \forall k \in K
 $$
 
 #### 4. 表示每个节点必须得到服务
 
 $$
-s.t. \quad Service_{i} = 1, \; \forall i \in (V - (O \cup E))
+\text{s.t.} \quad Service_{i} = 1, \; \forall i \in (V - (O \cup E))
 $$
 
 #### 5. 表示每两个节点访问之间的到达时间关系（该约束同时起到了去除回路的作用，消除了单车辆行驶中生成的不可行回路）
 
 $$
-s.t. \quad s_{ik} + h_{i} + t_{ij} - M(1 - x_{ijk}) \leq s_{jk}, \; \forall k \in K, \; \forall i \in V, \; \forall j \in V
+\text{s.t.} \quad s_{ik} + h_{i} + t_{ij} - M(1 - x_{ijk}) \leq s_{jk}, \; \forall k \in K, \; \forall i \in V, \; \forall j \in V
 $$
 
 #### 6. 表示节点接收服务的时间窗约束
 
 $$
-s.t. \quad e_{i} \leq s_{ik} \leq l_{i}, \; \forall i \in V
+\text{s.t.} \quad e_{i} \leq s_{ik} \leq l_{i}, \; \forall i \in V
 $$
 
 #### 7. 表示不能违反的车辆载重约束
 
 $$
-s.t. \quad Capcity_{k} \leq Q_{k}, \; \forall k \in K
+\text{s.t.} \quad Capcity_{k} \leq Q_{k}, \; \forall k \in K
 $$
 
 ## 代码实现
@@ -445,6 +445,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo17.kt)

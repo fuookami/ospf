@@ -24,15 +24,15 @@ class ConsumptionQuantityMinimization<
 ) : AbstractGanttSchedulingCGPipeline<Args, E, A> {
     override fun invoke(model: AbstractLinearMetaModel): Try {
         when (val result = model.minimize(
-            sum(materials.map {
+            polynomial = sum(materials.map {
                 val thresholdValue = threshold(it)
                 if (thresholdValue eq Flt64.zero) {
                     coefficient(it) * consumption.quantity[it]
                 } else {
                     val slack = SlackFunction(
-                        UContinuous,
-                        x = LinearPolynomial(consumption.quantity[it]),
-                        threshold = LinearPolynomial(thresholdValue),
+                        x = consumption.quantity[it],
+                        threshold = thresholdValue,
+                        type = UContinuous,
                         name = "consumption_quantity_minimization_threshold_$it"
                     )
                     when (val result = model.add(slack)) {
@@ -45,7 +45,7 @@ class ConsumptionQuantityMinimization<
                     coefficient(it) * slack
                 }
             }),
-            "consumption quantity"
+            name = "consumption quantity"
         )) {
             is Ok -> {}
 

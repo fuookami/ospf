@@ -26,28 +26,33 @@ class GurobiLinearSolver(
 
     override suspend operator fun invoke(
         model: LinearTriadModelView,
-        statusCallBack: SolvingStatusCallBack?
-    ): Ret<SolverOutput> {
-        val impl = GurobiLinearSolverImpl(config, callBack, statusCallBack)
-        val result = impl(model)
-        System.gc()
-        return result
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<FeasibleSolverOutput> {
+        return GurobiLinearSolverImpl(
+            config = config,
+            callBack = callBack,
+            statusCallBack = solvingStatusCallBack
+        ).use { impl ->
+            val result = impl(model)
+            System.gc()
+            result
+        }
     }
 
     override suspend fun invoke(
         model: LinearTriadModelView,
         solutionAmount: UInt64,
-        statusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<SolverOutput, List<Solution>>> {
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<Pair<FeasibleSolverOutput, List<Solution>>> {
         return if (solutionAmount leq UInt64.one) {
             this(model).map { it to emptyList() }
         } else {
             val results = ArrayList<Solution>()
-            val impl = GurobiLinearSolverImpl(
+            GurobiLinearSolverImpl(
                 config = config,
                 callBack = callBack
                     .copyIfNotNullOr { GurobiLinearSolverCallBack() }
-                    .configuration { gurobi, _, _ ->
+                    .configuration { _, gurobi, _, _ ->
                         if (solutionAmount gr UInt64.one) {
                             gurobi.set(GRB.DoubleParam.PoolGap, 1.0)
                             gurobi.set(GRB.IntParam.PoolSearchMode, 2)
@@ -55,7 +60,7 @@ class GurobiLinearSolver(
                         }
                         ok
                     }
-                    .analyzingSolution { gurobi, variables, _ ->
+                    .analyzingSolution { _, gurobi, variables, _ ->
                         for (i in 0 until min(solutionAmount.toInt(), gurobi.get(GRB.IntAttr.SolCount))) {
                             gurobi.set(GRB.IntParam.SolutionNumber, i)
                             val thisResults = variables.map { Flt64(it.get(GRB.DoubleAttr.Xn)) }
@@ -65,11 +70,12 @@ class GurobiLinearSolver(
                         }
                         ok
                     },
-                statusCallBack = statusCallBack
-            )
-            val result = impl(model).map { it to results }
-            System.gc()
-            return result
+                statusCallBack = solvingStatusCallBack
+            ).use { impl ->
+                val result = impl(model).map { it to results }
+                System.gc()
+                result
+            }
         }
     }
 }
@@ -81,13 +87,15 @@ private class GurobiLinearSolverImpl(
 ) : GurobiSolver() {
     private lateinit var grbVars: List<GRBVar>
     private lateinit var grbConstraints: List<GRBConstr>
-    private lateinit var output: SolverOutput
+    private lateinit var output: FeasibleSolverOutput
 
+    private var initialBestObj: Flt64? = null
     private var bestObj: Flt64? = null
     private var bestBound: Flt64? = null
+    private var bestSolution: List<Flt64>? = null
     private var bestTime: Duration = Duration.ZERO
 
-    suspend operator fun invoke(model: LinearTriadModelView): Ret<SolverOutput> {
+    suspend operator fun invoke(model: LinearTriadModelView): Ret<FeasibleSolverOutput> {
         val gurobiConfig = config.extraConfig as? GurobiSolverConfig
         val server = gurobiConfig?.server
         val password = gurobiConfig?.password
@@ -96,13 +104,22 @@ private class GurobiLinearSolverImpl(
         val processes = arrayOf(
             {
                 if (server != null && password != null && connectionTime != null) {
-                    it.init(server, password, connectionTime, model.name, callBack?.creatingEnvironmentFunction)
+                    it.init(
+                        server = server,
+                        password = password,
+                        connectionTime = connectionTime,
+                        name = model.name,
+                        callBack = callBack?.creatingEnvironmentFunction
+                    )
                 } else {
-                    it.init(model.name, callBack?.creatingEnvironmentFunction)
+                    it.init(
+                        name = model.name,
+                        callBack = callBack?.creatingEnvironmentFunction
+                    )
                 }
             },
             { it.dump(model) },
-            GurobiLinearSolverImpl::configure,
+            { it.configure(model) },
             GurobiLinearSolverImpl::solve,
             GurobiLinearSolverImpl::analyzeStatus,
             GurobiLinearSolverImpl::analyzeSolution
@@ -193,9 +210,10 @@ private class GurobiLinearSolverImpl(
             grbConstraints = constraints
 
             val obj = GRBLinExpr()
-            for (cell in model.objective.obj) {
+            for (cell in model.objective.objective) {
                 obj.addTerm(cell.coefficient.toDouble(), grbVars[cell.colIndex])
             }
+            obj.addConstant(model.objective.constant.toDouble())
             grbModel.setObjective(
                 obj, when (model.objective.category) {
                     ObjectCategory.Minimum -> {
@@ -208,7 +226,13 @@ private class GurobiLinearSolverImpl(
                 }
             )
 
-            when (val result = callBack?.execIfContain(Point.AfterModeling, grbModel, grbVars, grbConstraints)) {
+            when (val result = callBack?.execIfContain(
+                point = Point.AfterModeling,
+                status = null,
+                gurobi = grbModel,
+                variables = grbVars,
+                constraints = grbConstraints
+            )) {
                 is Failed -> {
                     return Failed(result.error)
                 }
@@ -223,7 +247,7 @@ private class GurobiLinearSolverImpl(
         }
     }
 
-    private suspend fun configure(): Try {
+    private suspend fun configure(model: LinearTriadModelView): Try {
         return try {
             grbModel.set(GRB.DoubleParam.TimeLimit, config.time.toDouble(DurationUnit.SECONDS))
             grbModel.set(GRB.DoubleParam.MIPGap, config.gap.toDouble())
@@ -234,13 +258,24 @@ private class GurobiLinearSolverImpl(
                     override fun callback() {
                         callBack?.nativeCallback?.invoke(this)
 
+                        if (where == GRB.CB_MIPSOL) {
+                            bestSolution = getSolution(grbVars.toTypedArray()).map { Flt64(it) }
+                        }
                         if (where == GRB.CB_MIP) {
                             val currentObj = Flt64(getDoubleInfo(GRB.Callback.MIP_OBJBST))
                             val currentBound = Flt64(getDoubleInfo(GRB.Callback.MIP_OBJBND))
                             val currentTime = getDoubleInfo(GRB.Callback.RUNTIME).seconds
 
+                            if (initialBestObj == null) {
+                                initialBestObj = currentObj
+                            }
+
                             if (config.notImprovementTime != null) {
-                                if (bestObj == null || bestBound == null || currentObj neq bestObj!! || currentBound neq bestBound!!) {
+                                if (bestObj == null
+                                    || bestBound == null
+                                    || (currentObj - bestObj!!).abs() geq config.improveThreshold
+                                    || (currentBound - bestBound!!).abs() geq config.improveThreshold
+                                ) {
                                     bestObj = currentObj
                                     bestBound = currentBound
                                     bestTime = currentTime
@@ -253,9 +288,29 @@ private class GurobiLinearSolverImpl(
                                 when (it(
                                     SolvingStatus(
                                         solver = "gurobi",
+                                        solverConfig = config,
+                                        intermediateModel = model,
+                                        solverModel = grbModel,
+                                        solverCallBack = this,
+                                        objectCategory = when (grbModel.get(GRB.IntAttr.ModelSense)) {
+                                            GRB.MINIMIZE -> {
+                                                ObjectCategory.Minimum
+                                            }
+
+                                            GRB.MAXIMIZE -> {
+                                                ObjectCategory.Maximum
+                                            }
+
+                                            else -> {
+                                                null
+                                            }
+                                        },
+                                        time = currentTime,
                                         obj = currentObj,
                                         possibleBestObj = currentBound,
-                                        gap = (currentObj - currentBound + Flt64.decimalPrecision) / (currentObj + Flt64.decimalPrecision)
+                                        initialBestObj = initialBestObj ?: currentObj,
+                                        gap = (currentObj - currentBound + Flt64.decimalPrecision) / (currentObj + Flt64.decimalPrecision),
+                                        currentBestSolution = bestSolution
                                     )
                                 )) {
                                     is Ok -> {}
@@ -270,7 +325,13 @@ private class GurobiLinearSolverImpl(
                 })
             }
 
-            when (val result = callBack?.execIfContain(Point.Configuration, grbModel, grbVars, grbConstraints)) {
+            when (val result = callBack?.execIfContain(
+                point = Point.Configuration,
+                status = null,
+                gurobi = grbModel,
+                variables = grbVars,
+                constraints = grbConstraints
+            )) {
                 is Failed -> {
                     return Failed(result.error)
                 }
@@ -292,7 +353,7 @@ private class GurobiLinearSolverImpl(
                 for (grbVar in grbVars) {
                     results.add(Flt64(grbVar.get(GRB.DoubleAttr.X)))
                 }
-                output = SolverOutput(
+                output = FeasibleSolverOutput(
                     obj = Flt64(grbModel.get(GRB.DoubleAttr.ObjVal)),
                     solution = results,
                     time = grbModel.get(GRB.DoubleAttr.Runtime).seconds,
@@ -311,7 +372,13 @@ private class GurobiLinearSolverImpl(
                         }
                     )
                 )
-                when (val result = callBack?.execIfContain(Point.AnalyzingSolution, grbModel, grbVars, grbConstraints)) {
+                when (val result = callBack?.execIfContain(
+                    point = Point.AnalyzingSolution,
+                    status = status,
+                    gurobi = grbModel,
+                    variables = grbVars,
+                    constraints = grbConstraints
+                )) {
                     is Failed -> {
                         return Failed(result.error)
                     }
@@ -320,7 +387,13 @@ private class GurobiLinearSolverImpl(
                 }
                 ok
             } else {
-                when (val result = callBack?.execIfContain(Point.AfterFailure, grbModel, grbVars, grbConstraints)) {
+                when (val result = callBack?.execIfContain(
+                    point = Point.AfterFailure,
+                    status = status,
+                    gurobi = grbModel,
+                    variables = grbVars,
+                    constraints = grbConstraints
+                )) {
                     is Failed -> {
                         return Failed(result.error)
                     }

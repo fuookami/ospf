@@ -42,14 +42,14 @@ class TaskAdvanceTimeMinimization<
                     cost += thisCoefficient * advanceTime
                 } else {
                     val slack = SlackFunction(
-                        if (timeWindow.continues) {
+                        x = advanceTime,
+                        threshold = thisThreshold,
+                        type = if (timeWindow.continues) {
                             UContinuous
                         } else {
                             UInteger
                         },
-                        x = LinearPolynomial(advanceTime),
-                        threshold = LinearPolynomial(thisThreshold),
-                        name = "advance_time_threshold_$task"
+                        name = "advance_time_threshold_${task}"
                     )
                     when (val result = model.add(slack)) {
                         is Ok -> {}
@@ -61,7 +61,10 @@ class TaskAdvanceTimeMinimization<
                     cost += thisCoefficient * slack
                 }
             }
-            when (val result = model.minimize(cost, "task advance time")) {
+            when (val result = model.minimize(
+                polynomial = cost,
+                name = "task advance time"
+            )) {
                 is Ok -> {}
 
                 is Failed -> {

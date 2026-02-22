@@ -9,6 +9,7 @@ import fuookami.ospf.kotlin.core.frontend.variable.*
 import fuookami.ospf.kotlin.core.frontend.expression.*
 import fuookami.ospf.kotlin.core.frontend.expression.monomial.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
+import fuookami.ospf.kotlin.core.frontend.inequality.*
 
 @JvmName("calculateLinearPolynomialCells")
 private fun cells(
@@ -30,8 +31,32 @@ private fun cells(
     return cells.map { LinearMonomialCell(it.value, it.key) } + LinearMonomialCell(totalConstant)
 }
 
+interface ToLinearPolynomial<Poly : AbstractLinearPolynomial<Poly>> : ToLinearInequality {
+    fun toLinearPolynomial(): Poly
+
+    override fun toLinearInequality(): LinearInequality {
+        return toLinearPolynomial() eq true
+    }
+}
+
+@Throws(IllegalArgumentException::class)
+fun List<Any>.toLinearPolynomials(): List<AbstractLinearPolynomial<*>> {
+    return this.map {
+        when (it) {
+            is Int -> LinearPolynomial(it)
+            is Double -> LinearPolynomial(it)
+            is Boolean -> LinearPolynomial(it)
+            is Trivalent -> LinearPolynomial(it)
+            is BalancedTrivalent -> LinearPolynomial(it)
+            is RealNumber<*> -> LinearPolynomial(it.toFlt64())
+            is ToLinearPolynomial<*> -> it.toLinearPolynomial()
+            else -> throw IllegalArgumentException("Cannot convert $it to a linear polynomial")
+        }
+    }
+}
+
 sealed class AbstractLinearPolynomial<Self : AbstractLinearPolynomial<Self>> :
-    Polynomial<Self, LinearMonomial, LinearMonomialCell> {
+    Polynomial<Self, LinearMonomial, LinearMonomialCell>, ToLinearPolynomial<LinearPolynomial>, ToQuadraticPolynomial<QuadraticPolynomial> {
     abstract override val monomials: List<LinearMonomial>
     override val category get() = Linear
 
@@ -405,6 +430,14 @@ class LinearPolynomial(
             monomials = monomials.map { it / rhs },
             constant = constant
         )
+    }
+
+    override fun toLinearPolynomial(): LinearPolynomial {
+        return this
+    }
+
+    override fun toQuadraticPolynomial(): QuadraticPolynomial {
+        return QuadraticPolynomial(this)
     }
 }
 
@@ -784,6 +817,14 @@ class MutableLinearPolynomial(
     override fun divAssign(rhs: Flt64) {
         monomials = monomials.map { it / rhs }.toMutableList()
         constant /= rhs
+    }
+
+    override fun toLinearPolynomial(): LinearPolynomial {
+        return LinearPolynomial(this)
+    }
+
+    override fun toQuadraticPolynomial(): QuadraticPolynomial {
+        return QuadraticPolynomial(this)
     }
 }
 
@@ -1987,13 +2028,13 @@ operator fun Quantity<LinearIntermediateSymbol>.minus(rhs: Quantity<LinearMonomi
 operator fun LinearIntermediateSymbol.plus(rhs: AbstractLinearPolynomial<*>): LinearPolynomial {
     val newMonomials = arrayListOf(LinearMonomial(this))
     newMonomials.addAll(rhs.monomials.map { it.copy() })
-    return LinearPolynomial(monomials = newMonomials)
+    return LinearPolynomial(monomials = newMonomials, constant = rhs.constant)
 }
 
 operator fun LinearIntermediateSymbol.minus(rhs: AbstractLinearPolynomial<*>): LinearPolynomial {
     val newMonomials = arrayListOf(LinearMonomial(this))
     newMonomials.addAll(rhs.monomials.map { -it })
-    return LinearPolynomial(monomials = newMonomials)
+    return LinearPolynomial(monomials = newMonomials, constant = -rhs.constant)
 }
 
 // quantity polynomial and quantity symbol
@@ -2109,13 +2150,13 @@ operator fun Quantity<LinearMonomial>.minus(rhs: Quantity<LinearMonomial>): Quan
 operator fun LinearMonomial.plus(rhs: AbstractLinearPolynomial<*>): LinearPolynomial {
     val newMonomials = arrayListOf(this.copy())
     newMonomials.addAll(rhs.monomials.map { it.copy() })
-    return LinearPolynomial(monomials = newMonomials)
+    return LinearPolynomial(monomials = newMonomials, constant = rhs.constant)
 }
 
 operator fun LinearMonomial.minus(rhs: AbstractLinearPolynomial<*>): LinearPolynomial {
     val newMonomials = arrayListOf(this.copy())
     newMonomials.addAll(rhs.monomials.map { -it })
-    return LinearPolynomial(monomials = newMonomials)
+    return LinearPolynomial(monomials = newMonomials, constant = -rhs.constant)
 }
 
 // quantity polynomial and quantity monomial

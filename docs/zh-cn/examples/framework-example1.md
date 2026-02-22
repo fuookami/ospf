@@ -13,7 +13,7 @@
 2. 每台服务器有负荷能力 $Capacity$ 与使用成本 $Cost^{Service}$ ；
 3. 每个消费节点有需求 $Demand$ 。
 
-给出视频内容存储服务器放置位置以及带宽链路，令服务器使用成本最小、链路使用成本最小，并满足以下条件：
+确定视频内容存储服务器放置位置以及带宽链路，使得服务器使用成本最小、链路使用成本最小，同时满足以下条件：
 1. 每个节点最多部署一台服务器；
 2. 每台服务器最多部署到一个节点上；
 3. 满足所有的住户小区视频播放需求；
@@ -67,7 +67,7 @@ $$
 **描述**：服务器的使用成本尽可能少。
 
 $$
-min \quad \sum_{s \in S} Cost^{Service}_{s} \cdot Assignment^{Service}_{s}
+\min \quad \sum_{s \in S} \text{Cost}^{\text{Service}}_{s} \cdot \text{Assignment}^{\text{Service}}_{s}
 $$
 
 #### 约束
@@ -77,7 +77,7 @@ $$
 **描述**：每个节点最多部署一台服务器。
 
 $$
-s.t. \quad Assignment^{Node}_{i} \leq 1, \; \forall i \in N^{N}
+\text{s.t.} \quad Assignment^{Node}_{i} \leq 1, \; \forall i \in N^{N}
 $$
 
 ##### 2. 服务器部署约束
@@ -85,7 +85,7 @@ $$
 **描述**：每个服务器最多部署到一个节点。
 
 $$
-s.t. \quad Assignment^{Service}_{s} \leq 1, \; \forall s \in S
+\text{s.t.} \quad Assignment^{Service}_{s} \leq 1, \; \forall s \in S
 $$
 
 ### 带宽上下文
@@ -139,7 +139,7 @@ $$
 **描述**：链路带宽的使用成本尽可能少。
 
 $$
-min \quad \sum_{i \in N^{N}}\sum_{j \in N^{N}} Cost^{Bandwidth}_{e_{ij}} \cdot Bandwidth_{e_{ij}}
+\min \quad \sum_{i \in N^{N}}\sum_{j \in N^{N}} \text{Cost}^{\text{Bandwidth}}_{e_{ij}} \cdot \text{Bandwidth}_{e_{ij}}
 $$
 
 #### 约束
@@ -149,7 +149,7 @@ $$
 **描述**：链路使用带宽不超过链路最大值，且只有服务器可以使用带宽。
 
 $$
-s.t. \quad y_{e_{ij}, s} \leq Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S
+\text{s.t.} \quad y_{e_{ij}, s} \leq Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S
 $$
 
 ##### 2. 终端节点需求约束
@@ -157,7 +157,7 @@ $$
 **描述**：要满足消费节点需求。
 
 $$
-s.t. \quad Bandwidth^{Indegree, Node}_{i} \geq Demand_{i}, \; \forall i \in N^{C}
+\text{s.t.} \quad Bandwidth^{Indegree, Node}_{i} \geq Demand_{i}, \; \forall i \in N^{C}
 $$
 
 ##### 3. 中转节点流量约束
@@ -165,7 +165,7 @@ $$
 **描述**：中转节点流量要平衡。
 
 $$
-s.t. \quad Bandwidth^{OutFlow, Node}_{i} \leq Bandwidth^{Max, Outdegree}_{i} \cdot Assignment^{Node}_{i}, \; \forall i \in N^{N}
+\text{s.t.} \quad Bandwidth^{OutFlow, Node}_{i} \leq Bandwidth^{Max, Outdegree}_{i} \cdot Assignment^{Node}_{i}, \; \forall i \in N^{N}
 $$
 
 其中：
@@ -179,7 +179,7 @@ $$
 **描述**：服务器节点净输出不大于服务器能力。
 
 $$
-s.t. \quad Bandwidth^{OutFlow, Service}_{is} \leq Capacity_{s} \cdot x_{is}, \; \forall i \in N^{N}, \; \forall s \in S
+\text{s.t.} \quad Bandwidth^{OutFlow, Service}_{is} \leq Capacity_{s} \cdot x_{is}, \; \forall i \in N^{N}, \; \forall s \in S
 $$
 
 ## 代码实现 {#code-implementation}
@@ -612,6 +612,6 @@ val solution = bandwidthContext.analyze(metaModel)
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1)

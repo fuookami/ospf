@@ -23,7 +23,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & 
+\text{s.t.} \quad & 
 \begin{cases}
   \, y^{\prime} \geq \frac{x_{i}}{\max(x_{i})}, & \max(x_{i}) > 1 \\ \; \\
   \, y^{\prime} \geq x_{i}, & else

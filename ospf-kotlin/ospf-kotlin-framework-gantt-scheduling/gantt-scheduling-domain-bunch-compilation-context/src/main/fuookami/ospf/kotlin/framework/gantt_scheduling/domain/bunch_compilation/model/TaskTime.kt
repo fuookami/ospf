@@ -95,18 +95,20 @@ open class BunchSchedulingTaskTime<
         }
 
         if (!::estimateStartTime.isInitialized) {
-            estimateStartTime = flatMap(
-                "estimate_start_time",
-                tasks,
-                { t ->
-                    if (!::estRedundancy.isInitialized) {
-                        LinearPolynomial(estRedundancy[t])
+            estimateStartTime = LinearExpressionSymbols1(
+                name = "estimate_start_time",
+                shape = Shape1(tasks.size)
+            ) { i, _ ->
+                val task = tasks[i]
+                LinearExpressionSymbol(
+                    polynomial = if (!::estRedundancy.isInitialized) {
+                        LinearPolynomial(estRedundancy[task])
                     } else {
                         LinearPolynomial()
-                    }
-                },
-                { (_, t) -> "$t" }
-            )
+                    },
+                    name = "estimate_start_time_${task}"
+                )
+            }
         }
         when (val result = model.add(estimateStartTime)) {
             is Ok -> {}
@@ -117,18 +119,20 @@ open class BunchSchedulingTaskTime<
         }
 
         if (!::estimateEndTime.isInitialized) {
-            estimateEndTime = flatMap(
-                "estimate_end_time",
-                tasks,
-                { t ->
-                    if (!::estRedundancy.isInitialized) {
-                        LinearPolynomial(estRedundancy[t])
+            estimateEndTime = LinearExpressionSymbols1(
+                name = "estimate_end_time",
+                shape = Shape1(tasks.size)
+            ) { i, _ ->
+                val task = tasks[i]
+                LinearExpressionSymbol(
+                    polynomial = if (!::estRedundancy.isInitialized) {
+                        LinearPolynomial(estRedundancy[task])
                     } else {
                         LinearPolynomial()
-                    }
-                },
-                { (_, t) -> "$t" }
-            )
+                    },
+                    name = "estimate_end_time_${task}"
+                )
+            }
         }
         when (val result = model.add(estimateEndTime)) {
             is Ok -> {}
@@ -140,16 +144,20 @@ open class BunchSchedulingTaskTime<
 
         if (!::estSlack.isInitialized) {
             estSlack = LinearIntermediateSymbols1(
-                "est_slack",
-                Shape1(tasks.size)
+                name = "est_slack",
+                shape = Shape1(tasks.size)
             ) { i, _ ->
                 val task = tasks[i]
                 if (!task.delayEnabled && !task.advanceEnabled) {
-                    LinearExpressionSymbol(LinearPolynomial(), "est_slack_$task")
+                    LinearIntermediateSymbol.empty(
+                        name = "est_slack_${task}"
+                    )
                 } else {
                     when (val time = task.time) {
                         null -> {
-                            LinearExpressionSymbol(LinearPolynomial(), "est_slack_$task")
+                            LinearIntermediateSymbol.empty(
+                                name = "est_slack_${task}"
+                            )
                         }
 
                         else -> {
@@ -159,16 +167,16 @@ open class BunchSchedulingTaskTime<
                                 with(timeWindow) { time.start.value }.floor()
                             }
                             val slack = SlackFunction(
-                                if (timeWindow.continues) {
+                                x = estimateStartTime[task],
+                                y = y,
+                                type = if (timeWindow.continues) {
                                     UContinuous
                                 } else {
                                     UInteger
                                 },
-                                x = LinearPolynomial(estimateStartTime[task]),
-                                y = LinearPolynomial(y),
                                 withNegative = advanceEnabled && task.advanceEnabled,
                                 withPositive = delayEnabled && task.delayEnabled,
-                                name = "est_slack_$task"
+                                name = "est_slack_${task}"
                             )
                             slack.range.set(ValueRange(-y, with(timeWindow) { end.value } - y).value!!)
                             slack

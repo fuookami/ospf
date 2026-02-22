@@ -8,7 +8,7 @@ $$
 
 ## 常量
 
-记该线性分段的点集为 $P$，且各点 $i$ 对应的值为 $(x_{i}, y_{i})$ 。
+记该线性分段的点集为 $P$，且各点 $i$ 对应的值为 $(x_{i}, y_{i})$。
 
 ## 额外变量
 
@@ -26,7 +26,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & x & = & \; \sum_{i \in P} k_{i} \cdot x_{i} \\
+\text{s.t.} \quad & x & = & \; \sum_{i \in P} k_{i} \cdot x_{i} \\
 & \sum_{i \in P} k_{i} & = & \; 1 \\
 & \sum_{i \in P} b_{i} & = & \; 1 \\
 & k_{i} & \leq & \; b_{i - 1} + b_{i}, & \; \forall i \in P 

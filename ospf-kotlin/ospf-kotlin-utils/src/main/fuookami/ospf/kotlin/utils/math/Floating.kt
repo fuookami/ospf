@@ -2,14 +2,13 @@ package fuookami.ospf.kotlin.utils.math
 
 import java.math.*
 import kotlin.math.*
+import fuookami.ospf.kotlin.utils.concept.*
+import fuookami.ospf.kotlin.utils.math.ordinary.*
+import fuookami.ospf.kotlin.utils.operator.*
 import kotlinx.serialization.*
-import kotlinx.serialization.json.*
 import kotlinx.serialization.descriptors.*
 import kotlinx.serialization.encoding.*
-import fuookami.ospf.kotlin.utils.math.ordinary.*
-import fuookami.ospf.kotlin.utils.concept.*
-import fuookami.ospf.kotlin.utils.math.Flt32.Companion
-import fuookami.ospf.kotlin.utils.operator.*
+import kotlinx.serialization.json.*
 
 private fun <F : FloatingNumber<F>, I : Integer<I>, R : Rational<R, I>> floatingToRational(
     f: F,
@@ -37,6 +36,23 @@ private fun <F : FloatingNumber<F>, I : Integer<I>, R : Rational<R, I>> floating
         den /= 5L
     }
     return ctor(converter2(num), converter2(den))
+}
+
+private fun <F: FloatingImpl<F>> bankerRound(value: F): F {
+    val fractional = value - value.floor()
+
+    return if (fractional gr value.constants.half) {
+        value.ceil()
+    } else if (fractional ls value.constants.half) {
+        value.floor()
+    } else {
+        val integer = value.floor()
+        if (integer % value.constants.two eq value.constants.zero) {
+            integer
+        } else {
+            integer + value.constants.one
+        }
+    }
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -78,10 +94,14 @@ interface FloatingImpl<Self : FloatingNumber<Self>> : FloatingNumber<Self> {
     fun floor(): Self
     fun ceil(): Self
     fun round(): Self
+    fun trunc(): Self
+    fun bankerRound(): Self
 
     fun floorTo(precision: Int = this.constants.decimalDigits!!): Self
     fun ceilTo(precision: Int = this.constants.decimalDigits!!): Self
     fun roundTo(precision: Int = this.constants.decimalDigits!!): Self
+    fun truncTo(precision: Int = this.constants.decimalDigits!!): Self
+    fun bankerRoundTo(precision: Int = this.constants.decimalDigits!!): Self
 }
 
 data object Flt32Serializer : KSerializer<Flt32> {
@@ -134,9 +154,15 @@ value class Flt32(internal val value: Float) : Flt32Interface, FloatingImpl<Flt3
         override val negativeInfinity: Flt32 get() = Flt32(Float.NEGATIVE_INFINITY)
 
         @JvmStatic
+        override val half: Flt32 get() = Flt32(0.5f)
+        @JvmStatic
         override val pi: Flt32 get() = Flt32(PI.toFloat())
         @JvmStatic
         override val e: Flt32 get() = Flt32(E.toFloat())
+        @JvmStatic
+        override val lg2: Flt32 by lazy {
+            ln(two)!!
+        }
     }
 
     override val constants: FloatingNumberConstants<Flt32> get() = Companion
@@ -327,10 +353,14 @@ value class Flt32(internal val value: Float) : Flt32Interface, FloatingImpl<Flt3
     override fun floor() = Flt32(floor(value))
     override fun ceil() = Flt32(ceil(value))
     override fun round() = Flt32(round(value))
+    override fun trunc() = Flt32(truncate(value))
+    override fun bankerRound() = bankerRound(this)
 
     override fun floorTo(precision: Int) = Flt32(floor(value * 10.0F.pow(precision)) / 10.0F.pow(precision))
     override fun ceilTo(precision: Int) = Flt32(ceil(value * 10.0F.pow(precision)) / 10.0F.pow(precision))
     override fun roundTo(precision: Int) = Flt32(round(value * 10.0F.pow(precision)) / 10.0F.pow(precision))
+    override fun truncTo(precision: Int) = Flt32(truncate(value * 10.0F.pow(precision)) / 10.0F.pow(precision))
+    override fun bankerRoundTo(precision: Int) = bankerRound(Flt32(value * 10.0F.pow(precision))) / Flt32(10.0F.pow(precision))
 }
 
 data object Flt64Serializer : KSerializer<Flt64> {
@@ -385,9 +415,15 @@ value class Flt64(internal val value: Double) : Flt64Interface, FloatingImpl<Flt
         override val negativeInfinity: Flt64 get() = Flt64(Double.NEGATIVE_INFINITY)
 
         @JvmStatic
+        override val half: Flt64 get() = Flt64(0.5)
+        @JvmStatic
         override val pi: Flt64 get() = Flt64(PI)
         @JvmStatic
         override val e: Flt64 get() = Flt64(E)
+        @JvmStatic
+        override val lg2: Flt64 by lazy {
+            ln(two)!!
+        }
     }
 
     override val constants: FloatingNumberConstants<Flt64> get() = Flt64
@@ -578,10 +614,14 @@ value class Flt64(internal val value: Double) : Flt64Interface, FloatingImpl<Flt
     override fun floor() = Flt64(floor(value))
     override fun ceil() = Flt64(ceil(value))
     override fun round() = Flt64(round(value))
+    override fun trunc() = Flt64(truncate(value))
+    override fun bankerRound() = bankerRound(this)
 
     override fun floorTo(precision: Int) = Flt64(floor(value * 10.0.pow(precision)) / 10.0.pow(precision))
     override fun ceilTo(precision: Int) = Flt64(ceil(value * 10.0.pow(precision)) / 10.0.pow(precision))
     override fun roundTo(precision: Int) = Flt64(round(value * 10.0.pow(precision)) / 10.0.pow(precision))
+    override fun truncTo(precision: Int) = Flt64(truncate(value * 10.0.pow(precision)) / 10.0.pow(precision))
+    override fun bankerRoundTo(precision: Int) = bankerRound(Flt64(value * 10.0.pow(precision))) / Flt64(10.0.pow(precision))
 }
 
 data object FltXSerializer : KSerializer<FltX> {
@@ -621,7 +661,10 @@ interface FltXInterface {
 
 @JvmInline
 @Serializable(with = FltXSerializer::class)
-value class FltX(internal val value: BigDecimal) : FltXInterface, FloatingImpl<FltX>, Copyable<FltX> {
+value class FltX(internal val value: BigDecimal) :
+    FltXInterface, FloatingImpl<FltX>, Copyable<FltX>,
+    LogP<FloatingNumber<*>, FloatingNumber<*>>, PowFP<FloatingNumber<*>, FloatingNumber<*>>, ExpP<FloatingNumber<*>>
+{
     companion object : FloatingNumberConstants<FltX> {
         @JvmStatic
         override val zero: FltX get() = FltX(BigDecimal.ZERO)
@@ -647,15 +690,28 @@ value class FltX(internal val value: BigDecimal) : FltXInterface, FloatingImpl<F
         override val epsilon: FltX get() = decimalPrecision
 
         @JvmStatic
+        override val half: FltX get() = FltX("0.5", 1)
+        @JvmStatic
         override val pi: FltX get() = FltX(PI.toBigDecimal())
         @JvmStatic
         override val e: FltX get() = FltX(E.toBigDecimal())
+        @JvmStatic
+        override val lg2: FltX by lazy {
+            ln(two)!!
+        }
     }
 
     constructor(value: Double, scale: Int = decimalDigits, roundingMode: RoundingMode = RoundingMode.HALF_UP) : this(BigDecimal.valueOf(value).setScale(scale, roundingMode))
-    constructor(value: Long, scale: Int = 2, roundingMode: RoundingMode = RoundingMode.HALF_UP) : this(BigDecimal.valueOf(value).setScale(scale, roundingMode))
+    constructor(value: Long, scale: Int = 0, roundingMode: RoundingMode = RoundingMode.HALF_UP) : this(BigDecimal.valueOf(value).setScale(scale, roundingMode))
     constructor(value: String, scale: Int = decimalDigits, roundingMode: RoundingMode = RoundingMode.HALF_UP) : this(BigDecimal(value).setScale(scale, roundingMode))
 
+    fun stripTrailingZeros() = if (value.scale() < 0) {
+        FltX(value.setScale(0, RoundingMode.HALF_UP))
+    } else if (value.scale() > 0) {
+        FltX(value.stripTrailingZeros())
+    } else {
+        this
+    }
     fun withScale(scale: Int) = FltX(value.setScale(scale))
     fun withScale(scale: Int, roundingMode: RoundingMode) = FltX(value.setScale(scale, roundingMode))
 
@@ -677,29 +733,180 @@ value class FltX(internal val value: BigDecimal) : FltXInterface, FloatingImpl<F
     override fun plus(rhs: FltX) = FltX(value + rhs.value)
     override fun minus(rhs: FltX) = FltX(value - rhs.value)
     override fun times(rhs: FltX) = FltX(value * rhs.value)
-    override fun div(rhs: FltX) = FltX(value / rhs.value)
+    override fun div(rhs: FltX) = FltX(value.setScale(max(value.scale(), decimalDigits), RoundingMode.HALF_UP)
+            / rhs.value.setScale(max(value.scale(), decimalDigits), RoundingMode.HALF_UP)
+    )
     override fun intDiv(rhs: FltX) = FltX(value - value % rhs.value)
     override fun rem(rhs: FltX) = FltX(value % rhs.value)
 
     @Throws(IllegalArgumentException::class)
     override fun log(base: FloatingNumber<*>): FltX? = when (base) {
-        is Flt32 -> log(this, base.toFltX(), FltX)
-        is Flt64 -> log(this, base.toFltX(), FltX)
-        is FltX -> log(this, base, FltX)
+        is Flt32 -> log(base, decimalDigits)
+        is Flt64 -> log(base, decimalDigits)
+        is FltX -> log(
+            base = base,
+            digits = maxOf(
+                value.scale(),
+                base.value.scale(),
+                decimalDigits
+            )
+        )
         else -> throw IllegalArgumentException("Unknown argument type to FltX.log: ${base.javaClass}")
     }
 
-    override fun pow(index: Int) = FltX(value.pow(index))
+    fun log(
+        base: FloatingNumber<*>,
+        digits: Int
+    ): FltX? = log(
+        base = base,
+        digits = digits + 1,
+        precision = min(
+            pow(
+                base = FltX(10),
+                index = -digits,
+                digits = digits + 1
+            ),
+            epsilon
+        )
+    )
+
+    @Throws(IllegalArgumentException::class)
+    override fun log(
+        base: FloatingNumber<*>,
+        digits: Int,
+        precision: FloatingNumber<*>
+    ): FltX? = when (base) {
+        is Flt32 -> log(
+            x = this.withScale(digits),
+            base = base.toFltX().withScale(digits),
+            digits = digits,
+            precision = precision.toFltX()
+        )
+        is Flt64 -> log(
+            x = this.withScale(digits),
+            base = base.toFltX().withScale(digits),
+            digits = digits,
+            precision = precision.toFltX()
+        )
+        is FltX -> log(
+            x = this.withScale(digits),
+            base = base.withScale(digits),
+            digits = digits,
+            precision = precision.toFltX()
+        )
+        else -> throw IllegalArgumentException("Unknown argument type to FltX.log: ${base.javaClass}")
+    }
+
+    override fun pow(index: Int) = pow(copy(), index, FltX)
 
     @Throws(IllegalArgumentException::class)
     override fun pow(index: FloatingNumber<*>): FltX = when (index) {
-        is Flt32 -> pow(this, index.toFltX(), FltX)
-        is Flt64 -> pow(this, index.toFltX(), FltX)
-        is FltX -> pow(this, index, FltX)
+        is Flt32 -> pow(index, decimalDigits)
+        is Flt64 -> pow(index, decimalDigits)
+        is FltX -> pow(
+            index = index,
+            digits = maxOf(
+                value.scale(),
+                index.value.scale(),
+                decimalDigits
+            )
+        )
         else -> throw IllegalArgumentException("Unknown argument type to FltX.pow: ${index.javaClass}")
     }
 
-    override fun exp() = FltX(exp(value.toDouble()))
+    fun pow(
+        index: FloatingNumber<*>,
+        digits: Int
+    ): FltX = pow(
+        index = index,
+        digits = digits + 1,
+        precision = min(
+            pow(
+                base = FltX(10),
+                index = -digits,
+                digits = digits + 1
+            ),
+            epsilon
+        )
+    )
+
+    @Throws(IllegalArgumentException::class)
+    override fun pow(
+        index: FloatingNumber<*>,
+        digits: Int,
+        precision: FloatingNumber<*>
+    ): FltX = when (index) {
+        is Flt32 -> if (index.round() eq index) {
+            pow(
+                base = this,
+                index = index.round().toInt32().value,
+                digits = digits,
+                precision = precision.toFltX()
+            )
+        } else {
+            powf(
+                base = this.withScale(digits),
+                index = index.toFltX().withScale(digits),
+                digits = digits,
+                precision = precision.toFltX()
+            )
+        }
+        is Flt64 -> if (index.round() eq index) {
+            pow(
+                base = this,
+                index = index.round().toInt32().value,
+                digits = digits,
+                precision = precision.toFltX()
+            )
+        } else {
+            powf(
+                base = this.withScale(digits),
+                index = index.toFltX().withScale(digits),
+                digits = digits,
+                precision = precision.toFltX()
+            )
+        }
+        is FltX -> if (index.stripTrailingZeros() eq index) {
+            pow(
+                base = this,
+                index = index.round().toInt32().value,
+                digits = digits,
+                precision = precision.toFltX()
+            )
+        } else {
+            powf(
+                base = this.withScale(digits),
+                index = index.withScale(digits),
+                digits = digits,
+                precision = precision.toFltX()
+            )
+        }
+        else -> throw IllegalArgumentException("Unknown argument type to FltX.log: ${index.javaClass}")
+    }
+
+    override fun exp() = exp(decimalDigits)
+
+    fun exp(digits: Int) = exp(
+        index = this,
+        digits = digits + 1,
+        precision = min(
+            pow(
+                base = FltX(10),
+                index = -digits,
+                digits = digits + 1
+            ),
+            epsilon
+        )
+    )
+
+    override fun exp(
+        digits: Int,
+        precision: FloatingNumber<*>
+    ): FloatingNumber<*> = exp(
+        index = this,
+        digits = digits,
+        precision = precision.toFltX()
+    )
 
     override fun sin() = toFlt64().sin().toFltX()
     override fun cos() = toFlt64().cos().toFltX()
@@ -733,13 +940,13 @@ value class FltX(internal val value: BigDecimal) : FltXInterface, FloatingImpl<F
     override fun toInt16() = Int16(value.toInt().toShort())
     override fun toInt32() = Int32(value.toInt())
     override fun toInt64() = Int64(value.toLong())
-    override fun toIntX() = IntX(value.toString())
+    override fun toIntX() = IntX(toPlainString())
 
     override fun toUInt8() = UInt8(value.toInt().toUByte())
     override fun toUInt16() = UInt16(value.toInt().toUShort())
     override fun toUInt32() = UInt32(value.toLong().toUInt())
     override fun toUInt64() = UInt64(value.toLong().toULong())
-    override fun toUIntX() = UIntX(value.toString())
+    override fun toUIntX() = UIntX(toPlainString())
 
     override fun toFlt32() = Flt32(value.toFloat())
     override fun toFlt64() = Flt64(value.toDouble())
@@ -762,6 +969,22 @@ value class FltX(internal val value: BigDecimal) : FltXInterface, FloatingImpl<F
         return FltX(value.setScale(0, RoundingMode.HALF_UP).setScale(scale))
     }
 
+    override fun trunc(): FltX {
+        val scale = value.scale()
+        return if (value > BigDecimal.ZERO) {
+            FltX(value.setScale(0, RoundingMode.FLOOR).setScale(scale))
+        } else if (value < BigDecimal.ZERO) {
+            FltX(value.setScale(0, RoundingMode.CEILING).setScale(scale))
+        } else {
+            this
+        }
+    }
+
+    override fun bankerRound(): FltX {
+        val scale = value.scale()
+        return FltX(value.setScale(0, RoundingMode.HALF_EVEN).setScale(scale))
+    }
+
     override fun floorTo(precision: Int): FltX {
         val scale = value.scale()
         return FltX(value.setScale(precision, RoundingMode.FLOOR).setScale(scale))
@@ -776,6 +999,28 @@ value class FltX(internal val value: BigDecimal) : FltXInterface, FloatingImpl<F
         val scale = value.scale()
         return FltX(value.setScale(precision, RoundingMode.HALF_UP).setScale(scale))
     }
+
+    override fun truncTo(precision: Int): FltX {
+        val scale = value.scale()
+        return if (value > BigDecimal.ZERO) {
+            FltX(value.setScale(precision, RoundingMode.FLOOR).setScale(scale))
+        } else if (value < BigDecimal.ZERO) {
+            FltX(value.setScale(precision, RoundingMode.CEILING).setScale(scale))
+        } else {
+            this
+        }
+    }
+
+    override fun bankerRoundTo(precision: Int): FltX {
+        val scale = value.scale()
+        return FltX(value.setScale(precision, RoundingMode.HALF_EVEN).setScale(scale))
+    }
+}
+
+fun Boolean.toFlt64() = if (this) {
+    Flt64.one
+} else {
+    Flt64.zero
 }
 
 fun String.toFlt32() = Flt32(toFloat())

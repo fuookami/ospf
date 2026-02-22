@@ -80,7 +80,7 @@ data object Demo16 {
             val p = produces[i]
             LinearExpressionSymbol(
                 sum(x[p, _a]),
-                "produce_${p.month}"
+                name = "produce_${p.month}"
             )
         }
         metaModel.add(produce)
@@ -92,7 +92,7 @@ data object Demo16 {
             val p = produces[i]
             LinearExpressionSymbol(
                 sum(x[_a, p]),
-                "supply_${p.month}"
+                name = "supply_${p.month}"
             )
         }
         metaModel.add(supply)
@@ -107,7 +107,7 @@ data object Demo16 {
                     }
                 }
             }),
-            "delay_delivery_cost"
+            name = "delay_delivery_cost"
         )
         metaModel.add(delayDeliveryCost)
 
@@ -121,13 +121,13 @@ data object Demo16 {
                     }
                 }
             }),
-            "storage_cost"
+            name = "storage_cost"
         )
         metaModel.add(storageCost)
 
         produceCost = LinearExpressionSymbol(
             productPrice * sum(x[_a, _a]),
-            "produce_cost"
+            name = "produce_cost"
         )
         metaModel.add(produceCost)
 
@@ -147,14 +147,14 @@ data object Demo16 {
         for (p in produces) {
             metaModel.addConstraint(
                 supply[p] geq p.demand,
-                "demand_${p.month}"
+                name = "demand_${p.month}"
             )
         }
 
         for (p in produces) {
             metaModel.addConstraint(
                 produce[p] leq p.productivity,
-                "productivity_${p.month}"
+                name = "productivity_${p.month}"
             )
         }
 

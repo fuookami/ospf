@@ -2,10 +2,11 @@ package fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task_compilation
 
 import fuookami.ospf.kotlin.utils.math.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.frontend.model.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.framework.model.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task.model.*
-import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task_compilation.model.Solution
+import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task_compilation.model.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task_compilation.service.*
 
 interface IterativeTaskCompilationContext<
@@ -71,22 +72,26 @@ interface IterativeTaskCompilationContext<
         model: AbstractLinearMetaModel
     ): Ret<Flt64> {
         return aggregation.removeColumns(
-            maximumReducedCost,
-            maximumColumnAmount,
-            reducedCost,
-            fixedTasks,
-            keptTasks,
-            model
+            maximumReducedCost = maximumReducedCost,
+            maximumColumnAmount = maximumColumnAmount,
+            reducedCost = reducedCost,
+            fixedTasks = fixedTasks,
+            keptTasks = keptTasks,
+            model = model
         )
     }
 
     fun extractShadowPrice(
         shadowPriceMap: AbstractGanttSchedulingShadowPriceMap<Args, E, A>,
         model: AbstractLinearMetaModel,
-        shadowPrices: List<Flt64>
+        shadowPrices: MetaDualSolution
     ): Try {
         for (pipeline in pipelineList) {
-            when (val ret = pipeline.refresh(shadowPriceMap, model, shadowPrices)) {
+            when (val ret = pipeline.refresh(
+                shadowPriceMap = shadowPriceMap,
+                model = model,
+                shadowPrices = shadowPrices
+            )) {
                 is Ok -> {}
                 is Failed -> {
                     return Failed(ret.error)
@@ -130,7 +135,12 @@ interface IterativeTaskCompilationContext<
         fixedTasks: Set<IT>,
         model: AbstractLinearMetaModel
     ): Ret<Set<IT>> {
-        return aggregation.locallyFix(iteration, bar, fixedTasks, model)
+        return aggregation.locallyFix(
+            iteration = iteration,
+            bar = bar,
+            fixedTasks = fixedTasks,
+            model = model
+        )
     }
 
     fun logResult(iteration: UInt64, model: AbstractLinearMetaModel): Try {
@@ -148,9 +158,17 @@ interface IterativeTaskCompilationContext<
     fun analyzeSolution(
         iteration: UInt64,
         tasks: List<T>,
-        model: AbstractLinearMetaModel
-    ): Ret<Solution<T, E, A>> {
-        return SolutionAnalyzer(iteration, tasks, aggregation.tasksIteration, aggregation.compilation, model)
+        model: AbstractLinearMetaModel,
+        solution: Solution? = null
+    ): Ret<TaskSolution<T, E, A>> {
+        return SolutionAnalyzer(
+            iteration = iteration,
+            originTasks = tasks,
+            tasks = aggregation.tasksIteration,
+            compilation = aggregation.compilation,
+            model = model,
+            solution = solution
+        )
     }
 }
 
@@ -174,7 +192,7 @@ interface ExtractIterativeTaskCompilationContext<
     fun extractShadowPrice(
         shadowPriceMap: AbstractGanttSchedulingShadowPriceMap<Args, E, A>,
         model: AbstractLinearMetaModel,
-        shadowPrices: List<Flt64>
+        shadowPrices: MetaDualSolution
     ): Try
 
     fun logResult(iteration: UInt64, model: AbstractLinearMetaModel): Try {

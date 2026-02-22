@@ -42,14 +42,14 @@ class TaskOverMaxDelayTimeMinimization<
                     cost += thisCoefficient * overMaxDelayTime
                 } else {
                     val slack = SlackFunction(
-                        if (timeWindow.continues) {
+                        x = overMaxDelayTime,
+                        threshold = thisThreshold,
+                        type = if (timeWindow.continues) {
                             UContinuous
                         } else {
                             UInteger
                         },
-                        x = LinearPolynomial(overMaxDelayTime),
-                        threshold = LinearPolynomial(thisThreshold),
-                        name = "over_max_delay_time_threshold_$task"
+                        name = "over_max_delay_time_threshold_${task}"
                     )
                     when (val result = model.add(slack)) {
                         is Ok -> {}
@@ -62,8 +62,8 @@ class TaskOverMaxDelayTimeMinimization<
                 }
             }
             when (val result = model.minimize(
-                cost,
-                "task over max delay time"
+                polynomial = cost,
+                name = "task over max delay time"
             )) {
                 is Ok -> {}
 

@@ -28,7 +28,9 @@ class UnknownDummyIndexTypeException(
 
 interface Shape {
     val dimension: Int
+    val udimension: UInt64 get() = UInt64(dimension)
     val size: Int
+    val usize: UInt64 get() = UInt64(size)
     val indices get() = 0 until dimension
 
     operator fun get(index: Int): Int
@@ -52,7 +54,10 @@ interface Shape {
 
     fun dummyVector(vararg v: Any): DummyVector {
         if (v.size != dimension) {
-            throw DimensionMismatchingException(dimension, v.size)
+            throw DimensionMismatchingException(
+                    dimension = dimension,
+                    vectorDimension = v.size
+                )
         }
         val vector = ArrayList<DummyIndex>()
         for (i in indices) {
@@ -62,7 +67,14 @@ interface Shape {
                 }
 
                 is IntRange -> {
-                    vector.add(DummyIndex(ValueRange(UInt64(index.first), UInt64(index.last)).value!!))
+                    vector.add(
+                        DummyIndex(
+                            ValueRange(
+                                UInt64(index.first),
+                                UInt64(index.last + 1)
+                            ).value!!
+                        )
+                    )
                 }
 
                 is IntegerRange<*> -> {
@@ -77,20 +89,43 @@ interface Shape {
                 }
 
                 is Int -> {
-                    vector.add(DummyIndex(ValueRange(UInt64(index), UInt64(index)).value!!))
+                    vector.add(
+                        DummyIndex(
+                            ValueRange(
+                                UInt64(index),
+                                UInt64(index)
+                            ).value!!
+                        )
+                    )
                 }
 
                 is Indexed -> {
-                    vector.add(DummyIndex(ValueRange(UInt64(index.index), UInt64(index.index)).value!!))
+                    vector.add(
+                        DummyIndex(
+                            ValueRange(
+                                UInt64(index.index),
+                                UInt64(index.index)
+                            ).value!!
+                        )
+                    )
                 }
 
                 is Integer<*> -> {
-                    vector.add(DummyIndex(ValueRange(index.toUInt64(), index.toUInt64() + UInt64.one).value!!))
+                    vector.add(
+                        DummyIndex(
+                            ValueRange(
+                                (index as RealNumber<*>).toUInt64(),
+                                (index as RealNumber<*>).toUInt64() + UInt64.one
+                            ).value!!
+                        )
+                    )
                 }
 
                 else -> {
-                    throw UnknownDummyIndexTypeException(index.javaClass.kotlin)
-                }
+                throw UnknownDummyIndexTypeException(
+                    cls = index.javaClass.kotlin
+                )
+            }
             }
         }
         return vector
@@ -100,6 +135,7 @@ interface Shape {
 data class Shape1(private val d1: Int) : Shape {
     companion object {
         operator fun invoke(d1: UInt64): Shape1 = Shape1(d1.toInt())
+        operator fun invoke(d1: Collection<*>): Shape1 = Shape1(d1.size)
     }
 
     override val dimension = 1
@@ -117,12 +153,19 @@ data class Shape1(private val d1: Int) : Shape {
     override fun index(vector: IntArray): Int {
         return when (vector.size) {
             1 -> if (vector[0] > d1) {
-                throw OutOfShapeException(1, d1, vector[0])
+                throw OutOfShapeException(
+                dimension = 1,
+                length = d1,
+                vectorIndex = vector[0]
+            )
             } else {
                 vector[0]
             }
 
-            else -> throw DimensionMismatchingException(1, vector.size)
+            else -> throw DimensionMismatchingException(
+                dimension = 1,
+                vectorDimension = vector.size
+            )
         }
     }
 
@@ -139,6 +182,7 @@ data class Shape1(private val d1: Int) : Shape {
 data class Shape2(private val d1: Int, private val d2: Int) : Shape {
     companion object {
         operator fun invoke(d1: UInt64, d2: UInt64): Shape2 = Shape2(d1.toInt(), d2.toInt())
+        operator fun invoke(d1: Collection<*>, d2: Collection<*>): Shape2 = Shape2(d1.size, d2.size)
     }
 
     private val totalSize by lazy { d1 * d2 }
@@ -156,14 +200,25 @@ data class Shape2(private val d1: Int, private val d2: Int) : Shape {
     override fun index(vector: IntArray): Int {
         return when (vector.size) {
             2 -> if (vector[0] > d1) {
-                throw OutOfShapeException(1, d1, vector[0])
+                throw OutOfShapeException(
+                    dimension = 1,
+                    length = d1,
+                    vectorIndex = vector[0]
+                )
             } else if (vector[1] > d2) {
-                throw OutOfShapeException(2, d2, vector[1])
+                throw OutOfShapeException(
+                    dimension = 2,
+                    length = d2,
+                    vectorIndex = vector[1]
+                )
             } else {
                 vector[0] * d2 + vector[1]
             }
 
-            else -> throw DimensionMismatchingException(2, vector.size)
+            else -> throw DimensionMismatchingException(
+                dimension = 2,
+                vectorDimension = vector.size
+            )
         }
     }
 
@@ -180,6 +235,7 @@ data class Shape2(private val d1: Int, private val d2: Int) : Shape {
 data class Shape3(private val d1: Int, private val d2: Int, private val d3: Int) : Shape {
     companion object {
         operator fun invoke(d1: UInt64, d2: UInt64, d3: UInt64): Shape3 = Shape3(d1.toInt(), d2.toInt(), d3.toInt())
+        operator fun invoke(d1: Collection<*>, d2: Collection<*>, d3: Collection<*>): Shape3 = Shape3(d1.size, d2.size, d3.size)
     }
 
     private val totalSize = d1 * d2 * d3
@@ -198,16 +254,31 @@ data class Shape3(private val d1: Int, private val d2: Int, private val d3: Int)
     override fun index(vector: IntArray): Int {
         return when (vector.size) {
             3 -> if (vector[0] > d1) {
-                throw OutOfShapeException(1, d1, vector[0])
+                throw OutOfShapeException(
+                    dimension = 1,
+                    length = d1,
+                    vectorIndex = vector[0]
+                )
             } else if (vector[1] > d2) {
-                throw OutOfShapeException(2, d2, vector[1])
+                throw OutOfShapeException(
+                    dimension = 2,
+                    length = d2,
+                    vectorIndex = vector[1]
+                )
             } else if (vector[2] > d3) {
-                throw OutOfShapeException(3, d3, vector[2])
+                throw OutOfShapeException(
+                    dimension = 3,
+                    length = d3,
+                    vectorIndex = vector[2]
+                )
             } else {
                 (vector[0] * d2 + vector[1]) * d3 + vector[2]
             }
 
-            else -> throw DimensionMismatchingException(3, vector.size)
+            else -> throw DimensionMismatchingException(
+                dimension = 3,
+                vectorDimension = vector.size
+            )
         }
     }
 
@@ -232,6 +303,7 @@ data class Shape3(private val d1: Int, private val d2: Int, private val d3: Int)
 data class Shape4(private val d1: Int, private val d2: Int, private val d3: Int, private val d4: Int) : Shape {
     companion object {
         operator fun invoke(d1: UInt64, d2: UInt64, d3: UInt64, d4: UInt64): Shape4 = Shape4(d1.toInt(), d2.toInt(), d3.toInt(), d4.toInt())
+        operator fun invoke(d1: Collection<*>, d2: Collection<*>, d3: Collection<*>, d4: Collection<*>): Shape4 = Shape4(d1.size, d2.size, d3.size, d4.size)
     }
 
     private val totalSize = d1 * d2 * d3 * d4
@@ -251,18 +323,37 @@ data class Shape4(private val d1: Int, private val d2: Int, private val d3: Int,
     override fun index(vector: IntArray): Int {
         return when (vector.size) {
             4 -> if (vector[0] > d1) {
-                throw OutOfShapeException(1, d1, vector[0])
+                throw OutOfShapeException(
+                    dimension = 1,
+                    length = d1,
+                    vectorIndex = vector[0]
+                )
             } else if (vector[1] > d2) {
-                throw OutOfShapeException(2, d2, vector[1])
+                throw OutOfShapeException(
+                    dimension = 2,
+                    length = d2,
+                    vectorIndex = vector[1]
+                )
             } else if (vector[2] > d3) {
-                throw OutOfShapeException(3, d3, vector[2])
+                throw OutOfShapeException(
+                    dimension = 3,
+                    length = d3,
+                    vectorIndex = vector[2]
+                )
             } else if (vector[3] > d4) {
-                throw OutOfShapeException(4, d4, vector[3])
+                throw OutOfShapeException(
+                    dimension = 4,
+                    length = d4,
+                    vectorIndex = vector[3]
+                )
             } else {
                 ((vector[0] * d2 + vector[1]) * d3 + vector[2]) * d4 + vector[3]
             }
 
-            else -> throw DimensionMismatchingException(4, vector.size)
+            else -> throw DimensionMismatchingException(
+                dimension = 4,
+                vectorDimension = vector.size
+            )
         }
     }
 
@@ -297,7 +388,10 @@ data class DynShape(private val shape: IntArray) : Shape {
             return ret
         }
 
+        @JvmName("constructByUInt64List")
         operator fun invoke(shape: Iterable<UInt64>): DynShape = DynShape(shape.map { it.toInt() }.toIntArray())
+        @JvmName("constructByCollectionList")
+        operator fun invoke(shape: Iterable<Collection<*>>): DynShape = DynShape(shape.map { it.size }.toIntArray())
     }
 
     private val totalSize = calculateTotalSize(shape)
@@ -315,7 +409,11 @@ data class DynShape(private val shape: IntArray) : Shape {
         var ret = 0
         for (i in 0 until (dimension - 1)) {
             if (vector[i] > shape[i]) {
-                throw OutOfShapeException(i + 1, shape[i], vector[i])
+                throw OutOfShapeException(
+                    dimension = i + 1,
+                    length = shape[i],
+                    vectorIndex = vector[i]
+                )
             }
             ret += vector[i]
             ret *= shape[i + 1]

@@ -19,7 +19,7 @@ $$
 
 $u \in \{ 0, 1 \}$：$x > 0$ 的判定。
 
-$y^{\prime} \in R - R^{-}$：表示 $max(0, x)$。
+$y^{\prime} \in \mathbb{R} - \mathbb{R}^{-}$：表示 $max(0, x)$。
 
 ## 导出符号
 
@@ -31,7 +31,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & y \geq x \\ \; \\
+\text{s.t.} \quad & y \geq x \\ \; \\
 & y \leq x + m \cdot u \\ \; \\
 & y \leq m \cdot (1 - u)
 \end{align}

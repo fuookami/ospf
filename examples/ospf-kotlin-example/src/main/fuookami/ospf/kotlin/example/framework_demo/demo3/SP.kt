@@ -41,11 +41,14 @@ class SP {
         }
         model.add(y)
 
-        val use = LinearExpressionSymbol(sum(products) { p -> p.length * y[p] }, "use")
+        val use = LinearExpressionSymbol(
+            sum(products) { p -> p.length * y[p] },
+            name = "use"
+        )
         model.add(use)
 
         model.minimize(Flt64.one - sum(products) { p -> shadowPrice(p) * y[p] })
-        model.addConstraint(use leq length, "use")
+        model.addConstraint(use leq length, name = "use")
 
         return when (val result = solver.solveMILP("demo1-sp-$iteration", model)) {
             is Failed -> {

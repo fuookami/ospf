@@ -2,7 +2,7 @@
 
 ## 问题描述
 
-有一些货物，每个货物有价值、重量和数量。
+现有若干货物，每个货物有相应的价值、重量和数量。
 
 |       | 货物 A  | 货物 B  | 货物 C  |
 | :---: | :-----: | :-----: | :-----: |
@@ -10,7 +10,7 @@
 | 价值  |   $6$   |  $10$   |  $20$   |
 | 数量  |  $10$   |   $5$   |   $2$   |
 
-从这些货物中选出部分货物，令总价值最大，并满足以下条件：
+从这些货物中选出部分货物，使得总价值最大，同时满足以下条件：
 
 1. 这些货物的总重量不超过 $8\,kg$。
 
@@ -39,7 +39,7 @@ $$
 #### 1. 总价值最大
 
 $$
-max \quad Value
+\max \quad \text{Value}
 $$
 
 ### 约束
@@ -47,13 +47,13 @@ $$
 #### 1. 总重量不超过最大总重量
 
 $$
-s.t. \quad Weight \leq Weight^{Max}
+\text{s.t.} \quad \text{Weight} \leq \text{Weight}^{\text{Max}}
 $$
 
 #### 2. 每个货物的数量不能超过最大数量
 
 $$
-s.t. \quad x_{c} \leq Amount^{Max}_{c}, \; \forall c \in C
+\text{s.t.} \quad x_{c} \leq \text{Amount}^{\text{Max}}_{c}, \; \forall c \in C
 $$
 
 ## 期望结果
@@ -137,6 +137,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo6.kt)

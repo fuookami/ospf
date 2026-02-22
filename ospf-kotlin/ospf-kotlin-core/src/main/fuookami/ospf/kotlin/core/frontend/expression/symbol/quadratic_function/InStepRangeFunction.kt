@@ -10,33 +10,142 @@ import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
 import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 
-class InStepRangeFunction(
-    lowerBound: AbstractQuadraticPolynomial<*>,
-    upperBound: AbstractQuadraticPolynomial<*>,
+class InStepRange(
+    private val lb: AbstractQuadraticPolynomial<*>,
+    private val ub: AbstractQuadraticPolynomial<*>,
     private val step: AbstractQuadraticPolynomial<*>,
+    override val parent: IntermediateSymbol? = null,
+    args: Any? = null,
     override var name: String,
     override var displayName: String? = null
-) : QuadraticFunctionSymbol {
-    private val lb = lowerBound
-    private val ub = upperBound
+) : QuadraticFunctionSymbol() {
+    companion object {
+        operator fun <
+            T1 : AbstractQuadraticPolynomial<Poly1>,
+            Poly1 : AbstractQuadraticPolynomial<Poly1>,
+            T2 : AbstractQuadraticPolynomial<Poly2>,
+            Poly2 : AbstractQuadraticPolynomial<Poly2>
+        > invoke(
+            lb: T1,
+            ub: T2,
+            step: Int,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): InStepRange {
+            return InStepRange(
+                lb = lb.toQuadraticPolynomial(),
+                ub = ub.toQuadraticPolynomial(),
+                step = QuadraticPolynomial(step),
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        operator fun <
+            T1 : AbstractQuadraticPolynomial<Poly1>,
+            Poly1 : AbstractQuadraticPolynomial<Poly1>,
+            T2 : AbstractQuadraticPolynomial<Poly2>,
+            Poly2 : AbstractQuadraticPolynomial<Poly2>
+        > invoke(
+            lb: T1,
+            ub: T2,
+            step: Double,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): InStepRange {
+            return InStepRange(
+                lb = lb.toQuadraticPolynomial(),
+                ub = ub.toQuadraticPolynomial(),
+                step = QuadraticPolynomial(step),
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        operator fun <
+            T1 : AbstractQuadraticPolynomial<Poly1>,
+            Poly1 : AbstractQuadraticPolynomial<Poly1>,
+            T2 : AbstractQuadraticPolynomial<Poly2>,
+            Poly2 : AbstractQuadraticPolynomial<Poly2>,
+            T3 : RealNumber<T3>
+        > invoke(
+            lb: T1,
+            ub: T2,
+            step: T3,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): InStepRange {
+            return InStepRange(
+                lb = lb.toQuadraticPolynomial(),
+                ub = ub.toQuadraticPolynomial(),
+                step = QuadraticPolynomial(step),
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+
+        operator fun <
+            T1 : AbstractQuadraticPolynomial<Poly1>,
+            Poly1 : AbstractQuadraticPolynomial<Poly1>,
+            T2 : AbstractQuadraticPolynomial<Poly2>,
+            Poly2 : AbstractQuadraticPolynomial<Poly2>,
+            T3 : AbstractQuadraticPolynomial<Poly3>,
+            Poly3 : AbstractQuadraticPolynomial<Poly3>
+        > invoke(
+            lb: T1,
+            ub: T2,
+            step: T3,
+            parent: IntermediateSymbol? = null,
+            args: Any? = null,
+            name: String,
+            displayName: String? = null
+        ): InStepRange {
+            return InStepRange(
+                lb = lb.toQuadraticPolynomial(),
+                ub = ub.toQuadraticPolynomial(),
+                step = step.toQuadraticPolynomial(),
+                parent = parent,
+                args = args,
+                name = name,
+                displayName = displayName
+            )
+        }
+    }
+
+    internal val _args = args
+    override val args get() = _args ?: parent?.args
 
     private val stepLinear: LinearFunction by lazy {
         LinearFunction(
-            step,
+            polynomial = step,
+            parent = parent ?: this,
             name = "${name}_step"
         )
     }
 
     private val q: FloorFunction by lazy {
         FloorFunction(
-            upperBound - lowerBound,
-            step,
+            x = ub - lb,
+            d = step,
+            parent = parent ?: this,
             name = "${name}_intDiv_$step"
         )
     }
 
     private val y: AbstractQuadraticPolynomial<*> by lazy {
-        val y = QuadraticPolynomial(lowerBound + q * stepLinear, "${name}_y")
+        val y = QuadraticPolynomial(lb + q * stepLinear, "${name}_y")
         y.range.set(possibleRange)
         y
     }
@@ -71,12 +180,16 @@ class InStepRangeFunction(
         y.range.set(possibleRange)
     }
 
-    override fun prepare(tokenTable: AbstractTokenTable): Flt64? {
+    override fun prepare(values: Map<Symbol, Flt64>?, tokenTable: AbstractTokenTable): Flt64? {
         lb.cells
         ub.cells
         tokenTable.cache(
             listOf(stepLinear, q).mapNotNull {
-                val value = it.prepare(tokenTable)
+                val value = if (values.isNullOrEmpty()) {
+                    it.prepare(null, tokenTable)
+                } else {
+                    it.prepare(values, tokenTable)
+                }
                 if (value != null) {
                     (it as IntermediateSymbol) to value
                 } else {
@@ -85,21 +198,37 @@ class InStepRangeFunction(
             }.toMap()
         )
 
-        return if (tokenTable.cachedSolution && tokenTable.cached(this) == false) {
-            lb.evaluate(tokenTable)?.let { lbValue ->
-                step.evaluate(tokenTable)?.let { stepValue ->
-                    q.evaluate(tokenTable)?.let { qValue ->
-                        lbValue + qValue * stepValue
-                    }
-                }
-            }
+        return if ((!values.isNullOrEmpty() || tokenTable.cachedSolution) && if (values.isNullOrEmpty()) {
+            tokenTable.cached(this)
+        } else {
+            tokenTable.cached(this, values)
+        } == false) {
+            val lbValue = if (values.isNullOrEmpty()) {
+                lb.evaluate(tokenTable)
+            } else {
+                lb.evaluate(values, tokenTable)
+            } ?: return null
+
+            val stepValue = if (values.isNullOrEmpty()) {
+                stepLinear.evaluate(tokenTable)
+            } else {
+                stepLinear.evaluate(values, tokenTable)
+            } ?: return null
+
+            val qValue = if (values.isNullOrEmpty()) {
+                q.evaluate(tokenTable)
+            } else {
+                q.evaluate(values, tokenTable)
+            } ?: return null
+
+            lbValue + qValue * stepValue
         } else {
             null
         }
     }
 
-    override fun register(tokenTable: AbstractMutableTokenTable): Try {
-        when (val result = tokenTable.add(stepLinear)) {
+    override fun register(tokenTable: AddableTokenCollection): Try {
+        when (val result = stepLinear.register(tokenTable)) {
             is Ok -> {}
 
             is Failed -> {
@@ -107,7 +236,7 @@ class InStepRangeFunction(
             }
         }
 
-        when (val result = tokenTable.add(q)) {
+        when (val result = q.register(tokenTable)) {
             is Ok -> {}
 
             is Failed -> {
@@ -138,6 +267,20 @@ class InStepRangeFunction(
         return ok
     }
 
+    override fun register(
+        tokenTable: AddableTokenCollection,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        return register(tokenTable)
+    }
+
+    override fun register(
+        model: AbstractQuadraticMechanismModel,
+        fixedValues: Map<Symbol, Flt64>
+    ): Try {
+        return register(model)
+    }
+
     override fun toString(): String {
         return displayName ?: name
     }
@@ -150,43 +293,111 @@ class InStepRangeFunction(
         }
     }
 
-    override fun evaluate(tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return lb.evaluate(tokenList, zeroIfNone)?.let { lbValue ->
-            step.evaluate(tokenList, zeroIfNone)?.let { stepValue ->
-                q.evaluate(tokenList, zeroIfNone)?.let { qValue ->
-                    lbValue + qValue * stepValue
-                }
-            }
-        }
+    override fun evaluate(
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val lbValue = lb.evaluate(tokenList, zeroIfNone) ?: return null
+        val stepValue = step.evaluate(tokenList, zeroIfNone) ?: return null
+        val qValue = q.evaluate(tokenList, zeroIfNone) ?: return null
+        return lbValue + qValue * stepValue
     }
 
-    override fun evaluate(results: List<Flt64>, tokenList: AbstractTokenList, zeroIfNone: Boolean): Flt64? {
-        return lb.evaluate(results, tokenList, zeroIfNone)?.let { lbValue ->
-            step.evaluate(results, tokenList, zeroIfNone)?.let { stepValue ->
-                q.evaluate(results, tokenList, zeroIfNone)?.let { qValue ->
-                    lbValue + qValue * stepValue
-                }
-            }
-        }
+    override fun evaluate(
+        results: List<Flt64>,
+        tokenList: AbstractTokenList,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val lbValue = lb.evaluate(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val stepValue = step.evaluate(tokenList, zeroIfNone) ?: return null
+        val qValue = q.evaluate(
+            results = results,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        return lbValue + qValue * stepValue
     }
 
-    override fun calculateValue(tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return lb.evaluate(tokenTable, zeroIfNone)?.let { lbValue ->
-            step.evaluate(tokenTable, zeroIfNone)?.let { stepValue ->
-                q.evaluate(tokenTable, zeroIfNone)?.let { qValue ->
-                    lbValue + qValue * stepValue
-                }
-            }
-        }
+    override fun evaluate(
+        values: Map<Symbol, Flt64>,
+        tokenList: AbstractTokenList?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val lbValue = lb.evaluate(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val stepValue = step.evaluate(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val qValue = q.evaluate(
+            values = values,
+            tokenList = tokenList,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        return lbValue + qValue * stepValue
     }
 
-    override fun calculateValue(results: List<Flt64>, tokenTable: AbstractTokenTable, zeroIfNone: Boolean): Flt64? {
-        return lb.evaluate(results, tokenTable, zeroIfNone)?.let { lbValue ->
-            step.evaluate(tokenTable, zeroIfNone)?.let { stepValue ->
-                q.evaluate(results, tokenTable, zeroIfNone)?.let { qValue ->
-                    lbValue + qValue * stepValue
-                }
-            }
-        }
+    override fun calculateValue(
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val lbValue = lb.evaluate(tokenTable, zeroIfNone) ?: return null
+        val stepValue = step.evaluate(tokenTable, zeroIfNone) ?: return null
+        val qValue = q.evaluate(tokenTable, zeroIfNone) ?: return null
+        return lbValue + qValue * stepValue
+    }
+
+    override fun calculateValue(
+        results: List<Flt64>,
+        tokenTable: AbstractTokenTable,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val lbValue = lb.evaluate(
+            results = results,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val stepValue = step.evaluate(
+            results = results,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val qValue = q.evaluate(
+            results = results,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        return lbValue + qValue * stepValue
+    }
+
+    override fun calculateValue(
+        values: Map<Symbol, Flt64>,
+        tokenTable: AbstractTokenTable?,
+        zeroIfNone: Boolean
+    ): Flt64? {
+        val lbValue = lb.evaluate(
+            values = values,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val stepValue = step.evaluate(
+            values = values,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        val qValue = q.evaluate(
+            values = values,
+            tokenTable = tokenTable,
+            zeroIfNone = zeroIfNone
+        ) ?: return null
+        return lbValue + qValue * stepValue
     }
 }
