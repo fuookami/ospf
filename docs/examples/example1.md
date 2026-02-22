@@ -2,45 +2,45 @@
 
 ## Problem Description
 
-Given a set of companies with their own capital, liabilities, and profits.
+There are several enterprises, each with its own capital amount, liability amount, and profit amount.
 
-|       | CAPITAL | LIABILITIES | PROFIT |
-| :---: | :-----: | :---------: | :----: |
-| Co. A | $3.48$  |   $1.28$    | $5400$ |
-| Co. B | $5.62$  |   $2.53$    | $2300$ |
-| Co. C | $7.33$  |   $1.02$    | $4600$ |
-| Co. D | $6.27$  |   $3.55$    | $3300$ |
-| Co. E | $2.14$  |   $0.53$    | $980$  |
+|        | Capital Amount | Liability Amount | Profit Amount |
+| :----: | :------------: | :--------------: | :-----------: |
+| Enterprise A |  $3.48$  |  $1.28$  | $5400$ |
+| Enterprise B |  $5.62$  |  $2.53$  | $2300$ |
+| Enterprise C |  $7.33$  |  $1.02$  | $4600$ |
+| Enterprise D |  $6.27$  |  $3.55$  | $3300$ |
+| Enterprise E |  $2.14$  |  $0.53$  | $980$  |
 
-Select a subset of companies to maximize total profit, while satisfying:
+The objective is to select a subset of these enterprises to maximize the total profit amount, while satisfying the following conditions:
 
-1. Total capital is greater than or equal to $10$;
-2. Total liabilities is less than or equal to $5$.
+1. The total capital amount of selected enterprises is greater than $10$;
+2. The total liability amount of selected enterprises is less than $5$.
 
 ## Mathematical Model
 
 ### Variables
 
-$x_{c}$ ：to select company $c$.
+$x_{c}$: indicates whether enterprise $c$ is selected.
 
-### Intermediate Expressions
+### Intermediate Values
 
-#### 1. Total Capital
-
-$$
-Capital = \sum_{c \in C} Capital_{c} \cdot x_{c}
-$$
-
-#### 2. Total Liabilities
+#### 1. Total Capital Amount
 
 $$
-Liability = \sum_{c \in C} Liability_{c} \cdot x_{c}
+\text{Capital} = \sum_{c \in C} \text{Capital}_{c} \cdot x_{c}
 $$
 
-#### 3. Total Profit
+#### 2. Total Liability Amount
 
 $$
-Profit = \sum_{c \in C} Profit_{c} \cdot x_{c}
+\text{Liability} = \sum_{c \in C} \text{Liability}_{c} \cdot x_{c}
+$$
+
+#### 3. Total Profit Amount
+
+$$
+\text{Profit} = \sum_{c \in C} \text{Profit}_{c} \cdot x_{c}
 $$
 
 ### Objective Function
@@ -48,26 +48,26 @@ $$
 #### 1. Maximize Total Profit
 
 $$
-max \quad Profit
+\max \quad \text{Profit}
 $$
 
 ### Constraints
 
-#### 1. Minimum Capital Limit
+#### 1. Total Capital Amount Must Exceed Minimum
 
 $$
-s.t. \quad Capital \geq Capital^{Min}
+\text{s.t.} \quad \text{Capital} \geq \text{Capital}^{\text{Min}}
 $$
 
-#### 2. Maximum Liability Limit
+#### 2. Total Liability Amount Must Be Below Maximum
 
 $$
-s.t. \quad Liability \leq Liability^{Max}
+\text{s.t.} \quad \text{Liability} \leq \text{Liability}^{\text{Max}}
 $$
 
-## Expected Result
+## Expected Results
 
-Optimal selection: companies A, B and C 。
+Select enterprises A, B, and C.
 
 ## Code Implementation
 
@@ -92,21 +92,21 @@ data class Company(
     val profit: Flt64
 ) : AutoIndexed(Company::class)
 
-val companies: List<Company> = ... // company data
+val companies: List<Company> = ... // Company list
 val minCapital = Flt64(10.0)
 val maxLiability = Flt64(5.0)
 
-// create a model instance
+// Create model instance
 val metaModel = LinearMetaModel("demo1")
 
-// define variables
+// Define variables
 val x = BinVariable1("x", Shape1(companies.size))
 for (c in companies) {
     x[c].name = "${x.name}_${c.index}"
 }
 metaModel.add(x)
 
-// define intermediate expressions
+// Define intermediate values
 val capital = LinearExpressionSymbol(
     sum(companies) { it.capital * x[it] }, 
     "capital"
@@ -125,14 +125,14 @@ val profit = LinearExpressionSymbol(
 )
 metaModel.add(profit)
 
-// define objective function
+// Define objective function
 metaModel.maximize(profit)
 
-// define constraints
+// Define constraints
 metaModel.addConstraint(capital geq minCapital)
 metaModel.addConstraint(liability leq maxLiability)
 
-// solve the model
+// Invoke solver
 val solver = ScipLinearSolver()
 when (val ret = solver(metaModel)) {
     is Ok -> {
@@ -142,7 +142,7 @@ when (val ret = solver(metaModel)) {
     is Failed -> {}
 }
 
-// parse results
+// Parse results
 val solution = ArrayList<Company>()
 for (token in metaModel.tokens.tokens) {
     if (token.result!! eq Flt64.one && token.variable.belongsTo(x)) {
@@ -153,6 +153,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-For the complete implementation, please refer to:
+**Complete Implementation Reference:**
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo1.kt)

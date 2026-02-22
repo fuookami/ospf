@@ -29,7 +29,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & m \cdot (1 - y^{\prime}) & \geq & \, x \\ \; \\
+\text{s.t.} \quad & m \cdot (1 - y^{\prime}) & \geq & \, x \\ \; \\
 & 1 - y^{\prime} & \leq & \, x
 \end{align}
 $$
@@ -67,7 +67,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & x & = & \, m \cdot b \\ \; \\
+\text{s.t.} \quad & x & = & \, m \cdot b \\ \; \\
 & 1 - y^{\prime} & \geq & \, b \\ \; \\
 & \epsilon \cdot (1 - y^{\prime}) & \leq & b
 \end{align}

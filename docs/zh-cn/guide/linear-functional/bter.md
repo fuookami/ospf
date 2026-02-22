@@ -15,7 +15,7 @@ $$
 ### 常量
 
 $$
-m = max(|x|)
+m = \max(|x|)
 $$
 
 ### 额外变量
@@ -34,7 +34,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & m \cdot y^{\prime}_{p} & \geq & \, x \\ \; \\
+\text{s.t.} \quad & m \cdot y^{\prime}_{p} & \geq & \, x \\ \; \\
 & -m \cdot y^{\prime}_{n} & \leq & \, x \\ \; \\
 & x & \geq & \, (-m - 1) \cdot (1 - y^{\prime}_{p}) + 1 \\ \; \\
 & x & \leq & \, (m + 1) \cdot (1 - y^{\prime}_{n}) - 1 \\ \; \\
@@ -47,7 +47,7 @@ $$
 ### 常量
 
 $$
-m = max(|x|)
+m = \max(|x|)
 $$
 
 ### 额外变量
@@ -70,7 +70,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & x & = & \, -m \cdot b_{n} + m \cdot b_{p} \\ \; \\
+\text{s.t.} \quad & x & = & \, -m \cdot b_{n} + m \cdot b_{p} \\ \; \\
 & y_{p} & \geq & \, b_{p} \\ \; \\
 & \epsilon \cdot y_{p} & \leq & b \\ \; \\
 & y_{n} & \geq & \, b_{n} \\ \; \\
@@ -110,7 +110,7 @@ y = \begin{cases}
 \end{cases}
 $$
 
-## 样例
+## 代码示例
 
 ### 离散
 
@@ -266,10 +266,10 @@ assert(result8.value!!.obj eq -Flt64.one)
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/BalanceTernaryzation.kt)
 
-完整样例请参考：
+完整样例参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/BTerTest.kt)

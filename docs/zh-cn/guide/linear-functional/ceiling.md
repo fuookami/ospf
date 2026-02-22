@@ -8,9 +8,9 @@ $$
 
 ## 额外变量
 
-$q \in Z$：$\frac{x}{d}$ 的整数部分。
+$q \in \mathbb{Z}$ ：$\frac{x}{d}$ 的整数部分。
 
-$r \in [0, |d|)$：$\frac{x}{d}$ 的余数部分。
+$r \in [0, |d|)$ ：\frac{x}{d}$ 的余数部分。
 
 ## 导出符号
 
@@ -22,11 +22,11 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & x = d \cdot q - r
+\text{s.t.} \quad & x = d \cdot q - r
 \end{align}
 $$
 
-## 样例
+## 代码示例
 
 ::: code-group
 
@@ -65,10 +65,10 @@ assert(result2.value!!.solution[0].roundTo(5) geq Flt64(4.9))
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/Ceiling.kt)
 
-完整样例请参考：
+完整样例参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/CeilingTest.kt)

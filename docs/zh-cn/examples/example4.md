@@ -2,47 +2,47 @@
 
 ## 问题描述
 
-有一些产品和一些原料，每个原料有给定的可用量，每个产品有收益，每个产品有最大生产量，每个产品需要多个多种原料。
+给定一组产品和原材料，每种原材料有给定的可用数量，每种产品有收益，每种产品有最大生产量，且每种产品需要多种类型的原材料。
 
-|        | 原料 A | 原料 B |
+|                    | 原材料 A | 原材料 B |
+| :----------------: | :------: | :------: |
+| 可用数量 |   $24$   |   $8$    |
+
+|        | 产品 A | 产品 B |
 | :----: | :----: | :----: |
-| 可用量 |  $24$  |  $8$   |
+| 收益 |  $5$   |  $4$   |
 
-|       | 产品 A | 产品 B |
-| :---: | :----: | :----: |
-| 收益  |  $5$   |  $4$   |
+|           | 产品 A | 产品 B |
+| :-------: | :----: | :----: |
+| 最大产量 |  $3$   |  $2$   |
 
-|            | 产品 A | 产品 B |
-| :--------: | :----: | :----: |
-| 最大生产量 |  $3$   |  $2$   |
+|           | 原材料 A | 原材料 B |
+| :-------: | :------: | :------: |
+| 产品 A |   $6$    |   $1$    |
+| 产品 B |   $4$    |   $2$    |
 
-|        | 原料 A | 原料 B |
-| :----: | :----: | :----: |
-| 产品 A |  $6$   |  $1$   |
-| 产品 B |  $4$   |  $2$   |
+确定各产品的生产数量，使得总收益最大，同时满足以下条件：
 
-给出每个产品的生产量，令总收益最大，且满足以下条件：
-
-1. 每个产品之间的生产量之差不能大于一个单位。
+1. 任意两种产品的生产数量之差不得超过一个单位。
 
 ## 数学模型
 
 ### 变量
 
-$x_{p}$：产品 $p$ 的生产量。
+$x_{p}$：产品 $p$ 的产量。
 
 ### 中间值
 
 #### 1. 总收益
 
 $$
-Profit = \sum_{p \in P} Profit_{p} \cdot x_{p}
+\text{Profit} = \sum_{p \in P} \text{Profit}_{p} \cdot x_{p}
 $$
 
-#### 2. 原料使用量
+#### 2. 原材料使用量
 
 $$
-Use_{m} = \sum_{p \in P} Use_{pm} \cdot x_{p}, \; \forall m \in M
+\text{Use}_{m} = \sum_{p \in P} \text{Use}_{pm} \cdot x_{p}, \; \forall m \in M
 $$
 
 ### 目标函数
@@ -50,32 +50,32 @@ $$
 #### 1. 总收益最大
 
 $$
-max \quad Profit
+\max \quad \text{Profit}
 $$
 
 ### 约束
 
-#### 1. 各个产品的生产量不能超过最大生产量
+#### 1. 产量限制
 
 $$
-s.t. \quad x_{p} \leq Yield^{Max}_{p}, \; \forall p \in P
+\text{s.t.} \quad x_{p} \leq \text{Yield}^{\text{Max}}_{p}, \; \forall p \in P
 $$
 
-#### 2. 每个原料的使用量不能超过可用量
+#### 2. 使用量限制
 
 $$
-s.t. \quad Use_{m} \leq Available_{m}, \; \forall m \in M
+\text{s.t.} \quad \text{Use}_{m} \leq \text{Available}_{m}, \; \forall m \in M
 $$
 
-#### 3. 每个产品之间的生产量之差不能大于一个单位
+#### 3. 产量差异限制
 
 $$
-s.t. \quad x_{p} - x_{p^{\prime}} \leq Diff^{Max}, \; \forall (p, \, p^{\prime}) \in (P^{2} - \Delta P)
+\text{s.t.} \quad x_{p} - x_{p^{\prime}} \leq \text{Diff}^{\text{Max}}, \; \forall (p, \, p^{\prime}) \in (P^{2} - \Delta P)
 $$
 
 ## 期望结果
 
-产品 A 生产 $\frac{8}{3}$ 个单位，产品 B 生产 $\frac{5}{3}$ 个单位。
+产品 A 产量为 $\frac{8}{3}$ 单位，产品 B 产量为 $\frac{5}{3}$ 单位。
 
 ## 代码实现
 
@@ -104,8 +104,8 @@ data class Product(
     val use: Map<Material, Flt64>
 ) : AutoIndexed(Product::class)
 
-val materials: List<Material> = ... // 原料列表
-val products: List<Product> = ...  // 产品列表
+val materials: List<Material> = ... // 原材料数据
+val products: List<Product> = ...  // 产品数据
 val maxDiff = Int64(1)
 
 // 创建模型实例
@@ -172,10 +172,11 @@ for (token in metaModel.tokens.tokens) {
         solution[materials[token.variable.vectorView[0]]] = token.result!!
     }
 }
+
 ```
 
 :::
 
-完整实现请参考：
+**完整实现参考：**
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo4.kt)

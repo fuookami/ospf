@@ -2,7 +2,7 @@
 
 ## 问题描述
 
-有一些产品和一些原料，每个产品有给定的需求量，每个原料有成本，每个原料可以生产多个多种产品。
+现有若干产品和若干原料，每个产品有给定的需求量，每个原料有相应成本，且每个原料可用于生产多种产品。
 
 |        | 产品 A  | 产品 B  | 产品 C  |
 | :----: | :-----: | :-----: | :-----: |
@@ -18,26 +18,26 @@
 | 产品 B |  $10$  |  $-$   |  $25$  |  $15$  |
 | 产品 C |  $-$   |  $20$  |  $15$  |  $15$  |
 
-给出每个原料的使用量，令总成本最小。
+目标：确定各原料的使用量，使得总成本最小。
 
 ## 数学模型
 
 ### 变量
 
-$x_{m}$ ：原料 $m$ 的使用量。
+$x_{m}$：表示原料 $m$ 的使用量。
 
 ### 中间值
 
 #### 1. 总成本
 
 $$
-Cost = \sum_{m \in M} Cost_{m} \cdot x_{m}
+\text{Cost} = \sum_{m \in M} \text{Cost}_{m} \cdot x_{m}
 $$
 
 #### 2. 产品产量
 
 $$
-Yield^{Product}_{p} = \sum_{m \in M} Yield_{mp} \cdot x_{m}, \; \forall p \in P
+\text{Yield}^{\text{Product}}_{p} = \sum_{m \in M} \text{Yield}_{mp} \cdot x_{m}, \; \forall p \in P
 $$
 
 ### 目标函数
@@ -45,22 +45,22 @@ $$
 #### 1. 总成本最小
 
 $$
-min \quad Cost
+\min \quad \text{Cost}
 $$
 
 ### 约束
 
-#### 1. 各个产品的产量要满足需求，且不能浪费
+#### 1. 各产品产量需满足需求且不浪费
 
 $$
-s.t. \quad Yield^{Product}_{p} = Yield^{Product, Min}_{p}, \; \forall p \in P
+\text{s.t.} \quad \text{Yield}^{\text{Product}}_{p} = \text{Yield}^{\text{Product, Min}}_{p}, \; \forall p \in P
 $$
 
-### 期望结果
+## 期望结果
 
 原料 A 使用 $284$ 个，原料 B 使用 $8$ 个，原料 C 使用 $232$ 个，原料 D 使用 $424$ 个。
 
-### 代码实现
+## 代码实现
 
 ::: code-group
 
@@ -93,7 +93,7 @@ val materials: List<Material> = ... // 原料列表
 val metaModel = LinearMetaModel("demo3")
 
 // 定义变量
-val x = = UIntVariable1("x", Shape1(materials.size))
+val x = UIntVariable1("x", Shape1(materials.size))
 for (c in materials) {
     x[c].name = "${x.name}_${c.index}"
 }
@@ -145,6 +145,8 @@ for (token in metaModel.tokens.tokens) {
 }
 ```
 
-完整实现请参考：
+:::
+
+**完整实现参考：**
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo3.kt)

@@ -1,184 +1,190 @@
-# Framework Example 1: Service Placement Problem
+# Complex Example 1: Server Placement Problem
 
 ## Problem Description
 
-In a given telecommunications network structure, in order to deliver video content to each residential area quickly and at low cost, it is necessary to place video content storage servers near selected network nodes within this predefined network architecture.
+In a given telecommunications network structure, to quickly and cost-effectively deliver video content to each residential area, video content storage servers need to be placed near some network nodes in this given network structure.
 
 <div align="center">
   <img src="/images/framework-example1.png">
 </div>
 
-It is now known that:
-1. Each link has a bandwidth $Bandwidth^{Max}$ and bandwidth cost $Cost^{Bandwidth}$ ;
-2. Each server has a capacity $Capacity$ and service cost $Cost^{Service}$ ;
-3. Each consumer node has a demand $Demand$ .
+Currently known:
+1. Each link has bandwidth $Bandwidth^{Max}$ and bandwidth cost $Cost^{Bandwidth}$;
+2. Each server has load capacity $Capacity$ and usage cost $Cost^{Service}$;
+3. Each consumer node has demand $Demand$.
 
-Determine the placement locations of video content storage servers and the bandwidth links to minimize server usage costs and link usage costs, while satisfying the following conditions:
-1. At most one server can be deployed at each node;
+Determine the placement locations for video content storage servers and bandwidth links to minimize server usage cost and link usage cost, while satisfying the following conditions:
+1. Each node can deploy at most one server;
 2. Each server can be deployed to at most one node;
-3. All residential area video playback demands must be met;
-4. The traffic at transit nodes must be balanced.
+3. Meet all residential area video playback demands;
+4. Transit node traffic must be balanced.
 
 ## Business Architecture
 
 ```mermaid
 C4Context
-  System_Boundary(ApplicationLayer, "Application Layer") {
-    System(Application, "Application")
+  System_Boundary(application_layer, "Application Layer") {
+    System(application, "Application")
   }
-  System_Boundary(DomainLayer, "Domain Layer") {
-    System(BandwidthDomain, "Bandwidth Domain")
-    System(RouteDomain, "Route Domain")
+  System_Boundary(domain_layer, "Domain Layer") {
+    System(bandwidth_context, "Bandwidth Context")
+    System(route_context, "Route Context")
   }
 
-  Rel(Application, RouteDomain, "", "")
-  Rel(Application, BandwidthDomain, "", "")
-  Rel(BandwidthDomain, RouteDomain, "", "")
+  Rel(application, route_context, "", "")
+  Rel(application, bandwidth_context, "", "")
+  Rel(bandwidth_context, route_context, "", "")
 
   UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
 
 ## Mathematical Model
 
-### Route Domain
+### Route Context
 
 #### Variables
 
-$x_{is} \in \{0, 1\}$: whether server $s$ is deployed on node $i$.
+$x_{is} \in \{0, 1\}$: Deploy server $s$ at normal node $i$.
 
-#### Intermediate Expressions
+#### Intermediate Values
 
-##### 1. Whether Any Server is Deployed on Node
-
-$$
-Assignment^{Node}_{i} = \sum_{s \in S} x_{is}, \; \forall i \in N^{N}
-$$
-
-##### 2. Whether Server is Deployed on Any Node
+##### 1. Whether Server is Deployed at Node
 
 $$
-Assignment^{Server}_{s} = \sum_{i \in N^{N}} x_{is}, \; \forall s \in S
+\text{Assignment}^{\text{Node}}_{i} = \sum_{s \in S} x_{is}, \; \forall i \in N^{N}
+$$
+
+##### 2. Whether Server is Deployed
+
+$$
+\text{Assignment}^{\text{Service}}_{s} = \sum_{i \in N^{N}} x_{is}, \; \forall s \in S
 $$
 
 #### Objective Function
 
-##### 1. Minimize Server Cost
+##### 1. Minimize Server Deployment Cost
 
-**Description**: Minimize the total cost of deploying servers on nodes.
+**Description**: Server usage cost should be as low as possible.
 
 $$
-min \quad \sum_{s \in S} Cost^{Service}_{s} \cdot Assignment^{Service}_{s}
+\min \quad \sum_{s \in S} \text{Cost}^{\text{Service}}_{s} \cdot \text{Assignment}^{\text{Service}}_{s}
 $$
 
 #### Constraints
 
-##### 1. Node Deployment Limit
+##### 1. Node Deployment Constraint
 
-**Description**: At most one server can be deployed on each node.
+**Description**: Each node can deploy at most one server.
 
 $$
-s.t. \quad Assignment^{Node}_{i} \leq 1, \; \forall i \in N^{N}
+\text{s.t.} \quad \text{Assignment}^{\text{Node}}_{i} \leq 1, \; \forall i \in N^{N}
 $$
 
-##### 2. Server Deployment Limit
+##### 2. Server Deployment Constraint
 
 **Description**: Each server can be deployed to at most one node.
 
 $$
-s.t. \quad Assignment^{Server}_{s} \leq 1, \; \forall s \in S
+\text{s.t.} \quad \text{Assignment}^{\text{Service}}_{s} \leq 1, \; \forall s \in S
 $$
 
-### Bandwidth Domain
+### Bandwidth Context
 
 #### Variables
 
-$y_{e_{ij}, s} \in R^{\ast}$: whether link $e_{ij}$ is used by server $s$.
+$y_{e_{ij}, s} \in R^{\ast}$: Bandwidth occupied by server $s$ on the link from normal node $i$ to node $j$.
 
-#### Intermediate Expressions
+#### Intermediate Values
 
-##### 1. Bandwidth Usage
-
-$$
-Bandwidth_{e_{ij}} = \sum_{s \in S} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall j \in N
-$$
-
-##### 2. Indegree Bandwidth
+##### 1. Used Bandwidth
 
 $$
-Bandwidth^{Indegree, Service}_{js} = \sum_{i \in N^{N}} y_{e_{ij}, s}, \; \forall j \in N, \; \forall s \in S
+\text{Bandwidth}_{e_{ij}} = \sum_{s \in S} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall j \in N
 $$
 
-$$
-Bandwidth^{Indegree, Node}_{j} = \sum_{s \in S} Bandwidth^{Indegree, Service}_{js}, \; \forall j \in N
-$$
-
-##### 3. Outdegree Bandwidth
+##### 2. Incoming Bandwidth
 
 $$
-Bandwidth^{Outdegree, Service}_{is} = \sum_{j \in N} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall s \in S
+\text{Bandwidth}^{\text{Indegree, Service}}_{js} = \sum_{i \in N^{N}} y_{e_{ij}, s}, \; \forall j \in N, \; \forall s \in S
 $$
 
 $$
-Bandwidth^{Outdegree, Node}_{i} = \sum_{s \in S} Bandwidth^{Outdegree, Service}_{js}, \; \forall i \in N^{N}
+\text{Bandwidth}^{\text{Indegree, Node}}_{j} = \sum_{s \in S} \text{Bandwidth}^{\text{Indegree, Service}}_{js}, \; \forall j \in N
 $$
 
-##### 4. OutFlow Bandwidth
+##### 3. Outgoing Bandwidth
 
 $$
-Bandwidth^{OutFlow, Service}_{is} = Bandwidth^{Outdegree, Service}_{is} - Bandwidth^{Indegree, Service}_{is}, \; \forall i \in N^{N}, \; \forall s \in S
+\text{Bandwidth}^{\text{Outdegree, Service}}_{is} = \sum_{j \in N} y_{e_{ij}, s}, \; \forall i \in N^{N}, \; \forall s \in S
 $$
 
 $$
-Bandwidth^{OutFlow, Node}_{i} = \sum_{s \in S} Bandwidth^{OutFlow, Service}_{is}, \; \forall i \in N^{N}
+\text{Bandwidth}^{\text{Outdegree, Node}}_{i} = \sum_{s \in S} \text{Bandwidth}^{\text{Outdegree, Service}}_{js}, \; \forall i \in N^{N}
+$$
+
+##### 4. Net Outflow Bandwidth
+
+$$
+\text{Bandwidth}^{\text{OutFlow, Service}}_{is} = \text{Bandwidth}^{\text{Outdegree, Service}}_{is} - \text{Bandwidth}^{\text{Indegree, Service}}_{is}, \; \forall i \in N^{N}, \; \forall s \in S
+$$
+
+$$
+\text{Bandwidth}^{\text{OutFlow, Node}}_{i} = \sum_{s \in S} \text{Bandwidth}^{\text{OutFlow, Service}}_{is}, \; \forall i \in N^{N}
 $$
 
 #### Objective Function
 
-##### 1. Minimize Bandwidth Usage Cost
+##### 1. Minimize Link Bandwidth Usage Cost
 
-**Description**: Minimize the total cost of using bandwidth on links.
+**Description**: Link bandwidth usage cost should be as low as possible.
 
 $$
-min \quad \sum_{i \in N^{N}}\sum_{j \in N^{N}} Cost^{Bandwidth}_{e_{ij}} \cdot Bandwidth_{e_{ij}}
+\min \quad \sum_{i \in N^{N}}\sum_{j \in N^{N}} \text{Cost}^{\text{Bandwidth}}_{e_{ij}} \cdot \text{Bandwidth}_{e_{ij}}
 $$
 
 #### Constraints
 
-##### 1. Bandwidth Usage Limit
+##### 1. Link Bandwidth Constraint
 
-**Description**: The bandwidth usage of each link not to exceed its maximum capacity and ensures that only servers can consume bandwidth.
-
-$$
-s.t. \quad y_{e_{ij}, s} \leq Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S
-$$
-
-##### 2. Demand Satisfaction Limit
-
-**Description**: Enforce the satisfaction of consumer node demands.
+**Description**: Link used bandwidth does not exceed link maximum, and only servers can use bandwidth.
 
 $$
-s.t. \quad \sum_{s \in S} Bandwidth^{OutFlow, Service}_{is} \geq Demand_{i}, \; \forall i \in N^{C}
+\text{s.t.} \quad y_{e_{ij}, s} \leq \text{Bandwidth}^{Max}_{e_{ij}} \cdot \text{Assignment}^{\text{Service}}_{s}, \; \forall i \in N^{N}, \; \forall j \in N, \; \forall s \in S
 $$
 
-##### 3. Flow Balance Limit
+##### 2. Terminal Node Demand Constraint
 
-**Description**: Impose flow balance constraints on transit nodes.
-
-$$
-s.t. \quad \sum_{j \in N} y_{e_{ij}, s} - \sum_{j \in N^{N}} y_{e_{ji}, s} \leq \sum_{j \in N} Bandwidth^{Max}_{e_{ij}} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall s \in S
-$$
-
-##### 4. Server Capacity Limit
-
-**Description**: Limit the outflow of server nodes to their capacity.
+**Description**: Must satisfy consumer node demands.
 
 $$
-s.t. \quad \sum_{j \in N} y_{e_{ij}, s} - \sum_{j \in N^{N}} y_{e_{ji}, s} \leq Capacity_{s} \cdot Assignment^{Service}_{s}, \; \forall i \in N^{N}, \; \forall s \in S
+\text{s.t.} \quad \text{Bandwidth}^{\text{Indegree, Node}}_{i} \geq \text{Demand}_{i}, \; \forall i \in N^{C}
 $$
 
-## Code Implementation
+##### 3. Transit Node Traffic Constraint
 
-### Route Domain
+**Description**: Transit node traffic must be balanced.
+
+$$
+\text{s.t.} \quad \text{Bandwidth}^{\text{OutFlow, Node}}_{i} \leq \text{Bandwidth}^{Max, Outdegree}_{i} \cdot \text{Assignment}^{\text{Node}}_{i}, \; \forall i \in N^{N}
+$$
+
+Where:
+
+$$
+\text{Bandwidth}^{Max, Outdegree}_{i} = \sum_{j \in N} \text{Bandwidth}^{Max}_{e_{ij}}, \; \forall i \in N^{N}
+$$
+
+##### 4. Server Capacity Constraint
+
+**Description**: Server node net output does not exceed server capacity.
+
+$$
+\text{s.t.} \quad \text{Bandwidth}^{\text{OutFlow, Service}}_{is} \leq \text{Capacity}_{s} \cdot x_{is}, \; \forall i \in N^{N}, \; \forall s \in S
+$$
+
+## Code Implementation {#code-implementation}
+
+### Route Context
 
 ::: code-group
 
@@ -224,7 +230,7 @@ data class Graph(
     val edges: ArrayList<Edge>
 ) {}
 
-// define decision objects
+// Define decision objects
 class Assignment(
     private val nodes: List<Node>,
     private val services: List<Service>
@@ -277,7 +283,7 @@ class Assignment(
     }
 }
 
-// define context
+// Define context
 class RouteContext(
     val graph: Graph,
     val services: List<Service>,
@@ -285,19 +291,19 @@ class RouteContext(
     lateinit var assignment: Assignment
 
     fun register(model: LinearMetaModel) {
-        // register decision objects (varaibles and intermediate expressions) to the model
+        // Register variables, intermediate values to model
         if (!::assignment.isInitialized) {
             assignment = Assignment(graph.nodes, services)
         }
         assignment.register(model)
 
-        // define objective function
+        // Define objective function
          model.minimize(
             sum(services) { it.cost * assignment.serviceAssignment[it] },
             "service cost"
         )
 
-        // define constraints
+        // Define constraints
         for (node in graph.nodes.filter { it is NormalNode }) {
             model.addConstraint(
                 assignment.nodeAssignment[node] leq 1,
@@ -317,7 +323,7 @@ class RouteContext(
 
 :::
 
-### Bandwidth Domain
+### Bandwidth Context
 
 ::: code-group
 
@@ -332,7 +338,7 @@ import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
 import fuookami.ospf.kotlin.core.frontend.inequality.*
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 
-// define decision objects
+// Define decision objects
 class EdgeBandwidth(
     private val edges: List<Edge>,
     private val services: List<Service>
@@ -487,7 +493,7 @@ class NodeBandwidth(
     }
 }
 
-// define context
+// Define context
 class BandwidthContext() {
     lateinit var edgeBandwidth: EdgeBandwidth,
     lateinit var serviceBandwidth: ServiceBandwidth,
@@ -501,7 +507,7 @@ class BandwidthContext() {
         val services = routeContext.services
         val assignment = routeContext.assignment
 
-        // register decision objects (varaibles and intermediate expressions) to the model
+        // Register variables, intermediate values to model
         if (!::edgeBandwidth.isInitialized) {
             edgeBandwidth = EdgeBandwidth(graph.edges, services)
         }
@@ -517,7 +523,7 @@ class BandwidthContext() {
         }
         nodeBandwidth.register(model)
 
-        // define objective function
+        // Define objective function
         model.minimize(
             sum(graph.edges.filter { it.from is NormalNode }) { 
                 it.costPerBandwidth * edgeBandwidth.bandwidth[it]
@@ -525,7 +531,7 @@ class BandwidthContext() {
             "bandwidth cost"
         )
 
-        // define constraints
+        // Define constraints
         for (edge in graph.edges.filter { it.from is NormalNode }) {
             for (service in services) {
                 model.addConstraint(
@@ -576,21 +582,21 @@ class BandwidthContext() {
 import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
 import fuookami.ospf.kotlin.core.backend.plugins.scip.*
 
-val graphs = ... // graph data
-val services = ... // service data
+val graphs = ... // Graph data
+val services = ... // Server data
 
-// create a model instance
+// Create model instance
 val metaModel = LinearMetaModel("demo1")
 
-// create domain contexts
+// Create context instances
 val routeContext = RouteContext(graph, services)
 val bandwidthContext = BandwidthContext()
 
-// register contexts (variables, intermediate expressions, constraints and objective function) to the model
+// Register contexts (variables, constraints, objective functions) to model
 routeContext.register(metaModel)
 bandwidthContext.register(routeContext, metaModel)
 
-// solve the model
+// Call solver to solve
 val solver = ScipLinearSolver()
 when (val ret = solver(metaModel)) {
     is Ok -> {
@@ -600,10 +606,12 @@ when (val ret = solver(metaModel)) {
     is Failed -> {}
 }
 
-// parse results
+// Parse results
 val solution = bandwidthContext.analyze(metaModel)
 ```
 
-For the complete implementation, please refer to:
+:::
+
+**Complete Implementation Reference:**
 
 - [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1)

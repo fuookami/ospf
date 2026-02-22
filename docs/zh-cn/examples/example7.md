@@ -2,7 +2,7 @@
 
 ## 问题描述
 
-有一些仓库与一些商店，每个仓库有货物量，每个商店有货物需求量，从每个仓库往每个商店每运输 $1\,kg$ 货物有成本。
+现有若干仓库与若干商店，每个仓库有相应的货物量，每个商店有相应的货物需求量，从每个仓库往每个商店每运输 $1\,kg$ 货物有成本。
 
 |        |  仓库 A   |  仓库 B   |  仓库 C   |
 | :----: | :-------: | :-------: | :-------: |
@@ -18,7 +18,7 @@
 | 仓库 B |  $14$  |  $17$  |  $8$   |  $18$  |
 | 仓库 C |  $10$  |  $11$  |  $9$   |  $15$  |
 
-给出每个仓库往每个商店的货物运输量，令总成本最小。
+给出每个仓库往每个商店的货物运输量，使得总成本最小。
 
 ## 数学模型
 
@@ -51,7 +51,7 @@ $$
 #### 1. 总成本最小
 
 $$
-min \quad Cost
+\min \quad \text{Cost}
 $$
 
 ### 约束
@@ -59,13 +59,13 @@ $$
 #### 1. 仓库的出货量不能超过货物量
 
 $$
-s.t. \quad Shipment_{w} \leq Storage_{w}, \; \forall w \in W
+\text{s.t.} \quad \text{Shipment}_{w} \leq \text{Storage}_{w}, \; \forall w \in W
 $$
 
 #### 2. 商店的进货量要大于需求量
 
 $$
-s.t. \quad Purchase_{s} \geq Demand_{s}, \; \forall s \in S
+\text{s.t.} \quad \text{Purchase}_{s} \geq \text{Demand}_{s}, \; \forall s \in S
 $$
 
 ## 期望结果
@@ -190,6 +190,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo7.kt)

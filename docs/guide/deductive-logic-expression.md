@@ -1,1 +1,1 @@
-# The Deductive Logic Expression of the Mathematical Model
+# Deductive Logic Expression in Mathematical Models

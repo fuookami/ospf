@@ -31,7 +31,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & m \cdot y^{\prime} & \geq & \, x \\ \; \\
+\text{s.t.} \quad & m \cdot y^{\prime} & \geq & \, x \\ \; \\
 & y^{\prime} & \leq & \, x
 \end{align}
 $$
@@ -69,7 +69,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & x & = & \, m \cdot b \\ \; \\
+\text{s.t.} \quad & x & = & \, m \cdot b \\ \; \\
 & y^{\prime} & \geq & \, b \\ \; \\
 & \epsilon \cdot y^{\prime} & \leq & b
 \end{align}

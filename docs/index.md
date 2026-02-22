@@ -1,10 +1,11 @@
 ---
+# https://vitepress.dev/reference/default-theme-home-page
 layout: home
 
 hero:
   name: "ospf"
-  text: "Modularize Operations Research Like Blocks"
-  tagline: "Pluggable Constraints, Operators & Algorithms for Building Operational Research Workflows, Constructing the Operational Research Algorithm Software Through Dovetailed Architecture"
+  text: "Modularize Operations Research Like Building Blocks"
+  tagline: "Providing pluggable constraints, operators, and algorithms to build operational research workflows in a modular fashion, constructing the dovetail structure in the optimization domain"
 
   actions:
     - theme: brand
@@ -19,7 +20,7 @@ hero:
 
 features:
   - title: Focus on Business
-    details: Modular components encapsulate algorithmic complexity, enabling developers to concentrate on operational scenario modeling and strategy optimization, driving core logic design and iterative upgrades through a business-centric lens.
+    details: Modular components encapsulate algorithmic complexity, enabling developers to concentrate on operational scenario modeling and strategy optimization, driving core logic design and iterative upgrades from a business perspective.
 
   - title: Out-of-the-Box Usability
     details: Preloaded with algorithm templates for standard business scenarios and pre-integrated elastic computing frameworks and visualization toolchains, it accelerates the deployment of fully functional optimization systems.

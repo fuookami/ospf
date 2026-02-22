@@ -64,9 +64,9 @@ C4Context
 
 $x_{cp} \in \{0, 1\}$ ：配载决策，无量纲量，$1$ 表示将货物 $c$ 放在舱位 $p$。
 
-$y_{p} \in R - R^{-}$ ：预计载重量，物理量为重量，表示给舱位 $p$ 的预计载重量。
+$y_{p} \in \mathbb{R} - \mathbb{R}^{-}$ ：预计载重量，物理量为重量，表示给舱位 $p$ 的预计载重量。
 
-$z_{p} \in N$ ：建议载重量，物理量为重量，表示给舱位 $p$ 的建议载重量。
+$z_{p} \in \mathbb{N}$ ：建议载重量，物理量为重量，表示给舱位 $p$ 的建议载重量。
 
 $u_{cp} \in \{-1, 0, 1\}$ ：调舱决策，无量纲量，$-1$ 表示将货物 $c$ 从舱位 $p$ 移走， $1$ 表示将货物 $c$ 放在舱位 $p$。
 
@@ -203,6 +203,6 @@ $$
 
 ## 代码实现
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo2)

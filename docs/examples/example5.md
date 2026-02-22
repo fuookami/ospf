@@ -2,56 +2,56 @@
 
 ## Problem Description
 
-Given a set of goods, each with a value and a weight.
+There are several items, each with corresponding value and weight.
 
-|        | Good A  | Good B  | Good C  | Good D  | Good E  |
-| :----: | :-----: | :-----: | :-----: | :-----: | :-----: |
+|       | Item A  | Item B  | Item C  | Item D  | Item E  |
+| :---: | :-----: | :-----: | :-----: | :-----: | :-----: |
 | Weight | $2\,kg$ | $2\,kg$ | $6\,kg$ | $5\,kg$ | $4\,kg$ |
-| Value  |   $6$   |   $3$   |   $5$   |   $4$   |   $6$   |
+| Value |   $6$   |   $3$   |   $5$   |   $4$   |   $6$   |
 
-Select a subset of these goods to maximize the total value while satisfying the following conditions:
+Objective: Select a subset of these items to maximize total value, while satisfying the following condition:
 
-1. The total weight of the selected goods must not exceed $10\,kg$.
+1. The total weight of selected items does not exceed $10\,kg$.
 
 ## Mathematical Model
 
-### Variables 
+### Variables
 
-$x_{c}$：whether to select good $c$.
+$x_{c}$: Indicates whether item $c$ is selected.
 
-### Intermediate Expressions
+### Intermediate Values
 
 #### 1. Total Value
 
 $$
-Value = \sum_{c \in C}Value_{c} \cdot x_{c}
+\text{Value} = \sum_{c \in C} \text{Value}_{c} \cdot x_{c}
 $$
 
 #### 2. Total Weight
 
 $$
-Weight = \sum_{c \in C}Weight_{c} \cdot x_{c}
+\text{Weight} = \sum_{c \in C} \text{Weight}_{c} \cdot x_{c}
 $$
 
 ### Objective Function
 
-#### 1. Maximize Value
+#### 1. Maximize Total Value
 
 $$
-max \quad Value
+\max \quad \text{Value}
 $$
 
 ### Constraints
 
-#### 1. Total Weight Limit
+#### 1. Total Weight Does Not Exceed Maximum Weight
 
 $$
-s.t. \quad Weight \leq Weight^{Max}
+\text{s.t.} \quad \text{Weight} \leq \text{Weight}^{\text{Max}}
 $$
 
-## Expected Result
+## Expected Results
 
-Select goods A, B, E.
+Select items A, B, and E.
 
 ## Code Implementation
 
@@ -75,36 +75,36 @@ data class Cargo(
     val value: UInt64
 ) : AutoIndexed(Cargo::class)
 
-val cargos: List<Cargo> = ... // cargo data
+val cargos: List<Cargo> = ... // Item list
 val maxWeight = UInt64(10U)
 
-// create a model instance
+// Create model instance
 val metaModel = LinearMetaModel("demo5")
 
-// define variables
+// Define variables
 val x = BinVariable1("x", Shape1(cargos.size))
 for (c in cargos) {
     x[c].name = "${x.name}_${c.index}"
 }
 metaModel.add(x)
 
-// define intermediate expressions
+// Define intermediate values
 val cargoValue = LinearExpressionSymbol(sum(cargos) { c -> c.value * x[c] }, "value")
 metaModel.add(cargoValue)
 
 val cargoWeight = LinearExpressionSymbol(sum(cargos) { c -> c.weight * x[c] }, "weight")
 metaModel.add(cargoWeight)
 
-// define objective function
+// Define objective function
 metaModel.maximize(cargoValue, "value")
 
-// define constraints
+// Define constraints
 metaModel.addConstraint(
     cargoWeight leq maxWeight,
     "weight"
 )
 
-// solve the model
+// Call solver to solve
 val solver = ScipLinearSolver()
 when (val ret = solver(metaModel)) {
     is Ok -> {
@@ -114,7 +114,7 @@ when (val ret = solver(metaModel)) {
     is Failed -> {}
 }
 
-// parse results
+// Parse results
 val solution = HashSet<Cargo>()
 for (token in metaModel.tokens.tokens) {
     if (token.result!! eq Flt64.one && token.variable.belongsTo(x)) {
@@ -125,6 +125,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-For the complete implementation, please refer to:
+**Complete Implementation Reference:**
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo5.kt)

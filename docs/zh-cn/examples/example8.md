@@ -2,7 +2,7 @@
 
 ## 问题描述
 
-有一些设备与一些产品，每个产品有收益，每个设备有数量，生产每个产品会消耗每个设备一定工时。
+现有若干设备与若干产品，每个产品有相应的收益，每个设备有相应的数量，生产每个产品会消耗每个设备一定工时。
 
 |       | 产品 A | 产品 B | 产品 C | 产品 D | 产品 E |
 | :---: | :----: | :----: | :----: | :----: | :----: |
@@ -19,7 +19,7 @@
 | 设备 C |    $-$    | $0.25\,h$ | $0.34\,h$ |    $-$    | $0.18\,h$ |
 | 设备 D | $0.55\,h$ | $0.72\,h$ |    $-$    | $0.61\,h$ |    $-$    |
 
-给出每个产品的产量，令总收益最大，并满足以下条件：
+给出每个产品的产量，使得总收益最大，同时满足以下条件：
 
 1. 每个设备的工时小于 $2000\,h$。
 
@@ -48,7 +48,7 @@ $$
 #### 1. 总收益最大
 
 $$
-max \quad Profit
+\max \quad \text{Profit}
 $$
 
 ### 约束
@@ -56,7 +56,7 @@ $$
 #### 1. 设备工时不能超过最大值
 
 $$
-s.t. \quad ManHours_{e} \leq Amount_{e} \cdot ManHours^{Max}, \; \forall e \in E
+\text{s.t.} \quad \text{ManHours}_{e} \leq \text{Amount}_{e} \cdot \text{ManHours}^{\text{Max}}, \; \forall e \in E
 $$
 
 ## 期望结果
@@ -153,6 +153,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-完整实现请参考：
+完整实现参考：
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo8.kt)

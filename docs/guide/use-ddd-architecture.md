@@ -1,1 +1,1 @@
-# Use Domain Driven Design Architecture
+# Using Domain-Driven Design (DDD) Architecture

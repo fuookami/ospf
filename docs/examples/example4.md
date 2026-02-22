@@ -1,48 +1,48 @@
-# Example 4: Ingredient Problem
+# Example 4: Blending Problem
 
 ## Problem Description
 
-Given a set of products and raw materials, each raw material has a given available quantity, each product has a revenue, each product has a maximum production quantity, and each product requires multiple types of raw materials.
+Given a set of products and raw materials, each raw material has a specified available quantity, each product has a profit, each product has a maximum production quantity, and each product requires multiple types of raw materials.
 
 |                    | Raw Material A | Raw Material B |
 | :----------------: | :------------: | :------------: |
-| Availible Quantity |      $24$      |      $8$       |
+| Available Quantity |     $24$       |      $8$       |
 
 |        | Product A | Product B |
 | :----: | :-------: | :-------: |
 | Profit |    $5$    |    $4$    |
 
-|           | Product A | ProductB |
-| :-------: | :-------: | :------: |
-| Max Yield |    $3$    |   $2$    |
+|           | Product A | Product B |
+| :-------: | :-------: | :-------: |
+| Max Yield |    $3$    |    $2$    |
 
 |           | Raw Material A | Raw Material B |
 | :-------: | :------------: | :------------: |
 | Product A |      $6$       |      $1$       |
 | Product B |      $4$       |      $2$       |
 
-Determine the production quantity for each product to maximize total revenue, while satisfying the following conditions:
+Determine the production quantity of each product to maximize total profit, while satisfying the following conditions:
 
-1. The difference in production quantities between any two products must not exceed one unit.
+1. The difference in production quantity between any two products must not exceed one unit.
 
 ## Mathematical Model
 
 ### Variables
 
-$x_{p}$: yield of product $p$.
+$x_{p}$: Production quantity of product $p$.
 
-### Intermediate Expressions
+### Intermediate Values
 
 #### 1. Total Profit
 
 $$
-Profit = \sum_{p \in P} Profit_{p} \cdot x_{p}
+\text{Profit} = \sum_{p \in P} \text{Profit}_{p} \cdot x_{p}
 $$
 
-#### 2. Use of Materials
+#### 2. Raw Material Usage
 
 $$
-Use_{m} = \sum_{p \in P} Use_{pm} \cdot x_{p}, \; \forall m \in M
+\text{Use}_{m} = \sum_{p \in P} \text{Use}_{pm} \cdot x_{p}, \; \forall m \in M
 $$
 
 ### Objective Function
@@ -50,32 +50,32 @@ $$
 #### 1. Maximize Total Profit
 
 $$
-max \quad Profit
+\max \quad \text{Profit}
 $$
 
 ### Constraints
 
-#### 1. Yield Limit
+#### 1. Production Quantity Limit
 
 $$
-s.t. \quad x_{p} \leq Yield^{Max}_{p}, \; \forall p \in P
+\text{s.t.} \quad x_{p} \leq \text{Yield}^{\text{Max}}_{p}, \; \forall p \in P
 $$
 
-#### 2. Use Limit
+#### 2. Usage Quantity Limit
 
 $$
-s.t. \quad Use_{m} \leq Available_{m}, \; \forall m \in M
+\text{s.t.} \quad \text{Use}_{m} \leq \text{Available}_{m}, \; \forall m \in M
 $$
 
-#### 3. Yield Difference Limit
+#### 3. Production Difference Limit
 
 $$
-s.t. \quad x_{p} - x_{p^{\prime}} \leq Diff^{Max}, \; \forall (p, \, p^{\prime}) \in (P^{2} - \Delta P)
+\text{s.t.} \quad x_{p} - x_{p^{\prime}} \leq \text{Diff}^{\text{Max}}, \; \forall (p, \, p^{\prime}) \in (P^{2} - \Delta P)
 $$
 
-## Expected Result
+## Expected Results
 
-Product A yields $\frac{8}{3}$ units, product B yieldp $\frac{5}{3}$ units.
+Product A production quantity is $\frac{8}{3}$ units, Product B production quantity is $\frac{5}{3}$ units.
 
 ## Code Implementation
 
@@ -104,21 +104,21 @@ data class Product(
     val use: Map<Material, Flt64>
 ) : AutoIndexed(Product::class)
 
-val materials: List<Material> = ... // material data
-val products: List<Product> = ...  // product data
+val materials: List<Material> = ... // Raw material data
+val products: List<Product> = ...  // Product data
 val maxDiff = Int64(1)
 
-// create a model instance
+// Create model instance
 val metaModel = LinearMetaModel("demo4")
 
-// define variables
+// Define variables
 val x = RealVariable1("x", Shape1(products.size))
 for (p in products) {
     x[p].name = "${x.name}_${p.index}"
 }
 metaModel.add(x)
 
-// define intermediate expressions
+// Define intermediate values
 val profit = LinearExpressionSymbol(sum(products) { 
     p -> p.profit * x[p] 
 }, "profit")
@@ -134,10 +134,10 @@ val use = LinearIntermediateSymbols1("use", Shape1(materials.size)) { m, _ ->
 }
 metaModel.add(use)
 
-// define objective function
+// Define objective function
 metaModel.maximize(profit, "profit")
 
-// define constraints
+// Define constraints
 for (p in products) {
     x[p].range.ls(p.maxYield)
 }
@@ -155,7 +155,7 @@ for (p1 in products) {
     }
 }
 
-// solve the model
+// Call solver to solve
 val solver = ScipLinearSolver()
 when (val ret = solver(metaModel)) {
     is Ok -> {
@@ -165,7 +165,7 @@ when (val ret = solver(metaModel)) {
     is Failed -> {}
 }
 
-// parse results
+// Parse results
 val solution = HashMap<Material, Flt64>()
 for (token in metaModel.tokens.tokens) {
     if (token.result!! eq Flt64.one && token.variable.belongsTo(x)) {
@@ -177,6 +177,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-For the complete implementation, please refer to:
+**Complete Implementation Reference:**
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo4.kt)

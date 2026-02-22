@@ -2,35 +2,35 @@
 
 ## 问题描述
 
-有一些货物，每个货物有价值和重量。
+现有若干货物，每个货物有相应的价值和重量。
 
 |       | 货物 A  | 货物 B  | 货物 C  | 货物 D  | 货物 E  |
 | :---: | :-----: | :-----: | :-----: | :-----: | :-----: |
 | 重量  | $2\,kg$ | $2\,kg$ | $6\,kg$ | $5\,kg$ | $4\,kg$ |
 | 价值  |   $6$   |   $3$   |   $5$   |   $4$   |   $6$   |
 
-从这些货物中选出部分货物，令总价值最大，并满足以下条件：
+目标：从这些货物中选出部分货物，使得总价值最大，同时满足以下条件：
 
-1. 这些货物的总重量不超过 $10\,kg$。
+1. 所选货物的总重量不超过 $10\,kg$。
 
 ## 数学模型
 
 ### 变量
 
-$x_{c}$：是否选择货物 $c$。
+$x_{c}$：表示是否选择货物 $c$。
 
 ### 中间值
 
 #### 1. 总价值
 
 $$
-Value = \sum_{c \in C}Value_{c} \cdot x_{c}
+\text{Value} = \sum_{c \in C} \text{Value}_{c} \cdot x_{c}
 $$
 
 #### 2. 总重量
 
 $$
-Weight = \sum_{c \in C}Weight_{c} \cdot x_{c}
+\text{Weight} = \sum_{c \in C} \text{Weight}_{c} \cdot x_{c}
 $$
 
 ### 目标函数
@@ -38,7 +38,7 @@ $$
 #### 1. 总价值最大
 
 $$
-max \quad Value
+\max \quad \text{Value}
 $$
 
 ### 约束
@@ -46,7 +46,7 @@ $$
 #### 1. 总重量不超过最大总重量
 
 $$
-s.t. \quad Weight \leq Weight^{Max}
+\text{s.t.} \quad \text{Weight} \leq \text{Weight}^{\text{Max}}
 $$
 
 ## 期望结果
@@ -125,6 +125,6 @@ for (token in metaModel.tokens.tokens) {
 
 :::
 
-完整实现请参考：
+**完整实现参考：**
 
 - [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo5.kt)

@@ -12,9 +12,9 @@ $$
 
 ## 额外变量
 
-$neg \in R - R^{-}$：负松弛。
+$neg \in \mathbb{R} - \mathbb{R}^{-}$：负松弛。
 
-$pos \in R - R^{-}$：正松弛。
+$pos \in \mathbb{R} - \mathbb{R}^{-}$：正松弛。
 
 ## 导出符号
 
@@ -26,7 +26,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & x - pos \leq ub \\ \; \\
+\text{s.t.} \quad & x - pos \leq ub \\ \; \\
 & x + neg \geq lb
 \end{align}
 $$

@@ -8,7 +8,7 @@ $$
 
 ## 额外变量
 
-$q \in Z$：$\frac{x}{d}$ 的整数部分。
+$q \in \mathbb{Z}$：$\frac{x}{d}$ 的整数部分。
 
 $r \in [-\frac{|d|}{2}, \frac{|d|}{2})$：$\frac{x}{d}$ 的余数部分。
 
@@ -22,7 +22,7 @@ $$
 
 $$
 \begin{align}
-s.t. \quad & x = d \cdot q + r
+\text{s.t.} \quad & x = d \cdot q + r
 \end{align}
 $$
 
