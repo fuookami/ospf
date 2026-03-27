@@ -1,0 +1,169 @@
+{
+  "kpi": {
+    "case": "cuboid-cylinder",
+    "purpose": "mixed cuboid, native X/Y/Z cylinders, and solver-selected radius"
+  },
+  "loadingPlans": [
+    {
+      "group": ["mixed"],
+      "name": "Mixed Bin",
+      "typeCode": "BIN-002",
+      "width": 1600,
+      "height": 1000,
+      "depth": 1200,
+      "loadingRate": 0.1226,
+      "weight": 146,
+      "volume": 235389364.91,
+      "items": [
+        {
+          "name": "Box A",
+          "packageType": "Carton",
+          "width": 400,
+          "height": 300,
+          "depth": 500,
+          "x": 0,
+          "y": 0,
+          "z": 0,
+          "weight": 20,
+          "loadingOrder": 0,
+          "shapeType": "Cuboid",
+          "renderShapeType": "Cuboid",
+          "algorithmShapeType": "Cuboid",
+          "boundingWidth": 400,
+          "boundingHeight": 300,
+          "boundingDepth": 500,
+          "actualVolume": 60000000,
+          "info": {
+            "batch": "A001"
+          }
+        },
+        {
+          "name": "Cylinder Y",
+          "packageType": "Drum",
+          "width": 300,
+          "height": 700,
+          "depth": 300,
+          "x": 500,
+          "y": 0,
+          "z": 100,
+          "weight": 55,
+          "loadingOrder": 1,
+          "shapeType": "Cylinder",
+          "renderShapeType": "Cylinder",
+          "algorithmShapeType": "VerticalCylinder",
+          "radius": 150,
+          "diameter": 300,
+          "axis": "Y",
+          "boundingWidth": 300,
+          "boundingHeight": 700,
+          "boundingDepth": 300,
+          "actualVolume": 49480084.29,
+          "info": {
+            "batch": "D001"
+          }
+        },
+        {
+          "name": "Cylinder X",
+          "packageType": "Tube",
+          "width": 500,
+          "height": 200,
+          "depth": 200,
+          "x": 0,
+          "y": 0,
+          "z": 700,
+          "weight": 18,
+          "loadingOrder": 2,
+          "shapeType": "Cylinder",
+          "renderShapeType": "Cylinder",
+          "algorithmShapeType": "HorizontalCylinderX",
+          "radius": 100,
+          "diameter": 200,
+          "axis": "X",
+          "boundingWidth": 500,
+          "boundingHeight": 200,
+          "boundingDepth": 200,
+          "actualVolume": 15707963.27,
+          "info": {
+            "batch": "T001"
+          }
+        },
+        {
+          "name": "Cylinder Z",
+          "packageType": "Tube",
+          "width": 200,
+          "height": 200,
+          "depth": 500,
+          "x": 900,
+          "y": 0,
+          "z": 400,
+          "weight": 18,
+          "loadingOrder": 3,
+          "shapeType": "Cylinder",
+          "renderShapeType": "Cylinder",
+          "algorithmShapeType": "HorizontalCylinderZ",
+          "radius": 100,
+          "diameter": 200,
+          "axis": "Z",
+          "boundingWidth": 200,
+          "boundingHeight": 200,
+          "boundingDepth": 500,
+          "actualVolume": 15707963.27,
+          "info": {
+            "batch": "T002"
+          }
+        },
+        {
+          "name": "Solver Selected Radius",
+          "packageType": "VariableDrum",
+          "width": 350,
+          "height": 700,
+          "depth": 350,
+          "x": 1120,
+          "y": 0,
+          "z": 0,
+          "weight": 35,
+          "loadingOrder": 4,
+          "shapeType": "Cylinder",
+          "renderShapeType": "Cylinder",
+          "algorithmShapeType": "VerticalCylinder",
+          "radius": 175,
+          "diameter": 350,
+          "axis": "Y",
+          "boundingWidth": 350,
+          "boundingHeight": 700,
+          "boundingDepth": 350,
+          "actualVolume": 67351554.08,
+          "info": {
+            "radiusSource": "solver-selected",
+            "expected": "renderer uses DTO radius, diameter, and actualVolume"
+          }
+        },
+        {
+          "name": "Box B",
+          "packageType": "Carton",
+          "width": 300,
+          "height": 260,
+          "depth": 350,
+          "x": 500,
+          "y": 700,
+          "z": 100,
+          "weight": 0,
+          "loadingOrder": 5,
+          "shapeType": "Cuboid",
+          "renderShapeType": "Cuboid",
+          "algorithmShapeType": "Cuboid",
+          "boundingWidth": 300,
+          "boundingHeight": 260,
+          "boundingDepth": 350,
+          "actualVolume": 27300000,
+          "info": {
+            "batch": "B001"
+          }
+        }
+      ],
+      "info": {
+        "source": "mixed-shape-example"
+      }
+    }
+  ]
+}

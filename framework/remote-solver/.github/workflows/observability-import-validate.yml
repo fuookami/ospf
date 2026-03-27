@@ -1,0 +1,38 @@
+name: observability-import-validate
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+jobs:
+  validate-observability-import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Import Script
+        run: |
+          chmod +x deploy/scripts/import-observability.sh
+          chmod +x deploy/scripts/validate-observability-import.sh
+          ./deploy/scripts/validate-observability-import.sh
+
+      - name: Validate Scheduler Audit Dump Script
+        run: |
+          chmod +x deploy/scripts/scheduler-audit-dump.sh
+          chmod +x deploy/scripts/validate-scheduler-audit-dump.sh
+          ./deploy/scripts/validate-scheduler-audit-dump.sh
+
+      - name: Validate Monitor Smoke Script
+        run: |
+          chmod +x deploy/scripts/monitor-smoke.sh
+          chmod +x deploy/scripts/validate-monitor-smoke.sh
+          ./deploy/scripts/validate-monitor-smoke.sh
+
+      - name: Validate Monitor Alert Linkage
+        run: |
+          chmod +x deploy/scripts/monitor-alert-smoke.sh
+          chmod +x deploy/scripts/validate-monitor-alert-linkage.sh
+          ./deploy/scripts/validate-monitor-alert-linkage.sh

@@ -11,14 +11,25 @@
           <v-tooltip activator="parent" location="top" max-width="500px">{{ selectedItemName }}</v-tooltip>
         </p>
         <p v-html='`包装类型：${selectedItemPackageType}`' />
+        <p v-html='`真实形状：${selectedItemShape}`' />
+        <p v-html='`渲染形状：${selectedItemRenderShape}`' />
+        <p v-html='`算法形状：${selectedItemAlgorithmShape}`' />
+        <p v-if="selectedItemUnsupportedReason" style="color: #D32F2F; font-weight: 600;">
+          不支持：{{ selectedItemUnsupportedReason }}
+        </p>
         <p v-html='`包装尺寸：${selectedItemSize}`' />
+        <p v-if="selectedItemBoundingSize" v-html='`外接尺寸：${selectedItemBoundingSize}`' />
+        <p v-if="selectedItemAxis" v-html='`轴向：${selectedItemAxis}`' />
+        <p v-if="selectedItemRadius" v-html='`半径：${selectedItemRadius}`' />
+        <p v-if="selectedItemDiameter" v-html='`直径：${selectedItemDiameter}`' />
+        <p v-if="selectedItemActualVolume" v-html='`实际体积：${selectedItemActualVolume}`' />
         <p v-html='`装载位置：${selectedItemPosition}`' />
         <p v-html='`装载顺序：${selectedItemLoadingOrder}`' />
         <p v-html='`箱数：${selectedItemAmount}`' />
         <p v-html='`重量：${selectedItemWeight}kg`' />
       </v-card-text>
-      <v-card-text v-for="(key, value) in selectedItemInfo">
-        <p v-html='`${key}：${value}`' />
+      <v-card-text v-for="info in selectedItemInfo" :key="info.key">
+        <p v-html='`${info.key}：${info.value}`' />
       </v-card-text>
     </v-card>
 
@@ -33,6 +44,30 @@
         :style="{ 'visibility': tabVisibility[0], 'height': tabHeight, 'width': tabWidth }"
         style="position: absolute; overflow-y: auto;"
       >
+        <v-table density="compact" style="table-layout: fixed;">
+          <tbody>
+            <tr v-for="summary in loadingSummary" :key="summary.key">
+              <td style="width: 8em;">{{ summary.key }}</td>
+              <td>{{ summary.value }}</td>
+            </tr>
+          </tbody>
+        </v-table>
+        <v-table density="compact" style="table-layout: fixed;">
+          <thead>
+            <tr>
+              <th class="text-center">形状</th>
+              <th class="text-center">数量</th>
+              <th class="text-center">实际体积</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="summary in shapeSummary" :key="summary.shape">
+              <td class="text-center">{{ summary.shape }}</td>
+              <td class="text-center">{{ summary.amount }}</td>
+              <td class="text-center">{{ summary.actualVolume }}</td>
+            </tr>
+          </tbody>
+        </v-table>
       </div>
 
       <div 
@@ -69,20 +104,37 @@
 import {defineComponent, ref, toRaw, watch} from "vue";
 import lodash from "lodash";
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { LoadingPlanDTO, LoadingPlanItemDTO } from './dto.ts';
+import { cylinderAxisLength, formatSize, resolveLoadingItemShape, ResolvedLoadingItemShape, shapeDisplayName } from './loading-item-shape.ts';
+
+type ComponentElementRef = {
+  $el: HTMLElement
+}
 
 type LoadingItemVO = {
   item: LoadingPlanItemDTO
   type: string
   color: string
   amount: number
+  shape: ResolvedLoadingItemShape
 }
 
 type LoadingStepVO = {
   order: number
   amount: number
   name: string
+}
+
+type SummaryRowVO = {
+  key: string
+  value: string
+}
+
+type ShapeSummaryVO = {
+  shape: string
+  amount: number
+  actualVolume: string
 }
 
 const itemColors = [
@@ -119,15 +171,31 @@ const itemColors = [
 ];
 
 function getItemType(item: LoadingPlanItemDTO): string {
-  return `${item.packageType}-${item.width.toFixed(0)}*${item.height.toFixed(0)}*${item.depth.toFixed(0)}-${item.weight.toFixed(2)}`;
+  const shape = resolveLoadingItemShape(item);
+  const packageType = item.packageType ?? '';
+  if (shape.renderShapeType === 'Cylinder') {
+    return [
+      packageType,
+      shape.renderShapeType,
+      shape.axis,
+      (shape.radius ?? 0).toFixed(2),
+      cylinderAxisLength(shape).toFixed(0),
+      item.weight.toFixed(2)
+    ].join('-');
+  }
+  return `${packageType}-${shape.renderShapeType}-${item.width.toFixed(0)}*${item.height.toFixed(0)}*${item.depth.toFixed(0)}-${item.weight.toFixed(2)}`;
 }
 
 function getLoadingSteps(items: Array<LoadingPlanItemDTO>): Array<LoadingStepVO> {
+  if (items.length === 0) {
+    return [];
+  }
+
   const maxStep = lodash.maxBy(items, 'loadingOrder')!!.loadingOrder;
 
   const steps: Array<LoadingStepVO> = [];
   for (let i = 0; i <= maxStep; i++) {
-    const names = [];
+    const names: Array<string> = [];
     for (const item of items) {
       if (item.loadingOrder == i) {
         names.push(item.name);
@@ -136,19 +204,59 @@ function getLoadingSteps(items: Array<LoadingPlanItemDTO>): Array<LoadingStepVO>
     steps.push({
       order: i,
       amount: names.length,
-      name: Object.entries(names.reduce((counter, currentValue) => {
-        if (currentValue in counter) {
-          counter.set(currentValue, counter.get(currentValue)!! + 1);
-        } else {
-          counter.set(currentValue, 1);
-        }
+      name: Array.from(names.reduce((counter, currentValue) => {
+        counter.set(currentValue, (counter.get(currentValue) ?? 0) + 1);
         return counter;
-      }, new Map<string, number>())).map(([name, amount]) => {
+      }, new Map<string, number>()).entries()).map(([name, amount]) => {
         return `${name} * ${amount}`
       }).join(";")
     });
   }
   return steps;
+}
+
+function actualVolumeOf(item: LoadingPlanItemDTO, shape: ResolvedLoadingItemShape): number {
+  return shape.actualVolume ?? item.width * item.height * item.depth;
+}
+
+function createLoadingSummary(loadingPlan: LoadingPlanDTO): Array<SummaryRowVO> {
+  const actualVolume = loadingPlan.items.reduce((sum, item) => {
+    return sum + actualVolumeOf(item, resolveLoadingItemShape(item));
+  }, 0);
+  const actualLoadingRate = loadingPlan.width * loadingPlan.height * loadingPlan.depth > 0
+    ? actualVolume / (loadingPlan.width * loadingPlan.height * loadingPlan.depth)
+    : 0;
+
+  return [
+    { key: '货柜', value: `${loadingPlan.group.join("-")}-${loadingPlan.name}` },
+    { key: '类型', value: loadingPlan.typeCode },
+    { key: '尺寸', value: formatSize(loadingPlan.width, loadingPlan.height, loadingPlan.depth) },
+    { key: '物品数量', value: `${loadingPlan.items.length}` },
+    { key: '重量', value: `${loadingPlan.weight.toFixed(2)}kg` },
+    { key: 'DTO体积', value: loadingPlan.volume.toFixed(2) },
+    { key: '实际体积', value: actualVolume.toFixed(2) },
+    { key: 'DTO装载率', value: `${(loadingPlan.loadingRate * 100).toFixed(2)}%` },
+    { key: '实际装载率', value: `${(actualLoadingRate * 100).toFixed(2)}%` }
+  ];
+}
+
+function createShapeSummary(items: Array<LoadingPlanItemDTO>): Array<ShapeSummaryVO> {
+  const summaries = new Map<string, { amount: number, actualVolume: number }>();
+  for (const item of items) {
+    const shape = resolveLoadingItemShape(item);
+    const key = `${shape.shapeType}/${shape.renderShapeType}/${shape.algorithmShapeType}`;
+    const summary = summaries.get(key) ?? { amount: 0, actualVolume: 0 };
+    summary.amount += 1;
+    summary.actualVolume += actualVolumeOf(item, shape);
+    summaries.set(key, summary);
+  }
+  return Array.from(summaries.entries()).map(([shape, summary]) => {
+    return {
+      shape,
+      amount: summary.amount,
+      actualVolume: summary.actualVolume.toFixed(2)
+    };
+  });
 }
 
 function createItems(loadingPlan: LoadingPlanDTO): Map<THREE.Mesh, LoadingItemVO> {
@@ -169,35 +277,107 @@ function createItems(loadingPlan: LoadingPlanDTO): Map<THREE.Mesh, LoadingItemVO
   }
   for (const item of loadingPlan.items) {
     const type = getItemType(item);
+    const shape = resolveLoadingItemShape(item);
     const vo: LoadingItemVO = {
       item: item,
       type: type,
       color: itemTypeColors.get(type)!!,
-      amount: itemTypeAmount.get(type)!!
+      amount: itemTypeAmount.get(type)!!,
+      shape: shape
     }
-    const color = new THREE.Color(vo.color);
-    const darkenColor = darken(color, 0.33);
-    const geometry = new THREE.BoxGeometry(item.width, item.height, item.depth);
-    const material = new THREE.MeshBasicMaterial({
-      color: color,
-      transparent: true,
-      depthWrite: false
-    });
-    const cube = new THREE.Mesh(geometry, material);
-    const edges = new THREE.EdgesGeometry(geometry);
-    const line = new THREE.Line(edges, new THREE.LineBasicMaterial({
-      color: darkenColor,
-      linewidth: 1
-    }));
-    cube.add(line);
-    cube.position.set(
-      item.x + item.width / 2 - loadingPlan.width / 2,
-      item.y + item.height / 2 - loadingPlan.height / 2,
-      item.z + item.depth / 2 - loadingPlan.depth / 2
-    );
-    items.set(cube, vo);
+    const mesh = createItemMesh(item, loadingPlan, vo);
+    items.set(mesh, vo);
   }
   return items;
+}
+
+function createItemMesh(item: LoadingPlanItemDTO, loadingPlan: LoadingPlanDTO, vo: LoadingItemVO): THREE.Mesh {
+  const color = getItemRenderColor(vo);
+  const darkenColor = darken(color, 0.33);
+  const geometry = createItemGeometry(vo.shape);
+  const material = new THREE.MeshBasicMaterial({
+    color: color,
+    transparent: true,
+    depthWrite: false
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.userData.loadingPlanItemMesh = true;
+  mesh.userData.loadingPlanItemName = item.name;
+  applyCylinderAxisRotation(mesh, vo.shape);
+
+  const edges = new THREE.EdgesGeometry(geometry);
+  const line = new THREE.Line(edges, new THREE.LineBasicMaterial({
+    color: darkenColor,
+    linewidth: 1
+  }));
+  line.userData.loadingPlanItemMesh = mesh;
+  mesh.add(line);
+  mesh.position.set(
+    item.x + vo.shape.boundingWidth / 2 - loadingPlan.width / 2,
+    item.y + vo.shape.boundingHeight / 2 - loadingPlan.height / 2,
+    item.z + vo.shape.boundingDepth / 2 - loadingPlan.depth / 2
+  );
+  return mesh;
+}
+
+function createItemGeometry(shape: ResolvedLoadingItemShape): THREE.BufferGeometry {
+  if (shape.unsupportedReason) {
+    console.error(shape.unsupportedReason);
+    return new THREE.BoxGeometry(shape.boundingWidth, shape.boundingHeight, shape.boundingDepth);
+  }
+
+  if (shape.renderShapeType === 'Cylinder') {
+    return new THREE.CylinderGeometry(shape.radius!!, shape.radius!!, cylinderAxisLength(shape), 48);
+  }
+
+  return new THREE.BoxGeometry(shape.boundingWidth, shape.boundingHeight, shape.boundingDepth);
+}
+
+function applyCylinderAxisRotation(mesh: THREE.Mesh, shape: ResolvedLoadingItemShape) {
+  if (shape.renderShapeType !== 'Cylinder' || shape.unsupportedReason) {
+    return;
+  }
+
+  if (shape.axis === 'X') {
+    mesh.rotation.z = -Math.PI / 2;
+  } else if (shape.axis === 'Z') {
+    mesh.rotation.x = Math.PI / 2;
+  }
+}
+
+function findLoadingItemMesh(object: THREE.Object3D): THREE.Mesh | null {
+  let current: THREE.Object3D | null = object;
+  while (current) {
+    if (current instanceof THREE.Mesh && current.userData.loadingPlanItemMesh === true) {
+      return current;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+function setItemEdgesVisible(mesh: THREE.Mesh, visible: boolean) {
+  for (const line of mesh.children) {
+    if (line instanceof THREE.Line) {
+      (line.material as THREE.LineBasicMaterial).visible = visible;
+    }
+  }
+}
+
+function setItemVisual(mesh: THREE.Mesh, color: THREE.Color, opacity: number) {
+  const material = mesh.material as THREE.MeshBasicMaterial;
+  material.opacity = opacity;
+  material.color = color;
+}
+
+function getItemRenderColor(item: LoadingItemVO): THREE.Color {
+  return item.shape.unsupportedReason ? new THREE.Color('#FF3366') : new THREE.Color(item.color);
+}
+
+function getItemInfoRows(item: LoadingPlanItemDTO): Array<{ key: string, value: string }> {
+  return Object.entries(item.info ?? {}).map(([key, value]) => {
+    return { key, value };
+  });
 }
 
 function createBinLines(loadingPlan: LoadingPlanDTO): Array<THREE.Line> {
@@ -302,15 +482,24 @@ export default defineComponent({
   name: "BinLoadingPlan",
 
   setup() {
-    const rendererContainer = ref<HTMLElement | null>();
-    const loadingStepTable = ref<HTMLElement | null>();
+    const rendererContainer = ref<ComponentElementRef | null>();
+    const loadingStepTable = ref<ComponentElementRef | null>();
 
     const items = ref<Map<THREE.Mesh, LoadingItemVO>>();
 
     const selectedItemInfoVisibility = ref('hidden');
     const selectedItemName = ref('');
     const selectedItemPackageType = ref('');
+    const selectedItemShape = ref('');
+    const selectedItemRenderShape = ref('');
+    const selectedItemAlgorithmShape = ref('');
+    const selectedItemUnsupportedReason = ref('');
     const selectedItemSize = ref('');
+    const selectedItemBoundingSize = ref('');
+    const selectedItemAxis = ref('');
+    const selectedItemRadius = ref('');
+    const selectedItemDiameter = ref('');
+    const selectedItemActualVolume = ref('');
     const selectedItemPosition = ref('');
     const selectedItemLoadingOrder = ref('');
     const selectedItemAmount = ref('');
@@ -322,6 +511,8 @@ export default defineComponent({
     const tabHeight = ref<string>('500px');
     const tabWidth = ref<string>('500px');
     const loadingSteps = ref<Array<LoadingStepVO>>([]);
+    const loadingSummary = ref<Array<SummaryRowVO>>([]);
+    const shapeSummary = ref<Array<ShapeSummaryVO>>([]);
     const loadingStepNameWidth = ref<string>('160px');
 
     function init(loadingPlan: LoadingPlanDTO) {
@@ -333,6 +524,8 @@ export default defineComponent({
 
       items.value = createItems(loadingPlan);
       loadingSteps.value = getLoadingSteps(loadingPlan.items);
+      loadingSummary.value = createLoadingSummary(loadingPlan);
+      shapeSummary.value = createShapeSummary(loadingPlan.items);
       const binLines = createBinLines(loadingPlan);
       for (const [obj, _] of items.value) {
         scene.add(toRaw(obj));
@@ -352,7 +545,7 @@ export default defineComponent({
       renderer.render(scene, toRaw(camera));
       rendererContainer.value!!.$el.append(renderer.domElement);
 
-      rendererContainer.value!!.$el.addEventListener("resize", (_) => {
+      rendererContainer.value!!.$el.addEventListener("resize", (_: Event) => {
         renderer.setSize(rendererContainer.value!!.$el.offsetWidth, rendererContainer.value!!.$el.offsetHeight);
         camera.aspect = rendererContainer.value!!.$el.offsetWidth / rendererContainer.value!!.$el.offsetHeight;
         camera.updateProjectionMatrix();
@@ -365,66 +558,81 @@ export default defineComponent({
         renderer.render(scene, camera);
       }
 
-      rendererContainer.value!!.$el.addEventListener("dblclick", (event) => {
+      rendererContainer.value!!.$el.addEventListener("dblclick", (event: MouseEvent) => {
         event.preventDefault();
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
         mouse.x = (event.offsetX / rendererContainer.value!!.$el.offsetWidth) * 2 - 1;
         mouse.y = -(event.offsetY / rendererContainer.value!!.$el.offsetHeight) * 2 + 1;
         raycaster.setFromCamera(mouse, camera);
-        const intersects = raycaster.intersectObjects(scene.children);
-        if (intersects.length != 0 && intersects[0].object instanceof THREE.Mesh) {
-          const selectedObject = intersects[0].object as THREE.Mesh;
+        const intersects = raycaster.intersectObjects(scene.children, true);
+        const selectedObject = intersects.length != 0 ? findLoadingItemMesh(intersects[0].object) : null;
+        if (selectedObject) {
           const selectedItem = items.value!!.get(selectedObject)!!;
 
-          (selectedObject.material as THREE.MeshBasicMaterial).opacity = 1.0;
-          (selectedObject.material as THREE.MeshBasicMaterial).color = lighten(new THREE.Color(selectedItem.color), 0.2);
+          setItemVisual(selectedObject, lighten(getItemRenderColor(selectedItem), 0.2), 1.0);
           for (const obj of scene.children) {
             if (obj instanceof THREE.Mesh) {
-              for (const line of obj.children) {
-                ((line as THREE.Line).material as THREE.LineBasicMaterial).visible = true;
-              }
+              setItemEdgesVisible(obj, true);
 
               const item = items.value!!.get(obj);
               if (item) {
                 if (item.type === selectedItem.type && item != selectedItem) {
-                  ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.9;
-                  ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).color = new THREE.Color(item.color);
+                  setItemVisual(obj, getItemRenderColor(item), 0.9);
                 } else if (item != selectedItem) {
-                  ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.3;
-                  ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).color = new THREE.Color(item.color);
+                  setItemVisual(obj, getItemRenderColor(item), 0.3);
                 }
               }
             }
           }
           selectedItemInfoVisibility.value = "visible";
           selectedItemName.value = selectedItem.item.name;
-          selectedItemPackageType.value = selectedItem.item.packageType;
-          selectedItemSize.value = `${selectedItem.item.depth.toFixed(0)}*${selectedItem.item.width.toFixed(0)}*${selectedItem.item.height.toFixed(0)}`;
+          selectedItemPackageType.value = selectedItem.item.packageType ?? '';
+          selectedItemShape.value = selectedItem.shape.shapeType;
+          selectedItemRenderShape.value = shapeDisplayName(selectedItem.shape);
+          selectedItemAlgorithmShape.value = selectedItem.shape.algorithmShapeType;
+          selectedItemUnsupportedReason.value = selectedItem.shape.unsupportedReason ?? '';
+          selectedItemSize.value = formatSize(selectedItem.item.width, selectedItem.item.height, selectedItem.item.depth);
+          selectedItemBoundingSize.value = selectedItem.shape.shapeType === 'Cylinder'
+              || selectedItem.item.boundingWidth != null
+              || selectedItem.item.boundingHeight != null
+              || selectedItem.item.boundingDepth != null
+            ? formatSize(
+              selectedItem.shape.boundingWidth,
+              selectedItem.shape.boundingHeight,
+              selectedItem.shape.boundingDepth
+            )
+            : '';
+          selectedItemAxis.value = selectedItem.shape.shapeType === 'Cylinder' ? selectedItem.shape.axis : '';
+          selectedItemRadius.value = selectedItem.shape.radius != null ? selectedItem.shape.radius.toFixed(2) : '';
+          selectedItemDiameter.value = selectedItem.shape.diameter != null ? selectedItem.shape.diameter.toFixed(2) : '';
+          selectedItemActualVolume.value = selectedItem.shape.actualVolume != null ? selectedItem.shape.actualVolume.toFixed(2) : '';
           selectedItemPosition.value = `${selectedItem.item.x.toFixed(0)},${selectedItem.item.y.toFixed(0)},${selectedItem.item.z.toFixed(0)}`;
           selectedItemLoadingOrder.value = `${selectedItem.item.loadingOrder}`;
           selectedItemAmount.value = `${selectedItem.amount}`;
           selectedItemWeight.value = `${selectedItem.item.weight.toFixed(2)}`;
+          selectedItemInfo.value = getItemInfoRows(selectedItem.item);
         } else {
           control.reset();
           for (const obj of scene.children) {
             if (obj instanceof THREE.Mesh) {
-              for (const line of obj.children) {
-                ((line as THREE.Line).material as THREE.LineBasicMaterial).visible = true;
-              }
+              setItemEdgesVisible(obj, true);
               const item = items.value!!.get(obj);
               if (item) {
-                ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 1.0;
-                ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).color = new THREE.Color(item.color);
+                setItemVisual(obj, getItemRenderColor(item), 1.0);
               }
             }
           }
 
           selectedItemInfoVisibility.value = "hidden";
+          selectedItemInfo.value = [];
+          selectedItemUnsupportedReason.value = '';
+          selectedItemRenderShape.value = '';
+          selectedItemAlgorithmShape.value = '';
         }
       });
 
-      loadingStepTable.value!!.$el.addEventListener("click", (event) => {
+      loadingStepTable.value!!.$el.addEventListener("click", (event: MouseEvent) => {
         let target = event.target!! as HTMLElement;
         if (target.nodeName == "TD") {
           target = target.parentNode as HTMLElement;
@@ -435,17 +643,11 @@ export default defineComponent({
             const item = items.value!!.get(obj);
             if (item) {
               if (item.item.loadingOrder <= selectedOrder) {
-                for (const line of obj.children) {
-                  ((line as THREE.Line).material as THREE.LineBasicMaterial).visible = true;
-                }
-                ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = item.item.loadingOrder == selectedOrder ? 1.0 : 0.3;
-                ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).color = new THREE.Color(item.color);
+                setItemEdgesVisible(obj, true);
+                setItemVisual(obj, getItemRenderColor(item), item.item.loadingOrder == selectedOrder ? 1.0 : 0.3);
               } else {
-                for (const line of obj.children) {
-                  ((line as THREE.Line).material as THREE.LineBasicMaterial).visible = false;
-                }
-                ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.0;
-                ((obj as THREE.Mesh).material as THREE.MeshBasicMaterial).color = new THREE.Color(item.color);
+                setItemEdgesVisible(obj, false);
+                setItemVisual(obj, getItemRenderColor(item), 0.0);
               }
             }
           }
@@ -456,7 +658,7 @@ export default defineComponent({
     }
 
     watch(tab, (newTab, _) => {
-      if (newTab) {
+      if (newTab != null) {
         tabVisibility.value[newTab] = 'visible';
         for (let i = 0; i < tabVisibility.value.length; i++) {
           if (i != newTab) {
@@ -476,7 +678,16 @@ export default defineComponent({
       selectedItemInfoVisibility,
       selectedItemName,
       selectedItemPackageType,
+      selectedItemShape,
+      selectedItemRenderShape,
+      selectedItemAlgorithmShape,
+      selectedItemUnsupportedReason,
       selectedItemSize,
+      selectedItemBoundingSize,
+      selectedItemAxis,
+      selectedItemRadius,
+      selectedItemDiameter,
+      selectedItemActualVolume,
       selectedItemPosition,
       selectedItemLoadingOrder,
       selectedItemAmount,
@@ -487,6 +698,8 @@ export default defineComponent({
       tabHeight,
       tabWidth,
       loadingSteps,
+      loadingSummary,
+      shapeSummary,
       loadingStepNameWidth,
       init
     }

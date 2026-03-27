@@ -1,0 +1,101 @@
+# AlertManager Configuration for Remote Solver
+# This configuration defines alert routing, receivers, and escalation policies.
+#
+# Usage:
+#   alertmanager --config.file=alertmanager.yml
+#
+# Environment Variables:
+#   ALERT_WEBHOOK_URL - Default webhook URL for alert notifications
+#   ALERT_CRITICAL_URL - Webhook URL for critical alerts
+#   ALERT_WARNING_URL - Webhook URL for warning alerts
+
+global:
+  resolve_timeout: 5m
+  # SMTP configuration for email alerts (optional)
+  # smtp_smarthost: 'smtp.example.com:587'
+  # smtp_from: 'alerts@remote-solver.example.com'
+  # smtp_auth_username: 'alerts@remote-solver.example.com'
+  # smtp_auth_password: 'password'
+
+route:
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'default-receiver'
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'critical-receiver'
+      group_wait: 10s
+      repeat_interval: 1h
+      continue: true
+
+    # Warning alerts - grouped notification
+    - match:
+        severity: warning
+      receiver: 'warning-receiver'
+      group_wait: 1m
+      repeat_interval: 2h
+
+    # Node-related alerts
+    - match_re:
+        alertname: RemoteSolverNode.*
+      receiver: 'node-alert-receiver'
+      group_by: ['node_id', 'alertname']
+
+    # Task failure alerts
+    - match:
+        alertname: RemoteSolverHighFailureRate
+      receiver: 'task-alert-receiver'
+
+receivers:
+  - name: 'default-receiver'
+    webhook_configs:
+      - url: 'http://localhost:18080/api/v1/alerts/webhook'
+        send_resolved: true
+
+  - name: 'critical-receiver'
+    webhook_configs:
+      - url: 'http://localhost:18080/api/v1/alerts/critical'
+        send_resolved: true
+    # Slack integration (uncomment to enable)
+    # slack_configs:
+    #   - channel: '#critical-alerts'
+    #     send_resolved: true
+    #     title: '{{ .GroupLabels.alertname }}'
+    #     text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+
+  - name: 'warning-receiver'
+    webhook_configs:
+      - url: 'http://localhost:18080/api/v1/alerts/warning'
+        send_resolved: true
+
+  - name: 'node-alert-receiver'
+    webhook_configs:
+      - url: 'http://localhost:18080/api/v1/alerts/node'
+        send_resolved: true
+
+  - name: 'task-alert-receiver'
+    webhook_configs:
+      - url: 'http://localhost:18080/api/v1/alerts/task'
+        send_resolved: true
+
+inhibit_rules:
+  # If a critical alert is firing, suppress related warnings
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'node_id']
+
+  # If node is offline, suppress node timeout recovery alerts
+  - source_match:
+      alertname: 'RemoteSolverNodeOffline'
+    target_match:
+      alertname: 'RemoteSolverNodeTimeoutRecoverySpike'
+    equal: ['node_id']
+
+templates: []
+# - '/etc/alertmanager/templates/*.tmpl'

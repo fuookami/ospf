@@ -1,0 +1,91 @@
+{
+  "kpi": {
+    "case": "unsupported-bounding-cuboid",
+    "purpose": "compatibility rendering for BoundingCuboid and unsupported cylinder metadata"
+  },
+  "loadingPlans": [
+    {
+      "group": ["compat"],
+      "name": "Compatibility Bin",
+      "typeCode": "BIN-COMPAT",
+      "width": 1000,
+      "height": 800,
+      "depth": 900,
+      "loadingRate": 0.0544,
+      "weight": 24,
+      "volume": 39249555.92,
+      "items": [
+        {
+          "name": "Bounding Cuboid Cylinder",
+          "packageType": "LegacyTube",
+          "width": 500,
+          "height": 200,
+          "depth": 200,
+          "x": 0,
+          "y": 0,
+          "z": 0,
+          "weight": 18,
+          "loadingOrder": 0,
+          "shapeType": "Cylinder",
+          "renderShapeType": "Cuboid",
+          "algorithmShapeType": "BoundingCuboid",
+          "radius": 100,
+          "diameter": 200,
+          "axis": "X",
+          "boundingWidth": 500,
+          "boundingHeight": 200,
+          "boundingDepth": 200,
+          "actualVolume": 15707963.27,
+          "info": {
+            "expected": "displayed as bounding cuboid while preserving cylinder metadata"
+          }
+        },
+        {
+          "name": "Unsupported Cylinder",
+          "packageType": "BrokenDrum",
+          "width": 260,
+          "height": 520,
+          "depth": 260,
+          "x": 600,
+          "y": 0,
+          "z": 0,
+          "weight": 6,
+          "loadingOrder": 1,
+          "shapeType": "Cylinder",
+          "renderShapeType": "Cylinder",
+          "algorithmShapeType": "VerticalCylinder",
+          "axis": "Y",
+          "boundingWidth": 260,
+          "boundingHeight": 520,
+          "boundingDepth": 260,
+          "actualVolume": 27601592.65,
+          "info": {
+            "expected": "warning-colored placeholder because radius and diameter are absent"
+          }
+        },
+        {
+          "name": "Reference Box",
+          "packageType": "Carton",
+          "width": 300,
+          "height": 200,
+          "depth": 300,
+          "x": 0,
+          "y": 0,
+          "z": 500,
+          "weight": 0,
+          "loadingOrder": 2,
+          "shapeType": "Cuboid",
+          "renderShapeType": "Cuboid",
+          "algorithmShapeType": "Cuboid",
+          "boundingWidth": 300,
+          "boundingHeight": 200,
+          "boundingDepth": 300,
+          "actualVolume": 18000000
+        }
+      ],
+      "info": {
+        "source": "compatibility-example"
+      }
+    }
+  ]
+}

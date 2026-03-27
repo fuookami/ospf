@@ -1,0 +1,82 @@
+﻿{
+  "title": "Remote Solver Overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "tags": ["remote-solver", "scheduler"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Task Failure Rate (5m)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(remote_solver_task_failed_total[5m]))",
+          "legendFormat": "failures/s"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "Task Failures by Reason (5m)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(remote_solver_task_failed_total[5m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "id": 3,
+      "title": "Slice Runtime P95 (5m)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(remote_solver_slice_runtime_ms_bucket[5m])) by (le))",
+          "legendFormat": "p95 ms"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "id": 4,
+      "title": "Slice Cost by Node",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "max by (node_id) (remote_solver_slice_cost)",
+          "legendFormat": "{{node_id}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    },
+    {
+      "id": 5,
+      "title": "Recovered Tasks (Node Timeout)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(remote_solver_task_recovered_total{reason=\"node_timeout\"}[5m]))",
+          "legendFormat": "recoveries/s"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+    },
+    {
+      "id": 6,
+      "title": "Node Performance Score",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "remote_solver_node_performance_score",
+          "legendFormat": "{{node_id}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+    }
+  ]
+}

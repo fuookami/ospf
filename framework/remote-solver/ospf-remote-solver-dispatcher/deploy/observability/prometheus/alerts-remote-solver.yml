@@ -1,0 +1,38 @@
+﻿groups:
+  - name: remote-solver-alerts
+    rules:
+      - alert: RemoteSolverHighFailureRate
+        expr: sum(rate(remote_solver_task_failed_total[5m])) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Remote solver high failure rate"
+          description: "Task failure rate is above threshold for 10m."
+
+      - alert: RemoteSolverSliceTimeoutSpike
+        expr: sum(rate(remote_solver_task_failed_total{reason="slice_timeout"}[5m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slice timeout spike"
+          description: "Slice timeout failures exceeded threshold."
+
+      - alert: RemoteSolverNodeTimeoutRecoverySpike
+        expr: sum(rate(remote_solver_task_recovered_total{reason="node_timeout"}[10m])) > 1
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node timeout recoveries spike"
+          description: "Recovered tasks from node timeout are spiking."
+
+      - alert: RemoteSolverCostSpike
+        expr: max_over_time(remote_solver_slice_cost[10m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slice cost spike"
+          description: "Slice cost exceeded configured threshold."

@@ -13,41 +13,6 @@ import { defineComponent, ref, watch } from "vue";
 import BinLoadingPlan from "./bin-loading-plan.vue";
 import { SchemaDTO } from './dto.ts';
 
-function isSameGroup(group1: Array<String>, group2: Array<String>): boolean {
-  if (group1.length !== group2.length) {
-    return false;
-  }
-
-  for (let i = 0; i < group1.length; i++) {
-    if (group1[i] !== group2[i]) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function distinctGroups(groups: Array<Array<String>>): Array<Array<String>> {
-  const result: Array<Array<String>> = [];
-  for (let i = 0; i < groups.length; i++) {
-    if (groups[i].length === 0) {
-      result.push(groups[i]);
-    } else {
-      let isDistinct = true;
-      for (let j = 0; j < result.length; j++) {
-        if (isSameGroup(groups[i], result[j])) {
-          isDistinct = false;
-          break;
-        }
-      }
-      if (isDistinct) {
-        result.push(groups[i]);
-      }
-    }
-  }
-  return result;
-}
-
 export default defineComponent({
   name: "LoadingPlan",
 

@@ -1,6 +1,14 @@
+export type ShapeType = 'Cuboid' | 'Cylinder'
+
+export type AlgorithmShapeType = 'Cuboid' | 'VerticalCylinder' | 'HorizontalCylinderX' | 'HorizontalCylinderZ' | 'BoundingCuboid'
+
+export type AxisType = 'X' | 'Y' | 'Z'
+
+export type InfoDTO = Record<string, string>
+
 export type LoadingPlanItemDTO = {
     name: string
-    packageType: string
+    packageType?: string | null
     width: number
     height: number
     depth: number
@@ -9,7 +17,17 @@ export type LoadingPlanItemDTO = {
     z: number
     weight: number
     loadingOrder: number
-    info: Map<string, string>
+    shapeType?: ShapeType | null
+    renderShapeType?: ShapeType | null
+    algorithmShapeType?: AlgorithmShapeType | null
+    radius?: number | null
+    diameter?: number | null
+    axis?: AxisType | null
+    boundingWidth?: number | null
+    boundingHeight?: number | null
+    boundingDepth?: number | null
+    actualVolume?: number | null
+    info?: InfoDTO | null
 }
 
 export type LoadingPlanDTO = {
@@ -23,10 +41,10 @@ export type LoadingPlanDTO = {
     weight: number
     volume: number
     items: LoadingPlanItemDTO[]
-    info: Map<string, string>
+    info?: InfoDTO | null
 }
 
 export type SchemaDTO = {
-    kpi: Map<string, string>,
+    kpi?: InfoDTO | null,
     loadingPlans: LoadingPlanDTO[]
 }

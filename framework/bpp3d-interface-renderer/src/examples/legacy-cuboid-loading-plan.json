@@ -1,0 +1,53 @@
+{
+  "kpi": {
+    "case": "legacy-cuboid"
+  },
+  "loadingPlans": [
+    {
+      "group": ["legacy"],
+      "name": "Cuboid Bin",
+      "typeCode": "BIN-001",
+      "width": 1200,
+      "height": 1000,
+      "depth": 1000,
+      "loadingRate": 0.42,
+      "weight": 60,
+      "volume": 504000000,
+      "items": [
+        {
+          "name": "Box A",
+          "packageType": "Carton",
+          "width": 400,
+          "height": 300,
+          "depth": 500,
+          "x": 0,
+          "y": 0,
+          "z": 0,
+          "weight": 20,
+          "loadingOrder": 0,
+          "info": {
+            "batch": "A001"
+          }
+        },
+        {
+          "name": "Box B",
+          "packageType": "Carton",
+          "width": 500,
+          "height": 400,
+          "depth": 600,
+          "x": 400,
+          "y": 0,
+          "z": 0,
+          "weight": 40,
+          "loadingOrder": 1,
+          "info": {
+            "batch": "B001"
+          }
+        }
+      ],
+      "info": {
+        "source": "legacy"
+      }
+    }
+  ]
+}
