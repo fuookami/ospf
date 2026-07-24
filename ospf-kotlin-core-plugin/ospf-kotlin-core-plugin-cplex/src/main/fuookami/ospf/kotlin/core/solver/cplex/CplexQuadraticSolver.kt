@@ -136,8 +136,8 @@ private class CplexQuadraticSolverImpl(
      * Dump the quadratic model to CPLEX
      * 将二次模型转储到 CPLEX
      *
-     * @param model quadratic model view / 二次模型视图
-     * @return operation result / 操作结果
+     * @param model 二次模型视图 / quadratic model view
+     * @return 操作结果 / operation result
     */
     private suspend fun dump(model: QuadraticTetradModelView): Try {
         warnIgnoredConstraintPriority("cplex", model.nonNullConstraintPriorityAmount())
@@ -318,8 +318,8 @@ private class CplexQuadraticSolverImpl(
      * Configure CPLEX solver parameters for quadratic model
      * 为二次模型配置 CPLEX 求解器参数
      *
-     * @param model quadratic model view / 二次模型视图
-     * @return operation result / 操作结果
+     * @param model 二次模型视图 / quadratic model view
+     * @return 操作结果 / operation result
     */
     private suspend fun configure(model: QuadraticTetradModelView): Try {
         cplex.setParam(IloCplex.Param.TimeLimit, config.time.toDouble(DurationUnit.SECONDS))
@@ -421,7 +421,7 @@ private class CplexQuadraticSolverImpl(
      * Execute CPLEX solving for quadratic model
      * 执行二次模型的 CPLEX 求解
      *
-     * @return operation result / 操作结果
+     * @return 操作结果 / operation result
     */
     private suspend fun solve(): Try {
         when (val result = callBack?.execIfContain(
@@ -457,8 +457,8 @@ private class CplexQuadraticSolverImpl(
  * Analyze the CPLEX solving result and extract the solution output.
  * 分析 CPLEX 求解结果并提取解输出。
  *
- * @param model the quadratic model view used for solving / 用于求解的二次模型视图
- * @return success if solution was extracted, or failure if solving failed / 成功时返回提取结果，求解失败时返回失败
+ * @param model 用于求解的二次模型视图 / the quadratic model view used for solving
+ * @return 成功时返回提取结果，求解失败时返回失败 / success if solution was extracted, or failure if solving failed
 */
     private suspend fun analyzeSolution(model: QuadraticTetradModelView): Try {
         return if (status.succeeded) {
@@ -473,7 +473,8 @@ private class CplexQuadraticSolverImpl(
                     gap(obj, possibleBestObj)
                 } else {
                     Flt64.zero
-                }
+                },
+                status = status
             )
 
             when (val result = callBack?.execIfContain(

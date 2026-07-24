@@ -7,12 +7,14 @@ import org.junit.jupiter.api.Assertions.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.core.model.basic.RegistrationStatusCallBack
+import fuookami.ospf.kotlin.core.model.intermediate.*
 import fuookami.ospf.kotlin.core.model.mechanism.LinearMetaModel
+import fuookami.ospf.kotlin.core.solver.iis.IISConfig
 import fuookami.ospf.kotlin.core.solver.output.*
 import fuookami.ospf.kotlin.core.solver.value.IntoValue
 
 class ColumnGenerationSolverValueConversionTest {
-    private class StubSolver(
+    private open class StubSolver(
         private val output: Flt64FeasibleSolverOutput
     ) : ColumnGenerationSolver {
         override val name: String = "stub"
@@ -77,13 +79,30 @@ class ColumnGenerationSolverValueConversionTest {
         return LinearMetaModel(name = "t", converter = IntoValue.Identity)
     }
 
-    private fun output(): FeasibleSolverOutput<Flt64> {
+    private fun output(status: SolverStatus = SolverStatus.Optimal): FeasibleSolverOutput<Flt64> {
         return FeasibleSolverOutput(
             obj = Flt64(10.0),
             solution = listOf(Flt64(1.0), Flt64(2.0)),
             time = Duration.ZERO,
             possibleBestObj = Flt64(9.0),
-            gap = Flt64.zero
+            gap = Flt64.zero,
+            status = status
+        )
+    }
+
+    private fun infeasibleOutput(): LinearInfeasibleSolverOutput {
+        return LinearInfeasibleSolverOutput(
+            iis = BasicLinearTriadModel(
+                variables = emptyList(),
+                constraints = LinearConstraintBatch(
+                    sparseLhs = SparseMatrix<Flt64>(),
+                    signs = emptyList(),
+                    rhs = emptyList(),
+                    names = emptyList(),
+                    sources = emptyList()
+                ),
+                name = "infeasible-iis"
+            )
         )
     }
 
@@ -158,8 +177,8 @@ class ColumnGenerationSolverValueConversionTest {
     @Test
     fun solveMilpAsAsyncForwardsCallbacksFromOptions() {
         val solver = StubSolver(output())
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveMILPAsAsync(
             metaModel = model(),
             options = FrameworkSolveOptions(
@@ -174,8 +193,8 @@ class ColumnGenerationSolverValueConversionTest {
     @Test
     fun solveMilpAsForwardsCallbacksFromOptions() = runBlocking {
         val solver = StubSolver(output())
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveMILPAs(
             metaModel = model(),
             options = FrameworkSolveOptions(
@@ -251,8 +270,8 @@ class ColumnGenerationSolverValueConversionTest {
     @Test
     fun solveLpAsAsyncForwardsCallbacksFromOptions() {
         val solver = StubSolver(output())
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveLPAsAsync(
             metaModel = model(),
             options = FrameworkSolveOptions(
@@ -267,8 +286,8 @@ class ColumnGenerationSolverValueConversionTest {
     @Test
     fun solveLpAsForwardsCallbacksFromOptions() = runBlocking {
         val solver = StubSolver(output())
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveLPAs(
             metaModel = model(),
             options = FrameworkSolveOptions(
@@ -278,6 +297,70 @@ class ColumnGenerationSolverValueConversionTest {
         )
         assertSame(registrationStatusCallBack, solver.lpRegistrationCallbacks.last())
         assertSame(solvingStatusCallBack, solver.lpSolvingCallbacks.last())
+    }
+
+    @Test
+    fun solveLpWithStatusPreservesNonOptimalStatus() = runBlocking {
+        val solver = StubSolver(output(status = SolverStatus.Feasible))
+        val result = solver.solveLPWithStatus(
+            name = "lp-status",
+            metaModel = model()
+        )
+
+        val structured = (result as Ok).value
+        assertTrue(structured is ColumnGenerationSolver.LPResultWithStatus.Feasible)
+        assertEquals(
+            SolverStatus.Feasible,
+            (structured as ColumnGenerationSolver.LPResultWithStatus.Feasible).result.status
+        )
+    }
+
+    @Test
+    fun solveLpWithStatusPreservesInfeasibleTerminalState() = runBlocking {
+        val solver = InfeasibleLpSolver(output(), infeasibleOutput())
+        val result = solver.solveLPWithStatus(
+            name = "lp-infeasible",
+            metaModel = model()
+        )
+
+        val structured = (result as Ok).value
+        assertTrue(structured is ColumnGenerationSolver.LPResultWithStatus.Infeasible)
+        assertEquals(
+            "infeasible-iis",
+            (structured as ColumnGenerationSolver.LPResultWithStatus.Infeasible).output.iis.name
+        )
+    }
+
+    @Test
+    fun solveMilpWithStatusPreservesNonOptimalStatus() = runBlocking {
+        val solver = StubSolver(output(status = SolverStatus.Feasible))
+        val result = solver.solveMILPWithStatus(
+            name = "milp-status",
+            metaModel = model()
+        )
+
+        val structured = (result as Ok).value
+        assertTrue(structured is ColumnGenerationSolver.MILPSolveResult.Feasible)
+        assertEquals(
+            SolverStatus.Feasible,
+            (structured as ColumnGenerationSolver.MILPSolveResult.Feasible).output.status
+        )
+    }
+
+    private class InfeasibleLpSolver(
+        output: Flt64FeasibleSolverOutput,
+        private val infeasible: LinearInfeasibleSolverOutput
+    ) : StubSolver(output) {
+        override suspend fun solveLPWithStatus(
+            name: String,
+            metaModel: Flt64LinearMetaModel,
+            toLogModel: Boolean,
+            registrationStatusCallBack: RegistrationStatusCallBack?,
+            solvingStatusCallBack: SolvingStatusCallBack?,
+            iisConfig: IISConfig
+        ): Ret<ColumnGenerationSolver.LPResultWithStatus> {
+            return Ok(ColumnGenerationSolver.LPResultWithStatus.Infeasible(infeasible))
+        }
     }
 
     @Test
@@ -368,8 +451,8 @@ class ColumnGenerationSolverValueConversionTest {
     @Test
     fun solveMilpAsPoolAsyncForwardsCallbacksFromOptions() {
         val solver = StubSolver(output())
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveMILPWithSolutionPoolAsAsync(
             metaModel = model(),
             options = FrameworkSolveOptions(
@@ -384,8 +467,8 @@ class ColumnGenerationSolverValueConversionTest {
     @Test
     fun solveMilpAsPoolForwardsCallbacksFromOptions() = runBlocking {
         val solver = StubSolver(output())
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveMILPWithSolutionPoolAs(
             metaModel = model(),
             options = FrameworkSolveOptions(

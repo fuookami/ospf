@@ -23,9 +23,7 @@ import fuookami.ospf.kotlin.framework.solver.QuadraticBendersDecompositionSolver
 /**
  * Gurobi 线性 Benders 分解求解器
  *
- * 使用 Gurobi 求解器实现线性 Benders 分解策略，支持主问题求解和子问题求解（含对偶解和 Farkas 证明提取）。
- *
- * Gurobi linear Benders decomposition solver
+ * 使用 Gurobi 求解器实现线性 Benders 分解策略，支持主问题求解和子问题求解（含对偶解和 Farkas 证明提取）。 / Gurobi linear Benders decomposition solver
  *
  * Implements linear Benders decomposition strategy using Gurobi solver, supporting master problem solving
  * and sub-problem solving (with dual solution and Farkas proof extraction).
@@ -124,9 +122,7 @@ class GurobiLinearBendersDecompositionSolver(
     /**
      * 求解线性子问题 / Solve linear sub-problem
      *
-     * 线性松弛子问题，提取对偶解或 Farkas 证明用于生成 Benders 割平面。
-     *
-     * Solves linear-relaxed sub-problem, extracting dual solution or Farkas proof for Benders cut generation.
+     * 线性松弛子问题，提取对偶解或 Farkas 证明用于生成 Benders 割平面。 / Solves linear-relaxed sub-problem, extracting dual solution or Farkas proof for Benders cut generation.
      *
      * @param name 模型名称 / model name
      * @param metaModel 线性元模型 / linear meta model
@@ -262,9 +258,7 @@ class GurobiLinearBendersDecompositionSolver(
 /**
  * Gurobi 二次 Benders 分解求解器
  *
- * 使用 Gurobi 求解器实现二次 Benders 分解策略，支持线性主问题委托和二次子问题求解。
- *
- * Gurobi quadratic Benders decomposition solver
+ * 使用 Gurobi 求解器实现二次 Benders 分解策略，支持线性主问题委托和二次子问题求解。 / Gurobi quadratic Benders decomposition solver
  *
  * Implements quadratic Benders decomposition strategy using Gurobi solver, supporting linear master problem
  * delegation and quadratic sub-problem solving.
@@ -372,9 +366,7 @@ class GurobiQuadraticBendersDecompositionSolver(
     /**
      * 求解线性子问题 / Solve linear sub-problem
      *
-     * 线性松弛子问题，提取对偶解或 Farkas 证明用于生成 Benders 割平面。
-     *
-     * Solves linear-relaxed sub-problem, extracting dual solution or Farkas proof for Benders cut generation.
+     * 线性松弛子问题，提取对偶解或 Farkas 证明用于生成 Benders 割平面。 / Solves linear-relaxed sub-problem, extracting dual solution or Farkas proof for Benders cut generation.
      *
      * @param name 模型名称 / model name
      * @param metaModel 线性元模型 / linear meta model
@@ -408,9 +400,7 @@ class GurobiQuadraticBendersDecompositionSolver(
     /**
      * 求解线性子问题 / Solve linear sub-problem
      *
-     * 线性松弛子问题，提取对偶解或 Farkas 证明用于生成 Benders 割平面。
-     *
-     * Solves linear-relaxed sub-problem, extracting dual solution or Farkas proof for Benders cut generation.
+     * 线性松弛子问题，提取对偶解或 Farkas 证明用于生成 Benders 割平面。 / Solves linear-relaxed sub-problem, extracting dual solution or Farkas proof for Benders cut generation.
      *
      * @param name 模型名称 / model name
      * @param metaModel 线性元模型 / linear meta model

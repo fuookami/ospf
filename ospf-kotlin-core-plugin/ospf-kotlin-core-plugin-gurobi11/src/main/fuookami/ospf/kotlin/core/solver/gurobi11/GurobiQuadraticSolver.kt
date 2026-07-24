@@ -154,8 +154,8 @@ private class GurobiQuadraticSolverImpl(
  * Dump the quadratic model into Gurobi variables, constraints, and objective.
  * 将二次模型转储为 Gurobi 变量、约束和目标函数。
  *
- * @param model the quadratic model view to dump / 待转储的二次模型视图
- * @return success if model was dumped, or failure on modeling error / 转储成功返回成功，建模错误返回失败
+ * @param model 待转储的二次模型视图 / the quadratic model view to dump
+ * @return 转储成功返回成功，建模错误返回失败 / success if model was dumped, or failure on modeling error
 */
     private suspend fun dump(model: QuadraticTetradModelView): Try {
         return try {
@@ -299,8 +299,8 @@ private class GurobiQuadraticSolverImpl(
  * Configure Gurobi solver parameters for the quadratic model.
  * 为二次模型配置 Gurobi 求解器参数。
  *
- * @param model the quadratic model view to configure / 待配置的二次模型视图
- * @return success if configuration was applied, or failure on error / 配置成功返回成功，出错返回失败
+ * @param model 待配置的二次模型视图 / the quadratic model view to configure
+ * @return 配置成功返回成功，出错返回失败 / success if configuration was applied, or failure on error
 */
     private suspend fun configure(model: QuadraticTetradModelView): Try {
         return try {
@@ -409,7 +409,7 @@ private class GurobiQuadraticSolverImpl(
  * Analyze the Gurobi solving result and extract the solution output.
  * 分析 Gurobi 求解结果并提取解输出。
  *
- * @return success if solution was extracted, or failure if solving failed / 成功时返回提取结果，求解失败时返回失败
+ * @return 成功时返回提取结果，求解失败时返回失败 / success if solution was extracted, or failure if solving failed
 */
     private suspend fun analyzeSolution(): Try {
         return try {
@@ -418,24 +418,27 @@ private class GurobiQuadraticSolverImpl(
                 for (grbVar in grbVars) {
                     results.add(Flt64(grbVar.get(GRB.DoubleAttr.X)))
                 }
+                val isMip = grbModel.get(GRB.IntAttr.IsMIP) != 0
+                val isMinimize = grbModel.get(GRB.IntAttr.ModelSense) == GRB.MINIMIZE
+                val possibleBestObj = when {
+                    isMip -> Flt64(grbModel.get(GRB.DoubleAttr.ObjBound))
+                    status == SolverStatus.Optimal -> Flt64(grbModel.get(GRB.DoubleAttr.ObjVal))
+                    isMinimize -> Flt64.negativeInfinity
+                    else -> Flt64.infinity
+                }
+                val gap = when {
+                    status != SolverStatus.Optimal -> Flt64.infinity
+                    isMip -> Flt64(grbModel.get(GRB.DoubleAttr.MIPGap))
+                    else -> Flt64.zero
+                }
                 output = FeasibleSolverOutput<Flt64>(
                     obj = Flt64(grbModel.get(GRB.DoubleAttr.ObjVal)),
                     solution = results,
                     time = grbModel.get(GRB.DoubleAttr.Runtime).seconds,
-                    possibleBestObj = Flt64(
-                        if (grbModel.get(GRB.IntAttr.IsMIP) != 0) {
-                            grbModel.get(GRB.DoubleAttr.ObjBound)
-                        } else {
-                            grbModel.get(GRB.DoubleAttr.ObjVal)
-                        }
-                    ),
-                    gap = Flt64(
-                        if (grbModel.get(GRB.IntAttr.IsMIP) != 0) {
-                            grbModel.get(GRB.DoubleAttr.MIPGap)
-                        } else {
-                            0.0
-                        }
-                    )
+                    possibleBestObj = possibleBestObj,
+                    gap = gap,
+                    status = status,
+                    bestBound = possibleBestObj
                 )
                 when (val result = callBack?.execIfContain(
                     point = Point.AnalyzingSolution,

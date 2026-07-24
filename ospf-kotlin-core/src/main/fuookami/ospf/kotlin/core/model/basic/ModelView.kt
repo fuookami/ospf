@@ -1,6 +1,5 @@
 /**
- * 模型视图
- * Model view
+ * 模型视图 / Model view
 */
 package fuookami.ospf.kotlin.core.model.basic
 
@@ -14,8 +13,7 @@ import fuookami.ospf.kotlin.core.model.mechanism.Constraint
 import fuookami.ospf.kotlin.core.variable.*
 
 /**
- * 变量松弛信息，关联变量与其约束或界限。
- * Variable slack information associating a variable with its constraint or bounds.
+ * 变量松弛信息，关联变量与其约束或界限。 / Variable slack information associating a variable with its constraint or bounds.
  *
  * @property constraint 关联的约束（可为 null） / The associated constraint (nullable)
  * @property lowerBound 下界变量（可为 null） / Lower bound variable (nullable)
@@ -28,8 +26,7 @@ data class VariableSlack(
 )
 
 /**
- * 求解器中的变量，封装变量的界限、类型和初始值等属性。
- * Variable in the solver, encapsulating bounds, type, and initial value properties.
+ * 求解器中的变量，封装变量的界限、类型和初始值等属性。 / Variable in the solver, encapsulating bounds, type, and initial value properties.
  *
  * @property index         变量在求解器中的索引 / Variable index in the solver
  * @param    lowerBound    下界 / Lower bound
@@ -103,8 +100,7 @@ class Variable(
 }
 
 /**
- * 模型单元格接口，持有系数值。
- * Model cell interface holding a coefficient value.
+ * 模型单元格接口，持有系数值。 / Model cell interface holding a coefficient value.
 */
 interface ModelCell<Self : ModelCell<Self>> {
     val coefficient: Flt64
@@ -114,16 +110,14 @@ interface ModelCell<Self : ModelCell<Self>> {
 }
 
 /**
- * 约束单元格接口，扩展 ModelCell 增加行索引。
- * Constraint cell interface extending ModelCell with a row index.
+ * 约束单元格接口，扩展 ModelCell 增加行索引。 / Constraint cell interface extending ModelCell with a row index.
 */
 interface ConstraintCell<Self : ConstraintCell<Self>> : ModelCell<Self> {
     val rowIndex: Int
 }
 
 /**
- * 约束来源枚举，标识约束的产生途径。
- * Constraint source enumeration indicating how a constraint was produced.
+ * 约束来源枚举，标识约束的产生途径。 / Constraint source enumeration indicating how a constraint was produced.
 */
 enum class ConstraintSource {
     /** 原始约束 / Original constraint */
@@ -151,8 +145,7 @@ enum class ConstraintSource {
 }
 
 /**
- * 模型约束的抽象基类，管理约束的左端、符号、右端、名称和来源。
- * Abstract base class for model constraints, managing LHS, signs, RHS, names, and sources.
+ * 模型约束的抽象基类，管理约束的左端、符号、右端、名称和来源。 / Abstract base class for model constraints, managing LHS, signs, RHS, names, and sources.
  *
  * @property constraintCount 约束数量 / Number of constraints
  * @param    signs           约束关系列表 / List of constraint relations
@@ -193,8 +186,7 @@ abstract class ModelConstraint<ConCell>(
 }
 
 /**
- * 目标函数，包含优化方向、目标单元格列表和常数项。
- * Objective function containing optimization direction, objective cell list, and constant.
+ * 目标函数，包含优化方向、目标单元格列表和常数项。 / Objective function containing optimization direction, objective cell list, and constant.
  *
  * @property category  优化方向 / Optimization direction
  * @property objective 目标单元格列表 / List of objective cells
@@ -210,8 +202,7 @@ class Objective<C : Copyable<C>>(
 }
 
 /**
- * 基本模型视图接口，提供变量、约束、名称及导出能力。
- * Basic model view interface providing variables, constraints, name, and export capability.
+ * 基本模型视图接口，提供变量、约束、名称及导出能力。 / Basic model view interface providing variables, constraints, name, and export capability.
 */
 interface BasicModelView<ConCell> : AutoCloseable
         where ConCell : ConstraintCell<ConCell>, ConCell : Copyable<ConCell> {
@@ -244,8 +235,7 @@ interface BasicModelView<ConCell> : AutoCloseable
         }
 
     /**
-     * 使用默认路径和指定格式导出模型。
-     * Export the model using the default path and specified format.
+     * 使用默认路径和指定格式导出模型。 / Export the model using the default path and specified format.
      *
      * @param format 文件格式 / File format
      * @return 导出结果 / Export result
@@ -255,8 +245,7 @@ interface BasicModelView<ConCell> : AutoCloseable
     }
 
     /**
-     * 使用指定文件名和格式导出模型到当前目录。
-     * Export the model to the current directory using the given file name and format.
+     * 使用指定文件名和格式导出模型到当前目录。 / Export the model to the current directory using the given file name and format.
      *
      * @param name   文件名 / File name
      * @param format 文件格式 / File format
@@ -267,8 +256,7 @@ interface BasicModelView<ConCell> : AutoCloseable
     }
 
     /**
-     * 使用指定路径和格式导出模型到文件。
-     * Export the model to a file at the given path using the specified format.
+     * 使用指定路径和格式导出模型到文件。 / Export the model to a file at the given path using the specified format.
      *
      * @param path   导出路径 / Export path
      * @param format 文件格式 / File format
@@ -295,8 +283,7 @@ interface BasicModelView<ConCell> : AutoCloseable
     }
 
     /**
-     * 将模型以 LP 格式写入给定输出流。
-     * Write the model in LP format to the given output stream.
+     * 将模型以 LP 格式写入给定输出流。 / Write the model in LP format to the given output stream.
      *
      * @param writer 输出流写入器 / Output stream writer
      * @return 导出结果 / Export result
@@ -309,8 +296,7 @@ interface BasicModelView<ConCell> : AutoCloseable
 }
 
 /**
- * 完整模型视图接口，在 BasicModelView 基础上增加目标函数。
- * Full model view interface adding an objective function on top of BasicModelView.
+ * 完整模型视图接口，在 BasicModelView 基础上增加目标函数。 / Full model view interface adding an objective function on top of BasicModelView.
 */
 interface ModelView<ConCell, ObjCell> : BasicModelView<ConCell>
         where ConCell : ConstraintCell<ConCell>, ConCell : Copyable<ConCell>, ObjCell : ModelCell<ObjCell>, ObjCell : Copyable<ObjCell> {

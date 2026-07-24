@@ -13,14 +13,12 @@ import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
- * 求解器输出的密封接口。
- * Sealed interface for solver output.
+ * 求解器输出的密封接口。 / Sealed interface for solver output.
 */
 sealed interface SolverOutput {}
 
 /**
- * 统一求解器输出接口，包含通用的求解统计信息。
- * Unified solver output interface, containing common solving statistics.
+ * 统一求解器输出接口，包含通用的求解统计信息。 / Unified solver output interface, containing common solving statistics.
 */
 sealed interface UnifiedSolverOutput : SolverOutput {
 
@@ -41,14 +39,12 @@ sealed interface UnifiedSolverOutput : SolverOutput {
 }
 
 /**
- * 线性求解器输出接口。
- * Linear solver output interface.
+ * 线性求解器输出接口。 / Linear solver output interface.
 */
 sealed interface LinearSolverOutput : SolverOutput {}
 
 /**
- * 二次求解器输出接口。
- * Quadratic solver output interface.
+ * 二次求解器输出接口。 / Quadratic solver output interface.
 */
 sealed interface QuadraticSolverOutput : SolverOutput {}
 
@@ -62,8 +58,7 @@ private fun <V> castSolverFlt64FallbackToValueOrNull(value: Flt64, solution: Sol
 }
 
 /**
- * 可行求解器输出，包含目标值、解和求解统计信息。
- * Feasible solver output, containing objective value, solution, and solving statistics.
+ * 可行求解器输出，包含目标值、解和求解统计信息。 / Feasible solver output, containing objective value, solution, and solving statistics.
  *
  * @param V 值类型 / Value type
  * @property obj 目标值（Flt64）/ Objective value (Flt64)
@@ -71,6 +66,7 @@ private fun <V> castSolverFlt64FallbackToValueOrNull(value: Flt64, solution: Sol
  * @property time 求解时间 / Solve time
  * @property possibleBestObj 可能的最优目标值 / Possible best objective value
  * @property gap 间隙 / Gap
+ * @property status 求解终态 / Solver termination status
  * @property iterations 迭代次数（可选）/ Iteration count (optional)
  * @property nodeCount 节点数（可选）/ Node count (optional)
  * @property bestBound 最优界（可选）/ Best bound (optional)
@@ -86,6 +82,7 @@ data class FeasibleSolverOutput<V>(
     val time: Duration,
     val possibleBestObj: Flt64,
     val gap: Flt64,
+    val status: SolverStatus = SolverStatus.Optimal,
     override val iterations: UInt64? = null,
     override val nodeCount: UInt64? = null,
     override val bestBound: Flt64? = null,
@@ -137,8 +134,7 @@ data class FeasibleSolverOutput<V>(
 }
 
 /**
- * 将 Flt64 可行求解器输出转换为目标值类型的输出。
- * Convert a Flt64 feasible solver output to the target value type.
+ * 将 Flt64 可行求解器输出转换为目标值类型的输出。 / Convert a Flt64 feasible solver output to the target value type.
  *
  * @param V 目标值类型 / Target value type
  * @param converter 值转换器 / Value converter
@@ -152,6 +148,7 @@ fun <V> FeasibleSolverOutput<Flt64>.convertTo(converter: IntoValue<V>): Feasible
         time = time,
         possibleBestObj = possibleBestObj,
         gap = gap,
+        status = status,
         iterations = iterations,
         nodeCount = nodeCount,
         bestBound = bestBound,
@@ -164,8 +161,7 @@ fun <V> FeasibleSolverOutput<Flt64>.convertTo(converter: IntoValue<V>): Feasible
 }
 
 /**
- * 线性不可行求解器输出，包含 IIS 信息。
- * Linear infeasible solver output, containing IIS information.
+ * 线性不可行求解器输出，包含 IIS 信息。 / Linear infeasible solver output, containing IIS information.
  *
  * @property iis 不可行子系统模型视图 / Infeasible subsystem model view
  * @property iterations 迭代次数（可选）/ Iteration count (optional)
@@ -184,8 +180,7 @@ data class LinearInfeasibleSolverOutput(
 ) : LinearSolverOutput, UnifiedSolverOutput
 
 /**
- * 二次不可行求解器输出，包含 IIS 信息。
- * Quadratic infeasible solver output, containing IIS information.
+ * 二次不可行求解器输出，包含 IIS 信息。 / Quadratic infeasible solver output, containing IIS information.
  *
  * @property iis 不可行子系统模型视图 / Infeasible subsystem model view
  * @property iterations 迭代次数（可选）/ Iteration count (optional)
@@ -204,8 +199,7 @@ data class QuadraticInfeasibleSolverOutput(
 ) : QuadraticSolverOutput, UnifiedSolverOutput
 
 /**
- * 带 IIS 的求解器输出包装。
- * Solver output wrapper with IIS.
+ * 带 IIS 的求解器输出包装。 / Solver output wrapper with IIS.
  *
  * @param IIS IIS 类型 / IIS type
  * @property output 求解器输出 / Solver output
@@ -217,8 +211,7 @@ data class SolverOutputWithIIS<out IIS>(
 )
 
 /**
- * 将求解器输出与 IIS 信息组合。
- * Combine solver output with IIS information.
+ * 将求解器输出与 IIS 信息组合。 / Combine solver output with IIS information.
  *
  * @param IIS IIS 类型 / IIS type
  * @param iis IIS 信息（可为 null） / IIS information (nullable)
@@ -232,8 +225,7 @@ fun <IIS> SolverOutput.withIIS(iis: IIS?): SolverOutputWithIIS<IIS> {
 }
 
 /**
- * 将求解器输出包装为无 IIS 信息的形式。
- * Wrap solver output without IIS information.
+ * 将求解器输出包装为无 IIS 信息的形式。 / Wrap solver output without IIS information.
  *
  * @return 无 IIS 的求解器输出 / Solver output without IIS
 */
@@ -245,8 +237,7 @@ fun SolverOutput.withoutIIS(): SolverOutputWithIIS<Nothing> {
 }
 
 /**
- * 将线性不可行求解器输出与内置 IIS 信息组合。
- * Combine linear infeasible solver output with its built-in IIS information.
+ * 将线性不可行求解器输出与内置 IIS 信息组合。 / Combine linear infeasible solver output with its built-in IIS information.
  *
  * @return 带 IIS 的求解器输出 / Solver output with IIS
 */
@@ -258,8 +249,7 @@ fun LinearInfeasibleSolverOutput.withIIS(): SolverOutputWithIIS<BasicLinearTriad
 }
 
 /**
- * 将二次不可行求解器输出与内置 IIS 信息组合。
- * Combine quadratic infeasible solver output with its built-in IIS information.
+ * 将二次不可行求解器输出与内置 IIS 信息组合。 / Combine quadratic infeasible solver output with its built-in IIS information.
  *
  * @return 带 IIS 的求解器输出 / Solver output with IIS
 */

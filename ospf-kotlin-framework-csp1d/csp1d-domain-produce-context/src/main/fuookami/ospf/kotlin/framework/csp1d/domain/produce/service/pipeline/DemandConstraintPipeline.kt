@@ -6,6 +6,7 @@ import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.symbol.inequality.*
 import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
 import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
+import fuookami.ospf.kotlin.quantities.unit.PhysicalUnit
 import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.core.variable.URealVar
 import fuookami.ospf.kotlin.framework.csp1d.domain.material.model.*
@@ -80,9 +81,7 @@ class DemandConstraintPipeline<V : RealNumber<V>>(
      * 使用中间符号构建需求贡献 LHS / Build demand contribution LHS using intermediate symbol
      *
      * 引用 produce.demandQuantity[demandIndex] 而非直接引用 x 变量，
-     * 这样 addColumns 刷新中间符号时约束自动包含新列系数。
-     *
-     * Reference produce.demandQuantity[demandIndex] instead of x variables directly,
+     * 这样 addColumns 刷新中间符号时约束自动包含新列系数。 / Reference produce.demandQuantity[demandIndex] instead of x variables directly,
      * so that addColumns flush of intermediate symbols automatically includes new column coefficients.
      *
      * @param demandIndex 需求索引 / Demand index
@@ -183,7 +182,7 @@ class DemandConstraintPipeline<V : RealNumber<V>>(
             AbstractCsp1dShadowPriceMap<AbstractCsp1dShadowPriceArguments>
             >? {
         if (demands.isEmpty()) return null
-        return { map, args ->
+        return ShadowPriceExtractor { map, args ->
             if (args is Csp1dCuttingPlanShadowPriceArguments<*>) {
                 var price = Flt64.zero
                 for (demand in demands) {
@@ -221,7 +220,7 @@ class DemandConstraintPipeline<V : RealNumber<V>>(
          * @param unit 物理单位 / Physical unit
          * @return 单位符号字符串 / Unit symbol string
         */
-        internal fun shadowPriceUnitSymbol(unit: fuookami.ospf.kotlin.quantities.unit.PhysicalUnit): String {
+        internal fun shadowPriceUnitSymbol(unit: PhysicalUnit): String {
             return unit.symbol ?: unit.toString()
         }
     }

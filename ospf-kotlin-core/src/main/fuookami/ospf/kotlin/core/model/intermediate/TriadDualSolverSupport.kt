@@ -1,6 +1,5 @@
 /**
- * 三元/四元对偶求解支持
- * Triad/Tetrad dual solver support
+ * 三元/四元对偶求解支持 / Triad/Tetrad dual solver support
 */
 package fuookami.ospf.kotlin.core.model.intermediate
 
@@ -12,8 +11,7 @@ import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.core.solver.*
 
 /**
- * 求解线性三元模型的对偶问题。
- * Solve the dual problem of a linear triad model.
+ * 求解线性三元模型的对偶问题。 / Solve the dual problem of a linear triad model.
  *
  * @param model 线性三元模型 / The linear triad model
  * @param solver 线性求解器 / The linear solver
@@ -33,8 +31,7 @@ suspend fun solveDual(
 }
 
 /**
- * 三元 Farkas 对偶求解辅助函数。
- * Triad Farkas dual solver helpers.
+ * 三元 Farkas 对偶求解辅助函数。 / Triad Farkas dual solver helpers.
  *
  * @param model 线性三元模型视图 / The linear triad model view
  * @param solver 线性求解器 / The linear solver
@@ -54,8 +51,7 @@ suspend fun solveFarkasDual(
 }
 
 /**
- * 四元二次对偶求解辅助函数。
- * Quadratic dual solver helpers.
+ * 四元二次对偶求解辅助函数。 / Quadratic dual solver helpers.
  *
  * @param model 二次四元模型 / The quadratic tetrad model
  * @param solver 二次求解器 / The quadratic solver
@@ -75,8 +71,7 @@ suspend fun solveDual(
 }
 
 /**
- * 四元二次 Farkas 对偶求解辅助函数。
- * Quadratic Farkas dual solver helpers.
+ * 四元二次 Farkas 对偶求解辅助函数。 / Quadratic Farkas dual solver helpers.
  *
  * @param model 二次四元模型视图 / The quadratic tetrad model view
  * @param solver 二次求解器 / The quadratic solver

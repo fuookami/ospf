@@ -1,6 +1,5 @@
 /**
- * 远程求解运行配置
- * Remote solve runtime config
+ * 远程求解运行配置 / Remote solve runtime config
 */
 package fuookami.ospf.kotlin.framework.solver.remote.client
 
@@ -11,8 +10,7 @@ import fuookami.ospf.kotlin.math.algebra.number.UInt64
 import fuookami.ospf.kotlin.framework.solver.remote.domain.*
 
 /**
- * 远程求解运行配置。
- * Remote solve runtime config.
+ * 远程求解运行配置。 / Remote solve runtime config.
  *
  * @property tenantId 默认租户 ID / Default tenant ID
  * @property nodeId 客户端节点 ID / Client node ID

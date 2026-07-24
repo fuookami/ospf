@@ -43,7 +43,7 @@ class GenericSolveTest {
         val solver = RecordingLinearSolveSolver()
 
         var callbackCount = 0
-        val callback: SolvingStatusCallBack = {
+        val callback = SolvingStatusCallBack {
             callbackCount += 1
             ok
         }
@@ -120,7 +120,7 @@ class GenericSolveTest {
         val solver = RecordingQuadraticSolveSolver()
 
         var callbackCount = 0
-        val callback: SolvingStatusCallBack = {
+        val callback = SolvingStatusCallBack {
             callbackCount += 1
             ok
         }

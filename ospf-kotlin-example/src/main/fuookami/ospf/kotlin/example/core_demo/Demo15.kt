@@ -27,8 +27,7 @@ private val flt64Converter = object : IntoValue<Flt64> {
 }
 
 /**
- * 多工厂分销：在替代约束下最小化从制造商到配送中心的物流成本。
- * Multi-plant distribution: minimize logistics cost from manufacturers to distribution centers with substitution.
+ * 多工厂分销：在替代约束下最小化从制造商到配送中心的物流成本。 / Multi-plant distribution: minimize logistics cost from manufacturers to distribution centers with substitution.
  *
  * @see https://fuookami.github.io/ospf/examples/example15.html
 */

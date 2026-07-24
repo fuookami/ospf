@@ -1,6 +1,5 @@
 /**
- * 求解器建模数据准备工具
- * Solver modeling data preparation utilities
+ * 求解器建模数据准备工具 / Solver modeling data preparation utilities
 */
 package fuookami.ospf.kotlin.core.solver
 
@@ -24,8 +23,7 @@ data class VariableDumpingData(
 )
 
 /**
- * 准备变量转储数据，将变量列表转换为求解器所需的数组格式。
- * Prepare variable dumping data, converting variable list to array format required by solver.
+ * 准备变量转储数据，将变量列表转换为求解器所需的数组格式。 / Prepare variable dumping data, converting variable list to array format required by solver.
  *
  * @param variables 变量列表 / Variable list
  * @param scopeName 作用域名称（用于错误信息）/ Scope name (for error messages)
@@ -57,8 +55,7 @@ fun prepareVariableDumpingData(
 }
 
 /**
- * 计算约束分段大小，用于并发转储时的任务划分。
- * Compute constraint segment size for task partitioning during concurrent dumping.
+ * 计算约束分段大小，用于并发转储时的任务划分。 / Compute constraint segment size for task partitioning during concurrent dumping.
  *
  * @param constraintSize 约束总数 / Total constraint count
  * @param availableProcessors 可用处理器数 / Available processor count

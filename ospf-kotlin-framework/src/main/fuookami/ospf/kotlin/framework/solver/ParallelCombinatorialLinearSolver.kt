@@ -1,9 +1,7 @@
 /**
- * 并行组合线性求解器
- * Parallel Combinatorial Linear Solver
+ * 并行组合线性求解器 / Parallel Combinatorial Linear Solver
  *
- * 将多个线性求解器并行运行，取第一个或最优结果。
- * Runs multiple linear solvers in parallel, taking the first or best result.
+ * 将多个线性求解器并行运行，取第一个或最优结果。 / Runs multiple linear solvers in parallel, taking the first or best result.
 */
 package fuookami.ospf.kotlin.framework.solver
 
@@ -14,13 +12,14 @@ import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
 import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModelView
 import fuookami.ospf.kotlin.core.solver.AbstractLinearSolver
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
+import fuookami.ospf.kotlin.core.solver.progress.SolverProgressContext
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.utils.error.ErrorCode
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
- * 并行组合线性求解器
- * Parallel combinatorial linear solver
+ * 并行组合线性求解器 / Parallel combinatorial linear solver
  *
  * @property solvers 线性求解器列表（懒加载） / Linear solver list (lazy loaded)
  * @property mode 并行组合模式，默认 Best / Parallel combinatorial mode, default Best
@@ -36,9 +35,9 @@ class ParallelCombinatorialLinearSolver(
          * Construct from an iterable of solvers.
          * 从求解器可迭代集合构造。
          *
-         * @param solvers the solvers to combine / 要组合的求解器
-         * @param mode the combinatorial mode, default Best / 组合模式，默认 Best
-         * @return the parallel combinatorial solver / 并行组合求解器
+         * @param solvers 要组合的求解器 / the solvers to combine
+         * @param mode 组合模式，默认 Best / the combinatorial mode, default Best
+         * @return 并行组合求解器 / the parallel combinatorial solver
         */
         @JvmName("constructBySolvers")
         operator fun invoke(
@@ -52,9 +51,9 @@ class ParallelCombinatorialLinearSolver(
          * Construct from an iterable of solver provider functions.
          * 从求解器提供函数可迭代集合构造。
          *
-         * @param solvers the solver provider functions / 求解器提供函数集合
-         * @param mode the combinatorial mode, default Best / 组合模式，默认 Best
-         * @return the parallel combinatorial solver / 并行组合求解器
+         * @param solvers 求解器提供函数集合 / the solver provider functions
+         * @param mode 组合模式，默认 Best / the combinatorial mode, default Best
+         * @return 并行组合求解器 / the parallel combinatorial solver
         */
         @JvmName("constructBySolverExtractors")
         operator fun invoke(
@@ -66,6 +65,77 @@ class ParallelCombinatorialLinearSolver(
     }
 
     override val name by lazy { "ParallelCombinatorial(${solvers.joinToString(",") { it.value.name }})" }
+
+    /**
+     * 并行求解并保留全部 backend 尝试。 / Solve in parallel while preserving all backend attempts.
+     *
+     * @param model 线性模型 / Linear model
+     * @param progressContext 进度上下文 / Progress context
+     * @return 组合求解报告 / Combinatorial solve report
+     */
+    suspend fun solveCombinatorialReport(
+        model: LinearTriadModelView,
+        progressContext: SolverProgressContext? = null
+    ): Ret<CombinatorialSolveReport<Flt64>> = coroutineScope {
+        val attempts = solvers.mapIndexed { index, lazySolver ->
+            async(Dispatchers.Default) {
+                val solver = lazySolver.value
+                val attemptId = SolveAttemptId("parallel-$index")
+                when (val result = solver.solveReport(model, progressContext)) {
+                    is Ok -> SolveAttemptTrace(
+                        attemptId = attemptId,
+                        backendId = solver.name,
+                        report = result.value
+                    )
+                    is Failed -> SolveAttemptTrace(
+                        attemptId = attemptId,
+                        backendId = solver.name,
+                        errors = listOf(
+                            SolveIssue(
+                                code = result.error.code.toString(),
+                                category = SolveIssueCategory.Backend,
+                                message = result.error.message
+                            )
+                        )
+                    )
+                    is Fatal -> SolveAttemptTrace(
+                        attemptId = attemptId,
+                        backendId = solver.name,
+                        errors = result.errors.map { error ->
+                            SolveIssue(
+                                code = error.code.toString(),
+                                category = SolveIssueCategory.Backend,
+                                message = error.message
+                            )
+                        }
+                    )
+                }
+            }
+        }.awaitAll()
+        val successful = attempts.filter { it.report != null }
+        val selected = when {
+            successful.isEmpty() -> null
+            mode == ParallelCombinatorialMode.First -> successful.first()
+            model.objective.category == ObjectCategory.Minimum -> successful.minBy { attempt ->
+                attempt.report?.solution?.objective ?: Flt64.infinity
+            }
+            else -> successful.maxBy { attempt ->
+                attempt.report?.solution?.objective ?: Flt64.negativeInfinity
+            }
+        }
+        Ok(
+            CombinatorialSolveReport(
+                finalReport = selected?.report,
+                attempts = attempts,
+                selectedAttemptId = selected?.attemptId,
+                selectionReason = when {
+                    selected == null -> SolveSelectionReason.NoSuccessfulAttempt
+                    mode == ParallelCombinatorialMode.First -> SolveSelectionReason.FirstFeasible
+                    else -> SolveSelectionReason.BestObjective
+                }
+            )
+        )
+    }
 
     override suspend fun invoke(
         model: LinearTriadModelView,

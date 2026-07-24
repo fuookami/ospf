@@ -1,6 +1,5 @@
 /**
- * 二次四元模型转储构建器
- * Quadratic tetrad model dump builders
+ * 二次四元模型转储构建器 / Quadratic tetrad model dump builders
 */
 package fuookami.ospf.kotlin.core.model.intermediate
 
@@ -15,8 +14,7 @@ import fuookami.ospf.kotlin.utils.functional.Quadruple
 import kotlinx.coroutines.*
 
 /**
- * 从二次约束单元格行列表构建稀疏二次矩阵。
- * Build a sparse quadratic matrix from a list of quadratic constraint cell rows.
+ * 从二次约束单元格行列表构建稀疏二次矩阵。 / Build a sparse quadratic matrix from a list of quadratic constraint cell rows.
  *
  * @param rows 二次约束单元格行列表 / The list of quadratic constraint cell rows
  * @return 稀疏二次矩阵 / The sparse quadratic matrix
@@ -34,8 +32,7 @@ internal fun buildQuadraticSparseLhs(rows: List<List<QuadraticConstraintCell>>):
 }
 
 /**
- * 从标记索引和边界约束生成求解器变量列表（二次模型）。
- * Generate solver variables from token indexes and bound constraints (quadratic model).
+ * 从标记索引和边界约束生成求解器变量列表（二次模型）。 / Generate solver variables from token indexes and bound constraints (quadratic model).
  *
  * @param tokenIndexes 标记到列索引的映射 / The mapping from tokens to column indices
  * @param bounds       标记到边界约束列表的映射 / The mapping from tokens to bound constraint lists
@@ -82,8 +79,7 @@ internal fun dumpQuadraticTetradVariables(
 }
 
 /**
- * 从二次机制模型转储约束到二次约束批次。
- * Dump constraints from a quadratic mechanism model into a quadratic constraint batch.
+ * 从二次机制模型转储约束到二次约束批次。 / Dump constraints from a quadratic mechanism model into a quadratic constraint batch.
  *
  * @param model          二次机制模型 / The quadratic mechanism model
  * @param tokenIndexes   标记到列索引的映射 / The mapping from tokens to column indices
@@ -171,8 +167,7 @@ internal fun dumpQuadraticTetradConstraints(
 }
 
 /**
- * 异步从二次机制模型转储约束到二次约束批次，支持并行分段处理。
- * Asynchronously dump constraints from a quadratic mechanism model into a quadratic constraint batch with parallel segment processing.
+ * 异步从二次机制模型转储约束到二次约束批次，支持并行分段处理。 / Asynchronously dump constraints from a quadratic mechanism model into a quadratic constraint batch with parallel segment processing.
  *
  * @param model          二次机制模型 / The quadratic mechanism model
  * @param tokenIndexes   标记到列索引的映射 / The mapping from tokens to column indices
@@ -348,8 +343,7 @@ internal suspend fun dumpQuadraticTetradConstraintsAsync(
 }
 
 /**
- * 从二次机制模型转储目标函数到二次目标对象。
- * Dump objective function from a quadratic mechanism model into a quadratic objective.
+ * 从二次机制模型转储目标函数到二次目标对象。 / Dump objective function from a quadratic mechanism model into a quadratic objective.
  *
  * @param model          二次机制模型 / The quadratic mechanism model
  * @param tokenIndexes   标记到列索引的映射 / The mapping from tokens to column indices

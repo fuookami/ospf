@@ -27,8 +27,7 @@ private val flt64Converter = object : IntoValue<Flt64> {
 }
 
 /**
- * 资本投资优化：在资本和负债约束下最大化利润。
- * Capital investment optimization: maximize profit subject to capital and liability constraints.
+ * 资本投资优化：在资本和负债约束下最大化利润。 / Capital investment optimization: maximize profit subject to capital and liability constraints.
  *
  * @see https://fuookami.github.io/ospf/examples/example1.html
 */

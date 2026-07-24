@@ -1,10 +1,8 @@
 
 /**
- * 顺序约束
- * Order Constraint
+ * 顺序约束 / Order Constraint
  *
- * 每个顺序位置最多只能有一个动作不为0。
- * Each order position can have at most one action with non-zero allocation.
+ * 每个顺序位置最多只能有一个动作不为0。 / Each order position can have at most one action with non-zero allocation.
 */
 @file:OptIn(kotlin.time.ExperimentalTime::class)
 package fuookami.ospf.kotlin.framework.gantt_scheduling.domain.capacity_scheduling.service.limits
@@ -23,8 +21,7 @@ import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.capacity_schedulin
  * 顺序约束（仅用于 CapacityOrderCompilation）
  * Order Constraint (only for CapacityOrderCompilation)
  *
- * 每个顺序位置最多只能有一个动作不为0。
- * Each order position can have at most one action with non-zero allocation.
+ * 每个顺序位置最多只能有一个动作不为0。 / Each order position can have at most one action with non-zero allocation.
  *
  * @param V 数值类型 / Numeric type
  * @param A 生产动作类型 / Production action type
@@ -43,10 +40,9 @@ class OrderConstraint<V : RealNumber<V>, A : ProductionAction>(
 ) {
 
     /**
-     * 应用约束到模型
-     * Apply constraint to model
+     * 应用约束到模型 / Apply constraint to model
      *
-     * @param model Linear meta model / 线性元模型
+     * @param model 线性元模型 / Linear meta model
      * @return Try result / Try 结果
     */
     operator fun invoke(model: LinearMetaModel<Flt64>): Try {

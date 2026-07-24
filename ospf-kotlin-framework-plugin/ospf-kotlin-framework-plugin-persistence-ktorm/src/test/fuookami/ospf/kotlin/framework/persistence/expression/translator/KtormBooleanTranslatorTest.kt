@@ -40,7 +40,7 @@ class KtormBooleanTranslatorTest {
         val widthUnitSymbol = varchar("width_unit_symbol")
     }
 
-    private val resolver: KtormColumnResolver = { path: String ->
+    private val resolver = KtormColumnResolver { path: String ->
         when (path.substringAfterLast(".")) {
             "id" -> Users.id
             "age" -> Users.age

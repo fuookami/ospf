@@ -34,6 +34,12 @@ ospf-kotlin-core is the **core module** of the OSPF (Open Solver Platform Framew
 | `solver` | Solver abstraction — linear/quadratic solvers, heuristics, IIS diagnostics, output | [README](src/main/fuookami/ospf/kotlin/core/solver/README.md) |
 | `error` | Core error code definitions | — |
 
+## Constraint Programming
+
+The `model.constraint_programming` package provides integer-domain CP models, Boolean literals, intervals, global constraints, immutable snapshots, and a portable snapshot codec. The `solver.constraint_programming` package provides the solver/session SPI, a fake contract solver, SCIP integration, and an exact MIP-backed path. The MIP path supports the declared bounded subset, including optional intervals and variable duration; unsupported formulations return structured `Ret` errors.
+
+For Logic-Based Benders, use `LogicBasedBendersEngine` from `ospf-kotlin-framework`. The implementation keeps proof status separate from feasibility, requires globally valid cuts in `Exact` mode, and exposes structured conflict/IIS evidence through the solver report. See [the implementation plan](../plans/constraint-programming.md) for capability boundaries and verification commands.
+
 ## Four-Layer Model Architecture
 
 The core module implements a **four-layer model architecture**:

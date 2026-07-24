@@ -9,8 +9,7 @@ import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.algebra.concept.*
 
 /**
- * 泛型不等式 DSL
- * Inequality DSL
+ * 泛型不等式 DSL / Inequality DSL
  *
  * 提供基于 Flt64ValueConverter 的泛型比较运算符重载，支持 Flt64/FltX/Rtn64/RtnX 四种数值类型。
  * Provides generic comparison operator overloads based on Flt64ValueConverter, supporting Flt64/FltX/Rtn64/RtnX numeric types.

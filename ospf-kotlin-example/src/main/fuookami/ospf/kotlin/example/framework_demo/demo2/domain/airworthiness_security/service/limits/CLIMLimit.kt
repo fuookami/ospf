@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.airworthiness_security.service.limits
 
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.symbol.inequality.*
@@ -17,8 +18,8 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.mac.model.*
 /**
  * 约束 CG 指数裕度（CLIM）在最大允许边界内。Constrains the CG index margin (CLIM) to be within the maximum allowed bounds.
  *
- * @property torque The torque model providing CG index margin / 提供CG指数裕度的力矩模型
- * @property maxCLIM The maximum CG index margin limit / 最大CG指数裕度限制
+ * @property torque 提供CG指数裕度的力矩模型 / The torque model providing CG index margin
+ * @property maxCLIM 最大CG指数裕度限制 / The maximum CG index margin limit
 */
 class CLIMLimit(
     private val torque: Torque,
@@ -33,13 +34,13 @@ class CLIMLimit(
             relation = LinearPolynomial(upper.monomials, upper.constant) leq Flt64.zero,
             name = "${name}_ub"
         )) {
-            is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-            is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                 return Fatal(result.errors)
             }
         }
@@ -51,13 +52,13 @@ class CLIMLimit(
             relation = LinearPolynomial(lower.monomials, lower.constant) geq Flt64.zero,
             name = "${name}_lb"
         )) {
-            is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-            is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                 return Fatal(result.errors)
             }
         }

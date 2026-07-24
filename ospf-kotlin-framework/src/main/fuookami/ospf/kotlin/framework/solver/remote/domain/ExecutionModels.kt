@@ -8,8 +8,7 @@ import kotlinx.serialization.Serializable
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 
 /**
- * 求解器类型。
- * Solver type.
+ * 求解器类型。 / Solver type.
 */
 @Serializable
 enum class SolverType {
@@ -23,9 +22,41 @@ enum class SolverType {
     AUTO
 }
 
+/** 远程问题结论 / Remote problem conclusion */
+@Serializable
+enum class RemoteProblemStatus {
+    FEASIBLE,
+    INFEASIBLE,
+    UNBOUNDED,
+    INFEASIBLE_OR_UNBOUNDED,
+    UNKNOWN
+}
+
+/** 远程终止原因 / Remote termination reason */
+@Serializable
+enum class RemoteTerminationReason {
+    COMPLETED,
+    TIME_LIMIT,
+    NODE_LIMIT,
+    ITERATION_LIMIT,
+    SOLUTION_LIMIT,
+    OBJECTIVE_LIMIT,
+    CANCELLED,
+    INTERRUPTED,
+    NUMERICAL_FAILURE,
+    BACKEND_FAILURE
+}
+
+/** 远程解存在性 / Remote solution presence */
+@Serializable
+enum class RemoteSolutionPresence {
+    NONE,
+    INCUMBENT,
+    OPTIMAL
+}
+
 /**
- * 执行句柄。
- * Execution handle.
+ * 执行句柄。 / Execution handle.
  *
  * @property handleId 句柄 ID / Handle ID
  * @property taskId 任务 ID / Task ID
@@ -45,8 +76,7 @@ data class ExecutionHandle(
 )
 
 /**
- * 切片结果。
- * Slice result.
+ * 切片结果。 / Slice result.
  *
  * @property sliceId 切片 ID / Slice ID
  * @property completed 是否完成 / Whether completed
@@ -70,8 +100,7 @@ data class SliceResult(
 )
 
 /**
- * 求解结果。
- * Solve result.
+ * 求解结果。 / Solve result.
  *
  * @property feasible 是否可行 / Whether feasible
  * @property optimal 是否最优 / Whether optimal
@@ -82,6 +111,12 @@ data class SliceResult(
  * @property resultRef 结果对象引用 / Result object reference
  * @property message 结果消息 / Result message
  * @property extension 扩展字段 / Extension fields
+ * @property schemaVersion 报告协议版本 / Report protocol version
+ * @property problemStatus 正交问题结论 / Orthogonal problem conclusion
+ * @property terminationReason 正交终止原因 / Orthogonal termination reason
+ * @property solutionPresence 解存在性 / Solution presence
+ * @property provenance 脱敏执行来源 / Redacted execution provenance
+ * @property fingerprints 审计指纹 / Audit fingerprints
 */
 @Serializable
 data class SolveResult(
@@ -95,5 +130,19 @@ data class SolveResult(
     val checkpointRef: ObjectRef? = null,
     val resultRef: ObjectRef? = null,
     val message: String? = null,
-    val extension: Map<String, String> = emptyMap()
+    val extension: Map<String, String> = emptyMap(),
+    val schemaVersion: String = "1.0",
+    val problemStatus: RemoteProblemStatus = if (feasible) {
+        RemoteProblemStatus.FEASIBLE
+    } else {
+        RemoteProblemStatus.INFEASIBLE
+    },
+    val terminationReason: RemoteTerminationReason = RemoteTerminationReason.COMPLETED,
+    val solutionPresence: RemoteSolutionPresence = when {
+        optimal -> RemoteSolutionPresence.OPTIMAL
+        feasible -> RemoteSolutionPresence.INCUMBENT
+        else -> RemoteSolutionPresence.NONE
+    },
+    val provenance: Map<String, String> = emptyMap(),
+    val fingerprints: Map<String, String> = emptyMap()
 )

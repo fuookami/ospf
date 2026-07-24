@@ -1,9 +1,7 @@
 /**
- * SQL 类型扩展
- * SQL Type Extensions
+ * SQL 类型扩展 / SQL Type Extensions
  *
- * 为 Ktorm 表定义提供自定义数值和日期类型映射。
- * Provides custom numeric and date type mappings for Ktorm table definitions.
+ * 为 Ktorm 表定义提供自定义数值和日期类型映射。 / Provides custom numeric and date type mappings for Ktorm table definitions.
 */
 package fuookami.ospf.kotlin.framework.persistence
 
@@ -19,8 +17,7 @@ import org.ktorm.schema.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 
 /**
- * 定义 UInt32 类型列
- * Define UInt32 type column
+ * 定义 UInt32 类型列 / Define UInt32 type column
  *
  * @param name 列名 / Column name
  * @return UInt32 类型的列 / Column of UInt32 type
@@ -30,8 +27,7 @@ fun BaseTable<*>.ui32(name: String): Column<UInt32> {
 }
 
 /**
- * 定义 Int32 类型列
- * Define Int32 type column
+ * 定义 Int32 类型列 / Define Int32 type column
  *
  * @param name 列名 / Column name
  * @return Int32 类型的列 / Column of Int32 type
@@ -41,8 +37,7 @@ fun BaseTable<*>.i32(name: String): Column<Int32> {
 }
 
 /**
- * 定义 UInt64 类型列
- * Define UInt64 type column
+ * 定义 UInt64 类型列 / Define UInt64 type column
  *
  * @param name 列名 / Column name
  * @return UInt64 类型的列 / Column of UInt64 type
@@ -52,8 +47,7 @@ fun BaseTable<*>.ui64(name: String): Column<UInt64> {
 }
 
 /**
- * 定义 Int64 类型列
- * Define Int64 type column
+ * 定义 Int64 类型列 / Define Int64 type column
  *
  * @param name 列名 / Column name
  * @return Int64 类型的列 / Column of Int64 type
@@ -63,8 +57,7 @@ fun BaseTable<*>.i64(name: String): Column<Int64> {
 }
 
 /**
- * 定义 Flt32 类型列
- * Define Flt32 type column
+ * 定义 Flt32 类型列 / Define Flt32 type column
  *
  * @param name 列名 / Column name
  * @return Flt32 类型的列 / Column of Flt32 type
@@ -74,8 +67,7 @@ fun BaseTable<*>.f32(name: String): Column<Flt32> {
 }
 
 /**
- * 定义 Flt64 类型列
- * Define Flt64 type column
+ * 定义 Flt64 类型列 / Define Flt64 type column
  *
  * @param name 列名 / Column name
  * @return Flt64 类型的列 / Column of Flt64 type
@@ -85,8 +77,7 @@ fun BaseTable<*>.f64(name: String): Column<Flt64> {
 }
 
 /**
- * 定义 FltX 类型列（默认精度）
- * Define FltX type column (default precision)
+ * 定义 FltX 类型列（默认精度） / Define FltX type column (default precision)
  *
  * @param name 列名 / Column name
  * @param scale 小数精度，默认 2 / Decimal scale, default 2
@@ -97,8 +88,7 @@ fun BaseTable<*>.fltx(name: String, scale: Int = 2): Column<FltX> {
 }
 
 /**
- * 定义 FltX 类型列（指定舍入模式）
- * Define FltX type column (specified rounding mode)
+ * 定义 FltX 类型列（指定舍入模式） / Define FltX type column (specified rounding mode)
  *
  * @param name 列名 / Column name
  * @param roundingMode 舍入模式 / Rounding mode
@@ -177,8 +167,7 @@ fun BaseTable<*>.kotlinTimeZone(name: String): Column<TimeZone> {
 }
 
 /**
- * 定义枚举列表类型列（逗号分隔存储）
- * Define enum list type column (comma-separated storage)
+ * 定义枚举列表类型列（逗号分隔存储） / Define enum list type column (comma-separated storage)
  *
  * @param name 列名 / Column name
  * @param T 枚举类型 / Enum type

@@ -21,8 +21,8 @@ import fuookami.ospf.kotlin.framework.solver.ColumnGenerationSolver
  *
  * MindOPT 列生成求解器
  *
- * @property config Solver configuration / 求解器配置
- * @property callBack Linear solver callback / 线性求解器回调
+ * @property config 求解器配置 / Solver configuration
+ * @property callBack 线性求解器回调 / Linear solver callback
 */
 class MindOPTColumnGenerationSolver(
     private val config: SolverConfig = SolverConfig(),

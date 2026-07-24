@@ -38,14 +38,13 @@ class TaskOverMaxDelayTimeMinimization<
     private val timeWindow: TimeWindow<*>,
     tasks: List<T>,
     private val taskTime: TaskTime,
-    private val threshold: Extractor<Duration?, T> = { Duration.ZERO },
-    private val coefficient: Extractor<Flt64?, T> = { Flt64.one },
+    private val threshold: Extractor<Duration?, T> = Extractor { Duration.ZERO },
+    private val coefficient: Extractor<Flt64?, T> = Extractor { Flt64.one },
     override val name: String = "task_over_max_delay_time_minimization"
 ) : AbstractGanttSchedulingCGPipeline<Args, E, A> {
 
     /**
-     * 通过 solver 时间窗口边界创建任务超最大延迟时间最小化 /
-     * Create task over-max delay time minimization from a solver time-window boundary
+     * 通过 solver 时间窗口边界创建任务超最大延迟时间最小化 / / Create task over-max delay time minimization from a solver time-window boundary
      *
      * @param timeBoundary solver 时间窗口边界 / Solver time-window boundary
      * @param tasks 任务列表 / List of tasks
@@ -58,8 +57,8 @@ class TaskOverMaxDelayTimeMinimization<
         timeBoundary: SolverTimeWindowBoundary,
         tasks: List<T>,
         taskTime: TaskTime,
-        threshold: Extractor<Duration?, T> = { Duration.ZERO },
-        coefficient: Extractor<Flt64?, T> = { Flt64.one },
+        threshold: Extractor<Duration?, T> = Extractor { Duration.ZERO },
+        coefficient: Extractor<Flt64?, T> = Extractor { Flt64.one },
         name: String = "task_over_max_delay_time_minimization"
     ) : this(
         timeWindow = timeBoundary.source,

@@ -40,11 +40,12 @@ abstract class GurobiSolver : AutoCloseable {
     ): Try {
         return try {
             env = GRBEnv(true)
+            suppressIntegrationOutput(env)
             env.set(GRB.IntParam.ServerTimeout, connectionTime.toInt(DurationUnit.SECONDS))
             env.set(GRB.DoubleParam.CSQueueTimeout, connectionTime.toDouble(DurationUnit.SECONDS))
             env.set(GRB.StringParam.ComputeServer, server)
             env.set(GRB.StringParam.ServerPassword, password)
-            when (val callbackResult = executeCreatingEnvironmentCallback(env, callBack)) {
+            when (val callbackResult = executeCreatingEnvironmentCallback(env, callBack?.let { it::invoke })) {
                 is Failed -> return callbackResult
                 is Fatal -> return callbackResult
                 else -> {}
@@ -74,7 +75,8 @@ abstract class GurobiSolver : AutoCloseable {
     ): Try {
         return try {
             env = GRBEnv()
-            when (val callbackResult = executeCreatingEnvironmentCallback(env, callBack)) {
+            suppressIntegrationOutput(env)
+            when (val callbackResult = executeCreatingEnvironmentCallback(env, callBack?.let { it::invoke })) {
                 is Failed -> return callbackResult
                 is Fatal -> return callbackResult
                 else -> {}
@@ -86,6 +88,13 @@ abstract class GurobiSolver : AutoCloseable {
             solverEnvironmentLost(e.message)
         } catch (e: Exception) {
             solverEnvironmentLost()
+        }
+    }
+
+    /** Keep native Gurobi logs out of Failsafe's fork protocol during integration tests. */
+    private fun suppressIntegrationOutput(environment: GRBEnv) {
+        if (System.getProperty("ospf.gurobi.suppressOutput") == "true") {
+            environment.set(GRB.IntParam.OutputFlag, 0)
         }
     }
 

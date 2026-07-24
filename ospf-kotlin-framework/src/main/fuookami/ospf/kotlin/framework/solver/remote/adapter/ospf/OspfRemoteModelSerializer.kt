@@ -1,6 +1,5 @@
 /**
- * OSPF 远程模型序列化器
- * OSPF remote model serializer
+ * OSPF 远程模型序列化器 / OSPF remote model serializer
 */
 package fuookami.ospf.kotlin.framework.solver.remote.adapter.ospf
 
@@ -9,14 +8,12 @@ import fuookami.ospf.kotlin.core.model.intermediate.*
 import fuookami.ospf.kotlin.framework.solver.remote.domain.*
 
 /**
- * OSPF 远程模型序列化器。
- * OSPF remote model serializer.
+ * OSPF 远程模型序列化器。 / OSPF remote model serializer.
 */
 object OspfRemoteModelSerializer {
 
     /**
-     * 序列化线性三元模型。
-     * Serialize linear triad model.
+     * 序列化线性三元模型。 / Serialize linear triad model.
      *
      * @param model 线性三元模型视图 / Linear triad model view
      * @return 序列化线性模型 / Serialized linear model
@@ -53,8 +50,7 @@ object OspfRemoteModelSerializer {
     }
 
     /**
-     * 序列化二次四元模型。
-     * Serialize quadratic tetrad model.
+     * 序列化二次四元模型。 / Serialize quadratic tetrad model.
      *
      * @param model 二次四元模型视图 / Quadratic tetrad model view
      * @return 序列化二次模型 / Serialized quadratic model
@@ -124,8 +120,7 @@ object OspfRemoteModelSerializer {
     }
 
     /**
-     * 序列化为模型数据。
-     * Serialize to model data.
+     * 序列化为模型数据。 / Serialize to model data.
      *
      * @param model 线性三元模型视图 / Linear triad model view
      * @return 远程模型数据 / Remote model data
@@ -135,8 +130,7 @@ object OspfRemoteModelSerializer {
     }
 
     /**
-     * 序列化为模型数据。
-     * Serialize to model data.
+     * 序列化为模型数据。 / Serialize to model data.
      *
      * @param model 二次四元模型视图 / Quadratic tetrad model view
      * @return 远程模型数据 / Remote model data
@@ -147,8 +141,7 @@ object OspfRemoteModelSerializer {
 }
 
 /**
- * 转换为远程序列化变量。
- * Convert to remote serialized variable.
+ * 转换为远程序列化变量。 / Convert to remote serialized variable.
  *
  * @return 序列化变量 / Serialized variable
 */
@@ -167,8 +160,7 @@ fun Variable.toSerializedVariable(): SerializedVariable {
 }
 
 /**
- * 转换为远程序列化约束符号。
- * Convert to remote serialized constraint sign.
+ * 转换为远程序列化约束符号。 / Convert to remote serialized constraint sign.
  *
  * @return 序列化约束符号 / Serialized constraint sign
 */
@@ -181,8 +173,7 @@ fun ConstraintRelation.toSerializedSign(): SerializedConstraintSign {
 }
 
 /**
- * 转换为远程序列化目标类型。
- * Convert to remote serialized objective category.
+ * 转换为远程序列化目标类型。 / Convert to remote serialized objective category.
  *
  * @return 序列化目标类型 / Serialized objective category
 */

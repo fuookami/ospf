@@ -394,8 +394,7 @@ class BunchSchedulingConnectionResourceUsage<
     /**
      * 添加列贡献 / Add column contribution
      *
-     * 用于列生成场景，在每次迭代中添加新列的资源使用量贡献
-     * Used for column generation, adds resource usage contribution from new columns in each iteration
+     * 用于列生成场景，在每次迭代中添加新列的资源使用量贡献 / Used for column generation, adds resource usage contribution from new columns in each iteration
      *
      * @param B 任务束类型 / Task bunch type
      * @param T 任务类型 / Task type

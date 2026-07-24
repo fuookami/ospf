@@ -30,7 +30,7 @@ class SwitchCostMinimization<
     private val executors: List<E>,
     private val tasks: List<T>,
     private val switch: Switch,
-    private val coefficient: Extractor<Flt64?, Triple<E, T, T>> = { Flt64.one },
+    private val coefficient: Extractor<Flt64?, Triple<E, T, T>> = Extractor { Flt64.one },
     override val name: String = "switch_cost_minimization"
 ) : AbstractGanttSchedulingCGPipeline<Args, E, A> {
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {

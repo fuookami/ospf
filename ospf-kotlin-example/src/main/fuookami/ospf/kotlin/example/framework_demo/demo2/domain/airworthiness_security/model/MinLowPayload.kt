@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.airworthiness_security.model
 
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
@@ -22,7 +23,7 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.model.Po
  * Minimum low-deck payload constraint interpolated from zero-fuel weight points.
  * 从零燃油重量点插值的最小低甲板载荷约束。
  *
- * @property points The list of low payload interpolation points. / 低载荷插值点列表
+ * @property points 低载荷插值点列表 / The list of low payload interpolation points.
 */
 class MinLowPayload(
     private val aircraftModel: AircraftModel,
@@ -34,8 +35,8 @@ class MinLowPayload(
      * A low payload interpolation point.
      * 低载荷插值点。
      *
-     * @property minLowPayload The minimum low payload at this point. / 此点的最小低载荷
-     * @property zfw The zero-fuel weight at this point. / 此点的零燃油重量
+     * @property minLowPayload 此点的最小低载荷 / The minimum low payload at this point.
+     * @property zfw 此点的零燃油重量 / The zero-fuel weight at this point.
     */
     data class Point(
         val minLowPayload: Quantity<Flt64>,
@@ -55,8 +56,8 @@ class MinLowPayload(
      * Registers the minimum low payload symbol with the given model.
      * 将最小低载荷符号注册到给定模型中。
      *
-     * @param model The linear meta model to register with. / 要注册的线性元模型
-     * @return Success or failure result. / 成功或失败结果
+     * @param model 要注册的线性元模型 / The linear meta model to register with.
+     * @return 成功或失败结果 / Success or failure result.
     */
     fun register(
         model: AbstractLinearMetaModel<Flt64>
@@ -98,13 +99,13 @@ class MinLowPayload(
             }
         }
         when (val result = model.add(minLowPayload)) {
-            is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-            is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                     return Fatal(result.errors)
                 }
         }
@@ -116,8 +117,8 @@ class MinLowPayload(
      * Interpolates the minimum low payload for the given zero-fuel weight.
      * 为给定的零燃油重量插值最小低载荷。
      *
-     * @param zfw The zero-fuel weight value. / 零燃油重量值
-     * @return The interpolated minimum low payload value. / 插值后的最小低载荷值
+     * @param zfw 零燃油重量值 / The zero-fuel weight value.
+     * @return 插值后的最小低载荷值 / The interpolated minimum low payload value.
     */
     private fun interpolate(zfw: Flt64): Flt64 {
         val sorted = points

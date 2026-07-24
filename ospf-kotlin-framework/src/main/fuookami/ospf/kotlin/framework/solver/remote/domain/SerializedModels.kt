@@ -1,6 +1,5 @@
 /**
- * 远程求解序列化模型
- * Remote solve serialized models
+ * 远程求解序列化模型 / Remote solve serialized models
 */
 package fuookami.ospf.kotlin.framework.solver.remote.domain
 
@@ -10,8 +9,7 @@ import kotlinx.serialization.Serializable
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 
 /**
- * 序列化变量类型。
- * Serialized variable type.
+ * 序列化变量类型。 / Serialized variable type.
 */
 @Serializable
 enum class SerializedVariableType {
@@ -32,8 +30,7 @@ enum class SerializedVariableType {
 }
 
 /**
- * 序列化约束符号。
- * Serialized constraint sign.
+ * 序列化约束符号。 / Serialized constraint sign.
 */
 @Serializable
 enum class SerializedConstraintSign {
@@ -48,8 +45,7 @@ enum class SerializedConstraintSign {
 }
 
 /**
- * 序列化目标类型。
- * Serialized objective category.
+ * 序列化目标类型。 / Serialized objective category.
 */
 @Serializable
 enum class SerializedObjectiveCategory {
@@ -61,8 +57,7 @@ enum class SerializedObjectiveCategory {
 }
 
 /**
- * 约束矩阵单元。
- * Constraint matrix cell.
+ * 约束矩阵单元。 / Constraint matrix cell.
  *
  * @property rowIndex 行索引 / Row index
  * @property colIndex 列索引 / Column index
@@ -76,8 +71,7 @@ data class SerializedConstraintCell(
 )
 
 /**
- * 目标函数单元。
- * Objective cell.
+ * 目标函数单元。 / Objective cell.
  *
  * @property colIndex 列索引 / Column index
  * @property coefficient 系数 / Coefficient
@@ -89,8 +83,7 @@ data class SerializedObjectiveCell(
 )
 
 /**
- * 序列化变量。
- * Serialized variable.
+ * 序列化变量。 / Serialized variable.
  *
  * @property index 变量索引 / Variable index
  * @property name 变量名 / Variable name
@@ -108,8 +101,7 @@ data class SerializedVariable(
 )
 
 /**
- * 序列化线性约束。
- * Serialized linear constraint.
+ * 序列化线性约束。 / Serialized linear constraint.
  *
  * @property cells 约束单元 / Constraint cells
  * @property sign 约束符号 / Constraint sign
@@ -125,8 +117,7 @@ data class SerializedConstraint(
 )
 
 /**
- * 序列化线性目标。
- * Serialized linear objective.
+ * 序列化线性目标。 / Serialized linear objective.
  *
  * @property category 目标类型 / Objective category
  * @property cells 目标单元 / Objective cells
@@ -140,8 +131,7 @@ data class SerializedObjective(
 )
 
 /**
- * 序列化线性模型。
- * Serialized linear model.
+ * 序列化线性模型。 / Serialized linear model.
  *
  * @property name 模型名 / Model name
  * @property variables 变量列表 / Variables
@@ -163,8 +153,7 @@ data class SerializedLinearModel(
     val constraintCount: Int get() = constraints.size
 
     /**
-     * 导出 LP 格式。
-     * Export LP format.
+     * 导出 LP 格式。 / Export LP format.
      *
      * @return LP 格式文本 / LP format text
     */
@@ -245,8 +234,7 @@ data class SerializedLinearModel(
 
     companion object {
         /**
-         * 创建空模型。
-         * Create empty model.
+         * 创建空模型。 / Create empty model.
          *
          * @param name 模型名 / Model name
          * @return 空线性模型 / Empty linear model
@@ -267,8 +255,7 @@ data class SerializedLinearModel(
 }
 
 /**
- * 序列化二次模型。
- * Serialized quadratic model.
+ * 序列化二次模型。 / Serialized quadratic model.
  *
  * @property name 模型名 / Model name
  * @property variables 变量列表 / Variables
@@ -296,8 +283,7 @@ data class SerializedQuadraticModel(
 }
 
 /**
- * 二次约束单元。
- * Quadratic constraint cell.
+ * 二次约束单元。 / Quadratic constraint cell.
  *
  * @property rowIndex 行索引 / Row index
  * @property colIndex1 第一列索引 / First column index
@@ -313,8 +299,7 @@ data class SerializedQuadraticConstraintCell(
 )
 
 /**
- * 序列化二次约束。
- * Serialized quadratic constraint.
+ * 序列化二次约束。 / Serialized quadratic constraint.
  *
  * @property linearCells 线性单元 / Linear cells
  * @property quadraticCells 二次单元 / Quadratic cells
@@ -332,8 +317,7 @@ data class SerializedQuadraticConstraint(
 )
 
 /**
- * 二次目标单元。
- * Quadratic objective cell.
+ * 二次目标单元。 / Quadratic objective cell.
  *
  * @property colIndex1 第一列索引 / First column index
  * @property colIndex2 第二列索引 / Second column index
@@ -347,8 +331,7 @@ data class SerializedQuadraticObjectiveCell(
 )
 
 /**
- * 序列化二次目标。
- * Serialized quadratic objective.
+ * 序列化二次目标。 / Serialized quadratic objective.
  *
  * @property category 目标类型 / Objective category
  * @property linearCells 线性目标单元 / Linear objective cells
@@ -364,8 +347,7 @@ data class SerializedQuadraticObjective(
 )
 
 /**
- * 序列化解。
- * Serialized solution.
+ * 序列化解。 / Serialized solution.
  *
  * @property feasible 是否可行 / Whether feasible
  * @property optimal 是否最优 / Whether optimal
@@ -391,8 +373,7 @@ data class SerializedSolution(
 ) {
     companion object {
         /**
-         * 创建不可行解。
-         * Create infeasible solution.
+         * 创建不可行解。 / Create infeasible solution.
          *
          * @param message 结果消息 / Result message
          * @return 不可行解 / Infeasible solution
@@ -406,8 +387,7 @@ data class SerializedSolution(
         }
 
         /**
-         * 创建无界解。
-         * Create unbounded solution.
+         * 创建无界解。 / Create unbounded solution.
          *
          * @param message 结果消息 / Result message
          * @return 无界解 / Unbounded solution
@@ -421,8 +401,7 @@ data class SerializedSolution(
         }
 
         /**
-         * 创建错误解。
-         * Create error solution.
+         * 创建错误解。 / Create error solution.
          *
          * @param message 错误消息 / Error message
          * @return 错误解 / Error solution
@@ -438,8 +417,7 @@ data class SerializedSolution(
 }
 
 /**
- * 转换为 LP 约束符号。
- * Convert to LP constraint sign.
+ * 转换为 LP 约束符号。 / Convert to LP constraint sign.
  *
  * @return LP 约束符号 / LP constraint sign
 */
@@ -452,8 +430,7 @@ fun SerializedConstraintSign.toLpString(): String {
 }
 
 /**
- * 转换为 LP 目标类型。
- * Convert to LP objective category.
+ * 转换为 LP 目标类型。 / Convert to LP objective category.
  *
  * @return LP 目标类型 / LP objective category
 */
@@ -468,10 +445,10 @@ fun SerializedObjectiveCategory.toLpString(): String {
  * Appends a linear term to the string builder.
  * 将线性项追加到字符串构建器。
  *
- * @param builder the string builder / 字符串构建器
- * @param first whether this is the first term / 是否为第一项
- * @param coefficient the coefficient value / 系数值
- * @param variableName the variable name / 变量名
+ * @param builder 字符串构建器 / the string builder
+ * @param first 是否为第一项 / whether this is the first term
+ * @param coefficient 系数值 / the coefficient value
+ * @param variableName 变量名 / the variable name
 */
 private fun appendLinearTerm(
     builder: StringBuilder,

@@ -1,6 +1,5 @@
 /**
- * 核心求解器异步作用域
- * Core solver async scope
+ * 核心求解器异步作用域 / Core solver async scope
 */
 package fuookami.ospf.kotlin.core.solver
 

@@ -21,11 +21,9 @@ import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.TimeSlot
 import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.TimeWindow
 
 /**
- * Bunch 模式的产能调度产品产量管理（支持列生成）
- * Bunch-mode produce management for Capacity Scheduling (with column generation)
+ * Bunch 模式的产能调度产品产量管理（支持列生成） / Bunch-mode produce management for Capacity Scheduling (with column generation)
  *
- * 用于列生成场景，通过 CapacityColumn 追加产量贡献
- * Used for column generation scenarios, adds produce contribution through CapacityColumn
+ * 用于列生成场景，通过 CapacityColumn 追加产量贡献 / Used for column generation scenarios, adds produce contribution through CapacityColumn
  *
  * @param E 执行器类型 / Executor type
  * @param A 生产动作类型 / Production action type
@@ -59,8 +57,7 @@ class BunchCapacitySchedulingProduce<
      * 从 IterativeCapacityCompilation 添加列贡献
      * Add column contribution from IterativeCapacityCompilation
      *
-     * 用于列生成场景，在每次迭代中添加新列的产量贡献
-     * Used for column generation, adds produce contribution from new columns in each iteration
+     * 用于列生成场景，在每次迭代中添加新列的产量贡献 / Used for column generation, adds produce contribution from new columns in each iteration
      *
      * @param iteration 当前迭代 / Current iteration
      * @param columns 产能列列表 / Capacity columns

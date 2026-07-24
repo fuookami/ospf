@@ -7,8 +7,7 @@ import kotlin.time.Duration
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
 
 /**
- * COPT 求解器的连接配置。
- * Connection configuration for COPT solver.
+ * COPT 求解器的连接配置。 / Connection configuration for COPT solver.
  *
  * @property server 服务器地址 / Server address
  * @property port 端口号 / Port number

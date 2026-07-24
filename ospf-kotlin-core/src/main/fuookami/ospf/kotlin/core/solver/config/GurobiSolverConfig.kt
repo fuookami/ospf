@@ -6,8 +6,7 @@ package fuookami.ospf.kotlin.core.solver.config
 import kotlin.time.Duration
 
 /**
- * Gurobi 求解器的连接配置。
- * Connection configuration for Gurobi solver.
+ * Gurobi 求解器的连接配置。 / Connection configuration for Gurobi solver.
  *
  * @property server 服务器地址 / Server address
  * @property password 密码 / Password

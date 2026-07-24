@@ -223,9 +223,7 @@ class GurobiLinearBendersDecompositionSolver(
  * Gurobi 11 二次 Benders 分解求解器
  *
  * 使用 Gurobi 11 求解器实现二次 Benders 分解策略，支持线性主问题求解（委托给线性 Benders 求解器）和二次主问题求解，
- * 以及二次子问题求解（含对偶解和 Farkas 证明提取）。
- *
- * Gurobi 11 quadratic Benders decomposition solver
+ * 以及二次子问题求解（含对偶解和 Farkas 证明提取）。 / Gurobi 11 quadratic Benders decomposition solver
  *
  * Implements quadratic Benders decomposition strategy using Gurobi 11 solver, supporting linear master problem solving
  * (delegates to linear Benders solver) and quadratic master problem solving, as well as quadratic sub-problem solving

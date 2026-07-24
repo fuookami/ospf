@@ -21,8 +21,8 @@ import com.hexaly.optimizer.*
  * Hexaly linear solver
  * Hexaly 线性求解器
  *
- * @property config solver configuration / 中文 求解器配置
- * @property callBack Hexaly solver callback manager / 中文 Hexaly 求解器回调管理器
+ * @property config 中文 求解器配置 / solver configuration
+ * @property callBack 中文 Hexaly 求解器回调管理器 / Hexaly solver callback manager
 */
 class HexalyLinearSolver(
     override val config: SolverConfig = SolverConfig(),
@@ -78,9 +78,9 @@ class HexalyLinearSolver(
  * Hexaly linear solver implementation
  * Hexaly 线性求解器实现
  *
- * @property config solver configuration / 中文 求解器配置
- * @property callBack Hexaly solver callback manager / 中文 Hexaly 求解器回调管理器
- * @property statusCallBack solving status callback / 中文 求解状态回调
+ * @property config 中文 求解器配置 / solver configuration
+ * @property callBack 中文 Hexaly 求解器回调管理器 / Hexaly solver callback manager
+ * @property statusCallBack 中文 求解状态回调 / solving status callback
 */
 private class HexalyLinearSolverImpl(
     private val config: SolverConfig,
@@ -126,8 +126,8 @@ private class HexalyLinearSolverImpl(
      * Dump linear model into Hexaly model
      * 将线性模型转储到 Hexaly 模型
      *
-     * @param model linear triad model view / 中文 线性三元组模型视图
-     * @return operation result / 中文 操作结果
+     * @param model 中文 线性三元组模型视图 / linear triad model view
+     * @return 中文 操作结果 / operation result
     */
     private suspend fun dump(model: LinearTriadModelView): Try {
         return try {
@@ -259,8 +259,8 @@ private class HexalyLinearSolverImpl(
      * Configure Hexaly optimizer parameters
      * 配置 Hexaly 优化器参数
      *
-     * @param model linear triad model view / 中文 线性三元组模型视图
-     * @return operation result / 中文 操作结果
+     * @param model 中文 线性三元组模型视图 / linear triad model view
+     * @return 中文 操作结果 / operation result
     */
     @OptIn(ExperimentalTime::class)
     private suspend fun configure(model: LinearTriadModelView): Try {
@@ -372,7 +372,7 @@ private class HexalyLinearSolverImpl(
      * Analyze solution from Hexaly solver
      * 分析 Hexaly 求解器的解
      *
-     * @return operation result / 中文 操作结果
+     * @return 中文 操作结果 / operation result
     */
     private suspend fun analyzeSolution(): Try {
         return try {
@@ -386,7 +386,8 @@ private class HexalyLinearSolverImpl(
                     solution = results,
                     time = solvingTime!!,
                     possibleBestObj = Flt64(hexalySolution.getDoubleObjectiveBound(0)),
-                    gap = Flt64(hexalySolution.getObjectiveGap(0))
+                    gap = Flt64(hexalySolution.getObjectiveGap(0)),
+                    status = status
                 )
 
                 when (val result = callBack?.execIfContain(

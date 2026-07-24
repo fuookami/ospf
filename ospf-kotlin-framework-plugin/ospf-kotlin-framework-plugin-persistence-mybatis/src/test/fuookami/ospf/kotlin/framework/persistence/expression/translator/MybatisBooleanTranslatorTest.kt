@@ -21,7 +21,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper
 class MybatisBooleanTranslatorTest {
     data class TestEntity(val id: Long, val age: Int, val name: String?)
 
-    private val resolver: MybatisColumnNameResolver = { path: String ->
+    private val resolver = MybatisColumnNameResolver { path: String ->
         when (path.substringAfterLast(".")) {
             "id", "age", "status", "name", "a", "b", "c", "d", "x", "price", "quantity" -> path.substringAfterLast(".")
             "widthValue" -> "width_value"

@@ -20,11 +20,9 @@ import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.TimeSlot
 import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.TimeWindow
 
 /**
- * Plan 模式的产能调度产品产量管理
- * Plan-mode produce management for Capacity Scheduling
+ * Plan 模式的产能调度产品产量管理 / Plan-mode produce management for Capacity Scheduling
  *
- * 用于非列生成场景，在构造时绑定 Capacity 编译对象
- * Used for non-column generation scenarios, binds to Capacity compilation object at construction
+ * 用于非列生成场景，在构造时绑定 Capacity 编译对象 / Used for non-column generation scenarios, binds to Capacity compilation object at construction
  *
  * @param products 产品列表及其需求 / Product list with demands
  * @param compilation Capacity 编译对象 / Capacity compilation object

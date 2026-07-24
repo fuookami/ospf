@@ -34,6 +34,12 @@ ospf-kotlin-core 是 OSPF（Open Solver Platform Framework）Kotlin 项目的**�
 | `solver` | 求解器抽象——线性/二次求解器、启发式、IIS 诊断、输出 | [README](src/main/fuookami/ospf/kotlin/core/solver/README_ch.md) |
 | `error` | 核心错误码定义 | — |
 
+## 约束规划
+
+`model.constraint_programming` 提供整数值域 CP 模型、Boolean literal、interval、全局约束、不可变 snapshot 和 portable snapshot codec。`solver.constraint_programming` 提供 solver/session SPI、fake contract solver、SCIP 集成和精确 MIP-backed 路径。MIP 路径只接受已声明的有限精确子集，包含 optional interval 和 variable duration；不支持的 formulation 返回结构化 `Ret` 错误。
+
+Logic-Based Benders 使用 `ospf-kotlin-framework` 中的 `LogicBasedBendersEngine`。实现将证明状态与可行性分离，`Exact` 模式要求 cut 全局有效，并通过 solver report 暴露结构化 conflict/IIS 证据。能力边界和验收命令见[实现计划](../plans/constraint-programming.md)。
+
 ## 四层模型架构
 
 核心模块实现了**四层模型架构**：

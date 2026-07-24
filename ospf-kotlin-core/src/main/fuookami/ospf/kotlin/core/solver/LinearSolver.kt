@@ -1,6 +1,5 @@
 /**
- * 线性求解器接口定义
- * Linear solver interface definitions
+ * 线性求解器接口定义 / Linear solver interface definitions
 */
 package fuookami.ospf.kotlin.core.solver
 
@@ -14,20 +13,78 @@ import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.core.model.intermediate.*
 import fuookami.ospf.kotlin.core.solver.iis.IISConfig
+import fuookami.ospf.kotlin.core.solver.iis.InfeasibilityAnalyzer
+import fuookami.ospf.kotlin.core.solver.report.*
+import fuookami.ospf.kotlin.core.solver.progress.*
 import fuookami.ospf.kotlin.core.solver.value.IntoValue
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
 import fuookami.ospf.kotlin.core.solver.output.*
 
 /**
- * 线性求解器的抽象接口，定义了求解、异步求解和泛型求解等核心能力。
- * Abstract interface for linear solvers, defining core capabilities for solving, async solving, and generic solving.
+ * 线性求解器的抽象接口，定义了求解、异步求解和泛型求解等核心能力。 / Abstract interface for linear solvers, defining core capabilities for solving, async solving, and generic solving.
 */
 interface AbstractLinearSolver {
     val name: String
 
+    /** 运行时求解器描述符；未覆盖时准确声明为无已知能力 / Runtime descriptor; defaults to no declared capabilities */
+    val descriptor: SolverDescriptor
+        get() = SolverDescriptor(
+            solverId = name,
+            backendName = name,
+            capabilities = SolverCapabilities(modelTypes = emptySet())
+        )
+
     /**
-     * 求解线性模型（阻塞）。
-     * Solve linear model (blocking).
+     * 返回 backend 提供的结构化不可行诊断分析器。 / Return backend-provided structured infeasibility analyzers.
+     *
+     * 默认返回空列表，使未迁移的旧 solver 继续使用 core 的 legacy IIS 路径。 / The default is empty so
+     * legacy solvers continue to use the core fallback path until they opt into the diagnostic SPI.
+     */
+    fun diagnosticAnalyzers(
+        config: IISConfig
+    ): List<InfeasibilityAnalyzer<LinearTriadModelView>> = emptyList()
+
+    /**
+     * 使用统一报告契约求解线性模型。 / Solve a linear model using the unified report contract.
+     *
+     * 旧求解器实现可通过默认实现直接迁移；backend 应逐步覆盖本方法以无损保留限制、取消和不可行终态。 / Legacy implementations can migrate through this default method; backends should override it to
+     * preserve limit, cancellation, and infeasibility terminal states without loss.
+     *
+     * @param model 线性三元模型视图 / Linear triad model view
+     * @param progressContext 进度上报上下文 / Progress reporting context
+     * @return 统一求解报告 / Unified solve report
+     */
+    suspend fun solveReport(
+        model: LinearTriadModelView,
+        progressContext: SolverProgressContext? = null
+    ): Ret<SolveReport<Flt64>> {
+        progressContext?.report(
+            SolverProgressSnapshot(
+                stage = SolverStages.MILP,
+                progressInStage = 0,
+                overallProgress = 0,
+                diagnostics = mapOf("solver" to name)
+            )
+        )
+        return when (val result = invoke(model, null)) {
+            is Ok -> {
+                progressContext?.report(
+                    SolverProgressSnapshot(
+                        stage = SolverStages.MILP,
+                        progressInStage = 100,
+                        overallProgress = 100,
+                        diagnostics = mapOf("solver" to name)
+                    )
+                )
+                Ok(result.value.toSolveReport())
+            }
+            is Failed -> Failed(result.error)
+            is Fatal -> Fatal(result.errors)
+        }
+    }
+
+    /**
+     * 求解线性模型（阻塞）。 / Solve linear model (blocking).
      *
      * @param model 线性三元模型视图 / Linear triad model view
      * @param solvingStatusCallBack 求解状态回调（可选）/ Solving status callback (optional)
@@ -39,8 +96,7 @@ interface AbstractLinearSolver {
     ): Ret<FeasibleSolverOutput<Flt64>>
 
     /**
-     * 求解线性模型并启用 IIS 诊断（阻塞）。
-     * Solve linear model with IIS diagnostics (blocking).
+     * 求解线性模型并启用 IIS 诊断（阻塞）。 / Solve linear model with IIS diagnostics (blocking).
      *
      * @param model 线性三元模型 / Linear triad model
      * @param solvingStatusCallBack 求解状态回调（可选）/ Solving status callback (optional)
@@ -62,8 +118,7 @@ interface AbstractLinearSolver {
     }
 
     /**
-     * 异步求解线性模型。
-     * Solve linear model asynchronously.
+     * 异步求解线性模型。 / Solve linear model asynchronously.
      *
      * @param model 线性三元模型视图 / Linear triad model view
      * @param solvingStatusCallBack 求解状态回调（可选）/ Solving status callback (optional)
@@ -86,8 +141,7 @@ interface AbstractLinearSolver {
     }
 
     /**
-     * 异步求解线性模型并启用 IIS 诊断。
-     * Solve linear model asynchronously with IIS diagnostics.
+     * 异步求解线性模型并启用 IIS 诊断。 / Solve linear model asynchronously with IIS diagnostics.
      *
      * @param model 线性三元模型 / Linear triad model
      * @param solvingStatusCallBack 求解状态回调（可选）/ Solving status callback (optional)
@@ -113,8 +167,7 @@ interface AbstractLinearSolver {
     }
 
     /**
-     * 求解线性模型获取多个解（阻塞）。
-     * Solve linear model for multiple solutions (blocking).
+     * 求解线性模型获取多个解（阻塞）。 / Solve linear model for multiple solutions (blocking).
      *
      * @param model 线性三元模型视图 / Linear triad model view
      * @param solutionAmount 期望解数量 / Desired solution amount
@@ -128,8 +181,7 @@ interface AbstractLinearSolver {
     ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>>
 
     /**
-     * 求解线性模型获取多个解并启用 IIS 诊断（阻塞）。
-     * Solve linear model for multiple solutions with IIS diagnostics (blocking).
+     * 求解线性模型获取多个解并启用 IIS 诊断（阻塞）。 / Solve linear model for multiple solutions with IIS diagnostics (blocking).
      *
      * @param model 线性三元模型视图 / Linear triad model view
      * @param solutionAmount 期望解数量 / Desired solution amount
@@ -154,8 +206,7 @@ interface AbstractLinearSolver {
     }
 
     /**
-     * 异步求解线性模型获取多个解。
-     * Solve linear model asynchronously for multiple solutions.
+     * 异步求解线性模型获取多个解。 / Solve linear model asynchronously for multiple solutions.
      *
      * @param model 线性三元模型视图 / Linear triad model view
      * @param solutionAmount 期望解数量 / Desired solution amount
@@ -181,8 +232,7 @@ interface AbstractLinearSolver {
     }
 
     /**
-     * 异步求解线性模型获取多个解并启用 IIS 诊断。
-     * Solve linear model asynchronously for multiple solutions with IIS diagnostics.
+     * 异步求解线性模型获取多个解并启用 IIS 诊断。 / Solve linear model asynchronously for multiple solutions with IIS diagnostics.
      *
      * @param model 线性三元模型视图 / Linear triad model view
      * @param solutionAmount 期望解数量 / Desired solution amount
@@ -214,8 +264,7 @@ interface AbstractLinearSolver {
     // solve 是泛型主入口；triad solve 调用仍是求解器边界。 / solve is the primary generic entry point; triad solve calls remain the solver boundary.
 
     /**
-     * 泛型求解线性模型。
-     * Solve linear model with generic value conversion.
+     * 泛型求解线性模型。 / Solve linear model with generic value conversion.
      *
      * @param V 值类型 / Value type
      * @param model 线性三元模型视图 / Linear triad model view
@@ -236,8 +285,7 @@ interface AbstractLinearSolver {
     }
 
     /**
-     * 泛型求解线性模型获取多个解。
-     * Solve linear model with generic value conversion for multiple solutions.
+     * 泛型求解线性模型获取多个解。 / Solve linear model with generic value conversion for multiple solutions.
      *
      * @param V 值类型 / Value type
      * @param model 线性三元模型视图 / Linear triad model view
@@ -264,8 +312,7 @@ interface AbstractLinearSolver {
 
     // MechanismModel<V> 的泛型 solve 全链路：dump -> solve -> convert。 / Generic solve for MechanismModel<V>: full pipeline (dump -> solve -> convert)
     /**
-     * 从机制模型求解线性问题（全链路：转储 -> 求解 -> 转换）。
-     * Solve linear problem from mechanism model (full pipeline: dump -> solve -> convert).
+     * 从机制模型求解线性问题（全链路：转储 -> 求解 -> 转换）。 / Solve linear problem from mechanism model (full pipeline: dump -> solve -> convert).
      *
      * @param V 值类型 / Value type
      * @param model 机制模型 / Mechanism model
@@ -296,8 +343,7 @@ interface AbstractLinearSolver {
     }
 
     /**
-     * 从机制模型求解线性问题获取多个解（全链路：转储 -> 求解 -> 转换）。
-     * Solve linear problem from mechanism model for multiple solutions (full pipeline: dump -> solve -> convert).
+     * 从机制模型求解线性问题获取多个解（全链路：转储 -> 求解 -> 转换）。 / Solve linear problem from mechanism model for multiple solutions (full pipeline: dump -> solve -> convert).
      *
      * @param V 值类型 / Value type
      * @param model 机制模型 / Mechanism model
@@ -330,8 +376,7 @@ interface AbstractLinearSolver {
     }
 
     /**
-     * 转储线性机制模型为三元组模型。
-     * Dump linear mechanism model to triad model.
+     * 转储线性机制模型为三元组模型。 / Dump linear mechanism model to triad model.
      *
      * @param model 线性机制模型 / Linear mechanism model
      * @return 线性三元组模型 / Linear triad model
@@ -341,8 +386,7 @@ interface AbstractLinearSolver {
     }
 
     /**
-     * 转储线性元模型为机制模型。
-     * Dump linear meta model to mechanism model.
+     * 转储线性元模型为机制模型。 / Dump linear meta model to mechanism model.
      *
      * @param model 线性元模型 / Linear meta model
      * @param registrationStatusCallBack 注册状态回调（可选）/ Registration status callback (optional)
@@ -363,8 +407,7 @@ interface AbstractLinearSolver {
 }
 
 /**
- * 线性求解器接口，扩展 [AbstractLinearSolver] 并提供配置驱动的模型转储能力。
- * Linear solver interface extending [AbstractLinearSolver] with configuration-driven model dumping.
+ * 线性求解器接口，扩展 [AbstractLinearSolver] 并提供配置驱动的模型转储能力。 / Linear solver interface extending [AbstractLinearSolver] with configuration-driven model dumping.
  *
  * @property config 求解器配置 / Solver configuration
 */

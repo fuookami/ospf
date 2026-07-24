@@ -27,8 +27,7 @@ private val flt64Converter = object : IntoValue<Flt64> {
 }
 
 /**
- * 设施选址：找到最小化到定居点总曼哈顿距离的点。
- * Facility location: find the point minimizing total Manhattan distance to settlements.
+ * 设施选址：找到最小化到定居点总曼哈顿距离的点。 / Facility location: find the point minimizing total Manhattan distance to settlements.
  *
  * @see https://fuookami.github.io/ospf/examples/example9.html
 */

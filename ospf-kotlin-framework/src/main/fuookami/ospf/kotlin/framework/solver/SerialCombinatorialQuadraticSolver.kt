@@ -1,9 +1,7 @@
 /**
- * 串行组合二次求解器
- * Serial Combinatorial Quadratic Solver
+ * 串行组合二次求解器 / Serial Combinatorial Quadratic Solver
  *
- * 将多个二次求解器串行运行，第一个成功即返回。
- * Runs multiple quadratic solvers serially, returning on first success.
+ * 将多个二次求解器串行运行，第一个成功即返回。 / Runs multiple quadratic solvers serially, returning on first success.
 */
 package fuookami.ospf.kotlin.framework.solver
 
@@ -17,8 +15,7 @@ import fuookami.ospf.kotlin.utils.error.ErrorCode
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
- * 串行组合二次求解器
- * Serial combinatorial quadratic solver
+ * 串行组合二次求解器 / Serial combinatorial quadratic solver
  *
  * @property solvers 二次求解器列表（懒加载） / Quadratic solver list (lazy loaded)
  * @property stopErrorCode 遇到即停止的错误码 / Error codes that stop execution

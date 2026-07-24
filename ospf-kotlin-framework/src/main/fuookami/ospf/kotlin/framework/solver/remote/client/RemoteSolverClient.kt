@@ -1,6 +1,5 @@
 /**
- * 远程求解器客户端
- * Remote solver client
+ * 远程求解器客户端 / Remote solver client
 */
 package fuookami.ospf.kotlin.framework.solver.remote.client
 
@@ -12,8 +11,7 @@ import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
- * 远程求解器客户端。
- * Remote solver client.
+ * 远程求解器客户端。 / Remote solver client.
  *
  * @property executionPort 求解执行端口 / Solve execution port
 */
@@ -22,8 +20,7 @@ class RemoteSolverClient(
 ) {
 
     /**
-     * 执行远程求解。
-     * Execute remote solve.
+     * 执行远程求解。 / Execute remote solve.
      *
      * @param payload 求解载荷 / Solve payload
      * @param taskId 任务 ID / Task ID

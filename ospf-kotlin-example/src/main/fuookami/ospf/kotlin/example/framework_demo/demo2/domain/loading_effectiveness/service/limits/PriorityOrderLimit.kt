@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.loading_effectiveness.service.limits
 
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
@@ -18,16 +19,16 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.infrastructure.*
  * Ensures higher priority cargos get better (lower index) positions using big-M formulation.
  * 使用大 M 公式确保更高优先级的货物获得更好的位置。
  *
- * @property items The list of cargo items. / 货物项列表
- * @property positions The list of stowage positions. / 配载位置列表
- * @property stowage The stowage assignment model. / 配载分配模型
- * @property bigM The big-M constant used in constraint formulation. / 约束公式中使用的大 M 常数
+ * @property items 货物项列表 / The list of cargo items.
+ * @property positions 配载位置列表 / The list of stowage positions.
+ * @property stowage 配载分配模型 / The stowage assignment model.
+ * @property bigM 约束公式中使用的大 M 常数 / The big-M constant used in constraint formulation.
 */
 class PriorityOrderLimit(
     private val items: List<Item>,
     private val positions: List<Position>,
     private val stowage: Stowage,
-    private val bigM: Double = 1000.0,
+    private val bigM: Double = positions.size.toDouble(),
     override val name: String = "priority_order_limit"
 ) : Pipeline<AbstractLinearMetaModel<Flt64>> {
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {
@@ -51,9 +52,9 @@ class PriorityOrderLimit(
                     relation = lhs leq rhs,
                     name = "${name}_${i}_${j}_${items[i].cargo.priority.priority}"
                 )) {
-                    is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
-                    is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> return Failed(result.error)
-                    is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> return Fatal(result.errors)
+                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                    is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
+                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
                 }
             }
         }

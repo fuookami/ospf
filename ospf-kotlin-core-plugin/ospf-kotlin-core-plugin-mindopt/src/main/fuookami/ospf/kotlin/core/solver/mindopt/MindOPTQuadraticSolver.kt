@@ -27,7 +27,7 @@ import com.alibaba.damo.mindopt.*
  *
  * MindOPT 二次求解器
  *
- * @property callBack Quadratic solver callback / 二次求解器回调
+ * @property callBack 二次求解器回调 / Quadratic solver callback
 */
 class MindOPTQuadraticSolver(
     override val config: SolverConfig = SolverConfig(),
@@ -94,9 +94,9 @@ class MindOPTQuadraticSolver(
  *
  * MindOPT 二次求解器内部实现
  *
- * @property config Solver configuration / 求解器配置
- * @property callBack Quadratic solver callback / 二次求解器回调
- * @property statusCallBack Solving status callback / 求解状态回调
+ * @property config 求解器配置 / Solver configuration
+ * @property callBack 二次求解器回调 / Quadratic solver callback
+ * @property statusCallBack 求解状态回调 / Solving status callback
 */
 private class MindOPTQuadraticSolverImpl(
     private val config: SolverConfig,
@@ -146,8 +146,8 @@ private class MindOPTQuadraticSolverImpl(
      *
      * 将二次模型导出到 MindOPT 求解器
      *
-     * @param model Quadratic tetrad model view / 二次四元组模型视图
-     * @return Operation result / 操作结果
+     * @param model 二次四元组模型视图 / Quadratic tetrad model view
+     * @return 操作结果 / Operation result
     */
     private suspend fun dump(model: QuadraticTetradModelView): Try {
         return try {
@@ -290,8 +290,8 @@ private class MindOPTQuadraticSolverImpl(
      *
      * 为二次模型配置 MindOPT 求解器参数
      *
-     * @param model Quadratic tetrad model view / 二次四元组模型视图
-     * @return Operation result / 操作结果
+     * @param model 二次四元组模型视图 / Quadratic tetrad model view
+     * @return 操作结果 / Operation result
     */
     private suspend fun configure(model: QuadraticTetradModelView): Try {
         return try {
@@ -398,7 +398,7 @@ private class MindOPTQuadraticSolverImpl(
      *
      * 分析二次求解结果并提取解
      *
-     * @return Operation result / 操作结果
+     * @return 操作结果 / Operation result
     */
     private suspend fun analyzeSolution(): Try {
         return try {
@@ -424,7 +424,8 @@ private class MindOPTQuadraticSolverImpl(
                         } else {
                             0.0
                         }
-                    )
+                    ),
+                    status = status
                 )
                 when (val result = callBack?.execIfContain(
                     point = Point.AnalyzingSolution,

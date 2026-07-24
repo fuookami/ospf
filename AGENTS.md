@@ -40,20 +40,27 @@
 
 使用 `-T 0.75C` 参数可以加速多模块构建，该参数表示每个 CPU 核心使用 0.75 个线程进行并行构建。
 
+### 增量编译优先策略
+
+本项目模块众多、体量较大，完整 `mvn clean` 构建耗时显著。在任务执行过程中应遵循以下原则：
+
+- **任务进行中**：使用增量编译（`mvn compile`、`mvn test -pl <module>` 等），避免 `mvn clean`，以利用 Maven 的增量编译机制减少重复构建时间。
+- **任务收尾验收**：在所有代码修改完成后，执行 `mvn clean compile test-compile -T 0.75C` 进行全量编译，再执行 `mvn test -T 0.75C` 进行全量测试，确保最终结果无遗漏问题。
+- **增量编译异常时**：若增量编译出现疑似缓存导致的诡异错误（如已删除的类仍被引用、修改未生效等），可在单次构建中插入 `mvn clean` 排查，但应尽快回归增量模式继续后续工作。
+
 ### 常用命令
 ```bash
-# 基础构建
-mvn clean install -DskipTests
-mvn compile
-
-# 使用并行构建加速
-mvn clean install -DskipTests -T 0.75C
+# 增量编译（任务进行中推荐）
 mvn compile -T 0.75C
+mvn compile test-compile -T 0.75C
 
-# 测试相关
+# 增量测试指定模块
 mvn test -pl aps-domain/aps-domain-production
 mvn test -Dtest=ToolRepositoryTest
 mvn test -Dtest=ToolRepositoryTest#testSaveTool_shouldAssignId
+
+# 全量编译+测试（仅任务收尾验收时使用）
+mvn clean compile test-compile -T 0.75C
 mvn test -T 0.75C
 
 # 排除特定测试（用于解决既有编译问题）
@@ -96,3 +103,5 @@ mvn clean compile test-compile -T 0.75C 2>&1 | grep "error:\|ERROR" | head -10
 ### 核心原则
 
 **一次构建，一次分析。** 任何一次 `mvn` 构建或测试的输出都必须被完整利用，不得因输出截断而引发重复构建。
+
+**增量优先，全量收尾。** 任务进行中尽量使用增量编译以节省时间，仅在任务最终验收时执行 `mvn clean` 全量构建与全量测试，确保交付质量。

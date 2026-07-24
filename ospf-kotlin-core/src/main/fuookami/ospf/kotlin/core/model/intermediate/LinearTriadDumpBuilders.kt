@@ -1,6 +1,5 @@
 /**
- * 线性三元模型转储构建器
- * Linear triad model dump builders
+ * 线性三元模型转储构建器 / Linear triad model dump builders
 */
 package fuookami.ospf.kotlin.core.model.intermediate
 
@@ -15,8 +14,7 @@ import fuookami.ospf.kotlin.math.ordinary.*
 import fuookami.ospf.kotlin.utils.functional.Quadruple
 import kotlinx.coroutines.*
 /**
- * 将任意数值类型转换为 Flt64（求解器边界用）
- * Convert any numeric value to Flt64 (for solver boundary use)
+ * 将任意数值类型转换为 Flt64（求解器边界用） / Convert any numeric value to Flt64 (for solver boundary use)
  *
  * @return 转换后的 Flt64 值 / The converted Flt64 value
 */
@@ -29,8 +27,7 @@ private fun Any?.toSolverFlt64(): Flt64 {
 }
 
 /**
- * 将求解器边界单元格令牌视为 Flt64 令牌
- * Treat a solver-boundary cell token as an Flt64 token
+ * 将求解器边界单元格令牌视为 Flt64 令牌 / Treat a solver-boundary cell token as an Flt64 token
  *
  * @return 转型后的 Flt64 令牌 / The cast Flt64 token
 */
@@ -40,8 +37,7 @@ private fun LinearCell<*>.tokenAsFlt64(): Token<Flt64> {
 }
 
 /**
- * 从约束单元格行列表构建稀疏矩阵。
- * Build a sparse matrix from a list of constraint cell rows.
+ * 从约束单元格行列表构建稀疏矩阵。 / Build a sparse matrix from a list of constraint cell rows.
  *
  * @param rows 约束单元格行列表 / The list of constraint cell rows
  * @return 稀疏矩阵 / The sparse matrix
@@ -59,8 +55,7 @@ internal fun buildLinearSparseLhs(rows: List<List<LinearConstraintCell>>): Spars
 }
 
 /**
- * 从标记索引和边界约束生成求解器变量列表。
- * Generate solver variables from token indexes and bound constraints.
+ * 从标记索引和边界约束生成求解器变量列表。 / Generate solver variables from token indexes and bound constraints.
  *
  * @param tokenIndexes 标记到列索引的映射 / The mapping from tokens to column indices
  * @param bounds       标记到边界约束列表的映射 / The mapping from tokens to bound constraint lists
@@ -108,8 +103,7 @@ internal fun dumpLinearTriadVariables(
 }
 
 /**
- * 从线性机制模型转储约束到线性约束批次。
- * Dump constraints from a linear mechanism model into a linear constraint batch.
+ * 从线性机制模型转储约束到线性约束批次。 / Dump constraints from a linear mechanism model into a linear constraint batch.
  *
  * @param model          线性机制模型 / The linear mechanism model
  * @param tokenIndexes   标记到列索引的映射 / The mapping from tokens to column indices
@@ -180,8 +174,7 @@ internal fun dumpLinearTriadConstraints(
 }
 
 /**
- * 异步从线性机制模型转储约束到线性约束批次，支持并行分段处理。
- * Asynchronously dump constraints from a linear mechanism model into a linear constraint batch with parallel segment processing.
+ * 异步从线性机制模型转储约束到线性约束批次，支持并行分段处理。 / Asynchronously dump constraints from a linear mechanism model into a linear constraint batch with parallel segment processing.
  *
  * @param model          线性机制模型 / The linear mechanism model
  * @param tokenIndexes   标记到列索引的映射 / The mapping from tokens to column indices
@@ -319,8 +312,7 @@ internal suspend fun dumpLinearTriadConstraintsAsync(
 }
 
 /**
- * 从线性机制模型转储目标函数到线性目标对象。
- * Dump objective function from a linear mechanism model into a linear objective.
+ * 从线性机制模型转储目标函数到线性目标对象。 / Dump objective function from a linear mechanism model into a linear objective.
  *
  * @param model          线性机制模型 / The linear mechanism model
  * @param tokenIndexes   标记到列索引的映射 / The mapping from tokens to column indices

@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.redundancy.service.limits
 
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
@@ -15,8 +16,8 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.redundancy.model
  * Minimizes the redundancy slack weighted by a coefficient.
  * 最小化按系数加权的冗余松弛。
  *
- * @property redundancy The redundancy model containing slack variables / 包含松弛变量的冗余模型
- * @property coefficient The weight coefficient function for the objective / 目标函数的权重系数函数
+ * @property redundancy 包含松弛变量的冗余模型 / The redundancy model containing slack variables
+ * @property coefficient 目标函数的权重系数函数 / The weight coefficient function for the objective
 */
 class RedundancyLimit(
     private val redundancy: Redundancy,
@@ -28,13 +29,13 @@ class RedundancyLimit(
             LinearMonomial(coefficient(), redundancy.redundancySlack),
             "redundancy"
         )) {
-            is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-            is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                     return Fatal(result.errors)
                 }
         }

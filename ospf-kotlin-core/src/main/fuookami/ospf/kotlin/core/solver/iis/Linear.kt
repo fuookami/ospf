@@ -12,10 +12,16 @@ import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.core.model.intermediate.*
 import fuookami.ospf.kotlin.core.solver.AbstractLinearSolver
+import fuookami.ospf.kotlin.core.solver.report.BoundSide
+import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.InfeasibilityEvidence
+import fuookami.ospf.kotlin.core.solver.report.InfeasibilityEvidenceSource
+import fuookami.ospf.kotlin.core.solver.report.VariableId
+import fuookami.ospf.kotlin.core.solver.report.diagnosticConstraintId
+import fuookami.ospf.kotlin.core.solver.report.diagnosticVariableId
 
 /**
- * 线性 IIS 模型，包含不可行子系统和可选的守卫约束。
- * Linear IIS model, containing the infeasible subsystem and optional guard constraints.
+ * 线性 IIS 模型，包含不可行子系统和可选的守卫约束。 / Linear IIS model, containing the infeasible subsystem and optional guard constraints.
  *
  * @property impl 基础线性三元模型实现 / Basic linear triad model implementation
  * @property guardConstraints 守卫约束（可选）/ Guard constraints (optional)
@@ -33,8 +39,7 @@ data class LinearIISModel(
     val relaxedFeasible: Boolean get() = guardConstraints == null
 
     /**
-     * 将模型导出为 LP 格式。
-     * Export the model in LP format.
+     * 将模型导出为 LP 格式。 / Export the model in LP format.
      *
      * @param writer 输出写入器 / Output writer
      * @return 操作结果 / Operation result
@@ -44,9 +49,114 @@ data class LinearIISModel(
     }
 }
 
+/** 通过诊断编排器计算线性 IIS，必要时回退到 legacy 算法。 / Compute linear IIS through the diagnostic orchestrator, falling back to the legacy algorithm when necessary. */
+@OptIn(ExperimentalTime::class)
+suspend fun computeIIS(
+    model: LinearTriadModelView,
+    solver: AbstractLinearSolver,
+    config: IISConfig
+): Ret<LinearIISModel> {
+    val analyzers = solver.diagnosticAnalyzers(config) + LegacyElasticInfeasibilityAnalyzer(solver, config)
+    val orchestrator = InfeasibilityDiagnosticOrchestrator(
+        analyzers = analyzers,
+        solverCapabilities = solver.descriptor.capabilities
+    )
+    return when (val result = orchestrator.analyzeMaterialized<LinearIISModel>(model)) {
+        is Ok -> {
+            result.value.artifact?.let(::Ok)
+                ?: materializeNativeIIS(model, result.value.evidence)?.let(::Ok)
+                ?: when (val fallback = LegacyElasticInfeasibilityAnalyzer(solver, config).analyzeMaterialized(model)) {
+                    is Ok -> fallback.value.artifact?.let(::Ok)
+                        ?: Failed(ErrorCode.Other, "Legacy IIS 未返回模型 artifact / Legacy IIS did not return a model artifact")
+                    is Failed -> Failed(fallback.error)
+                    is Fatal -> Fatal(fallback.errors)
+                }
+        }
+
+        is Failed -> Failed(result.error)
+        is Fatal -> Fatal(result.errors)
+    }
+}
+
+/** 将原生 IIS 证据物化为兼容线性模型。 / Materialize native IIS evidence as a compatible linear model. */
+private fun materializeNativeIIS(
+    model: LinearTriadModelView,
+    evidence: InfeasibilityEvidence
+): LinearIISModel? {
+    if (evidence.source != InfeasibilityEvidenceSource.NativeIIS) {
+        return null
+    }
+    val rows = model.constraints.indices.filter { index ->
+        val currentId = model.diagnosticConstraintId(index)
+        currentId in evidence.constraintIds ||
+            ConstraintId("constraint-$index") in evidence.constraintIds
+    }
+    val boundByVariable = evidence.variableBoundRefs.groupBy { it.variableId }
+    val referencedVariables = linkedSetOf<Int>()
+    rows.forEach { row ->
+        model.constraints.sparseLhs.forEachEntry(row) { column, _ -> referencedVariables += column }
+    }
+    model.variables.forEachIndexed { index, variable ->
+        val ids = setOf(
+            variable.diagnosticVariableId(),
+            VariableId("variable-$index")
+        )
+        if (ids.any(boundByVariable::containsKey) || evidence.variableDomainRefs.any { it.variableId in ids }) {
+            referencedVariables += index
+        }
+    }
+    if (rows.isEmpty() && referencedVariables.isEmpty()) {
+        return null
+    }
+    val selectedIndices = referencedVariables.toList().sorted()
+    val oldToNewVariableIndexMap = selectedIndices.withIndex().associate { (newIndex, oldIndex) ->
+        oldIndex to newIndex
+    }
+    val variables = selectedIndices.mapIndexed { newIndex, oldIndex ->
+        val original = model.variables[oldIndex]
+        val selected = setOf(
+            original.diagnosticVariableId(),
+            VariableId("variable-$oldIndex")
+        ).flatMap { boundByVariable[it].orEmpty() }
+        Variable(
+            index = newIndex,
+            lowerBound = if (selected.any { it.side == BoundSide.Lower }) original.lowerBound else Flt64.negativeInfinity,
+            upperBound = if (selected.any { it.side == BoundSide.Upper }) original.upperBound else Flt64.infinity,
+            type = original.type,
+            origin = original.origin,
+            dualOrigin = original.dualOrigin,
+            slack = original.slack,
+            name = original.name,
+            initialResult = original.initialResult
+        )
+    }
+    val sparseLhs = SparseMatrix<Flt64>()
+    rows.forEach { row ->
+        val sparseRow = SparseVector<Flt64>()
+        model.constraints.sparseLhs.forEachEntry(row) { oldColumn, coefficient ->
+            oldToNewVariableIndexMap[oldColumn]?.let { newColumn -> sparseRow.add(newColumn, coefficient.copy()) }
+        }
+        sparseLhs.addRow(sparseRow)
+    }
+    val constraints = LinearConstraintBatch(
+        sparseLhs = sparseLhs,
+        signs = rows.map { model.constraints.signs[it] },
+        rhs = rows.map { model.constraints.rhs[it].copy() },
+        names = rows.map { model.constraints.names[it] },
+        sources = rows.map { model.constraints.sources[it] },
+        origins = rows.map { model.constraints.origins[it] },
+        froms = rows.map { model.constraints.froms[it] },
+        priorities = rows.map { model.constraints.priorities[it] }
+    )
+    return LinearIISModel(
+        impl = BasicLinearTriadModel(variables, constraints, "${model.name}_iis"),
+        guardConstraints = null,
+        origin = model
+    )
+}
+
 /**
- * 计算线性模型的不可行子系统（IIS）。
- * Compute the Irreducible Infeasible Subsystem (IIS) for a linear model.
+ * 计算线性模型的不可行子系统（IIS）。 / Compute the Irreducible Infeasible Subsystem (IIS) for a linear model.
  *
  * @param model 线性三元模型视图 / Linear triad model view
  * @param solver 线性求解器 / Linear solver
@@ -54,7 +164,7 @@ data class LinearIISModel(
  * @return IIS 模型 / IIS model
 */
 @OptIn(ExperimentalTime::class)
-suspend fun computeIIS(
+suspend fun computeLegacyIIS(
     model: LinearTriadModelView,
     solver: AbstractLinearSolver,
     config: IISConfig
@@ -115,7 +225,7 @@ suspend fun computeIIS(
         }
     }
 
-    config.computingStatusCallBack?.invoke(
+    when (val callbackResult = config.computingStatusCallBack?.invoke(
         true,
         Clock.System.now() - startTime,
         IISComputingStatus(
@@ -124,7 +234,12 @@ suspend fun computeIIS(
             restConstraintAmount = constraintAmount,
             totalConstraintAmount = constraintAmount,
         )
-    )
+    )) {
+        null -> {}
+        is Ok -> {}
+        is Failed -> return Failed(callbackResult.error)
+        is Fatal -> return Fatal(callbackResult.errors)
+    }
     val (misConstraints, guardConstraints) = when (val result = performDeletionFiltering(
         elasticModel = elasticModel,
         solver = solver,
@@ -149,8 +264,7 @@ suspend fun computeIIS(
 }
 
 /**
- * 获取与松弛变量关联的约束索引列表。
- * Get constraint indices related to slack variables.
+ * 获取与松弛变量关联的约束索引列表。 / Get constraint indices related to slack variables.
  *
  * @param model 线性三元模型视图 / Linear triad model view
  * @param slackVariables 松弛变量集合 / Slack variable set
@@ -170,8 +284,7 @@ private fun getRelatedConstraints(
 }
 
 /**
- * 获取与过滤变量和约束关联的变量列表。
- * Get variables related to filter variables and constraints.
+ * 获取与过滤变量和约束关联的变量列表。 / Get variables related to filter variables and constraints.
  *
  * @param model 线性三元模型视图 / Linear triad model view
  * @param filter 过滤的松弛变量集合 / Filtered slack variable set
@@ -215,8 +328,7 @@ private fun getRelatedVariables(
 }
 
 /**
- * 从弹性过滤结果构建线性 IIS 模型。
- * Build linear IIS model from elastic filter result.
+ * 从弹性过滤结果构建线性 IIS 模型。 / Build linear IIS model from elastic filter result.
  *
  * @param model 线性三元模型视图 / Linear triad model view
  * @param elasticFilter 弹性过滤结果，松弛变量到值的映射 / Elastic filter result, mapping of slack variables to values
@@ -253,8 +365,7 @@ private fun dump(
 }
 
 /**
- * 从 MIS 和守卫约束构建线性 IIS 模型。
- * Build linear IIS model from MIS and guard constraints.
+ * 从 MIS 和守卫约束构建线性 IIS 模型。 / Build linear IIS model from MIS and guard constraints.
  *
  * @param model 线性三元模型视图 / Linear triad model view
  * @param misConstraints 不可行子系统约束对应的松弛变量集合 / Slack variable set for MIS constraints
@@ -298,8 +409,7 @@ private fun dump(
 }
 
 /**
- * 执行弹性过滤以识别不可行组件。
- * Perform elastic filtering to identify infeasible components.
+ * 执行弹性过滤以识别不可行组件。 / Perform elastic filtering to identify infeasible components.
  *
  * @param elasticModel 弹性线性三元模型视图 / Elastic linear triad model view
  * @param solver 线性求解器 / Linear solver
@@ -390,8 +500,7 @@ private suspend fun performElasticFiltering(
 }
 
 /**
- * 执行删除过滤以精简不可行组件。
- * Perform deletion filtering to refine infeasible components.
+ * 执行删除过滤以精简不可行组件。 / Perform deletion filtering to refine infeasible components.
  *
  * @param elasticModel 弹性线性三元模型视图 / Elastic linear triad model view
  * @param solver 线性求解器 / Linear solver
@@ -476,8 +585,7 @@ private suspend fun performDeletionFiltering(
 }
 
 /**
- * 松弛满足条件的特定组件。
- * Relax specific components satisfying the condition.
+ * 松弛满足条件的特定组件。 / Relax specific components satisfying the condition.
  *
  * @param elasticModel 弹性线性三元模型视图 / Elastic linear triad model view
  * @param solver 线性求解器 / Linear solver

@@ -33,10 +33,9 @@ abstract class ScipSolver : AutoCloseable {
         private val unixLibraries = listOf("libgcg", "libgmp", "libpthread", "libgfortran", "libquadmath", "libopenblas", "libtbb", "libsplexshared", "libscip", "libjscip")
 
         /**
-         * 从 JAR 包中加载 SCIP 原生库
-         * Load SCIP native library from JAR package
+         * 从 JAR 包中加载 SCIP 原生库 / Load SCIP native library from JAR package
          *
-         * @return the load result as Try / 以Try包装的加载结果
+         * @return 以Try包装的加载结果 / the load result as Try
         */
         fun loadLibraryInJar(): Try {
             val systemType = System.getProperty("os.name")

@@ -408,10 +408,9 @@ private class CoptLinearSolverImpl(
     }
 
     /**
-     * 分析求解结果
-     * Analyze solving result
+     * 分析求解结果 / Analyze solving result
      *
-     * @return the analysis result as Try / 以Try包装的分析结果
+     * @return 以Try包装的分析结果 / the analysis result as Try
     */
     private suspend fun analyzeSolution(): Try {
         return try {
@@ -441,7 +440,8 @@ private class CoptLinearSolverImpl(
                         } else {
                             0.0
                         }
-                    )
+                    ),
+                    status = status
                 )
                 when (val result = callBack?.execIfContain(
                     point = Point.AnalyzingSolution,

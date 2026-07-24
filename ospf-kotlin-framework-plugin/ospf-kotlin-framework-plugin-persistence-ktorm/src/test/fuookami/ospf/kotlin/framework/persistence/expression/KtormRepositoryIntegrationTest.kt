@@ -57,7 +57,7 @@ class KtormRepositoryIntegrationTest {
      * 列解析器，将属性路径映射到表列
      * Column resolver, maps property paths to table columns
      */
-    private val resolver: KtormColumnResolver = { path: String ->
+    private val resolver = KtormColumnResolver { path: String ->
         when (path.substringAfterLast(".")) {
             "id" -> Users.id
             "name" -> Users.name

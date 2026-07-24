@@ -1,0 +1,622 @@
+/** Versioned CP snapshot transport codec. / 带版本的 CP snapshot 传输编解码器。 */
+package fuookami.ospf.kotlin.core.model.constraint_programming
+
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
+import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
+import fuookami.ospf.kotlin.core.solver.report.VariableId
+import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
+import fuookami.ospf.kotlin.math.algebra.number.Int64
+import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.utils.functional.Failed
+import fuookami.ospf.kotlin.utils.functional.Fatal
+import fuookami.ospf.kotlin.utils.functional.Ret
+import fuookami.ospf.kotlin.utils.functional.ok
+
+/**
+ * / 只序列化不可变 CP snapshot，不序列化求解器或 native 句柄。 / Serializes immutable CP snapshots without serializing solver/native handles. The receiver supplies stable-ID-to-variable bindings when decoding, which keeps
+ * / 接收端解码时提供稳定 ID 到变量的绑定，从而不依赖发送端变量对象。 / transport independent of a particular OSPF variable instance.
+ */
+object ConstraintProgrammingSnapshotCodec {
+    private const val CURRENT_SCHEMA = 1
+
+    private val json = Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = false
+    }
+
+    /** Encode a snapshot as versioned JSON. / 将 snapshot 编码为带版本 JSON。 */
+    fun encode(snapshot: ConstraintProgrammingModelSnapshot): Ret<String> {
+        return try {
+            ok(json.encodeToString(SnapshotPayload.serializer(), snapshot.toPayload()))
+        } catch (error: Throwable) {
+            Failed(
+                ErrorCode.Other,
+                "CP snapshot 序列化失败：${error.message} / CP snapshot serialization failed: ${error.message}"
+            )
+        }
+    }
+
+    /**
+     * / 使用调用方提供的稳定变量绑定解码 JSON。 / Decode JSON with caller-provided stable variable bindings.
+     */
+    fun decode(
+        encoded: String,
+        variables: Map<VariableId, AbstractVariableItem<*, *>>
+    ): Ret<ConstraintProgrammingModelSnapshot> {
+        return try {
+            val payload = json.decodeFromString(SnapshotPayload.serializer(), encoded)
+            if (payload.schema != CURRENT_SCHEMA) {
+                return Failed(
+                    ErrorCode.Other,
+                    "不支持的 CP snapshot schema：${payload.schema} / Unsupported CP snapshot schema: ${payload.schema}"
+                )
+            }
+            payload.toSnapshot(variables)
+        } catch (error: Throwable) {
+            Failed(
+                ErrorCode.IllegalArgument,
+                "CP snapshot 反序列化失败：${error.message} / CP snapshot deserialization failed: ${error.message}"
+            )
+        }
+    }
+}
+
+@Serializable
+private data class SnapshotPayload(
+    val schema: Int,
+    val name: String,
+    val objectCategory: String,
+    val variables: List<VariablePayload>,
+    val intervals: List<IntervalPayload>,
+    val expressions: List<NamedExpressionPayload>,
+    val constraints: List<ConstraintEntryPayload>,
+    val objectives: List<ObjectivePayload>,
+    val constraintGroups: List<String>
+)
+
+@Serializable
+private data class VariablePayload(
+    val id: String,
+    val name: String,
+    val typeName: String,
+    val domain: DomainPayload
+)
+
+@Serializable
+private data class DomainPayload(
+    val kind: String,
+    val lower: Long? = null,
+    val upper: Long? = null,
+    val values: List<Long> = emptyList()
+)
+
+@Serializable
+private data class NamedExpressionPayload(
+    val name: String,
+    val expression: ExpressionPayload
+)
+
+@Serializable
+private data class ExpressionPayload(
+    val kind: String,
+    val value: Long? = null,
+    val message: String? = null,
+    val variableId: String? = null,
+    val domain: DomainPayload? = null,
+    val terms: List<TermPayload> = emptyList(),
+    val constant: Long = 0L
+)
+
+@Serializable
+private data class TermPayload(
+    val variableId: String,
+    val coefficient: Long
+)
+
+@Serializable
+private data class LiteralPayload(
+    val variableId: String? = null,
+    val negated: Boolean = false,
+    val constant: Boolean? = null
+)
+
+@Serializable
+private data class IntervalPayload(
+    val id: String,
+    val start: ExpressionPayload,
+    val size: ExpressionPayload,
+    val end: ExpressionPayload,
+    val presence: LiteralPayload? = null
+)
+
+@Serializable
+private data class ConstraintEntryPayload(
+    val id: String,
+    val name: String,
+    val groupName: String?,
+    val constraint: ConstraintPayload
+)
+
+@Serializable
+private data class ConstraintPayload(
+    val kind: String,
+    val expression: ExpressionPayload? = null,
+    val comparison: String? = null,
+    val rhs: Long? = null,
+    val literals: List<LiteralPayload> = emptyList(),
+    val enforcement: LiteralPayload? = null,
+    val child: ConstraintPayload? = null,
+    val reifiedDirection: String? = null,
+    val reifiedLiteral: LiteralPayload? = null,
+    val expressions: List<ExpressionPayload> = emptyList(),
+    val index: ExpressionPayload? = null,
+    val values: List<ValuePayload> = emptyList(),
+    val target: ExpressionPayload? = null,
+    val tuples: List<List<Long>> = emptyList(),
+    val intervals: List<IntervalPayload> = emptyList(),
+    val demands: List<ExpressionPayload> = emptyList(),
+    val capacity: ExpressionPayload? = null,
+    val successors: List<ExpressionPayload> = emptyList(),
+    val initialState: Int? = null,
+    val finalStates: List<Int> = emptyList(),
+    val transitions: List<TransitionPayload> = emptyList(),
+    val events: List<EventPayload> = emptyList(),
+    val initialLevel: Long? = null,
+    val minimumLevel: Long? = null,
+    val maximumLevel: Long? = null
+)
+
+@Serializable
+private data class ValuePayload(
+    val integer: Long? = null,
+    val expression: ExpressionPayload? = null
+)
+
+@Serializable
+private data class TransitionPayload(
+    val fromState: Int,
+    val value: Long,
+    val toState: Int
+)
+
+@Serializable
+private data class EventPayload(
+    val time: ExpressionPayload,
+    val levelChange: ExpressionPayload
+)
+
+@Serializable
+private data class ObjectivePayload(
+    val id: String,
+    val category: String,
+    val name: String,
+    val expression: ExpressionPayload
+)
+
+private fun ConstraintProgrammingModelSnapshot.toPayload(): SnapshotPayload {
+    return SnapshotPayload(
+        schema = 1,
+        name = name,
+        objectCategory = objectCategory.name,
+        variables = variables.map {
+            VariablePayload(it.id.value, it.name, it.typeName, it.domain.toPayload())
+        },
+        intervals = intervals.map { it.toPayload() },
+        expressions = expressions.map { NamedExpressionPayload(it.name, it.expression.toPayload()) },
+        constraints = constraints.map {
+            ConstraintEntryPayload(it.id.value, it.name, it.groupName, it.constraint.toPayload())
+        },
+        objectives = objectives.map {
+            ObjectivePayload(it.id.value, it.category.name, it.name, it.expression.toPayload())
+        },
+        constraintGroups = constraintGroups
+    )
+}
+
+private fun IntegerDomain.toPayload(): DomainPayload {
+    return when (this) {
+        is IntegerDomain.Interval -> DomainPayload("interval", lowerBound.toLong(), upperBound.toLong())
+        is IntegerDomain.Values -> DomainPayload("values", values = values.map { it.toLong() })
+    }
+}
+
+private fun IntervalVariable.toPayload(): IntervalPayload {
+    return IntervalPayload(id.value, start.toPayload(), size.toPayload(), end.toPayload(), presence?.toPayload())
+}
+
+private fun ConstraintProgrammingExpression.toPayload(): ExpressionPayload {
+    return when (this) {
+        is ConstraintProgrammingExpression.Constant -> ExpressionPayload("constant", value = value.toLong())
+        is ConstraintProgrammingExpression.Invalid -> ExpressionPayload("invalid", message = message)
+        is ConstraintProgrammingExpression.Variable -> ExpressionPayload(
+            kind = "variable",
+            variableId = variableId.value,
+            domain = domain.toPayload()
+        )
+        is ConstraintProgrammingExpression.Linear -> ExpressionPayload(
+            kind = "linear",
+            terms = terms.map { TermPayload(it.variableId.value, it.coefficient.toLong()) },
+            constant = constant.toLong()
+        )
+    }
+}
+
+private fun BooleanLiteral.toPayload(): LiteralPayload {
+    return LiteralPayload(variableId?.value, negated, constant)
+}
+
+private fun ConstraintProgrammingConstraint.toPayload(): ConstraintPayload {
+    return when (this) {
+        is ConstraintProgrammingConstraint.IntegerComparison -> ConstraintPayload(
+            kind = "integer-comparison",
+            expression = expression.toPayload(),
+            comparison = comparison.name,
+            rhs = rhs.toLong()
+        )
+        is ConstraintProgrammingConstraint.BoolAnd -> ConstraintPayload("bool-and", literals = literals.map { it.toPayload() })
+        is ConstraintProgrammingConstraint.BoolOr -> ConstraintPayload("bool-or", literals = literals.map { it.toPayload() })
+        is ConstraintProgrammingConstraint.BoolXor -> ConstraintPayload("bool-xor", literals = literals.map { it.toPayload() })
+        is ConstraintProgrammingConstraint.Literal -> ConstraintPayload("literal", literals = listOf(literal.toPayload()))
+        is ConstraintProgrammingConstraint.Implication -> ConstraintPayload(
+            kind = "implication",
+            enforcement = enforcement.toPayload(),
+            child = constraint.toPayload()
+        )
+        is ConstraintProgrammingConstraint.Reified -> ConstraintPayload(
+            kind = "reified",
+            reifiedLiteral = literal.toPayload(),
+            child = constraint.toPayload(),
+            reifiedDirection = direction.name
+        )
+        is ConstraintProgrammingConstraint.AllDifferent -> ConstraintPayload("all-different", expressions = expressions.map { it.toPayload() })
+        is ConstraintProgrammingConstraint.Element -> ConstraintPayload(
+            kind = "element",
+            index = index.toPayload(),
+            values = values.map {
+                when (it) {
+                    is ConstraintProgrammingExpression -> ValuePayload(expression = it.toPayload())
+                    is Int64 -> ValuePayload(integer = it.toLong())
+                    is Long -> ValuePayload(integer = it)
+                    is Int -> ValuePayload(integer = it.toLong())
+                    else -> ValuePayload()
+                }
+            },
+            target = target.toPayload()
+        )
+        is ConstraintProgrammingConstraint.AllowedAssignments -> ConstraintPayload(
+            "allowed-assignments",
+            expressions = expressions.map { it.toPayload() },
+            tuples = tuples.map { tuple -> tuple.map { it.toLong() } }
+        )
+        is ConstraintProgrammingConstraint.ForbiddenAssignments -> ConstraintPayload(
+            "forbidden-assignments",
+            expressions = expressions.map { it.toPayload() },
+            tuples = tuples.map { tuple -> tuple.map { it.toLong() } }
+        )
+        is ConstraintProgrammingConstraint.Circuit -> ConstraintPayload("circuit", successors = successors.map { it.toPayload() })
+        is ConstraintProgrammingConstraint.Automaton -> ConstraintPayload(
+            kind = "automaton",
+            expressions = expressions.map { it.toPayload() },
+            initialState = initialState,
+            finalStates = finalStates.toList(),
+            transitions = transitions.map { TransitionPayload(it.fromState, it.value.toLong(), it.toState) }
+        )
+        is ConstraintProgrammingConstraint.Reservoir -> ConstraintPayload(
+            kind = "reservoir",
+            events = events.map { EventPayload(it.time.toPayload(), it.levelChange.toPayload()) },
+            initialLevel = initialLevel.toLong(),
+            minimumLevel = minimumLevel.toLong(),
+            maximumLevel = maximumLevel.toLong()
+        )
+        is NoOverlap -> ConstraintPayload("no-overlap", intervals = intervals.map { it.toPayload() })
+        is Cumulative -> ConstraintPayload(
+            kind = "cumulative",
+            intervals = intervals.map { it.toPayload() },
+            demands = demands.map { it.toPayload() },
+            capacity = capacity.toPayload()
+        )
+    }
+}
+
+private fun SnapshotPayload.toSnapshot(
+    variables: Map<VariableId, AbstractVariableItem<*, *>>
+): Ret<ConstraintProgrammingModelSnapshot> {
+    val variableSnapshots = ArrayList<ConstraintProgrammingVariableSnapshot>()
+    for (variable in this.variables) {
+        val domain = variable.domain.toDomain()
+        if (domain.failed) return propagate(domain)
+        variableSnapshots += ConstraintProgrammingVariableSnapshot(
+            VariableId(variable.id), variable.name, variable.typeName, domain.value!!
+        )
+    }
+    val intervalsResult = this.intervals.mapResult { it.toInterval(variables) }
+    if (intervalsResult.failed) return propagate(intervalsResult)
+    val expressionsResult = this.expressions.mapResult {
+        decodeExpression(it.expression, variables).map { expression ->
+            ConstraintProgrammingExpressionSnapshot(it.name, expression)
+        }
+    }
+    if (expressionsResult.failed) return propagate(expressionsResult)
+    val constraintsResult = this.constraints.mapResult {
+        decodeConstraint(it.constraint, variables).map { constraint ->
+            ConstraintProgrammingConstraintSnapshot(ConstraintId(it.id), it.name, it.groupName, constraint)
+        }
+    }
+    if (constraintsResult.failed) return propagate(constraintsResult)
+    val objectivesResult = this.objectives.mapResult {
+        val category = enumValue<ObjectCategory>(it.category)
+            ?: return@mapResult Failed(ErrorCode.IllegalArgument, "未知目标类别 / Unknown objective category")
+        decodeExpression(it.expression, variables).map { expression ->
+            ConstraintProgrammingObjectiveSnapshot(ObjectiveId(it.id), category, it.name, expression)
+        }
+    }
+    if (objectivesResult.failed) return propagate(objectivesResult)
+    val category = enumValue<ObjectCategory>(objectCategory)
+        ?: return Failed(ErrorCode.IllegalArgument, "未知模型目标类别 / Unknown model objective category")
+    return ok(
+        ConstraintProgrammingModelSnapshot(
+            name = name,
+            objectCategory = category,
+            variables = variableSnapshots,
+            intervals = intervalsResult.value!!,
+            expressions = expressionsResult.value!!,
+            constraints = constraintsResult.value!!,
+            objectives = objectivesResult.value!!,
+            constraintGroups = constraintGroups.toList()
+        )
+    )
+}
+
+private fun DomainPayload.toDomain(): Ret<IntegerDomain> {
+    return when (kind) {
+        "interval" -> if (lower == null || upper == null) {
+            Failed(ErrorCode.IllegalArgument, "CP interval domain 缺少边界 / CP interval domain is missing bounds")
+        } else {
+            IntegerDomain.interval(lower, upper)
+        }
+        "values" -> IntegerDomain.values(values)
+        else -> Failed(ErrorCode.IllegalArgument, "未知 CP domain 类型：$kind / Unknown CP domain kind: $kind")
+    }
+}
+
+private fun IntervalPayload.toInterval(
+    variables: Map<VariableId, AbstractVariableItem<*, *>>
+): Ret<IntervalVariable> {
+    val start = decodeExpression(start, variables)
+    if (start.failed) return propagate(start)
+    val size = decodeExpression(size, variables)
+    if (size.failed) return propagate(size)
+    val end = decodeExpression(end, variables)
+    if (end.failed) return propagate(end)
+    val presence = presence?.let { decodeLiteral(it, variables) }
+    if (presence != null && presence.failed) return propagate(presence)
+    return ok(IntervalVariable(IntervalId(id), start.value!!, size.value!!, end.value!!, presence?.value))
+}
+
+private fun decodeExpression(
+    payload: ExpressionPayload,
+    variables: Map<VariableId, AbstractVariableItem<*, *>>
+): Ret<ConstraintProgrammingExpression> {
+    return when (payload.kind) {
+        "constant" -> payload.value?.let { ok(ConstraintProgrammingExpression.Constant(Int64(it))) }
+            ?: Failed(ErrorCode.IllegalArgument, "CP constant 缺少值 / CP constant is missing a value")
+        "invalid" -> ok(ConstraintProgrammingExpression.Invalid(payload.message.orEmpty()))
+        "variable" -> {
+            val id = payload.variableId?.let(::VariableId)
+                ?: return Failed(ErrorCode.IllegalArgument, "CP variable expression 缺少 ID / CP variable expression is missing an ID")
+            val variable = variables[id]
+                ?: return Failed(ErrorCode.DataNotFound, "缺少 CP 变量绑定：$id / Missing CP variable binding: $id")
+            val domain = payload.domain?.toDomain() ?: IntegerDomain.variableDefault(variable)
+            if (domain.failed) return propagate(domain)
+            ok(ConstraintProgrammingExpression.Variable(variable, domain.value!!))
+        }
+        "linear" -> {
+            val terms = ArrayList<ConstraintProgrammingExpression.Term>()
+            for (term in payload.terms) {
+                val id = VariableId(term.variableId)
+                val variable = variables[id]
+                    ?: return Failed(ErrorCode.DataNotFound, "缺少 CP 变量绑定：$id / Missing CP variable binding: $id")
+                terms += ConstraintProgrammingExpression.Term(variable, Int64(term.coefficient))
+            }
+            ok(ConstraintProgrammingExpression.Linear(terms, Int64(payload.constant)))
+        }
+        else -> Failed(ErrorCode.IllegalArgument, "未知 CP expression 类型：${payload.kind} / Unknown CP expression kind: ${payload.kind}")
+    }
+}
+
+private fun decodeLiteral(
+    payload: LiteralPayload,
+    variables: Map<VariableId, AbstractVariableItem<*, *>>
+): Ret<BooleanLiteral> {
+    payload.constant?.let { return ok(BooleanLiteral(it)) }
+    val id = payload.variableId?.let(::VariableId)
+        ?: return Failed(ErrorCode.IllegalArgument, "CP literal 缺少变量 ID / CP literal is missing a variable ID")
+    val variable = variables[id]
+        ?: return Failed(ErrorCode.DataNotFound, "缺少 CP 布尔变量绑定：$id / Missing CP Boolean variable binding: $id")
+    val binary = variable as? fuookami.ospf.kotlin.core.variable.BinVariable
+        ?: return Failed(ErrorCode.IllegalArgument, "CP literal 绑定变量不是二值变量 / CP literal binding is not binary")
+    return ok(BooleanLiteral(binary, payload.negated))
+}
+
+private fun decodeConstraint(
+    payload: ConstraintPayload,
+    variables: Map<VariableId, AbstractVariableItem<*, *>>
+): Ret<ConstraintProgrammingConstraint> {
+    fun expression(value: ExpressionPayload?): Ret<ConstraintProgrammingExpression> {
+        return value?.let { decodeExpression(it, variables) }
+            ?: Failed(ErrorCode.IllegalArgument, "CP constraint 缺少表达式 / CP constraint is missing an expression")
+    }
+    fun literals(values: List<LiteralPayload>): Ret<List<BooleanLiteral>> {
+        val result = ArrayList<BooleanLiteral>()
+        for (value in values) {
+            val literal = decodeLiteral(value, variables)
+            if (literal.failed) return propagate(literal)
+            result += literal.value!!
+        }
+        return ok(result)
+    }
+    return when (payload.kind) {
+        "integer-comparison" -> {
+            val expression = expression(payload.expression)
+            if (expression.failed) return propagate(expression)
+            val comparison = payload.comparison?.let { enumValue<ConstraintProgrammingComparison>(it) }
+                ?: return Failed(ErrorCode.IllegalArgument, "未知 CP comparison / Unknown CP comparison")
+            val rhs = payload.rhs ?: return Failed(ErrorCode.IllegalArgument, "CP comparison 缺少 rhs / CP comparison is missing rhs")
+            ok(ConstraintProgrammingConstraint.IntegerComparison(expression.value!!, comparison, Int64(rhs)))
+        }
+        "bool-and", "bool-or", "bool-xor" -> {
+            val literals = literals(payload.literals)
+            if (literals.failed) return propagate(literals)
+            when (payload.kind) {
+                "bool-and" -> ok(ConstraintProgrammingConstraint.BoolAnd(literals.value!!))
+                "bool-or" -> ok(ConstraintProgrammingConstraint.BoolOr(literals.value!!))
+                else -> ok(ConstraintProgrammingConstraint.BoolXor(literals.value!!))
+            }
+        }
+        "literal" -> {
+            val literal = payload.literals.singleOrNull()?.let { decodeLiteral(it, variables) }
+                ?: return Failed(ErrorCode.IllegalArgument, "CP literal 数量无效 / Invalid CP literal arity")
+            literal.map { ConstraintProgrammingConstraint.Literal(it) }
+        }
+        "implication" -> {
+            val enforcement = payload.enforcement?.let { decodeLiteral(it, variables) }
+                ?: return Failed(ErrorCode.IllegalArgument, "CP implication 缺少 enforcement / CP implication is missing enforcement")
+            val child = payload.child?.let { decodeConstraint(it, variables) }
+                ?: return Failed(ErrorCode.IllegalArgument, "CP implication 缺少 child / CP implication is missing child")
+            if (enforcement.failed) return propagate(enforcement)
+            if (child.failed) return propagate(child)
+            ok(ConstraintProgrammingConstraint.Implication(enforcement.value!!, child.value!!))
+        }
+        "reified" -> {
+            val literal = payload.reifiedLiteral?.let { decodeLiteral(it, variables) }
+                ?: return Failed(ErrorCode.IllegalArgument, "CP reified 缺少 literal / CP reified is missing literal")
+            val child = payload.child?.let { decodeConstraint(it, variables) }
+                ?: return Failed(ErrorCode.IllegalArgument, "CP reified 缺少 child / CP reified is missing child")
+            val direction = payload.reifiedDirection?.let { enumValue<ReificationDirection>(it) }
+                ?: return Failed(ErrorCode.IllegalArgument, "CP reified 缺少方向 / CP reified is missing direction")
+            if (literal.failed) return propagate(literal)
+            if (child.failed) return propagate(child)
+            ok(ConstraintProgrammingConstraint.Reified(literal.value!!, child.value!!, direction))
+        }
+        "all-different" -> {
+            val expressions = payload.expressions.mapResult { decodeExpression(it, variables) }
+            if (expressions.failed) return propagate(expressions)
+            ok(ConstraintProgrammingConstraint.AllDifferent(expressions.value!!))
+        }
+        "element" -> {
+            val index = expression(payload.index)
+            val target = expression(payload.target)
+            if (index.failed) return propagate(index)
+            if (target.failed) return propagate(target)
+            val values = ArrayList<Any>()
+            for (value in payload.values) {
+                if (value.expression != null) {
+                    val decoded = decodeExpression(value.expression, variables)
+                    if (decoded.failed) return propagate(decoded)
+                    values += decoded.value!!
+                } else if (value.integer != null) {
+                    values += Int64(value.integer)
+                } else {
+                    return Failed(ErrorCode.IllegalArgument, "Element 值为空 / Element value is empty")
+                }
+            }
+            ok(ConstraintProgrammingConstraint.Element(index.value!!, values, target.value!!))
+        }
+        "allowed-assignments", "forbidden-assignments" -> {
+            val expressions = payload.expressions.mapResult { decodeExpression(it, variables) }
+            if (expressions.failed) return propagate(expressions)
+            val tuples = payload.tuples.map { tuple -> tuple.map { Int64(it) } }
+            if (payload.kind == "allowed-assignments") {
+                ok(ConstraintProgrammingConstraint.AllowedAssignments(expressions.value!!, tuples))
+            } else {
+                ok(ConstraintProgrammingConstraint.ForbiddenAssignments(expressions.value!!, tuples))
+            }
+        }
+        "circuit" -> {
+            val successors = payload.successors.mapResult { decodeExpression(it, variables) }
+            if (successors.failed) return propagate(successors)
+            ok(ConstraintProgrammingConstraint.Circuit(successors.value!!))
+        }
+        "automaton" -> {
+            val expressions = payload.expressions.mapResult { decodeExpression(it, variables) }
+            if (expressions.failed) return propagate(expressions)
+            ok(
+                ConstraintProgrammingConstraint.Automaton(
+                    expressions = expressions.value!!,
+                    initialState = payload.initialState ?: 0,
+                    finalStates = payload.finalStates.toSet(),
+                    transitions = payload.transitions.map {
+                        ConstraintProgrammingConstraint.AutomatonTransition(
+                            it.fromState,
+                            Int64(it.value),
+                            it.toState
+                        )
+                    }
+                )
+            )
+        }
+        "reservoir" -> {
+            val events = ArrayList<ConstraintProgrammingConstraint.Reservoir.Event>()
+            for (event in payload.events) {
+                val time = decodeExpression(event.time, variables)
+                val change = decodeExpression(event.levelChange, variables)
+                if (time.failed) return propagate(time)
+                if (change.failed) return propagate(change)
+                events += ConstraintProgrammingConstraint.Reservoir.Event(time.value!!, change.value!!)
+            }
+            val initial = payload.initialLevel ?: return Failed(ErrorCode.IllegalArgument, "Reservoir 缺少初始液位 / Reservoir is missing initial level")
+            val minimum = payload.minimumLevel ?: return Failed(ErrorCode.IllegalArgument, "Reservoir 缺少最小液位 / Reservoir is missing minimum level")
+            val maximum = payload.maximumLevel ?: return Failed(ErrorCode.IllegalArgument, "Reservoir 缺少最大液位 / Reservoir is missing maximum level")
+            ok(ConstraintProgrammingConstraint.Reservoir(events, Int64(initial), Int64(minimum), Int64(maximum)))
+        }
+        "no-overlap", "cumulative" -> {
+            val intervals = payload.intervals.mapResult { it.toInterval(variables) }
+            if (intervals.failed) return propagate(intervals)
+            if (payload.kind == "no-overlap") {
+                ok(NoOverlap(intervals.value!!))
+            } else {
+                val demands = payload.demands.mapResult { decodeExpression(it, variables) }
+                val capacity = expression(payload.capacity)
+                if (demands.failed) return propagate(demands)
+                if (capacity.failed) return propagate(capacity)
+                ok(Cumulative(intervals.value!!, demands.value!!, capacity.value!!))
+            }
+        }
+        else -> Failed(ErrorCode.IllegalArgument, "未知 CP constraint 类型：${payload.kind} / Unknown CP constraint kind: ${payload.kind}")
+    }
+}
+
+private fun <T : Enum<T>> enumValue(clazz: Class<T>, value: String): T? {
+    return clazz.enumConstants.firstOrNull { it.name == value }
+}
+
+private inline fun <reified T : Enum<T>> enumValue(value: String): T? {
+    return enumValue(T::class.java, value)
+}
+
+private fun <T, U> Iterable<T>.mapResult(transform: (T) -> Ret<U>): Ret<List<U>> {
+    val result = ArrayList<U>()
+    for (item in this) {
+        val mapped = transform(item)
+        if (mapped.failed) return propagate(mapped)
+        result += mapped.value!!
+    }
+    return ok(result)
+}
+
+private fun <T> propagate(result: Ret<*>): Ret<T> {
+    return when (result) {
+        is Failed -> Failed(result.error)
+        is Fatal -> Fatal(result.errors)
+        else -> Failed(ErrorCode.ApplicationError, "CP snapshot 结果状态无效 / Invalid CP snapshot result state")
+    }
+}
+
+private fun IntegerDomain.Companion.variableDefault(
+    variable: AbstractVariableItem<*, *>
+): Ret<IntegerDomain> {
+    return ConstraintProgrammingExpression.variable(variable).map { it.domain }
+}

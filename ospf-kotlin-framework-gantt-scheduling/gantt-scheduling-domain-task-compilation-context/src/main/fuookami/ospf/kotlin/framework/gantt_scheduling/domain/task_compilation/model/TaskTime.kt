@@ -26,8 +26,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 typealias TaskTimeQuantity<V> = Quantity<V>
 
 /**
- * 捕获线性约束输入结果，失败时调用回调并返回 null。
- * Capture linear constraint input result, invoke callback on failure and return null.
+ * 捕获线性约束输入结果，失败时调用回调并返回 null。 / Capture linear constraint input result, invoke callback on failure and return null.
  *
  * @param result 约束输入结果 / Constraint input result
  * @param onFailure 失败时的回调函数 / Callback function on failure
@@ -444,8 +443,7 @@ abstract class TaskTimeImpl<
     override lateinit var notOnTime: LinearIntermediateSymbols1<Flt64>
 
     /**
-     * 构建带掩码的松弛符号结果，任务取消未启用时直接返回松弛符号。
-     * Build masked slack symbol result, return slack directly when task cancel is not enabled.
+     * 构建带掩码的松弛符号结果，任务取消未启用时直接返回松弛符号。 / Build masked slack symbol result, return slack directly when task cancel is not enabled.
      *
      * @param model 元模型 / Meta model
      * @param task 任务 / Task
@@ -1756,10 +1754,10 @@ open class IterativeTaskSchedulingTaskTime<
 /**
  * Add new iterative task columns for the given iteration, updating estimate start/end time polynomials.
  * 为给定迭代添加新的迭代任务列，更新预估开始/结束时间多项式。
- * @param iteration Current iteration index / 当前迭代索引
- * @param newTasks New iterative tasks to add as columns / 要添加为新列的迭代任务列表
- * @param model Linear meta model to add columns into / 要添加列的线性元模型
- * @return Operation result / 操作结果
+ * @param iteration 当前迭代索引 / Current iteration index
+ * @param newTasks 要添加为新列的迭代任务列表 / New iterative tasks to add as columns
+ * @param model 要添加列的线性元模型 / Linear meta model to add columns into
+ * @return 操作结果 / Operation result
 */
     open fun addColumns(
         iteration: UInt64,

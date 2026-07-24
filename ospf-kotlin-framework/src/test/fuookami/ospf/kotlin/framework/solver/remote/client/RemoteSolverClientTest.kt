@@ -350,7 +350,7 @@ class RemoteSolverClientTest {
             ),
             finalResult = SolveResult(
                 feasible = true,
-                optimal = true,
+                optimal = false,
                 objectiveValue = Flt64.zero,
                 gap = Flt64.zero,
                 elapsed = 7.milliseconds
@@ -372,6 +372,7 @@ class RemoteSolverClientTest {
         check(result is Ok)
         assertEquals(Flt64.zero, result.value.obj)
         assertEquals(emptyList<Flt64>(), result.value.solution)
+        assertEquals(SolverStatus.Feasible, result.value.status)
     }
 
     private fun payload(

@@ -9,6 +9,7 @@ import fuookami.ospf.kotlin.framework.csp1d.domain.produce.*
 import fuookami.ospf.kotlin.framework.csp1d.domain.produce.model.*
 import fuookami.ospf.kotlin.framework.csp1d.domain.yield.model.*
 import fuookami.ospf.kotlin.framework.solver.*
+import fuookami.ospf.kotlin.core.solver.progress.SolverProgressContext
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.utils.error.*
@@ -17,9 +18,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 /**
  * CSP1D MILP/LP 求解器 / CSP1D MILP/LP solver
  *
- * 通过 Csp1dProduceContext 注册建模逻辑，自身只负责模型创建、context 注册、求解调用和异常安全。
- *
- * Register modeling logic through Csp1dProduceContext; this solver is only responsible for
+ * 通过 Csp1dProduceContext 注册建模逻辑，自身只负责模型创建、context 注册、求解调用和异常安全。 / Register modeling logic through Csp1dProduceContext; this solver is only responsible for
  * model creation, context registration, solve invocation, and exception safety.
 */
 class Csp1dMilpSolver(
@@ -60,9 +59,19 @@ class Csp1dMilpSolver(
         lengthConfig: LengthAssignmentModelingConfig<V>? = null,
         extensions: List<Csp1dModelingExtension<V>> = emptyList(),
         objectivePolicies: List<Csp1dObjectivePolicy<V>> = emptyList(),
-        isFinalMilp: Boolean = false
+        isFinalMilp: Boolean = false,
+        progressContext: SolverProgressContext? = null
     ): Ret<MilpResult<V>?> {
-        return solveInternal(input, yieldConfig, wasteConfig, lengthConfig, extensions, objectivePolicies, isFinalMilp)
+        return solveInternal(
+            input,
+            yieldConfig,
+            wasteConfig,
+            lengthConfig,
+            extensions,
+            objectivePolicies,
+            isFinalMilp,
+            progressContext
+        )
     }
 
     private suspend fun <V : RealNumber<V>> solveInternal(
@@ -72,7 +81,8 @@ class Csp1dMilpSolver(
         lengthConfig: LengthAssignmentModelingConfig<V>?,
         extensions: List<Csp1dModelingExtension<V>>,
         objectivePolicies: List<Csp1dObjectivePolicy<V>>,
-        isFinalMilp: Boolean
+        isFinalMilp: Boolean,
+        progressContext: SolverProgressContext?
     ): Ret<MilpResult<V>?> {
         if (input.cuttingPlans.isEmpty()) {
             return Ok(null)
@@ -113,8 +123,11 @@ class Csp1dMilpSolver(
         }
 
         val output = when (val result = solver.solveMILP(
-            name = "csp1d-produce",
-            metaModel = model
+            metaModel = model,
+            options = FrameworkSolveOptions(
+                name = "csp1d-produce",
+                progressContext = progressContext
+            )
         )) {
             is Ok -> result.value
             is Failed -> return Failed(result.error)
@@ -143,14 +156,16 @@ class Csp1dMilpSolver(
 
     suspend fun <V : RealNumber<V>> solveLP(
         input: ProduceInput<V>,
-        extensions: List<Csp1dModelingExtension<V>> = emptyList()
+        extensions: List<Csp1dModelingExtension<V>> = emptyList(),
+        progressContext: SolverProgressContext? = null
     ): Ret<LpResult<V>?> {
-        return solveLPInternal(input, extensions)
+        return solveLPInternal(input, extensions, progressContext)
     }
 
     private suspend fun <V : RealNumber<V>> solveLPInternal(
         input: ProduceInput<V>,
-        extensions: List<Csp1dModelingExtension<V>>
+        extensions: List<Csp1dModelingExtension<V>>,
+        progressContext: SolverProgressContext?
     ): Ret<LpResult<V>?> {
         if (input.cuttingPlans.isEmpty()) {
             return Ok(null)
@@ -180,8 +195,11 @@ class Csp1dMilpSolver(
         }
 
         val lpResult = when (val result = solver.solveLP(
-            name = "csp1d-produce-lp",
-            metaModel = model
+            metaModel = model,
+            options = FrameworkSolveOptions(
+                name = "csp1d-produce-lp",
+                progressContext = progressContext
+            )
         )) {
             is Ok -> result.value
             is Failed -> return Failed(result.error)

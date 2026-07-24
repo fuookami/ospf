@@ -27,8 +27,7 @@ private val flt64Converter = object : IntoValue<Flt64> {
 }
 
 /**
- * 运输问题：最小化从仓库到商店的运输成本。
- * Transportation problem: minimize shipping cost from warehouses to stores.
+ * 运输问题：最小化从仓库到商店的运输成本。 / Transportation problem: minimize shipping cost from warehouses to stores.
  *
  * @see https://fuookami.github.io/ospf/examples/example7.html
 */

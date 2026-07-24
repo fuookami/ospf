@@ -8,8 +8,7 @@ import kotlin.time.Duration.Companion.seconds
 import fuookami.ospf.kotlin.math.algebra.number.*
 
 /**
- * IIS（不可行子系统）计算配置。
- * IIS (Irreducible Infeasible Subsystem) computation configuration.
+ * IIS（不可行子系统）计算配置。 / IIS (Irreducible Infeasible Subsystem) computation configuration.
  *
  * @property time 计算时间限制 / Computation time limit
  * @property threadNum 线程数 / Thread count

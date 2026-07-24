@@ -22,9 +22,7 @@ import fuookami.ospf.kotlin.framework.model.*
  * 由 ProduceAggregation 管理，约束管线不再直接引用 x 变量。
  *
  * 实现 CGPipeline 接口，通过 constraint.args = MachineShadowPriceKey
- * 关联影子价格，替代约束名映射。
- *
- * Add two types of constraints for each machine:
+ * 关联影子价格，替代约束名映射。 / Add two types of constraints for each machine:
  * - Batch count constraint: machineBatchQuantity[i] <= maxBatchCount
  * - Capacity constraint: machineCapacityQuantity[i] <= capacity
  *
@@ -152,7 +150,7 @@ class MachineConstraintPipeline<V : RealNumber<V>>(
             AbstractCsp1dShadowPriceMap<AbstractCsp1dShadowPriceArguments>
             >? {
         if (machines.isEmpty()) return null
-        return { map, args ->
+        return ShadowPriceExtractor { map, args ->
             if (args is Csp1dCuttingPlanShadowPriceArguments<*>) {
                 val machineId = args.plan.machineId
                 if (machineId == null) {

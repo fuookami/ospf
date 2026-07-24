@@ -47,9 +47,11 @@ interface ColumnGenerationSolver {
     // MILP solving
     suspend fun solveMILP(name: String, metaModel: Flt64LinearMetaModel, ...): Ret<Flt64FeasibleSolverOutput>
     suspend fun solveMILP(metaModel: Flt64LinearMetaModel, options: FrameworkSolveOptions): Ret<Flt64FeasibleSolverOutput>
+    suspend fun solveMILPWithStatus(...): Ret<MILPSolveResult>
 
     // LP solving (returns dual solution for pricing)
     suspend fun solveLP(name: String, metaModel: Flt64LinearMetaModel, ...): Ret<LPResult>
+    suspend fun solveLPWithStatus(...): Ret<LPResultWithStatus>
 
     // Async variants (CompletableFuture)
     fun solveMILPAsync(...): CompletableFuture<Ret<Flt64FeasibleSolverOutput>>
@@ -62,6 +64,7 @@ interface ColumnGenerationSolver {
 ```
 
 `LPResult` bundles the feasible solver output with the constraint dual solution map, which is essential for column generation pricing.
+`MILPSolveResult` and `LPResultWithStatus` preserve typed infeasible terminal states; use these structured APIs when the caller must distinguish an infeasible model from a technical failure. A feasible LP is a valid pricing certificate only when its `status` is `SolverStatus.Optimal`.
 
 ### BendersDecompositionSolver
 
@@ -76,6 +79,10 @@ interface LinearBendersDecompositionSolver {
 ```
 
 `LinearSubResult` is a sealed interface with `Feasible` and `Infeasible` variants, following the Benders decomposition pattern.
+
+### Logic-Based Benders for CP
+
+`LogicBasedBendersEngine` combines a linear master with a CP subproblem. Variable bindings, conflict/optimality cut oracles, integer no-good encoding, iteration traces, and `Exact`/`Heuristic` proof gates are explicit extension points. `Exact` mode requires proven master and subproblem terminal states, globally valid cuts, objective consistency, and a master incumbent/bound gap within tolerance.
 
 ### Combinatorial Solvers
 

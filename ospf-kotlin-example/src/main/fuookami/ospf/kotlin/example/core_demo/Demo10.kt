@@ -28,8 +28,7 @@ private val flt64Converter = object : IntoValue<Flt64> {
 }
 
 /**
- * 旅行商问题：找到恰好访问每个城市一次的最短路线。
- * Traveling Salesman Problem: find the shortest route visiting all cities exactly once.
+ * 旅行商问题：找到恰好访问每个城市一次的最短路线。 / Traveling Salesman Problem: find the shortest route visiting all cities exactly once.
  *
  * @see https://fuookami.github.io/ospf/examples/example10.html
 */

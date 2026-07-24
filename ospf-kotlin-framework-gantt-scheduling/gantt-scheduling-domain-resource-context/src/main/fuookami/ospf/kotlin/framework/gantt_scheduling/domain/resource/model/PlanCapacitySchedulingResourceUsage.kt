@@ -18,8 +18,7 @@ import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.capacity_schedulin
 /**
  * Plan 模式的产能调度资源使用量管理 / Plan-mode resource usage for Capacity Scheduling
  *
- * 用于非列生成场景，在构造时绑定 Capacity 编译对象
- * Used for non-column generation scenarios, binds to Capacity compilation object at construction
+ * 用于非列生成场景，在构造时绑定 Capacity 编译对象 / Used for non-column generation scenarios, binds to Capacity compilation object at construction
  *
  * @param A 生产动作类型 / Production action type
  * @param R 资源类型 / Resource type

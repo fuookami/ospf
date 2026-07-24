@@ -17,11 +17,9 @@ import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task.model.*
 
 /**
- * 产能编译决策对象（带顺序）
- * Capacity Compilation Decision Object (With Order)
+ * 产能编译决策对象（带顺序） / Capacity Compilation Decision Object (With Order)
  *
- * 三维变量：
- * Three-dimensional variables:
+ * 三维变量： / Three-dimensional variables:
  * - x[action, slot, order] -> 数量（整型）
  * - x[action, slot, order] -> amount (integer)
  * - b[action, slot, order] -> 是否选中（二进制）
@@ -53,23 +51,20 @@ class CapacityOrderCompilation<V : RealNumber<V>, A : ProductionAction>(
     }
 
     /**
-     * 三维整型变量
-     * 3D integer variable
+     * 三维整型变量 / 3D integer variable
      * x[action, slot, order] -> amount
     */
     lateinit var x: UIntVariable3
         private set
 
     /**
-     * 三维二元变量（顺序占用标记）
-     * 3D binary variable for order occupation
+     * 三维二元变量（顺序占用标记） / 3D binary variable for order occupation
     */
     lateinit var b: BinVariable3
         private set
 
     /**
-     * 成本表达式
-     * Cost expression
+     * 成本表达式 / Cost expression
     */
     lateinit var cost: LinearIntermediateSymbol<Flt64>
         private set
@@ -81,10 +76,9 @@ class CapacityOrderCompilation<V : RealNumber<V>, A : ProductionAction>(
         private set
 
     /**
-     * 注册到模型
-     * Register to model
+     * 注册到模型 / Register to model
      *
-     * @param model Linear meta model / 线性元模型
+     * @param model 线性元模型 / Linear meta model
      * @return Try result / Try 结果
     */
     fun register(model: LinearMetaModel<Flt64>): Try {
@@ -203,11 +197,10 @@ class CapacityOrderCompilation<V : RealNumber<V>, A : ProductionAction>(
     }
 
     /**
-     * 解析解
-     * Extract solution from model
+     * 解析解 / Extract solution from model
      *
-     * @param model Abstract linear meta model / 抽象线性元模型
-     * @return Capacity scheduling solution / 产能调度解
+     * @param model 抽象线性元模型 / Abstract linear meta model
+     * @return 产能调度解 / Capacity scheduling solution
     */
     override fun extractSolution(model: AbstractLinearMetaModel<Flt64>): Ret<CapacitySchedulingSolution<A>> {
         val actionAllocations = mutableListOf<ActionAllocation<A>>()

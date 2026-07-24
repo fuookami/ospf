@@ -1,6 +1,5 @@
 /**
- * Ktorm 标量表达式翻译器
- * Ktorm Scalar Expression Translator
+ * Ktorm 标量表达式翻译器 / Ktorm Scalar Expression Translator
  *
  * 将通用 ScalarExpression 翻译为 Ktorm 标量 SQL 表达式。
  * Translates generic ScalarExpression to Ktorm scalar SQL expressions.
@@ -26,8 +25,7 @@ import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
- * Ktorm 标量表达式翻译器
- * Ktorm scalar expression translator
+ * Ktorm 标量表达式翻译器 / Ktorm scalar expression translator
  *
  * @property resolveColumn 列解析函数 / Column resolver function
  * @property unsupportedPredicatePolicy 不支持谓词时的策略 / Policy for unsupported predicates
@@ -38,8 +36,7 @@ class KtormScalarTranslator(
 ) {
 
     /**
-     * 翻译标量表达式为 Ktorm 标量 SQL 表达式
-     * Translate scalar expression to Ktorm scalar SQL expression
+     * 翻译标量表达式为 Ktorm 标量 SQL 表达式 / Translate scalar expression to Ktorm scalar SQL expression
      *
      * @param expr 标量表达式 / Scalar expression
      * @return Ktorm 标量表达式，不支持时返回 null / Ktorm scalar expression, or null if unsupported
@@ -60,8 +57,7 @@ class KtormScalarTranslator(
     }
 
     /**
-     * 翻译常量值为 Ktorm 参数表达式
-     * Translate constant value to Ktorm argument expression
+     * 翻译常量值为 Ktorm 参数表达式 / Translate constant value to Ktorm argument expression
      *
      * @param value 常量值 / Constant value
      * @return Ktorm 参数表达式 / Ktorm argument expression
@@ -76,8 +72,7 @@ class KtormScalarTranslator(
     }
 
     /**
-     * 翻译一元标量表达式为 Ktorm 一元表达式
-     * Translate unary scalar expression to Ktorm unary expression
+     * 翻译一元标量表达式为 Ktorm 一元表达式 / Translate unary scalar expression to Ktorm unary expression
      *
      * @param expr 一元标量表达式 / Unary scalar expression
      * @return Ktorm 一元表达式 / Ktorm unary expression
@@ -95,8 +90,7 @@ class KtormScalarTranslator(
     }
 
     /**
-     * 翻译二元标量表达式为 Ktorm 二元表达式
-     * Translate binary scalar expression to Ktorm binary expression
+     * 翻译二元标量表达式为 Ktorm 二元表达式 / Translate binary scalar expression to Ktorm binary expression
      *
      * @param expr 二元标量表达式 / Binary scalar expression
      * @return Ktorm 二元表达式 / Ktorm binary expression
@@ -118,8 +112,7 @@ class KtormScalarTranslator(
     }
 
     /**
-     * 翻译标量函数调用为 Ktorm 函数表达式
-     * Translate scalar function call to Ktorm function expression
+     * 翻译标量函数调用为 Ktorm 函数表达式 / Translate scalar function call to Ktorm function expression
      *
      * @param expr 标量函数表达式 / Scalar function expression
      * @return Ktorm 函数表达式 / Ktorm function expression
@@ -170,8 +163,7 @@ class KtormScalarTranslator(
     }
 
     /**
-     * 根据 Kotlin 值类型推断对应的 SQL 类型
-     * Infer corresponding SQL type from Kotlin value type
+     * 根据 Kotlin 值类型推断对应的 SQL 类型 / Infer corresponding SQL type from Kotlin value type
      *
      * @param value Kotlin 值 / Kotlin value
      * @return 对应的 Ktorm SQL 类型 / Corresponding Ktorm SQL type
@@ -187,8 +179,7 @@ class KtormScalarTranslator(
     }
 
     /**
-     * 处理不支持的标量表达式情况
-     * Handle unsupported scalar expression cases
+     * 处理不支持的标量表达式情况 / Handle unsupported scalar expression cases
      *
      * @param reason 不支持的原因 / Reason why the expression is unsupported
      * @return 根据策略返回失败或 null / Returns failure or null depending on the policy

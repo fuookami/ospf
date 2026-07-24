@@ -21,7 +21,7 @@ class SolverExtIISOptionsTest {
     fun linearIisSolutionPoolShouldForwardOptionsAndCallback() = runBlocking {
         val solver = RecordingLinearSolver()
         val callbackStates = ArrayList<SolvingStatus>()
-        val callback: SolvingStatusCallBack = { status ->
+        val callback = SolvingStatusCallBack { status ->
             callbackStates.add(status)
             ok
         }
@@ -76,7 +76,7 @@ class SolverExtIISOptionsTest {
     fun quadraticIisSingleSolveShouldForwardCallback() = runBlocking {
         val solver = RecordingQuadraticSolver()
         var callbackInvoked = 0
-        val callback: SolvingStatusCallBack = {
+        val callback = SolvingStatusCallBack {
             callbackInvoked += 1
             ok
         }
@@ -119,7 +119,7 @@ class SolverExtIISOptionsTest {
         val result = solver.solveWithOptionsAndIIS(
             model = emptyLinearModel(),
             options = SolveOptions(
-                solvingStatusCallBack = { ok }
+                solvingStatusCallBack = SolvingStatusCallBack { ok }
             ),
             iisConfig = IISConfig()
         )
@@ -215,7 +215,7 @@ class SolverExtIISOptionsTest {
         val result = solver.solveWithOptionsAndIIS(
             model = emptyQuadraticModel(),
             options = SolveOptions(
-                solvingStatusCallBack = { ok }
+                solvingStatusCallBack = SolvingStatusCallBack { ok }
             ),
             iisConfig = IISConfig()
         )

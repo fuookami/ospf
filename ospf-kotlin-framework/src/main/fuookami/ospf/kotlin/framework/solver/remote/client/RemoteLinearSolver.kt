@@ -1,6 +1,5 @@
 /**
- * 远程线性求解器
- * Remote linear solver
+ * 远程线性求解器 / Remote linear solver
 */
 package fuookami.ospf.kotlin.framework.solver.remote.client
 
@@ -9,6 +8,8 @@ import kotlinx.serialization.json.Json
 import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModelView
 import fuookami.ospf.kotlin.core.solver.LinearSolver
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
+import fuookami.ospf.kotlin.core.solver.progress.SolverProgressContext
 import fuookami.ospf.kotlin.framework.solver.remote.adapter.ospf.OspfRemoteModelSerializer
 import fuookami.ospf.kotlin.framework.solver.remote.domain.*
 import fuookami.ospf.kotlin.framework.solver.remote.port.*
@@ -17,8 +18,7 @@ import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
- * 远程线性求解器。
- * Remote linear solver.
+ * 远程线性求解器。 / Remote linear solver.
  *
  * @property remoteClient 远程客户端 / Remote client
  * @property resultStoragePort 结果对象存储 / Result object storage
@@ -36,8 +36,7 @@ class RemoteLinearSolver(
 ) : LinearSolver by delegate {
 
     /**
-     * 使用执行端口构造远程线性求解器。
-     * Construct remote linear solver with execution port.
+     * 使用执行端口构造远程线性求解器。 / Construct remote linear solver with execution port.
      *
      * @param delegate 本地求解器委托 / Local solver delegate
      * @param executionPort 求解执行端口 / Solve execution port
@@ -60,7 +59,26 @@ class RemoteLinearSolver(
         model: LinearTriadModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
     ): Ret<FeasibleSolverOutput<Flt64>> {
-        return when (val result = solveRemote(
+        return when (val result = executeRemote(model)) {
+            is Ok -> result.value.toFeasibleOutput(model.variables.size)
+            is Failed -> Failed(result.error)
+            is Fatal -> Fatal(result.errors)
+        }
+    }
+
+    override suspend fun solveReport(
+        model: LinearTriadModelView,
+        progressContext: SolverProgressContext?
+    ): Ret<SolveReport<Flt64>> {
+        return when (val result = executeRemote(model)) {
+            is Ok -> result.value.toSolveReport(model.variables.size)
+            is Failed -> Failed(result.error)
+            is Fatal -> Fatal(result.errors)
+        }
+    }
+
+    private suspend fun executeRemote(model: LinearTriadModelView): Ret<SolveResult> {
+        return solveRemote(
             payload = SolvePayload(
                 modelData = OspfRemoteModelSerializer.modelData(model),
                 taskMeta = TaskMeta(targetType = TargetTypeName.of("linear"))
@@ -71,11 +89,7 @@ class RemoteLinearSolver(
             tenantId = runtimeConfig.tenantId,
             quantum = runtimeConfig.quantum,
             maxRounds = runtimeConfig.maxRounds
-        )) {
-            is Ok -> result.value.toFeasibleOutput(model.variables.size)
-            is Failed -> Failed(result.error)
-            is Fatal -> Fatal(result.errors)
-        }
+        )
     }
 
     override suspend fun invoke(
@@ -91,8 +105,7 @@ class RemoteLinearSolver(
     }
 
     /**
-     * 执行远程线性求解。
-     * Execute remote linear solve.
+     * 执行远程线性求解。 / Execute remote linear solve.
      *
      * @param payload 求解载荷 / Solve payload
      * @param taskId 任务 ID / Task ID
@@ -162,8 +175,61 @@ class RemoteLinearSolver(
                 time = solution.elapsed,
                 possibleBestObj = objective,
                 gap = solutionGap,
+                status = if (optimal) SolverStatus.Optimal else SolverStatus.Feasible,
                 mipGap = solutionGap,
                 solveTime = solution.elapsed
+            )
+        )
+    }
+
+    private suspend fun SolveResult.toSolveReport(variableCount: Int): Ret<SolveReport<Flt64>> {
+        val output = if (solutionPresence != RemoteSolutionPresence.NONE) {
+            when (val feasibleOutput = toFeasibleOutput(variableCount)) {
+                is Ok -> feasibleOutput.value
+                is Failed -> return Failed(feasibleOutput.error)
+                is Fatal -> return Fatal(feasibleOutput.errors)
+            }
+        } else {
+            null
+        }
+        val descriptor = SolverDescriptor(
+            solverId = provenance["solverId"] ?: "remote",
+            backendName = provenance["backend"] ?: "remote",
+            backendVersion = provenance["backendVersion"],
+            pluginVersion = provenance["pluginVersion"],
+            capabilities = SolverCapabilities(modelTypes = setOf(SolverModelType.LP, SolverModelType.MIP))
+        )
+        return Ok(
+            SolveReport(
+                schemaVersion = schemaVersion,
+                problemStatus = problemStatus.toCoreStatus(),
+                terminationReason = terminationReason.toCoreReason(),
+                solutionPresence = solutionPresence.toCorePresence(),
+                solution = output?.let {
+                    SolveSolution(
+                        values = it.solution,
+                        objective = it.obj
+                    )
+                },
+                proof = SolveProof(
+                    status = if (optimal) ProofStatus.Claimed else ProofStatus.None,
+                    kind = if (optimal) "remote-backend" else null
+                ),
+                statistics = SolveStatistics(
+                    solveTime = elapsed,
+                    bestBound = output?.bestBound,
+                    gap = gap
+                ),
+                provenance = SolverProvenance(
+                    descriptor = descriptor,
+                    nativeVersion = provenance["nativeVersion"],
+                    effectiveParameters = provenance.filterKeys { it.startsWith("parameter.") }
+                ),
+                fingerprints = SolveFingerprints(
+                    model = fingerprints["model"]?.asRemoteFingerprint(schemaVersion),
+                    configuration = fingerprints["configuration"]?.asRemoteFingerprint(schemaVersion),
+                    solver = fingerprints["solver"]?.asRemoteFingerprint(schemaVersion)
+                )
             )
         )
     }
@@ -194,6 +260,7 @@ class RemoteLinearSolver(
                 time = elapsed,
                 possibleBestObj = objective,
                 gap = solutionGap,
+                status = if (optimal) SolverStatus.Optimal else SolverStatus.Feasible,
                 mipGap = solutionGap,
                 solveTime = elapsed
             )

@@ -1,6 +1,5 @@
 /**
- * 机制模型 Flt64 转换
- * Mechanism model Flt64 conversion
+ * 机制模型 Flt64 转换 / Mechanism model Flt64 conversion
 */
 package fuookami.ospf.kotlin.core.model.mechanism
 
@@ -17,8 +16,7 @@ import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
- * 在星投影线性函数符号上注册约束（不安全转换）。
- * Register constraints on a star-projected linear function symbol (unchecked cast).
+ * 在星投影线性函数符号上注册约束（不安全转换）。 / Register constraints on a star-projected linear function symbol (unchecked cast).
  *
  * 委托给 SolverBoundaryCasts，集中唯一的 UNCHECKED_CAST 位置。
  * Delegates to SolverBoundaryCasts as the single UNCHECKED_CAST location.
@@ -31,8 +29,7 @@ internal fun MathFunctionSymbolBase<*>.registerConstraintsUnchecked(model: Abstr
 }
 
 /**
- * 在星投影二次函数符号上注册约束（不安全转换）。
- * Register constraints on a star-projected quadratic function symbol (unchecked cast).
+ * 在星投影二次函数符号上注册约束（不安全转换）。 / Register constraints on a star-projected quadratic function symbol (unchecked cast).
  *
  * @param model 目标二次机制模型 / target quadratic mechanism model
  * @return 注册结果 / registration result
@@ -286,8 +283,7 @@ internal fun <V> toFlt64FixedVariables(
  * 将类型化 MechanismModel<V> 转换为 Flt64 求解器边界模型。
  * Convert a generic MechanismModel<V> to the Flt64 solver-boundary model.
  *
- * 转换前会验证模型是具体机制模型子类，未知类型返回 Failed。
- * Validates concrete mechanism-model subclasses and returns Failed for unexpected types.
+ * 转换前会验证模型是具体机制模型子类，未知类型返回 Failed。 / Validates concrete mechanism-model subclasses and returns Failed for unexpected types.
 */
 internal fun <V> convertMechanismModelToFlt64(model: MechanismModel<V>): Ret<MechanismModel<Flt64>>
         where V : RealNumber<V>, V : NumberField<V> {

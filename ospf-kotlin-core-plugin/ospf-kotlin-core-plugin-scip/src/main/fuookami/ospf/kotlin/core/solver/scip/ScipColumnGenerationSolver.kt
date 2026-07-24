@@ -8,13 +8,14 @@ import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModel
 import fuookami.ospf.kotlin.core.model.intermediate.solveDual
 import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
-import fuookami.ospf.kotlin.core.solver.output.SolvingStatusCallBack
+import fuookami.ospf.kotlin.core.solver.iis.IISConfig
+import fuookami.ospf.kotlin.core.solver.output.*
 import fuookami.ospf.kotlin.framework.solver.ColumnGenerationSolver
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
 import fuookami.ospf.kotlin.math.operator.abs
 import fuookami.ospf.kotlin.math.symbol.Linear
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import jscip.SCIP_ParamSetting
 
@@ -23,8 +24,8 @@ import jscip.SCIP_ParamSetting
  *
  * SCIP 列生成求解器
  *
- * @property config solver configuration / 求解器配置
- * @property callBack solver callback / 求解器回调
+ * @property config 求解器配置 / solver configuration
+ * @property callBack 求解器回调 / solver callback
 */
 class ScipColumnGenerationSolver(
     private val config: SolverConfig = SolverConfig(),
@@ -95,6 +96,80 @@ class ScipColumnGenerationSolver(
                         Failed(result.error)
                     }
 
+                    is Fatal -> {
+                        jobs.joinAll()
+                        Fatal(result.errors)
+                    }
+                }
+            }
+        }
+    }
+
+    override suspend fun solveMILPWithStatus(
+        name: String,
+        metaModel: LinearMetaModel<Flt64>,
+        toLogModel: Boolean,
+        registrationStatusCallBack: RegistrationStatusCallBack?,
+        solvingStatusCallBack: SolvingStatusCallBack?,
+        iisConfig: IISConfig
+    ): Ret<ColumnGenerationSolver.MILPSolveResult> {
+        val jobs = ArrayList<Job>()
+        if (toLogModel) {
+            jobs.add(pluginSolverAsyncScope.launch(Dispatchers.IO) {
+                metaModel.export("$name.opm")
+            })
+        }
+        return when (val result = LinearMechanismModel(
+            metaModel = metaModel,
+            concurrent = config.dumpMechanismModelConcurrent,
+            blocking = config.dumpMechanismModelBlocking,
+            registrationStatusCallBack = registrationStatusCallBack
+        )) {
+            is Ok -> result.value
+            is Failed -> {
+                jobs.joinAll()
+                return Failed(result.error)
+            }
+            is Fatal -> {
+                jobs.joinAll()
+                return Fatal(result.errors)
+            }
+        }.use { mechanismModel ->
+            LinearTriadModel(
+                model = mechanismModel,
+                fixedVariables = null,
+                dumpConstraintsToBounds = config.dumpIntermediateModelBounds,
+                forceDumpBounds = config.dumpIntermediateModelForceBounds,
+                concurrent = config.dumpIntermediateModelConcurrent
+            ).use { model ->
+                if (toLogModel) {
+                    jobs.add(pluginSolverAsyncScope.launch(Dispatchers.IO) {
+                        model.export("$name.lp", ModelFileFormat.LP)
+                    })
+                }
+                val structuredSolver = ScipLinearSolver(
+                    config = config,
+                    callBack = callBack.copy()
+                )
+                when (val result = structuredSolver(
+                    model = model,
+                    solvingStatusCallBack = solvingStatusCallBack,
+                    iisConfig = iisConfig
+                )) {
+                    is Ok -> {
+                        if (result.value is FeasibleSolverOutput<*>) {
+                            @Suppress("UNCHECKED_CAST")
+                            metaModel.tokens.setSolution(
+                                (result.value as FeasibleSolverOutput<Flt64>).solution
+                            )
+                        }
+                        jobs.joinAll()
+                        toMilpSolveResult(result.value)
+                    }
+                    is Failed -> {
+                        jobs.joinAll()
+                        Failed(result.error)
+                    }
                     is Fatal -> {
                         jobs.joinAll()
                         Fatal(result.errors)
@@ -318,6 +393,152 @@ class ScipColumnGenerationSolver(
                     }
                 }
             }
+        }
+    }
+
+    override suspend fun solveLPWithStatus(
+        name: String,
+        metaModel: LinearMetaModel<Flt64>,
+        toLogModel: Boolean,
+        registrationStatusCallBack: RegistrationStatusCallBack?,
+        solvingStatusCallBack: SolvingStatusCallBack?,
+        iisConfig: IISConfig
+    ): Ret<ColumnGenerationSolver.LPResultWithStatus> {
+        val jobs = ArrayList<Job>()
+        if (toLogModel) {
+            jobs.add(pluginSolverAsyncScope.launch(Dispatchers.IO) {
+                metaModel.export("$name.opm")
+            })
+        }
+        return when (val result = LinearMechanismModel(
+            metaModel = metaModel,
+            concurrent = config.dumpMechanismModelConcurrent,
+            blocking = config.dumpMechanismModelBlocking,
+            registrationStatusCallBack = registrationStatusCallBack
+        )) {
+            is Ok -> result.value
+            is Failed -> {
+                jobs.joinAll()
+                return Failed(result.error)
+            }
+            is Fatal -> {
+                jobs.joinAll()
+                return Fatal(result.errors)
+            }
+        }.use { mechanismModel ->
+            LinearTriadModel(
+                model = mechanismModel,
+                fixedVariables = null,
+                dumpConstraintsToBounds = config.dumpIntermediateModelBounds ?: false,
+                forceDumpBounds = config.dumpIntermediateModelForceBounds ?: false,
+                concurrent = config.dumpIntermediateModelConcurrent
+            ).use { model ->
+                model.linearRelax()
+                if (toLogModel) {
+                    jobs.add(pluginSolverAsyncScope.launch(Dispatchers.IO) {
+                        model.export("$name.lp", ModelFileFormat.LP)
+                    })
+                }
+
+                lateinit var dualSolution: kotlin.collections.Map<Constraint<Flt64, Linear>, Flt64>
+                var dualObject = Flt64.zero
+                val structuredSolver = ScipLinearSolver(
+                    config = config.copy(threadNum = UInt64.one),
+                    callBack = callBack.copy()
+                        .configuration { _, scip, _, _ ->
+                            scip.setPresolving(SCIP_ParamSetting.SCIP_PARAMSETTING_OFF, true)
+                            scip.setHeuristics(SCIP_ParamSetting.SCIP_PARAMSETTING_OFF, true)
+                            ok
+                        }
+                        .analyzingSolution { _, scipModel, _, constraints ->
+                            val dualValues = constraints.map { constraint ->
+                                Flt64(scipModel.getDual(constraint))
+                            }
+                            dualSolution = model.tidyDualSolution(dualValues)
+                            dualObject = model.constraints.rhs.indices.sumOf(Flt64) { index ->
+                                model.constraints.rhs[index] * dualValues[index]
+                            }
+                            ok
+                        }
+                )
+
+                when (val result = structuredSolver(
+                    model = model,
+                    solvingStatusCallBack = solvingStatusCallBack,
+                    iisConfig = iisConfig
+                )) {
+                    is Ok -> {
+                        when (val output = result.value) {
+                            is LinearInfeasibleSolverOutput -> {
+                                jobs.joinAll()
+                                Ok(ColumnGenerationSolver.LPResultWithStatus.Infeasible(output))
+                            }
+                            is FeasibleSolverOutput<*> -> {
+                                @Suppress("UNCHECKED_CAST")
+                                val feasible = output as FeasibleSolverOutput<Flt64>
+                                metaModel.tokens.setSolution(feasible.solution)
+                                if (abs(dualObject - feasible.obj) gr Flt64(1e-6)) {
+                                    when (val dualResult = solveDual(model, ScipLinearSolver(config))) {
+                                        is Ok -> dualSolution = dualResult.value
+                                        is Failed -> {
+                                            jobs.joinAll()
+                                            return Failed(dualResult.error)
+                                        }
+                                        is Fatal -> {
+                                            jobs.joinAll()
+                                            return Fatal(dualResult.errors)
+                                        }
+                                    }
+                                }
+                                jobs.joinAll()
+                                Ok(
+                                    ColumnGenerationSolver.LPResultWithStatus.Feasible(
+                                        ColumnGenerationSolver.LPResult(
+                                            result = feasible,
+                                            dualSolution = dualSolution
+                                        )
+                                    )
+                                )
+                            }
+                            else -> {
+                                jobs.joinAll()
+                                Failed(Err(
+                                    ErrorCode.IllegalArgument,
+                                    "SCIP 线性求解器返回了不支持的 LP 输出类型 / " +
+                                        "SCIP linear solver returned an unsupported LP output type: ${output::class.qualifiedName}"
+                                ))
+                            }
+                        }
+                    }
+                    is Failed -> {
+                        jobs.joinAll()
+                        Failed(result.error)
+                    }
+                    is Fatal -> {
+                        jobs.joinAll()
+                        Fatal(result.errors)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun toMilpSolveResult(
+        output: SolverOutput
+    ): Ret<ColumnGenerationSolver.MILPSolveResult> {
+        return when (output) {
+            is FeasibleSolverOutput<*> -> {
+                @Suppress("UNCHECKED_CAST")
+                Ok(ColumnGenerationSolver.MILPSolveResult.Feasible(output as FeasibleSolverOutput<Flt64>))
+            }
+            is LinearInfeasibleSolverOutput -> {
+                Ok(ColumnGenerationSolver.MILPSolveResult.Infeasible(output))
+            }
+            else -> Failed(Err(
+                ErrorCode.IllegalArgument,
+                "SCIP 线性求解器返回了不支持的 MILP 输出类型 / " +
+                    "SCIP linear solver returned an unsupported MILP output type: ${output::class.qualifiedName}"
+            ))
         }
     }
 }

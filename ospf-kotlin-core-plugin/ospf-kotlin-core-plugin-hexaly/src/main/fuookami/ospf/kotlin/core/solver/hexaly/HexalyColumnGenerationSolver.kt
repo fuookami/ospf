@@ -22,8 +22,8 @@ import fuookami.ospf.kotlin.framework.solver.ColumnGenerationSolver
  * Hexaly column generation solver
  * Hexaly 列生成求解器
  *
- * @property config solver configuration / 中文 求解器配置
- * @property callBack Hexaly solver callback manager / 中文 Hexaly 求解器回调管理器
+ * @property config 中文 求解器配置 / solver configuration
+ * @property callBack 中文 Hexaly 求解器回调管理器 / Hexaly solver callback manager
 */
 class HexalyColumnGenerationSolver(
     private val config: SolverConfig = SolverConfig(),

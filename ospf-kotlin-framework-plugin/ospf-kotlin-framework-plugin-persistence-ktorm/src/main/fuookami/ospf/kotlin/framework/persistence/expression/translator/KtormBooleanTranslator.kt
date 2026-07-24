@@ -1,6 +1,5 @@
 /**
- * Ktorm 布尔表达式翻译器
- * Ktorm Boolean Expression Translator
+ * Ktorm 布尔表达式翻译器 / Ktorm Boolean Expression Translator
  *
  * 将 BooleanExpression 翻译为 Ktorm ColumnDeclaring<Boolean>。
  * Translates BooleanExpression to Ktorm ColumnDeclaring<Boolean>.
@@ -24,8 +23,7 @@ import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
- * 列名解析器
- * Column Name Resolver
+ * 列名解析器 / Column Name Resolver
  *
  * 将 PropertyPath 解析为 Ktorm Column。
  * Resolves PropertyPath to Ktorm Column.
@@ -33,8 +31,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 typealias KtormColumnResolver = PersistenceFieldResolver<ColumnDeclaring<*>>
 
 /**
- * Ktorm 布尔表达式翻译器
- * Ktorm Boolean Expression Translator
+ * Ktorm 布尔表达式翻译器 / Ktorm Boolean Expression Translator
  *
  * 将 math.symbol.expression.BooleanExpression 翻译为 Ktorm 查询条件。
  * Translates math.symbol.expression.BooleanExpression to Ktorm query conditions.
@@ -51,8 +48,7 @@ class KtormBooleanTranslator(
     private val scalarTranslator = KtormScalarTranslator(resolveColumn, unsupportedPredicatePolicy)
 
     /**
-     * 翻译布尔表达式为 Ktorm 条件
-     * Translate boolean expression to Ktorm condition
+     * 翻译布尔表达式为 Ktorm 条件 / Translate boolean expression to Ktorm condition
      *
      * @param expr 布尔表达式 / Boolean expression
      * @return Ktorm 条件表达式，不支持时返回 null / Ktorm condition expression, or null if unsupported
@@ -72,8 +68,7 @@ class KtormBooleanTranslator(
     }
 
     /**
-     * 翻译常量布尔表达式
-     * Translate constant boolean expression
+     * 翻译常量布尔表达式 / Translate constant boolean expression
      *
      * @param expr 常量布尔表达式 / Constant boolean expression
      * @return 恒真或恒假条件 / Always-true or always-false condition
@@ -86,8 +81,7 @@ class KtormBooleanTranslator(
     }
 
     /**
-     * 翻译比较表达式为 Ktorm 二元比较
-     * Translate comparison expression to Ktorm binary comparison
+     * 翻译比较表达式为 Ktorm 二元比较 / Translate comparison expression to Ktorm binary comparison
      *
      * @param expr 比较表达式 / Comparison expression
      * @return Ktorm 比较条件 / Ktorm comparison condition
@@ -130,8 +124,7 @@ class KtormBooleanTranslator(
     }
 
     /**
-     * 翻译模式匹配表达式为 LIKE 或正则条件
-     * Translate pattern match expression to LIKE or regex condition
+     * 翻译模式匹配表达式为 LIKE 或正则条件 / Translate pattern match expression to LIKE or regex condition
      *
      * @param expr 模式匹配表达式 / Pattern match expression
      * @return Ktorm 模式匹配条件 / Ktorm pattern match condition
@@ -176,8 +169,7 @@ class KtormBooleanTranslator(
     }
 
     /**
-     * 翻译 AND 逻辑表达式为 Ktorm AND 组合条件
-     * Translate AND logical expression to Ktorm AND combined condition
+     * 翻译 AND 逻辑表达式为 Ktorm AND 组合条件 / Translate AND logical expression to Ktorm AND combined condition
      *
      * @param expr AND 表达式 / AND expression
      * @return Ktorm AND 条件 / Ktorm AND condition
@@ -188,8 +180,7 @@ class KtormBooleanTranslator(
     }
 
     /**
-     * 翻译 OR 逻辑表达式为 Ktorm OR 组合条件
-     * Translate OR logical expression to Ktorm OR combined condition
+     * 翻译 OR 逻辑表达式为 Ktorm OR 组合条件 / Translate OR logical expression to Ktorm OR combined condition
      *
      * @param expr OR 表达式 / OR expression
      * @return Ktorm OR 条件 / Ktorm OR condition
@@ -212,8 +203,7 @@ class KtormBooleanTranslator(
     }
 
     /**
-     * 构建 Ktorm 二元比较表达式
-     * Build Ktorm binary comparison expression
+     * 构建 Ktorm 二元比较表达式 / Build Ktorm binary comparison expression
      *
      * @param left 左操作数标量表达式 / Left operand scalar expression
      * @param right 右操作数标量表达式 / Right operand scalar expression
@@ -243,9 +233,9 @@ class KtormBooleanTranslator(
 /**
  * unsupported.
  * unsupported。
- * @param reason Reason why the expression is unsupported / 不支持该表达式的原因
- * @param expression The unsupported boolean expression / 不支持的布尔表达式
- * @return Result based on unsupported predicate policy / 根据不支持谓词策略返回的结果
+ * @param reason 不支持该表达式的原因 / Reason why the expression is unsupported
+ * @param expression 不支持的布尔表达式 / The unsupported boolean expression
+ * @return 根据不支持谓词策略返回的结果 / Result based on unsupported predicate policy
 */
     private fun unsupported(reason: String, expression: BooleanExpression): Ret<ColumnDeclaring<Boolean>?> {
         return when (unsupportedPredicatePolicy) {
@@ -272,7 +262,7 @@ class KtormBooleanTranslator(
 /**
  * alwaysFalse.
  * alwaysFalse。
- * @return A Ktorm expression that always evaluates to false / 恒为假的 Ktorm 表达式
+ * @return 恒为假的 Ktorm 表达式 / A Ktorm expression that always evaluates to false
 */
     private fun alwaysFalse(): ColumnDeclaring<Boolean> {
         return BinaryExpression(
@@ -286,7 +276,7 @@ class KtormBooleanTranslator(
 /**
  * alwaysTrue.
  * alwaysTrue。
- * @return A Ktorm expression that always evaluates to true / 恒为真的 Ktorm 表达式
+ * @return 恒为真的 Ktorm 表达式 / A Ktorm expression that always evaluates to true
 */
     private fun alwaysTrue(): ColumnDeclaring<Boolean> {
         return BinaryExpression(

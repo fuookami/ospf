@@ -27,8 +27,7 @@ private val flt64Converter = object : IntoValue<Flt64> {
 }
 
 /**
- * 生产排程：最小化跨月份的生产、仓储和延迟交付成本。
- * Production scheduling: minimize production, storage, and delay delivery costs across months.
+ * 生产排程：最小化跨月份的生产、仓储和延迟交付成本。 / Production scheduling: minimize production, storage, and delay delivery costs across months.
  *
  * @see https://fuookami.github.io/ospf/examples/example16.html
 */

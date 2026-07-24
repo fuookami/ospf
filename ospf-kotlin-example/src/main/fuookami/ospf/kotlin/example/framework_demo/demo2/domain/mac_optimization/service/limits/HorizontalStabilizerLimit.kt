@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.mac_optimization.service.limits
 
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
@@ -26,13 +27,13 @@ class HorizontalStabilizerLimit(
                 LinearMonomial(coefficient(key), hs.warnSlack),
                 "horizontal stabilizer $key"
             )) {
-                is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-                is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                     return Fatal(result.errors)
                 }
             }

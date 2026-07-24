@@ -17,8 +17,7 @@ import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task.model.*
 
 /**
- * 产能编译决策对象（无顺序）
- * Capacity Compilation Decision Object (No Order)
+ * 产能编译决策对象（无顺序） / Capacity Compilation Decision Object (No Order)
  *
  * 二维整型变量：x[action, slot] -> 数量
  * Two-dimensional integer variable: x[action, slot] -> amount
@@ -47,16 +46,14 @@ class CapacityCompilation<V : RealNumber<V>, A : ProductionAction>(
     }
 
     /**
-     * 二维整型变量
-     * 2D integer variable
+     * 二维整型变量 / 2D integer variable
      * x[action, slot] -> amount
     */
     lateinit var x: UIntVariable2
         private set
 
     /**
-     * 成本表达式
-     * Cost expression
+     * 成本表达式 / Cost expression
     */
     lateinit var cost: LinearIntermediateSymbol<Flt64>
         private set
@@ -68,10 +65,9 @@ class CapacityCompilation<V : RealNumber<V>, A : ProductionAction>(
         private set
 
     /**
-     * 注册到模型
-     * Register to model
+     * 注册到模型 / Register to model
      *
-     * @param model Linear meta model / 线性元模型
+     * @param model 线性元模型 / Linear meta model
      * @return Try result / Try 结果
     */
     fun register(model: LinearMetaModel<Flt64>): Try {
@@ -165,11 +161,10 @@ class CapacityCompilation<V : RealNumber<V>, A : ProductionAction>(
     }
 
     /**
-     * 解析解
-     * Extract solution from model
+     * 解析解 / Extract solution from model
      *
-     * @param model Abstract linear meta model / 抽象线性元模型
-     * @return Capacity scheduling solution / 产能调度解
+     * @param model 抽象线性元模型 / Abstract linear meta model
+     * @return 产能调度解 / Capacity scheduling solution
     */
     override fun extractSolution(model: AbstractLinearMetaModel<Flt64>): Ret<CapacitySchedulingSolution<A>> {
         val actionAllocations = mutableListOf<ActionAllocation<A>>()

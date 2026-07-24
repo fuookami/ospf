@@ -19,9 +19,7 @@ import fuookami.ospf.kotlin.utils.functional.*
  * 切割方案迭代聚合 / Cutting plan iterative aggregation
  *
  * 管理列生成迭代过程中的方案集合。与 BPP3D LayerAggregation 对齐，
- * 支持按迭代添加新方案并去重。
- *
- * Manages cutting plan sets during column generation iteration.
+ * 支持按迭代添加新方案并去重。 / Manages cutting plan sets during column generation iteration.
  * Aligned with BPP3D LayerAggregation, supporting per-iteration
  * addition of new plans with deduplication.
  *
@@ -91,9 +89,7 @@ class CuttingPlanAggregation<V : RealNumber<V>> {
  * 参考 BPP3D ImpreciseAssignment 和 downstream CuttingPlanIterativeProduce 的模式：
  * - 初始注册时创建 x 变量组和中间符号
  * - addColumns 时创建新的 x_$iteration 变量组和 batch_$iteration 中间符号，
- *   并对已有中间符号执行 flush + asMutable 追加新列系数
- *
- * Manage the core variables x[0..n-1] (batch count per cutting plan) of the CSP1D master problem,
+ * 并对已有中间符号执行 flush + asMutable 追加新列系数 / Manage the core variables x[0..n-1] (batch count per cutting plan) of the CSP1D master problem,
  * and constraint intermediate symbols (demandQuantity / materialQuantity / machineBatchQuantity / machineCapacityQuantity).
  *
  * Support MILP registration and column generation iterative mode (addColumns in-place increment).
@@ -128,9 +124,7 @@ class ProduceAggregation<V : RealNumber<V>>(
      * 需求贡献中间符号 / Demand contribution intermediate symbols
      *
      * 每个 demand 一个中间符号，表示 sum(contribution_j * x_j)，
-     * 约束管线引用此中间符号而非直接引用 x 变量。
-     *
-     * One intermediate symbol per demand, representing sum(contribution_j * x_j).
+     * 约束管线引用此中间符号而非直接引用 x 变量。 / One intermediate symbol per demand, representing sum(contribution_j * x_j).
      * Constraint pipelines reference this symbol instead of x variables directly.
     */
     lateinit var demandQuantity: LinearExpressionSymbols1<Flt64>
@@ -198,8 +192,7 @@ class ProduceAggregation<V : RealNumber<V>>(
     /**
      * 注册到元模型 / Register to meta model
      *
-     * 将初始 x 变量、batch 中间符号和约束中间符号注册到元模型。
-     * Register the initial x variables, batch intermediate symbols and constraint intermediate symbols.
+     * 将初始 x 变量、batch 中间符号和约束中间符号注册到元模型。 / Register the initial x variables, batch intermediate symbols and constraint intermediate symbols.
      *
      * @param model 线性元模型 / Linear meta model
      * @return 操作结果 / Operation result
@@ -362,9 +355,7 @@ class ProduceAggregation<V : RealNumber<V>>(
      * 添加新列到模型 / Add new columns to model
      *
      * 为新增切割方案创建 x_$iteration 变量组和 batch_$iteration 中间符号，
-     * 并对已有约束中间符号执行 flush + asMutable 追加新列系数。
-     *
-     * Create x_$iteration variable group and batch_$iteration intermediate symbol group
+     * 并对已有约束中间符号执行 flush + asMutable 追加新列系数。 / Create x_$iteration variable group and batch_$iteration intermediate symbol group
      * for new cutting plans, and perform flush + asMutable on existing constraint
      * intermediate symbols to append new column coefficients.
      *

@@ -422,7 +422,7 @@ private class CplexLinearSolverImpl(
      * 执行 CPLEX 求解
      * Execute CPLEX solving
      *
-     * @return the solve result as Try / 以Try包装的求解结果
+     * @return 以Try包装的求解结果 / the solve result as Try
     */
     private suspend fun solve(): Try {
         when (val result = callBack?.execIfContain(
@@ -473,7 +473,8 @@ private class CplexLinearSolverImpl(
                     gap(obj, possibleBestObj)
                 } else {
                     Flt64.zero
-                }
+                },
+                status = status
             )
 
             when (val result = callBack?.execIfContain(

@@ -1,6 +1,5 @@
 /**
- * 二次四元模型
- * Quadratic tetrad model
+ * 二次四元模型 / Quadratic tetrad model
 */
 package fuookami.ospf.kotlin.core.model.intermediate
 
@@ -28,8 +27,7 @@ import kotlinx.coroutines.*
 import org.apache.logging.log4j.kotlin.logger
 
 /**
- * 判断此二次约束是否为单变量边界约束（单项、系数为1、无二次项）
- * Check whether this quadratic constraint is a single-variable bound constraint (single term, coefficient 1, no quadratic term)
+ * 判断此二次约束是否为单变量边界约束（单项、系数为1、无二次项） / Check whether this quadratic constraint is a single-variable bound constraint (single term, coefficient 1, no quadratic term)
  *
  * @return 若为单变量边界约束则返回 true，否则返回 false / true if this is a single-variable bound constraint, false otherwise
 */
@@ -41,11 +39,9 @@ private fun QuadraticConstraintImpl<Flt64>.isBound(): Boolean {
 }
 
 /**
- * 二次约束单元
- * Quadratic constraint cell
+ * 二次约束单元 / Quadratic constraint cell
  *
- * 表示二次约束矩阵中的一个非零元素，包含行索引、列索引和系数。
- * Represents a non-zero element in the quadratic constraint matrix,
+ * 表示二次约束矩阵中的一个非零元素，包含行索引、列索引和系数。 / Represents a non-zero element in the quadratic constraint matrix,
  * containing row index, column indices, and coefficient.
  *
  * @property rowIndex 行索引 / Row index
@@ -82,11 +78,9 @@ class QuadraticConstraintCell(
 }
 
 /**
- * 二次约束批次
- * Quadratic constraint batch
+ * 二次约束批次 / Quadratic constraint batch
  *
- * 存储一组二次约束的稀疏矩阵表示，包括约束符号、右侧常量和约束来源。
- * Stores a batch of quadratic constraints in sparse matrix representation,
+ * 存储一组二次约束的稀疏矩阵表示，包括约束符号、右侧常量和约束来源。 / Stores a batch of quadratic constraints in sparse matrix representation,
  * including constraint signs, right-hand side constants, and constraint sources.
  *
  * @property sparseLhs 稀疏二次矩阵（左侧）/ Sparse quadratic matrix (left-hand side)
@@ -112,9 +106,7 @@ class QuadraticConstraintBatch(
     /**
      * 二次左侧矩阵的稀疏表示。
      * 每一行是一个 SparseQuadraticVector，其中条目携带 (colIndex1, colIndex2?, coefficient)。
-     * 这是主要的约束表示形式。
-     *
-     * Sparse representation of the quadratic LHS matrix.
+     * 这是主要的约束表示形式。 / Sparse representation of the quadratic LHS matrix.
      * Each row is a SparseQuadraticVector where entries carry (colIndex1, colIndex2?, coefficient).
      * This is the primary constraint representation.
     */
@@ -168,11 +160,9 @@ class QuadraticConstraintBatch(
 }
 
 /**
- * 二次目标单元
- * Quadratic objective cell
+ * 二次目标单元 / Quadratic objective cell
  *
- * 表示二次目标函数中的一个非零元素，包含列索引和系数。
- * Represents a non-zero element in the quadratic objective function,
+ * 表示二次目标函数中的一个非零元素，包含列索引和系数。 / Represents a non-zero element in the quadratic objective function,
  * containing column indices and coefficient.
  *
  * @property colIndex1 第一列索引 / First column index
@@ -205,14 +195,12 @@ class QuadraticObjectiveCell(
 }
 
 /**
- * 二次目标函数类型别名
- * Type alias for quadratic objective function
+ * 二次目标函数类型别名 / Type alias for quadratic objective function
 */
 typealias QuadraticObjective = Objective<QuadraticObjectiveCell>
 
 /**
- * 基础二次四元模型
- * Basic quadratic tetrad model
+ * 基础二次四元模型 / Basic quadratic tetrad model
  *
  * 二次问题的求解器标准形式（四元：变量 + 约束，无目标函数）。
  * 直接用于 IIS（不可约不可行子系统）计算，以及作为 [QuadraticTetradModel] 的 [impl] 委托。
@@ -252,9 +240,7 @@ class BasicQuadraticTetradModel(
          * 将变量和约束提取到求解器标准形式。
          *
          * 这是一个便捷工厂方法，镜像了 [QuadraticTetradModel.invoke] 中的变量/约束提取逻辑，
-         * 但不包含目标函数步骤。
-         *
-         * Create a [BasicQuadraticTetradModel] from a [QuadraticMechanismModel<Flt64>] by
+         * 但不包含目标函数步骤。 / Create a [BasicQuadraticTetradModel] from a [QuadraticMechanismModel<Flt64>] by
          * extracting variables and constraints into solver-standard form.
          *
          * This is a convenience factory that mirrors the variable/constraint extraction
@@ -294,8 +280,7 @@ class BasicQuadraticTetradModel(
     override fun clone() = copy()
 
     /**
-     * 就地线性松弛
-     * In-place linear relaxation
+     * 就地线性松弛 / In-place linear relaxation
      *
      * 将整数变量类型松弛为连续类型（Binary->Percentage, Integer->Continuous 等）。
      * Relaxes integer variable types to continuous types (Binary->Percentage, Integer->Continuous, etc.).
@@ -321,8 +306,7 @@ class BasicQuadraticTetradModel(
     }
 
     /**
-     * 返回线性松弛后的副本
-     * Return a linearly relaxed copy
+     * 返回线性松弛后的副本 / Return a linearly relaxed copy
      *
      * @return 线性松弛后的模型副本 / Linearly relaxed model copy
     */
@@ -440,11 +424,9 @@ class BasicQuadraticTetradModel(
 }
 
 /**
- * 二次四元模型视图接口
- * Quadratic tetrad model view interface
+ * 二次四元模型视图接口 / Quadratic tetrad model view interface
  *
- * 提供二次模型的视图操作，包括线性松弛、对偶、可行性和弹性模型。
- * Provides view operations for quadratic models, including linear relaxation, dual, feasibility, and elastic models.
+ * 提供二次模型的视图操作，包括线性松弛、对偶、可行性和弹性模型。 / Provides view operations for quadratic models, including linear relaxation, dual, feasibility, and elastic models.
 */
 interface QuadraticTetradModelView : ModelView<QuadraticConstraintCell, QuadraticObjectiveCell> {
     override val constraints: QuadraticConstraintBatch
@@ -481,8 +463,7 @@ interface QuadraticTetradModelView : ModelView<QuadraticConstraintCell, Quadrati
     fun elastic(): QuadraticTetradModelView
 
     /**
-     * 整理对偶解，将完整对偶值（包括零值）映射回原始约束
-     * Tidy dual solution, mapping complete dual values (including zero) back to original constraints
+     * 整理对偶解，将完整对偶值（包括零值）映射回原始约束 / Tidy dual solution, mapping complete dual values (including zero) back to original constraints
      *
      * @param solution 求解器返回的对偶解向量 / Dual solution vector returned by the solver
      * @return 原始约束到对偶值的映射 / Mapping from original constraints to dual values
@@ -509,11 +490,9 @@ interface QuadraticTetradModelView : ModelView<QuadraticConstraintCell, Quadrati
 }
 
 /**
- * 二次四元模型
- * Quadratic tetrad model
+ * 二次四元模型 / Quadratic tetrad model
  *
- * 求解器标准形式的二次优化模型，包含变量、约束和目标函数。
- * Solver-standard form of quadratic optimization model, containing variables, constraints, and objective function.
+ * 求解器标准形式的二次优化模型，包含变量、约束和目标函数。 / Solver-standard form of quadratic optimization model, containing variables, constraints, and objective function.
  *
  * @property impl 基础模型实现 / Basic model implementation
  * @property tokensInSolver 求解器中的符号列表 / Token list in solver

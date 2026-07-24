@@ -1,6 +1,5 @@
 /**
- * 求解器扩展函数
- * Solver extension functions
+ * 求解器扩展函数 / Solver extension functions
 */
 package fuookami.ospf.kotlin.core.solver
 
@@ -18,8 +17,7 @@ import fuookami.ospf.kotlin.core.solver.value.*
 import fuookami.ospf.kotlin.core.solver.output.*
 
 /**
- * 使用默认选项求解线性模型。
- * Solve a linear model with default options.
+ * 使用默认选项求解线性模型。 / Solve a linear model with default options.
  *
  * @param model 线性三元模型视图 / Linear triad model view
  * @return 求解结果 / Solve result
@@ -29,8 +27,7 @@ suspend fun AbstractLinearSolver.solve(model: LinearTriadModelView): Ret<Feasibl
 }
 
 /**
- * 使用指定选项求解线性模型。
- * Solve a linear model with specified options.
+ * 使用指定选项求解线性模型。 / Solve a linear model with specified options.
  *
  * @param model 线性三元模型视图 / Linear triad model view
  * @param options 求解选项 / Solve options
@@ -61,8 +58,7 @@ suspend fun AbstractLinearSolver.solveWithOptions(
 }
 
 /**
- * 使用默认选项求解二次模型。
- * Solve a quadratic model with default options.
+ * 使用默认选项求解二次模型。 / Solve a quadratic model with default options.
  *
  * @param model 二次四元模型视图 / Quadratic tetrad model view
  * @return 求解结果 / Solve result
@@ -72,8 +68,7 @@ suspend fun AbstractQuadraticSolver.solve(model: QuadraticTetradModelView): Ret<
 }
 
 /**
- * 使用指定选项求解二次模型。
- * Solve a quadratic model with specified options.
+ * 使用指定选项求解二次模型。 / Solve a quadratic model with specified options.
  *
  * @param model 二次四元模型视图 / Quadratic tetrad model view
  * @param options 求解选项 / Solve options
@@ -104,8 +99,7 @@ suspend fun AbstractQuadraticSolver.solveWithOptions(
 }
 
 /**
- * 使用选项和 IIS 配置求解线性模型，失败时计算不可行子系统。
- * Solve a linear model with options and IIS configuration; compute IIS on infeasibility.
+ * 使用选项和 IIS 配置求解线性模型，失败时计算不可行子系统。 / Solve a linear model with options and IIS configuration; compute IIS on infeasibility.
  *
  * @param model 线性三元模型视图 / Linear triad model view
  * @param options 求解选项 / Solve options
@@ -119,17 +113,16 @@ suspend fun AbstractLinearSolver.solveWithOptionsAndIIS(
 ): Ret<SolverOutput> {
     val solveStartedAt = TimeSource.Monotonic.markNow()
     var latestSolvingStatus: SolvingStatus? = null
-    val bridgingSolvingStatusCallBack = options.solvingStatusCallBack?.let { callback ->
-        { status: SolvingStatus ->
-            latestSolvingStatus = status
-            callback(status)
-        }
+    val statusBridge = SolvingStatusCallbackBridge(options.solvingStatusCallBack) { status ->
+        latestSolvingStatus = status
     }
 
-    return when (val result = solveWithOptions(
+    val result = solveWithOptions(
         model = model,
-        options = options.copy(solvingStatusCallBack = bridgingSolvingStatusCallBack)
-    )) {
+        options = options.copy(solvingStatusCallBack = statusBridge.callback)
+    )
+    statusBridge.failure?.let { return propagateStatusFailure(it) }
+    return when (result) {
         is Ok -> {
             Ok(result.value)
         }
@@ -174,8 +167,7 @@ suspend fun AbstractLinearSolver.solveWithOptionsAndIIS(
 }
 
 /**
- * 使用选项和 IIS 配置从解池求解线性模型。
- * Solve a linear model from solution pool with options and IIS configuration.
+ * 使用选项和 IIS 配置从解池求解线性模型。 / Solve a linear model from solution pool with options and IIS configuration.
  *
  * @param model 线性三元模型视图 / Linear triad model view
  * @param options 求解选项 / Solve options
@@ -196,18 +188,14 @@ suspend fun AbstractLinearSolver.solveWithOptionsAndIISForSolutionPool(
     return withSolveValueConversionPolicy(options.effectiveValueConversionPolicy) {
         val solveStartedAt = TimeSource.Monotonic.markNow()
         var latestSolvingStatus: SolvingStatus? = null
-        val bridgingSolvingStatusCallBack = options.solvingStatusCallBack?.let { callback ->
-            { status: SolvingStatus ->
-                latestSolvingStatus = status
-                callback(status)
-            }
+        val statusBridge = SolvingStatusCallbackBridge(options.solvingStatusCallBack) { status ->
+            latestSolvingStatus = status
         }
 
-        val solutionAmount = options.solutionAmount
-        if (solutionAmount == null) {
-            return@withSolveValueConversionPolicy when (val result = solveWithOptionsAndIIS(
+        val solutionAmount =
+            options.solutionAmount ?: return@withSolveValueConversionPolicy when (val result = solveWithOptionsAndIIS(
                 model = model,
-                options = options.copy(solvingStatusCallBack = bridgingSolvingStatusCallBack),
+                options = options.copy(solvingStatusCallBack = statusBridge.callback),
                 iisConfig = iisConfig
             )) {
                 is Ok -> {
@@ -222,12 +210,12 @@ suspend fun AbstractLinearSolver.solveWithOptionsAndIISForSolutionPool(
                     Fatal(result.errors)
                 }
             }
-        }
 
+        statusBridge.failure?.let { return@withSolveValueConversionPolicy propagateStatusFailure(it) }
         when (val result = this@solveWithOptionsAndIISForSolutionPool(
             model = model,
             solutionAmount = solutionAmount,
-            solvingStatusCallBack = bridgingSolvingStatusCallBack
+            solvingStatusCallBack = statusBridge.callback
         )) {
             is Ok -> {
                 Ok(result.value.first to result.value.second)
@@ -274,8 +262,7 @@ suspend fun AbstractLinearSolver.solveWithOptionsAndIISForSolutionPool(
 }
 
 /**
- * 使用选项和 IIS 配置求解二次模型，失败时计算不可行子系统。
- * Solve a quadratic model with options and IIS configuration; compute IIS on infeasibility.
+ * 使用选项和 IIS 配置求解二次模型，失败时计算不可行子系统。 / Solve a quadratic model with options and IIS configuration; compute IIS on infeasibility.
  *
  * @param model 二次四元模型视图 / Quadratic tetrad model view
  * @param options 求解选项 / Solve options
@@ -289,17 +276,16 @@ suspend fun AbstractQuadraticSolver.solveWithOptionsAndIIS(
 ): Ret<SolverOutput> {
     val solveStartedAt = TimeSource.Monotonic.markNow()
     var latestSolvingStatus: SolvingStatus? = null
-    val bridgingSolvingStatusCallBack = options.solvingStatusCallBack?.let { callback ->
-        { status: SolvingStatus ->
-            latestSolvingStatus = status
-            callback(status)
-        }
+    val statusBridge = SolvingStatusCallbackBridge(options.solvingStatusCallBack) { status ->
+        latestSolvingStatus = status
     }
 
-    return when (val result = solveWithOptions(
+    val result = solveWithOptions(
         model = model,
-        options = options.copy(solvingStatusCallBack = bridgingSolvingStatusCallBack)
-    )) {
+        options = options.copy(solvingStatusCallBack = statusBridge.callback)
+    )
+    statusBridge.failure?.let { return propagateStatusFailure(it) }
+    return when (result) {
         is Ok -> {
             Ok(result.value)
         }
@@ -344,8 +330,7 @@ suspend fun AbstractQuadraticSolver.solveWithOptionsAndIIS(
 }
 
 /**
- * 使用选项和 IIS 配置从解池求解二次模型。
- * Solve a quadratic model from solution pool with options and IIS configuration.
+ * 使用选项和 IIS 配置从解池求解二次模型。 / Solve a quadratic model from solution pool with options and IIS configuration.
  *
  * @param model 二次四元模型视图 / Quadratic tetrad model view
  * @param options 求解选项 / Solve options
@@ -366,18 +351,15 @@ suspend fun AbstractQuadraticSolver.solveWithOptionsAndIISForSolutionPool(
     return withSolveValueConversionPolicy(options.effectiveValueConversionPolicy) {
         val solveStartedAt = TimeSource.Monotonic.markNow()
         var latestSolvingStatus: SolvingStatus? = null
-        val bridgingSolvingStatusCallBack = options.solvingStatusCallBack?.let { callback ->
-            { status: SolvingStatus ->
-                latestSolvingStatus = status
-                callback(status)
-            }
+        val statusBridge = SolvingStatusCallbackBridge(options.solvingStatusCallBack) { status ->
+            latestSolvingStatus = status
         }
 
         val solutionAmount = options.solutionAmount
         if (solutionAmount == null) {
             return@withSolveValueConversionPolicy when (val result = solveWithOptionsAndIIS(
                 model = model,
-                options = options.copy(solvingStatusCallBack = bridgingSolvingStatusCallBack),
+                options = options.copy(solvingStatusCallBack = statusBridge.callback),
                 iisConfig = iisConfig
             )) {
                 is Ok -> {
@@ -394,10 +376,11 @@ suspend fun AbstractQuadraticSolver.solveWithOptionsAndIISForSolutionPool(
             }
         }
 
+        statusBridge.failure?.let { return@withSolveValueConversionPolicy propagateStatusFailure(it) }
         when (val result = this@solveWithOptionsAndIISForSolutionPool(
             model = model,
             solutionAmount = solutionAmount,
-            solvingStatusCallBack = bridgingSolvingStatusCallBack
+            solvingStatusCallBack = statusBridge.callback
         )) {
             is Ok -> {
                 Ok(result.value.first to result.value.second)
@@ -443,9 +426,39 @@ suspend fun AbstractQuadraticSolver.solveWithOptionsAndIISForSolutionPool(
     }
 }
 
+/** Preserve callback failures across solver adapters. / 在 solver adapter 边界保留回调失败结果。 */
+private class SolvingStatusCallbackBridge(
+    delegate: SolvingStatusCallBack?,
+    private val onStatus: (SolvingStatus) -> Unit
+) {
+    var failure: Try? = null
+        private set
+
+    val callback: SolvingStatusCallBack? = delegate?.let { callback ->
+        SolvingStatusCallBack { status ->
+            onStatus(status)
+            val result = callback(status)
+            if (result.failed && failure == null) {
+                failure = result
+            }
+            result
+        }
+    }
+}
+
+private fun <T> propagateStatusFailure(result: Try): Ret<T> {
+    return when (result) {
+        is Failed -> Failed(result.error)
+        is Fatal -> Fatal(result.errors)
+        is Ok -> Failed(
+            ErrorCode.ApplicationError,
+            "求解状态回调结果无效 / Invalid solving status callback result"
+        )
+    }
+}
+
 /**
- * 从包含解列表的求解结果中提取求解器输出。
- * Extract the solver output from a solve result that includes a solution list.
+ * 从包含解列表的求解结果中提取求解器输出。 / Extract the solver output from a solve result that includes a solution list.
  *
  * @param result 包含求解器输出与解列表的配对结果 / A paired result containing solver output and solution list
  * @return 仅包含求解器输出的求解结果 / Solve result containing only the solver output
@@ -467,8 +480,7 @@ private fun unwrapSolution(result: Ret<Pair<FeasibleSolverOutput<Flt64>, List<Li
 }
 
 /**
- * 异步求解线性模型。
- * Asynchronously solve a linear model.
+ * 异步求解线性模型。 / Asynchronously solve a linear model.
  *
  * @param model 线性三元模型视图 / Linear triad model view
  * @param options 求解选项 / Solve options
@@ -488,8 +500,7 @@ fun AbstractLinearSolver.solveAsync(
 }
 
 /**
- * 异步求解二次模型。
- * Asynchronously solve a quadratic model.
+ * 异步求解二次模型。 / Asynchronously solve a quadratic model.
  *
  * @param model 二次四元模型视图 / Quadratic tetrad model view
  * @param options 求解选项 / Solve options

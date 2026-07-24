@@ -21,8 +21,7 @@ import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
- * 远程求解 HTTP 客户端。
- * Remote solver HTTP client.
+ * 远程求解 HTTP 客户端。 / Remote solver HTTP client.
  *
  * @property baseUrl dispatcher 基础地址 / Dispatcher base URL
  * @property transport HTTP 传输 / HTTP transport
@@ -57,8 +56,7 @@ class RemoteSolverHttpClient(
     private val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
 
     /**
-     * 将远程求解器错误码转换为框架错误码。
-     * Convert remote solver error code to framework error code.
+     * 将远程求解器错误码转换为框架错误码。 / Convert remote solver error code to framework error code.
      *
      * @return 对应的框架错误码 / Corresponding framework error code
     */
@@ -71,8 +69,7 @@ class RemoteSolverHttpClient(
     }
 
     /**
-     * 构建远程求解器错误消息。
-     * Build remote solver error message.
+     * 构建远程求解器错误消息。 / Build remote solver error message.
      *
      * @param code 错误码 / Error code
      * @param message 错误描述 / Error description
@@ -92,8 +89,7 @@ class RemoteSolverHttpClient(
     }
 
     /**
-     * 构建远程求解器失败结果，包含详细错误信息。
-     * Build remote solver failure result with detailed error info.
+     * 构建远程求解器失败结果，包含详细错误信息。 / Build remote solver failure result with detailed error info.
      *
      * @param code 远程错误码 / Remote error code
      * @param message 错误描述 / Error description
@@ -132,8 +128,7 @@ class RemoteSolverHttpClient(
     }
 
     /**
-     * 使用 HTTP 传输插件构造客户端。
-     * Construct client with HTTP transport plugin.
+     * 使用 HTTP 传输插件构造客户端。 / Construct client with HTTP transport plugin.
      *
      * @param baseUrl dispatcher 基础地址 / Dispatcher base URL
      * @param transportPlugin HTTP 传输插件 / HTTP transport plugin
@@ -365,8 +360,7 @@ class RemoteSolverHttpClient(
     }
 
     /**
-     * 提交任务。
-     * Submit task.
+     * 提交任务。 / Submit task.
      *
      * @param request 提交请求 / Submit request
      * @return 提交响应 / Submit response
@@ -390,8 +384,7 @@ class RemoteSolverHttpClient(
     }
 
     /**
-     * 发送 HTTP 请求到远程求解器。
-     * Send HTTP request to remote solver.
+     * 发送 HTTP 请求到远程求解器。 / Send HTTP request to remote solver.
      *
      * @param request HTTP 请求 / HTTP request
      * @return HTTP 响应或失败结果 / HTTP response or failure result
@@ -416,8 +409,7 @@ class RemoteSolverHttpClient(
     }
 
     /**
-     * 查询任务。
-     * Get task.
+     * 查询任务。 / Get task.
      *
      * @param taskId 任务 ID / Task ID
      * @return 任务视图，不存在时返回 null / Task view, null if not found
@@ -443,8 +435,7 @@ class RemoteSolverHttpClient(
     }
 
     /**
-     * 停止任务。
-     * Stop task.
+     * 停止任务。 / Stop task.
      *
      * @param taskId 任务 ID / Task ID
      * @param request 停止请求 / Stop request
@@ -472,8 +463,7 @@ class RemoteSolverHttpClient(
     }
 
     /**
-     * 恢复任务。
-     * Resume task.
+     * 恢复任务。 / Resume task.
      *
      * @param taskId 任务 ID / Task ID
      * @param request 恢复请求 / Resume request
@@ -501,8 +491,7 @@ class RemoteSolverHttpClient(
     }
 
     /**
-     * 构建远程求解器 HTTP 请求，自动注入租户和追踪头。
-     * Build remote solver HTTP request with auto-injected tenant and trace headers.
+     * 构建远程求解器 HTTP 请求，自动注入租户和追踪头。 / Build remote solver HTTP request with auto-injected tenant and trace headers.
      *
      * @param method HTTP 方法 / HTTP method
      * @param path 请求路径 / Request path
@@ -533,8 +522,7 @@ class RemoteSolverHttpClient(
     }
 
     /**
-     * 解析 API 信封响应，提取数据或错误。
-     * Decode API envelope response, extract data or error.
+     * 解析 API 信封响应，提取数据或错误。 / Decode API envelope response, extract data or error.
      *
      * @param response HTTP 响应 / HTTP response
      * @param dataDeserializer 数据反序列化器 / Data deserializer
@@ -584,8 +572,7 @@ class RemoteSolverHttpClient(
     }
 
     /**
-     * 解析错误响应，提取错误信息并构建失败结果。
-     * Decode error response, extract error info and build failure result.
+     * 解析错误响应，提取错误信息并构建失败结果。 / Decode error response, extract error info and build failure result.
      *
      * @param response HTTP 响应 / HTTP response
      * @return 包含错误详情的失败结果 / Failure result with error details
@@ -624,8 +611,7 @@ class RemoteSolverHttpClient(
     }
 
     /**
-     * 将求解载荷上传到对象存储。
-     * Upload solve payload to object storage.
+     * 将求解载荷上传到对象存储。 / Upload solve payload to object storage.
      *
      * @param payload 求解载荷 / Solve payload
      * @param taskId 任务 ID / Task ID
@@ -669,8 +655,7 @@ class RemoteSolverHttpClient(
 }
 
 /**
- * HTTP 恢复模式。
- * HTTP resume mode.
+ * HTTP 恢复模式。 / HTTP resume mode.
 */
 enum class RemoteSolverHttpResumeMode {
     /** 恢复服务端任务的最新检查点 / Resume server task from its latest checkpoint */
@@ -681,14 +666,12 @@ enum class RemoteSolverHttpResumeMode {
 }
 
 /**
- * 远程求解 HTTP 传输接口。
- * Remote solver HTTP transport.
+ * 远程求解 HTTP 传输接口。 / Remote solver HTTP transport.
 */
 fun interface RemoteSolverHttpTransport {
 
     /**
-     * 发送 HTTP 请求。
-     * Send HTTP request.
+     * 发送 HTTP 请求。 / Send HTTP request.
      *
      * @param request HTTP 请求 / HTTP request
      * @return HTTP 响应 / HTTP response
@@ -697,8 +680,7 @@ fun interface RemoteSolverHttpTransport {
 }
 
 /**
- * 远程求解 HTTP 请求。
- * Remote solver HTTP request.
+ * 远程求解 HTTP 请求。 / Remote solver HTTP request.
  *
  * @property method HTTP 方法 / HTTP method
  * @property url 请求 URL / Request URL
@@ -713,8 +695,7 @@ data class RemoteSolverHttpRequest(
 )
 
 /**
- * 远程求解 HTTP 响应。
- * Remote solver HTTP response.
+ * 远程求解 HTTP 响应。 / Remote solver HTTP response.
  *
  * @property statusCode HTTP 状态码 / HTTP status code
  * @property body 响应体 / Response body
@@ -725,8 +706,7 @@ data class RemoteSolverHttpResponse(
 )
 
 /**
- * JDK 标准 HTTP 传输实现。
- * JDK standard HTTP transport implementation.
+ * JDK 标准 HTTP 传输实现。 / JDK standard HTTP transport implementation.
  *
  * @property client JDK HTTP 客户端 / JDK HTTP client
  * @property config HTTP 传输配置 / HTTP transport config
@@ -758,8 +738,7 @@ class JavaNetRemoteSolverHttpTransport(
 }
 
 /**
- * 远程任务提交请求。
- * Remote task submit request.
+ * 远程任务提交请求。 / Remote task submit request.
  *
  * @property payloadRef 载荷对象路径 / Payload object path
  * @property requestId 幂等请求 ID / Idempotent request ID
@@ -787,8 +766,7 @@ data class RemoteTaskSubmitRequest(
 )
 
 /**
- * 远程任务提交响应。
- * Remote task submit response.
+ * 远程任务提交响应。 / Remote task submit response.
  *
  * @property taskId 任务 ID / Task ID
  * @property accepted 是否接受 / Whether accepted
@@ -803,8 +781,7 @@ data class RemoteTaskSubmitResponse(
 )
 
 /**
- * 远程任务视图。
- * Remote task view.
+ * 远程任务视图。 / Remote task view.
  *
  * @property taskId 任务 ID / Task ID
  * @property tenantId 租户 ID / Tenant ID
@@ -825,8 +802,7 @@ data class RemoteTaskView(
 )
 
 /**
- * 远程任务操作响应。
- * Remote task action response.
+ * 远程任务操作响应。 / Remote task action response.
  *
  * @property taskId 任务 ID / Task ID
  * @property status 任务状态 / Task status
@@ -837,8 +813,7 @@ data class RemoteTaskAction(
 )
 
 /**
- * 远程任务停止请求。
- * Remote task stop request.
+ * 远程任务停止请求。 / Remote task stop request.
  *
  * @property reason 停止原因 / Stop reason
  * @property operator 操作者 / Operator
@@ -852,8 +827,7 @@ data class RemoteTaskStopRequest(
 )
 
 /**
- * 远程任务恢复请求。
- * Remote task resume request.
+ * 远程任务恢复请求。 / Remote task resume request.
  *
  * @property operator 操作者 / Operator
  * @property source 来源 / Source
@@ -870,11 +844,11 @@ data class RemoteTaskResumeRequest(
  * API response envelope.
  * API 响应信封。
  *
- * @param T the data type / 数据类型
+ * @param T 数据类型 / the data type
  * @property code the API response code / API 响应码
- * @property message the response message / 响应消息
- * @property traceId the trace ID, nullable / 追踪 ID，可为 null
- * @property data the response data, nullable / 响应数据，可为 null
+ * @property message 响应消息 / the response message
+ * @property traceId 追踪 ID，可为 null / the trace ID, nullable
+ * @property data 响应数据，可为 null / the response data, nullable
 */
 @Serializable
 private data class ApiEnvelope<T>(
@@ -888,10 +862,10 @@ private data class ApiEnvelope<T>(
  * HTTP response for task submission.
  * 任务提交的 HTTP 响应。
  *
- * @property taskId the task ID / 任务 ID
- * @property accepted whether the task was accepted / 是否接受
- * @property status the task status string / 任务状态字符串
- * @property message the response message / 响应消息
+ * @property taskId 任务 ID / the task ID
+ * @property accepted 是否接受 / whether the task was accepted
+ * @property status 任务状态字符串 / the task status string
+ * @property message 响应消息 / the response message
 */
 @Serializable
 private data class SubmitTaskHttpResponse(
@@ -905,7 +879,7 @@ private data class SubmitTaskHttpResponse(
      * Converts to domain model.
      * 转换为领域模型。
      *
-     * @return the domain submit response / 领域提交响应
+     * @return 领域提交响应 / the domain submit response
     */
     fun toDomain(): RemoteTaskSubmitResponse {
         return RemoteTaskSubmitResponse(
@@ -921,13 +895,13 @@ private data class SubmitTaskHttpResponse(
  * HTTP response for task view.
  * 任务视图的 HTTP 响应。
  *
- * @property taskId the task ID / 任务 ID
- * @property tenantId the tenant ID / 租户 ID
- * @property status the task status string / 任务状态字符串
- * @property currentNodeId the current node ID, nullable / 当前节点 ID，可为 null
- * @property latestCheckpointPath the latest checkpoint path, nullable / 最新检查点路径，可为 null
- * @property latestResultPath the latest result path, nullable / 最新结果路径，可为 null
- * @property consumedCost the consumed cost / 已消耗成本
+ * @property taskId 任务 ID / the task ID
+ * @property tenantId 租户 ID / the tenant ID
+ * @property status 任务状态字符串 / the task status string
+ * @property currentNodeId 当前节点 ID，可为 null / the current node ID, nullable
+ * @property latestCheckpointPath 最新检查点路径，可为 null / the latest checkpoint path, nullable
+ * @property latestResultPath 最新结果路径，可为 null / the latest result path, nullable
+ * @property consumedCost 已消耗成本 / the consumed cost
 */
 @Serializable
 private data class TaskViewHttpResponse(
@@ -944,7 +918,7 @@ private data class TaskViewHttpResponse(
      * Converts to domain model.
      * 转换为领域模型。
      *
-     * @return the domain task view / 领域任务视图
+     * @return 领域任务视图 / the domain task view
     */
     fun toDomain(): RemoteTaskView {
         return RemoteTaskView(
@@ -963,8 +937,8 @@ private data class TaskViewHttpResponse(
  * HTTP response for task action.
  * 任务操作的 HTTP 响应。
  *
- * @property taskId the task ID / 任务 ID
- * @property status the task status string / 任务状态字符串
+ * @property taskId 任务 ID / the task ID
+ * @property status 任务状态字符串 / the task status string
 */
 @Serializable
 private data class TaskActionHttpResponse(
@@ -976,7 +950,7 @@ private data class TaskActionHttpResponse(
      * Converts to domain model.
      * 转换为领域模型。
      *
-     * @return the domain task action / 领域任务操作
+     * @return 领域任务操作 / the domain task action
     */
     fun toDomain(): RemoteTaskAction {
         return RemoteTaskAction(

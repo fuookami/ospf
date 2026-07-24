@@ -38,8 +38,8 @@ class TaskDelayTimeMinimization<
     private val timeWindow: TimeWindow<*>,
     tasks: List<T>,
     private val taskTime: TaskTime,
-    private val threshold: Extractor<Duration?, T> = { Duration.ZERO },
-    private val coefficient: Extractor<Flt64?, T> = { Flt64.one },
+    private val threshold: Extractor<Duration?, T> = Extractor { Duration.ZERO },
+    private val coefficient: Extractor<Flt64?, T> = Extractor { Flt64.one },
     override val name: String = "task_delay_time_minimization"
 ) : AbstractGanttSchedulingCGPipeline<Args, E, A> {
 
@@ -57,8 +57,8 @@ class TaskDelayTimeMinimization<
         timeBoundary: SolverTimeWindowBoundary,
         tasks: List<T>,
         taskTime: TaskTime,
-        threshold: Extractor<Duration?, T> = { Duration.ZERO },
-        coefficient: Extractor<Flt64?, T> = { Flt64.one },
+        threshold: Extractor<Duration?, T> = Extractor { Duration.ZERO },
+        coefficient: Extractor<Flt64?, T> = Extractor { Flt64.one },
         name: String = "task_delay_time_minimization"
     ) : this(
         timeWindow = timeBoundary.source,

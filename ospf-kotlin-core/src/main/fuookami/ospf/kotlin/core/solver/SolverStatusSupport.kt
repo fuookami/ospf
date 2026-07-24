@@ -6,19 +6,15 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.solver.output.SolverStatus
 
 /**
- * `core.solver` 的插件支持 API：状态归一与失败兜底。
- * Plugin support APIs in `core.solver` for status normalization and failure fallback.
+ * `core.solver` 的插件支持 API：状态归一与失败兜底。 / Plugin support APIs in `core.solver` for status normalization and failure fallback.
  *
- * 目标：统一 callback 失败中止语义与状态到错误码映射语义，减少插件重复实现。
- * Goal: unify callback-abort semantics and status-to-error-code mapping to reduce duplicated plugin logic.
+ * 目标：统一 callback 失败中止语义与状态到错误码映射语义，减少插件重复实现。 / Goal: unify callback-abort semantics and status-to-error-code mapping to reduce duplicated plugin logic.
  *
- * 非目标：不替代 solver 原生状态机，也不判断业务可恢复性。
- * Non-goal: does not replace native solver state machines or decide business-level recoverability.
+ * 非目标：不替代 solver 原生状态机，也不判断业务可恢复性。 / Non-goal: does not replace native solver state machines or decide business-level recoverability.
 */
 
 /**
- * 统一 callback 失败结果处理，命中失败分支时执行 abort 并返回 `true`。
- * Unified callback failure handling; executes abort and returns `true` on failure branches.
+ * 统一 callback 失败结果处理，命中失败分支时执行 abort 并返回 `true`。 / Unified callback failure handling; executes abort and returns `true` on failure branches.
  *
  * @param callbackResult 回调结果（可选）/ Callback result (optional)
  * @param abort 中止操作 / Abort operation
@@ -41,8 +37,7 @@ inline fun shouldAbortOnCallbackFailure(
 }
 
 /**
- * 将 `SolverStatus` 映射到错误码，并在缺失时返回兜底值。
- * Map `SolverStatus` to error code and return fallback when status error code is absent.
+ * 将 `SolverStatus` 映射到错误码，并在缺失时返回兜底值。 / Map `SolverStatus` to error code and return fallback when status error code is absent.
  *
  * @param fallback 兜底错误码 / Fallback error code
  * @return 错误码 / Error code

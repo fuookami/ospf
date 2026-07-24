@@ -12,7 +12,10 @@ import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModelView
 import fuookami.ospf.kotlin.core.solver.*
 import fuookami.ospf.kotlin.core.solver.config.GurobiSolverConfig
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
+import fuookami.ospf.kotlin.core.solver.iis.IISConfig
+import fuookami.ospf.kotlin.core.solver.iis.InfeasibilityAnalyzer
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.value.toSolverDouble
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
@@ -28,6 +31,29 @@ class GurobiLinearSolver(
     private val callBack: GurobiLinearSolverCallBack? = null
 ) : LinearSolver {
     override val name = "gurobi"
+    override val descriptor = SolverDescriptor(
+        solverId = "gurobi",
+        backendName = "Gurobi",
+        pluginVersion = GurobiLinearSolver::class.java.`package`.implementationVersion,
+        capabilities = SolverCapabilities(
+            modelTypes = setOf(SolverModelType.LP, SolverModelType.MIP),
+            nativeIIS = true,
+            dual = true,
+            farkas = true,
+            warmStart = true,
+            solutionPool = true,
+            callback = true
+        )
+    )
+
+    override fun diagnosticAnalyzers(
+        config: IISConfig
+    ): List<InfeasibilityAnalyzer<LinearTriadModelView>> {
+        return listOf(
+            GurobiNativeIISAnalyzer(this.config, config, callBack),
+            GurobiFarkasAnalyzer(this.config, config, callBack)
+        )
+    }
 
     /**
      * 求解线性模型 / Solve linear model
@@ -410,10 +436,9 @@ private class GurobiLinearSolverImpl(
     }
 
     /**
-     * 分析求解结果
-     * Analyze solving result
+     * 分析求解结果 / Analyze solving result
      *
-     * @return the analysis result as Try / 以Try包装的分析结果
+     * @return 以Try包装的分析结果 / the analysis result as Try
     */
     private suspend fun analyzeSolution(): Try {
         return try {
@@ -422,24 +447,27 @@ private class GurobiLinearSolverImpl(
                 for (grbVar in grbVars) {
                     results.add(Flt64(grbVar.get(GRB.DoubleAttr.X)))
                 }
+                val isMip = grbModel.get(GRB.IntAttr.IsMIP) != 0
+                val isMinimize = grbModel.get(GRB.IntAttr.ModelSense) == GRB.MINIMIZE
+                val possibleBestObj = when {
+                    isMip -> Flt64(grbModel.get(GRB.DoubleAttr.ObjBound))
+                    status == SolverStatus.Optimal -> Flt64(grbModel.get(GRB.DoubleAttr.ObjVal))
+                    isMinimize -> Flt64.negativeInfinity
+                    else -> Flt64.infinity
+                }
+                val gap = when {
+                    status != SolverStatus.Optimal -> Flt64.infinity
+                    isMip -> Flt64(grbModel.get(GRB.DoubleAttr.MIPGap))
+                    else -> Flt64.zero
+                }
                 output = FeasibleSolverOutput<Flt64>(
                     obj = Flt64(grbModel.get(GRB.DoubleAttr.ObjVal)),
                     solution = results,
                     time = grbModel.get(GRB.DoubleAttr.Runtime).seconds,
-                    possibleBestObj = Flt64(
-                        if (grbModel.get(GRB.IntAttr.IsMIP) != 0) {
-                            grbModel.get(GRB.DoubleAttr.ObjBound)
-                        } else {
-                            grbModel.get(GRB.DoubleAttr.ObjVal)
-                        }
-                    ),
-                    gap = Flt64(
-                        if (grbModel.get(GRB.IntAttr.IsMIP) != 0) {
-                            grbModel.get(GRB.DoubleAttr.MIPGap)
-                        } else {
-                            0.0
-                        }
-                    )
+                    possibleBestObj = possibleBestObj,
+                    gap = gap,
+                    status = status,
+                    bestBound = possibleBestObj
                 )
                 when (val result = callBack?.execIfContain(
                     point = Point.AnalyzingSolution,

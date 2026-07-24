@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.redundancy.service.limits
 
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
@@ -16,9 +17,9 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.redundancy.model
  * Minimizes the experimental longitudinal balance slack weighted by a coefficient.
  * 最小化按系数加权的实验纵向平衡松弛。
  *
- * @property aircraftModel The aircraft model reference / 飞机模型引用
- * @property longitudinalBalance The experimental longitudinal balance model / 实验纵向平衡模型
- * @property coefficient The weight coefficient function for the objective / 目标函数的权重系数函数
+ * @property aircraftModel 飞机模型引用 / The aircraft model reference
+ * @property longitudinalBalance 实验纵向平衡模型 / The experimental longitudinal balance model
+ * @property coefficient 目标函数的权重系数函数 / The weight coefficient function for the objective
 */
 class ExperimentalLongitudinalBalanceLimit(
     private val aircraftModel: AircraftModel,
@@ -31,13 +32,13 @@ class ExperimentalLongitudinalBalanceLimit(
             LinearMonomial(coefficient(), longitudinalBalance.longitudinalTorqueSlack.value),
             "experimental longitudinal balance"
         )) {
-            is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-            is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                     return Fatal(result.errors)
                 }
         }

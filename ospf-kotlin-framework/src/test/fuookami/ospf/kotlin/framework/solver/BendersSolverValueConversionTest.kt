@@ -40,7 +40,8 @@ class BendersSolverValueConversionTest {
             solution = listOf(Flt64(5.0), Flt64(7.0)),
             time = Duration.ZERO,
             possibleBestObj = Flt64(11.0),
-            gap = Flt64.zero
+            gap = Flt64.zero,
+            status = SolverStatus.Feasible
         )
 
         private val linearCut = LinearInequality(
@@ -271,6 +272,7 @@ class BendersSolverValueConversionTest {
         assertEquals(Flt64(8.0), feasible.solution[1] as Flt64)
         assertEquals(Flt64(13.0), feasible.objValueOrNull!! as Flt64)
         assertEquals(Flt64(12.0), feasible.possibleBestObjValueOrNull!! as Flt64)
+        assertEquals(SolverStatus.Feasible, feasible.status)
     }
 
     @Test
@@ -332,8 +334,8 @@ class BendersSolverValueConversionTest {
     @Test
     fun linearSolveMasterAsAsyncForwardsCallbacksFromOptions() {
         val solver = StubBendersSolver()
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveMasterAsAsync(
             metaModel = linearModel(),
             options = FrameworkSolveOptions(
@@ -348,8 +350,8 @@ class BendersSolverValueConversionTest {
     @Test
     fun linearSolveMasterAsForwardsCallbacksFromOptions() = runBlocking {
         val solver = StubBendersSolver()
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveMasterAs(
             metaModel = linearModel(),
             options = FrameworkSolveOptions(
@@ -436,8 +438,8 @@ class BendersSolverValueConversionTest {
     @Test
     fun quadraticSolveMasterAsAsyncForwardsCallbacksFromOptions() {
         val solver = StubBendersSolver()
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveMasterAsAsync(
             metaModel = quadraticModel(),
             options = FrameworkSolveOptions(
@@ -452,8 +454,8 @@ class BendersSolverValueConversionTest {
     @Test
     fun quadraticSolveMasterAsForwardsCallbacksFromOptions() = runBlocking {
         val solver = StubBendersSolver()
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveMasterAs(
             metaModel = quadraticModel(),
             options = FrameworkSolveOptions(
@@ -492,8 +494,8 @@ class BendersSolverValueConversionTest {
     @Test
     fun linearSolveSubAsAsyncForwardsCallbacksFromOptions() {
         val solver = StubBendersSolver()
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveSubAsAsync(
             metaModel = linearModel(),
             objectVariable = RealVar("x"),
@@ -510,8 +512,8 @@ class BendersSolverValueConversionTest {
     @Test
     fun linearSolveSubAsForwardsCallbacksFromOptions() = runBlocking {
         val solver = StubBendersSolver()
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveSubAs(
             metaModel = linearModel(),
             objectVariable = RealVar("x"),
@@ -552,8 +554,8 @@ class BendersSolverValueConversionTest {
     @Test
     fun quadraticSolveSubAsAsyncForwardsCallbacksFromOptions() {
         val solver = StubBendersSolver()
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveSubAsAsync(
             metaModel = quadraticModel(),
             objectVariable = RealVar("y"),
@@ -570,8 +572,8 @@ class BendersSolverValueConversionTest {
     @Test
     fun quadraticSolveSubAsForwardsCallbacksFromOptions() = runBlocking {
         val solver = StubBendersSolver()
-        val registrationStatusCallBack: RegistrationStatusCallBack = { _ -> ok }
-        val solvingStatusCallBack: SolvingStatusCallBack = { _ -> ok }
+        val registrationStatusCallBack = RegistrationStatusCallBack { _ -> ok }
+        val solvingStatusCallBack = SolvingStatusCallBack { _ -> ok }
         solver.solveSubAs(
             metaModel = quadraticModel(),
             objectVariable = RealVar("y"),

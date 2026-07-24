@@ -1,9 +1,7 @@
 /**
- * 框架数值类型别名
- * Framework number type aliases
+ * 框架数值类型别名 / Framework number type aliases
  *
- * 为 FltX/Rtn64/RtnX 等数值类型提供线性元模型、二次元模型、求解器输出和解池的便捷类型别名。
- * Provides convenient type aliases for linear/quadratic meta models, solver outputs, and solution pools
+ * 为 FltX/Rtn64/RtnX 等数值类型提供线性元模型、二次元模型、求解器输出和解池的便捷类型别名。 / Provides convenient type aliases for linear/quadratic meta models, solver outputs, and solution pools
  * using FltX/Rtn64/RtnX number types.
 */
 package fuookami.ospf.kotlin.framework.solver

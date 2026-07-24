@@ -47,9 +47,11 @@ interface ColumnGenerationSolver {
     // MILP 求解
     suspend fun solveMILP(name: String, metaModel: Flt64LinearMetaModel, ...): Ret<Flt64FeasibleSolverOutput>
     suspend fun solveMILP(metaModel: Flt64LinearMetaModel, options: FrameworkSolveOptions): Ret<Flt64FeasibleSolverOutput>
+    suspend fun solveMILPWithStatus(...): Ret<MILPSolveResult>
 
     // LP 求解（返回对偶解用于定价）
     suspend fun solveLP(name: String, metaModel: Flt64LinearMetaModel, ...): Ret<LPResult>
+    suspend fun solveLPWithStatus(...): Ret<LPResultWithStatus>
 
     // 异步变体（CompletableFuture）
     fun solveMILPAsync(...): CompletableFuture<Ret<Flt64FeasibleSolverOutput>>
@@ -62,6 +64,7 @@ interface ColumnGenerationSolver {
 ```
 
 `LPResult` 将可行求解器输出与约束对偶解映射捆绑，对列生成定价至关重要。
+`MILPSolveResult` 和 `LPResultWithStatus` 保留类型化的不可行终态；调用方需要区分模型不可行与技术失败时应使用结构化 API。可行 LP 只有在其 `status` 为 `SolverStatus.Optimal` 时才是有效的定价证书。
 
 ### BendersDecompositionSolver
 
@@ -76,6 +79,10 @@ interface LinearBendersDecompositionSolver {
 ```
 
 `LinearSubResult` 是带有 `Feasible` 和 `Infeasible` 变体的密封接口，遵循 Benders 分解模式。
+
+### 面向 CP 的 Logic-Based Benders
+
+`LogicBasedBendersEngine` 将线性 master 与 CP 子问题组合。变量绑定、冲突/最优性 cut oracle、一般整数 no-good 编码、迭代 trace 以及 `Exact`/`Heuristic` 证明门禁都是显式扩展点。`Exact` 模式要求主问题和子问题终态均有证明、cut 全局有效、目标一致，并且主问题上下界间隙在容差内。
 
 ### 组合求解器
 

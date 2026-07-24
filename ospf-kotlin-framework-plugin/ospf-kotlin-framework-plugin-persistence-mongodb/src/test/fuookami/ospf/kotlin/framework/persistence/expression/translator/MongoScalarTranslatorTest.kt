@@ -18,7 +18,7 @@ import fuookami.ospf.kotlin.framework.persistence.expression.UnsupportedPredicat
 
 @DisplayName("MongoScalarTranslator Tests / MongoDB 标量翻译器测试")
 class MongoScalarTranslatorTest {
-    private val resolver: MongoFieldNameResolver = { path: String ->
+    private val resolver = MongoFieldNameResolver { path: String ->
         when (path.substringAfterLast(".")) {
             "price" -> "price"
             "quantity" -> "quantity"

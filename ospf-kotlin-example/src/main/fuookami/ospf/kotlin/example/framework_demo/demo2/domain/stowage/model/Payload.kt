@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.model
 
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
@@ -20,9 +21,9 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.infrastructure.*
  * lower deck, and total payload across different stowage modes.
  * 业载模型，管理不同装载模式下主舱、下舱和总业载的预估和实际业载计算。
  *
- * @property plannedPayload the planned payload weight / 计划业载重量
- * @property maxPayload the maximum payload weight / 最大业载重量
- * @property computedPayload the computed payload weight, or null if not yet computed / 已计算的业载重量，未计算时为 null
+ * @property plannedPayload 计划业载重量 / the planned payload weight
+ * @property maxPayload 最大业载重量 / the maximum payload weight
+ * @property computedPayload 已计算的业载重量，未计算时为 null / the computed payload weight, or null if not yet computed
 */
 class Payload(
     val plannedPayload: Quantity<Flt64>,
@@ -42,8 +43,7 @@ class Payload(
     lateinit var actualPayload: QuantityLinearIntermediateSymbol<Flt64>
 
     /**
-     * 向模型注册业载相关中间符号。
-     * Register payload-related intermediate symbols into the model.
+     * 向模型注册业载相关中间符号。 / Register payload-related intermediate symbols into the model.
      *
      * @param stowageMode 装载模式 / stowage mode
      * @param model 线性元模型 / linear meta model
@@ -93,13 +93,13 @@ class Payload(
             )
         }
         when (val result = model.add(mainEstimatePayload)) {
-            is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-            is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                     return Fatal(result.errors)
                 }
         }
@@ -119,7 +119,7 @@ class Payload(
                                     }
                                 }
                             ),
-                            name = "main_estimate_payload"
+                            name = "low_estimate_payload"
                         )
                     }
 
@@ -144,13 +144,13 @@ class Payload(
             )
         }
         when (val result = model.add(lowEstimatePayload)) {
-            is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-            is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                     return Fatal(result.errors)
                 }
         }
@@ -165,7 +165,8 @@ class Payload(
                                 items.fold(Flt64.zero) { acc, item ->
                                     acc + item.weight.to(aircraftModel.weightUnit)!!.value
                                 }
-                            )
+                            ),
+                            name = "estimate_payload"
                         )
                     }
 
@@ -192,13 +193,13 @@ class Payload(
             )
         }
         when (val result = model.add(estimatePayload)) {
-            is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-            is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                     return Fatal(result.errors)
                 }
         }
@@ -243,13 +244,13 @@ class Payload(
             )
         }
         when (val result = model.add(mainActualPayload)) {
-            is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-            is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                     return Fatal(result.errors)
                 }
         }
@@ -269,7 +270,7 @@ class Payload(
                                     }
                                 }
                             ),
-                            name = "main_actual_payload"
+                            name = "low_actual_payload"
                         )
                     }
 
@@ -294,13 +295,13 @@ class Payload(
             )
         }
         when (val result = model.add(lowActualPayload)) {
-            is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-            is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                     return Fatal(result.errors)
                 }
         }
@@ -315,7 +316,8 @@ class Payload(
                                 items.fold(Flt64.zero) { acc, item ->
                                     acc + item.weight.to(aircraftModel.weightUnit)!!.value
                                 }
-                            )
+                            ),
+                            name = "actual_payload"
                         )
                     }
 
@@ -334,13 +336,13 @@ class Payload(
             )
         }
         when (val result = model.add(actualPayload)) {
-            is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-            is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                     return Fatal(result.errors)
                 }
         }

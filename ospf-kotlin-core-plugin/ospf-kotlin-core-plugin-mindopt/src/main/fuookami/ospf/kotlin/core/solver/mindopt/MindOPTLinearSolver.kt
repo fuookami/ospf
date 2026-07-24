@@ -27,7 +27,7 @@ import com.alibaba.damo.mindopt.*
  *
  * MindOPT 线性求解器
  *
- * @property callBack Linear solver callback / 线性求解器回调
+ * @property callBack 线性求解器回调 / Linear solver callback
 */
 class MindOPTLinearSolver(
     override val config: SolverConfig = SolverConfig(),
@@ -94,9 +94,9 @@ class MindOPTLinearSolver(
  *
  * MindOPT 线性求解器内部实现
  *
- * @property config Solver configuration / 求解器配置
- * @property callBack Linear solver callback / 线性求解器回调
- * @property statusCallBack Solving status callback / 求解状态回调
+ * @property config 求解器配置 / Solver configuration
+ * @property callBack 线性求解器回调 / Linear solver callback
+ * @property statusCallBack 求解状态回调 / Solving status callback
 */
 private class MindOPTLinearSolverImpl(
     private val config: SolverConfig,
@@ -146,8 +146,8 @@ private class MindOPTLinearSolverImpl(
      *
      * 将线性模型导出到 MindOPT 求解器
      *
-     * @param model Linear triad model view / 线性三元组模型视图
-     * @return Operation result / 操作结果
+     * @param model 线性三元组模型视图 / Linear triad model view
+     * @return 操作结果 / Operation result
     */
     private suspend fun dump(model: LinearTriadModelView): Try {
         return try {
@@ -280,8 +280,8 @@ private class MindOPTLinearSolverImpl(
      *
      * 配置 MindOPT 求解器参数
      *
-     * @param model Linear triad model view / 线性三元组模型视图
-     * @return Operation result / 操作结果
+     * @param model 线性三元组模型视图 / Linear triad model view
+     * @return 操作结果 / Operation result
     */
     private suspend fun configure(model: LinearTriadModelView): Try {
         return try {
@@ -390,7 +390,7 @@ private class MindOPTLinearSolverImpl(
      *
      * 分析线性求解结果并提取解
      *
-     * @return Operation result / 操作结果
+     * @return 操作结果 / Operation result
     */
     private suspend fun analyzeSolution(): Try {
         return try {
@@ -416,7 +416,8 @@ private class MindOPTLinearSolverImpl(
                         } else {
                             0.0
                         }
-                    )
+                    ),
+                    status = status
                 )
                 when (val result = callBack?.execIfContain(
                     point = Point.AnalyzingSolution,

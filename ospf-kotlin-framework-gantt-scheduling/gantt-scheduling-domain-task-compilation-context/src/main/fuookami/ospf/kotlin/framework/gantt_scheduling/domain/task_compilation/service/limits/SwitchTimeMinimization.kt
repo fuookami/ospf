@@ -38,8 +38,8 @@ class SwitchTimeMinimization<
     private val timeWindow: TimeWindow<*>,
     private val tasks: List<T>,
     private val switch: Switch,
-    private val threshold: Extractor<Duration?, Pair<T, T>> = { Duration.ZERO },
-    private val coefficient: Extractor<Flt64?, Pair<T, T>> = { Flt64.one },
+    private val threshold: Extractor<Duration?, Pair<T, T>> = Extractor { Duration.ZERO },
+    private val coefficient: Extractor<Flt64?, Pair<T, T>> = Extractor { Flt64.one },
     override val name: String = "switch_time_minimization"
 ) : AbstractGanttSchedulingCGPipeline<Args, E, A> {
 
@@ -57,8 +57,8 @@ class SwitchTimeMinimization<
         timeBoundary: SolverTimeWindowBoundary,
         tasks: List<T>,
         switch: Switch,
-        threshold: Extractor<Duration?, Pair<T, T>> = { Duration.ZERO },
-        coefficient: Extractor<Flt64?, Pair<T, T>> = { Flt64.one },
+        threshold: Extractor<Duration?, Pair<T, T>> = Extractor { Duration.ZERO },
+        coefficient: Extractor<Flt64?, Pair<T, T>> = Extractor { Flt64.one },
         name: String = "switch_time_minimization"
     ) : this(
         timeWindow = timeBoundary.source,

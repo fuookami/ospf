@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.airworthiness_security.service.limits
 
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
@@ -20,9 +21,9 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.model.Po
 /**
  * 约束每条限制线的线性密度到最大允许值。Constrains linear density per limit line to the maximum allowed value.
  *
- * @property aircraftModel The aircraft model providing unit configuration / 提供单位配置的飞机型号
- * @property linearDensity The linear density estimation and limits / 线性密度估算与限制
- * @property positions The list of cargo positions / 货物位置列表
+ * @property aircraftModel 提供单位配置的飞机型号 / The aircraft model providing unit configuration
+ * @property linearDensity 线性密度估算与限制 / The linear density estimation and limits
+ * @property positions 货物位置列表 / The list of cargo positions
 */
 class LinearDensityLimit(
     private val aircraftModel: AircraftModel,
@@ -45,13 +46,13 @@ class LinearDensityLimit(
                 relation = LinearPolynomial(poly.monomials, poly.constant) leq line.zone.maxLinearDensity.to(aircraftModel.linearDensityUnit)!!.value,
                 name = "${name}_${line.zone.name}_${line.arm.value}"
             )) {
-                is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-                is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                     return Fatal(result.errors)
                 }
             }

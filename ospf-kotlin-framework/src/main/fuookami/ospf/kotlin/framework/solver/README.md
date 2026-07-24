@@ -9,7 +9,9 @@ Solver abstraction layer defining column generation, Benders decomposition, and 
 ```
 ColumnGenerationSolver
   ├── solveMILP / solveMILPAsync        (MILP solving)
+  ├── solveMILPWithStatus               (MILP solving with terminal status)
   ├── solveLP / solveLPAsync            (LP solving, returns dual solution)
+  ├── solveLPWithStatus                 (LP solving with terminal status)
   ├── solveMILPAs / solveMILPAsAsync    (MILP solving with value conversion)
   ├── solveLPAs / solveLPAsAsync        (LP solving with value conversion)
   └── LPResult / LPResultOf<V>         (LP result with dual solution)
@@ -24,6 +26,11 @@ QuadraticBendersDecompositionSolver
   ├── solveSub / solveSubAs             (Quadratic sub problem)
   └── QuadraticSubResult (Feasible | Infeasible)
 ```
+
+`solveMILPWithStatus` and `solveLPWithStatus` preserve an infeasible result as
+`MILPSolveResult.Infeasible` or `LPResultWithStatus.Infeasible`. For a feasible
+LP, callers must check `LPResult.status == SolverStatus.Optimal` before using
+its duals as an exact pricing certificate.
 
 ## Combinatorial Solvers
 

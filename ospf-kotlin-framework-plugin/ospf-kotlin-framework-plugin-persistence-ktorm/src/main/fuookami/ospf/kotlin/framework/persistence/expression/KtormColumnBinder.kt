@@ -2,8 +2,7 @@
  * Ktorm 列绑定器
  * Ktorm column binder
  *
- * 提供基于 Ktorm 表的强类型列绑定能力。
- * Provides strong-typed column binding based on Ktorm tables.
+ * 提供基于 Ktorm 表的强类型列绑定能力。 / Provides strong-typed column binding based on Ktorm tables.
  *
  * 使用方式 / Usage:
  * ```kotlin
@@ -38,8 +37,7 @@ class KtormColumnBinder<T : Table<*>>(
 ) : ColumnBinder<ColumnDeclaring<*>> {
 
     /**
-     * 解析属性路径为 Ktorm 列声明
-     * Resolve property path to Ktorm column declaring
+     * 解析属性路径为 Ktorm 列声明 / Resolve property path to Ktorm column declaring
      *
      * @param path 属性路径 / Property path
      * @return 对应的 Ktorm 列声明，未找到时返回 null / Corresponding Ktorm column declaring, or null if not found
@@ -56,7 +54,7 @@ class KtormColumnBinder<T : Table<*>>(
  *
  * @return Ktorm 列解析器 / Ktorm column resolver
 */
-fun KtormColumnBinder<*>.asKtormResolver(): KtormColumnResolver = { path -> resolve(path) }
+fun KtormColumnBinder<*>.asKtormResolver(): KtormColumnResolver = KtormColumnResolver { path -> resolve(path) }
 
 /**
  * 从 PredicateSchema + KtormTable 创建 KtormColumnResolver
@@ -70,7 +68,7 @@ fun KtormColumnBinder<*>.asKtormResolver(): KtormColumnResolver = { path -> reso
 */
 fun HasColumnMapping.ktormResolver(table: Table<*>): KtormColumnResolver {
     val binder = KtormColumnBinder(table, columnMapping)
-    return { path -> binder.resolve(path) }
+    return KtormColumnResolver { path -> binder.resolve(path) }
 }
 
 /**
@@ -83,5 +81,5 @@ fun HasColumnMapping.ktormResolver(table: Table<*>): KtormColumnResolver {
 */
 fun ktormResolver(table: Table<*>, columnMapping: Map<String, String>): KtormColumnResolver {
     val binder = KtormColumnBinder(table, columnMapping)
-    return { path -> binder.resolve(path) }
+    return KtormColumnResolver { path -> binder.resolve(path) }
 }

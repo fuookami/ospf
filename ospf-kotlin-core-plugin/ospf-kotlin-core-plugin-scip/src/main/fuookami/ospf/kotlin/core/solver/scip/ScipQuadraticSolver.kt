@@ -12,6 +12,7 @@ import fuookami.ospf.kotlin.core.model.intermediate.QuadraticTetradModelView
 import fuookami.ospf.kotlin.core.solver.*
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.value.toSolverDouble
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
@@ -24,8 +25,8 @@ import jscip.*
  *
  * SCIP 二次求解器
  *
- * @property config solver configuration / 求解器配置
- * @property callBack solver callback / 求解器回调
+ * @property config 求解器配置 / solver configuration
+ * @property callBack 求解器回调 / solver callback
 */
 class ScipQuadraticSolver(
     override val config: SolverConfig = SolverConfig(),
@@ -39,7 +40,7 @@ class ScipQuadraticSolver(
          *
          * 从 JAR 包中加载 SCIP 原生库
          *
-         * @return operation result / 操作结果
+         * @return 操作结果 / operation result
         */
         @JvmStatic
         fun loadLibraryInJar(): Try {
@@ -48,6 +49,16 @@ class ScipQuadraticSolver(
     }
 
     override val name = "scip"
+    override val descriptor = SolverDescriptor(
+        solverId = "scip",
+        backendName = "SCIP",
+        pluginVersion = ScipQuadraticSolver::class.java.`package`.implementationVersion,
+        capabilities = SolverCapabilities(
+            modelTypes = setOf(SolverModelType.QP, SolverModelType.QCP),
+            callback = true,
+            interrupt = true
+        )
+    )
 
     override suspend operator fun invoke(
         model: QuadraticTetradModelView,
@@ -117,9 +128,9 @@ class ScipQuadraticSolver(
  *
  * SCIP 二次求解器实现
  *
- * @property config solver configuration / 求解器配置
- * @property callBack solver callback / 求解器回调
- * @property statusCallBack solving status callback / 求解状态回调
+ * @property config 求解器配置 / solver configuration
+ * @property callBack 求解器回调 / solver callback
+ * @property statusCallBack 求解状态回调 / solving status callback
 */
 @OptIn(ExperimentalTime::class)
 private class ScipQuadraticSolverImpl(
@@ -186,8 +197,8 @@ private class ScipQuadraticSolverImpl(
      *
      * 将二次模型导出到 SCIP
      *
-     * @param model quadratic tetrad model view / 二次四元模型视图
-     * @return operation result / 操作结果
+     * @param model 二次四元模型视图 / quadratic tetrad model view
+     * @return 操作结果 / operation result
     */
     private suspend fun dump(model: QuadraticTetradModelView): Try {
         warnIgnoredConstraintPriority("scip", model.nonNullConstraintPriorityAmount())
@@ -410,8 +421,8 @@ private class ScipQuadraticSolverImpl(
      *
      * 配置 SCIP 求解器参数
      *
-     * @param model quadratic tetrad model view / 二次四元模型视图
-     * @return operation result / 操作结果
+     * @param model 二次四元模型视图 / quadratic tetrad model view
+     * @return 操作结果 / operation result
     */
     private suspend fun configure(model: QuadraticTetradModelView): Try {
         scip.setRealParam("limits/time", config.time.toDouble(DurationUnit.SECONDS))
@@ -471,7 +482,7 @@ private class ScipQuadraticSolverImpl(
                             scipVars.map { variable -> Flt64(solverModel.getSolVal(bestSolution, variable)) }
                         }
                         val callbackResult = it(
-                            fuookami.ospf.kotlin.core.solver.output.SolvingStatus(
+                            SolvingStatus(
                                 solver = "scip",
                                 solverConfig = config,
                                 intermediateModel = model,
@@ -520,8 +531,8 @@ private class ScipQuadraticSolverImpl(
      *
      * 分析求解结果并提取解
      *
-     * @param model quadratic tetrad model view / 二次四元模型视图
-     * @return operation result / 操作结果
+     * @param model 二次四元模型视图 / quadratic tetrad model view
+     * @return 操作结果 / operation result
     */
     private suspend fun analyzeSolution(model: QuadraticTetradModelView): Try {
         return if (status.succeeded) {
@@ -532,17 +543,19 @@ private class ScipQuadraticSolverImpl(
             }
             val obj = Flt64(scip.getSolOrigObj(solution)) + model.objective.constant
             val possibleBestObj = Flt64(scip.dualbound) + model.objective.constant
-            val gap = if (mip) {
-                gap(obj, possibleBestObj)
+            val gap = if (status == SolverStatus.Optimal) {
+                if (mip) gap(obj, possibleBestObj) else Flt64.zero
             } else {
-                Flt64.zero
+                Flt64.infinity
             }
             output = FeasibleSolverOutput<Flt64>(
                 obj = obj,
                 solution = results,
                 time = solvingTime!!,
                 possibleBestObj = possibleBestObj,
-                gap = gap
+                gap = gap,
+                status = status,
+                bestBound = possibleBestObj
             )
 
             when (val result = callBack?.execIfContain(

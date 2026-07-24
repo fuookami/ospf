@@ -683,8 +683,7 @@ class IterativeTaskSchedulingStorageResourceUsage<
     /**
      * 添加列贡献 / Add column contribution
      *
-     * 用于迭代任务列生成场景，在每次迭代中添加新列的资源使用量贡献
-     * Used for iterative task column generation, adds resource usage contribution from new columns in each iteration
+     * 用于迭代任务列生成场景，在每次迭代中添加新列的资源使用量贡献 / Used for iterative task column generation, adds resource usage contribution from new columns in each iteration
      *
      * @param T 任务类型 / Task type
      * @param E 执行器类型 / Executor type
@@ -890,8 +889,7 @@ class BunchSchedulingStorageResourceUsage<
     /**
      * 添加列贡献 / Add column contribution
      *
-     * 用于任务束列生成场景，在每次迭代中添加新列的资源使用量贡献
-     * Used for task bunch column generation, adds resource usage contribution from new columns in each iteration
+     * 用于任务束列生成场景，在每次迭代中添加新列的资源使用量贡献 / Used for task bunch column generation, adds resource usage contribution from new columns in each iteration
      *
      * @param B 任务束类型 / Task bunch type
      * @param T 任务类型 / Task type

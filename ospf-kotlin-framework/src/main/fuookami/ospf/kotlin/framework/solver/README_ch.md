@@ -9,7 +9,9 @@
 ```
 ColumnGenerationSolver
   ├── solveMILP / solveMILPAsync        (MILP 求解)
+  ├── solveMILPWithStatus               (保留 MILP 终态)
   ├── solveLP / solveLPAsync            (LP 求解，返回对偶解)
+  ├── solveLPWithStatus                 (保留 LP 终态)
   ├── solveMILPAs / solveMILPAsAsync    (带值转换的 MILP 求解)
   ├── solveLPAs / solveLPAsAsync        (带值转换的 LP 求解)
   └── LPResult / LPResultOf<V>         (LP 结果含对偶解)
@@ -24,6 +26,10 @@ QuadraticBendersDecompositionSolver
   ├── solveSub / solveSubAs             (二次子问题)
   └── QuadraticSubResult (Feasible | Infeasible)
 ```
+
+`solveMILPWithStatus` 和 `solveLPWithStatus` 将不可行结果保留为
+`MILPSolveResult.Infeasible` 或 `LPResultWithStatus.Infeasible`。对于可行 LP，
+调用方必须检查 `LPResult.status == SolverStatus.Optimal`，才能将其对偶解作为精确定价证书。
 
 ## 组合求解器
 

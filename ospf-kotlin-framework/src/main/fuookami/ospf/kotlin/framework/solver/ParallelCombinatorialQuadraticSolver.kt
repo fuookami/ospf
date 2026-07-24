@@ -1,9 +1,7 @@
 /**
- * 并行组合二次求解器
- * Parallel Combinatorial Quadratic Solver
+ * 并行组合二次求解器 / Parallel Combinatorial Quadratic Solver
  *
- * 将多个二次求解器并行运行，取第一个或最优结果。
- * Runs multiple quadratic solvers in parallel, taking the first or best result.
+ * 将多个二次求解器并行运行，取第一个或最优结果。 / Runs multiple quadratic solvers in parallel, taking the first or best result.
 */
 package fuookami.ospf.kotlin.framework.solver
 
@@ -19,8 +17,7 @@ import fuookami.ospf.kotlin.utils.error.ErrorCode
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
- * 并行组合二次求解器
- * Parallel combinatorial quadratic solver
+ * 并行组合二次求解器 / Parallel combinatorial quadratic solver
  *
  * @property solvers 二次求解器列表（懒加载） / Quadratic solver list (lazy loaded)
  * @property mode 并行组合模式，默认 Best / Parallel combinatorial mode, default Best
@@ -36,9 +33,9 @@ class ParallelCombinatorialQuadraticSolver(
          * Construct from an iterable of solvers.
          * 从求解器可迭代集合构造。
          *
-         * @param solvers the solvers to combine / 要组合的求解器
-         * @param mode the combinatorial mode, default Best / 组合模式，默认 Best
-         * @return the parallel combinatorial solver / 并行组合求解器
+         * @param solvers 要组合的求解器 / the solvers to combine
+         * @param mode 组合模式，默认 Best / the combinatorial mode, default Best
+         * @return 并行组合求解器 / the parallel combinatorial solver
         */
         @JvmName("constructBySolvers")
         operator fun invoke(

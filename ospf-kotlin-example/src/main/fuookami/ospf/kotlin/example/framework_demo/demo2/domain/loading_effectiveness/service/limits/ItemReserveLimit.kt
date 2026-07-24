@@ -1,5 +1,6 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2.domain.loading_effectiveness.service.limits
 
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
@@ -18,9 +19,9 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.model.*
  * Minimizes the number of unloaded (reserved) items, encouraging more items to be loaded.
  * 最小化未装载（预留）的货物项数量，鼓励装载更多货物。
  *
- * @property items The list of cargo items. / 货物项列表
- * @property stowage The stowage assignment model. / 配载分配模型
- * @property coefficient Function computing the penalty coefficient for each item. / 计算每个货物项惩罚系数的函数
+ * @property items 货物项列表 / The list of cargo items.
+ * @property stowage 配载分配模型 / The stowage assignment model.
+ * @property coefficient 计算每个货物项惩罚系数的函数 / Function computing the penalty coefficient for each item.
 */
 class ItemReserveLimit(
     private val items: List<Item>,
@@ -39,13 +40,13 @@ class ItemReserveLimit(
             LinearExpressionSymbol(LinearPolynomial(poly.monomials, poly.constant)),
             name = "item reserve"
         )) {
-            is Ok<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {}
+            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
 
-            is Failed<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, fuookami.ospf.kotlin.utils.error.ErrorCode, fuookami.ospf.kotlin.utils.error.Error<fuookami.ospf.kotlin.utils.error.ErrorCode>> -> {
+            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
                 return Fatal(result.errors)
             }
         }

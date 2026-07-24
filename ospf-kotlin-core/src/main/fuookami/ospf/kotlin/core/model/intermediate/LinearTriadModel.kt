@@ -1,6 +1,5 @@
 /**
- * 线性三元模型
- * Linear triad model
+ * 线性三元模型 / Linear triad model
 */
 package fuookami.ospf.kotlin.core.model.intermediate
 
@@ -29,8 +28,7 @@ import kotlinx.coroutines.*
 import org.apache.logging.log4j.kotlin.logger
 
 /**
- * 将任意数值类型转换为 Flt64（求解器边界用）
- * Convert any numeric value to Flt64 (for solver boundary use)
+ * 将任意数值类型转换为 Flt64（求解器边界用） / Convert any numeric value to Flt64 (for solver boundary use)
  *
  * @return 转换后的 Flt64 值 / The converted Flt64 value
 */
@@ -43,8 +41,7 @@ private fun Any?.toSolverFlt64(): Flt64 {
 }
 
 /**
- * 判断此线性约束是否为单变量边界约束（系数为1的单项约束）
- * Check whether this linear constraint is a single-variable bound constraint (single term with coefficient 1)
+ * 判断此线性约束是否为单变量边界约束（系数为1的单项约束） / Check whether this linear constraint is a single-variable bound constraint (single term with coefficient 1)
  *
  * @return 是否为边界约束 / Whether this is a bound constraint
 */
@@ -56,8 +53,7 @@ private fun LinearConstraintImpl<Flt64>.isBound(): Boolean {
 }
 
 /**
- * 将求解器边界单元格令牌视为 Flt64 令牌
- * Treat a solver-boundary cell token as an Flt64 token
+ * 将求解器边界单元格令牌视为 Flt64 令牌 / Treat a solver-boundary cell token as an Flt64 token
  *
  * @return 转型后的 Flt64 令牌 / The cast Flt64 token
 */
@@ -67,11 +63,9 @@ private fun LinearCell<*>.tokenAsFlt64(): Token<Flt64> {
 }
 
 /**
- * 线性约束单元
- * Linear constraint cell
+ * 线性约束单元 / Linear constraint cell
  *
- * 表示线性约束矩阵中的一个非零元素，包含行索引、列索引和系数。
- * Represents a non-zero element in the linear constraint matrix,
+ * 表示线性约束矩阵中的一个非零元素，包含行索引、列索引和系数。 / Represents a non-zero element in the linear constraint matrix,
  * containing row index, column index, and coefficient.
  *
  * @property rowIndex 行索引 / Row index
@@ -108,11 +102,9 @@ class LinearConstraintCell(
 }
 
 /**
- * 线性约束批次
- * Linear constraint batch
+ * 线性约束批次 / Linear constraint batch
  *
- * 存储一组线性约束的稀疏矩阵表示，包括约束符号、右侧常量和约束来源。
- * Stores a batch of linear constraints in sparse matrix representation,
+ * 存储一组线性约束的稀疏矩阵表示，包括约束符号、右侧常量和约束来源。 / Stores a batch of linear constraints in sparse matrix representation,
  * including constraint signs, right-hand side constants, and constraint sources.
  *
  * @property sparseLhs 稀疏矩阵（左侧）/ Sparse matrix (left-hand side)
@@ -138,9 +130,7 @@ class LinearConstraintBatch(
     /**
      * 稀疏矩阵（左侧）的稀疏表示。
      * 每行为一个 SparseVector<Flt64>，其中 entry.index = 列索引，entry.value = 系数。
-     * 这是主要的约束表示形式。
-     *
-     * Sparse representation of the LHS matrix.
+     * 这是主要的约束表示形式。 / Sparse representation of the LHS matrix.
      * Each row is a SparseVector<Flt64> where entry.index = colIndex, entry.value = coefficient.
      * This is the primary constraint representation.
     */
@@ -166,8 +156,7 @@ class LinearConstraintBatch(
     val priorities: List<Int?> by ::_priorities
 
     /**
-     * 按条件过滤约束批次
-     * Filter constraint batch by condition
+     * 按条件过滤约束批次 / Filter constraint batch by condition
      *
      * @param condition 过滤条件，参数为行索引 / Filter condition, parameter is row index
      * @return 过滤后的约束批次 / Filtered constraint batch
@@ -219,11 +208,9 @@ class LinearConstraintBatch(
 }
 
 /**
- * 线性目标单元
- * Linear objective cell
+ * 线性目标单元 / Linear objective cell
  *
- * 表示线性目标函数中的一个非零元素，包含列索引和系数。
- * Represents a non-zero element in the linear objective function,
+ * 表示线性目标函数中的一个非零元素，包含列索引和系数。 / Represents a non-zero element in the linear objective function,
  * containing column index and coefficient.
  *
  * @property colIndex 列索引 / Column index
@@ -249,24 +236,20 @@ class LinearObjectiveCell(
 }
 
 /**
- * 线性目标函数类型别名
- * Type alias for linear objective function
+ * 线性目标函数类型别名 / Type alias for linear objective function
 */
 typealias LinearObjective = Objective<LinearObjectiveCell>
 
 /**
- * 基础线性三元模型视图类型别名
- * Type alias for basic linear triad model view
+ * 基础线性三元模型视图类型别名 / Type alias for basic linear triad model view
 */
 typealias BasicLinearTriadModelView = BasicModelView<LinearConstraintCell>
 
 /**
- * 基础线性三元模型
- * Basic linear triad model
+ * 基础线性三元模型 / Basic linear triad model
  *
  * 线性问题的求解器标准形式（三元：变量 + 约束，无目标函数）。
- * 直接用于 IIS（不可约不可行子系统）计算，以及作为 [LinearTriadModel] 的 [impl] 委托。
- * Solver-standard form for linear problems (triad: variables + constraints, no objective).
+ * 直接用于 IIS（不可约不可行子系统）计算，以及作为 [LinearTriadModel] 的 [impl] 委托。 / Solver-standard form for linear problems (triad: variables + constraints, no objective).
  * Used directly by IIS (Irreducible Infeasible Subsystem) computation and
  * as the [impl] delegate inside [LinearTriadModel].
  *
@@ -305,9 +288,7 @@ class BasicLinearTriadModel(
          * 将变量和约束提取为求解器标准形式。
          *
          * 这是一个便捷工厂方法，复用 [LinearTriadModel.invoke] 中的变量/约束提取逻辑，
-         * 但不包含目标函数步骤。
-         *
-         * Create a [BasicLinearTriadModel] from a [LinearMechanismModel<Flt64>] by
+         * 但不包含目标函数步骤。 / Create a [BasicLinearTriadModel] from a [LinearMechanismModel<Flt64>] by
          * extracting variables and constraints into solver-standard form.
          *
          * This is a convenience factory that mirrors the variable/constraint extraction
@@ -347,8 +328,7 @@ class BasicLinearTriadModel(
     override fun clone() = copy()
 
     /**
-     * 就地线性松弛
-     * In-place linear relaxation
+     * 就地线性松弛 / In-place linear relaxation
      *
      * 将整数变量类型松弛为连续类型（Binary->Percentage, Integer->Continuous 等）。
      * Relaxes integer variable types to continuous types (Binary->Percentage, Integer->Continuous, etc.).
@@ -374,8 +354,7 @@ class BasicLinearTriadModel(
     }
 
     /**
-     * 返回线性松弛后的副本
-     * Return a linearly relaxed copy
+     * 返回线性松弛后的副本 / Return a linearly relaxed copy
      *
      * @return 线性松弛后的模型副本 / Linearly relaxed model copy
     */
@@ -491,12 +470,10 @@ class BasicLinearTriadModel(
 }
 
 /**
- * 线性三元模型视图
- * Linear triad model view
+ * 线性三元模型视图 / Linear triad model view
  *
  * 线性优化模型的视图接口，提供变量、约束、目标函数的统一访问，
- * 以及线性松弛、对偶模型、可行性模型、弹性模型等变换操作。
- * View interface for linear optimization models, providing unified access
+ * 以及线性松弛、对偶模型、可行性模型、弹性模型等变换操作。 / View interface for linear optimization models, providing unified access
  * to variables, constraints, and objective function, as well as transformation
  * operations such as linear relaxation, dual model, feasibility model, and elastic model.
  *
@@ -508,40 +485,35 @@ interface LinearTriadModelView : ModelView<LinearConstraintCell, LinearObjective
     val dual: Boolean
 
     /**
-     * 就地线性松弛（修改当前模型）
-     * In-place linear relaxation (modifies the current model)
+     * 就地线性松弛（修改当前模型） / In-place linear relaxation (modifies the current model)
      *
      * @return 松弛后的自身引用 / Self reference after relaxation
     */
     fun linearRelax(): LinearTriadModelView
 
     /**
-     * 返回线性松弛后的副本
-     * Return a linearly relaxed copy
+     * 返回线性松弛后的副本 / Return a linearly relaxed copy
      *
      * @return 线性松弛后的模型视图副本 / Linearly relaxed model view copy
     */
     fun linearRelaxed(): LinearTriadModelView
 
     /**
-     * 构建 Farkas 对偶模型
-     * Build Farkas dual model
+     * 构建 Farkas 对偶模型 / Build Farkas dual model
      *
      * @return Farkas 对偶线性三元模型视图 / Farkas dual linear triad model view
     */
     suspend fun farkasDual(): LinearTriadModelView
 
     /**
-     * 构建可行性模型（最小化人工变量）
-     * Build feasibility model (minimize artificial variables)
+     * 构建可行性模型（最小化人工变量） / Build feasibility model (minimize artificial variables)
      *
      * @return 可行性线性三元模型视图 / Feasibility linear triad model view
     */
     fun feasibility(): LinearTriadModelView
 
     /**
-     * 构建弹性模型（允许约束松弛）
-     * Build elastic model (allow constraint relaxation)
+     * 构建弹性模型（允许约束松弛） / Build elastic model (allow constraint relaxation)
      *
      * @param minmaxSlack  是否启用最小-最大松弛 / Whether to enable min-max slack
      * @param minSlackAmount  最小松弛量限制 / Minimum slack amount limit
@@ -553,8 +525,7 @@ interface LinearTriadModelView : ModelView<LinearConstraintCell, LinearObjective
     ): LinearTriadModelView
 
     /**
-     * 整理对偶解，将完整对偶值（包括零值）映射回原始约束
-     * Tidy dual solution, mapping complete dual values (including zero) back to original constraints
+     * 整理对偶解，将完整对偶值（包括零值）映射回原始约束 / Tidy dual solution, mapping complete dual values (including zero) back to original constraints
      *
      * @param solution 求解器返回的对偶解向量 / Dual solution vector returned by the solver
      * @return 完整对偶值到原始约束的映射 / Mapping from complete dual values to original constraints
@@ -581,11 +552,9 @@ interface LinearTriadModelView : ModelView<LinearConstraintCell, LinearObjective
 }
 
 /**
- * 线性三元模型
- * Linear triad model
+ * 线性三元模型 / Linear triad model
  *
- * 求解器标准形式的线性优化模型，包含变量、约束和目标函数。
- * Solver-standard form of linear optimization model, containing variables, constraints, and objective function.
+ * 求解器标准形式的线性优化模型，包含变量、约束和目标函数。 / Solver-standard form of linear optimization model, containing variables, constraints, and objective function.
  *
  * @property impl 基础模型实现 / Basic model implementation
  * @property tokensInSolver 求解器中的符号列表 / Token list in solver
@@ -739,8 +708,7 @@ data class LinearTriadModel(
     }
 
     /**
-     * 构建对偶模型
-     * Build dual model
+     * 构建对偶模型 / Build dual model
      *
      * @return 对偶线性三元模型 / Dual linear triad model
     */

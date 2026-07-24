@@ -31,7 +31,7 @@ class KtormOrderByTranslatorTest {
         val name = varchar("name")
     }
 
-    private val resolver: KtormColumnResolver = { path: String ->
+    private val resolver = KtormColumnResolver { path: String ->
         when (path.substringAfterLast(".")) {
             "id" -> Users.id
             "name" -> Users.name
