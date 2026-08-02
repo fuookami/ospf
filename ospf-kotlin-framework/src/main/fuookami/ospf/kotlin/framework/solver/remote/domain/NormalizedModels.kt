@@ -16,6 +16,9 @@ enum class NormalizedModelType {
     /** 二次模型 / Quadratic model */
     QUADRATIC,
 
+    /** 约束规划 snapshot / Constraint-programming snapshot */
+    CP,
+
     /** 未知模型 / Unknown model */
     UNKNOWN
 }

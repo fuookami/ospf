@@ -114,61 +114,61 @@ class Aggregation(
         model: AbstractLinearMetaModel<Flt64>
     ): Try {
         when (val result = stowage.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
 
         when (val result = load.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
 
         when (val result = payload.register(stowageMode, model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
 
         when (val result = totalWeight.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
 
         when (val result = maxLoadWeight.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -189,19 +189,19 @@ class Aggregation(
     ): Try {
         // Master problem: stowage assignment variables + load linking constraints
         when (val result = stowage.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+            is Ok -> {}
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
         }
         when (val result = load.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+            is Ok -> {}
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
         }
         when (val result = payload.register(stowageMode, model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+            is Ok -> {}
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
         }
         return ok
     }
@@ -223,19 +223,19 @@ class Aggregation(
         // Sub problem: airworthiness constraints (payload, totalWeight, maxLoadWeight)
         // Variables are fixed from master solution
         when (val result = payload.register(stowageMode, model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+            is Ok -> {}
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
         }
         when (val result = totalWeight.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+            is Ok -> {}
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
         }
         when (val result = maxLoadWeight.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+            is Ok -> {}
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
         }
         return ok
     }

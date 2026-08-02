@@ -73,38 +73,38 @@ class Aggregation(
         model: AbstractLinearMetaModel<Flt64>
     ): Try {
         when (val result = torque.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
 
         when (val result = mac.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
 
         horizontalStabilizers.values.forEach {
             when (val result = it.register(stowageMode, model)) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }

@@ -32,20 +32,17 @@ class RecommendLoadWeightLimit(
                 && position.status.recommendedWeightNeeded
             ) {
                 val maxLoadWeight = position.mlw.mlw.value
-                val poly = MutableLinearPolynomial()
-                poly += LinearMonomial(Flt64.one, load.z[j].value)
-                poly += LinearMonomial(maxLoadWeight, load.actualLoaded[j])
                 when (val result = model.addConstraint(
-            relation = LinearPolynomial(poly.monomials, poly.constant) leq maxLoadWeight,
+            relation = (load.z[j].value + maxLoadWeight * load.actualLoaded[j]) leq maxLoadWeight,
             name = "recommend_load_weight_limit_${position}",
                 )) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                    is Ok -> {}
 
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Failed -> {
                         return Failed(result.error)
                     }
 
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Fatal -> {
                         return Fatal(result.errors)
                     }
                 }

@@ -97,7 +97,8 @@ private fun <V> convertLinearSubObjectToFlt64(
         flattenData = flattenData,
         tokens = tokens,
         name = subObject.name,
-        converter = IntoValue.Identity
+        converter = IntoValue.Identity,
+        origin = subObject.origin
     )
 }
 
@@ -128,7 +129,8 @@ private fun <V> convertQuadraticSubObjectToFlt64(
         flattenData = flattenData,
         tokens = tokens,
         name = subObject.name,
-        converter = IntoValue.Identity
+        converter = IntoValue.Identity,
+        origin = subObject.origin
     )
 }
 
@@ -206,7 +208,8 @@ private fun <V> convertLinearMechanismModelToFlt64(model: LinearMechanismModel<V
         name = model.parent.name,
         objectCategory = model.parent.objectCategory,
         configuration = model.parent.configuration,
-        converter = IntoValue.Identity
+        converter = IntoValue.Identity,
+        identityRegistry = model.identityRegistry
     )
     val flt64Constraints = ArrayList<LinearConstraintImpl<Flt64>>()
     for (constraint in model.linearConstraints) {
@@ -234,7 +237,8 @@ private fun <V> convertQuadraticMechanismModelToFlt64(model: QuadraticMechanismM
         name = model.parent.name,
         objectCategory = model.parent.objectCategory,
         configuration = model.parent.configuration,
-        converter = IntoValue.Identity
+        converter = IntoValue.Identity,
+        identityRegistry = model.identityRegistry
     )
     val flt64Constraints = ArrayList<QuadraticConstraintImpl<Flt64>>()
     for (constraint in model.quadraticConstraints) {

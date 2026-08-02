@@ -4,19 +4,30 @@
 package fuookami.ospf.kotlin.core.model.constraint_programming
 
 import java.math.BigInteger
-import fuookami.ospf.kotlin.core.solver.report.VariableId
-import fuookami.ospf.kotlin.math.algebra.number.Int64
 import fuookami.ospf.kotlin.utils.error.ErrorCode
 import fuookami.ospf.kotlin.utils.functional.Failed
 import fuookami.ospf.kotlin.utils.functional.Fatal
 import fuookami.ospf.kotlin.utils.functional.Ret
 import fuookami.ospf.kotlin.utils.functional.ok
+import fuookami.ospf.kotlin.math.algebra.number.Int64
+import fuookami.ospf.kotlin.core.solver.report.VariableId
 
-/** 稳定 interval 标识。 / Stable interval identifier. */
+/**
+ * 稳定 interval 标识。 / Stable interval identifier.
+ *
+ * @property value 稳定标识值 / Stable identifier value
+ */
 @JvmInline
 value class IntervalId(val value: String)
 
-/** 一次 interval 求值结果。 / Evaluated interval value. */
+/**
+ * 一次 interval 求值结果。 / Evaluated interval value.
+ *
+ * @property start 起始时间 / Start time
+ * @property size duration / Duration
+ * @property end 结束时间 / End time
+ * @property present 是否存在 / Whether the interval is present
+ */
 data class IntervalValue(
     val start: Int64,
     val size: Int64,
@@ -27,13 +38,23 @@ data class IntervalValue(
 /**
  * CP interval 变量，满足 `end = start + size`。[size] 可以是常量表达式（固定 duration）或整数变量表达式（变量 duration）。[presence] / CP interval variable satisfying `end = start + size`.
  * 非空时表示 optional interval。 / [size] may be a constant expression (fixed duration) or an integer-variable expression (variable duration). A non-null [presence] makes it optional.
+ *
+ * @property id 稳定 interval ID / Stable interval ID
+ * @property start 起始时间表达式 / Start-time expression
+ * @property size duration 表达式 / Duration expression
+ * @property end 结束时间表达式 / End-time expression
+ * @property presence 可选存在文字 / Optional presence literal
+ * @property scope 身份作用域 / Identity scope
+ * @property origin 稳定身份来源 / Stable identity origin
  */
 data class IntervalVariable(
     val id: IntervalId,
     val start: ConstraintProgrammingExpression,
     val size: ConstraintProgrammingExpression,
     val end: ConstraintProgrammingExpression,
-    val presence: BooleanLiteral? = null
+    val presence: BooleanLiteral? = null,
+    val scope: String = "model-local",
+    val origin: String? = null
 ) {
     /** duration 语义别名。 / Duration semantic alias. */
     val duration: ConstraintProgrammingExpression
@@ -111,35 +132,80 @@ data class IntervalVariable(
     }
 
     companion object {
-        /** 创建 interval。 / Create an interval. */
+        /**
+         * 创建 interval。 / Create an interval.
+         *
+         * @param id 稳定 interval ID / Stable interval ID
+         * @param start 起始时间表达式 / Start-time expression
+         * @param size duration 表达式 / Duration expression
+         * @param end 结束时间表达式 / End-time expression
+         * @param presence 可选存在文字 / Optional presence literal
+         * @param scope 身份作用域 / Identity scope
+         * @param origin 稳定身份来源 / Stable identity origin
+         * @return interval 或结构化错误 / Interval or a structured error
+         */
         fun create(
             id: IntervalId,
             start: ConstraintProgrammingExpression,
             size: ConstraintProgrammingExpression,
             end: ConstraintProgrammingExpression,
-            presence: BooleanLiteral? = null
+            presence: BooleanLiteral? = null,
+            scope: String = "model-local",
+            origin: String? = null
         ): Ret<IntervalVariable> {
-            return ok(IntervalVariable(id, start, size, end, presence))
+            if (id.value.isBlank() || scope.isBlank() || (scope == "stable" && origin.isNullOrBlank())) {
+                return Failed(
+                    ErrorCode.IllegalArgument,
+                    "interval 身份元数据无效 / Interval identity metadata is invalid"
+                )
+            }
+            return ok(IntervalVariable(id, start, size, end, presence, scope, origin))
         }
 
-        /** 使用字符串标识创建 interval。 / Create an interval with a string identifier. */
+        /**
+         * 使用字符串标识创建 interval。 / Create an interval with a string identifier.
+         *
+         * @param id 稳定 interval ID 字符串 / Stable interval ID string
+         * @param start 起始时间表达式 / Start-time expression
+         * @param size duration 表达式 / Duration expression
+         * @param end 结束时间表达式 / End-time expression
+         * @param presence 可选存在文字 / Optional presence literal
+         * @param scope 身份作用域 / Identity scope
+         * @param origin 稳定身份来源 / Stable identity origin
+         * @return interval 或结构化错误 / Interval or a structured error
+         */
         fun create(
             id: String,
             start: ConstraintProgrammingExpression,
             size: ConstraintProgrammingExpression,
             end: ConstraintProgrammingExpression,
-            presence: BooleanLiteral? = null
+            presence: BooleanLiteral? = null,
+            scope: String = "model-local",
+            origin: String? = null
         ): Ret<IntervalVariable> {
-            return create(IntervalId(id), start, size, end, presence)
+            return create(IntervalId(id), start, size, end, presence, scope, origin)
         }
 
-        /** 创建固定 duration interval。 / Create a fixed-duration interval. */
+        /**
+         * 创建固定 duration interval。 / Create a fixed-duration interval.
+         *
+         * @param id 稳定 interval ID / Stable interval ID
+         * @param start 起始时间表达式 / Start-time expression
+         * @param size 固定 duration / Fixed duration
+         * @param end 结束时间表达式 / End-time expression
+         * @param presence 可选存在文字 / Optional presence literal
+         * @param scope 身份作用域 / Identity scope
+         * @param origin 稳定身份来源 / Stable identity origin
+         * @return interval 或结构化错误 / Interval or a structured error
+         */
         fun fixed(
             id: IntervalId,
             start: ConstraintProgrammingExpression,
             size: Int64,
             end: ConstraintProgrammingExpression,
-            presence: BooleanLiteral? = null
+            presence: BooleanLiteral? = null,
+            scope: String = "model-local",
+            origin: String? = null
         ): Ret<IntervalVariable> {
             if (size < Int64.zero) {
                 return Failed(
@@ -147,12 +213,16 @@ data class IntervalVariable(
                     "interval duration 不得为负：$size / Interval size must not be negative: $size"
                 )
             }
-            return create(id, start, ConstraintProgrammingExpression.Constant(size), end, presence)
+            return create(id, start, ConstraintProgrammingExpression.Constant(size), end, presence, scope, origin)
         }
     }
 }
 
-/** NoOverlap 排程约束。 / No-overlap scheduling constraint. */
+/**
+ * NoOverlap 排程约束。 / No-overlap scheduling constraint.
+ *
+ * @property intervals 参与排程的 interval / Scheduled intervals
+ */
 data class NoOverlap(
     val intervals: List<IntervalVariable>
 ) : ConstraintProgrammingConstraint {
@@ -183,7 +253,12 @@ data class NoOverlap(
     }
 
     companion object {
-        /** 创建 NoOverlap 并拒绝空集合。 / Create NoOverlap and reject an empty collection. */
+        /**
+         * 创建 NoOverlap 并拒绝空集合。 / Create NoOverlap and reject an empty collection.
+         *
+         * @param intervals 参与排程的 interval / Scheduled intervals
+         * @return NoOverlap 约束或结构化错误 / NoOverlap constraint or a structured error
+         */
         fun create(intervals: Iterable<IntervalVariable>): Ret<NoOverlap> {
             val list = intervals.toList()
             if (list.isEmpty()) {
@@ -197,7 +272,13 @@ data class NoOverlap(
     }
 }
 
-/** Cumulative 容量约束。 / Cumulative capacity constraint. */
+/**
+ * Cumulative 容量约束。 / Cumulative capacity constraint.
+ *
+ * @property intervals 参与容量约束的 interval / Intervals consuming capacity
+ * @property demands 对应资源需求 / Corresponding resource demands
+ * @property capacity 容量表达式 / Capacity expression
+ */
 data class Cumulative(
     val intervals: List<IntervalVariable>,
     val demands: List<ConstraintProgrammingExpression>,
@@ -268,7 +349,14 @@ data class Cumulative(
     }
 
     companion object {
-        /** 创建 Cumulative 并校验输入规模。 / Create Cumulative and validate input shape. */
+        /**
+         * 创建 Cumulative 并校验输入规模。 / Create Cumulative and validate input shape.
+         *
+         * @param intervals 参与容量约束的 interval / Intervals consuming capacity
+         * @param demands 对应资源需求 / Corresponding resource demands
+         * @param capacity 容量表达式 / Capacity expression
+         * @return Cumulative 约束或结构化错误 / Cumulative constraint or a structured error
+         */
         fun create(
             intervals: Iterable<IntervalVariable>,
             demands: Iterable<ConstraintProgrammingExpression>,

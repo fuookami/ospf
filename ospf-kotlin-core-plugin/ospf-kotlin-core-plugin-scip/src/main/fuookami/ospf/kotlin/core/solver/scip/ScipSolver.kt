@@ -3,6 +3,7 @@
 package fuookami.ospf.kotlin.core.solver.scip
 
 import java.io.File
+import java.nio.file.Path
 import java.util.*
 import kotlin.time.*
 import fuookami.ospf.kotlin.core.solver.output.SolverStatus
@@ -19,13 +20,35 @@ abstract class ScipSolver : AutoCloseable {
     /** Companion object managing SCIP native library loading / 伴生对象，管理 SCIP 原生库加载 */
     companion object {
         internal var loadedLibrary = false
+        internal var loadedLibraryPath: Path? = null
+        internal var loadedLibraryMode: String = "system"
 
         init {
-            try {
-                System.loadLibrary("jscip")
+            loadConfiguredLibrary()
+        }
+
+        private fun loadConfiguredLibrary(): Boolean {
+            val explicit = System.getProperty("ospf.scip.library")?.takeUnless { it.isBlank() }
+            return try {
+                if (explicit != null) {
+                    val path = Path.of(explicit).toAbsolutePath().normalize()
+                    System.load(path.toString())
+                    loadedLibraryPath = path
+                    loadedLibraryMode = "explicit"
+                } else {
+                    System.loadLibrary("jscip")
+                    loadedLibraryPath = System.getProperty("java.library.path")
+                        ?.split(File.pathSeparator)
+                        ?.asSequence()
+                        ?.map { Path.of(it).resolve(System.mapLibraryName("jscip")) }
+                        ?.firstOrNull { java.nio.file.Files.isRegularFile(it) }
+                    loadedLibraryMode = "system"
+                }
                 loadedLibrary = true
+                true
             } catch (_: Throwable) {
                 loadedLibrary = false
+                false
             }
         }
 
@@ -56,8 +79,20 @@ abstract class ScipSolver : AutoCloseable {
 
             for (lib in libs) {
                 val libFullName = "${lib}.${libExtension}"
-                when (val result = Library.loadInJar(libFullName, File(System.getProperty("user.dir"), libFullName).absolutePath)) {
-                    is Ok -> {}
+                val target = File(System.getProperty("user.dir"), libFullName).absolutePath
+                when (val result = Library.loadInJar(libFullName, target)) {
+                    is Ok -> {
+                        // Unix bundles use the ELF filename `libjscip.so`, while the JVM
+                        // logical library name is `jscip`.  Treat both spellings as the
+                        // primary binding so runtime provenance is populated consistently.
+                        // Unix bundle 使用 `libjscip.so` 文件名，但 JVM 逻辑库名为 `jscip`；
+                        // 两种拼写都应登记为主 binding，确保运行时 provenance 一致。
+                        if (lib == "jscip" || lib == "libjscip") {
+                            loadedLibraryPath = Path.of(target).toAbsolutePath().normalize()
+                            loadedLibraryMode = "jar"
+                            loadedLibrary = true
+                        }
+                    }
                     is Failed -> return Failed(result.error)
                     is Fatal -> return Fatal(result.errors)
                 }
@@ -83,10 +118,7 @@ abstract class ScipSolver : AutoCloseable {
     */
     protected suspend fun init(name: String): Try {
         if (!loadedLibrary) {
-            try {
-                System.loadLibrary("jscip")
-                loadedLibrary = true
-            } catch (e: Throwable) {
+            if (!loadConfiguredLibrary()) {
                 return Failed(ErrorCode.SolverNotFound, "failed to load jscip library")
             }
         }

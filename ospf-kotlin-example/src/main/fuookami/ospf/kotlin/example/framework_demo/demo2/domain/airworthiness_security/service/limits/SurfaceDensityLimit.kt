@@ -37,13 +37,13 @@ class SurfaceDensityLimit(
             relation = LinearPolynomial(surfaceDensity.surfaceDensity[j].value) leq limitZone.maxSurfaceDensity.value,
             name = "${name}_${limitZone.name}_${position}"
                     )) {
-                        is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                        is Ok -> {}
 
-                        is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                        is Failed -> {
                             return Failed(result.error)
                         }
 
-                        is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                        is Fatal -> {
                             return Fatal(result.errors)
                         }
                     }

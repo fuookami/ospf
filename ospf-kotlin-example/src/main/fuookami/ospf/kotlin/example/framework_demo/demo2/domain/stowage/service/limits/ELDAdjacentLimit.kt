@@ -51,29 +51,23 @@ class ELDAdjacentLimit(
                     val position2 = positions[j2]
 
                     if (Stowage.stowageNeeded(item1, position1) || Stowage.stowageNeeded(item2, position2)) {
-                        val poly1 = MutableLinearPolynomial()
-                        poly1 += LinearMonomial(Flt64.one, stowage.stowage[i1, j1])
-                        poly1 += LinearMonomial(Flt64.one, stowage.stowage[i2, j2])
                         when (val result = model.addConstraint(
-                            relation = LinearPolynomial(poly1.monomials, poly1.constant) leq Flt64.one,
+                            relation = (stowage.stowage[i1, j1] + stowage.stowage[i2, j2]) leq Flt64.one,
                             name = "${name}_${item1}_${item2}_${position1}_${position2}"
                         )) {
-                            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-                            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                            is Ok -> {}
+                            is Failed -> return Failed(result.error)
+                            is Fatal -> return Fatal(result.errors)
                         }
                     }
                     if (Stowage.stowageNeeded(item1, position2) || Stowage.stowageNeeded(item2, position1)) {
-                        val poly2 = MutableLinearPolynomial()
-                        poly2 += LinearMonomial(Flt64.one, stowage.stowage[i1, j2])
-                        poly2 += LinearMonomial(Flt64.one, stowage.stowage[i2, j1])
                         when (val result = model.addConstraint(
-                            relation = LinearPolynomial(poly2.monomials, poly2.constant) leq Flt64.one,
+                            relation = (stowage.stowage[i1, j2] + stowage.stowage[i2, j1]) leq Flt64.one,
                             name = "${name}_${item1}_${item2}_${position2}_${position1}"
                         )) {
-                            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-                            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                            is Ok -> {}
+                            is Failed -> return Failed(result.error)
+                            is Fatal -> return Fatal(result.errors)
                         }
                     }
                 }

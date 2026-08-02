@@ -16,6 +16,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.multiarray.*
 import fuookami.ospf.kotlin.core.symbol.*
@@ -191,7 +192,7 @@ class IterativeCapacityCompilation<V : RealNumber<V>, E : Executor, A : Producti
                         }
                         // Sum over all columns for this action's slot
                         // 对该动作时隙的所有列求和
-                        val poly = MutableLinearPolynomial<Flt64>(emptyList(), Flt64.zero)
+                        var poly = LinearPolynomial()
                         val columnAgg = if (executor != null) {
                             columnsByExecutor[executor]
                         } else {
@@ -204,13 +205,13 @@ class IterativeCapacityCompilation<V : RealNumber<V>, E : Executor, A : Producti
                                         val amount = column.amountFor(action)
                                         if (amount > UInt64.zero) {
                                             val coefficient = unitOperationTime.toSolverValue() * amount.toSolverFlt64()
-                                            poly += LinearMonomial(coefficient, executorVar[iterIdx, colIdx])
+                                            poly += coefficient * executorVar[iterIdx, colIdx]
                                         }
                                     }
                                 }
                             }
                         }
-                        poly.toLinearPolynomial()
+                        poly
                     } else {
                         LinearPolynomial(emptyList(), Flt64.zero)
                     }
@@ -233,12 +234,12 @@ class IterativeCapacityCompilation<V : RealNumber<V>, E : Executor, A : Producti
                 ctor = { executor, slot ->
                     val s = slots.indexOf(slot)
                     val executorActions = actions.filter { it.executor == executor }
-                    val poly = MutableLinearPolynomial<Flt64>(emptyList(), Flt64.zero)
+                    var poly = LinearPolynomial()
                     for (action in executorActions) {
                         val a = actions.indexOf(action)
                         poly += operationTime[a, s].polynomial
                     }
-                    poly.toLinearPolynomial()
+                    poly
                 }
             )
         }
@@ -467,7 +468,7 @@ class IterativeCapacityCompilation<V : RealNumber<V>, E : Executor, A : Producti
                             timeWindow.valueOf(timeWindow.interval)
                         }
                         val coefficient = unitOperationTime.toSolverValue() * amount.toSolverFlt64()
-                        operationTime[actionIndex, column.slotIndex].asMutable() += LinearMonomial(coefficient, variable)
+                        operationTime[actionIndex, column.slotIndex].asMutable() += coefficient * variable
                     }
                 }
             }
@@ -495,7 +496,7 @@ class IterativeCapacityCompilation<V : RealNumber<V>, E : Executor, A : Producti
             }
             for ((column, variable) in variableByColumn) {
                 if (column.executor == executor && column.slotIndex == slotIndex) {
-                    compilation.asMutable() += LinearMonomial(Flt64.one, variable)
+                    compilation.asMutable() += Flt64.one * variable
                 }
             }
         }
@@ -509,10 +510,8 @@ class IterativeCapacityCompilation<V : RealNumber<V>, E : Executor, A : Producti
                     if (iterIdx >= executorVar.shape[0] || colIdx >= executorVar.shape[1]) {
                         continue
                     }
-                    (_cost as LinearExpressionSymbol).asMutable() += LinearMonomial(
-                        column.columnCost.value.toSolverValue(),
-                        executorVar[iterIdx, colIdx]
-                    )
+                    (_cost as LinearExpressionSymbol).asMutable() +=
+                        column.columnCost.value.toSolverValue() * executorVar[iterIdx, colIdx]
                 }
             }
         }

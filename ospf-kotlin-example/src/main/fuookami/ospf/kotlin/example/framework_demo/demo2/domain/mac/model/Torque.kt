@@ -51,12 +51,9 @@ class Torque(
     ): Try {
         if (!::longitudinalTorque.isInitialized) {
             longitudinalTorque = FlightPhase.entries.associateWith { phase ->
-                val poly = MutableLinearPolynomial()
+                var poly = LinearPolynomial()
                 for ((j, _) in positions.withIndex()) {
-                    poly += LinearMonomial(
-                        Flt64.one,
-                        load.loadEstimateLongitudinalTorque[j].to(aircraftModel.torqueUnit)!!.value
-                    )
+                    poly += load.loadEstimateLongitudinalTorque[j].to(aircraftModel.torqueUnit)!!.value
                 }
                 when (phase) {
                     FlightPhase.TakeOff, FlightPhase.Landing -> {
@@ -82,13 +79,13 @@ class Torque(
         }
         longitudinalTorque.values.forEach {
             when (val result = model.add(it)) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }
@@ -96,12 +93,9 @@ class Torque(
 
         run {
             if (!::lateralTorque.isInitialized) {
-                val poly = MutableLinearPolynomial()
+                var poly = LinearPolynomial()
                 for ((j, _) in positions.withIndex()) {
-                    poly += LinearMonomial(
-                        Flt64.one,
-                        load.loadLateralTorque[j].to(aircraftModel.torqueUnit)!!.value
-                    )
+                    poly += load.loadLateralTorque[j].to(aircraftModel.torqueUnit)!!.value
                 }
                 lateralTorque = Quantity(
                     LinearExpressionSymbol(
@@ -112,24 +106,21 @@ class Torque(
                 )
             }
             when (val result = model.add(lateralTorque)) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }
 
             if (aircraftModel.wideBody && !::clim.isInitialized) {
-                val poly = MutableLinearPolynomial()
+                var poly = LinearPolynomial()
                 for ((j, _) in positions.withIndex()) {
-                    poly += LinearMonomial(
-                        Flt64.one,
-                        load.loadCLIM[j].to(aircraftModel.torqueUnit)!!.value
-                    )
+                    poly += load.loadCLIM[j].to(aircraftModel.torqueUnit)!!.value
                 }
                 clim = Quantity(
                     LinearExpressionSymbol(
@@ -141,13 +132,13 @@ class Torque(
             }
             if (aircraftModel.wideBody) {
                 when (val result = model.add(clim)) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                    is Ok -> {}
 
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Failed -> {
                         return Failed(result.error)
                     }
 
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Fatal -> {
                         return Fatal(result.errors)
                     }
                 }
@@ -156,12 +147,9 @@ class Torque(
 
         if (!::index.isInitialized) {
             index = FlightPhase.entries.associateWith { phase ->
-                val poly = MutableLinearPolynomial()
+                var poly = LinearPolynomial()
                 for ((j, _) in positions.withIndex()) {
-                    poly += LinearMonomial(
-                        Flt64.one,
-                        load.loadIndex[j].to(aircraftModel.torqueUnit)!!.value
-                    )
+                    poly += load.loadIndex[j].to(aircraftModel.torqueUnit)!!.value
                 }
                 when (phase) {
                     FlightPhase.TakeOff, FlightPhase.Landing -> {
@@ -185,13 +173,13 @@ class Torque(
         }
         index.values.forEach {
             when (val result = model.add(it)) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }

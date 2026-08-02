@@ -3,7 +3,8 @@ package fuookami.ospf.kotlin.framework.network_scheduling.domain.flow.service.li
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.framework.model.Pipeline
@@ -27,7 +28,7 @@ class FlowConservationConstraint<V : RealNumber<V>>(
 
         for (commodity in graph.commodities) {
             for (node in graph.nodes) {
-                val polynomial = MutableLinearPolynomial<Flt64>(emptyList(), Flt64.zero)
+                var polynomial = LinearPolynomial()
                 for (arc in graph.arcs) {
                     if (arc.from == node.id || arc.to == node.id) {
                         val variable = when (val result = graph.flowVariable(commodity.id, arc)) {
@@ -36,7 +37,7 @@ class FlowConservationConstraint<V : RealNumber<V>>(
                             is Fatal -> return Fatal(result.errors)
                         }
                         val coefficient = if (arc.from == node.id) Flt64.one else -Flt64.one
-                        polynomial += LinearMonomial(coefficient, variable)
+                        polynomial += coefficient * variable
                     }
                 }
                 val balance = graph.supplyDemandOf(commodity.id, node.id)?.net?.let {
@@ -47,7 +48,7 @@ class FlowConservationConstraint<V : RealNumber<V>>(
                     }
                 } ?: Flt64.zero
                 when (val result = model.addConstraint(
-                    polynomial.toLinearPolynomial() eq balance,
+                    polynomial eq balance,
                     name = "${name}_${commodity.id}_${node.id.value}"
                 )) {
                     is Ok -> {}

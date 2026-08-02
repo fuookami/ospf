@@ -37,6 +37,40 @@ import fuookami.ospf.kotlin.utils.functional.ok
 
 class MipBackedConstraintProgrammingSolverTest {
     @Test
+    fun shouldReevaluateLargeIntegerObjectiveFromExactCpSolution() = runBlocking {
+        val coefficient = 4_600_000_000_000_000L
+        val exactObjective = coefficient * 2L
+        val model = ConstraintProgrammingModel("mip-large-objective", ObjectCategory.Minimum)
+        try {
+            val first = fuookami.ospf.kotlin.core.variable.IntVar("x")
+            val second = fuookami.ospf.kotlin.core.variable.IntVar("y")
+            model.registerVariable(first, IntegerDomain.interval(0, 1).value!!)
+            model.registerVariable(second, IntegerDomain.interval(0, 1).value!!)
+            model.minimize(
+                ConstraintProgrammingExpression.linear(
+                    mapOf(
+                        first to Int64(coefficient),
+                        second to Int64(coefficient)
+                    )
+                ).value!!
+            )
+
+            val result = MipBackedConstraintProgrammingSolver(
+                LargeObjectiveLinearSolver(exactObjective)
+            ).solve(model)
+            val failureMessage = (result as? fuookami.ospf.kotlin.utils.functional.Failed<*, *, *>)
+                ?.error
+                ?.message
+            val output = assertIs<ConstraintProgrammingFeasibleOutput>(
+                assertIs<fuookami.ospf.kotlin.utils.functional.Ok<*, *, *>>(result, failureMessage ?: result.toString()).value
+            )
+            assertEquals(Int64(exactObjective), output.report!!.solution!!.objective)
+        } finally {
+            model.close()
+        }
+    }
+
+    @Test
     fun shouldMapLinearReportAndForwardHintsAndAssumptions() = runBlocking {
         val model = ConstraintProgrammingModel("mip-backed", ObjectCategory.Minimum)
         try {
@@ -228,6 +262,46 @@ private class HintEchoLinearSolver : LinearSolver {
                 solutionPresence = SolutionPresence.Optimal,
                 solution = SolveSolution(
                     values = model.variables.map { it.initialResult ?: Flt64.zero }
+                ),
+                proof = SolveProof(fuookami.ospf.kotlin.core.solver.report.ProofStatus.Verified)
+            )
+        )
+    }
+
+    override suspend fun invoke(
+        model: LinearTriadModelView,
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<FeasibleSolverOutput<Flt64>> {
+        error("solveReport is the test boundary")
+    }
+
+    override suspend fun invoke(
+        model: LinearTriadModelView,
+        solutionAmount: UInt64,
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+        error("solveReport is the test boundary")
+    }
+}
+
+private class LargeObjectiveLinearSolver(
+    private val exactObjective: Long
+) : LinearSolver {
+    override val config: SolverConfig = SolverConfig()
+    override val name: String = "large-objective-mip"
+
+    override suspend fun solveReport(
+        model: LinearTriadModelView,
+        progressContext: fuookami.ospf.kotlin.core.solver.progress.SolverProgressContext?
+    ): Ret<SolveReport<Flt64>> {
+        return ok(
+            SolveReport(
+                problemStatus = ProblemStatus.Feasible,
+                terminationReason = TerminationReason.Completed,
+                solutionPresence = SolutionPresence.Optimal,
+                solution = SolveSolution(
+                    values = model.variables.map { Flt64.one },
+                    objective = Flt64(exactObjective.toDouble())
                 ),
                 proof = SolveProof(fuookami.ospf.kotlin.core.solver.report.ProofStatus.Verified)
             )

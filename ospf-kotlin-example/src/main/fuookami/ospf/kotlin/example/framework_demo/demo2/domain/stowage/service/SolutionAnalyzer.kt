@@ -55,9 +55,9 @@ data class SolutionAnalyzer(
                     variable = aggregation.stowage.x[i, j],
                     name = "货物 ${item.id} 到舱位 ${position.spaceName} 的配载变量"
                 )) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> result.value!!
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                    is Ok -> result.value!!
+                    is Failed -> return Failed(result.error)
+                    is Fatal -> return Fatal(result.errors)
                 }
                 if (value gr Flt64.half) {
                     stowage.getOrPut(position) { ArrayList() }.add(item)
@@ -75,9 +75,9 @@ data class SolutionAnalyzer(
                     variable = yi.value,
                     name = "舱位 ${position.spaceName} 的谓词装载重量变量"
                 )) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> result.value!!
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                    is Ok -> result.value!!
+                    is Failed -> return Failed(result.error)
+                    is Fatal -> return Fatal(result.errors)
                 }
                 if (value gr Flt64.zero) {
                     val loadWeight = Quantity(value, yi.unit).to(aggregation.aircraftModel.weightUnit)
@@ -100,9 +100,9 @@ data class SolutionAnalyzer(
                     variable = zi.value,
                     name = "舱位 ${position.spaceName} 的推荐装载重量变量"
                 )) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> result.value!!
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                    is Ok -> result.value!!
+                    is Failed -> return Failed(result.error)
+                    is Fatal -> return Fatal(result.errors)
                 }
                 if (value gr Flt64.zero) {
                     val loadWeight = Quantity(value, zi.unit).to(aggregation.aircraftModel.weightUnit)

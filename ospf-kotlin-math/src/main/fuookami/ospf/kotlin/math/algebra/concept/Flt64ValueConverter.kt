@@ -8,8 +8,8 @@
  * enabling companion objects to serve as converters directly,
  * eliminating repetitive flt64Converter boilerplate in core/framework.
  *
- * 四种核心数值类型（Flt64、FltX、Rtn64、RtnX）的 companion 对象均实现此接口，
- * 因此可直接作为 IntoValue<V> 的等价提供者使用。 / The companion objects of the four core numeric types (Flt64, FltX, Rtn64, RtnX)
+ * Flt64、FltX、Rtn64、RtnX、Int64、IntX、UInt64 和 UIntX 的 companion 对象均实现此接口，
+ * 因此可直接作为 IntoValue<V> 的等价提供者使用。 / The companion objects of Flt64, FltX, Rtn64, RtnX, Int64, IntX, UInt64, and UIntX
  * all implement this interface, and can thus be used directly as IntoValue<V>-equivalent providers.
 */
 package fuookami.ospf.kotlin.math.algebra.concept
@@ -36,7 +36,7 @@ import fuookami.ospf.kotlin.utils.functional.*
  *
  * @param V 目标数值类型，必须是实数且满足数域约束
 */
-interface Flt64ValueConverter<V : RealNumber<V>> : HasZero<V>, HasOne<V> {
+interface Flt64ValueConverter<V : RealNumber<V>> : ArithmeticConstants<V> {
 
     /**
      * 将 Flt64 值转换为 V 类型 / Convert a Flt64 value to type V

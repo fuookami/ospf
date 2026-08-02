@@ -7,7 +7,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.symbol.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.callback.*
@@ -50,10 +50,10 @@ class Demo2 {
 //        val abs = AbsFunction(x - Flt64.one)
 //        metaModel.add(abs)
 //        metaModel.addObject(ObjectCategory.Minimum, LinearPolynomial(abs))
-        val obj = MutableLinearPolynomial<Flt64>(constant = Flt64.zero)
-        obj += LinearMonomial(Flt64.one, x)
-        obj += LinearMonomial(Flt64.one, y)
-        metaModel.maximize(LinearPolynomial(obj.monomials, obj.constant))
+        var obj = LinearPolynomial()
+        obj += x
+        obj += y
+        metaModel.maximize(obj)
         val model = when (val result = runBlocking { LinearMechanismModel(metaModel) }) {
             is Ok<*, ErrorCode, Error<ErrorCode>> -> {
                 result.value ?: return Failed(Err(ErrorCode.ApplicationError, "linear mechanism model is null"))

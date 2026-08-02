@@ -1,3 +1,179 @@
+# OSPF CP 发布与环境验收归档
+
+## 发布状态
+
+当前 CP/远程能力保持 `ImplementedWithBoundaries`。本文件集中记录发布前必须在部署环境完成的验证，不把本地单元测试、内存 E2E 或隔离 Maven 安装当作生产环境证据。
+
+### 移交任务登记（2026-08-07）
+
+以下任务由 `plans/cp3.md` 正式移交本文件管理（2026-08-07 审查收尾确认），
+每个交付项只有本文件一个实施所有者（满足 CP3 A001“唯一实施所有者”要求）；
+cp3.md 不再追踪其勾选状态。
+
+| 任务编号 | 来源 | 状态 | 责任归属（owner） | 前置条件 | 验收条件 |
+| --- | --- | --- | --- | --- | --- |
+| `RELEASE-CP-205` | `OSPF-CP3-A205` | 待部署环境验收 | remote-solver 部署 owner（`framework/remote-solver`） | 本地 protocol/dispatcher/calculator 部分已完成并有 fixture 回归 | 在真实部署组合下完成 protocol、dispatcher、calculator、Ktorm/数据库 migration（V1～V7）、HTTP API、README 与 `daily.md` 的锁步更新，并使用同一 fixture 双向验收；PostgreSQL/S3 对象存储回放、服务/worker 重启组合与完整终态矩阵通过 |
+| `RELEASE-CP-301～306` | `OSPF-CP3-A301～A306` | `BlockedByDomainOwner` | 真实领域 owner（当前无：仓库无生产 Benders 样例） | 补充一个使用 Logic-Based Benders 的生产型领域示例（稳定领域键、可重建 master binding、明确 cut 语义） | A301～A306 的领域 serializer、摘要/指纹门禁、capture/decode/rebuild/resume、Exact cut 复验及同进程/JVM/LocalFS/H2/HTTP 链路测试全部通过 |
+
+### 本地最终复验（2026-08-05）
+
+本轮不依赖外部基础设施的稳定 ID registry 与 Benders primitive checkpoint 已通过定向和全量验证。Kotlin `clean compile test-compile`、全量 `test`、`verify`、隔离仓库 `install` 均 `BUILD SUCCESS`；Surefire XML 汇总 3212 tests、0 failures、0 errors、6 skipped，Failsafe 汇总 25 tests（SCIP 21、Gurobi 4）、0 failures、0 errors。完整日志为：
+
+- `D:\temp\ospf-stable-id-benders-clean-compile-final.log`
+- `D:\temp\ospf-stable-id-benders-test-final.log`
+- `D:\temp\ospf-stable-id-benders-verify-final.log`
+- `D:\temp\ospf-stable-id-benders-install-final.log`
+
+制品已安装到隔离 Maven 仓库 `D:\environment\maven_repository`；该安装用于源码联调，不代表外部部署验收。
+
+### 历史全量复验记录（2026-08-05）
+
+以上内容为当时的源码联调记录：Kotlin `clean compile test-compile`、全量 `test`、SCIP/Gurobi `verify` 和隔离仓库 `install` 均 `BUILD SUCCESS`。Surefire XML 汇总 3223 tests、0 failures、0 errors、6 skipped；Failsafe 汇总 25 tests（SCIP 21、Gurobi 4）、0 failures、0 errors。当前权威结果见 2026-08-06 的“本轮最终本地验收”一节；当时日志为：
+
+- `D:\temp\cp2-final-kotlin-clean-compile-current.log`
+- `D:\temp\cp2-final-kotlin-test-current.log`
+- `D:\temp\cp2-final-kotlin-verify-current.log`
+- `D:\temp\cp2-final-kotlin-install-current-2.log`
+
+Kotlin 制品已安装到 `D:\temp\ospf-cp2-local-m2`。remote-solver 使用该隔离仓库完成 `clean compile test-compile`、全量 `test`、`verify` 和 `install`，Surefire 汇总 326 tests、0 failures、0 errors，Failsafe 为 `RemoteCpHttpE2EIT` 1 test、0 failures、0 errors；日志为 `D:\temp\cp2-final-remote-clean-compile-current.log`、`D:\temp\cp2-final-remote-test-current.log`、`D:\temp\cp2-final-remote-verify-current.log`、`D:\temp\cp2-final-remote-install-current.log`。这些是源码联调和本地验证证据，不替代下方外部环境验收。
+
+### 外部环境验收清单
+
+以下事项不依赖继续修改 CP 算法，但必须在真实或生产等价环境中验证后才能关闭：
+
+- **PostgreSQL 迁移与重启回放**：执行 remote-solver V1～V7 migration，在真实数据库中写入任务、slice、payload/config/result/checkpoint ObjectRef，重启服务后验证排队、恢复、replay、resume、timeline 和监控查询语义不变。
+- **生产对象存储联调**：使用 S3/MinIO 等实际对象存储验证租户隔离、ETag/version、断点续传、结果与 checkpoint 读取、权限失败和对象丢失后的结构化错误；不能用内存或 LocalFS 结果替代。
+- **部署级跨模块终态矩阵**：在真实 HTTP、dispatcher、calculator、worker 和对象存储组合下覆盖 Optimal、Feasible、Infeasible、Unknown、TimeLimit、NodeLimit、SolutionLimit、Cancelled、Interrupted、BackendFailure，以及有/无 incumbent 的组合。
+- **外部 worker 与服务进程重启**：验证默认 in-process bridge 与显式 external-process bridge 在服务重启、worker 重启、slice 重试和 checkpoint 链路中保持 run/attempt、终止原因、artifact digest 和恢复边界一致。
+- **生产代表性性能基线**：在目标硬件、SCIP/native 版本、线程和数据规模上记录 build/compile/solve/shrink/restore 的 p50/p95、节点、迭代、峰值内存和资源泄漏；Fake、小规模和单机 smoke benchmark 只能作为开发基线。
+
+### 不属于环境验收的本地收尾
+
+以下事项属于源码契约和本地可测试能力，不需要 PostgreSQL、S3/MinIO、外部 worker 或生产硬件：core 的显式稳定 ID registry 与 triad/tetrad artifact 映射、Benders primitive-only cut serializer/checkpoint codec、跨模型 fingerprint 门禁、独立 JVM portable decode，以及本地/远程终态和失败路径补测。
+
+本轮已完成 core registry 和 versioned Benders checkpoint document；显式 ID 冲突不会破坏既有 fallback，feasibility artifact 也保留源约束 origin。领域 serializer 仍由领域调用方实现，不能把任意业务对象自动持久化。`OSPF-SOL-013` 总项仍是上游/全仓库代码契约边界：机制模型统一 origin、全部插件/组合求解器和远程 DTO 的跨重建稳定接入尚未关闭，缺口不是外部基础设施问题，也不会因部署环境而自动完成。
+
+本轮同时修正了远程 worker 的后端失败终态（`BACKEND_FAILURE` 不再输出为 completed）以及外部 bridge 的兼容分流（严格 CP 模式校验 artifact，旧非 CP key=value 模式允许缺失可选路径）。这些是源码契约修复，不属于外部环境验收项。
+
+### 条件能力边界
+
+JSCIP 原模型 bound 增量、probing、结构化 conflict、SCIP native optional/variable interval 和 native 搜索树 resume
+当前仍按 `RejectedByEvidence` 处理：尚无完整 API 或等价性证据。本轮仅保留并复制了
+`origin/master` 的 Event/EventHandler/EventMask/Node/Row/Column 上游 API 供后续评估，未将其作为
+`feat/constraint_programing` 的提交；binding/runtime version probe、生命周期 API 和 reoptimization
+证据全部延后。更换部署环境不会使这些能力自动成立，只有通过对应探针、差分测试和资源/性能门禁后才能重新评估。
+
+后续 JSCIPOpt binding、同进程模型复用、probing/reoptimization、结构化 conflict 探针及
+optional/variable interval/native checkpoint 的重新评估统一由 `plans/solver_cp.md` 承接，
+当前状态为 `BlockedByUpstream`；`plans/cp3.md` 只保留 OSPF 公共契约与源码收尾。
+本文件继续只管理真实 PostgreSQL/S3、进程重启组合、部署级终态矩阵和生产性能基线，
+不会因 JSCIPOpt 源码可修改而改变这些环境验收项的状态。
+
+### 当前工作区最终本地验收（2026-08-06）
+
+- Kotlin `clean compile test-compile`、全量 `test`、SCIP/Gurobi `verify`、隔离 Maven `install` 均成功；remote-solver 使用 `D:\temp\ospf-cp2-local-m2` 中的 Kotlin 制品完成相同的 clean compile/test、全量 test、verify 和 install。
+- 最新唯一统计（以 2026-08-06 本轮 XML 为准）为 Kotlin Surefire 3239 tests、6 skipped，Failsafe 25 tests；remote-solver Surefire 352 tests、Failsafe 1 test；全部 0 failures、0 errors。此前的 3226/343 是历史报告数字。
+- 完整日志位于 `D:\temp\cp2-final-k-clean-compile-20260806-final.log`、`D:\temp\cp2-final-k-test-20260806-final.log`、`D:\temp\cp2-final-k-verify-20260806-final.log`、`D:\temp\cp2-final-k-install-20260806-final-retry.log`、`D:\temp\cp2-final-remote-clean-compile-20260806-final.log`、`D:\temp\cp2-final-remote-test-20260806-final.log`、`D:\temp\cp2-final-remote-verify-20260806-final.log`、`D:\temp\cp2-final-remote-install-20260806-final.log`。
+- CP3 当前源码收尾日志更新为 Kotlin `D:\temp\cp3-kotlin-clean-compile-final.log`、`D:\temp\cp3-kotlin-test-final.log`、`D:\temp\cp3-kotlin-verify-final.log`，remote-solver `D:\temp\cp3-remote-clean-compile-final.log`、`D:\temp\cp3-remote-test-final.log`、`D:\temp\cp3-remote-verify-final.log`；JSCIPOpt 条件能力未纳入本轮验收。
+- 该证据只覆盖本地源码、隔离对象存储和内存/HTTP 测试，不替代本节外部验收清单；`OSPF-SOL-013` 全仓库稳定 ID、领域 cut serializer 跨进程接入、PostgreSQL/S3、服务/worker 重启组合和生产性能基线仍未关闭。
+
+### 本轮源码门禁复核（2026-08-05）
+
+### CP3 第二轮源码收尾（2026-08-07）
+
+- Kotlin 当前源码完成 `test-compile`、定向测试、全量 `mvn test`、SCIP/Gurobi 子模块 `verify` 与
+  隔离 `install`，均 `BUILD SUCCESS`。Surefire XML 汇总 `3258 tests, 0 failures, 0 errors, 6 skipped`；
+  Failsafe 汇总 `25 tests, 0 failures, 0 errors`（SCIP 21、Gurobi 4）。全量 `mvn test` 在 77/80 因
+  并发 Kotlin 编译 Metaspace OOM 中断一次，`-rf` 续跑完成，两段均为 0 failures/0 errors，
+  属本机内存环境问题而非源码缺陷。
+- 本轮新增：二次机制模型身份传播回归、SCIP/Gurobi 线性/二次求解器原生变量/约束名称的稳定 ID
+  前向投影（`nativeElementName`/`sanitizeNativeName`）、checkpoint 身份往返回归；`plans/cp3.md`
+  A106 已按本地测试矩阵勾选，A101/A102/A103/A104 仍保持未勾选并记录理由。
+- remote-solver 使用本轮安装到默认本地仓库的 Kotlin 1.1.0 制品完成全量 `test` 与 `verify`：
+  Surefire `352 tests, 0 failures, 0 errors`，HTTP Failsafe `1 test, 0 failures, 0 errors`。
+- 完整日志位于 `D:/temp/ospf-cp3-kotlin-verification-20260807/`（compile-targeted2.log、
+  targeted-tests5.log、test-full.out.log、test-full-resume.out.log、verify-plugin.out.log、
+  install-current.log、remote-test.log、remote-verify.log）。
+- 该证据只覆盖本地源码与内存/HTTP 测试，不改变 `ImplementedWithBoundaries`：真实 PostgreSQL/S3、
+  服务/worker 进程重启组合、部署级完整终态矩阵、领域 Benders cut serializer 跨进程接入、
+  全仓库 `OSPF-SOL-013` 和生产性能基线仍需外部环境或上游契约证据。
+
+### CP3 第三轮源码收尾（2026-08-07）
+
+- A103 插件级验收完成：新增 `ScipLinearIdentityProjectionIT`/`GurobiLinearIdentityProjectionIT`，
+  在 Configuration 回调断言稳定 ID 投影为 `ospf-variable-*`/`ospf-constraint-*` 原生名称，
+  model-local 元素保留展示名；SCIP/Gurobi 二次路径与线性共享同一 `nativeElementName` 投影。
+  诊断辅助模型独立命名（SCIP `diagnostic-var-*`/`diagnostic-row-*`，Gurobi `var-*`/`row-*`），
+  不冒充源 ID；presolve 元素由原生求解器内部管理，不映射为源元素 ID。插件 Failsafe：
+  SCIP 22 项、Gurobi 5 项，0 failure/0 error。
+- A104 传播矩阵完成：组合求解器身份门禁、attempt trace 保留 attemptId/backendId 与
+  provenance/fingerprints、诊断证据回查稳定 ID、checkpoint 身份往返、远程 DTO 身份往返；
+  framework 定向测试 8 项通过。`plans/cp3.md` 已勾选 A103/A104；A101/A102（机制派生元素
+  统一 origin 生产与跨重建终态矩阵）及 `OSPF-SOL-013` 总项仍保持未完成。
+- A205 边界明确：protocol/dispatcher/calculator 的本地部分已推进并有 fixture 回归；
+  Ktorm/数据库 migration（V1～V7）、HTTP 部署链路、PostgreSQL/S3 对象存储回放和
+  服务/worker 重启组合由本文件下方部署环境验收清单管理，不因本地 fixture 通过而关闭。
+  （2026-08-07 经用户确认正式移交本文件管理。）
+- A301～A306 移交记录：2026-08-07 经用户确认，真实领域 Benders cut serializer 示例后续在本文件
+  补充；在补充前 A301～A306 保持 `BlockedByDomainOwner`（`plans/cp3.md` Phase A3），不视为
+  CP3 源码缺陷或未完成事项。
+- 完整日志位于 `D:/temp/ospf-cp3-progress-20260807-verify-plugin.log` 与
+  `D:/temp/ospf-cp3-progress-20260807-targeted-framework.log`。
+- 该证据只覆盖本地源码与内存测试，不改变 `ImplementedWithBoundaries`。
+
+### CP3 第四轮审查修复（2026-08-07）
+
+- 移交正式化：`OSPF-CP3-A205` 与 `OSPF-CP3-A301～A306` 已按上文移交任务登记
+  正式移交（`RELEASE-CP-205`、`RELEASE-CP-301～306`），含独立验收条件与唯一
+  所有者；cp3.md 已同步登记并停止追踪其勾选状态，A001 唯一所有权无冲突。
+- 命名投影修复：`nativeElementName`/`sanitizeNativeName` 改为可逆 UTF-8 字节
+  十六进制转义（`_h<2 位 hex>_`，含下划线自身），`a/b`、`a b`、`a_b` 不再碰撞；
+  超长名称按“安全前缀 + SHA-256 摘要”截断。`ModelingPreparationTest` 增至 8 项
+  （新增碰撞、往返、超长回归），SCIP/Gurobi 插件级投影 IT 不受影响。
+- 本机内存被其他项目活跃构建占用，Kotlin 全量并发从 `-T 0.75C` 降至 `-T 0.5C`；
+  一次完整 `mvn test` `BUILD SUCCESS`（不再依赖 `-rf` 续跑）：Surefire XML 汇总
+  `3261 tests, 0 failures, 0 errors, 6 skipped`；`mvn clean compile test-compile`
+  同样一次 `BUILD SUCCESS`；SCIP/Gurobi 插件 `verify` Failsafe 汇总
+  `27 tests, 0 failures, 0 errors`（SCIP 22、Gurobi 5）。
+- remote-solver 使用隔离仓库 `D:/temp/ospf-cp3-fix-local-m2`（含更新后的
+  `ospf-kotlin-core:1.1.0`）完成 `clean test` 与 `verify`：Surefire
+  `352 tests, 0 failures, 0 errors`，HTTP Failsafe `1 test, 0 failures, 0 errors`。
+- 完整日志位于 `D:/temp/ospf-cp3-review-fix-20260807/`（test-full-fix.log、
+  clean-compile-test-compile-fix.log、verify-plugin-fix.log、remote-clean-test-fix2.log、
+  remote-verify-fix.log）。该证据仍不改变 `ImplementedWithBoundaries`：A101/A102、
+  A401/A402、全仓库 `OSPF-SOL-013`、真实 PostgreSQL/S3、服务/worker 重启组合与
+  生产性能基线仍未关闭。
+
+本轮已在不依赖外部基础设施的范围内补齐以下生产契约：外部进程 bridge 可恢复同一任务的历史 attempt checkpoint；严格 CP result/checkpoint 在上传前执行 snapshot 数学复验和完整审计字段交叉校验；v2 future schema、伪装 legacy 来源和损坏摘要拒绝；LocalFS/S3 checkpoint metadata 保留 schema、model/configuration/solver fingerprint 与 digest；稳定身份 registry 的并发访问和最终唯一性校验；Benders checkpoint 含 master 状态时必须提供显式恢复适配器。remote-solver 全 reactor Surefire 331 项、Kotlin 全仓库 Surefire 3223 项均通过，Kotlin Failsafe 25 项和 remote-solver HTTP Failsafe 1 项也通过。
+
+这些源码证据不替代下方部署环境验收，也不关闭 `OSPF-SOL-013`：跨全仓库模型重建的稳定 ID、领域业务 cut serializer 的实际接入、真实 PostgreSQL/S3、服务/worker 重启组合、跨模块终态矩阵和生产性能基线仍需独立环境或上游契约证据。
+
+### 当前恢复链与诊断复验（2026-08-06）
+
+- external bridge 不再把恢复输入 checkpoint 当作当前切片输出；新切片必须生成新的 v2 checkpoint 并正确建立 parent/attempt 关系，没有新 checkpoint 时返回结构化 `BACKEND_FAILURE`，防止重复从同一搜索状态重启。
+- calculator 与 external bridge 对带 incumbent 的 `BACKEND_FAILURE` 采用一致的 snapshot 语义校验；目标存在时重新求值，目标缺失只允许在 checkpoint 导出阶段由 snapshot 补齐。
+- external CP diagnostics 已执行结构化 source、枚举、成员 ID、bound/domain、assumption 和 issue 条目校验；未知或畸形证据不会进入对象存储。Benders 主问题状态必须由显式 adapter 返回逐字段恢复证据。
+- 这些是本地源码契约，不需要外部基础设施。此前恢复链阶段的 Kotlin Surefire 3223、remote-solver Surefire 337 仅作历史记录；当前权威统计见下方“本轮最终本地验收”。外部 PostgreSQL/S3、服务/worker 重启组合、全模块终态矩阵和生产性能基线仍不能由本地测试推断。
+
+### 本轮最终本地验收（2026-08-06）
+
+- plain CP、external bridge、stable identity 和旧 V2 Benders 摘要迁移门禁已完成源码修复；定向回归均通过。Kotlin 全量 Surefire 为 3226 tests、0 failures、0 errors、6 skipped，Failsafe 为 25 tests、0 failures、0 errors；remote-solver Surefire 为 343 tests、0 failures、0 errors，HTTP Failsafe 为 1 test、0 failures、0 errors。
+- 两仓库均已用完整 `clean compile test-compile`、`test`、`verify` 和隔离 Maven `install` 验证；详细日志和 `ImplementedWithBoundaries` 边界以 `plans/cp2.md` 的 1.23 节为准。
+- 真实 PostgreSQL/S3、服务/worker 重启组合、跨模块完整终态矩阵、领域 cut serializer 跨进程持久化、全仓库 `OSPF-SOL-013` 和生产性能基线仍需外部或上游证据，不能由本地构建成功推断。
+
+### 本轮最新本地验收（2026-08-06）
+
+- 当前源码已重新完成 Kotlin `clean compile test-compile`、全量 `test`、SCIP/Gurobi 子模块 `verify`；本轮最终完整日志为 `D:\temp\cp3-kotlin-clean-compile-final.log`、`D:\temp\cp3-kotlin-test-final.log` 和 `D:\temp\cp3-kotlin-verify-final.log`。Surefire XML 为 3239 tests、0 failures、0 errors、6 skipped，Failsafe 为 25 tests、0 failures、0 errors。
+- core/framework/SCIP/Gurobi 目标制品已选择性安装到 `D:\temp\ospf-cp3-local-m2`；全 reactor install 受未提供的 CPLEX/Lingo/COPT 等厂商 `provided` SDK 阻塞，阻塞日志为 `D:\temp\cp3-kotlin-install-current.log`，不影响上述源码编译、测试和目标插件安装。
+- remote-solver 使用该隔离制品完成 `clean compile test-compile`、全量 `test` 和 `verify`；本轮最终完整日志为 `D:\temp\cp3-remote-clean-compile-final.log`、`D:\temp\cp3-remote-test-final.log` 和 `D:\temp\cp3-remote-verify-final.log`。Surefire XML 为 352 tests、0 failures、0 errors；HTTP Failsafe 为 1 test、0 failures、0 errors。
+- 本地结果不改变 `ImplementedWithBoundaries`：真实 PostgreSQL/S3、服务/worker 重启回放、跨模块完整终态矩阵、领域 cut serializer 跨进程持久化、全仓库 `OSPF-SOL-013` 和生产性能基线仍需外部或上游证据。
+
+### 归档迁移说明
+
+下方完整保留原 `plans/constraint-programming.md` 内容；原文件已归档，本文件是后续发布验收的唯一入口，不得丢失其能力边界、兼容策略、测试矩阵和关闭标准。
+
+---
+
 # 约束规划与 Logic-Based Benders 支持计划
 
 ## 1. 文档状态
@@ -37,10 +213,10 @@
 ### 当前实现状态（2026-08-01）
 
 - CP0～CP4 的 core AST、snapshot、fake solver、SCIP solver、精确 MIP lowerer、结构化不可行诊断、Logic-Based Benders、示例 pipeline 和测试已经落地。
-- CP5 已提供整数 master no-good 编码、optional interval/variable duration 的精确 MIP-backed 支持、portable snapshot serialization 和 checkpoint 重建评估。
-- optional interval 与 variable duration 尚未声明为 SCIP native 能力；SCIP native 路径仍限制为固定 duration interval。Circuit、Automaton、Reservoir 已有 AST、求值和 snapshot 支持，但当前 SCIP/MIP 编译器对其返回结构化 Unsupported。
+- CP5 已提供整数 master no-good 编码、optional interval/variable duration 的精确 MIP-backed 支持、portable snapshot serialization、remote CP execution payload 和 checkpoint 重建评估。
+- optional interval 与 variable duration 尚未声明为 SCIP native 能力；SCIP native 路径仍限制为固定 duration interval。Circuit、Automaton、Reservoir 已由 SCIP 编译器以受规模限制的精确线性分解支持，能力声明为 `ExactLowering`。
 - native IIS/Farkas 通过 solver capability 和 analyzer SPI 接入：Gurobi 提供 LP/MIP/QP 原生 IIS，Gurobi 与 SCIP 提供连续 LP Farkas；未声明能力的 backend 使用带来源和证据等级的 legacy fallback。
-- 全量验收使用 `mvn clean compile test-compile -T 0.75C`、`mvn test -T 0.75C` 和插件 `mvn verify`；Surefire 报告汇总为 0 failures、0 errors、6 skipped（Maven 模块汇总会重复计数，不以日志中的总测试数作为唯一统计口径），Failsafe 集成测试为 9 tests、0 failures。
+- 全量验收使用 `mvn clean compile test-compile -T 0.75C`、`mvn test -T 0.75C` 和插件 `mvn verify`；Surefire 报告汇总为 0 failures、0 errors、6 skipped（Maven 模块汇总会重复计数，不以日志中的总测试数作为唯一统计口径），当前 SCIP Failsafe 集成测试为 14 tests、Gurobi Failsafe 集成测试为 4 tests，共 18 tests、0 failures、0 errors。
 
 当前 `core/solver/iis` 通过弹性模型和删除过滤定位不可行元素。删除过滤保留的是必须继续放开才能恢复可行性的 slack，语义更接近最小修复集（Minimal Correction Set，MCS），不能普遍保证返回的原始约束与变量界自身仍然不可行，也不能普遍保证 IIS 的不可约性。该实现继续保留，但在统一报告中只能按实际保证标记为 `ElasticFilter` / `DeletionFilter` 的启发式或未知证据。
 
@@ -275,9 +451,9 @@ snapshot 必须满足：
 | Forbidden assignments | 是 | table constraint |
 | NoOverlap | 是 | interval 集合 |
 | Cumulative | 是 | interval、demand、capacity |
-| Circuit | 后续 | 第二批全局约束 |
-| Automaton | 后续 | 第二批全局约束 |
-| Reservoir | 后续 | 第二批全局约束 |
+| Circuit | 是 | SCIP ExactLowering：排列 + MTZ 分解 |
+| Automaton | 是 | SCIP ExactLowering：分层状态/转移流分解 |
+| Reservoir | 是 | SCIP ExactLowering：稳定整数事件排序 + 乘积线性化 |
 
 ### 4.5 求解器输出
 
@@ -775,11 +951,11 @@ CP2C-246/248 的 native provider 接入不等同于完成 `OSPF-SOL-013`：中�
 
 ### Phase CP5：增强与迁移
 
-- [ ] `OSPF-CP-501` 增加更多全局约束（AST、求值和 snapshot 已覆盖 Circuit/Automaton/Reservoir，生产 backend 编译仍待实现）。
-- [ ] `OSPF-CP-502` 增加 remote model serialization（目前提供 portable CP snapshot codec，尚未接入 remote execution protocol）。
+- [x] `OSPF-CP-501` 增加更多全局约束（SCIP 提供受规模门禁的精确分解；MIP-backed 仍按 capability 返回 Unsupported）。
+- [x] `OSPF-CP-502` 增加 remote model serialization 与稳定解物化（CP snapshot 已进入 `ModelData`/`SolvePayload`；`RemoteConstraintProgrammingClient` 通过 `resultRef` 回填 Int64/interval 解，并交叉校验状态、值域、interval 与全部 snapshot 约束）。
 - [x] `OSPF-CP-503` 评估 checkpoint/resume 能力（已提供 portable snapshot checkpoint 和 capability assessment；native resume 仍由 backend 声明）。
-- [ ] `OSPF-CP-504` 评估升级 JSCIP binding 以支持增量 bound、probing 和 conflict graph。
-- [ ] `OSPF-CP-505` 评估 demo2 或甘特排程框架迁移。
+- [x] `OSPF-CP-504` 评估升级 JSCIP binding 以支持增量 bound、probing 和 conflict graph（当前 binding 均未暴露，生产路径明确使用 model-rebuild fallback）。
+- [x] `OSPF-CP-505` 评估 demo2 或甘特排程框架迁移（demo2 已完成生产 Benders 迁移；Gantt 暂不迁移，保留现有 MetaModel/列生成路径并记录 CP interval 适配边界）。
 - [x] `OSPF-CP-506` 增加一般整数 master no-good encoding。
 - [x] `OSPF-CP-507` 增加 optional interval 和 variable duration 的精确支持（MIP-backed 路径；SCIP native 仍为 fixed-duration）。
 
@@ -790,7 +966,7 @@ CP2C-246/248 的 native provider 接入不等同于完成 `OSPF-SOL-013`：中�
 | core unit | domain、literal、表达式、约束、snapshot | 空模型、重复 ID、非法 domain、溢出 |
 | core contract | solver/session/output | Feasible、Optimal、Infeasible、Unknown |
 | SCIP compiler unit | native handler mapping 和 decomposition | 每种首版约束、ID、资源释放 |
-| SCIP integration | native CP/CIP solve | Sudoku、Job Shop、Cumulative、终态映射 |
+| SCIP integration | native CP/CIP solve | Sudoku、Job Shop、Cumulative、Automaton 确定性与规模门禁、Reservoir 同时刻排序/变量液位/不可行终态、终态映射 |
 | lowerer property | 穷举 oracle 对照 | 原 CP 与 LinearMetaModel 可行集、目标值一致 |
 | MIP-backed contract | fake/Gurobi linear solver | capability、unsupported、hint、状态传播 |
 | cross-solver differential | SCIP 与 Gurobi 对照 | 受支持随机小模型可行性和最优值一致 |
@@ -868,9 +1044,9 @@ mvn test -T 0.75C > cp-final-test.log 2>&1
 - 混合 CP/MIP 单一求解模型。
 - SCIP native optional interval 和 variable duration 的通用编译（MIP-backed 精确子集已支持）。
 - 自动把任意 CP 全局约束降为 MIP。
-- remote CP execution protocol 与 native checkpoint/resume；当前只提供 portable snapshot/checkpoint 重建。
+- native checkpoint/resume；当前仍使用 portable snapshot/checkpoint 重建，后端原生能力按 descriptor 声明。
 - 未经证明的自动 optimality cut。
-- Circuit、Automaton、Reservoir 的生产 backend 编译。
+- 任意未声明 capability 的全局约束自动降维。
 - OSPF 自研生产级 CP 搜索引擎。
 - OR-Tools adapter 或依赖。
 
@@ -892,6 +1068,12 @@ mvn test -T 0.75C > cp-final-test.log 2>&1
 12. 所有失败路径使用 `Try` / `Ret<T>`，求解器异常不会穿透 adapter 边界。
 13. 中英文 README、最小 demo、能力矩阵和扩展点测试同步完成。
 14. 全量编译与全量测试通过。
+
+### CP5 迁移评估记录
+
+- `RemoteConstraintProgrammingClient` 复用统一 `SolverExecutionPort` 生命周期；远端 payload 的 `ModelData.modelType` 为 `CP`，snapshot schema 和稳定变量/约束 ID 随 payload 传输，`resultRef` artifact 通过 Int64/interval 物化和一致性门禁后才进入 CP output。
+- 当前 JSCIP binding 的 `incrementalBoundUpdates`、`probing`、`conflictGraph` 均为 `false`，对应评估对象会返回 `model-rebuild` fallback，不会把每轮重建伪装成增量求解。
+- demo2 的生产链路已使用 framework Benders；其主问题和领域约束仍是线性/二次语义，迁移到 CP 不会带来等价收益，因此不强行改写。Gantt 框架继续使用现有 MetaModel/列生成生命周期，后续仅在 optional interval native 能力可用时再评估迁移。
 
 ## 15. 推荐实施顺序
 

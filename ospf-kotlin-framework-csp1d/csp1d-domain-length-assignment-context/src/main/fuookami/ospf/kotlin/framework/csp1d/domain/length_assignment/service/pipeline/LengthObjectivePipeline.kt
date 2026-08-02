@@ -3,7 +3,8 @@ package fuookami.ospf.kotlin.framework.csp1d.domain.length_assignment.service.pi
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.core.model.mechanism.LinearMetaModel
 import fuookami.ospf.kotlin.framework.csp1d.domain.length_assignment.LengthAggregation
 import fuookami.ospf.kotlin.framework.csp1d.domain.length_assignment.model.LengthAssignmentModelingConfig
@@ -54,7 +55,7 @@ class LengthObjectivePipeline<V : RealNumber<V>>(
         if (totalLengthPenalty != null) {
             for ((demandIndex, demand) in length.demands.withIndex()) {
                 val assignedVar = length.assignedLength.getOrNull(demandIndex) ?: continue
-                monomials.add(LinearMonomial(totalLengthPenalty.toFlt64(), assignedVar))
+                monomials.add(totalLengthPenalty.toFlt64() * assignedVar)
             }
         }
 
@@ -63,7 +64,7 @@ class LengthObjectivePipeline<V : RealNumber<V>>(
             for ((demandIndex, demand) in length.demands.withIndex()) {
                 val overVar = length.overLength.getOrNull(demandIndex) ?: continue
                 val penalty = config.overLengthPenalty[demand.product.id] ?: continue
-                monomials.add(LinearMonomial(penalty.toFlt64(), overVar))
+                monomials.add(penalty.toFlt64() * overVar)
             }
         }
 

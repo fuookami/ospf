@@ -43,7 +43,10 @@ import fuookami.ospf.kotlin.utils.functional.ok
  * / 使用确定性 Fake solver 的直接 core CP 示例。 / Direct core CP demo using a deterministic fake solver.
  */
 object DirectConstraintProgrammingDemo {
-    /** Build and solve a small all-different model. / 构造并求解小型全异模型。 */
+    /** Build and solve a small all-different model. / 构造并求解小型全异模型。
+     *
+     * @return CP solver output or a structured modeling/solving error. / CP 求解器输出或结构化建模、求解错误。
+     */
     suspend operator fun invoke(): Ret<ConstraintProgrammingSolverOutput> {
         val model = ConstraintProgrammingModel("direct-cp-demo", ObjectCategory.Minimum)
         val values = listOf(IntVar("cp-a"), IntVar("cp-b"), IntVar("cp-c"))
@@ -64,11 +67,18 @@ object DirectConstraintProgrammingDemo {
     }
 }
 
-/** Domain aggregation for the framework CP demo. / framework CP 示例的领域聚合。 */
+/** Domain aggregation for the framework CP demo. / framework CP 示例的领域聚合。
+ *
+ * @property selection Binary selection variables. / 二值选择变量。
+ */
 class CpDemoAggregation(
     val selection: List<BinVar> = listOf(BinVar("cp-selection-a"), BinVar("cp-selection-b"))
 ) {
-    /** Register aggregation variables. / 注册聚合变量。 */
+    /** Register aggregation variables. / 注册聚合变量。
+     *
+     * @param model CP model receiving the variables. / 接收变量的 CP 模型。
+     * @return Registration result. / 注册结果。
+     */
     fun register(model: ConstraintProgrammingModel): Try {
         for (variable in selection) {
             val result = model.registerVariable(variable)
@@ -78,12 +88,20 @@ class CpDemoAggregation(
     }
 }
 
-/** A single domain pipeline that enforces exactly one selection. / 强制恰好选择一个变量的领域管线。 */
+/** A single domain pipeline that enforces exactly one selection. / 强制恰好选择一个变量的领域管线。
+ *
+ * @property aggregation Demo aggregation supplying the variables. / 提供变量的示例聚合。
+ */
 class CpDemoSelectionPipeline(
     private val aggregation: CpDemoAggregation
 ) : ConstraintProgrammingPipeline {
     override val name: String = "cp-demo-selection"
 
+    /** Register the exactly-one selection constraint. / 注册恰好选择一个的约束。
+     *
+     * @param model CP model receiving the constraint. / 接收约束的 CP 模型。
+     * @return Registration result. / 注册结果。
+     */
     override fun register(model: ConstraintProgrammingModel): Try {
         val constraint = ConstraintProgrammingConstraint.boolXor(
             aggregation.selection.map { BooleanLiteral(it) }
@@ -95,13 +113,19 @@ class CpDemoSelectionPipeline(
 }
 
 /**
- * / 持有 aggregation 与 pipeline 的 framework 风格 Context。 / Framework-style context that owns aggregation and pipelines.
+ * 持有 aggregation 与 pipeline 的 framework 风格 Context。 / Framework-style context that owns aggregation and pipelines.
+ *
+ * @property aggregation Demo aggregation to register. / 待注册的示例聚合。
+ * @property pipelines Registration pipelines. / 注册管线。
  */
 class CpDemoContext(
     private val aggregation: CpDemoAggregation = CpDemoAggregation(),
     private val pipelines: List<ConstraintProgrammingPipeline> = listOf(CpDemoSelectionPipeline(aggregation))
 ) {
-    /** Build a registered CP model. / 构造并注册 CP 模型。 */
+    /** Build a registered CP model. / 构造并注册 CP 模型。
+     *
+     * @return Registered CP model or a structured registration error. / 已注册 CP 模型或结构化注册错误。
+     */
     fun buildModel(): Ret<ConstraintProgrammingModel> {
         val model = ConstraintProgrammingModel("framework-cp-demo")
         val registered = aggregation.register(model)
@@ -111,10 +135,19 @@ class CpDemoContext(
     }
 }
 
-/** A subproblem pipeline used by the Benders demo. / Benders 示例使用的子问题管线。 */
+/** A subproblem pipeline used by the Benders demo. / Benders 示例使用的子问题管线。
+ *
+ * @property variable CP variable required by the subproblem. / 子问题要求的 CP 变量。
+ */
 class CpDemoSubproblemPipeline(
     private val variable: BinVar
 ) : BendersSubproblemPipeline {
+    /** Register the required subproblem constraint. / 注册子问题所需约束。
+     *
+     * @param model CP subproblem model. / CP 子问题模型。
+     * @param binding Master-to-CP binding context. / 主问题到 CP 的绑定上下文。
+     * @return Registration result. / 注册结果。
+     */
     override fun register(
         model: ConstraintProgrammingModel,
         binding: BendersVariableBinding
@@ -131,7 +164,10 @@ class CpDemoSubproblemPipeline(
  * / 一个两轮收敛的二进制主问题 Logic-Based Benders 示例。 / A two-iteration binary-master Logic-Based Benders demo.
  */
 object LogicBasedBendersDemo {
-    /** Build and solve the demo. / 构造并求解示例。 */
+    /** Build and solve the demo. / 构造并求解示例。
+     *
+     * @return Benders report or a structured modeling/solving error. / Benders 报告或结构化建模、求解错误。
+     */
     suspend operator fun invoke(): Ret<LogicBasedBendersReport> {
         val masterVariable = BinVar("master-selection")
         val master = LinearMetaModel(name = "benders-master", converter = IntoValue.Identity)

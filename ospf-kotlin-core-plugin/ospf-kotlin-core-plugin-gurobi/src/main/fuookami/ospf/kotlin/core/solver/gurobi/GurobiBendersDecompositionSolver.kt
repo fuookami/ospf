@@ -19,7 +19,6 @@ import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
 import fuookami.ospf.kotlin.framework.solver.LinearBendersDecompositionSolver
 import fuookami.ospf.kotlin.framework.solver.QuadraticBendersDecompositionSolver
 
-/** Gurobi 线性 Benders 分解求解器 / Gurobi linear Benders decomposition solver */
 /**
  * Gurobi 线性 Benders 分解求解器
  *
@@ -254,7 +253,6 @@ class GurobiLinearBendersDecompositionSolver(
     }
 }
 
-/** Gurobi 二次 Benders 分解求解器 / Gurobi quadratic Benders decomposition solver */
 /**
  * Gurobi 二次 Benders 分解求解器
  *

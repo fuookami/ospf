@@ -12,9 +12,9 @@ import fuookami.ospf.kotlin.utils.functional.*
 */
 inline fun Try.orReturn(failedHandler: (Error<ErrorCode>) -> Nothing, fatalHandler: (List<Error<ErrorCode>>) -> Nothing) {
     when (this) {
-        is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-        is Failed<*, ErrorCode, Error<ErrorCode>> -> failedHandler(error)
-        is Fatal<*, ErrorCode, Error<ErrorCode>> -> fatalHandler(errors)
+        is Ok -> {}
+        is Failed -> failedHandler(error)
+        is Fatal -> fatalHandler(errors)
     }
 }
 
@@ -33,8 +33,8 @@ inline fun <T> Ret<T>.orReturn(
 ): T {
     @Suppress("UNCHECKED_CAST")
     return when (this) {
-        is Ok<*, ErrorCode, Error<ErrorCode>> -> value as T
-        is Failed<*, ErrorCode, Error<ErrorCode>> -> failedHandler(error)
-        is Fatal<*, ErrorCode, Error<ErrorCode>> -> fatalHandler(errors)
+        is Ok -> value as T
+        is Failed -> failedHandler(error)
+        is Fatal -> fatalHandler(errors)
     }
 }

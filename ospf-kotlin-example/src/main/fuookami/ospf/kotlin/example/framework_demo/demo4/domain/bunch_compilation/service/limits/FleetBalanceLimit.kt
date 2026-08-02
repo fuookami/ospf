@@ -64,15 +64,11 @@ class FleetBalanceLimit(
             }
         }
 
-        val poly = MutableLinearPolynomial()
-        for ((l, checkPoint) in fleetBalance.limits.withIndex()) {
-            poly += LinearMonomial(
-                coefficient(checkPoint.first.airport, checkPoint.first.aircraftMinorType),
-                fleetBalance.slack[l]
-            )
-        }
+        val poly = sum(fleetBalance.limits.withIndex().map { (l, checkPoint) ->
+            coefficient(checkPoint.first.airport, checkPoint.first.aircraftMinorType) * fleetBalance.slack[l]
+        })
         when (val result = model.minimize(
-            LinearExpressionSymbol(LinearPolynomial(poly.monomials, poly.constant)),
+            LinearExpressionSymbol(poly),
             name = "fleet balance")
         ) {
             is Ok -> {}

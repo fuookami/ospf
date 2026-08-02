@@ -25,6 +25,7 @@ import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.symbol.Linear
 import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 import fuookami.ospf.kotlin.quantities.quantity.Quantity
 import fuookami.ospf.kotlin.utils.error.*
@@ -159,7 +160,7 @@ class Csp1dProduceContext<V : RealNumber<V>>(
             } else {
                 baseBatchCoefficient
             }
-            monomials.add(LinearMonomial(batchCoefficient, produce[index]!!))
+            monomials.add(batchCoefficient * produce[index]!!)
         }
 
         // LP 模式不加 yield/waste/length 目标项
@@ -433,7 +434,7 @@ class Csp1dProduceContext<V : RealNumber<V>>(
                     baseBatchCoefficient
                 }
                 when (val result = model.minimize(
-                    LinearMonomial(batchCoefficient, latestBatch[planIndex]),
+                    batchCoefficient * latestBatch[planIndex],
                     name = "csp1d_objective_${iteration}_$planIndex"
                 )) {
                     is Ok -> {}

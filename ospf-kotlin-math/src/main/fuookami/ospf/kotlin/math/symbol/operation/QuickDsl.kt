@@ -10,9 +10,24 @@ import fuookami.ospf.kotlin.math.algebra.concept.*
 /**
  * 泛型快捷 DSL / Quick DSL
  *
- * 提供基于 Flt64ValueConverter 的泛型快捷 DSL，支持 Flt64/FltX/Rtn64/RtnX 四种数值类型。
- * Provides generic quick DSL based on Flt64ValueConverter, supporting Flt64/FltX/Rtn64/RtnX numeric types.
+ * 提供基于 Flt64ValueConverter 的泛型快捷 DSL，支持 Flt64、FltX、Rtn64、RtnX、Int64、IntX、UInt64 和 UIntX。
+ * Provides generic quick DSL based on Flt64ValueConverter, supporting Flt64, FltX, Rtn64, RtnX, Int64, IntX, UInt64, and UIntX.
 */
+
+/**
+ * 从符号创建指定数值类型的线性多项式（系数为 1） / Create a typed linear polynomial from a symbol (coefficient = 1)
+ *
+ * 通过显式 Flt64ValueConverter 提供数值类型。 / Uses an explicit Flt64ValueConverter for the numeric type.
+ *
+ * @param symbol 符号 / Symbol
+ * @param converter Flt64 到目标数值类型的转换器 / Flt64 converter for the target numeric type
+ * @return 指定数值类型的线性多项式 / Typed linear polynomial
+*/
+@JvmName("quickGenericLinearPolynomialFromSymbol")
+fun <T> LinearPolynomial(symbol: Symbol, converter: Flt64ValueConverter<T>): LinearPolynomial<T>
+        where T : NumberField<T>, T : RealNumber<T> {
+    return QuickDsl(converter).LinearPolynomial(symbol)
+}
 
 /**
  * 泛型快捷 DSL / Quick DSL
@@ -22,8 +37,9 @@ import fuookami.ospf.kotlin.math.algebra.concept.*
  * @param V 数值类型，同时满足 NumberField 和 RealNumber 约束 / Numeric type satisfying both NumberField and RealNumber constraints
  * @param converter Flt64 到 V 的转换器 / Flt64 to V converter
  * @property converter Flt64 到 V 的转换器 / Flt64 to V converter
-*/
+ */
 class QuickDsl<V>(private val converter: Flt64ValueConverter<V>) where V : NumberField<V>, V : RealNumber<V> {
+
     // ========== LinearPolynomial constructors ==========
     // 线性多项式构造函数 / Linear polynomial constructors
 

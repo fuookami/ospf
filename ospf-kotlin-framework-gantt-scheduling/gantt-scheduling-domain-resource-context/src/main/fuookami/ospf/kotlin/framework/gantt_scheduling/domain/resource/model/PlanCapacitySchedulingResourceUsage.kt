@@ -7,7 +7,7 @@ import fuookami.ospf.kotlin.utils.concept.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.*
 import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.symbol.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
@@ -114,7 +114,7 @@ class PlanCapacitySchedulingResourceUsage<
                     val actionIndex = actions.indexOf(action)
                     val slotIndex = resolveCapacitySlotIndex(slot)
                     if (actionIndex >= 0 && slotIndex >= 0 && slotIndex < compilation.operationTime.shape[1]) {
-                        quantity[slot].asMutable() += LinearMonomial(unitUsage.toSolverValue(), compilation.operationTime[actionIndex, slotIndex])
+                        quantity[slot].asMutable() += unitUsage.toSolverValue() * compilation.operationTime[actionIndex, slotIndex]
                     }
                 }
             }

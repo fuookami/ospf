@@ -3,17 +3,17 @@ package fuookami.ospf.kotlin.core.model.constraint_programming
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
-import fuookami.ospf.kotlin.core.solver.report.ConstraintId
-import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
-import fuookami.ospf.kotlin.core.solver.report.VariableId
-import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
-import fuookami.ospf.kotlin.math.algebra.number.Int64
 import fuookami.ospf.kotlin.utils.error.ErrorCode
 import fuookami.ospf.kotlin.utils.functional.Failed
 import fuookami.ospf.kotlin.utils.functional.Fatal
 import fuookami.ospf.kotlin.utils.functional.Ret
 import fuookami.ospf.kotlin.utils.functional.ok
+import fuookami.ospf.kotlin.math.algebra.number.Int64
+import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
+import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
+import fuookami.ospf.kotlin.core.solver.report.VariableId
+import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
 
 /**
  * / 只序列化不可变 CP snapshot，不序列化求解器或 native 句柄。 / Serializes immutable CP snapshots without serializing solver/native handles. The receiver supplies stable-ID-to-variable bindings when decoding, which keeps
@@ -27,8 +27,25 @@ object ConstraintProgrammingSnapshotCodec {
         ignoreUnknownKeys = false
     }
 
-    /** Encode a snapshot as versioned JSON. / 将 snapshot 编码为带版本 JSON。 */
+    /**
+     * Encode a snapshot as versioned JSON. / 将 snapshot 编码为带版本 JSON。
+     *
+     * @param snapshot 不可变 CP snapshot / Immutable CP snapshot
+     * @return 编码后的 JSON 或结构化错误 / Encoded JSON or a structured error
+     */
     fun encode(snapshot: ConstraintProgrammingModelSnapshot): Ret<String> {
+        if (!snapshot.validateIdentity()) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "CP snapshot 身份清单无效：存在重复 ID 或缺失 stable origin / Invalid CP snapshot identity manifest: duplicate ID or missing stable origin"
+            )
+        }
+        if (!snapshot.validateObjectiveSemantics()) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "CP snapshot 只支持与模型方向一致的单一目标 / CP snapshots support at most one objective matching the model category"
+            )
+        }
         return try {
             ok(json.encodeToString(SnapshotPayload.serializer(), snapshot.toPayload()))
         } catch (error: Throwable) {
@@ -41,6 +58,10 @@ object ConstraintProgrammingSnapshotCodec {
 
     /**
      * / 使用调用方提供的稳定变量绑定解码 JSON。 / Decode JSON with caller-provided stable variable bindings.
+     *
+     * @param encoded 带版本的 snapshot JSON / Versioned snapshot JSON
+     * @param variables 稳定变量 ID 到 OSPF 变量的绑定 / Stable-ID-to-variable bindings
+     * @return 解码后的 snapshot 或结构化错误 / Decoded snapshot or a structured error
      */
     fun decode(
         encoded: String,
@@ -54,11 +75,40 @@ object ConstraintProgrammingSnapshotCodec {
                     "不支持的 CP snapshot schema：${payload.schema} / Unsupported CP snapshot schema: ${payload.schema}"
                 )
             }
+            payload.validateIdentity()?.let { return Failed(ErrorCode.IllegalArgument, it) }
+            payload.validateObjectiveSemantics()?.let { return Failed(ErrorCode.IllegalArgument, it) }
             payload.toSnapshot(variables)
         } catch (error: Throwable) {
             Failed(
                 ErrorCode.IllegalArgument,
                 "CP snapshot 反序列化失败：${error.message} / CP snapshot deserialization failed: ${error.message}"
+            )
+        }
+    }
+
+    /**
+     * 仅校验 snapshot 传输结构，不要求变量绑定。
+     * Validate snapshot transport structure without requiring variable bindings.
+     *
+     * @param encoded 带版本的 snapshot JSON / Versioned snapshot JSON
+     * @return 校验结果 / Validation result
+     */
+    fun validate(encoded: String): Ret<Unit> {
+        return try {
+            val payload = json.decodeFromString(SnapshotPayload.serializer(), encoded)
+            if (payload.schema != CURRENT_SCHEMA) {
+                return Failed(
+                    ErrorCode.Other,
+                    "不支持的 CP snapshot schema：${payload.schema} / Unsupported CP snapshot schema: ${payload.schema}"
+                )
+            }
+            payload.validateIdentity()?.let { return Failed(ErrorCode.IllegalArgument, it) }
+            payload.validateObjectiveSemantics()?.let { return Failed(ErrorCode.IllegalArgument, it) }
+            ok(Unit)
+        } catch (error: Throwable) {
+            Failed(
+                ErrorCode.IllegalArgument,
+                "CP snapshot 结构校验失败：${error.message} / CP snapshot validation failed: ${error.message}"
             )
         }
     }
@@ -74,7 +124,9 @@ private data class SnapshotPayload(
     val expressions: List<NamedExpressionPayload>,
     val constraints: List<ConstraintEntryPayload>,
     val objectives: List<ObjectivePayload>,
-    val constraintGroups: List<String>
+    val constraintGroups: List<String>,
+    val identitySchemaVersion: String = "1.0",
+    val identityNamespace: String = "model-local"
 )
 
 @Serializable
@@ -82,7 +134,9 @@ private data class VariablePayload(
     val id: String,
     val name: String,
     val typeName: String,
-    val domain: DomainPayload
+    val domain: DomainPayload,
+    val scope: String = "model-local",
+    val origin: String? = null
 )
 
 @Serializable
@@ -129,7 +183,9 @@ private data class IntervalPayload(
     val start: ExpressionPayload,
     val size: ExpressionPayload,
     val end: ExpressionPayload,
-    val presence: LiteralPayload? = null
+    val presence: LiteralPayload? = null,
+    val scope: String = "model-local",
+    val origin: String? = null
 )
 
 @Serializable
@@ -137,7 +193,9 @@ private data class ConstraintEntryPayload(
     val id: String,
     val name: String,
     val groupName: String?,
-    val constraint: ConstraintPayload
+    val constraint: ConstraintPayload,
+    val scope: String = "model-local",
+    val origin: String? = null
 )
 
 @Serializable
@@ -193,26 +251,68 @@ private data class ObjectivePayload(
     val id: String,
     val category: String,
     val name: String,
-    val expression: ExpressionPayload
+    val expression: ExpressionPayload,
+    val scope: String = "model-local",
+    val origin: String? = null
 )
 
+private fun SnapshotPayload.validateIdentity(): String? {
+    if (identitySchemaVersion.isBlank() || identityNamespace.isBlank()) {
+        return "CP snapshot identity schema/namespace 不能为空 / CP snapshot identity schema and namespace must not be blank"
+    }
+    val elements = buildList {
+        variables.forEach { add(Triple(it.id, it.scope, it.origin)) }
+        intervals.forEach { add(Triple(it.id, it.scope, it.origin)) }
+        constraints.forEach { add(Triple(it.id, it.scope, it.origin)) }
+        objectives.forEach { add(Triple(it.id, it.scope, it.origin)) }
+    }
+    if (elements.any { (id, scope, origin) ->
+            id.isBlank() || scope.isBlank() || (scope == "stable" && origin.isNullOrBlank())
+        }) {
+        return "CP snapshot identity 包含空 ID 或缺失 stable origin / CP snapshot identity contains a blank ID or missing stable origin"
+    }
+    if (elements.map { it.first }.distinct().size != elements.size) {
+        return "CP snapshot 存在重复稳定 ID / CP snapshot contains duplicate element IDs"
+    }
+    return null
+}
+
+private fun SnapshotPayload.validateObjectiveSemantics(): String? {
+    val category = enumValue<ObjectCategory>(objectCategory)
+        ?: return "CP snapshot 目标方向无效 / CP snapshot objective category is invalid"
+    if (objectives.size > 1) {
+        return "CP snapshot 只支持单一目标 / CP snapshot supports at most one objective"
+    }
+    if (objectives.firstOrNull()?.category != null && objectives.first().category != category.name) {
+        return "CP snapshot 目标方向与模型方向不一致 / CP snapshot objective category disagrees with model category"
+    }
+    return null
+}
+
 private fun ConstraintProgrammingModelSnapshot.toPayload(): SnapshotPayload {
+    // Canonicalize transport order by stable identity. The mutable snapshot still preserves
+    // registration order for in-process diagnostics, but fingerprints/checkpoints must not
+    // change when an equivalent model is rebuilt in a different order.
+    // 按稳定身份规范化传输顺序。可变 snapshot 仍保留进程内注册顺序，但等价模型重建时
+    // 指纹与 checkpoint 不应因注册顺序变化而改变。
     return SnapshotPayload(
         schema = 1,
         name = name,
         objectCategory = objectCategory.name,
-        variables = variables.map {
-            VariablePayload(it.id.value, it.name, it.typeName, it.domain.toPayload())
+        variables = variables.sortedBy { it.id.value }.map {
+            VariablePayload(it.id.value, it.name, it.typeName, it.domain.toPayload(), it.scope, it.origin)
         },
-        intervals = intervals.map { it.toPayload() },
-        expressions = expressions.map { NamedExpressionPayload(it.name, it.expression.toPayload()) },
-        constraints = constraints.map {
-            ConstraintEntryPayload(it.id.value, it.name, it.groupName, it.constraint.toPayload())
+        intervals = intervals.sortedBy { it.id.value }.map { it.toPayload() },
+        expressions = expressions.sortedBy { it.name }.map { NamedExpressionPayload(it.name, it.expression.toPayload()) },
+        constraints = constraints.sortedBy { it.id.value }.map {
+            ConstraintEntryPayload(it.id.value, it.name, it.groupName, it.constraint.toPayload(), it.scope, it.origin)
         },
-        objectives = objectives.map {
-            ObjectivePayload(it.id.value, it.category.name, it.name, it.expression.toPayload())
+        objectives = objectives.sortedBy { it.id.value }.map {
+            ObjectivePayload(it.id.value, it.category.name, it.name, it.expression.toPayload(), it.scope, it.origin)
         },
-        constraintGroups = constraintGroups
+        constraintGroups = constraintGroups.sorted(),
+        identitySchemaVersion = identitySchemaVersion,
+        identityNamespace = identityNamespace
     )
 }
 
@@ -224,7 +324,15 @@ private fun IntegerDomain.toPayload(): DomainPayload {
 }
 
 private fun IntervalVariable.toPayload(): IntervalPayload {
-    return IntervalPayload(id.value, start.toPayload(), size.toPayload(), end.toPayload(), presence?.toPayload())
+    return IntervalPayload(
+        id = id.value,
+        start = start.toPayload(),
+        size = size.toPayload(),
+        end = end.toPayload(),
+        presence = presence?.toPayload(),
+        scope = scope,
+        origin = origin
+    )
 }
 
 private fun ConstraintProgrammingExpression.toPayload(): ExpressionPayload {
@@ -329,7 +437,12 @@ private fun SnapshotPayload.toSnapshot(
         val domain = variable.domain.toDomain()
         if (domain.failed) return propagate(domain)
         variableSnapshots += ConstraintProgrammingVariableSnapshot(
-            VariableId(variable.id), variable.name, variable.typeName, domain.value!!
+            id = VariableId(variable.id),
+            name = variable.name,
+            typeName = variable.typeName,
+            domain = domain.value!!,
+            scope = variable.scope,
+            origin = variable.origin
         )
     }
     val intervalsResult = this.intervals.mapResult { it.toInterval(variables) }
@@ -342,7 +455,14 @@ private fun SnapshotPayload.toSnapshot(
     if (expressionsResult.failed) return propagate(expressionsResult)
     val constraintsResult = this.constraints.mapResult {
         decodeConstraint(it.constraint, variables).map { constraint ->
-            ConstraintProgrammingConstraintSnapshot(ConstraintId(it.id), it.name, it.groupName, constraint)
+            ConstraintProgrammingConstraintSnapshot(
+                id = ConstraintId(it.id),
+                name = it.name,
+                groupName = it.groupName,
+                constraint = constraint,
+                scope = it.scope,
+                origin = it.origin
+            )
         }
     }
     if (constraintsResult.failed) return propagate(constraintsResult)
@@ -350,7 +470,14 @@ private fun SnapshotPayload.toSnapshot(
         val category = enumValue<ObjectCategory>(it.category)
             ?: return@mapResult Failed(ErrorCode.IllegalArgument, "未知目标类别 / Unknown objective category")
         decodeExpression(it.expression, variables).map { expression ->
-            ConstraintProgrammingObjectiveSnapshot(ObjectiveId(it.id), category, it.name, expression)
+            ConstraintProgrammingObjectiveSnapshot(
+                id = ObjectiveId(it.id),
+                category = category,
+                name = it.name,
+                expression = expression,
+                scope = it.scope,
+                origin = it.origin
+            )
         }
     }
     if (objectivesResult.failed) return propagate(objectivesResult)
@@ -365,7 +492,9 @@ private fun SnapshotPayload.toSnapshot(
             expressions = expressionsResult.value!!,
             constraints = constraintsResult.value!!,
             objectives = objectivesResult.value!!,
-            constraintGroups = constraintGroups.toList()
+            constraintGroups = constraintGroups.toList(),
+            identitySchemaVersion = identitySchemaVersion,
+            identityNamespace = identityNamespace
         )
     )
 }
@@ -393,7 +522,17 @@ private fun IntervalPayload.toInterval(
     if (end.failed) return propagate(end)
     val presence = presence?.let { decodeLiteral(it, variables) }
     if (presence != null && presence.failed) return propagate(presence)
-    return ok(IntervalVariable(IntervalId(id), start.value!!, size.value!!, end.value!!, presence?.value))
+    return ok(
+        IntervalVariable(
+            id = IntervalId(id),
+            start = start.value!!,
+            size = size.value!!,
+            end = end.value!!,
+            presence = presence?.value,
+            scope = scope,
+            origin = origin
+        )
+    )
 }
 
 private fun decodeExpression(
@@ -411,7 +550,7 @@ private fun decodeExpression(
                 ?: return Failed(ErrorCode.DataNotFound, "缺少 CP 变量绑定：$id / Missing CP variable binding: $id")
             val domain = payload.domain?.toDomain() ?: IntegerDomain.variableDefault(variable)
             if (domain.failed) return propagate(domain)
-            ok(ConstraintProgrammingExpression.Variable(variable, domain.value!!))
+            ok(ConstraintProgrammingExpression.Variable(variable, domain.value!!, id))
         }
         "linear" -> {
             val terms = ArrayList<ConstraintProgrammingExpression.Term>()
@@ -419,7 +558,7 @@ private fun decodeExpression(
                 val id = VariableId(term.variableId)
                 val variable = variables[id]
                     ?: return Failed(ErrorCode.DataNotFound, "缺少 CP 变量绑定：$id / Missing CP variable binding: $id")
-                terms += ConstraintProgrammingExpression.Term(variable, Int64(term.coefficient))
+                terms += ConstraintProgrammingExpression.Term(variable, Int64(term.coefficient), id)
             }
             ok(ConstraintProgrammingExpression.Linear(terms, Int64(payload.constant)))
         }
@@ -438,7 +577,7 @@ private fun decodeLiteral(
         ?: return Failed(ErrorCode.DataNotFound, "缺少 CP 布尔变量绑定：$id / Missing CP Boolean variable binding: $id")
     val binary = variable as? fuookami.ospf.kotlin.core.variable.BinVariable
         ?: return Failed(ErrorCode.IllegalArgument, "CP literal 绑定变量不是二值变量 / CP literal binding is not binary")
-    return ok(BooleanLiteral(binary, payload.negated))
+    return ok(BooleanLiteral(binary, payload.negated, id))
 }
 
 private fun decodeConstraint(
@@ -543,20 +682,20 @@ private fun decodeConstraint(
         "automaton" -> {
             val expressions = payload.expressions.mapResult { decodeExpression(it, variables) }
             if (expressions.failed) return propagate(expressions)
-            ok(
-                ConstraintProgrammingConstraint.Automaton(
-                    expressions = expressions.value!!,
-                    initialState = payload.initialState ?: 0,
-                    finalStates = payload.finalStates.toSet(),
-                    transitions = payload.transitions.map {
-                        ConstraintProgrammingConstraint.AutomatonTransition(
-                            it.fromState,
-                            Int64(it.value),
-                            it.toState
-                        )
-                    }
-                )
+            val automaton = ConstraintProgrammingConstraint.automaton(
+                expressions = expressions.value!!,
+                initialState = payload.initialState ?: 0,
+                finalStates = payload.finalStates.toSet(),
+                transitions = payload.transitions.map {
+                    ConstraintProgrammingConstraint.AutomatonTransition(
+                        it.fromState,
+                        Int64(it.value),
+                        it.toState
+                    )
+                }
             )
+            if (automaton.failed) return propagate(automaton)
+            ok(automaton.value!!)
         }
         "reservoir" -> {
             val events = ArrayList<ConstraintProgrammingConstraint.Reservoir.Event>()

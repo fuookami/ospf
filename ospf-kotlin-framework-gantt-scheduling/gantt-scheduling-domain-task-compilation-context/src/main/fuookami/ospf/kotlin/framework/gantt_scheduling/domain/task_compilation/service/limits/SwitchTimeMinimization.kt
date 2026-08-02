@@ -3,6 +3,8 @@
 /** 切换时间最小化 / Switch time minimization */
 package fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task_compilation.service.limits
 
+import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.mechanism.AbstractLinearMetaModel
 import fuookami.ospf.kotlin.core.variable.UContinuous
@@ -72,14 +74,14 @@ class SwitchTimeMinimization<
     private val timeBoundary = SolverTimeWindowBoundary(timeWindow.toFlt64Boundary())
 
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {
-        val cost = MutableLinearPolynomial<Flt64>(constant = Flt64.zero)
+        var cost = LinearPolynomial()
         for (task1 in tasks) {
             for (task2 in tasks) {
                 val switchTime = switch.switchTime[task1, task2]
                 val thisThreshold = threshold(Pair(task1, task2))?.let { timeBoundary.valueOf(it) } ?: Flt64.zero
                 val thisCoefficient = coefficient(Pair(task1, task2)) ?: Flt64.infinity
                 if (thisThreshold eq Flt64.zero) {
-                    cost += thisCoefficient * switchTime.toLinearPolynomial()
+                    cost += thisCoefficient * switchTime
                 } else {
                     val slack = thresholdSlack(
                         x = switchTime,
@@ -107,7 +109,7 @@ class SwitchTimeMinimization<
             }
         }
         when (val result = model.minimize(
-            polynomial = cost.toLinearPolynomial(),
+            polynomial = cost,
             name = "switch time"
         )) {
             is Ok -> {}

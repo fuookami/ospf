@@ -30,13 +30,13 @@ class LoadAmountLimit(
                     relation = load.loadAmount[j] leq position.mla,
                     name = "${name}_${position}"
                 )) {
-                    is Ok<Success, ErrorCode, Error<ErrorCode>> -> {}
+                    is Ok -> {}
 
-                    is Failed<Success, ErrorCode, Error<ErrorCode>> -> {
+                    is Failed -> {
                     return result
                 }
 
-                is Fatal<Success, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return result
                 }
                 }

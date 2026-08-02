@@ -16,6 +16,7 @@ import fuookami.ospf.kotlin.core.model.intermediate.SparseMatrix
 import fuookami.ospf.kotlin.core.model.intermediate.SparseVector
 import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
 import fuookami.ospf.kotlin.core.solver.iis.IISConfig
+import fuookami.ospf.kotlin.core.solver.report.ConstraintId
 import fuookami.ospf.kotlin.core.solver.report.EvidenceExactness
 import fuookami.ospf.kotlin.core.solver.report.EvidenceMinimality
 import fuookami.ospf.kotlin.core.solver.report.EvidenceValidity
@@ -39,6 +40,14 @@ class GurobiInfeasibilityDiagnosticIT {
         assertEquals(EvidenceExactness.Irreducible, evidence.exactness)
         assertEquals(EvidenceMinimality.Irreducible, evidence.minimality)
         assertEquals(2, evidence.constraintIds.size)
+        assertTrue(
+            evidence.constraintIds.containsAll(
+                setOf(
+                    ConstraintId("fixture:constraint:lower"),
+                    ConstraintId("fixture:constraint:upper")
+                )
+            )
+        )
     }
 
     @Test
@@ -54,6 +63,14 @@ class GurobiInfeasibilityDiagnosticIT {
         assertEquals(EvidenceValidity.Verified, evidence.validity)
         assertEquals(2, evidence.constraintIds.size)
         assertTrue(evidence.variableBoundRefs.isEmpty())
+        assertTrue(
+            evidence.constraintIds.containsAll(
+                setOf(
+                    ConstraintId("fixture:constraint:lower"),
+                    ConstraintId("fixture:constraint:upper")
+                )
+            )
+        )
     }
 
     private fun infeasibleModel(): LinearTriadModel {
@@ -91,7 +108,11 @@ class GurobiInfeasibilityDiagnosticIT {
                 signs = listOf(ConstraintRelation.GreaterEqual, ConstraintRelation.LessEqual),
                 rhs = listOf(Flt64(2.0), Flt64.zero),
                 names = listOf("lower-row", "upper-row"),
-                sources = listOf(ConstraintSource.Origin, ConstraintSource.Origin)
+                sources = listOf(ConstraintSource.Origin, ConstraintSource.Origin),
+                ids = listOf(
+                    ConstraintId("fixture:constraint:lower"),
+                    ConstraintId("fixture:constraint:upper")
+                )
             ),
             name = "gurobi-diagnostic-it"
         )

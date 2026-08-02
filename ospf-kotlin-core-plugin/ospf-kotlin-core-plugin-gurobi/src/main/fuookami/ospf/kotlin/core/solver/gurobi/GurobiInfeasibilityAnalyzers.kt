@@ -110,6 +110,12 @@ private class GurobiLinearDiagnosticRun(
     private lateinit var variables: List<GRBVar>
     private lateinit var constraints: List<GRBConstr>
 
+    /** Run a linear Gurobi IIS or Farkas diagnostic. / 执行线性 Gurobi IIS 或 Farkas 诊断。
+     *
+     * @param model Linear model to analyze. / 待分析的线性模型。
+     * @param nativeIIS Whether to request native IIS extraction. / 是否请求原生 IIS 提取。
+     * @return Structured infeasibility evidence or an analysis error. / 结构化不可行证据或分析错误。
+     */
     suspend fun run(model: LinearTriadModelView, nativeIIS: Boolean): Ret<InfeasibilityEvidence> {
         val started = Clock.System.now()
         val initialized = initialize(model.name)
@@ -178,12 +184,15 @@ private class GurobiLinearDiagnosticRun(
         constraints = model.constraints.indices.map { row ->
             val lhs = GRBLinExpr()
             model.constraints.sparseLhs.forEachEntry(row) { column, coefficient ->
-                lhs.addTerm(coefficient.toDouble(), variables[column])
+                lhs.addTerm(
+                    coefficient.toSolverDouble("diagnostic.linear.constraints.lhs[$row].coefficient[$column]"),
+                    variables[column]
+                )
             }
             grbModel.addConstr(
                 lhs,
                 GurobiConstraintSign(model.constraints.signs[row]).toGurobiConstraintSign(),
-                model.constraints.rhs[row].toDouble(),
+                model.constraints.rhs[row].toSolverDouble("diagnostic.linear.constraints.rhs[$row]"),
                 "row-$row"
             )
         }
@@ -321,7 +330,9 @@ private class GurobiLinearDiagnosticRun(
         constraints.forEachIndexed { row, constraint ->
             val multiplier = constraint.get(GRB.DoubleAttr.FarkasDual)
             model.constraints.sparseLhs.forEachEntry(row) { column, coefficient ->
-                aggregatedCoefficients[column] += multiplier * coefficient.toDouble()
+                aggregatedCoefficients[column] += multiplier * coefficient.toSolverDouble(
+                    "diagnostic.linear.constraints.lhs[$row].coefficient[$column]"
+                )
             }
         }
         val bounds = linkedSetOf<VariableBoundRef>()
@@ -364,6 +375,11 @@ private class GurobiQuadraticDiagnosticRun(
     private lateinit var variables: List<GRBVar>
     private lateinit var constraints: List<GRBQConstr>
 
+    /** Run a quadratic Gurobi native IIS diagnostic. / 执行二次 Gurobi 原生 IIS 诊断。
+     *
+     * @param model Quadratic model to analyze. / 待分析的二次模型。
+     * @return Structured infeasibility evidence or an analysis error. / 结构化不可行证据或分析错误。
+     */
     suspend fun run(model: QuadraticTetradModelView): Ret<InfeasibilityEvidence> {
         val started = Clock.System.now()
         val initialized = initialize(model.name)

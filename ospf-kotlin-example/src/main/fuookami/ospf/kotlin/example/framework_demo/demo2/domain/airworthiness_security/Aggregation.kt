@@ -113,51 +113,51 @@ class Aggregation(
         model: AbstractLinearMetaModel<Flt64>
     ): Try {
         when (val result = linearDensity.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
 
         when (val result = surfaceDensity.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
 
         if (maxCLIM != null) {
             when (val result = maxCLIM.register(model)) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }
         }
 
         when (val result = minLowPayload.register(model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -165,13 +165,13 @@ class Aggregation(
         envelopes.values.forEach { envelopes ->
             envelopes.forEach { envelope ->
                 when (val result = envelope.register(model)) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                    is Ok -> {}
 
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
                 }

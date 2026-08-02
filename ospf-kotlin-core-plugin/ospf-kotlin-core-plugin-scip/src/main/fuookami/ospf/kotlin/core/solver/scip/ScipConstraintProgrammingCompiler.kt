@@ -28,12 +28,20 @@ import fuookami.ospf.kotlin.utils.functional.Fatal
 import fuookami.ospf.kotlin.utils.functional.Ret
 import fuookami.ospf.kotlin.utils.functional.ok
 
-/** 编译后可求解的 SCIP 模型句柄集合。 / Compiled SCIP model handles. */
+/** 编译后可求解的 SCIP 模型句柄集合。 / Compiled SCIP model handles.
+ *
+ * @property variables Compiled CP variable handles keyed by stable ID. / 按稳定 ID 索引的已编译 CP 变量句柄。
+ * @property intervals Compiled interval handles keyed by stable ID. / 按稳定 ID 索引的已编译 interval 句柄。
+ * @property constraints Native constraints grouped by stable constraint ID. / 按稳定约束 ID 分组的原生约束。
+ * @property activations Diagnostic activation handles keyed by stable ID. / 按稳定 ID 索引的诊断 activation 句柄。
+ * @property artifacts Compiled auxiliary artifacts and their source mapping. / 编译辅助 artifact 及其源映射。
+ */
 class ScipConstraintProgrammingCompiledModel internal constructor(
     val variables: Map<VariableId, Variable>,
     val intervals: Map<IntervalId, ScipConstraintProgrammingInterval>,
     val constraints: Map<ConstraintId, List<Constraint>>,
     val activations: Map<String, ScipConstraintProgrammingActivation>,
+    val artifacts: Map<String, ScipConstraintProgrammingArtifact>,
     internal val allVariables: List<Variable>,
     internal val allConstraints: List<Constraint>
 ) : AutoCloseable {
@@ -69,7 +77,12 @@ class ScipConstraintProgrammingCompiledModel internal constructor(
     }
 }
 
-/** 编译后的 interval 引用。 / Compiled interval reference. */
+/** 编译后的 interval 引用。 / Compiled interval reference.
+ *
+ * @property start Compiled start variable. / 已编译的开始变量。
+ * @property size Constant interval size. / interval 的常量长度。
+ * @property end Compiled end variable. / 已编译的结束变量。
+ */
 data class ScipConstraintProgrammingInterval(
     val start: Variable,
     val size: Int,
@@ -77,7 +90,27 @@ data class ScipConstraintProgrammingInterval(
 )
 
 /**
+ * 编译 artifact 与源模型元素的可回查映射。 / Stable reverse mapping from a compiled artifact to its source element.
+ *
+ * 辅助元素使用独立的 artifact ID，不会伪装成原始 CP 变量或约束。 /
+ * Auxiliary elements use their own artifact IDs and never masquerade as source CP members.
+ *
+ * @property artifactId 编译 artifact 稳定标识 / Stable compiled-artifact identifier
+ * @property role artifact 角色 / Artifact role
+ * @property originId 源 CP 元素 ID（无法唯一归属时为空） / Source CP element ID, or null when no unique source exists
+ */
+data class ScipConstraintProgrammingArtifact(
+    val artifactId: String,
+    val role: String,
+    val originId: String? = null
+)
+
+/**
  * 原始模型成员到 SCIP activation 变量的映射。 / Mapping from an original model member to a SCIP activation variable.
+ *
+ * @property id Stable activation identifier. / 稳定 activation 标识。
+ * @property member Original model member represented by the activation. / activation 表示的原始模型成员。
+ * @property variable SCIP activation variable. / SCIP activation 变量。
  */
 data class ScipConstraintProgrammingActivation(
     val id: String,
@@ -86,7 +119,12 @@ data class ScipConstraintProgrammingActivation(
 )
 
 /**
- * 受约束的 CP 编译器。所有辅助变量和约束都由该对象持有并可统一释放。 / / Restricted CP compiler. All auxiliary handles are owned and released together.
+ * 受约束的 CP 编译器。所有辅助变量和约束都由该对象持有并可统一释放。 / Restricted CP compiler. All auxiliary handles are owned and released together.
+ *
+ * @property scip Native SCIP instance receiving the compilation. / 接收编译结果的原生 SCIP 实例。
+ * @property snapshot Immutable CP model snapshot. / 不可变 CP 模型快照。
+ * @property sparseDomainLimit Maximum sparse-domain expansion size. / 稀疏值域展开规模上限。
+ * @property decompositionLimit Maximum decomposition size. / 分解规模上限。
  */
 class ScipConstraintProgrammingCompiler(
     private val scip: Scip,
@@ -98,12 +136,20 @@ class ScipConstraintProgrammingCompiler(
     private val intervals = LinkedHashMap<IntervalId, ScipConstraintProgrammingInterval>()
     private val constraintMap = LinkedHashMap<ConstraintId, List<Constraint>>()
     private val activations = LinkedHashMap<String, ScipConstraintProgrammingActivation>()
+    private val artifacts = LinkedHashMap<String, ScipConstraintProgrammingArtifact>()
     private val allVariables = ArrayList<Variable>()
     private val allConstraints = ArrayList<Constraint>()
     private var auxiliaryIndex = 0
     private var activeActivation: Variable? = null
 
-    /** 编译 snapshot。 / Compile the snapshot. */
+    /** 编译 snapshot。 / Compile the snapshot。
+     *
+     * @param assumptions Boolean assumptions fixed for this compilation. / 本次编译固定的布尔假设。
+     * @param fixedValues Integer values fixed for this compilation. / 本次编译固定的整数值。
+     * @param diagnosticMode Whether diagnostic activations are emitted. / 是否生成诊断 activation。
+     * @param activeActivationIds Optional activation IDs enabled in diagnostic mode. / 诊断模式下可选启用的 activation ID。
+     * @return Compiled SCIP model or a structured compilation error. / 已编译 SCIP 模型或结构化编译错误。
+     */
     fun compile(
         assumptions: List<BooleanLiteral> = emptyList(),
         fixedValues: Map<VariableId, Int64> = emptyMap(),
@@ -123,6 +169,7 @@ class ScipConstraintProgrammingCompiler(
                                             intervals = intervals.toMap(),
                                             constraints = constraintMap.toMap(),
                                             activations = activations.toMap(),
+                                            artifacts = artifacts.toMap(),
                                             allVariables = allVariables.toList(),
                                             allConstraints = allConstraints.toList()
                                         ).attachOwner(scip)
@@ -240,6 +287,11 @@ class ScipConstraintProgrammingCompiler(
             )
             variables[definition.id] = variable
             allVariables += variable
+            registerArtifact(
+                artifactId = "variable:${definition.id.value}",
+                role = "source-variable",
+                originId = definition.id.value
+            )
             if (diagnosticMode) {
                 compileDiagnosticBounds(definition, variable).onFailure { return it }
             }
@@ -609,22 +661,446 @@ class ScipConstraintProgrammingCompiler(
 
             is Cumulative -> compileCumulative(constraint, name)
 
-            is ConstraintProgrammingConstraint.Circuit -> unsupportedConstraint(
-                "SCIP CP 首版不支持 Circuit / Circuit is unsupported by the first SCIP CP compiler"
-            )
+            is ConstraintProgrammingConstraint.Circuit -> compileCircuit(constraint, name)
 
-            is ConstraintProgrammingConstraint.Automaton -> unsupportedConstraint(
-                "SCIP CP 首版不支持 Automaton / Automaton is unsupported by the first SCIP CP compiler"
-            )
+            is ConstraintProgrammingConstraint.Automaton -> compileAutomaton(constraint, name)
 
-            is ConstraintProgrammingConstraint.Reservoir -> unsupportedConstraint(
-                "SCIP CP 首版不支持 Reservoir / Reservoir is unsupported by the first SCIP CP compiler"
-            )
+            is ConstraintProgrammingConstraint.Reservoir -> compileReservoir(constraint, name)
         }
     }
 
     private fun unsupportedConstraint(message: String): Ret<List<Constraint>> {
         return Failed(ErrorCode.Other, message)
+    }
+
+    /**
+     * 将 Circuit 分解为 successor 选择、排列和 MTZ 约束。 / Decompose Circuit into successor selectors, a permutation, and MTZ constraints.
+     *
+     * 该分解保留从节点 0 出发访问全部节点的语义；所有 Big-M 均由模型值域推导并受精度门禁。 /
+     * The decomposition preserves the semantics of visiting every node from node 0; every Big-M is derived from model bounds and precision-gated.
+     */
+    private fun compileCircuit(
+        circuit: ConstraintProgrammingConstraint.Circuit,
+        name: String
+    ): Ret<List<Constraint>> {
+        val size = circuit.successors.size
+        if (size == 0) {
+            return ok(emptyList())
+        }
+        if (size.toLong() * size.toLong() > decompositionLimit.toLong() * decompositionLimit.toLong()) {
+            return Failed(
+                ErrorCode.Other,
+                "Circuit 分解规模超限 / Circuit decomposition exceeds the limit"
+            )
+        }
+        val result = ArrayList<Constraint>()
+        val selectors = ArrayList<List<Variable>>(size)
+        for ((index, successor) in circuit.successors.withIndex()) {
+            val expression = linearForm(successor)
+            if (expression.failed) {
+                return propagate(expression)
+            }
+            val row = (0 until size).map { target ->
+                auxiliaryBinary("$name-successor-$index-$target")
+            }
+            selectors += row
+            val exactlyOne = addLinearConstraint(
+                "$name-successor-one-$index",
+                row.toTypedArray(),
+                DoubleArray(row.size) { 1.0 },
+                1.0,
+                1.0
+            )
+            if (exactlyOne.failed) {
+                return propagate(exactlyOne)
+            }
+            result += exactlyOne.value!!
+            val encoded = selectorsToForm(row, (0 until size).map { Int64(it.toLong()) })
+            if (encoded.failed) {
+                return propagate(encoded)
+            }
+            val linked = addFormConstraint(
+                "$name-successor-link-$index",
+                combine(expression.value!!, encoded.value!!, 1.0, -1.0),
+                0.0,
+                0.0
+            )
+            if (linked.failed) {
+                return propagate(linked)
+            }
+            result += linked.value!!
+        }
+        for (target in 0 until size) {
+            val column = selectors.map { it[target] }
+            val exactlyOne = addLinearConstraint(
+                "$name-target-one-$target",
+                column.toTypedArray(),
+                DoubleArray(column.size) { 1.0 },
+                1.0,
+                1.0
+            )
+            if (exactlyOne.failed) {
+                return propagate(exactlyOne)
+            }
+            result += exactlyOne.value!!
+        }
+        if (size == 1) {
+            return ok(result)
+        }
+        for (index in 0 until size) {
+            val selfLoop = addLinearConstraint(
+                "$name-no-self-$index",
+                arrayOf(selectors[index][index]),
+                doubleArrayOf(1.0),
+                0.0,
+                0.0
+            )
+            if (selfLoop.failed) {
+                return propagate(selfLoop)
+            }
+            result += selfLoop.value!!
+        }
+        val order = LinkedHashMap<Int, Variable>()
+        for (index in 1 until size) {
+            val variable = auxiliaryInteger(
+                "$name-order-$index",
+                1.0,
+                (size - 1).toDouble()
+            )
+            if (variable.failed) {
+                return propagate(variable)
+            }
+            order[index] = variable.value!!
+        }
+        for (from in 1 until size) {
+            for (to in 1 until size) {
+                if (from == to) {
+                    continue
+                }
+                val form = addVariable(
+                    combine(
+                        LinearForm(linkedMapOf(order[from]!! to 1.0), 0.0),
+                        LinearForm(linkedMapOf(order[to]!! to 1.0), 0.0),
+                        1.0,
+                        -1.0
+                    ),
+                    selectors[from][to],
+                    size.toDouble()
+                )
+                val constraint = addFormConstraint(
+                    "$name-mtz-$from-$to",
+                    form,
+                    -scip.infinity(),
+                    (size - 1).toDouble()
+                )
+                if (constraint.failed) {
+                    return propagate(constraint)
+                }
+                result += constraint.value!!
+            }
+        }
+        return ok(result)
+    }
+
+    /** 将确定性自动机展开为每层状态和转移的流平衡。 / Expand a deterministic automaton into layered state and transition flow. */
+    private fun compileAutomaton(
+        automaton: ConstraintProgrammingConstraint.Automaton,
+        name: String
+    ): Ret<List<Constraint>> {
+        val duplicate = automaton.transitions
+            .groupBy { it.fromState to it.value }
+            .entries
+            .firstOrNull { it.value.size > 1 }
+        if (duplicate != null) {
+            val (fromState, value) = duplicate.key
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "Automaton 转移不确定：($fromState, $value) 存在重复转移 / " +
+                    "Automaton transition is non-deterministic: duplicate key ($fromState, $value)"
+            )
+        }
+        val uniqueTransitions = automaton.transitions
+        val states = linkedSetOf<Int>().apply {
+            add(automaton.initialState)
+            addAll(automaton.finalStates)
+            uniqueTransitions.forEach {
+                add(it.fromState)
+                add(it.toState)
+            }
+        }.toList()
+        val expressionCount = BigInteger.valueOf(automaton.expressions.size.toLong())
+        val stateCount = BigInteger.valueOf(states.size.toLong())
+        val transitionCount = BigInteger.valueOf(uniqueTransitions.size.toLong())
+        val stateLayerCount = expressionCount.add(BigInteger.ONE)
+        val auxiliaryVariableCount = stateLayerCount.multiply(stateCount)
+            .add(expressionCount.multiply(transitionCount))
+        val finalStateCount = automaton.finalStates.count { it in states }
+        val finalStateConstraintCount = states.size - finalStateCount
+        val constraintCount = stateLayerCount
+            .add(BigInteger.valueOf(states.size.toLong()))
+            .add(BigInteger.valueOf(finalStateConstraintCount.toLong()))
+            .add(BigInteger.ONE)
+            .add(expressionCount.multiply(BigInteger.valueOf(2L + 2L * states.size.toLong())))
+        val decompositionBudget = BigInteger.valueOf(decompositionLimit.toLong())
+            .multiply(BigInteger.valueOf(4L))
+        if (states.isEmpty() ||
+            auxiliaryVariableCount > decompositionBudget ||
+            constraintCount > decompositionBudget
+        ) {
+            return Failed(ErrorCode.Other, "Automaton 分解规模超限 / Automaton decomposition exceeds the limit")
+        }
+        val result = ArrayList<Constraint>()
+        val stateLayers = (0..automaton.expressions.size).map { layer ->
+            states.associateWith { state -> auxiliaryBinary("$name-state-$layer-$state") }
+        }
+        for ((layer, statesAtLayer) in stateLayers.withIndex()) {
+            val one = addLinearConstraint(
+                "$name-state-one-$layer",
+                statesAtLayer.values.toTypedArray(),
+                DoubleArray(statesAtLayer.size) { 1.0 },
+                1.0,
+                1.0
+            )
+            if (one.failed) {
+                return propagate(one)
+            }
+            result += one.value!!
+        }
+        for (state in states) {
+            val initial = addLinearConstraint(
+                "$name-initial-$state",
+                arrayOf(stateLayers.first()[state]!!),
+                doubleArrayOf(1.0),
+                if (state == automaton.initialState) 1.0 else 0.0,
+                if (state == automaton.initialState) 1.0 else 0.0
+            )
+            if (initial.failed) {
+                return propagate(initial)
+            }
+            result += initial.value!!
+            val final = if (state in automaton.finalStates) {
+                null
+            } else {
+                addLinearConstraint(
+                    "$name-final-$state",
+                    arrayOf(stateLayers.last()[state]!!),
+                    doubleArrayOf(1.0),
+                    0.0,
+                    0.0
+                )
+            }
+            if (final != null) {
+                if (final.failed) {
+                    return propagate(final)
+                }
+                result += final.value!!
+            }
+        }
+        if (automaton.finalStates.isEmpty()) {
+            val impossible = addFormConstraint(
+                "$name-no-final",
+                LinearForm(emptyMap(), 0.0),
+                1.0,
+                1.0
+            )
+            if (impossible.failed) {
+                return propagate(impossible)
+            }
+            result += impossible.value!!
+        } else {
+            val finals = automaton.finalStates.mapNotNull { stateLayers.last()[it] }
+            val finalOne = addLinearConstraint(
+                "$name-final-one",
+                finals.toTypedArray(),
+                DoubleArray(finals.size) { 1.0 },
+                1.0,
+                1.0
+            )
+            if (finalOne.failed) {
+                return propagate(finalOne)
+            }
+            result += finalOne.value!!
+        }
+        if (automaton.expressions.isEmpty()) {
+            return ok(result)
+        }
+        if (uniqueTransitions.isEmpty()) {
+            val impossible = addFormConstraint(
+                "$name-no-transition",
+                LinearForm(emptyMap(), 0.0),
+                1.0,
+                1.0
+            )
+            if (impossible.failed) {
+                return propagate(impossible)
+            }
+            result += impossible.value!!
+            return ok(result)
+        }
+        for ((layer, expression) in automaton.expressions.withIndex()) {
+            val transitionVariables = uniqueTransitions.mapIndexed { index, _ ->
+                auxiliaryBinary("$name-transition-$layer-$index")
+            }
+            val one = addLinearConstraint(
+                "$name-transition-one-$layer",
+                transitionVariables.toTypedArray(),
+                DoubleArray(transitionVariables.size) { 1.0 },
+                1.0,
+                1.0
+            )
+            if (one.failed) {
+                return propagate(one)
+            }
+            result += one.value!!
+            val expressionForm = linearForm(expression)
+            if (expressionForm.failed) {
+                return propagate(expressionForm)
+            }
+            val encoded = selectorsToForm(
+                transitionVariables,
+                uniqueTransitions.map { it.value }
+            )
+            if (encoded.failed) {
+                return propagate(encoded)
+            }
+            val link = addFormConstraint(
+                "$name-expression-$layer",
+                combine(expressionForm.value!!, encoded.value!!, 1.0, -1.0),
+                0.0,
+                0.0
+            )
+            if (link.failed) {
+                return propagate(link)
+            }
+            result += link.value!!
+            for (state in states) {
+                val outgoing = uniqueTransitions.mapIndexedNotNull { index, transition ->
+                    transitionVariables[index].takeIf { transition.fromState == state }
+                }
+                val incoming = uniqueTransitions.mapIndexedNotNull { index, transition ->
+                    transitionVariables[index].takeIf { transition.toState == state }
+                }
+                val outgoingForm = LinearForm(
+                    outgoing.associateWith { 1.0 },
+                    0.0
+                )
+                val incomingForm = LinearForm(
+                    incoming.associateWith { 1.0 },
+                    0.0
+                )
+                val outgoingLink = addFormConstraint(
+                    "$name-outgoing-$layer-$state",
+                    combine(outgoingForm, LinearForm(linkedMapOf(stateLayers[layer][state]!! to 1.0), 0.0), 1.0, -1.0),
+                    0.0,
+                    0.0
+                )
+                val incomingLink = addFormConstraint(
+                    "$name-incoming-$layer-$state",
+                    combine(incomingForm, LinearForm(linkedMapOf(stateLayers[layer + 1][state]!! to 1.0), 0.0), 1.0, -1.0),
+                    0.0,
+                    0.0
+                )
+                if (outgoingLink.failed) return propagate(outgoingLink)
+                if (incomingLink.failed) return propagate(incomingLink)
+                result += outgoingLink.value!!
+                result += incomingLink.value!!
+            }
+        }
+        return ok(result)
+    }
+
+    /** 通过整数事件排序与乘积线性化编译 Reservoir。 / Compile Reservoir with integer event ordering and product linearization. */
+    private fun compileReservoir(
+        reservoir: ConstraintProgrammingConstraint.Reservoir,
+        name: String
+    ): Ret<List<Constraint>> {
+        val events = reservoir.events
+        val eventCount = events.size
+        if (eventCount.toLong() * eventCount.toLong() > decompositionLimit.toLong() * decompositionLimit.toLong()) {
+            return Failed(ErrorCode.Other, "Reservoir 分解规模超限 / Reservoir decomposition exceeds the limit")
+        }
+        val minimum = safeDouble(reservoir.minimumLevel, "reservoir minimum level")
+        val maximum = safeDouble(reservoir.maximumLevel, "reservoir maximum level")
+        val initial = safeDouble(reservoir.initialLevel, "reservoir initial level")
+        if (minimum.failed) return propagate(minimum)
+        if (maximum.failed) return propagate(maximum)
+        if (initial.failed) return propagate(initial)
+        if (minimum.value!! > maximum.value!! || initial.value!! < minimum.value!! || initial.value!! > maximum.value!!) {
+            val impossible = addFormConstraint("$name-invalid-level", LinearForm(emptyMap(), 0.0), 1.0, 1.0)
+            if (impossible.failed) return propagate(impossible)
+            return ok(impossible.value!!)
+        }
+        val times = events.map { linearForm(it.time) }
+        val changes = events.map { linearForm(it.levelChange) }
+        times.firstOrNull { it.failed }?.let { return propagate(it) }
+        changes.firstOrNull { it.failed }?.let { return propagate(it) }
+        val timeForms = times.map { it.value!! }
+        val changeForms = changes.map { it.value!! }
+        val result = ArrayList<Constraint>()
+        val pairProducts = HashMap<Pair<Int, Int>, ReservoirPairProduct>()
+        for (first in 0 until eventCount) {
+            for (second in first + 1 until eventCount) {
+                val firstTime = formBounds(timeForms[first])
+                    ?: return Failed(ErrorCode.Other, "Reservoir 事件时间需要有限值域 / Reservoir event times require finite bounds")
+                val secondTime = formBounds(timeForms[second])
+                    ?: return Failed(ErrorCode.Other, "Reservoir 事件时间需要有限值域 / Reservoir event times require finite bounds")
+                val bigM = maxOf(firstTime.second - secondTime.first, secondTime.second - firstTime.first) + 1.0
+                if (!bigM.isFinite() || bigM > MAX_EXACT_DOUBLE_INTEGER) {
+                    return Failed(ErrorCode.Other, "Reservoir 排序 Big-M 超出精度范围 / Reservoir ordering Big-M exceeds exact precision")
+                }
+                val before = auxiliaryBinary("$name-before-$first-$second")
+                val firstOrder = addFormConstraint(
+                    "$name-order-first-$first-$second",
+                    addVariable(combine(timeForms[first], timeForms[second], 1.0, -1.0), before, bigM),
+                    -scip.infinity(),
+                    bigM
+                )
+                val secondOrder = addFormConstraint(
+                    "$name-order-second-$first-$second",
+                    addVariable(combine(timeForms[second], timeForms[first], 1.0, -1.0), before, -bigM),
+                    -scip.infinity(),
+                    -1.0
+                )
+                if (firstOrder.failed) return propagate(firstOrder)
+                if (secondOrder.failed) return propagate(secondOrder)
+                result += firstOrder.value!!
+                result += secondOrder.value!!
+                val firstProduct = product(changeForms[first], before, "$name-product-first-$first-$second")
+                if (firstProduct.failed) return propagate(firstProduct)
+                val secondProduct = product(changeForms[second], before, "$name-product-second-$first-$second")
+                if (secondProduct.failed) return propagate(secondProduct)
+                result += firstProduct.value!!.constraints
+                result += secondProduct.value!!.constraints
+                pairProducts[first to second] = ReservoirPairProduct(
+                    before = before,
+                    first = firstProduct.value!!.variable,
+                    second = secondProduct.value!!.variable
+                )
+            }
+        }
+        for (event in 0 until eventCount) {
+            var level = LinearForm(linkedMapOf(), initial.value!!)
+            level = plusForm(level, changeForms[event])
+            for (other in 0 until eventCount) {
+                if (other == event) continue
+                if (other < event) {
+                    level = addVariable(level, pairProducts[other to event]!!.first, 1.0)
+                } else {
+                    val pair = pairProducts[event to other]!!
+                    level = plusForm(level, changeForms[other])
+                    level = addVariable(level, pair.second, -1.0)
+                }
+            }
+            val bound = addFormConstraint(
+                "$name-level-$event",
+                level,
+                minimum.value!!,
+                maximum.value!!
+            )
+            if (bound.failed) return propagate(bound)
+            result += bound.value!!
+        }
+        return ok(result)
     }
 
     private fun compileImplication(
@@ -998,13 +1474,35 @@ class ScipConstraintProgrammingCompiler(
     }
 
     private fun compileObjectives(): Ret<Unit> {
+        if (!snapshot.validateObjectiveSemantics()) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "SCIP CP 只支持与模型方向一致的单一目标 / SCIP CP supports at most one objective matching the model category"
+            )
+        }
         val objective = snapshot.objectives.firstOrNull() ?: return ok(Unit)
         val form = linearForm(objective.expression)
         if (form.failed) return propagate(form)
         form.value!!.variables.forEach { (variable, coefficient) ->
             scip.changeVarObj(variable, coefficient)
         }
-        when (snapshot.objectCategory) {
+        if (form.value!!.constant != 0.0) {
+            val objectiveConstantName = "cp-objective-constant-${auxiliaryIndex++}"
+            val constant = scip.createVar(
+                objectiveConstantName,
+                1.0,
+                1.0,
+                form.value!!.constant,
+                SCIP_Vartype.SCIP_VARTYPE_INTEGER
+            )
+            allVariables += constant
+            registerArtifact(
+                artifactId = "variable:$objectiveConstantName",
+                role = "objective-constant",
+                originId = objective.id.value
+            )
+        }
+        when (objective.category) {
             fuookami.ospf.kotlin.core.model.basic.ObjectCategory.Minimum -> scip.setMinimize()
             fuookami.ospf.kotlin.core.model.basic.ObjectCategory.Maximum -> scip.setMaximize()
         }
@@ -1056,15 +1554,221 @@ class ScipConstraintProgrammingCompiler(
     }
 
     private fun auxiliaryBinary(name: String): Variable {
+        val index = auxiliaryIndex++
+        val variableName = "cp-aux-$index-$name"
         val variable = scip.createVar(
-            "cp-aux-${auxiliaryIndex++}-$name",
+            variableName,
             0.0,
             1.0,
             0.0,
             SCIP_Vartype.SCIP_VARTYPE_BINARY
         )
         allVariables += variable
+        registerArtifact(
+            artifactId = "variable:$variableName",
+            role = if (name.startsWith("activation-")) "activation-variable" else "auxiliary-variable",
+            originId = sourceOriginId(name)
+        )
         return variable
+    }
+
+    private fun auxiliaryInteger(
+        name: String,
+        lowerBound: Double,
+        upperBound: Double
+    ): Ret<Variable> {
+        if (!lowerBound.isFinite() || !upperBound.isFinite() || lowerBound > upperBound ||
+            lowerBound < -MAX_EXACT_DOUBLE_INTEGER || upperBound > MAX_EXACT_DOUBLE_INTEGER
+        ) {
+            return Failed(
+                ErrorCode.Other,
+                "SCIP CP 辅助整数值域超出精度范围 / SCIP CP auxiliary integer domain exceeds exact precision"
+            )
+        }
+        return try {
+            val index = auxiliaryIndex++
+            val variableName = "cp-aux-$index-$name"
+            val variable = scip.createVar(
+                variableName,
+                lowerBound,
+                upperBound,
+                0.0,
+                SCIP_Vartype.SCIP_VARTYPE_INTEGER
+            )
+            allVariables += variable
+            registerArtifact(
+                artifactId = "variable:$variableName",
+                role = "auxiliary-variable",
+                originId = sourceOriginId(name)
+            )
+            ok(variable)
+        } catch (error: Throwable) {
+            Failed(
+                ErrorCode.OREngineModelingException,
+                "SCIP CP 辅助整数变量创建失败：${error.message} / " +
+                    "SCIP CP auxiliary integer creation failed: ${error.message}"
+            )
+        }
+    }
+
+    private fun registerArtifact(
+        artifactId: String,
+        role: String,
+        originId: String?
+    ) {
+        var resolvedId = artifactId
+        var collision = 1
+        while (resolvedId in artifacts) {
+            resolvedId = "$artifactId#$collision"
+            collision++
+        }
+        artifacts[resolvedId] = ScipConstraintProgrammingArtifact(
+            artifactId = resolvedId,
+            role = role,
+            originId = originId
+        )
+    }
+
+    private fun sourceOriginId(name: String): String? {
+        val constraintMatches = snapshot.constraints.filter { entry ->
+            val id = entry.id.value
+            val sanitizedId = sanitize(id)
+            containsToken(name, id) || containsToken(name, sanitizedId)
+        }
+        if (constraintMatches.size == 1) {
+            return constraintMatches.single().id.value
+        }
+        val intervalMatches = snapshot.intervals.filter { interval ->
+            val id = interval.id.value
+            val sanitizedId = sanitize(id)
+            containsToken(name, id) || containsToken(name, sanitizedId)
+        }
+        return intervalMatches.singleOrNull()?.id?.value
+    }
+
+    private fun containsToken(value: String, token: String): Boolean {
+        if (token.isBlank()) {
+            return false
+        }
+        return value == token ||
+            value.startsWith("$token-") ||
+            value.endsWith("-$token") ||
+            value.contains("-$token-") ||
+            value.startsWith("$token:") ||
+            value.endsWith(":$token") ||
+            value.contains(":$token:") ||
+            value.startsWith("${token}_") ||
+            value.endsWith("_${token}") ||
+            value.contains("_${token}_")
+    }
+
+    private fun sanitize(value: String): String {
+        return value.map { if (it.isLetterOrDigit() || it == '_' || it == '-') it else '_' }.joinToString("")
+    }
+
+    private fun addVariable(
+        form: LinearForm,
+        variable: Variable,
+        coefficient: Double
+    ): LinearForm {
+        if (coefficient == 0.0) {
+            return form
+        }
+        val variables = LinkedHashMap(form.variables)
+        variables[variable] = (variables[variable] ?: 0.0) + coefficient
+        return LinearForm(variables.filterValues { it != 0.0 }, form.constant)
+    }
+
+    /** 线性化 y = binary * expression；表达式上下界必须有限。 / Linearize y = binary * expression; finite expression bounds are required. */
+    private fun product(
+        expression: LinearForm,
+        binary: Variable,
+        name: String
+    ): Ret<ProductResult> {
+        val bounds = formBounds(expression)
+            ?: return Failed(
+                ErrorCode.Other,
+                "Reservoir 事件变化需要有限值域 / Reservoir event changes require finite bounds"
+            )
+        val lower = minOf(0.0, bounds.first)
+        val upper = maxOf(0.0, bounds.second)
+        if (!lower.isFinite() || !upper.isFinite() ||
+            lower < -MAX_EXACT_DOUBLE_INTEGER || upper > MAX_EXACT_DOUBLE_INTEGER
+        ) {
+            return Failed(
+                ErrorCode.Other,
+                "Reservoir 事件变化超出 SCIP 精度范围 / Reservoir event changes exceed SCIP exact precision"
+            )
+        }
+        val variable = auxiliaryInteger(name, lower, upper)
+        if (variable.failed) {
+            return propagate(variable)
+        }
+        val productVariable = variable.value!!
+        val constraints = ArrayList<Constraint>()
+        val lowerBound = addVariable(
+            addVariable(LinearForm(linkedMapOf(), 0.0), productVariable, 1.0),
+            binary,
+            -bounds.first
+        )
+        val lowerConstraint = addFormConstraint(
+            "$name-lower-active",
+            lowerBound,
+            0.0,
+            scip.infinity()
+        )
+        if (lowerConstraint.failed) return propagate(lowerConstraint)
+        constraints += lowerConstraint.value!!
+        val upperBound = addVariable(
+            addVariable(LinearForm(linkedMapOf(), 0.0), productVariable, 1.0),
+            binary,
+            -bounds.second
+        )
+        val upperConstraint = addFormConstraint(
+            "$name-upper-active",
+            upperBound,
+            -scip.infinity(),
+            0.0
+        )
+        if (upperConstraint.failed) return propagate(upperConstraint)
+        constraints += upperConstraint.value!!
+        val lowerInactive = addVariable(
+            addVariable(combine(
+                LinearForm(linkedMapOf(), 0.0),
+                expression,
+                1.0,
+                -1.0
+            ), productVariable, 1.0),
+            binary,
+            -bounds.second
+        )
+        val lowerInactiveConstraint = addFormConstraint(
+            "$name-lower-inactive",
+            lowerInactive,
+            -bounds.second,
+            scip.infinity()
+        )
+        if (lowerInactiveConstraint.failed) return propagate(lowerInactiveConstraint)
+        constraints += lowerInactiveConstraint.value!!
+        val upperInactive = addVariable(
+            addVariable(combine(
+                LinearForm(linkedMapOf(), 0.0),
+                expression,
+                1.0,
+                -1.0
+            ), productVariable, 1.0),
+            binary,
+            -bounds.first
+        )
+        val upperInactiveConstraint = addFormConstraint(
+            "$name-upper-inactive",
+            upperInactive,
+            -scip.infinity(),
+            -bounds.first
+        )
+        if (upperInactiveConstraint.failed) return propagate(upperInactiveConstraint)
+        constraints += upperInactiveConstraint.value!!
+        return ok(ProductResult(productVariable, constraints))
     }
 
     private fun addFormConstraint(
@@ -1091,6 +1795,11 @@ class ScipConstraintProgrammingCompiler(
     ): Ret<Constraint> {
         return try {
             val constraint = scip.createConsLinear(name, variables, coefficients, lowerBound, upperBound)
+            registerArtifact(
+                artifactId = "constraint:$name",
+                role = "compiled-constraint",
+                originId = sourceOriginId(name)
+            )
             registerConstraint(name, constraint)
         } catch (error: Throwable) {
             Failed(ErrorCode.OREngineModelingException, "SCIP linear constraint 编译失败 / SCIP linear constraint compilation failed: ${error.message}")
@@ -1268,6 +1977,17 @@ class ScipConstraintProgrammingCompiler(
     private data class LinearForm(
         val variables: Map<Variable, Double>,
         val constant: Double
+    )
+
+    private data class ProductResult(
+        val variable: Variable,
+        val constraints: List<Constraint>
+    )
+
+    private data class ReservoirPairProduct(
+        val before: Variable,
+        val first: Variable,
+        val second: Variable
     )
 
     private companion object {

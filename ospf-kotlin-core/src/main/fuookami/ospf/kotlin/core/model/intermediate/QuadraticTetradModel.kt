@@ -3,8 +3,22 @@
 */
 package fuookami.ospf.kotlin.core.model.intermediate
 
+import java.io.OutputStreamWriter
+import kotlinx.coroutines.*
+import org.apache.logging.log4j.kotlin.logger
+import fuookami.ospf.kotlin.utils.concept.Copyable
+import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.math.algebra.number.*
+import fuookami.ospf.kotlin.math.operator.abs
+import fuookami.ospf.kotlin.math.ordinary.*
+import fuookami.ospf.kotlin.math.symbol.Quadratic
 import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ModelElementIdentityRegistry
+import fuookami.ospf.kotlin.core.solver.report.ModelElementOrigin
+import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
+import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.symbol.IntermediateSymbol
 import fuookami.ospf.kotlin.core.token.Token
 import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
@@ -16,15 +30,6 @@ import fuookami.ospf.kotlin.core.variable.Percentage
 import fuookami.ospf.kotlin.core.variable.Ternary
 import fuookami.ospf.kotlin.core.variable.UContinuous
 import fuookami.ospf.kotlin.core.variable.UInteger
-import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.math.operator.abs
-import fuookami.ospf.kotlin.math.ordinary.*
-import fuookami.ospf.kotlin.math.symbol.Quadratic
-import fuookami.ospf.kotlin.utils.concept.Copyable
-import fuookami.ospf.kotlin.utils.functional.*
-import java.io.OutputStreamWriter
-import kotlinx.coroutines.*
-import org.apache.logging.log4j.kotlin.logger
 
 /**
  * 判断此二次约束是否为单变量边界约束（单项、系数为1、无二次项） / Check whether this quadratic constraint is a single-variable bound constraint (single term, coefficient 1, no quadratic term)
@@ -91,6 +96,9 @@ class QuadraticConstraintCell(
  * @param origins 约束来源列表 / Constraint origin list
  * @param froms 约束来源符号列表 / Constraint from-symbol list
  * @param priorities 约束优先级列表 / Constraint priority list
+ * @param ids 稳定约束 ID 列表 / Stable constraint ID list
+ * @param identityScopes 每行身份作用域 / Identity scope for each row
+ * @param identityOrigins 每行稳定身份来源 / Stable identity origin for each row
 */
 class QuadraticConstraintBatch(
     val sparseLhs: SparseQuadraticMatrix,
@@ -100,8 +108,24 @@ class QuadraticConstraintBatch(
     sources: List<ConstraintSource>,
     origins: List<QuadraticConstraintImpl<Flt64>?> = (0 until sparseLhs.numRows()).map { null },
     froms: List<Pair<IntermediateSymbol<*>, Boolean>?> = (0 until sparseLhs.numRows()).map { null },
-    priorities: List<Int?> = (0 until sparseLhs.numRows()).map { null }
-) : ModelConstraint<QuadraticConstraintCell>(sparseLhs.numRows(), signs, rhs, names, sources) {
+    priorities: List<Int?> = (0 until sparseLhs.numRows()).map { null },
+    ids: List<ConstraintId> = emptyList(),
+    identityNamespace: String? = null,
+    identitySchemaVersion: String? = null,
+    identityScopes: List<ModelElementScope> = emptyList(),
+    identityOrigins: List<ModelElementOrigin?> = emptyList()
+) : ModelConstraint<QuadraticConstraintCell>(
+    sparseLhs.numRows(),
+    signs,
+    rhs,
+    names,
+    sources,
+    ids,
+    identityNamespace,
+    identitySchemaVersion,
+    identityScopes,
+    identityOrigins
+) {
 
     /**
      * 二次左侧矩阵的稀疏表示。
@@ -148,7 +172,12 @@ class QuadraticConstraintBatch(
         sources.toList(),
         origins.toList(),
         froms.toList(),
-        priorities.toList()
+        priorities.toList(),
+        ids.toList(),
+        identityNamespace,
+        identitySchemaVersion,
+        identityScopes.toList(),
+        identityOrigins.toList()
     )
 
     override fun close() {
@@ -250,23 +279,27 @@ class BasicQuadraticTetradModel(
          * @param tokenIndexMap   符号到求解器列索引的映射 / mapping from tokens to solver column indices
          * @param bounds          每个符号的预计算边界约束 / pre-computed bound constraints per token
          * @param fixedVariables  固定为常量值的变量（被替换掉）/ variables fixed to constant values (substituted out)
+         * @param identityRegistry 可选的稳定身份注册表 / optional stable identity registry
          * @return 包含提取的变量和约束的 [BasicQuadraticTetradModel] / a [BasicQuadraticTetradModel] containing the extracted variables and constraints
         */
         fun from(
             model: QuadraticMechanismModel<Flt64>,
             tokenIndexMap: Map<Token<Flt64>, Int>,
             bounds: Map<Token<Flt64>, List<Quadruple<QuadraticConstraintImpl<Flt64>, Token<Flt64>, ConstraintRelation, Flt64>>> = emptyMap(),
-            fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null
+            fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
+            identityRegistry: ModelElementIdentityRegistry? = model.identityRegistry
         ): BasicQuadraticTetradModel {
             val variables = dumpQuadraticTetradVariables(
                 tokenIndexes = tokenIndexMap,
-                bounds = bounds
+                bounds = bounds,
+                identityRegistry = identityRegistry
             )
             val constraints = dumpQuadraticTetradConstraints(
                 model = model,
                 tokenIndexes = tokenIndexMap,
                 bounds = bounds,
-                fixedVariables = fixedVariables
+                fixedVariables = fixedVariables,
+                identityRegistry = identityRegistry
             )
             return BasicQuadraticTetradModel(variables, constraints, model.name)
         }
@@ -432,6 +465,13 @@ interface QuadraticTetradModelView : ModelView<QuadraticConstraintCell, Quadrati
     override val constraints: QuadraticConstraintBatch
     val dual: Boolean
 
+    /**
+     * Identity validation captured while building the intermediate model.
+     * 中间模型构建期间捕获的身份校验结果。
+     */
+    val identityValidation: Try
+        get() = ok
+
     /** 就地线性松弛（修改当前模型） / In-place linear relaxation (mutates current model)
      * @return 线性松弛后的模型视图 / The linearly relaxed model view
     */
@@ -503,7 +543,8 @@ data class QuadraticTetradModel(
     private val impl: BasicQuadraticTetradModel,
     val tokensInSolver: List<Token<Flt64>>,
     override val objective: QuadraticObjective,
-    internal val dualOrigin: QuadraticTetradModelView? = null
+    internal val dualOrigin: QuadraticTetradModelView? = null,
+    override val identityValidation: Try = ok
 ) : QuadraticTetradModelView, Cloneable, Copyable<QuadraticTetradModel> {
     override val variables: List<Variable> by impl::variables
     override val constraints: QuadraticConstraintBatch by impl::constraints
@@ -513,13 +554,25 @@ data class QuadraticTetradModel(
     companion object {
         private val logger = logger()
 
-        /** V->Flt64 转换边界：泛型 V 在二次中间模型构造时解析为具体类型 Flt64。 / V->Flt64 conversion boundary: generic V resolves to concrete Flt64 for quadratic intermediate model construction. */
+        /**
+         * V->Flt64 转换边界：泛型 V 在二次中间模型构造时解析为具体类型 Flt64。 /
+         * V->Flt64 conversion boundary: generic V resolves to concrete Flt64 for quadratic intermediate model construction.
+         *
+         * @param model 源二次机制模型 / Source quadratic mechanism model
+         * @param fixedVariables 可选的固定变量 / Optional fixed variables
+         * @param dumpConstraintsToBounds 是否转储边界约束 / Whether to dump bound constraints
+         * @param forceDumpBounds 是否强制转储可识别边界 / Whether to force recognizable bounds
+         * @param concurrent 是否并行转储 / Whether to dump concurrently
+         * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
+         * @return 二次四元模型 / Quadratic tetrad model
+         */
         suspend operator fun invoke(
             model: QuadraticMechanismModel<Flt64>,
             fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
             dumpConstraintsToBounds: Boolean? = null,
             forceDumpBounds: Boolean? = null,
-            concurrent: Boolean? = null
+            concurrent: Boolean? = null,
+            identityRegistry: ModelElementIdentityRegistry? = model.identityRegistry
         ): QuadraticTetradModel {
             logger.trace("Creating QuadraticTetradModel for $model")
             val tokensInSolver = if (fixedVariables.isNullOrEmpty()) {
@@ -557,7 +610,8 @@ data class QuadraticTetradModel(
                     val variablePromise = async(Dispatchers.Default) {
                         dumpQuadraticTetradVariables(
                             tokenIndexes = tokenIndexMap,
-                            bounds = bounds
+                            bounds = bounds,
+                            identityRegistry = identityRegistry
                         )
                     }
                     val constraintPromise = async(Dispatchers.Default) {
@@ -565,14 +619,16 @@ data class QuadraticTetradModel(
                             model = model,
                             tokenIndexes = tokenIndexMap,
                             bounds = bounds,
-                            fixedVariables = fixedVariables
+                            fixedVariables = fixedVariables,
+                            identityRegistry = identityRegistry
                         )
                     }
                     val objectivePromise = async(Dispatchers.Default) {
                         dumpQuadraticTetradObjectives(
                             model = model,
                             tokenIndexes = tokenIndexMap,
-                            fixedVariables = fixedVariables
+                            fixedVariables = fixedVariables,
+                            identityRegistry = identityRegistry
                         )
                     }
 
@@ -591,13 +647,15 @@ data class QuadraticTetradModel(
                     impl = BasicQuadraticTetradModel(
                         variables = dumpQuadraticTetradVariables(
                             tokenIndexes = tokenIndexMap,
-                            bounds = bounds
+                            bounds = bounds,
+                            identityRegistry = identityRegistry
                         ),
                         constraints = dumpQuadraticTetradConstraints(
                             model = model,
                             tokenIndexes = tokenIndexMap,
                             bounds = bounds,
-                            fixedVariables = fixedVariables
+                            fixedVariables = fixedVariables,
+                            identityRegistry = identityRegistry
                         ),
                         name = model.name
                     ),
@@ -605,24 +663,36 @@ data class QuadraticTetradModel(
                     objective = dumpQuadraticTetradObjectives(
                         model = model,
                         tokenIndexes = tokenIndexMap,
-                        fixedVariables = fixedVariables
+                        fixedVariables = fixedVariables,
+                        identityRegistry = identityRegistry
                     )
                 )
             }
 
+            val identityValidation = identityRegistry?.validate() ?: ok
+            val validatedTetradModel = tetradModel.copy(identityValidation = identityValidation)
             logger.trace("QuadraticTetradModel created for $model")
             MemoryCleanupPolicy.cleanupAfterModelBuilt()
-            return tetradModel
+            return validatedTetradModel
         }
     }
 
     override fun copy() = QuadraticTetradModel(
         impl = impl.copy(),
         tokensInSolver = tokensInSolver,
-        objective = objective.copy()
+        objective = objective.copy(),
+        identityValidation = identityValidation
     )
 
     override fun clone() = copy()
+
+    /**
+     * Return the identity validation result captured during model construction. /
+     * 返回模型构建期间捕获的身份校验结果。
+     *
+     * @return Structured identity validation result. / 结构化身份校验结果。
+     */
+    fun validateIdentity(): Try = identityValidation
 
     override fun linearRelax(): QuadraticTetradModel {
         impl.linearRelax()
@@ -633,7 +703,8 @@ data class QuadraticTetradModel(
         return QuadraticTetradModel(
             impl = impl.linearRelaxed(),
             tokensInSolver = tokensInSolver,
-            objective = objective.copy()
+            objective = objective.copy(),
+            identityValidation = identityValidation
         )
     }
     override suspend fun dual(): QuadraticTetradModel {
@@ -905,7 +976,8 @@ data class QuadraticTetradModel(
             ),
             tokensInSolver = tokensInSolver,
             objective = QuadraticObjective(this.objective.category.reverse, objective),
-            dualOrigin = this
+            dualOrigin = this,
+            identityValidation = identityValidation
         )
     }
     override suspend fun farkasDual(): QuadraticTetradModel {
@@ -1229,13 +1301,43 @@ data class QuadraticTetradModel(
             ),
             tokensInSolver = tokensInSolver,
             objective = QuadraticObjective(ObjectCategory.Minimum, objective),
-            dualOrigin = this
+            dualOrigin = this,
+            identityValidation = identityValidation
         )
     }
     override fun feasibility(): QuadraticTetradModel {
         var colIndex = this.variables.size
         val slackVariables = ArrayList<Variable>()
         val artifactVariables = ArrayList<Variable>()
+        fun artifactVariable(
+            constraintIndex: Int,
+            role: String,
+            index: Int,
+            slack: VariableSlack? = null
+        ): Variable {
+            val sourceId = this.constraints.ids.getOrNull(constraintIndex)?.value
+            val sourceKey = sourceId ?: "row:$constraintIndex"
+            return Variable(
+                index = index,
+                lowerBound = Flt64.zero,
+                upperBound = Flt64.infinity,
+                type = Continuous,
+                origin = null,
+                dualOrigin = null,
+                slack = slack,
+                name = "${this.constraints.names[constraintIndex].ifEmpty { "cons$constraintIndex" }}_$role",
+                initialResult = Flt64.zero,
+                id = VariableId("artifact:feasibility:$role:$sourceKey"),
+                identityScope = if (sourceId == null) {
+                    ModelElementScope.ModelLocal
+                } else {
+                    this.constraints.identityScopeAt(constraintIndex)
+                },
+                identityOrigin = sourceId?.let { ModelElementOrigin("constraint", it) },
+                identityNamespace = this.constraints.identityNamespace,
+                identitySchemaVersion = this.constraints.identitySchemaVersion
+            )
+        }
         val lhs = this.constraints.indices.map {
                 when (if (this.constraints.rhs[it] ls Flt64.zero) {
                     this.constraints.signs[it].reverse
@@ -1243,18 +1345,11 @@ data class QuadraticTetradModel(
                     this.constraints.signs[it]
                 }) {
                     ConstraintRelation.LessEqual -> {
-                        val slack = Variable(
+                        val slack = artifactVariable(
+                            constraintIndex = it,
+                            role = "slack",
                             index = colIndex,
-                            lowerBound = Flt64.zero,
-                            upperBound = Flt64.infinity,
-                            type = Continuous,
-                            origin = null,
-                            dualOrigin = null,
-                            slack = VariableSlack(
-                                constraint = this.constraints.origins[it]
-                            ),
-                            name = "${this.constraints.names[it].ifEmpty { "cons${it}" }}_slack",
-                            initialResult = Flt64.zero
+                            slack = VariableSlack(constraint = this.constraints.origins[it])
                         )
                         colIndex += 1
 
@@ -1274,30 +1369,17 @@ data class QuadraticTetradModel(
                     }
 
                     ConstraintRelation.GreaterEqual -> {
-                        val slack = Variable(
-                            colIndex,
-                            lowerBound = Flt64.zero,
-                            upperBound = Flt64.infinity,
-                            type = Continuous,
-                            origin = null,
-                            dualOrigin = null,
-                            slack = VariableSlack(
-                                constraint = this.constraints.origins[it]
-                            ),
-                            name = "${this.constraints.names[it].ifEmpty { "cons${it}" }}_slack",
-                            initialResult = Flt64.zero
+                        val slack = artifactVariable(
+                            constraintIndex = it,
+                            role = "slack",
+                            index = colIndex,
+                            slack = VariableSlack(constraint = this.constraints.origins[it])
                         )
                         colIndex += 1
-                        val artifact = Variable(
-                            colIndex,
-                            lowerBound = Flt64.zero,
-                            upperBound = Flt64.infinity,
-                            type = Continuous,
-                            origin = null,
-                            dualOrigin = null,
-                            slack = null,
-                            name = "${this.constraints.names[it].ifEmpty { "cons${it}" }}_artifact",
-                            initialResult = Flt64.zero
+                        val artifact = artifactVariable(
+                            constraintIndex = it,
+                            role = "artifact",
+                            index = colIndex
                         )
                         colIndex += 1
 
@@ -1324,16 +1406,10 @@ data class QuadraticTetradModel(
                     }
 
                     ConstraintRelation.Equal -> {
-                        val artifact = Variable(
-                            colIndex,
-                            lowerBound = Flt64.zero,
-                            upperBound = Flt64.infinity,
-                            type = Continuous,
-                            origin = null,
-                            dualOrigin = null,
-                            slack = null,
-                            name = "${this.constraints.names[it].ifEmpty { "cons${it}" }}_artifact",
-                            initialResult = Flt64.zero
+                        val artifact = artifactVariable(
+                            constraintIndex = it,
+                            role = "artifact",
+                            index = colIndex
                         )
                         colIndex += 1
 
@@ -1375,6 +1451,22 @@ data class QuadraticTetradModel(
             },
             priorities = this.constraints.indices.map {
                 this.constraints.priorities[it]
+            },
+            ids = this.constraints.indices.map { index ->
+                val sourceId = this.constraints.ids.getOrNull(index)?.value ?: "row:$index"
+                ConstraintId("artifact:feasibility:constraint:$sourceId")
+            },
+            identityNamespace = this.constraints.identityNamespace,
+            identitySchemaVersion = this.constraints.identitySchemaVersion,
+            identityScopes = this.constraints.indices.map { index ->
+                if (this.constraints.ids.getOrNull(index) == null) {
+                    ModelElementScope.ModelLocal
+                } else {
+                    this.constraints.identityScopeAt(index)
+                }
+            },
+            identityOrigins = this.constraints.indices.map { index ->
+                this.constraints.identityOriginAt(index)
             }
         )
         val objective = artifactVariables.map {
@@ -1392,7 +1484,8 @@ data class QuadraticTetradModel(
                 name = "$name-feasibility"
             ),
             tokensInSolver = tokensInSolver,
-            objective = QuadraticObjective(ObjectCategory.Minimum, objective)
+            objective = QuadraticObjective(ObjectCategory.Minimum, objective),
+            identityValidation = identityValidation
         )
     }
     override fun elastic(): QuadraticTetradModel {

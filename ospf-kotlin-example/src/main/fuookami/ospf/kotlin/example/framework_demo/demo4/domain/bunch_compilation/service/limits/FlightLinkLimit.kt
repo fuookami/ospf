@@ -64,13 +64,12 @@ class FlightLinkLimit(
             }
         }
 
-        val poly = MutableLinearPolynomial()
-        for ((k, link) in flightLink.links.withIndex()) {
-            poly += LinearMonomial(coefficient(link), flightLink.slack[k])
-        }
+        val poly = sum(flightLink.links.withIndex().map { (k, link) ->
+            coefficient(link) * flightLink.slack[k]
+        })
 
         when (val result = model.minimize(
-            LinearExpressionSymbol(LinearPolynomial(poly.monomials, poly.constant)),
+            LinearExpressionSymbol(poly),
             name = "link"
         )) {
             is Ok -> {}

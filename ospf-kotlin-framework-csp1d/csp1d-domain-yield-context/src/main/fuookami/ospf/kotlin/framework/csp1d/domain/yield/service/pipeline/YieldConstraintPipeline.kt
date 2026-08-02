@@ -4,7 +4,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.symbol.inequality.*
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.framework.csp1d.domain.material.model.*
@@ -48,10 +48,7 @@ class YieldConstraintPipeline<V : RealNumber<V>>(
 
             model.addConstraint(
                 relation = LinearInequality(
-                    lhs = LinearPolynomial(
-                        monomials = listOf(LinearMonomial(Flt64.one, overVar)),
-                        constant = Flt64.zero
-                    ),
+                    lhs = LinearPolynomial(overVar),
                     rhs = LinearPolynomial(emptyList(), upperBound.toFlt64()),
                     comparison = Comparison.LE
                 ),

@@ -95,23 +95,21 @@ class MaxCLIM(
                 val y2 = sorted.last().maxCLIM.to(aircraftModel.torqueUnit)!!.value
                 val slope = (y2 - y1) / (x2 - x1)
                 val intercept = y1 - slope * x1
-                val poly = MutableLinearPolynomial()
-                poly += LinearMonomial(slope, xSymbol)
-                poly += intercept
+                val poly = slope * xSymbol + intercept
                 Quantity(
-                    LinearExpressionSymbol(LinearPolynomial(poly.monomials, poly.constant), name = "max_clim"),
+                    LinearExpressionSymbol(poly, name = "max_clim"),
                     aircraftModel.torqueUnit
                 )
             }
         }
         when (val result = model.add(maxCLIM)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }

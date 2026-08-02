@@ -3,16 +3,22 @@
 */
 package fuookami.ospf.kotlin.core.model.intermediate
 
-import fuookami.ospf.kotlin.core.model.basic.*
-import fuookami.ospf.kotlin.core.model.mechanism.*
-import fuookami.ospf.kotlin.core.symbol.IntermediateSymbol
-import fuookami.ospf.kotlin.core.token.Token
-import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
+import kotlinx.coroutines.*
+import fuookami.ospf.kotlin.utils.functional.Quadruple
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.ordinary.*
-import fuookami.ospf.kotlin.utils.functional.Quadruple
-import kotlinx.coroutines.*
+import fuookami.ospf.kotlin.core.model.basic.*
+import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.report.ModelElementKind
+import fuookami.ospf.kotlin.core.solver.report.ModelElementIdentityRegistry
+import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
+import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
+import fuookami.ospf.kotlin.core.solver.report.VariableId
+import fuookami.ospf.kotlin.core.symbol.IntermediateSymbol
+import fuookami.ospf.kotlin.core.token.Token
+import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
+
 /**
  * 将任意数值类型转换为 Flt64（求解器边界用） / Convert any numeric value to Flt64 (for solver boundary use)
  *
@@ -59,17 +65,22 @@ internal fun buildLinearSparseLhs(rows: List<List<LinearConstraintCell>>): Spars
  *
  * @param tokenIndexes 标记到列索引的映射 / The mapping from tokens to column indices
  * @param bounds       标记到边界约束列表的映射 / The mapping from tokens to bound constraint lists
+ * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
  * @return 求解器变量列表 / The list of solver variables
 */
 internal fun dumpLinearTriadVariables(
     tokenIndexes: Map<Token<Flt64>, Int>,
-    bounds: Map<Token<Flt64>, List<Quadruple<LinearConstraintImpl<Flt64>, Token<Flt64>, ConstraintRelation, Flt64>>>
+    bounds: Map<Token<Flt64>, List<Quadruple<LinearConstraintImpl<Flt64>, Token<Flt64>, ConstraintRelation, Flt64>>>,
+    identityRegistry: ModelElementIdentityRegistry? = null
 ): List<Variable> {
     val variables = ArrayList<Variable?>()
     for ((_, _) in tokenIndexes) {
         variables.add(null)
     }
     for ((token, i) in tokenIndexes) {
+        val identity = identityRegistry
+            ?.identity(token.variable)
+            ?.takeIf { it.kind == ModelElementKind.Variable }
         val thisBounds = bounds[token] ?: emptyList()
         val lb = thisBounds
             .filter { it.third == ConstraintRelation.GreaterEqual || it.third == ConstraintRelation.Equal }
@@ -96,7 +107,12 @@ internal fun dumpLinearTriadVariables(
             dualOrigin = null,
             slack = null,
             name = token.variable.name,
-            initialResult = token.result
+            initialResult = token.result,
+            id = identity?.id?.let { VariableId(it.value) } ?: identityRegistry?.variableId(token.variable, i),
+            identityScope = identity?.scope ?: ModelElementScope.ModelLocal,
+            identityOrigin = identity?.origin,
+            identityNamespace = identityRegistry?.namespace,
+            identitySchemaVersion = identityRegistry?.schemaVersion
         )
     }
     return variables.map { it!! }
@@ -109,13 +125,15 @@ internal fun dumpLinearTriadVariables(
  * @param tokenIndexes   标记到列索引的映射 / The mapping from tokens to column indices
  * @param bounds         标记到边界约束列表的映射 / The mapping from tokens to bound constraint lists
  * @param fixedVariables 固定变量映射（可为 null） / The fixed variables mapping (nullable)
+ * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
  * @return 线性约束批次 / The linear constraint batch
 */
 internal fun dumpLinearTriadConstraints(
     model: LinearMechanismModel<Flt64>,
     tokenIndexes: Map<Token<Flt64>, Int>,
     bounds: Map<Token<Flt64>, List<Quadruple<LinearConstraintImpl<Flt64>, Token<Flt64>, ConstraintRelation, Flt64>>>,
-    fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null
+    fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
+    identityRegistry: ModelElementIdentityRegistry? = null
 ): LinearConstraintBatch {
     val boundConstraints = bounds.values.flatMap { thisBounds ->
         thisBounds.map { it.first }
@@ -151,6 +169,7 @@ internal fun dumpLinearTriadConstraints(
     val origins = ArrayList<LinearConstraintImpl<Flt64>>()
     val froms = ArrayList<Pair<IntermediateSymbol<*>, Boolean>?>()
     val priorities = ArrayList<Int?>()
+    val ids = ArrayList<fuookami.ospf.kotlin.core.solver.report.ConstraintId>()
     for ((index, constraint) in notBoundConstraints.withIndex()) {
         lhs.add(constraints[index].first)
         signs.add(constraint.sign)
@@ -160,6 +179,7 @@ internal fun dumpLinearTriadConstraints(
         origins.add(constraint)
         froms.add(constraint.from)
         priorities.add(constraint.origin?.priority)
+        identityRegistry?.let { ids.add(it.constraintId(constraint.origin ?: constraint, index)) }
     }
     return LinearConstraintBatch(
         sparseLhs = buildLinearSparseLhs(lhs),
@@ -169,7 +189,14 @@ internal fun dumpLinearTriadConstraints(
         sources = sources,
         origins = origins,
         froms = froms,
-        priorities = priorities
+        priorities = priorities,
+        ids = ids,
+        identityNamespace = identityRegistry?.namespace,
+        identitySchemaVersion = identityRegistry?.schemaVersion,
+        identityScopes = notBoundConstraints.map {
+            identityRegistry?.identity(it.origin ?: it)?.scope ?: ModelElementScope.ModelLocal
+        },
+        identityOrigins = notBoundConstraints.map { identityRegistry?.identity(it.origin ?: it)?.origin }
     )
 }
 
@@ -180,13 +207,15 @@ internal fun dumpLinearTriadConstraints(
  * @param tokenIndexes   标记到列索引的映射 / The mapping from tokens to column indices
  * @param bounds         标记到边界约束列表的映射 / The mapping from tokens to bound constraint lists
  * @param fixedVariables 固定变量映射（可为 null） / The fixed variables mapping (nullable)
+ * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
  * @return 线性约束批次 / The linear constraint batch
 */
 internal suspend fun dumpLinearTriadConstraintsAsync(
     model: LinearMechanismModel<Flt64>,
     tokenIndexes: Map<Token<Flt64>, Int>,
     bounds: Map<Token<Flt64>, List<Quadruple<LinearConstraintImpl<Flt64>, Token<Flt64>, ConstraintRelation, Flt64>>>,
-    fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null
+    fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
+    identityRegistry: ModelElementIdentityRegistry? = null
 ): LinearConstraintBatch {
     val boundConstraints = bounds.values.flatMap { thisBounds ->
         thisBounds.map { it.first }
@@ -237,6 +266,7 @@ internal suspend fun dumpLinearTriadConstraintsAsync(
             val origins = ArrayList<LinearConstraintImpl<Flt64>>()
             val froms = ArrayList<Pair<IntermediateSymbol<*>, Boolean>?>()
             val priorities = ArrayList<Int?>()
+            val ids = ArrayList<fuookami.ospf.kotlin.core.solver.report.ConstraintId>()
             for ((index, constraint) in notBoundConstraints.withIndex()) {
                 val slice = slices[index / segment]
                 val offset = index - slice.fromIndex
@@ -249,6 +279,7 @@ internal suspend fun dumpLinearTriadConstraintsAsync(
                 origins.add(constraint)
                 froms.add(constraint.from)
                 priorities.add(constraint.origin?.priority)
+                identityRegistry?.let { ids.add(it.constraintId(constraint.origin ?: constraint, index)) }
             }
             LinearConstraintBatch(
                 sparseLhs = buildLinearSparseLhs(lhs),
@@ -258,7 +289,14 @@ internal suspend fun dumpLinearTriadConstraintsAsync(
                 sources = sources,
                 origins = origins,
                 froms = froms,
-                priorities = priorities
+                priorities = priorities,
+                ids = ids,
+                identityNamespace = identityRegistry?.namespace,
+                identitySchemaVersion = identityRegistry?.schemaVersion,
+                identityScopes = notBoundConstraints.map {
+                    identityRegistry?.identity(it.origin ?: it)?.scope ?: ModelElementScope.ModelLocal
+                },
+                identityOrigins = notBoundConstraints.map { identityRegistry?.identity(it.origin ?: it)?.origin }
             )
         }
     } else {
@@ -270,6 +308,7 @@ internal suspend fun dumpLinearTriadConstraintsAsync(
         val origins = ArrayList<LinearConstraintImpl<Flt64>>()
         val froms = ArrayList<Pair<IntermediateSymbol<*>, Boolean>?>()
         val priorities = ArrayList<Int?>()
+        val ids = ArrayList<fuookami.ospf.kotlin.core.solver.report.ConstraintId>()
         for ((index, constraint) in notBoundConstraints.withIndex()) {
             val thisConstraint = constraint as LinearConstraintImpl<*>
             val thisLhs = ArrayList<LinearConstraintCell>()
@@ -296,6 +335,7 @@ internal suspend fun dumpLinearTriadConstraintsAsync(
             origins.add(constraint)
             froms.add(constraint.from)
             priorities.add(constraint.origin?.priority)
+            identityRegistry?.let { ids.add(it.constraintId(constraint.origin ?: constraint, index)) }
         }
         MemoryCleanupPolicy.cleanupAfterBatch()
         LinearConstraintBatch(
@@ -306,7 +346,14 @@ internal suspend fun dumpLinearTriadConstraintsAsync(
             sources = sources,
             origins = origins,
             froms = froms,
-            priorities = priorities
+            priorities = priorities,
+            ids = ids,
+            identityNamespace = identityRegistry?.namespace,
+            identitySchemaVersion = identityRegistry?.schemaVersion,
+            identityScopes = notBoundConstraints.map {
+            identityRegistry?.identity(it.origin ?: it)?.scope ?: ModelElementScope.ModelLocal
+            },
+            identityOrigins = notBoundConstraints.map { identityRegistry?.identity(it.origin ?: it)?.origin }
         )
     }
 }
@@ -317,12 +364,14 @@ internal suspend fun dumpLinearTriadConstraintsAsync(
  * @param model          线性机制模型 / The linear mechanism model
  * @param tokenIndexes   标记到列索引的映射 / The mapping from tokens to column indices
  * @param fixedVariables 固定变量映射（可为 null） / The fixed variables mapping (nullable)
+ * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
  * @return 线性目标 / The linear objective
 */
 internal fun dumpLinearTriadObjectives(
     model: LinearMechanismModel<Flt64>,
     tokenIndexes: Map<Token<Flt64>, Int>,
-    fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null
+    fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
+    identityRegistry: ModelElementIdentityRegistry? = null
 ): LinearObjective {
     val objectiveCategory = if (model.objectFunction.subObjects.size == 1) {
         model.objectFunction.subObjects.first().category
@@ -368,9 +417,21 @@ internal fun dumpLinearTriadObjectives(
             )
         )
     }
+    val identitySource = model.objectFunction.subObjects
+        .singleOrNull()
+        ?.origin
+        ?: model.objectFunction
+    val identity = identityRegistry
+        ?.identity(identitySource)
+        ?.takeIf { it.kind == ModelElementKind.Objective }
     return LinearObjective(
         category = objectiveCategory,
         objective = objective,
-        constant = constant
+        constant = constant,
+        id = identity?.id?.let { ObjectiveId(it.value) } ?: identityRegistry?.objectiveId(identitySource),
+        identityScope = identity?.scope ?: ModelElementScope.ModelLocal,
+        identityOrigin = identity?.origin,
+        identityNamespace = identityRegistry?.namespace,
+        identitySchemaVersion = identityRegistry?.schemaVersion
     )
 }

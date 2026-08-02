@@ -126,6 +126,27 @@ adapter/                    Adapters
   ospf/OspfRemoteModelSerializer         OSPF serialization format adapter
 ```
 
+### CP Benders and remote report contract
+
+`LogicBasedBendersEngine` keeps master bindings, assumptions, cuts, proof status, and convergence evidence separate. `Exact` mode accepts only verified globally valid cuts and a verified master bound gap; a feasible subproblem without an optimality certificate remains `Feasible`, not `Optimal`.
+
+`RemoteConstraintProgrammingClient.solveOutput()` sends a versioned CP snapshot and materializes `variableValuesById` and `intervalValues` from the result artifact. It validates domains, interval equations, every snapshot constraint, objective expressions, raw/resultRef consistency, fingerprints, and proof claims. CP integers use JSON `Long`; older DTOs remain readable but cannot upgrade an unverified result. `ConstraintProgrammingCheckpointCodec` and the remote checkpoint store use portable v2 envelopes with integrity digests and rebuild-from-snapshot semantics. Native search-state resume is unsupported.
+
+### Identity, portability, and capability boundaries
+
+Model element identity is explicit and has two scopes:
+
+| Scope | Meaning | Cross-rebuild use |
+| --- | --- | --- |
+| `Stable` | The model entry point supplied `id`, `namespace`, `schemaVersion`, and optional `origin`. | Allowed for diagnostics, reports, remote DTOs, and portable checkpoints after fingerprint validation. |
+| `ModelLocal` | The element has only a deterministic identity within the current model instance. | May be used for local diagnostics, but must not be advertised as a cross-rebuild binding. |
+
+Older payloads without identity metadata remain readable as `ModelLocal`; they are never upgraded to `Stable` implicitly. A checkpoint is portable when it contains a verified snapshot and can rebuild the model. It is not a native search-state resume: vendor handles, transformed trees, JNI pointers, and solver-internal search state never cross the checkpoint boundary.
+
+The same distinction applies to solver reuse. The default CP and MIP-backed paths rebuild a fresh backend model for every attempt. `reuse` or `reoptimization` is opt-in only when the backend descriptor exposes a tested capability; a solver name, warm start, or solution hint alone does not imply native reuse or exact resume. Capability publication requires the shared terminal-state, identity, provenance, cancellation, and resource-release tests described in `plans/solver_cp.md`.
+
+Migration example: preserve the serialized identity fields when moving a model to the remote API, then validate the returned model/configuration/solver fingerprints before restoring a checkpoint. If any required field is absent or the scope is `ModelLocal`, keep the result local and rebuild instead of coercing it into a stable binding.
+
 ## Async Coroutine Scope
 
 `FrameworkAsync.kt` provides a shared `CoroutineScope` (`SupervisorJob` + `Dispatchers.Default`) for creating `CompletableFuture` instances in framework-level async solving.

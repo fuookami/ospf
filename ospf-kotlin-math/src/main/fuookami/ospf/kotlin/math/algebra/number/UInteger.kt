@@ -964,7 +964,7 @@ value class UInt64(internal val value: ULong) : UIntegerNumberImpl<UInt64>, Copy
      *
      * 提供常用的数值常量。 / Provides common numeric constants.
     */
-    companion object : RealNumberConstants<UInt64> {
+    companion object : RealNumberConstants<UInt64>, Flt64ValueConverter<UInt64> {
         @JvmStatic
         override val zero: UInt64 get() = UInt64(0UL)
 
@@ -988,6 +988,8 @@ value class UInt64(internal val value: ULong) : UIntegerNumberImpl<UInt64>, Copy
 
         @JvmStatic
         override val maximum: UInt64 get() = UInt64(ULong.MAX_VALUE)
+
+        override fun intoValue(value: Flt64): UInt64 = value.toUInt64()
     }
 
     override val constants: RealNumberConstants<UInt64> get() = UInt64
@@ -1201,7 +1203,7 @@ value class UIntX(internal val value: BigInteger) : UIntegerNumberImpl<UIntX>, C
      *
      * 提供常用的数值常量。 / Provides common numeric constants.
     */
-    companion object : RealNumberConstants<UIntX> {
+    companion object : RealNumberConstants<UIntX>, Flt64ValueConverter<UIntX> {
         @JvmStatic
         override val zero: UIntX get() = UIntX(0L)
 
@@ -1225,6 +1227,8 @@ value class UIntX(internal val value: BigInteger) : UIntegerNumberImpl<UIntX>, C
 
         @JvmStatic
         override val maximum: UIntX get() = UIntX(Double.MAX_VALUE.toString())
+
+        override fun intoValue(value: Flt64): UIntX = UIntX(value.toUInt64().toLong())
 
         /**
          * 创建 UIntX。

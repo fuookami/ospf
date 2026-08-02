@@ -10,7 +10,7 @@ import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task.model.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.*
 import fuookami.ospf.kotlin.math.algebra.concept.*
 import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.multiarray.*
 import fuookami.ospf.kotlin.quantities.quantity.*
@@ -427,10 +427,8 @@ class BunchSchedulingConnectionResourceUsage<
             if (thisBunches.isNotEmpty()) {
                 quantity[slot].flush()
                 for (bunch in thisBunches) {
-                    quantity[slot].asMutable() += LinearMonomial(
-                        slot.resource.usedQuantityQuantity(bunch, slot.time).value.toSolverValue(),
-                        xi[bunch]
-                    )
+                    quantity[slot].asMutable() +=
+                        slot.resource.usedQuantityQuantity(bunch, slot.time).value.toSolverValue() * xi[bunch]
                 }
             }
         }

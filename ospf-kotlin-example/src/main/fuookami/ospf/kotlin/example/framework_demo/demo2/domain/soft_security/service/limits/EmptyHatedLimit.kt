@@ -30,25 +30,25 @@ class EmptyHatedLimit(
     override val name: String = "empty_hated_limit"
 ) : Pipeline<AbstractLinearMetaModel<Flt64>> {
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {
-        val poly = MutableLinearPolynomial()
-        for ((j, position) in positions.withIndex()) {
+        val poly = sum(positions.withIndex().mapNotNull { (j, position) ->
             if (position.type.contains(PositionTypeCode.EmptyHated)) {
                 val c = coefficient(position)
-                poly += c
-                poly += LinearMonomial(-c, load.full[j])
+                (-c * load.full[j]) + c
+            } else {
+                null
             }
-        }
+        })
         when (val result = model.minimize(
-            LinearExpressionSymbol(LinearPolynomial(poly.monomials, poly.constant)),
+            LinearExpressionSymbol(poly),
             name = "empty hated"
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }

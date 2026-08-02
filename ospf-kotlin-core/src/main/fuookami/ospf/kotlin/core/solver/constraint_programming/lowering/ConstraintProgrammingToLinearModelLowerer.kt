@@ -40,13 +40,21 @@ import fuookami.ospf.kotlin.utils.functional.ok
 
 /**
  * 降阶后的线性模型及 CP 变量映射。[variables] 只包含原 CP 变量；降阶器生成的辅助变量不会暴露到 CP 解中。 / Lowered linear model and CP-variable mapping. / [variables] contains only original CP variables; generated auxiliaries are not exposed in CP solutions.
+ *
+ * @property model 降阶后的线性模型 / Lowered linear model
+ * @property variables 原 CP 变量映射 / Original CP variable mapping
+ * @property variableIds 原 CP 变量 ID 顺序 / Original CP variable ID order
+ * @property intervals 原 interval 映射 / Original interval mapping
+ * @property domains 原 CP 值域 / Original CP domains
+ * @property artifacts 降阶 artifact 与源 CP 元素的映射 / Lowered artifacts and their CP source mappings
  */
 data class ConstraintProgrammingLoweredLinearModel(
     val model: LinearMetaModel<Flt64>,
     val variables: Map<VariableId, AbstractVariableItem<*, *>>,
     val variableIds: List<VariableId>,
     val intervals: Map<IntervalId, IntervalVariable> = emptyMap(),
-    val domains: Map<VariableId, IntegerDomain> = emptyMap()
+    val domains: Map<VariableId, IntegerDomain> = emptyMap(),
+    val artifacts: Map<String, ConstraintProgrammingLoweredArtifact> = emptyMap()
 ) : AutoCloseable {
     override fun close() {
         model.close()
@@ -54,13 +62,37 @@ data class ConstraintProgrammingLoweredLinearModel(
 }
 
 /**
+ * MIP lowerer artifact 与源 CP 元素的可回查映射。 / Stable reverse mapping from a MIP lowering artifact to its CP source.
+ *
+ * 辅助变量和约束拥有独立 ID，不会被误认为原始 CP 成员。 / Auxiliary variables and constraints have independent IDs and are never mistaken for source CP members.
+ *
+ * @property artifactId 降阶 artifact 稳定标识 / Stable lowered-artifact identifier
+ * @property role artifact 角色 / Artifact role
+ * @property originId 源 CP 元素 ID（无法唯一归属时为空） / Source CP element ID, or null when no unique source exists
+ */
+data class ConstraintProgrammingLoweredArtifact(
+    val artifactId: String,
+    val role: String,
+    val originId: String? = null
+)
+
+/**
  * 将 CP 模型等价降为 OSPF 线性元模型。该实现只接受整数且具有有限、可精确转换为 IEEE double 的边界；任何近似或弱化线性化 / Lower a CP model equivalently to an OSPF linear meta model.
  * 都会返回 `Unsupported` 风格的结构化错误。 / The implementation accepts only bounded integer expressions whose coefficients and bounds are exactly representable by IEEE doubles; approximate or weakened linearizations return a structured unsupported error.
+ *
+ * @property policy 精确降阶策略 / Exact lowering policy
  */
 class ConstraintProgrammingToLinearModelLowerer(
     private val policy: ConstraintProgrammingLoweringPolicy = ConstraintProgrammingLoweringPolicy.Strict
 ) {
-    /** 从可变 CP 模型生成线性模型。 / Lower a mutable CP model. */
+    /**
+     * 从可变 CP 模型生成线性模型。 / Lower a mutable CP model.
+     *
+     * @param model 可变 CP 模型 / Mutable CP model
+     * @param assumptions 激活文字 / Assumption literals
+     * @param fixedValues 固定变量值 / Fixed variable values
+     * @return 降阶模型或结构化错误 / Lowered model or a structured error
+     */
     fun lower(
         model: ConstraintProgrammingModel,
         assumptions: List<BooleanLiteral> = emptyList(),
@@ -73,7 +105,14 @@ class ConstraintProgrammingToLinearModelLowerer(
         return lower(snapshot.value!!, assumptions, fixedValues)
     }
 
-    /** 从 immutable snapshot 生成线性模型。 / Lower an immutable snapshot. */
+    /**
+     * 从 immutable snapshot 生成线性模型。 / Lower an immutable snapshot.
+     *
+     * @param snapshot CP 模型 snapshot / CP model snapshot
+     * @param assumptions 激活文字 / Assumption literals
+     * @param fixedValues 固定变量值 / Fixed variable values
+     * @return 降阶模型或结构化错误 / Lowered model or a structured error
+     */
     fun lower(
         snapshot: ConstraintProgrammingModelSnapshot,
         assumptions: List<BooleanLiteral> = emptyList(),
@@ -100,7 +139,8 @@ class ConstraintProgrammingToLinearModelLowerer(
                 variables = compiler.variables.toMap(),
                 variableIds = snapshot.variables.map { it.id },
                 intervals = snapshot.intervals.associateBy { it.id },
-                domains = snapshot.variables.associate { it.id to it.domain }
+                domains = snapshot.variables.associate { it.id to it.domain },
+                artifacts = compiler.artifacts.toMap()
             )
         )
     }
@@ -114,6 +154,7 @@ class ConstraintProgrammingToLinearModelLowerer(
         private val domains = LinkedHashMap<AbstractVariableItem<*, *>, Pair<BigInteger, BigInteger>>()
         private val sourceReferences = LinkedHashMap<VariableId, AbstractVariableItem<*, *>>()
         private val intervals = LinkedHashMap<IntervalId, LoweredInterval>()
+        val artifacts = LinkedHashMap<String, ConstraintProgrammingLoweredArtifact>()
         private var auxiliaryVariables = 0
 
         fun compile(
@@ -272,6 +313,11 @@ class ConstraintProgrammingToLinearModelLowerer(
                     return propagate(added)
                 }
                 variables[definition.id] = variable
+                registerArtifact(
+                    artifactId = "variable:${definition.id.value}",
+                    role = "source-variable",
+                    originId = definition.id.value
+                )
                 val bounds = domainBounds(definition.domain)
                 val lowerBound = safeFlt64(bounds.first, "CP variable lower bound")
                 if (lowerBound.failed) return propagate(lowerBound)
@@ -952,7 +998,63 @@ class ConstraintProgrammingToLinearModelLowerer(
                 return propagate(added)
             }
             domains[variable] = ZERO_BI to ONE_BI
+            registerArtifact(
+                artifactId = "variable:${variable.identifier}:${variable.index}",
+                role = "auxiliary-variable",
+                originId = sourceOriginId(name)
+            )
             return ok(variable)
+        }
+
+        private fun registerArtifact(
+            artifactId: String,
+            role: String,
+            originId: String?
+        ) {
+            var resolvedId = artifactId
+            var collision = 1
+            while (resolvedId in artifacts) {
+                resolvedId = "$artifactId#$collision"
+                collision++
+            }
+            artifacts[resolvedId] = ConstraintProgrammingLoweredArtifact(
+                artifactId = resolvedId,
+                role = role,
+                originId = originId
+            )
+        }
+
+        private fun sourceOriginId(name: String): String? {
+            val constraintMatches = snapshot.constraints.filter { entry ->
+                val id = entry.id.value
+                val sanitizedId = sanitize(id)
+                containsToken(name, id) || containsToken(name, sanitizedId)
+            }
+            if (constraintMatches.size == 1) {
+                return constraintMatches.single().id.value
+            }
+            val intervalMatches = snapshot.intervals.filter { interval ->
+                val id = interval.id.value
+                val sanitizedId = sanitize(id)
+                containsToken(name, id) || containsToken(name, sanitizedId)
+            }
+            return intervalMatches.singleOrNull()?.id?.value
+        }
+
+        private fun containsToken(value: String, token: String): Boolean {
+            if (token.isBlank()) {
+                return false
+            }
+            return value == token ||
+                value.startsWith("$token-") ||
+                value.endsWith("-$token") ||
+                value.contains("-$token-") ||
+                value.startsWith("$token:") ||
+                value.endsWith(":$token") ||
+                value.contains(":$token:") ||
+                value.startsWith("${token}_") ||
+                value.endsWith("_${token}") ||
+                value.contains("_${token}_")
         }
 
         private fun form(
@@ -1003,7 +1105,7 @@ class ConstraintProgrammingToLinearModelLowerer(
             val right = safeFlt64(rhs, "CP rhs")
             if (right.failed) return propagate(right)
             return try {
-                linear.addConstraint(
+                val added = linear.addConstraint(
                     relation = LinearInequality(
                         polynomial.value!!,
                         LinearPolynomial(emptyList(), right.value!!),
@@ -1012,6 +1114,15 @@ class ConstraintProgrammingToLinearModelLowerer(
                     ),
                     name = name
                 )
+                if (added.failed) {
+                    return added
+                }
+                registerArtifact(
+                    artifactId = "constraint:$name",
+                    role = "compiled-constraint",
+                    originId = sourceOriginId(name)
+                )
+                added
             } catch (error: Throwable) {
                 Failed(
                     ErrorCode.OREngineModelingException,

@@ -50,9 +50,9 @@ class SourceEarlyLimit(
                 relation = lhs geq rhs,
                 name = "${name}_${source}"
             )) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                is Ok -> {}
+                is Failed -> return Failed(result.error)
+                is Fatal -> return Fatal(result.errors)
             }
         }
 

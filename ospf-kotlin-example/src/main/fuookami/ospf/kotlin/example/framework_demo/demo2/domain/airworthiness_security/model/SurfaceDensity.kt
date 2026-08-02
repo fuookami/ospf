@@ -10,7 +10,6 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.model.*
 import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.model.Position
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
 import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.multiarray.*
@@ -67,7 +66,7 @@ class SurfaceDensity(
                 val coefficient = (Flt64.one / position.shape.area.to(aircraftModel.areaUnit)!!.value)!!
                 Quantity(
                     LinearExpressionSymbol(
-                        LinearMonomial(coefficient, load.estimateLoadWeight[j].value),
+                        coefficient * load.estimateLoadWeight[j].value,
                         name = "surface_density_${position}",
                     ),
                     aircraftModel.surfaceDensityUnit
@@ -77,13 +76,13 @@ class SurfaceDensity(
         for ((j, position) in positions.withIndex()) {
             if (limitsZones.any { position.coordinate.withIntersectionWith(it.frontArm, it.backArm) }) {
                 when (val result = model.add(surfaceDensity[j])) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                    is Ok -> {}
 
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
                 }

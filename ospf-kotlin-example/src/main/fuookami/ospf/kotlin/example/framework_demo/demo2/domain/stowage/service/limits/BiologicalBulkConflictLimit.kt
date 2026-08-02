@@ -44,13 +44,13 @@ class BiologicalBulkConflictLimit(
             relation = LinearPolynomial(stowage.stowage[i, j]) eq Flt64.zero,
             name = "${name}_${item}_${position}"
                             )) {
-                                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                                is Ok -> {}
 
-                                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                                is Failed -> {
                                     return Failed(result.error)
                                 }
 
-                                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                                is Fatal -> {
                                     return Fatal(result.errors)
                                 }
                             }
@@ -64,13 +64,13 @@ class BiologicalBulkConflictLimit(
             relation = LinearPolynomial(stowage.stowage[i, j]) eq Flt64.zero,
             name = "${name}_${item}_${position}"
                             )) {
-                                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                                is Ok -> {}
 
-                                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                                is Failed -> {
                                     return Failed(result.error)
                                 }
 
-                                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                                is Fatal -> {
                                     return Fatal(result.errors)
                                 }
                             }
@@ -93,21 +93,16 @@ class BiologicalBulkConflictLimit(
                                 || (item1.cargo.contains(type2) && item2.cargo.contains(type1))
                             ) {
                                 when (val result = model.addConstraint(
-            relation = run {
-                val poly = MutableLinearPolynomial()
-                poly += LinearMonomial(Flt64.one, stowage.stowage[i1, j])
-                poly += LinearMonomial(Flt64.one, stowage.stowage[i2, j])
-                LinearPolynomial(poly) leq Flt64.one
-            },
+            relation = (stowage.stowage[i1, j] + stowage.stowage[i2, j]) leq Flt64.one,
             name = "${name}_${item1}_${item2}_${position}"
                                 )) {
-                                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                                    is Ok -> {}
 
-                                    is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                                    is Failed -> {
                                         return Failed(result.error)
                                     }
 
-                                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                                    is Fatal -> {
                                         return Fatal(result.errors)
                                     }
                                 }

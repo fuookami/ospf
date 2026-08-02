@@ -23,15 +23,15 @@ class AircraftContext {
         input: RequestDTO
     ): Try {
         when (val result = AggregationInitializer(input)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {
+            is Ok -> {
                 aggregation = result.value!!
             }
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }

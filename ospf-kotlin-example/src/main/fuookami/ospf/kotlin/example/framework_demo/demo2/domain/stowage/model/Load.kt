@@ -105,13 +105,13 @@ class Load(
         for ((j, position) in positions.withIndex()) {
             if (position.status.predicateWeightNeeded) {
                 when (val result = model.add(y[j])) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                    is Ok -> {}
 
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
                 }
@@ -132,13 +132,13 @@ class Load(
         for ((j, position) in positions.withIndex()) {
             if (position.status.recommendedWeightNeeded) {
                 when (val result = model.add(z[j])) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                    is Ok -> {}
 
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
                 }
@@ -190,13 +190,13 @@ class Load(
             }
         }
         when (val result = model.add(predicateLoadWeightSlack)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -214,13 +214,13 @@ class Load(
             }
         }
         when (val result = model.add(loadAmount)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -257,13 +257,13 @@ class Load(
             }
         }
         when (val result = model.add(full)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -272,7 +272,7 @@ class Load(
             if (!::estimateLoadWeight.isInitialized) {
                 estimateLoadWeight = QuantityLinearIntermediateSymbols1<Flt64>("load_weight", Shape1(positions.size)) { j, _ ->
                     val position = positions[j]
-                    val poly = MutableLinearPolynomial()
+                    var poly = LinearPolynomial()
                     for ((i, item) in items.withIndex()) {
                         poly += item.weight.to(aircraftModel.weightUnit)!!.value * stowage.stowage[i, j]
                     }
@@ -292,13 +292,13 @@ class Load(
                 }
             }
             when (val result = model.add(estimateLoadWeight)) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }
@@ -307,7 +307,7 @@ class Load(
         if (!::actualLoadWeight.isInitialized) {
             actualLoadWeight = QuantityLinearIntermediateSymbols1<Flt64>("actual_load_weight", Shape1(positions.size)) { j, _ ->
                 val position = positions[j]
-                val poly = MutableLinearPolynomial()
+                var poly = LinearPolynomial()
                 for ((i, item) in items.withIndex()) {
                     poly += item.weight.to(aircraftModel.weightUnit)!!.value * stowage.stowage[i, j]
                 }
@@ -321,13 +321,13 @@ class Load(
             }
         }
         when (val result = model.add(actualLoadWeight)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -382,8 +382,8 @@ class Load(
                             val adapter = sym as LinearFunctionSymbolAdapter<Flt64>
                             when (val d = adapter.delegate) {
                                 is IfFunction<Flt64> -> d.result
-                                is BinaryzationFunction<Flt64> -> LinearPolynomial(listOf(LinearMonomial(Flt64.one, d.resultVar)), Flt64.zero)
-                                is SameAsFunction<Flt64> -> LinearPolynomial(listOf(LinearMonomial(Flt64.one, d.resultVar)), Flt64.zero)
+                                is BinaryzationFunction<Flt64> -> LinearPolynomial(d.resultVar)
+                                is SameAsFunction<Flt64> -> LinearPolynomial(d.resultVar)
                                 else -> sym.toLinearPolynomial()
                             }
                         } else {
@@ -407,13 +407,13 @@ class Load(
             }
         }
         when (val result = model.add(estimateLoaded)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -447,13 +447,13 @@ class Load(
             }
         }
         when (val result = model.add(actualLoaded)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -472,13 +472,13 @@ class Load(
             }
         }
         when (val result = model.add(loadEstimateLongitudinalTorque)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -497,13 +497,13 @@ class Load(
             }
         }
         when (val result = model.add(loadActualLongitudinalTorque)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -522,13 +522,13 @@ class Load(
                 }
         }
         when (val result = model.add(loadLateralTorque)) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -547,13 +547,13 @@ class Load(
                 }
             }
             when (val result = model.add(loadCLIM)) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }
@@ -562,7 +562,7 @@ class Load(
         if (!::loadIndex.isInitialized) {
             loadIndex = QuantityLinearIntermediateSymbols1<Flt64>("load_index", Shape1(positions.size)) { j, _ ->
                 val position = positions[j]
-                val poly = MutableLinearPolynomial()
+                var poly = LinearPolynomial()
                 for ((i, item) in items.withIndex()) {
                     val index = formula.index(item.weight, position.coordinate.longitudinalArm)
                     poly += index.to(aircraftModel.torqueUnit)!!.value * stowage.stowage[i, j]
@@ -586,13 +586,13 @@ class Load(
             }
         }
         when (val result = model.add(loadIndex)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }

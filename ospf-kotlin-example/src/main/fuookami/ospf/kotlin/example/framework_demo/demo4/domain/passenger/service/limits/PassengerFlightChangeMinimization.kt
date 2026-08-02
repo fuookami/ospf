@@ -37,19 +37,15 @@ class PassengerFlightChangeMinimization(
      * @return 注册结果 / Registration result
     */
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {
-        val poly = MutableLinearPolynomial()
-        for (passer in passengers) {
-            for (toFlight in change.toFlights[passer.flight] ?: emptyList()) {
-                for (cls in PassengerClass.entries) {
-                    poly += LinearMonomial(
-                        coefficient(passer.flight, toFlight, cls),
-                        change.passengerFlightChange[passer, toFlight, cls]!!
-                    )
+        val poly = sum(passengers.flatMap { passer ->
+            (change.toFlights[passer.flight] ?: emptyList()).flatMap { toFlight ->
+                PassengerClass.entries.map { cls ->
+                    coefficient(passer.flight, toFlight, cls) * change.passengerFlightChange[passer, toFlight, cls]!!
                 }
             }
-        }
+        })
         when (val result = model.minimize(
-            LinearExpressionSymbol(LinearPolynomial(poly.monomials, poly.constant)),
+            LinearExpressionSymbol(poly),
             name = "passenger flight change"
         )) {
             is Ok -> {}

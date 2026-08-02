@@ -44,7 +44,10 @@ data object Library {
                     }
                 }
             }
-            System.loadLibrary(lib)
+            // Use the extracted absolute file rather than mapping the filename again. This avoids
+            // turning Unix `libjscip.so` into the invalid `liblibjscip.so`. /
+            // 使用提取后的绝对文件路径，避免 Unix 将 `libjscip.so` 再映射成错误的 `liblibjscip.so`。
+            System.load(extractedLibFile.absolutePath)
             ok
         } catch (e: Throwable) {
             Failed(ErrorCode.SolverNotFound, "Failed to load native library $lib from $path: ${e.message}")

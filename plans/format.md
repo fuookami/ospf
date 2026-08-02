@@ -551,3 +551,136 @@ import fuookami.ospf.kotlin.utils.error.*
 
 **编译验证**：`mvn clean compile test-compile -T 0.75C` → BUILD SUCCESS
 **测试验证**：`mvn test -T 0.75C` → BUILD SUCCESS
+
+### 2026-08-02 第三轮：冗余泛型参数与 if-null 折叠
+
+#### F15：is Ok/Failed/Fatal<*, ErrorCode, Error<ErrorCode>> 冗余泛型参数（P1）✅ 已完成
+
+Kotlin 的 `is` 类型检查运行时泛型擦除，`is Ok` 完全等价于 `is Ok<*, ErrorCode, Error<ErrorCode>>`。
+代码库中 core/framework 等模块已使用 `is Ok` 简洁风格，仅 example 模块存在冗余。
+
+| 模块 | 处数 | 涉及文件数 |
+|------|------|-----------|
+| ospf-kotlin-example（src/main） | 927 | 110 |
+| ospf-kotlin-framework（`is Fatal<*, *, *>`） | 2 | 1 |
+| ospf-kotlin-math | 3 | 1 |
+| ospf-kotlin-framework-gantt-scheduling | 3 | 1 |
+| 测试文件（src/test，全模块） | 34 | 14 |
+| **合计** | **969** | **127** |
+
+**修复方式**：
+- `is Ok<*, ErrorCode, Error<ErrorCode>>` → `is Ok`
+- `is Failed<*, ErrorCode, Error<ErrorCode>>` → `is Failed`
+- `is Fatal<*, ErrorCode, Error<ErrorCode>>` → `is Fatal`
+- `is Fatal<*, *, *>` → `is Fatal`
+- `is Ok<*, *, *>` → `is Ok`
+- `is Failed<*, *, *>` → `is Failed`
+
+**执行记录**：使用 Python 脚本（嵌套尖括号深度计数）批量替换，首次因正则 `[^>]+` 无法匹配嵌套泛型导致残留 `>`，回滚后用深度计数法重跑，935 处主源码 + 34 处测试全部正确替换。
+
+#### F16：if-null-return-null 折叠（P2）
+
+将 `if (x == null) return null` 折叠为 `x ?: return null`，与代码库现有风格统一。
+
+| 文件 | 处数 | 说明 |
+|------|------|------|
+| `core/.../IntermediateSymbolExpressionSupport.kt` | 4 | ✅ 已修复 |
+| `math/.../Evaluate.kt` | 2 | ✅ 已修复 |
+| `multiarray/.../Vector.kt` | 1 | ✅ 已修复 |
+| `math/.../EvaluateBoolean.kt:413` | 1 | ⏳ `if (left == null || right == null) return null` 涉及 `||` 不适合简单折叠 |
+
+### 2026-08-02 第四轮：符号运算原生 API 替换为运算符 API
+
+#### F17：MutableLinearPolynomial + LinearMonomial + verbose conversion 替换为运算符 DSL（P1）✅ 已完成
+
+代码库提供了 `Flt64QuickDsl` 运算符 API，支持 `Symbol + Symbol`、`Symbol + Flt64`、`LinearPolynomial + Symbol` 等运算符写法，
+以及 `LinearPolynomial(symbol)` 快捷构造。但 example/framework 模块中大量使用了冗余的原生 API 模式：
+
+**冗余模式 A：MutableLinearPolynomial + += LinearMonomial + verbose conversion**
+
+```kotlin
+// 冗余写法
+val poly = MutableLinearPolynomial()
+poly += LinearMonomial(Flt64.one, stowage.stowage[i1, j1])
+poly += LinearMonomial(Flt64.one, stowage.stowage[i2, j2])
+relation = LinearPolynomial(poly.monomials, poly.constant) leq Flt64.one,
+
+// 运算符写法
+relation = (stowage.stowage[i1, j1] + stowage.stowage[i2, j2]) leq Flt64.one,
+```
+
+**冗余模式 B：LinearMonomial(coefficient, symbol) 单项式构造**
+
+```kotlin
+// 冗余写法
+LinearPolynomial(listOf(LinearMonomial(Flt64.one, resultVar)), Flt64.zero)
+
+// 运算符写法
+LinearPolynomial(resultVar)  // Flt64QuickDsl 提供的快捷构造
+```
+
+**冗余模式 C：LinearMonomial 显式构造 + `.asMutable() +=`**
+
+```kotlin
+// 冗余写法
+quantity[slot].asMutable() += LinearMonomial(unitUsage.toSolverValue(), compilation.operationTime[actionIndex, slotIndex])
+
+// 运算符写法（需确认 asMutable 返回类型是否支持 += Flt64 * Symbol 之类的运算符）
+```
+
+**评估结论**：
+
+| 模式 | 可替换 | 说明 |
+|------|--------|------|
+| 模式 A（Mutable + += LinearMonomial + verbose conversion） | ✅ 可替换 | 最常见的冗余模式，均可改为运算符表达式 |
+| 模式 B（`LinearPolynomial(listOf(LinearMonomial(one, x)), zero)`） | ✅ 可替换 | 改为 `LinearPolynomial(x)` 快捷构造 |
+| 模式 C（`.asMutable() += LinearMonomial(coef, sym)`） | ⚠️ 部分可替换 | 当系数为 `Flt64.one` 时可简化为 `sym.asLinearPoly()`；当系数为非常量时需评估是否可用 `coef * sym` 运算符 |
+| `LinearMonomial(coefficient * scale, it.symbol)` 内 map 变换 | ❌ 不替换 | 这类是数据变换而非建模表达，运算符 API 无法简化 |
+| framework/solver 中的 `converter.intoValue/fromValue` 转换 | ❌ 不替换 | 涉及泛型 V 到 Flt64 转换，运算符 API 仅支持 Flt64 |
+| core 模块内的符号函数实现（BigM, Max, Slack 等） | ❌ 不替换 | 这些是库内部实现，需要在泛型 V 上操作 |
+
+**受影响文件清单**（57 个文件，90 处冗余模式）：
+
+##### 模式 A：MutableLinearPolynomial + verbose conversion（21 处，全部可替换）
+
+| 文件 | 冗余处数 | 说明 |
+|------|---------|------|
+| `example/demo2/domain/airworthiness_security/model/MaxCLIM.kt:102` | 1 | `poly += LinearMonomial(slope, xSymbol)` → `slope * xSymbol` |
+| `example/demo2/service/limits/CLIMLimit.kt:34,52` | 2 | `upper/lower += LinearMonomial(±Flt64.one, ...)` → 运算符 |
+| `example/demo2/service/limits/CumulativeLoadWeightLimit.kt:51` | 1 | 同上 |
+| `example/demo2/service/limits/LinearDensityLimit.kt:46` | 1 | 同上 |
+| `example/demo2/service/limits/UnsymmetricalLinearDensityLimit.kt:60` | 1 | 同上 |
+| `example/demo2/service/limits/ZoneLoadWeightLimit.kt:56` | 1 | 同上 |
+| `example/demo2/service/limits/ItemReserveLimit.kt:40` | 1 | 同上 |
+| `example/demo2/service/limits/ELDAdjacentLimit.kt:58,71` | 2 | 经典示例：`stowage[i1,j1] + stowage[i2,j2]` |
+| `example/demo2/service/limits/BiologicalAdjacentLimit.kt:59,72` | 2 | 同上 |
+| `example/demo2/service/limits/EmptyHatedLimit.kt:42` | 1 | 同上 |
+| `example/demo2/service/limits/RecommendLoadWeightLimit.kt:39` | 1 | 同上 |
+| `example/demo2/service/limits/RecommendedWeightDeviationObjective.kt:32` | 1 | 同上 |
+| `example/demo2/service/limits/RecommendedWeightEqualizationLimit.kt:49,61` | 2 | 同上 |
+| `example/demo2/service/limits/LateralBalanceLimit.kt:35` | 1 | 同上 |
+| `example/demo2/service/limits/LongitudinalBalanceLimit.kt:38` | 1 | 同上 |
+| `example/demo2/service/limits/FleetBalanceLimit.kt:75` | 1 | 同上 |
+| `example/demo2/service/limits/FlightLinkLimit.kt:73` | 1 | 同上 |
+| `example/demo2/service/limits/PassengerCancelMinimization.kt:45` | 1 | 同上 |
+| `example/demo2/service/limits/PassengerClassChangeMinimization.kt:54` | 1 | 同上 |
+| `example/demo2/service/limits/PassengerFlightChangeMinimization.kt:52` | 1 | 同上 |
+| `example/heuristic_demo/Demo2.kt:56` | 1 | `obj += LinearMonomial(Flt64.one, x/y)` → `x + y` |
+| `framework/gantt-scheduling/.../FleetBalance.kt:152` | 1 | 同上 |
+| `framework/gantt-scheduling/.../FlightLink.kt:85` | 1 | 同上 |
+
+##### 模式 B：`LinearPolynomial(listOf(LinearMonomial(one, x)), zero)` 快捷构造可替换（待评估）
+
+此类分布在 `framework/gantt-scheduling/task_compilation/model/TaskTime.kt`、`framework/bpp3d/` 各 service/limits 文件等约 40+ 处。
+需逐个评估：系数为 `Flt64.one` 的可改为 `LinearPolynomial(x)`，系数为其他常量的需评估是否可用 `coef * symbol`。
+
+##### 不替换（库内部代码）
+
+- `ospf-kotlin-core/` 中 `symbol/function/` 下所有文件（BigM、Max、Slack 等）——泛型 V 运算，运算符 API 不适用
+- `ospf-kotlin-core/model/mechanism/` 中的 `converter.intoValue/fromValue` 转换——泛型 V 操作
+- `ospf-kotlin-math/` 中 `symbol/operation/` 下所有文件——运算符 API 自身的定义
+- `ospf-kotlin-framework/solver/BendersDecompositionSolver.kt`——泛型 V 转换
+
+**执行记录（2026-08-02）**：已完成计划边界内 example/framework 的 Flt64 建模代码替换，涵盖 Gantt scheduling、network scheduling、CSP1D 以及 framework demo/heuristic demo；将可由 DSL 表达的显式单项式、多项式累加和冗余单符号构造改为运算符写法，并同步整理所需 `symbol.monomial.*` 导入。保留泛型 FltX、数据转换映射、solver converter、库内部实现及测试中的显式构造。`mvn compile -T 0.75C` 增量编译通过，`git diff --check` 通过。
+
+**泛型快捷构造补充记录（2026-08-02）**：为 `LinearPolynomial<T>(symbol)` 增加 reified 泛型入口，覆盖 `FltX`、`Flt64`、`RtnX`、`Rtn64`、`UIntX`、`UInt64`、`IntX` 和 `Int64`；同时使上述数值类型的 companion 对象可作为 `Flt64ValueConverter`，因此 `QuickDsl(type)` 的泛型构造也可用。顶层泛型入口遵循常量解析器的安全策略，需要启用 companion reflection fallback；未启用时可显式传入对应 converter。`mvn clean compile test-compile -T 0.75C` 与 `mvn test -T 0.75C` 全量通过。

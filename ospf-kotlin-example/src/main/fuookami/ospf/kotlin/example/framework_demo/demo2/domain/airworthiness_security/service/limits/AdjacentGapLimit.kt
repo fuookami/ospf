@@ -39,9 +39,9 @@ class AdjacentGapLimit(
                 relation = (loadP - loadP1) leq gapLimit,
                 name = "${name}_pos_${p}"
             )) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                is Ok -> {}
+                is Failed -> return Failed(result.error)
+                is Fatal -> return Fatal(result.errors)
             }
 
             // load[p+1] - load[p] <= maxAdjacentLoadGap
@@ -49,9 +49,9 @@ class AdjacentGapLimit(
                 relation = (loadP1 - loadP) leq gapLimit,
                 name = "${name}_neg_${p}"
             )) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                is Ok -> {}
+                is Failed -> return Failed(result.error)
+                is Fatal -> return Fatal(result.errors)
             }
         }
 

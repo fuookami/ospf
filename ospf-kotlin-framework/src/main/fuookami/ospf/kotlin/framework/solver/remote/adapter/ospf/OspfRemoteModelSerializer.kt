@@ -3,8 +3,11 @@
 */
 package fuookami.ospf.kotlin.framework.solver.remote.adapter.ospf
 
+import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.intermediate.*
+import fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintProgrammingModelSnapshot
+import fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintProgrammingSnapshotCodec
 import fuookami.ospf.kotlin.framework.solver.remote.domain.*
 
 /**
@@ -33,7 +36,13 @@ object OspfRemoteModelSerializer {
                     },
                     sign = model.constraints.signs[rowIndex].toSerializedSign(),
                     rhs = model.constraints.rhs[rowIndex],
-                    name = model.constraints.names[rowIndex].ifEmpty { "cons$rowIndex" }
+                    name = model.constraints.names[rowIndex].ifEmpty { "cons$rowIndex" },
+                    identityId = model.constraints.ids.getOrNull(rowIndex)?.value,
+                    identityScope = model.constraints.identityScopeAt(rowIndex).name.uppercase(),
+                    identityOriginKind = model.constraints.identityOriginAt(rowIndex)?.kind,
+                    identityOriginKey = model.constraints.identityOriginAt(rowIndex)?.key,
+                    identityNamespace = model.constraints.identityNamespace,
+                    identitySchemaVersion = model.constraints.identitySchemaVersion
                 )
             },
             objective = SerializedObjective(
@@ -44,8 +53,16 @@ object OspfRemoteModelSerializer {
                         coefficient = cell.coefficient
                     )
                 },
-                constant = model.objective.constant
-            )
+                constant = model.objective.constant,
+                identityId = model.objective.id?.value,
+                identityScope = model.objective.identityScope.name.uppercase(),
+                identityOriginKind = model.objective.identityOrigin?.kind,
+                identityOriginKey = model.objective.identityOrigin?.key,
+                identityNamespace = model.objective.identityNamespace,
+                identitySchemaVersion = model.objective.identitySchemaVersion
+            ),
+            identityNamespace = model.identityNamespace,
+            identitySchemaVersion = model.identitySchemaVersion
         )
     }
 
@@ -70,7 +87,13 @@ object OspfRemoteModelSerializer {
                     },
                     sign = model.constraints.signs[rowIndex].toSerializedSign(),
                     rhs = model.constraints.rhs[rowIndex],
-                    name = model.constraints.names[rowIndex].ifEmpty { "cons$rowIndex" }
+                    name = model.constraints.names[rowIndex].ifEmpty { "cons$rowIndex" },
+                    identityId = model.constraints.ids.getOrNull(rowIndex)?.value,
+                    identityScope = model.constraints.identityScopeAt(rowIndex).name.uppercase(),
+                    identityOriginKind = model.constraints.identityOriginAt(rowIndex)?.kind,
+                    identityOriginKey = model.constraints.identityOriginAt(rowIndex)?.key,
+                    identityNamespace = model.constraints.identityNamespace,
+                    identitySchemaVersion = model.constraints.identitySchemaVersion
                 )
             },
             quadraticConstraints = model.constraints.indices.map { rowIndex ->
@@ -94,7 +117,13 @@ object OspfRemoteModelSerializer {
                     },
                     sign = model.constraints.signs[rowIndex].toSerializedSign(),
                     rhs = model.constraints.rhs[rowIndex],
-                    name = model.constraints.names[rowIndex].ifEmpty { "cons$rowIndex" }
+                    name = model.constraints.names[rowIndex].ifEmpty { "cons$rowIndex" },
+                    identityId = model.constraints.ids.getOrNull(rowIndex)?.value,
+                    identityScope = model.constraints.identityScopeAt(rowIndex).name.uppercase(),
+                    identityOriginKind = model.constraints.identityOriginAt(rowIndex)?.kind,
+                    identityOriginKey = model.constraints.identityOriginAt(rowIndex)?.key,
+                    identityNamespace = model.constraints.identityNamespace,
+                    identitySchemaVersion = model.constraints.identitySchemaVersion
                 )
             },
             objective = SerializedQuadraticObjective(
@@ -114,8 +143,16 @@ object OspfRemoteModelSerializer {
                         )
                     }
                 },
-                constant = model.objective.constant
-            )
+                constant = model.objective.constant,
+                identityId = model.objective.id?.value,
+                identityScope = model.objective.identityScope.name.uppercase(),
+                identityOriginKind = model.objective.identityOrigin?.kind,
+                identityOriginKey = model.objective.identityOrigin?.key,
+                identityNamespace = model.objective.identityNamespace,
+                identitySchemaVersion = model.objective.identitySchemaVersion
+            ),
+            identityNamespace = model.identityNamespace,
+            identitySchemaVersion = model.identitySchemaVersion
         )
     }
 
@@ -138,6 +175,22 @@ object OspfRemoteModelSerializer {
     fun modelData(model: QuadraticTetradModelView): ModelData {
         return ModelData.quadratic(serialize(model))
     }
+
+    /**
+     * 序列化 CP snapshot 为原始模型数据。 / Serialize a CP snapshot as raw model data.
+     *
+     * @param snapshot 不含 native 句柄的 CP snapshot / CP snapshot without native handles
+     * @return 远程模型数据或结构化错误 / Remote model data or a structured error
+    */
+    fun modelData(snapshot: ConstraintProgrammingModelSnapshot): Ret<ModelData> {
+        return ConstraintProgrammingSnapshotCodec.encode(snapshot)
+            .map { encoded ->
+                ModelData.raw(
+                    bytes = encoded.encodeToByteArray(),
+                    format = "ospf-cp-snapshot-json"
+                )
+            }
+    }
 }
 
 /**
@@ -155,7 +208,13 @@ fun Variable.toSerializedVariable(): SerializedVariable {
             type.isBinaryType -> SerializedVariableType.BINARY
             type.isIntegerType -> SerializedVariableType.INTEGER
             else -> SerializedVariableType.CONTINUOUS
-        }
+        },
+        identityId = id?.value,
+        identityScope = identityScope.name.uppercase(),
+        identityOriginKind = identityOrigin?.kind,
+        identityOriginKey = identityOrigin?.key,
+        identityNamespace = identityNamespace,
+        identitySchemaVersion = identitySchemaVersion
     )
 }
 

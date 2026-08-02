@@ -35,13 +35,13 @@ class ItemAdjustmentLimit(
             relation = sum(stowage.u[i, _a]) eq Flt64.zero,
             name = "${name}_${item}"
                     )) {
-                        is Ok<Success, ErrorCode, Error<ErrorCode>> -> {}
+                        is Ok -> {}
 
-                        is Failed<Success, ErrorCode, Error<ErrorCode>> -> {
+                        is Failed -> {
                     return result
                 }
 
-                is Fatal<Success, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return result
                 }
                     }

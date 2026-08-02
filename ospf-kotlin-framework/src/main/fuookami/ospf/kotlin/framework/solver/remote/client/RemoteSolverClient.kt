@@ -4,11 +4,11 @@
 package fuookami.ospf.kotlin.framework.solver.remote.client
 
 import kotlin.time.Duration
-import fuookami.ospf.kotlin.framework.solver.remote.domain.*
-import fuookami.ospf.kotlin.framework.solver.remote.port.SolverExecutionPort
-import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.math.algebra.number.*
+import fuookami.ospf.kotlin.framework.solver.remote.domain.*
+import fuookami.ospf.kotlin.framework.solver.remote.port.SolverExecutionPort
 
 /**
  * 远程求解器客户端。 / Remote solver client.
@@ -100,12 +100,28 @@ class RemoteSolverClient(
                 }
                 finalResult = fetchedResult ?: SolveResult(
                     feasible = sliceResult.feasible,
-                    optimal = (sliceResult.gap ?: Flt64.one).toDouble() <= 0.0,
+                    optimal = sliceResult.solutionPresence == RemoteSolutionPresence.OPTIMAL &&
+                        sliceResult.proofStatus != RemoteProofStatus.NONE,
                     objectiveValue = sliceResult.objectiveValue,
+                    objectiveValueInt64 = sliceResult.objectiveValueInt64,
                     gap = sliceResult.gap,
                     elapsed = totalElapsed,
                     checkpointRef = latestCheckpoint,
-                    message = sliceResult.message
+                    message = sliceResult.message,
+                    schemaVersion = sliceResult.schemaVersion,
+                    problemStatus = sliceResult.problemStatus,
+                    terminationReason = sliceResult.terminationReason,
+                    solutionPresence = sliceResult.solutionPresence,
+                    proofStatus = sliceResult.proofStatus,
+                    resultRef = sliceResult.resultRef,
+                    provenance = sliceResult.provenance,
+                    fingerprints = sliceResult.fingerprints,
+                    fingerprintSchemas = sliceResult.fingerprintSchemas,
+                    statistics = sliceResult.statistics,
+                    diagnostics = sliceResult.diagnostics,
+                    runId = sliceResult.runId,
+                    attemptId = sliceResult.attemptId,
+                    artifactDigest = sliceResult.artifactDigest
                 )
                 break
             }

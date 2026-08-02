@@ -36,7 +36,7 @@ Sealed interface hierarchy for solver outputs:
 - `mipGap` — MIP gap
 - `iterations` / `nodeCount` — Solver statistics
 
-**`LinearInfeasibleSolverOutput`** / **`QuadraticInfeasibleSolverOutput`** — Infeasible outputs with IIS information.
+**`LinearInfeasibleSolverOutput`** / **`QuadraticInfeasibleSolverOutput`** — Infeasible outputs with IIS information. When `iisAvailable=false`, IIS analysis failed: `iis` is an original-model snapshot, the failure is recorded in `diagnostics.errors`, and `withIIS()` returns no IIS.
 
 ### SolverStatus (`SolverStatus.kt`)
 

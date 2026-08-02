@@ -3,6 +3,8 @@
 /** 任务延迟最晚结束时间最小化 / Task delay last end time minimization */
 package fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task_compilation.service.limits
 
+import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.mechanism.AbstractLinearMetaModel
 import fuookami.ospf.kotlin.core.variable.UContinuous
@@ -79,13 +81,13 @@ class TaskDelayLastEndTimeMinimization<
 
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {
         if (taskTime.delayLastEndTimeEnabled) {
-            val cost = MutableLinearPolynomial<Flt64>(constant = Flt64.zero)
+            var cost = LinearPolynomial()
             for (task in tasks) {
                 val delayTime = taskTime.delayLastEndTime[task]
                 val thisThreshold = threshold(task)?.let { timeBoundary.valueOf(it) } ?: Flt64.zero
                 val thisCoefficient = coefficient(task) ?: Flt64.infinity
                 if (thisThreshold eq Flt64.zero) {
-                    cost += thisCoefficient * delayTime.toLinearPolynomial()
+                    cost += thisCoefficient * delayTime
                 } else {
                     val slack = thresholdSlack(
                         x = delayTime,
@@ -113,7 +115,7 @@ class TaskDelayLastEndTimeMinimization<
             }
 
             when (val result = model.minimize(
-                polynomial = cost.toLinearPolynomial(),
+                polynomial = cost,
                 name = "task delay last end time"
             )) {
                 is Ok -> {}

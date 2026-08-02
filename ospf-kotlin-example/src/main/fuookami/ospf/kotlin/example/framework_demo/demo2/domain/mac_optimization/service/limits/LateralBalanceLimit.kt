@@ -26,22 +26,17 @@ class LateralBalanceLimit(
     override val name: String = "lateral_balance_limit"
 ) : Pipeline<AbstractLinearMetaModel<Flt64>> {
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {
-        val poly = MutableLinearPolynomial()
-        poly += LinearMonomial(
-            coefficient(),
-            lateralBalance.slack.value
-        )
         when (val result = model.minimize(
-            LinearPolynomial(poly.monomials, poly.constant),
+            LinearPolynomial(coefficient() * lateralBalance.slack.value),
             name = "lateral balance"
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }

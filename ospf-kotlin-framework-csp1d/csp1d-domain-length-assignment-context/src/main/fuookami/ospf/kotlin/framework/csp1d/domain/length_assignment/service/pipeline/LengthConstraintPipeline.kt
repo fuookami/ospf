@@ -4,7 +4,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.symbol.inequality.*
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 import fuookami.ospf.kotlin.core.model.mechanism.LinearMetaModel
 import fuookami.ospf.kotlin.framework.csp1d.domain.length_assignment.LengthAggregation
@@ -52,7 +52,7 @@ class LengthConstraintPipeline<V : RealNumber<V>>(
             if (lowerBound != null && assignedVar != null) {
                 model.addConstraint(
                     relation = LinearInequality(
-                        lhs = LinearPolynomial(listOf(LinearMonomial(Flt64.one, assignedVar)), Flt64.zero),
+                        lhs = LinearPolynomial(assignedVar),
                         rhs = LinearPolynomial(emptyList(), lowerBound.toFlt64()),
                         comparison = Comparison.GE
                     ),
@@ -65,7 +65,7 @@ class LengthConstraintPipeline<V : RealNumber<V>>(
             if (upperBound != null && assignedVar != null) {
                 model.addConstraint(
                     relation = LinearInequality(
-                        lhs = LinearPolynomial(listOf(LinearMonomial(Flt64.one, assignedVar)), Flt64.zero),
+                        lhs = LinearPolynomial(assignedVar),
                         rhs = LinearPolynomial(emptyList(), upperBound.toFlt64()),
                         comparison = Comparison.LE
                     ),
@@ -78,7 +78,7 @@ class LengthConstraintPipeline<V : RealNumber<V>>(
             if (overLengthUpperBound != null && overVar != null) {
                 model.addConstraint(
                     relation = LinearInequality(
-                        lhs = LinearPolynomial(listOf(LinearMonomial(Flt64.one, overVar)), Flt64.zero),
+                        lhs = LinearPolynomial(overVar),
                         rhs = LinearPolynomial(emptyList(), overLengthUpperBound.toFlt64()),
                         comparison = Comparison.LE
                     ),
@@ -91,13 +91,7 @@ class LengthConstraintPipeline<V : RealNumber<V>>(
             if (maxOverProduceLength != null && assignedVar != null && overVar != null) {
                 model.addConstraint(
                     relation = LinearInequality(
-                        lhs = LinearPolynomial(
-                            monomials = listOf(
-                                LinearMonomial(Flt64.one, assignedVar),
-                                LinearMonomial(Flt64(-1.0), overVar)
-                            ),
-                            constant = Flt64.zero
-                        ),
+                        lhs = assignedVar - overVar,
                         rhs = LinearPolynomial(emptyList(), maxOverProduceLength.value.toFlt64()),
                         comparison = Comparison.LE
                     ),

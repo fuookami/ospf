@@ -14,6 +14,7 @@ import fuookami.ospf.kotlin.core.solver.config.GurobiSolverConfig
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
 import fuookami.ospf.kotlin.core.solver.iis.IISConfig
 import fuookami.ospf.kotlin.core.solver.iis.InfeasibilityAnalyzer
+import fuookami.ospf.kotlin.core.solver.nativeElementName
 import fuookami.ospf.kotlin.core.solver.output.*
 import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.value.toSolverDouble
@@ -56,6 +57,11 @@ class GurobiQuadraticSolver(
         model: QuadraticTetradModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
     ): Ret<FeasibleSolverOutput<Flt64>> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         return GurobiQuadraticSolverImpl(
             config = config,
             callBack = callBack,
@@ -189,12 +195,15 @@ private class GurobiQuadraticSolverImpl(
             for (col in model.variables.indices) {
                 variableTypes[col] = GurobiVariable(model.variables[col].type).toGurobiVar()
             }
+            val variableNames = Array(variableAmount) { col ->
+                nativeElementName(model.variables[col].id?.value, variableDumpingData.names[col], "variable")
+            }
             grbVars = grbModel.addVars(
                 variableDumpingData.lowerBounds,
                 variableDumpingData.upperBounds,
                 null,
                 variableTypes,
-                variableDumpingData.names,
+                variableNames,
                 0,
                 variableAmount
             ).toList()
@@ -239,7 +248,11 @@ private class GurobiQuadraticSolverImpl(
                                 it.second,
                                 GurobiConstraintSign(model.constraints.signs[it.first]).toGurobiConstraintSign(),
                                 model.constraints.rhs[it.first].toSolverDouble("quadratic.constraints.rhs[${it.first}]"),
-                                model.constraints.names[it.first]
+                                nativeElementName(
+                                    model.constraints.ids.getOrNull(it.first)?.value,
+                                    model.constraints.names[it.first],
+                                    "constraint"
+                                )
                             )
                         }
                         cleanupOnSolverMemoryPressure()
@@ -266,7 +279,11 @@ private class GurobiQuadraticSolverImpl(
                             lhs,
                             GurobiConstraintSign(model.constraints.signs[i]).toGurobiConstraintSign(),
                             model.constraints.rhs[i].toSolverDouble("quadratic.constraints.rhs[$i]"),
-                            model.constraints.names[i]
+                            nativeElementName(
+                                model.constraints.ids.getOrNull(i)?.value,
+                                model.constraints.names[i],
+                                "constraint"
+                            )
                         )
                     }
                 }

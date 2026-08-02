@@ -41,32 +41,27 @@ class UnsymmetricalLinearDensityLimit(
 
                 assert(line.positions.size == 2)
                 for ((l, limit) in zone.limits.withIndex()) {
-                    val poly = MutableLinearPolynomial()
-                    if (limit.leftCoefficient != null) {
-                        val j = positions.indexOf(line.positions.find { it.coordinate.onLeft })
-                        poly += LinearMonomial(
-                            limit.leftCoefficient,
-                            linearDensity.linearDensity[j].value
-                        )
-                    }
-                    if (limit.rightCoefficient != null) {
-                        val j = positions.indexOf(line.positions.find { it.coordinate.onRight })
-                        poly += LinearMonomial(
-                            limit.rightCoefficient,
-                            linearDensity.linearDensity[j].value
-                        )
-                    }
+                    val poly = sum(listOfNotNull(
+                        limit.leftCoefficient?.let { coefficient ->
+                            val j = positions.indexOf(line.positions.find { it.coordinate.onLeft })
+                            coefficient * linearDensity.linearDensity[j].value
+                        },
+                        limit.rightCoefficient?.let { coefficient ->
+                            val j = positions.indexOf(line.positions.find { it.coordinate.onRight })
+                            coefficient * linearDensity.linearDensity[j].value
+                        }
+                    ))
                     when (val result = model.addConstraint(
-                        relation = LinearPolynomial(poly.monomials, poly.constant) leq limit.maxSum.to(aircraftModel.linearDensityUnit)!!.value,
+                        relation = poly leq limit.maxSum.to(aircraftModel.linearDensityUnit)!!.value,
                         name = "${name}_${line.zone.name}_${line.arm.value}_${l}"
                     )) {
-                        is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                        is Ok -> {}
 
-                        is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                        is Failed -> {
                             return Failed(result.error)
                         }
 
-                        is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                        is Fatal -> {
                             return Fatal(result.errors)
                         }
                     }

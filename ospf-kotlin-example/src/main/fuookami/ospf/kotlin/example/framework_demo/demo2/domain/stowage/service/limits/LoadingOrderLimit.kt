@@ -48,13 +48,13 @@ class LoadingOrderLimit(
                 load.actualLoaded[j1] geq load.actualLoaded[j2],
                 name = "${name}_${position1}_${position2}"
             )) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }

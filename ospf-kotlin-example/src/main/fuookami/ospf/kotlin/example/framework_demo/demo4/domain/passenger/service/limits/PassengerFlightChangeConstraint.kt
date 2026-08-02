@@ -5,7 +5,6 @@ package fuookami.ospf.kotlin.example.framework_demo.demo4.domain.passenger.servi
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.symbol.inequality.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
 import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.basic.*
@@ -55,8 +54,8 @@ class PassengerFlightChangeConstraint(
                 for (toFlight in change.toFlights[passenger.flight] ?: emptyList()) {
                     val earliestStartTime = LinearPolynomial(
                         listOf(
-                            LinearMonomial(Flt64.one, time.estimateEndTime[passenger.prev.flight]),
-                            LinearMonomial(Flt64(-1.0), time.estimateStartTime[passenger.flight])
+                            Flt64.one * time.estimateEndTime[passenger.prev.flight],
+                            Flt64(-1.0) * time.estimateStartTime[passenger.flight]
                         ),
                         solverTimeWindow.valueOf(passenger.prev.flight.arr.passengerTransferTime)
                     )
@@ -90,7 +89,7 @@ class PassengerFlightChangeConstraint(
 
                     for (cls in PassengerClass.entries) {
                         val rhs = LinearPolynomial(
-                            listOf(LinearMonomial(passenger.amount.toFlt64(), estCondition.resultVar)),
+                            listOf(passenger.amount.toFlt64() * estCondition.resultVar),
                             Flt64.zero
                         )
                         when (val result = model.addConstraint(
@@ -116,8 +115,8 @@ class PassengerFlightChangeConstraint(
                 for (toFlight in change.toFlights[passenger.flight] ?: emptyList()) {
                     val lastestEndTime = LinearPolynomial(
                         listOf(
-                            LinearMonomial(Flt64.one, time.estimateEndTime[passenger.flight]),
-                            LinearMonomial(Flt64(-1.0), time.estimateStartTime[next.flight])
+                            Flt64.one * time.estimateEndTime[passenger.flight],
+                            Flt64(-1.0) * time.estimateStartTime[next.flight]
                         ),
                         solverTimeWindow.valueOf(next.flight.dep.passengerTransferTime)
                     )
@@ -151,7 +150,7 @@ class PassengerFlightChangeConstraint(
 
                     for (cls in PassengerClass.entries) {
                         val rhs = LinearPolynomial(
-                            listOf(LinearMonomial(passenger.amount.toFlt64(), eetCondition.resultVar)),
+                            listOf(passenger.amount.toFlt64() * eetCondition.resultVar),
                             Flt64.zero
                         )
                         when (val result = model.addConstraint(

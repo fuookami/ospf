@@ -55,7 +55,7 @@ class FlightLink(
                     Shape1(links.size)
                 ) { k, _ ->
                     LinearExpressionSymbol(
-                        MutableLinearPolynomial(),
+                        Flt64,
                         name = "link_$k"
                     )
                 }
@@ -77,12 +77,12 @@ class FlightLink(
                     "link_slack",
                     Shape1(links.size)
                 ) { k, _ ->
-                    val poly = MutableLinearPolynomial()
-                    poly += LinearMonomial(Flt64.one, link[k])
-                    poly += LinearMonomial(Flt64(0.5), compilation.y[links[k].prevTask])
-                    poly += LinearMonomial(Flt64(0.5), compilation.y[links[k].succTask])
+                    var poly = LinearPolynomial()
+                    poly += link[k]
+                    poly += Flt64(0.5) * compilation.y[links[k].prevTask]
+                    poly += Flt64(0.5) * compilation.y[links[k].succTask]
                     exampleThresholdSlack(
-                        x = LinearPolynomial(poly.monomials, poly.constant),
+                        x = poly,
                         threshold = Flt64.one,
                         withNegative = true,
                         withPositive = false,
@@ -125,7 +125,7 @@ class FlightLink(
                 val thisLink = this.link[link]
                 thisLink.flush()
                 for (bunch in thisBunches) {
-                    thisLink.asMutable() += LinearMonomial(Flt64.one, xi[bunch])
+                    thisLink.asMutable() += Flt64.one * xi[bunch]
                 }
             }
         }

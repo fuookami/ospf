@@ -41,13 +41,13 @@ class HorizontalStabilizerLimit(
                         "${name}_${key}_ub"
                     }
                 )) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                    is Ok -> {}
 
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Failed -> {
                         return Failed(result.error)
                     }
 
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Fatal -> {
                         return Fatal(result.errors)
                     }
                 }
@@ -60,13 +60,13 @@ class HorizontalStabilizerLimit(
                         horizontalStabilizer.trim geq warnMinTrim,
                         name = "${name}_${key}_warn_lb"
                     )) {
-                        is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                        is Ok -> {}
 
-                        is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                        is Failed -> {
                             return Failed(result.error)
                         }
 
-                        is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                        is Fatal -> {
                             return Fatal(result.errors)
                         }
                     }
@@ -79,13 +79,13 @@ class HorizontalStabilizerLimit(
                     horizontalStabilizer.trim geq minTrim,
                     name = "${name}_${key}_lb"
                 )) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                    is Ok -> {}
 
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Failed -> {
                         return Failed(result.error)
                     }
 
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Fatal -> {
                         return Fatal(result.errors)
                     }
                 }

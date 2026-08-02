@@ -36,7 +36,7 @@ output/
 - `mipGap` — MIP 间隙
 - `iterations` / `nodeCount` — 求解器统计
 
-**`LinearInfeasibleSolverOutput`** / **`QuadraticInfeasibleSolverOutput`** — 不可行输出，含 IIS 信息。
+**`LinearInfeasibleSolverOutput`** / **`QuadraticInfeasibleSolverOutput`** — 不可行输出，含 IIS 信息。`iisAvailable=false` 表示 IIS 编排失败，`iis` 仅为原模型快照，具体失败原因保存在 `diagnostics.errors` 中；`withIIS()` 此时返回空 IIS。
 
 ### SolverStatus (`SolverStatus.kt`)
 

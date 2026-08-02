@@ -26,25 +26,21 @@ class LongitudinalBalanceLimit(
     override val name: String = "longitudinal_balance_limit"
 ) : Pipeline<AbstractLinearMetaModel<Flt64>> {
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {
-        val poly = MutableLinearPolynomial()
-        for ((range, slack) in longitudinalBalance.slack) {
-            poly += LinearMonomial(
-                coefficient(range),
-                slack.value
-            )
-        }
+        val poly = sum(longitudinalBalance.slack.map { (range, slack) ->
+            coefficient(range) * slack.value
+        })
 
         when (val result = model.minimize(
-            LinearPolynomial(poly.monomials, poly.constant),
+            poly,
             name = "longitudinal balance"
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }

@@ -10,7 +10,6 @@ import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.model.*
 import fuookami.ospf.kotlin.example.framework_demo.demo2.domain.stowage.model.Position
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
 import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.multiarray.*
@@ -141,7 +140,7 @@ class LinearDensity(
                 val coefficient = (Flt64.one / position.shape.length.to(aircraftModel.lengthUnit)!!.value)!!
                 Quantity(
                     LinearExpressionSymbol(
-                        LinearMonomial(coefficient, load.estimateLoadWeight[j].value),
+                        coefficient * load.estimateLoadWeight[j].value,
                         name = "linear_density_${position}",
                     ),
                     aircraftModel.linearDensityUnit
@@ -149,13 +148,13 @@ class LinearDensity(
             }
         }
         when (val result = model.add(linearDensity)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }

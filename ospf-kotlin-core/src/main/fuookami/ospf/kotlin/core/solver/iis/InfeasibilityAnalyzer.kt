@@ -57,7 +57,12 @@ interface InfeasibilityAnalyzer<M> {
     suspend fun analyze(model: M): Ret<InfeasibilityEvidence>
 }
 
-/** Materialized diagnostic result retained by compatibility facades. / 兼容 facade 保留的物化诊断结果。 */
+/**
+ * Materialized diagnostic result retained by compatibility facades. / 兼容 facade 保留的物化诊断结果。
+ *
+ * @property evidence 结构化不可行证据 / Structured infeasibility evidence
+ * @property artifact 兼容 artifact / Compatibility artifact
+ */
 data class MaterializedInfeasibilityEvidence<A>(
     val evidence: InfeasibilityEvidence,
     val artifact: A?
@@ -65,11 +70,21 @@ data class MaterializedInfeasibilityEvidence<A>(
 
 /** Analyzer that can also return a legacy model artifact. / 同时能返回旧模型 artifact 的分析器。 */
 interface MaterializingInfeasibilityAnalyzer<M, A> : InfeasibilityAnalyzer<M> {
+    /**
+     * 分析模型并保留兼容 artifact。 / Analyze a model and retain a compatibility artifact.
+     *
+     * @param model 待分析模型 / Model to analyze
+     * @return 物化证据或错误 / Materialized evidence or an error
+     */
     suspend fun analyzeMaterialized(model: M): Ret<MaterializedInfeasibilityEvidence<A>>
 }
 
 /**
  * 不可行分析器的 capability 声明。 / Capability declaration for an infeasibility analyzer.
+ *
+ * @property modelTypes 支持的模型类型 / Supported model types
+ * @property exact 是否提供精确证据 / Whether exact evidence is provided
+ * @property source 证据来源 / Evidence source
  */
 data class InfeasibilityAnalyzerCapabilities(
     val modelTypes: Set<SolverModelType> = emptySet(),
@@ -79,6 +94,7 @@ data class InfeasibilityAnalyzerCapabilities(
 
 /** 能够参与策略选择的分析器。 / Analyzer participating in capability-based selection. */
 interface CapabilityAwareInfeasibilityAnalyzer<M> : InfeasibilityAnalyzer<M> {
+    /** Analyzer capabilities used for strategy selection. / 用于策略选择的分析器能力。 */
     val capabilities: InfeasibilityAnalyzerCapabilities
 }
 
@@ -96,6 +112,9 @@ interface FarkasInfeasibilityAnalyzer<M> : CapabilityAwareInfeasibilityAnalyzer<
 
 /**
  * 将 backend 原生诊断函数接入统一 SPI。 / Adapt a backend-native diagnostic function to the common SPI.
+ *
+ * @property capabilities 分析器能力 / Analyzer capabilities
+ * @property delegate 原生分析函数 / Native analysis function
  */
 class DelegatingInfeasibilityAnalyzer<M>(
     override val capabilities: InfeasibilityAnalyzerCapabilities,
@@ -109,7 +128,12 @@ class DelegatingInfeasibilityAnalyzer<M>(
     }
 }
 
-/** Native IIS delegate adapter. / 原生 IIS 委托适配器。 */
+/**
+ * Native IIS delegate adapter. / 原生 IIS 委托适配器。
+ *
+ * @param modelTypes 支持的模型类型 / Supported model types
+ * @property delegate 原生 IIS 分析函数 / Native IIS analysis function
+ */
 class NativeIISAnalyzerAdapter<M>(
     modelTypes: Set<SolverModelType> = emptySet(),
     private val delegate: suspend (M) -> Ret<InfeasibilityEvidence>
@@ -125,7 +149,12 @@ class NativeIISAnalyzerAdapter<M>(
     }
 }
 
-/** Farkas delegate adapter. / Farkas 委托适配器。 */
+/**
+ * Farkas delegate adapter. / Farkas 委托适配器。
+ *
+ * @param modelTypes 支持的模型类型 / Supported model types
+ * @property delegate Farkas 分析函数 / Farkas analysis function
+ */
 class FarkasAnalyzerAdapter<M>(
     modelTypes: Set<SolverModelType> = emptySet(),
     private val delegate: suspend (M) -> Ret<InfeasibilityEvidence>
@@ -143,6 +172,8 @@ class FarkasAnalyzerAdapter<M>(
 
 /**
  * 无可用精确/降级策略时返回结构化 unavailable 证据。 / / Return structured unavailable evidence when no exact or fallback strategy is available.
+ *
+ * @property issue unavailable 原因 / Unavailable reason
  */
 class UnavailableInfeasibilityAnalyzer<M>(
     private val issue: SolveIssue = SolveIssue(
@@ -177,12 +208,19 @@ enum class InfeasibilityDiagnosticStrategy {
 
 /**
  * 按 solver capability 选择 native/Farkas/conflict/legacy 的后端无关编排器。 / / Backend-neutral orchestrator selecting native, Farkas, conflict, and legacy analyzers.
+ *
+ * @property analyzers 候选分析器 / Candidate analyzers
+ * @property solverCapabilities 求解器能力 / Solver capabilities
  */
 class InfeasibilityDiagnosticOrchestrator<M>(
     private val analyzers: List<InfeasibilityAnalyzer<M>>,
     private val solverCapabilities: SolverCapabilities? = null
 ) {
-    /** 按策略顺序返回可用分析器。 / Return analyzers available in strategy order. */
+    /**
+     * 按策略顺序返回可用分析器。 / Return analyzers available in strategy order.
+     *
+     * @return 按优先级排序的分析器 / Analyzers ordered by priority
+     */
     fun availableAnalyzers(): List<InfeasibilityAnalyzer<M>> {
         val preferred = listOf(
             InfeasibilityEvidenceSource.NativeIIS,
@@ -199,7 +237,12 @@ class InfeasibilityDiagnosticOrchestrator<M>(
             .sortedBy { analyzer -> preferred.indexOf(analyzer.source).takeIf { it >= 0 } ?: Int.MAX_VALUE }
     }
 
-    /** 执行首个成功的诊断策略。 / Execute the first successful diagnostic strategy. */
+    /**
+     * 执行首个成功的诊断策略。 / Execute the first successful diagnostic strategy.
+     *
+     * @param model 待分析模型 / Model to analyze
+     * @return 结构化证据或错误 / Structured evidence or an error
+     */
     suspend fun analyze(model: M): Ret<InfeasibilityEvidence> {
         val available = availableAnalyzers()
         return if (available.isEmpty()) {
@@ -211,6 +254,9 @@ class InfeasibilityDiagnosticOrchestrator<M>(
 
     /**
      * / 执行选中的分析器，并保留可选的兼容 artifact。 / Execute the selected analyzer while preserving an optional compatibility artifact.
+     *
+     * @param model 待分析模型 / Model to analyze
+     * @return 物化证据或错误 / Materialized evidence or an error
      */
     suspend fun <A> analyzeMaterialized(model: M): Ret<MaterializedInfeasibilityEvidence<A>> {
         val available = availableAnalyzers()
@@ -239,7 +285,11 @@ class InfeasibilityDiagnosticOrchestrator<M>(
     }
 
     /**
-     * 将诊断结果附加到已有报告；失败只进入 diagnostics，不改变原求解结论。 / / Attach diagnostic results without changing the original solve conclusion on failure.
+     * 将诊断结果附加到已有报告；失败只进入 diagnostics，不改变原求解结论。 / Attach diagnostic results without changing the original solve conclusion on failure.
+     *
+     * @param report Existing solve report. / 已有求解报告。
+     * @param model Model to analyze. / 待分析模型。
+     * @return Report with diagnostic evidence or mapped errors. / 附加诊断证据或错误映射后的报告。
      */
     suspend fun <V> analyzeInto(
         report: SolveReport<V>,
@@ -496,6 +546,9 @@ private fun sameQuadraticConstraint(
 
 /**
  * / 基于求解器已验证 conflict 输出的 CP 不可行分析器。 / CP conflict analyzer backed by a solver's verified conflict output.
+ *
+ * @property solver CP 求解器 / CP solver
+ * @property options CP 求解选项 / CP solve options
  */
 class ConstraintProgrammingConflictAnalyzer(
     private val solver: ConstraintProgrammingSolver,
@@ -536,6 +589,9 @@ class ConstraintProgrammingConflictAnalyzer(
 
 /**
  * / 保留旧弹性/删除过滤算法并明确标记为启发式证据的适配器。 / Legacy elastic/deletion IIS adapter with an explicit heuristic evidence grade.
+ *
+ * @property solver 线性求解器 / Linear solver
+ * @property config IIS 配置 / IIS configuration
  */
 class LegacyElasticInfeasibilityAnalyzer(
     private val solver: AbstractLinearSolver,
@@ -615,7 +671,12 @@ class LegacyElasticInfeasibilityAnalyzer(
     }
 }
 
-/** Legacy quadratic IIS adapter with an explicit heuristic evidence grade. / 带明确启发式等级的旧二次 IIS 适配器。 */
+/**
+ * Legacy quadratic IIS adapter with an explicit heuristic evidence grade. / 带明确启发式等级的旧二次 IIS 适配器。
+ *
+ * @property solver 二次求解器 / Quadratic solver
+ * @property config IIS 配置 / IIS configuration
+ */
 class LegacyElasticQuadraticInfeasibilityAnalyzer(
     private val solver: AbstractQuadraticSolver,
     private val config: IISConfig = IISConfig()
@@ -683,6 +744,8 @@ class LegacyElasticQuadraticInfeasibilityAnalyzer(
 
 /**
  * 按顺序尝试的不可行分析器降级链。 / Ordered analyzer fallback chain.
+ *
+ * @property analyzers 按顺序排列的分析器 / Ordered analyzers
  */
 class InfeasibilityAnalyzerChain<M>(
     private val analyzers: List<InfeasibilityAnalyzer<M>>

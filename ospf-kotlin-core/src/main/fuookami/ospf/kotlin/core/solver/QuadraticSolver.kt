@@ -55,6 +55,11 @@ interface AbstractQuadraticSolver {
         model: QuadraticTetradModelView,
         progressContext: SolverProgressContext? = null
     ): Ret<SolveReport<Flt64>> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         progressContext?.report(
             SolverProgressSnapshot(
                 stage = SolverStages.MILP,
@@ -326,7 +331,11 @@ interface AbstractQuadraticSolver {
             is Ok -> {
                 val quadraticModel = converted.value as? QuadraticMechanismModel<Flt64>
                     ?: return Failed(Err(ErrorCode.IllegalArgument, "Quadratic solver requires QuadraticMechanismModel, but got ${converted.value::class.simpleName}"))
-                dump(quadraticModel).use { solve(it, converter, solvingStatusCallBack) }
+                when (val dumped = dumpResult(quadraticModel)) {
+                    is Ok -> dumped.value.use { solve(it, converter, solvingStatusCallBack) }
+                    is Failed -> Failed(dumped.error)
+                    is Fatal -> Fatal(dumped.errors)
+                }
             }
 
             is Failed -> {
@@ -359,7 +368,11 @@ interface AbstractQuadraticSolver {
             is Ok -> {
                 val quadraticModel = converted.value as? QuadraticMechanismModel<Flt64>
                     ?: return Failed(Err(ErrorCode.IllegalArgument, "Quadratic solver requires QuadraticMechanismModel, but got ${converted.value::class.simpleName}"))
-                dump(quadraticModel).use { solve(it, solutionAmount, converter, solvingStatusCallBack) }
+                when (val dumped = dumpResult(quadraticModel)) {
+                    is Ok -> dumped.value.use { solve(it, solutionAmount, converter, solvingStatusCallBack) }
+                    is Failed -> Failed(dumped.error)
+                    is Fatal -> Fatal(dumped.errors)
+                }
             }
 
             is Failed -> {
@@ -380,6 +393,21 @@ interface AbstractQuadraticSolver {
     */
     suspend fun dump(model: QuadraticMechanismModel<Flt64>): QuadraticTetradModel {
         return QuadraticTetradModel(model)
+    }
+
+    /**
+     * 转储并返回身份校验结果，供生产求解链路使用。 / Dump a model and propagate identity validation for production solve pipelines.
+     *
+     * @param model 二次机制模型 / Quadratic mechanism model
+     * @return 已校验的二次四元模型或结构化错误 / Validated quadratic tetrad model or a structured error
+     */
+    suspend fun dumpResult(model: QuadraticMechanismModel<Flt64>): Ret<QuadraticTetradModel> {
+        val dumped = dump(model)
+        return when (val validation = dumped.identityValidation) {
+            is Ok -> Ok(dumped)
+            is Failed -> Failed(validation.error)
+            is Fatal -> Fatal(validation.errors)
+        }
     }
 
     /**
@@ -419,7 +447,8 @@ interface QuadraticSolver : AbstractQuadraticSolver {
             fixedVariables = null,
             dumpConstraintsToBounds = config.dumpIntermediateModelBounds,
             forceDumpBounds = config.dumpIntermediateModelForceBounds,
-            concurrent = config.dumpIntermediateModelConcurrent
+            concurrent = config.dumpIntermediateModelConcurrent,
+            identityRegistry = model.identityRegistry
         )
     }
 

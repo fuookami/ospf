@@ -240,7 +240,7 @@ class KtormBooleanTranslatorTest {
             val result = failFastTranslator.translate(BooleanCustom("x"))
 
             assertTrue(result.failed)
-            assertTrue(result is Failed<*, *, *>)
+            assertTrue(result is Failed)
 
             val failed = result as Failed<*, *, *>
             val error = failed.error

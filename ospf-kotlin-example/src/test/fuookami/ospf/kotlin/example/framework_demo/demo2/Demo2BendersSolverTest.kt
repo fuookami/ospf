@@ -48,7 +48,7 @@ class Demo2BendersSolverTest {
             notes = mutableListOf()
         )
 
-        assertTrue(result is Ok<*, *, *>)
+        assertTrue(result is Ok)
         assertEquals(Flt64(0.75), solver.fixedValues[fixedVariable])
     }
 
@@ -114,7 +114,7 @@ class Demo2BendersSolverTest {
             notes = mutableListOf()
         )
 
-        assertTrue(result is Failed<*, *, *>)
+        assertTrue(result is Failed)
         assertTrue((result as Failed<*, *, *>).error.message.contains("缺少目标变量"))
     }
 
@@ -199,7 +199,7 @@ class Demo2BendersSolverTest {
             notes = mutableListOf()
         )
 
-        assertTrue(result is Failed<*, *, *>)
+        assertTrue(result is Failed)
         assertEquals(4, solver.masterCalls)
         assertTrue((result as Failed<*, *, *>).error.message.contains("未在 4 次迭代内收敛"))
     }
@@ -235,7 +235,7 @@ class Demo2BendersSolverTest {
             notes = mutableListOf()
         )
 
-        assertTrue(result is Failed<*, *, *>)
+        assertTrue(result is Failed)
         assertEquals(3, solver.masterCalls)
     }
 

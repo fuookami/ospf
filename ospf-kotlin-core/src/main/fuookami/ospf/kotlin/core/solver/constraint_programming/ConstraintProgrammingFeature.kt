@@ -31,14 +31,24 @@ enum class ConstraintProgrammingSupportLevel {
     Unsupported
 }
 
-/** 获取指定 CP 能力支持级别。 / Get support level for a CP feature. */
+/**
+ * 获取指定 CP 能力支持级别。 / Get support level for a CP feature.
+ *
+ * @param feature CP 能力 / CP feature
+ * @return 能力支持级别 / Feature support level
+ */
 fun fuookami.ospf.kotlin.core.solver.report.SolverCapabilities.constraintProgrammingSupport(
     feature: ConstraintProgrammingFeature
 ): ConstraintProgrammingSupportLevel {
     return constraintProgrammingFeatures[feature] ?: ConstraintProgrammingSupportLevel.Unsupported
 }
 
-/** 判断指定 CP 能力是否可用。 / Check whether a CP feature is available. */
+/**
+ * 判断指定 CP 能力是否可用。 / Check whether a CP feature is available.
+ *
+ * @param feature CP 能力 / CP feature
+ * @return 是否支持该能力 / Whether the feature is supported
+ */
 fun fuookami.ospf.kotlin.core.solver.report.SolverCapabilities.supportsConstraintProgramming(
     feature: ConstraintProgrammingFeature
 ): Boolean {

@@ -3,15 +3,20 @@
 */
 package fuookami.ospf.kotlin.core.model.intermediate
 
+import kotlinx.coroutines.*
+import fuookami.ospf.kotlin.utils.functional.Quadruple
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.ordinary.*
 import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.report.ModelElementKind
+import fuookami.ospf.kotlin.core.solver.report.ModelElementIdentityRegistry
+import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
+import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
+import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.symbol.IntermediateSymbol
 import fuookami.ospf.kotlin.core.token.Token
 import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
-import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.ordinary.*
-import fuookami.ospf.kotlin.utils.functional.Quadruple
-import kotlinx.coroutines.*
 
 /**
  * 从二次约束单元格行列表构建稀疏二次矩阵。 / Build a sparse quadratic matrix from a list of quadratic constraint cell rows.
@@ -36,11 +41,13 @@ internal fun buildQuadraticSparseLhs(rows: List<List<QuadraticConstraintCell>>):
  *
  * @param tokenIndexes 标记到列索引的映射 / The mapping from tokens to column indices
  * @param bounds       标记到边界约束列表的映射 / The mapping from tokens to bound constraint lists
+ * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
  * @return 求解器变量列表 / The list of solver variables
 */
 internal fun dumpQuadraticTetradVariables(
     tokenIndexes: Map<Token<Flt64>, Int>,
-    bounds: Map<Token<Flt64>, List<Quadruple<QuadraticConstraintImpl<Flt64>, Token<Flt64>, ConstraintRelation, Flt64>>>
+    bounds: Map<Token<Flt64>, List<Quadruple<QuadraticConstraintImpl<Flt64>, Token<Flt64>, ConstraintRelation, Flt64>>>,
+    identityRegistry: ModelElementIdentityRegistry? = null
 ): List<Variable> {
     val variables = ArrayList<Variable?>()
     for ((_, _) in tokenIndexes) {
@@ -48,6 +55,9 @@ internal fun dumpQuadraticTetradVariables(
     }
 
     for ((token, i) in tokenIndexes) {
+        val identity = identityRegistry
+            ?.identity(token.variable)
+            ?.takeIf { it.kind == ModelElementKind.Variable }
         val thisBounds = bounds[token] ?: emptyList()
         val lb = thisBounds
             .filter { it.third == ConstraintRelation.GreaterEqual || it.third == ConstraintRelation.Equal }
@@ -72,7 +82,12 @@ internal fun dumpQuadraticTetradVariables(
             dualOrigin = null,
             slack = null,
             name = token.variable.name,
-            initialResult = token.result
+            initialResult = token.result,
+            id = identity?.id?.let { VariableId(it.value) } ?: identityRegistry?.variableId(token.variable, i),
+            identityScope = identity?.scope ?: ModelElementScope.ModelLocal,
+            identityOrigin = identity?.origin,
+            identityNamespace = identityRegistry?.namespace,
+            identitySchemaVersion = identityRegistry?.schemaVersion
         )
     }
     return variables.map { it!! }
@@ -85,13 +100,15 @@ internal fun dumpQuadraticTetradVariables(
  * @param tokenIndexes   标记到列索引的映射 / The mapping from tokens to column indices
  * @param bounds         标记到边界约束列表的映射 / The mapping from tokens to bound constraint lists
  * @param fixedVariables 固定变量映射（可为 null） / The fixed variables mapping (nullable)
+ * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
  * @return 二次约束批次 / The quadratic constraint batch
 */
 internal fun dumpQuadraticTetradConstraints(
     model: QuadraticMechanismModel<Flt64>,
     tokenIndexes: Map<Token<Flt64>, Int>,
     bounds: Map<Token<Flt64>, List<Quadruple<QuadraticConstraintImpl<Flt64>, Token<Flt64>, ConstraintRelation, Flt64>>>,
-    fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null
+    fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
+    identityRegistry: ModelElementIdentityRegistry? = null
 ): QuadraticConstraintBatch {
     val boundConstraints = bounds.values.flatMap { thisBounds ->
         thisBounds.map { it.first }
@@ -144,6 +161,7 @@ internal fun dumpQuadraticTetradConstraints(
     val origins = ArrayList<QuadraticConstraintImpl<Flt64>>()
     val froms = ArrayList<Pair<IntermediateSymbol<*>, Boolean>?>()
     val priorities = ArrayList<Int?>()
+    val ids = ArrayList<fuookami.ospf.kotlin.core.solver.report.ConstraintId>()
     for ((index, constraint) in notBoundConstraints.withIndex()) {
         lhs.add(constraints[index].first)
         signs.add(constraint.sign)
@@ -153,6 +171,7 @@ internal fun dumpQuadraticTetradConstraints(
         origins.add(constraint)
         froms.add(constraint.from)
         priorities.add(constraint.origin?.priority)
+        identityRegistry?.let { ids.add(it.constraintId(constraint.origin ?: constraint, index)) }
     }
     return QuadraticConstraintBatch(
         sparseLhs = buildQuadraticSparseLhs(lhs),
@@ -162,7 +181,14 @@ internal fun dumpQuadraticTetradConstraints(
         sources = sources,
         origins = origins,
         froms = froms,
-        priorities = priorities
+        priorities = priorities,
+        ids = ids,
+        identityNamespace = identityRegistry?.namespace,
+        identitySchemaVersion = identityRegistry?.schemaVersion,
+        identityScopes = notBoundConstraints.map {
+            identityRegistry?.identity(it.origin ?: it)?.scope ?: ModelElementScope.ModelLocal
+        },
+        identityOrigins = notBoundConstraints.map { identityRegistry?.identity(it.origin ?: it)?.origin }
     )
 }
 
@@ -173,13 +199,15 @@ internal fun dumpQuadraticTetradConstraints(
  * @param tokenIndexes   标记到列索引的映射 / The mapping from tokens to column indices
  * @param bounds         标记到边界约束列表的映射 / The mapping from tokens to bound constraint lists
  * @param fixedVariables 固定变量映射（可为 null） / The fixed variables mapping (nullable)
+ * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
  * @return 二次约束批次 / The quadratic constraint batch
 */
 internal suspend fun dumpQuadraticTetradConstraintsAsync(
     model: QuadraticMechanismModel<Flt64>,
     tokenIndexes: Map<Token<Flt64>, Int>,
     bounds: Map<Token<Flt64>, List<Quadruple<QuadraticConstraintImpl<Flt64>, Token<Flt64>, ConstraintRelation, Flt64>>>,
-    fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null
+    fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
+    identityRegistry: ModelElementIdentityRegistry? = null
 ): QuadraticConstraintBatch {
     val boundConstraints = bounds.values.flatMap { thisBounds ->
         thisBounds.map { it.first }
@@ -249,6 +277,7 @@ internal suspend fun dumpQuadraticTetradConstraintsAsync(
             val origins = ArrayList<QuadraticConstraintImpl<Flt64>>()
             val froms = ArrayList<Pair<IntermediateSymbol<*>, Boolean>?>()
             val priorities = ArrayList<Int?>()
+            val ids = ArrayList<fuookami.ospf.kotlin.core.solver.report.ConstraintId>()
             for ((index, constraint) in notBoundConstraints.withIndex()) {
                 val slice = slices[index / segment]
                 val offset = index - slice.fromIndex
@@ -261,6 +290,7 @@ internal suspend fun dumpQuadraticTetradConstraintsAsync(
                 origins.add(constraint)
                 froms.add(constraint.from)
                 priorities.add(constraint.origin?.priority)
+                identityRegistry?.let { ids.add(it.constraintId(constraint.origin ?: constraint, index)) }
             }
             MemoryCleanupPolicy.cleanupAfterBatch()
             QuadraticConstraintBatch(
@@ -271,7 +301,14 @@ internal suspend fun dumpQuadraticTetradConstraintsAsync(
                 sources = sources,
                 origins = origins,
                 froms = froms,
-                priorities = priorities
+                priorities = priorities,
+                ids = ids,
+                identityNamespace = identityRegistry?.namespace,
+                identitySchemaVersion = identityRegistry?.schemaVersion,
+                identityScopes = notBoundConstraints.map {
+                    identityRegistry?.identity(it.origin ?: it)?.scope ?: ModelElementScope.ModelLocal
+                },
+                identityOrigins = notBoundConstraints.map { identityRegistry?.identity(it.origin ?: it)?.origin }
             )
         }
     } else {
@@ -283,6 +320,7 @@ internal suspend fun dumpQuadraticTetradConstraintsAsync(
         val origins = ArrayList<QuadraticConstraintImpl<Flt64>>()
         val froms = ArrayList<Pair<IntermediateSymbol<*>, Boolean>?>()
         val priorities = ArrayList<Int?>()
+        val ids = ArrayList<fuookami.ospf.kotlin.core.solver.report.ConstraintId>()
         for ((index, constraint) in notBoundConstraints.withIndex()) {
             val thisLhs = ArrayList<QuadraticConstraintCell>()
             var thisRhs = constraint.rhs
@@ -327,6 +365,7 @@ internal suspend fun dumpQuadraticTetradConstraintsAsync(
             origins.add(constraint)
             froms.add(constraint.from)
             priorities.add(constraint.origin?.priority)
+            identityRegistry?.let { ids.add(it.constraintId(constraint.origin ?: constraint, index)) }
         }
         MemoryCleanupPolicy.cleanupAfterBatch()
         QuadraticConstraintBatch(
@@ -337,7 +376,14 @@ internal suspend fun dumpQuadraticTetradConstraintsAsync(
             sources = sources,
             origins = origins,
             froms = froms,
-            priorities = priorities
+            priorities = priorities,
+            ids = ids,
+            identityNamespace = identityRegistry?.namespace,
+            identitySchemaVersion = identityRegistry?.schemaVersion,
+            identityScopes = notBoundConstraints.map {
+            identityRegistry?.identity(it.origin ?: it)?.scope ?: ModelElementScope.ModelLocal
+            },
+            identityOrigins = notBoundConstraints.map { identityRegistry?.identity(it.origin ?: it)?.origin }
         )
     }
 }
@@ -348,12 +394,14 @@ internal suspend fun dumpQuadraticTetradConstraintsAsync(
  * @param model          二次机制模型 / The quadratic mechanism model
  * @param tokenIndexes   标记到列索引的映射 / The mapping from tokens to column indices
  * @param fixedVariables 固定变量映射（可为 null） / The fixed variables mapping (nullable)
+ * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
  * @return 二次目标 / The quadratic objective
 */
 internal fun dumpQuadraticTetradObjectives(
     model: QuadraticMechanismModel<Flt64>,
     tokenIndexes: Map<Token<Flt64>, Int>,
-    fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null
+    fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
+    identityRegistry: ModelElementIdentityRegistry? = null
 ): QuadraticObjective {
     val objectiveCategory = if (model.objectFunction.subObjects.size == 1) {
         model.objectFunction.subObjects.first().category
@@ -423,9 +471,21 @@ internal fun dumpQuadraticTetradObjectives(
             )
         }
     }
+    val identitySource = model.objectFunction.subObjects
+        .singleOrNull()
+        ?.origin
+        ?: model.objectFunction
+    val identity = identityRegistry
+        ?.identity(identitySource)
+        ?.takeIf { it.kind == ModelElementKind.Objective }
     return QuadraticObjective(
         category = objectiveCategory,
         objective = objective,
-        constant = constant
+        constant = constant,
+        id = identity?.id?.let { ObjectiveId(it.value) } ?: identityRegistry?.objectiveId(identitySource),
+        identityScope = identity?.scope ?: ModelElementScope.ModelLocal,
+        identityOrigin = identity?.origin,
+        identityNamespace = identityRegistry?.namespace,
+        identitySchemaVersion = identityRegistry?.schemaVersion
     )
 }

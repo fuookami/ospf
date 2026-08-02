@@ -4,7 +4,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.symbol.inequality.*
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.framework.csp1d.domain.material.model.*
@@ -80,10 +80,7 @@ class MachineConstraintPipeline<V : RealNumber<V>>(
         val constraintName = "machine_batch_$machineIndex"
         val priceKey = MachineBatchShadowPriceKey(machine.id)
 
-        val lhs = LinearPolynomial(
-            monomials = listOf(LinearMonomial(Flt64.one, symbol)),
-            constant = Flt64.zero
-        )
+        val lhs = LinearPolynomial(symbol)
         model.addConstraint(
             relation = LinearInequality(
                 lhs = lhs,
@@ -121,10 +118,7 @@ class MachineConstraintPipeline<V : RealNumber<V>>(
         val constraintName = "machine_capacity_$machineIndex"
         val priceKey = MachineCapacityShadowPriceKey(machine.id)
 
-        val lhs = LinearPolynomial(
-            monomials = listOf(LinearMonomial(Flt64.one, symbol)),
-            constant = Flt64.zero
-        )
+        val lhs = LinearPolynomial(symbol)
         model.addConstraint(
             relation = LinearInequality(
                 lhs = lhs,

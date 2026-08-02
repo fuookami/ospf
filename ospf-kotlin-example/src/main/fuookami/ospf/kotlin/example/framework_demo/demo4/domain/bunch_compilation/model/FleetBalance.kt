@@ -7,7 +7,6 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.multiarray.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
 import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.basic.*
@@ -119,9 +118,9 @@ class FleetBalance(
                     Shape1(limits.size)
                 ) { l, _ ->
                     val limit = limits[l]
-                    val poly = MutableLinearPolynomial()
+                    var poly = LinearPolynomial()
                     for (aircraft in limit.second.aircrafts) {
-                        poly += LinearMonomial(Flt64.one, compilation.z[aircraft])
+                        poly += compilation.z[aircraft]
                     }
                     LinearExpressionSymbol(
                         poly,
@@ -146,10 +145,10 @@ class FleetBalance(
                     "fleet_slack",
                     Shape1(limits.size)
                 ) { l, _ ->
-                    val poly = MutableLinearPolynomial()
-                    poly += LinearMonomial(Flt64.one, fleet[l])
+                    var poly = LinearPolynomial()
+                    poly += fleet[l]
                     exampleThresholdSlack(
-                        x = LinearPolynomial(poly.monomials, poly.constant),
+                        x = poly,
                         threshold = limits[l].second.amount.toFlt64(),
                         withNegative = true,
                         withPositive = false,
@@ -192,7 +191,7 @@ class FleetBalance(
                 val thisFleet = fleet[checkPoint]
                 thisFleet.flush()
                 for (bunch in thisBunches) {
-                    thisFleet.asMutable() += LinearMonomial(Flt64.one, xi[bunch])
+                    thisFleet.asMutable() += Flt64.one * xi[bunch]
                 }
             }
         }

@@ -4,14 +4,14 @@
 package fuookami.ospf.kotlin.core.model.constraint_programming
 
 import java.math.BigInteger
-import fuookami.ospf.kotlin.core.solver.report.VariableId
-import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
-import fuookami.ospf.kotlin.math.algebra.number.Int64
 import fuookami.ospf.kotlin.utils.error.ErrorCode
 import fuookami.ospf.kotlin.utils.functional.Failed
 import fuookami.ospf.kotlin.utils.functional.Fatal
 import fuookami.ospf.kotlin.utils.functional.Ret
 import fuookami.ospf.kotlin.utils.functional.ok
+import fuookami.ospf.kotlin.math.algebra.number.Int64
+import fuookami.ospf.kotlin.core.solver.report.VariableId
+import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
 
 /**
  * CP 首版整数表达式，只表达常量、整数变量和整数线性组合。 / The first CP expression family, limited to constants, integer variables, and integer-linear combinations.
@@ -28,7 +28,11 @@ sealed interface ConstraintProgrammingExpression {
      */
     fun evaluate(values: Map<VariableId, Int64>): Ret<Int64>
 
-    /** 整数常量。 / Integer constant. */
+    /**
+     * 整数常量。 / Integer constant.
+     *
+     * @property value 常量值 / Constant value
+     */
     data class Constant(
         val value: Int64
     ) : ConstraintProgrammingExpression {
@@ -39,7 +43,11 @@ sealed interface ConstraintProgrammingExpression {
         }
     }
 
-    /** 表达式构造溢出或无效时的延迟错误节点。 / Deferred invalid node for expression overflow or invalid construction. */
+    /**
+     * 表达式构造溢出或无效时的延迟错误节点。 / Deferred invalid node for expression overflow or invalid construction.
+     *
+     * @property message 结构化错误消息 / Structured error message
+     */
     data class Invalid(
         val message: String
     ) : ConstraintProgrammingExpression {
@@ -52,12 +60,21 @@ sealed interface ConstraintProgrammingExpression {
 
     /**
      * 整数变量引用。[domain] 是 CP 建模边界的一部分；构造函数不会偷偷改变源变量的线性模型范围。 / Integer-variable reference. / The [domain] is part of the CP modeling boundary; construction never silently changes the source variable's linear-model range.
+     *
+     * @property variable 源整数变量 / Source integer variable
+     * @property domain CP 值域 / CP domain
+     * @property id 模型绑定后的稳定变量 ID；为空时使用 model-local ID / Stable variable ID after model binding; model-local ID when null
      */
     data class Variable(
         val variable: AbstractVariableItem<*, *>,
-        val domain: IntegerDomain
+        val domain: IntegerDomain,
+        val id: VariableId? = null
     ) : ConstraintProgrammingExpression {
-        /** 使用默认值域构造引用。 / Construct a reference with a default domain. */
+        /**
+         * 使用默认值域构造引用。 / Construct a reference with a default domain.
+         *
+         * @param variable 源整数变量 / Source integer variable
+        */
         constructor(variable: AbstractVariableItem<*, *>) : this(
             variable = variable,
             domain = defaultDomainUnchecked(variable)
@@ -65,7 +82,7 @@ sealed interface ConstraintProgrammingExpression {
 
         /** 稳定变量 ID。 / Stable variable ID. */
         val variableId: VariableId
-            get() = variableIdOf(variable)
+            get() = id ?: variableIdOf(variable)
 
         override val variables: Set<VariableId>
             get() = setOf(variableId)
@@ -86,17 +103,29 @@ sealed interface ConstraintProgrammingExpression {
         }
     }
 
-    /** 线性项。 / Linear term. */
+    /**
+     * 线性项。 / Linear term.
+     *
+     * @property variable 源整数变量 / Source integer variable
+     * @property coefficient 整数系数 / Integer coefficient
+     * @property id 模型绑定后的稳定变量 ID；为空时使用 model-local ID / Stable variable ID after model binding; model-local ID when null
+     */
     data class Term(
         val variable: AbstractVariableItem<*, *>,
-        val coefficient: Int64
+        val coefficient: Int64,
+        val id: VariableId? = null
     ) {
         /** 稳定变量 ID。 / Stable variable ID. */
         val variableId: VariableId
-            get() = variableIdOf(variable)
+            get() = id ?: variableIdOf(variable)
     }
 
-    /** 整数线性表达式。 / Integer-linear expression. */
+    /**
+     * 整数线性表达式。 / Integer-linear expression.
+     *
+     * @property terms 线性项 / Linear terms
+     * @property constant 常数项 / Constant term
+     */
     data class Linear(
         val terms: List<Term>,
         val constant: Int64 = Int64.zero
@@ -123,24 +152,45 @@ sealed interface ConstraintProgrammingExpression {
     }
 
     companion object {
-        /** 创建整数常量。 / Create an integer constant. */
+        /**
+         * 创建整数常量。 / Create an integer constant.
+         *
+         * @param value 常量值 / Constant value
+         * @return 整数常量表达式 / Integer constant expression
+         */
         operator fun invoke(value: Int64): Constant {
             return Constant(value)
         }
 
-        /** 创建 Long 常量。 / Create a Long constant. */
+        /**
+         * 创建 Long 常量。 / Create a Long constant.
+         *
+         * @param value 常量值 / Constant value
+         * @return 整数常量表达式 / Integer constant expression
+         */
         @JvmName("constantLong")
         operator fun invoke(value: Long): Constant {
             return Constant(Int64(value))
         }
 
-        /** 创建 Int 常量。 / Create an Int constant. */
+        /**
+         * 创建 Int 常量。 / Create an Int constant.
+         *
+         * @param value 常量值 / Constant value
+         * @return 整数常量表达式 / Integer constant expression
+         */
         @JvmName("constantInt")
         operator fun invoke(value: Int): Constant {
             return Constant(Int64(value.toLong()))
         }
 
-        /** 创建并校验整数变量引用。 / Create and validate an integer-variable reference. */
+        /**
+         * 创建并校验整数变量引用。 / Create and validate an integer-variable reference.
+         *
+         * @param variable 源整数变量 / Source integer variable
+         * @param domain 可选 CP 值域 / Optional CP domain
+         * @return 变量表达式或结构化错误 / Variable expression or a structured error
+         */
         fun variable(
             variable: AbstractVariableItem<*, *>,
             domain: IntegerDomain? = null
@@ -161,7 +211,13 @@ sealed interface ConstraintProgrammingExpression {
             return ok(Variable(variable, resolvedDomain))
         }
 
-        /** 创建单个线性项。 / Create a single linear term. */
+        /**
+         * 创建单个线性项。 / Create a single linear term.
+         *
+         * @param variable 源整数变量 / Source integer variable
+         * @param coefficient 整数系数 / Integer coefficient
+         * @return 线性项或结构化错误 / Linear term or a structured error
+         */
         fun term(
             variable: AbstractVariableItem<*, *>,
             coefficient: Int64 = Int64.one
@@ -169,7 +225,13 @@ sealed interface ConstraintProgrammingExpression {
             return variable(variable).map { Term(it.variable, coefficient) }
         }
 
-        /** 创建整数线性表达式并合并重复变量。 / Create an integer-linear expression and merge duplicate variables. */
+        /**
+         * 创建整数线性表达式并合并重复变量。 / Create an integer-linear expression and merge duplicate variables.
+         *
+         * @param terms 线性项集合 / Linear terms
+         * @param constant 常数项 / Constant term
+         * @return 线性表达式或结构化错误 / Linear expression or a structured error
+         */
         fun linear(
             terms: Iterable<Term>,
             constant: Int64 = Int64.zero
@@ -207,7 +269,13 @@ sealed interface ConstraintProgrammingExpression {
             return ok(Linear(normalized, constant))
         }
 
-        /** 使用变量到系数的映射创建线性表达式。 / Create a linear expression from a variable-coefficient map. */
+        /**
+         * 使用变量到系数的映射创建线性表达式。 / Create a linear expression from a variable-coefficient map.
+         *
+         * @param terms 变量到系数的映射 / Variable-to-coefficient map
+         * @param constant 常数项 / Constant term
+         * @return 线性表达式或结构化错误 / Linear expression or a structured error
+         */
         fun linear(
             terms: Map<AbstractVariableItem<*, *>, Int64>,
             constant: Int64 = Int64.zero
@@ -215,7 +283,12 @@ sealed interface ConstraintProgrammingExpression {
             return linear(terms.map { (variable, coefficient) -> Term(variable, coefficient) }, constant)
         }
 
-        /** 将多个表达式相加。 / Add multiple expressions. */
+        /**
+         * 将多个表达式相加。 / Add multiple expressions.
+         *
+         * @param expressions 待相加的表达式 / Expressions to add
+         * @return 线性表达式或结构化错误 / Linear expression or a structured error
+         */
         fun sum(expressions: Iterable<ConstraintProgrammingExpression>): Ret<Linear> {
             val terms = ArrayList<Term>()
             var constant = BigInteger.ZERO
@@ -223,7 +296,7 @@ sealed interface ConstraintProgrammingExpression {
                 when (expression) {
                     is Constant -> constant = constant.add(BigInteger.valueOf(expression.value.toLong()))
                     is Invalid -> return Failed(ErrorCode.IllegalArgument, expression.message)
-                    is Variable -> terms += Term(expression.variable, Int64.one)
+                    is Variable -> terms += Term(expression.variable, Int64.one, expression.id)
                     is Linear -> {
                         terms += expression.terms
                         constant = constant.add(BigInteger.valueOf(expression.constant.toLong()))
@@ -239,21 +312,35 @@ sealed interface ConstraintProgrammingExpression {
     }
 }
 
-/** 将两个 CP 表达式相加；溢出以 Ret 失败表示。 / Add two CP expressions, returning overflow as a Ret failure. */
+/**
+ * 将两个 CP 表达式相加；溢出以 Ret 失败表示。 / Add two CP expressions, returning overflow as a Ret failure.
+ *
+ * @param rhs 右侧表达式 / Right-hand expression
+ * @return 相加后的表达式或结构化错误 / Sum expression or a structured error
+ */
 operator fun ConstraintProgrammingExpression.plus(
     rhs: ConstraintProgrammingExpression
 ): Ret<ConstraintProgrammingExpression.Linear> {
     return ConstraintProgrammingExpression.sum(listOf(this, rhs))
 }
 
-/** 将两个 CP 表达式相减。 / Subtract two CP expressions. */
+/**
+ * 将两个 CP 表达式相减。 / Subtract two CP expressions.
+ *
+ * @param rhs 右侧表达式 / Right-hand expression
+ * @return 相减后的表达式或结构化错误 / Difference expression or a structured error
+ */
 operator fun ConstraintProgrammingExpression.minus(
     rhs: ConstraintProgrammingExpression
 ): Ret<ConstraintProgrammingExpression.Linear> {
     return ConstraintProgrammingExpression.sum(listOf(this, rhs.negate()))
 }
 
-/** 取 CP 表达式相反数。 / Negate a CP expression. */
+/**
+ * 取 CP 表达式相反数。 / Negate a CP expression.
+ *
+ * @return 相反数表达式 / Negated expression
+ */
 fun ConstraintProgrammingExpression.negate(): ConstraintProgrammingExpression {
     return when (this) {
         is ConstraintProgrammingExpression.Constant -> negateInt64OrNull(value)?.let {
@@ -265,7 +352,7 @@ fun ConstraintProgrammingExpression.negate(): ConstraintProgrammingExpression {
         is ConstraintProgrammingExpression.Invalid -> this
 
         is ConstraintProgrammingExpression.Variable -> ConstraintProgrammingExpression.Linear(
-            terms = listOf(ConstraintProgrammingExpression.Term(variable, Int64(-1L))),
+            terms = listOf(ConstraintProgrammingExpression.Term(variable, Int64(-1L), id)),
             constant = Int64.zero
         )
 
@@ -273,7 +360,7 @@ fun ConstraintProgrammingExpression.negate(): ConstraintProgrammingExpression {
             val negatedConstant = negateInt64OrNull(constant)
             val negatedTerms = terms.map { term ->
                 negateInt64OrNull(term.coefficient)?.let {
-                    ConstraintProgrammingExpression.Term(term.variable, it)
+                    ConstraintProgrammingExpression.Term(term.variable, it, term.id)
                 }
             }
             if (negatedConstant == null || negatedTerms.any { it == null }) {

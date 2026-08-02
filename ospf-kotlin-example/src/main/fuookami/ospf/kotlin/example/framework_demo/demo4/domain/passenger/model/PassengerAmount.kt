@@ -42,23 +42,23 @@ class PassengerAmount(
         if (!::passengerAmount.isInitialized) {
             passengerAmount = flights.associateWith { flight ->
                 PassengerClass.entries.associateWith { cls ->
-                    val poly = MutableLinearPolynomial()
+                    var poly = LinearPolynomial()
                     for (passenger in (passengers[flight] ?: emptyList())) {
                         if (passenger.cls == cls) {
                             poly += passenger.amount.toFlt64()
                         }
-                        poly -= LinearMonomial(Flt64.one, cancel.passengerCancel[passenger])
+                        poly -= Flt64.one * cancel.passengerCancel[passenger]
                         if (passenger.cls == cls) {
                             poly -= sum(change.passengerClassChange[passenger, _a])
                             poly -= sum(change.passengerFlightChange[passenger, _a, _a])
                         } else {
-                            poly += LinearMonomial(Flt64.one, change.passengerClassChange[passenger, cls]!!)
+                            poly += Flt64.one * change.passengerClassChange[passenger, cls]!!
                         }
                     }
                     for (passenger in passengers.values.flatten()) {
                         val toFlights = change.toFlights[passenger.flight] ?: emptyList()
                         if (toFlights.contains(flight)) {
-                            poly += LinearMonomial(Flt64.one, change.passengerFlightChange[passenger, flight, cls]!!)
+                            poly += Flt64.one * change.passengerFlightChange[passenger, flight, cls]!!
                         }
                     }
                     LinearExpressionSymbol(

@@ -1,3 +1,4 @@
+/** SCIP 结构化不可行分析器测试。 / SCIP structured infeasibility analyzer tests. */
 package fuookami.ospf.kotlin.core.solver.scip
 
 import kotlin.test.Test
@@ -16,6 +17,7 @@ import fuookami.ospf.kotlin.core.model.intermediate.SparseMatrix
 import fuookami.ospf.kotlin.core.model.intermediate.SparseVector
 import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
 import fuookami.ospf.kotlin.core.solver.iis.IISConfig
+import fuookami.ospf.kotlin.core.solver.report.ConstraintId
 import fuookami.ospf.kotlin.core.solver.report.EvidenceExactness
 import fuookami.ospf.kotlin.core.solver.report.EvidenceValidity
 import fuookami.ospf.kotlin.core.solver.report.InfeasibilityEvidenceSource
@@ -35,13 +37,22 @@ class ScipFarkasDiagnosticIT {
         assertTrue(
             result.ok,
             "SCIP Farkas diagnosis failed: " +
-                if (result is Failed<*, *, *>) "${result.code}: ${result.message}" else result
+                if (result is Failed) "${result.code}: ${result.message}" else result
         )
         val evidence = result.value!!
         assertEquals(InfeasibilityEvidenceSource.Farkas, evidence.source)
         assertEquals(EvidenceExactness.Exact, evidence.exactness)
         assertEquals(EvidenceValidity.Verified, evidence.validity)
         assertEquals(2, evidence.constraintIds.size)
+        assertTrue(evidence.variableBoundRefs.isEmpty())
+        assertTrue(
+            evidence.constraintIds.containsAll(
+                setOf(
+                    ConstraintId("fixture:constraint:lower"),
+                    ConstraintId("fixture:constraint:upper")
+                )
+            )
+        )
     }
 
     private fun infeasibleModel(): LinearTriadModel {
@@ -72,6 +83,14 @@ class ScipFarkasDiagnosticIT {
                     type = Continuous,
                     origin = null,
                     name = "y"
+                ),
+                Variable(
+                    index = 2,
+                    lowerBound = Flt64.zero,
+                    upperBound = Flt64.one,
+                    type = Continuous,
+                    origin = null,
+                    name = "unused"
                 )
             ),
             constraints = LinearConstraintBatch(
@@ -79,7 +98,11 @@ class ScipFarkasDiagnosticIT {
                 signs = listOf(ConstraintRelation.GreaterEqual, ConstraintRelation.LessEqual),
                 rhs = listOf(Flt64(2.0), Flt64.zero),
                 names = listOf("lower-row", "upper-row"),
-                sources = listOf(ConstraintSource.Origin, ConstraintSource.Origin)
+                sources = listOf(ConstraintSource.Origin, ConstraintSource.Origin),
+                ids = listOf(
+                    ConstraintId("fixture:constraint:lower"),
+                    ConstraintId("fixture:constraint:upper")
+                )
             ),
             name = "scip-farkas-diagnostic-it"
         )

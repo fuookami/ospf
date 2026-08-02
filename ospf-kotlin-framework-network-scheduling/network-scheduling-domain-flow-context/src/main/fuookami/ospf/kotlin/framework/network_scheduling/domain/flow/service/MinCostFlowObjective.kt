@@ -3,7 +3,8 @@ package fuookami.ospf.kotlin.framework.network_scheduling.domain.flow.service
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.framework.model.Pipeline
@@ -27,7 +28,7 @@ class MinCostFlowObjective<V : RealNumber<V>>(
             is Fatal -> return Fatal(result.errors)
         }
 
-        val polynomial = MutableLinearPolynomial<Flt64>(emptyList(), Flt64.zero)
+        var polynomial = LinearPolynomial()
         for (commodity in graph.commodities) {
             for (arc in graph.arcs) {
                 val variable = when (val result = graph.flowVariable(commodity.id, arc)) {
@@ -40,11 +41,11 @@ class MinCostFlowObjective<V : RealNumber<V>>(
                     is Failed -> return Failed(result.error)
                     is Fatal -> return Fatal(result.errors)
                 }
-                polynomial += LinearMonomial(cost, variable)
+                polynomial += cost * variable
             }
         }
         return when (val result = model.minimize(
-            polynomial = polynomial.toLinearPolynomial(),
+            polynomial = polynomial,
             name = name
         )) {
             is Ok -> ok

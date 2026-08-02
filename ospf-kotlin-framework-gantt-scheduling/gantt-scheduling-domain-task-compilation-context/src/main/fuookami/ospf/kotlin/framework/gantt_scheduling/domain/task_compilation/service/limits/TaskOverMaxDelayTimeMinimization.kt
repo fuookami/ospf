@@ -3,6 +3,8 @@
 /** 任务超最大延迟时间最小化 / Task over-max delay time minimization */
 package fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task_compilation.service.limits
 
+import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.mechanism.AbstractLinearMetaModel
 import fuookami.ospf.kotlin.core.variable.UContinuous
@@ -79,13 +81,13 @@ class TaskOverMaxDelayTimeMinimization<
 
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {
         if (taskTime.overMaxDelayEnabled) {
-            val cost = MutableLinearPolynomial<Flt64>(constant = Flt64.zero)
+            var cost = LinearPolynomial()
             for (task in tasks) {
                 val overMaxDelayTime = taskTime.overMaxDelayTime[task]
                 val thisThreshold = threshold(task)?.let { timeBoundary.valueOf(it) } ?: Flt64.zero
                 val thisCoefficient = coefficient(task) ?: Flt64.infinity
                 if (thisThreshold eq Flt64.zero) {
-                    cost += thisCoefficient * overMaxDelayTime.toLinearPolynomial()
+                    cost += thisCoefficient * overMaxDelayTime
                 } else {
                     val slack = thresholdSlack(
                         x = overMaxDelayTime,
@@ -112,7 +114,7 @@ class TaskOverMaxDelayTimeMinimization<
                 }
             }
             when (val result = model.minimize(
-                polynomial = cost.toLinearPolynomial(),
+                polynomial = cost,
                 name = "task over max delay time"
             )) {
                 is Ok -> {}

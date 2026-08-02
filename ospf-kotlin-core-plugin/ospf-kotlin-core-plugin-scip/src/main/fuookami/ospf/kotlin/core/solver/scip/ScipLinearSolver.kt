@@ -76,6 +76,11 @@ class ScipLinearSolver(
         model: LinearTriadModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
     ): Ret<FeasibleSolverOutput<Flt64>> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         return ScipLinearSolverImpl(
             config = config,
             callBack = callBack,
@@ -216,7 +221,7 @@ private class ScipLinearSolverImpl(
         for (col in model.variables.indices) {
             vars.add(
                 scip.createVar(
-                    variableDumpingData.names[col],
+                    nativeElementName(model.variables[col].id?.value, variableDumpingData.names[col], "variable"),
                     variableDumpingData.lowerBounds[col],
                     variableDumpingData.upperBounds[col],
                     0.0,
@@ -282,7 +287,11 @@ private class ScipLinearSolverImpl(
                         val (lb, cells, ub) = it.second
                         val (coefficients, vars) = cells
                         val constraint = scip.createConsLinear(
-                            model.constraints.names[it.first],
+                            nativeElementName(
+                                model.constraints.ids.getOrNull(it.first)?.value,
+                                model.constraints.names[it.first],
+                                "constraint"
+                            ),
                             vars.toTypedArray(),
                             coefficients.toDoubleArray(),
                             lb.toSolverDouble("linear.constraints.bounds[${it.first}].lower"),
@@ -319,7 +328,11 @@ private class ScipLinearSolverImpl(
                         coefficients.add(coefficient.toSolverDouble("linear.constraints.lhs[$i][$colIndex].coefficient"))
                     }
                     val constraint = scip.createConsLinear(
-                        model.constraints.names[i],
+                        nativeElementName(
+                            model.constraints.ids.getOrNull(i)?.value,
+                            model.constraints.names[i],
+                            "constraint"
+                        ),
                         vars.toTypedArray(),
                         coefficients.toDoubleArray(),
                         lb.toSolverDouble("linear.constraints.bounds[$i].lower"),

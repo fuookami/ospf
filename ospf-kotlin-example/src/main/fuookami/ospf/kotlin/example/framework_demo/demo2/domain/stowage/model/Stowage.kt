@@ -95,13 +95,13 @@ class Stowage(
             for ((j, position) in positions.withIndex()) {
                 if (stowageNeeded(item, position)) {
                     when (val result = model.add(x[i, j])) {
-                        is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                        is Ok -> {}
 
-                        is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                        is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
                     }
@@ -124,13 +124,13 @@ class Stowage(
             for ((j, position) in positions.withIndex()) {
                 if (adjustmentNeeded(item, position)) {
                     when (val result = model.add(u[i, j])) {
-                        is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                        is Ok -> {}
 
-                        is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                        is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
                     }
@@ -142,12 +142,12 @@ class Stowage(
             stowage = LinearIntermediateSymbols2<Flt64>("stowage", Shape2(items.size, positions.size)) { _, v ->
                 val item = items[v[0]]
                 val position = positions[v[1]]
-                val poly = MutableLinearPolynomial()
+                var poly = LinearPolynomial()
                 if (stowageNeeded(item, position)) {
-                    poly += LinearMonomial(Flt64.one, x[v])
+                    poly += x[v]
                 }
                 if (adjustmentNeeded(item, position)) {
-                    poly += LinearMonomial(Flt64.one, this.u[v])
+                    poly += this.u[v]
                 }
                 if (position.loadedItems.contains(item)) {
                     poly += Flt64.one
@@ -172,13 +172,13 @@ class Stowage(
             }
         }
         when (val result = model.add(stowage)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -210,13 +210,13 @@ class Stowage(
             }
         }
         when (val result = model.add(loaded)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }

@@ -6,7 +6,11 @@ import fuookami.ospf.kotlin.core.solver.report.TerminationReason
 
 /** SCIP 终态到 OSPF 终止原因的纯函数映射。 / Pure mapping from SCIP status to OSPF termination reason. */
 object ScipConstraintProgrammingStatusMapper {
-    /** 映射求解终止原因。 / Map the termination reason. */
+    /** 映射求解终止原因。 / Map the termination reason.
+     *
+     * @param status SCIP terminal status. / SCIP 终态。
+     * @return OSPF termination reason. / OSPF 终止原因。
+     */
     fun terminationReason(status: SCIP_Status): TerminationReason {
         return when (status) {
             SCIP_Status.SCIP_STATUS_OPTIMAL,

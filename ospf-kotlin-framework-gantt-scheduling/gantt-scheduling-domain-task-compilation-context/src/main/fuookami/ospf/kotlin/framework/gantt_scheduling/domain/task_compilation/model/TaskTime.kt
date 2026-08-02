@@ -13,7 +13,6 @@ import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.*
 import fuookami.ospf.kotlin.math.algebra.concept.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.algebra.value_range.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
 import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.multiarray.*
@@ -1088,9 +1087,9 @@ abstract class TaskTimeImpl<
                         polynomial = if (delayLastEndTimeEnabled && advanceEarliestEndTimeEnabled) {
                             onLastEndTime[t].toLinearPolynomial() + onEarliestEndTime[t].toLinearPolynomial()
                         } else if (delayLastEndTimeEnabled) {
-                            LinearPolynomial(listOf(LinearMonomial(Flt64.one, onLastEndTime[t])), Flt64.zero)
+                            LinearPolynomial(onLastEndTime[t])
                         } else if (advanceEarliestEndTimeEnabled) {
-                            LinearPolynomial(listOf(LinearMonomial(Flt64.one, onEarliestEndTime[t])), Flt64.zero)
+                            LinearPolynomial(onEarliestEndTime[t])
                         } else {
                             LinearPolynomial(emptyList(), Flt64.one)
                         },
@@ -1252,9 +1251,9 @@ abstract class TaskTimeImpl<
                         polynomial = if (delayLastEndTimeEnabled && advanceEarliestEndTimeEnabled) {
                             notOnLastEndTime[t].toLinearPolynomial() + notOnEarliestEndTime[t].toLinearPolynomial()
                         } else if (delayLastEndTimeEnabled) {
-                            LinearPolynomial(listOf(LinearMonomial(Flt64.one, notOnLastEndTime[t])), Flt64.zero)
+                            LinearPolynomial(notOnLastEndTime[t])
                         } else if (advanceEarliestEndTimeEnabled) {
-                            LinearPolynomial(listOf(LinearMonomial(Flt64.one, notOnEarliestEndTime[t])), Flt64.zero)
+                            LinearPolynomial(notOnEarliestEndTime[t])
                         } else {
                             LinearPolynomial(emptyList(), Flt64.zero)
                         },
@@ -1443,7 +1442,7 @@ class TaskSchedulingTaskTime<
                                     timeBoundary.flooredValueOf(time.start)
                                 }
                                 val slack = slackSymbol(
-                                    x = LinearPolynomial(listOf(LinearMonomial(Flt64.one, est[task])), Flt64.zero),
+                                    x = LinearPolynomial(est[task]),
                                     y = y,
                                     type = if (timeBoundary.continues) {
                                         UContinuous
@@ -1486,7 +1485,7 @@ class TaskSchedulingTaskTime<
             ) { t, _ ->
                 val task = tasks[t]
                 LinearExpressionSymbol(
-                    LinearPolynomial(listOf(LinearMonomial(Flt64.one, est[t])), Flt64.zero),
+                    LinearPolynomial(est[t]),
                     name = "estimate_start_time_${task}"
                 )
             }
@@ -1525,7 +1524,7 @@ class TaskSchedulingTaskTime<
             ) { t, _ ->
                 val task = tasks[t]
                 LinearExpressionSymbol(
-                    estimateEndTimeCalculator(task, LinearPolynomial(listOf(LinearMonomial(Flt64.one, estimateStartTime[t])), Flt64.zero)),
+                    estimateEndTimeCalculator(task, LinearPolynomial(estimateStartTime[t])),
                     name = "estimate_end_time_${task}"
                 )
             }
@@ -1643,7 +1642,7 @@ open class IterativeTaskSchedulingTaskTime<
                 val task = tasks[t]
                 LinearExpressionSymbol(
                     if (::estRedundancy.isInitialized) {
-                        LinearPolynomial(listOf(LinearMonomial(Flt64.one, estRedundancy[t])), Flt64.zero)
+                        LinearPolynomial(estRedundancy[t])
                     } else {
                         LinearPolynomial(emptyList(), Flt64.zero)
                     },
@@ -1671,7 +1670,7 @@ open class IterativeTaskSchedulingTaskTime<
                 val task = tasks[t]
                 LinearExpressionSymbol(
                     if (::estRedundancy.isInitialized) {
-                        LinearPolynomial(listOf(LinearMonomial(Flt64.one, estRedundancy[t])), Flt64.zero)
+                        LinearPolynomial(estRedundancy[t])
                     } else {
                         LinearPolynomial(emptyList(), Flt64.zero)
                     },
@@ -1718,7 +1717,7 @@ open class IterativeTaskSchedulingTaskTime<
                                 timeBoundary.flooredValueOf(time.start)
                             }
                             val slack = slackSymbol(
-                                x = LinearPolynomial(listOf(LinearMonomial(Flt64.one, estimateStartTime[task])), Flt64.zero),
+                                x = LinearPolynomial(estimateStartTime[task]),
                                 y = y,
                                 type = if (timeBoundary.continues) {
                                     UContinuous
@@ -1782,8 +1781,8 @@ open class IterativeTaskSchedulingTaskTime<
 
                 for (newTask in thisNewTasks) {
                     val time = newTask.time!!
-                    est.asMutable() += LinearMonomial(timeBoundary.valueOf(time.start), xi[newTask])
-                    eet.asMutable() += LinearMonomial(timeBoundary.valueOf(time.end), xi[newTask])
+                    est.asMutable() += timeBoundary.valueOf(time.start) * xi[newTask]
+                    eet.asMutable() += timeBoundary.valueOf(time.end) * xi[newTask]
                 }
             }
         }

@@ -4,7 +4,7 @@ import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.intermediate.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
@@ -29,16 +29,16 @@ class ExperimentalLongitudinalBalanceLimit(
 ) : Pipeline<AbstractLinearMetaModel<Flt64>> {
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {
         when (val result = model.minimize(
-            LinearMonomial(coefficient(), longitudinalBalance.longitudinalTorqueSlack.value),
+            coefficient() * longitudinalBalance.longitudinalTorqueSlack.value,
             "experimental longitudinal balance"
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }

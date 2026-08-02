@@ -3,8 +3,23 @@
 */
 package fuookami.ospf.kotlin.core.model.intermediate
 
+import java.io.OutputStreamWriter
+import kotlinx.coroutines.*
+import org.apache.logging.log4j.kotlin.logger
+import fuookami.ospf.kotlin.utils.concept.Copyable
+import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
+import fuookami.ospf.kotlin.math.algebra.number.*
+import fuookami.ospf.kotlin.math.operator.abs
+import fuookami.ospf.kotlin.math.ordinary.*
+import fuookami.ospf.kotlin.math.symbol.Linear
 import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ModelElementIdentityRegistry
+import fuookami.ospf.kotlin.core.solver.report.ModelElementOrigin
+import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
+import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.symbol.IntermediateSymbol
 import fuookami.ospf.kotlin.core.token.Token
 import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
@@ -16,16 +31,6 @@ import fuookami.ospf.kotlin.core.variable.Percentage
 import fuookami.ospf.kotlin.core.variable.Ternary
 import fuookami.ospf.kotlin.core.variable.UContinuous
 import fuookami.ospf.kotlin.core.variable.UInteger
-import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
-import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.math.operator.abs
-import fuookami.ospf.kotlin.math.ordinary.*
-import fuookami.ospf.kotlin.math.symbol.Linear
-import fuookami.ospf.kotlin.utils.concept.Copyable
-import fuookami.ospf.kotlin.utils.functional.*
-import java.io.OutputStreamWriter
-import kotlinx.coroutines.*
-import org.apache.logging.log4j.kotlin.logger
 
 /**
  * 将任意数值类型转换为 Flt64（求解器边界用） / Convert any numeric value to Flt64 (for solver boundary use)
@@ -115,6 +120,9 @@ class LinearConstraintCell(
  * @param origins 约束来源列表 / Constraint origin list
  * @param froms 约束来源符号列表 / Constraint from-symbol list
  * @param priorities 约束优先级列表 / Constraint priority list
+ * @param ids 稳定约束 ID 列表 / Stable constraint ID list
+ * @param identityScopes 每行身份作用域 / Identity scope for each row
+ * @param identityOrigins 每行稳定身份来源 / Stable identity origin for each row
 */
 class LinearConstraintBatch(
     val sparseLhs: SparseMatrix<Flt64>,
@@ -124,8 +132,24 @@ class LinearConstraintBatch(
     sources: List<ConstraintSource>,
     origins: List<LinearConstraintImpl<Flt64>?> = (0 until sparseLhs.numRows()).map { null },
     froms: List<Pair<IntermediateSymbol<*>, Boolean>?> = (0 until sparseLhs.numRows()).map { null },
-    priorities: List<Int?> = (0 until sparseLhs.numRows()).map { null }
-) : ModelConstraint<LinearConstraintCell>(sparseLhs.numRows(), signs, rhs, names, sources) {
+    priorities: List<Int?> = (0 until sparseLhs.numRows()).map { null },
+    ids: List<ConstraintId> = emptyList(),
+    identityNamespace: String? = null,
+    identitySchemaVersion: String? = null,
+    identityScopes: List<ModelElementScope> = emptyList(),
+    identityOrigins: List<ModelElementOrigin?> = emptyList()
+) : ModelConstraint<LinearConstraintCell>(
+    sparseLhs.numRows(),
+    signs,
+    rhs,
+    names,
+    sources,
+    ids,
+    identityNamespace,
+    identitySchemaVersion,
+    identityScopes,
+    identityOrigins
+) {
 
     /**
      * 稀疏矩阵（左侧）的稀疏表示。
@@ -176,7 +200,12 @@ class LinearConstraintBatch(
             sources = sources.filterIndexed { i, _ -> condition(i) },
             origins = origins.filterIndexed { i, _ -> condition(i) },
             froms = froms.filterIndexed { i, _ -> condition(i) },
-            priorities = priorities.filterIndexed { i, _ -> condition(i) }
+            priorities = priorities.filterIndexed { i, _ -> condition(i) },
+            ids = ids.filterIndexed { i, _ -> condition(i) },
+            identityNamespace = identityNamespace,
+            identitySchemaVersion = identitySchemaVersion,
+            identityScopes = identityScopes.filterIndexed { i, _ -> condition(i) },
+            identityOrigins = identityOrigins.filterIndexed { i, _ -> condition(i) }
         )
     }
 
@@ -196,7 +225,12 @@ class LinearConstraintBatch(
         sources.toList(),
         origins.toList(),
         froms.toList(),
-        priorities.toList()
+        priorities.toList(),
+        ids.toList(),
+        identityNamespace,
+        identitySchemaVersion,
+        identityScopes.toList(),
+        identityOrigins.toList()
     )
 
     override fun close() {
@@ -298,23 +332,27 @@ class BasicLinearTriadModel(
          * @param tokenIndexMap   符号到求解器列索引的映射 / mapping from tokens to solver column indices
          * @param bounds          每个符号的预计算边界约束 / pre-computed bound constraints per token
          * @param fixedVariables  固定为常量值的变量（将被代换消除）/ variables fixed to constant values (substituted out)
+         * @param identityRegistry 可选的稳定身份注册表 / optional stable identity registry
          * @return 包含提取的变量和约束的 [BasicLinearTriadModel] / a [BasicLinearTriadModel] containing the extracted variables and constraints
         */
         fun from(
             model: LinearMechanismModel<Flt64>,
             tokenIndexMap: Map<Token<Flt64>, Int>,
             bounds: Map<Token<Flt64>, List<Quadruple<LinearConstraintImpl<Flt64>, Token<Flt64>, ConstraintRelation, Flt64>>> = emptyMap(),
-            fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null
+            fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
+            identityRegistry: ModelElementIdentityRegistry? = model.identityRegistry
         ): BasicLinearTriadModel {
             val variables = dumpLinearTriadVariables(
                 tokenIndexes = tokenIndexMap,
-                bounds = bounds
+                bounds = bounds,
+                identityRegistry = identityRegistry
             )
             val constraints = dumpLinearTriadConstraints(
                 model = model,
                 tokenIndexes = tokenIndexMap,
                 bounds = bounds,
-                fixedVariables = fixedVariables
+                fixedVariables = fixedVariables,
+                identityRegistry = identityRegistry
             )
             return BasicLinearTriadModel(variables, constraints, model.name)
         }
@@ -485,6 +523,13 @@ interface LinearTriadModelView : ModelView<LinearConstraintCell, LinearObjective
     val dual: Boolean
 
     /**
+     * Identity validation captured while building the intermediate model.
+     * 中间模型构建期间捕获的身份校验结果。
+     */
+    val identityValidation: Try
+        get() = ok
+
+    /**
      * 就地线性松弛（修改当前模型） / In-place linear relaxation (modifies the current model)
      *
      * @return 松弛后的自身引用 / Self reference after relaxation
@@ -565,18 +610,31 @@ data class LinearTriadModel(
     private val impl: BasicLinearTriadModel,
     val tokensInSolver: List<Token<Flt64>>,
     override val objective: LinearObjective,
-    internal val dualOrigin: LinearTriadModelView? = null
+    internal val dualOrigin: LinearTriadModelView? = null,
+    override val identityValidation: Try = ok
 ) : LinearTriadModelView, Cloneable, Copyable<LinearTriadModel> {
     companion object {
         private val logger = logger()
 
-        /** V->Flt64 转换边界：泛型 V 在线性中间模型构造时解析为具体的 Flt64 类型。 / V->Flt64 conversion boundary: generic V resolves to concrete Flt64 for linear intermediate model construction. */
+        /**
+         * V->Flt64 转换边界：泛型 V 在线性中间模型构造时解析为具体的 Flt64 类型。 /
+         * V->Flt64 conversion boundary: generic V resolves to concrete Flt64 for linear intermediate model construction.
+         *
+         * @param model 源线性机制模型 / Source linear mechanism model
+         * @param fixedVariables 可选的固定变量 / Optional fixed variables
+         * @param dumpConstraintsToBounds 是否转储边界约束 / Whether to dump bound constraints
+         * @param forceDumpBounds 是否强制转储可识别边界 / Whether to force recognizable bounds
+         * @param concurrent 是否并行转储 / Whether to dump concurrently
+         * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
+         * @return 线性三元模型 / Linear triad model
+         */
         suspend operator fun invoke(
             model: LinearMechanismModel<Flt64>,
             fixedVariables: Map<AbstractVariableItem<*, *>, Flt64>? = null,
             dumpConstraintsToBounds: Boolean? = null,
             forceDumpBounds: Boolean? = null,
-            concurrent: Boolean? = null
+            concurrent: Boolean? = null,
+            identityRegistry: ModelElementIdentityRegistry? = model.identityRegistry
         ): LinearTriadModel {
             logger.trace("Creating LinearTriadModel for $model")
             val tokensInSolver = if (fixedVariables.isNullOrEmpty()) {
@@ -622,7 +680,8 @@ data class LinearTriadModel(
                     val variablePromise = async(Dispatchers.Default) {
                         dumpLinearTriadVariables(
                             tokenIndexes = tokenIndexMap,
-                            bounds = bounds
+                            bounds = bounds,
+                            identityRegistry = identityRegistry
                         )
                     }
                     val constraintPromise = async(Dispatchers.Default) {
@@ -630,14 +689,16 @@ data class LinearTriadModel(
                             model = model,
                             tokenIndexes = tokenIndexMap,
                             bounds = bounds,
-                            fixedVariables = fixedVariables
+                            fixedVariables = fixedVariables,
+                            identityRegistry = identityRegistry
                         )
                     }
                     val objectivePromise = async(Dispatchers.Default) {
                         dumpLinearTriadObjectives(
                             model = model,
                             tokenIndexes = tokenIndexMap,
-                            fixedVariables = fixedVariables
+                            fixedVariables = fixedVariables,
+                            identityRegistry = identityRegistry
                         )
                     }
 
@@ -656,13 +717,15 @@ data class LinearTriadModel(
                     impl = BasicLinearTriadModel(
                         variables = dumpLinearTriadVariables(
                             tokenIndexes = tokenIndexMap,
-                            bounds = bounds
+                            bounds = bounds,
+                            identityRegistry = identityRegistry
                         ),
                         constraints = dumpLinearTriadConstraints(
                             model = model,
                             tokenIndexes = tokenIndexMap,
                             bounds = bounds,
-                            fixedVariables = fixedVariables
+                            fixedVariables = fixedVariables,
+                            identityRegistry = identityRegistry
                         ),
                         name = model.name
                     ),
@@ -670,14 +733,17 @@ data class LinearTriadModel(
                     objective = dumpLinearTriadObjectives(
                         model = model,
                         tokenIndexes = tokenIndexMap,
-                        fixedVariables = fixedVariables
+                        fixedVariables = fixedVariables,
+                        identityRegistry = identityRegistry
                     )
                 )
             }
 
+            val identityValidation = identityRegistry?.validate() ?: ok
+            val validatedTriadModel = triadModel.copy(identityValidation = identityValidation)
             logger.trace("LinearTriadModel created for $model")
             MemoryCleanupPolicy.cleanupAfterModelBuilt()
-            return triadModel
+            return validatedTriadModel
         }
     }
 
@@ -689,10 +755,19 @@ data class LinearTriadModel(
     override fun copy() = LinearTriadModel(
         impl = impl.copy(),
         tokensInSolver = tokensInSolver,
-        objective = objective.copy()
+        objective = objective.copy(),
+        identityValidation = identityValidation
     )
 
     override fun clone() = copy()
+
+    /**
+     * Return the identity validation result captured during model construction. /
+     * 返回模型构建期间捕获的身份校验结果。
+     *
+     * @return Structured identity validation result. / 结构化身份校验结果。
+     */
+    fun validateIdentity(): Try = identityValidation
 
     override fun linearRelax(): LinearTriadModel {
         impl.linearRelax()
@@ -703,7 +778,8 @@ data class LinearTriadModel(
         return LinearTriadModel(
             impl = impl.linearRelaxed(),
             tokensInSolver = tokensInSolver,
-            objective = objective.copy()
+            objective = objective.copy(),
+            identityValidation = identityValidation
         )
     }
 
@@ -991,7 +1067,8 @@ data class LinearTriadModel(
             ),
             tokensInSolver = tokensInSolver,
             objective = LinearObjective(this.objective.category.reverse, objective),
-            dualOrigin = this
+            dualOrigin = this,
+            identityValidation = identityValidation
         )
     }
     override suspend fun farkasDual(): LinearTriadModel {
@@ -1307,13 +1384,43 @@ data class LinearTriadModel(
             ),
             tokensInSolver = tokensInSolver,
             objective = LinearObjective(ObjectCategory.Minimum, objective),
-            dualOrigin = this
+            dualOrigin = this,
+            identityValidation = identityValidation
         )
     }
     override fun feasibility(): LinearTriadModel {
         var colIndex = this.variables.size
         val slackVariables = ArrayList<Variable>()
         val artifactVariables = ArrayList<Variable>()
+        fun artifactVariable(
+            constraintIndex: Int,
+            role: String,
+            index: Int,
+            slack: VariableSlack? = null
+        ): Variable {
+            val sourceId = this.constraints.ids.getOrNull(constraintIndex)?.value
+            val sourceKey = sourceId ?: "row:$constraintIndex"
+            return Variable(
+                index = index,
+                lowerBound = Flt64.zero,
+                upperBound = Flt64.infinity,
+                type = Continuous,
+                origin = null,
+                dualOrigin = null,
+                slack = slack,
+                name = "${this.constraints.names[constraintIndex].ifEmpty { "cons$constraintIndex" }}_$role",
+                initialResult = Flt64.zero,
+                id = VariableId("artifact:feasibility:$role:$sourceKey"),
+                identityScope = if (sourceId == null) {
+                    ModelElementScope.ModelLocal
+                } else {
+                    this.constraints.identityScopeAt(constraintIndex)
+                },
+                identityOrigin = sourceId?.let { ModelElementOrigin("constraint", it) },
+                identityNamespace = this.constraints.identityNamespace,
+                identitySchemaVersion = this.constraints.identitySchemaVersion
+            )
+        }
         val lhs = this.constraints.indices.map {
                 when (if (this.constraints.rhs[it] ls Flt64.zero) {
                     this.constraints.signs[it].reverse
@@ -1321,18 +1428,11 @@ data class LinearTriadModel(
                     this.constraints.signs[it]
                 }) {
                     ConstraintRelation.LessEqual -> {
-                        val slack = Variable(
+                        val slack = artifactVariable(
+                            constraintIndex = it,
+                            role = "slack",
                             index = colIndex,
-                            lowerBound = Flt64.zero,
-                            upperBound = Flt64.infinity,
-                            type = Continuous,
-                            origin = null,
-                            dualOrigin = null,
-                            slack = VariableSlack(
-                                constraint = this.constraints.origins[it]
-                            ),
-                            name = "${this.constraints.names[it].ifEmpty { "cons${it}" }}_slack",
-                            initialResult = Flt64.zero
+                            slack = VariableSlack(constraint = this.constraints.origins[it])
                         )
                         colIndex += 1
 
@@ -1351,30 +1451,17 @@ data class LinearTriadModel(
                     }
 
                     ConstraintRelation.GreaterEqual -> {
-                        val slack = Variable(
-                            colIndex,
-                            lowerBound = Flt64.zero,
-                            upperBound = Flt64.infinity,
-                            type = Continuous,
-                            origin = null,
-                            dualOrigin = null,
-                            slack = VariableSlack(
-                                constraint = this.constraints.origins[it]
-                            ),
-                            name = "${this.constraints.names[it].ifEmpty { "cons${it}" }}_slack",
-                            initialResult = Flt64.zero
+                        val slack = artifactVariable(
+                            constraintIndex = it,
+                            role = "slack",
+                            index = colIndex,
+                            slack = VariableSlack(constraint = this.constraints.origins[it])
                         )
                         colIndex += 1
-                        val artifact = Variable(
-                            colIndex,
-                            lowerBound = Flt64.zero,
-                            upperBound = Flt64.infinity,
-                            type = Continuous,
-                            origin = null,
-                            dualOrigin = null,
-                            slack = null,
-                            name = "${this.constraints.names[it].ifEmpty { "cons${it}" }}_artifact",
-                            initialResult = Flt64.zero
+                        val artifact = artifactVariable(
+                            constraintIndex = it,
+                            role = "artifact",
+                            index = colIndex
                         )
                         colIndex += 1
 
@@ -1399,16 +1486,10 @@ data class LinearTriadModel(
                     }
 
                     ConstraintRelation.Equal -> {
-                        val artifact = Variable(
-                            index = colIndex,
-                            lowerBound = Flt64.zero,
-                            upperBound = Flt64.infinity,
-                            type = Continuous,
-                            origin = null,
-                            dualOrigin = null,
-                            slack = null,
-                            name = "${this.constraints.names[it].ifEmpty { "cons${it}" }}_artifact",
-                            initialResult = Flt64.zero
+                        val artifact = artifactVariable(
+                            constraintIndex = it,
+                            role = "artifact",
+                            index = colIndex
                         )
                         colIndex += 1
 
@@ -1449,6 +1530,22 @@ data class LinearTriadModel(
             },
             priorities = this.constraints.indices.map {
                 this.constraints.priorities[it]
+            },
+            ids = this.constraints.indices.map { index ->
+                val sourceId = this.constraints.ids.getOrNull(index)?.value ?: "row:$index"
+                ConstraintId("artifact:feasibility:constraint:$sourceId")
+            },
+            identityNamespace = this.constraints.identityNamespace,
+            identitySchemaVersion = this.constraints.identitySchemaVersion,
+            identityScopes = this.constraints.indices.map { index ->
+                if (this.constraints.ids.getOrNull(index) == null) {
+                    ModelElementScope.ModelLocal
+                } else {
+                    this.constraints.identityScopeAt(index)
+                }
+            },
+            identityOrigins = this.constraints.indices.map { index ->
+                this.constraints.identityOriginAt(index)
             }
         )
 
@@ -1466,7 +1563,8 @@ data class LinearTriadModel(
                 name = "$name-feasibility"
             ),
             tokensInSolver = tokensInSolver,
-            objective = LinearObjective(ObjectCategory.Minimum, objective)
+            objective = LinearObjective(ObjectCategory.Minimum, objective),
+            identityValidation = identityValidation
         )
     }
     override fun elastic(

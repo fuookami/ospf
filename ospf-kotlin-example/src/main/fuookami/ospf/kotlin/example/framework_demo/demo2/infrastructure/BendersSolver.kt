@@ -146,9 +146,9 @@ object BendersSolver {
                     bendersIterationLimit = UInt64(1)
                 }
             )) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> result.value
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                is Ok -> result.value
+                is Failed -> return Failed(result.error)
+                is Fatal -> return Fatal(result.errors)
             }
             if (masterOutput == null) {
                 return Failed(Err(
@@ -220,9 +220,9 @@ object BendersSolver {
                 fixedVariables = masterFixedVariables,
                 options = FrameworkSolveOptions()
             )) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> result.value
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                is Ok -> result.value
+                is Failed -> return Failed(result.error)
+                is Fatal -> return Fatal(result.errors)
             }
 
             when (subResult) {
@@ -232,8 +232,8 @@ object BendersSolver {
                         totalCuts += cuts.size
                         for (cut in cuts) {
                             when (val addResult = masterModel.addConstraint(cut, group = null, name = "benders_opt_cut_${iteration}_$totalCuts")) {
-                                is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(addResult.error)
-                                is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(addResult.errors)
+                                is Failed -> return Failed(addResult.error)
+                                is Fatal -> return Fatal(addResult.errors)
                                 else -> {}
                             }
                         }
@@ -287,8 +287,8 @@ object BendersSolver {
                         totalCuts += cuts.size
                         for (cut in cuts) {
                             when (val addResult = masterModel.addConstraint(cut, group = null, name = "benders_feas_cut_${iteration}_$totalCuts")) {
-                                is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(addResult.error)
-                                is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(addResult.errors)
+                                is Failed -> return Failed(addResult.error)
+                                is Fatal -> return Fatal(addResult.errors)
                                 else -> {}
                             }
                         }

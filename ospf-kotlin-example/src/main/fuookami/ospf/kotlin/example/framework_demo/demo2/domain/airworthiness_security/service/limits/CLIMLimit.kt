@@ -27,38 +27,32 @@ class CLIMLimit(
     override val name: String = "max_clim_limit"
 ) : Pipeline<AbstractLinearMetaModel<Flt64>> {
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {
-        val upper = MutableLinearPolynomial()
-        upper += LinearMonomial(Flt64.one, torque.clim.value)
-        upper += LinearMonomial(-Flt64.one, maxCLIM.maxCLIM.value)
         when (val result = model.addConstraint(
-            relation = LinearPolynomial(upper.monomials, upper.constant) leq Flt64.zero,
+            relation = (torque.clim.value - maxCLIM.maxCLIM.value) leq Flt64.zero,
             name = "${name}_ub"
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }
 
-        val lower = MutableLinearPolynomial()
-        lower += LinearMonomial(Flt64.one, torque.clim.value)
-        lower += LinearMonomial(Flt64.one, maxCLIM.maxCLIM.value)
         when (val result = model.addConstraint(
-            relation = LinearPolynomial(lower.monomials, lower.constant) geq Flt64.zero,
+            relation = (torque.clim.value + maxCLIM.maxCLIM.value) geq Flt64.zero,
             name = "${name}_lb"
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }

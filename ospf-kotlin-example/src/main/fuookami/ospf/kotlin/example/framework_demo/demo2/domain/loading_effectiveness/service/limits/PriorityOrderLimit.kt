@@ -6,6 +6,7 @@ import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.symbol.inequality.*
 import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.intermediate.*
@@ -42,8 +43,8 @@ class PriorityOrderLimit(
                 // sum((p + bigM) * x[i][p] for all p) + sum((-p + bigM) * x[j][p] for all p) <= 2 * bigM
                 val monomials = mutableListOf<LinearMonomial<Flt64>>()
                 for (p in positions.indices) {
-                    monomials.add(LinearMonomial(Flt64(p.toDouble() + bigM), stowage.x[i, p]))
-                    monomials.add(LinearMonomial(Flt64(-p.toDouble() + bigM), stowage.x[j, p]))
+                    monomials.add(Flt64(p.toDouble() + bigM) * stowage.x[i, p])
+                    monomials.add(Flt64(-p.toDouble() + bigM) * stowage.x[j, p])
                 }
                 val lhs = LinearPolynomial(monomials, Flt64.zero)
                 val rhs = Flt64(2.0 * bigM)
@@ -52,9 +53,9 @@ class PriorityOrderLimit(
                     relation = lhs leq rhs,
                     name = "${name}_${i}_${j}_${items[i].cargo.priority.priority}"
                 )) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                    is Ok -> {}
+                    is Failed -> return Failed(result.error)
+                    is Fatal -> return Fatal(result.errors)
                 }
             }
         }

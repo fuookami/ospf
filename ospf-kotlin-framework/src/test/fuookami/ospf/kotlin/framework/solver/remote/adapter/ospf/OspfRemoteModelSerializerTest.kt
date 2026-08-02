@@ -9,6 +9,11 @@ import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
 import fuookami.ospf.kotlin.core.model.basic.Objective
 import fuookami.ospf.kotlin.core.model.basic.Variable
 import fuookami.ospf.kotlin.core.model.intermediate.*
+import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ModelElementOrigin
+import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
+import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
+import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.variable.*
 import fuookami.ospf.kotlin.framework.solver.remote.domain.*
 
@@ -33,7 +38,12 @@ class OspfRemoteModelSerializerTest {
                     signs = listOf(ConstraintRelation.LessEqual),
                     rhs = listOf(Flt64(5.0)),
                     names = listOf("cap"),
-                    sources = listOf(ConstraintSource.Origin)
+                    sources = listOf(ConstraintSource.Origin),
+                    ids = listOf(ConstraintId("constraint:capacity")),
+                    identityNamespace = "fixture-model",
+                    identitySchemaVersion = "1.0",
+                    identityScopes = listOf(ModelElementScope.Stable),
+                    identityOrigins = listOf(ModelElementOrigin("capacity", "capacity"))
                 ),
                 name = "linear-model"
             ),
@@ -44,7 +54,12 @@ class OspfRemoteModelSerializerTest {
                     LinearObjectiveCell(colIndex = 0, coefficient = Flt64(4.0)),
                     LinearObjectiveCell(colIndex = 1, coefficient = Flt64(6.0))
                 ),
-                constant = Flt64(1.0)
+                constant = Flt64(1.0),
+                id = ObjectiveId("objective:cost"),
+                identityScope = ModelElementScope.Stable,
+                identityOrigin = ModelElementOrigin("objective", "total"),
+                identityNamespace = "fixture-model",
+                identitySchemaVersion = "1.0"
             )
         )
 
@@ -58,6 +73,14 @@ class OspfRemoteModelSerializerTest {
         assertEquals(listOf(0, 1), serialized.constraints.single().cells.map { it.colIndex })
         assertEquals(SerializedObjectiveCategory.MINIMIZE, serialized.objective.category)
         assertEquals(Flt64(1.0), serialized.objective.constant)
+        assertEquals("fixture-model", serialized.identityNamespace)
+        assertEquals("1.0", serialized.identitySchemaVersion)
+        assertEquals("variable:x", serialized.variables[0].identityId)
+        assertEquals("STABLE", serialized.variables[0].identityScope)
+        assertEquals("capacity", serialized.constraints.single().identityOriginKind)
+        assertEquals("constraint:capacity", serialized.constraints.single().identityId)
+        assertEquals("objective:cost", serialized.objective.identityId)
+        assertEquals("total", serialized.objective.identityOriginKey)
     }
 
     @Test
@@ -119,7 +142,12 @@ class OspfRemoteModelSerializerTest {
             upperBound = Flt64(10.0),
             type = type,
             origin = null,
-            name = name
+            name = name,
+            id = VariableId("variable:$name"),
+            identityScope = ModelElementScope.Stable,
+            identityOrigin = ModelElementOrigin("variable", name),
+            identityNamespace = "fixture-model",
+            identitySchemaVersion = "1.0"
         )
     }
 }

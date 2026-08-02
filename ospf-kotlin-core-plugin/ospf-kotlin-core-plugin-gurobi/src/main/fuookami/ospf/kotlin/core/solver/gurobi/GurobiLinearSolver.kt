@@ -14,6 +14,7 @@ import fuookami.ospf.kotlin.core.solver.config.GurobiSolverConfig
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
 import fuookami.ospf.kotlin.core.solver.iis.IISConfig
 import fuookami.ospf.kotlin.core.solver.iis.InfeasibilityAnalyzer
+import fuookami.ospf.kotlin.core.solver.nativeElementName
 import fuookami.ospf.kotlin.core.solver.output.*
 import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.value.toSolverDouble
@@ -66,6 +67,11 @@ class GurobiLinearSolver(
         model: LinearTriadModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
     ): Ret<FeasibleSolverOutput<Flt64>> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         return GurobiLinearSolverImpl(
             config = config,
             callBack = callBack,
@@ -215,7 +221,7 @@ private class GurobiLinearSolverImpl(
                         variableDumpingData.upperBounds[col],
                         0.0,
                         GurobiVariable(model.variables[col].type).toGurobiVar(),
-                        variableDumpingData.names[col]
+                        nativeElementName(model.variables[col].id?.value, variableDumpingData.names[col], "variable")
                     )
                 )
             }
@@ -253,7 +259,11 @@ private class GurobiLinearSolverImpl(
                                 it.second,
                                 GurobiConstraintSign(model.constraints.signs[it.first]).toGurobiConstraintSign(),
                                 model.constraints.rhs[it.first].toSolverDouble("linear.constraints.rhs[${it.first}]"),
-                                model.constraints.names[it.first]
+                                nativeElementName(
+                                    model.constraints.ids.getOrNull(it.first)?.value,
+                                    model.constraints.names[it.first],
+                                    "constraint"
+                                )
                             )
                         }
                         cleanupOnSolverMemoryPressure()
@@ -272,7 +282,11 @@ private class GurobiLinearSolverImpl(
                             lhs,
                             GurobiConstraintSign(model.constraints.signs[i]).toGurobiConstraintSign(),
                             model.constraints.rhs[i].toSolverDouble("linear.constraints.rhs[$i]"),
-                            model.constraints.names[i]
+                            nativeElementName(
+                                model.constraints.ids.getOrNull(i)?.value,
+                                model.constraints.names[i],
+                                "constraint"
+                            )
                         )
                     }
                 }

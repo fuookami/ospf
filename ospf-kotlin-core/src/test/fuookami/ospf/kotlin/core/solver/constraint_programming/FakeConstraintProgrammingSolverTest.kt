@@ -43,6 +43,26 @@ class FakeConstraintProgrammingSolverTest {
     }
 
     @Test
+    fun shouldRespectMaximumObjectiveDirection() = runBlocking {
+        val model = ConstraintProgrammingModel("fake-maximum", ObjectCategory.Maximum)
+        val variable = IntVar("maximum-value")
+        try {
+            model.registerVariable(variable, IntegerDomain.interval(0, 3).value!!)
+            val expression = ConstraintProgrammingExpression.Variable(variable)
+            model.maximize(expression)
+
+            val output = assertIs<ConstraintProgrammingFeasibleOutput>(
+                assertIs<Ok<*, *, *>>(FakeConstraintProgrammingSolver().solve(model)).value
+            )
+            assertEquals(Int64(3), output.solution.value(variable).value)
+            assertEquals(Int64(3), output.exactObjective)
+            assertEquals(fuookami.ospf.kotlin.core.solver.output.SolverStatus.Optimal, output.status)
+        } finally {
+            model.close()
+        }
+    }
+
+    @Test
     fun shouldReturnInfeasibleAndUnknownWithoutThrowing() = runBlocking {
         val infeasible = ConstraintProgrammingModel("fake-infeasible")
         val variable = IntVar("x")

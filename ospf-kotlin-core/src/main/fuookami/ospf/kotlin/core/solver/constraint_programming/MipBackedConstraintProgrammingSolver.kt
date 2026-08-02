@@ -5,9 +5,19 @@ package fuookami.ospf.kotlin.core.solver.constraint_programming
 
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.ZERO
+import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.utils.functional.Failed
+import fuookami.ospf.kotlin.utils.functional.Fatal
+import fuookami.ospf.kotlin.utils.functional.Ok
+import fuookami.ospf.kotlin.utils.functional.Ret
+import fuookami.ospf.kotlin.utils.functional.ok
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.algebra.number.Int64
+import fuookami.ospf.kotlin.math.algebra.number.UInt64
 import fuookami.ospf.kotlin.core.model.constraint_programming.BooleanLiteral
 import fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintProgrammingExpression
 import fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintProgrammingModel
+import fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintProgrammingModelSnapshot
 import fuookami.ospf.kotlin.core.model.constraint_programming.IntervalValue
 import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModel
 import fuookami.ospf.kotlin.core.solver.LinearSolver
@@ -18,6 +28,7 @@ import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingInfeasibleOu
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingSolution
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingSolverOutput
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingUnknownOutput
+import fuookami.ospf.kotlin.core.solver.output.toCompatibilityFlt64
 import fuookami.ospf.kotlin.core.solver.report.ProblemStatus
 import fuookami.ospf.kotlin.core.solver.report.ProofStatus
 import fuookami.ospf.kotlin.core.solver.report.SolveProof
@@ -32,20 +43,14 @@ import fuookami.ospf.kotlin.core.solver.report.SolverModelType
 import fuookami.ospf.kotlin.core.solver.report.TerminationReason
 import fuookami.ospf.kotlin.core.solver.output.SolverStatus
 import fuookami.ospf.kotlin.core.solver.report.VariableId
-import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.algebra.number.Int64
-import fuookami.ospf.kotlin.math.algebra.number.UInt64
-import fuookami.ospf.kotlin.utils.error.ErrorCode
-import fuookami.ospf.kotlin.utils.functional.Failed
-import fuookami.ospf.kotlin.utils.functional.Fatal
-import fuookami.ospf.kotlin.utils.functional.Ok
-import fuookami.ospf.kotlin.utils.functional.Ret
-import fuookami.ospf.kotlin.utils.functional.ok
 
 /**
  * 将 CP 能力子集精确降为线性 MIP 后调用 [linearSolver]。 / / Lower the exact CP subset to a linear MIP and invoke [linearSolver].
  *
  * 适配器不把线性辅助变量暴露到 CP 解中，也不把线性模型的对象引用泄露到 session之外。每次 solve 都重新 lower，因此 assumptions 不会污染后续求解。 / / Auxiliary linear variables are not exposed in CP solutions, and backend model references do not escape the session. Every solve lowers again so assumptions cannot contaminate a later solve.
+ *
+ * @property linearSolver 后端线性求解器 / Backend linear solver
+ * @property lowerer CP 到线性模型的 lowerer / CP-to-linear lowerer
  */
 class MipBackedConstraintProgrammingSolver(
     private val linearSolver: LinearSolver,
@@ -129,6 +134,10 @@ class MipBackedConstraintProgrammingSolver(
                 return ok(ConstraintProgrammingUnknownOutput(TerminationReason.Cancelled))
             }
 
+            val snapshotResult = model.snapshot()
+            if (snapshotResult.failed) {
+                return propagate(snapshotResult)
+            }
             val loweredResult = lowerer.lower(model, assumptions, fixedValues)
             if (loweredResult.failed) {
                 return propagate(loweredResult)
@@ -156,7 +165,12 @@ class MipBackedConstraintProgrammingSolver(
                             ok(ConstraintProgrammingUnknownOutput(TerminationReason.Cancelled))
                         } else {
                             when (reportResult) {
-                                is Ok -> mapReport(reportResult.value, triad, lowered)
+                                is Ok -> mapReport(
+                                    report = reportResult.value,
+                                    triad = triad,
+                                    lowered = lowered,
+                                    snapshot = snapshotResult.value!!
+                                )
                                 is Failed -> mapLinearFailure(reportResult)
                                 is Fatal -> Fatal(reportResult.errors)
                             }
@@ -328,7 +342,8 @@ class MipBackedConstraintProgrammingSolver(
     private fun mapReport(
         report: SolveReport<Flt64>,
         triad: LinearTriadModel,
-        lowered: ConstraintProgrammingLoweredLinearModel
+        lowered: ConstraintProgrammingLoweredLinearModel,
+        snapshot: ConstraintProgrammingModelSnapshot
     ): Ret<ConstraintProgrammingSolverOutput> {
         return when (report.problemStatus) {
             ProblemStatus.Infeasible -> ok(
@@ -346,6 +361,13 @@ class MipBackedConstraintProgrammingSolver(
                     return propagate(solution)
                 }
                 val cpSolution = solution.value!!
+                val exactObjective = snapshot.objectives.firstOrNull()?.let { objective ->
+                    when (val evaluated = objective.expression.evaluate(cpSolution.values)) {
+                        is Ok -> evaluated.value
+                        is Failed -> return propagate(evaluated)
+                        is Fatal -> return Fatal(evaluated.errors)
+                    }
+                }
                 val status = if (report.solutionPresence == SolutionPresence.Optimal) {
                     SolverStatus.Optimal
                 } else {
@@ -354,11 +376,12 @@ class MipBackedConstraintProgrammingSolver(
                 ok(
                     ConstraintProgrammingFeasibleOutput(
                         solution = cpSolution,
-                        objective = source.objective,
+                        objective = exactObjective?.toCompatibilityFlt64(),
                         bestBound = report.statistics.bestBound,
                         status = status,
                         proofStatus = report.proof.status,
-                        report = report.toConstraintProgrammingReport(cpSolution)
+                        report = report.toConstraintProgrammingReport(cpSolution, exactObjective),
+                        exactObjective = exactObjective
                     )
                 )
             }
@@ -397,6 +420,13 @@ class MipBackedConstraintProgrammingSolver(
             if (value != value.round()) {
                 return Failed(ErrorCode.ORSolutionInvalid, "CP 变量解不是整数：$id=$value / CP variable solution is not integral: $id=$value")
             }
+            if (!value.isFinite() || value.abs() > MAX_EXACT_DOUBLE_INTEGER) {
+                return Failed(
+                    ErrorCode.ORSolutionInvalid,
+                    "MIP-backed CP 变量解超出 Int64 精确传输范围：$id=$value / " +
+                        "MIP-backed CP variable exceeds the exact Int64 transport range: $id=$value"
+                )
+            }
             result[id] = value.toInt64()
         }
         val intervals = LinkedHashMap<fuookami.ospf.kotlin.core.model.constraint_programming.IntervalId, IntervalValue>()
@@ -411,10 +441,9 @@ class MipBackedConstraintProgrammingSolver(
     }
 
     private fun SolveReport<Flt64>.toConstraintProgrammingReport(
-        solution: ConstraintProgrammingSolution?
+        solution: ConstraintProgrammingSolution?,
+        objective: Int64? = null
     ): SolveReport<Int64> {
-        val exactObjective = this.solution?.objective?.takeIf { it == it.round() }?.toInt64()
-        val exactBestBound = statistics.bestBound?.takeIf { it == it.round() }?.toInt64()
         return SolveReport(
             schemaVersion = schemaVersion,
             runId = runId,
@@ -424,7 +453,7 @@ class MipBackedConstraintProgrammingSolver(
             solution = solution?.let {
                 SolveSolution(
                     values = it.values.values.toList(),
-                    objective = exactObjective
+                    objective = objective
                 )
             },
             proof = proof,
@@ -432,8 +461,8 @@ class MipBackedConstraintProgrammingSolver(
                 solveTime = statistics.solveTime,
                 iterations = statistics.iterations,
                 nodes = statistics.nodes,
-                bestBound = exactBestBound,
-                gap = null
+                bestBound = statistics.bestBound,
+                gap = statistics.gap
             ),
             diagnostics = SolveDiagnostics(
                 infeasibilityEvidence = diagnostics.infeasibilityEvidence,
@@ -458,6 +487,8 @@ class MipBackedConstraintProgrammingSolver(
         return null
     }
 }
+
+private val MAX_EXACT_DOUBLE_INTEGER = Flt64(9_007_199_254_740_991.0)
 
 private fun <T> propagate(result: Ret<*>): Ret<T> {
     return when (result) {

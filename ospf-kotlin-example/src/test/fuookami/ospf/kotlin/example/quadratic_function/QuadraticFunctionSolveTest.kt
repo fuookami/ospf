@@ -57,8 +57,8 @@ class QuadraticFunctionSolveTest {
 
         val model = QuadraticMetaModel(name = "p12-product-solve")
         try {
-            assertTrue(model.add(listOf(x, y)) is Ok<*, *, *>)
-            assertTrue(product.registerAuxiliaryTokens(model.tokens) is Ok<*, *, *>)
+            assertTrue(model.add(listOf(x, y)) is Ok)
+            assertTrue(product.registerAuxiliaryTokens(model.tokens) is Ok)
 
             // Constraint: x + y = 10
             val sumConstraint = LinearPolynomial(
@@ -68,24 +68,24 @@ class QuadraticFunctionSolveTest {
                 ),
                 constant = Flt64(-10.0)
             )
-            assertTrue(model.addConstraint(sumConstraint eq Flt64.zero) is Ok<*, *, *>)
+            assertTrue(model.addConstraint(sumConstraint eq Flt64.zero) is Ok)
 
             // Minimize x*y
-            assertTrue(model.minimize(product.polynomial) is Ok<*, *, *>)
+            assertTrue(model.minimize(product.polynomial) is Ok)
             val mechanismRet = runBlocking {
                 QuadraticMechanismModel.invoke<Flt64>(metaModel = model)
             }
-            assertTrue(mechanismRet is Ok<*, *, *>)
+            assertTrue(mechanismRet is Ok)
             val mechanismModel = requireNotNull(mechanismRet.value)
 
-            assertTrue(product.registerConstraints(mechanismModel) is Ok<*, *, *>)
+            assertTrue(product.registerConstraints(mechanismModel) is Ok)
 
             val solver = ScipQuadraticSolver()
             val result = runBlocking {
                 val tetrad = solver.dump(mechanismModel)
                 solver(tetrad)
             }
-            assertTrue(result is Ok<*, *, *>, "SCIP quadratic solve should succeed")
+            assertTrue(result is Ok, "SCIP quadratic solve should succeed")
 
             val output = asFeasibleOutput(requireNotNull(result.value))
             assertTrue(output.solution.isNotEmpty(),
@@ -118,7 +118,7 @@ class QuadraticFunctionSolveTest {
 
         val model = QuadraticMetaModel(name = "p12-ineq-solve")
         try {
-            assertTrue(model.add(listOf(x, y)) is Ok<*, *, *>)
+            assertTrue(model.add(listOf(x, y)) is Ok)
 
             // Constraint: x + y >= 4
             val sumPoly = LinearPolynomial(
@@ -128,7 +128,7 @@ class QuadraticFunctionSolveTest {
                 ),
                 constant = Flt64.zero
             )
-            assertTrue(model.addConstraint(sumPoly ge Flt64(4.0)) is Ok<*, *, *>)
+            assertTrue(model.addConstraint(sumPoly ge Flt64(4.0)) is Ok)
 
             // Minimize x^2 + y^2 (convex quadratic)
             val objective = QuadraticPolynomial(
@@ -138,11 +138,11 @@ class QuadraticFunctionSolveTest {
                 ),
                 constant = Flt64.zero
             )
-            assertTrue(model.minimize(objective) is Ok<*, *, *>)
+            assertTrue(model.minimize(objective) is Ok)
             val mechanismRet = runBlocking {
                 QuadraticMechanismModel.invoke<Flt64>(metaModel = model)
             }
-            assertTrue(mechanismRet is Ok<*, *, *>)
+            assertTrue(mechanismRet is Ok)
             val mechanismModel = requireNotNull(mechanismRet.value)
 
             val solver = ScipQuadraticSolver()
@@ -150,7 +150,7 @@ class QuadraticFunctionSolveTest {
                 val tetrad = solver.dump(mechanismModel)
                 solver(tetrad)
             }
-            assertTrue(result is Ok<*, *, *>, "SCIP quadratic solve should succeed")
+            assertTrue(result is Ok, "SCIP quadratic solve should succeed")
 
             val output = asFeasibleOutput(requireNotNull(result.value))
             assertTrue(output.solution.isNotEmpty(),

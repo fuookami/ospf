@@ -4,6 +4,7 @@ import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.intermediate.*
@@ -24,12 +25,12 @@ class RecommendedWeightDeviationObjective(
     override val name: String = "recommended_weight_deviation_objective"
 ) : Pipeline<AbstractLinearMetaModel<Flt64>> {
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {
-        val poly = MutableLinearPolynomial<Flt64>(emptyList(), Flt64.zero)
+        var poly = LinearPolynomial()
         for (deviation in load.z) {
-            poly += LinearMonomial(-coefficient(), deviation.value)
+            poly += -coefficient() * deviation.value
         }
         when (val result = model.maximize(
-            LinearPolynomial(poly.monomials, poly.constant),
+            poly,
             name = name
         )) {
             is Ok<*, ErrorCode, Error<ErrorCode>> -> {}

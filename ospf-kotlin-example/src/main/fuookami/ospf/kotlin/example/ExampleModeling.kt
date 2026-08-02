@@ -4,7 +4,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.symbol.*
 import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
-import fuookami.ospf.kotlin.math.symbol.operation.ToLinearPolynomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 import fuookami.ospf.kotlin.core.model.basic.RegistrationStatusCallBack
 import fuookami.ospf.kotlin.core.model.intermediate.MechanismModelDumpingStatusCallBack
@@ -36,7 +36,7 @@ internal fun flt64Constant(value: Flt64): LinearPolynomial<Flt64> {
  * @return 线性多项式 / Linear polynomial
 */
 internal fun flt64Linear(symbol: Symbol): LinearPolynomial<Flt64> {
-    return LinearPolynomial(listOf(LinearMonomial(Flt64.one, symbol)), Flt64.zero)
+    return LinearPolynomial(symbol)
 }
 
 /**

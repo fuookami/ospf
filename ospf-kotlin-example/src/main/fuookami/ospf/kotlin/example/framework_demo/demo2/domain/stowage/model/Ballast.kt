@@ -68,10 +68,10 @@ class Ballast(
         model: AbstractLinearMetaModel<Flt64>
     ): Try {
         if (!::ballastWeight.isInitialized) {
-            val poly = MutableLinearPolynomial()
+            var poly = LinearPolynomial()
             for (position in ballastPositions) {
                 val j = positions.indexOf(position)
-                poly += LinearMonomial(Flt64.one, load.estimateLoadWeight[j].to(aircraftModel.weightUnit)!!.value)
+                poly += load.estimateLoadWeight[j].to(aircraftModel.weightUnit)!!.value
             }
             ballastWeight = Quantity(
                 LinearExpressionSymbol(
@@ -82,13 +82,13 @@ class Ballast(
             )
         }
         when (val result = model.add(ballastWeight)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }
@@ -116,13 +116,13 @@ class Ballast(
                 }
             }
             when (val result = model.add(adaptiveMinBallastWeight)) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }

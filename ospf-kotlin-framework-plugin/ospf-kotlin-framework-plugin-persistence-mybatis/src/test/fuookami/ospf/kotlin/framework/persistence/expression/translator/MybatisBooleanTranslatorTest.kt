@@ -334,7 +334,7 @@ class MybatisBooleanTranslatorTest {
 
             val result = failFastTranslator.translate(QueryWrapper(), BooleanCustom("x"))
             assertTrue(result.failed)
-            assertTrue(result is Failed<*, *, *>)
+            assertTrue(result is Failed)
 
             val failed = result as Failed<*, *, *>
             val error = failed.error
@@ -358,7 +358,7 @@ class MybatisBooleanTranslatorTest {
 
             val result = clientFilterTranslator.translate(QueryWrapper(), BooleanCustom("x"))
             assertTrue(result.failed)
-            assertTrue(result is Failed<*, *, *>)
+            assertTrue(result is Failed)
 
             val failed = result as Failed<*, *, *>
             val error = failed.error

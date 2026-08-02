@@ -48,15 +48,15 @@ class MacContext {
             stowageAggregation = stowageContext.aggregation,
             input = input
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {
+            is Ok -> {
                 aggregation = result.value!!
             }
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -80,13 +80,13 @@ class MacContext {
             stowageMode = stowageMode,
             model = model
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -109,9 +109,9 @@ class MacContext {
             stowageMode = stowageMode,
             model = model
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+            is Ok -> {}
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
         }
         return ok
     }

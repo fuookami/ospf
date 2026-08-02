@@ -59,13 +59,10 @@ class ExperimentalLongitudinalBalance(
     */
     fun register(model: AbstractLinearMetaModel<Flt64>): Try {
         if (!::mainActualLongitudinalTorque.isInitialized) {
-            val poly = MutableLinearPolynomial()
+            var poly = LinearPolynomial()
             for ((j, position) in positions.withIndex()) {
                 if (position.location.main) {
-                    poly += LinearMonomial(
-                        Flt64.one,
-                        load.loadActualLongitudinalTorque[j].to(aircraftModel.torqueUnit)!!.value
-                    )
+                    poly += load.loadActualLongitudinalTorque[j].to(aircraftModel.torqueUnit)!!.value
                 }
             }
             mainActualLongitudinalTorque = Quantity(
@@ -77,25 +74,22 @@ class ExperimentalLongitudinalBalance(
             )
         }
         when (val result = model.add(mainActualLongitudinalTorque)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }
 
         if (!::predicateLongitudinalTorque.isInitialized) {
-            val poly = MutableLinearPolynomial()
+            var poly = LinearPolynomial()
             for ((j, position) in positions.withIndex()) {
                 if (position.location.main) {
-                    poly += LinearMonomial(
-                        Flt64.one,
-                        load.loadEstimateLongitudinalTorque[j].to(aircraftModel.torqueUnit)!!.value
-                    )
+                    poly += load.loadEstimateLongitudinalTorque[j].to(aircraftModel.torqueUnit)!!.value
                 }
             }
             predicateLongitudinalTorque = Quantity(
@@ -107,13 +101,13 @@ class ExperimentalLongitudinalBalance(
             )
         }
         when (val result = model.add(predicateLongitudinalTorque)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }
@@ -136,13 +130,13 @@ class ExperimentalLongitudinalBalance(
             )
         }
         when (val result = model.add(longitudinalTorqueSlack)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }

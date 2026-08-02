@@ -12,7 +12,7 @@ import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.task_compilation.m
 import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.*
 import fuookami.ospf.kotlin.math.algebra.concept.*
 import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.multiarray.*
 import fuookami.ospf.kotlin.quantities.quantity.*
@@ -725,7 +725,7 @@ class IterativeTaskSchedulingStorageResourceUsage<
                             if (thisTasks.isNotEmpty()) {
                                 executorSupply[e, r, t].flush()
                                 for ((task, supplyQuantity) in thisTasks) {
-                                    executorSupply[e, r, t].asMutable() += LinearMonomial(supplyQuantity.toSolverValue(), xi[task])
+                                    executorSupply[e, r, t].asMutable() += supplyQuantity.toSolverValue() * xi[task]
                                 }
                             }
                         }
@@ -749,7 +749,7 @@ class IterativeTaskSchedulingStorageResourceUsage<
                         if (thisTasks.isNotEmpty()) {
                             cost[r, t].flush()
                             for ((task, costQuantity) in thisTasks) {
-                                cost[r, t].asMutable() += LinearMonomial(costQuantity.toSolverValue(), xi[task])
+                                cost[r, t].asMutable() += costQuantity.toSolverValue() * xi[task]
                             }
                         }
                     }
@@ -937,7 +937,7 @@ class BunchSchedulingStorageResourceUsage<
                             if (thisBunches.isNotEmpty()) {
                                 executorSupply[e, r, t].flush()
                                 for ((bunch, supplyQuantity) in thisBunches) {
-                                    executorSupply[e, r, t].asMutable() += LinearMonomial(supplyQuantity.toSolverValue(), xi[bunch])
+                                    executorSupply[e, r, t].asMutable() += supplyQuantity.toSolverValue() * xi[bunch]
                                 }
                             }
                         }
@@ -962,7 +962,7 @@ class BunchSchedulingStorageResourceUsage<
                         if (thisBunches.isNotEmpty()) {
                             cost[r, t].flush()
                             for ((bunch, costQuantity) in thisBunches) {
-                                cost[r, t].asMutable() += LinearMonomial(costQuantity.toSolverValue(), xi[bunch])
+                                cost[r, t].asMutable() += costQuantity.toSolverValue() * xi[bunch]
                             }
                         }
                     }

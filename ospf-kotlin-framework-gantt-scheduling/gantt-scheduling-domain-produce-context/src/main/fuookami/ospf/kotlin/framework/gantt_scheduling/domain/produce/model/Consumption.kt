@@ -16,7 +16,7 @@ import fuookami.ospf.kotlin.math.algebra.concept.NumberField
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.multiarray.Shape1
 import fuookami.ospf.kotlin.quantities.quantity.Quantity
@@ -439,10 +439,7 @@ class BunchSchedulingConsumption<
             if (thisBunches.isNotEmpty()) {
                 quantity[material].flush()
                 for ((bunch, consumptionQuantity) in thisBunches) {
-                    quantity[material].asMutable() += LinearMonomial(
-                        consumptionQuantity.toSolverValue(),
-                        xi[bunch]
-                    )
+                    quantity[material].asMutable() += consumptionQuantity.toSolverValue() * xi[bunch]
                 }
             }
         }

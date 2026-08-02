@@ -6,6 +6,7 @@ import kotlin.test.assertIs
 import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
 import fuookami.ospf.kotlin.core.model.mechanism.MetaConstraintGroup
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
 import fuookami.ospf.kotlin.core.variable.IntVar
 import fuookami.ospf.kotlin.math.algebra.number.Int64
 import fuookami.ospf.kotlin.utils.functional.Failed
@@ -57,6 +58,39 @@ class ConstraintProgrammingModelTest {
             assertEquals("amount-limits", snapshot.constraints.single().groupName)
         } finally {
             model.close()
+        }
+    }
+
+    @Test
+    fun snapshotShouldPreserveMaximumDirectionAndRejectConflictingObjectives() {
+        val variable = IntVar("maximum-value")
+        val maximum = ConstraintProgrammingModel("maximum-model", ObjectCategory.Maximum)
+        val multiple = ConstraintProgrammingModel("multiple-objective-model", ObjectCategory.Minimum)
+        val conflicting = ConstraintProgrammingModel("conflicting-objective-model", ObjectCategory.Minimum)
+        try {
+            maximum.registerVariable(variable, IntegerDomain.interval(0, 3).value!!)
+            val expression = ConstraintProgrammingExpression.Variable(variable)
+            assertIs<Ok<*, *, *>>(maximum.maximize(expression))
+            val maximumSnapshot = assertIs<Ok<ConstraintProgrammingModelSnapshot, *, *>>(maximum.snapshot()).value
+            assertEquals(ObjectCategory.Maximum, maximumSnapshot.objectCategory)
+            assertEquals(ObjectCategory.Maximum, maximumSnapshot.objectives.single().category)
+
+            val multipleVariable = IntVar("multiple-value")
+            multiple.registerVariable(multipleVariable, IntegerDomain.interval(0, 1).value!!)
+            val multipleExpression = ConstraintProgrammingExpression.Variable(multipleVariable)
+            assertIs<Ok<*, *, *>>(multiple.minimize(multipleExpression))
+            assertIs<Ok<*, *, *>>(multiple.minimize(multipleExpression, id = ObjectiveId("second")))
+            assertIs<Failed<*, *, *>>(multiple.snapshot())
+
+            val conflictingVariable = IntVar("conflicting-value")
+            conflicting.registerVariable(conflictingVariable, IntegerDomain.interval(0, 1).value!!)
+            val conflictingExpression = ConstraintProgrammingExpression.Variable(conflictingVariable)
+            assertIs<Ok<*, *, *>>(conflicting.maximize(conflictingExpression))
+            assertIs<Failed<*, *, *>>(conflicting.snapshot())
+        } finally {
+            maximum.close()
+            multiple.close()
+            conflicting.close()
         }
     }
 

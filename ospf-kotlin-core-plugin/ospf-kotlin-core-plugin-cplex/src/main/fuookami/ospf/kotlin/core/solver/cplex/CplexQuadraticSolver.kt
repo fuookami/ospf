@@ -31,6 +31,11 @@ class CplexQuadraticSolver(
         model: QuadraticTetradModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
     ): Ret<FeasibleSolverOutput<Flt64>> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         return CplexQuadraticSolverImpl(
             config = config,
             callBack = callBack,
@@ -47,6 +52,11 @@ class CplexQuadraticSolver(
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
     ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         return if (solutionAmount leq UInt64.one) {
             this(model).map { it to emptyList() }
         } else {

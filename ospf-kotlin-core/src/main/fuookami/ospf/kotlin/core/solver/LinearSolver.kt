@@ -58,6 +58,11 @@ interface AbstractLinearSolver {
         model: LinearTriadModelView,
         progressContext: SolverProgressContext? = null
     ): Ret<SolveReport<Flt64>> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         progressContext?.report(
             SolverProgressSnapshot(
                 stage = SolverStages.MILP,
@@ -329,7 +334,11 @@ interface AbstractLinearSolver {
             is Ok -> {
                 val linearModel = converted.value as? LinearMechanismModel<Flt64>
                     ?: return Failed(Err(ErrorCode.IllegalArgument, "Linear solver requires LinearMechanismModel, but got ${converted.value::class.simpleName}"))
-                dump(linearModel).use { solve(it, converter, solvingStatusCallBack) }
+                when (val dumped = dumpResult(linearModel)) {
+                    is Ok -> dumped.value.use { solve(it, converter, solvingStatusCallBack) }
+                    is Failed -> Failed(dumped.error)
+                    is Fatal -> Fatal(dumped.errors)
+                }
             }
 
             is Failed -> {
@@ -362,7 +371,11 @@ interface AbstractLinearSolver {
             is Ok -> {
                 val linearModel = converted.value as? LinearMechanismModel<Flt64>
                     ?: return Failed(Err(ErrorCode.IllegalArgument, "Linear solver requires LinearMechanismModel, but got ${converted.value::class.simpleName}"))
-                dump(linearModel).use { solve(it, solutionAmount, converter, solvingStatusCallBack) }
+                when (val dumped = dumpResult(linearModel)) {
+                    is Ok -> dumped.value.use { solve(it, solutionAmount, converter, solvingStatusCallBack) }
+                    is Failed -> Failed(dumped.error)
+                    is Fatal -> Fatal(dumped.errors)
+                }
             }
 
             is Failed -> {
@@ -383,6 +396,21 @@ interface AbstractLinearSolver {
     */
     suspend fun dump(model: LinearMechanismModel<Flt64>): LinearTriadModel {
         return LinearTriadModel(model)
+    }
+
+    /**
+     * 转储并返回身份校验结果，供生产求解链路使用。 / Dump a model and propagate identity validation for production solve pipelines.
+     *
+     * @param model 线性机制模型 / Linear mechanism model
+     * @return 已校验的线性三元模型或结构化错误 / Validated linear triad model or a structured error
+     */
+    suspend fun dumpResult(model: LinearMechanismModel<Flt64>): Ret<LinearTriadModel> {
+        val dumped = dump(model)
+        return when (val validation = dumped.identityValidation) {
+            is Ok -> Ok(dumped)
+            is Failed -> Failed(validation.error)
+            is Fatal -> Fatal(validation.errors)
+        }
     }
 
     /**
@@ -422,7 +450,8 @@ interface LinearSolver : AbstractLinearSolver {
             fixedVariables = null,
             dumpConstraintsToBounds = config.dumpIntermediateModelBounds,
             forceDumpBounds = config.dumpIntermediateModelForceBounds,
-            concurrent = config.dumpIntermediateModelConcurrent
+            concurrent = config.dumpIntermediateModelConcurrent,
+            identityRegistry = model.identityRegistry
         )
     }
 

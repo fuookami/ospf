@@ -96,13 +96,13 @@ private class FullLoadAlgorithmImpl {
         }
 
         when (val result = init(request)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return ResponseDTO(request, result.error) to null
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return ResponseDTO(request, result.firstError ?: Err(ErrorCode.ApplicationFailed)) to null
             }
         }
@@ -121,8 +121,8 @@ private class FullLoadAlgorithmImpl {
                     request = request,
                     notes = notes
                 )) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> result.value!!
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Ok -> result.value!!
+                    is Failed -> {
                         if (request.solvePolicy.bendersFallbackToMilp) {
                             notes.add("Benders failed, falling back to MILP")
                             notes.add("solver_path=milp_fallback_after_benders")
@@ -136,19 +136,19 @@ private class FullLoadAlgorithmImpl {
                                 startTime = startTime,
                                 runningHeartBeatCallBack = runningHeartBeatCallBack
                             )) {
-                                is Ok<*, ErrorCode, Error<ErrorCode>> -> milpResult.value!!
-                                is Failed<*, ErrorCode, Error<ErrorCode>> -> return solverFailureResponse(
+                                is Ok -> milpResult.value!!
+                                is Failed -> return solverFailureResponse(
                                     request = request,
                                     notes = notes,
                                     error = milpResult.error
                                 )
-                                is Fatal<*, ErrorCode, Error<ErrorCode>> -> return ResponseDTO(request, milpResult.firstError ?: Err(ErrorCode.ApplicationFailed)) to null
+                                is Fatal -> return ResponseDTO(request, milpResult.firstError ?: Err(ErrorCode.ApplicationFailed)) to null
                             }
                         } else {
                             return ResponseDTO.noSolution("BendersFailed", notes) to null
                         }
                     }
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Fatal -> {
                         if (request.solvePolicy.bendersFallbackToMilp) {
                             notes.add("Benders fatal, falling back to MILP")
                             notes.add("solver_path=milp_fallback_after_benders")
@@ -158,13 +158,13 @@ private class FullLoadAlgorithmImpl {
                                 startTime = startTime,
                                 runningHeartBeatCallBack = runningHeartBeatCallBack
                             )) {
-                                is Ok<*, ErrorCode, Error<ErrorCode>> -> milpResult.value!!
-                                is Failed<*, ErrorCode, Error<ErrorCode>> -> return solverFailureResponse(
+                                is Ok -> milpResult.value!!
+                                is Failed -> return solverFailureResponse(
                                     request = request,
                                     notes = notes,
                                     error = milpResult.error
                                 )
-                                is Fatal<*, ErrorCode, Error<ErrorCode>> -> return ResponseDTO(request, milpResult.firstError ?: Err(ErrorCode.ApplicationFailed)) to null
+                                is Fatal -> return ResponseDTO(request, milpResult.firstError ?: Err(ErrorCode.ApplicationFailed)) to null
                             }
                         } else {
                             return ResponseDTO(request, result.firstError ?: Err(ErrorCode.ApplicationFailed)) to null
@@ -182,13 +182,13 @@ private class FullLoadAlgorithmImpl {
                             startTime = startTime,
                             runningHeartBeatCallBack = runningHeartBeatCallBack
                         )) {
-                            is Ok<*, ErrorCode, Error<ErrorCode>> -> result.value!!
-                            is Failed<*, ErrorCode, Error<ErrorCode>> -> return solverFailureResponse(
+                            is Ok -> result.value!!
+                            is Failed -> return solverFailureResponse(
                                 request = request,
                                 notes = notes,
                                 error = result.error
                             )
-                            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return ResponseDTO(request, result.firstError ?: Err(ErrorCode.ApplicationFailed)) to null
+                            is Fatal -> return ResponseDTO(request, result.firstError ?: Err(ErrorCode.ApplicationFailed)) to null
                         }
                     }
                     AircraftType.B767, AircraftType.B747, null -> return unsupportedAircraftResponse(
@@ -204,7 +204,7 @@ private class FullLoadAlgorithmImpl {
             solution = solution,
             input = request
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {
+            is Ok -> {
                 result.value!!.withSolverNotes(notes) to if (withRender) {
                     solution.render()
                 } else {
@@ -212,11 +212,11 @@ private class FullLoadAlgorithmImpl {
                 }
             }
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return ResponseDTO(request, result.error) to null
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return ResponseDTO(request, result.firstError ?: Err(ErrorCode.ApplicationFailed)) to null
             }
         }
@@ -247,13 +247,13 @@ private class FullLoadAlgorithmImpl {
         when (val result = aircraftContext.init(
             input = request
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -263,13 +263,13 @@ private class FullLoadAlgorithmImpl {
             input = request,
             stowageMode = StowageMode.FullLoad
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -279,13 +279,13 @@ private class FullLoadAlgorithmImpl {
             stowageContext = stowageContext,
             input = request
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -296,13 +296,13 @@ private class FullLoadAlgorithmImpl {
             macContext = macContext,
             input = request
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -312,13 +312,13 @@ private class FullLoadAlgorithmImpl {
             stowageContext = stowageContext,
             input = request
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -329,13 +329,13 @@ private class FullLoadAlgorithmImpl {
             macContext = macContext,
             input = request
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -346,13 +346,13 @@ private class FullLoadAlgorithmImpl {
             input = request,
             stowageMode = StowageMode.FullLoad
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -363,13 +363,13 @@ private class FullLoadAlgorithmImpl {
             input = request,
             stowageMode = StowageMode.FullLoad
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -395,13 +395,13 @@ private class FullLoadAlgorithmImpl {
     ): Ret<Solution> {
         val model = LinearMetaModel<Flt64>(converter = flt64Converter)
         when (val result = register(parameter, model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -476,11 +476,11 @@ private class FullLoadAlgorithmImpl {
                 ok
             }
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {
+            is Ok -> {
                 result.value!!
             }
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 if (result.error.code == ErrorCode.ORModelInfeasible || result.error.code == ErrorCode.ORModelInfeasibleOrUnbounded) {
                     return Failed(Err(
                         result.error.code,
@@ -491,7 +491,7 @@ private class FullLoadAlgorithmImpl {
                 }
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }
@@ -500,15 +500,15 @@ private class FullLoadAlgorithmImpl {
             solution = modelSolution.solution,
             model = model
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {
+            is Ok -> {
                 result.value!!
             }
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -532,13 +532,13 @@ private class FullLoadAlgorithmImpl {
             stowageMode = StowageMode.FullLoad,
             model = model
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -547,13 +547,13 @@ private class FullLoadAlgorithmImpl {
             stowageMode = StowageMode.FullLoad,
             model = model
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -562,13 +562,13 @@ private class FullLoadAlgorithmImpl {
             stowageMode = StowageMode.FullLoad,
             model = model
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -578,13 +578,13 @@ private class FullLoadAlgorithmImpl {
             parameter = parameter,
             model = model
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -594,13 +594,13 @@ private class FullLoadAlgorithmImpl {
             parameter = parameter,
             model = model
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -610,13 +610,13 @@ private class FullLoadAlgorithmImpl {
             parameter = parameter,
             model = model
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -626,13 +626,13 @@ private class FullLoadAlgorithmImpl {
             parameter = parameter,
             model = model
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -653,9 +653,9 @@ private class FullLoadAlgorithmImpl {
         notes: MutableList<String>
     ): Ret<Solution> {
         val bendersModels = when (val result = buildBendersModels(request.parameter)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> result.value!!
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+            is Ok -> result.value!!
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
         }
         val bendersConfig = BendersStrategy.tuneAdaptiveConfig(
             request.bendersAdaptive,
@@ -679,9 +679,9 @@ private class FullLoadAlgorithmImpl {
             config = bendersConfig,
             notes = notes
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> result.value!!
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+            is Ok -> result.value!!
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
         }
 
         // Quality guard check (aligns with Rust domain.rs)
@@ -752,9 +752,9 @@ private class FullLoadAlgorithmImpl {
             solution = solutionList,
             model = bendersModels.masterModel
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> Ok(result.value!!)
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> Fatal(result.errors)
+            is Ok -> Ok(result.value!!)
+            is Failed -> Failed(result.error)
+            is Fatal -> Fatal(result.errors)
         }
     }
 

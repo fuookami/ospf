@@ -887,7 +887,7 @@ value class Int64(internal val value: Long) : IntegerNumberImpl<Int64>, Copyable
      *
      * 提供常用的数值常量。 / Provides common numeric constants.
     */
-    companion object : RealNumberConstants<Int64> {
+    companion object : RealNumberConstants<Int64>, Flt64ValueConverter<Int64> {
         override val zero: Int64 get() = Int64(0L)
         override val one: Int64 get() = Int64(1L)
         override val two: Int64 get() = Int64(2L)
@@ -896,6 +896,8 @@ value class Int64(internal val value: Long) : IntegerNumberImpl<Int64>, Copyable
         override val ten: Int64 get() = Int64(10L)
         override val minimum: Int64 get() = Int64(Long.MIN_VALUE)
         override val maximum: Int64 get() = Int64(Long.MAX_VALUE)
+
+        override fun intoValue(value: Flt64): Int64 = value.toInt64()
     }
 
     override val constants: RealNumberConstants<Int64> get() = Companion
@@ -1102,7 +1104,7 @@ value class IntX(internal val value: BigInteger) : IntegerNumberImpl<IntX>, Copy
      * 使用 Double 类型的最小/最大值作为参考界限。 / Provides common numeric constants. Since IntX is an arbitrary precision type,
      * minimum and maximum constants use Double type min/max values as reference bounds.
     */
-    companion object : RealNumberConstants<IntX> {
+    companion object : RealNumberConstants<IntX>, Flt64ValueConverter<IntX> {
         override val zero: IntX get() = IntX(0L)
         override val one: IntX get() = IntX(1L)
         override val two: IntX get() = IntX(2L)
@@ -1111,6 +1113,8 @@ value class IntX(internal val value: BigInteger) : IntegerNumberImpl<IntX>, Copy
         override val ten: IntX get() = IntX(10L)
         override val minimum: IntX get() = IntX(Double.MIN_VALUE.toString())
         override val maximum: IntX get() = IntX(Double.MAX_VALUE.toString())
+
+        override fun intoValue(value: Flt64): IntX = IntX(value.toInt64().toLong())
     }
 
     /**

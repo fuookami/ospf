@@ -39,25 +39,21 @@ class CumulativeLoadWeightLimit(
                 continue
             }
 
-            val poly = MutableLinearPolynomial()
-            for (part in checkPoint.parts) {
+            val poly = sum(checkPoint.parts.map { part ->
                 val j = positions.indexOf(part.position)
-                poly += LinearMonomial(
-                    part.weight,
-                    load.estimateLoadWeight[j].value
-                )
-            }
+                part.weight * load.estimateLoadWeight[j].value
+            })
             when (val result = model.addConstraint(
-                relation = LinearPolynomial(poly.monomials, poly.constant) leq checkPoint.maxSum.to(aircraftModel.weightUnit)!!.value,
+                relation = poly leq checkPoint.maxSum.to(aircraftModel.weightUnit)!!.value,
                 name = "${name}_${checkPoint.zone.name}_${checkPoint.toArm.value}"
             )) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }

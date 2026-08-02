@@ -5,6 +5,7 @@ package fuookami.ospf.kotlin.core.model.mechanism
 
 import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintGroupRegistry
+import fuookami.ospf.kotlin.core.solver.report.ModelElementIdentityRegistry
 import fuookami.ospf.kotlin.core.solver.value.IntoValue
 import fuookami.ospf.kotlin.core.symbol.*
 import fuookami.ospf.kotlin.core.symbol.function.MathFunctionSymbol
@@ -69,9 +70,13 @@ private fun <V> createTokenTable(
  * @property subObjects 子目标列表 / Sub-objective list
  * @property tokens 可变符号表 / Mutable token table
  * @property symbolDependencies 符号依赖关系 / Symbol dependency map
+ * @property identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
 */
 sealed interface MetaModel<V> : Model<V>, ConstraintGroupRegistry, AutoCloseable where V : RealNumber<V>, V : NumberField<V> {
     val converter: IntoValue<V>
+
+    /** 可选的稳定身份注册表 / Optional stable identity registry. */
+    val identityRegistry: ModelElementIdentityRegistry?
 
     /**
      * 元模型子目标 / Meta model sub-objective
@@ -916,11 +921,13 @@ data class MetaModelConfiguration(
  * @property category 模型类别（线性/二次）/ Model category (linear/quadratic)
  * @property configuration 元模型配置 / Meta model configuration
  * @property converter 值转换器 / Value converter
+ * @property identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
 */
 abstract class AbstractMetaModel<V>(
     val category: Category,
     internal val configuration: MetaModelConfiguration,
-    override val converter: IntoValue<V>
+    override val converter: IntoValue<V>,
+    override val identityRegistry: ModelElementIdentityRegistry? = null
 ) : BasicModel<V>(
     name = "",
     tokens = createTokenTable<V>(category, configuration.concurrent, configuration.manualTokenAddition, configuration.checkTokenExists)
@@ -989,13 +996,15 @@ abstract class AbstractMetaModel<V>(
  * @property objectCategory 目标类型（最小化/最大化）/ Objective category (minimize/maximize)
  * @param configuration 元模型配置 / Meta model configuration
  * @param converter 值转换器 / Value converter
+ * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
 */
 class LinearMetaModel<V>(
     override var name: String = "",
     override val objectCategory: ObjectCategory = ObjectCategory.Minimum,
     configuration: MetaModelConfiguration = MetaModelConfiguration(),
-    converter: IntoValue<V>
-) : AbstractMetaModel<V>(Linear, configuration, converter), AbstractLinearMetaModel<V> where V : RealNumber<V>, V : NumberField<V> {
+    converter: IntoValue<V>,
+    identityRegistry: ModelElementIdentityRegistry? = null
+) : AbstractMetaModel<V>(Linear, configuration, converter, identityRegistry), AbstractLinearMetaModel<V> where V : RealNumber<V>, V : NumberField<V> {
     // Math inequality-based constraints storage
     internal val _relationConstraints: MutableList<LinearInequalityConstraint<V>> = ArrayList()
     override val constraints: List<MathConstraint> get() = _relationConstraints
@@ -1125,17 +1134,20 @@ class LinearMetaModel<V>(
          * @param name            模型名称 / The model name
          * @param objectCategory  优化方向 / The optimization direction
          * @param configuration   元模型配置 / The meta model configuration
+         * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
          * @return 线性元模型实例 / The linear meta model instance
         */
         operator fun invoke(
             name: String = "",
             objectCategory: ObjectCategory = ObjectCategory.Minimum,
-            configuration: MetaModelConfiguration = MetaModelConfiguration()
+            configuration: MetaModelConfiguration = MetaModelConfiguration(),
+            identityRegistry: ModelElementIdentityRegistry? = null
         ): LinearMetaModel<Flt64> = LinearMetaModel(
             name = name,
             objectCategory = objectCategory,
             configuration = configuration,
-            converter = solverValueConverter
+            converter = solverValueConverter,
+            identityRegistry = identityRegistry
         )
 
         /**
@@ -1145,18 +1157,21 @@ class LinearMetaModel<V>(
          * @param converter       Flt64 值转换器 / The Flt64 value converter
          * @param objectCategory  优化方向 / The optimization direction
          * @param configuration   元模型配置 / The meta model configuration
+         * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
          * @return 线性元模型实例 / The linear meta model instance
         */
         operator fun <V> invoke(
             name: String,
             converter: Flt64ValueConverter<V>,
             objectCategory: ObjectCategory = ObjectCategory.Minimum,
-            configuration: MetaModelConfiguration = MetaModelConfiguration()
+            configuration: MetaModelConfiguration = MetaModelConfiguration(),
+            identityRegistry: ModelElementIdentityRegistry? = null
         ): LinearMetaModel<V> where V : RealNumber<V>, V : NumberField<V> = LinearMetaModel(
             name = name,
             objectCategory = objectCategory,
             configuration = configuration,
-            converter = IntoValue.fromConverter(converter)
+            converter = IntoValue.fromConverter(converter),
+            identityRegistry = identityRegistry
         )
     }
 }
@@ -1171,13 +1186,15 @@ class LinearMetaModel<V>(
  * @property objectCategory 目标类型（最小化/最大化）/ Objective category (minimize/maximize)
  * @param configuration 元模型配置 / Meta model configuration
  * @param converter 值转换器 / Value converter
+ * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
 */
 class QuadraticMetaModel<V>(
     override var name: String = "",
     override val objectCategory: ObjectCategory = ObjectCategory.Minimum,
     configuration: MetaModelConfiguration = MetaModelConfiguration(),
-    converter: IntoValue<V>
-) : AbstractMetaModel<V>(Quadratic, configuration, converter), AbstractLinearMetaModel<V>, AbstractQuadraticMetaModel<V> where V : RealNumber<V>, V : NumberField<V> {
+    converter: IntoValue<V>,
+    identityRegistry: ModelElementIdentityRegistry? = null
+) : AbstractMetaModel<V>(Quadratic, configuration, converter, identityRegistry), AbstractLinearMetaModel<V>, AbstractQuadraticMetaModel<V> where V : RealNumber<V>, V : NumberField<V> {
     // Math inequality-based constraints storage
     internal val _relationConstraints: MutableList<QuadraticInequalityConstraint<V>> = ArrayList()
     override val constraints: List<MathConstraint> get() = _relationConstraints
@@ -1397,17 +1414,20 @@ class QuadraticMetaModel<V>(
          * @param name            模型名称 / The model name
          * @param objectCategory  优化方向 / The optimization direction
          * @param configuration   元模型配置 / The meta model configuration
+         * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
          * @return 二次元模型实例 / The quadratic meta model instance
         */
         operator fun invoke(
             name: String = "",
             objectCategory: ObjectCategory = ObjectCategory.Minimum,
-            configuration: MetaModelConfiguration = MetaModelConfiguration()
+            configuration: MetaModelConfiguration = MetaModelConfiguration(),
+            identityRegistry: ModelElementIdentityRegistry? = null
         ): QuadraticMetaModel<Flt64> = QuadraticMetaModel(
             name = name,
             objectCategory = objectCategory,
             configuration = configuration,
-            converter = solverValueConverter
+            converter = solverValueConverter,
+            identityRegistry = identityRegistry
         )
 
         /**
@@ -1417,18 +1437,21 @@ class QuadraticMetaModel<V>(
          * @param converter       Flt64 值转换器 / The Flt64 value converter
          * @param objectCategory  优化方向 / The optimization direction
          * @param configuration   元模型配置 / The meta model configuration
+         * @param identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
          * @return 二次元模型实例 / The quadratic meta model instance
         */
         operator fun <V> invoke(
             name: String,
             converter: Flt64ValueConverter<V>,
             objectCategory: ObjectCategory = ObjectCategory.Minimum,
-            configuration: MetaModelConfiguration = MetaModelConfiguration()
+            configuration: MetaModelConfiguration = MetaModelConfiguration(),
+            identityRegistry: ModelElementIdentityRegistry? = null
         ): QuadraticMetaModel<V> where V : RealNumber<V>, V : NumberField<V> = QuadraticMetaModel(
             name = name,
             objectCategory = objectCategory,
             configuration = configuration,
-            converter = IntoValue.fromConverter(converter)
+            converter = IntoValue.fromConverter(converter),
+            identityRegistry = identityRegistry
         )
     }
 }

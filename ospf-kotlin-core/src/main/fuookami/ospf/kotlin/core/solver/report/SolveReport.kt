@@ -63,6 +63,26 @@ enum class SolverModelType {
 @JvmInline
 value class ModelElementId(val value: String)
 
+/** 模型元素身份作用域。 / Model-element identity scope. */
+enum class ModelElementScope {
+    /** 可由调用方提供并跨重建复用的身份。 / Caller-owned identity reusable across rebuilds. */
+    Stable,
+
+    /** 仅在当前模型实例内有效的身份。 / Identity valid only within the current model instance. */
+    ModelLocal
+}
+
+/**
+ * 模型元素来源标识。 / Origin reference for a model element.
+ *
+ * @property kind 来源类型 / Origin kind
+ * @property key 来源键 / Origin key
+ */
+data class ModelElementOrigin(
+    val kind: String,
+    val key: String
+)
+
 /** 变量稳定标识 / Stable variable identifier */
 @JvmInline
 value class VariableId(val value: String)
@@ -73,13 +93,22 @@ enum class BoundSide {
     Upper
 }
 
-/** 稳定变量边界引用 / Stable variable-bound reference */
+/**
+ * 稳定变量边界引用。 / Stable variable-bound reference.
+ *
+ * @property variableId 变量稳定标识 / Stable variable identifier
+ * @property side 边界方向 / Bound side
+ */
 data class VariableBoundRef(
     val variableId: VariableId,
     val side: BoundSide
 )
 
-/** 稳定变量值域引用 / Stable variable-domain reference */
+/**
+ * 稳定变量值域引用。 / Stable variable-domain reference.
+ *
+ * @property variableId 变量稳定标识 / Stable variable identifier
+ */
 data class VariableDomainRef(
     val variableId: VariableId
 )
@@ -128,7 +157,21 @@ data class SolveIssue(
     val details: Map<String, String> = emptyMap()
 )
 
-/** 求解器能力声明 / Solver capability declaration */
+/**
+ * 求解器能力声明。 / Solver capability declaration.
+ *
+ * @property modelTypes 支持的模型类型 / Supported model types
+ * @property nativeIIS 是否支持原生 IIS / Whether native IIS is supported
+ * @property dual 是否支持对偶信息 / Whether dual information is supported
+ * @property farkas 是否支持 Farkas 证书 / Whether Farkas certificates are supported
+ * @property warmStart 是否支持热启动 / Whether warm starts are supported
+ * @property solutionPool 是否支持解池 / Whether solution pools are supported
+ * @property callback 是否支持回调 / Whether callbacks are supported
+ * @property interrupt 是否支持中断 / Whether interruption is supported
+ * @property checkpoint 是否支持检查点 / Whether checkpoints are supported
+ * @property resume 是否支持恢复 / Whether resume is supported
+ * @property constraintProgrammingFeatures CP 特性及支持级别 / CP features and support levels
+ */
 data class SolverCapabilities(
     val modelTypes: Set<SolverModelType>,
     val nativeIIS: Boolean = false,
@@ -247,13 +290,25 @@ enum class EvidenceMinimality {
 
 /** 结构化不可行成员 / Structured infeasibility member */
 sealed interface InfeasibilityMember {
-    /** 原始约束成员 / Original constraint member */
+    /**
+     * 原始约束成员。 / Original constraint member.
+     *
+     * @property id 约束稳定标识 / Stable constraint identifier
+     */
     data class Constraint(val id: ConstraintId) : InfeasibilityMember
 
-    /** 变量上下界成员 / Variable-bound member */
+    /**
+     * 变量上下界成员。 / Variable-bound member.
+     *
+     * @property ref 变量边界引用 / Variable-bound reference
+     */
     data class VariableBound(val ref: VariableBoundRef) : InfeasibilityMember
 
-    /** 稀疏值域成员 / Sparse-domain member */
+    /**
+     * 稀疏值域成员。 / Sparse-domain member.
+     *
+     * @property ref 变量值域引用 / Variable-domain reference
+     */
     data class VariableDomain(val ref: VariableDomainRef) : InfeasibilityMember
 }
 
@@ -272,7 +327,26 @@ enum class EvidenceCompleteness {
     Unavailable
 }
 
-/** 不可行证据 / Infeasibility evidence */
+/**
+ * 不可行证据。 / Infeasibility evidence.
+ *
+ * @property source 证据来源 / Evidence source
+ * @property exactness 证据精确性 / Evidence exactness
+ * @property completeness 证据完整度 / Evidence completeness
+ * @property constraintIds 原始约束标识集合 / Original constraint identifiers
+ * @property variableBoundIds 变量标识集合（兼容字段） / Variable identifiers (compatibility field)
+ * @property elapsed 诊断耗时 / Diagnostic elapsed time
+ * @property unavailableReason 证据不可用原因 / Reason evidence is unavailable
+ * @property validity 证据有效性 / Evidence validity
+ * @property minimality 证据最小性 / Evidence minimality
+ * @property variableBoundRefs 变量边界引用集合 / Variable-bound references
+ * @property variableDomainRefs 变量值域引用集合 / Variable-domain references
+ * @property members 结构化证据成员集合 / Structured evidence members
+ * @property reference 外部证据引用 / External evidence reference
+ * @property assumptionIds 后端诊断假设成员标识 / Backend diagnostic assumption-member identifiers
+ * @property verificationChecks 诊断复验次数 / Number of diagnostic verification checks
+ * @property terminationReason 诊断复验终止原因 / Diagnostic verification termination reason
+ */
 data class InfeasibilityEvidence(
     val source: InfeasibilityEvidenceSource,
     val exactness: EvidenceExactness = EvidenceExactness.Unknown,
@@ -287,11 +361,8 @@ data class InfeasibilityEvidence(
     val variableDomainRefs: Set<VariableDomainRef> = emptySet(),
     val members: Set<InfeasibilityMember> = emptySet(),
     val reference: String? = null,
-    /** 后端诊断使用的稳定假设成员 ID。 / Stable assumption-member IDs used by backend diagnostics. */
     val assumptionIds: Set<VariableId> = emptySet(),
-    /** 诊断复验执行次数。 / Number of verification checks performed by the diagnostic. */
     val verificationChecks: UInt64? = null,
-    /** 诊断复验的终止原因。 / Termination reason of diagnostic verification. */
     val terminationReason: TerminationReason? = null
 )
 
@@ -326,7 +397,25 @@ data class SolveFingerprints(
     val solver: AuditFingerprint? = null
 )
 
-/** 统一求解报告 / Unified solve report */
+/**
+ * 统一求解报告。 / Unified solve report.
+ *
+ * 解与诊断使用 `V`，统计字段统一使用 `Flt64`，避免 CP 的 Int64 解在报告边界发生精度损失。 /
+ * Solutions and diagnostics use `V`, while statistics always use `Flt64` so CP Int64 solutions retain exact precision at the report boundary.
+ *
+ * @param V 解与诊断数值类型 / Solution and diagnostic value type
+ * @property schemaVersion 报告 schema 版本 / Report schema version
+ * @property runId 求解运行标识 / Solve run identifier
+ * @property problemStatus 问题状态 / Problem status
+ * @property terminationReason 求解终止原因 / Solve termination reason
+ * @property solutionPresence 解存在性 / Solution presence
+ * @property solution 精确解与目标值 / Exact solution and objective value
+ * @property proof 求解证明状态 / Solve proof status
+ * @property statistics 求解统计，使用浮点统计值 / Solve statistics using floating-point statistic values
+ * @property diagnostics 约束评估与不可行证据 / Constraint evaluations and infeasibility evidence
+ * @property provenance 求解器及运行参数来源 / Solver and runtime provenance
+ * @property fingerprints 模型、配置与求解器审计指纹 / Model, configuration, and solver audit fingerprints
+ */
 data class SolveReport<V>(
     val schemaVersion: String = CURRENT_SCHEMA_VERSION,
     val runId: SolveRunId? = null,
@@ -335,7 +424,7 @@ data class SolveReport<V>(
     val solutionPresence: SolutionPresence,
     val solution: SolveSolution<V>? = null,
     val proof: SolveProof = SolveProof(ProofStatus.None),
-    val statistics: SolveStatistics<V> = SolveStatistics(),
+    val statistics: SolveStatistics<Flt64> = SolveStatistics(),
     val diagnostics: SolveDiagnostics<V> = SolveDiagnostics(),
     val provenance: SolverProvenance? = null,
     val fingerprints: SolveFingerprints = SolveFingerprints()
@@ -494,7 +583,7 @@ fun <V> FeasibleSolverOutput<V>.toSolveReport(
             solveTime = solveTime,
             iterations = iterations?.toULong(),
             nodes = nodeCount?.toULong(),
-            bestBound = bestBoundValueOrNull,
+            bestBound = bestBound,
             gap = null
         ),
         provenance = provenance,

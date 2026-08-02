@@ -37,14 +37,28 @@ sealed interface BooleanLiteral {
             VariableId("${it.identifier}:${it.index}")
         }
 
-    /** 返回该文字的逻辑否定。 / Return the logical negation of this literal. */
+    /**
+     * 返回该文字的逻辑否定。 / Return the logical negation of this literal.
+     *
+     * @return 否定后的文字 / The negated literal
+     */
     fun negate(): BooleanLiteral
 
-    /** 变量文字。 / Variable literal. */
+    /**
+     * 变量文字。 / Variable literal.
+     *
+     * @property variable 关联的二值变量 / Associated binary variable
+     * @property negated 是否取反 / Whether the literal is negated
+     * @property id 模型绑定后的稳定变量 ID；为空时使用 model-local ID / Stable variable ID after model binding; model-local ID when null
+     */
     data class Variable(
         override val variable: BinVariable,
-        override val negated: Boolean = false
+        override val negated: Boolean = false,
+        val id: VariableId? = null
     ) : BooleanLiteral {
+        override val variableId: VariableId
+            get() = id ?: VariableId("${variable.identifier}:${variable.index}")
+
         override val constant: Boolean? get() = null
 
         override fun negate(): BooleanLiteral {
@@ -52,7 +66,11 @@ sealed interface BooleanLiteral {
         }
     }
 
-    /** 布尔常量。 / Boolean constant. */
+    /**
+     * 布尔常量。 / Boolean constant.
+     *
+     * @property constant 常量值 / Constant value
+     */
     data class Constant(
         override val constant: Boolean
     ) : BooleanLiteral {
@@ -65,12 +83,28 @@ sealed interface BooleanLiteral {
     }
 
     companion object {
-        /** 构造变量正/负文字。 / Construct a positive or negated variable literal. */
-        operator fun invoke(variable: BinVariable, negated: Boolean = false): BooleanLiteral {
-            return Variable(variable, negated)
+        /**
+         * 构造变量正/负文字。 / Construct a positive or negated variable literal.
+         *
+         * @param variable 二值变量 / Binary variable
+         * @param negated 是否取反 / Whether the literal is negated
+         * @param id 稳定变量 ID；为空时使用 model-local ID / Stable variable ID; model-local ID when null
+         * @return 变量文字 / The variable literal
+         */
+        operator fun invoke(
+            variable: BinVariable,
+            negated: Boolean = false,
+            id: VariableId? = null
+        ): BooleanLiteral {
+            return Variable(variable, negated, id)
         }
 
-        /** 构造布尔常量文字。 / Construct a Boolean constant literal. */
+        /**
+         * 构造布尔常量文字。 / Construct a Boolean constant literal.
+         *
+         * @param value 常量值 / Constant value
+         * @return 布尔常量文字 / The Boolean constant literal
+         */
         operator fun invoke(value: Boolean): BooleanLiteral {
             return Constant(value)
         }
@@ -88,7 +122,11 @@ sealed interface BooleanLiteral {
         val falseLiteral: BooleanLiteral get() = False
     }
 }
-/** 对布尔文字取逻辑非。 / Apply logical negation to a Boolean literal. */
+/**
+ * 对布尔文字取逻辑非。 / Apply logical negation to a Boolean literal.
+ *
+ * @return 否定后的文字 / The negated literal
+ */
 operator fun BooleanLiteral.not(): BooleanLiteral {
     return negate()
 }

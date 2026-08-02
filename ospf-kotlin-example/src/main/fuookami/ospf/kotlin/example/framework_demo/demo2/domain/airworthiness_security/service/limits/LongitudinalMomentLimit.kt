@@ -33,17 +33,17 @@ class LongitudinalMomentLimit(
                 relation = moment.value geq min.value,
                 name = "${name}_${phase.name.lowercase()}_minimum"
             )) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                is Ok -> {}
+                is Failed -> return Failed(result.error)
+                is Fatal -> return Fatal(result.errors)
             }
             when (val result = model.addConstraint(
                 relation = moment.value leq max.value,
                 name = "${name}_${phase.name.lowercase()}_maximum"
             )) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                is Ok -> {}
+                is Failed -> return Failed(result.error)
+                is Fatal -> return Fatal(result.errors)
             }
         }
 

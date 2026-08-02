@@ -20,7 +20,13 @@ import fuookami.ospf.kotlin.utils.functional.Ret
 import fuookami.ospf.kotlin.utils.functional.Try
 import fuookami.ospf.kotlin.utils.functional.ok
 
-/** One bounded integer assignment to exclude. / 一个待排除的有界整数赋值。 */
+/** One bounded integer assignment to exclude. / 一个待排除的有界整数赋值。
+ *
+ * @property key Stable binding key. / 稳定绑定键。
+ * @property variable Master integer variable. / 主问题整数变量。
+ * @property value Assignment excluded by the encoding. / 编码排除的赋值。
+ * @property domain Finite domain used to derive exact bounds. / 用于推导精确边界的有限值域。
+ */
 data class IntegerNoGoodVariable(
     val key: String,
     val variable: AbstractVariableItem<*, *>,
@@ -28,15 +34,22 @@ data class IntegerNoGoodVariable(
     val domain: IntegerDomain
 )
 
-/**
- * / 使用分支指示变量线性精确编码 `x != assignment`。 / A linear exact encoding of `x != assignment` using branch indicators.
+/** Linear exact encoding of one integer no-good assignment. / 使用分支指示变量线性精确编码 `x != assignment`。
+ *
+ * @property name Stable name prefix for generated model items. / 生成模型项的稳定名称前缀。
+ * @property auxiliaryVariables Binary branch indicators introduced by the encoding. / 编码引入的二值分支指示变量。
+ * @property constraints Linear inequalities implementing the no-good. / 实现 no-good 的线性不等式。
  */
 data class IntegerNoGoodEncoding(
     val name: String,
     val auxiliaryVariables: List<BinVar>,
     val constraints: List<LinearInequality<Flt64>>
 ) {
-    /** Install auxiliary variables and constraints in a mutable master. / 将辅助变量和约束安装到主问题。 */
+    /** Install auxiliary variables and constraints in a mutable master. / 将辅助变量和约束安装到主问题。
+     *
+     * @param master Mutable master model receiving the generated items. / 接收生成模型项的可变主问题模型。
+     * @return Installation result. / 安装结果。
+     */
     fun install(master: LinearMetaModel<Flt64>): Try {
         for (variable in auxiliaryVariables) {
             val added = master.add(variable)
@@ -54,10 +67,13 @@ data class IntegerNoGoodEncoding(
     }
 }
 
-/** Builder for exact no-good constraints on finite integer domains. */
+/** Builder for exact no-good constraints on finite integer domains. / 有限整数值域精确 no-good 约束构造器。 */
 object IntegerNoGoodCutEncoder {
-    /**
-     * / 构造精确排除一个赋值的编码。 / Build an encoding that excludes exactly one assignment.
+    /** Build an encoding that excludes exactly one assignment. / 构造精确排除一个赋值的编码。
+     *
+     * @param variables Variables and values forming the assignment to exclude. / 构成待排除赋值的变量和值。
+     * @param name Stable name prefix for generated model items. / 生成模型项的稳定名称前缀。
+     * @return Exact encoding or a validation error. / 精确编码或校验错误。
      */
     fun encode(
         variables: List<IntegerNoGoodVariable>,

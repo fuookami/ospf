@@ -4,7 +4,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.symbol.inequality.*
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.framework.csp1d.domain.material.model.*
@@ -53,10 +53,7 @@ class MaterialConstraintPipeline<V : RealNumber<V>>(
             val constraintName = "material_$materialIndex"
             val priceKey = MaterialUsageShadowPriceKey(material.id)
 
-            val lhs = LinearPolynomial(
-                monomials = listOf(LinearMonomial(Flt64.one, produce.materialQuantity[materialIndex])),
-                constant = Flt64.zero
-            )
+            val lhs = LinearPolynomial(produce.materialQuantity[materialIndex])
             model.addConstraint(
                 relation = LinearInequality(
                     lhs = lhs,

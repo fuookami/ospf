@@ -65,7 +65,7 @@ class MongoScalarTranslatorTest {
         val result = failFastTranslator.translate(ScalarCustom<Int>("x"))
 
         assertTrue(result.failed)
-        assertTrue(result is Failed<*, *, *>)
+        assertTrue(result is Failed)
 
         val failed = result as Failed<*, *, *>
         val error = failed.error

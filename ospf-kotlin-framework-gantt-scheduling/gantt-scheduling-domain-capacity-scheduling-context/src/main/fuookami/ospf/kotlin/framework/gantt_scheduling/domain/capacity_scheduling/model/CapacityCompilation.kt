@@ -8,6 +8,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.multiarray.*
 import fuookami.ospf.kotlin.core.symbol.*
@@ -91,14 +92,14 @@ class CapacityCompilation<V : RealNumber<V>, A : ProductionAction>(
         // Register cost expression
         // 注册成本表达式
         if (!::cost.isInitialized) {
-            val costPoly = MutableLinearPolynomial<Flt64>(emptyList(), Flt64.zero)
+            var costPoly = LinearPolynomial()
             for ((a, action) in actions.withIndex()) {
                 for ((s, slot) in slots.withIndex()) {
                     val unitCost = action.unitCostSolverValue(slot.time.start)
-                    costPoly += LinearMonomial(unitCost.toSolverValue(), x[a, s])
+                    costPoly += unitCost.toSolverValue() * x[a, s]
                 }
             }
-            cost = LinearExpressionSymbol(polynomial = costPoly.toLinearPolynomial(), name = "cost")
+            cost = LinearExpressionSymbol(polynomial = costPoly, name = "cost")
         }
         when (val result = model.add(cost)) {
             is Ok -> {}
@@ -119,10 +120,9 @@ class CapacityCompilation<V : RealNumber<V>, A : ProductionAction>(
                     } else {
                         timeWindow.valueOf(timeWindow.interval)
                     }
-                    LinearMonomial(
-                        unitOperationTime.toSolverValue(),
-                        x[actions.indexOf(action), slots.indexOf(slot)]
-                    ).toLinearPolynomial()
+                    LinearPolynomial(
+                        unitOperationTime.toSolverValue() * x[actions.indexOf(action), slots.indexOf(slot)]
+                    )
                 }
             )
         }
@@ -142,12 +142,12 @@ class CapacityCompilation<V : RealNumber<V>, A : ProductionAction>(
                 ctor = { executor, slot ->
                     val s = slots.indexOf(slot)
                     val executorActions = actions.filter { it.executor == executor }
-                    val poly = MutableLinearPolynomial<Flt64>(emptyList(), Flt64.zero)
+                    var poly = LinearPolynomial()
                     for (action in executorActions) {
                         val a = actions.indexOf(action)
                         poly += operationTime[a, s].polynomial
                     }
-                    poly.toLinearPolynomial()
+                    poly
                 }
             )
         }

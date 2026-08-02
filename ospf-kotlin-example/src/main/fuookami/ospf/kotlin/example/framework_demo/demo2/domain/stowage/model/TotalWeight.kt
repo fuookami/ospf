@@ -68,13 +68,13 @@ class TotalWeight(
         }
         estimateTotalWeight.values.forEach {
             when (val result = model.add(it)) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }
@@ -93,13 +93,13 @@ class TotalWeight(
         }
         actualTotalWeight.values.forEach {
             when (val result = model.add(it)) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }
@@ -120,7 +120,7 @@ class TotalWeight(
         phase: FlightPhase,
         payload: LinearPolynomial<Flt64>
     ): LinearPolynomial<Flt64> {
-        val poly = MutableLinearPolynomial()
+        var poly = LinearPolynomial()
         poly += payload
         poly += fuselage.dow.to(aircraftModel.weightUnit)!!.value
         poly += fuselage.liferaft?.weight?.let {
@@ -133,6 +133,6 @@ class TotalWeight(
 
             FlightPhase.ZeroFuel -> {}
         }
-        return LinearPolynomial(poly)
+        return poly
     }
 }

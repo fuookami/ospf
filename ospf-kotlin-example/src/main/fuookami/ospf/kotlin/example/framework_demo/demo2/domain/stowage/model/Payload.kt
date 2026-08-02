@@ -73,11 +73,11 @@ class Payload(
                     }
 
                     StowageMode.Predistribution, StowageMode.WeightRecommendation -> {
-                        val poly = MutableLinearPolynomial()
+                        var poly = LinearPolynomial()
                         for ((j, position) in positions.withIndex()) {
                             when (position.location.location) {
                                 DeckLocation.Main -> {
-                                    poly += LinearMonomial(Flt64.one, load.estimateLoadWeight[j].to(aircraftModel.weightUnit)!!.value)
+                                    poly += load.estimateLoadWeight[j].to(aircraftModel.weightUnit)!!.value
                                 }
 
                                 DeckLocation.LowForward, DeckLocation.LowAft -> {}
@@ -93,13 +93,13 @@ class Payload(
             )
         }
         when (val result = model.add(mainEstimatePayload)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -124,13 +124,13 @@ class Payload(
                     }
 
                     StowageMode.Predistribution, StowageMode.WeightRecommendation -> {
-                        val poly = MutableLinearPolynomial()
+                        var poly = LinearPolynomial()
                         for ((j, position) in positions.withIndex()) {
                             when (position.location.location) {
                                 DeckLocation.Main -> {}
 
                                 DeckLocation.LowForward, DeckLocation.LowAft -> {
-                                    poly += LinearMonomial(Flt64.one, load.estimateLoadWeight[j].to(aircraftModel.weightUnit)!!.value)
+                                    poly += load.estimateLoadWeight[j].to(aircraftModel.weightUnit)!!.value
                                 }
                             }
                         }
@@ -144,13 +144,13 @@ class Payload(
             )
         }
         when (val result = model.add(lowEstimatePayload)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -179,9 +179,9 @@ class Payload(
                     }
 
                     StowageMode.WeightRecommendation -> {
-                        val poly = MutableLinearPolynomial()
+                        var poly = LinearPolynomial()
                         for ((j, _) in positions.withIndex()) {
-                            poly += LinearMonomial(Flt64.one, load.estimateLoadWeight[j].to(aircraftModel.weightUnit)!!.value)
+                            poly += load.estimateLoadWeight[j].to(aircraftModel.weightUnit)!!.value
                         }
                         LinearExpressionSymbol(
                             poly,
@@ -193,13 +193,13 @@ class Payload(
             )
         }
         when (val result = model.add(estimatePayload)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -224,11 +224,11 @@ class Payload(
                     }
 
                     StowageMode.Predistribution, StowageMode.WeightRecommendation -> {
-                        val poly = MutableLinearPolynomial()
+                        var poly = LinearPolynomial()
                         for ((j, position) in positions.withIndex()) {
                             when (position.location.location) {
                                 DeckLocation.Main -> {
-                                    poly += LinearMonomial(Flt64.one, load.actualLoadWeight[j].to(aircraftModel.weightUnit)!!.value)
+                                    poly += load.actualLoadWeight[j].to(aircraftModel.weightUnit)!!.value
                                 }
 
                                 DeckLocation.LowForward, DeckLocation.LowAft -> {}
@@ -244,13 +244,13 @@ class Payload(
             )
         }
         when (val result = model.add(mainActualPayload)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -275,13 +275,13 @@ class Payload(
                     }
 
                     StowageMode.Predistribution, StowageMode.WeightRecommendation -> {
-                        val poly = MutableLinearPolynomial()
+                        var poly = LinearPolynomial()
                         for ((j, position) in positions.withIndex()) {
                             when (position.location.location) {
                                 DeckLocation.Main -> {}
 
                                 DeckLocation.LowForward, DeckLocation.LowAft -> {
-                                    poly += LinearMonomial(Flt64.one, load.actualLoadWeight[j].to(aircraftModel.weightUnit)!!.value)
+                                    poly += load.actualLoadWeight[j].to(aircraftModel.weightUnit)!!.value
                                 }
                             }
                         }
@@ -295,13 +295,13 @@ class Payload(
             )
         }
         when (val result = model.add(lowActualPayload)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -322,9 +322,9 @@ class Payload(
                     }
 
                     StowageMode.Predistribution, StowageMode.WeightRecommendation -> {
-                        val poly = MutableLinearPolynomial()
+                        var poly = LinearPolynomial()
                         for ((j, _) in positions.withIndex()) {
-                            poly += LinearMonomial(Flt64.one, load.actualLoadWeight[j].to(aircraftModel.weightUnit)!!.value)
+                            poly += load.actualLoadWeight[j].to(aircraftModel.weightUnit)!!.value
                         }
                         LinearExpressionSymbol(
                             poly,
@@ -336,13 +336,13 @@ class Payload(
             )
         }
         when (val result = model.add(actualPayload)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }

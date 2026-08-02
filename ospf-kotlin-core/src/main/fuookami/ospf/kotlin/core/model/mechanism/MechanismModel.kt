@@ -8,6 +8,7 @@ import org.apache.logging.log4j.kotlin.logger
 import fuookami.ospf.kotlin.core.error.*
 import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.intermediate.*
+import fuookami.ospf.kotlin.core.solver.report.ModelElementIdentityRegistry
 import fuookami.ospf.kotlin.core.symbol.*
 import fuookami.ospf.kotlin.core.symbol.function.*
 import fuookami.ospf.kotlin.core.token.*
@@ -36,12 +37,14 @@ import fuookami.ospf.kotlin.utils.functional.*
  * @property constraints 约束列表 / Constraint list
  * @property objectFunction 目标函数 / Objective function
  * @property tokens 符号表 / Token table
+ * @property identityRegistry 可选的稳定身份注册表 / Optional stable identity registry
 */
 sealed interface MechanismModel<V> : AutoCloseable where V : RealNumber<V>, V : NumberField<V> {
     val name: String
     val constraints: List<Constraint<V, *>>
     val objectFunction: Object
     val tokens: AbstractTokenTable<V>
+    val identityRegistry: ModelElementIdentityRegistry?
 
     override fun close() {
         tokens.close()
@@ -280,6 +283,7 @@ class LinearMechanismModel<V>(
     override val tokens: AbstractTokenTable<V>
 ) : BasicMechanismModel<V>(name, tokens), AbstractLinearMechanismModel<V>, SingleObjectMechanismModel<V>
         where V : RealNumber<V>, V : NumberField<V> {
+    override val identityRegistry: ModelElementIdentityRegistry? get() = parent.identityRegistry
     private val logger = logger()
 
     /**
@@ -309,6 +313,12 @@ class LinearMechanismModel<V>(
             dumpingStatusCallBack: MechanismModelDumpingStatusCallBack? = null
         ): Ret<LinearMechanismModel<V>> where V : RealNumber<V>, V : NumberField<V> {
             logger.info { "Creating LinearMechanismModel<V> for $metaModel" }
+
+            when (val identityValidation = metaModel.identityRegistry?.validate()) {
+                null, is Ok -> {}
+                is Failed -> return Failed(identityValidation.error)
+                is Fatal -> return Fatal(identityValidation.errors)
+            }
 
             logger.trace { "Unfolding tokens for $metaModel" }
             val tokens = when (val result = unfold(
@@ -823,6 +833,7 @@ class QuadraticMechanismModel<V>(
     override val tokens: AbstractTokenTable<V>
 ) : BasicMechanismModel<V>(name, tokens), AbstractQuadraticMechanismModel<V>, SingleObjectMechanismModel<V>
         where V : RealNumber<V>, V : NumberField<V> {
+    override val identityRegistry: ModelElementIdentityRegistry? get() = parent.identityRegistry
     private val logger = logger()
 
     /**
@@ -852,6 +863,12 @@ class QuadraticMechanismModel<V>(
             dumpingStatusCallBack: MechanismModelDumpingStatusCallBack? = null
         ): Ret<QuadraticMechanismModel<V>> where V : RealNumber<V>, V : NumberField<V> {
             logger.info { "Creating QuadraticMechanismModel<V> for $metaModel" }
+
+            when (val identityValidation = metaModel.identityRegistry?.validate()) {
+                null, is Ok -> {}
+                is Failed -> return Failed(identityValidation.error)
+                is Fatal -> return Fatal(identityValidation.errors)
+            }
 
             logger.trace { "Unfolding tokens for $metaModel" }
             val tokens = when (val result = unfold(

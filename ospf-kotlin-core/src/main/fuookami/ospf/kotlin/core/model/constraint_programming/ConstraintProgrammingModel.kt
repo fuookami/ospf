@@ -3,22 +3,26 @@
  */
 package fuookami.ospf.kotlin.core.model.constraint_programming
 
-import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
-import fuookami.ospf.kotlin.core.model.mechanism.MetaConstraintGroup
-import fuookami.ospf.kotlin.core.solver.report.ConstraintId
-import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
-import fuookami.ospf.kotlin.core.solver.report.VariableId
-import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
+import java.util.IdentityHashMap
 import fuookami.ospf.kotlin.utils.error.ErrorCode
 import fuookami.ospf.kotlin.utils.functional.Failed
 import fuookami.ospf.kotlin.utils.functional.Fatal
 import fuookami.ospf.kotlin.utils.functional.Ret
 import fuookami.ospf.kotlin.utils.functional.Try
 import fuookami.ospf.kotlin.utils.functional.ok
+import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
+import fuookami.ospf.kotlin.core.model.mechanism.MetaConstraintGroup
+import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
+import fuookami.ospf.kotlin.core.solver.report.VariableId
+import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
 
 /**
  * 独立的 CP 模型，不继承线性/二次 MetaModel。 / Independent CP model, intentionally not a Linear/Quadratic MetaModel.
  * 模型中的注册表保持插入顺序，snapshot 会在校验后复制所有集合。 / Registries preserve insertion order, and snapshot copies every collection after validation.
+ *
+ * @property name 模型名称 / Model name
+ * @property objectCategory 模型优化方向 / Model optimization direction
  */
 class ConstraintProgrammingModel(
     val name: String = "constraint-programming-model",
@@ -26,24 +30,31 @@ class ConstraintProgrammingModel(
 ) : ConstraintGroupRegistry, AutoCloseable {
     private data class VariableEntry(
         val variable: AbstractVariableItem<*, *>,
-        val domain: IntegerDomain
+        val domain: IntegerDomain,
+        val scope: String,
+        val origin: String?
     )
 
     private data class ConstraintEntry(
         val id: ConstraintId,
         val name: String,
         val groupName: String?,
-        val constraint: ConstraintProgrammingConstraint
+        val constraint: ConstraintProgrammingConstraint,
+        val scope: String,
+        val origin: String?
     )
 
     private data class ObjectiveEntry(
         val id: ObjectiveId,
         val category: ObjectCategory,
         val name: String,
-        val expression: ConstraintProgrammingExpression
+        val expression: ConstraintProgrammingExpression,
+        val scope: String,
+        val origin: String?
     )
 
     private val variables = LinkedHashMap<VariableId, VariableEntry>()
+    private val variableIdsByIdentity = IdentityHashMap<AbstractVariableItem<*, *>, VariableId>()
     private val intervals = LinkedHashMap<IntervalId, IntervalVariable>()
     private val expressions = LinkedHashMap<String, ConstraintProgrammingExpression>()
     private val constraints = LinkedHashMap<ConstraintId, ConstraintEntry>()
@@ -69,14 +80,22 @@ class ConstraintProgrammingModel(
      *
      * @param variable OSPF 标量变量 / OSPF scalar variable
      * @param domain CP 值域；为空时按变量类型推导 / CP domain, inferred from variable type when null
+     * @param scope 身份作用域 / Identity scope
+     * @param origin 稳定身份来源 / Stable identity origin
      * @return 稳定变量 ID或错误 / Stable variable ID or an error
      */
     fun registerVariable(
         variable: AbstractVariableItem<*, *>,
-        domain: IntegerDomain? = null
+        domain: IntegerDomain? = null,
+        scope: String = "model-local",
+        origin: String? = null
     ): Ret<VariableId> {
         if (closed) {
             return closedFailure()
+        }
+        val identity = validateIdentityMetadata(scope, origin)
+        if (identity.failed) {
+            return propagateModelFailure(identity)
         }
         val reference = ConstraintProgrammingExpression.variable(variable, domain)
         if (reference.failed) {
@@ -89,20 +108,42 @@ class ConstraintProgrammingModel(
                 "CP 变量 ID 重复：$id / Duplicate CP variable ID: $id"
             )
         }
-        variables[id] = VariableEntry(variable, reference.value!!.domain)
+        val existingBinding = variableIdsByIdentity[variable]
+        if (existingBinding != null && existingBinding != id) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "同一 OSPF 变量不能绑定多个 CP ID：$existingBinding 与 $id / " +
+                    "The same OSPF variable cannot be bound to multiple CP IDs: $existingBinding and $id"
+            )
+        }
+        variables[id] = VariableEntry(variable, reference.value!!.domain, scope, origin)
+        variableIdsByIdentity[variable] = id
         return ok(id)
     }
 
     /**
-     * 使用显式稳定 ID 注册变量。显式 ID 适用于跨模型重建场景；变量表达式自身的 ID 仍按 OSPF variable identity 引用。 / Register a variable with an explicit stable ID. / Explicit IDs are useful across model rebuilds; expressions still reference the OSPF variable identity.
+     * 使用显式稳定 ID 注册变量；模型 snapshot 会将引用表达式绑定到该 ID。 / Register a variable with an explicit stable ID; model snapshots bind references to this ID.
+     *
+     * @param id 稳定变量 ID / Stable variable ID
+     * @param variable OSPF 标量变量 / OSPF scalar variable
+     * @param domain CP 值域 / CP domain
+     * @param scope 身份作用域 / Identity scope
+     * @param origin 稳定身份来源 / Stable identity origin
+     * @return 稳定变量 ID 或结构化错误 / Stable variable ID or a structured error
      */
     fun registerVariable(
         id: VariableId,
         variable: AbstractVariableItem<*, *>,
-        domain: IntegerDomain
+        domain: IntegerDomain,
+        scope: String = "model-local",
+        origin: String? = null
     ): Ret<VariableId> {
         if (closed) {
             return closedFailure()
+        }
+        val identity = validateIdentityMetadata(scope, origin)
+        if (identity.failed) {
+            return propagateModelFailure(identity)
         }
         if (id.value.isBlank()) {
             return Failed(ErrorCode.IllegalArgument, "CP 变量 ID 不能为空 / CP variable ID must not be blank")
@@ -114,14 +155,32 @@ class ConstraintProgrammingModel(
         if (variables.containsKey(id)) {
             return Failed(ErrorCode.IllegalArgument, "CP 变量 ID 重复：$id / Duplicate CP variable ID: $id")
         }
-        variables[id] = VariableEntry(variable, reference.value!!.domain)
+        val existingBinding = variableIdsByIdentity[variable]
+        if (existingBinding != null && existingBinding != id) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "同一 OSPF 变量不能绑定多个 CP ID：$existingBinding 与 $id / " +
+                    "The same OSPF variable cannot be bound to multiple CP IDs: $existingBinding and $id"
+            )
+        }
+        variables[id] = VariableEntry(variable, reference.value!!.domain, scope, origin)
+        variableIdsByIdentity[variable] = id
         return ok(id)
     }
 
-    /** 注册 interval 结构变量。 / Register an interval structural variable. */
+    /**
+     * 注册 interval 结构变量。 / Register an interval structural variable.
+     *
+     * @param interval interval 定义 / Interval definition
+     * @return 稳定 interval ID 或结构化错误 / Stable interval ID or a structured error
+     */
     fun registerInterval(interval: IntervalVariable): Ret<IntervalId> {
         if (closed) {
             return closedFailure()
+        }
+        val identity = validateIdentityMetadata(interval.scope, interval.origin)
+        if (identity.failed) {
+            return propagateModelFailure(identity)
         }
         if (interval.id.value.isBlank()) {
             return Failed(
@@ -139,7 +198,13 @@ class ConstraintProgrammingModel(
         return ok(interval.id)
     }
 
-    /** 注册具名表达式。 / Register a named expression. */
+    /**
+     * 注册具名表达式。 / Register a named expression.
+     *
+     * @param name 表达式名称 / Expression name
+     * @param expression 表达式 AST / Expression AST
+     * @return 注册名称或结构化错误 / Registered name or a structured error
+     */
     fun registerExpression(
         name: String,
         expression: ConstraintProgrammingExpression
@@ -157,15 +222,31 @@ class ConstraintProgrammingModel(
         return ok(name)
     }
 
-    /** 注册约束。 / Register a constraint. */
+    /**
+     * 注册约束。 / Register a constraint.
+     *
+     * @param constraint 约束 AST / Constraint AST
+     * @param id 可选稳定约束 ID / Optional stable constraint ID
+     * @param name 展示名称 / Display name
+     * @param group 约束组 / Constraint group
+     * @param scope 身份作用域 / Identity scope
+     * @param origin 稳定身份来源 / Stable identity origin
+     * @return 稳定约束 ID 或结构化错误 / Stable constraint ID or a structured error
+     */
     fun addConstraint(
         constraint: ConstraintProgrammingConstraint,
         id: ConstraintId? = null,
         name: String = "",
-        group: MetaConstraintGroup? = null
+        group: MetaConstraintGroup? = null,
+        scope: String = "model-local",
+        origin: String? = null
     ): Ret<ConstraintId> {
         if (closed) {
             return closedFailure()
+        }
+        val identity = validateIdentityMetadata(scope, origin)
+        if (identity.failed) {
+            return propagateModelFailure(identity)
         }
         val resolvedId = id ?: ConstraintId("constraint-${constraints.size}")
         if (resolvedId.value.isBlank()) {
@@ -182,30 +263,60 @@ class ConstraintProgrammingModel(
             id = resolvedId,
             name = name.ifBlank { resolvedId.value },
             groupName = group?.name ?: currentGroupName,
-            constraint = constraint
+            constraint = constraint,
+            scope = scope,
+            origin = origin
         )
         return ok(resolvedId)
     }
 
-    /** 使用字符串 ID 注册约束。 / Register a constraint with a string ID. */
+    /**
+     * 使用字符串 ID 注册约束。 / Register a constraint with a string ID.
+     *
+     * @param constraint 约束 AST / Constraint AST
+     * @param id 稳定约束 ID 字符串 / Stable constraint ID string
+     * @param name 展示名称 / Display name
+     * @param group 约束组 / Constraint group
+     * @param scope 身份作用域 / Identity scope
+     * @param origin 稳定身份来源 / Stable identity origin
+     * @return 稳定约束 ID 或结构化错误 / Stable constraint ID or a structured error
+     */
     fun addConstraint(
         constraint: ConstraintProgrammingConstraint,
         id: String,
         name: String = "",
-        group: MetaConstraintGroup? = null
+        group: MetaConstraintGroup? = null,
+        scope: String = "model-local",
+        origin: String? = null
     ): Ret<ConstraintId> {
-        return addConstraint(constraint, ConstraintId(id), name, group)
+        return addConstraint(constraint, ConstraintId(id), name, group, scope, origin)
     }
 
-    /** 注册目标。 / Register an objective. */
+    /**
+     * 注册目标。 / Register an objective.
+     *
+     * @param category 优化方向 / Optimization direction
+     * @param expression 目标表达式 / Objective expression
+     * @param id 可选稳定目标 ID / Optional stable objective ID
+     * @param name 展示名称 / Display name
+     * @param scope 身份作用域 / Identity scope
+     * @param origin 稳定身份来源 / Stable identity origin
+     * @return 稳定目标 ID 或结构化错误 / Stable objective ID or a structured error
+     */
     fun addObjective(
         category: ObjectCategory,
         expression: ConstraintProgrammingExpression,
         id: ObjectiveId? = null,
-        name: String = ""
+        name: String = "",
+        scope: String = "model-local",
+        origin: String? = null
     ): Ret<ObjectiveId> {
         if (closed) {
             return closedFailure()
+        }
+        val identity = validateIdentityMetadata(scope, origin)
+        if (identity.failed) {
+            return propagateModelFailure(identity)
         }
         val resolvedId = id ?: ObjectiveId("objective-${objectives.size}")
         if (resolvedId.value.isBlank()) {
@@ -221,27 +332,51 @@ class ConstraintProgrammingModel(
             id = resolvedId,
             category = category,
             name = name.ifBlank { resolvedId.value },
-            expression = expression
+            expression = expression,
+            scope = scope,
+            origin = origin
         )
         return ok(resolvedId)
     }
 
-    /** 注册最小化目标。 / Register a minimization objective. */
+    /**
+     * 注册最小化目标。 / Register a minimization objective.
+     *
+     * @param expression 目标表达式 / Objective expression
+     * @param id 可选稳定目标 ID / Optional stable objective ID
+     * @param name 展示名称 / Display name
+     * @param scope 身份作用域 / Identity scope
+     * @param origin 稳定身份来源 / Stable identity origin
+     * @return 稳定目标 ID 或结构化错误 / Stable objective ID or a structured error
+     */
     fun minimize(
         expression: ConstraintProgrammingExpression,
         id: ObjectiveId? = null,
-        name: String = ""
+        name: String = "",
+        scope: String = "model-local",
+        origin: String? = null
     ): Ret<ObjectiveId> {
-        return addObjective(ObjectCategory.Minimum, expression, id, name)
+        return addObjective(ObjectCategory.Minimum, expression, id, name, scope, origin)
     }
 
-    /** 注册最大化目标。 / Register a maximization objective. */
+    /**
+     * 注册最大化目标。 / Register a maximization objective.
+     *
+     * @param expression 目标表达式 / Objective expression
+     * @param id 可选稳定目标 ID / Optional stable objective ID
+     * @param name 展示名称 / Display name
+     * @param scope 身份作用域 / Identity scope
+     * @param origin 稳定身份来源 / Stable identity origin
+     * @return 稳定目标 ID 或结构化错误 / Stable objective ID or a structured error
+     */
     fun maximize(
         expression: ConstraintProgrammingExpression,
         id: ObjectiveId? = null,
-        name: String = ""
+        name: String = "",
+        scope: String = "model-local",
+        origin: String? = null
     ): Ret<ObjectiveId> {
-        return addObjective(ObjectCategory.Maximum, expression, id, name)
+        return addObjective(ObjectCategory.Maximum, expression, id, name, scope, origin)
     }
 
     /** 注册约束组；Pipeline 注册入口调用此方法。 / Register a group for Pipeline integration. */
@@ -252,7 +387,12 @@ class ConstraintProgrammingModel(
         }
     }
 
-    /** 获取约束组中的约束。 / Get constraints belonging to a group. */
+    /**
+     * 获取约束组中的约束。 / Get constraints belonging to a group.
+     *
+     * @param group 约束组 / Constraint group
+     * @return 该组中的约束列表 / Constraints in the group
+     */
     fun constraintsOfGroup(group: MetaConstraintGroup): List<ConstraintProgrammingConstraint> {
         return constraints.values
             .filter { it.groupName == group.name }
@@ -268,27 +408,43 @@ class ConstraintProgrammingModel(
         if (closed) {
             return closedFailure()
         }
+        if (objectives.size > 1) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "CP 模型只支持单一目标：${objectives.size} / CP models support exactly one objective at most: ${objectives.size}"
+            )
+        }
+        objectives.values.firstOrNull()?.let { objective ->
+            if (objective.category != objectCategory) {
+                return Failed(
+                    ErrorCode.IllegalArgument,
+                    "CP 目标方向与模型方向不一致：${objective.category} != $objectCategory / " +
+                        "CP objective category disagrees with the model category: ${objective.category} != $objectCategory"
+                )
+            }
+        }
         val knownVariables = variables.keys
+        val bindings = variableIdsByIdentity
         for ((expressionName, expression) in expressions) {
-            val missing = expression.variables.firstOrNull { it !in knownVariables }
+            val missing = expression.bindStableVariableIds(bindings).variables.firstOrNull { it !in knownVariables }
             if (missing != null) {
                 return missingReference("表达式 $expressionName", missing)
             }
         }
         for ((intervalId, interval) in intervals) {
-            val missing = interval.variables.firstOrNull { it !in knownVariables }
+            val missing = interval.bindStableVariableIds(bindings).variables.firstOrNull { it !in knownVariables }
             if (missing != null) {
                 return missingReference("interval $intervalId", missing)
             }
         }
         for ((constraintId, constraint) in constraints) {
-            val missing = constraint.constraint.variables.firstOrNull { it !in knownVariables }
+            val missing = constraint.constraint.bindStableVariableIds(bindings).variables.firstOrNull { it !in knownVariables }
             if (missing != null) {
                 return missingReference("约束 $constraintId", missing)
             }
         }
         for ((objectiveId, objective) in objectives) {
-            val missing = objective.expression.variables.firstOrNull { it !in knownVariables }
+            val missing = objective.expression.bindStableVariableIds(bindings).variables.firstOrNull { it !in knownVariables }
             if (missing != null) {
                 return missingReference("目标 $objectiveId", missing)
             }
@@ -296,14 +452,17 @@ class ConstraintProgrammingModel(
         return ok
     }
 
-    /** 生成可重复编译的不可变 snapshot。 / Build an immutable, repeatably compilable snapshot. */
+    /**
+     * 生成可重复编译的不可变 snapshot。 / Build an immutable, repeatably compilable snapshot.
+     *
+     * @return 不可变 snapshot 或结构化错误 / Immutable snapshot or a structured error
+     */
     fun snapshot(): Ret<ConstraintProgrammingModelSnapshot> {
         val valid = validate()
         if (valid.failed) {
             return propagateModelFailure(valid)
         }
-        return ok(
-            ConstraintProgrammingModelSnapshot(
+        val snapshot = ConstraintProgrammingModelSnapshot(
                 name = name,
                 objectCategory = objectCategory,
                 variables = variables.map { (id, entry) ->
@@ -311,22 +470,47 @@ class ConstraintProgrammingModel(
                         id = id,
                         name = entry.variable.name,
                         typeName = entry.variable.type.name,
-                        domain = copyDomain(entry.domain)
+                        domain = copyDomain(entry.domain),
+                        scope = entry.scope,
+                        origin = entry.origin
                     )
                 },
-                intervals = intervals.values.toList(),
+                intervals = intervals.values.map { it.bindStableVariableIds(variableIdsByIdentity) },
                 expressions = expressions.map { (expressionName, expression) ->
-                    ConstraintProgrammingExpressionSnapshot(expressionName, expression)
+                    ConstraintProgrammingExpressionSnapshot(
+                        expressionName,
+                        expression.bindStableVariableIds(variableIdsByIdentity)
+                    )
                 },
                 constraints = constraints.values.map {
-                    ConstraintProgrammingConstraintSnapshot(it.id, it.name, it.groupName, it.constraint)
+                    ConstraintProgrammingConstraintSnapshot(
+                        id = it.id,
+                        name = it.name,
+                        groupName = it.groupName,
+                        constraint = it.constraint.bindStableVariableIds(variableIdsByIdentity),
+                        scope = it.scope,
+                        origin = it.origin
+                    )
                 },
                 objectives = objectives.values.map {
-                    ConstraintProgrammingObjectiveSnapshot(it.id, it.category, it.name, it.expression)
+                    ConstraintProgrammingObjectiveSnapshot(
+                        id = it.id,
+                        category = it.category,
+                        name = it.name,
+                        expression = it.expression.bindStableVariableIds(variableIdsByIdentity),
+                        scope = it.scope,
+                        origin = it.origin
+                    )
                 },
                 constraintGroups = groups.keys.toList()
             )
-        )
+        if (!snapshot.validateIdentity()) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "CP snapshot 身份清单无效 / CP snapshot identity manifest is invalid"
+            )
+        }
+        return ok(snapshot)
     }
 
     /** 关闭并释放注册表。 / Close and release the registries. */
@@ -334,6 +518,7 @@ class ConstraintProgrammingModel(
         closed = true
         variables.clear()
         intervals.clear()
+        variableIdsByIdentity.clear()
         expressions.clear()
         constraints.clear()
         objectives.clear()
@@ -373,4 +558,20 @@ private fun <T> propagateModelFailure(result: Ret<*>): Ret<T> {
         is Fatal -> Fatal(result.errors)
         else -> Failed(ErrorCode.ApplicationError, "CP 模型结果状态无效 / Invalid CP model result state")
     }
+}
+
+private fun validateIdentityMetadata(scope: String, origin: String?): Try {
+    if (scope.isBlank()) {
+        return Failed(
+            ErrorCode.IllegalArgument,
+            "CP 身份 scope 不能为空 / CP identity scope must not be blank"
+        )
+    }
+    if (scope == "stable" && origin.isNullOrBlank()) {
+        return Failed(
+            ErrorCode.IllegalArgument,
+            "stable CP 身份必须提供 origin / Stable CP identities require an origin"
+        )
+    }
+    return ok
 }

@@ -152,6 +152,7 @@ data class ModelData(
         get() = when {
             quadraticModel != null -> NormalizedModelType.QUADRATIC
             linearModel != null -> NormalizedModelType.LINEAR
+            format == "ospf-cp-snapshot-json" -> NormalizedModelType.CP
             else -> NormalizedModelType.UNKNOWN
         }
 
@@ -266,6 +267,12 @@ data class SolvePayload(
 
     /**
      * 引用模式便捷构造器。 / Reference mode convenience constructor.
+     *
+     * @param modelRef Model object reference. / 模型对象引用。
+     * @param configRef Optional solver configuration reference. / 可选求解配置引用。
+     * @param snapshotRef Optional snapshot reference. / 可选快照引用。
+     * @param taskMeta Task metadata. / 任务元数据。
+     * @param extension Extension fields. / 扩展字段。
     */
     constructor(
         modelRef: ObjectRef,
@@ -283,6 +290,11 @@ data class SolvePayload(
 
     /**
      * 内联线性模型便捷构造器。 / Inline linear model convenience constructor.
+     *
+     * @param linearModel Inline serialized linear model. / 内联序列化线性模型。
+     * @param config Optional inline solver configuration. / 可选内联求解配置。
+     * @param taskMeta Task metadata. / 任务元数据。
+     * @param extension Extension fields. / 扩展字段。
     */
     constructor(
         linearModel: SerializedLinearModel,
@@ -296,6 +308,9 @@ data class SolvePayload(
         extension = extension
     )
 
-    /** 模型引用 / Model reference */
+    /** Model reference carried by the payload. / 载荷携带的模型引用。
+     *
+     * @return Referenced object or null for inline payloads. / 引用对象；内联载荷时为 null。
+     */
     val modelRef: ObjectRef? get() = modelData.ref
 }

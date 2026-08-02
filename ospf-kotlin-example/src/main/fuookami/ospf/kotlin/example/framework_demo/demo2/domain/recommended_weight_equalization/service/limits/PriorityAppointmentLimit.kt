@@ -50,13 +50,13 @@ class PriorityAppointmentLimit(
                         relation = LinearPolynomial(stowage.stowage[i, j]) eq Flt64.zero,
                         name = "${name}_${item}_${position}"
                     )) {
-                        is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                        is Ok -> {}
 
-                        is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                        is Failed -> {
                             return Failed(result.error)
                         }
 
-                        is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                        is Fatal -> {
                             return Fatal(result.errors)
                         }
                     }

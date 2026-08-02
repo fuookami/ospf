@@ -12,7 +12,7 @@ import fuookami.ospf.kotlin.math.algebra.concept.NumberField
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.mechanism.LinearMetaModel
 import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.capacity_scheduling.model.*
@@ -83,7 +83,7 @@ class BunchCapacitySchedulingProduce<
                     continue
                 }
                 for ((slotIndex, _) in slots.withIndex()) {
-                    quantity[product].asMutable() += LinearMonomial(unitProduce.toSolverValue(), compilation.operationTime[actionIndex, slotIndex])
+                    quantity[product].asMutable() += unitProduce.toSolverValue() * compilation.operationTime[actionIndex, slotIndex]
                 }
             }
         }

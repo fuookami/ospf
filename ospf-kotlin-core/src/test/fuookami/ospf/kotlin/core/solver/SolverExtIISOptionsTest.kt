@@ -317,6 +317,46 @@ class SolverExtIISOptionsTest {
             }
         }
     }
+
+    @Test
+    fun linearIisFailureShouldPreserveInfeasibleOutputAndDiagnostics() = runBlocking {
+        val solver = InfeasibleThenDiagnosticFailureLinearSolver()
+
+        val result = solver.solveWithOptionsAndIIS(
+            model = emptyLinearModel(),
+            options = SolveOptions(),
+            iisConfig = IISConfig()
+        )
+
+        val output = when (result) {
+            is Ok -> assertIs<LinearInfeasibleSolverOutput>(result.value)
+            else -> fail("expected preserved linear infeasible output, got $result")
+        }
+        assertFalse(output.iisAvailable)
+        assertEquals("iis-diagnostic-failed", output.diagnostics.errors.single().code)
+        assertNull(output.withIIS().iis)
+        assertEquals(0, output.iis.constraints.size)
+    }
+
+    @Test
+    fun quadraticIisFailureShouldPreserveInfeasibleOutputAndDiagnostics() = runBlocking {
+        val solver = InfeasibleThenDiagnosticFailureQuadraticSolver()
+
+        val result = solver.solveWithOptionsAndIIS(
+            model = emptyQuadraticModel(),
+            options = SolveOptions(),
+            iisConfig = IISConfig()
+        )
+
+        val output = when (result) {
+            is Ok -> assertIs<QuadraticInfeasibleSolverOutput>(result.value)
+            else -> fail("expected preserved quadratic infeasible output, got $result")
+        }
+        assertFalse(output.iisAvailable)
+        assertEquals("iis-diagnostic-failed", output.diagnostics.errors.single().code)
+        assertNull(output.withIIS().iis)
+        assertEquals(0, output.iis.constraints.size)
+    }
 }
 
 private class InfeasibleThenDeletionFilteringLinearSolver : AbstractLinearSolver {
@@ -547,6 +587,56 @@ private class InfeasibleQuadraticSolver(
             statusOnFailure?.let { solvingStatusCallBack?.invoke(it) }
         }
         return Failed(ErrorCode.ORModelInfeasible)
+    }
+}
+
+private class InfeasibleThenDiagnosticFailureLinearSolver : AbstractLinearSolver {
+    override val name: String = "infeasible-then-diagnostic-failure-linear"
+    private var invokeCount = 0
+
+    override suspend fun invoke(
+        model: LinearTriadModelView,
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<FeasibleSolverOutput<Flt64>> {
+        invokeCount += 1
+        return if (invokeCount == 1) {
+            Failed(ErrorCode.ORModelInfeasible)
+        } else {
+            Failed(ErrorCode.OREngineSolvingException, "diagnostic backend failed")
+        }
+    }
+
+    override suspend fun invoke(
+        model: LinearTriadModelView,
+        solutionAmount: UInt64,
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+        return Failed(ErrorCode.OREngineSolvingException, "diagnostic backend failed")
+    }
+}
+
+private class InfeasibleThenDiagnosticFailureQuadraticSolver : AbstractQuadraticSolver {
+    override val name: String = "infeasible-then-diagnostic-failure-quadratic"
+    private var invokeCount = 0
+
+    override suspend fun invoke(
+        model: QuadraticTetradModelView,
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<FeasibleSolverOutput<Flt64>> {
+        invokeCount += 1
+        return if (invokeCount == 1) {
+            Failed(ErrorCode.ORModelInfeasible)
+        } else {
+            Failed(ErrorCode.OREngineSolvingException, "diagnostic backend failed")
+        }
+    }
+
+    override suspend fun invoke(
+        model: QuadraticTetradModelView,
+        solutionAmount: UInt64,
+        solvingStatusCallBack: SolvingStatusCallBack?
+    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+        return Failed(ErrorCode.OREngineSolvingException, "diagnostic backend failed")
     }
 }
 

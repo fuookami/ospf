@@ -64,6 +64,11 @@ class ScipQuadraticSolver(
         model: QuadraticTetradModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
     ): Ret<FeasibleSolverOutput<Flt64>> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         val impl = ScipQuadraticSolverImpl(
             config = config,
             callBack = callBack,
@@ -211,7 +216,7 @@ private class ScipQuadraticSolverImpl(
         for (col in model.variables.indices) {
             vars.add(
                 scip.createVar(
-                    variableDumpingData.names[col],
+                    nativeElementName(model.variables[col].id?.value, variableDumpingData.names[col], "variable"),
                     variableDumpingData.lowerBounds[col],
                     variableDumpingData.upperBounds[col],
                     0.0,
@@ -288,7 +293,11 @@ private class ScipQuadraticSolverImpl(
                         val (linerCoefficients, linearVars) = linearCells
                         val (quadraticCoefficients, quadraticVars1, quadraticVars2) = quadraticCells
                         val constraint = scip.createConsQuadratic(
-                            model.constraints.names[it.first],
+                            nativeElementName(
+                                model.constraints.ids.getOrNull(it.first)?.value,
+                                model.constraints.names[it.first],
+                                "constraint"
+                            ),
                             quadraticVars1.toTypedArray(),
                             quadraticVars2.toTypedArray(),
                             quadraticCoefficients.toDoubleArray(),
@@ -337,7 +346,11 @@ private class ScipQuadraticSolverImpl(
                         }
                     }
                     val constraint = scip.createConsQuadratic(
-                        model.constraints.names[i],
+                        nativeElementName(
+                            model.constraints.ids.getOrNull(i)?.value,
+                            model.constraints.names[i],
+                            "constraint"
+                        ),
                         quadraticVars1.toTypedArray(),
                         quadraticVars2.toTypedArray(),
                         quadraticCoefficients.toDoubleArray(),

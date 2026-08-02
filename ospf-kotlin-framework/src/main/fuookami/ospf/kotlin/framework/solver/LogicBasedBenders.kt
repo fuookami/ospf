@@ -4,6 +4,19 @@ package fuookami.ospf.kotlin.framework.solver
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.ZERO
 import kotlin.time.TimeSource
+import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.utils.functional.Failed
+import fuookami.ospf.kotlin.utils.functional.Fatal
+import fuookami.ospf.kotlin.utils.functional.Ok
+import fuookami.ospf.kotlin.utils.functional.Ret
+import fuookami.ospf.kotlin.utils.functional.Try
+import fuookami.ospf.kotlin.utils.functional.ok
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.algebra.number.Int64
+import fuookami.ospf.kotlin.math.symbol.inequality.Comparison
+import fuookami.ospf.kotlin.math.symbol.inequality.LinearInequality
+import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 import fuookami.ospf.kotlin.core.model.constraint_programming.BooleanLiteral
 import fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintProgrammingModel
 import fuookami.ospf.kotlin.core.model.constraint_programming.IntegerDomain
@@ -20,6 +33,7 @@ import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingSolverOutput
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingUnknownOutput
 import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
 import fuookami.ospf.kotlin.core.solver.output.SolverStatus
+import fuookami.ospf.kotlin.core.solver.report.BoundSide
 import fuookami.ospf.kotlin.core.solver.report.CancellationToken
 import fuookami.ospf.kotlin.core.solver.report.ProblemStatus
 import fuookami.ospf.kotlin.core.solver.report.ProofStatus
@@ -35,19 +49,6 @@ import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
 import fuookami.ospf.kotlin.core.variable.BinVar
 import fuookami.ospf.kotlin.core.variable.BinVariable
-import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.algebra.number.Int64
-import fuookami.ospf.kotlin.math.symbol.inequality.Comparison
-import fuookami.ospf.kotlin.math.symbol.inequality.LinearInequality
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
-import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
-import fuookami.ospf.kotlin.utils.error.ErrorCode
-import fuookami.ospf.kotlin.utils.functional.Failed
-import fuookami.ospf.kotlin.utils.functional.Fatal
-import fuookami.ospf.kotlin.utils.functional.Ok
-import fuookami.ospf.kotlin.utils.functional.Ret
-import fuookami.ospf.kotlin.utils.functional.Try
-import fuookami.ospf.kotlin.utils.functional.ok
 
 /** Engine proof mode. / 引擎证明模式。 */
 enum class BendersProofMode {
@@ -81,26 +82,44 @@ enum class BendersCutValidity {
 
 /** Stable value source used by variable bindings. / 变量绑定使用的稳定值源。 */
 interface ConstraintProgrammingValueSource {
-    /** Read a value by a stable domain key. / 按稳定领域键读取值。 */
+    /** Read a value by a stable domain key. / 按稳定领域键读取值。
+     *
+     * @param key Stable domain key. / 稳定领域键。
+     * @return Value or a missing-value error. / 变量值或缺失值错误。
+     */
     fun value(key: String): Ret<Flt64>
 
-    /** Return all values for diagnostics and trace output. / 返回全部值以供诊断和轨迹使用。 */
+    /** Return all values for diagnostics and trace output. / 返回全部值以供诊断和轨迹使用。
+     *
+     * @return Snapshot of all known values. / 全部已知值的快照。
+     */
     fun values(): Map<String, Flt64>
 
-    /** Read a value by an OSPF variable identity. / 按 OSPF 变量身份读取值。 */
+    /** Read a value by an OSPF variable identity. / 按 OSPF 变量身份读取值。
+     *
+     * @param variable OSPF variable whose stable key is used. / 使用其稳定键的 OSPF 变量。
+     * @return Value or a missing-value error. / 变量值或缺失值错误。
+     */
     fun value(variable: AbstractVariableItem<*, *>): Ret<Flt64> {
         return value(variable.bendersStableKey())
     }
 
     companion object {
-        /** Create a map-backed source. / 创建基于映射的值源。 */
+        /** Create a map-backed source. / 创建基于映射的值源。
+         *
+         * @param values Values keyed by stable domain key. / 按稳定领域键索引的变量值。
+         * @return Map-backed value source. / 基于映射的值源。
+         */
         fun of(values: Map<String, Flt64>): ConstraintProgrammingValueSource {
             return MapConstraintProgrammingValueSource(values)
         }
     }
 }
 
-/** Map-backed value source. / 基于映射的值源。 */
+/** Map-backed value source. / 基于映射的值源。
+ *
+ * @property assignment Values keyed by stable domain key. / 按稳定领域键索引的变量值。
+ */
 data class MapConstraintProgrammingValueSource(
     private val assignment: Map<String, Flt64>
 ) : ConstraintProgrammingValueSource {
@@ -116,7 +135,12 @@ data class MapConstraintProgrammingValueSource(
     }
 }
 
-/** Build a source from a legacy solver vector and optional variable list. / 从旧求解器向量和可选变量列表创建值源。 */
+/** Build a source from a legacy solver vector and optional variable list. / 从旧求解器向量和可选变量列表创建值源。
+ *
+ * @param output Feasible master output containing the solver vector. / 包含求解器向量的主问题可行输出。
+ * @param variables Optional master variables to receive stable keys. / 用于补充稳定键的可选主问题变量列表。
+ * @return Value source backed by the solver vector. / 由求解器向量支持的值源。
+ */
 fun masterSolutionValueSource(
     output: FeasibleSolverOutput<Flt64>,
     variables: List<AbstractVariableItem<*, *>> = emptyList()
@@ -134,14 +158,26 @@ fun masterSolutionValueSource(
     return MapConstraintProgrammingValueSource(values)
 }
 
-/** One bound master value and its CP projection. / 一个主问题值及其 CP 投影。 */
+/** One bound master value and its CP projection. / 一个主问题值及其 CP 投影。
+ *
+ * @property key Stable master binding key. / 稳定主问题绑定键。
+ * @property variable Master variable. / 主问题变量。
+ * @property value Master value. / 主问题值。
+ */
 data class BendersMasterAssignment(
     val key: String,
     val variable: AbstractVariableItem<*, *>,
     val value: Flt64
 )
 
-/** Master assignment fixed for one CP subproblem solve. / 一轮 CP 子问题固定的主问题赋值。 */
+/** Master assignment fixed for one CP subproblem solve. / 一轮 CP 子问题固定的主问题赋值。
+ *
+ * @property masterValues Master values keyed by binding key. / 按绑定键索引的主问题值。
+ * @property masterVariables Master variables keyed by binding key. / 按绑定键索引的主问题变量。
+ * @property fixedValues CP values fixed for this solve. / 本次求解固定的 CP 变量值。
+ * @property assumptions Boolean assumptions passed to the CP solver. / 传给 CP 求解器的布尔假设。
+ * @property assumptionToMaster Reverse mapping from CP variable ID to master key. / 从 CP 变量 ID 到主问题键的反向映射。
+ */
 data class BendersSubproblemAssignment(
     val masterValues: Map<String, Flt64>,
     val masterVariables: Map<String, AbstractVariableItem<*, *>>,
@@ -164,29 +200,55 @@ data class BendersSubproblemAssignment(
 
 /** Explicit master-to-CP binding contract. / 显式主问题到 CP 绑定契约。 */
 interface BendersVariableBinding {
-    /** Bind one master solution to one static CP model. / 将一轮主问题解绑定到静态 CP 模型。 */
+    /** Bind one master solution to one static CP model. / 将一轮主问题解绑定到静态 CP 模型。
+     *
+     * @param masterSolution Master values to bind. / 待绑定的主问题值。
+     * @param subproblem Static CP model receiving the binding. / 接收绑定的静态 CP 模型。
+     * @return Binding assignment or a structured error. / 绑定赋值或结构化错误。
+     */
     fun bind(
         masterSolution: ConstraintProgrammingValueSource,
         subproblem: ConstraintProgrammingModel
     ): Ret<BendersSubproblemAssignment>
 }
 
-/** A binary master variable mapped to a binary CP variable. / 主问题二值变量到 CP 二值变量的映射。 */
+/**
+ * A binary master variable mapped to a binary CP variable. / 主问题二值变量到 CP 二值变量的映射。
+ *
+ * @property key Stable binding key. / 稳定绑定键。
+ * @property masterVariable Binary master variable. / 二值主问题变量。
+ * @property subproblemVariable Binary CP variable. / 二值 CP 变量。
+ * @property subproblemVariableId Explicit stable CP variable ID; when absent the legacy model-local ID is used. /
+ * 显式稳定 CP 变量 ID；为空时使用旧的模型局部 ID。
+ */
 data class BinaryBendersVariable(
     val key: String,
     val masterVariable: AbstractVariableItem<*, *>,
-    val subproblemVariable: BinVariable
+    val subproblemVariable: BinVariable,
+    val subproblemVariableId: String? = null
 )
 
-/** A bounded integer master variable mapped to an integer CP variable. / 有界整数主问题变量到 CP 整数变量的映射。 */
+/** A bounded integer master variable mapped to an integer CP variable. / 有界整数主问题变量到 CP 整数变量的映射。
+ *
+ * @property key Stable binding key. / 稳定绑定键。
+ * @property masterVariable Integer master variable. / 整数主问题变量。
+ * @property subproblemVariable Integer CP variable. / 整数 CP 变量。
+ * @property domain Master assignment domain. / 主问题赋值值域。
+ * @property subproblemVariableId Explicit stable CP variable ID; when absent the legacy model-local ID is used. /
+ * 显式稳定 CP 变量 ID；为空时使用旧的模型局部 ID。
+ */
 data class IntegerBendersVariable(
     val key: String,
     val masterVariable: AbstractVariableItem<*, *>,
     val subproblemVariable: AbstractVariableItem<*, *>,
-    val domain: IntegerDomain
+    val domain: IntegerDomain,
+    val subproblemVariableId: String? = null
 )
 
-/** Default binding for binary master assignments. / 二值主问题赋值的默认绑定。 */
+/** Default binding for binary master assignments. / 二值主问题赋值的默认绑定。
+ *
+ * @property variables Binary master-to-CP bindings. / 二值主问题到 CP 的绑定集合。
+ */
 class BinaryBendersVariableBinding(
     private val variables: List<BinaryBendersVariable>
 ) : BendersVariableBinding {
@@ -225,7 +287,13 @@ class BinaryBendersVariableBinding(
                         "Benders master variable must be 0 or 1: ${binding.key}=$raw"
                 )
             }
-            val cpId = VariableId("${binding.subproblemVariable.identifier}:${binding.subproblemVariable.index}")
+            val cpId = binding.cpVariableId()
+            if (cpId.value.isBlank()) {
+                return Failed(
+                    ErrorCode.IllegalArgument,
+                    "Benders CP 变量稳定 ID 不能为空：${binding.key} / Benders CP variable stable ID must not be blank: ${binding.key}"
+                )
+            }
             if (current.variable(cpId) == null) {
                 return Failed(
                     ErrorCode.DataNotFound,
@@ -233,7 +301,11 @@ class BinaryBendersVariableBinding(
                 )
             }
             val integer = if (raw == Flt64.one) Int64.one else Int64.zero
-            val assumption = BooleanLiteral(binding.subproblemVariable, negated = integer == Int64.zero)
+            val assumption = BooleanLiteral(
+                variable = binding.subproblemVariable,
+                negated = integer == Int64.zero,
+                id = cpId
+            )
             masterValues[binding.key] = raw
             masterVariables[binding.key] = binding.masterVariable
             fixedValues[cpId] = integer
@@ -253,7 +325,10 @@ class BinaryBendersVariableBinding(
     }
 }
 
-/** Binding for bounded integer master assignments. / 有界整数主问题赋值绑定。 */
+/** Binding for bounded integer master assignments. / 有界整数主问题赋值绑定。
+ *
+ * @property variables Bounded integer master-to-CP bindings. / 有界整数主问题到 CP 的绑定集合。
+ */
 class IntegerBendersVariableBinding(
     private val variables: List<IntegerBendersVariable>
 ) : BendersVariableBinding {
@@ -298,7 +373,13 @@ class IntegerBendersVariableBinding(
                         "Benders master assignment is outside the declared domain: ${binding.key}=$integer"
                 )
             }
-            val cpId = VariableId("${binding.subproblemVariable.identifier}:${binding.subproblemVariable.index}")
+            val cpId = binding.cpVariableId()
+            if (cpId.value.isBlank()) {
+                return Failed(
+                    ErrorCode.IllegalArgument,
+                    "Benders CP 变量稳定 ID 不能为空：${binding.key} / Benders CP variable stable ID must not be blank: ${binding.key}"
+                )
+            }
             val cpDefinition = current.variable(cpId)
                 ?: return Failed(
                     ErrorCode.DataNotFound,
@@ -328,31 +409,54 @@ class IntegerBendersVariableBinding(
     }
 }
 
-/** Subproblem result contract. / 子问题结果契约。 */
+/** Subproblem result contract. / 子问题结果契约。
+ *
+ * @property assignment Master assignment used for the subproblem solve. / 子问题求解使用的主问题赋值。
+ */
 sealed interface LogicBasedBendersSubproblemResult {
     val assignment: BendersSubproblemAssignment
 }
 
-/** Proven or accepted feasible CP result. / 已证明或已接受的 CP 可行结果。 */
+/** Proven or accepted feasible CP result. / 已证明或已接受的 CP 可行结果。
+ *
+ * @property assignment Master assignment used for the solve. / 本次求解使用的主问题赋值。
+ * @property output Feasible CP solver output. / CP 求解器可行输出。
+ */
 data class FeasibleSubproblemResult(
     override val assignment: BendersSubproblemAssignment,
     val output: ConstraintProgrammingFeasibleOutput
 ) : LogicBasedBendersSubproblemResult
 
-/** Proven CP infeasibility result. / 已证明 CP 不可行结果。 */
+/** Proven CP infeasibility result. / 已证明 CP 不可行结果。
+ *
+ * @property assignment Master assignment used for the solve. / 本次求解使用的主问题赋值。
+ * @property conflict Optional infeasibility conflict evidence. / 可选的不可行冲突证据。
+ * @property proofStatus Status of the infeasibility proof. / 不可行证明状态。
+ */
 data class InfeasibleSubproblemResult(
     override val assignment: BendersSubproblemAssignment,
     val conflict: ConstraintProgrammingConflict?,
     val proofStatus: ProofStatus = ProofStatus.Verified
 ) : LogicBasedBendersSubproblemResult
 
-/** Unknown, limited, or cancelled CP result. / 未知、受限或取消的 CP 结果。 */
+/** Unknown, limited, or cancelled CP result. / 未知、受限或取消的 CP 结果。
+ *
+ * @property assignment Master assignment used for the solve. / 本次求解使用的主问题赋值。
+ * @property terminationReason Reason the CP solve stopped. / CP 求解停止原因。
+ */
 data class UnknownSubproblemResult(
     override val assignment: BendersSubproblemAssignment,
     val terminationReason: TerminationReason
 ) : LogicBasedBendersSubproblemResult
 
-/** Context supplied to cut oracles. / 提供给割预言器的上下文。 */
+/** Context supplied to cut oracles. / 提供给割预言器的上下文。
+ *
+ * @property master Mutable master model. / 可变主问题模型。
+ * @property subproblem Static CP subproblem. / 静态 CP 子问题。
+ * @property assignment Current master-to-CP assignment. / 当前主问题到 CP 的赋值。
+ * @property iteration Current Benders iteration. / 当前 Benders 迭代编号。
+ * @property proofMode Active proof mode. / 当前证明模式。
+ */
 data class BendersCutContext(
     val master: LinearMetaModel<Flt64>,
     val subproblem: ConstraintProgrammingModel,
@@ -361,7 +465,17 @@ data class BendersCutContext(
     val proofMode: BendersProofMode
 )
 
-/** Master cut contract. / 主问题割契约。 */
+/** Master cut contract. / 主问题割契约。
+ *
+ * @property inequality Primary linear inequality. / 主线性不等式。
+ * @property kind Cut category. / 割类别。
+ * @property validity Validity scope. / 有效性范围。
+ * @property proofStatus Evidence status supporting the cut. / 支持该割的证据状态。
+ * @property source Stable source identifier. / 稳定来源标识。
+ * @property name Optional model name. / 可选模型名称。
+ * @property additionalInequalities Additional inequalities in the same cut. / 同一割中的附加不等式。
+ * @property auxiliaryVariables Auxiliary variables required by the cut. / 该割所需的辅助变量。
+ */
 data class BendersMasterCut(
     val inequality: LinearInequality<Flt64>,
     val kind: BendersCutKind,
@@ -395,13 +509,23 @@ data class BendersMasterCut(
 
 /** Domain cut oracle. / 领域割预言器。 */
 interface BendersCutOracle {
-    /** Generate feasibility/conflict cuts. / 生成可行性或冲突割。 */
+    /** Generate feasibility/conflict cuts. / 生成可行性或冲突割。
+     *
+     * @param result Proven infeasible subproblem result. / 已证明不可行的子问题结果。
+     * @param context Current master, subproblem, and iteration context. / 当前主问题、子问题和迭代上下文。
+     * @return Candidate cuts or a generation error. / 候选割或生成错误。
+     */
     fun feasibilityCuts(
         result: InfeasibleSubproblemResult,
         context: BendersCutContext
     ): Ret<List<BendersMasterCut>>
 
-    /** Generate optional optimality cuts. / 生成可选最优性割。 */
+    /** Generate optional optimality cuts. / 生成可选最优性割。
+     *
+     * @param result Feasible subproblem result. / 子问题可行结果。
+     * @param context Current master, subproblem, and iteration context. / 当前主问题、子问题和迭代上下文。
+     * @return Candidate cuts or a generation error. / 候选割或生成错误。
+     */
     fun optimalityCuts(
         result: FeasibleSubproblemResult,
         context: BendersCutContext
@@ -498,7 +622,10 @@ class BinaryNoGoodCutOracle : BendersCutOracle {
     }
 }
 
-/** Exact no-good oracle for bounded integer master assignments. / 有界整数主问题的精确 no-good 割预言器。 */
+/** Exact no-good oracle for bounded integer master assignments. / 有界整数主问题的精确 no-good 割预言器。
+ *
+ * @property variables Integer master-to-CP bindings used to build the encoding. / 用于构造编码的主问题到 CP 整数绑定。
+ */
 class IntegerNoGoodCutOracle(
     private val variables: List<IntegerBendersVariable>
 ) : BendersCutOracle {
@@ -571,7 +698,20 @@ class IntegerNoGoodCutOracle(
     }
 }
 
-/** Iteration-level Benders trace. / Benders 迭代轨迹。 */
+/** Iteration-level Benders trace. / Benders 迭代轨迹。
+ *
+ * @property iteration Iteration number. / 迭代编号。
+ * @property masterObjective Master incumbent objective. / 主问题当前目标值。
+ * @property masterBestBound Master solver best bound. / 主问题求解器最佳界。
+ * @property masterStatus Master solver status. / 主问题求解状态。
+ * @property subproblemStatus CP subproblem status. / CP 子问题状态。
+ * @property subproblemObjective CP objective at the current assignment. / 当前赋值下的 CP 目标值。
+ * @property cutCount Number of newly accepted cuts. / 新接受的割数量。
+ * @property conflictCoreSize Size of the conflict core. / 冲突核心大小。
+ * @property elapsed Elapsed engine time. / 引擎耗时。
+ * @property proofMode Proof mode used for the iteration. / 本次迭代使用的证明模式。
+ * @property convergenceGap Master incumbent/bound gap. / 主问题 incumbent 与最佳界间隙。
+ */
 data class BendersIterationTrace(
     val iteration: Int,
     val masterObjective: Flt64? = null,
@@ -592,12 +732,49 @@ data class BendersIterationTrace(
  *
  * The returned value must use the same objective sense and constant convention as the master output. /
  * 返回值必须与主问题输出使用相同的优化方向和常数项口径。
+ *
+ * @param masterOutput Current master feasible output. / 当前主问题可行输出。
+ * @param assignment Master-to-CP assignment. / 主问题到 CP 的赋值。
+ * @param subproblemOutput Feasible CP output. / CP 可行输出。
+ * @return Complete incumbent objective or an evaluation error. / 完整当前解目标值或求值错误。
  */
 typealias BendersCompleteObjectiveEvaluator = (
     masterOutput: FeasibleSolverOutput<Flt64>,
     assignment: BendersSubproblemAssignment,
     subproblemOutput: ConstraintProgrammingFeasibleOutput
 ) -> Ret<Flt64>
+
+/** Evidence returned after applying persisted master state. / 应用持久化主问题状态后返回的复验证据。
+ *
+ * @property masterFingerprint Fingerprint of the master actually used by the adapter. /
+ * 适配器实际使用的主问题指纹。
+ * @property incumbent Applied master incumbent. / 已应用的主问题 incumbent。
+ * @property bestBound Applied master bound. / 已应用的主问题最佳界。
+ * @property assumptions Applied assumption identifiers. / 已应用的 assumption 标识。
+ * @property fixedBindings Applied fixed bindings. / 已应用的固定绑定。
+ * @property conflicts Applied conflict evidence. / 已应用的冲突证据。
+ * @property convergenceVerified Whether the convergence marker was applied. / 是否应用了收敛标记。
+ */
+data class BendersMasterResumeEvidence(
+    val masterFingerprint: String,
+    val incumbent: String? = null,
+    val bestBound: String? = null,
+    val assumptions: List<String> = emptyList(),
+    val fixedBindings: Map<String, Long> = emptyMap(),
+    val conflicts: List<fuookami.ospf.kotlin.core.solver.constraint_programming.PortableConstraintProgrammingConflict> = emptyList(),
+    val convergenceVerified: Boolean = false
+)
+
+/** Applies persisted Benders master state before the first resumed solve. / 在首次恢复求解前应用持久化主问题状态。
+ *
+ * @param master Mutable master model / 可变主问题模型
+ * @param state Validated portable resume state / 已复验的可移植恢复状态
+ * @return Applied state evidence or a structured error. / 已应用状态证据或结构化错误。
+ */
+typealias BendersMasterResumeApplier = (
+    master: LinearMetaModel<Flt64>,
+    state: BendersResumeState
+) -> Ret<BendersMasterResumeEvidence>
 
 /** CP subproblem trace status. / CP 子问题轨迹状态。 */
 enum class BendersSubproblemStatus {
@@ -606,7 +783,23 @@ enum class BendersSubproblemStatus {
     Unknown
 }
 
-/** Engine options. / 引擎选项。 */
+/** Engine options. / 引擎选项。
+ *
+ * @property proofMode Proof mode controlling accepted certificates. / 控制可接受证书的证明模式。
+ * @property maxIterations Maximum Benders iterations. / Benders 最大迭代次数。
+ * @property stallIterationLimit Maximum consecutive stalled iterations. / 连续停滞迭代上限。
+ * @property optimalityTolerance Absolute objective and convergence tolerance. / 目标和收敛绝对容差。
+ * @property completeObjectiveEvaluator Evaluates the complete Benders incumbent objective. / 计算完整 Benders 当前解目标值的函数。
+ * @property masterVariables Optional variables used for stable value lookup. / 用于稳定值查找的可选主问题变量。
+ * @property masterSolutionSource Optional custom master-output value source. / 可选的自定义主问题输出值源。
+ * @property constraintProgrammingOptions CP solver options. / CP 求解器选项。
+ * @property cancellationToken Optional cancellation token. / 可选取消令牌。
+ * @property progressReporter Optional iteration progress callback. / 可选迭代进度回调。
+ * @property resumeState Previously validated portable state to seed the master. /
+ * 用于初始化主问题的已校验可移植状态。
+ * @property resumeStateApplier Applies persisted master incumbent/bound and binding state. /
+ * 应用持久化的主问题 incumbent/bound 及绑定状态。
+ */
 data class LogicBasedBendersOptions(
     val proofMode: BendersProofMode = BendersProofMode.Exact,
     val maxIterations: Int = 100,
@@ -628,10 +821,23 @@ data class LogicBasedBendersOptions(
     val masterSolutionSource: ((FeasibleSolverOutput<Flt64>) -> Ret<ConstraintProgrammingValueSource>)? = null,
     val constraintProgrammingOptions: ConstraintProgrammingSolveOptions = ConstraintProgrammingSolveOptions(),
     val cancellationToken: CancellationToken? = null,
-    val progressReporter: ((BendersIterationTrace) -> Try)? = null
+    val progressReporter: ((BendersIterationTrace) -> Try)? = null,
+    val resumeState: BendersResumeState? = null,
+    val resumeStateApplier: BendersMasterResumeApplier? = null
 )
 
-/** Final Logic-Based Benders report. / Logic-Based Benders 最终报告。 */
+/** Final Logic-Based Benders report. / Logic-Based Benders 最终报告。
+ *
+ * @property problemStatus Final problem status. / 最终问题状态。
+ * @property terminationReason Final termination reason. / 最终终止原因。
+ * @property proof Final proof certificate. / 最终证明证书。
+ * @property masterOutput Last master solver output. / 主问题求解器最后输出。
+ * @property assignment Last master-to-CP assignment. / 最后的主问题到 CP 赋值。
+ * @property subproblemResult Last CP subproblem result. / CP 子问题最后结果。
+ * @property cuts All accepted Benders cuts. / 所有已接受的 Benders 割。
+ * @property iterations Iteration traces. / 迭代轨迹。
+ * @property diagnostics Structured diagnostics. / 结构化诊断信息。
+ */
 data class LogicBasedBendersReport(
     val problemStatus: ProblemStatus,
     val terminationReason: TerminationReason,
@@ -647,7 +853,10 @@ data class LogicBasedBendersReport(
     val status: ProblemStatus
         get() = problemStatus
 
-    /** Convert to the core report contract. / 转换为 core 统一报告契约。 */
+    /** Convert to the core report contract. / 转换为 core 统一报告契约。
+     *
+     * @return Core solve report. / Core 统一求解报告。
+     */
     fun toSolveReport(): SolveReport<Flt64> {
         val output = masterOutput
         return SolveReport(
@@ -676,11 +885,22 @@ data class LogicBasedBendersReport(
 
 /** Master-solve adapter used by the engine. / 引擎使用的主问题求解适配器。 */
 fun interface BendersMasterProblemSolver {
-    /** Solve the current mutable master model. / 求解当前可变主问题模型。 */
+    /** Solve the current mutable master model. / 求解当前可变主问题模型。
+     *
+     * @param master Current mutable master model. / 当前可变主问题模型。
+     * @return Feasible master output or a solver error. / 主问题可行输出或求解错误。
+     */
     suspend fun solve(master: LinearMetaModel<Flt64>): Ret<FeasibleSolverOutput<Flt64>>
 }
 
-/** Logic-Based Benders engine. / Logic-Based Benders 迭代引擎。 */
+/** Logic-Based Benders engine. / Logic-Based Benders 迭代引擎。
+ *
+ * @property masterSolver Adapter that solves the mutable master model. / 求解可变主问题模型的适配器。
+ * @property subproblemSolver CP subproblem solver. / CP 子问题求解器。
+ * @property binding Master-to-CP variable binding. / 主问题到 CP 的变量绑定。
+ * @property cutOracle Domain cut generator. / 领域割生成器。
+ * @property options Engine options. / 引擎选项。
+ */
 class LogicBasedBendersEngine(
     private val masterSolver: BendersMasterProblemSolver,
     private val subproblemSolver: ConstraintProgrammingSolver,
@@ -688,7 +908,16 @@ class LogicBasedBendersEngine(
     private val cutOracle: BendersCutOracle = BinaryNoGoodCutOracle(),
     private val options: LogicBasedBendersOptions = LogicBasedBendersOptions()
 ) {
-    /** Adapt the existing framework Benders solver contract. / 适配现有 framework Benders 求解器契约。 */
+    /**
+     * Adapt the existing framework Benders solver contract. /
+     * 适配现有 framework Benders 求解器契约。
+     *
+     * @param masterSolver Existing framework master solver. / 现有 framework 主问题求解器。
+     * @param subproblemSolver CP subproblem solver. / CP 子问题求解器。
+     * @param binding Master-to-CP variable binding. / 主问题到 CP 的变量绑定。
+     * @param cutOracle Domain cut generator. / 领域割生成器。
+     * @param options Engine options. / 引擎选项。
+     */
     constructor(
         masterSolver: LinearBendersDecompositionSolver,
         subproblemSolver: ConstraintProgrammingSolver,
@@ -716,7 +945,12 @@ class LogicBasedBendersEngine(
         options = options
     )
 
-    /** Solve a linear master and static CP subproblem. / 求解线性主问题和静态 CP 子问题。 */
+    /** Solve a linear master and static CP subproblem. / 求解线性主问题和静态 CP 子问题。
+     *
+     * @param master Mutable linear master model. / 可变线性主问题模型。
+     * @param subproblem Static CP subproblem model. / 静态 CP 子问题模型。
+     * @return Benders report or a structured solver error. / Benders 报告或结构化求解错误。
+     */
     suspend fun solve(
         master: LinearMetaModel<Flt64>,
         subproblem: ConstraintProgrammingModel
@@ -739,7 +973,12 @@ class LogicBasedBendersEngine(
         }
     }
 
-    /** Solve and directly return the unified core report. / 求解并直接返回 core 统一报告。 */
+    /** Solve and directly return the unified core report. / 求解并直接返回 core 统一报告。
+     *
+     * @param master Mutable linear master model. / 可变线性主问题模型。
+     * @param subproblem Static CP subproblem model. / 静态 CP 子问题模型。
+     * @return Core solve report or a structured solver error. / Core 统一求解报告或结构化求解错误。
+     */
     suspend fun solveReport(
         master: LinearMetaModel<Flt64>,
         subproblem: ConstraintProgrammingModel
@@ -756,17 +995,84 @@ class LogicBasedBendersEngine(
         if (subproblemSnapshot.failed) {
             return propagate(subproblemSnapshot)
         }
+        options.resumeState?.let { resumeState ->
+            val evidence = validateResumeEvidence(resumeState, subproblemSnapshot.value!!)
+            if (evidence.failed) {
+                return propagate(evidence)
+            }
+            val hasPersistedMasterState = resumeState.masterIncumbent != null ||
+                resumeState.masterBestBound != null ||
+                resumeState.masterFingerprint != null ||
+                resumeState.assumptions.isNotEmpty() ||
+                resumeState.fixedBindings.isNotEmpty() ||
+                resumeState.conflicts.isNotEmpty() ||
+                resumeState.convergenceVerified
+            if (hasPersistedMasterState) {
+                val applier = options.resumeStateApplier
+                    ?: return Failed(
+                        ErrorCode.IllegalArgument,
+                        "Benders checkpoint 包含主问题状态但未提供恢复适配器 / " +
+                            "Benders checkpoint contains master state without a resume applier"
+                    )
+                when (val applied = applier(master, resumeState)) {
+                    is Ok -> {
+                        val evidence = applied.value
+                        if (evidence.masterFingerprint.isBlank() ||
+                            evidence.masterFingerprint != resumeState.masterFingerprint ||
+                            evidence.incumbent != resumeState.masterIncumbent ||
+                            evidence.bestBound != resumeState.masterBestBound ||
+                            evidence.assumptions != resumeState.assumptions ||
+                            evidence.fixedBindings != resumeState.fixedBindings ||
+                            evidence.conflicts != resumeState.conflicts ||
+                            evidence.convergenceVerified != resumeState.convergenceVerified
+                        ) {
+                            return Failed(
+                                ErrorCode.ORSolutionInvalid,
+                                "Benders 主问题恢复证据与 checkpoint 不一致 / Benders master resume evidence disagrees with the checkpoint"
+                            )
+                        }
+                    }
+                    is Failed -> return Failed(applied.error)
+                    is Fatal -> return Fatal(applied.errors)
+                }
+            }
+        }
         val hasSubproblemObjective = subproblemSnapshot.value!!.objectives.isNotEmpty()
         val started = TimeSource.Monotonic.markNow()
         val cuts = ArrayList<BendersMasterCut>()
         val traces = ArrayList<BendersIterationTrace>()
         val knownCuts = HashSet<String>()
+        val resumeState = options.resumeState
+        if (resumeState != null) {
+            val validated = validateCuts(resumeState.cuts, knownCuts)
+            if (validated.failed) {
+                return propagate(validated)
+            }
+            val seeded = addCuts(master, validated.value!!, cuts, knownCuts)
+            if (seeded.failed) {
+                return propagate(seeded)
+            }
+            for (encoded in resumeState.trace) {
+                when (val decoded = BendersCheckpointCodec.decodeTrace(encoded)) {
+                    is Ok -> traces += decoded.value
+                    is Failed -> return Failed(decoded.error)
+                    is Fatal -> return Fatal(decoded.errors)
+                }
+            }
+        }
         var lastMaster: FeasibleSolverOutput<Flt64>? = null
         var lastAssignment: BendersSubproblemAssignment? = null
         var lastSubproblem: LogicBasedBendersSubproblemResult? = null
         var stallIterations = 0
 
-        for (iteration in 0 until options.maxIterations) {
+        val firstIteration = resumeState?.iteration ?: 0
+        if (firstIteration < 0 || firstIteration >= options.maxIterations && resumeState != null) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "Benders checkpoint iteration 超出当前引擎范围 / Benders checkpoint iteration is outside the active engine range"
+            )
+        }
+        for (iteration in firstIteration until options.maxIterations) {
             if (options.cancellationToken?.isCancellationRequested == true) {
                 return ok(
                     report(
@@ -894,7 +1200,8 @@ class LogicBasedBendersEngine(
                     }
                     if (options.proofMode == BendersProofMode.Exact &&
                         hasSubproblemObjective &&
-                        result.output.objective == null
+                        result.output.compatibleObjective() == null &&
+                        options.completeObjectiveEvaluator == null
                     ) {
                         return ok(
                             report(
@@ -910,8 +1217,8 @@ class LogicBasedBendersEngine(
                                     SolveIssue(
                                         code = "benders-subproblem-objective-missing",
                                         category = SolveIssueCategory.Backend,
-                                        message = "CP 模型声明了目标但后端未返回 objective / " +
-                                            "The CP model declares an objective but the backend returned no objective"
+                                        message = "CP 模型声明了目标但后端未返回可兼容 objective，且未提供完整目标求值契约 / " +
+                                            "The CP model declares an objective but the backend returned no compatible objective and no complete objective evaluator was provided"
                                     )
                                 )
                             )
@@ -931,7 +1238,7 @@ class LogicBasedBendersEngine(
                         masterModel = master,
                         master = masterOutput,
                         subproblem = BendersSubproblemStatus.Feasible,
-                        objective = result.output.objective,
+                        objective = result.output.compatibleObjective(),
                         cutCount = newCuts.value!!.size,
                         conflictSize = 0,
                         started = started
@@ -991,7 +1298,7 @@ class LogicBasedBendersEngine(
                                                     "Exact mode requires a complete Benders objective evaluator",
                                                 details = mapOf(
                                                     "masterObjective" to masterOutput.obj.toString(),
-                                                    "subproblemObjective" to (result.output.objective?.toString() ?: "missing")
+                                                    "subproblemObjective" to (result.output.compatibleObjective()?.toString() ?: "missing")
                                                 )
                                             )
                                         )
@@ -1025,7 +1332,7 @@ class LogicBasedBendersEngine(
                                                 details = mapOf(
                                                     "masterObjective" to masterOutput.obj.toString(),
                                                     "expectedCompleteObjective" to expectedObjective.toString(),
-                                                    "subproblemObjective" to (result.output.objective?.toString() ?: "missing"),
+                                                    "subproblemObjective" to (result.output.compatibleObjective()?.toString() ?: "missing"),
                                                     "gap" to objectiveGap.toString(),
                                                     "tolerance" to options.optimalityTolerance.toString()
                                                 )
@@ -1296,6 +1603,111 @@ class LogicBasedBendersEngine(
         return ok(accepted)
     }
 
+    private fun validateResumeEvidence(
+        state: BendersResumeState,
+        snapshot: fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintProgrammingModelSnapshot
+    ): Try {
+        if (state.iteration < 0) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "Benders checkpoint iteration 不能为负 / Benders checkpoint iteration must not be negative"
+            )
+        }
+        val hasMasterState = state.masterIncumbent != null || state.masterBestBound != null ||
+            state.assumptions.isNotEmpty() || state.fixedBindings.isNotEmpty() ||
+            state.conflicts.isNotEmpty() || state.convergenceVerified
+        if (hasMasterState && state.masterFingerprint.isNullOrBlank()) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "Benders 主问题状态缺少模型指纹 / Benders master state is missing a model fingerprint"
+            )
+        }
+        listOf(
+            "masterIncumbent" to state.masterIncumbent,
+            "masterBestBound" to state.masterBestBound
+        ).forEach { (field, value) ->
+            if (value != null && (value.toDoubleOrNull()?.isFinite() != true)) {
+                return Failed(
+                    ErrorCode.IllegalArgument,
+                    "Benders checkpoint 主问题字段无效：$field / Invalid Benders checkpoint master field: $field"
+                )
+            }
+        }
+        state.subproblemModelFingerprint?.let { expectedFingerprint ->
+            val actualFingerprint = computeBendersSubproblemModelFingerprint(snapshot)
+            when (actualFingerprint) {
+                is Ok -> {
+                    if (actualFingerprint.value != expectedFingerprint) {
+                        return Failed(
+                            ErrorCode.ORSolutionInvalid,
+                            "Benders checkpoint 子问题模型指纹不匹配 / Benders checkpoint subproblem model fingerprint mismatch"
+                        )
+                    }
+                }
+
+                is Failed -> return Failed(actualFingerprint.error)
+                is Fatal -> return Fatal(actualFingerprint.errors)
+            }
+        }
+        val variableIds = snapshot.variables.mapTo(linkedSetOf()) { it.id.value }
+        val constraintIds = snapshot.constraints.mapTo(linkedSetOf()) { it.id.value }
+        if (state.assumptions.any { it !in variableIds }) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "Benders checkpoint assumption 引用了未知变量 / Benders checkpoint assumption references an unknown variable"
+            )
+        }
+        for ((id, raw) in state.fixedBindings) {
+            val definition = snapshot.variable(VariableId(id))
+                ?: return Failed(
+                    ErrorCode.IllegalArgument,
+                    "Benders checkpoint fixed binding 引用了未知变量：$id / Benders checkpoint fixed binding references an unknown variable: $id"
+                )
+            if (!definition.domain.contains(Int64(raw))) {
+                return Failed(
+                    ErrorCode.IllegalArgument,
+                    "Benders checkpoint fixed binding 超出值域：$id=$raw / Benders checkpoint fixed binding is outside the domain: $id=$raw"
+                )
+            }
+        }
+        for (conflict in state.conflicts) {
+            if (conflict.validity !in setOf("Verified", "Heuristic", "Unknown") ||
+                conflict.minimality !in setOf("Irreducible", "Partial", "NotChecked")
+            ) {
+                return Failed(ErrorCode.IllegalArgument, "Benders checkpoint conflict 证据枚举无效 / Benders checkpoint conflict evidence enum is invalid")
+            }
+            if (conflict.assumptionIds.any { it !in variableIds }) {
+                return Failed(ErrorCode.IllegalArgument, "Benders checkpoint conflict assumption 无效 / Benders checkpoint conflict assumption is invalid")
+            }
+            for (member in conflict.memberIds) {
+                when {
+                    member.startsWith("constraint:") -> {
+                        if (member.removePrefix("constraint:") !in constraintIds) {
+                            return Failed(ErrorCode.IllegalArgument, "Benders checkpoint conflict 约束无效 / Benders checkpoint conflict constraint is invalid")
+                        }
+                    }
+                    member.startsWith("domain:") -> {
+                        if (member.removePrefix("domain:") !in variableIds) {
+                            return Failed(ErrorCode.IllegalArgument, "Benders checkpoint conflict 域成员无效 / Benders checkpoint conflict domain member is invalid")
+                        }
+                    }
+                    member.startsWith("bound:") -> {
+                        val encoded = member.removePrefix("bound:")
+                        val separator = encoded.lastIndexOf(':')
+                        if (separator <= 0 ||
+                            encoded.substring(0, separator) !in variableIds ||
+                            runCatching { BoundSide.valueOf(encoded.substring(separator + 1)) }.isFailure
+                        ) {
+                            return Failed(ErrorCode.IllegalArgument, "Benders checkpoint conflict bound 成员无效 / Benders checkpoint conflict bound member is invalid")
+                        }
+                    }
+                    else -> return Failed(ErrorCode.IllegalArgument, "Benders checkpoint conflict 成员类型未知 / Benders checkpoint conflict member type is unknown")
+                }
+            }
+        }
+        return ok
+    }
+
     private fun addCuts(
         master: LinearMetaModel<Flt64>,
         newCuts: List<BendersMasterCut>,
@@ -1431,16 +1843,28 @@ interface ConstraintProgrammingPipeline {
     /** Stable pipeline name. / 稳定管线名称。 */
     val name: String
 
-    /** Register constraints and variables. / 注册变量和约束。 */
+    /** Register constraints and variables. / 注册变量和约束。
+     *
+     * @param model CP model receiving the registration. / 接收注册内容的 CP 模型。
+     * @return Registration result. / 注册结果。
+     */
     fun register(model: ConstraintProgrammingModel): Try
 
-    /** Execute pipeline registration. / 执行管线注册。 */
+    /** Execute pipeline registration. / 执行管线注册。
+     *
+     * @param model CP model receiving the registration. / 接收注册内容的 CP 模型。
+     * @return Registration result. / 注册结果。
+     */
     operator fun invoke(model: ConstraintProgrammingModel): Try {
         return register(model)
     }
 }
 
-/** Apply a list of CP pipelines. / 执行 CP 管线列表。 */
+/** Apply a list of CP pipelines. / 执行 CP 管线列表。
+ *
+ * @param model CP model receiving all registrations. / 接收全部注册内容的 CP 模型。
+ * @return Registration result. / 注册结果。
+ */
 fun List<ConstraintProgrammingPipeline>.registerConstraintProgramming(
     model: ConstraintProgrammingModel
 ): Try {
@@ -1456,13 +1880,22 @@ fun List<ConstraintProgrammingPipeline>.registerConstraintProgramming(
 
 /** Benders subproblem pipeline contract. / Benders 子问题管线契约。 */
 interface BendersSubproblemPipeline {
-    /** Register a CP subproblem with the binding context. / 使用绑定上下文注册 CP 子问题。 */
+    /** Register a CP subproblem with the binding context. / 使用绑定上下文注册 CP 子问题。
+     *
+     * @param model CP subproblem model. / CP 子问题模型。
+     * @param binding Master-to-CP binding context. / 主问题到 CP 的绑定上下文。
+     * @return Registration result. / 注册结果。
+     */
     fun register(
         model: ConstraintProgrammingModel,
         binding: BendersVariableBinding
     ): Try
 
-    /** Extract a typed solution into domain state. / 将类型化解提取回领域状态。 */
+    /** Extract a typed solution into domain state. / 将类型化解提取回领域状态。
+     *
+     * @param solution CP solution to extract. / 待提取的 CP 解。
+     * @return Extraction result. / 提取结果。
+     */
     fun extractSolution(
         solution: fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingSolution
     ): Try {
@@ -1470,8 +1903,29 @@ interface BendersSubproblemPipeline {
     }
 }
 
+private fun BinaryBendersVariable.cpVariableId(): VariableId {
+    return VariableId(subproblemVariableId ?: "${subproblemVariable.identifier}:${subproblemVariable.index}")
+}
+
+private fun IntegerBendersVariable.cpVariableId(): VariableId {
+    return VariableId(subproblemVariableId ?: "${subproblemVariable.identifier}:${subproblemVariable.index}")
+}
+
 private fun AbstractVariableItem<*, *>.bendersStableKey(): String {
     return "${identifier}:${index}"
+}
+
+private fun ConstraintProgrammingFeasibleOutput.compatibleObjective(): Flt64? {
+    // Do not reconstruct a floating-point Benders objective from an exact Int64 value. The
+    // compatibility field is intentionally optional and cannot safely represent the full CP
+    // domain; optimizing subproblems must provide a complete objective evaluator when it is
+    // absent. / 不要从精确 Int64 目标重新构造 Benders 浮点目标；兼容字段是可选的，无法安全覆盖完整
+    // CP 值域；缺少该字段时，优化子问题必须提供完整目标求值契约。
+    return exactObjective?.let { null } ?: objective
+}
+
+private fun String.toFlt64OrNull(): Flt64? {
+    return toDoubleOrNull()?.takeIf { it.isFinite() }?.let(::Flt64)
 }
 
 private fun <T> propagate(result: Ret<*>): Ret<T> {

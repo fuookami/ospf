@@ -7,7 +7,7 @@ import fuookami.ospf.kotlin.utils.error.ErrorCode
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.core.symbol.LinearExpressionSymbol
@@ -167,7 +167,7 @@ open class SlotBasedBunchCompilation<
                 "新增列缺少执行器-时隙表达式：${bunch.executor}, ${bunch.slot} / Added column has no executor-slot expression: ${bunch.executor}, ${bunch.slot}"
             )
             compilation.flush()
-            compilation.asMutable() += LinearMonomial(Flt64.one, variable)
+            compilation.asMutable() += Flt64.one * variable
         }
         return Ok(unduplicatedBunches)
     }

@@ -3,7 +3,8 @@ package fuookami.ospf.kotlin.framework.csp1d.domain.yield.service.pipeline
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.core.model.mechanism.LinearMetaModel
 import fuookami.ospf.kotlin.framework.csp1d.domain.material.model.ProductDemand
 import fuookami.ospf.kotlin.framework.csp1d.domain.yield.YieldAggregation
@@ -56,7 +57,7 @@ class YieldObjectivePipeline<V : RealNumber<V>>(
             if (underPenalty != null) {
                 val underVar = yield.underProduction.getOrNull(demandIndex)
                 if (underVar != null) {
-                    monomials.add(LinearMonomial(underPenalty.toFlt64(), underVar))
+                    monomials.add(underPenalty.toFlt64() * underVar)
                 }
             }
 
@@ -64,7 +65,7 @@ class YieldObjectivePipeline<V : RealNumber<V>>(
             if (overPenalty != null) {
                 val overVar = yield.overProduction.getOrNull(demandIndex)
                 if (overVar != null) {
-                    monomials.add(LinearMonomial(overPenalty.toFlt64(), overVar))
+                    monomials.add(overPenalty.toFlt64() * overVar)
                 }
             }
         }

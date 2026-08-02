@@ -86,20 +86,17 @@ class ItemOrderLimit(
                 val j2 = positions.indexOf(position2)
 
                 if (Stowage.stowageNeeded(item1, position2) && Stowage.stowageNeeded(item2, position1)) {
-                    val poly = MutableLinearPolynomial()
-                    poly += LinearMonomial(Flt64.one, stowage.stowage[i1, j2])
-                    poly += LinearMonomial(Flt64.one, stowage.stowage[i2, j1])
                     when (val result = model.addConstraint(
-            relation = LinearPolynomial(poly) leq Flt64.one,
+            relation = (stowage.stowage[i1, j2] + stowage.stowage[i2, j1]) leq Flt64.one,
             name = "${name}_${item1}_${item2}_${position1}_${position2}"
                     )) {
-                        is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                        is Ok -> {}
 
-                        is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                        is Failed -> {
                             return Failed(result.error)
                         }
 
-                        is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                        is Fatal -> {
                             return Fatal(result.errors)
                         }
                     }

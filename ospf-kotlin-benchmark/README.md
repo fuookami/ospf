@@ -16,6 +16,7 @@ Current benchmark coverage includes:
 | `math` | Symbol combination hot paths |
 | `core` | Core model hot paths |
 | `coreplugin` | Core plugin dumping hot paths |
+| `constraintprogramming` | CP snapshot encoding, Fake enumeration, fixed/optional/variable scheduling, exact MIP lowering, and portable checkpoint capture |
 
 ## Running Benchmarks
 
@@ -30,6 +31,19 @@ Run a smoke benchmark:
 ```powershell
 mvn --% -pl ospf-kotlin-benchmark -Pbench -DskipTests exec:java -Dexec.args=".*MultiArrayHotPathBenchmark.blockGetAndContains.* small 1 1 1 json ospf-kotlin-benchmark/target/benchmark-results/ci-smoke.json"
 ```
+
+Run the CP benchmark fixture without a native solver:
+
+```powershell
+mvn --% -pl ospf-kotlin-benchmark -Pbench -DskipTests exec:java -Dexec.args=".*ConstraintProgrammingBenchmark.* small 1 1 1 json ospf-kotlin-benchmark/target/benchmark-results/cp-small.json"
+```
+
+The CP fixture intentionally uses the Fake solver for portable smoke runs and also exposes
+exact MIP lowering-build benchmarks for fixed, optional, and variable-duration intervals.
+Native SCIP solve timings, node counts, and peak memory remain a separate integration concern
+and must be recorded with the plugin integration suite. / CP 夹具的可移植 smoke 使用 Fake solver，
+并提供固定、可选和可变时长 interval 的 exact MIP 降阶构建基准；SCIP 原生求解耗时、节点数和峰值内存
+仍需由插件集成套件单独记录。
 
 ## Result Reports
 

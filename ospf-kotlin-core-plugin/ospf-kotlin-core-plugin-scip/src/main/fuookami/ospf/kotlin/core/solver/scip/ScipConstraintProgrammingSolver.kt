@@ -4,15 +4,26 @@
 @file:OptIn(kotlin.time.ExperimentalTime::class)
 package fuookami.ospf.kotlin.core.solver.scip
 
+import java.nio.file.Files
+import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.math.abs
 import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import jscip.Scip
 import jscip.SCIP_Status
+import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.utils.functional.Failed
+import fuookami.ospf.kotlin.utils.functional.Fatal
+import fuookami.ospf.kotlin.utils.functional.Ret
+import fuookami.ospf.kotlin.utils.functional.ok
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.algebra.number.Int64
 import fuookami.ospf.kotlin.core.model.constraint_programming.BooleanLiteral
 import fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintProgrammingModel
 import fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintProgrammingModelSnapshot
+import fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintProgrammingSnapshotCodec
 import fuookami.ospf.kotlin.core.model.constraint_programming.IntervalValue
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSession
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSolveOptions
@@ -24,12 +35,14 @@ import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingConflictMini
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingFeasibleOutput
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingInfeasibleOutput
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingUnknownOutput
+import fuookami.ospf.kotlin.core.solver.output.toCompatibilityFlt64
 import fuookami.ospf.kotlin.core.solver.output.SolverStatus
 import fuookami.ospf.kotlin.core.solver.progress.SolverProgressSnapshot
 import fuookami.ospf.kotlin.core.solver.progress.SolverProgressContext
 import fuookami.ospf.kotlin.core.solver.progress.SolverStages
 import fuookami.ospf.kotlin.core.solver.progress.SolverSubStage
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.AuditFingerprint
 import fuookami.ospf.kotlin.core.solver.report.EvidenceMinimality
 import fuookami.ospf.kotlin.core.solver.report.EvidenceValidity
 import fuookami.ospf.kotlin.core.solver.report.InfeasibilityEvidence
@@ -38,6 +51,8 @@ import fuookami.ospf.kotlin.core.solver.report.InfeasibilityMember
 import fuookami.ospf.kotlin.core.solver.report.ProblemStatus
 import fuookami.ospf.kotlin.core.solver.report.ProofStatus
 import fuookami.ospf.kotlin.core.solver.report.SolveDiagnostics
+import fuookami.ospf.kotlin.core.solver.report.SolveFingerprints
+import fuookami.ospf.kotlin.core.solver.report.SolveFingerprinting
 import fuookami.ospf.kotlin.core.solver.report.SolveProof
 import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.report.SolveSolution
@@ -49,15 +64,358 @@ import fuookami.ospf.kotlin.core.solver.report.SolverModelType
 import fuookami.ospf.kotlin.core.solver.report.SolverProvenance
 import fuookami.ospf.kotlin.core.solver.report.TerminationReason
 import fuookami.ospf.kotlin.core.solver.report.VariableId
-import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.algebra.number.Int64
-import fuookami.ospf.kotlin.utils.error.ErrorCode
-import fuookami.ospf.kotlin.utils.functional.Failed
-import fuookami.ospf.kotlin.utils.functional.Fatal
-import fuookami.ospf.kotlin.utils.functional.Ret
-import fuookami.ospf.kotlin.utils.functional.ok
 
-/** SCIP CP 求解器。 / SCIP CP solver. */
+private const val UNKNOWN_RUNTIME_VERSION = "unknown"
+private const val BUILD_PLUGIN_VERSION = "1.1.0"
+
+private fun stableRuntimeVersion(value: String?): String? {
+    val normalized = value?.trim()?.takeUnless { it.isEmpty() } ?: return null
+    return normalized.takeIf { candidate ->
+        candidate.length <= 128 && candidate.all { character ->
+            character.isLetterOrDigit() || character == '.' || character == '-' || character == '_' || character == '+'
+        }
+    }
+}
+
+private fun runtimeNativeVersion(): String {
+    return stableRuntimeVersion(System.getProperty("ospf.scip.native.version"))
+        ?: stableRuntimeVersion(System.getProperty("scip.version"))
+        ?: stableRuntimeVersion(System.getenv("SCIP_VERSION"))
+        ?: UNKNOWN_RUNTIME_VERSION
+}
+
+private fun runtimePluginVersion(): String {
+    return stableRuntimeVersion(System.getProperty("ospf.scip.plugin.version"))
+        ?: stableRuntimeVersion(System.getenv("OSPF_SCIP_PLUGIN_VERSION"))
+        ?: stableRuntimeVersion(ScipConstraintProgrammingSolver::class.java.`package`?.implementationVersion)
+        ?: BUILD_PLUGIN_VERSION
+}
+
+private data class RuntimeLibraryLocation(
+    val mode: String,
+    val path: Path?
+)
+
+private fun runtimeLibraryLocation(): RuntimeLibraryLocation {
+    if (ScipSolver.loadedLibrary) {
+        return RuntimeLibraryLocation(
+            mode = ScipSolver.loadedLibraryMode,
+            path = ScipSolver.loadedLibraryPath
+        )
+    }
+    val explicit = System.getProperty("ospf.scip.library")?.takeUnless { it.isBlank() }
+    val library = if (explicit != null) {
+        runCatching { Path.of(explicit).toAbsolutePath().normalize() }.getOrNull()
+    } else {
+        val fileName = System.mapLibraryName("jscip")
+        System.getProperty("java.library.path")
+            ?.split(java.io.File.pathSeparator)
+            ?.asSequence()
+            ?.mapNotNull { directory -> runCatching { Path.of(directory).resolve(fileName) }.getOrNull() }
+            ?.firstOrNull { Files.isRegularFile(it) }
+    }
+    return RuntimeLibraryLocation(
+        mode = if (explicit != null) "explicit" else "system",
+        path = library
+    )
+}
+
+private fun runtimeLibraryLoadMode(): String {
+    return runtimeLibraryLocation().mode
+}
+
+private fun runtimeSearchDirectories(library: Path): List<Path> {
+    val values = buildList {
+        library.parent?.let(::add)
+        listOf(
+            "java.library.path",
+            "PATH",
+            "LD_LIBRARY_PATH",
+            "DYLD_LIBRARY_PATH"
+        ).forEach { property ->
+            val value = if (property == "java.library.path") {
+                System.getProperty(property)
+            } else {
+                System.getenv(property)
+            }
+            value
+                ?.split(java.io.File.pathSeparator)
+                ?.filter { it.isNotBlank() }
+                ?.mapNotNullTo(this) { directory ->
+                    runCatching { Path.of(directory).toAbsolutePath().normalize() }.getOrNull()
+                }
+        }
+    }
+    return values.distinct()
+}
+
+private fun runtimeDependencyPath(library: Path, fileName: String): Path? {
+    val windows = System.getProperty("os.name").contains("win", ignoreCase = true)
+    for (directory in runtimeSearchDirectories(library)) {
+        val exact = directory.resolve(fileName)
+        if (Files.isRegularFile(exact)) {
+            return exact
+        }
+        if (!windows) {
+            val versioned = runCatching {
+                Files.list(directory).use { files ->
+                    files
+                        .filter { candidate ->
+                            Files.isRegularFile(candidate) &&
+                                candidate.fileName.toString().startsWith(fileName)
+                        }
+                        .sorted()
+                        .findFirst()
+                        .orElse(null)
+                }
+            }.getOrNull()
+            if (versioned != null) {
+                return versioned
+            }
+        }
+    }
+    return null
+}
+
+private fun runtimeLibraryIdentity(): String {
+    val library = runtimeLibraryLocation().path
+    if (library == null) {
+        return UNKNOWN_RUNTIME_VERSION
+    }
+    fun digest(path: Path): String? {
+        return runCatching {
+            val messageDigest = MessageDigest.getInstance("SHA-256")
+            Files.newInputStream(path).use { input ->
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) {
+                        break
+                    }
+                    messageDigest.update(buffer, 0, count)
+                }
+            }
+            messageDigest.digest().joinToString(separator = "") { byte -> "%02x".format(byte) }
+        }.getOrNull()
+    }
+    val primary = digest(library) ?: return UNKNOWN_RUNTIME_VERSION
+    val dependencyNames = if (System.getProperty("os.name").contains("win", ignoreCase = true)) {
+        listOf("libscip.dll")
+    } else if (System.getProperty("os.name").contains("mac", ignoreCase = true)) {
+        listOf("libscip.dylib")
+    } else {
+        listOf("libscip.so")
+    }
+    val dependencies = dependencyNames.map { name ->
+        val dependency = runtimeDependencyPath(library, name)
+        "$name:sha256:${dependency?.let(::digest) ?: "unknown"}"
+    }
+    return buildList {
+        add("jscip:sha256:$primary")
+        addAll(dependencies)
+    }.joinToString("|")
+}
+
+private data class LegacyRuntimeLibraryLocation(
+    val mode: String,
+    val path: Path?,
+    val searchPath: String?
+)
+
+private fun legacySystemLibrary(searchPath: String?): Path? {
+    val fileName = System.mapLibraryName("jscip")
+    return searchPath
+        ?.split(java.io.File.pathSeparator)
+        ?.asSequence()
+        ?.mapNotNull { directory -> runCatching { Path.of(directory).resolve(fileName) }.getOrNull() }
+        ?.firstOrNull { Files.isRegularFile(it) }
+}
+
+private fun legacyRuntimeLibraryLocation(): LegacyRuntimeLibraryLocation {
+    val explicit = System.getProperty("ospf.scip.library")?.takeUnless { it.isBlank() }
+    val searchPath = System.getProperty("java.library.path")
+    val system = legacySystemLibrary(searchPath)
+    val primary = if (explicit != null) {
+        LegacyRuntimeLibraryLocation(
+            mode = "explicit",
+            path = runCatching { Path.of(explicit).toAbsolutePath().normalize() }.getOrNull(),
+            searchPath = searchPath
+        )
+    } else {
+        LegacyRuntimeLibraryLocation(
+            mode = "system",
+            path = system,
+            searchPath = searchPath
+        )
+    }
+    return primary
+}
+
+private fun legacyPathRuntimeNativeVersion(): String {
+    return System.getProperty("ospf.scip.native.version")
+        ?.takeUnless { it.isBlank() }
+        ?: System.getenv("SCIP_VERSION")?.takeUnless { it.isBlank() }
+        ?: UNKNOWN_RUNTIME_VERSION
+}
+
+private fun legacyPathRuntimePluginVersions(): Set<String> {
+    val packageVersion = ScipConstraintProgrammingSolver::class.java.`package`?.implementationVersion
+        ?.takeUnless { it.isBlank() }
+    val codeSourceVersion = ScipConstraintProgrammingSolver::class.java.protectionDomain?.codeSource?.location
+        ?.toExternalForm()
+        ?.takeUnless { it.isBlank() }
+    return buildSet {
+        packageVersion?.let(::add)
+        codeSourceVersion?.let(::add)
+        if (isEmpty()) {
+            add(UNKNOWN_RUNTIME_VERSION)
+        }
+    }
+}
+
+private fun legacyPathRuntimeLibraryIdentity(): String {
+    val location = legacyRuntimeLibraryLocation()
+    val library = location.path
+    if (library == null) {
+        return "${location.mode}:${location.searchPath ?: UNKNOWN_RUNTIME_VERSION}"
+    }
+    return runCatching {
+        val attributes = Files.readAttributes(
+            library,
+            java.nio.file.attribute.BasicFileAttributes::class.java
+        )
+        "${location.mode}:$library:size=${attributes.size()}:modified=${attributes.lastModifiedTime().toMillis()}"
+    }.getOrDefault("${location.mode}:$library")
+}
+
+private fun legacyLibraryDigest(path: Path?): String? {
+    return path?.let {
+        runCatching {
+            val messageDigest = MessageDigest.getInstance("SHA-256")
+            Files.newInputStream(it).use { input ->
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) {
+                        break
+                    }
+                    messageDigest.update(buffer, 0, count)
+                }
+            }
+            messageDigest.digest().joinToString(separator = "") { byte -> "%02x".format(byte) }
+        }.getOrNull()
+    }
+}
+
+private fun legacyContentRuntimeNativeVersion(): String {
+    return stableRuntimeVersion(System.getProperty("ospf.scip.native.version"))
+        ?: stableRuntimeVersion(System.getProperty("scip.version"))
+        ?: stableRuntimeVersion(System.getenv("SCIP_VERSION"))
+        ?: UNKNOWN_RUNTIME_VERSION
+}
+
+private fun legacyContentRuntimePluginVersion(): String {
+    return stableRuntimeVersion(System.getProperty("ospf.scip.plugin.version"))
+        ?: stableRuntimeVersion(System.getenv("OSPF_SCIP_PLUGIN_VERSION"))
+        ?: stableRuntimeVersion(ScipConstraintProgrammingSolver::class.java.`package`?.implementationVersion)
+        ?: BUILD_PLUGIN_VERSION
+}
+
+private fun legacyContentRuntimeLibraryIdentities(): Set<String> {
+    val primary = legacyRuntimeLibraryLocation()
+    val primaryDigest = legacyLibraryDigest(primary.path)
+    if (primaryDigest == null) {
+        return setOf("${primary.mode}:$UNKNOWN_RUNTIME_VERSION")
+    }
+    return linkedSetOf(
+        "explicit:sha256:$primaryDigest",
+        "system:sha256:$primaryDigest"
+    )
+}
+
+private fun legacyRuntimeFingerprint(
+    pluginVersion: String,
+    nativeVersion: String,
+    bindingVersion: String,
+    libraryIdentity: String
+): String {
+    return "scip-runtime-1:" + SolveFingerprinting.sha256(
+        listOf(
+            "solverId=scip-cp",
+            "backend=SCIP",
+            "nativeVersion=$nativeVersion",
+            "bindingVersion=$bindingVersion",
+            "pluginVersion=$pluginVersion",
+            "nativeLibraryIdentity=$libraryIdentity"
+        ).joinToString("|"),
+        schemaVersion = "scip-runtime-1"
+    ).value
+}
+
+/**
+ * Reconstruct the two historical SCIP runtime fingerprint generations for legacy checkpoint matching.
+ * 为 legacy checkpoint 匹配重建两代历史 SCIP 运行时指纹集合。
+ *
+ * The set includes both the path/size/mtime generation and the content-SHA generation, each with
+ * only values that can be reconstructed from the current environment. / 集合同时包含路径/size/mtime
+ * 代与内容 SHA 代，并且只加入当前环境可重建的值。
+ *
+ * For the content generation, both explicit/system modes are included when the currently located
+ * library has a readable digest; an unreadable library keeps only its current mode's unknown value.
+ * / 对内容代，只要当前定位的库摘要可读就同时加入 explicit/system 两种 mode；摘要不可读时只保留当前
+ * mode 的 unknown 值。
+ *
+ * @return exact legacy runtime fingerprint candidates / 精确的 legacy 运行时指纹候选集合
+ */
+fun scipRuntimeFingerprintLegacyV1Candidates(): Set<String> {
+    val bindingVersion = ScipBindingCapabilityAssessmentProvider.current().bindingVersion
+    val fingerprints = linkedSetOf<String>()
+    val pathLibraryIdentity = legacyPathRuntimeLibraryIdentity()
+    legacyPathRuntimePluginVersions().forEach { pluginVersion ->
+        fingerprints += legacyRuntimeFingerprint(
+            pluginVersion = pluginVersion,
+            nativeVersion = legacyPathRuntimeNativeVersion(),
+            bindingVersion = bindingVersion,
+            libraryIdentity = pathLibraryIdentity
+        )
+    }
+    val contentLibraryIdentities = legacyContentRuntimeLibraryIdentities()
+    contentLibraryIdentities.forEach { libraryIdentity ->
+        fingerprints += legacyRuntimeFingerprint(
+            pluginVersion = legacyContentRuntimePluginVersion(),
+            nativeVersion = legacyContentRuntimeNativeVersion(),
+            bindingVersion = bindingVersion,
+            libraryIdentity = libraryIdentity
+        )
+    }
+    return fingerprints
+}
+
+/**
+ * 生成当前 SCIP 运行时身份指纹。 / Generate the current SCIP runtime identity fingerprint.
+ *
+ * @return 原生库、binding 与插件组合的身份指纹 / Identity fingerprint for the native library, binding, and plugin combination
+ */
+fun scipRuntimeFingerprint(): String {
+    val binding = ScipBindingCapabilityAssessmentProvider.current()
+    return "scip-runtime-2:" + SolveFingerprinting.sha256(
+        listOf(
+            "solverId=scip-cp",
+            "backend=SCIP",
+            "nativeVersion=${runtimeNativeVersion()}",
+            "bindingVersion=${binding.bindingVersion}",
+            "pluginVersion=${runtimePluginVersion()}",
+            "nativeLibraryIdentity=${runtimeLibraryIdentity()}"
+        ).joinToString("|"),
+        schemaVersion = "scip-runtime-2"
+    ).value
+}
+
+/** SCIP CP 求解器。 / SCIP CP solver.
+ *
+ * @property sparseDomainLimit Maximum sparse-domain expansion size. / 稀疏值域展开规模上限。
+ * @property decompositionLimit Maximum decomposition size for global constraints. / 全局约束分解规模上限。
+ */
 class ScipConstraintProgrammingSolver(
     private val sparseDomainLimit: Int = 128,
     private val decompositionLimit: Int = 256
@@ -65,6 +423,8 @@ class ScipConstraintProgrammingSolver(
     override val descriptor: SolverDescriptor = SolverDescriptor(
         solverId = "scip-cp",
         backendName = "SCIP",
+        backendVersion = runtimeNativeVersion().takeUnless { it == UNKNOWN_RUNTIME_VERSION },
+        pluginVersion = runtimePluginVersion().takeUnless { it == UNKNOWN_RUNTIME_VERSION },
         capabilities = SolverCapabilities(
             modelTypes = setOf(SolverModelType.CP),
             interrupt = true,
@@ -78,6 +438,9 @@ class ScipConstraintProgrammingSolver(
                 fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingFeature.Interval to fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSupportLevel.ExactLowering,
                 fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingFeature.NoOverlap to fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSupportLevel.ExactLowering,
                 fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingFeature.Cumulative to fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSupportLevel.Native,
+                fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingFeature.Circuit to fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSupportLevel.ExactLowering,
+                fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingFeature.Automaton to fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSupportLevel.ExactLowering,
+                fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingFeature.Reservoir to fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSupportLevel.ExactLowering,
                 fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingFeature.Assumption to fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSupportLevel.ExactLowering,
                 fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingFeature.ConflictCore to fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSupportLevel.ExactLowering,
                 fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingFeature.IncrementalSolve to fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSupportLevel.Unsupported
@@ -137,6 +500,14 @@ class ScipConstraintProgrammingSolver(
         if (options.solutionLimit != null && options.solutionLimit == fuookami.ospf.kotlin.math.algebra.number.UInt64.zero) {
             return "SCIP CP solutionLimit 必须为正 / SCIP CP solutionLimit must be positive"
         }
+        options.threadCount?.let { threadCount ->
+            if (threadCount <= 0) {
+                return "SCIP CP threadCount 必须为正 / SCIP CP threadCount must be positive"
+            }
+        }
+        if (options.deterministic && options.threadCount != null && options.threadCount != 1) {
+            return "SCIP CP deterministic 模式必须使用单线程 / SCIP CP deterministic mode requires a single thread"
+        }
         if (options.conflictShrinkLimit != null &&
             options.conflictShrinkLimit == fuookami.ospf.kotlin.math.algebra.number.UInt64.zero
         ) {
@@ -176,6 +547,8 @@ private class ScipConstraintProgrammingSession(
     private var closed = false
     private var nativeInitialized = false
     private var compiled: ScipConstraintProgrammingCompiledModel? = null
+    private var configuredThreadCount: Int? = null
+    private var configuredRandomSeed: Long? = null
 
     override val isClosed: Boolean
         get() = closed
@@ -330,12 +703,39 @@ private class ScipConstraintProgrammingSession(
             return ok(Unit)
         }
         val explicit = System.getProperty("ospf.scip.library")
+        if (ScipSolver.loadedLibrary && !explicit.isNullOrBlank()) {
+            val requested = runCatching { Path.of(explicit).toAbsolutePath().normalize() }.getOrNull()
+            val loaded = ScipSolver.loadedLibraryPath
+            val sameLibrary = requested != null && loaded != null && runCatching {
+                Files.isSameFile(requested, loaded)
+            }.getOrDefault(requested == loaded)
+            if (!sameLibrary) {
+                return Failed(
+                    ErrorCode.SolverNotFound,
+                    "SCIP 已加载的原生库与显式配置不一致：loaded=${loaded?.fileName ?: "unknown"}, requested=${requested?.fileName ?: "invalid"} / " +
+                        "The loaded SCIP native library differs from the explicitly configured library"
+                )
+            }
+        }
         if (!ScipSolver.loadedLibrary) {
             try {
                 if (!explicit.isNullOrBlank()) {
-                    System.load(explicit)
+                    val path = Path.of(explicit).toAbsolutePath().normalize()
+                    System.load(path.toString())
+                    ScipSolver.loadedLibraryPath = path
+                    ScipSolver.loadedLibraryMode = "explicit"
                 } else {
                     System.loadLibrary("jscip")
+                    ScipSolver.loadedLibraryPath = System.getProperty("java.library.path")
+                        ?.split(java.io.File.pathSeparator)
+                        ?.asSequence()
+                        ?.mapNotNull { directory ->
+                            runCatching {
+                                Path.of(directory).resolve(System.mapLibraryName("jscip"))
+                            }.getOrNull()
+                        }
+                        ?.firstOrNull { Files.isRegularFile(it) }
+                    ScipSolver.loadedLibraryMode = "system"
                 }
                 ScipSolver.loadedLibrary = true
             } catch (error: Throwable) {
@@ -365,12 +765,17 @@ private class ScipConstraintProgrammingSession(
             }
             options.nodeLimit?.let { scip.setLongintParam("limits/nodes", it.toLong()) }
             options.solutionLimit?.let { scip.setLongintParam("limits/solutions", it.toLong()) }
-            options.randomSeed?.let { scip.setIntParam("randomization/randomseed", it.toInt()) }
-            if (options.deterministic) {
-                scip.setIntParam("parallel/maxnthreads", 1)
+            val requestedThreadCount = options.threadCount ?: if (options.deterministic) 1 else null
+            requestedThreadCount?.let { threadCount ->
+                scip.setIntParam("parallel/maxnthreads", threadCount)
+            }
+            options.randomSeed?.let { seed ->
+                scip.setIntParam("randomization/randomseedshift", seed.toInt())
             }
             options.relativeObjectiveGap?.let { scip.setRealParam("limits/gap", it.toDouble()) }
             options.absoluteObjectiveGap?.let { scip.setRealParam("limits/absgap", it.toDouble()) }
+            configuredThreadCount = scip.getIntParam("parallel/maxnthreads")
+            configuredRandomSeed = scip.getIntParam("randomization/randomseedshift").toLong()
             ok(Unit)
         } catch (error: Throwable) {
             Failed(
@@ -443,8 +848,20 @@ private class ScipConstraintProgrammingSession(
             return propagate(extracted)
         }
         val optimal = status == SCIP_Status.SCIP_STATUS_OPTIMAL
-        val objective = if (snapshot.objectives.isEmpty()) null else Flt64(scip.getSolOrigObj(solution))
+        val exactObjective = if (snapshot.objectives.isEmpty()) {
+            null
+        } else {
+            when (val evaluated = snapshot.objectives.first().expression.evaluate(extracted.value!!.values)) {
+                is Failed -> return propagate(evaluated)
+                is Fatal -> return propagate(evaluated)
+                else -> evaluated.value
+            }
+        }
+        val objective = exactObjective?.toCompatibilityFlt64()
         val bound = if (snapshot.objectives.isEmpty()) null else Flt64(scip.dualbound)
+        val relativeGap = if (snapshot.objectives.isEmpty()) null else {
+            scip.getGap().takeIf { it.isFinite() && it >= 0.0 }?.let(::Flt64)
+        }
         return ok(
             ConstraintProgrammingFeasibleOutput(
                 solution = extracted.value!!,
@@ -452,6 +869,7 @@ private class ScipConstraintProgrammingSession(
                 bestBound = bound,
                 status = if (optimal) SolverStatus.Optimal else SolverStatus.Feasible,
                 proofStatus = if (optimal) ProofStatus.Verified else ProofStatus.None,
+                exactObjective = exactObjective,
                 report = report(
                     started,
                     ProblemStatus.Feasible,
@@ -459,7 +877,9 @@ private class ScipConstraintProgrammingSession(
                     if (optimal) SolutionPresence.Optimal else SolutionPresence.Incumbent,
                     extracted.value,
                     if (optimal) ProofStatus.Verified else ProofStatus.None,
-                    objective
+                    exactObjective,
+                    bestBound = bound,
+                    gap = relativeGap
                 )
             )
         )
@@ -497,7 +917,9 @@ private class ScipConstraintProgrammingSession(
         presence: SolutionPresence,
         solution: ConstraintProgrammingSolution?,
         proof: ProofStatus,
-        objective: Flt64? = null,
+        objective: Int64? = null,
+        bestBound: Flt64? = null,
+        gap: Flt64? = null,
         diagnostics: SolveDiagnostics<Int64> = SolveDiagnostics()
     ): SolveReport<Int64> {
         return SolveReport(
@@ -507,13 +929,31 @@ private class ScipConstraintProgrammingSession(
             solution = solution?.let {
                 SolveSolution(
                     it.asList(snapshot.variables.map { variable -> variable.id }),
-                    objective = objective?.takeIf { it == it.round() }?.toInt64()
+                    objective = objective
                 )
             },
             proof = SolveProof(status = proof, kind = "scip-cp"),
-            statistics = SolveStatistics(solveTime = (scip.solvingTime).seconds),
+            statistics = SolveStatistics(
+                solveTime = (scip.solvingTime).seconds,
+                bestBound = bestBound,
+                gap = gap
+            ),
             diagnostics = diagnostics,
-            provenance = SolverProvenance(descriptor = descriptor, deterministic = options.deterministic)
+            provenance = SolverProvenance(
+                descriptor = descriptor,
+                nativeVersion = runtimeNativeVersion(),
+                effectiveParameters = effectiveParameters,
+                threadCount = effectiveThreadCount,
+                randomSeed = effectiveRandomSeed,
+                deterministic = options.deterministic,
+                environmentSummary = mapOf(
+                    "nativeLibraryLoadMode" to runtimeLibraryLoadMode(),
+                    "nativeLibraryIdentity" to runtimeLibraryIdentity(),
+                    "bindingVersion" to ScipBindingCapabilityAssessmentProvider.current().bindingVersion,
+                    "pluginVersion" to runtimePluginVersion()
+                )
+            ),
+            fingerprints = reportFingerprints()
         )
     }
 
@@ -568,6 +1008,52 @@ private class ScipConstraintProgrammingSession(
                 assumptionIds = conflict.variableIds,
                 verificationChecks = conflict.verificationChecks,
                 terminationReason = conflict.terminationReason
+            )
+        )
+    }
+
+    private val effectiveThreadCount: Int?
+        get() = configuredThreadCount ?: options.threadCount ?: if (options.deterministic) 1 else null
+
+    private val effectiveRandomSeed: Long?
+        get() = configuredRandomSeed ?: options.randomSeed
+
+    private val effectiveParameters: Map<String, String>
+        get() = buildMap {
+            effectiveThreadCount?.let { put("parallel.maxnthreads", it.toString()) }
+            effectiveRandomSeed?.let { put("randomization.randomseedshift", it.toString()) }
+            put("deterministic", options.deterministic.toString())
+            put("limits.time", options.timeLimit?.toString() ?: "unlimited")
+            put("limits.nodes", options.nodeLimit?.toString() ?: "unlimited")
+            put("limits.solutions", options.solutionLimit?.toString() ?: "unlimited")
+            put("limits.gap", options.relativeObjectiveGap?.toString() ?: "unlimited")
+            put("limits.absgap", options.absoluteObjectiveGap?.toString() ?: "unlimited")
+            options.backendConfiguration?.let { configuration ->
+                put("backendConfiguration.type", configuration.type)
+                configuration.redactedParameters().toSortedMap().forEach { (key, value) ->
+                    put("backendConfiguration.$key", value)
+                }
+            }
+        }
+
+    private fun reportFingerprints(): SolveFingerprints {
+        val model = ConstraintProgrammingSnapshotCodec.encode(snapshot).value?.let {
+            SolveFingerprinting.sha256(it)
+        }
+        val configuration = options.configurationFingerprint?.let {
+            AuditFingerprint(
+                schemaVersion = SolveReport.CURRENT_SCHEMA_VERSION,
+                algorithm = "SHA-256",
+                value = it
+            )
+        } ?: SolveFingerprinting.configuration(effectiveParameters)
+        return SolveFingerprints(
+            model = model,
+            configuration = configuration,
+            solver = AuditFingerprint(
+                schemaVersion = "scip-runtime-2",
+                algorithm = "SHA-256",
+                value = runtimeFingerprint()
             )
         )
     }
@@ -881,7 +1367,19 @@ private class ScipConstraintProgrammingSession(
         compiled = null
     }
 
-    private companion object {
+    companion object {
+        /**
+         * 生成当前 SCIP 原生库、binding 与插件身份指纹。 / Generate the current SCIP native-library, binding, and plugin identity fingerprint.
+         *
+         * 配置参数由独立 configuration fingerprint 表达，避免调度量子改变 solver 身份。 /
+         * Configuration parameters are represented by a separate configuration fingerprint so scheduling quantum does not change solver identity.
+         *
+         * @return 运行时求解器身份指纹 / Runtime solver identity fingerprint
+         */
+        fun runtimeFingerprint(): String {
+            return scipRuntimeFingerprint()
+        }
+
         const val CANCELLATION_POLL_MILLIS = 10L
         const val CANCELLATION_JOIN_MILLIS = 100L
         const val MAX_EXACT_DOUBLE_INTEGER = 9_007_199_254_740_991.0

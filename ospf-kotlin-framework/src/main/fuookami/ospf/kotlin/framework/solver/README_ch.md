@@ -125,6 +125,27 @@ adapter/                    适配器
   ospf/OspfRemoteModelSerializer         OSPF 序列化格式适配
 ```
 
+### CP Benders 与远程报告契约
+
+`LogicBasedBendersEngine` 将主问题绑定、assumption、cut、证明状态和收敛证据分离管理。`Exact` 模式只接受已验证且全局有效的 cut，并要求主问题上下界间隙通过验证；可行子问题没有最优性证书时仍是 `Feasible`，不会提升为 `Optimal`。
+
+`RemoteConstraintProgrammingClient.solveOutput()` 发送带版本的 CP snapshot，并从结果 artifact 物化 `variableValuesById` 和 `intervalValues`。客户端会校验值域、interval 等式、所有 snapshot 约束、目标表达式、raw/resultRef 一致性、指纹和 proof 声明。CP 整数使用 JSON `Long`；旧 DTO 仍可读取，但不能把未经验证的结果提升为更强结论。`ConstraintProgrammingCheckpointCodec` 与远程 checkpoint store 使用带完整性摘要的 portable v2 envelope，恢复语义是从 snapshot 重建；不支持 native 搜索状态续跑。
+
+### 身份、可移植性与能力边界
+
+模型元素身份是显式的，并分为两个作用域：
+
+| 作用域 | 含义 | 是否可跨重建使用 |
+| --- | --- | --- |
+| `Stable` | 建模入口提供了 `id`、`namespace`、`schemaVersion` 及可选 `origin`。 | 通过指纹校验后可用于诊断、报告、远程 DTO 和 portable checkpoint。 |
+| `ModelLocal` | 只有当前模型实例内可确定的身份。 | 可用于本地诊断，但不得冒充跨重建绑定。 |
+
+缺少身份元数据的旧 payload 仍按 `ModelLocal` 读取，绝不会被隐式升级为 `Stable`。checkpoint 的可移植性意味着它包含经过验证的 snapshot 并能重建模型，不等于 native 搜索状态恢复；厂商句柄、transformed tree、JNI 指针和求解器内部搜索状态都不能跨 checkpoint 边界传输。
+
+求解器复用也遵循同一边界。默认 CP 和 MIP-backed 路径每次 attempt 都重建后端模型。只有 backend descriptor 暴露并通过测试的 capability 时才能选择 `reuse` 或 `reoptimization`；求解器名称、warm start 或 solution hint 本身不代表 native 复用或精确恢复。能力发布必须通过 `plans/solver_cp.md` 中统一的终态、身份、provenance、取消和资源释放测试。
+
+迁移示例：将模型迁移到远程 API 时保留序列化身份字段；恢复 checkpoint 前校验模型、配置和求解器指纹。如果字段缺失或作用域为 `ModelLocal`，应保持本地身份并重建模型，不得强制转换为稳定绑定。
+
 ## 异步协程作用域
 
 `FrameworkAsync.kt` 提供共享的 `CoroutineScope`（`SupervisorJob` + `Dispatchers.Default`），用于框架层异步求解的 `CompletableFuture` 创建。

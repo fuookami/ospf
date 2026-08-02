@@ -29,7 +29,12 @@ sealed interface IntegerDomain {
     /** 可表示的值数量；超过 [ULong] 范围时返回 null。 / Cardinality, or null if it exceeds ULong. */
     val cardinality: ULong?
 
-    /** 判断值是否属于值域。 / Check whether a value belongs to the domain. */
+    /**
+     * 判断值是否属于值域。 / Check whether a value belongs to the domain.
+     *
+     * @param value 待检查的整数 / Integer to check
+     * @return 值是否属于值域 / Whether the value belongs to the domain
+     */
     operator fun contains(value: Int64): Boolean
 
     /**
@@ -62,7 +67,12 @@ sealed interface IntegerDomain {
         }
     }
 
-    /** 连续整数区间 / A contiguous integer interval. */
+    /**
+     * 连续整数区间 / A contiguous integer interval.
+     *
+     * @property lowerBound 下界 / Lower bound
+     * @property upperBound 上界 / Upper bound
+     */
     data class Interval(
         override val lowerBound: Int64,
         override val upperBound: Int64
@@ -75,7 +85,11 @@ sealed interface IntegerDomain {
         }
     }
 
-    /** 离散整数集合，工厂会排序并去重。 / A sparse integer set, sorted and de-duplicated by its factory. */
+    /**
+     * 离散整数集合，工厂会排序并去重。 / A sparse integer set, sorted and de-duplicated by its factory.
+     *
+     * @property values 排序去重后的整数集合 / Sorted, de-duplicated integer values
+     */
     data class Values(
         val values: List<Int64>
     ) : IntegerDomain {
@@ -126,13 +140,25 @@ sealed interface IntegerDomain {
             return ok(Interval(lowerBound, upperBound))
         }
 
-        /** 使用 Long 创建区间的便捷入口。 / Long convenience overload for an interval. */
+        /**
+         * 使用 Long 创建区间的便捷入口。 / Long convenience overload for an interval.
+         *
+         * @param lowerBound 下界 / Lower bound
+         * @param upperBound 上界 / Upper bound
+         * @return 值域或非法参数错误 / The domain or an illegal-argument error
+         */
         @JvmName("intervalLong")
         fun interval(lowerBound: Long, upperBound: Long): Ret<Interval> {
             return interval(Int64(lowerBound), Int64(upperBound))
         }
 
-        /** 使用 Int 创建区间的便捷入口。 / Int convenience overload for an interval. */
+        /**
+         * 使用 Int 创建区间的便捷入口。 / Int convenience overload for an interval.
+         *
+         * @param lowerBound 下界 / Lower bound
+         * @param upperBound 上界 / Upper bound
+         * @return 值域或非法参数错误 / The domain or an illegal-argument error
+         */
         @JvmName("intervalInt")
         fun interval(lowerBound: Int, upperBound: Int): Ret<Interval> {
             return interval(Int64(lowerBound.toLong()), Int64(upperBound.toLong()))
@@ -204,17 +230,32 @@ sealed interface IntegerDomain {
             )
         }
 
-        /** 创建稀疏值域的语义别名。 / Semantic alias for creating a sparse domain. */
+        /**
+         * 创建稀疏值域的语义别名。 / Semantic alias for creating a sparse domain.
+         *
+         * @param values 离散值 / Sparse values
+         * @return 值域或非法参数错误 / The domain or an illegal-argument error
+         */
         fun sparse(values: Iterable<*>): Ret<Values> {
             return values(values)
         }
 
-        /** 创建单点值域。 / Create a singleton domain. */
+        /**
+         * 创建单点值域。 / Create a singleton domain.
+         *
+         * @param value 单点值 / Singleton value
+         * @return 单点值域 / Singleton domain
+         */
         fun singleton(value: Int64): Values {
             return Values(listOf(value))
         }
 
-        /** 创建单点值域的 Long 便捷入口。 / Long convenience overload for a singleton domain. */
+        /**
+         * 创建单点值域的 Long 便捷入口。 / Long convenience overload for a singleton domain.
+         *
+         * @param value 单点值 / Singleton value
+         * @return 单点值域 / Singleton domain
+         */
         @JvmName("singletonLong")
         fun singleton(value: Long): Values {
             return singleton(Int64(value))

@@ -19,7 +19,12 @@ import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.solver.report.diagnosticConstraintId
 import fuookami.ospf.kotlin.core.solver.report.diagnosticVariableId
 
-/** Legacy quadratic IIS artifact and its actual filtering source. / 旧二次 IIS artifact 及其实际过滤来源。 */
+/**
+ * Legacy quadratic IIS artifact and its actual filtering source. / 旧二次 IIS artifact 及其实际过滤来源。
+ *
+ * @property model 物化的二次 IIS 模型 / Materialized quadratic IIS model
+ * @property source 实际过滤证据来源 / Actual filtering evidence source
+ */
 data class LegacyQuadraticIISResult(
     val model: QuadraticTetradModel,
     val source: InfeasibilityEvidenceSource
@@ -138,7 +143,14 @@ private fun materializeNativeIIS(
     )
 }
 
-/** 执行旧二次弹性/删除过滤算法。 / Execute the legacy quadratic elastic/deletion filtering algorithm. */
+/**
+ * 执行旧二次弹性/删除过滤算法。 / Execute the legacy quadratic elastic/deletion filtering algorithm.
+ *
+ * @param model 二次模型视图 / Quadratic model view
+ * @param solver 二次求解器 / Quadratic solver
+ * @param config IIS 配置 / IIS configuration
+ * @return 物化 artifact 与证据来源 / Materialized artifact and evidence source
+ */
 @OptIn(ExperimentalTime::class)
 suspend fun computeLegacyIIS(
     model: QuadraticTetradModelView,

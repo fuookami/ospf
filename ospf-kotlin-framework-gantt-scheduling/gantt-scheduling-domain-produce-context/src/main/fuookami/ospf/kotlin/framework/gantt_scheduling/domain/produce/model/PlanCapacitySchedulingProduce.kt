@@ -11,7 +11,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.NumberField
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.mechanism.LinearMetaModel
 import fuookami.ospf.kotlin.framework.gantt_scheduling.domain.capacity_scheduling.model.*
@@ -51,7 +51,7 @@ class PlanCapacitySchedulingProduce<
                     for ((s, _) in slots.withIndex()) {
                         val actionIndex = actions.indexOf(action)
                         if (actionIndex >= 0) {
-                            quantity[product].asMutable() += LinearMonomial(unitProduce.toSolverValue(), compilation.operationTime[actionIndex, s])
+                            quantity[product].asMutable() += unitProduce.toSolverValue() * compilation.operationTime[actionIndex, s]
                         }
                     }
                 }

@@ -9,7 +9,7 @@ import fuookami.ospf.kotlin.framework.csp1d.domain.material.model.*
 import fuookami.ospf.kotlin.framework.csp1d.domain.produce.model.Csp1dAggregation
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.multiarray.Shape1
 import fuookami.ospf.kotlin.utils.error.*
@@ -219,7 +219,7 @@ class ProduceAggregation<V : RealNumber<V>>(
             shape = Shape1(cuttingPlans.size)
         ) { i, _ ->
             LinearExpressionSymbol(
-                monomial = LinearMonomial(Flt64.one, x0[i]),
+                monomial = Flt64.one * x0[i],
                 name = "batch_0_$i"
             )
         }
@@ -240,7 +240,7 @@ class ProduceAggregation<V : RealNumber<V>>(
                 val contribution = plan.demandContributions.find {
                     it.product.id == demand.product.id && it.quantity.unit == demand.quantity.unit
                 } ?: return@mapIndexedNotNull null
-                LinearMonomial(contribution.quantity.value.toFlt64(), batch0[planIndex])
+                contribution.quantity.value.toFlt64() * batch0[planIndex]
             }
             if (monomials.isNotEmpty()) {
                 LinearExpressionSymbol(
@@ -268,7 +268,7 @@ class ProduceAggregation<V : RealNumber<V>>(
             val material = materials[materialIndex]
             val monomials = cuttingPlans.mapIndexedNotNull { planIndex, plan ->
                 if (plan.material.id != material.id) return@mapIndexedNotNull null
-                LinearMonomial(Flt64.one, batch0[planIndex])
+                Flt64.one * batch0[planIndex]
             }
             if (monomials.isNotEmpty()) {
                 LinearExpressionSymbol(
@@ -296,7 +296,7 @@ class ProduceAggregation<V : RealNumber<V>>(
             val machine = machines[machineIndex]
             val monomials = cuttingPlans.mapIndexedNotNull { planIndex, plan ->
                 if (plan.machineId != machine.id) return@mapIndexedNotNull null
-                LinearMonomial(Flt64.one, batch0[planIndex])
+                Flt64.one * batch0[planIndex]
             }
             if (monomials.isNotEmpty()) {
                 LinearExpressionSymbol(
@@ -328,7 +328,7 @@ class ProduceAggregation<V : RealNumber<V>>(
                 val consumption = plan.capacityConsumption ?: return@mapIndexedNotNull null
                 if (consumption.unit != capacity.unit) return@mapIndexedNotNull null
                 if (consumption.value leq consumption.value.constants.zero) return@mapIndexedNotNull null
-                LinearMonomial(consumption.value.toFlt64(), batch0[planIndex])
+                consumption.value.toFlt64() * batch0[planIndex]
             }
             if (monomials.isNotEmpty()) {
                 LinearExpressionSymbol(
@@ -391,7 +391,7 @@ class ProduceAggregation<V : RealNumber<V>>(
             shape = Shape1(unduplicatedPlans.size)
         ) { i, _ ->
             LinearExpressionSymbol(
-                monomial = LinearMonomial(Flt64.one, xi[i]),
+                monomial = Flt64.one * xi[i],
                 name = "batch_${iteration}_$i"
             )
         }
@@ -408,7 +408,7 @@ class ProduceAggregation<V : RealNumber<V>>(
                 val contribution = plan.demandContributions.find {
                     it.product.id == demand.product.id && it.quantity.unit == demand.quantity.unit
                 } ?: return@mapIndexedNotNull null
-                LinearMonomial(contribution.quantity.value.toFlt64(), batchI[planIndex])
+                contribution.quantity.value.toFlt64() * batchI[planIndex]
             }
             if (newMonomials.isNotEmpty()) {
                 demandQuantity[demandIndex].flush()
@@ -420,7 +420,7 @@ class ProduceAggregation<V : RealNumber<V>>(
         for ((materialIndex, material) in materials.withIndex()) {
             val newMonomials = unduplicatedPlans.mapIndexedNotNull { planIndex, plan ->
                 if (plan.material.id != material.id) return@mapIndexedNotNull null
-                LinearMonomial(Flt64.one, batchI[planIndex])
+                Flt64.one * batchI[planIndex]
             }
             if (newMonomials.isNotEmpty()) {
                 materialQuantity[materialIndex].flush()
@@ -432,7 +432,7 @@ class ProduceAggregation<V : RealNumber<V>>(
         for ((machineIndex, machine) in machines.withIndex()) {
             val newMonomials = unduplicatedPlans.mapIndexedNotNull { planIndex, plan ->
                 if (plan.machineId != machine.id) return@mapIndexedNotNull null
-                LinearMonomial(Flt64.one, batchI[planIndex])
+                Flt64.one * batchI[planIndex]
             }
             if (newMonomials.isNotEmpty()) {
                 machineBatchQuantity[machineIndex].flush()
@@ -448,7 +448,7 @@ class ProduceAggregation<V : RealNumber<V>>(
                 val consumption = plan.capacityConsumption ?: return@mapIndexedNotNull null
                 if (consumption.unit != capacity.unit) return@mapIndexedNotNull null
                 if (consumption.value leq consumption.value.constants.zero) return@mapIndexedNotNull null
-                LinearMonomial(consumption.value.toFlt64(), batchI[planIndex])
+                consumption.value.toFlt64() * batchI[planIndex]
             }
             if (newMonomials.isNotEmpty()) {
                 machineCapacityQuantity[machineIndex].flush()

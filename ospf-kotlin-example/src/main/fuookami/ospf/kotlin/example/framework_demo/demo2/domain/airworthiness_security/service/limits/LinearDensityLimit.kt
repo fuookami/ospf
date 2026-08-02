@@ -37,22 +37,21 @@ class LinearDensityLimit(
                 continue
             }
 
-            val poly = MutableLinearPolynomial()
-            for (position in line.positions) {
+            val poly = sum(line.positions.map { position ->
                 val j = positions.indexOf(position)
-                poly += LinearMonomial(Flt64.one, linearDensity.linearDensity[j].value)
-            }
+                linearDensity.linearDensity[j].value
+            })
             when (val result = model.addConstraint(
-                relation = LinearPolynomial(poly.monomials, poly.constant) leq line.zone.maxLinearDensity.to(aircraftModel.linearDensityUnit)!!.value,
+                relation = poly leq line.zone.maxLinearDensity.to(aircraftModel.linearDensityUnit)!!.value,
                 name = "${name}_${line.zone.name}_${line.arm.value}"
             )) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }

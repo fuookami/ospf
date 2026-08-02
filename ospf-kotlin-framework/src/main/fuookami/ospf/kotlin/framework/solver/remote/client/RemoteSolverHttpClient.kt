@@ -10,15 +10,15 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 import kotlinx.coroutines.delay
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
-import fuookami.ospf.kotlin.framework.solver.remote.domain.*
-import fuookami.ospf.kotlin.framework.solver.remote.port.*
-import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import kotlinx.serialization.json.Json
 import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.framework.solver.remote.domain.*
+import fuookami.ospf.kotlin.framework.solver.remote.port.*
 
 /**
  * 远程求解 HTTP 客户端。 / Remote solver HTTP client.
@@ -45,7 +45,7 @@ class RemoteSolverHttpClient(
     private val traceIdProvider: () -> TraceId? = { null },
     private val objectStoragePort: ObjectStoragePort? = null,
     private val payloadPathProvider: (TaskId, SliceId, TenantId) -> ObjectPath = { taskId, sliceId, tenantId ->
-        ObjectPath.of("payloads/${tenantId.value}/${taskId.value}/${sliceId.value}.json")
+        ObjectPath.of("${tenantId.value}/payloads/${taskId.value}/${sliceId.value}.json")
     },
     private val requestIdProvider: (TaskId, SliceId, TenantId) -> RequestId = { taskId, _, _ ->
         RequestId.of(taskId.value)
@@ -154,7 +154,7 @@ class RemoteSolverHttpClient(
         traceIdProvider: () -> TraceId? = { null },
         objectStoragePort: ObjectStoragePort? = null,
         payloadPathProvider: (TaskId, SliceId, TenantId) -> ObjectPath = { taskId, sliceId, tenantId ->
-            ObjectPath.of("payloads/${tenantId.value}/${taskId.value}/${sliceId.value}.json")
+            ObjectPath.of("${tenantId.value}/payloads/${taskId.value}/${sliceId.value}.json")
         },
         requestIdProvider: (TaskId, SliceId, TenantId) -> RequestId = { taskId, _, _ ->
             RequestId.of(taskId.value)
@@ -185,6 +185,35 @@ class RemoteSolverHttpClient(
         nodeId: NodeId,
         tenantId: TenantId
     ): Ret<ExecutionHandle> {
+        if (payload.modelData.modelType == NormalizedModelType.CP) {
+            when (val capabilities = probeCapabilities()) {
+                is Ok -> {
+                    val supportsCapabilitySchema = capabilities.value.schemaVersion
+                        .substringBefore('.')
+                        .toIntOrNull() == 1
+                    val supportsProtocol = "2.0" in capabilities.value.protocolVersions
+                    val supportsCp = capabilities.value.supportedModelTypes.any {
+                        it.equals(NormalizedModelType.CP.name, ignoreCase = true)
+                    }
+                    if (!supportsCapabilitySchema || !supportsProtocol || !supportsCp) {
+                        return failedRemote(
+                            code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                            message = "Remote solver does not advertise CP protocol/model capability.",
+                            metadata = mapOf(
+                                "capabilitySchemaVersion" to capabilities.value.schemaVersion,
+                                "requiredProtocol" to "2.0",
+                                "protocolVersions" to capabilities.value.protocolVersions.sorted().joinToString(","),
+                                "supportedModelTypes" to capabilities.value.supportedModelTypes.sorted().joinToString(",")
+                            ),
+                            taskId = taskId.value,
+                            sliceId = sliceId.value
+                        )
+                    }
+                }
+                is Failed -> return Failed(capabilities.error)
+                is Fatal -> return Fatal(capabilities.errors)
+            }
+        }
         val payloadRef = when (val result = putPayload(
             payload = payload,
             taskId = taskId,
@@ -278,21 +307,61 @@ class RemoteSolverHttpClient(
                         completed = true,
                         feasible = result?.feasible ?: true,
                         objectiveValue = result?.objectiveValue,
+                        objectiveValueInt64 = result?.objectiveValueInt64,
                         gap = result?.gap,
                         elapsed = result?.elapsed ?: elapsed,
-                        message = result?.message
+                        message = result?.message,
+                        schemaVersion = result?.schemaVersion ?: "1.0",
+                        problemStatus = result?.problemStatus ?: RemoteProblemStatus.UNKNOWN,
+                        terminationReason = result?.terminationReason ?: RemoteTerminationReason.COMPLETED,
+                        solutionPresence = result?.solutionPresence ?: RemoteSolutionPresence.NONE,
+                        proofStatus = result?.proofStatus ?: RemoteProofStatus.NONE,
+                        resultRef = result?.resultRef,
+                        provenance = result?.provenance ?: emptyMap(),
+                        fingerprints = result?.fingerprints ?: emptyMap(),
+                        statistics = result?.statistics ?: emptyMap(),
+                        diagnostics = result?.diagnostics ?: emptyMap(),
+                        runId = result?.runId,
+                        attemptId = result?.attemptId,
+                        artifactDigest = result?.artifactDigest
                     ))
                 }
 
                 TaskStatus.FAILED, TaskStatus.STOPPED -> {
+                    val terminalResult = when (val ret = fetchFinalResult(handle)) {
+                        is Ok -> ret.value
+                        is Failed -> return Failed(ret.error)
+                        is Fatal -> return Fatal(ret.errors)
+                    }
+                    val terminationReason = when (view.status) {
+                        TaskStatus.STOPPED -> RemoteTerminationReason.CANCELLED
+                        TaskStatus.FAILED -> terminalResult?.terminationReason
+                            ?.takeIf { it != RemoteTerminationReason.COMPLETED }
+                            ?: RemoteTerminationReason.BACKEND_FAILURE
+                        else -> RemoteTerminationReason.BACKEND_FAILURE
+                    }
                     return Ok(SliceResult(
                         sliceId = handle.sliceId,
                         completed = true,
-                        feasible = false,
-                        objectiveValue = null,
-                        gap = null,
+                        feasible = terminalResult?.feasible ?: false,
+                        objectiveValue = terminalResult?.objectiveValue,
+                        objectiveValueInt64 = terminalResult?.objectiveValueInt64,
+                        gap = terminalResult?.gap,
                         elapsed = elapsed,
-                        message = "Remote task ended with status ${view.status}."
+                        message = terminalResult?.message ?: "Remote task ended with status ${view.status}.",
+                        schemaVersion = terminalResult?.schemaVersion ?: "1.0",
+                        problemStatus = terminalResult?.problemStatus ?: RemoteProblemStatus.UNKNOWN,
+                        terminationReason = terminationReason,
+                        solutionPresence = terminalResult?.solutionPresence ?: RemoteSolutionPresence.NONE,
+                        proofStatus = terminalResult?.proofStatus ?: RemoteProofStatus.NONE,
+                        resultRef = terminalResult?.resultRef,
+                        provenance = terminalResult?.provenance ?: emptyMap(),
+                        fingerprints = terminalResult?.fingerprints ?: emptyMap(),
+                        statistics = terminalResult?.statistics ?: emptyMap(),
+                        diagnostics = terminalResult?.diagnostics ?: emptyMap(),
+                        runId = terminalResult?.runId,
+                        attemptId = terminalResult?.attemptId,
+                        artifactDigest = terminalResult?.artifactDigest
                     ))
                 }
 
@@ -343,16 +412,73 @@ class RemoteSolverHttpClient(
                 sliceId = handle.sliceId.value
             )
         }
-        return Ok(SolveResult(
+        val result = SolveResult(
             feasible = solution.feasible,
             optimal = solution.optimal,
             objectiveValue = solution.objectiveValue,
+            objectiveValueInt64 = solution.objectiveValueInt64,
             gap = solution.gap,
             elapsed = solution.elapsed,
             checkpointRef = view.latestCheckpointRef,
             resultRef = resultRef,
-            message = solution.message
-        ))
+            message = solution.message,
+            schemaVersion = solution.schemaVersion,
+            problemStatus = solution.problemStatus ?: if (solution.feasible) {
+                RemoteProblemStatus.FEASIBLE
+            } else {
+                RemoteProblemStatus.UNKNOWN
+            },
+            terminationReason = solution.terminationReason ?: RemoteTerminationReason.COMPLETED,
+            solutionPresence = solution.solutionPresence ?: when {
+                solution.optimal -> RemoteSolutionPresence.OPTIMAL
+                solution.feasible -> RemoteSolutionPresence.INCUMBENT
+                else -> RemoteSolutionPresence.NONE
+            },
+            proofStatus = solution.proofStatus ?: RemoteProofStatus.NONE,
+            provenance = solution.provenance,
+            fingerprints = solution.fingerprints,
+            statistics = solution.statistics,
+            diagnostics = solution.diagnostics,
+            runId = solution.runId,
+            attemptId = solution.attemptId,
+            artifactDigest = solution.artifactDigest
+        )
+        return Ok(
+            when (view.status) {
+                TaskStatus.STOPPED -> result.asTerminalFailure(RemoteTerminationReason.CANCELLED)
+                TaskStatus.FAILED -> result.asTerminalFailure(
+                    result.terminationReason.takeIf { it != RemoteTerminationReason.COMPLETED }
+                        ?: RemoteTerminationReason.BACKEND_FAILURE
+                )
+                else -> result
+            }
+        )
+    }
+
+    /**
+     * 将旧 artifact 与任务终态合并，避免失败或取消任务继承正常完成语义。
+     * Merge a legacy artifact with the task terminal state so failure or cancellation cannot inherit completion semantics.
+     *
+     * @param terminationReason 任务终止原因 / Task termination reason
+     * @return 终态语义一致的结果 / Result with consistent terminal semantics
+     */
+    private fun SolveResult.asTerminalFailure(terminationReason: RemoteTerminationReason): SolveResult {
+        val hasIncumbent = feasible || solutionPresence != RemoteSolutionPresence.NONE
+        return copy(
+            optimal = false,
+            problemStatus = if (hasIncumbent) {
+                RemoteProblemStatus.FEASIBLE
+            } else {
+                RemoteProblemStatus.UNKNOWN
+            },
+            terminationReason = terminationReason,
+            solutionPresence = if (hasIncumbent) {
+                RemoteSolutionPresence.INCUMBENT
+            } else {
+                RemoteSolutionPresence.NONE
+            },
+            proofStatus = RemoteProofStatus.NONE
+        )
     }
 
     override suspend fun stop(handle: ExecutionHandle): Ret<Boolean> {
@@ -381,6 +507,28 @@ class RemoteSolverHttpClient(
             is Failed -> Failed(response.error)
             is Fatal -> Fatal(response.errors)
         }
+    }
+
+    /**
+     * 查询服务端能力和协议版本。 / Query server capabilities and protocol versions.
+     *
+     * @return 服务端能力摘要 / Server capability summary
+    */
+    fun probeCapabilities(): Ret<RemoteSolverCapabilities> {
+        val response = when (val result = send(
+            request(
+                method = "GET",
+                path = "/api/v1/capabilities"
+            )
+        )) {
+            is Ok -> result.value
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
+        }
+        return decodeEnvelope(
+            response = response,
+            dataDeserializer = RemoteSolverCapabilities.serializer()
+        )
     }
 
     /**

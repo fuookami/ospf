@@ -12,6 +12,7 @@ interface ConstraintGroupRegistry {
      * 注册约束组，后续约束归属由具体模型定义。 / Register a constraint group; the model defines how subsequent constraints are associated.
      *
      * @param group 要注册的约束组 / The constraint group to register
+     * @return 无返回值 / No return value
      */
     fun registerConstraintGroup(group: MetaConstraintGroup)
 }

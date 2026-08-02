@@ -73,7 +73,7 @@ class Redundancy(
     private fun loadPolynomial(
         estimate: Boolean
     ): LinearPolynomial<Flt64> {
-        val poly = MutableLinearPolynomial.fromConstant(mainDeckCapacity)
+        var poly = LinearPolynomial(mainDeckCapacity)
         for ((j, position) in positions.withIndex()) {
             if (position.location.main) {
                 val loadWeight = if (estimate) {
@@ -84,7 +84,7 @@ class Redundancy(
                 poly -= loadWeight.to(aircraftModel.weightUnit)!!.value.toLinearPolynomial()
             }
         }
-        return poly.toLinearPolynomial()
+        return poly
     }
 
     /**
@@ -104,13 +104,13 @@ class Redundancy(
             )
         }
         when (val result = model.add(redundancy)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -122,13 +122,13 @@ class Redundancy(
             )
         }
         when (val result = model.add(predicateRedundancy)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -148,13 +148,13 @@ class Redundancy(
             )
         }
         when (val result = model.add(redundancySlack)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }

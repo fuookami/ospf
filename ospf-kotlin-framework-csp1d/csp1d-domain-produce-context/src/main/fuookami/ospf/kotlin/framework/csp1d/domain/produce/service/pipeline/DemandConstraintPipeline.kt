@@ -4,7 +4,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.symbol.inequality.*
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 import fuookami.ospf.kotlin.quantities.unit.PhysicalUnit
 import fuookami.ospf.kotlin.core.model.mechanism.*
@@ -88,10 +88,7 @@ class DemandConstraintPipeline<V : RealNumber<V>>(
      * @return 需求贡献左侧多项式 / Demand contribution left-hand side polynomial
     */
     private fun buildDemandLhs(demandIndex: Int): LinearPolynomial<Flt64> {
-        return LinearPolynomial(
-            monomials = listOf(LinearMonomial(Flt64.one, produce.demandQuantity[demandIndex])),
-            constant = Flt64.zero
-        )
+        return LinearPolynomial(produce.demandQuantity[demandIndex])
     }
 
     /**
@@ -115,18 +112,13 @@ class DemandConstraintPipeline<V : RealNumber<V>>(
         val overVar = yieldOverVars.getOrNull(demandIndex)
 
         if (underVar != null || overVar != null) {
-            val lhs = LinearPolynomial(
-                monomials = buildList {
-                    add(LinearMonomial(Flt64.one, produce.demandQuantity[demandIndex]))
-                    if (underVar != null) {
-                        add(LinearMonomial(Flt64.one, underVar))
-                    }
-                    if (overVar != null) {
-                        add(LinearMonomial(Flt64(-1.0), overVar))
-                    }
-                },
-                constant = Flt64.zero
-            )
+            var lhs = LinearPolynomial(produce.demandQuantity[demandIndex])
+            if (underVar != null) {
+                lhs += underVar
+            }
+            if (overVar != null) {
+                lhs -= overVar
+            }
             val rhs = constantPolynomial(demand.quantity.value.toFlt64())
             model.addConstraint(
                 relation = LinearInequality(lhs = lhs, rhs = rhs, comparison = Comparison.EQ),
@@ -156,10 +148,7 @@ class DemandConstraintPipeline<V : RealNumber<V>>(
         demandIndex: Int,
         priceKey: ProductDemandShadowPriceKey
     ) {
-        val lhs = LinearPolynomial(
-            monomials = listOf(LinearMonomial(Flt64.one, produce.demandQuantity[demandIndex])),
-            constant = Flt64.zero
-        )
+        val lhs = LinearPolynomial(produce.demandQuantity[demandIndex])
         val rhs = constantPolynomial(demand.quantity.value.toFlt64())
         model.addConstraint(
             relation = LinearInequality(lhs = lhs, rhs = rhs, comparison = Comparison.GE),

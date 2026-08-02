@@ -41,28 +41,23 @@ class ZoneLoadWeightLimit(
                 continue
             }
 
-            val poly = MutableLinearPolynomial()
-            for (part in zone.parts) {
+            val poly = sum(zone.parts.map { part ->
                 val j = positions.indexOf(part.position)
-                poly += LinearMonomial(
-                    part.weight,
-                    load.estimateLoadWeight[j].value
-                )
-            }
-            if (zone.liferaft != null) {
-                poly += fuselage.liferaft!!.weight.to(aircraftModel.weightUnit)!!.value
-            }
+                part.weight * load.estimateLoadWeight[j].value
+            }) + (zone.liferaft?.let {
+                fuselage.liferaft!!.weight.to(aircraftModel.weightUnit)!!.value
+            } ?: Flt64.zero)
             when (val result = model.addConstraint(
-                relation = LinearPolynomial(poly.monomials, poly.constant) leq zone.maxLoadWeight.to(aircraftModel.weightUnit)!!.value,
+                relation = poly leq zone.maxLoadWeight.to(aircraftModel.weightUnit)!!.value,
                 name = "${name}_${zone.name}"
             )) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }

@@ -5,6 +5,9 @@ package fuookami.ospf.kotlin.framework.solver.remote.client
 
 import kotlin.time.Duration
 import kotlinx.serialization.json.Json
+import fuookami.ospf.kotlin.utils.error.*
+import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModelView
 import fuookami.ospf.kotlin.core.solver.LinearSolver
 import fuookami.ospf.kotlin.core.solver.output.*
@@ -13,9 +16,6 @@ import fuookami.ospf.kotlin.core.solver.progress.SolverProgressContext
 import fuookami.ospf.kotlin.framework.solver.remote.adapter.ospf.OspfRemoteModelSerializer
 import fuookami.ospf.kotlin.framework.solver.remote.domain.*
 import fuookami.ospf.kotlin.framework.solver.remote.port.*
-import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.utils.error.*
-import fuookami.ospf.kotlin.utils.functional.*
 
 /**
  * 远程线性求解器。 / Remote linear solver.
@@ -78,6 +78,11 @@ class RemoteLinearSolver(
     }
 
     private suspend fun executeRemote(model: LinearTriadModelView): Ret<SolveResult> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         return solveRemote(
             payload = SolvePayload(
                 modelData = OspfRemoteModelSerializer.modelData(model),
@@ -149,11 +154,24 @@ class RemoteLinearSolver(
      * @return 可行求解输出或错误 / Feasible solver output or error
     */
     private suspend fun SolveResult.toFeasibleOutput(variableCount: Int): Ret<FeasibleSolverOutput<Flt64>> {
+        when (val validation = validateLinearQuadraticResult()) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         if (!feasible) {
             return Failed(Err(ErrorCode.ORModelInfeasible, message ?: "Remote linear solve is infeasible."))
         }
-        val solution = readSerializedSolution()
-            ?: return toEmptySolutionOutput(variableCount)
+        val solution = when (val serialized = readSerializedSolution()) {
+            is Ok -> serialized.value ?: return toEmptySolutionOutput(variableCount)
+            is Failed -> return Failed(serialized.error)
+            is Fatal -> return Fatal(serialized.errors)
+        }
+        when (val agreement = validateLinearQuadraticArtifact(solution)) {
+            is Ok -> {}
+            is Failed -> return Failed(agreement.error)
+            is Fatal -> return Fatal(agreement.errors)
+        }
         if (!solution.feasible) {
             return Failed(Err(ErrorCode.ORModelInfeasible, solution.message ?: "Remote linear solve is infeasible."))
         }
@@ -168,21 +186,29 @@ class RemoteLinearSolver(
         val objective = solution.objectiveValue ?: objectiveValue
             ?: return Failed(Err(ErrorCode.ORSolutionInvalid, "Remote linear solution objective is missing."))
         val solutionGap = solution.gap ?: gap ?: Flt64.zero
+        val reportedBestBound = solution.statistics.remoteFlt64("bestBound")
+            ?: statistics.remoteFlt64("bestBound")
         return Ok(
             FeasibleSolverOutput(
                 obj = objective,
                 solution = solution.variableValues,
                 time = solution.elapsed,
-                possibleBestObj = objective,
+                possibleBestObj = reportedBestBound ?: objective,
                 gap = solutionGap,
                 status = if (optimal) SolverStatus.Optimal else SolverStatus.Feasible,
                 mipGap = solutionGap,
-                solveTime = solution.elapsed
+                solveTime = solution.elapsed,
+                bestBound = reportedBestBound
             )
         )
     }
 
     private suspend fun SolveResult.toSolveReport(variableCount: Int): Ret<SolveReport<Flt64>> {
+        when (val validation = validateLinearQuadraticResult()) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         val output = if (solutionPresence != RemoteSolutionPresence.NONE) {
             when (val feasibleOutput = toFeasibleOutput(variableCount)) {
                 is Ok -> feasibleOutput.value
@@ -192,45 +218,9 @@ class RemoteLinearSolver(
         } else {
             null
         }
-        val descriptor = SolverDescriptor(
-            solverId = provenance["solverId"] ?: "remote",
-            backendName = provenance["backend"] ?: "remote",
-            backendVersion = provenance["backendVersion"],
-            pluginVersion = provenance["pluginVersion"],
-            capabilities = SolverCapabilities(modelTypes = setOf(SolverModelType.LP, SolverModelType.MIP))
-        )
-        return Ok(
-            SolveReport(
-                schemaVersion = schemaVersion,
-                problemStatus = problemStatus.toCoreStatus(),
-                terminationReason = terminationReason.toCoreReason(),
-                solutionPresence = solutionPresence.toCorePresence(),
-                solution = output?.let {
-                    SolveSolution(
-                        values = it.solution,
-                        objective = it.obj
-                    )
-                },
-                proof = SolveProof(
-                    status = if (optimal) ProofStatus.Claimed else ProofStatus.None,
-                    kind = if (optimal) "remote-backend" else null
-                ),
-                statistics = SolveStatistics(
-                    solveTime = elapsed,
-                    bestBound = output?.bestBound,
-                    gap = gap
-                ),
-                provenance = SolverProvenance(
-                    descriptor = descriptor,
-                    nativeVersion = provenance["nativeVersion"],
-                    effectiveParameters = provenance.filterKeys { it.startsWith("parameter.") }
-                ),
-                fingerprints = SolveFingerprints(
-                    model = fingerprints["model"]?.asRemoteFingerprint(schemaVersion),
-                    configuration = fingerprints["configuration"]?.asRemoteFingerprint(schemaVersion),
-                    solver = fingerprints["solver"]?.asRemoteFingerprint(schemaVersion)
-                )
-            )
+        return toRemoteSolveReport(
+            output = output,
+            modelTypes = setOf(SolverModelType.LP, SolverModelType.MIP)
         )
     }
 
@@ -253,16 +243,18 @@ class RemoteLinearSolver(
         val objective = objectiveValue
             ?: return Failed(Err(ErrorCode.ORSolutionInvalid, "Remote linear solution objective is missing."))
         val solutionGap = gap ?: Flt64.zero
+        val reportedBestBound = statistics.remoteFlt64("bestBound")
         return Ok(
             FeasibleSolverOutput(
                 obj = objective,
                 solution = emptyList(),
                 time = elapsed,
-                possibleBestObj = objective,
+                possibleBestObj = reportedBestBound ?: objective,
                 gap = solutionGap,
                 status = if (optimal) SolverStatus.Optimal else SolverStatus.Feasible,
                 mipGap = solutionGap,
-                solveTime = elapsed
+                solveTime = elapsed,
+                bestBound = reportedBestBound
             )
         )
     }
@@ -273,13 +265,24 @@ class RemoteLinearSolver(
      *
      * @return 序列化求解结果，如果不可用则返回 null / Serialized solution, or null if unavailable
     */
-    private suspend fun SolveResult.readSerializedSolution(): SerializedSolution? {
-        val ref = resultRef ?: return null
-        val storage = resultStoragePort ?: return null
-        val bytes = storage.get(ref) ?: return null
-        return json.decodeFromString(
-            SerializedSolution.serializer(),
-            bytes.decodeToString()
-        )
+    private suspend fun SolveResult.readSerializedSolution(): Ret<SerializedSolution?> {
+        val ref = resultRef ?: return Ok(null)
+        val storage = resultStoragePort
+            ?: return Failed(ErrorCode.ORSolutionInvalid, "远程结果引用缺少对象存储 / Remote result reference has no object storage")
+        val bytes = storage.get(ref)
+            ?: return Failed(ErrorCode.ORSolutionInvalid, "远程结果 artifact 不存在 / Remote result artifact is missing")
+        return try {
+            Ok(
+                json.decodeFromString(
+                    SerializedSolution.serializer(),
+                    bytes.decodeToString()
+                )
+            )
+        } catch (error: Exception) {
+            Failed(
+                ErrorCode.ORSolutionInvalid,
+                "远程结果 artifact 无法解码：${error.message ?: "invalid JSON"} / Remote result artifact cannot be decoded"
+            )
+        }
     }
 }

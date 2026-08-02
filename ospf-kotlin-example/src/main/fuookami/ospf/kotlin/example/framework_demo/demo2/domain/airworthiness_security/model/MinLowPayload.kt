@@ -5,7 +5,6 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.math.geometry.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
 import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.quantities.quantity.*
@@ -89,7 +88,7 @@ class MinLowPayload(
                 QuantityLinearIntermediateSymbol(
                     LinearExpressionSymbol(
                         LinearPolynomial(
-                            monomials = listOf(LinearMonomial(slope, zfwEst)),
+                            monomials = listOf(slope * zfwEst),
                             constant = intercept
                         ),
                         name = "min_low_payload"
@@ -99,13 +98,13 @@ class MinLowPayload(
             }
         }
         when (val result = model.add(minLowPayload)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }

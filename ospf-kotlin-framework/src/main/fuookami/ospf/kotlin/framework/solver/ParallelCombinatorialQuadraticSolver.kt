@@ -60,6 +60,11 @@ class ParallelCombinatorialQuadraticSolver(
         model: QuadraticTetradModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
     ): Ret<FeasibleSolverOutput<Flt64>> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         var bestStatus: SolvingStatus? = null
         val lock = Any()
 
@@ -77,14 +82,14 @@ class ParallelCombinatorialQuadraticSolver(
                                                 bestStatus = status.copy(solver = solver.value.name, solverIndex = UInt64(i))
                                                 it(bestStatus!!)
                                             } else if (model.objective.category == ObjectCategory.Maximum) {
-                                                if (status.obj ls bestStatus!!.obj) {
+                                                if (status.obj gr bestStatus!!.obj) {
                                                     bestStatus = status.copy(solver = solver.value.name, solverIndex = UInt64(i))
                                                     it(bestStatus!!)
                                                 } else {
                                                     ok
                                                 }
                                             } else {
-                                                if (status.obj gr bestStatus!!.obj) {
+                                                if (status.obj ls bestStatus!!.obj) {
                                                     bestStatus = status.copy(solver = solver.value.name, solverIndex = UInt64(i))
                                                     it(bestStatus!!)
                                                 } else {
@@ -139,14 +144,14 @@ class ParallelCombinatorialQuadraticSolver(
                                             bestStatus = status.copy(solver = solver.value.name, solverIndex = UInt64(i))
                                             it(bestStatus!!)
                                         } else if (model.objective.category == ObjectCategory.Maximum) {
-                                            if (status.obj ls bestStatus!!.obj) {
+                                            if (status.obj gr bestStatus!!.obj) {
                                                 bestStatus = status.copy(solver = solver.value.name, solverIndex = UInt64(i))
                                                 it(bestStatus!!)
                                             } else {
                                                 ok
                                             }
                                         } else {
-                                            if (status.obj gr bestStatus!!.obj) {
+                                            if (status.obj ls bestStatus!!.obj) {
                                                 bestStatus = status.copy(solver = solver.value.name, solverIndex = UInt64(i))
                                                 it(bestStatus!!)
                                             } else {
@@ -212,6 +217,11 @@ class ParallelCombinatorialQuadraticSolver(
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
     ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         var bestStatus: SolvingStatus? = null
         val lock = Any()
 
@@ -230,14 +240,14 @@ class ParallelCombinatorialQuadraticSolver(
                                                 bestStatus = status.copy(solver = solver.value.name, solverIndex = UInt64(i))
                                                 it(bestStatus!!)
                                             } else if (model.objective.category == ObjectCategory.Maximum) {
-                                                if (status.obj ls bestStatus!!.obj) {
+                                                if (status.obj gr bestStatus!!.obj) {
                                                     bestStatus = status.copy(solver = solver.value.name, solverIndex = UInt64(i))
                                                     it(bestStatus!!)
                                                 } else {
                                                     ok
                                                 }
-                                            } else {
-                                                if (status.obj gr bestStatus!!.obj) {
+                                        } else {
+                                            if (status.obj ls bestStatus!!.obj) {
                                                     bestStatus = status.copy(solver = solver.value.name, solverIndex = UInt64(i))
                                                     it(bestStatus!!)
                                                 } else {
@@ -292,14 +302,14 @@ class ParallelCombinatorialQuadraticSolver(
                                             bestStatus = status.copy(solver = solver.value.name, solverIndex = UInt64(i))
                                             it(bestStatus!!)
                                         } else if (model.objective.category == ObjectCategory.Maximum) {
-                                            if (status.obj ls bestStatus!!.obj) {
+                                            if (status.obj gr bestStatus!!.obj) {
                                                 bestStatus = status.copy(solver = solver.value.name, solverIndex = UInt64(i))
                                                 it(bestStatus!!)
                                             } else {
                                                 ok
                                             }
                                         } else {
-                                            if (status.obj gr bestStatus!!.obj) {
+                                            if (status.obj ls bestStatus!!.obj) {
                                                 bestStatus = status.copy(solver = solver.value.name, solverIndex = UInt64(i))
                                                 it(bestStatus!!)
                                             } else {

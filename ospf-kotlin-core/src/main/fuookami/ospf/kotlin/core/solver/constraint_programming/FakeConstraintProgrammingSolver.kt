@@ -4,6 +4,14 @@
 package fuookami.ospf.kotlin.core.solver.constraint_programming
 
 import kotlin.time.Duration.Companion.nanoseconds
+import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.utils.functional.Failed
+import fuookami.ospf.kotlin.utils.functional.Fatal
+import fuookami.ospf.kotlin.utils.functional.Ok
+import fuookami.ospf.kotlin.utils.functional.Ret
+import fuookami.ospf.kotlin.utils.functional.ok
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.algebra.number.Int64
 import fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintProgrammingConstraint
 import fuookami.ospf.kotlin.core.model.constraint_programming.evaluateInteger
 import fuookami.ospf.kotlin.core.model.constraint_programming.ConstraintProgrammingModel
@@ -17,6 +25,7 @@ import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingSolution
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingSolverOutput
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingUnknownOutput
 import fuookami.ospf.kotlin.core.solver.output.SolverStatus
+import fuookami.ospf.kotlin.core.solver.output.toCompatibilityFlt64
 import fuookami.ospf.kotlin.core.solver.report.CancellationToken
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
 import fuookami.ospf.kotlin.core.solver.report.ProblemStatus
@@ -25,25 +34,19 @@ import fuookami.ospf.kotlin.core.solver.report.SolveDiagnostics
 import fuookami.ospf.kotlin.core.solver.report.SolveProof
 import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.report.SolveSolution
+import fuookami.ospf.kotlin.core.solver.report.SolveStatistics
 import fuookami.ospf.kotlin.core.solver.report.SolutionPresence
 import fuookami.ospf.kotlin.core.solver.report.SolverCapabilities
 import fuookami.ospf.kotlin.core.solver.report.SolverDescriptor
 import fuookami.ospf.kotlin.core.solver.report.SolverModelType
 import fuookami.ospf.kotlin.core.solver.report.SolverProvenance
-import fuookami.ospf.kotlin.core.solver.report.SolveStatistics
 import fuookami.ospf.kotlin.core.solver.report.TerminationReason
 import fuookami.ospf.kotlin.core.solver.report.VariableId
-import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.algebra.number.Int64
-import fuookami.ospf.kotlin.utils.error.ErrorCode
-import fuookami.ospf.kotlin.utils.functional.Failed
-import fuookami.ospf.kotlin.utils.functional.Fatal
-import fuookami.ospf.kotlin.utils.functional.Ok
-import fuookami.ospf.kotlin.utils.functional.Ret
-import fuookami.ospf.kotlin.utils.functional.ok
 
 /**
  * 不依赖具体 backend 的 CP 测试求解器。它只适合小模型和契约测试，不作为生产搜索引擎。 / / Backend-independent CP test solver. It is intended for small models and contract tests only.
+ *
+ * @property enumerationLimit 单个变量值域的枚举上限 / Enumeration limit per variable domain
  */
 class FakeConstraintProgrammingSolver(
     private val enumerationLimit: Int = DEFAULT_ENUMERATION_LIMIT
@@ -364,10 +367,11 @@ private class FakeConstraintProgrammingSession(
         if (best != null) {
             val output = ConstraintProgrammingFeasibleOutput(
                 solution = ConstraintProgrammingSolution(best!!.values, best!!.intervals),
-                    objective = best!!.objective?.toFlt64(),
-                    bestBound = best!!.objective?.toFlt64(),
+                    objective = best!!.objective?.toCompatibilityFlt64(),
+                    bestBound = best!!.objective?.toCompatibilityFlt64(),
                 status = if (stopped) SolverStatus.Feasible else SolverStatus.Optimal,
                 proofStatus = if (stopped) ProofStatus.None else ProofStatus.Verified,
+                exactObjective = best!!.objective,
                 report = report(
                     current,
                     started,
@@ -472,7 +476,10 @@ private class FakeConstraintProgrammingSession(
             terminationReason = termination,
             solutionPresence = presence,
             solution = solution?.let {
-                SolveSolution(values = it.asList(snapshot.variables.map { variable -> variable.id }), objective = objective)
+                SolveSolution(
+                    values = it.asList(snapshot.variables.map { variable -> variable.id }),
+                    objective = objective
+                )
             },
             proof = SolveProof(status = proof, kind = "exhaustive-enumeration"),
             statistics = SolveStatistics(solveTime = (System.nanoTime() - started).nanoseconds),

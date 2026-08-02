@@ -32,13 +32,13 @@ class EnvelopeLimit(
                     relation = longitudinalTorque.value leq envelope.maxIndex.value,
                     name = "${name}_${envelope.name}_ub"
                 )) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                    is Ok -> {}
 
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Failed -> {
                         return Failed(result.error)
                     }
 
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Fatal -> {
                         return Fatal(result.errors)
                     }
                 }
@@ -47,13 +47,13 @@ class EnvelopeLimit(
                     relation = longitudinalTorque.value geq envelope.minIndex.value,
                     name = "${name}_${envelope.name}_lb"
                 )) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                    is Ok -> {}
 
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Failed -> {
                         return Failed(result.error)
                     }
 
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                    is Fatal -> {
                         return Fatal(result.errors)
                     }
                 }

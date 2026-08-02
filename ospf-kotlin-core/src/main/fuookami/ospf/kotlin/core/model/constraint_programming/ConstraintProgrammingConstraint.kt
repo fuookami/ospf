@@ -19,27 +19,53 @@ enum class ConstraintProgrammingComparison {
 
     /** 常用的数学 DSL 别名。 / Common mathematical DSL aliases. */
     companion object {
+        /** 等式别名。 / Equality alias. */
         val EQ: ConstraintProgrammingComparison get() = Equal
+
+        /** 小于等于别名。 / Less-than-or-equal alias. */
         val LE: ConstraintProgrammingComparison get() = LessOrEqual
+
+        /** 大于等于别名。 / Greater-than-or-equal alias. */
         val GE: ConstraintProgrammingComparison get() = GreaterOrEqual
     }
 }
 
-/** 整数等式 DSL。 / Integer equality DSL. */
+/**
+ * 整数等式 DSL。 / Integer equality DSL.
+ *
+ * @param rhs 右侧整数 / Right-hand integer
+ * @return 整数比较约束或结构化错误 / Integer comparison or a structured error
+ */
 infix fun ConstraintProgrammingExpression.eq(rhs: Int64): Ret<ConstraintProgrammingConstraint.IntegerComparison> {
     return ConstraintProgrammingConstraint.equal(this, rhs)
 }
 
-/** 整数小于等于 DSL。 / Integer less-than-or-equal DSL. */
+/**
+ * 整数小于等于 DSL。 / Integer less-than-or-equal DSL.
+ *
+ * @param rhs 右侧整数 / Right-hand integer
+ * @return 整数比较约束或结构化错误 / Integer comparison or a structured error
+ */
 infix fun ConstraintProgrammingExpression.leq(rhs: Int64): Ret<ConstraintProgrammingConstraint.IntegerComparison> {
     return ConstraintProgrammingConstraint.lessOrEqual(this, rhs)
 }
 
-/** 整数大于等于 DSL。 / Integer greater-than-or-equal DSL. */
+/**
+ * 整数大于等于 DSL。 / Integer greater-than-or-equal DSL.
+ *
+ * @param rhs 右侧整数 / Right-hand integer
+ * @return 整数比较约束或结构化错误 / Integer comparison or a structured error
+ */
 infix fun ConstraintProgrammingExpression.geq(rhs: Int64): Ret<ConstraintProgrammingConstraint.IntegerComparison> {
     return ConstraintProgrammingConstraint.greaterOrEqual(this, rhs)
 }
 
+/**
+ * 使用整数赋值求值布尔文字。 / Evaluate a Boolean literal with integer assignments.
+ *
+ * @param values 按稳定变量 ID 编索引的赋值 / Assignments indexed by stable variable ID
+ * @return 求值结果或结构化错误 / The value or a structured error
+ */
 fun BooleanLiteral.evaluateInteger(values: Map<VariableId, Int64>): Ret<Boolean> {
     val fixed = constant
     if (fixed != null) {
@@ -127,7 +153,13 @@ sealed interface ConstraintProgrammingConstraint {
      */
     fun isSatisfied(values: Map<VariableId, Int64>): Ret<Boolean>
 
-    /** 整数等式或不等式。 / Integer equality or inequality. */
+    /**
+     * 整数等式或不等式。 / Integer equality or inequality.
+     *
+     * @property expression 左侧表达式 / Left-hand expression
+     * @property comparison 比较关系 / Comparison relation
+     * @property rhs 右侧整数 / Right-hand integer
+     */
     data class IntegerComparison(
         val expression: ConstraintProgrammingExpression,
         val comparison: ConstraintProgrammingComparison,
@@ -149,7 +181,11 @@ sealed interface ConstraintProgrammingConstraint {
         }
     }
 
-    /** BoolAnd。 / Boolean AND constraint. */
+    /**
+     * BoolAnd。 / Boolean AND constraint.
+     *
+     * @property literals 参与合取的文字 / Literals in the conjunction
+     */
     data class BoolAnd(
         val literals: List<BooleanLiteral>
     ) : ConstraintProgrammingConstraint {
@@ -170,7 +206,11 @@ sealed interface ConstraintProgrammingConstraint {
         }
     }
 
-    /** BoolOr。 / Boolean OR constraint. */
+    /**
+     * BoolOr。 / Boolean OR constraint.
+     *
+     * @property literals 参与析取的文字 / Literals in the disjunction
+     */
     data class BoolOr(
         val literals: List<BooleanLiteral>
     ) : ConstraintProgrammingConstraint {
@@ -191,7 +231,11 @@ sealed interface ConstraintProgrammingConstraint {
         }
     }
 
-    /** BoolXor（恰好一个为真）。 / Boolean XOR constraint (exactly one true). */
+    /**
+     * BoolXor（恰好一个为真）。 / Boolean XOR constraint (exactly one true).
+     *
+     * @property literals 参与异或的文字 / Literals in the XOR constraint
+     */
     data class BoolXor(
         val literals: List<BooleanLiteral>
     ) : ConstraintProgrammingConstraint {
@@ -216,7 +260,11 @@ sealed interface ConstraintProgrammingConstraint {
         }
     }
 
-    /** 单个布尔文字约束。 / Constraint requiring one Boolean literal to be true. */
+    /**
+     * 单个布尔文字约束。 / Constraint requiring one Boolean literal to be true.
+     *
+     * @property literal 要求为真的文字 / Literal required to be true
+     */
     data class Literal(
         val literal: BooleanLiteral
     ) : ConstraintProgrammingConstraint {
@@ -228,7 +276,12 @@ sealed interface ConstraintProgrammingConstraint {
         }
     }
 
-    /** 蕴含约束。 / Implication constraint. */
+    /**
+     * 蕴含约束。 / Implication constraint.
+     *
+     * @property enforcement 启用文字 / Enforcement literal
+     * @property constraint 被蕴含的约束 / Implied constraint
+     */
     data class Implication(
         val enforcement: BooleanLiteral,
         val constraint: ConstraintProgrammingConstraint
@@ -246,7 +299,13 @@ sealed interface ConstraintProgrammingConstraint {
         }
     }
 
-    /** Reified 约束。 / Reified constraint. */
+    /**
+     * Reified 约束。 / Reified constraint.
+     *
+     * @property literal 关联文字 / Associated literal
+     * @property constraint 关联约束 / Associated constraint
+     * @property direction 重ification 方向 / Reification direction
+     */
     data class Reified(
         val literal: BooleanLiteral,
         val constraint: ConstraintProgrammingConstraint,
@@ -285,7 +344,11 @@ sealed interface ConstraintProgrammingConstraint {
         }
     }
 
-    /** 全异约束。 / All-different constraint. */
+    /**
+     * 全异约束。 / All-different constraint.
+     *
+     * @property expressions 待比较表达式 / Expressions to compare
+     */
     data class AllDifferent(
         val expressions: List<ConstraintProgrammingExpression>
     ) : ConstraintProgrammingConstraint {
@@ -307,7 +370,13 @@ sealed interface ConstraintProgrammingConstraint {
         }
     }
 
-    /** Element 约束：target 等于 values[index]。 / Element constraint: target equals values[index]. */
+    /**
+     * Element 约束：target 等于 values[index]。 / Element constraint: target equals values[index].
+     *
+     * @property index 索引表达式 / Index expression
+     * @property values 候选值或表达式 / Candidate values or expressions
+     * @property target 目标表达式 / Target expression
+     */
     data class Element(
         val index: ConstraintProgrammingExpression,
         val values: List<*>,
@@ -349,7 +418,12 @@ sealed interface ConstraintProgrammingConstraint {
         }
     }
 
-    /** 允许赋值表约束。 / Allowed-assignment table constraint. */
+    /**
+     * 允许赋值表约束。 / Allowed-assignment table constraint.
+     *
+     * @property expressions 表达式列 / Expression columns
+     * @property tuples 允许的元组 / Allowed tuples
+     */
     data class AllowedAssignments(
         val expressions: List<ConstraintProgrammingExpression>,
         val tuples: List<List<Int64>>
@@ -362,7 +436,12 @@ sealed interface ConstraintProgrammingConstraint {
         }
     }
 
-    /** 禁止赋值表约束。 / Forbidden-assignment table constraint. */
+    /**
+     * 禁止赋值表约束。 / Forbidden-assignment table constraint.
+     *
+     * @property expressions 表达式列 / Expression columns
+     * @property tuples 禁止的元组 / Forbidden tuples
+     */
     data class ForbiddenAssignments(
         val expressions: List<ConstraintProgrammingExpression>,
         val tuples: List<List<Int64>>
@@ -376,7 +455,11 @@ sealed interface ConstraintProgrammingConstraint {
     }
 
     /**
-     * 基于后继表达式的回路约束。/ 每个表达式表示一个节点的后继；取值必须构成一个排列，且从 0 出发必须访问全部节点。 / Circuit constraint over successor expressions. Each expression is the successor of one node. The values must form one permutation and traversing from node zero must visit every node exactly once.
+     * 基于后继表达式的回路约束。 / Circuit constraint over successor expressions.
+     * 每个表达式表示一个节点的后继；取值必须构成一个排列，且从 0 出发必须访问全部节点。 /
+     * Each expression is the successor of one node. The values must form one permutation and traversing from node zero must visit every node exactly once.
+     *
+     * @property successors 每个节点的后继表达式 / Successor expression for each node
      */
     data class Circuit(
         val successors: List<ConstraintProgrammingExpression>
@@ -412,7 +495,13 @@ sealed interface ConstraintProgrammingConstraint {
         }
     }
 
-    /** Deterministic automaton transition. / 确定性自动机转移。 */
+    /**
+     * Deterministic automaton transition. / 确定性自动机转移。
+     *
+     * @property fromState 起始状态 / Source state
+     * @property value 匹配值 / Matched value
+     * @property toState 目标状态 / Target state
+     */
     data class AutomatonTransition(
         val fromState: Int,
         val value: Int64,
@@ -421,6 +510,11 @@ sealed interface ConstraintProgrammingConstraint {
 
     /**
      * 整数序列自动机约束。/ 每一步转移必须同时匹配当前状态和表达式值。 / Automaton constraint over an integer sequence. A transition must match both the current state and the expression value.
+     *
+     * @property expressions 输入序列表达式 / Input sequence expressions
+     * @property initialState 初始状态 / Initial state
+     * @property finalStates 可接受终态 / Accepting final states
+     * @property transitions 确定性转移集合 / Deterministic transitions
      */
     data class Automaton(
         val expressions: List<ConstraintProgrammingExpression>,
@@ -451,6 +545,11 @@ sealed interface ConstraintProgrammingConstraint {
      * 储液池容量约束。 / Reservoir level constraint.
      *
      * 事件按非递减时间顺序应用。 / Events are applied in non-decreasing time order.
+     *
+     * @property events 液位变化事件 / Level-change events
+     * @property initialLevel 初始液位 / Initial level
+     * @property minimumLevel 最低液位 / Minimum level
+     * @property maximumLevel 最高液位 / Maximum level
      */
     data class Reservoir(
         val events: List<Event>,
@@ -458,7 +557,12 @@ sealed interface ConstraintProgrammingConstraint {
         val minimumLevel: Int64,
         val maximumLevel: Int64
     ) : ConstraintProgrammingConstraint {
-        /** A level change at an integer time. / 整数时间点上的液位变化。 */
+        /**
+         * A level change at an integer time. / 整数时间点上的液位变化。
+         *
+         * @property time 事件时间表达式 / Event time expression
+         * @property levelChange 液位变化表达式 / Level-change expression
+         */
         data class Event(
             val time: ConstraintProgrammingExpression,
             val levelChange: ConstraintProgrammingExpression
@@ -503,37 +607,76 @@ sealed interface ConstraintProgrammingConstraint {
     }
 
     companion object {
-        /** 创建整数等式。 / Create an integer equality. */
+        /**
+         * 创建整数等式。 / Create an integer equality.
+         *
+         * @param expression 左侧表达式 / Left-hand expression
+         * @param rhs 右侧整数 / Right-hand integer
+         * @return 整数等式或结构化错误 / Integer equality or a structured error
+         */
         fun equal(expression: ConstraintProgrammingExpression, rhs: Int64): Ret<IntegerComparison> {
             return ok(IntegerComparison(expression, ConstraintProgrammingComparison.Equal, rhs))
         }
 
-        /** 创建整数小于等于约束。 / Create an integer less-than-or-equal constraint. */
+        /**
+         * 创建整数小于等于约束。 / Create an integer less-than-or-equal constraint.
+         *
+         * @param expression 左侧表达式 / Left-hand expression
+         * @param rhs 右侧整数 / Right-hand integer
+         * @return 整数约束或结构化错误 / Integer constraint or a structured error
+         */
         fun lessOrEqual(expression: ConstraintProgrammingExpression, rhs: Int64): Ret<IntegerComparison> {
             return ok(IntegerComparison(expression, ConstraintProgrammingComparison.LessOrEqual, rhs))
         }
 
-        /** 创建整数大于等于约束。 / Create an integer greater-than-or-equal constraint. */
+        /**
+         * 创建整数大于等于约束。 / Create an integer greater-than-or-equal constraint.
+         *
+         * @param expression 左侧表达式 / Left-hand expression
+         * @param rhs 右侧整数 / Right-hand integer
+         * @return 整数约束或结构化错误 / Integer constraint or a structured error
+         */
         fun greaterOrEqual(expression: ConstraintProgrammingExpression, rhs: Int64): Ret<IntegerComparison> {
             return ok(IntegerComparison(expression, ConstraintProgrammingComparison.GreaterOrEqual, rhs))
         }
 
-        /** 创建 AND 约束。 / Create an AND constraint. */
+        /**
+         * 创建 AND 约束。 / Create an AND constraint.
+         *
+         * @param literals 参与合取的文字 / Literals in the conjunction
+         * @return AND 约束 / AND constraint
+         */
         fun boolAnd(literals: Iterable<BooleanLiteral>): Ret<BoolAnd> {
             return ok(BoolAnd(literals.toList()))
         }
 
-        /** 创建 OR 约束。 / Create an OR constraint. */
+        /**
+         * 创建 OR 约束。 / Create an OR constraint.
+         *
+         * @param literals 参与析取的文字 / Literals in the disjunction
+         * @return OR 约束 / OR constraint
+         */
         fun boolOr(literals: Iterable<BooleanLiteral>): Ret<BoolOr> {
             return ok(BoolOr(literals.toList()))
         }
 
-        /** 创建 XOR 约束。 / Create an XOR constraint. */
+        /**
+         * 创建 XOR 约束。 / Create an XOR constraint.
+         *
+         * @param literals 参与异或的文字 / Literals in the XOR constraint
+         * @return XOR 约束 / XOR constraint
+         */
         fun boolXor(literals: Iterable<BooleanLiteral>): Ret<BoolXor> {
             return ok(BoolXor(literals.toList()))
         }
 
-        /** 创建蕴含约束。 / Create an implication constraint. */
+        /**
+         * 创建蕴含约束。 / Create an implication constraint.
+         *
+         * @param enforcement 启用文字 / Enforcement literal
+         * @param constraint 被蕴含的约束 / Implied constraint
+         * @return 蕴含约束 / Implication constraint
+         */
         fun implies(
             enforcement: BooleanLiteral,
             constraint: ConstraintProgrammingConstraint
@@ -541,7 +684,13 @@ sealed interface ConstraintProgrammingConstraint {
             return ok(Implication(enforcement, constraint))
         }
 
-        /** 创建文字到文字的蕴含。 / Create a literal-to-literal implication. */
+        /**
+         * 创建文字到文字的蕴含。 / Create a literal-to-literal implication.
+         *
+         * @param enforcement 启用文字 / Enforcement literal
+         * @param consequence 结果文字 / Consequence literal
+         * @return 蕴含约束 / Implication constraint
+         */
         fun implies(
             enforcement: BooleanLiteral,
             consequence: BooleanLiteral
@@ -549,7 +698,14 @@ sealed interface ConstraintProgrammingConstraint {
             return implies(enforcement, Literal(consequence))
         }
 
-        /** 创建 Reified 约束。 / Create a reified constraint. */
+        /**
+         * 创建 Reified 约束。 / Create a reified constraint.
+         *
+         * @param literal 关联文字 / Associated literal
+         * @param constraint 关联约束 / Associated constraint
+         * @param direction 重ification 方向 / Reification direction
+         * @return Reified 约束 / Reified constraint
+         */
         fun reified(
             literal: BooleanLiteral,
             constraint: ConstraintProgrammingConstraint,
@@ -558,7 +714,12 @@ sealed interface ConstraintProgrammingConstraint {
             return ok(Reified(literal, constraint, direction))
         }
 
-        /** 创建全异约束并验证表达式非空。 / Create all-different after validating non-empty input. */
+        /**
+         * 创建全异约束并验证表达式非空。 / Create all-different after validating non-empty input.
+         *
+         * @param expressions 待比较表达式 / Expressions to compare
+         * @return 全异约束或结构化错误 / All-different constraint or a structured error
+         */
         fun allDifferent(expressions: Iterable<ConstraintProgrammingExpression>): Ret<AllDifferent> {
             val list = expressions.toList()
             if (list.isEmpty()) {
@@ -570,7 +731,14 @@ sealed interface ConstraintProgrammingConstraint {
             return ok(AllDifferent(list))
         }
 
-        /** 创建 Element 约束。 / Create an element constraint. */
+        /**
+         * 创建 Element 约束。 / Create an element constraint.
+         *
+         * @param index 索引表达式 / Index expression
+         * @param values 候选值或表达式 / Candidate values or expressions
+         * @param target 目标表达式 / Target expression
+         * @return Element 约束或结构化错误 / Element constraint or a structured error
+         */
         fun element(
             index: ConstraintProgrammingExpression,
             values: Iterable<*>,
@@ -592,7 +760,13 @@ sealed interface ConstraintProgrammingConstraint {
             return ok(Element(index, list, target))
         }
 
-        /** 创建允许赋值表。 / Create an allowed-assignment table. */
+        /**
+         * 创建允许赋值表。 / Create an allowed-assignment table.
+         *
+         * @param expressions 表达式列 / Expression columns
+         * @param tuples 允许的元组 / Allowed tuples
+         * @return 允许赋值表或结构化错误 / Allowed table or a structured error
+         */
         fun allowedAssignments(
             expressions: Iterable<ConstraintProgrammingExpression>,
             tuples: Iterable<Iterable<*>>
@@ -605,7 +779,13 @@ sealed interface ConstraintProgrammingConstraint {
             return ok(AllowedAssignments(expressionList, tupleList))
         }
 
-        /** 创建禁止赋值表。 / Create a forbidden-assignment table. */
+        /**
+         * 创建禁止赋值表。 / Create a forbidden-assignment table.
+         *
+         * @param expressions 表达式列 / Expression columns
+         * @param tuples 禁止的元组 / Forbidden tuples
+         * @return 禁止赋值表或结构化错误 / Forbidden table or a structured error
+         */
         fun forbiddenAssignments(
             expressions: Iterable<ConstraintProgrammingExpression>,
             tuples: Iterable<Iterable<*>>
@@ -618,7 +798,12 @@ sealed interface ConstraintProgrammingConstraint {
             return ok(ForbiddenAssignments(expressionList, tupleList))
         }
 
-        /** 创建回路约束。 / Create a circuit constraint. */
+        /**
+         * 创建回路约束。 / Create a circuit constraint.
+         *
+         * @param successors 后继表达式 / Successor expressions
+         * @return 回路约束或结构化错误 / Circuit constraint or a structured error
+         */
         fun circuit(successors: Iterable<ConstraintProgrammingExpression>): Ret<Circuit> {
             val list = successors.toList()
             if (list.isEmpty()) {
@@ -630,7 +815,15 @@ sealed interface ConstraintProgrammingConstraint {
             return ok(Circuit(list))
         }
 
-        /** 创建自动机约束。 / Create an automaton constraint. */
+        /**
+         * 创建自动机约束。 / Create an automaton constraint.
+         *
+         * @param expressions 输入序列表达式 / Input sequence expressions
+         * @param initialState 初始状态 / Initial state
+         * @param finalStates 可接受终态 / Accepting final states
+         * @param transitions 确定性转移集合 / Deterministic transitions
+         * @return 自动机约束或结构化错误 / Automaton constraint or a structured error
+         */
         fun automaton(
             expressions: Iterable<ConstraintProgrammingExpression>,
             initialState: Int,
@@ -645,10 +838,30 @@ sealed interface ConstraintProgrammingConstraint {
                     "Automaton 输入不能为空 / Automaton expressions, final states, and transitions must not be empty"
                 )
             }
+            val duplicate = transitionList
+                .groupBy { it.fromState to it.value }
+                .entries
+                .firstOrNull { it.value.size > 1 }
+            if (duplicate != null) {
+                val (fromState, value) = duplicate.key
+                return Failed(
+                    ErrorCode.IllegalArgument,
+                    "Automaton 转移必须对 (fromState, value) 确定：($fromState, $value) 存在重复转移 / " +
+                        "Automaton transitions must be deterministic for (fromState, value): duplicate key ($fromState, $value)"
+                )
+            }
             return ok(Automaton(expressionList, initialState, finalStates.toSet(), transitionList))
         }
 
-        /** 创建储液池约束。 / Create a reservoir constraint. */
+        /**
+         * 创建储液池约束。 / Create a reservoir constraint.
+         *
+         * @param events 液位变化事件 / Level-change events
+         * @param initialLevel 初始液位 / Initial level
+         * @param minimumLevel 最低液位 / Minimum level
+         * @param maximumLevel 最高液位 / Maximum level
+         * @return 储液池约束或结构化错误 / Reservoir constraint or a structured error
+         */
         fun reservoir(
             events: Iterable<Reservoir.Event>,
             initialLevel: Int64,

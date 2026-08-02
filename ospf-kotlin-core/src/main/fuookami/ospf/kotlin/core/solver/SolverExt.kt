@@ -6,6 +6,7 @@ package fuookami.ospf.kotlin.core.solver
 import java.util.concurrent.CompletableFuture
 import kotlin.time.TimeSource
 import kotlinx.coroutines.future.future
+import fuookami.ospf.kotlin.utils.error.Error
 import fuookami.ospf.kotlin.utils.error.ErrorCode
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
@@ -15,6 +16,9 @@ import fuookami.ospf.kotlin.core.model.intermediate.*
 import fuookami.ospf.kotlin.core.solver.iis.*
 import fuookami.ospf.kotlin.core.solver.value.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.SolveDiagnostics
+import fuookami.ospf.kotlin.core.solver.report.SolveIssue
+import fuookami.ospf.kotlin.core.solver.report.SolveIssueCategory
 
 /**
  * 使用默认选项求解线性模型。 / Solve a linear model with default options.
@@ -37,6 +41,11 @@ suspend fun AbstractLinearSolver.solveWithOptions(
     model: LinearTriadModelView,
     options: SolveOptions
 ): Ret<FeasibleSolverOutput<Flt64>> {
+    when (val identity = model.identityValidation) {
+        is Ok -> {}
+        is Failed -> return Failed(identity.error)
+        is Fatal -> return Fatal(identity.errors)
+    }
     when (val validation = validateLinearModelValueConversion(model, options.effectiveValueConversionPolicy)) {
         is Failed -> return Failed(validation.error)
         is Fatal -> return Fatal(validation.errors)
@@ -78,6 +87,11 @@ suspend fun AbstractQuadraticSolver.solveWithOptions(
     model: QuadraticTetradModelView,
     options: SolveOptions
 ): Ret<FeasibleSolverOutput<Flt64>> {
+    when (val identity = model.identityValidation) {
+        is Ok -> {}
+        is Failed -> return Failed(identity.error)
+        is Fatal -> return Fatal(identity.errors)
+    }
     when (val validation = validateQuadraticModelValueConversion(model, options.effectiveValueConversionPolicy)) {
         is Failed -> return Failed(validation.error)
         is Fatal -> return Fatal(validation.errors)
@@ -148,11 +162,41 @@ suspend fun AbstractLinearSolver.solveWithOptionsAndIIS(
                     }
 
                     is Failed -> {
-                        Failed(iisResult.error)
+                        val unifiedFields = resolveInfeasibleUnifiedFields(
+                            latestStatus = latestSolvingStatus,
+                            fallbackSolveTime = solveStartedAt.elapsedNow()
+                        )
+                        Ok(
+                            LinearInfeasibleSolverOutput(
+                                iis = snapshotLinearIisModel(model),
+                                iisAvailable = false,
+                                iterations = unifiedFields.iterations,
+                                nodeCount = unifiedFields.nodeCount,
+                                bestBound = unifiedFields.bestBound,
+                                mipGap = unifiedFields.mipGap,
+                                solveTime = unifiedFields.solveTime,
+                                diagnostics = iisFailureDiagnostics(iisResult.error)
+                            )
+                        )
                     }
 
                     is Fatal -> {
-                        Fatal(iisResult.errors)
+                        val unifiedFields = resolveInfeasibleUnifiedFields(
+                            latestStatus = latestSolvingStatus,
+                            fallbackSolveTime = solveStartedAt.elapsedNow()
+                        )
+                        Ok(
+                            LinearInfeasibleSolverOutput(
+                                iis = snapshotLinearIisModel(model),
+                                iisAvailable = false,
+                                iterations = unifiedFields.iterations,
+                                nodeCount = unifiedFields.nodeCount,
+                                bestBound = unifiedFields.bestBound,
+                                mipGap = unifiedFields.mipGap,
+                                solveTime = unifiedFields.solveTime,
+                                diagnostics = iisFailureDiagnostics(iisResult.errors)
+                            )
+                        )
                     }
                 }
             } else {
@@ -179,6 +223,11 @@ suspend fun AbstractLinearSolver.solveWithOptionsAndIISForSolutionPool(
     options: SolveOptions,
     iisConfig: IISConfig
 ): Ret<Pair<SolverOutput, List<List<Flt64>>>> {
+    when (val identity = model.identityValidation) {
+        is Ok -> {}
+        is Failed -> return Failed(identity.error)
+        is Fatal -> return Fatal(identity.errors)
+    }
     when (val validation = validateLinearModelValueConversion(model, options.effectiveValueConversionPolicy)) {
         is Failed -> return Failed(validation.error)
         is Fatal -> return Fatal(validation.errors)
@@ -242,11 +291,41 @@ suspend fun AbstractLinearSolver.solveWithOptionsAndIISForSolutionPool(
                         }
 
                         is Failed -> {
-                            Failed(iisResult.error)
+                            val unifiedFields = resolveInfeasibleUnifiedFields(
+                                latestStatus = latestSolvingStatus,
+                                fallbackSolveTime = solveStartedAt.elapsedNow()
+                            )
+                            Ok(
+                                LinearInfeasibleSolverOutput(
+                                    iis = snapshotLinearIisModel(model),
+                                    iisAvailable = false,
+                                    iterations = unifiedFields.iterations,
+                                    nodeCount = unifiedFields.nodeCount,
+                                    bestBound = unifiedFields.bestBound,
+                                    mipGap = unifiedFields.mipGap,
+                                    solveTime = unifiedFields.solveTime,
+                                    diagnostics = iisFailureDiagnostics(iisResult.error)
+                                ) to emptyList()
+                            )
                         }
 
                         is Fatal -> {
-                            Fatal(iisResult.errors)
+                            val unifiedFields = resolveInfeasibleUnifiedFields(
+                                latestStatus = latestSolvingStatus,
+                                fallbackSolveTime = solveStartedAt.elapsedNow()
+                            )
+                            Ok(
+                                LinearInfeasibleSolverOutput(
+                                    iis = snapshotLinearIisModel(model),
+                                    iisAvailable = false,
+                                    iterations = unifiedFields.iterations,
+                                    nodeCount = unifiedFields.nodeCount,
+                                    bestBound = unifiedFields.bestBound,
+                                    mipGap = unifiedFields.mipGap,
+                                    solveTime = unifiedFields.solveTime,
+                                    diagnostics = iisFailureDiagnostics(iisResult.errors)
+                                ) to emptyList()
+                            )
                         }
                     }
                 } else {
@@ -311,11 +390,41 @@ suspend fun AbstractQuadraticSolver.solveWithOptionsAndIIS(
                     }
 
                     is Failed -> {
-                        Failed(iisResult.error)
+                        val unifiedFields = resolveInfeasibleUnifiedFields(
+                            latestStatus = latestSolvingStatus,
+                            fallbackSolveTime = solveStartedAt.elapsedNow()
+                        )
+                        Ok(
+                            QuadraticInfeasibleSolverOutput(
+                                iis = snapshotQuadraticIisModel(model),
+                                iisAvailable = false,
+                                iterations = unifiedFields.iterations,
+                                nodeCount = unifiedFields.nodeCount,
+                                bestBound = unifiedFields.bestBound,
+                                mipGap = unifiedFields.mipGap,
+                                solveTime = unifiedFields.solveTime,
+                                diagnostics = iisFailureDiagnostics(iisResult.error)
+                            )
+                        )
                     }
 
                     is Fatal -> {
-                        Fatal(iisResult.errors)
+                        val unifiedFields = resolveInfeasibleUnifiedFields(
+                            latestStatus = latestSolvingStatus,
+                            fallbackSolveTime = solveStartedAt.elapsedNow()
+                        )
+                        Ok(
+                            QuadraticInfeasibleSolverOutput(
+                                iis = snapshotQuadraticIisModel(model),
+                                iisAvailable = false,
+                                iterations = unifiedFields.iterations,
+                                nodeCount = unifiedFields.nodeCount,
+                                bestBound = unifiedFields.bestBound,
+                                mipGap = unifiedFields.mipGap,
+                                solveTime = unifiedFields.solveTime,
+                                diagnostics = iisFailureDiagnostics(iisResult.errors)
+                            )
+                        )
                     }
                 }
             } else {
@@ -342,6 +451,11 @@ suspend fun AbstractQuadraticSolver.solveWithOptionsAndIISForSolutionPool(
     options: SolveOptions,
     iisConfig: IISConfig
 ): Ret<Pair<SolverOutput, List<List<Flt64>>>> {
+    when (val identity = model.identityValidation) {
+        is Ok -> {}
+        is Failed -> return Failed(identity.error)
+        is Fatal -> return Fatal(identity.errors)
+    }
     when (val validation = validateQuadraticModelValueConversion(model, options.effectiveValueConversionPolicy)) {
         is Failed -> return Failed(validation.error)
         is Fatal -> return Fatal(validation.errors)
@@ -407,11 +521,41 @@ suspend fun AbstractQuadraticSolver.solveWithOptionsAndIISForSolutionPool(
                         }
 
                         is Failed -> {
-                            Failed(iisResult.error)
+                            val unifiedFields = resolveInfeasibleUnifiedFields(
+                                latestStatus = latestSolvingStatus,
+                                fallbackSolveTime = solveStartedAt.elapsedNow()
+                            )
+                            Ok(
+                                QuadraticInfeasibleSolverOutput(
+                                    iis = snapshotQuadraticIisModel(model),
+                                    iisAvailable = false,
+                                    iterations = unifiedFields.iterations,
+                                    nodeCount = unifiedFields.nodeCount,
+                                    bestBound = unifiedFields.bestBound,
+                                    mipGap = unifiedFields.mipGap,
+                                    solveTime = unifiedFields.solveTime,
+                                    diagnostics = iisFailureDiagnostics(iisResult.error)
+                                ) to emptyList()
+                            )
                         }
 
                         is Fatal -> {
-                            Fatal(iisResult.errors)
+                            val unifiedFields = resolveInfeasibleUnifiedFields(
+                                latestStatus = latestSolvingStatus,
+                                fallbackSolveTime = solveStartedAt.elapsedNow()
+                            )
+                            Ok(
+                                QuadraticInfeasibleSolverOutput(
+                                    iis = snapshotQuadraticIisModel(model),
+                                    iisAvailable = false,
+                                    iterations = unifiedFields.iterations,
+                                    nodeCount = unifiedFields.nodeCount,
+                                    bestBound = unifiedFields.bestBound,
+                                    mipGap = unifiedFields.mipGap,
+                                    solveTime = unifiedFields.solveTime,
+                                    diagnostics = iisFailureDiagnostics(iisResult.errors)
+                                ) to emptyList()
+                            )
                         }
                     }
                 } else {
@@ -424,6 +568,54 @@ suspend fun AbstractQuadraticSolver.solveWithOptionsAndIISForSolutionPool(
             }
         }
     }
+}
+
+/** 将 IIS 失败保留为结构化诊断问题。 / Preserve IIS failure as a structured diagnostic issue. */
+private fun iisFailureDiagnostics(error: Error<ErrorCode>): SolveDiagnostics<Flt64> {
+    return SolveDiagnostics(errors = listOf(iisFailureIssue(error)))
+}
+
+/** 将多个 IIS 失败保留为结构化诊断问题。 / Preserve multiple IIS failures as structured diagnostic issues. */
+private fun iisFailureDiagnostics(errors: List<Error<ErrorCode>>): SolveDiagnostics<Flt64> {
+    return SolveDiagnostics(errors = errors.map(::iisFailureIssue))
+}
+
+private fun iisFailureIssue(error: Error<ErrorCode>): SolveIssue {
+    return SolveIssue(
+        code = "iis-diagnostic-failed",
+        category = SolveIssueCategory.Backend,
+        message = "IIS 诊断失败，原始不可行结论已保留：${error.message} / " +
+            "IIS diagnostic failed; the original infeasible conclusion was preserved: ${error.message}",
+        details = mapOf("errorCode" to error.code.toString())
+    )
+}
+
+private fun snapshotLinearIisModel(model: LinearTriadModelView): BasicLinearTriadModelView {
+    return BasicLinearTriadModel(
+        variables = model.variables.map { it.copy() },
+        constraints = model.constraints.copy(),
+        name = "${model.name}_iis_unavailable"
+    )
+}
+
+private fun snapshotQuadraticIisModel(model: QuadraticTetradModelView): QuadraticTetradModel {
+    return QuadraticTetradModel(
+        impl = BasicQuadraticTetradModel(
+            variables = model.variables.map { it.copy() },
+            constraints = model.constraints.copy(),
+            name = "${model.name}_iis_unavailable"
+        ),
+        tokensInSolver = if (model is QuadraticTetradModel) {
+            model.tokensInSolver.toList()
+        } else {
+            emptyList()
+        },
+        objective = QuadraticObjective(
+            category = model.objective.category,
+            objective = model.objective.objective.map { it.copy() },
+            constant = model.objective.constant.copy()
+        )
+    )
 }
 
 /** Preserve callback failures across solver adapters. / 在 solver adapter 边界保留回调失败结果。 */

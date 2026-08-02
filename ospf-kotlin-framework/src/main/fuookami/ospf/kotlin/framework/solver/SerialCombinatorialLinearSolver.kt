@@ -125,6 +125,11 @@ class SerialCombinatorialLinearSolver(
         model: LinearTriadModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
     ): Ret<FeasibleSolverOutput<Flt64>> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         for (solver in solvers) {
             when (val result = solver.value.invoke(model, solvingStatusCallBack)) {
                 is Ok -> {
@@ -152,6 +157,11 @@ class SerialCombinatorialLinearSolver(
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
     ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
         for (solver in solvers) {
             when (val result = solver.value.invoke(model, solutionAmount, solvingStatusCallBack)) {
                 is Ok -> {

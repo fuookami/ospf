@@ -18,7 +18,15 @@ enum class ConstraintProgrammingCheckpointSupport {
     Unsupported
 }
 
-/** Structured capability assessment. / 结构化能力评估。 */
+/**
+ * Structured capability assessment. / 结构化能力评估。
+ *
+ * @property solverId 求解器标识 / Solver identifier
+ * @property support checkpoint 支持级别 / Checkpoint support level
+ * @property canCheckpoint 是否可以保存 / Whether checkpoint capture is supported
+ * @property canResume 是否可以恢复 / Whether resume is supported
+ * @property reasons 能力判断依据 / Capability assessment reasons
+ */
 data class ConstraintProgrammingCapabilityAssessment(
     val solverId: String,
     val support: ConstraintProgrammingCheckpointSupport,
@@ -27,7 +35,15 @@ data class ConstraintProgrammingCapabilityAssessment(
     val reasons: List<String>
 )
 
-/** Snapshot plus optional incumbent used for portable checkpoint evaluation. */
+/**
+ * Snapshot plus optional incumbent used for portable checkpoint evaluation. / 用于可移植 checkpoint 评估的 snapshot 与可选 incumbent。
+ *
+ * @property schema checkpoint schema 版本 / Checkpoint schema version
+ * @property modelName 模型名称 / Model name
+ * @property snapshotJson snapshot JSON / Snapshot JSON
+ * @property solverId 求解器标识 / Solver identifier
+ * @property incumbent 可选 incumbent / Optional incumbent
+ */
 data class ConstraintProgrammingCheckpoint(
     val schema: Int,
     val modelName: String,
@@ -40,7 +56,12 @@ data class ConstraintProgrammingCheckpoint(
  * / 评估原生 checkpoint 能力并提供可移植 snapshot checkpoint。 / Assess native checkpointing and provide a portable snapshot checkpoint.
  */
 object ConstraintProgrammingCheckpointSupportEvaluator {
-    /** Assess one solver descriptor. / 评估一个求解器描述符。 */
+    /**
+     * Assess one solver descriptor. / 评估一个求解器描述符。
+     *
+     * @param descriptor 求解器描述符 / Solver descriptor
+     * @return checkpoint 能力评估 / Checkpoint capability assessment
+     */
     fun assess(descriptor: SolverDescriptor): ConstraintProgrammingCapabilityAssessment {
         val capabilities = descriptor.capabilities
         val cpSupported = SolverModelType.CP in capabilities.modelTypes
@@ -68,7 +89,14 @@ object ConstraintProgrammingCheckpointSupportEvaluator {
         )
     }
 
-    /** Capture a portable checkpoint; native state is intentionally excluded. */
+    /**
+     * Capture a portable checkpoint; native state is intentionally excluded. / 捕获可移植 checkpoint，明确排除 native 状态。
+     *
+     * @param snapshot CP 模型 snapshot / CP model snapshot
+     * @param descriptor 求解器描述符 / Solver descriptor
+     * @param incumbent 可选 incumbent / Optional incumbent
+     * @return checkpoint 或结构化错误 / Checkpoint or a structured error
+     */
     fun capture(
         snapshot: ConstraintProgrammingModelSnapshot,
         descriptor: SolverDescriptor,

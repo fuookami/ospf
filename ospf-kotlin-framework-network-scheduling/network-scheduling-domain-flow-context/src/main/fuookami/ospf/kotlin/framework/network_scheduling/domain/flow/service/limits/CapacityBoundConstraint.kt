@@ -3,7 +3,7 @@ package fuookami.ospf.kotlin.framework.network_scheduling.domain.flow.service.li
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.framework.model.Pipeline
@@ -31,12 +31,9 @@ class CapacityBoundConstraint<V : RealNumber<V>>(
                 is Failed -> return Failed(result.error)
                 is Fatal -> return Fatal(result.errors)
             }
-            val polynomial = MutableLinearPolynomial<Flt64>(
-                emptyList(),
-                Flt64.zero
-            )
+            var polynomial = LinearPolynomial()
             variables.forEach { variable ->
-                polynomial += LinearMonomial(Flt64.one, variable)
+                polynomial += variable
             }
             val lower = when (val result = graph.normalizeFlow(arc.capacity.lower, valueAdapter)) {
                 is Ok -> result.value
@@ -49,7 +46,7 @@ class CapacityBoundConstraint<V : RealNumber<V>>(
                 is Fatal -> return Fatal(result.errors)
             }
             when (val result = model.addConstraint(
-                polynomial.toLinearPolynomial() geq lower,
+                polynomial geq lower,
                 name = "${name}_${arc.from.value}_${arc.to.value}_lower"
             )) {
                 is Ok -> {}
@@ -57,7 +54,7 @@ class CapacityBoundConstraint<V : RealNumber<V>>(
                 is Fatal -> return Fatal(result.errors)
             }
             when (val result = model.addConstraint(
-                polynomial.toLinearPolynomial() leq upper,
+                polynomial leq upper,
                 name = "${name}_${arc.from.value}_${arc.to.value}_upper"
             )) {
                 is Ok -> {}

@@ -36,6 +36,7 @@ internal fun <V> buildLinearObjectiveSubObjects(
                 ),
                 _constant = source.constant,
                 name = source.name,
+                origin = source,
             )
         }
     }
@@ -48,7 +49,8 @@ internal fun <V> buildLinearObjectiveSubObjects(
             ),
             tokens = tokens,
             name = it.name,
-            converter = metaModel.converter
+            converter = metaModel.converter,
+            origin = it
         )
     }
 }
@@ -92,7 +94,8 @@ internal fun <V> buildQuadraticObjectiveSubObjects(
                     }
                 ),
                 _constant = source.flattenData.constant,
-                name = source.name
+                name = source.name,
+                origin = source,
             )
         }
     }
@@ -105,7 +108,8 @@ internal fun <V> buildQuadraticObjectiveSubObjects(
             ).toQuadraticFlattenData(),
             tokens = tokens,
             name = it.name,
-            converter = metaModel.converter
+            converter = metaModel.converter,
+            origin = it
         )
     }
 }

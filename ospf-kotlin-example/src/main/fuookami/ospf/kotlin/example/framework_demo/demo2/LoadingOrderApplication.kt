@@ -29,13 +29,13 @@ private class LoadingOrderAlgorithmImpl {
         when (val result = aircraftContext.init(
             input = request
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return LoadingOrderResponseDTO(request, result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return LoadingOrderResponseDTO(request, result.firstError ?: Err(ErrorCode.ApplicationFailed))
             }
         }
@@ -43,15 +43,15 @@ private class LoadingOrderAlgorithmImpl {
         val loadingOrders = when (val result = aircraftContext.exportLoadingOrders(
             input = request
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {
+            is Ok -> {
                 result.value!!
             }
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return LoadingOrderResponseDTO(request, result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return LoadingOrderResponseDTO(request, result.firstError ?: Err(ErrorCode.ApplicationFailed))
             }
         }

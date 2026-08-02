@@ -4,7 +4,7 @@ import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.quantities.quantity.*
@@ -50,7 +50,7 @@ class MAC(
                     formula.mac(
                         Quantity(
                             LinearPolynomial(
-                                monomials = listOf(LinearMonomial(Flt64.one, index.value)),
+                                monomials = listOf(Flt64.one * index.value),
                                 constant = Flt64.zero
                             ),
                             index.unit
@@ -67,13 +67,13 @@ class MAC(
             }
         }
         when (val result = model.add(mac)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }

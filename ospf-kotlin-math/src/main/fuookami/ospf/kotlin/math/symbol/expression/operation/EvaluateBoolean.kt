@@ -283,9 +283,9 @@ private fun evaluateNot(expr: NotExpression, context: EvaluationContext): Trival
 private fun evaluateScalarInternal(expr: ScalarExpression<*>, context: EvaluationContext): Any? {
     val result = evaluateScalar(expr, context, DefaultScalarFunctionEvaluator)
     return when (result) {
-        is Ok<*, *, *> -> result.value
-        is Failed<*, *, *> -> null
-        is Fatal<*, *, *> -> null
+        is Ok -> result.value
+        is Failed -> null
+        is Fatal -> null
     }
 }
 

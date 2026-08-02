@@ -43,15 +43,15 @@ class StowageContext {
             input = input,
             stowageMode = stowageMode
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {
+            is Ok -> {
                 aggregation = result.value!!
             }
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }
@@ -76,41 +76,41 @@ class StowageContext {
             stowageMode = stowageMode,
             model = model
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }
 
         val generator = PipelineListGenerator(aggregation)
         val pipelines = when (val result = generator.invoke(stowageMode)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {
+            is Ok -> {
                 result.value!!
             }
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }
 
         for (pipeline in pipelines) {
             when (val result = pipeline(model)) {
-                is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+                is Ok -> {}
 
-                is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+                is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
             }
@@ -131,9 +131,9 @@ class StowageContext {
         model: AbstractLinearMetaModel<Flt64>
     ): Try {
         when (val result = aggregation.registerForBendersMP(stowageMode, model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+            is Ok -> {}
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
         }
         return ok
     }
@@ -153,9 +153,9 @@ class StowageContext {
         solution: List<Flt64>
     ): Try {
         when (val result = aggregation.registerForBendersSP(stowageMode, model, solution)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+            is Ok -> {}
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
         }
         return ok
     }
@@ -174,9 +174,9 @@ class StowageContext {
         solution: List<Flt64>
     ): Try {
         when (val result = aggregation.registerForBendersSP(stowageMode, model, solution)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+            is Ok -> {}
+            is Failed -> return Failed(result.error)
+            is Fatal -> return Fatal(result.errors)
         }
         return ok
     }
@@ -195,15 +195,15 @@ class StowageContext {
     ): Ret<StowageSolution> {
         val analyzer = SolutionAnalyzer(aggregation)
         val stowageSolution = when (val result = analyzer(solution, model)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {
+            is Ok -> {
                 result.value!!
             }
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }

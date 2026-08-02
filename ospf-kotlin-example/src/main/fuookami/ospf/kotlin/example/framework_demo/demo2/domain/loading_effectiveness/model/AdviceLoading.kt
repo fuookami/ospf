@@ -5,7 +5,6 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.multiarray.*
 import fuookami.ospf.kotlin.math.*
 import fuookami.ospf.kotlin.math.algebra.number.*
-import fuookami.ospf.kotlin.math.symbol.monomial.*
 import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
 import fuookami.ospf.kotlin.quantities.quantity.*
@@ -52,7 +51,7 @@ class AdviceLoading(
                 if (position.ala != null) {
                     exampleThresholdSlack(
                         x = LinearPolynomial(
-                            monomials = listOf(LinearMonomial(Flt64.one, load.loadAmount[j])),
+                            monomials = listOf(Flt64.one * load.loadAmount[j]),
                             constant = Flt64.zero
                         ),
                         threshold = position.ala!!.toFlt64(),
@@ -69,13 +68,13 @@ class AdviceLoading(
             }
         }
         when (val result = model.add(amountSlack)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }
@@ -86,7 +85,7 @@ class AdviceLoading(
                 if (position.alw != null) {
                     exampleThresholdSlack(
                         x = LinearPolynomial(
-                            monomials = listOf(LinearMonomial(Flt64.one, load.estimateLoadWeight[j].to(aircraftModel.weightUnit)!!.value)),
+                            monomials = listOf(Flt64.one * load.estimateLoadWeight[j].to(aircraftModel.weightUnit)!!.value),
                             constant = Flt64.zero
                         ),
                         threshold = position.alw!!.to(aircraftModel.weightUnit)!!.value,
@@ -103,13 +102,13 @@ class AdviceLoading(
             }
         }
         when (val result = model.add(weightSlack)) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                     return Failed(result.error)
                 }
 
-                is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+                is Fatal -> {
                     return Fatal(result.errors)
                 }
         }

@@ -43,13 +43,13 @@ class AppointmentLimit(
                     relation = stowage.stowage[i, positionIndex] eq true,
                     name = "${name}_${item}_${thisAppointment}"
                 )) {
-                    is Ok<Success, ErrorCode, Error<ErrorCode>> -> {}
+                    is Ok -> {}
 
-                    is Failed<Success, ErrorCode, Error<ErrorCode>> -> {
+                    is Failed -> {
                         return result
                     }
 
-                    is Fatal<Success, ErrorCode, Error<ErrorCode>> -> {
+                    is Fatal -> {
                         return result
                     }
                 }

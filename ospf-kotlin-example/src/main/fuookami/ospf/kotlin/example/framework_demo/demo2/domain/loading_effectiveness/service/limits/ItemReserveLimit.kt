@@ -30,23 +30,21 @@ class ItemReserveLimit(
     override val name: String = "item_reserve_limit"
 ) : Pipeline<AbstractLinearMetaModel<Flt64>> {
     override fun invoke(model: AbstractLinearMetaModel<Flt64>): Try {
-        val poly = MutableLinearPolynomial()
-        for ((i, item) in items.withIndex()) {
+        val poly = sum(items.withIndex().map { (i, item) ->
             val c = coefficient(item)
-            poly += c
-            poly += LinearMonomial(-c, stowage.loaded[i])
-        }
+            (-c * stowage.loaded[i]) + c
+        })
         when (val result = model.minimize(
-            LinearExpressionSymbol(LinearPolynomial(poly.monomials, poly.constant)),
+            LinearExpressionSymbol(poly),
             name = "item reserve"
         )) {
-            is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
+            is Ok -> {}
 
-            is Failed<*, ErrorCode, Error<ErrorCode>> -> {
+            is Failed -> {
                 return Failed(result.error)
             }
 
-            is Fatal<*, ErrorCode, Error<ErrorCode>> -> {
+            is Fatal -> {
                 return Fatal(result.errors)
             }
         }

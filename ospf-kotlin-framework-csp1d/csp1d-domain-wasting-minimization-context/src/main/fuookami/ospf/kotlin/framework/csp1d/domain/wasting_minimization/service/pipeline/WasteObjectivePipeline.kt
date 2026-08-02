@@ -4,6 +4,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.operation.*
 import fuookami.ospf.kotlin.core.model.mechanism.LinearMetaModel
 import fuookami.ospf.kotlin.core.variable.URealVar
 import fuookami.ospf.kotlin.framework.csp1d.domain.material.model.*
@@ -63,7 +64,7 @@ class WasteObjectivePipeline<V : RealNumber<V>>(
                 val restWidthValue = plan.restWidth?.value ?: continue
                 if (restWidthValue > restWidthValue.constants.zero) {
                     val coeff = restWidthValue.toFlt64() * trimPenalty.toFlt64()
-                    monomials.add(LinearMonomial(coeff, produce[index]!!))
+                    monomials.add(coeff * produce[index]!!)
                 }
             }
         }
@@ -75,7 +76,7 @@ class WasteObjectivePipeline<V : RealNumber<V>>(
                 val plan = produce.cuttingPlans[index]
                 val restMaterialValue = restMaterialValue(plan, restMaterialMeasure) ?: continue
                 val coeff = restMaterialValue.toFlt64() * restMaterialPenalty.toFlt64()
-                monomials.add(LinearMonomial(coeff, produce[index]!!))
+                monomials.add(coeff * produce[index]!!)
             }
         }
 
@@ -85,7 +86,7 @@ class WasteObjectivePipeline<V : RealNumber<V>>(
                 val plan = produce.cuttingPlans[index]
                 val costPenalty = waste.materialCostPenalty[plan.material.id]
                 if (costPenalty != null) {
-                    monomials.add(LinearMonomial(costPenalty.toFlt64(), produce[index]!!))
+                    monomials.add(costPenalty.toFlt64() * produce[index]!!)
                 }
             }
         }
@@ -97,7 +98,7 @@ class WasteObjectivePipeline<V : RealNumber<V>>(
                 val overVar = overProductionVars.getOrNull(demandIndex) ?: continue
                 val productWidthValue = overProductionAreaWidthValue(demand, overProductionAreaMeasure) ?: continue
                 val coeff = productWidthValue.toFlt64() * overAreaPenalty.toFlt64()
-                monomials.add(LinearMonomial(coeff, overVar))
+                monomials.add(coeff * overVar)
             }
         }
 

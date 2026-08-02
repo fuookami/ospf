@@ -42,28 +42,26 @@ class RecommendedWeightEqualizationLimit(
                     continue
                 }
 
-                val rhs1 = MutableLinearPolynomial()
-                rhs1 += LinearMonomial(Flt64.one, load.z[j2].value)
-                rhs1 += LinearMonomial(position1.mlw.mlw.value, load.actualLoaded[j2])
                 when (val result = model.addConstraint(
-                    relation = load.z[j1].value leq LinearPolynomial(rhs1.monomials, rhs1.constant),
+                    relation = load.z[j1].value leq (
+                        load.z[j2].value + position1.mlw.mlw.value * load.actualLoaded[j2]
+                    ),
                     name = "${name}_${position1}_${position2}"
                 )) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                    is Ok -> {}
+                    is Failed -> return Failed(result.error)
+                    is Fatal -> return Fatal(result.errors)
                 }
 
-                val rhs2 = MutableLinearPolynomial()
-                rhs2 += LinearMonomial(Flt64.one, load.z[j1].value)
-                rhs2 += LinearMonomial(position2.mlw.mlw.value, load.actualLoaded[j1])
                 when (val result = model.addConstraint(
-                    relation = load.z[j2].value leq LinearPolynomial(rhs2.monomials, rhs2.constant),
+                    relation = load.z[j2].value leq (
+                        load.z[j1].value + position2.mlw.mlw.value * load.actualLoaded[j1]
+                    ),
                     name = "${name}_${position2}_${position1}"
                 )) {
-                    is Ok<*, ErrorCode, Error<ErrorCode>> -> {}
-                    is Failed<*, ErrorCode, Error<ErrorCode>> -> return Failed(result.error)
-                    is Fatal<*, ErrorCode, Error<ErrorCode>> -> return Fatal(result.errors)
+                    is Ok -> {}
+                    is Failed -> return Failed(result.error)
+                    is Fatal -> return Fatal(result.errors)
                 }
             }
         }

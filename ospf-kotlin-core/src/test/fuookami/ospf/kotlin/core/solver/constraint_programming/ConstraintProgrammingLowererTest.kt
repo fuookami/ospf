@@ -18,6 +18,8 @@ import fuookami.ospf.kotlin.core.model.constraint_programming.ReificationDirecti
 import fuookami.ospf.kotlin.core.solver.constraint_programming.lowering.ConstraintProgrammingLoweredLinearModel
 import fuookami.ospf.kotlin.core.solver.constraint_programming.lowering.ConstraintProgrammingLoweringPolicy
 import fuookami.ospf.kotlin.core.solver.constraint_programming.lowering.ConstraintProgrammingToLinearModelLowerer
+import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
 import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.variable.BinVar
 import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
@@ -96,6 +98,20 @@ class ConstraintProgrammingLowererTest {
                 assertEquals(3, lowered.variables.size)
                 assertTrue(lowered.model.relationConstraints.size >= 8)
                 assertEquals(1, lowered.model.subObjects.size)
+                val sourceVariableId = "${x.identifier}:${x.index}"
+                assertTrue(
+                    lowered.artifacts.values.any {
+                        it.role == "source-variable" && it.originId == sourceVariableId
+                    }
+                )
+                assertTrue(lowered.artifacts.values.any { it.role == "auxiliary-variable" })
+                assertTrue(lowered.artifacts.values.any { it.role == "compiled-constraint" })
+                assertEquals(lowered.artifacts.size, lowered.artifacts.keys.toSet().size)
+                assertTrue(
+                    lowered.artifacts.values.none {
+                        it.role == "auxiliary-variable" && it.artifactId == "variable:$sourceVariableId"
+                    }
+                )
             } finally {
                 lowered.close()
             }
@@ -259,6 +275,41 @@ class ConstraintProgrammingLowererTest {
     }
 
     @Test
+    fun sourceArtifactProjectionIsStableAcrossRegistrationOrderAndDuplicateNames() {
+        val first = stableProjectionModel(reverseRegistration = false)
+        val rebuilt = stableProjectionModel(reverseRegistration = true)
+        try {
+            val firstLowered = assertIs<Ok<ConstraintProgrammingLoweredLinearModel, *, *>>(
+                ConstraintProgrammingToLinearModelLowerer().lower(first)
+            ).value
+            val rebuiltLowered = assertIs<Ok<ConstraintProgrammingLoweredLinearModel, *, *>>(
+                ConstraintProgrammingToLinearModelLowerer().lower(rebuilt)
+            ).value
+            try {
+                val firstProjection = firstLowered.artifacts.values
+                    .filter { it.originId != null }
+                    .map { "${it.role}|${it.originId}" }
+                    .sorted()
+                val rebuiltProjection = rebuiltLowered.artifacts.values
+                    .filter { it.originId != null }
+                    .map { "${it.role}|${it.originId}" }
+                    .sorted()
+                assertEquals(firstProjection, rebuiltProjection)
+                assertTrue(firstProjection.any { it == "source-variable|stable:x" })
+                assertTrue(firstProjection.any { it == "source-variable|stable:y" })
+                assertTrue(firstProjection.any { it == "compiled-constraint|stable:x-lower" })
+                assertTrue(firstProjection.any { it == "compiled-constraint|stable:y-lower" })
+            } finally {
+                firstLowered.close()
+                rebuiltLowered.close()
+            }
+        } finally {
+            first.close()
+            rebuilt.close()
+        }
+    }
+
+    @Test
     fun policyShouldGateSparseDomainSize() {
         val model = ConstraintProgrammingModel("sparse-limit")
         try {
@@ -303,5 +354,51 @@ class ConstraintProgrammingLowererTest {
     ): ConstraintProgrammingExpression.Variable {
         model.registerVariable(variable, domain)
         return ConstraintProgrammingExpression.variable(variable, domain).value!!
+    }
+
+    private fun stableProjectionModel(reverseRegistration: Boolean): ConstraintProgrammingModel {
+        val model = ConstraintProgrammingModel("stable-projection", ObjectCategory.Minimum)
+        val x = IntVar("duplicate-display")
+        val y = IntVar("duplicate-display")
+        val variables = listOf(
+            VariableId("stable:x") to x,
+            VariableId("stable:y") to y
+        )
+        (if (reverseRegistration) variables.asReversed() else variables).forEach { (id, variable) ->
+            model.registerVariable(
+                id = id,
+                variable = variable,
+                domain = IntegerDomain.interval(0, 1).value!!,
+                scope = "stable",
+                origin = "fixture/${id.value}"
+            )
+        }
+        val constraints = listOf(
+            ConstraintId("stable:x-lower") to ConstraintProgrammingConstraint.greaterOrEqual(
+                ConstraintProgrammingExpression.Variable(x),
+                Int64.zero
+            ).value!!,
+            ConstraintId("stable:y-lower") to ConstraintProgrammingConstraint.greaterOrEqual(
+                ConstraintProgrammingExpression.Variable(y),
+                Int64.zero
+            ).value!!
+        )
+        (if (reverseRegistration) constraints.asReversed() else constraints).forEach { (id, constraint) ->
+            model.addConstraint(
+                constraint = constraint,
+                id = id,
+                name = "duplicate-display",
+                scope = "stable",
+                origin = "fixture/${id.value}"
+            )
+        }
+        model.minimize(
+            expression = ConstraintProgrammingExpression.Variable(x),
+            id = ObjectiveId("stable:objective"),
+            name = "duplicate-display",
+            scope = "stable",
+            origin = "fixture/stable:objective"
+        )
+        return model
     }
 }

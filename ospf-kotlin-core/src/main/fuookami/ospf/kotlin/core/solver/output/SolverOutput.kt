@@ -7,6 +7,7 @@ import kotlin.time.Duration
 import fuookami.ospf.kotlin.core.model.basic.Solution
 import fuookami.ospf.kotlin.core.model.intermediate.*
 import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.solver.report.SolveDiagnostics
 import fuookami.ospf.kotlin.math.algebra.concept.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.utils.error.*
@@ -164,11 +165,13 @@ fun <V> FeasibleSolverOutput<Flt64>.convertTo(converter: IntoValue<V>): Feasible
  * 线性不可行求解器输出，包含 IIS 信息。 / Linear infeasible solver output, containing IIS information.
  *
  * @property iis 不可行子系统模型视图 / Infeasible subsystem model view
+ * @property iisAvailable IIS 是否已物化；false 时 `iis` 仅为原模型快照 / Whether the IIS was materialized; when false, `iis` is only an original-model snapshot
  * @property iterations 迭代次数（可选）/ Iteration count (optional)
  * @property nodeCount 节点数（可选）/ Node count (optional)
  * @property bestBound 最优界（可选）/ Best bound (optional)
  * @property mipGap MIP 间隙（可选）/ MIP gap (optional)
  * @property solveTime 求解时间（可选）/ Solve time (optional)
+ * @property diagnostics IIS 编排诊断；IIS 失败时保留原始不可行结论 / IIS diagnostics; the original infeasible conclusion is retained when IIS fails
 */
 data class LinearInfeasibleSolverOutput(
     val iis: BasicLinearTriadModelView,
@@ -176,18 +179,22 @@ data class LinearInfeasibleSolverOutput(
     override val nodeCount: UInt64? = null,
     override val bestBound: Flt64? = null,
     override val mipGap: Flt64? = null,
-    override val solveTime: Duration? = null
+    override val solveTime: Duration? = null,
+    val iisAvailable: Boolean = true,
+    val diagnostics: SolveDiagnostics<Flt64> = SolveDiagnostics()
 ) : LinearSolverOutput, UnifiedSolverOutput
 
 /**
  * 二次不可行求解器输出，包含 IIS 信息。 / Quadratic infeasible solver output, containing IIS information.
  *
  * @property iis 不可行子系统模型视图 / Infeasible subsystem model view
+ * @property iisAvailable IIS 是否已物化；false 时 `iis` 仅为原模型快照 / Whether the IIS was materialized; when false, `iis` is only an original-model snapshot
  * @property iterations 迭代次数（可选）/ Iteration count (optional)
  * @property nodeCount 节点数（可选）/ Node count (optional)
  * @property bestBound 最优界（可选）/ Best bound (optional)
  * @property mipGap MIP 间隙（可选）/ MIP gap (optional)
  * @property solveTime 求解时间（可选）/ Solve time (optional)
+ * @property diagnostics IIS 编排诊断；IIS 失败时保留原始不可行结论 / IIS diagnostics; the original infeasible conclusion is retained when IIS fails
 */
 data class QuadraticInfeasibleSolverOutput(
     val iis: QuadraticTetradModelView,
@@ -195,7 +202,9 @@ data class QuadraticInfeasibleSolverOutput(
     override val nodeCount: UInt64? = null,
     override val bestBound: Flt64? = null,
     override val mipGap: Flt64? = null,
-    override val solveTime: Duration? = null
+    override val solveTime: Duration? = null,
+    val iisAvailable: Boolean = true,
+    val diagnostics: SolveDiagnostics<Flt64> = SolveDiagnostics()
 ) : QuadraticSolverOutput, UnifiedSolverOutput
 
 /**
@@ -244,7 +253,7 @@ fun SolverOutput.withoutIIS(): SolverOutputWithIIS<Nothing> {
 fun LinearInfeasibleSolverOutput.withIIS(): SolverOutputWithIIS<BasicLinearTriadModelView> {
     return SolverOutputWithIIS(
         output = this,
-        iis = iis
+        iis = iis.takeIf { iisAvailable }
     )
 }
 
@@ -256,6 +265,6 @@ fun LinearInfeasibleSolverOutput.withIIS(): SolverOutputWithIIS<BasicLinearTriad
 fun QuadraticInfeasibleSolverOutput.withIIS(): SolverOutputWithIIS<QuadraticTetradModelView> {
     return SolverOutputWithIIS(
         output = this,
-        iis = iis
+        iis = iis.takeIf { iisAvailable }
     )
 }
