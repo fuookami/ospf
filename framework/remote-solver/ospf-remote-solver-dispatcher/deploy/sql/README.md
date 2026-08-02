@@ -13,6 +13,9 @@ This directory contains SQL migration scripts for the Remote Solver service.
 | V2 | `V2__remote_solver_infra.sql` | Infrastructure tables (node_state, budget, lock) |
 | V3 | `V3__remote_solver_scheduler_audit.sql` | Scheduler audit tables |
 | V4 | `V4__remote_solver_multi_tenant.sql` | Multi-tenant support (tenant_id columns) |
+| V5 | `V5__remote_solver_cp2.sql` | CP2 capability declarations and persisted result-report fields |
+| V6 | `V6__remote_solver_cp2_payload_config.sql` | Inline solver configuration required for CP resume |
+| V7 | `V7__remote_solver_object_ref_etag.sql` | ObjectRef ETag persistence for payload, result, snapshot, and checkpoint recovery |
 
 ## Applying Migrations / 应用迁移
 
@@ -35,6 +38,9 @@ psql "postgresql://user:password@host:port/database" -f deploy/sql/V1__remote_so
 psql "postgresql://user:password@host:port/database" -f deploy/sql/V2__remote_solver_infra.sql
 psql "postgresql://user:password@host:port/database" -f deploy/sql/V3__remote_solver_scheduler_audit.sql
 psql "postgresql://user:password@host:port/database" -f deploy/sql/V4__remote_solver_multi_tenant.sql
+psql "postgresql://user:password@host:port/database" -f deploy/sql/V5__remote_solver_cp2.sql
+psql "postgresql://user:password@host:port/database" -f deploy/sql/V6__remote_solver_cp2_payload_config.sql
+psql "postgresql://user:password@host:port/database" -f deploy/sql/V7__remote_solver_object_ref_etag.sql
 ```
 
 ## V4 Multi-Tenant Migration / V4 多租户迁移
@@ -69,8 +75,8 @@ psql "postgresql://user:password@host:port/database" -f deploy/sql/V4_rollback__
 1. **Idempotency**: All migration scripts are idempotent (can be run multiple times safely).
    **幂等性**：所有迁移脚本都是幂等的（可以安全地多次运行）。
 
-2. **Order**: Migrations must be applied in order (V1 → V2 → V3 → V4).
-   **顺序**：迁移必须按顺序应用（V1 → V2 → V3 → V4）。
+2. **Order**: Migrations must be applied in order (V1 → V2 → V3 → V4 → V5 → V6 → V7).
+   **顺序**：迁移必须按顺序应用（V1 → V2 → V3 → V4 → V5 → V6 → V7）。
 
 3. **Backup**: Always backup your database before applying migrations.
    **备份**：应用迁移前请务必备份数据库。
@@ -98,3 +104,23 @@ All migrations record their application in `remote_solver_migration_history`:
 ```sql
 SELECT * FROM remote_solver_migration_history ORDER BY version;
 ```
+
+## V5/V6/V7 CP2 Migrations / V5/V6/V7 CP2 迁移
+
+V5 adds the node CP capability declaration, the task payload model-format column, the latest
+result-report JSON column, and the supporting model-type index. V6 persists inline solver
+configuration so a task reconstructed from the database retains solution limits, gaps, thread
+settings, and backend parameters. V7 persists nullable ETags for every payload, result, snapshot,
+and checkpoint ObjectRef.
+
+V5 增加节点 CP 能力声明、任务 payload 模型格式、最新结果报告 JSON 以及模型类型索引；V6
+持久化内联求解配置，使数据库重建后的任务继续保留解数量、gap、线程和后端参数；V7
+持久化 payload、结果、snapshot 和 checkpoint ObjectRef 的可空 ETag。
+
+All three scripts are idempotent and record versions `5`, `6`, and `7` in
+`remote_solver_migration_history`. They are required for CP2 database replay, but a real
+restart/replay acceptance test remains an environment-level prerequisite before declaring that
+capability production-ready.
+
+三个脚本均可重复执行，并会在 `remote_solver_migration_history` 中记录版本 `5`、`6`、`7`。它们是
+CP2 数据库回放的必要迁移；但在声明生产能力前，仍需环境级的真实重启/回放验收测试。

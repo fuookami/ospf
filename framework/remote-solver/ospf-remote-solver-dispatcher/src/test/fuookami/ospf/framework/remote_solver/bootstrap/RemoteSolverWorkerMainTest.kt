@@ -55,6 +55,68 @@ class RemoteSolverWorkerMainTest {
         }
     }
 
+    @Test
+    fun cpWorkerShouldUseRealSnapshotExecutorAndReturnBackendFailureForInvalidSnapshot() {
+        val stateDir = Files.createTempDirectory("remote-worker-cp-state")
+        val modelPath = stateDir.resolve("invalid.snapshot.json")
+        Files.writeString(modelPath, "not-json")
+        try {
+            val output = captureOutput {
+                RemoteSolverWorkerMain.main(
+                    arrayOf(
+                        "--model", modelPath.toString(),
+                        "--model-format", "ospf-cp-snapshot-json",
+                        "--task", "task-cp",
+                        "--slice", "slice-1",
+                        "--tenant-id", "tenant-a",
+                        "--quantum-ms", "10",
+                        "--state-dir", stateDir.toString()
+                    )
+                )
+            }
+            assertEquals("false", output["completed"])
+            assertEquals("false", output["feasible"])
+            assertEquals("BACKEND_FAILURE", output["terminationReason"])
+            assertEquals("2.0", output["schemaVersion"])
+        } finally {
+            Files.walk(stateDir).use { paths ->
+                paths.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+            }
+        }
+    }
+
+    @Test
+    fun cpWorkerShouldRejectCorruptedExplicitCheckpointInsteadOfColdStarting() {
+        val stateDir = Files.createTempDirectory("remote-worker-corrupt-checkpoint")
+        val modelPath = stateDir.resolve("invalid.snapshot.json")
+        val checkpointPath = stateDir.resolve("corrupt.checkpoint.json")
+        Files.writeString(modelPath, "not-json")
+        Files.writeString(checkpointPath, "{\"schema\":1,\"snapshotJson\":\"not-json\"}")
+        try {
+            val output = captureOutput {
+                RemoteSolverWorkerMain.main(
+                    arrayOf(
+                        "--model", modelPath.toString(),
+                        "--model-format", "ospf-cp-snapshot-json",
+                        "--task", "task-cp-corrupt-checkpoint",
+                        "--slice", "slice-1",
+                        "--tenant-id", "tenant-a",
+                        "--quantum-ms", "10",
+                        "--state-dir", stateDir.toString(),
+                        "--checkpoint-in", checkpointPath.toString()
+                    )
+                )
+            }
+            assertEquals("false", output["completed"])
+            assertEquals("BACKEND_FAILURE", output["terminationReason"])
+            assertEquals("2.0", output["schemaVersion"])
+        } finally {
+            Files.walk(stateDir).use { paths ->
+                paths.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+            }
+        }
+    }
+
     private fun captureOutput(block: () -> Unit): Map<String, String> {
         val oldOut = System.out
         val baos = ByteArrayOutputStream()

@@ -155,7 +155,8 @@ class KtormNodeStatePort(
                     UPDATE $resolvedTableName
                     SET solver_type = ?, performance_score = ?, price_per_second = ?, min_billing_unit_seconds = ?,
                         supports_interrupt = ?, supports_checkpoint = ?, supports_warm_start = ?, parallel_units = ?,
-                        license_cost_per_slice = ?, available_units = ?, last_heartbeat_epoch_ms = ?, online = ?
+                        license_cost_per_slice = ?, supported_model_types = ?, available_units = ?,
+                        last_heartbeat_epoch_ms = ?, online = ?
                     WHERE node_id = ?
                     """.trimIndent()
                 ).use { statement ->
@@ -168,8 +169,9 @@ class KtormNodeStatePort(
                         INSERT INTO $resolvedTableName (
                             node_id, solver_type, performance_score, price_per_second, min_billing_unit_seconds,
                             supports_interrupt, supports_checkpoint, supports_warm_start, parallel_units,
-                            license_cost_per_slice, available_units, last_heartbeat_epoch_ms, online
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            license_cost_per_slice, supported_model_types, available_units,
+                            last_heartbeat_epoch_ms, online
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """.trimIndent()
                     ).use { statement ->
                         bindNodeForInsert(statement, node)
@@ -320,9 +322,10 @@ class KtormNodeStatePort(
         statement.setBoolean(8, profile.supportsWarmStart)
         statement.setInt(9, profile.parallelUnits)
         statement.setDouble(10, profile.licenseCostPerSlice.toDouble())
-        statement.setInt(11, node.availableUnits)
-        statement.setLong(12, node.lastHeartbeatEpochMs)
-        statement.setBoolean(13, node.online)
+        statement.setString(11, encodeModelTypes(profile.supportedModelTypes))
+        statement.setInt(12, node.availableUnits)
+        statement.setLong(13, node.lastHeartbeatEpochMs)
+        statement.setBoolean(14, node.online)
     }
 
     /**
@@ -351,10 +354,11 @@ class KtormNodeStatePort(
         statement.setBoolean(7, profile.supportsWarmStart)
         statement.setInt(8, profile.parallelUnits)
         statement.setDouble(9, profile.licenseCostPerSlice.toDouble())
-        statement.setInt(10, node.availableUnits)
-        statement.setLong(11, node.lastHeartbeatEpochMs)
-        statement.setBoolean(12, node.online)
-        statement.setString(13, node.nodeId.value)
+        statement.setString(10, encodeModelTypes(profile.supportedModelTypes))
+        statement.setInt(11, node.availableUnits)
+        statement.setLong(12, node.lastHeartbeatEpochMs)
+        statement.setBoolean(13, node.online)
+        statement.setString(14, node.nodeId.value)
     }
 
     /**
@@ -387,7 +391,8 @@ class KtormNodeStatePort(
                 supportsCheckpoint = resultSet.getBoolean("supports_checkpoint"),
                 supportsWarmStart = resultSet.getBoolean("supports_warm_start"),
                 parallelUnits = resultSet.getInt("parallel_units"),
-                licenseCostPerSlice = Flt64(resultSet.getDouble("license_cost_per_slice"))
+                licenseCostPerSlice = Flt64(resultSet.getDouble("license_cost_per_slice")),
+                supportedModelTypes = decodeModelTypes(resultSet.getString("supported_model_types"))
             ),
             availableUnits = resultSet.getInt("available_units"),
             lastHeartbeat = Instant.fromEpochMilliseconds(resultSet.getLong("last_heartbeat_epoch_ms")),
@@ -428,12 +433,16 @@ class KtormNodeStatePort(
                             supports_warm_start BOOLEAN NOT NULL,
                             parallel_units INT NOT NULL,
                             license_cost_per_slice DOUBLE PRECISION NOT NULL,
+                            supported_model_types TEXT NOT NULL DEFAULT 'LINEAR,QUADRATIC',
                             available_units INT NOT NULL,
                             last_heartbeat_epoch_ms BIGINT NOT NULL,
                             online BOOLEAN NOT NULL
                         )
                         """.trimIndent()
                     )
+                    runCatching {
+                        statement.execute("ALTER TABLE $resolvedTableName ADD COLUMN supported_model_types TEXT NOT NULL DEFAULT 'LINEAR,QUADRATIC'")
+                    }
                 }
             }
             initialized.set(true)
@@ -463,6 +472,22 @@ class KtormNodeStatePort(
         require(value.isNotEmpty()) { "tableName must not be blank" }
         require(value.matches(Regex("[A-Za-z0-9_]+"))) { "Invalid tableName: '$raw'" }
         return value
+    }
+
+    private fun encodeModelTypes(types: Set<fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType>): String {
+        return types.map { it.name }.sorted().joinToString(",").ifBlank { "UNKNOWN" }
+    }
+
+    private fun decodeModelTypes(raw: String?): Set<fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType> {
+        val values = raw.orEmpty().split(',')
+            .mapNotNull { value -> runCatching { fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType.valueOf(value.trim()) }.getOrNull() }
+            .toSet()
+        return values.ifEmpty {
+            setOf(
+                fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType.LINEAR,
+                fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType.QUADRATIC
+            )
+        }
     }
 
     /**

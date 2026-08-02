@@ -32,14 +32,21 @@ import fuookami.ospf.framework.remote_solver.domain.CostUpdatePayload
 import fuookami.ospf.framework.remote_solver.domain.HeartbeatPayload
 import fuookami.ospf.framework.remote_solver.domain.SolvingControlPayload
 import fuookami.ospf.framework.remote_solver.protocol.domain.CheckpointMetadata
+import fuookami.ospf.framework.remote_solver.protocol.domain.PortableCheckpointCodec
 import fuookami.ospf.framework.remote_solver.protocol.domain.BudgetScopeId
 import fuookami.ospf.framework.remote_solver.protocol.domain.DispatchId
 import fuookami.ospf.framework.remote_solver.protocol.domain.ExecutionHandle
 import fuookami.ospf.framework.remote_solver.protocol.domain.NodeId
+import fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType
 import fuookami.ospf.framework.remote_solver.protocol.domain.ObjectRef
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverErrorCode
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverErrorMapper
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverException
+import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteProblemStatus
+import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteProofStatus
+import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolutionPresence
+import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteTerminationReason
+import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteResultValidator
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceResult
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceId
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceStatus
@@ -67,6 +74,7 @@ import fuookami.ospf.framework.remote_solver.port.SchedulerConfigAuditPort
 import fuookami.ospf.framework.remote_solver.port.TaskStatePort
 import fuookami.ospf.framework.remote_solver.port.TracingPort
 import fuookami.ospf.framework.remote_solver.protocol.port.SolverExecutionPort
+import fuookami.ospf.framework.remote_solver.protocol.port.ObjectStoragePort
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
@@ -144,7 +152,8 @@ class RemoteSolverService(
     private val clock: ClockPort,
     private val idGenerator: IdGeneratorPort,
     private val config: RemoteSolverConfig = RemoteSolverConfig(),
-    private val schedulerConfigAuditPort: SchedulerConfigAuditPort? = null
+    private val schedulerConfigAuditPort: SchedulerConfigAuditPort? = null,
+    private val objectStoragePort: ObjectStoragePort? = null
 ) {
     companion object {
         private val TERMINAL_STATUSES = setOf(TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED)
@@ -519,6 +528,39 @@ class RemoteSolverService(
             val stopped = task.copy(
                 status = TaskStatus.STOPPED,
                 assignedNodeId = null,
+                latestResult = SolveResult(
+                    feasible = task.latestResult?.feasible ?: false,
+                    optimal = false,
+                    objectiveValue = task.latestResult?.objectiveValue,
+                    objectiveValueInt64 = task.latestResult?.objectiveValueInt64,
+                    gap = task.latestResult?.gap,
+                    elapsed = (task.latestResult?.elapsedMs ?: 0L).toDuration(DurationUnit.MILLISECONDS),
+                    checkpointRef = task.latestSnapshotRef,
+                    resultRef = null,
+                    message = reason,
+                    extension = (task.latestResult?.extension ?: emptyMap()) + ("reasonCode" to "CANCELLED"),
+                    schemaVersion = task.latestResult?.schemaVersion ?: "1.0",
+                    problemStatus = if (task.latestResult?.feasible == true) {
+                        RemoteProblemStatus.FEASIBLE
+                    } else {
+                        RemoteProblemStatus.UNKNOWN
+                    },
+                    terminationReason = RemoteTerminationReason.CANCELLED,
+                    solutionPresence = if (task.latestResult?.feasible == true) {
+                        RemoteSolutionPresence.INCUMBENT
+                    } else {
+                        RemoteSolutionPresence.NONE
+                    },
+                    proofStatus = RemoteProofStatus.NONE,
+                    provenance = task.latestResult?.provenance ?: emptyMap(),
+                    fingerprints = task.latestResult?.fingerprints ?: emptyMap(),
+                    fingerprintSchemas = task.latestResult?.fingerprintSchemas ?: emptyMap(),
+                    statistics = task.latestResult?.statistics ?: emptyMap(),
+                    diagnostics = task.latestResult?.diagnostics ?: emptyMap(),
+                    runId = task.latestResult?.runId,
+                    attemptId = task.latestResult?.attemptId,
+                    artifactDigest = null
+                ),
                 updatedAt = now
             )
             taskStatePort.upsertTask(stopped)
@@ -756,11 +798,14 @@ class RemoteSolverService(
                 }
                 selectedNode = schedulerEngine.chooseNode(latestTask, availableNodes) ?: return null
             }
+            // 预算恢复后先回到队列，再进入 accept/confirm 流程。
+            // Requeue a budget-waiting task before entering the accept/confirm flow.
+            val dispatchableTask = requeueWaitingForBudget(latestTask) ?: return null
             if (!nodeStatePort.occupyUnit(selectedNode.nodeId)) {
                 return null
             }
 
-            val acceptedTask = acceptForDispatch(latestTask)
+            val acceptedTask = acceptForDispatch(dispatchableTask)
             if (acceptedTask == null) {
                 nodeStatePort.releaseUnit(selectedNode.nodeId)
                 return null
@@ -946,6 +991,16 @@ class RemoteSolverService(
             )
 
             val sliceResult = solverExecutionPort.awaitSliceEnd(handle, quantumMs)
+            RemoteResultValidator.validateSliceResult(
+                result = sliceResult,
+                expectedTaskId = acceptedTask.taskId,
+                expectedSliceId = sliceId
+            )?.let { message ->
+                throw RemoteSolverException(
+                    code = RemoteSolverErrorCode.SOLVER_EXECUTION_FAILED,
+                    message = "远程切片结果协议校验失败：$message / Remote slice result protocol validation failed: $message"
+                )
+            }
             val sliceTimeoutReason = sliceTimeoutReason(sliceResult, quantumMs)
             val checkpointRef = if (selectedNode.profile.supportsCheckpoint) {
                 currentSlice = currentSlice.copy(status = SliceStatus.CHECKPOINTING)
@@ -971,12 +1026,32 @@ class RemoteSolverService(
             }
 
             if (checkpointRef != null) {
+                val checkpointEnvelope = objectStoragePort
+                    ?.get(checkpointRef)
+                    ?.decodeToString()
+                    ?.let(PortableCheckpointCodec::decodeCompatibleOrNull)
                 checkpointPort.save(
                     CheckpointMetadata(
                         taskId = acceptedTask.taskId,
                         sliceId = sliceId,
                         ref = checkpointRef,
-                        createdAt = clock.now()
+                        createdAt = clock.now(),
+                        schemaVersion = checkpointEnvelope?.schemaVersion ?: if (
+                            acceptedTask.payload.modelData.modelType == NormalizedModelType.CP &&
+                            checkpointRef.path.value.contains("/checkpoint/")
+                        ) {
+                            "2.0"
+                        } else {
+                            "1.0"
+                        },
+                        modelFingerprint = checkpointEnvelope?.modelFingerprint
+                            ?: acceptedTask.payload.extension["modelFingerprint"],
+                        configurationFingerprint = checkpointEnvelope?.configurationFingerprint
+                            ?: acceptedTask.payload.extension["configurationFingerprint"],
+                        solverFingerprint = checkpointEnvelope?.solverFingerprint
+                            ?: acceptedTask.payload.extension["solverFingerprint"],
+                        integritySha256 = checkpointEnvelope?.integritySha256
+                            ?: acceptedTask.payload.extension["checkpointIntegritySha256"]
                     )
                 )
             }
@@ -1064,28 +1139,99 @@ class RemoteSolverService(
                 )
             }
 
-            val updatedTask = if (sliceResult.completed) {
-                val finalResult = solverExecutionPort.fetchFinalResult(handle) ?: SolveResult(
+            val terminal = sliceResult.completed || isTerminalTermination(sliceResult.terminationReason)
+            val terminalStatus = when (sliceResult.terminationReason) {
+                RemoteTerminationReason.CANCELLED -> TaskStatus.STOPPED
+                RemoteTerminationReason.BACKEND_FAILURE,
+                RemoteTerminationReason.NUMERICAL_FAILURE,
+                RemoteTerminationReason.INTERRUPTED -> TaskStatus.FAILED
+                else -> TaskStatus.COMPLETED
+            }
+            val updatedTask = if (terminal) {
+                val fetchedFinalResult = solverExecutionPort.fetchFinalResult(handle)
+                fetchedFinalResult?.let { result ->
+                    RemoteResultValidator.validateSolveResult(
+                        result = result,
+                        expectedTaskId = acceptedTask.taskId,
+                        expectedAttemptId = sliceId
+                    )?.let { message ->
+                        throw RemoteSolverException(
+                            code = RemoteSolverErrorCode.SOLVER_EXECUTION_FAILED,
+                            message = "远程最终结果协议校验失败：$message / Remote final result protocol validation failed: $message"
+                        )
+                    }
+                }
+                val finalResult = fetchedFinalResult ?: SolveResult(
                     feasible = sliceResult.feasible,
-                    optimal = true,
-                    objectiveValue = sliceResult.objectiveValue?.toDouble(),
-                    gap = sliceResult.gap?.toDouble(),
-                    elapsedMs = sliceResult.elapsedMs,
-                    checkpointRef = checkpointRef
+                    optimal = sliceResult.solutionPresence == RemoteSolutionPresence.OPTIMAL &&
+                        sliceResult.proofStatus == RemoteProofStatus.VERIFIED,
+                    objectiveValue = sliceResult.objectiveValue,
+                    objectiveValueInt64 = sliceResult.objectiveValueInt64,
+                    gap = sliceResult.gap,
+                    elapsed = sliceResult.elapsed,
+                    checkpointRef = checkpointRef,
+                    problemStatus = sliceResult.problemStatus,
+                    terminationReason = sliceResult.terminationReason,
+                    solutionPresence = sliceResult.solutionPresence,
+                    proofStatus = sliceResult.proofStatus,
+                    schemaVersion = sliceResult.schemaVersion,
+                    resultRef = sliceResult.resultRef,
+                    provenance = sliceResult.provenance,
+                    fingerprints = sliceResult.fingerprints,
+                    fingerprintSchemas = sliceResult.fingerprintSchemas,
+                    statistics = sliceResult.statistics,
+                    diagnostics = sliceResult.diagnostics,
+                    runId = sliceResult.runId,
+                    attemptId = sliceResult.attemptId,
+                    artifactDigest = sliceResult.artifactDigest
                 )
                 currentSlice = currentSlice.copy(
-                    status = SliceStatus.COMPLETED,
+                    status = if (terminalStatus == TaskStatus.COMPLETED) {
+                        SliceStatus.COMPLETED
+                    } else {
+                        SliceStatus.FAILED
+                    },
                     checkpointRef = checkpointRef,
                     finishedAt = clock.now()
                 )
                 currentTask.copy(
-                    status = TaskStatus.COMPLETED,
+                    status = terminalStatus,
                     latestResult = finalResult,
-                    latestSnapshotRef = checkpointRef,
+                    latestSnapshotRef = checkpointRef ?: currentTask.latestSnapshotRef,
                     consumedCost = consumedCostAfterSlice,
                     updatedAt = clock.now()
                 )
             } else {
+                val incumbent = if (sliceResult.feasible &&
+                    sliceResult.solutionPresence != RemoteSolutionPresence.NONE
+                ) {
+                    SolveResult(
+                        feasible = true,
+                        optimal = false,
+                        objectiveValue = sliceResult.objectiveValue,
+                        objectiveValueInt64 = sliceResult.objectiveValueInt64,
+                        gap = sliceResult.gap,
+                        elapsed = sliceResult.elapsed,
+                        checkpointRef = checkpointRef,
+                        resultRef = sliceResult.resultRef,
+                        message = sliceResult.message,
+                        schemaVersion = sliceResult.schemaVersion,
+                        problemStatus = RemoteProblemStatus.FEASIBLE,
+                        terminationReason = sliceResult.terminationReason,
+                        solutionPresence = RemoteSolutionPresence.INCUMBENT,
+                        proofStatus = RemoteProofStatus.NONE,
+                        provenance = sliceResult.provenance,
+                        fingerprints = sliceResult.fingerprints,
+                        fingerprintSchemas = sliceResult.fingerprintSchemas,
+                        statistics = sliceResult.statistics,
+                        diagnostics = sliceResult.diagnostics,
+                        runId = sliceResult.runId,
+                        attemptId = sliceResult.attemptId,
+                        artifactDigest = sliceResult.artifactDigest
+                    )
+                } else {
+                    currentTask.latestResult
+                }
                 currentSlice = currentSlice.copy(
                     status = SliceStatus.SUSPENDED,
                     checkpointRef = checkpointRef,
@@ -1093,6 +1239,7 @@ class RemoteSolverService(
                 )
                 currentTask.copy(
                     status = TaskStatus.SUSPENDED,
+                    latestResult = incumbent,
                     latestSnapshotRef = checkpointRef ?: currentTask.latestSnapshotRef,
                     consumedCost = consumedCostAfterSlice,
                     updatedAt = clock.now()
@@ -1100,7 +1247,7 @@ class RemoteSolverService(
             }
             taskStatePort.updateSlice(currentSlice)
             taskStatePort.upsertTask(updatedTask)
-            if (updatedTask.status == TaskStatus.COMPLETED) {
+            if (updatedTask.status in setOf(TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED)) {
                 clearLearningState(updatedTask.taskId.value)
             }
             if (updatedTask.status == TaskStatus.COMPLETED) {
@@ -1110,6 +1257,15 @@ class RemoteSolverService(
                     taskStatus = updatedTask.status,
                     tenantId = acceptedTask.tenantId,
                     idempotencySuffix = "end-completed"
+                )
+            } else if (updatedTask.status in setOf(TaskStatus.FAILED, TaskStatus.STOPPED)) {
+                publishSliceLifecycle(
+                    slice = currentSlice,
+                    action = "slice-end",
+                    taskStatus = updatedTask.status,
+                    tenantId = acceptedTask.tenantId,
+                    reason = sliceResult.message,
+                    idempotencySuffix = "end-terminal"
                 )
             } else {
                 publishSliceLifecycle(
@@ -1121,12 +1277,14 @@ class RemoteSolverService(
                 )
             }
             publishEvent(
-                topic = if (updatedTask.status == TaskStatus.COMPLETED) EventTopics.TASK_RESULT else EventTopics.SLICE_LIFECYCLE,
+                topic = if (updatedTask.status in setOf(TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED)) {
+                    EventTopics.TASK_RESULT
+                } else EventTopics.SLICE_LIFECYCLE,
                 key = updatedTask.taskId,
                 payload = updatedTask.summaryPayload(),
                 tenantId = acceptedTask.tenantId,
-                idempotencyKey = if (updatedTask.status == TaskStatus.COMPLETED) {
-                    "task:${updatedTask.taskId}:completed"
+                idempotencyKey = if (updatedTask.status in setOf(TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED)) {
+                    "task:${updatedTask.taskId}:terminal"
                 } else {
                     "slice:${currentSlice.sliceId}:suspended"
                 }
@@ -1163,6 +1321,24 @@ class RemoteSolverService(
         }
     }
 
+    /**
+     * 判断切片终止原因是否代表求解已到达不可继续切片的终态。
+     * Determines whether a termination reason represents a non-resumable terminal state.
+     *
+     * @param reason 切片终止原因 / Slice termination reason
+     * @return 是否为非可恢复终态 / Whether the reason is non-resumable and terminal
+     */
+    private fun isTerminalTermination(reason: RemoteTerminationReason): Boolean {
+        return reason in setOf(
+            RemoteTerminationReason.SOLUTION_LIMIT,
+            RemoteTerminationReason.OBJECTIVE_LIMIT,
+            RemoteTerminationReason.CANCELLED,
+            RemoteTerminationReason.INTERRUPTED,
+            RemoteTerminationReason.NUMERICAL_FAILURE,
+            RemoteTerminationReason.BACKEND_FAILURE
+        )
+    }
+
     private suspend fun acceptForDispatch(task: TaskState): TaskState? {
         if (task.status == TaskStatus.ACCEPTED) {
             return task
@@ -1193,6 +1369,36 @@ class RemoteSolverService(
             idempotencyKey = "task:${acceptedTask.taskId}:accept"
         )
         return acceptedTask
+    }
+
+    private suspend fun requeueWaitingForBudget(task: TaskState): TaskState? {
+        if (task.status != TaskStatus.WAITING_FOR_BUDGET) {
+            return task
+        }
+        val queuedAt = clock.now()
+        val requeued = taskStatePort.compareAndSet(
+            taskId = task.taskId,
+            from = setOf(TaskStatus.WAITING_FOR_BUDGET),
+            to = TaskStatus.QUEUED,
+            updatedAt = queuedAt
+        )
+        if (!requeued) {
+            return null
+        }
+        val queuedTask = taskStatePort.getTask(task.taskId) ?: return null
+        publishEvent(
+            topic = EventTopics.SOLVING_CONTROL,
+            key = queuedTask.taskId,
+            payload = SolvingControlPayload(
+                taskId = queuedTask.taskId.value,
+                action = "budget_requeue",
+                status = TaskStatus.QUEUED.name,
+                reason = "Budget available, task returned to queue"
+            ).toByteArray(),
+            tenantId = queuedTask.tenantId,
+            idempotencyKey = "task:${queuedTask.taskId}:budget_requeue"
+        )
+        return queuedTask
     }
 
     private suspend fun checkBudget(task: TaskState): Boolean {
@@ -1458,17 +1664,46 @@ class RemoteSolverService(
         reasonCode: RemoteSolverErrorCode = RemoteSolverErrorCode.TASK_FAILED
     ): TaskState {
         val normalizedReasonCode = RemoteSolverErrorMapper.reasonCodeOf(reasonCode)
+        val previousResult = task.latestResult
+        val preservedFeasible = previousResult?.feasible ?: false
         val failed = task.copy(
             status = TaskStatus.FAILED,
             latestResult = SolveResult(
-                feasible = false,
+                feasible = preservedFeasible,
                 optimal = false,
-                objectiveValue = task.latestResult?.objectiveValue?.toDouble(),
-                gap = task.latestResult?.gap?.toDouble(),
-                elapsedMs = task.latestResult?.elapsedMs ?: 0L,
+                objectiveValue = previousResult?.objectiveValue,
+                objectiveValueInt64 = previousResult?.objectiveValueInt64,
+                gap = previousResult?.gap,
+                elapsed = (previousResult?.elapsedMs ?: 0L).toDuration(DurationUnit.MILLISECONDS),
                 checkpointRef = task.latestSnapshotRef,
+                resultRef = null,
                 message = reason,
-                extension = mapOf("reasonCode" to normalizedReasonCode)
+                extension = mapOf("reasonCode" to normalizedReasonCode),
+                schemaVersion = previousResult?.schemaVersion ?: "1.0",
+                problemStatus = if (preservedFeasible) {
+                    RemoteProblemStatus.FEASIBLE
+                } else {
+                    RemoteProblemStatus.UNKNOWN
+                },
+                terminationReason = when (reasonCode) {
+                    RemoteSolverErrorCode.TASK_FAILED_SLICE_TIMEOUT,
+                    RemoteSolverErrorCode.TASK_FAILED_HARD_TIMEOUT -> RemoteTerminationReason.TIME_LIMIT
+                    else -> RemoteTerminationReason.BACKEND_FAILURE
+                },
+                solutionPresence = if (preservedFeasible) {
+                    RemoteSolutionPresence.INCUMBENT
+                } else {
+                    RemoteSolutionPresence.NONE
+                },
+                proofStatus = RemoteProofStatus.NONE,
+                provenance = previousResult?.provenance ?: emptyMap(),
+                fingerprints = previousResult?.fingerprints ?: emptyMap(),
+                fingerprintSchemas = previousResult?.fingerprintSchemas ?: emptyMap(),
+                statistics = previousResult?.statistics ?: emptyMap(),
+                diagnostics = previousResult?.diagnostics ?: emptyMap(),
+                runId = previousResult?.runId,
+                attemptId = previousResult?.attemptId,
+                artifactDigest = null
             ),
             updatedAt = clock.now()
         )
@@ -1779,6 +2014,12 @@ class RemoteSolverService(
     }
 
     private fun isNodeCompatible(task: TaskState, node: NodeState): Boolean {
+        val modelType = task.payload.modelData.modelType
+        if (modelType != NormalizedModelType.UNKNOWN &&
+            modelType !in node.profile.supportedModelTypes
+        ) {
+            return false
+        }
         val requiredSolverType = task.payload.taskMeta.solverType?.value
             ?: task.payload.extension["solverType"]
             ?: task.payload.taskMeta.metadata["solverType"]

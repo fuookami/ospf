@@ -7,6 +7,9 @@ import fuookami.ospf.framework.remote_solver.domain.SliceState
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceStatus
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceId
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolvePayload
+import fuookami.ospf.framework.remote_solver.protocol.domain.SolveResult
+import fuookami.ospf.framework.remote_solver.protocol.domain.SolverConfig
+import fuookami.ospf.framework.remote_solver.protocol.domain.ModelData
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskComplexity
 import fuookami.ospf.framework.remote_solver.domain.TaskState
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskStatus
@@ -33,6 +36,96 @@ abstract class TaskStatePortContractTest {
                 assertEquals(task.taskId, loaded.taskId)
                 assertEquals(task.status, loaded.status)
                 assertEquals(task.priority, loaded.priority)
+            }
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun inlineSolverConfigRoundTripsThroughPersistence() {
+        val fixture = createFixture()
+        try {
+            runSuspend {
+                val task = sampleTask(taskId = "task-inline-config").copy(
+                    payload = SolvePayload(
+                        modelData = ModelData.reference(ObjectRef.of(path = "models/task-inline-config")),
+                        config = SolverConfig(
+                            timeLimitMs = 1234L,
+                            solutionLimit = 7,
+                            mipGapTolerance = 0.125,
+                            threads = 3,
+                            solverParams = mapOf("presolve" to "aggressive")
+                        )
+                    )
+                )
+                fixture.subject.upsertTask(task)
+
+                val loaded = fixture.subject.getTask(task.taskId)
+                assertNotNull(loaded)
+                assertEquals(task.payload.config, loaded.payload.config)
+            }
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun objectReferenceVersionAndEtagRoundTripsThroughPersistence() {
+        val fixture = createFixture()
+        try {
+            runSuspend {
+                val modelRef = ObjectRef.of("models/ref-task", version = "v-model", etag = "etag-model")
+                val configRef = ObjectRef.of("configs/ref-task", version = "v-config", etag = "etag-config")
+                val snapshotRef = ObjectRef.of("snapshots/ref-task", version = "v-snapshot", etag = "etag-snapshot")
+                val checkpointRef = ObjectRef.of("checkpoints/ref-task", version = "v-checkpoint", etag = "etag-checkpoint")
+                val resultRef = ObjectRef.of("results/ref-task", version = "v-result", etag = "etag-result")
+                val latestSnapshotRef = ObjectRef.of("snapshots/latest-ref-task", version = "v-latest", etag = "etag-latest")
+                val task = sampleTask(taskId = "task-object-ref").copy(
+                    payload = SolvePayload(
+                        modelData = ModelData.reference(modelRef),
+                        configRef = configRef,
+                        snapshotRef = snapshotRef
+                    ),
+                    latestResult = SolveResult(
+                        feasible = true,
+                        optimal = false,
+                        objectiveValue = null,
+                        gap = null,
+                        elapsedMs = 1L,
+                        checkpointRef = checkpointRef,
+                        resultRef = resultRef
+                    ),
+                    latestSnapshotRef = latestSnapshotRef
+                )
+                fixture.subject.upsertTask(task)
+
+                val loaded = fixture.subject.getTask(task.taskId)
+                assertNotNull(loaded)
+                assertEquals(modelRef, loaded.payload.modelRef)
+                assertEquals(configRef, loaded.payload.configRef)
+                assertEquals(snapshotRef, loaded.payload.snapshotRef)
+                assertEquals(checkpointRef, loaded.latestResult?.checkpointRef)
+                assertEquals(resultRef, loaded.latestResult?.resultRef)
+                assertEquals(latestSnapshotRef, loaded.latestSnapshotRef)
+
+                val sliceCheckpoint = ObjectRef.of("checkpoints/ref-task/slice", version = "v-slice-checkpoint", etag = "etag-slice-checkpoint")
+                val sliceResult = ObjectRef.of("results/ref-task/slice", version = "v-slice-result", etag = "etag-slice-result")
+                fixture.subject.appendSlice(
+                    SliceState(
+                        sliceId = "slice-object-ref",
+                        taskId = task.taskId.value,
+                        dispatchId = "dispatch-object-ref",
+                        status = SliceStatus.PLANNED,
+                        nodeId = null,
+                        quantum = 1000L,
+                        checkpointRef = sliceCheckpoint,
+                        resultRef = sliceResult
+                    )
+                )
+                val loadedSlice = fixture.subject.getSlices(task.taskId).single()
+                assertEquals(sliceCheckpoint, loadedSlice.checkpointRef)
+                assertEquals(sliceResult, loadedSlice.resultRef)
             }
         } finally {
             fixture.close()

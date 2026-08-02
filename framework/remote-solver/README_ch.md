@@ -37,6 +37,14 @@ ospf-remote-solver/
 - 完整调度器部署：依赖 `ospf-remote-solver-dispatcher`
 - 自定义求解执行：依赖 `ospf-remote-solver-calculator`
 
+## 约束规划集成
+
+CP 路径接收 `ModelData.format = ospf-cp-snapshot-json` 且目标类型为 `cp` 的 `SolvePayload` artifact。dispatcher 会在调度前解码并校验完整 payload，统一处理租户作用域对象引用，并且只把任务分配给声明支持 `NormalizedModelType.CP` 的节点。calculator 重建 OSPF CP snapshot 后使用 SCIP CP 求解器，不引入 OR-Tools，也不声明原生 optional interval 能力。
+
+CP 结果 artifact 是实际的、带版本的 `SerializedSolution` JSON。整数按稳定变量 ID 使用 JSON `Long` 编码，interval 包含 `start`、`size`、`end` 和 `present`。`SolveResult` 携带正交的问题状态、终止原因、解存在性、proof、provenance、fingerprints 和 `resultRef`；旧布尔字段仅作为兼容投影。portable checkpoint v2 保存 snapshot、指纹、incumbent 值和完整性摘要；恢复是 rebuild 语义，绝不表示 native 搜索树恢复。
+
+线性和二次 `ModelData` 同样携带稳定身份元数据。模型、变量、约束和目标 DTO 保留 `identityId`、`identityScope`、来源 kind/key、namespace 和 schema；字段缺失时按 model-local 旧协议默认值读取。该元数据属于本地协议 fixture 契约，不能用展示名称或注册顺序替代。
+
 ## 基础设施适配器
 
 框架采用端口/适配器架构，每个基础设施组件均可通过配置切换实现。
@@ -461,6 +469,9 @@ Windows:
 - `deploy/sql/V2__remote_solver_infra.sql` - 基础设施表
 - `deploy/sql/V3__remote_solver_scheduler_audit.sql` - 调度审计表
 - `deploy/sql/V4__remote_solver_multi_tenant.sql` - 多租户支持（tenant_id 列）
+- `deploy/sql/V5__remote_solver_cp2.sql` - CP2 能力与结果报告持久化
+- `deploy/sql/V6__remote_solver_cp2_payload_config.sql` - 内联 CP 求解配置持久化
+- `deploy/sql/V7__remote_solver_object_ref_etag.sql` - CP payload/result/checkpoint 的 ObjectRef ETag 持久化
 
 ### 步骤 2：配置文件
 
@@ -579,15 +590,23 @@ curl -s "http://127.0.0.1:18080/api/v1/tasks/$TASK_ID"
 
 Worker 参数：
 - `--model <path>` - 模型引用路径
+- `--model-format <format>` - 使用 `ospf-cp-snapshot-json` 时在独立进程内执行真实 SCIP CP snapshot
 - `--task <taskId>` - 任务标识
 - `--slice <sliceId>` - 切片标识
 - `--node <nodeId>` - 节点标识
-- `--quantum_ms <ms>` - 本次切片时间配额
+- `--quantum-ms <ms>` - 本次切片时间配额
+- `--tenant-id <tenantId>` - 结果和 checkpoint artifact 使用的租户标识
+- `--config-json <json>` - CP 执行使用的内联 `SolverConfig` JSON
 - `--checkpoint-in <path>` - 可选快照用于 warm-start
 
 额外参数：
 - `--state-dir <dir>` - 本地状态目录（默认：`target/remote-solver-worker-state`）
-- `--total-runtime-ms <ms>` - 模拟运行时间（默认：`12000`）
+- `--total-runtime-ms <ms>` - 非 CP 兼容进度模式的运行时间（默认：`12000`）
+
+传入 `--model-format ospf-cp-snapshot-json` 时，worker 会读取 snapshot，在独立进程中调用
+`OspfCpSnapshotExecutor` 和配置的 SCIP runtime，并写出带版本的 `SerializedSolution` JSON 结果及
+portable checkpoint。模型和 checkpoint 路径必须对 worker 进程可读。未传入 CP format 时保留旧的
+非 CP 进度协议；该模式不是求解结果。
 
 ### 步骤 2：注册节点
 
@@ -759,6 +778,9 @@ Ktorm 生产模板：
 2. `deploy/sql/V2__remote_solver_infra.sql`
 3. `deploy/sql/V3__remote_solver_scheduler_audit.sql`
 4. `deploy/sql/V4__remote_solver_multi_tenant.sql`
+5. `deploy/sql/V5__remote_solver_cp2.sql`
+6. `deploy/sql/V6__remote_solver_cp2_payload_config.sql`
+7. `deploy/sql/V7__remote_solver_object_ref_etag.sql`
 
 首次使用 JDBC 部署前建议先执行（PostgreSQL 示例）：
 ```bash
@@ -766,6 +788,9 @@ psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V1__remote_solver
 psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V2__remote_solver_infra.sql
 psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V3__remote_solver_scheduler_audit.sql
 psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V4__remote_solver_multi_tenant.sql
+psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V5__remote_solver_cp2.sql
+psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V6__remote_solver_cp2_payload_config.sql
+psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V7__remote_solver_object_ref_etag.sql
 ```
 
 也可直接使用迁移脚本：
@@ -1273,6 +1298,9 @@ AlertManager 路由配置：
 | `deploy/sql/V2__remote_solver_infra.sql` | 基础设施扩展表 | 基础设施元数据 |
 | `deploy/sql/V3__remote_solver_scheduler_audit.sql` | `remote_solver_scheduler_audit`, `remote_solver_scheduler_snapshot` | 调度参数热更新审计轨迹 |
 | `deploy/sql/V4__remote_solver_multi_tenant.sql` | `remote_solver_task_state`, `remote_solver_cost_ledger` 增加 `tenant_id` 列 | 多租户隔离 |
+| `deploy/sql/V5__remote_solver_cp2.sql` | CP 能力、payload 模型格式、最新结果报告 | CP2 能力与报告持久化 |
+| `deploy/sql/V6__remote_solver_cp2_payload_config.sql` | `remote_solver_task_state.payload_config_json` | 保留内联 CP 求解配置 |
+| `deploy/sql/V7__remote_solver_object_ref_etag.sql` | task/slice 状态中的 ObjectRef ETag 列 | 保证重载和回放时保留内容身份 |
 
 执行迁移：
 
@@ -1293,6 +1321,9 @@ psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V1__remote_solver
 psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V2__remote_solver_infra.sql
 psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V3__remote_solver_scheduler_audit.sql
 psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V4__remote_solver_multi_tenant.sql
+psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V5__remote_solver_cp2.sql
+psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V6__remote_solver_cp2_payload_config.sql
+psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V7__remote_solver_object_ref_etag.sql
 ```
 
 ## 验收场景

@@ -7,6 +7,7 @@
  * 每个任务维护一个检查点日志文件，支持自动清理历史检查点。
  * Each task maintains a checkpoint log file with automatic cleanup of historical checkpoints.
  */
+@file:OptIn(kotlin.time.ExperimentalTime::class)
 package fuookami.ospf.framework.remote_solver.adapter.localfs
 
 import fuookami.ospf.framework.remote_solver.protocol.domain.CheckpointMetadata
@@ -17,6 +18,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.util.Base64
+import kotlin.time.Instant
 
 /**
  * 本地文件系统检查点端口
@@ -138,10 +140,15 @@ class LocalFsCheckpointPort(
         val version = decodeNullable(parts[3])
         val etag = decodeNullable(parts[4])
         return CheckpointMetadata(
-            taskId = taskId,
-            sliceId = sliceId,
+            taskId = TaskId.of(taskId),
+            sliceId = fuookami.ospf.framework.remote_solver.protocol.domain.SliceId.of(sliceId),
             ref = ObjectRef.of(path = path, version = version, etag = etag),
-            createdAtEpochMs = createdAt
+            createdAt = Instant.fromEpochMilliseconds(createdAt),
+            schemaVersion = parts.getOrNull(5)?.let(::decodeNullable) ?: "1.0",
+            modelFingerprint = parts.getOrNull(6)?.let(::decodeNullable),
+            configurationFingerprint = parts.getOrNull(7)?.let(::decodeNullable),
+            solverFingerprint = parts.getOrNull(8)?.let(::decodeNullable),
+            integritySha256 = parts.getOrNull(9)?.let(::decodeNullable)
         )
     }
 
@@ -179,6 +186,16 @@ class LocalFsCheckpointPort(
             append(encodeNullable(metadata.ref.version?.value))
             append('\t')
             append(encodeNullable(metadata.ref.etag?.value))
+            append('\t')
+            append(encode(metadata.schemaVersion))
+            append('\t')
+            append(encodeNullable(metadata.modelFingerprint))
+            append('\t')
+            append(encodeNullable(metadata.configurationFingerprint))
+            append('\t')
+            append(encodeNullable(metadata.solverFingerprint))
+            append('\t')
+            append(encodeNullable(metadata.integritySha256))
         }
 
     /**

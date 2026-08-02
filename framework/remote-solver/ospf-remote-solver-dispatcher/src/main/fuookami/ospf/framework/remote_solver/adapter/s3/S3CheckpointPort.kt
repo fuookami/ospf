@@ -7,6 +7,7 @@
  * This module provides S3/MinIO-based checkpoint persistence storage implementation
  * for saving and retrieving checkpoint data of solving tasks.
  */
+@file:OptIn(kotlin.time.ExperimentalTime::class)
 
 package fuookami.ospf.framework.remote_solver.adapter.s3
 
@@ -19,6 +20,7 @@ import io.minio.MinioClient
 import io.minio.PutObjectArgs
 import java.util.Base64
 import java.io.ByteArrayInputStream
+import kotlin.time.Instant
 
 /**
  * S3 检查点端口
@@ -175,10 +177,15 @@ class S3CheckpointPort(
         val version = decodeNullable(parts[3])
         val etag = decodeNullable(parts[4])
         return CheckpointMetadata(
-            taskId = taskId,
-            sliceId = sliceId,
+            taskId = TaskId.of(taskId),
+            sliceId = fuookami.ospf.framework.remote_solver.protocol.domain.SliceId.of(sliceId),
             ref = ObjectRef.of(path = path, version = version, etag = etag),
-            createdAtEpochMs = createdAt
+            createdAt = Instant.fromEpochMilliseconds(createdAt),
+            schemaVersion = parts.getOrNull(5)?.let(::decodeNullable) ?: "1.0",
+            modelFingerprint = parts.getOrNull(6)?.let(::decodeNullable),
+            configurationFingerprint = parts.getOrNull(7)?.let(::decodeNullable),
+            solverFingerprint = parts.getOrNull(8)?.let(::decodeNullable),
+            integritySha256 = parts.getOrNull(9)?.let(::decodeNullable)
         )
     }
 
@@ -203,6 +210,16 @@ class S3CheckpointPort(
             append(encodeNullable(metadata.ref.version?.value))
             append('\t')
             append(encodeNullable(metadata.ref.etag?.value))
+            append('\t')
+            append(encode(metadata.schemaVersion))
+            append('\t')
+            append(encodeNullable(metadata.modelFingerprint))
+            append('\t')
+            append(encodeNullable(metadata.configurationFingerprint))
+            append('\t')
+            append(encodeNullable(metadata.solverFingerprint))
+            append('\t')
+            append(encodeNullable(metadata.integritySha256))
         }
 
     /**

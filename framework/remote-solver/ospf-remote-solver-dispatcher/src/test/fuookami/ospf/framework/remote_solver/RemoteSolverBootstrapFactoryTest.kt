@@ -47,10 +47,13 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.TaskComplexity
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskStatus
 import fuookami.ospf.framework.remote_solver.protocol.domain.TimeSensitivity
 import fuookami.ospf.framework.remote_solver.protocol.domain.ExecutionHandle
+import fuookami.ospf.framework.remote_solver.protocol.domain.ModelData
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceResult
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolveResult
 import java.nio.file.Files
 import java.sql.DriverManager
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlin.io.path.deleteIfExists
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -126,6 +129,19 @@ class RemoteSolverBootstrapFactoryTest {
                 paths.sorted(Comparator.reverseOrder()).forEach { it.deleteIfExists() }
             }
         }
+    }
+
+    @Test
+    fun configuredInProcessBridgeClassShouldBeInstantiable() {
+        val runtime = RemoteSolverBootstrapFactory.create(
+            RemoteSolverBootstrapOptions(
+                solverExecutionAdapter = SolverExecutionAdapterType.OSPF_INPROCESS,
+                solverExecutionOspfBridgeClass =
+                    "fuookami.ospf.framework.remote_solver.adapter.ospf.OspfInProcessBridge"
+            )
+        )
+
+        assertTrue(runtime.solverExecutionPort is OspfSolverExecutionPort)
     }
 
     @Test
@@ -378,6 +394,9 @@ class RemoteSolverBootstrapFactoryTest {
                 stmt.execute("INSERT INTO remote_solver_migration_history(version, description, applied_at_epoch_ms) VALUES ('2', 'infra', 0)")
                 stmt.execute("INSERT INTO remote_solver_migration_history(version, description, applied_at_epoch_ms) VALUES ('3', 'scheduler_audit', 0)")
                 stmt.execute("INSERT INTO remote_solver_migration_history(version, description, applied_at_epoch_ms) VALUES ('4', 'multi_tenant', 0)")
+                stmt.execute("INSERT INTO remote_solver_migration_history(version, description, applied_at_epoch_ms) VALUES ('5', 'cp2', 0)")
+                stmt.execute("INSERT INTO remote_solver_migration_history(version, description, applied_at_epoch_ms) VALUES ('6', 'cp2_payload_config', 0)")
+                stmt.execute("INSERT INTO remote_solver_migration_history(version, description, applied_at_epoch_ms) VALUES ('7', 'object_ref_etag_persistence', 0)")
             }
         }
         val runtime = RemoteSolverBootstrapFactory.create(
@@ -737,6 +756,13 @@ class RemoteSolverBootstrapFactoryTest {
     fun runtimeShouldExposeApiFacade() {
         val runtime = RemoteSolverBootstrapFactory.create()
         runSuspend {
+            runtime.objectStoragePort.put(
+                path = "default/model/runtime-api-facade",
+                bytes = Json.encodeToString(
+                    SolvePayload.serializer(),
+                    SolvePayload(modelData = ModelData(rawBytes = byteArrayOf(), format = "ospf-linear-json"))
+                ).encodeToByteArray()
+            )
             val response = runtime.apiFacade.submit(
                 fuookami.ospf.framework.remote_solver.application.TaskSubmitRequest(
                     payloadRef = ObjectRef.of(path = "model/runtime-api-facade"),

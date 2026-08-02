@@ -1100,7 +1100,8 @@ object RemoteSolverBootstrapFactory {
             clock = clock,
             idGenerator = idGenerator,
             config = options.config,
-            schedulerConfigAuditPort = schedulerConfigAuditPort
+            schedulerConfigAuditPort = schedulerConfigAuditPort,
+            objectStoragePort = objectStoragePort
         )
 
         return RemoteSolverRuntime(
@@ -1116,7 +1117,10 @@ object RemoteSolverBootstrapFactory {
             solverExecutionPort = solverExecutionPort,
             metricsPort = metricsPort,
             schedulerConfigAuditPort = schedulerConfigAuditPort,
-            apiFacade = RemoteSolverApiFacade(service)
+            apiFacade = RemoteSolverApiFacade(
+                service = service,
+                objectStoragePort = objectStoragePort
+            )
         )
     }
 

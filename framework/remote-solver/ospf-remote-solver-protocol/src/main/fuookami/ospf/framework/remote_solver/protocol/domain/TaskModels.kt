@@ -186,6 +186,7 @@ data class ModelData(
         get() = when {
             quadraticModel != null -> NormalizedModelType.QUADRATIC
             linearModel != null -> NormalizedModelType.LINEAR
+            format == "ospf-cp-snapshot-json" -> NormalizedModelType.CP
             else -> NormalizedModelType.UNKNOWN
         }
 

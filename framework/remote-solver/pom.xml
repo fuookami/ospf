@@ -10,6 +10,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>ospf-remote-solver</artifactId>
+    <version>1.1.0-cp2.0401dabb2</version>
     <packaging>pom</packaging>
 
     <modules>
@@ -19,6 +20,7 @@
     </modules>
 
     <properties>
+        <ospf.kotlin.version>1.1.0</ospf.kotlin.version>
         <ktor.version>3.3.3</ktor.version>
         <kafka.version>3.7.1</kafka.version>
         <minio.version>8.5.11</minio.version>
@@ -27,10 +29,18 @@
         <hikari.version>5.1.0</hikari.version>
         <postgresql.version>42.7.2</postgresql.version>
         <h2.version>2.2.224</h2.version>
+        <ktorm.version>4.1.1</ktorm.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>io.github.fuookami.ospf.kotlin</groupId>
+                <artifactId>ospf-kotlin-dependencies</artifactId>
+                <version>${ospf.kotlin.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <!-- Internal modules -->
             <dependency>
                 <groupId>io.github.fuookami.ospf.kotlin</groupId>

@@ -17,6 +17,8 @@ package fuookami.ospf.framework.remote_solver.application
 
 import fuookami.ospf.framework.remote_solver.domain.TaskState
 import fuookami.ospf.framework.remote_solver.protocol.domain.BudgetScopeId
+import fuookami.ospf.framework.remote_solver.protocol.domain.ModelData
+import fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType
 import fuookami.ospf.framework.remote_solver.protocol.domain.ObjectRef
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverErrorCode
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverErrorMapper
@@ -28,8 +30,11 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.TaskMeta
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskStatus
 import fuookami.ospf.framework.remote_solver.protocol.domain.TenantId
 import fuookami.ospf.framework.remote_solver.protocol.domain.TimeSensitivity
+import fuookami.ospf.framework.remote_solver.protocol.port.ObjectStoragePort
 import fuookami.ospf.framework.remote_solver.port.TaskEventQueryPort
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlin.time.Instant
 
 /**
@@ -345,6 +350,26 @@ data class MonitoringOverviewResponse(
 )
 
 /**
+ * 远程求解器能力摘要。 / Remote solver capability summary.
+ *
+ * 该摘要用于客户端在提交任务前确认协议版本和当前在线节点的模型能力。
+ * The summary lets clients verify protocol versions and model capabilities of online nodes before submission.
+ *
+ * @property schemaVersion 能力摘要 schema 版本 / Capability summary schema version
+ * @property protocolVersions 服务端支持的协议版本 / Protocol versions supported by the server
+ * @property supportedModelTypes 当前在线节点支持的模型类型 / Model types supported by current online nodes
+ * @property supportsPortableCheckpoint 是否支持 portable checkpoint / Whether portable checkpoints are supported
+ * @property supportsNativeCheckpoint 是否支持原生搜索状态恢复 / Whether native search-state resume is supported
+ */
+data class SolverCapabilitiesResponse(
+    val schemaVersion: String,
+    val protocolVersions: Set<String>,
+    val supportedModelTypes: Set<String>,
+    val supportsPortableCheckpoint: Boolean,
+    val supportsNativeCheckpoint: Boolean
+)
+
+/**
  * 远程求解器 API 门面
  *
  * 提供任务提交、查询、控制等操作的 API 门面。
@@ -359,7 +384,12 @@ data class MonitoringOverviewResponse(
  *                 Remote solver service
  */
 class RemoteSolverApiFacade(
-    private val service: RemoteSolverService
+    private val service: RemoteSolverService,
+    private val objectStoragePort: ObjectStoragePort? = null,
+    private val json: Json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+    }
 ) {
     /**
      * 提交任务
@@ -377,13 +407,15 @@ class RemoteSolverApiFacade(
         validate(request)
         val task = runCatching {
             val normalizedTenantId = normalizeTenantId(request.tenantId)
+            val payloadRef = scopeObjectRef(request.payloadRef, normalizedTenantId)
             service.submitTask(
-                payload = SolvePayload(
-                    modelRef = scopeObjectRef(request.payloadRef, normalizedTenantId),
-                    configRef = request.configRef?.let { scopeObjectRef(it, normalizedTenantId) },
-                    snapshotRef = request.snapshotRef?.let { scopeObjectRef(it, normalizedTenantId) },
-                    taskMeta = request.taskMeta,
-                    extension = request.extension + mapOf("tenantId" to normalizedTenantId)
+                    payload = loadPayload(
+                        payloadRef = payloadRef,
+                        configRef = request.configRef?.let { scopeObjectRef(it, normalizedTenantId) },
+                        snapshotRef = request.snapshotRef?.let { scopeObjectRef(it, normalizedTenantId) },
+                        taskMeta = request.taskMeta,
+                        extension = request.extension + mapOf("tenantId" to normalizedTenantId),
+                        tenantId = normalizedTenantId
                 ),
                 complexity = request.complexity,
                 timeSensitivity = request.timeSensitivity,
@@ -417,6 +449,26 @@ class RemoteSolverApiFacade(
      */
     suspend fun get(taskId: String): TaskViewResponse? =
         service.getTask(taskId)?.let { mapTaskView(it) }
+
+    /**
+     * 获取服务端能力和协议版本。 / Get server capabilities and protocol versions.
+     *
+     * @return 当前在线节点汇总的能力摘要 / Capability summary aggregated from online nodes
+     */
+    suspend fun capabilities(): SolverCapabilitiesResponse {
+        val supportedModelTypes = service.nodeStatePort()
+            .listNodes(onlineOnly = true)
+            .flatMap { it.profile.supportedModelTypes }
+            .map(NormalizedModelType::name)
+            .toSortedSet()
+        return SolverCapabilitiesResponse(
+            schemaVersion = "1.0",
+            protocolVersions = setOf("2.0"),
+            supportedModelTypes = supportedModelTypes,
+            supportsPortableCheckpoint = true,
+            supportsNativeCheckpoint = false
+        )
+    }
 
     /**
      * 停止任务
@@ -684,6 +736,174 @@ class RemoteSolverApiFacade(
             )
         }
         return tenant
+    }
+
+    /**
+     * 从对象存储加载新协议 SolvePayload，并保留旧模型引用兼容路径。
+     * Load a protocol SolvePayload from object storage while preserving the legacy model-reference path.
+     *
+     * @param payloadRef 租户作用域内的 payload 引用 / Tenant-scoped payload reference
+     * @param configRef 配置引用 / Configuration reference
+     * @param snapshotRef 快照引用 / Snapshot reference
+     * @param taskMeta 任务元数据 / Task metadata
+     * @param extension 扩展字段 / Extension fields
+     * @return 求解载荷 / Solve payload
+     */
+    private suspend fun loadPayload(
+        payloadRef: ObjectRef,
+        configRef: ObjectRef?,
+        snapshotRef: ObjectRef?,
+        taskMeta: TaskMeta,
+        extension: Map<String, String>,
+        tenantId: String
+    ): SolvePayload {
+        val storage = objectStoragePort
+        if (storage == null) {
+            return SolvePayload(
+                modelRef = payloadRef,
+                configRef = configRef,
+                snapshotRef = snapshotRef,
+                taskMeta = taskMeta,
+                extension = extension
+            )
+        }
+        val bytes = storage.get(payloadRef)
+            ?: throw RemoteSolverException(
+                code = RemoteSolverErrorCode.STORAGE_IO_FAILED,
+                message = "payload artifact not found: ${payloadRef.path.value}"
+            )
+        val content = bytes.decodeToString()
+        val root = runCatching { json.parseToJsonElement(content) }.getOrNull()
+        val isExplicitLegacy = extension["payloadMode"]?.equals("legacy-model", ignoreCase = true) == true ||
+            extension["legacyPayloadRef"]?.equals("true", ignoreCase = true) == true
+        if (root !is JsonObject || !root.containsKey("modelData")) {
+            if (!isExplicitLegacy) {
+                throw RemoteSolverException(
+                    code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                    message = "payload artifact is not a SolvePayload; use payloadMode=legacy-model for legacy model references"
+                )
+            }
+            return SolvePayload(
+                modelRef = payloadRef,
+                configRef = configRef,
+                snapshotRef = snapshotRef,
+                taskMeta = taskMeta,
+                extension = extension + mapOf(
+                    "legacyPayloadRef" to "true",
+                    "payloadMode" to "legacy-model"
+                )
+            )
+        }
+        val decoded = runCatching {
+            json.decodeFromString(SolvePayload.serializer(), content)
+        }.getOrElse { error ->
+            throw RemoteSolverException(
+                code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                message = "invalid SolvePayload artifact: ${error.message}"
+            )
+        }
+        validatePayloadArtifact(
+            payload = decoded,
+            configRef = configRef,
+            snapshotRef = snapshotRef,
+            requestTaskMeta = taskMeta,
+            tenantId = tenantId
+        )
+        val normalizedModelData = if (decoded.modelData.rawBytes != null && decoded.modelData.format == "ospf-cp-snapshot-json") {
+            val snapshotBytes = decoded.modelData.rawBytes
+                ?: throw RemoteSolverException(
+                    code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                    message = "CP payload raw snapshot is missing"
+                )
+            val snapshotPath = "$tenantId/snapshot/${payloadRef.path.value.removePrefix("$tenantId/")}"
+            val snapshotRef = storage.put(
+                path = snapshotPath,
+                bytes = snapshotBytes,
+                metadata = mapOf(
+                    "tenantId" to tenantId,
+                    "sourcePayload" to payloadRef.path.value,
+                    "contentType" to "application/json",
+                    "format" to "ospf-cp-snapshot-json"
+                )
+            )
+            ModelData.reference(snapshotRef).copy(format = decoded.modelData.format)
+        } else {
+            decoded.modelData.copy(ref = decoded.modelData.ref ?: payloadRef)
+        }
+        return decoded.copy(
+            modelData = normalizedModelData,
+            configRef = decoded.configRef ?: configRef,
+            snapshotRef = decoded.snapshotRef ?: snapshotRef,
+            taskMeta = decoded.taskMeta,
+            extension = decoded.extension + extension
+        )
+    }
+
+    private fun validatePayloadArtifact(
+        payload: SolvePayload,
+        configRef: ObjectRef?,
+        snapshotRef: ObjectRef?,
+        requestTaskMeta: TaskMeta,
+        tenantId: String
+    ) {
+        val modelData = payload.modelData
+        val sourceCount = listOf(
+            modelData.ref != null,
+            modelData.linearModel != null,
+            modelData.quadraticModel != null,
+            modelData.rawBytes != null
+        ).count { it }
+        if (sourceCount != 1) {
+            throw RemoteSolverException(
+                code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                message = "SolvePayload.modelData must contain exactly one model source"
+            )
+        }
+        val requestTarget = requestTaskMeta.targetType?.value?.lowercase()
+        val payloadTarget = payload.taskMeta.targetType?.value?.lowercase()
+        if (requestTarget != null && payloadTarget != null && requestTarget != payloadTarget) {
+            throw RemoteSolverException(
+                code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                message = "SolvePayload targetType conflicts with submit metadata"
+            )
+        }
+        val format = modelData.format?.trim()
+        val rawBytes = modelData.rawBytes
+        if (format == "ospf-cp-snapshot-json") {
+            if (rawBytes == null || rawBytes.isEmpty()) {
+                throw RemoteSolverException(
+                    code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                    message = "CP payload must contain a non-empty ospf-cp-snapshot-json artifact"
+                )
+            }
+            if (payloadTarget != null && payloadTarget !in setOf("cp", "constraint-programming", "constraint_programming")) {
+                throw RemoteSolverException(
+                    code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                    message = "CP payload format conflicts with targetType"
+                )
+            }
+        } else if (format != null && format.isNotBlank() && format != "ospf-linear-json" && format != "ospf-quadratic-json") {
+            throw RemoteSolverException(
+                code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                message = "Unsupported model format: $format"
+            )
+        }
+        listOf(
+            "modelData.ref" to modelData.ref,
+            "configRef" to (payload.configRef ?: configRef),
+            "snapshotRef" to (payload.snapshotRef ?: snapshotRef)
+        ).forEach { (name, ref) ->
+            if (ref != null && !isTenantScoped(ref, tenantId)) {
+                throw RemoteSolverException(
+                    code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                    message = "$name must be scoped to tenant '$tenantId'"
+                )
+            }
+        }
+    }
+
+    private fun isTenantScoped(ref: ObjectRef, tenantId: String): Boolean {
+        return ref.path.value.trim().startsWith("$tenantId/")
     }
 
     private fun scopeObjectRef(ref: ObjectRef, tenantId: String): ObjectRef {

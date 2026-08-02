@@ -17,6 +17,7 @@ package fuookami.ospf.framework.remote_solver.adapter.ktorm
 import kotlin.time.DurationUnit
 import kotlin.time.Instant
 import kotlin.time.toDuration
+import kotlinx.serialization.json.Json
 import fuookami.ospf.framework.remote_solver.domain.SliceState
 import fuookami.ospf.framework.remote_solver.domain.TaskState
 import fuookami.ospf.framework.remote_solver.protocol.domain.BudgetScopeId
@@ -28,6 +29,7 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.SliceId
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceStatus
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolvePayload
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolveResult
+import fuookami.ospf.framework.remote_solver.protocol.domain.ModelData
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskComplexity
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskId
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskMeta
@@ -90,6 +92,10 @@ class KtormTaskStatePort(
     taskTableName: String = "remote_solver_task_state",
     sliceTableName: String = "remote_solver_slice_state"
 ) : TaskStatePort {
+    private val json = Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+    }
     private val resolvedTaskTableName = normalizeTableName(taskTableName)
     private val resolvedSliceTableName = normalizeTableName(sliceTableName)
     private val initialized = AtomicBoolean(false)
@@ -227,17 +233,20 @@ class KtormTaskStatePort(
                     """
                     UPDATE $resolvedTaskTableName
                     SET request_id = ?, tenant_id = ?, status = ?, complexity = ?, time_sensitivity = ?, priority = ?, deadline_epoch_ms = ?,
-                        payload_model_path = ?, payload_model_version = ?, payload_config_path = ?, payload_config_version = ?,
-                        payload_snapshot_path = ?, payload_snapshot_version = ?, payload_task_meta_solver_type = ?,
+                        payload_model_path = ?, payload_model_version = ?, payload_model_etag = ?, payload_model_format = ?,
+                        payload_config_path = ?, payload_config_version = ?, payload_config_etag = ?, payload_config_json = ?,
+                        payload_snapshot_path = ?, payload_snapshot_version = ?, payload_snapshot_etag = ?, payload_task_meta_solver_type = ?,
                         payload_task_meta_target_type = ?, payload_task_meta_time_limit_ms = ?,
                         payload_task_meta_solution_limit = ?, payload_task_meta_estimated_variable_count = ?,
                         payload_task_meta_estimated_constraint_count = ?, payload_task_meta_historical_runtime_ms = ?,
                         payload_task_meta_metadata = ?, payload_extension = ?, has_latest_result = ?,
                         latest_result_feasible = ?, latest_result_optimal = ?, latest_result_objective_value = ?,
                         latest_result_gap = ?, latest_result_elapsed_ms = ?, latest_result_checkpoint_path = ?,
-                        latest_result_checkpoint_version = ?, latest_result_result_path = ?, latest_result_result_version = ?,
-                        latest_result_message = ?, latest_result_extension = ?, latest_snapshot_path = ?,
-                        latest_snapshot_version = ?, assigned_node_id = ?, created_at_epoch_ms = ?, updated_at_epoch_ms = ?,
+                        latest_result_checkpoint_version = ?, latest_result_checkpoint_etag = ?, latest_result_result_path = ?,
+                        latest_result_result_version = ?, latest_result_result_etag = ?,
+                        latest_result_message = ?, latest_result_extension = ?, latest_result_report_json = ?,
+                        latest_snapshot_path = ?,
+                        latest_snapshot_version = ?, latest_snapshot_etag = ?, assigned_node_id = ?, created_at_epoch_ms = ?, updated_at_epoch_ms = ?,
                         budget_scope = ?, budget_limit = ?, consumed_cost = ?
                     WHERE task_id = ?
                     """.trimIndent()
@@ -250,20 +259,26 @@ class KtormTaskStatePort(
                         """
                         INSERT INTO $resolvedTaskTableName (
                             task_id, request_id, tenant_id, status, complexity, time_sensitivity, priority, deadline_epoch_ms,
-                            payload_model_path, payload_model_version, payload_config_path, payload_config_version,
-                            payload_snapshot_path, payload_snapshot_version, payload_task_meta_solver_type,
+                            payload_model_path, payload_model_version, payload_model_etag, payload_model_format,
+                            payload_config_path, payload_config_version, payload_config_etag, payload_config_json,
+                            payload_snapshot_path, payload_snapshot_version, payload_snapshot_etag, payload_task_meta_solver_type,
                             payload_task_meta_target_type, payload_task_meta_time_limit_ms,
                             payload_task_meta_solution_limit, payload_task_meta_estimated_variable_count,
                             payload_task_meta_estimated_constraint_count, payload_task_meta_historical_runtime_ms,
                             payload_task_meta_metadata, payload_extension, has_latest_result,
                             latest_result_feasible, latest_result_optimal, latest_result_objective_value,
                             latest_result_gap, latest_result_elapsed_ms, latest_result_checkpoint_path,
-                            latest_result_checkpoint_version, latest_result_result_path, latest_result_result_version,
-                            latest_result_message, latest_result_extension, latest_snapshot_path, latest_snapshot_version,
+                            latest_result_checkpoint_version, latest_result_checkpoint_etag, latest_result_result_path,
+                            latest_result_result_version, latest_result_result_etag,
+                            latest_result_message, latest_result_extension, latest_result_report_json,
+                            latest_snapshot_path, latest_snapshot_version, latest_snapshot_etag,
                             assigned_node_id, created_at_epoch_ms, updated_at_epoch_ms,
                             budget_scope, budget_limit, consumed_cost
                         ) VALUES (
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         )
                         """.trimIndent()
                     ).use { statement ->
@@ -418,9 +433,9 @@ class KtormTaskStatePort(
                         """
                         INSERT INTO $resolvedSliceTableName (
                             slice_id, task_id, dispatch_id, status, node_id, quantum_ms,
-                            checkpoint_path, checkpoint_version, result_path, result_version,
+                            checkpoint_path, checkpoint_version, checkpoint_etag, result_path, result_version, result_etag,
                             started_at_epoch_ms, finished_at_epoch_ms, error_message
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """.trimIndent()
                     ).use { statement ->
                         bindSlice(statement, slice)
@@ -460,7 +475,7 @@ class KtormTaskStatePort(
                     """
                     UPDATE $resolvedSliceTableName
                     SET task_id = ?, dispatch_id = ?, status = ?, node_id = ?, quantum_ms = ?,
-                        checkpoint_path = ?, checkpoint_version = ?, result_path = ?, result_version = ?,
+                        checkpoint_path = ?, checkpoint_version = ?, checkpoint_etag = ?, result_path = ?, result_version = ?, result_etag = ?,
                         started_at_epoch_ms = ?, finished_at_epoch_ms = ?, error_message = ?
                     WHERE slice_id = ?
                     """.trimIndent()
@@ -473,9 +488,9 @@ class KtormTaskStatePort(
                         """
                         INSERT INTO $resolvedSliceTableName (
                             slice_id, task_id, dispatch_id, status, node_id, quantum_ms,
-                            checkpoint_path, checkpoint_version, result_path, result_version,
+                            checkpoint_path, checkpoint_version, checkpoint_etag, result_path, result_version, result_etag,
                             started_at_epoch_ms, finished_at_epoch_ms, error_message
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """.trimIndent()
                     ).use { statement ->
                         bindSlice(statement, slice)
@@ -562,10 +577,18 @@ class KtormTaskStatePort(
         setNullableLong(statement, index++, task.deadline?.toEpochMilliseconds())
         statement.setString(index++, payload.modelRef?.path?.value)
         statement.setString(index++, payload.modelRef?.version?.value)
+        statement.setString(index++, payload.modelRef?.etag?.value)
+        statement.setString(index++, payload.modelData.format)
         statement.setString(index++, payload.configRef?.path?.value)
         statement.setString(index++, payload.configRef?.version?.value)
+        statement.setString(index++, payload.configRef?.etag?.value)
+        statement.setString(
+            index++,
+            payload.config?.let { json.encodeToString(fuookami.ospf.framework.remote_solver.protocol.domain.SolverConfig.serializer(), it) }
+        )
         statement.setString(index++, payload.snapshotRef?.path?.value)
         statement.setString(index++, payload.snapshotRef?.version?.value)
+        statement.setString(index++, payload.snapshotRef?.etag?.value)
         statement.setString(index++, payload.taskMeta.solverType?.value)
         statement.setString(index++, payload.taskMeta.targetType?.value)
         setNullableLong(statement, index++, payload.taskMeta.timeLimitMs)
@@ -584,12 +607,21 @@ class KtormTaskStatePort(
         setNullableLong(statement, index++, task.latestResult?.elapsedMs)
         statement.setString(index++, task.latestResult?.checkpointRef?.path?.value)
         statement.setString(index++, task.latestResult?.checkpointRef?.version?.value)
+        statement.setString(index++, task.latestResult?.checkpointRef?.etag?.value)
         statement.setString(index++, task.latestResult?.resultRef?.path?.value)
         statement.setString(index++, task.latestResult?.resultRef?.version?.value)
+        statement.setString(index++, task.latestResult?.resultRef?.etag?.value)
         statement.setString(index++, task.latestResult?.message)
         statement.setString(index++, encodeMap(task.latestResult?.extension ?: emptyMap()))
+        statement.setString(
+            index++,
+            task.latestResult?.let {
+                json.encodeToString(SolveResult.serializer(), it)
+            }
+        )
         statement.setString(index++, task.latestSnapshotRef?.path?.value)
         statement.setString(index++, task.latestSnapshotRef?.version?.value)
+        statement.setString(index++, task.latestSnapshotRef?.etag?.value)
         statement.setString(index++, task.assignedNodeId?.value)
         statement.setLong(index++, task.createdAt.toEpochMilliseconds())
         statement.setLong(index++, task.updatedAt.toEpochMilliseconds())
@@ -625,11 +657,13 @@ class KtormTaskStatePort(
         statement.setLong(6, slice.quantum.inWholeMilliseconds)
         statement.setString(7, slice.checkpointRef?.path?.value)
         statement.setString(8, slice.checkpointRef?.version?.value)
-        statement.setString(9, slice.resultRef?.path?.value)
-        statement.setString(10, slice.resultRef?.version?.value)
-        setNullableLong(statement, 11, slice.startedAt?.toEpochMilliseconds())
-        setNullableLong(statement, 12, slice.finishedAt?.toEpochMilliseconds())
-        statement.setString(13, slice.error)
+        statement.setString(9, slice.checkpointRef?.etag?.value)
+        statement.setString(10, slice.resultRef?.path?.value)
+        statement.setString(11, slice.resultRef?.version?.value)
+        statement.setString(12, slice.resultRef?.etag?.value)
+        setNullableLong(statement, 13, slice.startedAt?.toEpochMilliseconds())
+        setNullableLong(statement, 14, slice.finishedAt?.toEpochMilliseconds())
+        statement.setString(15, slice.error)
     }
 
     /**
@@ -655,12 +689,14 @@ class KtormTaskStatePort(
         statement.setLong(5, slice.quantum.inWholeMilliseconds)
         statement.setString(6, slice.checkpointRef?.path?.value)
         statement.setString(7, slice.checkpointRef?.version?.value)
-        statement.setString(8, slice.resultRef?.path?.value)
-        statement.setString(9, slice.resultRef?.version?.value)
-        setNullableLong(statement, 10, slice.startedAt?.toEpochMilliseconds())
-        setNullableLong(statement, 11, slice.finishedAt?.toEpochMilliseconds())
-        statement.setString(12, slice.error)
-        statement.setString(13, slice.sliceId.value)
+        statement.setString(8, slice.checkpointRef?.etag?.value)
+        statement.setString(9, slice.resultRef?.path?.value)
+        statement.setString(10, slice.resultRef?.version?.value)
+        statement.setString(11, slice.resultRef?.etag?.value)
+        setNullableLong(statement, 12, slice.startedAt?.toEpochMilliseconds())
+        setNullableLong(statement, 13, slice.finishedAt?.toEpochMilliseconds())
+        statement.setString(14, slice.error)
+        statement.setString(15, slice.sliceId.value)
     }
 
     /**
@@ -679,18 +715,42 @@ class KtormTaskStatePort(
      * @return Task state object
      */
     private fun mapTask(resultSet: ResultSet): TaskState {
+        val modelRef = ObjectRef.of(
+            path = resultSet.getString("payload_model_path"),
+            version = resultSet.getString("payload_model_version"),
+            etag = resultSet.getString("payload_model_etag")
+        )
+        val configJson = resultSet.getString("payload_config_json")
+        var configDecodeError: String? = null
+        val config = if (configJson.isNullOrBlank()) {
+            null
+        } else {
+            try {
+                json.decodeFromString(
+                    fuookami.ospf.framework.remote_solver.protocol.domain.SolverConfig.serializer(),
+                    configJson
+                )
+            } catch (error: Throwable) {
+                configDecodeError = error.message ?: error::class.simpleName ?: "invalid JSON"
+                null
+            }
+        }
+        val extension = decodeMap(resultSet.getString("payload_extension")).toMutableMap()
+        configDecodeError?.let { extension["remote-solver.config.decode-error"] = it }
         val payload = SolvePayload(
-            modelRef = ObjectRef.of(
-                path = resultSet.getString("payload_model_path"),
-                version = resultSet.getString("payload_model_version")
+            modelData = ModelData.reference(modelRef).copy(
+                format = resultSet.getString("payload_model_format")
             ),
             configRef = buildRef(
                 path = resultSet.getString("payload_config_path"),
-                version = resultSet.getString("payload_config_version")
+                version = resultSet.getString("payload_config_version"),
+                etag = resultSet.getString("payload_config_etag")
             ),
+            config = config,
             snapshotRef = buildRef(
                 path = resultSet.getString("payload_snapshot_path"),
-                version = resultSet.getString("payload_snapshot_version")
+                version = resultSet.getString("payload_snapshot_version"),
+                etag = resultSet.getString("payload_snapshot_etag")
             ),
             taskMeta = TaskMeta(
                 solverType = resultSet.getString("payload_task_meta_solver_type"),
@@ -702,29 +762,20 @@ class KtormTaskStatePort(
                 historicalRuntimeMs = nullableLong(resultSet, "payload_task_meta_historical_runtime_ms"),
                 metadata = decodeMap(resultSet.getString("payload_task_meta_metadata"))
             ),
-            extension = decodeMap(resultSet.getString("payload_extension"))
+            extension = extension
         )
         val hasLatestResult = resultSet.getBoolean("has_latest_result")
         val latestResult = if (!hasLatestResult) {
             null
+        } else if (!resultSet.getString("latest_result_report_json").isNullOrBlank()) {
+            runCatching {
+                json.decodeFromString(
+                    SolveResult.serializer(),
+                    resultSet.getString("latest_result_report_json")
+                )
+            }.getOrNull() ?: mapLegacyResult(resultSet)
         } else {
-            SolveResult(
-                feasible = resultSet.getBoolean("latest_result_feasible"),
-                optimal = resultSet.getBoolean("latest_result_optimal"),
-                objectiveValue = nullableDouble(resultSet, "latest_result_objective_value"),
-                gap = nullableDouble(resultSet, "latest_result_gap"),
-                elapsedMs = nullableLong(resultSet, "latest_result_elapsed_ms") ?: 0L,
-                checkpointRef = buildRef(
-                    path = resultSet.getString("latest_result_checkpoint_path"),
-                    version = resultSet.getString("latest_result_checkpoint_version")
-                ),
-                resultRef = buildRef(
-                    path = resultSet.getString("latest_result_result_path"),
-                    version = resultSet.getString("latest_result_result_version")
-                ),
-                message = resultSet.getString("latest_result_message"),
-                extension = decodeMap(resultSet.getString("latest_result_extension"))
-            )
+            mapLegacyResult(resultSet)
         }
         return TaskState(
             taskId = TaskId.of(resultSet.getString("task_id")),
@@ -739,7 +790,8 @@ class KtormTaskStatePort(
             latestResult = latestResult,
             latestSnapshotRef = buildRef(
                 path = resultSet.getString("latest_snapshot_path"),
-                version = resultSet.getString("latest_snapshot_version")
+                version = resultSet.getString("latest_snapshot_version"),
+                etag = resultSet.getString("latest_snapshot_etag")
             ),
             assignedNodeId = resultSet.getString("assigned_node_id")?.let { NodeId.of(it) },
             createdAt = Instant.fromEpochMilliseconds(resultSet.getLong("created_at_epoch_ms")),
@@ -747,6 +799,28 @@ class KtormTaskStatePort(
             budgetScope = BudgetScopeId.of(resultSet.getString("budget_scope")),
             budgetLimit = nullableDouble(resultSet, "budget_limit")?.let { Flt64(it) },
             consumedCost = Flt64(resultSet.getDouble("consumed_cost"))
+        )
+    }
+
+    private fun mapLegacyResult(resultSet: ResultSet): SolveResult {
+        return SolveResult(
+            feasible = resultSet.getBoolean("latest_result_feasible"),
+            optimal = resultSet.getBoolean("latest_result_optimal"),
+            objectiveValue = nullableDouble(resultSet, "latest_result_objective_value"),
+            gap = nullableDouble(resultSet, "latest_result_gap"),
+            elapsedMs = nullableLong(resultSet, "latest_result_elapsed_ms") ?: 0L,
+            checkpointRef = buildRef(
+                path = resultSet.getString("latest_result_checkpoint_path"),
+                version = resultSet.getString("latest_result_checkpoint_version"),
+                etag = resultSet.getString("latest_result_checkpoint_etag")
+            ),
+            resultRef = buildRef(
+                path = resultSet.getString("latest_result_result_path"),
+                version = resultSet.getString("latest_result_result_version"),
+                etag = resultSet.getString("latest_result_result_etag")
+            ),
+            message = resultSet.getString("latest_result_message"),
+            extension = decodeMap(resultSet.getString("latest_result_extension"))
         )
     }
 
@@ -775,11 +849,13 @@ class KtormTaskStatePort(
             quantum = resultSet.getLong("quantum_ms").toDuration(DurationUnit.MILLISECONDS),
             checkpointRef = buildRef(
                 path = resultSet.getString("checkpoint_path"),
-                version = resultSet.getString("checkpoint_version")
+                version = resultSet.getString("checkpoint_version"),
+                etag = resultSet.getString("checkpoint_etag")
             ),
             resultRef = buildRef(
                 path = resultSet.getString("result_path"),
-                version = resultSet.getString("result_version")
+                version = resultSet.getString("result_version"),
+                etag = resultSet.getString("result_etag")
             ),
             startedAt = nullableLong(resultSet, "started_at_epoch_ms")?.let { Instant.fromEpochMilliseconds(it) },
             finishedAt = nullableLong(resultSet, "finished_at_epoch_ms")?.let { Instant.fromEpochMilliseconds(it) },
@@ -804,11 +880,11 @@ class KtormTaskStatePort(
      * @param version Object version
      * @return Object reference, or null if path is empty
      */
-    private fun buildRef(path: String?, version: String?): ObjectRef? {
+    private fun buildRef(path: String?, version: String?, etag: String? = null): ObjectRef? {
         if (path.isNullOrBlank()) {
             return null
         }
-        return ObjectRef.of(path = path, version = version)
+        return ObjectRef.of(path = path, version = version, etag = etag)
     }
 
     /**
@@ -1049,10 +1125,15 @@ class KtormTaskStatePort(
                             deadline_epoch_ms BIGINT NULL,
                             payload_model_path TEXT NOT NULL,
                             payload_model_version TEXT NULL,
+                            payload_model_etag TEXT NULL,
+                            payload_model_format TEXT NULL,
                             payload_config_path TEXT NULL,
                             payload_config_version TEXT NULL,
+                            payload_config_etag TEXT NULL,
+                            payload_config_json TEXT NULL,
                             payload_snapshot_path TEXT NULL,
                             payload_snapshot_version TEXT NULL,
+                            payload_snapshot_etag TEXT NULL,
                             payload_task_meta_solver_type TEXT NULL,
                             payload_task_meta_target_type TEXT NULL,
                             payload_task_meta_time_limit_ms BIGINT NULL,
@@ -1070,12 +1151,16 @@ class KtormTaskStatePort(
                             latest_result_elapsed_ms BIGINT NULL,
                             latest_result_checkpoint_path TEXT NULL,
                             latest_result_checkpoint_version TEXT NULL,
+                            latest_result_checkpoint_etag TEXT NULL,
                             latest_result_result_path TEXT NULL,
                             latest_result_result_version TEXT NULL,
+                            latest_result_result_etag TEXT NULL,
                             latest_result_message TEXT NULL,
                             latest_result_extension TEXT NOT NULL,
+                            latest_result_report_json TEXT NULL,
                             latest_snapshot_path TEXT NULL,
                             latest_snapshot_version TEXT NULL,
+                            latest_snapshot_etag TEXT NULL,
                             assigned_node_id VARCHAR(256) NULL,
                             created_at_epoch_ms BIGINT NOT NULL,
                             updated_at_epoch_ms BIGINT NOT NULL,
@@ -1085,6 +1170,27 @@ class KtormTaskStatePort(
                         )
                         """.trimIndent()
                     )
+                    runCatching {
+                        statement.execute("ALTER TABLE $resolvedTaskTableName ADD COLUMN payload_model_format TEXT NULL")
+                    }
+                    runCatching {
+                        statement.execute("ALTER TABLE $resolvedTaskTableName ADD COLUMN payload_config_json TEXT NULL")
+                    }
+                    runCatching {
+                        statement.execute("ALTER TABLE $resolvedTaskTableName ADD COLUMN latest_result_report_json TEXT NULL")
+                    }
+                    listOf(
+                        "payload_model_etag",
+                        "payload_config_etag",
+                        "payload_snapshot_etag",
+                        "latest_result_checkpoint_etag",
+                        "latest_result_result_etag",
+                        "latest_snapshot_etag"
+                    ).forEach { column ->
+                        runCatching {
+                            statement.execute("ALTER TABLE $resolvedTaskTableName ADD COLUMN $column TEXT NULL")
+                        }
+                    }
                     statement.execute(
                         """
                         CREATE INDEX IF NOT EXISTS idx_${resolvedTaskTableName}_tenant
@@ -1109,14 +1215,21 @@ class KtormTaskStatePort(
                             quantum_ms BIGINT NOT NULL,
                             checkpoint_path TEXT NULL,
                             checkpoint_version TEXT NULL,
+                            checkpoint_etag TEXT NULL,
                             result_path TEXT NULL,
                             result_version TEXT NULL,
+                            result_etag TEXT NULL,
                             started_at_epoch_ms BIGINT NULL,
                             finished_at_epoch_ms BIGINT NULL,
                             error_message TEXT NULL
                         )
                         """.trimIndent()
                     )
+                    listOf("checkpoint_etag", "result_etag").forEach { column ->
+                        runCatching {
+                            statement.execute("ALTER TABLE $resolvedSliceTableName ADD COLUMN $column TEXT NULL")
+                        }
+                    }
                     statement.execute(
                         """
                         CREATE UNIQUE INDEX IF NOT EXISTS idx_${resolvedSliceTableName}_task_dispatch

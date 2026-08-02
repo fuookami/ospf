@@ -91,6 +91,11 @@ data class StoredObject(
  * @property sliceId 切片 ID / Slice ID
  * @property ref 检查点引用 / Checkpoint reference
  * @property createdAt 创建时间戳 / Created timestamp
+ * @property schemaVersion checkpoint schema 版本 / Checkpoint schema version
+ * @property modelFingerprint 模型指纹 / Model fingerprint
+ * @property configurationFingerprint 配置指纹 / Configuration fingerprint
+ * @property solverFingerprint 求解器指纹 / Solver fingerprint
+ * @property integritySha256 完整性摘要 / Integrity digest
  */
 @Serializable
 data class CheckpointMetadata(
@@ -99,7 +104,12 @@ data class CheckpointMetadata(
     val ref: ObjectRef,
     @SerialName("createdAtEpochMs")
     @Serializable(with = RemoteSolverEpochMillisecondsInstantSerializer::class)
-    val createdAt: Instant
+    val createdAt: Instant,
+    val schemaVersion: String = "1.0",
+    val modelFingerprint: String? = null,
+    val configurationFingerprint: String? = null,
+    val solverFingerprint: String? = null,
+    val integritySha256: String? = null
 ) {
     constructor(
         taskId: String,

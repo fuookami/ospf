@@ -306,6 +306,32 @@ private fun Application.module(
             )
         }
 
+        /**
+         * 能力与协议版本探测。
+         *
+         * Capability and protocol version probe.
+         *
+         * GET /api/v1/capabilities - 返回当前在线节点支持的模型类型和协议版本。
+         * Returns model types and protocol versions supported by current online nodes.
+         */
+        get("/api/v1/capabilities") {
+            val capabilities = apiFacade.capabilities()
+            call.respond(
+                ApiEnvelope(
+                    code = "OK",
+                    message = "success",
+                    traceId = call.extractTraceId(),
+                    data = SolverCapabilitiesHttpResponse(
+                        schemaVersion = capabilities.schemaVersion,
+                        protocolVersions = capabilities.protocolVersions,
+                        supportedModelTypes = capabilities.supportedModelTypes,
+                        supportsPortableCheckpoint = capabilities.supportsPortableCheckpoint,
+                        supportsNativeCheckpoint = capabilities.supportsNativeCheckpoint
+                    )
+                )
+            )
+        }
+
         // ==================== 任务管理端点 ====================
         // ==================== Task management endpoints ====================
 
@@ -1564,6 +1590,26 @@ private data class MonitorNodeHttpResponse(
     val parallelUnits: Int,
     val lastHeartbeatEpochMs: Long,
     val heartbeatLagMs: Long
+)
+
+/**
+ * 能力探测 HTTP 响应体。
+ *
+ * Capability probe HTTP response body.
+ *
+ * @property schemaVersion 能力摘要 schema 版本 / Capability summary schema version
+ * @property protocolVersions 服务端支持的协议版本 / Protocol versions supported by the server
+ * @property supportedModelTypes 当前在线节点支持的模型类型 / Model types supported by online nodes
+ * @property supportsPortableCheckpoint 是否支持 portable checkpoint / Whether portable checkpoints are supported
+ * @property supportsNativeCheckpoint 是否支持原生搜索状态恢复 / Whether native search-state resume is supported
+ */
+@Serializable
+private data class SolverCapabilitiesHttpResponse(
+    val schemaVersion: String,
+    val protocolVersions: Set<String>,
+    val supportedModelTypes: Set<String>,
+    val supportsPortableCheckpoint: Boolean,
+    val supportsNativeCheckpoint: Boolean
 )
 
 /**

@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.github.fuookami.ospf.kotlin</groupId>
         <artifactId>ospf-remote-solver</artifactId>
-        <version>1.1.0</version>
+        <version>1.1.0-cp2.0401dabb2</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -28,7 +28,17 @@
         <dependency>
             <groupId>io.github.fuookami.ospf.kotlin</groupId>
             <artifactId>ospf-kotlin-starter</artifactId>
-            <version>${project.version}</version>
+            <version>${ospf.kotlin.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.fuookami.ospf.kotlin.core.plugin</groupId>
+            <artifactId>ospf-kotlin-core-plugin-scip</artifactId>
+            <version>${ospf.kotlin.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>scip</groupId>
+            <artifactId>jscip</artifactId>
+            <version>1.0.0</version>
         </dependency>
 
         <!-- Ktor HTTP server -->
@@ -95,10 +105,38 @@
             <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Ktorm persistence adapters -->
+        <dependency>
+            <groupId>org.ktorm</groupId>
+            <artifactId>ktorm-core</artifactId>
+            <version>${ktorm.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
         <sourceDirectory>src/main</sourceDirectory>
         <testSourceDirectory>src/test</testSourceDirectory>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>remote-solver-integration-test</id>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkCount>1</forkCount>
+                            <includes>
+                                <include>**/*IT.class</include>
+                            </includes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>

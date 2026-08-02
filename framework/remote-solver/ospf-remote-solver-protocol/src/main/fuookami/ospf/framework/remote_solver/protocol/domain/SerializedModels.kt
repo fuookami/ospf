@@ -63,6 +63,19 @@ enum class SerializedObjectiveCategory {
 }
 
 /**
+ * 序列化模型元素来源。
+ * Serialized model-element provenance entry.
+ *
+ * @property kind 来源类型 / Provenance kind
+ * @property key 来源键 / Provenance key
+ */
+@Serializable
+data class SerializedModelElementOrigin(
+    val kind: String,
+    val key: String
+)
+
+/**
  * 约束矩阵单元。
  * Constraint matrix cell.
  *
@@ -99,6 +112,13 @@ data class SerializedObjectiveCell(
  * @property lowerBound 下界 / Lower bound
  * @property upperBound 上界 / Upper bound
  * @property type 变量类型 / Variable type
+ * @property identityId 稳定身份 ID / Stable identity ID
+ * @property identityScope 身份作用域 / Identity scope
+ * @property identityOriginKind 身份来源类型 / Identity origin kind
+ * @property identityOriginKey 身份来源键 / Identity origin key
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
+ * @property identityNamespace 身份命名空间 / Identity namespace
+ * @property identitySchemaVersion 身份 schema / Identity schema version
  */
 @Serializable
 data class SerializedVariable(
@@ -106,7 +126,14 @@ data class SerializedVariable(
     val name: String,
     val lowerBound: Flt64,
     val upperBound: Flt64,
-    val type: SerializedVariableType
+    val type: SerializedVariableType,
+    val identityId: String? = null,
+    val identityScope: String = "MODEL_LOCAL",
+    val identityOriginKind: String? = null,
+    val identityOriginKey: String? = null,
+    val identityNamespace: String? = null,
+    val identitySchemaVersion: String? = null,
+    val identityProvenance: List<SerializedModelElementOrigin> = emptyList()
 )
 
 /**
@@ -117,13 +144,27 @@ data class SerializedVariable(
  * @property sign 约束符号 / Constraint sign
  * @property rhs 右端值 / Right-hand side
  * @property name 约束名 / Constraint name
+ * @property identityId 稳定身份 ID / Stable identity ID
+ * @property identityScope 身份作用域 / Identity scope
+ * @property identityOriginKind 身份来源类型 / Identity origin kind
+ * @property identityOriginKey 身份来源键 / Identity origin key
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
+ * @property identityNamespace 身份命名空间 / Identity namespace
+ * @property identitySchemaVersion 身份 schema / Identity schema version
  */
 @Serializable
 data class SerializedConstraint(
     val cells: List<SerializedConstraintCell>,
     val sign: SerializedConstraintSign,
     val rhs: Flt64,
-    val name: String
+    val name: String,
+    val identityId: String? = null,
+    val identityScope: String = "MODEL_LOCAL",
+    val identityOriginKind: String? = null,
+    val identityOriginKey: String? = null,
+    val identityNamespace: String? = null,
+    val identitySchemaVersion: String? = null,
+    val identityProvenance: List<SerializedModelElementOrigin> = emptyList()
 )
 
 /**
@@ -133,12 +174,26 @@ data class SerializedConstraint(
  * @property category 目标类型 / Objective category
  * @property cells 目标单元 / Objective cells
  * @property constant 常数项 / Constant term
+ * @property identityId 稳定身份 ID / Stable identity ID
+ * @property identityScope 身份作用域 / Identity scope
+ * @property identityOriginKind 身份来源类型 / Identity origin kind
+ * @property identityOriginKey 身份来源键 / Identity origin key
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
+ * @property identityNamespace 身份命名空间 / Identity namespace
+ * @property identitySchemaVersion 身份 schema / Identity schema version
  */
 @Serializable
 data class SerializedObjective(
     val category: SerializedObjectiveCategory,
     val cells: List<SerializedObjectiveCell>,
-    val constant: Flt64 = Flt64.zero
+    val constant: Flt64 = Flt64.zero,
+    val identityId: String? = null,
+    val identityScope: String = "MODEL_LOCAL",
+    val identityOriginKind: String? = null,
+    val identityOriginKey: String? = null,
+    val identityNamespace: String? = null,
+    val identitySchemaVersion: String? = null,
+    val identityProvenance: List<SerializedModelElementOrigin> = emptyList()
 )
 
 /**
@@ -149,13 +204,17 @@ data class SerializedObjective(
  * @property variables 变量列表 / Variables
  * @property constraints 约束列表 / Constraints
  * @property objective 目标函数 / Objective
+ * @property identityNamespace 身份命名空间 / Identity namespace
+ * @property identitySchemaVersion 身份 schema / Identity schema version
  */
 @Serializable
 data class SerializedLinearModel(
     val name: String,
     val variables: List<SerializedVariable>,
     val constraints: List<SerializedConstraint>,
-    val objective: SerializedObjective
+    val objective: SerializedObjective,
+    val identityNamespace: String? = null,
+    val identitySchemaVersion: String? = null
 ) {
     /** 变量数量 / Variable count */
     val variableCount: Int get() = variables.size
@@ -276,6 +335,8 @@ data class SerializedLinearModel(
  * @property linearConstraints 线性约束 / Linear constraints
  * @property quadraticConstraints 二次约束 / Quadratic constraints
  * @property objective 二次目标 / Quadratic objective
+ * @property identityNamespace 身份命名空间 / Identity namespace
+ * @property identitySchemaVersion 身份 schema / Identity schema version
  */
 @Serializable
 data class SerializedQuadraticModel(
@@ -283,7 +344,9 @@ data class SerializedQuadraticModel(
     val variables: List<SerializedVariable>,
     val linearConstraints: List<SerializedConstraint>,
     val quadraticConstraints: List<SerializedQuadraticConstraint>,
-    val objective: SerializedQuadraticObjective
+    val objective: SerializedQuadraticObjective,
+    val identityNamespace: String? = null,
+    val identitySchemaVersion: String? = null
 ) {
     /** 变量数量 / Variable count */
     val variableCount: Int get() = variables.size
@@ -321,6 +384,13 @@ data class SerializedQuadraticConstraintCell(
  * @property sign 约束符号 / Constraint sign
  * @property rhs 右端值 / Right-hand side
  * @property name 约束名 / Constraint name
+ * @property identityId 稳定身份 ID / Stable identity ID
+ * @property identityScope 身份作用域 / Identity scope
+ * @property identityOriginKind 身份来源类型 / Identity origin kind
+ * @property identityOriginKey 身份来源键 / Identity origin key
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
+ * @property identityNamespace 身份命名空间 / Identity namespace
+ * @property identitySchemaVersion 身份 schema / Identity schema version
  */
 @Serializable
 data class SerializedQuadraticConstraint(
@@ -328,7 +398,14 @@ data class SerializedQuadraticConstraint(
     val quadraticCells: List<SerializedQuadraticConstraintCell>,
     val sign: SerializedConstraintSign,
     val rhs: Flt64,
-    val name: String
+    val name: String,
+    val identityId: String? = null,
+    val identityScope: String = "MODEL_LOCAL",
+    val identityOriginKind: String? = null,
+    val identityOriginKey: String? = null,
+    val identityNamespace: String? = null,
+    val identitySchemaVersion: String? = null,
+    val identityProvenance: List<SerializedModelElementOrigin> = emptyList()
 )
 
 /**
@@ -354,13 +431,44 @@ data class SerializedQuadraticObjectiveCell(
  * @property linearCells 线性目标单元 / Linear objective cells
  * @property quadraticCells 二次目标单元 / Quadratic objective cells
  * @property constant 常数项 / Constant term
+ * @property identityId 稳定身份 ID / Stable identity ID
+ * @property identityScope 身份作用域 / Identity scope
+ * @property identityOriginKind 身份来源类型 / Identity origin kind
+ * @property identityOriginKey 身份来源键 / Identity origin key
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
+ * @property identityNamespace 身份命名空间 / Identity namespace
+ * @property identitySchemaVersion 身份 schema / Identity schema version
  */
 @Serializable
 data class SerializedQuadraticObjective(
     val category: SerializedObjectiveCategory,
     val linearCells: List<SerializedObjectiveCell>,
     val quadraticCells: List<SerializedQuadraticObjectiveCell>,
-    val constant: Flt64 = Flt64.zero
+    val constant: Flt64 = Flt64.zero,
+    val identityId: String? = null,
+    val identityScope: String = "MODEL_LOCAL",
+    val identityOriginKind: String? = null,
+    val identityOriginKey: String? = null,
+    val identityNamespace: String? = null,
+    val identitySchemaVersion: String? = null,
+    val identityProvenance: List<SerializedModelElementOrigin> = emptyList()
+)
+
+/**
+ * 序列化 interval 解。
+ * Serialized interval solution.
+ *
+ * @property start 开始值 / Start value
+ * @property size 长度值 / Size value
+ * @property end 结束值 / End value
+ * @property present 是否存在 / Whether present
+ */
+@Serializable
+data class SerializedIntervalValue(
+    val start: Long,
+    val size: Long,
+    val end: Long,
+    val present: Boolean = true
 )
 
 /**
@@ -369,9 +477,25 @@ data class SerializedQuadraticObjective(
  *
  * @property feasible 是否可行 / Whether feasible
  * @property optimal 是否最优 / Whether optimal
- * @property objectiveValue 目标值 / Objective value
+ * @property objectiveValue 线性/二次兼容浮点目标；CP 结果必须为 null / Legacy floating objective for linear/quadratic results; must be null for CP
+ * @property objectiveValueInt64 CP 精确整数目标值 / Exact Int64 CP objective value
  * @property gap 最优间隙 / Optimality gap
  * @property variableValues 变量值 / Variable values
+ * @property variableValuesById CP 稳定变量值 / CP stable variable values by ID
+ * @property intervalValues CP interval 值 / CP interval values by ID
+ * @property problemStatus 问题结论 / Problem conclusion
+ * @property solutionPresence 解存在性 / Solution presence
+ * @property proofStatus 证明状态 / Proof status
+ * @property terminationReason 终止原因 / Termination reason
+ * @property schemaVersion 结果协议版本 / Result protocol version
+ * @property provenance 脱敏执行来源 / Redacted execution provenance
+ * @property fingerprints 审计指纹 / Audit fingerprints
+ * @property fingerprintSchemas 指纹 schema / Fingerprint schemas
+ * @property statistics 求解统计 / Solve statistics
+ * @property diagnostics 结构化诊断 / Structured diagnostics
+ * @property runId 求解运行标识 / Solve run identifier
+ * @property attemptId 求解尝试标识 / Solve attempt identifier
+ * @property artifactDigest 结果 artifact 摘要 / Result artifact digest
  * @property elapsed 耗时 / Elapsed
  * @property solverStatus 求解器状态 / Solver status
  * @property message 结果消息 / Result message
@@ -383,11 +507,27 @@ data class SerializedSolution(
     val objectiveValue: Flt64? = null,
     val gap: Flt64? = null,
     val variableValues: List<Flt64> = emptyList(),
+    val variableValuesById: Map<String, Long> = emptyMap(),
+    val intervalValues: Map<String, SerializedIntervalValue> = emptyMap(),
+    val problemStatus: RemoteProblemStatus? = null,
+    val solutionPresence: RemoteSolutionPresence? = null,
+    val proofStatus: RemoteProofStatus? = null,
+    val terminationReason: RemoteTerminationReason? = null,
+    val schemaVersion: String = "1.0",
+    val provenance: Map<String, String> = emptyMap(),
+    val fingerprints: Map<String, String> = emptyMap(),
+    val fingerprintSchemas: Map<String, String> = emptyMap(),
     @SerialName("elapsedMs")
     @Serializable(with = RemoteSolverMillisecondsDurationSerializer::class)
     val elapsed: Duration = Duration.ZERO,
     val solverStatus: String = "",
-    val message: String? = null
+    val message: String? = null,
+    val statistics: Map<String, String> = emptyMap(),
+    val diagnostics: Map<String, String> = emptyMap(),
+    val runId: String? = null,
+    val attemptId: String? = null,
+    val artifactDigest: String? = null,
+    val objectiveValueInt64: Long? = null
 ) {
     constructor(
         feasible: Boolean,

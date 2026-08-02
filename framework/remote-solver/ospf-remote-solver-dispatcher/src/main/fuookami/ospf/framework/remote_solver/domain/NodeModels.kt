@@ -19,6 +19,7 @@
 package fuookami.ospf.framework.remote_solver.domain
 
 import fuookami.ospf.framework.remote_solver.protocol.domain.NodeId
+import fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolverTypeName
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import kotlin.time.Duration
@@ -56,6 +57,8 @@ import kotlin.time.toDuration
  *                       可用的并行求解单元数。
  * @param licenseCostPerSlice License cost per slice execution (optional, default 0.0).
  *                             每Slice执行的许可证成本（可选，默认0.0）。
+ * @param supportedModelTypes Supported normalized model types.
+ *                            支持的规范化模型类型。
  */
 data class NodeCapabilityProfile(
     val nodeId: NodeId,
@@ -67,7 +70,11 @@ data class NodeCapabilityProfile(
     val supportsCheckpoint: Boolean,
     val supportsWarmStart: Boolean,
     val parallelUnits: Int,
-    val licenseCostPerSlice: Flt64 = Flt64.zero
+    val licenseCostPerSlice: Flt64 = Flt64.zero,
+    val supportedModelTypes: Set<NormalizedModelType> = setOf(
+        NormalizedModelType.LINEAR,
+        NormalizedModelType.QUADRATIC
+    )
 ) {
     val nodeIdValue: String get() = nodeId.value
     val solverTypeValue: String get() = solverType.value

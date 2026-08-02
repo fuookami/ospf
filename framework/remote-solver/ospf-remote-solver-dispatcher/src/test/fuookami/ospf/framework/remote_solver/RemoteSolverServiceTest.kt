@@ -1418,4 +1418,55 @@ class RemoteSolverServiceTest {
             assertFalse(finalTask.status == TaskStatus.FAILED, "Task should not fail when budget could refresh via refund")
         }
     }
+
+    @Test
+    fun waitingForBudgetTaskShouldRequeueBeforeDispatch() {
+        val runtime = InMemoryRemoteSolverBootstrap.create()
+
+        runSuspend {
+            val controlEvents = mutableListOf<String>()
+            runtime.eventPort.subscribe(EventTopics.SOLVING_CONTROL, "group-budget-requeue-test") { record ->
+                controlEvents.add(record.payload.decodeToString())
+            }
+            runtime.service.registerNode(
+                NodeCapabilityProfile(
+                    nodeId = "node-budget-requeue",
+                    solverType = "gurobi",
+                    performanceScore = 1.0,
+                    pricePerSecond = 0.01,
+                    minBillingUnitSeconds = 1L,
+                    supportsInterrupt = true,
+                    supportsCheckpoint = true,
+                    supportsWarmStart = true,
+                    parallelUnits = 1
+                )
+            )
+
+            val task = runtime.service.submitTask(
+                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/simple-budget-requeue")),
+                complexity = TaskComplexity.SIMPLE,
+                timeSensitivity = TimeSensitivity.NON_REALTIME,
+                priority = 1,
+                budgetLimit = Flt64(10.0)
+            )
+            runtime.taskStatePort.upsertTask(
+                task.copy(
+                    status = TaskStatus.WAITING_FOR_BUDGET,
+                    updatedAt = Instant.fromEpochMilliseconds(System.currentTimeMillis())
+                )
+            )
+
+            val scheduled = runtime.service.scheduleOnce()
+
+            assertNotNull(scheduled)
+            assertEquals(TaskStatus.COMPLETED, scheduled.status)
+            assertTrue(
+                controlEvents.any {
+                    it.contains("\"taskId\":\"${task.taskId}\"") &&
+                        it.contains("\"action\":\"budget_requeue\"") &&
+                        it.contains("\"status\":\"QUEUED\"")
+                }
+            )
+        }
+    }
 }

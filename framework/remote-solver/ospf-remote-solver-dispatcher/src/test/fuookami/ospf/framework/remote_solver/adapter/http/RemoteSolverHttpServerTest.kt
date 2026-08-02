@@ -8,8 +8,11 @@ import fuookami.ospf.framework.remote_solver.contract.runSuspend
 import fuookami.ospf.framework.remote_solver.domain.NodeCapabilityProfile
 import fuookami.ospf.framework.remote_solver.domain.NodeState
 import fuookami.ospf.framework.remote_solver.protocol.domain.NodeId
+import fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType
 import fuookami.ospf.framework.remote_solver.protocol.domain.ObjectRef
+import fuookami.ospf.framework.remote_solver.protocol.domain.SolverTypeName
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskStatus
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -17,8 +20,61 @@ import java.net.http.HttpResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 class RemoteSolverHttpServerTest {
+    @Test
+    fun capabilitiesEndpointReturnsVersionedCapabilitySummary() {
+        val runtime = InMemoryRemoteSolverBootstrap.create()
+        runSuspend {
+            runtime.nodeStatePort.upsertNode(
+                NodeState(
+                    nodeId = NodeId.of("cp-node"),
+                    profile = NodeCapabilityProfile(
+                        nodeId = NodeId.of("cp-node"),
+                        solverType = SolverTypeName.of("scip"),
+                        performanceScore = Flt64(1.0),
+                        pricePerSecond = Flt64(1.0),
+                        minBillingUnit = 1.seconds,
+                        supportsInterrupt = true,
+                        supportsCheckpoint = true,
+                        supportsWarmStart = true,
+                        parallelUnits = 1,
+                        supportedModelTypes = setOf(NormalizedModelType.CP)
+                    ),
+                    availableUnits = 1,
+                    lastHeartbeat = Instant.fromEpochMilliseconds(System.currentTimeMillis())
+                )
+            )
+        }
+        val server = RemoteSolverHttpServer(
+            apiFacade = runtime.apiFacade,
+            host = "127.0.0.1",
+            port = 0
+        )
+        server.start()
+        try {
+            val client = HttpClient.newBuilder().build()
+            val response = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:${server.port()}/api/v1/capabilities"))
+                    .GET()
+                    .build(),
+                HttpResponse.BodyHandlers.ofString()
+            )
+
+            assertEquals(200, response.statusCode())
+            assertTrue(response.body().contains("\"schemaVersion\":\"1.0\""))
+            assertTrue(response.body().contains("\"protocolVersions\":[\"2.0\"]"))
+            assertTrue(response.body().contains("\"supportedModelTypes\":[\"CP\"]"))
+            assertTrue(response.body().contains("\"supportsPortableCheckpoint\":true"))
+            assertTrue(response.body().contains("\"supportsNativeCheckpoint\":false"))
+        } finally {
+            server.stop(0)
+        }
+    }
+
     @Test
     fun submitGetStopResumeFlowShouldWork() {
         val runtime = InMemoryRemoteSolverBootstrap.create()

@@ -22,11 +22,14 @@ import fuookami.ospf.framework.remote_solver.domain.NodeCapabilityProfile
 import fuookami.ospf.framework.remote_solver.protocol.domain.ObjectRef
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverErrorCode
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverException
+import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteProblemStatus
+import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolutionPresence
 import fuookami.ospf.framework.remote_solver.protocol.domain.RequestId
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceResult
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceId
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceStatus
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolvePayload
+import fuookami.ospf.framework.remote_solver.protocol.domain.SolveResult
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskId
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskComplexity
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskMeta
@@ -36,6 +39,7 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.TimeSensitivity
 import fuookami.ospf.framework.remote_solver.protocol.port.ClockPort
 import fuookami.ospf.framework.remote_solver.protocol.port.IdGeneratorPort
 import fuookami.ospf.framework.remote_solver.protocol.port.SolverExecutionPort
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
 import kotlin.time.Duration
 import kotlin.time.Instant
@@ -109,6 +113,41 @@ class RemoteSolverServiceTimeoutPolicyTest {
                 RemoteSolverErrorCode.TASK_FAILED_SLICE_TIMEOUT.name,
                 scheduled.latestResult?.extension?.get("reasonCode")
             )
+        }
+    }
+
+    @Test
+    fun taskShouldFailBeforePersistingInvalidStrictSliceResult() {
+        val fixture = createFixture(
+            config = RemoteSolverConfig(
+                simpleTaskQuantumMs = 1000L,
+                sliceTimeoutGraceMs = 0L
+            ),
+            solverFactory = { clock, idGenerator, _ ->
+                InvalidStrictSliceResultSolverExecutionPort(clock, idGenerator)
+            }
+        )
+
+        runSuspend {
+            fixture.service.registerNode(defaultNodeProfile("node-invalid-result", supportsCheckpoint = false))
+            val task = fixture.service.submitTask(
+                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/invalid-result")),
+                complexity = TaskComplexity.SIMPLE,
+                timeSensitivity = TimeSensitivity.NON_REALTIME
+            )
+
+            val scheduled = fixture.service.scheduleOnce()
+
+            assertNotNull(scheduled)
+            assertEquals(TaskStatus.FAILED, scheduled.status)
+            assertEquals(
+                RemoteSolverErrorCode.SOLVER_EXECUTION_FAILED.name,
+                scheduled.latestResult?.extension?.get("reasonCode")
+            )
+            val slices = fixture.service.getSlices(task.taskId)
+            assertEquals(1, slices.size)
+            assertEquals(SliceStatus.FAILED, slices.single().status)
+            assertTrue(slices.single().error?.contains("协议校验失败") == true)
         }
     }
 
@@ -339,6 +378,52 @@ class RemoteSolverServiceTimeoutPolicyTest {
         override suspend fun exportCheckpoint(handle: ExecutionHandle): ObjectRef? = null
 
         override suspend fun fetchFinalResult(handle: ExecutionHandle) = null
+
+        override suspend fun stop(handle: ExecutionHandle): Boolean = true
+    }
+
+    private class InvalidStrictSliceResultSolverExecutionPort(
+        private val clock: ClockPort,
+        private val idGenerator: IdGeneratorPort
+    ) : SolverExecutionPort {
+        override suspend fun start(
+            payload: SolvePayload,
+            taskId: TaskId,
+            sliceId: SliceId,
+            nodeId: NodeId,
+            tenantId: TenantId
+        ): ExecutionHandle = ExecutionHandle(
+            handleId = idGenerator.newId("handle"),
+            taskId = taskId.value,
+            sliceId = sliceId.value,
+            nodeId = nodeId.value,
+            startedAtEpochMs = clock.nowEpochMs()
+        )
+
+        override suspend fun resume(
+            payload: SolvePayload,
+            checkpoint: ObjectRef,
+            taskId: TaskId,
+            sliceId: SliceId,
+            nodeId: NodeId,
+            tenantId: TenantId
+        ): ExecutionHandle = start(payload, taskId, sliceId, nodeId, tenantId)
+
+        override suspend fun awaitSliceEnd(handle: ExecutionHandle, quantum: Duration): SliceResult = SliceResult(
+            sliceId = SliceId.of(handle.sliceId.value),
+            completed = true,
+            feasible = true,
+            objectiveValue = Flt64.one,
+            gap = Flt64.zero,
+            elapsed = quantum,
+            schemaVersion = "3.0",
+            problemStatus = RemoteProblemStatus.FEASIBLE,
+            solutionPresence = RemoteSolutionPresence.INCUMBENT
+        )
+
+        override suspend fun exportCheckpoint(handle: ExecutionHandle): ObjectRef? = null
+
+        override suspend fun fetchFinalResult(handle: ExecutionHandle): SolveResult? = null
 
         override suspend fun stop(handle: ExecutionHandle): Boolean = true
     }

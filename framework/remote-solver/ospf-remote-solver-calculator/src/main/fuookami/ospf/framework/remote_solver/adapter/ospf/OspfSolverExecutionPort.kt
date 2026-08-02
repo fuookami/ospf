@@ -59,6 +59,7 @@ class OspfSolverExecutionPort(
      * Mapping:
      * - "milp", "lp", "linear" -> "linear"
      * - "miqp", "qp", "quadratic", "miqcp", "qcp" -> "quadratic"
+     * - "cp", "constraint-programming", "constraint_programming" -> "cp"
      * - 其他 -> null
      * - default -> null
      *
@@ -71,6 +72,7 @@ class OspfSolverExecutionPort(
         return when (targetType?.lowercase()) {
             "milp", "lp", "linear" -> "linear"
             "miqp", "qp", "quadratic", "miqcp", "qcp" -> "quadratic"
+            "cp", "constraint-programming", "constraint_programming" -> "cp"
             else -> null
         }
     }
@@ -94,6 +96,7 @@ class OspfSolverExecutionPort(
         val normalizedType = when (modelType) {
             NormalizedModelType.LINEAR -> "linear"
             NormalizedModelType.QUADRATIC -> "quadratic"
+            NormalizedModelType.CP -> "cp"
             NormalizedModelType.UNKNOWN -> inferNormalizedModelType(payload.taskMeta.targetType?.value)
         }
 

@@ -5,11 +5,16 @@ package fuookami.ospf.framework.remote_solver.application
 import fuookami.ospf.framework.remote_solver.bootstrap.InMemoryRemoteSolverBootstrap
 import fuookami.ospf.framework.remote_solver.contract.runSuspend
 import fuookami.ospf.framework.remote_solver.protocol.domain.ObjectRef
+import fuookami.ospf.framework.remote_solver.protocol.domain.ModelData
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverErrorCode
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverException
+import fuookami.ospf.framework.remote_solver.protocol.domain.SolvePayload
+import fuookami.ospf.framework.remote_solver.protocol.domain.TaskMeta
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskComplexity
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskStatus
 import fuookami.ospf.framework.remote_solver.protocol.domain.TimeSensitivity
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -187,5 +192,91 @@ class RemoteSolverApiFacadeTest {
             }
         }
         assertEquals(RemoteSolverErrorCode.INVALID_ARGUMENT, error.code)
+    }
+
+    @Test
+    fun structuredSolvePayloadArtifactIsDecodedAndRetainsCpFormat() {
+        val runtime = InMemoryRemoteSolverBootstrap.create()
+        val facade = RemoteSolverApiFacade(runtime.service, runtime.objectStoragePort)
+        val payload = SolvePayload(
+            modelData = ModelData.raw(
+                bytes = "{}".encodeToByteArray(),
+                format = "ospf-cp-snapshot-json"
+            ),
+            taskMeta = TaskMeta(targetType = "cp")
+        )
+
+        runSuspend {
+            runtime.objectStoragePort.put(
+                path = "tenant-cp/payload",
+                bytes = Json.encodeToString(SolvePayload.serializer(), payload).encodeToByteArray()
+            )
+            val response = facade.submit(
+                TaskSubmitRequest(
+                    tenantId = "tenant-cp",
+                    payloadRef = ObjectRef.of("payload"),
+                    taskMeta = TaskMeta(targetType = "cp")
+                )
+            )
+            val task = runtime.service.getTask(response.taskId)
+            assertNotNull(task)
+            assertEquals("ospf-cp-snapshot-json", task.payload.modelData.format)
+            assertEquals(
+                "tenant-cp/snapshot/payload",
+                task.payload.modelData.ref?.path?.value
+            )
+            assertEquals(
+                "{}",
+                runtime.objectStoragePort.get(task.payload.modelData.ref!!)?.decodeToString()
+            )
+            assertEquals("cp", task.payload.taskMeta.targetType?.value)
+        }
+    }
+
+    @Test
+    fun malformedPayloadArtifactRequiresExplicitLegacyMode() {
+        val runtime = InMemoryRemoteSolverBootstrap.create()
+        val facade = RemoteSolverApiFacade(runtime.service, runtime.objectStoragePort)
+        runSuspend {
+            runtime.objectStoragePort.put(
+                path = "tenant-cp/malformed",
+                bytes = "not-json".encodeToByteArray()
+            )
+        }
+        val error = assertFailsWith<RemoteSolverException> {
+            runSuspend {
+                facade.submit(
+                    TaskSubmitRequest(
+                        tenantId = "tenant-cp",
+                        payloadRef = ObjectRef.of("malformed")
+                    )
+                )
+            }
+        }
+        assertEquals(RemoteSolverErrorCode.INVALID_ARGUMENT, error.code)
+    }
+
+    @Test
+    fun malformedPayloadArtifactCanUseExplicitLegacyModelChannel() {
+        val runtime = InMemoryRemoteSolverBootstrap.create()
+        val facade = RemoteSolverApiFacade(runtime.service, runtime.objectStoragePort)
+        runSuspend {
+            runtime.objectStoragePort.put(
+                path = "tenant-legacy/model",
+                bytes = "legacy-model-bytes".encodeToByteArray()
+            )
+            val response = facade.submit(
+                TaskSubmitRequest(
+                    tenantId = "tenant-legacy",
+                    payloadRef = ObjectRef.of("model"),
+                    extension = mapOf("payloadMode" to "legacy-model")
+                )
+            )
+            val task = runtime.service.getTask(response.taskId)
+            assertNotNull(task)
+            assertEquals("tenant-legacy/model", task.payload.modelRef?.path?.value)
+            assertEquals("legacy-model", task.payload.extension["payloadMode"])
+            assertEquals("true", task.payload.extension["legacyPayloadRef"])
+        }
     }
 }

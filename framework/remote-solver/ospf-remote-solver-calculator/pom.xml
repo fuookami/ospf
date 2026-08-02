@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.github.fuookami.ospf.kotlin</groupId>
         <artifactId>ospf-remote-solver</artifactId>
-        <version>1.1.0</version>
+        <version>1.1.0-cp2.0401dabb2</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -23,17 +23,17 @@
         <dependency>
             <groupId>io.github.fuookami.ospf.kotlin</groupId>
             <artifactId>ospf-kotlin-starter</artifactId>
-            <version>${project.version}</version>
+            <version>${ospf.kotlin.version}</version>
         </dependency>
         <dependency>
             <groupId>io.github.fuookami.ospf.kotlin.core.plugin</groupId>
             <artifactId>ospf-kotlin-core-plugin-gurobi</artifactId>
-            <version>${project.version}</version>
+            <version>${ospf.kotlin.version}</version>
         </dependency>
         <dependency>
             <groupId>io.github.fuookami.ospf.kotlin.core.plugin</groupId>
             <artifactId>ospf-kotlin-core-plugin-scip</artifactId>
-            <version>${project.version}</version>
+            <version>${ospf.kotlin.version}</version>
         </dependency>
 
         <!-- Object storage -->

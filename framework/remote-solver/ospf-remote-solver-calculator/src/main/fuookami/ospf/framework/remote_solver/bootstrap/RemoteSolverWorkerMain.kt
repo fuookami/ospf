@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
+
 /**
  * 远程求解器 Worker 启动入口
  * Remote solver worker bootstrap entry
@@ -11,24 +13,46 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.time.Instant
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import fuookami.ospf.framework.remote_solver.adapter.localfs.LocalFsObjectStoragePort
+import fuookami.ospf.framework.remote_solver.adapter.ospf.OspfCpSnapshotExecutor
+import fuookami.ospf.framework.remote_solver.protocol.domain.ModelData
+import fuookami.ospf.framework.remote_solver.protocol.domain.PortableCheckpointCodec
+import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteTerminationReason
+import fuookami.ospf.framework.remote_solver.protocol.domain.SolvePayload
+import fuookami.ospf.framework.remote_solver.protocol.domain.SolveResult
+import fuookami.ospf.framework.remote_solver.protocol.domain.SolverConfig
+import fuookami.ospf.framework.remote_solver.protocol.domain.TaskMeta
+import fuookami.ospf.framework.remote_solver.protocol.port.ClockPort
 
 /**
  * 远程求解器 Worker 主程序
  * Remote solver worker main
  *
- * 模拟求解器执行，支持检查点恢复和进度跟踪。
- * Simulates solver execution, supports checkpoint recovery and progress tracking.
+ * 执行外部求解器进程，支持 CP snapshot 的真实 SCIP 求解和非 CP 兼容进度模式。
+ * Executes the external solver process, supporting real SCIP CP solving for snapshots and a
+ * compatibility progress mode for non-CP payloads.
  *
  * 命令行参数 / Command line arguments:
  * --task         任务 ID / Task ID
  * --slice        切片 ID / Slice ID
  * --model        模型标识 / Model identifier
+ * --model-format 模型格式 / Model format
  * --quantum-ms   时间切片时长（毫秒） / Time slice duration in milliseconds
+ * --tenant-id    租户 ID / Tenant identifier
+ * --config-json  内联 SolverConfig JSON / Inline SolverConfig JSON
  * --total-runtime-ms 总运行时间（毫秒） / Total runtime in milliseconds
  * --checkpoint-in    输入检查点路径 / Input checkpoint path
  * --state-dir    状态目录 / State directory
  */
 object RemoteSolverWorkerMain {
+    private val json = Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = false
+    }
+
     @JvmStatic
     fun main(args: Array<String>) {
         val options = parseArgs(args)
@@ -42,6 +66,135 @@ object RemoteSolverWorkerMain {
             options["state-dir"]?.trim().takeUnless { it.isNullOrEmpty() } ?: "target/remote-solver-worker-state"
         ).toAbsolutePath().normalize()
         Files.createDirectories(stateDir)
+
+        if (options["model-format"] == "ospf-cp-snapshot-json") {
+            runCpSnapshot(options, taskId, sliceId, quantumMs, stateDir)
+            return
+        }
+
+        runCompatibilityProgress(options, taskId, sliceId, model, quantumMs, totalRuntimeMs, checkpointIn, stateDir)
+    }
+
+    private fun runCpSnapshot(
+        options: Map<String, String>,
+        taskId: String,
+        sliceId: String,
+        quantumMs: Long,
+        stateDir: Path
+    ) {
+        val modelPath = options["model"]?.trim().takeUnless { it.isNullOrEmpty() }
+        val tenantId = options["tenant-id"]?.trim().takeUnless { it.isNullOrEmpty() } ?: "default"
+        val resultPath = stateDir.resolve("results").resolve(sanitize(taskId)).resolve("${sanitize(sliceId)}.json")
+        val checkpointPath = stateDir.resolve("checkpoints").resolve(sanitize(taskId)).resolve("${sanitize(sliceId)}.json")
+        runCatching {
+            require(modelPath != null) { "CP model path is required" }
+            val modelBytes = Files.readAllBytes(Path.of(modelPath))
+            val config = options["config-json"]?.let { encoded ->
+                json.decodeFromString(SolverConfig.serializer(), encoded)
+            }
+            val taskMeta = TaskMeta(
+                timeLimitMs = options["task-time-limit-ms"]?.toLongOrNull(),
+                solutionLimit = options["task-solution-limit"]?.toIntOrNull()
+            )
+            val payload = SolvePayload(
+                modelData = ModelData.raw(modelBytes, "ospf-cp-snapshot-json"),
+                config = config,
+                taskMeta = taskMeta
+            )
+            val storage = LocalFsObjectStoragePort(
+                rootPath = stateDir.resolve("objects"),
+                clock = object : ClockPort {
+                    override fun now(): Instant = Instant.fromEpochMilliseconds(System.currentTimeMillis())
+                }
+            )
+            val checkpointInputPath = options["checkpoint-in"]?.trim().takeUnless { it.isNullOrEmpty() }
+            val checkpoint = checkpointInputPath?.let { path ->
+                val bytes = Files.readAllBytes(Path.of(path))
+                PortableCheckpointCodec.decodeCompatibleOrNull(bytes.decodeToString())
+                    ?: error("Invalid portable CP checkpoint: $path")
+            }
+            val executor = OspfCpSnapshotExecutor(storage)
+            val result = runBlocking {
+                executor.execute(
+                    payload = payload,
+                    tenantId = tenantId,
+                    taskId = taskId,
+                    sliceId = sliceId,
+                    quantumMs = quantumMs,
+                    checkpoint = checkpoint
+                )
+            }
+            val resultBytes = result.resultRef?.let { ref -> runBlocking { storage.get(ref) } }
+            if (resultBytes != null) {
+                Files.createDirectories(resultPath.parent)
+                Files.write(resultPath, resultBytes)
+            }
+            val checkpointRef = runBlocking {
+                executor.exportCheckpoint(
+                    payload = payload,
+                    result = result,
+                    tenantId = tenantId,
+                    taskId = taskId,
+                    sliceId = sliceId,
+                    parentCheckpointId = checkpoint?.checkpointId
+                )
+            }
+            val checkpointBytes = checkpointRef?.let { ref -> runBlocking { storage.get(ref) } }
+            if (checkpointBytes != null) {
+                Files.createDirectories(checkpointPath.parent)
+                Files.write(checkpointPath, checkpointBytes)
+            }
+            printCpResult(result, resultPath.takeIf { resultBytes != null }, checkpointPath.takeIf { checkpointBytes != null })
+        }.onFailure { error ->
+            println("completed=false")
+            println("feasible=false")
+            println("problemStatus=UNKNOWN")
+            println("solutionPresence=NONE")
+            println("proofStatus=NONE")
+            println("schemaVersion=2.0")
+            println("runId=$taskId")
+            println("attemptId=$sliceId")
+            println("message=${error.message ?: error::class.simpleName}")
+            println("terminationReason=${RemoteTerminationReason.BACKEND_FAILURE}")
+        }
+    }
+
+    private fun printCpResult(result: SolveResult, resultPath: Path?, checkpointPath: Path?) {
+        val completed = result.terminationReason !in setOf(
+            RemoteTerminationReason.TIME_LIMIT,
+            RemoteTerminationReason.NODE_LIMIT,
+            RemoteTerminationReason.ITERATION_LIMIT,
+            RemoteTerminationReason.BACKEND_FAILURE
+        )
+        println("completed=$completed")
+        println("feasible=${result.feasible}")
+        println("problemStatus=${result.problemStatus}")
+        println("terminationReason=${result.terminationReason}")
+        println("schemaVersion=${result.schemaVersion}")
+        result.objectiveValueInt64?.let { println("objectiveInt64=$it") }
+        result.objectiveValue?.let { println("objective=${it.toDouble()}") }
+        result.gap?.let { println("gap=${it.toDouble()}") }
+        println("elapsedMs=${result.elapsedMs}")
+        result.message?.let { println("message=${it.replace('\n', ' ')}") }
+        resultPath?.let { println("resultPath=${it.toAbsolutePath()}") }
+        checkpointPath?.let { println("checkpointPath=${it.toAbsolutePath()}") }
+        resultPath?.let { path ->
+            if (Files.isRegularFile(path)) {
+                println(Files.readString(path))
+            }
+        }
+    }
+
+    private fun runCompatibilityProgress(
+        options: Map<String, String>,
+        taskId: String,
+        sliceId: String,
+        model: String,
+        quantumMs: Long,
+        totalRuntimeMs: Long,
+        checkpointIn: String?,
+        stateDir: Path
+    ) {
 
         // Restore progress from checkpoint / 从检查点恢复进度
         val restoredProgress = readCheckpointProgress(checkpointIn)

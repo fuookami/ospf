@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS remote_solver_node_state (
     supports_warm_start BOOLEAN NOT NULL,
     parallel_units INT NOT NULL,
     license_cost_per_slice DOUBLE PRECISION NOT NULL,
+    supported_model_types TEXT NOT NULL DEFAULT 'LINEAR,QUADRATIC',
     available_units INT NOT NULL,
     last_heartbeat_epoch_ms BIGINT NOT NULL,
     online BOOLEAN NOT NULL

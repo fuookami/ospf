@@ -37,6 +37,14 @@ ospf-remote-solver/
 - Full scheduler deployment: depend on `ospf-remote-solver-dispatcher`
 - Custom solver execution: depend on `ospf-remote-solver-calculator`
 
+## Constraint Programming integration
+
+The CP path accepts `SolvePayload` artifacts whose `ModelData.format` is `ospf-cp-snapshot-json` and whose target type is `cp`. The dispatcher decodes and validates the complete payload before scheduling, applies tenant-scoped object references, and routes only to nodes advertising `NormalizedModelType.CP`. The calculator rebuilds the OSPF CP snapshot and uses the SCIP CP solver; it does not introduce OR-Tools or claim native optional-interval support.
+
+CP result artifacts are actual versioned `SerializedSolution` JSON objects. Integer assignments are encoded as JSON `Long` values keyed by stable variable ID, and interval assignments contain `start`, `size`, `end`, and `present`. `SolveResult` carries orthogonal problem status, termination reason, solution presence, proof status, provenance, fingerprints, and `resultRef`; legacy boolean fields remain compatibility projections. Portable checkpoint v2 stores the snapshot, fingerprints, incumbent values, and integrity digest. Resume is rebuild-based and never represents native search-tree recovery.
+
+Linear and quadratic `ModelData` also carries stable identity metadata. Model, variable, constraint, and objective DTOs preserve `identityId`, `identityScope`, origin kind/key, namespace, and schema version; missing fields retain the model-local legacy default. This metadata is part of the local protocol fixture contract and must not be replaced by display names or registration order.
+
 ## Infrastructure Adapters
 
 The framework uses a port/adapter architecture, allowing each infrastructure component to be swapped via configuration.
@@ -461,6 +469,9 @@ Migration scripts:
 - `deploy/sql/V2__remote_solver_infra.sql` - Infrastructure tables
 - `deploy/sql/V3__remote_solver_scheduler_audit.sql` - Scheduler audit tables
 - `deploy/sql/V4__remote_solver_multi_tenant.sql` - Multi-tenant support (tenant_id columns)
+- `deploy/sql/V5__remote_solver_cp2.sql` - CP2 capability and result-report persistence
+- `deploy/sql/V6__remote_solver_cp2_payload_config.sql` - Inline CP solver configuration persistence
+- `deploy/sql/V7__remote_solver_object_ref_etag.sql` - ObjectRef ETag persistence for CP payload/result/checkpoint recovery
 
 ### Step 2: Configuration
 
@@ -579,15 +590,24 @@ Solver nodes are invoked by scheduler through bridge command. Built-in worker en
 
 Worker parameters:
 - `--model <path>` - Model reference path
+- `--model-format <format>` - Use `ospf-cp-snapshot-json` to execute a CP snapshot with the real SCIP path
 - `--task <taskId>` - Task identifier
 - `--slice <sliceId>` - Slice identifier
 - `--node <nodeId>` - Node identifier
-- `--quantum_ms <ms>` - Time quantum for this slice
+- `--quantum-ms <ms>` - Time quantum for this slice
+- `--tenant-id <tenantId>` - Tenant identifier used for result/checkpoint artifacts
+- `--config-json <json>` - Inline `SolverConfig` JSON for CP execution
 - `--checkpoint-in <path>` - Optional checkpoint for warm-start
 
 Additional options:
 - `--state-dir <dir>` - Local state directory (default: `target/remote-solver-worker-state`)
-- `--total-runtime-ms <ms>` - Simulated runtime (default: `12000`)
+- `--total-runtime-ms <ms>` - Compatibility progress runtime for non-CP payloads (default: `12000`)
+
+When `--model-format ospf-cp-snapshot-json` is supplied, the worker reads the snapshot, invokes
+`OspfCpSnapshotExecutor` and the configured SCIP runtime in this independent process, and writes a
+versioned `SerializedSolution` JSON result plus a portable checkpoint. The model and checkpoint paths
+must be readable by the worker process. Without the CP format flag, the worker retains the legacy
+progress protocol for non-CP integrations; that mode is not a solver result.
 
 ### Step 2: Register Node
 
@@ -759,6 +779,9 @@ Database baseline migration scripts:
 2. `deploy/sql/V2__remote_solver_infra.sql`
 3. `deploy/sql/V3__remote_solver_scheduler_audit.sql`
 4. `deploy/sql/V4__remote_solver_multi_tenant.sql`
+5. `deploy/sql/V5__remote_solver_cp2.sql`
+6. `deploy/sql/V6__remote_solver_cp2_payload_config.sql`
+7. `deploy/sql/V7__remote_solver_object_ref_etag.sql`
 
 Run before first JDBC deployment (example for PostgreSQL):
 ```bash
@@ -766,6 +789,9 @@ psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V1__remote_solver
 psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V2__remote_solver_infra.sql
 psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V3__remote_solver_scheduler_audit.sql
 psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V4__remote_solver_multi_tenant.sql
+psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V5__remote_solver_cp2.sql
+psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V6__remote_solver_cp2_payload_config.sql
+psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V7__remote_solver_object_ref_etag.sql
 ```
 
 Or use migration script:
@@ -1274,6 +1300,9 @@ Database migration scripts (PostgreSQL):
 | `deploy/sql/V2__remote_solver_infra.sql` | Infrastructure extension tables | Infrastructure metadata |
 | `deploy/sql/V3__remote_solver_scheduler_audit.sql` | `remote_solver_scheduler_audit`, `remote_solver_scheduler_snapshot` | Scheduler hot-reload audit trail |
 | `deploy/sql/V4__remote_solver_multi_tenant.sql` | `tenant_id` column on `remote_solver_task_state`, `remote_solver_cost_ledger` | Multi-tenant isolation |
+| `deploy/sql/V5__remote_solver_cp2.sql` | CP capability, payload model format, latest result report | CP2 capability and report persistence |
+| `deploy/sql/V6__remote_solver_cp2_payload_config.sql` | `payload_config_json` on `remote_solver_task_state` | Preserve inline CP solver configuration |
+| `deploy/sql/V7__remote_solver_object_ref_etag.sql` | ObjectRef ETag columns on task/slice state | Preserve content identity across reload and replay |
 
 Apply migrations:
 
@@ -1294,6 +1323,9 @@ psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V1__remote_solver
 psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V2__remote_solver_infra.sql
 psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V3__remote_solver_scheduler_audit.sql
 psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V4__remote_solver_multi_tenant.sql
+psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V5__remote_solver_cp2.sql
+psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V6__remote_solver_cp2_payload_config.sql
+psql "postgresql://127.0.0.1:5432/remote_solver" -f deploy/sql/V7__remote_solver_object_ref_etag.sql
 ```
 
 ## Acceptance Scenarios
