@@ -3,6 +3,7 @@ package fuookami.ospf.kotlin.core.solver.report
 import java.util.concurrent.Executors
 import kotlinx.coroutines.runBlocking
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
@@ -16,6 +17,42 @@ import fuookami.ospf.kotlin.core.model.mechanism.*
 import fuookami.ospf.kotlin.core.variable.Continuous
 
 class ModelElementIdentityRegistryTest {
+    @Test
+    fun registryRetainsCanonicalManyToOneProvenanceAndRejectsMismatchedPrimaryOrigin() {
+        val registry = ModelElementIdentityRegistry(namespace = "provenance-model", schemaVersion = "1.0")
+        val objective = Any()
+        val first = ModelElementOrigin("source", "a")
+        val second = ModelElementOrigin("source", "b")
+
+        assertTrue(
+            registry.registerObjective(
+                element = objective,
+                id = ObjectiveId("objective:aggregate"),
+                provenance = listOf(second, first, second)
+            ) is Ok
+        )
+        assertEquals(
+            listOf(first, second),
+            registry.identity(objective)?.provenance
+        )
+        assertNull(registry.identity(objective)?.origin)
+        assertTrue(
+            registry.registerObjective(
+                element = objective,
+                id = ObjectiveId("objective:aggregate"),
+                provenance = listOf(first, second)
+            ) is Ok
+        )
+        assertTrue(
+            registry.registerObjective(
+                element = Any(),
+                id = ObjectiveId("objective:invalid"),
+                origin = ModelElementOrigin("source", "missing"),
+                provenance = listOf(first)
+            ) is Failed
+        )
+    }
+
     @Test
     fun registryShouldKeepTypedIdentitiesAndRejectDuplicateIds() {
         val registry = ModelElementIdentityRegistry(namespace = "test-model", schemaVersion = "1.0")
@@ -58,6 +95,68 @@ class ModelElementIdentityRegistryTest {
         assertTrue(firstId != secondId)
         assertTrue(registry.validate() is Ok)
         assertTrue(registry.registerVariable(Any(), VariableId("model-local-variable:0")) is Failed)
+        assertTrue(registry.registerVariable(Any(), VariableId("artifact:user-defined")) is Failed)
+    }
+
+    @Test
+    fun derivedIdentityEncodingMustDistinguishColonContainingSourceAndDiscriminator() {
+        val left = derivedModelElementIdentity(
+            kind = ModelElementKind.Variable,
+            role = "derived",
+            sourceId = "a:b",
+            sourceScope = ModelElementScope.Stable,
+            sourceOrigin = ModelElementOrigin("test", "left"),
+            namespace = "model",
+            schemaVersion = "1.0",
+            discriminator = "c"
+        )
+        val right = derivedModelElementIdentity(
+            kind = ModelElementKind.Variable,
+            role = "derived",
+            sourceId = "a",
+            sourceScope = ModelElementScope.Stable,
+            sourceOrigin = ModelElementOrigin("test", "right"),
+            namespace = "model",
+            schemaVersion = "1.0",
+            discriminator = "b:c"
+        )
+
+        assertNotEquals(left.id, right.id)
+        assertEquals(ModelElementScope.Stable, left.scope)
+        assertEquals(ModelElementScope.Stable, right.scope)
+    }
+
+    @Test
+    fun derivedIdentityMustNotInventAnOriginWhenTheSourceOriginIsAbsent() {
+        val provenance = listOf(
+            ModelElementOrigin("constraint", "balance"),
+            ModelElementOrigin("variable", "x")
+        )
+        val identity = derivedModelElementIdentity(
+            kind = ModelElementKind.Objective,
+            role = "aggregate",
+            sourceId = "objective:cost",
+            sourceScope = ModelElementScope.Stable,
+            sourceOrigin = null,
+            sourceProvenance = provenance,
+            namespace = "model",
+            schemaVersion = "1.0"
+        )
+
+        assertNull(identity.origin)
+        assertEquals(provenance, identity.provenance)
+
+        val reordered = derivedModelElementIdentity(
+            kind = ModelElementKind.Objective,
+            role = "aggregate",
+            sourceId = "objective:cost",
+            sourceScope = ModelElementScope.Stable,
+            sourceOrigin = null,
+            sourceProvenance = provenance.reversed(),
+            namespace = "model",
+            schemaVersion = "1.0"
+        )
+        assertEquals(identity.provenance, reordered.provenance)
     }
 
     @Test
@@ -255,6 +354,58 @@ class ModelElementIdentityRegistryTest {
         assertEquals(null, copied.identityOriginAt(1))
     }
 
+    /**
+     * Verifies malformed identity metadata remains failed after batch copy and filtering. /
+     * 验证批次复制和过滤后仍保留身份元数据非法状态。
+     */
+    @Test
+    fun malformedConstraintMetadataMustRemainFailedAcrossCopiesAndFilters() {
+        val linear = LinearConstraintBatch(
+            sparseLhs = SparseMatrix<Flt64>().also { matrix ->
+                matrix.addRow(SparseVector<Flt64>())
+                matrix.addRow(SparseVector<Flt64>())
+            },
+            signs = listOf(ModelConstraintRelation.Equal, ModelConstraintRelation.Equal),
+            rhs = listOf(Flt64.zero, Flt64.one),
+            names = listOf("a", "b"),
+            sources = listOf(ConstraintSource.Origin, ConstraintSource.Origin),
+            identityScopes = listOf(ModelElementScope.Stable)
+        )
+
+        assertTrue(linear.identityMetadataValidation.failed)
+        assertTrue(linear.copy().identityMetadataValidation.failed)
+        assertTrue(linear.filter { true }.identityMetadataValidation.failed)
+
+        val quadratic = QuadraticConstraintBatch(
+            sparseLhs = SparseQuadraticMatrix().also { matrix ->
+                matrix.addRow(SparseQuadraticVector())
+                matrix.addRow(SparseQuadraticVector())
+            },
+            signs = listOf(ModelConstraintRelation.Equal, ModelConstraintRelation.Equal),
+            rhs = listOf(Flt64.zero, Flt64.one),
+            names = listOf("a", "b"),
+            sources = listOf(ConstraintSource.Origin, ConstraintSource.Origin),
+            identityProvenance = listOf(emptyList())
+        )
+
+        assertTrue(quadratic.identityMetadataValidation.failed)
+        assertTrue(quadratic.copy().identityMetadataValidation.failed)
+
+        val partialIds = LinearConstraintBatch(
+            sparseLhs = SparseMatrix<Flt64>().also { matrix ->
+                matrix.addRow(SparseVector<Flt64>())
+                matrix.addRow(SparseVector<Flt64>())
+            },
+            signs = listOf(ModelConstraintRelation.Equal, ModelConstraintRelation.Equal),
+            rhs = listOf(Flt64.zero, Flt64.one),
+            names = listOf("a", "b"),
+            sources = listOf(ConstraintSource.Origin, ConstraintSource.Origin),
+            ids = listOf(ConstraintId("stable:a"))
+        )
+        assertTrue(partialIds.identityMetadataValidation.failed)
+        assertTrue(partialIds.copy().identityMetadataValidation.failed)
+    }
+
     @Test
     fun feasibilityArtifactsShouldCarryIndependentIdentityMetadata() {
         val sourceOrigin = ModelElementOrigin("pipeline", "capacity")
@@ -300,10 +451,13 @@ class ModelElementIdentityRegistryTest {
         assertTrue(auxiliary.isNotEmpty())
         assertEquals("model", feasibility.identityNamespace)
         assertEquals("1.0", feasibility.identitySchemaVersion)
-        assertTrue(auxiliary.all { it.id?.value?.startsWith("artifact:feasibility:") == true })
+        assertTrue(auxiliary.all { it.id?.value?.startsWith("artifact:feasibility-") == true })
         assertTrue(auxiliary.all { it.identityNamespace == "model" && it.identitySchemaVersion == "1.0" })
-        assertTrue(auxiliary.all { it.identityOrigin == ModelElementOrigin("constraint", "stable:capacity") })
-        assertEquals("artifact:feasibility:constraint:stable:capacity", feasibility.constraints.ids.single().value)
+        assertTrue(auxiliary.all { it.identityOrigin == sourceOrigin })
+        assertTrue(
+            feasibility.constraints.ids.single().value
+                .startsWith("artifact:feasibility-constraint:constraint:")
+        )
         assertEquals(ModelElementScope.Stable, feasibility.constraints.identityScopeAt(0))
         assertEquals(sourceOrigin, feasibility.constraints.identityOriginAt(0))
     }

@@ -30,6 +30,7 @@ import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgram
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSolver
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSolution
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSolverOutput
+import fuookami.ospf.kotlin.core.solver.config.SCIPSolverConfig
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingConflict
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingConflictMinimality
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingFeasibleOutput
@@ -42,6 +43,7 @@ import fuookami.ospf.kotlin.core.solver.progress.SolverProgressContext
 import fuookami.ospf.kotlin.core.solver.progress.SolverStages
 import fuookami.ospf.kotlin.core.solver.progress.SolverSubStage
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.redactedValue
 import fuookami.ospf.kotlin.core.solver.report.AuditFingerprint
 import fuookami.ospf.kotlin.core.solver.report.EvidenceMinimality
 import fuookami.ospf.kotlin.core.solver.report.EvidenceValidity
@@ -765,12 +767,22 @@ private class ScipConstraintProgrammingSession(
             }
             options.nodeLimit?.let { scip.setLongintParam("limits/nodes", it.toLong()) }
             options.solutionLimit?.let { scip.setLongintParam("limits/solutions", it.toLong()) }
-            val requestedThreadCount = options.threadCount ?: if (options.deterministic) 1 else null
+            val backendDeterministic = (options.backendConfiguration as? SCIPSolverConfig)?.deterministic == true
+            val requestedThreadCount = options.threadCount ?: if (options.deterministic || backendDeterministic) 1 else null
+            when (val backendConfiguration = applyBackendConfiguration(options.backendConfiguration, requestedThreadCount)) {
+                is Failed -> return Failed(backendConfiguration.error)
+                is Fatal -> return Fatal(backendConfiguration.errors)
+                else -> Unit
+            }
             requestedThreadCount?.let { threadCount ->
                 scip.setIntParam("parallel/maxnthreads", threadCount)
             }
             options.randomSeed?.let { seed ->
                 scip.setIntParam("randomization/randomseedshift", seed.toInt())
+            }
+            if (options.deterministic) {
+                scip.setBoolParam("randomization/permutevars", false)
+                scip.setBoolParam("randomization/permuteconss", false)
             }
             options.relativeObjectiveGap?.let { scip.setRealParam("limits/gap", it.toDouble()) }
             options.absoluteObjectiveGap?.let { scip.setRealParam("limits/absgap", it.toDouble()) }
@@ -1030,8 +1042,8 @@ private class ScipConstraintProgrammingSession(
             put("limits.absgap", options.absoluteObjectiveGap?.toString() ?: "unlimited")
             options.backendConfiguration?.let { configuration ->
                 put("backendConfiguration.type", configuration.type)
-                configuration.redactedParameters().toSortedMap().forEach { (key, value) ->
-                    put("backendConfiguration.$key", value)
+                configuration.parameters().forEach { parameter ->
+                    put("backendConfiguration.${parameter.name}", parameter.redactedValue())
                 }
             }
         }

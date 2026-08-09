@@ -55,6 +55,11 @@ pwsh.exe -File .\ospf-kotlin-benchmark\scripts\compare-benchmark-results.ps1 `
   -Dataset small
 ```
 
+Benchmark correctness and replay metadata use the unified `SolveReport<V>` contract. New benchmark
+fixtures should record the report's termination reason, solution presence, diagnostics, provenance,
+and model/configuration fingerprints; legacy solver output views are compatibility adapters only.
+The remaining plugin migration and capability scope is tracked in [`plans/solver_cp.md`](../plans/solver_cp.md).
+
 ## Notes
 
 JMH scores are machine-sensitive. CI smoke runs should validate benchmark executability and preserve artifacts, not compare absolute scores as hard gates.

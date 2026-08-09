@@ -193,8 +193,8 @@ class SSP {
         val solver = ScipLinearSolver()
         return when (val ret = solveLinearMetaModel(solver, metaModel)) {
             is Ok -> {
-                metaModel.tokens.setSolution(ret.value.solution)
-                Ok(ret.value.solution)
+                metaModel.tokens.setSolution(ret.value.values)
+                Ok(ret.value.values)
             }
 
             is Failed -> {

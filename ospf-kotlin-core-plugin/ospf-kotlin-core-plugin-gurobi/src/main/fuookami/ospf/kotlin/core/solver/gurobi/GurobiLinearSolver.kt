@@ -35,6 +35,7 @@ class GurobiLinearSolver(
     override val descriptor = SolverDescriptor(
         solverId = "gurobi",
         backendName = "Gurobi",
+        backendVersion = gurobiNativeVersion(),
         pluginVersion = GurobiLinearSolver::class.java.`package`.implementationVersion,
         capabilities = SolverCapabilities(
             modelTypes = setOf(SolverModelType.LP, SolverModelType.MIP),
@@ -43,7 +44,8 @@ class GurobiLinearSolver(
             farkas = true,
             warmStart = true,
             solutionPool = true,
-            callback = true
+            callback = true,
+            interrupt = true
         )
     )
 
@@ -66,7 +68,15 @@ class GurobiLinearSolver(
     override suspend operator fun invoke(
         model: LinearTriadModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<FeasibleSolverOutput<Flt64>> {
+    ): Ret<SolveReport<Flt64>> {
+        return invoke(model, solvingStatusCallBack, null)
+    }
+
+    override suspend fun invoke(
+        model: LinearTriadModelView,
+        solvingStatusCallBack: SolvingStatusCallBack?,
+        cancellationToken: CancellationToken?
+    ): Ret<SolveReport<Flt64>> {
         when (val validation = model.identityValidation) {
             is Ok -> {}
             is Failed -> return Failed(validation.error)
@@ -75,11 +85,14 @@ class GurobiLinearSolver(
         return GurobiLinearSolverImpl(
             config = config,
             callBack = callBack,
-            statusCallBack = solvingStatusCallBack
+            statusCallBack = solvingStatusCallBack,
+            cancellationToken = cancellationToken
         ).use { impl ->
             val result = impl(model)
             cleanupAfterSolverRun()
-            result
+            result.map { report ->
+                report.withLinearBackendMetadata(model, config, descriptor)
+            }
         }
     }
 
@@ -95,9 +108,18 @@ class GurobiLinearSolver(
         model: LinearTriadModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
+        return invoke(model, solutionAmount, solvingStatusCallBack, null)
+    }
+
+    override suspend fun invoke(
+        model: LinearTriadModelView,
+        solutionAmount: UInt64,
+        solvingStatusCallBack: SolvingStatusCallBack?,
+        cancellationToken: CancellationToken?
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
         return if (solutionAmount leq UInt64.one) {
-            this(model).map { it to emptyList() }
+            this(model, solvingStatusCallBack, cancellationToken).map { it to emptyList() }
         } else {
             val results = ArrayList<List<Flt64>>()
             GurobiLinearSolverImpl(
@@ -122,11 +144,14 @@ class GurobiLinearSolver(
                         }
                         ok
                     },
-                statusCallBack = solvingStatusCallBack
+                statusCallBack = solvingStatusCallBack,
+                cancellationToken = cancellationToken
             ).use { impl ->
                 val result = impl(model).map { it to results }
                 cleanupAfterSolverRun()
-                result
+                result.map { (report, solutions) ->
+                    report.withLinearBackendMetadata(model, config, descriptor) to solutions
+                }
             }
         }
     }
@@ -136,11 +161,12 @@ class GurobiLinearSolver(
 private class GurobiLinearSolverImpl(
     private val config: SolverConfig,
     private val callBack: GurobiLinearSolverCallBack? = null,
-    private val statusCallBack: SolvingStatusCallBack? = null
+    private val statusCallBack: SolvingStatusCallBack? = null,
+    private val cancellationToken: CancellationToken? = null
 ) : GurobiSolver() {
     private lateinit var grbVars: List<GRBVar>
     private lateinit var grbConstraints: List<GRBConstr>
-    private lateinit var output: FeasibleSolverOutput<Flt64>
+    private lateinit var output: SolveReport<Flt64>
 
     private var initialBestObj: Flt64? = null
     private var bestObj: Flt64? = null
@@ -154,8 +180,11 @@ private class GurobiLinearSolverImpl(
      * @param model 线性模型视图 / linear model view
      * @return 求解结果 / solving result
     */
-    suspend operator fun invoke(model: LinearTriadModelView): Ret<FeasibleSolverOutput<Flt64>> {
-        val gurobiConfig = config.extraConfig as? GurobiSolverConfig
+    suspend operator fun invoke(model: LinearTriadModelView): Ret<SolveReport<Flt64>> {
+        if (cancellationToken?.isCancellationRequested == true) {
+            return Ok(cancelledSolveReport(cancellationToken.record?.reason))
+        }
+        val gurobiConfig = config.backendConfiguration as? GurobiSolverConfig
         val server = gurobiConfig?.server
         val password = gurobiConfig?.password
         val connectionTime = gurobiConfig?.connectionTime
@@ -180,7 +209,7 @@ private class GurobiLinearSolverImpl(
             { it.dump(model) },
             { it.configure(model) },
             GurobiLinearSolverImpl::solve,
-            GurobiLinearSolverImpl::analyzeStatus,
+            { it.analyzeStatus(cancellationToken) },
             GurobiLinearSolverImpl::analyzeSolution
         )
         for (process in processes) {
@@ -221,7 +250,12 @@ private class GurobiLinearSolverImpl(
                         variableDumpingData.upperBounds[col],
                         0.0,
                         GurobiVariable(model.variables[col].type).toGurobiVar(),
-                        nativeElementName(model.variables[col].id?.value, variableDumpingData.names[col], "variable")
+                        nativeElementName(
+                            identityId = model.variables[col].id?.value,
+                            fallbackName = variableDumpingData.names[col],
+                            category = "variable",
+                            identityScope = model.variables[col].identityScope
+                        )
                     )
                 )
             }
@@ -260,9 +294,10 @@ private class GurobiLinearSolverImpl(
                                 GurobiConstraintSign(model.constraints.signs[it.first]).toGurobiConstraintSign(),
                                 model.constraints.rhs[it.first].toSolverDouble("linear.constraints.rhs[${it.first}]"),
                                 nativeElementName(
-                                    model.constraints.ids.getOrNull(it.first)?.value,
-                                    model.constraints.names[it.first],
-                                    "constraint"
+                                    identityId = model.constraints.ids.getOrNull(it.first)?.value,
+                                    fallbackName = model.constraints.names[it.first],
+                                    category = "constraint",
+                                    identityScope = model.constraints.identityScopeAt(it.first)
                                 )
                             )
                         }
@@ -283,9 +318,10 @@ private class GurobiLinearSolverImpl(
                             GurobiConstraintSign(model.constraints.signs[i]).toGurobiConstraintSign(),
                             model.constraints.rhs[i].toSolverDouble("linear.constraints.rhs[$i]"),
                             nativeElementName(
-                                model.constraints.ids.getOrNull(i)?.value,
-                                model.constraints.names[i],
-                                "constraint"
+                                identityId = model.constraints.ids.getOrNull(i)?.value,
+                                fallbackName = model.constraints.names[i],
+                                category = "constraint",
+                                identityScope = model.constraints.identityScopeAt(i)
                             )
                         )
                     }
@@ -348,13 +384,23 @@ private class GurobiLinearSolverImpl(
     */
     private suspend fun configure(model: LinearTriadModelView): Try {
         return try {
+            when (val cancellation = registerCancellation(cancellationToken)) {
+                is Failed -> return cancellation
+                is Fatal -> return cancellation
+                else -> {}
+            }
             grbModel.set(GRB.DoubleParam.TimeLimit, config.time.toDouble(DurationUnit.SECONDS))
             grbModel.set(GRB.DoubleParam.MIPGap, config.gap.toSolverDouble("linear.config.gap"))
             grbModel.set(GRB.IntParam.Threads, config.threadNum.toInt())
 
-            if (config.notImprovementTime != null || callBack?.nativeCallback != null || statusCallBack != null) {
+            if (config.notImprovementTime != null || callBack?.nativeCallback != null ||
+                statusCallBack != null || cancellationToken != null) {
                 grbModel.setCallback(object : GRBCallback() {
                     override fun callback() {
+                        if (cancellationToken?.isCancellationRequested == true) {
+                            abort()
+                            return
+                        }
                         callBack?.nativeCallback?.invoke(this)
 
                         if (where == GRB.CB_MIPSOL) {
@@ -462,26 +508,29 @@ private class GurobiLinearSolverImpl(
                     results.add(Flt64(grbVar.get(GRB.DoubleAttr.X)))
                 }
                 val isMip = grbModel.get(GRB.IntAttr.IsMIP) != 0
-                val isMinimize = grbModel.get(GRB.IntAttr.ModelSense) == GRB.MINIMIZE
                 val possibleBestObj = when {
                     isMip -> Flt64(grbModel.get(GRB.DoubleAttr.ObjBound))
                     status == SolverStatus.Optimal -> Flt64(grbModel.get(GRB.DoubleAttr.ObjVal))
-                    isMinimize -> Flt64.negativeInfinity
-                    else -> Flt64.infinity
+                    else -> try {
+                        Flt64(grbModel.get(GRB.DoubleAttr.ObjBound))
+                    } catch (_: Exception) {
+                        null
+                    }
                 }
                 val gap = when {
-                    status != SolverStatus.Optimal -> Flt64.infinity
                     isMip -> Flt64(grbModel.get(GRB.DoubleAttr.MIPGap))
-                    else -> Flt64.zero
+                    status == SolverStatus.Optimal -> Flt64.zero
+                    else -> null
                 }
-                output = FeasibleSolverOutput<Flt64>(
-                    obj = Flt64(grbModel.get(GRB.DoubleAttr.ObjVal)),
-                    solution = results,
-                    time = grbModel.get(GRB.DoubleAttr.Runtime).seconds,
-                    possibleBestObj = possibleBestObj,
+                output = status.toSolveReport(
+                    objective = Flt64(grbModel.get(GRB.DoubleAttr.ObjVal)),
+                    values = results,
+                    solveTime = grbModel.get(GRB.DoubleAttr.Runtime).seconds,
+                    bestBound = possibleBestObj,
                     gap = gap,
-                    status = status,
-                    bestBound = possibleBestObj
+                    iterations = nativeIterationsOrNull(),
+                    nodes = nativeNodesOrNull(),
+                    terminationReason = terminationReason
                 )
                 when (val result = callBack?.execIfContain(
                     point = Point.AnalyzingSolution,
@@ -519,7 +568,18 @@ private class GurobiLinearSolverImpl(
 
                     else -> {}
                 }
-                failByStatus(status)
+                output = status.toSolveReport(
+                    solveTime = grbModel.get(GRB.DoubleAttr.Runtime).seconds,
+                    bestBound = try {
+                        Flt64(grbModel.get(GRB.DoubleAttr.ObjBound))
+                    } catch (_: Exception) {
+                        null
+                    },
+                    iterations = nativeIterationsOrNull(),
+                    nodes = nativeNodesOrNull(),
+                    terminationReason = terminationReason
+                )
+                ok
             }
         } catch (e: GRBException) {
             solverSolvingException(e.message)

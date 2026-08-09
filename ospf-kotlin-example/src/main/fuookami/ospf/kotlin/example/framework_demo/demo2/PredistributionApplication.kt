@@ -532,7 +532,7 @@ private class PredistributionAlgorithmImpl {
             }
         }
 
-        val solution = when (val result = stowageContext.analyze(modelSolution.solution, model)) {
+        val solution = when (val result = stowageContext.analyze(modelSolution.values, model)) {
             is Ok -> {
                 result.value!!
             }

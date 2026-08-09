@@ -1,9 +1,22 @@
 /** 求解器状态支持 / Solver status support */
 package fuookami.ospf.kotlin.core.solver
 
+import kotlin.time.Duration
 import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.core.solver.output.SolverStatus
+import fuookami.ospf.kotlin.core.solver.report.ProblemStatus
+import fuookami.ospf.kotlin.core.solver.report.ProofStatus
+import fuookami.ospf.kotlin.core.solver.report.SolutionPresence
+import fuookami.ospf.kotlin.core.solver.report.SolveProof
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
+import fuookami.ospf.kotlin.core.solver.report.SolveSolution
+import fuookami.ospf.kotlin.core.solver.report.SolveStatistics
+import fuookami.ospf.kotlin.core.solver.report.SolveDiagnostics
+import fuookami.ospf.kotlin.core.solver.report.SolveIssue
+import fuookami.ospf.kotlin.core.solver.report.SolveIssueCategory
+import fuookami.ospf.kotlin.core.solver.report.TerminationReason
 
 /**
  * `core.solver` 的插件支持 API：状态归一与失败兜底。 / Plugin support APIs in `core.solver` for status normalization and failure fallback.
@@ -61,4 +74,115 @@ fun failByStatus(
     fallback: ErrorCode = ErrorCode.OREngineSolvingException
 ): Try {
     return Failed(Err(status.resolveErrCode(fallback)))
+}
+
+/**
+ * 构造尚未启动或没有 incumbent 的取消报告。 / Build a cancellation report with no incumbent.
+ *
+ * @param reason 取消原因 / Cancellation reason
+ * @return 结构化取消报告 / Structured cancellation report
+ */
+fun cancelledSolveReport(reason: String? = null): SolveReport<Flt64> {
+    return SolveReport(
+        problemStatus = ProblemStatus.Unknown,
+        terminationReason = TerminationReason.Cancelled,
+        solutionPresence = SolutionPresence.None,
+        diagnostics = SolveDiagnostics(
+            warnings = listOfNotNull(
+                reason?.let {
+                    SolveIssue(
+                        code = "solve-cancelled",
+                        category = SolveIssueCategory.Backend,
+                        message = "求解已取消：$it / Solve was cancelled: $it"
+                    )
+                }
+            )
+        )
+    )
+}
+
+/**
+ * 将正交求解报告映射为旧的状态视图，仅用于仍暴露 [SolverStatus] 的领域结果类型。 /
+ * Map an orthogonal solve report to the legacy status view for domain result types that still expose [SolverStatus].
+ *
+ * @return 状态视图 / Status view
+ */
+fun SolveReport<*>.toSolverStatus(): SolverStatus {
+    return when (problemStatus) {
+        ProblemStatus.Infeasible -> SolverStatus.Infeasible
+        ProblemStatus.Unbounded -> SolverStatus.Unbounded
+        ProblemStatus.InfeasibleOrUnbounded -> SolverStatus.InfeasibleOrUnbounded
+        ProblemStatus.Unknown -> SolverStatus.SolvingException
+        ProblemStatus.Feasible -> if (solutionPresence == SolutionPresence.Optimal) {
+            SolverStatus.Optimal
+        } else {
+            SolverStatus.Feasible
+        }
+    }
+}
+
+/**
+ * 将后端状态和已提取的数值组装为统一报告。 /
+ * Assemble a unified report from a backend status and extracted numerical values.
+ *
+ * @param objective incumbent objective / incumbent 目标值
+ * @param values incumbent variable values / incumbent 变量值
+ * @param solveTime backend solve time / 后端求解耗时
+ * @param bestBound incumbent best bound / 当前最佳界
+ * @param gap incumbent optimality gap / 当前最优间隙
+ * @param terminationReason explicit termination reason / 显式终止原因
+ * @return unified solve report / 统一求解报告
+ */
+fun SolverStatus.toSolveReport(
+    objective: Flt64? = null,
+    values: List<Flt64>? = null,
+    solveTime: Duration,
+    bestBound: Flt64? = null,
+    gap: Flt64? = null,
+    iterations: ULong? = null,
+    nodes: ULong? = null,
+    terminationReason: TerminationReason? = null,
+    diagnostics: SolveDiagnostics<Flt64> = SolveDiagnostics()
+): SolveReport<Flt64> {
+    val problemStatus = when (this) {
+        SolverStatus.Infeasible -> ProblemStatus.Infeasible
+        SolverStatus.Unbounded -> ProblemStatus.Unbounded
+        SolverStatus.InfeasibleOrUnbounded -> ProblemStatus.InfeasibleOrUnbounded
+        SolverStatus.SolvingException -> ProblemStatus.Unknown
+        SolverStatus.Optimal, SolverStatus.Feasible -> ProblemStatus.Feasible
+    }
+    val effectiveTermination = terminationReason ?: if (this == SolverStatus.SolvingException) {
+        TerminationReason.BackendFailure
+    } else {
+        TerminationReason.Completed
+    }
+    val hasIncumbent = values != null
+    return SolveReport(
+        problemStatus = problemStatus,
+        terminationReason = effectiveTermination,
+        solutionPresence = if (!hasIncumbent) {
+            SolutionPresence.None
+        } else if (this == SolverStatus.Optimal) {
+            SolutionPresence.Optimal
+        } else {
+            SolutionPresence.Incumbent
+        },
+        solution = values?.let { SolveSolution(values = it, objective = objective) },
+        proof = SolveProof(
+            status = when (this) {
+                SolverStatus.Optimal -> ProofStatus.Claimed
+                SolverStatus.Infeasible -> ProofStatus.Verified
+                else -> ProofStatus.None
+            },
+            kind = "backend-status"
+        ),
+        statistics = SolveStatistics(
+            solveTime = solveTime,
+            iterations = iterations,
+            nodes = nodes,
+            bestBound = bestBound,
+            gap = gap
+        ),
+        diagnostics = diagnostics
+    )
 }

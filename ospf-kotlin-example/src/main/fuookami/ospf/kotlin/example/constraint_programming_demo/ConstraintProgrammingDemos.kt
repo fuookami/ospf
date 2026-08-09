@@ -11,8 +11,10 @@ import fuookami.ospf.kotlin.core.model.constraint_programming.IntegerDomain
 import fuookami.ospf.kotlin.core.model.mechanism.LinearMetaModel
 import fuookami.ospf.kotlin.core.solver.constraint_programming.FakeConstraintProgrammingSolver
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSolverOutput
+import fuookami.ospf.kotlin.core.solver.toSolveReport
+import fuookami.ospf.kotlin.core.solver.toSolveReport
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingFeasibleOutput
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.output.SolverStatus
 import fuookami.ospf.kotlin.core.solver.report.ProofStatus
 import fuookami.ospf.kotlin.core.solver.value.IntoValue
@@ -188,13 +190,12 @@ object LogicBasedBendersDemo {
         val masterSolver = BendersMasterProblemSolver { model ->
             val value = if (masterCalls++ == 0) Flt64.zero else Flt64.one
             ok(
-                FeasibleSolverOutput(
-                    obj = Flt64.zero,
-                    solution = listOf(value),
-                    time = ZERO,
-                    possibleBestObj = Flt64.zero,
-                    gap = Flt64.zero,
-                    status = SolverStatus.Optimal
+                SolverStatus.Optimal.toSolveReport(
+                    objective = Flt64.zero,
+                    values = listOf(value),
+                    solveTime = ZERO,
+                    bestBound = Flt64.zero,
+                    gap = Flt64.zero
                 )
             )
         }
@@ -207,7 +208,7 @@ object LogicBasedBendersDemo {
                 masterSolutionSource = { output ->
                     ok(
                         ConstraintProgrammingValueSource.of(
-                            mapOf("selection" to output.solution[masterVariable.index])
+                            mapOf("selection" to output.values[masterVariable.index])
                         )
                     )
                 }

@@ -12,9 +12,30 @@ import jscip.SCIP_Vartype
 import jscip.Constraint
 import jscip.Scip
 import jscip.Variable
+import fuookami.ospf.kotlin.core.solver.report.TerminationReason
 
 /** 验证 JSCIP 原生 CP 约束创建与求解能力 / Verifies JSCIP native CP constraint creation and solving capabilities. */
 class ScipConstraintProgrammingProbeIT {
+    @Test
+    fun completedNativeStatusesWinOverLateCancellation() {
+        loadNativeLibrary()
+
+        listOf(
+            SCIP_Status.SCIP_STATUS_OPTIMAL,
+            SCIP_Status.SCIP_STATUS_INFEASIBLE,
+            SCIP_Status.SCIP_STATUS_UNBOUNDED,
+            SCIP_Status.SCIP_STATUS_INFORUNBD
+        ).forEach { status ->
+            assertEquals(
+                TerminationReason.Completed,
+                ScipConstraintProgrammingStatusMapper.terminationReason(
+                    status = status,
+                    cancellationRequested = true
+                )
+            )
+        }
+    }
+
     @Test
     fun jscipShouldSolveBooleanIndicatorAndCumulativeModel() {
         loadNativeLibrary()

@@ -3,10 +3,14 @@
  */
 package fuookami.ospf.kotlin.framework.solver
 
+import java.time.Instant
+import kotlin.time.TimeSource
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import fuookami.ospf.kotlin.utils.error.ErrorCode
 import fuookami.ospf.kotlin.utils.functional.Failed
@@ -22,17 +26,20 @@ import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModel
 import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModelView
 import fuookami.ospf.kotlin.core.model.intermediate.SparseMatrix
 import fuookami.ospf.kotlin.core.solver.AbstractLinearSolver
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
 import fuookami.ospf.kotlin.core.solver.progress.SolverProgressContext
 import fuookami.ospf.kotlin.core.solver.output.SolvingStatusCallBack
 import fuookami.ospf.kotlin.core.solver.report.AuditFingerprint
+import fuookami.ospf.kotlin.core.solver.report.CancellationToken
 import fuookami.ospf.kotlin.core.solver.report.ProblemStatus
 import fuookami.ospf.kotlin.core.solver.report.ProofStatus
 import fuookami.ospf.kotlin.core.solver.report.SolveFingerprints
+import fuookami.ospf.kotlin.core.solver.report.SolveAttemptId
+import fuookami.ospf.kotlin.core.solver.report.SolveAttemptTrace
 import fuookami.ospf.kotlin.core.solver.report.SolveProof
 import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.report.SolveSelectionReason
 import fuookami.ospf.kotlin.core.solver.report.SolveSolution
+import fuookami.ospf.kotlin.core.solver.report.SolveHandle
 import fuookami.ospf.kotlin.core.solver.report.SolutionPresence
 import fuookami.ospf.kotlin.core.solver.report.SolverCapabilities
 import fuookami.ospf.kotlin.core.solver.report.SolverDescriptor
@@ -69,6 +76,8 @@ class ParallelCombinatorialSelectionTest {
         assertEquals("first-backend", report.attempts[0].backendId)
         assertEquals("parallel-1", report.attempts[1].attemptId.value)
         assertEquals("second-backend", report.attempts[1].backendId)
+        assertTrue(report.attempts.all { it.elapsed != null })
+        assertTrue(report.attempts.all { it.parentAttemptId == SolveAttemptId("parallel-combinatorial") })
         assertNotNull(report.attempts[0].report?.provenance)
         assertEquals("stub-backend", report.attempts[0].report?.provenance?.descriptor?.backendName)
         assertEquals("stub-model-fingerprint", report.attempts[0].report?.fingerprints?.model?.value)
@@ -140,6 +149,149 @@ class ParallelCombinatorialSelectionTest {
         assertNull(report.selectedAttemptId)
         assertEquals(SolveSelectionReason.NoSuccessfulAttempt, report.selectionReason)
         assertNull(report.finalReport)
+        assertTrue(report.attempts.all { it.elapsed != null })
+        assertTrue(report.attempts.all { it.parentAttemptId == SolveAttemptId("parallel-combinatorial") })
+    }
+
+    @Test
+    fun cancelledAttemptRetainsCancellationReasonAndElapsedMetadata() {
+        val handle = SolveHandle.create()
+        handle.cancel(reason = "test cancellation")
+        val trace = SolveAttemptTrace<Flt64>(
+            attemptId = SolveAttemptId("attempt-0"),
+            backendId = "fixture",
+            report = SolveReport(
+                problemStatus = ProblemStatus.Unknown,
+                terminationReason = TerminationReason.Cancelled,
+                solutionPresence = SolutionPresence.None
+            )
+        ).withAttemptMetadata(
+            started = TimeSource.Monotonic.markNow(),
+            cancellationRecord = null,
+            parentAttemptId = SolveAttemptId("parallel-combinatorial"),
+            cancellationRecordAtCompletion = handle.token.record,
+            completedAt = Instant.now()
+        )
+
+        assertEquals("test cancellation", trace.cancellationReason)
+        assertNotNull(trace.elapsed)
+        assertEquals(SolveAttemptId("parallel-combinatorial"), trace.parentAttemptId)
+    }
+
+    @Test
+    fun lateCancellationDoesNotRelabelAlreadyReturnedFailedAttempt() {
+        val handle = SolveHandle.create()
+        val cancellationRecordAtBackendReturn = handle.token.record
+        val completedAt = Instant.now()
+        assertNull(cancellationRecordAtBackendReturn)
+        assertTrue(handle.cancel(reason = "late cancellation").ok)
+
+        val trace = SolveAttemptTrace<Flt64>(
+            attemptId = SolveAttemptId("attempt-1"),
+            backendId = "fixture"
+        ).withAttemptMetadata(
+            started = TimeSource.Monotonic.markNow(),
+            cancellationRecord = cancellationRecordAtBackendReturn,
+            parentAttemptId = SolveAttemptId("parallel-combinatorial"),
+            cancellationRecordAtCompletion = null,
+            completedAt = completedAt
+        )
+
+        assertNull(trace.cancellationReason)
+        assertNotNull(trace.elapsed)
+    }
+
+    @Test
+    fun cancelledAttemptDoesNotInheritCancellationRequestedAfterBackendCompletion() {
+        val handle = SolveHandle.create()
+        val completedAt = Instant.now().minusSeconds(1)
+        assertTrue(handle.cancel(reason = "other backend cancellation").ok)
+        val lateCancellationRecord = handle.token.record
+        assertNotNull(lateCancellationRecord)
+
+        val cancelledTrace = SolveAttemptTrace<Flt64>(
+            attemptId = SolveAttemptId("attempt-cancelled"),
+            backendId = "backend-a",
+            report = SolveReport(
+                problemStatus = ProblemStatus.Unknown,
+                terminationReason = TerminationReason.Cancelled,
+                solutionPresence = SolutionPresence.None
+            )
+        ).withAttemptMetadata(
+            started = TimeSource.Monotonic.markNow(),
+            cancellationRecord = null,
+            parentAttemptId = SolveAttemptId("parallel-combinatorial"),
+            cancellationRecordAtCompletion = lateCancellationRecord,
+            completedAt = completedAt
+        )
+
+        val fatalTrace = SolveAttemptTrace<Flt64>(
+            attemptId = SolveAttemptId("attempt-fatal"),
+            backendId = "backend-a"
+        ).withAttemptMetadata(
+            started = TimeSource.Monotonic.markNow(),
+            cancellationRecord = null,
+            parentAttemptId = SolveAttemptId("parallel-combinatorial"),
+            cancellationRecordAtCompletion = lateCancellationRecord,
+            completedAt = completedAt
+        )
+
+        assertEquals("cancellation requested", cancelledTrace.cancellationReason)
+        assertNull(fatalTrace.cancellationReason)
+    }
+
+    /**
+     * 并行 wrapper 跨 backend 屏障保留 backend 期间产生的取消原因。
+     * The parallel wrapper retains the cancellation reason produced during backend solving across a backend barrier.
+     */
+    @Test
+    fun parallelWrapperPreservesCancellationReasonAcrossBackendBarrier() = runBlocking {
+        val firstBackendReady = CompletableDeferred<Unit>()
+        val solver = ParallelCombinatorialLinearSolver(
+            listOf(
+                BarrierCancelledLinearSolver(firstBackendReady),
+                BarrierWaitingLinearSolver(firstBackendReady)
+            )
+        )
+
+        val result = solver.solveCombinatorialReport(
+            model = model(ObjectCategory.Minimum),
+            cancellationToken = SolveHandle.create().token
+        )
+        val report = when (val unwrapped = result) {
+            is Ok -> unwrapped.value
+            else -> error("Expected Ok but was $result")
+        }
+
+        assertEquals(2, report.attempts.size)
+        assertEquals("backend cancellation", report.attempts[0].cancellationReason)
+        assertEquals("barrier-cancelled", report.attempts[0].backendId)
+    }
+
+    /**
+     * 全部 backend 失败时，终态报告必须保留每次 attempt 的原始错误。
+     * When every backend fails, the terminal report must retain every attempt's original error.
+     */
+    @Test
+    fun terminalReportRetainsDuplicateErrorsFromAllFailedAttempts() = runBlocking {
+        val solver = ParallelCombinatorialLinearSolver(
+            listOf(
+                FailingStubLinearSolver("first-backend"),
+                FailingStubLinearSolver("second-backend")
+            )
+        )
+
+        val result = solver.solveReport(model(ObjectCategory.Minimum))
+        assertTrue(result is Ok)
+        val terminal = (result as Ok).value
+
+        assertEquals(ProblemStatus.Unknown, terminal.problemStatus)
+        assertEquals(TerminationReason.BackendFailure, terminal.terminationReason)
+        assertEquals(2, terminal.diagnostics.errors.size)
+        assertEquals(
+            listOf(ErrorCode.ORModelInfeasible.toString(), ErrorCode.ORModelInfeasible.toString()),
+            terminal.diagnostics.errors.map { it.code }
+        )
     }
 
     private fun model(category: ObjectCategory): LinearTriadModel {
@@ -197,7 +349,7 @@ class ParallelCombinatorialSelectionTest {
         override suspend fun invoke(
             model: LinearTriadModelView,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<FeasibleSolverOutput<Flt64>> {
+        ): Ret<SolveReport<Flt64>> {
             return Failed(ErrorCode.ORModelInfeasible)
         }
 
@@ -205,7 +357,7 @@ class ParallelCombinatorialSelectionTest {
             model: LinearTriadModelView,
             solutionAmount: UInt64,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+        ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
             return Failed(ErrorCode.ORModelInfeasible)
         }
     }
@@ -223,7 +375,7 @@ class ParallelCombinatorialSelectionTest {
         override suspend fun invoke(
             model: LinearTriadModelView,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<FeasibleSolverOutput<Flt64>> {
+        ): Ret<SolveReport<Flt64>> {
             return Failed(ErrorCode.ORModelInfeasible)
         }
 
@@ -231,8 +383,78 @@ class ParallelCombinatorialSelectionTest {
             model: LinearTriadModelView,
             solutionAmount: UInt64,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+        ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
             return Failed(ErrorCode.ORModelInfeasible)
+        }
+    }
+
+    private class BarrierCancelledLinearSolver(
+        private val firstBackendReady: CompletableDeferred<Unit>
+    ) : AbstractLinearSolver {
+        override val name: String = "barrier-cancelled"
+
+        private fun report(): SolveReport<Flt64> {
+            return SolveReport(
+                problemStatus = ProblemStatus.Unknown,
+                terminationReason = TerminationReason.Cancelled,
+                solutionPresence = SolutionPresence.None
+            )
+        }
+
+        override suspend fun solveReport(
+            model: LinearTriadModelView,
+            progressContext: SolverProgressContext?,
+            cancellationToken: CancellationToken?
+        ): Ret<SolveReport<Flt64>> {
+            cancellationToken?.request(reason = "backend cancellation")
+            firstBackendReady.complete(Unit)
+            return Ok(report())
+        }
+
+        override suspend fun invoke(
+            model: LinearTriadModelView,
+            solvingStatusCallBack: SolvingStatusCallBack?
+        ): Ret<SolveReport<Flt64>> {
+            return Ok(report())
+        }
+
+        override suspend fun invoke(
+            model: LinearTriadModelView,
+            solutionAmount: UInt64,
+            solvingStatusCallBack: SolvingStatusCallBack?
+        ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
+            return Ok(report() to emptyList())
+        }
+    }
+
+    private class BarrierWaitingLinearSolver(
+        private val firstBackendReady: CompletableDeferred<Unit>
+    ) : AbstractLinearSolver {
+        override val name: String = "barrier-waiting"
+
+        override suspend fun solveReport(
+            model: LinearTriadModelView,
+            progressContext: SolverProgressContext?,
+            cancellationToken: CancellationToken?
+        ): Ret<SolveReport<Flt64>> {
+            firstBackendReady.await()
+            cancellationToken?.request(reason = "other backend cancellation")
+            return Failed(ErrorCode.ApplicationError, "barrier backend failed")
+        }
+
+        override suspend fun invoke(
+            model: LinearTriadModelView,
+            solvingStatusCallBack: SolvingStatusCallBack?
+        ): Ret<SolveReport<Flt64>> {
+            return Failed(ErrorCode.ApplicationError, "barrier backend failed")
+        }
+
+        override suspend fun invoke(
+            model: LinearTriadModelView,
+            solutionAmount: UInt64,
+            solvingStatusCallBack: SolvingStatusCallBack?
+        ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
+            return Failed(ErrorCode.ApplicationError, "barrier backend failed")
         }
     }
 }

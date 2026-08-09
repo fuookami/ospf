@@ -5,12 +5,19 @@
 */
 package fuookami.ospf.kotlin.framework.solver
 
+import fuookami.ospf.kotlin.core.solver.report.*
 import org.apache.logging.log4j.kotlin.logger
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.error.SolverNotFoundError
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.RegistrationStatusCallBack
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
@@ -51,7 +58,7 @@ class SerialCombinatorialColumnGenerationSolver(
         toLogModel: Boolean,
         registrationStatusCallBack: RegistrationStatusCallBack?,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Flt64FeasibleSolverOutput> {
+    ): Ret<Flt64SolveReport> {
         for ((i, solver) in solvers.withIndex()) {
             when (val result = solver.value.solveMILP(
                 name = name,

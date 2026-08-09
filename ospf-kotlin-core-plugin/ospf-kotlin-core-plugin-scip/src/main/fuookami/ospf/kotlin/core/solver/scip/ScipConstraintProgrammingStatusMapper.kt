@@ -14,7 +14,9 @@ object ScipConstraintProgrammingStatusMapper {
     fun terminationReason(status: SCIP_Status): TerminationReason {
         return when (status) {
             SCIP_Status.SCIP_STATUS_OPTIMAL,
-            SCIP_Status.SCIP_STATUS_INFEASIBLE -> TerminationReason.Completed
+            SCIP_Status.SCIP_STATUS_INFEASIBLE,
+            SCIP_Status.SCIP_STATUS_UNBOUNDED,
+            SCIP_Status.SCIP_STATUS_INFORUNBD -> TerminationReason.Completed
             SCIP_Status.SCIP_STATUS_TIMELIMIT,
             SCIP_Status.SCIP_STATUS_MEMLIMIT,
             SCIP_Status.SCIP_STATUS_GAPLIMIT -> TerminationReason.TimeLimit
@@ -26,6 +28,25 @@ object ScipConstraintProgrammingStatusMapper {
             SCIP_Status.SCIP_STATUS_USERINTERRUPT -> TerminationReason.Cancelled
             SCIP_Status.SCIP_STATUS_TERMINATE -> TerminationReason.Interrupted
             else -> TerminationReason.BackendFailure
+        }
+    }
+
+    /** Map a status while preserving a completed native conclusion over a late cancellation. /
+     * 在迟到取消请求下仍优先保留已完成的原生结论。
+     *
+     * @param status SCIP terminal status. / SCIP 终态
+     * @param cancellationRequested whether cancellation was requested after native solve. / 原生求解后是否收到取消请求
+     * @return OSPF termination reason. / OSPF 终止原因
+     */
+    fun terminationReason(
+        status: SCIP_Status,
+        cancellationRequested: Boolean
+    ): TerminationReason {
+        val mapped = terminationReason(status)
+        return if (mapped == TerminationReason.Completed || !cancellationRequested) {
+            mapped
+        } else {
+            TerminationReason.Cancelled
         }
     }
 }

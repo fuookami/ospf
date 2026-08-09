@@ -79,16 +79,19 @@ For local development with system-installed SCIP, the library will be loaded aut
 
 ```kotlin
 val solver = ScipLinearSolver(
-    config = SolverConfig(timeLimit = 60.seconds)
+    config = SolverConfig(time = 60.seconds)
 )
-val result: Ret<FeasibleSolverOutput<Flt64>> = solver(model)
+val result: Ret<SolveReport<Flt64>> = solver(model)
 ```
 
 ### Concurrent Solving
 
 ```kotlin
 val solver = ScipLinearSolver(
-    config = SolverConfig(concurrentConfig = ConcurrentConfig(enabled = true))
+    config = SolverConfig(
+        threadNum = UInt64(4),
+        backendConfiguration = SCIPSolverConfig(presolve = true)
+    )
 )
 ```
 
@@ -112,6 +115,13 @@ val solver = ScipLinearSolver(
 ### Constraint Programming capability boundary
 
 `ScipConstraintProgrammingSolver` accepts the portable CP snapshot and compiles the supported constraint family into a SCIP model. Fixed intervals, optional intervals, and variable duration are exposed as `ExactLowering`; the compiler preserves presence, start/size/end, resource, and global-constraint semantics and maps auxiliary artifacts back to source IDs. The plugin does not claim SCIP-native optional intervals, variable-duration jobs, incremental JSCIP sessions, or native checkpoint/resume. Unsupported features return a structured capability error and retain the Fake/MIP-backed fallback where declared by core.
+
+### SolveReport migration and follow-up scope
+
+`Ret<SolveReport<Flt64>>` is the primary result contract. Use `SolverConfig(time = ...)`,
+`threadNum`, and typed `backendConfiguration = SCIPSolverConfig(...)`; the old `timeLimit` and
+`concurrentConfig` constructors are not part of the 1.1.0 source line. Other plugin migration and
+capability gates are tracked in [`plans/solver_cp.md`](../../plans/solver_cp.md).
 
 ## Dependencies
 

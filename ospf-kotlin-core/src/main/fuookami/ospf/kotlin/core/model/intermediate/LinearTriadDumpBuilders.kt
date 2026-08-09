@@ -10,6 +10,7 @@ import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.ordinary.*
 import fuookami.ospf.kotlin.core.model.basic.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.report.aggregateModelElementIdentity
 import fuookami.ospf.kotlin.core.solver.report.ModelElementKind
 import fuookami.ospf.kotlin.core.solver.report.ModelElementIdentityRegistry
 import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
@@ -112,7 +113,8 @@ internal fun dumpLinearTriadVariables(
             identityScope = identity?.scope ?: ModelElementScope.ModelLocal,
             identityOrigin = identity?.origin,
             identityNamespace = identityRegistry?.namespace,
-            identitySchemaVersion = identityRegistry?.schemaVersion
+            identitySchemaVersion = identityRegistry?.schemaVersion,
+            identityProvenance = identity?.provenance.orEmpty()
         )
     }
     return variables.map { it!! }
@@ -196,7 +198,10 @@ internal fun dumpLinearTriadConstraints(
         identityScopes = notBoundConstraints.map {
             identityRegistry?.identity(it.origin ?: it)?.scope ?: ModelElementScope.ModelLocal
         },
-        identityOrigins = notBoundConstraints.map { identityRegistry?.identity(it.origin ?: it)?.origin }
+        identityOrigins = notBoundConstraints.map { identityRegistry?.identity(it.origin ?: it)?.origin },
+        identityProvenance = notBoundConstraints.map {
+            identityRegistry?.identity(it.origin ?: it)?.provenance.orEmpty()
+        }
     )
 }
 
@@ -296,7 +301,10 @@ internal suspend fun dumpLinearTriadConstraintsAsync(
                 identityScopes = notBoundConstraints.map {
                     identityRegistry?.identity(it.origin ?: it)?.scope ?: ModelElementScope.ModelLocal
                 },
-                identityOrigins = notBoundConstraints.map { identityRegistry?.identity(it.origin ?: it)?.origin }
+                identityOrigins = notBoundConstraints.map { identityRegistry?.identity(it.origin ?: it)?.origin },
+                identityProvenance = notBoundConstraints.map {
+                    identityRegistry?.identity(it.origin ?: it)?.provenance.orEmpty()
+                }
             )
         }
     } else {
@@ -353,7 +361,10 @@ internal suspend fun dumpLinearTriadConstraintsAsync(
             identityScopes = notBoundConstraints.map {
             identityRegistry?.identity(it.origin ?: it)?.scope ?: ModelElementScope.ModelLocal
             },
-            identityOrigins = notBoundConstraints.map { identityRegistry?.identity(it.origin ?: it)?.origin }
+            identityOrigins = notBoundConstraints.map { identityRegistry?.identity(it.origin ?: it)?.origin },
+            identityProvenance = notBoundConstraints.map {
+                identityRegistry?.identity(it.origin ?: it)?.provenance.orEmpty()
+            }
         )
     }
 }
@@ -417,21 +428,46 @@ internal fun dumpLinearTriadObjectives(
             )
         )
     }
-    val identitySource = model.objectFunction.subObjects
+    val subObjects = model.objectFunction.subObjects
+    val identitySource = subObjects
         .singleOrNull()
         ?.origin
         ?: model.objectFunction
-    val identity = identityRegistry
-        ?.identity(identitySource)
-        ?.takeIf { it.kind == ModelElementKind.Objective }
+    val identity = if (subObjects.size > 1 && identityRegistry != null) {
+        val sourceIdentities = subObjects.mapNotNull { subObject ->
+            subObject.origin?.let(identityRegistry::identity)
+        }
+        if (sourceIdentities.size == subObjects.size) {
+            aggregateModelElementIdentity(
+                kind = ModelElementKind.Objective,
+                role = "aggregate-objective",
+                sourceIdentities = sourceIdentities,
+                namespace = identityRegistry.namespace,
+                schemaVersion = identityRegistry.schemaVersion
+            )
+        } else {
+            null
+        }
+    } else {
+        identityRegistry
+            ?.identity(identitySource)
+            ?.takeIf { it.kind == ModelElementKind.Objective }
+    }
+    val resolvedObjectiveId = identity?.id?.let { ObjectiveId(it.value) }
+        ?: if (subObjects.size > 1) {
+            identityRegistry?.let { ObjectiveId("model-local-objective:0") }
+        } else {
+            identityRegistry?.objectiveId(identitySource)
+        }
     return LinearObjective(
         category = objectiveCategory,
         objective = objective,
         constant = constant,
-        id = identity?.id?.let { ObjectiveId(it.value) } ?: identityRegistry?.objectiveId(identitySource),
+        id = resolvedObjectiveId,
         identityScope = identity?.scope ?: ModelElementScope.ModelLocal,
         identityOrigin = identity?.origin,
         identityNamespace = identityRegistry?.namespace,
-        identitySchemaVersion = identityRegistry?.schemaVersion
+        identitySchemaVersion = identityRegistry?.schemaVersion,
+        identityProvenance = identity?.provenance.orEmpty()
     )
 }

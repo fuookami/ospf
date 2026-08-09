@@ -2,10 +2,10 @@
 
 [简体中文](solve-contract_ch.md)
 
-Starting with `1.1.0`, OSPF exposes orthogonal solve reports and a unified progress contract.
-The legacy `Ret<FeasibleSolverOutput<V>>` API remains available for compatibility. New integrations
-should call `solveReport` and handle `ProblemStatus`, `TerminationReason`, and `SolutionPresence` as
-independent dimensions.
+OSPF exposes orthogonal solve reports and a unified progress contract. `Ret<SolveReport<V>>` is the
+primary solver result; there is no `FeasibleSolverOutput` compatibility facade in the unreleased
+`1.1.0` source line. New integrations should call `solveReport` and handle `ProblemStatus`,
+`TerminationReason`, and `SolutionPresence` as independent dimensions.
 
 ```kotlin
 val progress = SolverProgressContext(

@@ -17,7 +17,7 @@ import fuookami.ospf.kotlin.core.model.mechanism.LinearMetaModel
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
 import fuookami.ospf.kotlin.core.solver.gurobi.GurobiColumnGenerationSolver
 import fuookami.ospf.kotlin.core.solver.iis.IISConfig
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.output.SolvingStatusCallBack
 import fuookami.ospf.kotlin.core.solver.output.SolverStatus
 import fuookami.ospf.kotlin.framework.solver.ColumnGenerationSolver
@@ -293,7 +293,7 @@ class Demo5BranchAndPriceE2ETest {
                 toLogModel: Boolean,
                 registrationStatusCallBack: fuookami.ospf.kotlin.core.model.basic.RegistrationStatusCallBack?,
                 solvingStatusCallBack: SolvingStatusCallBack?
-            ): Ret<FeasibleSolverOutput<Flt64>> {
+            ): Ret<SolveReport<Flt64>> {
                 return networkSchedulingFailure("StubSolver MILP failure")
             }
             override suspend fun solveLP(

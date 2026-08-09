@@ -86,16 +86,16 @@ val options = FrameworkSolveOptions.build {
 | `FltXQuadraticMetaModel` | `QuadraticMetaModel<FltX>` |
 | `Rtn64QuadraticMetaModel` | `QuadraticMetaModel<Rtn64>` |
 | `RtnXQuadraticMetaModel` | `QuadraticMetaModel<RtnX>` |
-| `FltXFeasibleSolverOutput` | `FeasibleSolverOutput<FltX>` |
-| `Rtn64FeasibleSolverOutput` | `FeasibleSolverOutput<Rtn64>` |
-| `RtnXFeasibleSolverOutput` | `FeasibleSolverOutput<RtnX>` |
+| `FltXSolveReport` | `SolveReport<FltX>` |
+| `Rtn64SolveReport` | `SolveReport<Rtn64>` |
+| `RtnXSolveReport` | `SolveReport<RtnX>` |
 
 `ColumnGenerationSolver.kt` additionally defines `Flt64`-specific aliases:
 
 | Alias | Expansion |
 | --- | --- |
 | `Flt64LinearMetaModel` | `LinearMetaModel<Flt64>` |
-| `Flt64FeasibleSolverOutput` | `FeasibleSolverOutput<Flt64>` |
+| `Flt64SolveReport` | `SolveReport<Flt64>` |
 | `Flt64SolutionPool` | `List<Solution<Flt64>>` |
 
 ## Remote Solver Architecture

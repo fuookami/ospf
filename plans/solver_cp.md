@@ -6,9 +6,9 @@
 | --- | --- |
 | 状态 | Proposed |
 | 日期 | 2026-08-02 |
-| 前置计划 | 原 `plans/constraint-programming.md` 已归档至 `plans/release.md`，已完成 SCIP direct CP 与 Gurobi MIP-backed CP |
-| 公共契约 | `plans/schema.md`、`plans/cp2.md`、`plans/cp3.md` |
-| 承接范围 | `plans/schema.md` 首阶段仅验收 SCIP/Gurobi；其余插件的通用求解合同与 CP 支持由本计划承接 |
+| 前置计划 | 原 CP 基础计划已归档至 `plans/release.md`，已完成 SCIP direct CP 与 Gurobi MIP-backed CP |
+| 公共契约 | 本文件“后续插件强制公共合同”；已完成源码证据见 `plans/release.md` |
+| 承接范围 | SCIP/Gurobi 首阶段合同已关闭；其余插件的通用求解合同与 CP 支持由本计划承接 |
 | 服务端联动 | `E:/workspace/ospf/ospf/framework/remote-solver/daily.md` |
 | 必做范围 | Gurobi 11、COPT、CPLEX、MindOPT、Mosek 的 MIP-backed CP 验证与能力声明 |
 | 条件范围 | CPLEX CP Optimizer、Hexaly 原生/启发式 CP、Lingo、OPTVerse、通用 heuristic CP、JSCIPOpt 上游增强 |
@@ -17,7 +17,7 @@
 
 ## 2. 背景与当前状态
 
-原 `plans/constraint-programming.md` 当前只对以下两个求解器插件声明并验收了生产 CP 路径：
+已归档 CP 基础计划只对以下两个求解器插件声明并验收了生产 CP 路径：
 
 - `ospf-kotlin-core-plugin-scip`：提供独立 `ScipConstraintProgrammingSolver`，混合使用 native handler 和精确分解。
 - `ospf-kotlin-core-plugin-gurobi`：通过 `MipBackedConstraintProgrammingSolver(GurobiLinearSolver())` 求解可精确降为 MIP 的 CP 子集。
@@ -30,7 +30,37 @@ core 中的 `MipBackedConstraintProgrammingSolver` 接收任意 `LinearSolver`�
 - warm start、callback、中断和 native 资源生命周期满足统一 solver 契约。
 - 插件的实际 native library、license 和版本组合通过显式集成测试。
 
-本计划同时承接 `plans/schema.md` 明确延期的非 SCIP/Gurobi 插件通用合同迁移。每个目标插件在进入 CP 验收前，还必须完成适用的 `SolveReport`、`SolverDescriptor`、provenance、取消、诊断、指纹和 golden/replay 适配；不能用 CP wrapper 绕过底层求解合同缺陷。
+本计划同时承接非 SCIP/Gurobi 插件的通用合同迁移。每个目标插件在进入 CP 验收前，
+还必须完成下节适用的 `SolveReport`、`SolverDescriptor`、provenance、取消、诊断、指纹和
+golden/replay 适配；不能用 CP wrapper 绕过底层求解合同缺陷。
+
+### 2.1 后续插件强制公共合同
+
+本节由已关闭的 `OSPF-SOL-001～029`、CP2 和 CP3 源码计划迁移而来，是删除原计划文件后
+所有未验收插件的直接前置合同。SCIP 与现有 Gurobi 插件的完成证据、历史任务映射和发布边界
+见 `plans/release.md`；公共类型已经存在不代表任一其他插件已经通过本节验收。
+
+| 合同面 | 插件必须满足的语义 | 未完成时的声明 |
+| --- | --- | --- |
+| 报告与错误通道 | `SolveReport<V>` 正交保留 `ProblemStatus`、`TerminationReason`、`SolutionPresence`、proof、solution、statistics、diagnostics、provenance 和 fingerprints。已启动且能形成可信报告的最优、可行、不可行、限制、取消和 backend failure 返回 `Ok(SolveReport)`；无法形成可信报告的输入、环境或内部合同错误返回 `Failed`/`Fatal` | `NeedsAdapterWork` |
+| 能力与来源 | `SolverDescriptor`/`SolverCapabilities` 只发布已验证的模型、IIS、dual/Farkas、warm start、解池、中断和 checkpoint 能力；`SolverProvenance` 记录 backend/plugin/native 版本、实际参数、线程、随机种子、确定性模式和脱敏环境摘要 | `Unsupported`、`BlockedBySDK` 或 `BlockedByLicense` |
+| 取消与资源 | 每次调用使用独立取消句柄；幂等取消必须触发可信的 native interrupt/terminate。attempt 的取消原因在 backend 完成边界冻结，迟到取消不得污染 `Cancelled`、`Failed` 或 `Fatal` 审计；求解结束后释放 native 资源 | `Unsupported` |
+| 身份与 provenance | stable 元素必须由调用方或规范化模型提供稳定 source，并在机制模型、triad/tetrad、native artifact、诊断、组合 attempt、远程 DTO 和 checkpoint 中保留 `id/namespace/schemaVersion/scope/origin/provenance`。无法证明跨重建稳定时必须使用 `ModelLocal` | 仅 `ModelLocal`，禁止 portable 绑定 |
+| 诊断 | 约束求值保留 lhs/rhs/relation/slack/violation/tolerance；IIS、Farkas、冲突或 fallback 证据保留 source、exactness、completeness、成员 ID 和失败原因。诊断失败不得覆盖已确定的 Infeasible/Unbounded 等结论 | `Unsupported` 或准确的 legacy/fallback 等级 |
+| 指纹 | 使用带 schema 版本的规范化模型和确定数值编码生成 model/configuration/solver fingerprints；不得使用 JVM 对象哈希，敏感配置不得明文进入报告 | `NeedsAdapterWork` |
+| 组合与 attempt | 串并行、线性、二次和解池路径保留全部 attempts、父子关系、backend identity、状态、耗时、错误、provenance、fingerprints 与完成时取消事实；聚合报告保留全部来源，全部失败时保留原始错误集合 | 不得进入组合路由 |
+| 远程协议 | 版本化 DTO 保持任务生命周期与求解结论正交，无损往返 incumbent、objective、bound/gap、诊断、provenance、fingerprints 和 run/attempt；未知版本、字段缺失、artifact/digest 或归属不一致返回结构化错误 | 不得进入远程 solver selection |
+| 正确性与重放 | 固定 fixture 覆盖 Optimal、Feasible、Infeasible、Unbounded、Unknown、限制终止、取消、数值和 backend 故障；golden/replay 校验目标容差、残差、bound、诊断和指纹，SDK/license 缺失显式记为 skipped/unsupported | 不计入已验收矩阵 |
+
+CP 接入还必须满足以下冻结边界：
+
+1. stable identity、统一报告和 capability 协商先于插件 CP 路由；vendor 私有 DTO 不得替代公共合同。
+2. portable checkpoint 只保存可复验 snapshot、incumbent、审计字段和 primitive/领域可序列化 payload；
+   `RebuildFromSnapshot`、MIP start、reoptimization 和 native search resume 必须分开声明。
+3. MIP lowering 只有通过等价性门禁才能声明 `ExactLowering`；存在厂商 API 不等于 `Native`，
+   未验证能力必须是 `Unsupported`，不能静默回退或提升 proof。
+4. 未接入稳定身份的插件继续保持 `ModelLocal`；未通过报告、取消、诊断、指纹和 replay 门禁的插件
+   不得进入远程 capability、Exact Benders 或生产 solver selection。
 
 当前未声明 CP 支持的插件盘点如下：
 
@@ -135,17 +165,17 @@ SCIP 与现有 Gurobi 插件作为 reference backend，不重复纳入本计划�
 
 ### Phase SCP-0：基线、探针与共享契约
 
-- [ ] `OSPF-SCP-000` 为每个目标插件建立 `plans/schema.md` 通用合同差距表，覆盖报告、状态、provenance、取消、诊断、指纹和 replay；不适用能力明确为 `Unsupported`。
+- [ ] `OSPF-SCP-000` 为每个目标插件建立本文件 2.1 节公共合同差距表，覆盖报告、状态、provenance、取消、诊断、指纹和 replay；不适用能力明确为 `Unsupported`。
 - [ ] `OSPF-SCP-001` 冻结“插件支持 CP”的完成定义、三态 capability 和 proof 映射规则。
 - [ ] `OSPF-SCP-002` 为九个目标插件记录 SDK/native library 版本、license、平台、线程限制和 CI 可用性。
 - [ ] `OSPF-SCP-003` 审计各 `LinearSolver` 的整数变量、状态、目标、best bound、gap、warm start、interrupt 和资源释放实现。
 - [ ] `OSPF-SCP-004` 建立共享 `MipBackedConstraintProgrammingSolver` contract fixture，覆盖布尔、reification、稀疏值域、AllDifferent、Element、Table、interval 和 NoOverlap。
 - [ ] `OSPF-SCP-005` 建立共享终态 fixture，禁止从 `feasible=false`、空解或厂商状态字符串推断更强结论。
 - [ ] `OSPF-SCP-006` 建立 native dependency/license 不可用时的显式 skip 规范，区分未运行、unsupported 与通过。
-- [ ] `OSPF-SCP-007` 与 CP2 的稳定 ID、统一报告和 capability 冻结点对齐，不在插件中复制公共 DTO。
-- [ ] `OSPF-SCP-008` 在每个插件进入 MIP-backed/native/heuristic CP 测试前，先通过适用的 schema 通用状态映射、取消、provenance 和资源合同。
+- [ ] `OSPF-SCP-007` 与本文件 2.1 节的稳定 ID、统一报告和 capability 冻结点对齐，不在插件中复制公共 DTO。
+- [ ] `OSPF-SCP-008` 在每个插件进入 MIP-backed/native/heuristic CP 测试前，先通过适用的公共状态映射、取消、provenance 和资源合同。
 - [ ] `OSPF-SCP-009` 为具备原生 IIS/Farkas/diagnostic API 的目标插件建立 analyzer 探针；未验证时继续使用准确的 legacy fallback 来源与证据等级。
-- [ ] `OSPF-SCP-010` 将通过的插件加入扩展 golden/replay 矩阵；在此之前不得计入 `plans/schema.md` 的首阶段完成统计。
+- [ ] `OSPF-SCP-010` 将通过的插件加入扩展 golden/replay 矩阵；在此之前不得计入本计划的插件完成统计。
 
 验收：每个目标插件都有 `Ready`、`NeedsAdapterWork`、`BlockedBySDK`、`BlockedByLicense` 或 `NotApplicable` 的证据结论；共享 fixture 可被插件测试复用。
 
@@ -480,14 +510,14 @@ git diff --check
 
 获得上游权限或批准 fork 后，必须按 J0～J10 顺序执行；不能直接从 OSPF session 或远程 capability 开始。
 
-## 9. 与 CP2、CP3 和远程服务端的执行关系
+## 9. 与已关闭公共合同和远程服务端的执行关系
 
 - SCP-0 的插件探针和共享 contract 可以立即开展。
-- CP2 G1 稳定身份冻结后，各插件才能定稿 stable/origin ID 投影。
-- CP2 G2 统一报告冻结后，各插件才能定稿终态、proof、statistics、provenance 和 fingerprint 映射。
-- CP3 继续完成 `OSPF-SOL-013/022/023` 和领域 Benders 源码契约；JSCIPOpt 工作包不再由 CP3 跟踪。
+- stable identity 公共合同已经冻结；各插件通过 2.1 节身份门禁后才能定稿 stable/origin ID 投影。
+- 统一报告公共合同已经冻结；各插件通过 2.1 节报告门禁后才能定稿终态、proof、statistics、provenance 和 fingerprint 映射。
+- `OSPF-SOL-013/022/023` 与通用 Benders checkpoint 源码合同已经关闭；领域 serializer 事项由 `plans/release.md` 管理，JSCIPOpt 工作包只由本计划跟踪。
 - 插件本地 contract 与 differential test 通过后，才能更新远程服务端 `daily.md` 的 node capability。
-- CP2 G3 checkpoint 冻结前，插件不得声明 portable/native resume；MIP start 仍只表示 solution hint。
+- checkpoint 合同已经冻结；插件仍须独立证明恢复级别，MIP start 只表示 solution hint，不得声明 native resume。
 - 条件式 native/heuristic 工作不阻塞 Gurobi 11 和 P1 MIP-backed 插件交付。
 - J0～J10 在上游解阻前不得启动，也不阻塞其他插件形成 Verified/Blocked 结论。
 
@@ -538,13 +568,13 @@ JSCIPOpt BlockedByUpstream
 本计划按插件独立关闭，不要求所有条件式插件都实现，但整体关闭必须满足：
 
 1. Gurobi 11、COPT、CPLEX MIP、MindOPT 和 Mosek 均有明确的 Verified、BlockedBySDK 或 BlockedByLicense 结论。
-2. 所有 Verified 插件先通过适用的 schema 通用报告、状态、provenance、取消、诊断、指纹和 replay 合同，再通过 CP shared contract、cross-solver differential、终态/proof 和资源测试。
+2. 所有 Verified 插件先通过本文件 2.1 节适用的公共报告、状态、provenance、取消、诊断、指纹和 replay 合同，再通过 CP shared contract、cross-solver differential、终态/proof 和资源测试。
 3. CPLEX CP Optimizer、Hexaly、Lingo、OPTVerse 和 Heuristic 均形成有证据的 Accepted、RejectedByEvidence、Blocked 或 NotApplicable 结论。
 4. JSCIPOpt 工作包至少保持有证据的 `BlockedByUpstream`，或在解阻后完成 J0～J10 的逐项结论；
    不能以本地未发布工作树替代上游制品。
 5. 未通过验收的 feature 和插件继续声明 `Unsupported`，没有静默 fallback 或近似语义冒充 exact/native。
 6. 本地与远程 capability matrix 一致，远程服务端只路由到已验收插件。
-7. stable ID、统一报告、artifact 和 checkpoint 复用 CP2/CP3 公共契约，没有 vendor 私有协议泄露。
+7. stable ID、统一报告、artifact 和 checkpoint 复用本文件 2.1 节公共契约，没有 vendor 私有协议泄露。
 8. 中英文文档、最小示例、SDK/license/平台矩阵和失败语义已同步。
 9. 全量编译、全量测试、可用 native 插件集成测试和 `git diff --check` 通过；所有 skipped 项有明确原因。
 

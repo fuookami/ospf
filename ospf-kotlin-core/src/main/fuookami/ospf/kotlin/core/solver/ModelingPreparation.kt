@@ -6,6 +6,7 @@ package fuookami.ospf.kotlin.core.solver
 import java.security.MessageDigest
 import fuookami.ospf.kotlin.core.model.basic.Variable
 import fuookami.ospf.kotlin.core.solver.value.toSolverDouble
+import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
 
 /**
  * solver 边界公共 helper（仅用于 solver dump 前数据准备）。
@@ -64,7 +65,8 @@ fun prepareVariableDumpingData(
  * 经过净化的原生名称，使导出的原生 artifact 可以回查到源身份；model-local 元素保留展示名称，
  * 避免被误认为跨重建身份。
  *
- * @param identityId 稳定元素 ID；为空或 model-local 时使用 fallback / Stable element ID; fallback when blank or model-local
+ * @param identityId 元素 ID；只有 Stable 作用域才会投影 / Element ID; only Stable scope is projected
+ * @param identityScope 元素身份作用域 / Element identity scope
  * @param fallbackName 无稳定 ID 时的原生名称 / Native name used without a stable ID
  * @param category 元素类别，如 variable/constraint / Element category, e.g. variable/constraint
  * @return 原生 artifact 名称 / Native artifact name
@@ -72,9 +74,12 @@ fun prepareVariableDumpingData(
 fun nativeElementName(
     identityId: String?,
     fallbackName: String,
-    category: String
+    category: String,
+    identityScope: ModelElementScope = ModelElementScope.ModelLocal
 ): String {
-    val id = identityId?.takeIf { it.isNotBlank() && !it.startsWith("model-local-") }
+    val id = identityId?.takeIf {
+        identityScope == ModelElementScope.Stable && it.isNotBlank()
+    }
     return if (id == null) fallbackName else "ospf-$category-${sanitizeNativeName(id)}"
 }
 

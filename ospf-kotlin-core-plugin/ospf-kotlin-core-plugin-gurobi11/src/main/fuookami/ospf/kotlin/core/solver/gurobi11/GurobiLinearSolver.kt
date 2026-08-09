@@ -2,25 +2,45 @@
 @file:OptIn(kotlin.time.ExperimentalTime::class)
 package fuookami.ospf.kotlin.core.solver.gurobi11
 
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.math.min
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.Duration
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.Duration.Companion.seconds
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.DurationUnit
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlinx.coroutines.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.nonNullConstraintPriorityAmount
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModelView
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.config.GurobiSolverConfig
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.value.toSolverDouble
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.concept.copyIfNotNullOr
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.error.Err
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import com.gurobi.gurobi.*
 
 /** Gurobi 11 线性求解器 / Gurobi 11 linear solver */
@@ -33,7 +53,7 @@ class GurobiLinearSolver(
     override suspend operator fun invoke(
         model: LinearTriadModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<FeasibleSolverOutput<Flt64>> {
+    ): Ret<SolveReport<Flt64>> {
         when (val validation = model.identityValidation) {
             is Ok -> {}
             is Failed -> return Failed(validation.error)
@@ -54,7 +74,7 @@ class GurobiLinearSolver(
         model: LinearTriadModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
         return if (solutionAmount leq UInt64.one) {
             this(model).map { it to emptyList() }
         } else {
@@ -102,7 +122,7 @@ private class GurobiLinearSolverImpl(
 ) : GurobiSolver() {
     private lateinit var grbVars: List<GRBVar>
     private lateinit var grbConstraints: List<GRBConstr>
-    private lateinit var output: FeasibleSolverOutput<Flt64>
+    private lateinit var output: SolveReport<Flt64>
 
     private var initialBestObj: Flt64? = null
     private var bestObj: Flt64? = null
@@ -110,8 +130,8 @@ private class GurobiLinearSolverImpl(
     private var bestSolution: List<Flt64>? = null
     private var bestTime: Duration = Duration.ZERO
 
-    suspend operator fun invoke(model: LinearTriadModelView): Ret<FeasibleSolverOutput<Flt64>> {
-        val gurobiConfig = config.extraConfig as? GurobiSolverConfig
+    suspend operator fun invoke(model: LinearTriadModelView): Ret<SolveReport<Flt64>> {
+        val gurobiConfig = config.backendConfiguration as? GurobiSolverConfig
         val server = gurobiConfig?.server
         val password = gurobiConfig?.password
         val connectionTime = gurobiConfig?.connectionTime
@@ -416,14 +436,12 @@ private class GurobiLinearSolverImpl(
                     isMip -> Flt64(grbModel.get(GRB.DoubleAttr.MIPGap))
                     else -> Flt64.zero
                 }
-                output = FeasibleSolverOutput<Flt64>(
-                    obj = Flt64(grbModel.get(GRB.DoubleAttr.ObjVal)),
-                    solution = results,
-                    time = grbModel.get(GRB.DoubleAttr.Runtime).seconds,
-                    possibleBestObj = possibleBestObj,
-                    gap = gap,
-                    status = status,
-                    bestBound = possibleBestObj
+                output = status.toSolveReport(
+                    objective = Flt64(grbModel.get(GRB.DoubleAttr.ObjVal)),
+                    values = results,
+                    solveTime = grbModel.get(GRB.DoubleAttr.Runtime).seconds,
+                    bestBound = possibleBestObj,
+                    gap = gap
                 )
                 when (val result = callBack?.execIfContain(
                     point = Point.AnalyzingSolution,

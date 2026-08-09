@@ -5,20 +5,35 @@
 @file:OptIn(kotlin.time.ExperimentalTime::class)
 package fuookami.ospf.kotlin.core.solver.hexaly
 
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlinx.coroutines.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.intermediate.QuadraticTetradModelView
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.value.toSolverDouble
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.concept.copyIfNotNullOr
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.error.Err
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import com.hexaly.optimizer.*
 
 /**
@@ -37,7 +52,7 @@ class HexalyQuadraticSolver(
     override suspend operator fun invoke(
         model: QuadraticTetradModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<FeasibleSolverOutput<Flt64>> {
+    ): Ret<SolveReport<Flt64>> {
         when (val validation = model.identityValidation) {
             is Ok -> {}
             is Failed -> return Failed(validation.error)
@@ -58,7 +73,7 @@ class HexalyQuadraticSolver(
         model: QuadraticTetradModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
         when (val validation = model.identityValidation) {
             is Ok -> {}
             is Failed -> return Failed(validation.error)
@@ -104,14 +119,14 @@ private class HexalyQuadraticSolverImpl(
     private lateinit var hexalyVars: List<HxExpression>
     private lateinit var hexalyConstraints: List<HxExpression>
     private lateinit var hexalyObjective: HxExpression
-    private lateinit var output: FeasibleSolverOutput<Flt64>
+    private lateinit var output: SolveReport<Flt64>
 
     private var initialBestObj: Flt64? = null
     private var bestObj: Flt64? = null
     private var bestBound: Flt64? = null
     private var bestTime: Duration = Duration.ZERO
 
-    suspend operator fun invoke(model: QuadraticTetradModelView): Ret<FeasibleSolverOutput<Flt64>> {
+    suspend operator fun invoke(model: QuadraticTetradModelView): Ret<SolveReport<Flt64>> {
         val processes = arrayOf(
             { it.init(model.name, callBack?.creatingEnvironmentFunction) },
             { it.dump(model) },
@@ -430,13 +445,12 @@ private class HexalyQuadraticSolverImpl(
                 for (hexalyVar in hexalyVars) {
                     results.add(Flt64(hexalyVar.doubleValue))
                 }
-                output = FeasibleSolverOutput<Flt64>(
-                    obj = Flt64(hexalyObjective.doubleValue),
-                    solution = results,
-                    time = solvingTime!!,
-                    possibleBestObj = Flt64(hexalySolution.getDoubleObjectiveBound(0)),
-                    gap = Flt64(hexalySolution.getObjectiveGap(0)),
-                    status = status
+                output = status.toSolveReport(
+                    objective = Flt64(hexalyObjective.doubleValue),
+                    values = results,
+                    solveTime = solvingTime!!,
+                    bestBound = Flt64(hexalySolution.getDoubleObjectiveBound(0)),
+                    gap = Flt64(hexalySolution.getObjectiveGap(0))
                 )
 
                 when (val result = callBack?.execIfContain(

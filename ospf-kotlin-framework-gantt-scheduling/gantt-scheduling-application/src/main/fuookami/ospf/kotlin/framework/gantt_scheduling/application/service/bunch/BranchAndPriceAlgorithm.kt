@@ -13,7 +13,7 @@ import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.progress.*
 import fuookami.ospf.kotlin.framework.solver.ColumnGenerationSolver
 import fuookami.ospf.kotlin.framework.solver.FrameworkSolveOptions
@@ -252,7 +252,7 @@ class BranchAndPriceAlgorithm<
                     )
                 )) {
                     is Ok -> {
-                        model.setSolution(result.value.solution)
+                        model.setSolution(result.value.values)
                         result.value
                     }
 
@@ -280,9 +280,9 @@ class BranchAndPriceAlgorithm<
                     }
                 }
                 refresh(ipRet)
-                iteration.refreshIpObj(ipRet.obj)
+                iteration.refreshIpObj(ipRet.solution?.objective ?: Flt64.zero)
 
-                if (ipRet.obj eq Flt64.zero) {
+                if ((ipRet.solution?.objective ?: Flt64.zero) eq Flt64.zero) {
                     return Ok(bestSolution)
                 }
 
@@ -592,7 +592,7 @@ class BranchAndPriceAlgorithm<
                         )
                     )) {
                         is Ok -> {
-                            model.setSolution(result.value.solution)
+                            model.setSolution(result.value.values)
                             result.value
                         }
 
@@ -606,11 +606,11 @@ class BranchAndPriceAlgorithm<
                     }
                     refresh(thisIpRet)
                     logIpResults(iteration.iteration, model)
-                    if (iteration.refreshIpObj(thisIpRet.obj)) {
+                    if (iteration.refreshIpObj(thisIpRet.solution?.objective ?: Flt64.zero)) {
                         when (val result = analyzeSolution(iteration.iteration, model)) {
                             is Ok -> {
                                 bestSolution = result.value
-                                if (thisIpRet.obj eq Flt64.zero) {
+                                if ((thisIpRet.solution?.objective ?: Flt64.zero) eq Flt64.zero) {
                                     return Ok(bestSolution)
                                 }
                             }
@@ -776,7 +776,7 @@ class BranchAndPriceAlgorithm<
         }
 
         refresh(lpRet)
-        if (iteration.refreshLpObj(lpRet.result.obj) && withKeeping) {
+        if (iteration.refreshLpObj(lpRet.result.solution?.objective ?: Flt64.zero) && withKeeping) {
             when (val ret = keepBunch(iteration.iteration, model)) {
                 is Ok -> {}
 
@@ -1138,7 +1138,7 @@ class BranchAndPriceAlgorithm<
     */
     private fun refresh(feasibleLpResult: ColumnGenerationSolver.LPResult) {
         mainProblemSolvingTimes += UInt64.one
-        mainProblemSolvingTime += feasibleLpResult.result.time
+        mainProblemSolvingTime += feasibleLpResult.result.solveTime ?: Duration.ZERO
     }
 
     /**
@@ -1147,9 +1147,9 @@ class BranchAndPriceAlgorithm<
      *
      * @param ipResult 可行 IP 结果 / Feasible IP result
     */
-    private fun refresh(ipResult: FeasibleSolverOutput<Flt64>) {
+    private fun refresh(ipResult: SolveReport<Flt64>) {
         mainProblemSolvingTimes += UInt64.one
-        mainProblemSolvingTime += ipResult.time
+        mainProblemSolvingTime += ipResult.solveTime ?: Duration.ZERO
     }
 
     /**

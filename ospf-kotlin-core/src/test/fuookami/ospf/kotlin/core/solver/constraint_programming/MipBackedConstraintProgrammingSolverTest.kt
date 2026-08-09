@@ -20,10 +20,9 @@ import fuookami.ospf.kotlin.core.solver.config.SolverConfig
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingFeasibleOutput
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingInfeasibleOutput
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingUnknownOutput
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.report.ProblemStatus
 import fuookami.ospf.kotlin.core.solver.report.SolveProof
-import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.report.SolveSolution
 import fuookami.ospf.kotlin.core.solver.report.SolutionPresence
 import fuookami.ospf.kotlin.core.solver.report.TerminationReason
@@ -234,7 +233,7 @@ private class RecordingLinearSolver(
     override suspend fun invoke(
         model: LinearTriadModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<FeasibleSolverOutput<Flt64>> {
+    ): Ret<SolveReport<Flt64>> {
         error("solveReport is the test boundary")
     }
 
@@ -242,7 +241,7 @@ private class RecordingLinearSolver(
         model: LinearTriadModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
         error("solveReport is the test boundary")
     }
 }
@@ -271,7 +270,7 @@ private class HintEchoLinearSolver : LinearSolver {
     override suspend fun invoke(
         model: LinearTriadModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<FeasibleSolverOutput<Flt64>> {
+    ): Ret<SolveReport<Flt64>> {
         error("solveReport is the test boundary")
     }
 
@@ -279,7 +278,7 @@ private class HintEchoLinearSolver : LinearSolver {
         model: LinearTriadModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
         error("solveReport is the test boundary")
     }
 }
@@ -311,7 +310,7 @@ private class LargeObjectiveLinearSolver(
     override suspend fun invoke(
         model: LinearTriadModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<FeasibleSolverOutput<Flt64>> {
+    ): Ret<SolveReport<Flt64>> {
         error("solveReport is the test boundary")
     }
 
@@ -319,7 +318,7 @@ private class LargeObjectiveLinearSolver(
         model: LinearTriadModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
         error("solveReport is the test boundary")
     }
 }

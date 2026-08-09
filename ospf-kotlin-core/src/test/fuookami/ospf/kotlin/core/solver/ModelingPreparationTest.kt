@@ -3,6 +3,7 @@ package fuookami.ospf.kotlin.core.solver
 import kotlin.test.*
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.core.model.basic.Variable
+import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
 import fuookami.ospf.kotlin.core.variable.*
 
 class ModelingPreparationTest {
@@ -53,23 +54,38 @@ class ModelingPreparationTest {
     fun shouldProjectStableIdentityIntoNamespacedNativeName() {
         assertEquals(
             "ospf-variable-fixture_h2f_business-x",
-            nativeElementName("fixture/business-x", "x0", "variable")
+            nativeElementName(
+                identityId = "fixture/business-x",
+                fallbackName = "x0",
+                category = "variable",
+                identityScope = ModelElementScope.Stable
+            )
         )
         assertEquals(
             "ospf-constraint-non-negative",
-            nativeElementName("non-negative", "c0", "constraint")
+            nativeElementName(
+                identityId = "non-negative",
+                fallbackName = "c0",
+                category = "constraint",
+                identityScope = ModelElementScope.Stable
+            )
         )
         assertEquals(
             "ospf-variable-stable:a:1",
-            nativeElementName("stable:a:1", "x1", "variable")
+            nativeElementName(
+                identityId = "stable:a:1",
+                fallbackName = "x1",
+                category = "variable",
+                identityScope = ModelElementScope.Stable
+            )
         )
     }
 
     @Test
     fun shouldKeepDisplayNameForBlankOrModelLocalIdentity() {
         assertEquals("x0", nativeElementName(null, "x0", "variable"))
-        assertEquals("x1", nativeElementName("", "x1", "variable"))
-        assertEquals("x2", nativeElementName("model-local-variable:2", "x2", "variable"))
+        assertEquals("x1", nativeElementName("", "x1", "variable", ModelElementScope.Stable))
+        assertEquals("x2", nativeElementName("artifact:generated", "x2", "variable", ModelElementScope.ModelLocal))
     }
 
     @Test

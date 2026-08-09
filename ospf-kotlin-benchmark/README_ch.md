@@ -51,6 +51,10 @@ pwsh.exe -File .\ospf-kotlin-benchmark\scripts\compare-benchmark-results.ps1 `
   -Dataset small
 ```
 
+benchmark 的正确性和回放元数据统一使用 `SolveReport<V>`；新增夹具应记录终止原因、解存在性、
+诊断、provenance 以及模型/配置指纹。旧 solver output 仅作为兼容适配视图保留。其余插件迁移与能力范围
+见 [`plans/solver_cp.md`](../plans/solver_cp.md)。
+
 ## 说明
 
 JMH 分数对机器环境敏感。CI smoke 应验证 benchmark 可运行并保留 artifact，不应把绝对分数比较作为硬门禁。

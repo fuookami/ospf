@@ -13,6 +13,7 @@ import fuookami.ospf.kotlin.utils.functional.ok
 import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
 import fuookami.ospf.kotlin.core.model.mechanism.MetaConstraintGroup
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ModelElementOrigin
 import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
 import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
@@ -23,16 +24,21 @@ import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
  *
  * @property name 模型名称 / Model name
  * @property objectCategory 模型优化方向 / Model optimization direction
+ * @property identityNamespace 身份命名空间 / Identity namespace
+ * @property identitySchemaVersion 身份 schema 版本 / Identity schema version
  */
 class ConstraintProgrammingModel(
     val name: String = "constraint-programming-model",
-    val objectCategory: ObjectCategory = ObjectCategory.Minimum
+    val objectCategory: ObjectCategory = ObjectCategory.Minimum,
+    val identityNamespace: String = "model-local",
+    val identitySchemaVersion: String = "1.0"
 ) : ConstraintGroupRegistry, AutoCloseable {
     private data class VariableEntry(
         val variable: AbstractVariableItem<*, *>,
         val domain: IntegerDomain,
         val scope: String,
-        val origin: String?
+        val origin: String?,
+        val identityProvenance: List<ModelElementOrigin>
     )
 
     private data class ConstraintEntry(
@@ -41,7 +47,8 @@ class ConstraintProgrammingModel(
         val groupName: String?,
         val constraint: ConstraintProgrammingConstraint,
         val scope: String,
-        val origin: String?
+        val origin: String?,
+        val identityProvenance: List<ModelElementOrigin>
     )
 
     private data class ObjectiveEntry(
@@ -50,7 +57,8 @@ class ConstraintProgrammingModel(
         val name: String,
         val expression: ConstraintProgrammingExpression,
         val scope: String,
-        val origin: String?
+        val origin: String?,
+        val identityProvenance: List<ModelElementOrigin>
     )
 
     private val variables = LinkedHashMap<VariableId, VariableEntry>()
@@ -82,26 +90,36 @@ class ConstraintProgrammingModel(
      * @param domain CP 值域；为空时按变量类型推导 / CP domain, inferred from variable type when null
      * @param scope 身份作用域 / Identity scope
      * @param origin 稳定身份来源 / Stable identity origin
+     * @param identityProvenance 完整身份来源集合 / Complete identity provenance
      * @return 稳定变量 ID或错误 / Stable variable ID or an error
      */
     fun registerVariable(
         variable: AbstractVariableItem<*, *>,
         domain: IntegerDomain? = null,
         scope: String = "model-local",
-        origin: String? = null
+        origin: String? = null,
+        identityProvenance: List<ModelElementOrigin> = emptyList()
     ): Ret<VariableId> {
         if (closed) {
             return closedFailure()
         }
-        val identity = validateIdentityMetadata(scope, origin)
+        val id = variableIdOf(variable)
+        val identity = canonicalizeIdentityMetadata(
+            id = id.value,
+            scope = scope,
+            origin = origin,
+            identityProvenance = identityProvenance,
+            identityNamespace = identityNamespace,
+            identitySchemaVersion = identitySchemaVersion
+        )
         if (identity.failed) {
             return propagateModelFailure(identity)
         }
+        val metadata = identity.value!!
         val reference = ConstraintProgrammingExpression.variable(variable, domain)
         if (reference.failed) {
             return propagateModelFailure(reference)
         }
-        val id = variableIdOf(variable)
         if (variables.containsKey(id)) {
             return Failed(
                 ErrorCode.IllegalArgument,
@@ -116,7 +134,13 @@ class ConstraintProgrammingModel(
                     "The same OSPF variable cannot be bound to multiple CP IDs: $existingBinding and $id"
             )
         }
-        variables[id] = VariableEntry(variable, reference.value!!.domain, scope, origin)
+        variables[id] = VariableEntry(
+            variable,
+            reference.value!!.domain,
+            metadata.scope,
+            origin,
+            metadata.provenance
+        )
         variableIdsByIdentity[variable] = id
         return ok(id)
     }
@@ -129,6 +153,7 @@ class ConstraintProgrammingModel(
      * @param domain CP 值域 / CP domain
      * @param scope 身份作用域 / Identity scope
      * @param origin 稳定身份来源 / Stable identity origin
+     * @param identityProvenance 完整身份来源集合 / Complete identity provenance
      * @return 稳定变量 ID 或结构化错误 / Stable variable ID or a structured error
      */
     fun registerVariable(
@@ -136,15 +161,24 @@ class ConstraintProgrammingModel(
         variable: AbstractVariableItem<*, *>,
         domain: IntegerDomain,
         scope: String = "model-local",
-        origin: String? = null
+        origin: String? = null,
+        identityProvenance: List<ModelElementOrigin> = emptyList()
     ): Ret<VariableId> {
         if (closed) {
             return closedFailure()
         }
-        val identity = validateIdentityMetadata(scope, origin)
+        val identity = canonicalizeIdentityMetadata(
+            id = id.value,
+            scope = scope,
+            origin = origin,
+            identityProvenance = identityProvenance,
+            identityNamespace = identityNamespace,
+            identitySchemaVersion = identitySchemaVersion
+        )
         if (identity.failed) {
             return propagateModelFailure(identity)
         }
+        val metadata = identity.value!!
         if (id.value.isBlank()) {
             return Failed(ErrorCode.IllegalArgument, "CP 变量 ID 不能为空 / CP variable ID must not be blank")
         }
@@ -163,7 +197,13 @@ class ConstraintProgrammingModel(
                     "The same OSPF variable cannot be bound to multiple CP IDs: $existingBinding and $id"
             )
         }
-        variables[id] = VariableEntry(variable, reference.value!!.domain, scope, origin)
+        variables[id] = VariableEntry(
+            variable,
+            reference.value!!.domain,
+            metadata.scope,
+            origin,
+            metadata.provenance
+        )
         variableIdsByIdentity[variable] = id
         return ok(id)
     }
@@ -178,10 +218,18 @@ class ConstraintProgrammingModel(
         if (closed) {
             return closedFailure()
         }
-        val identity = validateIdentityMetadata(interval.scope, interval.origin)
+        val identity = canonicalizeIdentityMetadata(
+            id = interval.id.value,
+            scope = interval.scope,
+            origin = interval.origin,
+            identityProvenance = interval.identityProvenance,
+            identityNamespace = identityNamespace,
+            identitySchemaVersion = identitySchemaVersion
+        )
         if (identity.failed) {
             return propagateModelFailure(identity)
         }
+        val metadata = identity.value!!
         if (interval.id.value.isBlank()) {
             return Failed(
                 ErrorCode.IllegalArgument,
@@ -194,7 +242,10 @@ class ConstraintProgrammingModel(
                 "interval ID 重复：${interval.id} / Duplicate interval ID: ${interval.id}"
             )
         }
-        intervals[interval.id] = interval
+        intervals[interval.id] = interval.copy(
+            scope = metadata.scope,
+            identityProvenance = metadata.provenance
+        )
         return ok(interval.id)
     }
 
@@ -231,6 +282,7 @@ class ConstraintProgrammingModel(
      * @param group 约束组 / Constraint group
      * @param scope 身份作用域 / Identity scope
      * @param origin 稳定身份来源 / Stable identity origin
+     * @param identityProvenance 完整身份来源集合 / Complete identity provenance
      * @return 稳定约束 ID 或结构化错误 / Stable constraint ID or a structured error
      */
     fun addConstraint(
@@ -239,16 +291,25 @@ class ConstraintProgrammingModel(
         name: String = "",
         group: MetaConstraintGroup? = null,
         scope: String = "model-local",
-        origin: String? = null
+        origin: String? = null,
+        identityProvenance: List<ModelElementOrigin> = emptyList()
     ): Ret<ConstraintId> {
         if (closed) {
             return closedFailure()
         }
-        val identity = validateIdentityMetadata(scope, origin)
+        val resolvedId = id ?: ConstraintId("constraint-${constraints.size}")
+        val identity = canonicalizeIdentityMetadata(
+            id = resolvedId.value,
+            scope = scope,
+            origin = origin,
+            identityProvenance = identityProvenance,
+            identityNamespace = identityNamespace,
+            identitySchemaVersion = identitySchemaVersion
+        )
         if (identity.failed) {
             return propagateModelFailure(identity)
         }
-        val resolvedId = id ?: ConstraintId("constraint-${constraints.size}")
+        val metadata = identity.value!!
         if (resolvedId.value.isBlank()) {
             return Failed(ErrorCode.IllegalArgument, "CP 约束 ID 不能为空 / CP constraint ID must not be blank")
         }
@@ -264,8 +325,9 @@ class ConstraintProgrammingModel(
             name = name.ifBlank { resolvedId.value },
             groupName = group?.name ?: currentGroupName,
             constraint = constraint,
-            scope = scope,
-            origin = origin
+            scope = metadata.scope,
+            origin = origin,
+            identityProvenance = metadata.provenance
         )
         return ok(resolvedId)
     }
@@ -279,6 +341,7 @@ class ConstraintProgrammingModel(
      * @param group 约束组 / Constraint group
      * @param scope 身份作用域 / Identity scope
      * @param origin 稳定身份来源 / Stable identity origin
+     * @param identityProvenance 完整身份来源集合 / Complete identity provenance
      * @return 稳定约束 ID 或结构化错误 / Stable constraint ID or a structured error
      */
     fun addConstraint(
@@ -287,9 +350,18 @@ class ConstraintProgrammingModel(
         name: String = "",
         group: MetaConstraintGroup? = null,
         scope: String = "model-local",
-        origin: String? = null
+        origin: String? = null,
+        identityProvenance: List<ModelElementOrigin> = emptyList()
     ): Ret<ConstraintId> {
-        return addConstraint(constraint, ConstraintId(id), name, group, scope, origin)
+        return addConstraint(
+            constraint = constraint,
+            id = ConstraintId(id),
+            name = name,
+            group = group,
+            scope = scope,
+            origin = origin,
+            identityProvenance = identityProvenance
+        )
     }
 
     /**
@@ -301,6 +373,7 @@ class ConstraintProgrammingModel(
      * @param name 展示名称 / Display name
      * @param scope 身份作用域 / Identity scope
      * @param origin 稳定身份来源 / Stable identity origin
+     * @param identityProvenance 完整身份来源集合 / Complete identity provenance
      * @return 稳定目标 ID 或结构化错误 / Stable objective ID or a structured error
      */
     fun addObjective(
@@ -309,16 +382,25 @@ class ConstraintProgrammingModel(
         id: ObjectiveId? = null,
         name: String = "",
         scope: String = "model-local",
-        origin: String? = null
+        origin: String? = null,
+        identityProvenance: List<ModelElementOrigin> = emptyList()
     ): Ret<ObjectiveId> {
         if (closed) {
             return closedFailure()
         }
-        val identity = validateIdentityMetadata(scope, origin)
+        val resolvedId = id ?: ObjectiveId("objective-${objectives.size}")
+        val identity = canonicalizeIdentityMetadata(
+            id = resolvedId.value,
+            scope = scope,
+            origin = origin,
+            identityProvenance = identityProvenance,
+            identityNamespace = identityNamespace,
+            identitySchemaVersion = identitySchemaVersion
+        )
         if (identity.failed) {
             return propagateModelFailure(identity)
         }
-        val resolvedId = id ?: ObjectiveId("objective-${objectives.size}")
+        val metadata = identity.value!!
         if (resolvedId.value.isBlank()) {
             return Failed(ErrorCode.IllegalArgument, "CP 目标 ID 不能为空 / CP objective ID must not be blank")
         }
@@ -333,8 +415,9 @@ class ConstraintProgrammingModel(
             category = category,
             name = name.ifBlank { resolvedId.value },
             expression = expression,
-            scope = scope,
-            origin = origin
+            scope = metadata.scope,
+            origin = origin,
+            identityProvenance = metadata.provenance
         )
         return ok(resolvedId)
     }
@@ -347,6 +430,7 @@ class ConstraintProgrammingModel(
      * @param name 展示名称 / Display name
      * @param scope 身份作用域 / Identity scope
      * @param origin 稳定身份来源 / Stable identity origin
+     * @param identityProvenance 完整身份来源集合 / Complete identity provenance
      * @return 稳定目标 ID 或结构化错误 / Stable objective ID or a structured error
      */
     fun minimize(
@@ -354,9 +438,18 @@ class ConstraintProgrammingModel(
         id: ObjectiveId? = null,
         name: String = "",
         scope: String = "model-local",
-        origin: String? = null
+        origin: String? = null,
+        identityProvenance: List<ModelElementOrigin> = emptyList()
     ): Ret<ObjectiveId> {
-        return addObjective(ObjectCategory.Minimum, expression, id, name, scope, origin)
+        return addObjective(
+            category = ObjectCategory.Minimum,
+            expression = expression,
+            id = id,
+            name = name,
+            scope = scope,
+            origin = origin,
+            identityProvenance = identityProvenance
+        )
     }
 
     /**
@@ -367,6 +460,7 @@ class ConstraintProgrammingModel(
      * @param name 展示名称 / Display name
      * @param scope 身份作用域 / Identity scope
      * @param origin 稳定身份来源 / Stable identity origin
+     * @param identityProvenance 完整身份来源集合 / Complete identity provenance
      * @return 稳定目标 ID 或结构化错误 / Stable objective ID or a structured error
      */
     fun maximize(
@@ -374,9 +468,18 @@ class ConstraintProgrammingModel(
         id: ObjectiveId? = null,
         name: String = "",
         scope: String = "model-local",
-        origin: String? = null
+        origin: String? = null,
+        identityProvenance: List<ModelElementOrigin> = emptyList()
     ): Ret<ObjectiveId> {
-        return addObjective(ObjectCategory.Maximum, expression, id, name, scope, origin)
+        return addObjective(
+            category = ObjectCategory.Maximum,
+            expression = expression,
+            id = id,
+            name = name,
+            scope = scope,
+            origin = origin,
+            identityProvenance = identityProvenance
+        )
     }
 
     /** 注册约束组；Pipeline 注册入口调用此方法。 / Register a group for Pipeline integration. */
@@ -472,7 +575,8 @@ class ConstraintProgrammingModel(
                         typeName = entry.variable.type.name,
                         domain = copyDomain(entry.domain),
                         scope = entry.scope,
-                        origin = entry.origin
+                        origin = entry.origin,
+                        identityProvenance = entry.identityProvenance
                     )
                 },
                 intervals = intervals.values.map { it.bindStableVariableIds(variableIdsByIdentity) },
@@ -489,20 +593,24 @@ class ConstraintProgrammingModel(
                         groupName = it.groupName,
                         constraint = it.constraint.bindStableVariableIds(variableIdsByIdentity),
                         scope = it.scope,
-                        origin = it.origin
+                        origin = it.origin,
+                        identityProvenance = it.identityProvenance
                     )
                 },
-                objectives = objectives.values.map {
+            objectives = objectives.values.map {
                     ConstraintProgrammingObjectiveSnapshot(
                         id = it.id,
                         category = it.category,
                         name = it.name,
                         expression = it.expression.bindStableVariableIds(variableIdsByIdentity),
                         scope = it.scope,
-                        origin = it.origin
+                        origin = it.origin,
+                        identityProvenance = it.identityProvenance
                     )
                 },
-                constraintGroups = groups.keys.toList()
+                constraintGroups = groups.keys.toList(),
+                identitySchemaVersion = identitySchemaVersion,
+                identityNamespace = identityNamespace
             )
         if (!snapshot.validateIdentity()) {
             return Failed(
@@ -560,18 +668,39 @@ private fun <T> propagateModelFailure(result: Ret<*>): Ret<T> {
     }
 }
 
-private fun validateIdentityMetadata(scope: String, origin: String?): Try {
-    if (scope.isBlank()) {
-        return Failed(
+private data class CanonicalIdentityMetadata(
+    val scope: String,
+    val provenance: List<ModelElementOrigin>
+)
+
+private fun canonicalizeIdentityMetadata(
+    id: String,
+    scope: String,
+    origin: String?,
+    identityProvenance: List<ModelElementOrigin>,
+    identityNamespace: String,
+    identitySchemaVersion: String
+): Ret<CanonicalIdentityMetadata> {
+    val canonicalScope = canonicalConstraintProgrammingIdentityScope(scope)
+        ?: return Failed(
             ErrorCode.IllegalArgument,
-            "CP 身份 scope 不能为空 / CP identity scope must not be blank"
+            "CP 身份 scope 无效：$scope / Invalid CP identity scope: $scope"
         )
+    val canonicalProvenance = canonicalConstraintProgrammingIdentityProvenance(
+        origin = origin,
+        provenance = identityProvenance
+    )
+    val message = validateConstraintProgrammingIdentity(
+        id = id,
+        scope = canonicalScope,
+        origin = origin,
+        provenance = canonicalProvenance,
+        identityNamespace = identityNamespace,
+        identitySchemaVersion = identitySchemaVersion
+    )
+    return if (message == null) {
+        ok(CanonicalIdentityMetadata(canonicalScope, canonicalProvenance))
+    } else {
+        Failed(ErrorCode.IllegalArgument, message)
     }
-    if (scope == "stable" && origin.isNullOrBlank()) {
-        return Failed(
-            ErrorCode.IllegalArgument,
-            "stable CP 身份必须提供 origin / Stable CP identities require an origin"
-        )
-    }
-    return ok
 }

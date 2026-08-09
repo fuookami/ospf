@@ -1,20 +1,35 @@
 /** Gurobi 列生成求解器实现 / Gurobi column generation solver implementation */
 package fuookami.ospf.kotlin.core.solver.gurobi
 
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlinx.coroutines.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import gurobi.GRB
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.error.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.symbol.Linear
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.ModelFileFormat
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.RegistrationStatusCallBack
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModel
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.iis.IISConfig
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.solver.ColumnGenerationSolver
 
 /**
@@ -50,7 +65,7 @@ class GurobiColumnGenerationSolver(
         toLogModel: Boolean,
         registrationStatusCallBack: RegistrationStatusCallBack?,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<FeasibleSolverOutput<Flt64>> {
+    ): Ret<SolveReport<Flt64>> {
         val jobs = ArrayList<Job>()
         if (toLogModel) {
             jobs.add(pluginSolverAsyncScope.launch(Dispatchers.IO) {
@@ -97,7 +112,7 @@ class GurobiColumnGenerationSolver(
 
                 when (val result = solver(model, solvingStatusCallBack)) {
                     is Ok -> {
-                        metaModel.tokens.setSolution(result.value.solution)
+                        result.value.solution?.let { metaModel.tokens.setSolution(it.values) }
                         jobs.joinAll()
                         Ok(result.value)
                     }
@@ -134,7 +149,7 @@ class GurobiColumnGenerationSolver(
         toLogModel: Boolean,
         registrationStatusCallBack: RegistrationStatusCallBack?,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
         val jobs = ArrayList<Job>()
         if (toLogModel) {
             jobs.add(pluginSolverAsyncScope.launch(Dispatchers.IO) {
@@ -200,8 +215,8 @@ class GurobiColumnGenerationSolver(
 
                 when (val result = solver(model, solvingStatusCallBack)) {
                     is Ok -> {
-                        metaModel.tokens.setSolution(result.value.solution)
-                        results.add(0, result.value.solution)
+                        result.value.solution?.let { metaModel.tokens.setSolution(it.values) }
+                        results.add(0, result.value.values)
                         jobs.joinAll()
                         Ok(Pair(result.value, results))
                     }
@@ -291,7 +306,7 @@ class GurobiColumnGenerationSolver(
 
                 when (val result = solver(model, solvingStatusCallBack)) {
                     is Ok -> {
-                        metaModel.tokens.setSolution(result.value.solution)
+                        result.value.solution?.let { metaModel.tokens.setSolution(it.values) }
                         jobs.joinAll()
                         Ok(ColumnGenerationSolver.LPResult(result.value, dualSolution))
                     }
@@ -384,10 +399,10 @@ class GurobiColumnGenerationSolver(
                                 jobs.joinAll()
                                 Ok(ColumnGenerationSolver.LPResultWithStatus.Infeasible(output))
                             }
-                            is FeasibleSolverOutput<*> -> {
+                            is SolveReport<*> -> {
                                 @Suppress("UNCHECKED_CAST")
-                                val feasible = output as FeasibleSolverOutput<Flt64>
-                                metaModel.tokens.setSolution(feasible.solution)
+                                val feasible = output as SolveReport<Flt64>
+                                feasible.solution?.let { metaModel.tokens.setSolution(it.values) }
                                 jobs.joinAll()
                                 Ok(
                                     ColumnGenerationSolver.LPResultWithStatus.Feasible(

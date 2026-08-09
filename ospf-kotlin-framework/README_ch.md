@@ -45,8 +45,8 @@ interface ColumnGenerationSolver {
     val name: String
 
     // MILP 求解
-    suspend fun solveMILP(name: String, metaModel: Flt64LinearMetaModel, ...): Ret<Flt64FeasibleSolverOutput>
-    suspend fun solveMILP(metaModel: Flt64LinearMetaModel, options: FrameworkSolveOptions): Ret<Flt64FeasibleSolverOutput>
+    suspend fun solveMILP(name: String, metaModel: Flt64LinearMetaModel, ...): Ret<Flt64SolveReport>
+    suspend fun solveMILP(metaModel: Flt64LinearMetaModel, options: FrameworkSolveOptions): Ret<Flt64SolveReport>
     suspend fun solveMILPWithStatus(...): Ret<MILPSolveResult>
 
     // LP 求解（返回对偶解用于定价）
@@ -54,11 +54,11 @@ interface ColumnGenerationSolver {
     suspend fun solveLPWithStatus(...): Ret<LPResultWithStatus>
 
     // 异步变体（CompletableFuture）
-    fun solveMILPAsync(...): CompletableFuture<Ret<Flt64FeasibleSolverOutput>>
+    fun solveMILPAsync(...): CompletableFuture<Ret<Flt64SolveReport>>
     fun solveLPAsync(...): CompletableFuture<Ret<LPResult>>
 
     // 值转换变体（Flt64 -> V）
-    suspend fun <V> solveMILPAs(name: String, metaModel: Flt64LinearMetaModel, converter: IntoValue<V>, ...): Ret<FeasibleSolverOutput<V>>
+    suspend fun <V> solveMILPAs(name: String, metaModel: Flt64LinearMetaModel, converter: IntoValue<V>, ...): Ret<SolveReport<V>>
     suspend fun <V> solveLPAs(name: String, metaModel: Flt64LinearMetaModel, converter: IntoValue<V>, ...): Ret<LPResultOf<V>>
 }
 ```
@@ -73,7 +73,7 @@ interface ColumnGenerationSolver {
 ```kotlin
 interface LinearBendersDecompositionSolver {
     val name: String
-    suspend fun solveMaster(metaModel: Flt64LinearMetaModel, ...): Ret<Flt64FeasibleSolverOutput>
+    suspend fun solveMaster(metaModel: Flt64LinearMetaModel, ...): Ret<Flt64SolveReport>
     suspend fun solveSub(metaModel: Flt64LinearMetaModel, ...): Ret<LinearSubResult>
 }
 ```
@@ -245,6 +245,13 @@ val result = solver.solveMILPAs<FltX>(
     converter = FltX.toIntoValue()
 )
 ```
+
+### SolveReport 迁移与后续范围
+
+新代码和迁移后的求解路径统一使用 `Ret<SolveReport<V>>` 作为主结果契约。列生成和 Benders API
+中的 `Flt64SolveReport` 只是 `SolveReport<Flt64>` 的类型别名，不是独立的旧结果 facade。组合与
+远程路径保留终止状态、attempt trace、诊断、provenance 和指纹；其余插件能力工作见
+[`plans/solver_cp.md`](../plans/solver_cp.md)。
 
 ## 本地验证
 

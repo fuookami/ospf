@@ -1,18 +1,32 @@
 package fuookami.ospf.kotlin.framework.csp1d.application.service
 
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.value.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.csp1d.domain.length_assignment.model.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.csp1d.domain.material.model.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.csp1d.domain.produce.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.csp1d.domain.produce.model.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.csp1d.domain.yield.model.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.solver.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.progress.SolverProgressContext
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.error.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
@@ -35,7 +49,7 @@ class Csp1dMilpSolver(
         val wasteResult: WasteMinimizationResult<V>? = null,
         val lengthResult: LengthAssignmentModelingResult<V>? = null,
         val model: LinearMetaModel<Flt64>,
-        val output: FeasibleSolverOutput<Flt64>
+        val output: SolveReport<Flt64>
     )
 
     /**
@@ -133,7 +147,7 @@ class Csp1dMilpSolver(
             is Failed -> return Failed(result.error)
             is Fatal -> return Fatal(result.errors)
         }
-        model.setSolution(output.solution)
+        model.setSolution(output.values)
 
         val produce = when (val result = context.extractSolution(model)) {
             is Ok -> result.value

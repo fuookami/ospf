@@ -497,7 +497,7 @@ private class FullLoadAlgorithmImpl {
         }
 
         val solution = when (val result = stowageContext.analyze(
-            solution = modelSolution.solution,
+            solution = modelSolution.values,
             model = model
         )) {
             is Ok -> {

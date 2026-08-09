@@ -10,7 +10,7 @@ import fuookami.ospf.kotlin.core.model.basic.RegistrationStatusCallBack
 import fuookami.ospf.kotlin.core.model.intermediate.MechanismModelDumpingStatusCallBack
 import fuookami.ospf.kotlin.core.model.mechanism.LinearMetaModel
 import fuookami.ospf.kotlin.core.solver.AbstractLinearSolver
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.output.SolvingStatusCallBack
 import fuookami.ospf.kotlin.core.solver.value.IntoValue
 import fuookami.ospf.kotlin.core.symbol.function.LinearFunctionSymbolAdapter
@@ -136,7 +136,7 @@ internal suspend fun solveLinearMetaModel(
     registrationStatusCallBack: RegistrationStatusCallBack? = null,
     dumpingStatusCallBack: MechanismModelDumpingStatusCallBack? = null,
     solvingStatusCallBack: SolvingStatusCallBack? = null
-): Ret<FeasibleSolverOutput<Flt64>> {
+): Ret<SolveReport<Flt64>> {
     val mechanism = when (val result = solver.dump(
         model = metaModel,
         registrationStatusCallBack = registrationStatusCallBack,

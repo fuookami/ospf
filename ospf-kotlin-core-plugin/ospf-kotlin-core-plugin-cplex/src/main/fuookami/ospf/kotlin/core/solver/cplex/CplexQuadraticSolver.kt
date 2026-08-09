@@ -2,22 +2,39 @@
 @file:OptIn(kotlin.time.ExperimentalTime::class)
 package fuookami.ospf.kotlin.core.solver.cplex
 
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.math.min
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.Duration
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.Duration.Companion.seconds
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.DurationUnit
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlinx.coroutines.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.intermediate.QuadraticTetradModelView
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.value.toSolverDouble
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.concept.copyIfNotNullOr
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import ilog.concert.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import ilog.cplex.IloCplex
 
 /** CPLEX 二次求解器 / CPLEX quadratic solver */
@@ -30,7 +47,7 @@ class CplexQuadraticSolver(
     override suspend fun invoke(
         model: QuadraticTetradModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<FeasibleSolverOutput<Flt64>> {
+    ): Ret<SolveReport<Flt64>> {
         when (val validation = model.identityValidation) {
             is Ok -> {}
             is Failed -> return Failed(validation.error)
@@ -51,7 +68,7 @@ class CplexQuadraticSolver(
         model: QuadraticTetradModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
         when (val validation = model.identityValidation) {
             is Ok -> {}
             is Failed -> return Failed(validation.error)
@@ -110,14 +127,14 @@ private class CplexQuadraticSolverImpl(
 ) : CplexSolver() {
     private lateinit var cplexVars: List<IloNumVar>
     private lateinit var cplexConstraints: List<IloRange>
-    private lateinit var output: FeasibleSolverOutput<Flt64>
+    private lateinit var output: SolveReport<Flt64>
 
     private var initialBestObj: Flt64? = null
     private var bestObj: Flt64? = null
     private var bestBound: Flt64? = null
     private var bestTime: Duration = Duration.ZERO
 
-    suspend operator fun invoke(model: QuadraticTetradModelView): Ret<FeasibleSolverOutput<Flt64>> {
+    suspend operator fun invoke(model: QuadraticTetradModelView): Ret<SolveReport<Flt64>> {
         val processes = arrayOf(
             { it.init(model.name) },
             { it.dump(model) },
@@ -474,17 +491,16 @@ private class CplexQuadraticSolverImpl(
         return if (status.succeeded) {
             val obj = Flt64(cplex.objValue) + model.objective.constant
             val possibleBestObj = Flt64(cplex.bestObjValue) + model.objective.constant
-            output = FeasibleSolverOutput<Flt64>(
-                obj = obj,
-                solution = cplexVars.map { Flt64(cplex.getValue(it)) },
-                time = cplex.cplexTime.seconds,
-                possibleBestObj = possibleBestObj,
+            output = status.toSolveReport(
+                objective = obj,
+                values = cplexVars.map { Flt64(cplex.getValue(it)) },
+                solveTime = cplex.cplexTime.seconds,
+                bestBound = possibleBestObj,
                 gap = if (cplex.isMIP) {
                     gap(obj, possibleBestObj)
                 } else {
                     Flt64.zero
-                },
-                status = status
+                }
             )
 
             when (val result = callBack?.execIfContain(

@@ -1,21 +1,35 @@
 package fuookami.ospf.kotlin.framework.solver
 
+import fuookami.ospf.kotlin.core.solver.toSolveReport
+import fuookami.ospf.kotlin.core.solver.toSolverStatus
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.Duration
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlinx.coroutines.runBlocking
+import fuookami.ospf.kotlin.core.solver.report.*
 import org.junit.jupiter.api.Test
+import fuookami.ospf.kotlin.core.solver.report.*
 import org.junit.jupiter.api.Assertions.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.RegistrationStatusCallBack
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.intermediate.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.mechanism.LinearMetaModel
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.iis.IISConfig
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.value.IntoValue
 
 class ColumnGenerationSolverValueConversionTest {
     private open class StubSolver(
-        private val output: Flt64FeasibleSolverOutput
+        private val output: Flt64SolveReport
     ) : ColumnGenerationSolver {
         override val name: String = "stub"
         val milpNames = mutableListOf<String>()
@@ -37,7 +51,7 @@ class ColumnGenerationSolverValueConversionTest {
             toLogModel: Boolean,
             registrationStatusCallBack: RegistrationStatusCallBack?,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<Flt64FeasibleSolverOutput> {
+        ): Ret<Flt64SolveReport> {
             milpNames.add(name)
             milpToLogModelFlags.add(toLogModel)
             milpRegistrationCallbacks.add(registrationStatusCallBack)
@@ -66,12 +80,12 @@ class ColumnGenerationSolverValueConversionTest {
             toLogModel: Boolean,
             registrationStatusCallBack: RegistrationStatusCallBack?,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<Pair<Flt64FeasibleSolverOutput, List<List<Flt64>>>> {
+        ): Ret<Pair<Flt64SolveReport, List<List<Flt64>>>> {
             milpPoolAmounts.add(amount)
             milpPoolToLogModelFlags.add(toLogModel)
             milpPoolRegistrationCallbacks.add(registrationStatusCallBack)
             milpPoolSolvingCallbacks.add(solvingStatusCallBack)
-            return Ok(Pair(output, listOf(output.solution)))
+            return Ok(Pair(output, listOf(output.values)))
         }
     }
 
@@ -79,14 +93,13 @@ class ColumnGenerationSolverValueConversionTest {
         return LinearMetaModel(name = "t", converter = IntoValue.Identity)
     }
 
-    private fun output(status: SolverStatus = SolverStatus.Optimal): FeasibleSolverOutput<Flt64> {
-        return FeasibleSolverOutput(
-            obj = Flt64(10.0),
-            solution = listOf(Flt64(1.0), Flt64(2.0)),
-            time = Duration.ZERO,
-            possibleBestObj = Flt64(9.0),
-            gap = Flt64.zero,
-            status = status
+    private fun output(status: SolverStatus = SolverStatus.Optimal): SolveReport<Flt64> {
+        return status.toSolveReport(
+            objective = Flt64(10.0),
+            values = listOf(Flt64(1.0), Flt64(2.0)),
+            solveTime = Duration.ZERO,
+            bestBound = Flt64(9.0),
+            gap = Flt64.zero
         )
     }
 
@@ -121,8 +134,8 @@ class ColumnGenerationSolverValueConversionTest {
             converter = IntoValue.Identity
         )
         val value = (result as Ok).value
-        assertEquals(listOf(Flt64(1.0), Flt64(2.0)), value.solution)
-        assertEquals(Flt64(10.0), value.obj)
+        assertEquals(listOf(Flt64(1.0), Flt64(2.0)), value.values)
+        assertEquals(Flt64(10.0), value.solution?.objective)
     }
 
     @Test
@@ -130,8 +143,8 @@ class ColumnGenerationSolverValueConversionTest {
         val solver = StubSolver(output())
         val result = solver.solveMILPAs(metaModel = model())
         val value = (result as Ok).value
-        assertEquals(listOf(Flt64(1.0), Flt64(2.0)), value.solution)
-        assertEquals(Flt64(10.0), value.obj)
+        assertEquals(listOf(Flt64(1.0), Flt64(2.0)), value.values)
+        assertEquals(Flt64(10.0), value.solution?.objective)
     }
 
     @Test
@@ -139,8 +152,8 @@ class ColumnGenerationSolverValueConversionTest {
         val solver = StubSolver(output())
         val result = solver.solveMILPAsAsync(metaModel = model()).get()
         val value = (result as Ok).value
-        assertEquals(listOf(Flt64(1.0), Flt64(2.0)), value.solution)
-        assertEquals(Flt64(10.0), value.obj)
+        assertEquals(listOf(Flt64(1.0), Flt64(2.0)), value.values)
+        assertEquals(Flt64(10.0), value.solution?.objective)
     }
 
     @Test
@@ -151,7 +164,7 @@ class ColumnGenerationSolverValueConversionTest {
             converter = plusOneConverter
         ).get()
         val value = (result as Ok).value
-        assertEquals(listOf(Flt64(2.0), Flt64(3.0)), value.solution)
+        assertEquals(listOf(Flt64(2.0), Flt64(3.0)), value.values)
     }
 
     @Test
@@ -214,8 +227,8 @@ class ColumnGenerationSolverValueConversionTest {
             converter = IntoValue.Identity
         )
         val value = (result as Ok).value
-        assertEquals(listOf(Flt64(1.0), Flt64(2.0)), value.solution)
-        assertEquals(Flt64(10.0), value.obj)
+        assertEquals(listOf(Flt64(1.0), Flt64(2.0)), value.result.values)
+        assertEquals(Flt64(10.0), value.result.solution?.objective)
     }
 
     @Test
@@ -223,8 +236,8 @@ class ColumnGenerationSolverValueConversionTest {
         val solver = StubSolver(output())
         val result = solver.solveLPAs(metaModel = model())
         val value = (result as Ok).value
-        assertEquals(listOf(Flt64(1.0), Flt64(2.0)), value.solution)
-        assertEquals(Flt64(10.0), value.obj)
+        assertEquals(listOf(Flt64(1.0), Flt64(2.0)), value.result.values)
+        assertEquals(Flt64(10.0), value.result.solution?.objective)
     }
 
     @Test
@@ -232,8 +245,8 @@ class ColumnGenerationSolverValueConversionTest {
         val solver = StubSolver(output())
         val result = solver.solveLPAsAsync(metaModel = model()).get()
         val value = (result as Ok).value
-        assertEquals(listOf(Flt64(1.0), Flt64(2.0)), value.solution)
-        assertEquals(Flt64(10.0), value.obj)
+        assertEquals(listOf(Flt64(1.0), Flt64(2.0)), value.result.values)
+        assertEquals(Flt64(10.0), value.result.solution?.objective)
     }
 
     @Test
@@ -244,7 +257,7 @@ class ColumnGenerationSolverValueConversionTest {
             converter = plusOneConverter
         ).get()
         val value = (result as Ok).value
-        assertEquals(listOf(Flt64(2.0), Flt64(3.0)), value.solution)
+        assertEquals(listOf(Flt64(2.0), Flt64(3.0)), value.result.values)
     }
 
     @Test
@@ -311,7 +324,7 @@ class ColumnGenerationSolverValueConversionTest {
         assertTrue(structured is ColumnGenerationSolver.LPResultWithStatus.Feasible)
         assertEquals(
             SolverStatus.Feasible,
-            (structured as ColumnGenerationSolver.LPResultWithStatus.Feasible).result.status
+            (structured as ColumnGenerationSolver.LPResultWithStatus.Feasible).result.result.toSolverStatus()
         )
     }
 
@@ -343,12 +356,12 @@ class ColumnGenerationSolverValueConversionTest {
         assertTrue(structured is ColumnGenerationSolver.MILPSolveResult.Feasible)
         assertEquals(
             SolverStatus.Feasible,
-            (structured as ColumnGenerationSolver.MILPSolveResult.Feasible).output.status
+            (structured as ColumnGenerationSolver.MILPSolveResult.Feasible).output.toSolverStatus()
         )
     }
 
     private class InfeasibleLpSolver(
-        output: Flt64FeasibleSolverOutput,
+        output: Flt64SolveReport,
         private val infeasible: LinearInfeasibleSolverOutput
     ) : StubSolver(output) {
         override suspend fun solveLPWithStatus(

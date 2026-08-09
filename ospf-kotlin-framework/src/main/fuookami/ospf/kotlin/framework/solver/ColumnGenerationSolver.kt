@@ -7,26 +7,41 @@
 */
 package fuookami.ospf.kotlin.framework.solver
 
+import fuookami.ospf.kotlin.core.solver.report.*
+import fuookami.ospf.kotlin.core.solver.toSolverStatus
 import java.util.concurrent.CompletableFuture
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.Duration
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlinx.coroutines.future.future
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.concept.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.symbol.Linear
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.iis.IISConfig
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.progress.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.symbol.castLinearMetaModelForSolver
 
 /** Flt64 线性元模型 / Flt64 linear meta model */
 typealias Flt64LinearMetaModel = LinearMetaModel<Flt64>
 
 /** Flt64 可行求解器输出 / Flt64 feasible solver output */
-typealias Flt64FeasibleSolverOutput = FeasibleSolverOutput<Flt64>
+typealias Flt64SolveReport = SolveReport<Flt64>
 
 /** Flt64 解池 / Flt64 solution pool */
 typealias Flt64SolutionPool = List<Solution<Flt64>>
@@ -55,7 +70,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<Flt64FeasibleSolverOutput>
+    ): Ret<Flt64SolveReport>
 
     /**
      * 求解 MILP 并保留不可行终态。 / Solve MILP while preserving the infeasible terminal state.
@@ -69,7 +84,7 @@ interface ColumnGenerationSolver {
          *
          * @property output 可行输出 / Feasible output
          */
-        data class Feasible(val output: Flt64FeasibleSolverOutput) : MILPSolveResult
+        data class Feasible(val output: Flt64SolveReport) : MILPSolveResult
 
         /**
          * 不可行 MILP 结果 / Infeasible MILP result.
@@ -121,7 +136,7 @@ interface ColumnGenerationSolver {
     suspend fun solveMILP(
         metaModel: Flt64LinearMetaModel,
         options: FrameworkSolveOptions = FrameworkSolveOptions()
-    ): Ret<Flt64FeasibleSolverOutput> {
+    ): Ret<Flt64SolveReport> {
         val solutionAmount = options.solutionAmount
         val progress = options.progressContext
         progress?.report(
@@ -183,7 +198,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): CompletableFuture<Ret<Flt64FeasibleSolverOutput>> {
+    ): CompletableFuture<Ret<Flt64SolveReport>> {
         return frameworkAsyncScope.future {
             return@future this@ColumnGenerationSolver.solveMILP(
                 name = name,
@@ -205,7 +220,7 @@ interface ColumnGenerationSolver {
     fun solveMILPAsync(
         metaModel: Flt64LinearMetaModel,
         options: FrameworkSolveOptions = FrameworkSolveOptions()
-    ): CompletableFuture<Ret<Flt64FeasibleSolverOutput>> {
+    ): CompletableFuture<Ret<Flt64SolveReport>> {
         return frameworkAsyncScope.future {
             return@future this@ColumnGenerationSolver.solveMILP(
                 metaModel = metaModel,
@@ -232,7 +247,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<Pair<Flt64FeasibleSolverOutput, List<List<Flt64>>>> {
+    ): Ret<Pair<Flt64SolveReport, List<List<Flt64>>>> {
         return solveMILP(
             name = name,
             metaModel = metaModel,
@@ -240,7 +255,7 @@ interface ColumnGenerationSolver {
             registrationStatusCallBack = registrationStatusCallBack,
             solvingStatusCallBack = solvingStatusCallBack
         )
-            .map { Pair(it, listOf(it.solution)) }
+            .map { Pair(it, listOf(it.values)) }
     }
 
     /**
@@ -253,7 +268,7 @@ interface ColumnGenerationSolver {
     suspend fun solveMILPWithSolutionPool(
         metaModel: Flt64LinearMetaModel,
         options: FrameworkSolveOptions
-    ): Ret<Pair<Flt64FeasibleSolverOutput, List<List<Flt64>>>> {
+    ): Ret<Pair<Flt64SolveReport, List<List<Flt64>>>> {
         return solveMILP(
             name = options.solveName(metaModel.name),
             metaModel = metaModel,
@@ -282,7 +297,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): CompletableFuture<Ret<Pair<Flt64FeasibleSolverOutput, List<List<Flt64>>>>> {
+    ): CompletableFuture<Ret<Pair<Flt64SolveReport, List<List<Flt64>>>>> {
         return frameworkAsyncScope.future {
             return@future this@ColumnGenerationSolver.solveMILP(
                 name = name,
@@ -305,7 +320,7 @@ interface ColumnGenerationSolver {
     fun solveMILPWithSolutionPoolAsync(
         metaModel: Flt64LinearMetaModel,
         options: FrameworkSolveOptions
-    ): CompletableFuture<Ret<Pair<Flt64FeasibleSolverOutput, List<List<Flt64>>>>> {
+    ): CompletableFuture<Ret<Pair<Flt64SolveReport, List<List<Flt64>>>>> {
         return frameworkAsyncScope.future {
             return@future this@ColumnGenerationSolver.solveMILPWithSolutionPool(
                 metaModel = metaModel,
@@ -322,15 +337,15 @@ interface ColumnGenerationSolver {
      * @property status 求解终态，只有 Optimal 才能作为精确定价证书 / Solver termination status; only Optimal is a pricing certificate
     */
     data class LPResult(
-        val result: Flt64FeasibleSolverOutput,
+        val result: Flt64SolveReport,
         val dualSolution: kotlin.collections.Map<Constraint<Flt64, Linear>, Flt64>
     ) {
-        val obj: Flt64 by result::obj
-        val solution: List<Flt64> by result::solution
-        val time: Duration by result::time
-        val possibleBestObj by result::possibleBestObj
-        val gap: Flt64 by result::gap
-        val status: SolverStatus by result::status
+        val obj: Flt64 get() = result.solution?.objective ?: Flt64.zero
+        val solution: List<Flt64> get() = result.values
+        val time: Duration get() = result.statistics.solveTime ?: Duration.ZERO
+        val possibleBestObj: Flt64 get() = result.statistics.bestBound ?: Flt64.zero
+        val gap: Flt64 get() = result.statistics.gap ?: Flt64.infinity
+        val status: SolverStatus get() = result.toSolverStatus()
     }
 
     /**
@@ -510,7 +525,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<FeasibleSolverOutput<V>> where V : RealNumber<V>, V : NumberField<V> {
+    ): Ret<SolveReport<V>> where V : RealNumber<V>, V : NumberField<V> {
         return when (val result = solveMILP(
             name = name,
             metaModel = metaModel,
@@ -541,7 +556,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<FeasibleSolverOutput<V>> where V : RealNumber<V>, V : NumberField<V> {
+    ): Ret<SolveReport<V>> where V : RealNumber<V>, V : NumberField<V> {
         return solveMILPAs(
             name = name,
             metaModel = castLinearMetaModelForSolver(metaModel),
@@ -565,7 +580,7 @@ interface ColumnGenerationSolver {
         metaModel: Flt64LinearMetaModel,
         converter: IntoValue<V>,
         options: FrameworkSolveOptions = FrameworkSolveOptions()
-    ): Ret<FeasibleSolverOutput<V>> where V : RealNumber<V>, V : NumberField<V> {
+    ): Ret<SolveReport<V>> where V : RealNumber<V>, V : NumberField<V> {
         return solveMILPAs(
             name = options.solveName(metaModel.name),
             metaModel = metaModel,
@@ -587,7 +602,7 @@ interface ColumnGenerationSolver {
     suspend fun <V> solveMILPAs(
         metaModel: LinearMetaModel<V>,
         options: FrameworkSolveOptions = FrameworkSolveOptions()
-    ): Ret<FeasibleSolverOutput<V>> where V : RealNumber<V>, V : NumberField<V> {
+    ): Ret<SolveReport<V>> where V : RealNumber<V>, V : NumberField<V> {
         return solveMILPAs(
             name = options.solveName(metaModel.name),
             metaModel = metaModel,
@@ -616,7 +631,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): CompletableFuture<Ret<FeasibleSolverOutput<V>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): CompletableFuture<Ret<SolveReport<V>>> where V : RealNumber<V>, V : NumberField<V> {
         return frameworkAsyncScope.future {
             return@future solveMILPAs(
                 name = name,
@@ -646,7 +661,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): CompletableFuture<Ret<FeasibleSolverOutput<V>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): CompletableFuture<Ret<SolveReport<V>>> where V : RealNumber<V>, V : NumberField<V> {
         return frameworkAsyncScope.future {
             return@future solveMILPAs(
                 name = name,
@@ -671,7 +686,7 @@ interface ColumnGenerationSolver {
         metaModel: Flt64LinearMetaModel,
         converter: IntoValue<V>,
         options: FrameworkSolveOptions = FrameworkSolveOptions()
-    ): CompletableFuture<Ret<FeasibleSolverOutput<V>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): CompletableFuture<Ret<SolveReport<V>>> where V : RealNumber<V>, V : NumberField<V> {
         return frameworkAsyncScope.future {
             return@future solveMILPAs(
                 metaModel = metaModel,
@@ -692,7 +707,7 @@ interface ColumnGenerationSolver {
     fun <V> solveMILPAsAsync(
         metaModel: LinearMetaModel<V>,
         options: FrameworkSolveOptions = FrameworkSolveOptions()
-    ): CompletableFuture<Ret<FeasibleSolverOutput<V>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): CompletableFuture<Ret<SolveReport<V>>> where V : RealNumber<V>, V : NumberField<V> {
         return frameworkAsyncScope.future {
             return@future solveMILPAs(
                 metaModel = metaModel,
@@ -722,7 +737,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<Pair<FeasibleSolverOutput<V>, List<List<V>>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): Ret<Pair<SolveReport<V>, List<List<V>>>> where V : RealNumber<V>, V : NumberField<V> {
         return when (val result = solveMILP(
             name = name,
             metaModel = metaModel,
@@ -759,7 +774,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<Pair<FeasibleSolverOutput<V>, List<List<V>>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): Ret<Pair<SolveReport<V>, List<List<V>>>> where V : RealNumber<V>, V : NumberField<V> {
         return solveMILPAs(
             name = name,
             metaModel = castLinearMetaModelForSolver(metaModel),
@@ -792,7 +807,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): CompletableFuture<Ret<Pair<FeasibleSolverOutput<V>, List<List<V>>>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): CompletableFuture<Ret<Pair<SolveReport<V>, List<List<V>>>>> where V : RealNumber<V>, V : NumberField<V> {
         return frameworkAsyncScope.future {
             return@future solveMILPAs(
                 name = name,
@@ -825,7 +840,7 @@ interface ColumnGenerationSolver {
         toLogModel: Boolean = false,
         registrationStatusCallBack: RegistrationStatusCallBack? = null,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): CompletableFuture<Ret<Pair<FeasibleSolverOutput<V>, List<List<V>>>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): CompletableFuture<Ret<Pair<SolveReport<V>, List<List<V>>>>> where V : RealNumber<V>, V : NumberField<V> {
         return frameworkAsyncScope.future {
             return@future solveMILPAs(
                 name = name,
@@ -851,7 +866,7 @@ interface ColumnGenerationSolver {
         metaModel: Flt64LinearMetaModel,
         converter: IntoValue<V>,
         options: FrameworkSolveOptions
-    ): Ret<Pair<FeasibleSolverOutput<V>, List<List<V>>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): Ret<Pair<SolveReport<V>, List<List<V>>>> where V : RealNumber<V>, V : NumberField<V> {
         return solveMILPAs(
             name = options.solveName(metaModel.name),
             metaModel = metaModel,
@@ -874,7 +889,7 @@ interface ColumnGenerationSolver {
     suspend fun <V> solveMILPWithSolutionPoolAs(
         metaModel: LinearMetaModel<V>,
         options: FrameworkSolveOptions
-    ): Ret<Pair<FeasibleSolverOutput<V>, List<List<V>>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): Ret<Pair<SolveReport<V>, List<List<V>>>> where V : RealNumber<V>, V : NumberField<V> {
         return solveMILPWithSolutionPoolAs(
             metaModel = castLinearMetaModelForSolver(metaModel),
             converter = metaModel.converter,
@@ -895,7 +910,7 @@ interface ColumnGenerationSolver {
         metaModel: Flt64LinearMetaModel,
         converter: IntoValue<V>,
         options: FrameworkSolveOptions
-    ): CompletableFuture<Ret<Pair<FeasibleSolverOutput<V>, List<List<V>>>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): CompletableFuture<Ret<Pair<SolveReport<V>, List<List<V>>>>> where V : RealNumber<V>, V : NumberField<V> {
         return frameworkAsyncScope.future {
             return@future solveMILPWithSolutionPoolAs(
                 metaModel = metaModel,
@@ -916,7 +931,7 @@ interface ColumnGenerationSolver {
     fun <V> solveMILPWithSolutionPoolAsAsync(
         metaModel: LinearMetaModel<V>,
         options: FrameworkSolveOptions
-    ): CompletableFuture<Ret<Pair<FeasibleSolverOutput<V>, List<List<V>>>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): CompletableFuture<Ret<Pair<SolveReport<V>, List<List<V>>>>> where V : RealNumber<V>, V : NumberField<V> {
         return frameworkAsyncScope.future {
             return@future solveMILPWithSolutionPoolAs(
                 metaModel = metaModel,
@@ -934,15 +949,15 @@ interface ColumnGenerationSolver {
      * @param V 目标数值类型 / Target number type
     */
     data class LPResultOf<V>(
-        val result: FeasibleSolverOutput<V>,
+        val result: SolveReport<V>,
         val dualSolution: kotlin.collections.Map<Constraint<Flt64, Linear>, Flt64>
     ) where V : RealNumber<V>, V : NumberField<V> {
-        val obj: Flt64 by result::obj
-        val solution: List<V> by result::solution
-        val time: Duration by result::time
-        val possibleBestObj by result::possibleBestObj
-        val gap: Flt64 by result::gap
-        val status: SolverStatus by result::status
+        val obj: Flt64 get() = (result.solution?.objective as? Flt64) ?: Flt64.zero
+        val solution: List<V> get() = result.values
+        val time: Duration get() = result.statistics.solveTime ?: Duration.ZERO
+        val possibleBestObj: Flt64 get() = result.statistics.bestBound ?: Flt64.zero
+        val gap: Flt64 get() = result.statistics.gap ?: Flt64.infinity
+        val status: SolverStatus get() = result.toSolverStatus()
     }
 
     /**

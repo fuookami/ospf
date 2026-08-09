@@ -12,7 +12,7 @@ import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.quantities.quantity.Quantity
 import fuookami.ospf.kotlin.quantities.unit.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.output.SolvingStatusCallBack
 import fuookami.ospf.kotlin.core.model.basic.RegistrationStatusCallBack
 import fuookami.ospf.kotlin.framework.solver.ColumnGenerationSolver
@@ -300,7 +300,7 @@ class VrptwApplicationServiceTest {
             toLogModel: Boolean,
             registrationStatusCallBack: RegistrationStatusCallBack?,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<FeasibleSolverOutput<Flt64>> {
+        ): Ret<SolveReport<Flt64>> {
             return networkSchedulingFailure("StubSolver does not support MILP")
         }
 

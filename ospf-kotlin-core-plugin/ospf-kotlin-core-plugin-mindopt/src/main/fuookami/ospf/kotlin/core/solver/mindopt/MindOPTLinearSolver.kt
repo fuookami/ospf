@@ -2,24 +2,43 @@
 @file:OptIn(kotlin.time.ExperimentalTime::class)
 package fuookami.ospf.kotlin.core.solver.mindopt
 
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.math.min
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.Duration
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.Duration.Companion.seconds
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.DurationUnit
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlinx.coroutines.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.nonNullConstraintPriorityAmount
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModelView
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.value.toSolverDouble
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.concept.copyIfNotNullOr
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.error.Err
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import com.alibaba.damo.mindopt.*
 
 /**
@@ -38,7 +57,7 @@ class MindOPTLinearSolver(
     override suspend operator fun invoke(
         model: LinearTriadModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<FeasibleSolverOutput<Flt64>> {
+    ): Ret<SolveReport<Flt64>> {
         when (val validation = model.identityValidation) {
             is Ok -> {}
             is Failed -> return Failed(validation.error)
@@ -59,7 +78,7 @@ class MindOPTLinearSolver(
         model: LinearTriadModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
         when (val validation = model.identityValidation) {
             is Ok -> {}
             is Failed -> return Failed(validation.error)
@@ -117,14 +136,14 @@ private class MindOPTLinearSolverImpl(
 
     private lateinit var mindoptVars: List<MDOVar>
     private lateinit var mindoptConstraints: List<MDOConstr>
-    private lateinit var output: FeasibleSolverOutput<Flt64>
+    private lateinit var output: SolveReport<Flt64>
 
     private var initialBestObj: Flt64? = null
     private var bestObj: Flt64? = null
     private var bestBound: Flt64? = null
     private var bestTime: Duration = Duration.ZERO
 
-    suspend operator fun invoke(model: LinearTriadModelView): Ret<FeasibleSolverOutput<Flt64>> {
+    suspend operator fun invoke(model: LinearTriadModelView): Ret<SolveReport<Flt64>> {
         mip = model.containsNotBinaryInteger
 
         val processes = arrayOf(
@@ -409,11 +428,11 @@ private class MindOPTLinearSolverImpl(
                 for (mindoptVar in mindoptVars) {
                     results.add(Flt64(mindoptVar.get(MDO.DoubleAttr.X)))
                 }
-                output = FeasibleSolverOutput<Flt64>(
-                    obj = Flt64(mindoptModel.get(MDO.DoubleAttr.ObjVal)),
-                    solution = results,
-                    time = mindoptModel.get(MDO.DoubleAttr.SolverTime).seconds,
-                    possibleBestObj = Flt64(
+                output = status.toSolveReport(
+                    objective = Flt64(mindoptModel.get(MDO.DoubleAttr.ObjVal)),
+                    values = results,
+                    solveTime = mindoptModel.get(MDO.DoubleAttr.SolverTime).seconds,
+                    bestBound = Flt64(
                         if (mip) {
                             mindoptModel.get(MDO.DoubleAttr.DualObjVal)
                         } else {
@@ -426,8 +445,7 @@ private class MindOPTLinearSolverImpl(
                         } else {
                             0.0
                         }
-                    ),
-                    status = status
+                    )
                 )
                 when (val result = callBack?.execIfContain(
                     point = Point.AnalyzingSolution,

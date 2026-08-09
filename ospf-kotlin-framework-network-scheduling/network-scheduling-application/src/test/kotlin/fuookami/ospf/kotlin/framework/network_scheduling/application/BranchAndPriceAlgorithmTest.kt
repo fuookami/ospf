@@ -2,33 +2,62 @@
 
 package fuookami.ospf.kotlin.framework.network_scheduling.application
 
+import fuookami.ospf.kotlin.core.solver.toSolveReport
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.test.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.Duration
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.DurationUnit
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.Instant
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlinx.coroutines.runBlocking
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.concept.RealNumber
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.quantities.quantity.Quantity
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.quantities.unit.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.intermediate.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.RegistrationStatusCallBack
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.iis.IISConfig
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.solver.ColumnGenerationSolver
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.model.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.TimeRange
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.gantt_scheduling.infrastructure.TimeWindow as SchedulingTimeWindow
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.network_scheduling.infrastructure.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.network_scheduling.domain.vrp.infrastructure.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.network_scheduling.domain.vrp.model.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.network_scheduling.domain.vrp.pricing.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.network_scheduling.domain.vrp.policy.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.network_scheduling.domain.vrp.service.VrptwValidator
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.network_scheduling.domain.route_compilation.shadow.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.network_scheduling.application.model.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.network_scheduling.application.service.*
 
 class BranchAndPriceAlgorithmTest {
@@ -567,7 +596,7 @@ class BranchAndPriceAlgorithmTest {
             toLogModel: Boolean,
             registrationStatusCallBack: RegistrationStatusCallBack?,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<FeasibleSolverOutput<Flt64>> {
+        ): Ret<SolveReport<Flt64>> {
             return networkSchedulingFailure("StubSolver does not support MILP")
         }
 
@@ -599,13 +628,12 @@ class BranchAndPriceAlgorithmTest {
         ): Ret<ColumnGenerationSolver.LPResultWithStatus> {
             val call = lpCall++
             if (call !in infeasibleCalls) {
-                val output = FeasibleSolverOutput<Flt64>(
-                    obj = Flt64.zero,
-                    solution = List(metaModel.tokens.tokens.size) { Flt64.zero },
-                    time = Duration.ZERO,
-                    possibleBestObj = Flt64.zero,
-                    gap = Flt64.zero,
-                    status = SolverStatus.Optimal
+                val output = SolverStatus.Optimal.toSolveReport(
+                    objective = Flt64.zero,
+                    values = List(metaModel.tokens.tokens.size) { Flt64.zero },
+                    solveTime = Duration.ZERO,
+                    bestBound = Flt64.zero,
+                    gap = Flt64.zero
                 )
                 return Ok(
                     ColumnGenerationSolver.LPResultWithStatus.Feasible(
@@ -645,7 +673,7 @@ class BranchAndPriceAlgorithmTest {
             toLogModel: Boolean,
             registrationStatusCallBack: RegistrationStatusCallBack?,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<FeasibleSolverOutput<Flt64>> {
+        ): Ret<SolveReport<Flt64>> {
             return networkSchedulingFailure("NonOptimalLpSolver does not support MILP")
         }
 
@@ -658,13 +686,12 @@ class BranchAndPriceAlgorithmTest {
         ): Ret<ColumnGenerationSolver.LPResult> {
             return ok(
                 ColumnGenerationSolver.LPResult(
-                    result = FeasibleSolverOutput(
-                        obj = Flt64.zero,
-                        solution = emptyList(),
-                        time = Duration.ZERO,
-                        possibleBestObj = Flt64.negativeInfinity,
-                        gap = Flt64.infinity,
-                        status = SolverStatus.Feasible
+                    result = SolverStatus.Feasible.toSolveReport(
+                        objective = Flt64.zero,
+                        values = emptyList(),
+                        solveTime = Duration.ZERO,
+                        bestBound = Flt64.negativeInfinity,
+                        gap = Flt64.infinity
                     ),
                     dualSolution = emptyMap()
                 )

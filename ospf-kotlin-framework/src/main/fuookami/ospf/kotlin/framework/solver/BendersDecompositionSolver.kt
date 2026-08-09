@@ -14,8 +14,9 @@ import kotlin.time.Duration
 import kotlinx.coroutines.future.future
 import fuookami.ospf.kotlin.core.model.basic.RegistrationStatusCallBack
 import fuookami.ospf.kotlin.core.model.mechanism.*
-import fuookami.ospf.kotlin.core.solver.output.convertTo
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.convertTo as convertSolveReport
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
+import fuookami.ospf.kotlin.core.solver.toSolverStatus
 import fuookami.ospf.kotlin.core.solver.output.SolverOutput
 import fuookami.ospf.kotlin.core.solver.output.SolvingStatusCallBack
 import fuookami.ospf.kotlin.core.solver.value.IntoValue
@@ -76,33 +77,12 @@ private fun <V> QuadraticInequalityOf<Flt64>.convertTo(converter: IntoValue<V>):
  * @param V 目标数值类型 / Target number type
  * @return 转换后的求解器输出 / Solver output in target number type
 */
+@Suppress("UNCHECKED_CAST")
 private fun <V> SolverOutput.convertTo(converter: IntoValue<V>): SolverOutput
         where V : RealNumber<V>, V : NumberField<V> {
     return when (this) {
-        is FeasibleSolverOutput<*> -> {
-            val targetValues = solution.map { value ->
-                if (value is Flt64) {
-                    converter.intoValue(value)
-                } else {
-                    return this
-                }
-            }
-            FeasibleSolverOutput(
-                obj = obj,
-                solution = targetValues,
-                time = time,
-                possibleBestObj = possibleBestObj,
-                gap = gap,
-                status = status,
-                iterations = iterations,
-                nodeCount = nodeCount,
-                bestBound = bestBound,
-                mipGap = mipGap,
-                solveTime = solveTime,
-                objValueOrNull = converter.intoValue(obj),
-                possibleBestObjValueOrNull = converter.intoValue(possibleBestObj),
-                bestBoundValueOrNull = bestBound?.let { converter.intoValue(it) }
-            )
+        is SolveReport<*> -> {
+            (this as SolveReport<Flt64>).convertSolveReport(converter)
         }
 
         else -> this
@@ -221,15 +201,15 @@ interface LinearBendersDecompositionSolver {
      * @property cuts 割平面列表 / Cut list
     */
     data class LinearFeasibleResult(
-        val result: FeasibleSolverOutput<Flt64>,
+        val result: SolveReport<Flt64>,
         val dualSolution: Map<Constraint<Flt64, Linear>, Flt64>,
         override val cuts: List<LinearInequality<Flt64>>?
     ) : LinearSubResult {
-        val obj: Flt64 by result::obj
-        val solution: List<Flt64> by result::solution
-        val time: Duration by result::time
-        val possibleBestObj by result::possibleBestObj
-        val gap: Flt64 by result::gap
+        val obj: Flt64 get() = result.solution?.objective ?: Flt64.zero
+        val solution: List<Flt64> get() = result.values
+        val time: Duration get() = result.statistics.solveTime ?: Duration.ZERO
+        val possibleBestObj: Flt64 get() = result.statistics.bestBound ?: Flt64.zero
+        val gap: Flt64 get() = result.statistics.gap ?: Flt64.infinity
     }
 
     /**
@@ -579,15 +559,15 @@ interface LinearBendersDecompositionSolver {
      * @property cuts 转换后的割平面列表 / Cut list in target number type
     */
     data class LinearFeasibleResultOf<V>(
-        val result: FeasibleSolverOutput<V>,
+        val result: SolveReport<V>,
         val dualSolution: kotlin.collections.Map<Constraint<Flt64, Linear>, Flt64>,
         override val cuts: List<LinearInequality<V>>?
     ) : LinearSubResultOf<V> where V : RealNumber<V>, V : NumberField<V> {
-        val obj: Flt64 by result::obj
-        val solution: List<V> by result::solution
-        val time: Duration by result::time
-        val possibleBestObj by result::possibleBestObj
-        val gap: Flt64 by result::gap
+        val obj: Flt64 get() = (result.solution?.objective as? Flt64) ?: Flt64.zero
+        val solution: List<V> get() = result.values
+        val time: Duration get() = result.statistics.solveTime ?: Duration.ZERO
+        val possibleBestObj: Flt64 get() = result.statistics.bestBound ?: Flt64.zero
+        val gap: Flt64 get() = result.statistics.gap ?: Flt64.infinity
     }
 
     /**
@@ -640,7 +620,7 @@ interface LinearBendersDecompositionSolver {
                     is LinearFeasibleResult -> {
                         Ok(
                             LinearFeasibleResultOf(
-                                result = value.result.convertTo(converter),
+                                result = value.result.convertSolveReport(converter),
                                 dualSolution = value.dualSolution,
                                 cuts = value.cuts?.map { it.convertTo(converter) }
                             )
@@ -992,16 +972,16 @@ interface QuadraticBendersDecompositionSolver : LinearBendersDecompositionSolver
      * @property quadraticCuts 二次割平面列表 / Quadratic cut list
     */
     data class QuadraticFeasibleResult(
-        val result: FeasibleSolverOutput<Flt64>,
+        val result: SolveReport<Flt64>,
         val dualSolution: kotlin.collections.Map<Constraint<Flt64, Quadratic>, Flt64>,
         override val linearCuts: List<LinearInequality<Flt64>>?,
         override val quadraticCuts: List<QuadraticInequalityOf<Flt64>>?,
     ) : QuadraticSubResult {
-        val obj: Flt64 by result::obj
-        val solution: List<Flt64> by result::solution
-        val time: Duration by result::time
-        val possibleBestObj by result::possibleBestObj
-        val gap: Flt64 by result::gap
+        val obj: Flt64 get() = result.solution?.objective ?: Flt64.zero
+        val solution: List<Flt64> get() = result.values
+        val time: Duration get() = result.statistics.solveTime ?: Duration.ZERO
+        val possibleBestObj: Flt64 get() = result.statistics.bestBound ?: Flt64.zero
+        val gap: Flt64 get() = result.statistics.gap ?: Flt64.infinity
     }
 
     /**
@@ -1356,16 +1336,16 @@ interface QuadraticBendersDecompositionSolver : LinearBendersDecompositionSolver
      * @property quadraticCuts 转换后的二次割平面列表 / Quadratic cut list in target number type
     */
     data class QuadraticFeasibleResultOf<V>(
-        val result: FeasibleSolverOutput<V>,
+        val result: SolveReport<V>,
         val dualSolution: Map<Constraint<Flt64, Quadratic>, Flt64>,
         override val linearCuts: List<LinearInequality<V>>?,
         override val quadraticCuts: List<QuadraticInequalityOf<V>>?
     ) : QuadraticSubResultOf<V> where V : RealNumber<V>, V : NumberField<V> {
-        val obj: Flt64 by result::obj
-        val solution: List<V> by result::solution
-        val time: Duration by result::time
-        val possibleBestObj by result::possibleBestObj
-        val gap: Flt64 by result::gap
+        val obj: Flt64 get() = (result.solution?.objective as? Flt64) ?: Flt64.zero
+        val solution: List<V> get() = result.values
+        val time: Duration get() = result.statistics.solveTime ?: Duration.ZERO
+        val possibleBestObj: Flt64 get() = result.statistics.bestBound ?: Flt64.zero
+        val gap: Flt64 get() = result.statistics.gap ?: Flt64.infinity
     }
 
     /**
@@ -1420,7 +1400,7 @@ interface QuadraticBendersDecompositionSolver : LinearBendersDecompositionSolver
                     is QuadraticFeasibleResult -> {
                         Ok(
                             QuadraticFeasibleResultOf(
-                                result = value.result.convertTo(converter),
+                                result = value.result.convertSolveReport(converter),
                                 dualSolution = value.dualSolution,
                                 linearCuts = value.linearCuts?.map { it.convertTo(converter) },
                                 quadraticCuts = value.quadraticCuts?.map { it.convertTo(converter) }

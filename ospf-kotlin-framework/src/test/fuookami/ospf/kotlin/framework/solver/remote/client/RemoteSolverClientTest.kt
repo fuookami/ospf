@@ -4,6 +4,8 @@ package fuookami.ospf.kotlin.framework.solver.remote.client
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -309,6 +311,82 @@ class RemoteSolverClientTest {
     }
 
     @Test
+    fun cancellationDuringRemoteSliceStopsOnceAndReturnsCancelled() = runBlocking {
+        val reachedAwait = CompletableDeferred<Unit>()
+        val releaseAwait = CompletableDeferred<Unit>()
+        val port = RecordingExecutionPort(
+            sliceResults = mutableListOf(
+                SliceResult(
+                    sliceId = SliceId.of("slice-1"),
+                    completed = false,
+                    feasible = false,
+                    objectiveValue = null,
+                    gap = null,
+                    elapsed = 10.milliseconds
+                )
+            ),
+            awaitGate = releaseAwait,
+            onAwait = { reachedAwait.complete(Unit) }
+        )
+        val client = RemoteSolverClient(port)
+        val handle = SolveHandle.create()
+        val pending = async {
+            client.solve(
+                payload = payload(),
+                taskId = TaskId.of("task-1"),
+                sliceId = SliceId.of("slice-1"),
+                nodeId = NodeId.of("node-1"),
+                tenantId = TenantId.of("tenant-1"),
+                quantum = 100.milliseconds,
+                maxRounds = UInt64(2),
+                cancellationToken = handle.token
+            )
+        }
+
+        reachedAwait.await()
+        assertTrue(handle.cancel(CancellationSource.Caller, "caller cancelled").ok)
+        assertTrue(handle.cancel(CancellationSource.Remote, "duplicate cancellation").ok)
+        assertEquals(1, port.stopCalls)
+
+        releaseAwait.complete(Unit)
+        val result = pending.await()
+        assertTrue(result is Ok)
+        assertEquals(RemoteTerminationReason.CANCELLED, (result as Ok).value.terminationReason)
+        assertEquals(1, port.stopCalls)
+    }
+
+    /**
+     * 验证远程切片失败时仍停止执行并释放取消监听。
+     * Verifies a remote slice failure still stops execution and releases the cancellation listener.
+     */
+    @Test
+    fun solveStopsAndCleansCancellationListenerAfterSliceFailure() = runBlocking {
+        val handle = SolveHandle.create()
+        val port = RecordingExecutionPort(
+            sliceResults = mutableListOf(),
+            awaitFailure = true
+        )
+        val client = RemoteSolverClient(port)
+
+        val result = client.solve(
+            payload = payload(),
+            taskId = TaskId.of("task-1"),
+            sliceId = SliceId.of("slice-1"),
+            nodeId = NodeId.of("node-1"),
+            tenantId = TenantId.of("tenant-1"),
+            quantum = 100.milliseconds,
+            maxRounds = UInt64.one,
+            exportCheckpointEachRound = false,
+            cancellationToken = handle.token
+        )
+
+        assertTrue(result is Failed)
+        assertEquals(1, port.stopCalls)
+        assertTrue(handle.cancel(CancellationSource.Caller, "after failure").ok)
+        assertEquals(1, port.stopCalls)
+    }
+
+    @Test
     fun remoteLinearSolverNormalizesPayload() = runBlocking {
         val port = RecordingExecutionPort(
             sliceResults = mutableListOf(
@@ -399,6 +477,29 @@ class RemoteSolverClientTest {
     }
 
     @Test
+    fun remoteLinearSolverReturnsSerializerFailureForMalformedIdentity() = runBlocking {
+        val port = RecordingExecutionPort(sliceResults = mutableListOf())
+        val solver = RemoteLinearSolver(
+            delegate = StubLinearSolver(),
+            executionPort = port
+        )
+        val malformedModel = emptyLinearModel().copy(
+            objective = LinearObjective(
+                category = ObjectCategory.Minimum,
+                objective = emptyList(),
+                id = ObjectiveId("objective:malformed-remote-linear"),
+                identityScope = ModelElementScope.Stable
+            ),
+            identityValidation = ok
+        )
+
+        val result = solver.solveReport(malformedModel)
+
+        assertTrue(result is Failed)
+        assertEquals(0, port.startCalls)
+    }
+
+    @Test
     fun remoteQuadraticSolverPropagatesIdentityFatalWithoutCallingExecutionPort() = runBlocking {
         val port = RecordingExecutionPort(
             sliceResults = mutableListOf(
@@ -423,6 +524,29 @@ class RemoteSolverClientTest {
         val result = solver.solveReport(invalidModel)
 
         assertTrue(result is Fatal)
+        assertEquals(0, port.startCalls)
+    }
+
+    @Test
+    fun remoteQuadraticSolverReturnsSerializerFailureForMalformedIdentity() = runBlocking {
+        val port = RecordingExecutionPort(sliceResults = mutableListOf())
+        val solver = RemoteQuadraticSolver(
+            delegate = StubQuadraticSolver(),
+            executionPort = port
+        )
+        val malformedModel = emptyQuadraticModel().copy(
+            objective = QuadraticObjective(
+                category = ObjectCategory.Minimum,
+                objective = emptyList(),
+                id = ObjectiveId("objective:malformed-remote-quadratic"),
+                identityScope = ModelElementScope.Stable
+            ),
+            identityValidation = ok
+        )
+
+        val result = solver.solveReport(malformedModel)
+
+        assertTrue(result is Failed)
         assertEquals(0, port.startCalls)
     }
 
@@ -544,8 +668,8 @@ class RemoteSolverClientTest {
         val result = solver.invoke(emptyLinearModel())
 
         check(result is Ok)
-        assertEquals(Flt64.zero, result.value.obj)
-        assertEquals(emptyList<Flt64>(), result.value.solution)
+        assertEquals(Flt64.zero, result.value.solution?.objective)
+        assertEquals(emptyList<Flt64>(), result.value.values)
         assertEquals(1, port.startCalls)
     }
 
@@ -584,9 +708,9 @@ class RemoteSolverClientTest {
         val result = solver.invoke(emptyLinearModel())
 
         check(result is Ok)
-        assertEquals(Flt64.zero, result.value.obj)
-        assertEquals(emptyList<Flt64>(), result.value.solution)
-        assertEquals(SolverStatus.Feasible, result.value.status)
+        assertEquals(Flt64.zero, result.value.solution?.objective)
+        assertEquals(emptyList<Flt64>(), result.value.values)
+        assertEquals(SolverStatus.Feasible, result.value.toSolverStatus())
     }
 
     @Test
@@ -726,6 +850,163 @@ class RemoteSolverClientTest {
         assertEquals(1, result.value.diagnostics.errors.size)
     }
 
+    @Test
+    fun remoteQuadraticSolveReportRetainsAuditAndTerminalFields() = runBlocking {
+        val provenance = mapOf(
+            "solverId" to "scip",
+            "backend" to "scip",
+            "pluginVersion" to "plugin-2",
+            "nativeVersion" to "native-9",
+            "threads" to "4",
+            "randomSeed" to "17",
+            "deterministic" to "true"
+        )
+        val fingerprints = mapOf(
+            "model" to "quadratic-model-digest",
+            "solver" to "quadratic-solver-digest"
+        )
+        val fingerprintSchemas = mapOf(
+            "model" to "1.0",
+            "solver" to "2.0"
+        )
+        val statistics = mapOf(
+            "bestBound" to "7.5",
+            "gap" to "0.25",
+            "iterations" to "12",
+            "nodes" to "34"
+        )
+        val port = RecordingExecutionPort(
+            sliceResults = mutableListOf(
+                SliceResult(
+                    sliceId = SliceId.of("slice-1"),
+                    completed = true,
+                    feasible = true,
+                    objectiveValue = Flt64(8.0),
+                    gap = Flt64(0.25),
+                    elapsed = 7.milliseconds,
+                    solutionPresence = RemoteSolutionPresence.OPTIMAL,
+                    proofStatus = RemoteProofStatus.VERIFIED
+                )
+            ),
+            finalResult = SolveResult(
+                feasible = true,
+                optimal = true,
+                objectiveValue = Flt64(8.0),
+                gap = Flt64(0.25),
+                elapsed = 7.milliseconds,
+                schemaVersion = "2.0",
+                problemStatus = RemoteProblemStatus.FEASIBLE,
+                solutionPresence = RemoteSolutionPresence.OPTIMAL,
+                proofStatus = RemoteProofStatus.VERIFIED,
+                terminationReason = RemoteTerminationReason.COMPLETED,
+                provenance = provenance,
+                fingerprints = fingerprints,
+                fingerprintSchemas = fingerprintSchemas,
+                statistics = statistics,
+                runId = "run-1",
+                attemptId = "attempt-1"
+            )
+        )
+        val solver = RemoteQuadraticSolver(
+            delegate = StubQuadraticSolver(),
+            executionPort = port,
+            runtimeConfig = RemoteSolverRuntimeConfig(
+                tenantId = TenantId.of("tenant-1"),
+                nodeId = NodeId.of("node-1"),
+                taskIdProvider = { TaskId.of("task-1") },
+                sliceIdProvider = { SliceId.of("slice-1") }
+            )
+        )
+
+        val result = solver.solveReport(emptyQuadraticModel())
+
+        check(result is Ok)
+        assertEquals(SolveRunId("run-1"), result.value.runId)
+        assertEquals(ProblemStatus.Feasible, result.value.problemStatus)
+        assertEquals(TerminationReason.Completed, result.value.terminationReason)
+        assertEquals(SolutionPresence.Optimal, result.value.solutionPresence)
+        assertEquals(ProofStatus.Verified, result.value.proof.status)
+        assertEquals(Flt64(8.0), result.value.solution?.objective)
+        assertEquals(Flt64(7.5), result.value.statistics.bestBound)
+        assertEquals(Flt64(0.25), result.value.statistics.gap)
+        assertEquals(12uL, result.value.statistics.iterations)
+        assertEquals(34uL, result.value.statistics.nodes)
+        assertEquals("2.0", result.value.fingerprints.solver?.schemaVersion)
+        assertEquals("plugin-2", result.value.provenance?.descriptor?.pluginVersion)
+        assertEquals(4, result.value.provenance?.threadCount)
+        assertEquals(17L, result.value.provenance?.randomSeed)
+        assertEquals(setOf(SolverModelType.QP, SolverModelType.QCP), result.value.provenance?.descriptor?.capabilities?.modelTypes)
+    }
+
+    @Test
+    fun remoteLinearAndQuadraticAdaptersPreserveMissingGapAndBestBoundAsNull() = runBlocking {
+        val linearPort = RecordingExecutionPort(
+            sliceResults = mutableListOf(
+                SliceResult(
+                    sliceId = SliceId.of("slice-1"),
+                    completed = true,
+                    feasible = true,
+                    objectiveValue = Flt64(3.0),
+                    gap = null,
+                    elapsed = 4.milliseconds,
+                    terminationReason = RemoteTerminationReason.TIME_LIMIT,
+                    solutionPresence = RemoteSolutionPresence.INCUMBENT
+                )
+            ),
+            finalResult = SolveResult(
+                feasible = true,
+                optimal = false,
+                objectiveValue = Flt64(3.0),
+                gap = null,
+                elapsed = 4.milliseconds,
+                problemStatus = RemoteProblemStatus.FEASIBLE,
+                terminationReason = RemoteTerminationReason.TIME_LIMIT,
+                solutionPresence = RemoteSolutionPresence.INCUMBENT
+            )
+        )
+        val linear = RemoteLinearSolver(
+            delegate = StubLinearSolver(),
+            executionPort = linearPort
+        )
+        val linearResult = linear.solveReport(emptyLinearModel())
+        assertTrue(linearResult is Ok)
+        assertNull((linearResult as Ok).value.statistics.gap)
+        assertNull(linearResult.value.statistics.bestBound)
+
+        val quadraticPort = RecordingExecutionPort(
+            sliceResults = mutableListOf(
+                SliceResult(
+                    sliceId = SliceId.of("slice-1"),
+                    completed = true,
+                    feasible = true,
+                    objectiveValue = Flt64(3.0),
+                    gap = null,
+                    elapsed = 4.milliseconds,
+                    terminationReason = RemoteTerminationReason.TIME_LIMIT,
+                    solutionPresence = RemoteSolutionPresence.INCUMBENT
+                )
+            ),
+            finalResult = SolveResult(
+                feasible = true,
+                optimal = false,
+                objectiveValue = Flt64(3.0),
+                gap = null,
+                elapsed = 4.milliseconds,
+                problemStatus = RemoteProblemStatus.FEASIBLE,
+                terminationReason = RemoteTerminationReason.TIME_LIMIT,
+                solutionPresence = RemoteSolutionPresence.INCUMBENT
+            )
+        )
+        val quadratic = RemoteQuadraticSolver(
+            delegate = StubQuadraticSolver(),
+            executionPort = quadraticPort
+        )
+        val quadraticResult = quadratic.solveReport(emptyQuadraticModel())
+        assertTrue(quadraticResult is Ok)
+        assertNull((quadraticResult as Ok).value.statistics.gap)
+        assertNull(quadraticResult.value.statistics.bestBound)
+    }
+
     /**
      * 验证严格 v2 artifact 的目标冲突不会被客户端静默接受。
      * Verifies that a strict v2 artifact objective conflict is rejected by the client.
@@ -851,7 +1132,10 @@ class RemoteSolverClientTest {
         private val sliceResults: MutableList<SliceResult>,
         private val finalResult: SolveResult? = null,
         private val checkpoints: MutableList<ObjectRef?> = mutableListOf(),
-        private val stopFailure: RuntimeException? = null
+        private val stopFailure: RuntimeException? = null,
+        private val awaitGate: CompletableDeferred<Unit>? = null,
+        private val onAwait: (() -> Unit)? = null,
+        private val awaitFailure: Boolean = false
     ) : SolverExecutionPort {
         var startCalls = 0
         var resumeCalls = 0
@@ -895,6 +1179,11 @@ class RemoteSolverClientTest {
 
         override suspend fun awaitSliceEnd(handle: ExecutionHandle, quantum: Duration): Ret<SliceResult> {
             this.quantum.add(quantum)
+            onAwait?.invoke()
+            awaitGate?.await()
+            if (awaitFailure) {
+                return Failed(ErrorCode.ApplicationFailed, "await failed")
+            }
             return Ok(sliceResults.removeFirst())
         }
 
@@ -921,7 +1210,7 @@ class RemoteSolverClientTest {
         override suspend fun invoke(
             model: LinearTriadModelView,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<FeasibleSolverOutput<Flt64>> {
+        ): Ret<SolveReport<Flt64>> {
             throw UnsupportedOperationException("Local solve is not used in remote wrapper tests.")
         }
 
@@ -929,7 +1218,7 @@ class RemoteSolverClientTest {
             model: LinearTriadModelView,
             solutionAmount: UInt64,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+        ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
             throw UnsupportedOperationException("Local solve is not used in remote wrapper tests.")
         }
     }
@@ -941,7 +1230,7 @@ class RemoteSolverClientTest {
         override suspend fun invoke(
             model: QuadraticTetradModelView,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<FeasibleSolverOutput<Flt64>> {
+        ): Ret<SolveReport<Flt64>> {
             throw UnsupportedOperationException("Local solve is not used in remote wrapper tests.")
         }
 
@@ -949,7 +1238,7 @@ class RemoteSolverClientTest {
             model: QuadraticTetradModelView,
             solutionAmount: UInt64,
             solvingStatusCallBack: SolvingStatusCallBack?
-        ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+        ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
             throw UnsupportedOperationException("Local solve is not used in remote wrapper tests.")
         }
     }

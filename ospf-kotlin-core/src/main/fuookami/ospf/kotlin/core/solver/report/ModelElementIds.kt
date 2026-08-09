@@ -9,12 +9,13 @@ import fuookami.ospf.kotlin.core.model.intermediate.QuadraticTetradModelView
  * Resolve the variable identity available to a diagnostic provider. /
  * 解析诊断提供者当前可用的变量身份。
  *
- * Origin-backed IDs are reusable inside the existing model pipeline. The fallback is explicitly
- * model-local until OSPF-SOL-013 carries a first-class ID through normalization and serialization. /
- * 有 origin 的 ID 可在现有模型流水线内复用；在 OSPF-SOL-013 将一等 ID 贯穿规范化和序列化前，
- * fallback 明确只保证模型内有效。
+ * An explicit variable ID may carry stable identity. Keys synthesized from the process-local origin
+ * identifier or variable index are pipeline-local diagnostic keys; they must not be promoted to a
+ * cross-rebuild identity. /
+ * 显式变量 ID 可以承载稳定身份；由进程内 origin 标识或变量索引生成的键只用于当前流水线诊断，
+ * 不得提升为跨重建身份。
  *
- * @return 变量稳定标识 / Stable variable identifier
+ * @return 变量诊断标识 / Diagnostic variable identifier
  */
 fun Variable.diagnosticVariableId(): VariableId {
     return id ?: VariableId(
@@ -26,12 +27,12 @@ fun Variable.diagnosticVariableId(): VariableId {
  * Resolve a linear-row identity for native diagnostics. /
  * 解析原生诊断使用的线性行身份。
  *
- * Row indices are retained only as a model-local disambiguator. They must not be presented as the
- * final cross-rebuild identity before OSPF-SOL-013 is complete. /
- * 行号只作为模型内消歧信息；在 OSPF-SOL-013 完成前不得将其当作跨重建最终身份。
+ * Row indices are retained only as a model-local disambiguator. Unless an explicit stable ID is
+ * available, they must not be presented as a cross-rebuild identity. /
+ * 行号只作为模型内消歧信息；除非存在显式稳定 ID，否则不得将其当作跨重建身份。
  *
  * @param index 模型约束行索引 / Model constraint row index
- * @return 线性约束稳定标识 / Stable linear constraint identifier
+ * @return 线性约束诊断标识 / Diagnostic linear constraint identifier
  */
 fun LinearTriadModelView.diagnosticConstraintId(index: Int): ConstraintId {
     constraints.ids.getOrNull(index)?.let { return it }
@@ -49,7 +50,7 @@ fun LinearTriadModelView.diagnosticConstraintId(index: Int): ConstraintId {
  * Resolve a quadratic-row identity for native diagnostics. / 解析原生诊断使用的二次行身份。
  *
  * @param index 模型约束行索引 / Model constraint row index
- * @return 二次约束稳定标识 / Stable quadratic constraint identifier
+ * @return 二次约束诊断标识 / Diagnostic quadratic constraint identifier
  */
 fun QuadraticTetradModelView.diagnosticConstraintId(index: Int): ConstraintId {
     constraints.ids.getOrNull(index)?.let { return it }

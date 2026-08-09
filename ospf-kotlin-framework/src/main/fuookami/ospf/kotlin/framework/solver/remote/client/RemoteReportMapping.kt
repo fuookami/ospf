@@ -11,7 +11,7 @@ import fuookami.ospf.kotlin.utils.functional.Try
 import fuookami.ospf.kotlin.utils.functional.ok
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.solver.remote.domain.*
 
@@ -486,7 +486,7 @@ private fun Map<String, String>.toRemoteEvidence(): Ret<InfeasibilityEvidence?> 
 }
 
 internal fun SolveResult.toRemoteSolveReport(
-    output: FeasibleSolverOutput<Flt64>?,
+    output: SolveReport<Flt64>?,
     modelTypes: Set<SolverModelType>
 ): Ret<SolveReport<Flt64>> {
     return when (val diagnostics = diagnostics.toRemoteDiagnostics()) {
@@ -506,7 +506,7 @@ internal fun SolveResult.toRemoteSolveReport(
                     terminationReason = terminationReason.toCoreReason(),
                     solutionPresence = solutionPresence.toCorePresence(),
                     solution = output?.let {
-                        SolveSolution(values = it.solution, objective = it.obj)
+                        SolveSolution(values = it.values, objective = it.solution?.objective)
                     },
                     proof = SolveProof(
                         status = proofStatus.toCoreProof(),

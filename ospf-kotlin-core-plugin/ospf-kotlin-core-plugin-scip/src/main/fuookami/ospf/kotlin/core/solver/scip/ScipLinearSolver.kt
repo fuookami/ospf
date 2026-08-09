@@ -54,6 +54,7 @@ class ScipLinearSolver(
     override val descriptor = SolverDescriptor(
         solverId = "scip",
         backendName = "SCIP",
+        backendVersion = ScipSolver.runtimeVersion(),
         pluginVersion = ScipLinearSolver::class.java.`package`.implementationVersion,
         capabilities = SolverCapabilities(
             modelTypes = setOf(SolverModelType.LP, SolverModelType.MIP),
@@ -75,7 +76,15 @@ class ScipLinearSolver(
     override suspend operator fun invoke(
         model: LinearTriadModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<FeasibleSolverOutput<Flt64>> {
+    ): Ret<SolveReport<Flt64>> {
+        return invoke(model, solvingStatusCallBack, null)
+    }
+
+    override suspend fun invoke(
+        model: LinearTriadModelView,
+        solvingStatusCallBack: SolvingStatusCallBack?,
+        cancellationToken: CancellationToken?
+    ): Ret<SolveReport<Flt64>> {
         when (val validation = model.identityValidation) {
             is Ok -> {}
             is Failed -> return Failed(validation.error)
@@ -84,11 +93,14 @@ class ScipLinearSolver(
         return ScipLinearSolverImpl(
             config = config,
             callBack = callBack,
-            statusCallBack = solvingStatusCallBack
+            statusCallBack = solvingStatusCallBack,
+            cancellationToken = cancellationToken
         ).use { impl ->
             val result = impl(model)
             cleanupAfterSolverRun()
-            result
+            result.map { report ->
+                report.withLinearBackendMetadata(model, config, descriptor)
+            }
         }
     }
 
@@ -96,9 +108,18 @@ class ScipLinearSolver(
         model: LinearTriadModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
+        return invoke(model, solutionAmount, solvingStatusCallBack, null)
+    }
+
+    override suspend fun invoke(
+        model: LinearTriadModelView,
+        solutionAmount: UInt64,
+        solvingStatusCallBack: SolvingStatusCallBack?,
+        cancellationToken: CancellationToken?
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
         return if (solutionAmount leq UInt64.one) {
-            this(model).map { it to emptyList() }
+            this(model, solvingStatusCallBack, cancellationToken).map { it to emptyList() }
         } else {
             val results = ArrayList<List<Flt64>>()
             ScipLinearSolverImpl(
@@ -132,11 +153,14 @@ class ScipLinearSolver(
                         }
                         ok
                     },
-                statusCallBack = solvingStatusCallBack
+                statusCallBack = solvingStatusCallBack,
+                cancellationToken = cancellationToken
             ).use { impl ->
                 val result = impl(model).map { it to results }
                 cleanupAfterSolverRun()
-                result
+                result.map { (report, solutions) ->
+                    report.withLinearBackendMetadata(model, config, descriptor) to solutions
+                }
             }
         }
     }
@@ -154,13 +178,14 @@ class ScipLinearSolver(
 private class ScipLinearSolverImpl(
     private val config: SolverConfig,
     private val callBack: ScipSolverCallBack? = null,
-    private val statusCallBack: SolvingStatusCallBack? = null
+    private val statusCallBack: SolvingStatusCallBack? = null,
+    private val cancellationToken: CancellationToken? = null
 ) : ScipSolver() {
     private var mip: Boolean = false
 
     private lateinit var scipVars: List<jscip.Variable>
     private lateinit var scipConstraints: List<jscip.Constraint>
-    private lateinit var output: FeasibleSolverOutput<Flt64>
+    private lateinit var output: SolveReport<Flt64>
     private var initialBestObj: Flt64? = null
     private var bestObj: Flt64? = null
     private var bestBound: Flt64? = null
@@ -176,15 +201,18 @@ private class ScipLinearSolverImpl(
         super.close()
     }
 
-    suspend operator fun invoke(model: LinearTriadModelView): Ret<FeasibleSolverOutput<Flt64>> {
+    suspend operator fun invoke(model: LinearTriadModelView): Ret<SolveReport<Flt64>> {
+        if (cancellationToken?.isCancellationRequested == true) {
+            return Ok(cancelledSolveReport(cancellationToken.record?.reason))
+        }
         mip = model.containsNotBinaryInteger
-        val processes = arrayOf(
-            { it.init(model.name) },
-            { it.dump(model) },
-            { it.configure(model) },
-            { it.solve(config.threadNum) },
-            ScipLinearSolverImpl::analyzeStatus,
-            { it.analyzeSolution(model) }
+        val processes: Array<suspend (ScipLinearSolverImpl) -> Try> = arrayOf(
+            { solver -> solver.init(model.name) },
+            { solver -> solver.dump(model) },
+            { solver -> solver.configure(model) },
+            { solver -> solver.solve(config.threadNum) },
+            { solver -> solver.analyzeStatus(cancellationToken) },
+            { solver -> solver.analyzeSolution(model) }
         )
         for (process in processes) {
             when (val result = process(this)) {
@@ -221,7 +249,12 @@ private class ScipLinearSolverImpl(
         for (col in model.variables.indices) {
             vars.add(
                 scip.createVar(
-                    nativeElementName(model.variables[col].id?.value, variableDumpingData.names[col], "variable"),
+                    nativeElementName(
+                        identityId = model.variables[col].id?.value,
+                        fallbackName = variableDumpingData.names[col],
+                        category = "variable",
+                        identityScope = model.variables[col].identityScope
+                    ),
                     variableDumpingData.lowerBounds[col],
                     variableDumpingData.upperBounds[col],
                     0.0,
@@ -288,9 +321,10 @@ private class ScipLinearSolverImpl(
                         val (coefficients, vars) = cells
                         val constraint = scip.createConsLinear(
                             nativeElementName(
-                                model.constraints.ids.getOrNull(it.first)?.value,
-                                model.constraints.names[it.first],
-                                "constraint"
+                                identityId = model.constraints.ids.getOrNull(it.first)?.value,
+                                fallbackName = model.constraints.names[it.first],
+                                category = "constraint",
+                                identityScope = model.constraints.identityScopeAt(it.first)
                             ),
                             vars.toTypedArray(),
                             coefficients.toDoubleArray(),
@@ -329,9 +363,10 @@ private class ScipLinearSolverImpl(
                     }
                     val constraint = scip.createConsLinear(
                         nativeElementName(
-                            model.constraints.ids.getOrNull(i)?.value,
-                            model.constraints.names[i],
-                            "constraint"
+                            identityId = model.constraints.ids.getOrNull(i)?.value,
+                            fallbackName = model.constraints.names[i],
+                            category = "constraint",
+                            identityScope = model.constraints.identityScopeAt(i)
                         ),
                         vars.toTypedArray(),
                         coefficients.toDoubleArray(),
@@ -388,11 +423,22 @@ private class ScipLinearSolverImpl(
      * @return 操作结果 / operation result
     */
     private suspend fun configure(model: LinearTriadModelView): Try {
+        when (val cancellation = registerCancellation(cancellationToken)) {
+            is Failed -> return cancellation
+            is Fatal -> return cancellation
+            else -> {}
+        }
         scip.setRealParam("limits/time", config.time.toDouble(DurationUnit.SECONDS))
         scip.setRealParam("limits/gap", config.gap.toSolverDouble("linear.config.gap"))
         scip.setIntParam("parallel/maxnthreads", config.threadNum.toInt())
+        when (val backendConfiguration = applyBackendConfiguration(config.backendConfiguration, config.threadNum.toInt())) {
+            is Failed -> return Failed(backendConfiguration.error)
+            is Fatal -> return Fatal(backendConfiguration.errors)
+            else -> Unit
+        }
 
-        if (config.notImprovementTime != null || callBack?.nativeCallback != null || statusCallBack != null) {
+        if (config.notImprovementTime != null || callBack?.nativeCallback != null ||
+            statusCallBack != null || cancellationToken != null) {
             object : EventHandler(
                 scip,
                 "solve-monitor-${UUID.randomUUID()}",
@@ -401,6 +447,10 @@ private class ScipLinearSolverImpl(
             ) {
                 override fun execute(event: Event) {
                     val solverModel = scip
+                    if (cancellationToken?.isCancellationRequested == true) {
+                        solverModel.interruptSolve()
+                        return
+                    }
                     try {
                         callBack?.nativeCallback?.invoke(this, solverModel, event)
                     } catch (_: Exception) {
@@ -508,19 +558,20 @@ private class ScipLinearSolverImpl(
             }
             val obj = Flt64(scip.getSolOrigObj(solution)) + model.objective.constant
             val possibleBestObj = Flt64(scip.dualbound) + model.objective.constant
-            val gap = if (status == SolverStatus.Optimal) {
-                if (mip) gap(obj, possibleBestObj) else Flt64.zero
+            val gap = if (mip) {
+                gap(obj, possibleBestObj)
+            } else if (status == SolverStatus.Optimal) {
+                Flt64.zero
             } else {
-                Flt64.infinity
+                null
             }
-            output = FeasibleSolverOutput<Flt64>(
-                obj = obj,
-                solution = results,
-                time = solvingTime!!,
-                possibleBestObj = possibleBestObj,
+            output = status.toSolveReport(
+                objective = obj,
+                values = results,
+                solveTime = solvingTime!!,
+                bestBound = possibleBestObj,
                 gap = gap,
-                status = status,
-                bestBound = possibleBestObj
+                terminationReason = terminationReason
             )
 
             when (val result = callBack?.execIfContain(
@@ -559,7 +610,12 @@ private class ScipLinearSolverImpl(
 
                 else -> {}
             }
-            failByStatus(status)
+            output = status.toSolveReport(
+                solveTime = solvingTime ?: kotlin.time.Duration.ZERO,
+                bestBound = Flt64(scip.dualbound),
+                terminationReason = terminationReason
+            )
+            ok
         }
     }
 }

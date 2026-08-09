@@ -367,15 +367,20 @@ object ConstraintProgrammingCheckpointCodec {
      */
     fun encode(envelope: ConstraintProgrammingCheckpointEnvelope): Ret<String> {
         return try {
+            val canonical = canonicalizeSnapshotEnvelope(envelope)
+            if (canonical.failed) {
+                return propagate(canonical)
+            }
+            val canonicalEnvelope = canonical.value!!
             // Encoding always emits the current v2 source marker. Legacy envelopes are read-only
             // migration values and must become ordinary v2 documents when persisted again. /
             // 编码始终输出当前 v2 来源标记；legacy envelope 仅作为迁移输入，再次持久化时必须成为普通 v2 文档。
-            val migratedFromLegacy = envelope.sourceFormat == "legacy-v1" || envelope.migratedFromLegacy
+            val migratedFromLegacy = canonicalEnvelope.sourceFormat == "legacy-v1" || canonicalEnvelope.migratedFromLegacy
             val normalized = withDigest(
-                envelope.copy(
+                canonicalEnvelope.copy(
                     sourceFormat = "v2",
                     migratedFromLegacy = migratedFromLegacy,
-                    checkpointId = if (migratedFromLegacy) "legacy-v1-migrated" else envelope.checkpointId
+                    checkpointId = if (migratedFromLegacy) "legacy-v1-migrated" else canonicalEnvelope.checkpointId
                 )
             )
             ok(json.encodeToString(ConstraintProgrammingCheckpointEnvelope.serializer(), normalized))
@@ -445,7 +450,7 @@ object ConstraintProgrammingCheckpointCodec {
         }
         val current = decode(encoded)
         if (!current.failed) {
-            return current
+            return canonicalizeSnapshotEnvelope(current.value!!)
         }
         decodeLegacyV2(encoded)?.let { return ok(it) }
         // A document carrying any v2 marker is never eligible for legacy fallback. /
@@ -468,11 +473,12 @@ object ConstraintProgrammingCheckpointCodec {
             }
             val snapshotJson = root["snapshotJson"]?.jsonPrimitive?.content
                 ?: return Failed(ErrorCode.IllegalArgument, "legacy checkpoint 缺少 snapshotJson / Legacy checkpoint is missing snapshotJson")
-            val valid = ConstraintProgrammingSnapshotCodec.validate(snapshotJson)
-            if (valid.failed) {
+            val canonical = ConstraintProgrammingSnapshotCodec.canonicalize(snapshotJson)
+            if (canonical.failed) {
                 return Failed(ErrorCode.IllegalArgument, "legacy checkpoint snapshot 无效 / Legacy checkpoint snapshot is invalid")
             }
-            val snapshotRoot = json.parseToJsonElement(snapshotJson).jsonObject
+            val canonicalSnapshotJson = canonical.value!!
+            val snapshotRoot = json.parseToJsonElement(canonicalSnapshotJson).jsonObject
             ok(
                 withDigest(
                     ConstraintProgrammingCheckpointEnvelope(
@@ -484,11 +490,11 @@ object ConstraintProgrammingCheckpointCodec {
                         modelName = root["modelName"]?.jsonPrimitive?.content
                             ?: snapshotRoot["name"]?.jsonPrimitive?.content
                             ?: "legacy",
-                        modelFingerprint = SolveFingerprinting.sha256(snapshotJson).value,
+                        modelFingerprint = SolveFingerprinting.sha256(canonicalSnapshotJson).value,
                         // Legacy v1 did not define the canonical solver fingerprint. / Legacy v1 没有定义规范化求解器指纹。
                         solverFingerprint = null,
                         createdAtEpochMs = 0L,
-                        snapshotJson = snapshotJson
+                        snapshotJson = canonicalSnapshotJson
                     )
                 )
             )
@@ -497,14 +503,51 @@ object ConstraintProgrammingCheckpointCodec {
         }
     }
 
+    private fun canonicalizeSnapshotEnvelope(
+        envelope: ConstraintProgrammingCheckpointEnvelope
+    ): Ret<ConstraintProgrammingCheckpointEnvelope> {
+        val canonical = ConstraintProgrammingSnapshotCodec.canonicalize(envelope.snapshotJson)
+        if (canonical.failed) {
+            return propagate(canonical)
+        }
+        val snapshotJson = canonical.value!!
+        return try {
+            val snapshotRoot = json.parseToJsonElement(snapshotJson).jsonObject
+            val normalized = envelope.copy(
+                identitySchemaVersion = snapshotRoot["identitySchemaVersion"]?.jsonPrimitive?.content
+                    ?: envelope.identitySchemaVersion,
+                identityNamespace = snapshotRoot["identityNamespace"]?.jsonPrimitive?.content
+                    ?: envelope.identityNamespace,
+                modelName = snapshotRoot["name"]?.jsonPrimitive?.content ?: envelope.modelName,
+                modelFingerprint = SolveFingerprinting.sha256(snapshotJson).value,
+                snapshotJson = snapshotJson
+            )
+            if (normalized == envelope) {
+                ok(envelope)
+            } else {
+                ok(withDigest(normalized))
+            }
+        } catch (error: Throwable) {
+            Failed(
+                ErrorCode.IllegalArgument,
+                "checkpoint snapshot 迁移失败：${error.message} / Checkpoint snapshot migration failed: ${error.message}"
+            )
+        }
+    }
+
     private fun decodeLegacyV2(encoded: String): ConstraintProgrammingCheckpointEnvelope? {
         return runCatching {
             val legacy = json.decodeFromString(LegacyV2Envelope.serializer(), encoded)
+            val canonical = ConstraintProgrammingSnapshotCodec.canonicalize(legacy.snapshotJson)
+            if (canonical.failed) {
+                return@runCatching null
+            }
+            val canonicalSnapshotJson = canonical.value!!
+            val snapshotRoot = json.parseToJsonElement(canonicalSnapshotJson).jsonObject
             if (legacy.schemaVersion != "2.0" || legacy.sourceFormat != "v2" ||
                 (!legacy.migratedFromLegacy && legacy.checkpointId == "legacy-v1") ||
                 (legacy.migratedFromLegacy && legacy.checkpointId != "legacy-v1-migrated") ||
                 SolveFingerprinting.sha256(legacy.snapshotJson).value != legacy.modelFingerprint ||
-                ConstraintProgrammingSnapshotCodec.validate(legacy.snapshotJson).failed ||
                 legacy.integritySha256.isBlank() ||
                 legacy.integritySha256 != digest(legacy.copy(integritySha256 = ""))
             ) {
@@ -515,17 +558,19 @@ object ConstraintProgrammingCheckpointCodec {
                 sourceFormat = legacy.sourceFormat,
                 migratedFromLegacy = legacy.migratedFromLegacy,
                 checkpointId = legacy.checkpointId,
-                identitySchemaVersion = legacy.identitySchemaVersion,
-                identityNamespace = legacy.identityNamespace,
-                modelName = legacy.modelName,
-                modelFingerprint = legacy.modelFingerprint,
+                identitySchemaVersion = snapshotRoot["identitySchemaVersion"]?.jsonPrimitive?.content
+                    ?: legacy.identitySchemaVersion,
+                identityNamespace = snapshotRoot["identityNamespace"]?.jsonPrimitive?.content
+                    ?: legacy.identityNamespace,
+                modelName = snapshotRoot["name"]?.jsonPrimitive?.content ?: legacy.modelName,
+                modelFingerprint = SolveFingerprinting.sha256(canonicalSnapshotJson).value,
                 configurationFingerprint = legacy.configurationFingerprint,
                 solverFingerprint = legacy.solverFingerprint,
                 runId = legacy.runId,
                 attemptId = legacy.attemptId,
                 parentCheckpointId = legacy.parentCheckpointId,
                 createdAtEpochMs = legacy.createdAtEpochMs,
-                snapshotJson = legacy.snapshotJson,
+                snapshotJson = canonicalSnapshotJson,
                 incumbent = legacy.incumbent,
                 bestBound = legacy.bestBound,
                 gap = legacy.gap,
@@ -659,16 +704,25 @@ object ConstraintProgrammingCheckpointCodec {
                 "checkpoint 完整性摘要无效 / Checkpoint integrity digest is invalid"
             )
         }
+        if (SolveFingerprinting.sha256(envelope.snapshotJson).value != envelope.modelFingerprint) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "checkpoint snapshot 与原始模型指纹不一致 / Checkpoint snapshot disagrees with its raw model fingerprint"
+            )
+        }
+        val canonicalEnvelope = canonicalizeSnapshotEnvelope(envelope)
+        if (canonicalEnvelope.failed) return propagate(canonicalEnvelope)
+        val normalizedEnvelope = canonicalEnvelope.value!!
         val encoded = ConstraintProgrammingSnapshotCodec.encode(snapshot)
         if (encoded.failed) return propagate(encoded)
         val fingerprint = SolveFingerprinting.sha256(encoded.value!!).value
-        if (fingerprint != envelope.modelFingerprint ||
-            snapshot.identitySchemaVersion != envelope.identitySchemaVersion ||
-            snapshot.identityNamespace != envelope.identityNamespace
+        if (fingerprint != normalizedEnvelope.modelFingerprint ||
+            snapshot.identitySchemaVersion != normalizedEnvelope.identitySchemaVersion ||
+            snapshot.identityNamespace != normalizedEnvelope.identityNamespace
         ) {
             return Failed(ErrorCode.IllegalArgument, "checkpoint 与模型身份或指纹不匹配 / Checkpoint model identity or fingerprint mismatch")
         }
-        if (envelope.snapshotJson != encoded.value!!) {
+        if (normalizedEnvelope.snapshotJson != encoded.value!!) {
             return Failed(
                 ErrorCode.IllegalArgument,
                 "checkpoint 内嵌 snapshot 与当前模型不一致 / Checkpoint embedded snapshot disagrees with the current model"
@@ -676,13 +730,13 @@ object ConstraintProgrammingCheckpointCodec {
         }
         val variableIds = snapshot.variables.mapTo(linkedSetOf()) { it.id.value }
         val constraintIds = snapshot.constraints.mapTo(linkedSetOf()) { it.id.value }
-        if (envelope.assumptions.any { it !in variableIds }) {
+        if (normalizedEnvelope.assumptions.any { it !in variableIds }) {
             return Failed(
                 ErrorCode.IllegalArgument,
                 "checkpoint assumption 引用了未知变量 / Checkpoint assumption references an unknown variable"
             )
         }
-        for (conflict in envelope.conflicts) {
+        for (conflict in normalizedEnvelope.conflicts) {
             if (conflict.validity !in setOf("Verified", "Heuristic", "Unknown") ||
                 conflict.minimality !in setOf("Irreducible", "Partial", "NotChecked")
             ) {
@@ -742,16 +796,16 @@ object ConstraintProgrammingCheckpointCodec {
                 }
             }
         }
-        validateBendersState(envelope.benders)?.let { return Failed(ErrorCode.IllegalArgument, it) }
-        val incumbent = envelope.incumbent?.toSolution(snapshot)
+        validateBendersState(normalizedEnvelope.benders)?.let { return Failed(ErrorCode.IllegalArgument, it) }
+        val incumbent = normalizedEnvelope.incumbent?.toSolution(snapshot)
         if (incumbent != null && incumbent.failed) {
             return propagate(incumbent)
         }
-        val restoreBestBound = envelope.bestBound.takeUnless { allowLegacyConfigurationFingerprint || migratedLegacyV2 }
-        val restoreGap = envelope.gap.takeUnless { allowLegacyConfigurationFingerprint || migratedLegacyV2 }
+        val restoreBestBound = normalizedEnvelope.bestBound.takeUnless { allowLegacyConfigurationFingerprint || migratedLegacyV2 }
+        val restoreGap = normalizedEnvelope.gap.takeUnless { allowLegacyConfigurationFingerprint || migratedLegacyV2 }
         return ok(
             ConstraintProgrammingCheckpointRestore(
-                envelope = envelope,
+                envelope = normalizedEnvelope,
                 incumbent = incumbent?.value,
                 bestBound = restoreBestBound,
                 gap = restoreGap

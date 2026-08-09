@@ -293,13 +293,13 @@ class ColumnGenerationStandardExecutors(
             }
             Ok(ColumnGenerationLpResult(
                 shadowPrices = shadowPrices,
-                objective = FltX(solved.obj.toDouble()),
+                objective = solved.result.solution?.objective ?: FltX.zero,
                 info = mapOf(
                     "solver" to solver.name,
                     "model" to artifacts.model.name,
-                    "lp_time_ms" to solved.time.inWholeMilliseconds.toString(),
-                    "lp_gap" to solved.gap.toString(),
-                    "lp_objective" to solved.obj.toString(),
+                    "lp_time_ms" to (solved.result.statistics.solveTime?.inWholeMilliseconds ?: 0L).toString(),
+                    "lp_gap" to (solved.result.statistics.gap ?: Flt64.zero).toString(),
+                    "lp_objective" to (solved.result.solution?.objective ?: FltX.zero).toString(),
                     "continuous_radius_solver_prototype_count" to state.continuousRadiusSolverPrototypes.size.toString(),
                     "continuous_radius_solver_prototype_variables" to state.continuousRadiusSolverPrototypes.joinToString("|") { it.variableName }
                 ) + extensionInfo + artifacts.continuousRadiusComponent.info()
@@ -444,7 +444,7 @@ class ColumnGenerationStandardExecutors(
             if (milpResult is Failed) return@ColumnGenerationFinalSolver Failed(milpResult.error)
             if (milpResult is Fatal) return@ColumnGenerationFinalSolver Fatal(milpResult.errors)
             val solved = (milpResult as Ok).value
-            model.setSolution(normalizeScalarSolution(solved.solution).value!!)
+            model.setSolution(normalizeScalarSolution(solved.values).value!!)
             val selectedBins = when (val result = collectSelectedBins(model, bins, state.columns, assignment)) {
                 is Ok -> result.value
                 is Failed -> return@ColumnGenerationFinalSolver Failed(result.error)
@@ -464,13 +464,13 @@ class ColumnGenerationStandardExecutors(
             Ok(ColumnGenerationFinalResult(
                 columns = if (selectedColumns.isNotEmpty()) selectedColumns else state.columns,
                 bins = selectedBins,
-                objective = FltX(solved.obj.toDouble()),
+                objective = solved.solution?.objective ?: FltX.zero,
                 info = mapOf(
                     "solver" to solver.name,
                     "model" to model.name,
-                    "milp_time_ms" to solved.time.inWholeMilliseconds.toString(),
-                    "milp_gap" to solved.gap.toString(),
-                    "milp_objective" to solved.obj.toString(),
+                    "milp_time_ms" to (solved.statistics.solveTime?.inWholeMilliseconds ?: 0L).toString(),
+                    "milp_gap" to (solved.statistics.gap ?: Flt64.zero).toString(),
+                    "milp_objective" to (solved.solution?.objective ?: FltX.zero).toString(),
                     "selected_bin_count" to selectedBins.size.toString(),
                     "selected_layer_count" to selectedColumns.size.toString(),
                     "continuous_radius_solver_prototype_count" to state.continuousRadiusSolverPrototypes.size.toString(),

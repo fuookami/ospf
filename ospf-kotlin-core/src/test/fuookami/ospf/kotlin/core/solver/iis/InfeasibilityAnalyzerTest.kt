@@ -17,23 +17,26 @@ import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModelView
 import fuookami.ospf.kotlin.core.model.intermediate.SparseMatrix
 import fuookami.ospf.kotlin.core.model.intermediate.SparseVector
 import fuookami.ospf.kotlin.core.solver.AbstractLinearSolver
+import fuookami.ospf.kotlin.core.solver.toSolveReport
 import fuookami.ospf.kotlin.core.solver.SolveOptions
 import fuookami.ospf.kotlin.core.solver.solveWithOptionsAndIIS
 import fuookami.ospf.kotlin.core.solver.config.SolverConfig
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.output.SolvingStatus
 import fuookami.ospf.kotlin.core.solver.output.SolvingStatusCallBack
+import fuookami.ospf.kotlin.core.solver.output.SolverStatus
 import fuookami.ospf.kotlin.core.solver.report.EvidenceExactness
 import fuookami.ospf.kotlin.core.solver.report.EvidenceCompleteness
 import fuookami.ospf.kotlin.core.solver.report.EvidenceValidity
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
 import fuookami.ospf.kotlin.core.solver.report.InfeasibilityEvidence
 import fuookami.ospf.kotlin.core.solver.report.InfeasibilityEvidenceSource
+import fuookami.ospf.kotlin.core.solver.report.ModelElementOrigin
+import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
 import fuookami.ospf.kotlin.core.solver.report.ProblemStatus
 import fuookami.ospf.kotlin.core.solver.report.ProofStatus
 import fuookami.ospf.kotlin.core.solver.report.SolutionPresence
 import fuookami.ospf.kotlin.core.solver.report.SolveIssueCategory
-import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.report.SolverCapabilities
 import fuookami.ospf.kotlin.core.solver.report.SolverModelType
 import fuookami.ospf.kotlin.core.solver.report.SolverDescriptor
@@ -191,13 +194,13 @@ class InfeasibilityAnalyzerTest {
                 override suspend fun invoke(
                     model: LinearTriadModelView,
                     solvingStatusCallBack: SolvingStatusCallBack?
-                ): Ret<FeasibleSolverOutput<Flt64>> {
+                ): Ret<SolveReport<Flt64>> {
                     return ok(
-                        FeasibleSolverOutput<Flt64>(
-                            obj = Flt64.zero,
-                            solution = emptyList<Flt64>(),
-                            time = kotlin.time.Duration.ZERO,
-                            possibleBestObj = Flt64.zero,
+                        SolverStatus.Feasible.toSolveReport(
+                            objective = Flt64.zero,
+                            values = emptyList<Flt64>(),
+                            solveTime = kotlin.time.Duration.ZERO,
+                            bestBound = Flt64.zero,
                             gap = Flt64.zero
                         )
                     )
@@ -207,13 +210,13 @@ class InfeasibilityAnalyzerTest {
                     model: LinearTriadModelView,
                     solutionAmount: UInt64,
                     solvingStatusCallBack: SolvingStatusCallBack?
-                ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+                ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
                     return ok(
-                        FeasibleSolverOutput<Flt64>(
-                            obj = Flt64.zero,
-                            solution = emptyList<Flt64>(),
-                            time = kotlin.time.Duration.ZERO,
-                            possibleBestObj = Flt64.zero,
+                        SolverStatus.Feasible.toSolveReport(
+                            objective = Flt64.zero,
+                            values = emptyList<Flt64>(),
+                            solveTime = kotlin.time.Duration.ZERO,
+                            bestBound = Flt64.zero,
                             gap = Flt64.zero
                         ) to emptyList<List<Flt64>>()
                     )
@@ -277,7 +280,7 @@ class InfeasibilityAnalyzerTest {
                                     source = InfeasibilityEvidenceSource.NativeIIS,
                                     exactness = EvidenceExactness.Exact,
                                     completeness = EvidenceCompleteness.Complete,
-                                    constraintIds = setOf(ConstraintId("model-local-constraint:constant-row:0"))
+                                    constraintIds = setOf(ConstraintId("stable:constraint:constant-row"))
                                 )
                             )
                         }
@@ -288,14 +291,14 @@ class InfeasibilityAnalyzerTest {
             override suspend fun invoke(
                 model: LinearTriadModelView,
                 solvingStatusCallBack: SolvingStatusCallBack?
-            ): Ret<FeasibleSolverOutput<Flt64>> {
+            ): Ret<SolveReport<Flt64>> {
                 ++solverInvocations
                 return ok(
-                    FeasibleSolverOutput<Flt64>(
-                        obj = Flt64.zero,
-                        solution = emptyList(),
-                        time = kotlin.time.Duration.ZERO,
-                        possibleBestObj = Flt64.zero,
+                    SolverStatus.Feasible.toSolveReport(
+                        objective = Flt64.zero,
+                        values = emptyList(),
+                        solveTime = kotlin.time.Duration.ZERO,
+                        bestBound = Flt64.zero,
                         gap = Flt64.zero
                     )
                 )
@@ -305,28 +308,40 @@ class InfeasibilityAnalyzerTest {
                 model: LinearTriadModelView,
                 solutionAmount: UInt64,
                 solvingStatusCallBack: SolvingStatusCallBack?
-            ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+            ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
                 ++solverInvocations
                 return ok(
-                    FeasibleSolverOutput<Flt64>(
-                        obj = Flt64.zero,
-                        solution = emptyList(),
-                        time = kotlin.time.Duration.ZERO,
-                        possibleBestObj = Flt64.zero,
+                    SolverStatus.Feasible.toSolveReport(
+                        objective = Flt64.zero,
+                        values = emptyList(),
+                        solveTime = kotlin.time.Duration.ZERO,
+                        bestBound = Flt64.zero,
                         gap = Flt64.zero
                 ) to emptyList<List<Flt64>>()
                 )
             }
         }
         val model = LinearTriadModel(
-            impl = BasicLinearTriadModel(
-                variables = emptyList(),
-                constraints = LinearConstraintBatch(
-                    sparseLhs = SparseMatrix<Flt64>().also { it.addRow(SparseVector()) },
-                    signs = listOf(ConstraintRelation.Equal),
-                    rhs = listOf(Flt64.one),
-                    names = listOf("constant-row"),
-                    sources = listOf(ConstraintSource.Origin)
+                impl = BasicLinearTriadModel(
+                    variables = emptyList(),
+                    constraints = LinearConstraintBatch(
+                    sparseLhs = SparseMatrix<Flt64>().also {
+                        it.addRow(SparseVector())
+                        it.addRow(SparseVector())
+                    },
+                    signs = listOf(ConstraintRelation.Equal, ConstraintRelation.Equal),
+                    rhs = listOf(Flt64.one, Flt64.zero),
+                    names = listOf("constant-row", "unselected-row"),
+                    sources = listOf(ConstraintSource.Origin, ConstraintSource.Origin),
+                     ids = listOf(
+                         ConstraintId("stable:constraint:constant-row"),
+                         ConstraintId("model-local-constraint:unselected-row")
+                     ),
+                    identityScopes = listOf(ModelElementScope.Stable, ModelElementScope.ModelLocal),
+                    identityOrigins = listOf(
+                        ModelElementOrigin("domain", "constant-row"),
+                        null
+                    )
                 ),
                 name = "public-compute-iis-model"
             ),
@@ -342,6 +357,12 @@ class InfeasibilityAnalyzerTest {
         assertEquals(0, solverInvocations)
         assertTrue(result.ok)
         assertEquals(1, result.value?.constraints?.size)
+        assertEquals("stable:constraint:constant-row", result.value?.constraints?.ids?.single()?.value)
+        assertEquals(ModelElementScope.Stable, result.value?.constraints?.identityScopeAt(0))
+        assertEquals(
+            ModelElementOrigin("domain", "constant-row"),
+            result.value?.constraints?.identityOriginAt(0)
+        )
     }
 
     @Test
@@ -353,7 +374,7 @@ class InfeasibilityAnalyzerTest {
             override suspend fun invoke(
                 model: LinearTriadModelView,
                 solvingStatusCallBack: SolvingStatusCallBack?
-            ): Ret<FeasibleSolverOutput<Flt64>> {
+            ): Ret<SolveReport<Flt64>> {
                 // Deliberately ignore the callback result to exercise the facade guard.
                 // 故意忽略回调返回值，以验证 facade 自身的失败传播门禁。
                 solvingStatusCallBack?.invoke(
@@ -369,11 +390,11 @@ class InfeasibilityAnalyzerTest {
                     )
                 )
                 return ok(
-                    FeasibleSolverOutput(
-                        obj = Flt64.zero,
-                        solution = emptyList(),
-                        time = ZERO,
-                        possibleBestObj = Flt64.zero,
+                    SolverStatus.Feasible.toSolveReport(
+                        objective = Flt64.zero,
+                        values = emptyList(),
+                        solveTime = ZERO,
+                        bestBound = Flt64.zero,
                         gap = Flt64.zero
                     )
                 )
@@ -383,7 +404,7 @@ class InfeasibilityAnalyzerTest {
                 model: LinearTriadModelView,
                 solutionAmount: UInt64,
                 solvingStatusCallBack: SolvingStatusCallBack?
-            ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+            ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
                 return invoke(model, solvingStatusCallBack).map { it to emptyList() }
             }
         }

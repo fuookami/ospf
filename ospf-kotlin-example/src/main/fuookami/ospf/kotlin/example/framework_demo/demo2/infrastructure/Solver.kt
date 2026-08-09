@@ -68,7 +68,7 @@ data object LinearSolverBuilder {
         val solvers = ArrayList<AbstractLinearSolver>()
         if (backendClassAvailable("gurobi.GRBException")) {
             val gurobiSolverConfig = if (System.getProperty("os.name").lowercase(Locale.getDefault()).contains("win")) {
-                config.copy(extraConfig = gurobiConfig)
+                config.copy(backendConfiguration = gurobiConfig)
             } else {
                 config
             }

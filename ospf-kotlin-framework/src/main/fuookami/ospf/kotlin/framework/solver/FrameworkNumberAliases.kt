@@ -9,7 +9,7 @@ package fuookami.ospf.kotlin.framework.solver
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.core.model.basic.Solution
 import fuookami.ospf.kotlin.core.model.mechanism.*
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
 
 /** FltX 线性元模型 / FltX linear meta model */
 typealias FltXLinearMetaModel = LinearMetaModel<FltX>
@@ -33,13 +33,13 @@ typealias Rtn64QuadraticMetaModel = QuadraticMetaModel<Rtn64>
 typealias RtnXQuadraticMetaModel = QuadraticMetaModel<RtnX>
 
 /** FltX 可行求解器输出 / FltX feasible solver output */
-typealias FltXFeasibleSolverOutput = FeasibleSolverOutput<FltX>
+typealias FltXSolveReport = SolveReport<FltX>
 
 /** Rtn64 可行求解器输出 / Rtn64 feasible solver output */
-typealias Rtn64FeasibleSolverOutput = FeasibleSolverOutput<Rtn64>
+typealias Rtn64SolveReport = SolveReport<Rtn64>
 
 /** RtnX 可行求解器输出 / RtnX feasible solver output */
-typealias RtnXFeasibleSolverOutput = FeasibleSolverOutput<RtnX>
+typealias RtnXSolveReport = SolveReport<RtnX>
 
 /** FltX 解池 / FltX solution pool */
 typealias FltXSolutionPool = List<Solution<FltX>>

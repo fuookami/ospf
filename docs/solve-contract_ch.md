@@ -2,8 +2,8 @@
 
 [English](solve-contract.md)
 
-从 `1.1.0` 开始，OSPF 提供正交的求解报告和统一进度契约。旧的
-`Ret<FeasibleSolverOutput<V>>` API 保留用于兼容；新集成应优先调用 `solveReport`，并按
+OSPF 提供正交的求解报告和统一进度契约。`Ret<SolveReport<V>>` 是唯一主求解结果；尚未发布的
+`1.1.0` 源码不再保留 `FeasibleSolverOutput` 兼容 facade。新集成应调用 `solveReport`，并按
 `ProblemStatus`、`TerminationReason` 和 `SolutionPresence` 三个独立维度处理结果。
 
 ```kotlin

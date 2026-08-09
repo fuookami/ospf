@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import fuookami.ospf.kotlin.utils.functional.Ok
 import fuookami.ospf.kotlin.math.algebra.number.Int64
+import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingCheckpointCodec
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingCheckpointSupport
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingCheckpointSupportEvaluator
@@ -21,6 +22,7 @@ import fuookami.ospf.kotlin.core.solver.constraint_programming.PortableConstrain
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingSolution
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingUnknownOutput
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ModelElementOrigin
 import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
 import fuookami.ospf.kotlin.core.solver.report.SolveHandle
@@ -103,6 +105,369 @@ class ConstraintProgrammingEnhancementTest {
         assertEquals(snapshot.name, decoded.value!!.name)
         assertEquals(snapshot.variables.map { it.id }, decoded.value!!.variables.map { it.id })
         assertEquals(snapshot.constraints.map { it.id }, decoded.value!!.constraints.map { it.id })
+    }
+
+    /**
+     * Verify unordered AST members do not change snapshot canonical text.
+     * 验证 AST 中语义无序成员的排列变化不会改变 snapshot 规范文本。
+     */
+    @Test
+    fun snapshotCodecCanonicalizesUnorderedAstMembers() {
+        val integerOne = IntVar("canonical-int-one")
+        val integerTwo = IntVar("canonical-int-two")
+        val binaryOne = BinVar("canonical-binary-one")
+        val binaryTwo = BinVar("canonical-binary-two")
+        val integerDomain = IntegerDomain.interval(0, 10).value!!
+        val expressionOne = ConstraintProgrammingExpression.Variable(
+            integerOne,
+            integerDomain,
+            VariableId("variable:one")
+        )
+        val expressionTwo = ConstraintProgrammingExpression.Variable(
+            integerTwo,
+            integerDomain,
+            VariableId("variable:two")
+        )
+        val literalOne = BooleanLiteral.Variable(binaryOne, id = VariableId("variable:binary-one"))
+        val literalTwo = BooleanLiteral.Variable(binaryTwo, negated = true, id = VariableId("variable:binary-two"))
+
+        fun snapshot(
+            constraint: ConstraintProgrammingConstraint,
+            intervals: List<IntervalVariable> = emptyList()
+        ): ConstraintProgrammingModelSnapshot {
+            return ConstraintProgrammingModelSnapshot(
+                name = "canonical-ast",
+                objectCategory = ObjectCategory.Minimum,
+                variables = listOf(
+                    ConstraintProgrammingVariableSnapshot(
+                        id = VariableId("variable:one"),
+                        name = "one",
+                        typeName = "IntVar",
+                        domain = integerDomain
+                    ),
+                    ConstraintProgrammingVariableSnapshot(
+                        id = VariableId("variable:two"),
+                        name = "two",
+                        typeName = "IntVar",
+                        domain = integerDomain
+                    ),
+                    ConstraintProgrammingVariableSnapshot(
+                        id = VariableId("variable:binary-one"),
+                        name = "binary-one",
+                        typeName = "BinVar",
+                        domain = IntegerDomain.boolean
+                    ),
+                    ConstraintProgrammingVariableSnapshot(
+                        id = VariableId("variable:binary-two"),
+                        name = "binary-two",
+                        typeName = "BinVar",
+                        domain = IntegerDomain.boolean
+                    )
+                ),
+                intervals = intervals,
+                expressions = emptyList(),
+                constraints = listOf(
+                    ConstraintProgrammingConstraintSnapshot(
+                        id = ConstraintId("constraint:canonical"),
+                        name = "canonical",
+                        groupName = null,
+                        constraint = constraint
+                    )
+                ),
+                objectives = emptyList(),
+                constraintGroups = emptyList()
+            )
+        }
+
+        fun assertSameCanonicalText(
+            first: ConstraintProgrammingModelSnapshot,
+            second: ConstraintProgrammingModelSnapshot
+        ) {
+            val firstEncoded = ConstraintProgrammingSnapshotCodec.encode(first)
+            val secondEncoded = ConstraintProgrammingSnapshotCodec.encode(second)
+            assertTrue(firstEncoded.ok)
+            assertTrue(secondEncoded.ok)
+            assertEquals(firstEncoded.value, secondEncoded.value)
+        }
+
+        val firstLinear = ConstraintProgrammingExpression.Linear(
+            terms = listOf(
+                ConstraintProgrammingExpression.Term(integerTwo, Int64(2), VariableId("variable:two")),
+                ConstraintProgrammingExpression.Term(integerOne, Int64.one, VariableId("variable:one"))
+            ),
+            constant = Int64(3)
+        )
+        val secondLinear = firstLinear.copy(terms = firstLinear.terms.reversed())
+        assertSameCanonicalText(
+            snapshot(ConstraintProgrammingConstraint.IntegerComparison(
+                firstLinear,
+                ConstraintProgrammingComparison.Equal,
+                Int64(3)
+            )),
+            snapshot(ConstraintProgrammingConstraint.IntegerComparison(
+                secondLinear,
+                ConstraintProgrammingComparison.Equal,
+                Int64(3)
+            ))
+        )
+
+        assertSameCanonicalText(
+            snapshot(ConstraintProgrammingConstraint.BoolAnd(listOf(literalOne, literalTwo))),
+            snapshot(ConstraintProgrammingConstraint.BoolAnd(listOf(literalTwo, literalOne)))
+        )
+        assertSameCanonicalText(
+            snapshot(ConstraintProgrammingConstraint.BoolOr(listOf(literalOne, literalTwo))),
+            snapshot(ConstraintProgrammingConstraint.BoolOr(listOf(literalTwo, literalOne)))
+        )
+        assertSameCanonicalText(
+            snapshot(ConstraintProgrammingConstraint.BoolXor(listOf(literalOne, literalTwo))),
+            snapshot(ConstraintProgrammingConstraint.BoolXor(listOf(literalTwo, literalOne)))
+        )
+        assertSameCanonicalText(
+            snapshot(ConstraintProgrammingConstraint.AllDifferent(listOf(expressionOne, expressionTwo))),
+            snapshot(ConstraintProgrammingConstraint.AllDifferent(listOf(expressionTwo, expressionOne)))
+        )
+        val firstTuples = listOf(listOf(Int64.one, Int64.zero), listOf(Int64.zero, Int64.one))
+        assertSameCanonicalText(
+            snapshot(ConstraintProgrammingConstraint.AllowedAssignments(
+                expressions = listOf(expressionOne, expressionTwo),
+                tuples = firstTuples
+            )),
+            snapshot(ConstraintProgrammingConstraint.AllowedAssignments(
+                expressions = listOf(expressionOne, expressionTwo),
+                tuples = firstTuples.reversed()
+            ))
+        )
+        assertSameCanonicalText(
+            snapshot(ConstraintProgrammingConstraint.ForbiddenAssignments(
+                expressions = listOf(expressionOne, expressionTwo),
+                tuples = firstTuples
+            )),
+            snapshot(ConstraintProgrammingConstraint.ForbiddenAssignments(
+                expressions = listOf(expressionOne, expressionTwo),
+                tuples = firstTuples.reversed()
+            ))
+        )
+
+        val firstAutomaton = ConstraintProgrammingConstraint.Automaton(
+            expressions = listOf(ConstraintProgrammingExpression.Constant(Int64.zero)),
+            initialState = 0,
+            finalStates = linkedSetOf(2, 1),
+            transitions = listOf(
+                ConstraintProgrammingConstraint.AutomatonTransition(1, Int64.one, 2),
+                ConstraintProgrammingConstraint.AutomatonTransition(0, Int64.zero, 1)
+            )
+        )
+        val secondAutomaton = firstAutomaton.copy(
+            finalStates = linkedSetOf(1, 2),
+            transitions = firstAutomaton.transitions.reversed()
+        )
+        assertSameCanonicalText(snapshot(firstAutomaton), snapshot(secondAutomaton))
+
+        val firstReservoir = ConstraintProgrammingConstraint.reservoir(
+            events = listOf(
+                ConstraintProgrammingConstraint.Reservoir.Event(
+                    ConstraintProgrammingExpression.Constant(Int64(2)),
+                    ConstraintProgrammingExpression.Constant(Int64(-1))
+                ),
+                ConstraintProgrammingConstraint.Reservoir.Event(
+                    ConstraintProgrammingExpression.Constant(Int64(1)),
+                    ConstraintProgrammingExpression.Constant(Int64(2))
+                )
+            ),
+            initialLevel = Int64.zero,
+            minimumLevel = Int64.zero,
+            maximumLevel = Int64(2)
+        ).value!!
+        assertSameCanonicalText(
+            snapshot(firstReservoir),
+            snapshot(firstReservoir.copy(events = firstReservoir.events.reversed()))
+        )
+
+        val intervalOne = IntervalVariable(
+            id = IntervalId("interval:one"),
+            start = ConstraintProgrammingExpression.Constant(Int64.zero),
+            size = ConstraintProgrammingExpression.Constant(Int64.one),
+            end = ConstraintProgrammingExpression.Constant(Int64.one)
+        )
+        val intervalTwo = intervalOne.copy(id = IntervalId("interval:two"))
+        assertSameCanonicalText(
+            snapshot(NoOverlap(listOf(intervalOne, intervalTwo)), listOf(intervalTwo, intervalOne)),
+            snapshot(NoOverlap(listOf(intervalTwo, intervalOne)), listOf(intervalOne, intervalTwo))
+        )
+        val firstCumulative = Cumulative(
+            intervals = listOf(intervalOne, intervalTwo),
+            demands = listOf(
+                ConstraintProgrammingExpression.Constant(Int64.one),
+                ConstraintProgrammingExpression.Constant(Int64(2))
+            ),
+            capacity = ConstraintProgrammingExpression.Constant(Int64(3))
+        )
+        val secondCumulative = firstCumulative.copy(
+            intervals = firstCumulative.intervals.reversed(),
+            demands = firstCumulative.demands.reversed()
+        )
+        assertSameCanonicalText(snapshot(firstCumulative), snapshot(secondCumulative))
+    }
+
+    @Test
+    fun snapshotCodecRoundTripsStructuredProvenanceAndRootIdentity() {
+        val model = ConstraintProgrammingModel(
+            name = "provenance-snapshot",
+            identityNamespace = "fixture-cp",
+            identitySchemaVersion = "2.0"
+        )
+        val variable = IntVar("provenance-x")
+        val variableId = VariableId("variable:provenance-x")
+        val variableProvenance = listOf(
+            ModelElementOrigin("variable", "provenance-x"),
+            ModelElementOrigin("pipeline", "capacity")
+        )
+        try {
+            assertTrue(
+                model.registerVariable(
+                    id = variableId,
+                    variable = variable,
+                    domain = IntegerDomain.interval(0, 3).value!!,
+                    scope = "STABLE",
+                    origin = "legacy/provenance-x",
+                    identityProvenance = variableProvenance
+                ).ok
+            )
+            val expression = ConstraintProgrammingExpression.Variable(variable)
+            val constraintId = ConstraintId("constraint:capacity")
+            val constraintProvenance = listOf(
+                ModelElementOrigin("constraint", "capacity"),
+                ModelElementOrigin("variable", "provenance-x")
+            )
+            assertTrue(
+                model.addConstraint(
+                    constraint = ConstraintProgrammingConstraint.greaterOrEqual(expression, Int64.zero).value!!,
+                    id = constraintId,
+                    scope = "stable",
+                    origin = "legacy/capacity",
+                    identityProvenance = constraintProvenance
+                ).ok
+            )
+            assertTrue(
+                model.minimize(
+                    expression = expression,
+                    id = ObjectiveId("objective:total"),
+                    scope = "stable",
+                    origin = "legacy/total",
+                    identityProvenance = listOf(
+                        ModelElementOrigin("objective", "total"),
+                        ModelElementOrigin("constraint", "capacity")
+                    )
+                ).ok
+            )
+
+            val snapshot = model.snapshot().value!!
+            val encoded = ConstraintProgrammingSnapshotCodec.encode(snapshot).value!!
+            assertTrue(encoded.contains("identityProvenance"))
+            val decoded = ConstraintProgrammingSnapshotCodec.decode(encoded, mapOf(variableId to variable))
+
+            assertTrue(decoded.ok)
+            assertEquals("fixture-cp", decoded.value!!.identityNamespace)
+            assertEquals("2.0", decoded.value!!.identitySchemaVersion)
+            assertEquals("stable", decoded.value!!.variables.single().scope)
+            assertEquals(
+                listOf(
+                    ModelElementOrigin("legacy-origin", "legacy/provenance-x"),
+                    ModelElementOrigin("pipeline", "capacity"),
+                    ModelElementOrigin("variable", "provenance-x")
+                ),
+                decoded.value!!.variables.single().identityProvenance
+            )
+            assertEquals(
+                listOf(
+                    ModelElementOrigin("constraint", "capacity"),
+                    ModelElementOrigin("legacy-origin", "legacy/capacity"),
+                    ModelElementOrigin("variable", "provenance-x")
+                ),
+                decoded.value!!.constraints.single().identityProvenance
+            )
+            assertEquals(
+                listOf(
+                    ModelElementOrigin("constraint", "capacity"),
+                    ModelElementOrigin("legacy-origin", "legacy/total"),
+                    ModelElementOrigin("objective", "total")
+                ),
+                decoded.value!!.objectives.single().identityProvenance
+            )
+        } finally {
+            model.close()
+        }
+    }
+
+    @Test
+    fun cpIdentityScopeAliasesAreValidatedAndStableIdsCannotUseReservedPrefixes() {
+        val model = ConstraintProgrammingModel(
+            name = "scope-validation",
+            identityNamespace = "fixture-cp",
+            identitySchemaVersion = "1.0"
+        )
+        try {
+            val stable = model.registerVariable(
+                id = VariableId("stable:x"),
+                variable = IntVar("stable-x"),
+                domain = IntegerDomain.boolean,
+                scope = "STABLE",
+                origin = "fixture/x"
+            )
+            assertTrue(stable.ok)
+
+            assertTrue(
+                model.registerVariable(
+                    id = VariableId("stable:conflicting-origin"),
+                    variable = IntVar("conflicting-origin"),
+                    domain = IntegerDomain.boolean,
+                    scope = "stable",
+                    origin = "fixture/actual",
+                    identityProvenance = listOf(
+                        ModelElementOrigin("legacy-origin", "fixture/other")
+                    )
+                ).failed
+            )
+
+            assertTrue(
+                model.registerVariable(
+                    id = VariableId("local:with-origin"),
+                    variable = IntVar("local-with-origin"),
+                    domain = IntegerDomain.boolean,
+                    scope = "MODEL_LOCAL",
+                    origin = "fixture/invalid"
+                ).failed
+            )
+            assertTrue(
+                model.registerVariable(
+                    id = VariableId("unknown:scope"),
+                    variable = IntVar("unknown-scope"),
+                    domain = IntegerDomain.boolean,
+                    scope = "stable-ish",
+                    origin = "fixture/invalid"
+                ).failed
+            )
+            assertTrue(
+                model.registerVariable(
+                    id = VariableId("model-local-user"),
+                    variable = IntVar("model-local-user"),
+                    domain = IntegerDomain.boolean,
+                    scope = "STABLE",
+                    origin = "fixture/invalid"
+                ).failed
+            )
+            assertTrue(
+                model.registerVariable(
+                    id = VariableId("artifact:user-defined"),
+                    variable = IntVar("artifact-user-defined"),
+                    domain = IntegerDomain.boolean,
+                    scope = "MODEL_LOCAL"
+                ).failed
+            )
+        } finally {
+            model.close()
+        }
     }
 
     @Test
@@ -647,13 +1012,13 @@ class ConstraintProgrammingEnhancementTest {
     private fun identityManifest(snapshot: ConstraintProgrammingModelSnapshot): List<String> {
         return buildList {
             snapshot.variables.forEach {
-                add("variable|${it.id}|${it.name}|${it.scope}|${it.origin}")
+                add("variable|${it.id}|${it.name}|${it.scope}|${it.origin}|${it.identityProvenance}")
             }
             snapshot.constraints.forEach {
-                add("constraint|${it.id}|${it.name}|${it.scope}|${it.origin}")
+                add("constraint|${it.id}|${it.name}|${it.scope}|${it.origin}|${it.identityProvenance}")
             }
             snapshot.objectives.forEach {
-                add("objective|${it.id}|${it.name}|${it.category}|${it.scope}|${it.origin}")
+                add("objective|${it.id}|${it.name}|${it.category}|${it.scope}|${it.origin}|${it.identityProvenance}")
             }
         }.sorted()
     }

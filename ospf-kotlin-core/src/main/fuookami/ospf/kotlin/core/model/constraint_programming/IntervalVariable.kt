@@ -10,6 +10,7 @@ import fuookami.ospf.kotlin.utils.functional.Fatal
 import fuookami.ospf.kotlin.utils.functional.Ret
 import fuookami.ospf.kotlin.utils.functional.ok
 import fuookami.ospf.kotlin.math.algebra.number.Int64
+import fuookami.ospf.kotlin.core.solver.report.ModelElementOrigin
 import fuookami.ospf.kotlin.core.solver.report.VariableId
 
 /**
@@ -46,6 +47,7 @@ data class IntervalValue(
  * @property presence 可选存在文字 / Optional presence literal
  * @property scope 身份作用域 / Identity scope
  * @property origin 稳定身份来源 / Stable identity origin
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
  */
 data class IntervalVariable(
     val id: IntervalId,
@@ -54,7 +56,8 @@ data class IntervalVariable(
     val end: ConstraintProgrammingExpression,
     val presence: BooleanLiteral? = null,
     val scope: String = "model-local",
-    val origin: String? = null
+    val origin: String? = null,
+    val identityProvenance: List<ModelElementOrigin> = emptyList()
 ) {
     /** duration 语义别名。 / Duration semantic alias. */
     val duration: ConstraintProgrammingExpression
@@ -142,6 +145,7 @@ data class IntervalVariable(
          * @param presence 可选存在文字 / Optional presence literal
          * @param scope 身份作用域 / Identity scope
          * @param origin 稳定身份来源 / Stable identity origin
+         * @param identityProvenance 完整身份来源集合 / Complete identity provenance
          * @return interval 或结构化错误 / Interval or a structured error
          */
         fun create(
@@ -151,15 +155,24 @@ data class IntervalVariable(
             end: ConstraintProgrammingExpression,
             presence: BooleanLiteral? = null,
             scope: String = "model-local",
-            origin: String? = null
+            origin: String? = null,
+            identityProvenance: List<ModelElementOrigin> = emptyList()
         ): Ret<IntervalVariable> {
-            if (id.value.isBlank() || scope.isBlank() || (scope == "stable" && origin.isNullOrBlank())) {
+            if (id.value.isBlank() || validateConstraintProgrammingIdentity(
+                    id = id.value,
+                    scope = scope,
+                    origin = origin,
+                    provenance = identityProvenance,
+                    identityNamespace = "cp",
+                    identitySchemaVersion = "1.0"
+                ) != null
+            ) {
                 return Failed(
                     ErrorCode.IllegalArgument,
                     "interval 身份元数据无效 / Interval identity metadata is invalid"
                 )
             }
-            return ok(IntervalVariable(id, start, size, end, presence, scope, origin))
+            return ok(IntervalVariable(id, start, size, end, presence, scope, origin, identityProvenance))
         }
 
         /**
@@ -172,6 +185,7 @@ data class IntervalVariable(
          * @param presence 可选存在文字 / Optional presence literal
          * @param scope 身份作用域 / Identity scope
          * @param origin 稳定身份来源 / Stable identity origin
+         * @param identityProvenance 完整身份来源集合 / Complete identity provenance
          * @return interval 或结构化错误 / Interval or a structured error
          */
         fun create(
@@ -181,9 +195,10 @@ data class IntervalVariable(
             end: ConstraintProgrammingExpression,
             presence: BooleanLiteral? = null,
             scope: String = "model-local",
-            origin: String? = null
+            origin: String? = null,
+            identityProvenance: List<ModelElementOrigin> = emptyList()
         ): Ret<IntervalVariable> {
-            return create(IntervalId(id), start, size, end, presence, scope, origin)
+            return create(IntervalId(id), start, size, end, presence, scope, origin, identityProvenance)
         }
 
         /**
@@ -196,6 +211,7 @@ data class IntervalVariable(
          * @param presence 可选存在文字 / Optional presence literal
          * @param scope 身份作用域 / Identity scope
          * @param origin 稳定身份来源 / Stable identity origin
+         * @param identityProvenance 完整身份来源集合 / Complete identity provenance
          * @return interval 或结构化错误 / Interval or a structured error
          */
         fun fixed(
@@ -205,7 +221,8 @@ data class IntervalVariable(
             end: ConstraintProgrammingExpression,
             presence: BooleanLiteral? = null,
             scope: String = "model-local",
-            origin: String? = null
+            origin: String? = null,
+            identityProvenance: List<ModelElementOrigin> = emptyList()
         ): Ret<IntervalVariable> {
             if (size < Int64.zero) {
                 return Failed(
@@ -213,7 +230,16 @@ data class IntervalVariable(
                     "interval duration 不得为负：$size / Interval size must not be negative: $size"
                 )
             }
-            return create(id, start, ConstraintProgrammingExpression.Constant(size), end, presence, scope, origin)
+            return create(
+                id,
+                start,
+                ConstraintProgrammingExpression.Constant(size),
+                end,
+                presence,
+                scope,
+                origin,
+                identityProvenance
+            )
         }
     }
 }

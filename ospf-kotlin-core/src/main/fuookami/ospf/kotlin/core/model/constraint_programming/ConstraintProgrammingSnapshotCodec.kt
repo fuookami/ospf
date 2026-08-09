@@ -11,6 +11,7 @@ import fuookami.ospf.kotlin.utils.functional.ok
 import fuookami.ospf.kotlin.math.algebra.number.Int64
 import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ModelElementOrigin
 import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
 import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.variable.AbstractVariableItem
@@ -77,7 +78,7 @@ object ConstraintProgrammingSnapshotCodec {
             }
             payload.validateIdentity()?.let { return Failed(ErrorCode.IllegalArgument, it) }
             payload.validateObjectiveSemantics()?.let { return Failed(ErrorCode.IllegalArgument, it) }
-            payload.toSnapshot(variables)
+            payload.canonicalized().toSnapshot(variables)
         } catch (error: Throwable) {
             Failed(
                 ErrorCode.IllegalArgument,
@@ -112,6 +113,38 @@ object ConstraintProgrammingSnapshotCodec {
             )
         }
     }
+
+    /**
+     * Canonicalize a compatible snapshot JSON without requiring variable bindings. /
+     * 在不要求变量绑定的情况下，将兼容 snapshot JSON 迁移为唯一规范文本。
+     *
+     * This is used by checkpoint migration so historical field order, scope aliases, and
+     * provenance ordering do not make an otherwise equivalent snapshot unrecoverable. /
+     * checkpoint 迁移使用该入口，避免历史字段顺序、scope 别名或 provenance 顺序导致等价
+     * snapshot 无法恢复。
+     *
+     * @param encoded snapshot JSON / snapshot JSON
+     * @return canonical snapshot JSON or a structured error / 规范 snapshot JSON 或结构化错误
+     */
+    fun canonicalize(encoded: String): Ret<String> {
+        return try {
+            val payload = json.decodeFromString(SnapshotPayload.serializer(), encoded)
+            if (payload.schema != CURRENT_SCHEMA) {
+                return Failed(
+                    ErrorCode.Other,
+                    "不支持的 CP snapshot schema：${payload.schema} / Unsupported CP snapshot schema: ${payload.schema}"
+                )
+            }
+            payload.validateIdentity()?.let { return Failed(ErrorCode.IllegalArgument, it) }
+            payload.validateObjectiveSemantics()?.let { return Failed(ErrorCode.IllegalArgument, it) }
+            ok(json.encodeToString(SnapshotPayload.serializer(), payload.canonicalized()))
+        } catch (error: Throwable) {
+            Failed(
+                ErrorCode.IllegalArgument,
+                "CP snapshot 规范化失败：${error.message} / CP snapshot canonicalization failed: ${error.message}"
+            )
+        }
+    }
 }
 
 @Serializable
@@ -136,7 +169,14 @@ private data class VariablePayload(
     val typeName: String,
     val domain: DomainPayload,
     val scope: String = "model-local",
-    val origin: String? = null
+    val origin: String? = null,
+    val identityProvenance: List<IdentityOriginPayload> = emptyList()
+)
+
+@Serializable
+private data class IdentityOriginPayload(
+    val kind: String,
+    val key: String
 )
 
 @Serializable
@@ -185,7 +225,8 @@ private data class IntervalPayload(
     val end: ExpressionPayload,
     val presence: LiteralPayload? = null,
     val scope: String = "model-local",
-    val origin: String? = null
+    val origin: String? = null,
+    val identityProvenance: List<IdentityOriginPayload> = emptyList()
 )
 
 @Serializable
@@ -195,7 +236,8 @@ private data class ConstraintEntryPayload(
     val groupName: String?,
     val constraint: ConstraintPayload,
     val scope: String = "model-local",
-    val origin: String? = null
+    val origin: String? = null,
+    val identityProvenance: List<IdentityOriginPayload> = emptyList()
 )
 
 @Serializable
@@ -253,7 +295,8 @@ private data class ObjectivePayload(
     val name: String,
     val expression: ExpressionPayload,
     val scope: String = "model-local",
-    val origin: String? = null
+    val origin: String? = null,
+    val identityProvenance: List<IdentityOriginPayload> = emptyList()
 )
 
 private fun SnapshotPayload.validateIdentity(): String? {
@@ -261,15 +304,26 @@ private fun SnapshotPayload.validateIdentity(): String? {
         return "CP snapshot identity schema/namespace 不能为空 / CP snapshot identity schema and namespace must not be blank"
     }
     val elements = buildList {
-        variables.forEach { add(Triple(it.id, it.scope, it.origin)) }
-        intervals.forEach { add(Triple(it.id, it.scope, it.origin)) }
-        constraints.forEach { add(Triple(it.id, it.scope, it.origin)) }
-        objectives.forEach { add(Triple(it.id, it.scope, it.origin)) }
+        variables.forEach { add(Triple(it.id, it.scope, it.origin to it.identityProvenance)) }
+        intervals.forEach { add(Triple(it.id, it.scope, it.origin to it.identityProvenance)) }
+        constraints.forEach { add(Triple(it.id, it.scope, it.origin to it.identityProvenance)) }
+        objectives.forEach { add(Triple(it.id, it.scope, it.origin to it.identityProvenance)) }
     }
-    if (elements.any { (id, scope, origin) ->
-            id.isBlank() || scope.isBlank() || (scope == "stable" && origin.isNullOrBlank())
-        }) {
-        return "CP snapshot identity 包含空 ID 或缺失 stable origin / CP snapshot identity contains a blank ID or missing stable origin"
+    elements.forEach { (id, scope, metadata) ->
+        if (id.isBlank()) {
+            return "CP snapshot identity 包含空 ID / CP snapshot identity contains a blank ID"
+        }
+        validateConstraintProgrammingIdentity(
+            id = id,
+            scope = scope,
+            origin = metadata.first,
+            provenance = canonicalConstraintProgrammingIdentityProvenance(
+                origin = metadata.first,
+                provenance = metadata.second.toModelOrigins()
+            ),
+            identityNamespace = identityNamespace,
+            identitySchemaVersion = identitySchemaVersion
+        )?.let { return it }
     }
     if (elements.map { it.first }.distinct().size != elements.size) {
         return "CP snapshot 存在重复稳定 ID / CP snapshot contains duplicate element IDs"
@@ -300,20 +354,208 @@ private fun ConstraintProgrammingModelSnapshot.toPayload(): SnapshotPayload {
         name = name,
         objectCategory = objectCategory.name,
         variables = variables.sortedBy { it.id.value }.map {
-            VariablePayload(it.id.value, it.name, it.typeName, it.domain.toPayload(), it.scope, it.origin)
+            VariablePayload(
+                id = it.id.value,
+                name = it.name,
+                typeName = it.typeName,
+                domain = it.domain.toPayload(),
+                scope = canonicalConstraintProgrammingIdentityScope(it.scope) ?: it.scope,
+                origin = it.origin,
+                identityProvenance = it.identityProvenance.toPayload(it.origin)
+            )
         },
         intervals = intervals.sortedBy { it.id.value }.map { it.toPayload() },
         expressions = expressions.sortedBy { it.name }.map { NamedExpressionPayload(it.name, it.expression.toPayload()) },
         constraints = constraints.sortedBy { it.id.value }.map {
-            ConstraintEntryPayload(it.id.value, it.name, it.groupName, it.constraint.toPayload(), it.scope, it.origin)
+            ConstraintEntryPayload(
+                id = it.id.value,
+                name = it.name,
+                groupName = it.groupName,
+                constraint = it.constraint.toPayload(),
+                scope = canonicalConstraintProgrammingIdentityScope(it.scope) ?: it.scope,
+                origin = it.origin,
+                identityProvenance = it.identityProvenance.toPayload(it.origin)
+            )
         },
         objectives = objectives.sortedBy { it.id.value }.map {
-            ObjectivePayload(it.id.value, it.category.name, it.name, it.expression.toPayload(), it.scope, it.origin)
+            ObjectivePayload(
+                id = it.id.value,
+                category = it.category.name,
+                name = it.name,
+                expression = it.expression.toPayload(),
+                scope = canonicalConstraintProgrammingIdentityScope(it.scope) ?: it.scope,
+                origin = it.origin,
+                identityProvenance = it.identityProvenance.toPayload(it.origin)
+            )
         },
         constraintGroups = constraintGroups.sorted(),
         identitySchemaVersion = identitySchemaVersion,
         identityNamespace = identityNamespace
+    ).canonicalized()
+}
+
+private fun SnapshotPayload.canonicalized(): SnapshotPayload {
+    return copy(
+        variables = variables
+            .map { it.canonicalized() }
+            .sortedBy { it.id },
+        intervals = intervals
+            .map { it.canonicalized() }
+            .sortedBy { it.id },
+        expressions = expressions
+            .map { it.copy(expression = it.expression.canonicalized()) }
+            .sortedBy { it.name },
+        constraints = constraints
+            .map { it.canonicalized() }
+            .sortedBy { it.id },
+        objectives = objectives
+            .map { it.canonicalized() }
+            .sortedBy { it.id },
+        constraintGroups = constraintGroups.sorted(),
+        identitySchemaVersion = identitySchemaVersion,
+        identityNamespace = identityNamespace
     )
+}
+
+private fun VariablePayload.canonicalized(): VariablePayload {
+    return copy(
+        domain = domain.canonicalized(),
+        scope = canonicalConstraintProgrammingIdentityScope(scope) ?: scope,
+        identityProvenance = identityProvenance.canonicalized(origin)
+    )
+}
+
+private fun IntervalPayload.canonicalized(): IntervalPayload {
+    return copy(
+        start = start.canonicalized(),
+        size = size.canonicalized(),
+        end = end.canonicalized(),
+        presence = presence?.canonicalized(),
+        scope = canonicalConstraintProgrammingIdentityScope(scope) ?: scope,
+        identityProvenance = identityProvenance.canonicalized(origin)
+    )
+}
+
+private fun ConstraintEntryPayload.canonicalized(): ConstraintEntryPayload {
+    return copy(
+        constraint = constraint.canonicalized(),
+        scope = canonicalConstraintProgrammingIdentityScope(scope) ?: scope,
+        identityProvenance = identityProvenance.canonicalized(origin)
+    )
+}
+
+private fun ObjectivePayload.canonicalized(): ObjectivePayload {
+    return copy(
+        expression = expression.canonicalized(),
+        scope = canonicalConstraintProgrammingIdentityScope(scope) ?: scope,
+        identityProvenance = identityProvenance.canonicalized(origin)
+    )
+}
+
+private fun DomainPayload.canonicalized(): DomainPayload {
+    return when (kind) {
+        "values" -> copy(values = values.sorted())
+        else -> this
+    }
+}
+
+private fun ExpressionPayload.canonicalized(): ExpressionPayload {
+    return copy(
+        domain = domain?.canonicalized(),
+        terms = terms.sortedWith(compareBy({ it.variableId }, { it.coefficient }))
+    )
+}
+
+private fun LiteralPayload.canonicalized(): LiteralPayload = this
+
+private fun ConstraintPayload.canonicalized(): ConstraintPayload {
+    val canonicalExpressions = expressions.map { it.canonicalized() }
+    val canonicalIntervals = intervals.map { it.canonicalized() }
+    val canonicalDemands = demands.map { it.canonicalized() }
+    val intervalDemandPairs = if (canonicalIntervals.size == canonicalDemands.size) {
+        canonicalIntervals.zip(canonicalDemands)
+            .sortedWith(compareBy({ it.first.canonicalKey() }, { it.second.canonicalKey() }))
+    } else {
+        emptyList()
+    }
+    val orderedExpressions = if (kind == "all-different") {
+        canonicalExpressions.sortedBy { it.canonicalKey() }
+    } else {
+        canonicalExpressions
+    }
+    val orderedLiterals = when (kind) {
+        "bool-and", "bool-or", "bool-xor" -> literals.map { it.canonicalized() }.sortedWith(
+            compareBy({ it.variableId ?: "" }, { it.constant ?: false }, { it.negated })
+        )
+        else -> literals.map { it.canonicalized() }
+    }
+    val orderedTuples = tuples.sortedWith(Comparator { left, right -> compareIntLists(left, right) })
+    val orderedIntervals = when {
+        kind == "no-overlap" -> canonicalIntervals.sortedBy { it.canonicalKey() }
+        kind == "cumulative" && intervalDemandPairs.isNotEmpty() -> intervalDemandPairs.map { it.first }
+        else -> canonicalIntervals
+    }
+    val orderedDemands = if (kind == "cumulative" && intervalDemandPairs.isNotEmpty()) {
+        intervalDemandPairs.map { it.second }
+    } else {
+        canonicalDemands
+    }
+    val orderedEvents = if (kind == "reservoir") {
+        events.map { it.canonicalized() }.sortedBy { it.canonicalKey() }
+    } else {
+        events.map { it.canonicalized() }
+    }
+    return copy(
+        expression = expression?.canonicalized(),
+        literals = orderedLiterals,
+        child = child?.canonicalized(),
+        reifiedLiteral = reifiedLiteral?.canonicalized(),
+        expressions = orderedExpressions,
+        index = index?.canonicalized(),
+        values = values.map { it.canonicalized() },
+        tuples = orderedTuples,
+        intervals = orderedIntervals,
+        demands = orderedDemands,
+        capacity = capacity?.canonicalized(),
+        successors = successors.map { it.canonicalized() },
+        finalStates = finalStates.sorted(),
+        transitions = transitions.sortedWith(compareBy({ it.fromState }, { it.value }, { it.toState })),
+        events = orderedEvents
+    )
+}
+
+private fun ValuePayload.canonicalized(): ValuePayload {
+    return copy(expression = expression?.canonicalized())
+}
+
+private fun EventPayload.canonicalized(): EventPayload {
+    return copy(
+        time = time.canonicalized(),
+        levelChange = levelChange.canonicalized()
+    )
+}
+
+private fun EventPayload.canonicalKey(): String = canonicalized().toString()
+
+private fun List<IdentityOriginPayload>.canonicalized(origin: String?): List<IdentityOriginPayload> {
+    return canonicalConstraintProgrammingIdentityProvenance(
+        origin = origin,
+        provenance = toModelOrigins()
+    ).map { IdentityOriginPayload(it.kind, it.key) }
+}
+
+private fun ExpressionPayload.canonicalKey(): String = canonicalized().toString()
+
+private fun IntervalPayload.canonicalKey(): String = canonicalized().toString()
+
+private fun compareIntLists(left: List<Long>, right: List<Long>): Int {
+    for (index in 0 until minOf(left.size, right.size)) {
+        val comparison = left[index].compareTo(right[index])
+        if (comparison != 0) {
+            return comparison
+        }
+    }
+    return left.size.compareTo(right.size)
 }
 
 private fun IntegerDomain.toPayload(): DomainPayload {
@@ -330,8 +572,9 @@ private fun IntervalVariable.toPayload(): IntervalPayload {
         size = size.toPayload(),
         end = end.toPayload(),
         presence = presence?.toPayload(),
-        scope = scope,
-        origin = origin
+        scope = canonicalConstraintProgrammingIdentityScope(scope) ?: scope,
+        origin = origin,
+        identityProvenance = identityProvenance.toPayload(origin)
     )
 }
 
@@ -441,8 +684,12 @@ private fun SnapshotPayload.toSnapshot(
             name = variable.name,
             typeName = variable.typeName,
             domain = domain.value!!,
-            scope = variable.scope,
-            origin = variable.origin
+            scope = canonicalConstraintProgrammingIdentityScope(variable.scope) ?: variable.scope,
+            origin = variable.origin,
+            identityProvenance = canonicalConstraintProgrammingIdentityProvenance(
+                origin = variable.origin,
+                provenance = variable.identityProvenance.toModelOrigins()
+            )
         )
     }
     val intervalsResult = this.intervals.mapResult { it.toInterval(variables) }
@@ -460,8 +707,12 @@ private fun SnapshotPayload.toSnapshot(
                 name = it.name,
                 groupName = it.groupName,
                 constraint = constraint,
-                scope = it.scope,
-                origin = it.origin
+                scope = canonicalConstraintProgrammingIdentityScope(it.scope) ?: it.scope,
+                origin = it.origin,
+                identityProvenance = canonicalConstraintProgrammingIdentityProvenance(
+                    origin = it.origin,
+                    provenance = it.identityProvenance.toModelOrigins()
+                )
             )
         }
     }
@@ -475,8 +726,12 @@ private fun SnapshotPayload.toSnapshot(
                 category = category,
                 name = it.name,
                 expression = expression,
-                scope = it.scope,
-                origin = it.origin
+                scope = canonicalConstraintProgrammingIdentityScope(it.scope) ?: it.scope,
+                origin = it.origin,
+                identityProvenance = canonicalConstraintProgrammingIdentityProvenance(
+                    origin = it.origin,
+                    provenance = it.identityProvenance.toModelOrigins()
+                )
             )
         }
     }
@@ -529,8 +784,12 @@ private fun IntervalPayload.toInterval(
             size = size.value!!,
             end = end.value!!,
             presence = presence?.value,
-            scope = scope,
-            origin = origin
+            scope = canonicalConstraintProgrammingIdentityScope(scope) ?: scope,
+            origin = origin,
+            identityProvenance = canonicalConstraintProgrammingIdentityProvenance(
+                origin = origin,
+                provenance = identityProvenance.toModelOrigins()
+            )
         )
     )
 }
@@ -734,6 +993,19 @@ private fun <T : Enum<T>> enumValue(clazz: Class<T>, value: String): T? {
 
 private inline fun <reified T : Enum<T>> enumValue(value: String): T? {
     return enumValue(T::class.java, value)
+}
+
+private fun List<ModelElementOrigin>.toPayload(
+    origin: String? = null
+): List<IdentityOriginPayload> {
+    return canonicalConstraintProgrammingIdentityProvenance(
+        origin = origin,
+        provenance = this
+    ).map { IdentityOriginPayload(it.kind, it.key) }
+}
+
+private fun List<IdentityOriginPayload>.toModelOrigins(): List<ModelElementOrigin> {
+    return map { ModelElementOrigin(it.kind, it.key) }
 }
 
 private fun <T, U> Iterable<T>.mapResult(transform: (T) -> Ret<U>): Ret<List<U>> {

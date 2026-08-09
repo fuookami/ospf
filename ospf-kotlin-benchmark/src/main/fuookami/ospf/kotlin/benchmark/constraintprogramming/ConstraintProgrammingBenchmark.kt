@@ -26,7 +26,7 @@ import fuookami.ospf.kotlin.core.model.constraint_programming.NoOverlap
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingCheckpointCodec
 import fuookami.ospf.kotlin.core.solver.constraint_programming.FakeConstraintProgrammingSolver
 import fuookami.ospf.kotlin.core.solver.constraint_programming.lowering.ConstraintProgrammingToLinearModelLowerer
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.toSolveReport
 import fuookami.ospf.kotlin.core.solver.output.SolverStatus
 import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.solver.value.IntoValue
@@ -172,14 +172,12 @@ open class ConstraintProgrammingBenchmark {
             masterSolver = BendersMasterProblemSolver { model ->
                 val value = if (model.relationConstraints.isEmpty()) Flt64.zero else Flt64.one
                 ok(
-                    FeasibleSolverOutput(
-                        obj = value,
-                        solution = listOf(value),
-                        time = kotlin.time.Duration.ZERO,
-                        possibleBestObj = value,
-                        gap = Flt64.zero,
-                        status = SolverStatus.Optimal,
-                        bestBound = value
+                    SolverStatus.Optimal.toSolveReport(
+                        objective = value,
+                        values = listOf(value),
+                        solveTime = kotlin.time.Duration.ZERO,
+                        bestBound = value,
+                        gap = Flt64.zero
                     )
                 )
             },
@@ -198,7 +196,7 @@ open class ConstraintProgrammingBenchmark {
                 masterSolutionSource = { result ->
                     ok(
                         ConstraintProgrammingValueSource.of(
-                            mapOf("benders" to result.solution[bendersMasterVariable.index])
+                            mapOf("benders" to result.values[bendersMasterVariable.index])
                         )
                     )
                 },

@@ -57,6 +57,18 @@ enum class SerializedObjectiveCategory {
 }
 
 /**
+ * 序列化模型元素来源。 / Serialized model-element provenance entry.
+ *
+ * @property kind 来源类型 / Provenance kind
+ * @property key 来源键 / Provenance key
+ */
+@Serializable
+data class SerializedModelElementOrigin(
+    val kind: String,
+    val key: String
+)
+
+/**
  * 约束矩阵单元。 / Constraint matrix cell.
  *
  * @property rowIndex 行索引 / Row index
@@ -94,6 +106,7 @@ data class SerializedObjectiveCell(
  * @property identityScope 身份作用域 / Identity scope
  * @property identityOriginKind 身份来源类型 / Identity origin kind
  * @property identityOriginKey 身份来源键 / Identity origin key
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
  * @property identityNamespace 身份命名空间 / Identity namespace
  * @property identitySchemaVersion 身份 schema / Identity schema version
 */
@@ -109,7 +122,8 @@ data class SerializedVariable(
     val identityOriginKind: String? = null,
     val identityOriginKey: String? = null,
     val identityNamespace: String? = null,
-    val identitySchemaVersion: String? = null
+    val identitySchemaVersion: String? = null,
+    val identityProvenance: List<SerializedModelElementOrigin> = emptyList()
 )
 
 /**
@@ -123,6 +137,7 @@ data class SerializedVariable(
  * @property identityScope 身份作用域 / Identity scope
  * @property identityOriginKind 身份来源类型 / Identity origin kind
  * @property identityOriginKey 身份来源键 / Identity origin key
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
  * @property identityNamespace 身份命名空间 / Identity namespace
  * @property identitySchemaVersion 身份 schema / Identity schema version
 */
@@ -137,7 +152,8 @@ data class SerializedConstraint(
     val identityOriginKind: String? = null,
     val identityOriginKey: String? = null,
     val identityNamespace: String? = null,
-    val identitySchemaVersion: String? = null
+    val identitySchemaVersion: String? = null,
+    val identityProvenance: List<SerializedModelElementOrigin> = emptyList()
 )
 
 /**
@@ -150,6 +166,7 @@ data class SerializedConstraint(
  * @property identityScope 身份作用域 / Identity scope
  * @property identityOriginKind 身份来源类型 / Identity origin kind
  * @property identityOriginKey 身份来源键 / Identity origin key
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
  * @property identityNamespace 身份命名空间 / Identity namespace
  * @property identitySchemaVersion 身份 schema / Identity schema version
 */
@@ -163,7 +180,8 @@ data class SerializedObjective(
     val identityOriginKind: String? = null,
     val identityOriginKey: String? = null,
     val identityNamespace: String? = null,
-    val identitySchemaVersion: String? = null
+    val identitySchemaVersion: String? = null,
+    val identityProvenance: List<SerializedModelElementOrigin> = emptyList()
 )
 
 /**
@@ -354,6 +372,7 @@ data class SerializedQuadraticConstraintCell(
  * @property identityScope 身份作用域 / Identity scope
  * @property identityOriginKind 身份来源类型 / Identity origin kind
  * @property identityOriginKey 身份来源键 / Identity origin key
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
  * @property identityNamespace 身份命名空间 / Identity namespace
  * @property identitySchemaVersion 身份 schema / Identity schema version
 */
@@ -369,7 +388,8 @@ data class SerializedQuadraticConstraint(
     val identityOriginKind: String? = null,
     val identityOriginKey: String? = null,
     val identityNamespace: String? = null,
-    val identitySchemaVersion: String? = null
+    val identitySchemaVersion: String? = null,
+    val identityProvenance: List<SerializedModelElementOrigin> = emptyList()
 )
 
 /**
@@ -397,6 +417,7 @@ data class SerializedQuadraticObjectiveCell(
  * @property identityScope 身份作用域 / Identity scope
  * @property identityOriginKind 身份来源类型 / Identity origin kind
  * @property identityOriginKey 身份来源键 / Identity origin key
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
  * @property identityNamespace 身份命名空间 / Identity namespace
  * @property identitySchemaVersion 身份 schema / Identity schema version
 */
@@ -411,7 +432,8 @@ data class SerializedQuadraticObjective(
     val identityOriginKind: String? = null,
     val identityOriginKey: String? = null,
     val identityNamespace: String? = null,
-    val identitySchemaVersion: String? = null
+    val identitySchemaVersion: String? = null,
+    val identityProvenance: List<SerializedModelElementOrigin> = emptyList()
 )
 
 /** Stable serialized interval value for CP result materialization. / CP 结果物化使用的稳定 interval 序列化值。

@@ -86,6 +86,55 @@ interface AbstractQuadraticSolver {
     }
 
     /**
+     * 使用取消令牌求解二次模型。 / Solve a quadratic model with a cancellation token.
+     *
+     * @param model 二次四元模型视图 / Quadratic tetrad model view
+     * @param progressContext 进度上报上下文 / Progress reporting context
+     * @param cancellationToken 求解取消令牌 / Solve cancellation token
+     * @return 统一求解报告 / Unified solve report
+     */
+    suspend fun solveReport(
+        model: QuadraticTetradModelView,
+        progressContext: SolverProgressContext?,
+        cancellationToken: CancellationToken?
+    ): Ret<SolveReport<Flt64>> {
+        if (cancellationToken == null) {
+            return solveReport(model, progressContext)
+        }
+        if (cancellationToken?.isCancellationRequested == true) {
+            return Ok(cancelledSolveReport(cancellationToken.record?.reason))
+        }
+        when (val validation = model.identityValidation) {
+            is Ok -> {}
+            is Failed -> return Failed(validation.error)
+            is Fatal -> return Fatal(validation.errors)
+        }
+        progressContext?.report(
+            SolverProgressSnapshot(
+                stage = SolverStages.MILP,
+                progressInStage = 0,
+                overallProgress = 0,
+                diagnostics = mapOf("solver" to name)
+            )
+        )
+        return when (val result = invoke(model, null, cancellationToken)) {
+            is Ok -> {
+                progressContext?.report(
+                    SolverProgressSnapshot(
+                        stage = SolverStages.MILP,
+                        progressInStage = 100,
+                        overallProgress = 100,
+                        diagnostics = mapOf("solver" to name)
+                    )
+                )
+                Ok(result.value.toSolveReport())
+            }
+            is Failed -> Failed(result.error)
+            is Fatal -> Fatal(result.errors)
+        }
+    }
+
+    /**
      * 求解二次模型（阻塞）。 / Solve quadratic model (blocking).
      *
      * @param model 二次四元模型视图 / Quadratic tetrad model view
@@ -95,7 +144,16 @@ interface AbstractQuadraticSolver {
     suspend operator fun invoke(
         model: QuadraticTetradModelView,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<FeasibleSolverOutput<Flt64>>
+    ): Ret<SolveReport<Flt64>>
+
+    /** 使用取消令牌求解二次模型。 / Solve a quadratic model with a cancellation token. */
+    suspend operator fun invoke(
+        model: QuadraticTetradModelView,
+        solvingStatusCallBack: SolvingStatusCallBack? = null,
+        cancellationToken: CancellationToken?
+    ): Ret<SolveReport<Flt64>> {
+        return invoke(model, solvingStatusCallBack)
+    }
 
     /**
      * 求解二次模型并启用 IIS 诊断（阻塞）。 / Solve quadratic model with IIS diagnostics (blocking).
@@ -130,12 +188,15 @@ interface AbstractQuadraticSolver {
     fun solveAsync(
         model: QuadraticTetradModelView,
         solvingStatusCallBack: SolvingStatusCallBack? = null,
-        callBack: ((Ret<FeasibleSolverOutput<Flt64>>) -> Unit)? = null
-    ): CompletableFuture<Ret<FeasibleSolverOutput<Flt64>>> {
-        return coreSolverAsyncScope.future {
+        callBack: ((Ret<SolveReport<Flt64>>) -> Unit)? = null,
+        cancellationToken: CancellationToken? = null
+    ): CompletableFuture<Ret<SolveReport<Flt64>>> {
+        val token = cancellationToken ?: SolveHandle.create().token
+        return cancellableSolveFuture(token) {
             val result = this@AbstractQuadraticSolver.invoke(
                 model = model,
-                solvingStatusCallBack = solvingStatusCallBack
+                solvingStatusCallBack = solvingStatusCallBack,
+                cancellationToken = token
             )
             callBack?.invoke(result)
             result
@@ -155,12 +216,17 @@ interface AbstractQuadraticSolver {
         model: QuadraticTetradModelView,
         solvingStatusCallBack: SolvingStatusCallBack? = null,
         iisConfig: IISConfig,
-        callBack: ((Ret<SolverOutput>) -> Unit)? = null
+        callBack: ((Ret<SolverOutput>) -> Unit)? = null,
+        cancellationToken: CancellationToken? = null
     ): CompletableFuture<Ret<SolverOutput>> {
-        return coreSolverAsyncScope.future {
-            val result = this@AbstractQuadraticSolver.invoke(
+        val token = cancellationToken ?: SolveHandle.create().token
+        return cancellableSolveFuture(token) {
+            val result = solveWithOptionsAndIIS(
                 model = model,
-                solvingStatusCallBack = solvingStatusCallBack,
+                options = SolveOptions(
+                    solvingStatusCallBack = solvingStatusCallBack,
+                    cancellationToken = token
+                ),
                 iisConfig = iisConfig
             )
             callBack?.invoke(result)
@@ -180,7 +246,17 @@ interface AbstractQuadraticSolver {
         model: QuadraticTetradModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>>
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>>
+
+    /** 使用取消令牌获取多个二次解。 / Solve for multiple quadratic solutions with a cancellation token. */
+    suspend operator fun invoke(
+        model: QuadraticTetradModelView,
+        solutionAmount: UInt64,
+        solvingStatusCallBack: SolvingStatusCallBack? = null,
+        cancellationToken: CancellationToken?
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
+        return invoke(model, solutionAmount, solvingStatusCallBack)
+    }
 
     /**
      * 求解二次模型获取多个解并启用 IIS 诊断（阻塞）。 / Solve quadratic model for multiple solutions with IIS diagnostics (blocking).
@@ -220,13 +296,16 @@ interface AbstractQuadraticSolver {
         model: QuadraticTetradModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack? = null,
-        callBack: ((Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>>) -> Unit)? = null
-    ): CompletableFuture<Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>>> {
-        return coreSolverAsyncScope.future {
+        callBack: ((Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>>) -> Unit)? = null,
+        cancellationToken: CancellationToken? = null
+    ): CompletableFuture<Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>>> {
+        val token = cancellationToken ?: SolveHandle.create().token
+        return cancellableSolveFuture(token) {
             val result = this@AbstractQuadraticSolver.invoke(
                 model = model,
                 solutionAmount = solutionAmount,
-                solvingStatusCallBack = solvingStatusCallBack
+                solvingStatusCallBack = solvingStatusCallBack,
+                cancellationToken = token
             )
             callBack?.invoke(result)
             result
@@ -248,13 +327,18 @@ interface AbstractQuadraticSolver {
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack? = null,
         iisConfig: IISConfig,
-        callBack: ((Ret<Pair<SolverOutput, List<List<Flt64>>>>) -> Unit)? = null
+        callBack: ((Ret<Pair<SolverOutput, List<List<Flt64>>>>) -> Unit)? = null,
+        cancellationToken: CancellationToken? = null
     ): CompletableFuture<Ret<Pair<SolverOutput, List<List<Flt64>>>>> {
-        return coreSolverAsyncScope.future {
-            val result = this@AbstractQuadraticSolver.invoke(
+        val token = cancellationToken ?: SolveHandle.create().token
+        return cancellableSolveFuture(token) {
+            val result = solveWithOptionsAndIISForSolutionPool(
                 model = model,
-                solutionAmount = solutionAmount,
-                solvingStatusCallBack = solvingStatusCallBack,
+                options = SolveOptions(
+                    solutionAmount = solutionAmount,
+                    solvingStatusCallBack = solvingStatusCallBack,
+                    cancellationToken = token
+                ),
                 iisConfig = iisConfig
             )
             callBack?.invoke(result)
@@ -278,7 +362,7 @@ interface AbstractQuadraticSolver {
         model: QuadraticTetradModelView,
         converter: IntoValue<V>,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<FeasibleSolverOutput<V>> where V : RealNumber<V>, V : NumberField<V> {
+    ): Ret<SolveReport<V>> where V : RealNumber<V>, V : NumberField<V> {
         return when (val result = invoke(model, solvingStatusCallBack)) {
             is Ok -> Ok(result.value.convertTo(converter))
             is Failed -> Failed(result.error)
@@ -301,7 +385,7 @@ interface AbstractQuadraticSolver {
         solutionAmount: UInt64,
         converter: IntoValue<V>,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<Pair<FeasibleSolverOutput<V>, List<Solution<V>>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): Ret<Pair<SolveReport<V>, List<Solution<V>>>> where V : RealNumber<V>, V : NumberField<V> {
         return when (val result = invoke(model, solutionAmount, solvingStatusCallBack)) {
             is Ok -> {
                 val (output, solutions) = result.value
@@ -326,7 +410,7 @@ interface AbstractQuadraticSolver {
         model: MechanismModel<V>,
         converter: IntoValue<V>,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<FeasibleSolverOutput<V>> where V : RealNumber<V>, V : NumberField<V> {
+    ): Ret<SolveReport<V>> where V : RealNumber<V>, V : NumberField<V> {
         return when (val converted = convertMechanismModelToFlt64(model)) {
             is Ok -> {
                 val quadraticModel = converted.value as? QuadraticMechanismModel<Flt64>
@@ -363,7 +447,7 @@ interface AbstractQuadraticSolver {
         solutionAmount: UInt64,
         converter: IntoValue<V>,
         solvingStatusCallBack: SolvingStatusCallBack? = null
-    ): Ret<Pair<FeasibleSolverOutput<V>, List<Solution<V>>>> where V : RealNumber<V>, V : NumberField<V> {
+    ): Ret<Pair<SolveReport<V>, List<Solution<V>>>> where V : RealNumber<V>, V : NumberField<V> {
         return when (val converted = convertMechanismModelToFlt64(model)) {
             is Ok -> {
                 val quadraticModel = converted.value as? QuadraticMechanismModel<Flt64>

@@ -4,14 +4,24 @@ package fuookami.ospf.kotlin.core.solver.report
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.time.Duration
+import kotlinx.serialization.Serializable
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.utils.error.ErrorCode
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
 import fuookami.ospf.kotlin.core.model.basic.Solution
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingFeature
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSupportLevel
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.output.LinearInfeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.output.LinearSolverOutput
+import fuookami.ospf.kotlin.core.solver.output.QuadraticInfeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.output.QuadraticSolverOutput
+import fuookami.ospf.kotlin.core.solver.output.SolverOutput
+import fuookami.ospf.kotlin.core.solver.output.SolverStatus
+import fuookami.ospf.kotlin.core.solver.output.UnifiedSolverOutput
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
 
 /** 问题结论 / Problem conclusion */
 enum class ProblemStatus {
@@ -195,6 +205,84 @@ data class SolverDescriptor(
     val capabilities: SolverCapabilities
 )
 
+/** Typed value used by a backend configuration snapshot. / backend 配置快照中的类型化值。 */
+@Serializable
+sealed class BackendParameterValue {
+    /** Text parameter. / 文本参数。 */
+    @Serializable
+    data class Text(val value: String) : BackendParameterValue()
+
+    /** Integer parameter. / 整数参数。 */
+    @Serializable
+    data class Integer(val value: Long) : BackendParameterValue()
+
+    /** Decimal parameter encoded with a deterministic string. / 使用确定性字符串编码的十进制参数。 */
+    @Serializable
+    data class Decimal(val value: String) : BackendParameterValue()
+
+    /** Boolean parameter. / 布尔参数。 */
+    @Serializable
+    data class BooleanValue(val value: Boolean) : BackendParameterValue()
+}
+
+/** One redacted and serializable backend parameter. / 一个脱敏且可序列化的 backend 参数。 */
+@Serializable
+data class BackendParameter(
+    val name: String,
+    val value: BackendParameterValue,
+    val sensitive: Boolean = false
+)
+
+/**
+ * Serializable and fingerprintable backend configuration snapshot. / 可序列化且可生成指纹的 backend 配置快照。
+ *
+ * Sensitive values must be represented by a redaction marker and never enter the snapshot in clear text.
+ * 敏感值必须使用脱敏标记，不能以明文进入快照。
+ *
+ * @property type 配置类型 / Configuration type
+ * @property parameters 脱敏参数 / Redacted parameters
+ */
+@Serializable
+data class BackendConfigurationSnapshot(
+    val type: String,
+    val parameters: List<BackendParameter>
+) {
+    /** Deterministic configuration fingerprint. / 确定性配置指纹。 */
+    fun fingerprint(): ConfigurationFingerprint {
+        val canonical = parameters
+            .sortedBy { it.name }
+            .joinToString("\n") { parameter ->
+                "${parameter.name}=${parameter.canonicalValue()}|sensitive=${parameter.sensitive}"
+            }
+        return SolveFingerprinting.sha256("type=$type\n$canonical", "backend-config-1")
+    }
+}
+
+/** Return a stable redacted representation suitable for reports and fingerprints. / 返回适合报告和指纹的稳定脱敏表示。 */
+fun BackendParameter.redactedValue(): String {
+    if (sensitive) {
+        return "<redacted>"
+    }
+    return when (val parameterValue = value) {
+        is BackendParameterValue.Text -> parameterValue.value
+        is BackendParameterValue.Integer -> parameterValue.value.toString()
+        is BackendParameterValue.Decimal -> parameterValue.value
+        is BackendParameterValue.BooleanValue -> parameterValue.value.toString()
+    }
+}
+
+private fun BackendParameter.canonicalValue(): String {
+    if (sensitive) {
+        return "redacted:<redacted>"
+    }
+    return when (val parameterValue = value) {
+        is BackendParameterValue.Text -> "text:${parameterValue.value}"
+        is BackendParameterValue.Integer -> "integer:${parameterValue.value}"
+        is BackendParameterValue.Decimal -> "decimal:${parameterValue.value}"
+        is BackendParameterValue.BooleanValue -> "boolean:${parameterValue.value}"
+    }
+}
+
 /**
  * 可审计 backend 配置。 / Auditable backend configuration.
  *
@@ -204,8 +292,13 @@ interface BackendConfiguration {
     /** 配置类型标识 / Configuration type identifier */
     val type: String
 
-    /** 脱敏且确定排序的参数 / Redacted and deterministically ordered parameters */
-    fun redactedParameters(): Map<String, String>
+    /** 脱敏、类型化且确定排序的参数 / Redacted, typed, and deterministically ordered parameters */
+    fun parameters(): List<BackendParameter>
+
+    /** 脱敏配置快照 / Redacted configuration snapshot */
+    fun snapshot(): BackendConfigurationSnapshot {
+        return BackendConfigurationSnapshot(type = type, parameters = parameters())
+    }
 }
 
 /** 求解器执行来源 / Solver execution provenance */
@@ -214,6 +307,7 @@ data class SolverProvenance(
     val nativeVersion: String? = null,
     val effectiveParameters: Map<String, String> = emptyMap(),
     val ignoredParameters: Map<String, String> = emptyMap(),
+    val configuration: BackendConfigurationSnapshot? = null,
     val threadCount: Int? = null,
     val randomSeed: Long? = null,
     val deterministic: Boolean? = null,
@@ -234,7 +328,7 @@ data class SolveSolution<V>(
     val values: Solution<V>,
     val objective: V? = null,
     val pool: List<Solution<V>> = emptyList()
-)
+) : List<V> by values
 
 /** 求解证明 / Solve proof */
 data class SolveProof(
@@ -262,6 +356,30 @@ data class ConstraintEvaluation<V>(
     val tolerance: V,
     val satisfied: Boolean,
     val dual: V? = null
+)
+
+/**
+ * 变量上下界求值。 / Variable-bound evaluation.
+ *
+ * @param V 数值类型 / Numeric type
+ * @property variableId 变量稳定标识 / Stable variable identifier
+ * @property side 上下界方向 / Bound side
+ * @property bound 声明的边界值 / Declared bound value
+ * @property value 解中的变量值 / Variable value in the solution
+ * @property slack 相对边界的松弛 / Slack from the bound
+ * @property violation 相对边界的违反量 / Violation against the bound
+ * @property tolerance 可接受的违反容差 / Accepted violation tolerance
+ * @property satisfied 是否满足边界 / Whether the bound is satisfied
+ */
+data class VariableBoundEvaluation<V>(
+    val variableId: VariableId,
+    val side: BoundSide,
+    val bound: V,
+    val value: V,
+    val slack: V,
+    val violation: V,
+    val tolerance: V,
+    val satisfied: Boolean
 )
 
 /** 不可行证据来源 / Infeasibility evidence source */
@@ -369,6 +487,7 @@ data class InfeasibilityEvidence(
 /** 求解诊断 / Solve diagnostics */
 data class SolveDiagnostics<V>(
     val constraintEvaluations: List<ConstraintEvaluation<V>> = emptyList(),
+    val variableBoundEvaluations: List<VariableBoundEvaluation<V>> = emptyList(),
     val infeasibilityEvidence: InfeasibilityEvidence? = null,
     val warnings: List<SolveIssue> = emptyList(),
     val errors: List<SolveIssue> = emptyList()
@@ -415,6 +534,9 @@ data class SolveFingerprints(
  * @property diagnostics 约束评估与不可行证据 / Constraint evaluations and infeasibility evidence
  * @property provenance 求解器及运行参数来源 / Solver and runtime provenance
  * @property fingerprints 模型、配置与求解器审计指纹 / Model, configuration, and solver audit fingerprints
+ * @property attempts 组合求解的完整 backend 尝试轨迹 / Complete backend attempt traces for combinatorial solves
+ * @property selectedAttemptId 被选择的 backend 尝试标识 / Selected backend attempt identifier
+ * @property selectionReason 组合求解选择依据 / Combinatorial selection reason
  */
 data class SolveReport<V>(
     val schemaVersion: String = CURRENT_SCHEMA_VERSION,
@@ -427,8 +549,30 @@ data class SolveReport<V>(
     val statistics: SolveStatistics<Flt64> = SolveStatistics(),
     val diagnostics: SolveDiagnostics<V> = SolveDiagnostics(),
     val provenance: SolverProvenance? = null,
-    val fingerprints: SolveFingerprints = SolveFingerprints()
-) {
+    val fingerprints: SolveFingerprints = SolveFingerprints(),
+    val attempts: List<SolveAttemptTrace<V>> = emptyList(),
+    val selectedAttemptId: SolveAttemptId? = null,
+    val selectionReason: SolveSelectionReason? = null
+) : SolverOutput, LinearSolverOutput, QuadraticSolverOutput, UnifiedSolverOutput {
+    override val iterations: UInt64?
+        get() = statistics.iterations?.let(::UInt64)
+
+    override val nodeCount: UInt64?
+        get() = statistics.nodes?.let(::UInt64)
+
+    override val bestBound: Flt64?
+        get() = statistics.bestBound
+
+    override val mipGap: Flt64?
+        get() = statistics.gap
+
+    override val solveTime: Duration?
+        get() = statistics.solveTime
+
+    /** 主解值列表视图；没有 incumbent 时为空列表。 / Main-solution values; empty when no incumbent exists. */
+    val values: Solution<V>
+        get() = solution?.values ?: emptyList()
+
     companion object {
         const val CURRENT_SCHEMA_VERSION: String = "1.0"
     }
@@ -465,6 +609,7 @@ data class CombinatorialSolveReport<V>(
 /** 取消来源 / Cancellation source */
 enum class CancellationSource {
     Caller,
+    Callback,
     Coroutine,
     Future,
     Combinatorial,
@@ -481,13 +626,91 @@ data class CancellationRecord(
 
 /** 求解取消令牌 / Solve cancellation token */
 class CancellationToken internal constructor(
-    private val cancellation: AtomicReference<CancellationRecord?>
+    private val cancellation: AtomicReference<CancellationRecord?>,
+    private val listeners: CopyOnWriteArrayList<(CancellationRecord) -> Try> = CopyOnWriteArrayList()
 ) {
     /** 是否已经请求取消 / Whether cancellation has been requested */
     val isCancellationRequested: Boolean get() = cancellation.get() != null
 
     /** 首次取消事实 / First cancellation record */
     val record: CancellationRecord? get() = cancellation.get()
+
+    /**
+     * 注册原生中断监听。若取消已经发生，监听会立即执行。 /
+     * Register a native interruption listener; invoke it immediately when already cancelled.
+     *
+     * @param listener 原生中断回调 / Native interruption callback
+     * @return 注册或执行结果 / Registration or execution result
+     */
+    fun register(listener: (CancellationRecord) -> Try): Try {
+        val existing = cancellation.get()
+        if (existing != null) {
+            return invokeListener(listener, existing)
+        }
+        listeners += listener
+        val raced = cancellation.get()
+        return if (raced == null) {
+            ok
+        } else {
+            listeners.remove(listener)
+            invokeListener(listener, raced)
+        }
+    }
+
+    /**
+     * 移除原生中断监听，避免求解资源释放后再次取消触碰已关闭的 native 对象。 /
+     * Remove a native interruption listener so a later cancellation cannot touch a released native object.
+     *
+     * @param listener 要移除的监听 / Listener to remove
+     * @return 移除结果 / Removal result
+     */
+    fun unregister(listener: (CancellationRecord) -> Try): Try {
+        listeners.remove(listener)
+        return ok
+    }
+
+    /**
+     * 请求取消。重复请求不会覆盖首次来源或重复执行监听。 /
+     * Request cancellation; repeated requests do not replace the first source or re-run listeners.
+     *
+     * @param source 取消来源 / Cancellation source
+     * @param reason 取消原因 / Cancellation reason
+     * @return 原生中断监听执行结果 / Native interruption result
+     */
+    fun request(
+        source: CancellationSource = CancellationSource.Caller,
+        reason: String? = null
+    ): Try {
+        val record = CancellationRecord(source, Instant.now(), reason)
+        if (!cancellation.compareAndSet(null, record)) {
+            return ok
+        }
+        var failure: Try? = null
+        listeners.forEach { listener ->
+            when (val result = invokeListener(listener, record)) {
+                is Failed, is Fatal -> if (failure == null) {
+                    failure = result
+                }
+                else -> {}
+            }
+        }
+        return failure ?: ok
+    }
+
+    private fun invokeListener(
+        listener: (CancellationRecord) -> Try,
+        record: CancellationRecord
+    ): Try {
+        return try {
+            listener(record)
+        } catch (error: Exception) {
+            Failed(
+                ErrorCode.ApplicationError,
+                "原生取消监听失败：${error.message ?: error::class.simpleName} / " +
+                    "Native cancellation listener failed: ${error.message ?: error::class.simpleName}"
+            )
+        }
+    }
 }
 
 /**
@@ -496,32 +719,22 @@ class CancellationToken internal constructor(
  * @property token 取消令牌 / Cancellation token
  */
 class SolveHandle private constructor(
-    val token: CancellationToken,
-    private val cancellation: AtomicReference<CancellationRecord?>,
-    private val interrupt: (CancellationRecord) -> Try
+    val token: CancellationToken
 ) {
     /** 幂等请求取消；仅首次请求调用 backend 中断 / Request cancellation idempotently */
     fun cancel(
         source: CancellationSource = CancellationSource.Caller,
         reason: String? = null
     ): Try {
-        val record = CancellationRecord(source, Instant.now(), reason)
-        return if (cancellation.compareAndSet(null, record)) {
-            interrupt(record)
-        } else {
-            ok
-        }
+        return token.request(source, reason)
     }
 
     companion object {
         /** 创建独立求解句柄 / Create an independent solve handle */
         fun create(interrupt: (CancellationRecord) -> Try = { ok }): SolveHandle {
-            val cancellation = AtomicReference<CancellationRecord?>(null)
-            return SolveHandle(
-                token = CancellationToken(cancellation),
-                cancellation = cancellation,
-                interrupt = interrupt
-            )
+            val token = CancellationToken(AtomicReference<CancellationRecord?>())
+            token.register(interrupt)
+            return SolveHandle(token)
         }
     }
 }
@@ -552,41 +765,222 @@ object SolveFingerprinting {
     }
 }
 
-/** 将旧可行输出无损包装为统一报告 / Wrap a legacy feasible output in a unified report */
-fun <V> FeasibleSolverOutput<V>.toSolveReport(
+/**
+ * 对统一报告应用运行时元数据和解池。 / Apply runtime metadata and solution-pool data to a unified report.
+ *
+ * @param V 解值类型 / Solution value type
+ * @param runId 求解运行标识 / Solve run identifier
+ * @param provenance 求解器执行来源 / Solver execution provenance
+ * @param fingerprints 审计指纹 / Audit fingerprints
+ * @param solutionPool 求解器返回的解池 / Solution pool returned by the solver
+ * @return 更新后的统一求解报告 / Updated unified solve report
+ */
+fun <V> SolveReport<V>.toSolveReport(
     runId: SolveRunId? = null,
     provenance: SolverProvenance? = null,
-    fingerprints: SolveFingerprints = SolveFingerprints()
+    fingerprints: SolveFingerprints = SolveFingerprints(),
+    solutionPool: List<Solution<V>> = emptyList()
 ): SolveReport<V> {
-    return SolveReport(
-        runId = runId,
-        problemStatus = ProblemStatus.Feasible,
-        terminationReason = TerminationReason.Completed,
-        solutionPresence = if (gap == Flt64.zero) {
-            SolutionPresence.Optimal
+    return copy(
+        runId = runId ?: this.runId,
+        provenance = provenance ?: this.provenance,
+        fingerprints = if (fingerprints == SolveFingerprints()) {
+            this.fingerprints
         } else {
-            SolutionPresence.Incumbent
+            fingerprints
         },
-        solution = SolveSolution(
-            values = solution,
-            objective = objValueOrNull
-        ),
-        proof = SolveProof(
-            status = if (gap == Flt64.zero) {
-                ProofStatus.Claimed
+        solution = solution?.copy(
+            pool = if (solutionPool.isEmpty()) solution.pool else solutionPool
+        )
+    )
+}
+
+/**
+ * 将旧统一输出包装为统一求解报告。 / Wrap a legacy unified solver output in a solve report.
+ *
+ * 该适配器保留旧接口产生的 IIS 诊断；新的求解链路应直接返回 `SolveReport`。 /
+ * This adapter preserves IIS diagnostics produced by legacy interfaces; new solve pipelines should return `SolveReport` directly.
+ *
+ * @param runId 求解运行标识 / Solve run identifier
+ * @param provenance 求解器执行来源 / Solver execution provenance
+ * @param fingerprints 审计指纹 / Audit fingerprints
+ * @param solutionPool 求解器返回的解池 / Solution pool returned by the solver
+ * @return 统一求解报告 / Unified solve report
+ */
+@Suppress("UNCHECKED_CAST")
+fun SolverOutput.toSolveReport(
+    runId: SolveRunId? = null,
+    provenance: SolverProvenance? = null,
+    fingerprints: SolveFingerprints = SolveFingerprints(),
+    solutionPool: List<Solution<Flt64>> = emptyList()
+): SolveReport<Flt64> {
+    return when (this) {
+        is SolveReport<*> -> {
+            val report = this as SolveReport<Flt64>
+            report.copy(
+                runId = runId ?: report.runId,
+                provenance = provenance ?: report.provenance,
+                fingerprints = if (fingerprints == SolveFingerprints()) {
+                    report.fingerprints
+                } else {
+                    fingerprints
+                },
+                solution = report.solution?.copy(
+                    pool = if (solutionPool.isEmpty()) report.solution.pool else solutionPool
+                )
+            )
+        }
+
+        is LinearInfeasibleSolverOutput -> SolveReport(
+            runId = runId,
+            problemStatus = ProblemStatus.Infeasible,
+            terminationReason = TerminationReason.Completed,
+            solutionPresence = SolutionPresence.None,
+            diagnostics = diagnostics.withInfeasibilityEvidence(iisAvailable)
+        ).copy(
+            provenance = provenance,
+            fingerprints = fingerprints,
+            statistics = SolveStatistics(
+                solveTime = solveTime,
+                iterations = iterations?.toULong(),
+                nodes = nodeCount?.toULong(),
+                bestBound = bestBound,
+                gap = mipGap
+            )
+        )
+
+        is QuadraticInfeasibleSolverOutput -> SolveReport(
+            runId = runId,
+            problemStatus = ProblemStatus.Infeasible,
+            terminationReason = TerminationReason.Completed,
+            solutionPresence = SolutionPresence.None,
+            diagnostics = diagnostics.withInfeasibilityEvidence(iisAvailable)
+        ).copy(
+            provenance = provenance,
+            fingerprints = fingerprints,
+            statistics = SolveStatistics(
+                solveTime = solveTime,
+                iterations = iterations?.toULong(),
+                nodes = nodeCount?.toULong(),
+                bestBound = bestBound,
+                gap = mipGap
+            )
+        )
+
+        else -> SolveReport(
+            runId = runId,
+            problemStatus = ProblemStatus.Unknown,
+            terminationReason = TerminationReason.BackendFailure,
+            solutionPresence = SolutionPresence.None,
+            diagnostics = SolveDiagnostics(
+                errors = listOf(
+                    SolveIssue(
+                        code = "legacy-output-unsupported",
+                        category = SolveIssueCategory.Unsupported,
+                        message = "旧输出类型无法转换为线性/二次报告：${this::class.simpleName} / " +
+                            "Legacy output type cannot be converted to a linear/quadratic report: ${this::class.simpleName}"
+                    )
+                )
+            ),
+            provenance = provenance,
+            fingerprints = fingerprints
+        )
+    }
+}
+
+private fun SolveDiagnostics<Flt64>.withInfeasibilityEvidence(
+    iisAvailable: Boolean
+): SolveDiagnostics<Flt64> {
+    if (infeasibilityEvidence != null) {
+        return this
+    }
+    return copy(
+        infeasibilityEvidence = InfeasibilityEvidence(
+            source = if (iisAvailable) {
+                InfeasibilityEvidenceSource.NativeIIS
             } else {
-                ProofStatus.None
+                InfeasibilityEvidenceSource.None
             },
-            kind = "legacy-feasible-output"
+            exactness = if (iisAvailable) EvidenceExactness.Exact else EvidenceExactness.Unknown,
+            completeness = if (iisAvailable) EvidenceCompleteness.Complete else EvidenceCompleteness.Unavailable,
+            validity = if (iisAvailable) EvidenceValidity.Verified else EvidenceValidity.Unknown,
+            minimality = if (iisAvailable) EvidenceMinimality.Irreducible else EvidenceMinimality.NotChecked
+        )
+    )
+}
+
+/**
+ * 将 Flt64 报告转换为目标数值类型。 / Convert a Flt64 report to the target numeric type.
+ *
+ * 统计字段保持 Flt64，因为报告合同规定统计值使用浮点类型；解和约束诊断使用目标类型。 /
+ * Statistics remain Flt64 because the report contract uses floating-point statistics; solutions and constraint diagnostics use the target type.
+ *
+ * @param V 目标数值类型 / Target numeric type
+ * @param converter 数值转换器 / Numeric converter
+ * @return 转换后的报告 / Converted report
+ */
+fun <V> SolveReport<Flt64>.convertTo(converter: IntoValue<V>): SolveReport<V>
+        where V : fuookami.ospf.kotlin.math.algebra.concept.RealNumber<V>,
+              V : fuookami.ospf.kotlin.math.algebra.concept.NumberField<V> {
+    return SolveReport(
+        schemaVersion = schemaVersion,
+        runId = runId,
+        problemStatus = problemStatus,
+        terminationReason = terminationReason,
+        solutionPresence = solutionPresence,
+        solution = solution?.let {
+            SolveSolution(
+                values = it.values.map(converter::intoValue),
+                objective = it.objective?.let(converter::intoValue),
+                pool = it.pool.map { values -> values.map(converter::intoValue) }
+            )
+        },
+        diagnostics = SolveDiagnostics(
+            constraintEvaluations = diagnostics.constraintEvaluations.map { evaluation ->
+                ConstraintEvaluation(
+                    constraintId = evaluation.constraintId,
+                    lhs = converter.intoValue(evaluation.lhs),
+                    rhs = converter.intoValue(evaluation.rhs),
+                    relation = evaluation.relation,
+                    slack = converter.intoValue(evaluation.slack),
+                    violation = converter.intoValue(evaluation.violation),
+                    tolerance = converter.intoValue(evaluation.tolerance),
+                    satisfied = evaluation.satisfied,
+                    dual = evaluation.dual?.let(converter::intoValue)
+                )
+            },
+            variableBoundEvaluations = diagnostics.variableBoundEvaluations.map { evaluation ->
+                VariableBoundEvaluation(
+                    variableId = evaluation.variableId,
+                    side = evaluation.side,
+                    bound = converter.intoValue(evaluation.bound),
+                    value = converter.intoValue(evaluation.value),
+                    slack = converter.intoValue(evaluation.slack),
+                    violation = converter.intoValue(evaluation.violation),
+                    tolerance = converter.intoValue(evaluation.tolerance),
+                    satisfied = evaluation.satisfied
+                )
+            },
+        infeasibilityEvidence = diagnostics.infeasibilityEvidence,
+        warnings = diagnostics.warnings,
+        errors = diagnostics.errors
         ),
-        statistics = SolveStatistics(
-            solveTime = solveTime,
-            iterations = iterations?.toULong(),
-            nodes = nodeCount?.toULong(),
-            bestBound = bestBound,
-            gap = null
-        ),
+        proof = proof,
+        statistics = statistics,
         provenance = provenance,
-        fingerprints = fingerprints
+        fingerprints = fingerprints,
+        attempts = attempts.map { attempt ->
+            SolveAttemptTrace(
+                attemptId = attempt.attemptId,
+                parentAttemptId = attempt.parentAttemptId,
+                backendId = attempt.backendId,
+                report = attempt.report?.convertTo(converter),
+                elapsed = attempt.elapsed,
+                errors = attempt.errors,
+                cancellationReason = attempt.cancellationReason
+            )
+        },
+        selectedAttemptId = selectedAttemptId,
+        selectionReason = selectionReason
     )
 }

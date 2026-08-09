@@ -87,7 +87,7 @@ class ScipLinearBendersDecompositionSolver(
 
                 when (val result = solver(model, solvingStatusCallBack)) {
                     is Ok -> {
-                        metaModel.tokens.setSolution(result.value.solution)
+                        metaModel.tokens.setSolution(result.value.values)
                         jobs.joinAll()
                         Ok(result.value)
                     }
@@ -197,12 +197,12 @@ class ScipLinearBendersDecompositionSolver(
                 when (val result = solver(model, solvingStatusCallBack)) {
                     is Ok -> {
                         metaModel.tokens.setSolution(model.tokensInSolver.mapIndexed { index, token ->
-                            token.variable to result.value.solution[index]
+                            token.variable to result.value.values[index]
                         }.toMap() + fixedVariables)
                         val dualObject = dualSolution.sumOf(Flt64) { (constraint, value) ->
                             constraint.rhs * value
                         }
-                        if (abs(dualObject - result.value.obj) gr Flt64(1e-6)) {
+                        if (abs(dualObject - (result.value.solution?.objective ?: Flt64.zero)) gr Flt64(1e-6)) {
                             // there may bse some configuration is not be properly set, sometimes the dual solution is not accurate, so we need to re-solve the dual problem to get dual solution / 某些配置可能未正确设置，导致对偶解不准确，因此需要重新求解对偶问题以获取对偶解
                             when (val result = solveDual(model, ScipLinearSolver(config))) {
                                 is Ok -> {
@@ -350,7 +350,7 @@ class ScipQuadraticBendersDecompositionSolver(
 
                 when (val result = solver(model, solvingStatusCallBack)) {
                     is Ok -> {
-                        metaModel.tokens.setSolution(result.value.solution)
+                        metaModel.tokens.setSolution(result.value.values)
                         jobs.joinAll()
                         Ok(result.value)
                     }
@@ -480,12 +480,12 @@ class ScipQuadraticBendersDecompositionSolver(
                 when (val result = solver(model, solvingStatusCallBack)) {
                     is Ok -> {
                         metaModel.tokens.setSolution(model.tokensInSolver.mapIndexed { index, token ->
-                            token.variable to result.value.solution[index]
+                            token.variable to result.value.values[index]
                         }.toMap() + fixedVariables)
                         val dualObject = dualSolution.sumOf(Flt64) { (constraint, value) ->
                             constraint.rhs * value
                         }
-                        if (abs(dualObject - result.value.obj) gr Flt64(1e-6)) {
+                        if (abs(dualObject - (result.value.solution?.objective ?: Flt64.zero)) gr Flt64(1e-6)) {
                             // there may bse some configuration is not be properly set, sometimes the dual solution is not accurate, so we need to re-solve the dual problem to get dual solution / 某些配置可能未正确设置，导致对偶解不准确，因此需要重新求解对偶问题以获取对偶解
                             when (val result = solveDual(model, ScipQuadraticSolver(config))) {
                                 is Ok -> {

@@ -40,7 +40,7 @@ ospf-kotlin-core 是 OSPF（Open Solver Platform Framework）Kotlin 项目的**�
 
 Logic-Based Benders 使用 `ospf-kotlin-framework` 中的 `LogicBasedBendersEngine`。实现将证明状态与可行性分离，`Exact` 模式要求 cut 全局有效，并通过 solver report 暴露结构化 conflict/IIS 证据。能力边界和验收命令见[实现计划](../plans/release.md)。
 
-CP 模型元素具有显式身份作用域。跨模型重建需要使用调用方维护的 `scope = "stable"` 与 `origin`；默认的 `model-local` 只在当前模型实例内有效。snapshot、远程结果、诊断和 checkpoint 编解码会保留这些 ID，并拒绝重复或不完整的身份元数据。仓库级稳定 ID 契约仍由 `plans/schema.md`（`OSPF-SOL-013`）负责。
+CP 模型元素具有显式身份作用域。跨模型重建需要使用调用方维护的 `scope = "stable"` 与 `origin`；默认的 `model-local` 只在当前模型实例内有效。snapshot、远程结果、诊断和 checkpoint 编解码会保留这些 ID，并拒绝重复或不完整的身份元数据。已关闭的仓库级稳定 ID 契约（`OSPF-SOL-013`）及 SCIP/Gurobi 证据记录在[发布计划](../plans/release.md)中；尚未通过该合同的插件适配由[求解器 CP 计划](../plans/solver_cp.md)管理。
 
 `ConstraintProgrammingCheckpointCodec` 写入 portable checkpoint v2，包含 snapshot 指纹、求解器/配置来源、经过复验的 incumbent、interval 值和审计字段。恢复时从 snapshot 重建并再次校验 incumbent；不会持久化 SCIP/JNI 搜索树或 native 句柄，因此能力级别是 `RebuildFromSnapshot`，不是 `Native`。
 

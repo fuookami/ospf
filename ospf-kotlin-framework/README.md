@@ -45,8 +45,8 @@ interface ColumnGenerationSolver {
     val name: String
 
     // MILP solving
-    suspend fun solveMILP(name: String, metaModel: Flt64LinearMetaModel, ...): Ret<Flt64FeasibleSolverOutput>
-    suspend fun solveMILP(metaModel: Flt64LinearMetaModel, options: FrameworkSolveOptions): Ret<Flt64FeasibleSolverOutput>
+    suspend fun solveMILP(name: String, metaModel: Flt64LinearMetaModel, ...): Ret<Flt64SolveReport>
+    suspend fun solveMILP(metaModel: Flt64LinearMetaModel, options: FrameworkSolveOptions): Ret<Flt64SolveReport>
     suspend fun solveMILPWithStatus(...): Ret<MILPSolveResult>
 
     // LP solving (returns dual solution for pricing)
@@ -54,11 +54,11 @@ interface ColumnGenerationSolver {
     suspend fun solveLPWithStatus(...): Ret<LPResultWithStatus>
 
     // Async variants (CompletableFuture)
-    fun solveMILPAsync(...): CompletableFuture<Ret<Flt64FeasibleSolverOutput>>
+    fun solveMILPAsync(...): CompletableFuture<Ret<Flt64SolveReport>>
     fun solveLPAsync(...): CompletableFuture<Ret<LPResult>>
 
     // Value conversion variants (Flt64 -> V)
-    suspend fun <V> solveMILPAs(name: String, metaModel: Flt64LinearMetaModel, converter: IntoValue<V>, ...): Ret<FeasibleSolverOutput<V>>
+    suspend fun <V> solveMILPAs(name: String, metaModel: Flt64LinearMetaModel, converter: IntoValue<V>, ...): Ret<SolveReport<V>>
     suspend fun <V> solveLPAs(name: String, metaModel: Flt64LinearMetaModel, converter: IntoValue<V>, ...): Ret<LPResultOf<V>>
 }
 ```
@@ -73,7 +73,7 @@ Linear and quadratic Benders decomposition interfaces:
 ```kotlin
 interface LinearBendersDecompositionSolver {
     val name: String
-    suspend fun solveMaster(metaModel: Flt64LinearMetaModel, ...): Ret<Flt64FeasibleSolverOutput>
+    suspend fun solveMaster(metaModel: Flt64LinearMetaModel, ...): Ret<Flt64SolveReport>
     suspend fun solveSub(metaModel: Flt64LinearMetaModel, ...): Ret<LinearSubResult>
 }
 ```
@@ -245,6 +245,14 @@ val result = solver.solveMILPAs<FltX>(
     converter = FltX.toIntoValue()
 )
 ```
+
+### SolveReport migration and follow-up scope
+
+New and migrated solver paths use `Ret<SolveReport<V>>` as the primary result contract. The
+`Flt64SolveReport` name used by column-generation and Benders APIs is a typealias to
+`SolveReport<Flt64>`, not a separate legacy result facade. Combinatorial and remote paths preserve
+terminal state, attempt traces, diagnostics, provenance, and fingerprints. Remaining plugin
+capability work is tracked in [`plans/solver_cp.md`](../plans/solver_cp.md).
 
 ## Local Validation
 

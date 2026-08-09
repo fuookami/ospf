@@ -5,7 +5,7 @@ package fuookami.ospf.kotlin.core.solver.iis
 
 import java.io.OutputStreamWriter
 import kotlin.time.*
-import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.core.model.basic.*
@@ -16,6 +16,8 @@ import fuookami.ospf.kotlin.core.solver.report.BoundSide
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
 import fuookami.ospf.kotlin.core.solver.report.InfeasibilityEvidence
 import fuookami.ospf.kotlin.core.solver.report.InfeasibilityEvidenceSource
+import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
+import fuookami.ospf.kotlin.core.solver.report.ProblemStatus
 import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.solver.report.diagnosticConstraintId
 import fuookami.ospf.kotlin.core.solver.report.diagnosticVariableId
@@ -127,7 +129,13 @@ private fun materializeNativeIIS(
             dualOrigin = original.dualOrigin,
             slack = original.slack,
             name = original.name,
-            initialResult = original.initialResult
+            initialResult = original.initialResult,
+            id = original.id,
+            identityScope = original.identityScope,
+            identityOrigin = original.identityOrigin,
+            identityNamespace = original.identityNamespace,
+            identitySchemaVersion = original.identitySchemaVersion,
+            identityProvenance = original.identityProvenance
         )
     }
     val sparseLhs = SparseMatrix<Flt64>()
@@ -146,7 +154,30 @@ private fun materializeNativeIIS(
         sources = rows.map { model.constraints.sources[it] },
         origins = rows.map { model.constraints.origins[it] },
         froms = rows.map { model.constraints.froms[it] },
-        priorities = rows.map { model.constraints.priorities[it] }
+        priorities = rows.map { model.constraints.priorities[it] },
+        ids = rows.map { row ->
+            model.constraints.ids.getOrNull(row)
+                ?: ConstraintId("model-local-constraint:$row")
+        },
+        identityNamespace = model.constraints.identityNamespace,
+        identitySchemaVersion = model.constraints.identitySchemaVersion,
+        identityScopes = rows.map { row ->
+            if (model.constraints.ids.getOrNull(row) == null) {
+                ModelElementScope.ModelLocal
+            } else {
+                model.constraints.identityScopeAt(row)
+            }
+        },
+        identityOrigins = rows.map { row ->
+            if (model.constraints.ids.getOrNull(row) == null) null else model.constraints.identityOriginAt(row)
+        },
+        identityProvenance = rows.map { row ->
+            if (model.constraints.ids.getOrNull(row) == null) {
+                emptyList()
+            } else {
+                model.constraints.identityProvenanceAt(row)
+            }
+        }
     )
     return LinearIISModel(
         impl = BasicLinearTriadModel(variables, constraints, "${model.name}_iis"),
@@ -248,9 +279,7 @@ suspend fun computeLegacyIIS(
         constraintAmount = constraintAmount,
         config = config
     )) {
-        is Ok -> {
-            result.value
-        }
+        is Ok -> result.value
 
         is Failed -> {
             return Failed(result.error)
@@ -428,9 +457,7 @@ private suspend fun performElasticFiltering(
     ) { variable ->
         variable.slack?.lowerBound != null || variable.slack?.upperBound != null
     }) {
-        is Ok -> {
-            result.value
-        }
+        is Ok -> result.value
 
         is Failed -> {
             return Failed(result.error)
@@ -533,7 +560,18 @@ private suspend fun performDeletionFiltering(
         candidate._upperBound = Flt64.zero
         val feasible = when (val result = solver(elasticModel)) {
             is Ok -> {
-                true
+                when (result.value.problemStatus) {
+                    ProblemStatus.Feasible -> true
+                    ProblemStatus.Infeasible,
+                    ProblemStatus.InfeasibleOrUnbounded -> false
+                    else -> {
+                        return Failed(
+                            ErrorCode.OREngineSolvingException,
+                            "IIS 删除过滤收到无法判定可行性的终态：${result.value.problemStatus} / " +
+                                "IIS deletion filtering received an inconclusive terminal status: ${result.value.problemStatus}"
+                        )
+                    }
+                }
             }
 
             is Failed -> {
@@ -609,9 +647,16 @@ private suspend fun relaxSpecificComponents(
         }
     }
 
-    val result = when (val result = solver(elasticModel)) {
-        is Ok -> {
-            result.value
+    val result = when (val result = solver.solveReport(elasticModel)) {
+        is Ok -> when (result.value.problemStatus) {
+            ProblemStatus.Feasible -> result.value.solution?.values
+                ?: return Failed(Err(ErrorCode.ORSolutionInvalid, "Elastic linear solve completed without a solution."))
+            ProblemStatus.Infeasible,
+            ProblemStatus.InfeasibleOrUnbounded -> return Ok(false to emptyMap())
+            else -> return Failed(
+                ErrorCode.OREngineSolvingException,
+                "Elastic linear solve returned an inconclusive terminal status: ${result.value.problemStatus}."
+            )
         }
 
         is Failed -> {
@@ -628,8 +673,8 @@ private suspend fun relaxSpecificComponents(
     }
 
     val relaxedComponents = elasticModel.variables.associateNotNull { variable ->
-        if (variable.slack != null && result.solution[variable.index] geq tolerance) {
-            variable to result.solution[variable.index]
+        if (variable.slack != null && result.size > variable.index && result[variable.index] geq tolerance) {
+            variable to result[variable.index]
         } else {
             null
         }

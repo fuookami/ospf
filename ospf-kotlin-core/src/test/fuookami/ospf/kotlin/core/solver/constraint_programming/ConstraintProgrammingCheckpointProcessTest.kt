@@ -11,9 +11,11 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import fuookami.ospf.kotlin.utils.functional.Failed
@@ -32,7 +34,11 @@ import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgram
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingFeasibleOutput
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingUnknownOutput
 import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
+import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ModelElementOrigin
+import fuookami.ospf.kotlin.core.solver.report.SolveFingerprinting
 import fuookami.ospf.kotlin.core.solver.report.TerminationReason
+import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.variable.IntVar
 
 /**
@@ -116,6 +122,161 @@ class ConstraintProgrammingCheckpointProcessTest {
             } finally {
                 session.close()
             }
+        } finally {
+            model.close()
+        }
+    }
+
+    /**
+     * Verify scope aliases and provenance permutations share a canonical checkpoint fingerprint.
+     * 验证 scope 别名和 provenance 排列变化仍共享规范 checkpoint 指纹。
+     */
+    @Test
+    fun checkpointFingerprintCanonicalizesIdentityAliasesAndProvenanceOrder() {
+        val provenance = listOf(
+            ModelElementOrigin("source", "canonical"),
+            ModelElementOrigin("domain", "canonical")
+        )
+        val first = canonicalIdentityModel("STABLE", provenance)
+        val second = canonicalIdentityModel("stable", provenance.reversed())
+        try {
+            val solver = FakeConstraintProgrammingSolver()
+            val firstSnapshot = assertIs<Ok<ConstraintProgrammingModelSnapshot, *, *>>(
+                first.snapshot()
+            ).value
+            val secondSnapshot = assertIs<Ok<ConstraintProgrammingModelSnapshot, *, *>>(
+                second.snapshot()
+            ).value
+            val firstCheckpoint = assertIs<Ok<ConstraintProgrammingCheckpointEnvelope, *, *>>(
+                ConstraintProgrammingCheckpointCodec.capture(
+                    snapshot = firstSnapshot,
+                    descriptor = solver.descriptor,
+                    checkpointId = "canonical-first",
+                    createdAtEpochMs = 1L
+                )
+            ).value
+            val secondCheckpoint = assertIs<Ok<ConstraintProgrammingCheckpointEnvelope, *, *>>(
+                ConstraintProgrammingCheckpointCodec.capture(
+                    snapshot = secondSnapshot,
+                    descriptor = solver.descriptor,
+                    checkpointId = "canonical-second",
+                    createdAtEpochMs = 1L
+                )
+            ).value
+
+            assertEquals(firstCheckpoint.modelFingerprint, secondCheckpoint.modelFingerprint)
+            assertEquals(firstCheckpoint.snapshotJson, secondCheckpoint.snapshotJson)
+        } finally {
+            first.close()
+            second.close()
+        }
+    }
+
+    /**
+     * Verify a historical snapshot with omitted provenance and legacy scope spelling can be restored.
+     * 验证省略 provenance 且使用历史 scope 拼写的 snapshot 仍可恢复。
+     */
+    @Test
+    fun historicalSnapshotJsonIsCanonicalizedBeforeRestore() {
+        val model = stableIdentityModel("historical-snapshot-model").first
+        try {
+            val snapshot = assertIs<Ok<ConstraintProgrammingModelSnapshot, *, *>>(model.snapshot()).value
+            val currentSnapshotJson = ConstraintProgrammingSnapshotCodec.encode(snapshot).value!!
+            val root = Json.parseToJsonElement(currentSnapshotJson).jsonObject.toMutableMap()
+
+            fun historicalElement(element: kotlinx.serialization.json.JsonElement): JsonObject {
+                val elementRoot = element.jsonObject.toMutableMap()
+                elementRoot.remove("identityProvenance")
+                elementRoot["scope"] = JsonPrimitive("STABLE")
+                return JsonObject(elementRoot)
+            }
+
+            root["variables"] = JsonArray(root.getValue("variables").jsonArray.map(::historicalElement))
+            root["constraints"] = JsonArray(root.getValue("constraints").jsonArray.map(::historicalElement))
+            root["objectives"] = JsonArray(root.getValue("objectives").jsonArray.map(::historicalElement))
+            val historicalSnapshotJson = Json.encodeToString(JsonObject(root))
+            val legacyCheckpoint = Json.encodeToString(
+                buildJsonObject {
+                    put("schema", 1)
+                    put("modelName", snapshot.name)
+                    put("solverId", "historical-solver")
+                    put("snapshotJson", historicalSnapshotJson)
+                }
+            )
+
+            val decoded = assertIs<Ok<ConstraintProgrammingCheckpointEnvelope, *, *>>(
+                ConstraintProgrammingCheckpointCodec.decodeCompatible(legacyCheckpoint)
+            ).value
+            assertEquals(currentSnapshotJson, decoded.snapshotJson)
+
+            val restored = assertIs<Ok<ConstraintProgrammingCheckpointRestore, *, *>>(
+                ConstraintProgrammingCheckpointCodec.restore(
+                    envelope = decoded,
+                    snapshot = snapshot,
+                    expectedConfigurationFingerprint = null,
+                    expectedSolverFingerprint = null
+                )
+            ).value
+            assertEquals(decoded.modelFingerprint, restored.envelope.modelFingerprint)
+        } finally {
+            model.close()
+        }
+    }
+
+    /**
+     * Verify direct restore migrates a historical v2 envelope before comparing its snapshot. /
+     * 验证直接 restore 会先迁移历史 v2 envelope，再比较 snapshot。
+     */
+    @Test
+    fun directRestoreMigratesHistoricalV2SnapshotBeforeFingerprintComparison() {
+        val model = stableIdentityModel("historical-v2-restore").first
+        try {
+            val snapshot = assertIs<Ok<ConstraintProgrammingModelSnapshot, *, *>>(model.snapshot()).value
+            val currentSnapshotJson = ConstraintProgrammingSnapshotCodec.encode(snapshot).value!!
+            val root = Json.parseToJsonElement(currentSnapshotJson).jsonObject.toMutableMap()
+
+            fun historicalElement(element: kotlinx.serialization.json.JsonElement): JsonObject {
+                val elementRoot = element.jsonObject.toMutableMap()
+                elementRoot.remove("identityProvenance")
+                elementRoot["scope"] = JsonPrimitive("STABLE")
+                return JsonObject(elementRoot)
+            }
+
+            root["variables"] = JsonArray(root.getValue("variables").jsonArray.map(::historicalElement))
+            root["constraints"] = JsonArray(root.getValue("constraints").jsonArray.map(::historicalElement))
+            root["objectives"] = JsonArray(root.getValue("objectives").jsonArray.map(::historicalElement))
+            val historicalSnapshotJson = Json.encodeToString(JsonObject(root))
+            val captured = assertIs<Ok<ConstraintProgrammingCheckpointEnvelope, *, *>>(
+                ConstraintProgrammingCheckpointCodec.capture(
+                    snapshot = snapshot,
+                    descriptor = FakeConstraintProgrammingSolver().descriptor,
+                    checkpointId = "historical-v2",
+                    createdAtEpochMs = 1L
+                )
+            ).value
+            val historicalEnvelope = ConstraintProgrammingCheckpointCodec.withIntegrity(
+                captured.copy(
+                    modelFingerprint = SolveFingerprinting.sha256(historicalSnapshotJson).value,
+                    snapshotJson = historicalSnapshotJson,
+                    integritySha256 = ""
+                )
+            )
+
+            val restored = ConstraintProgrammingCheckpointCodec.restore(
+                envelope = historicalEnvelope,
+                snapshot = snapshot,
+                expectedConfigurationFingerprint = null,
+                expectedSolverFingerprint = null,
+                allowLegacyConfigurationFingerprint = true,
+                allowLegacySolverFingerprint = true
+            )
+
+            assertTrue(restored.ok)
+            assertEquals(currentSnapshotJson, restored.value!!.envelope.snapshotJson)
+            assertEquals(
+                SolveFingerprinting.sha256(currentSnapshotJson).value,
+                restored.value!!.envelope.modelFingerprint
+            )
         } finally {
             model.close()
         }
@@ -435,6 +596,8 @@ class ConstraintProgrammingCheckpointProcessTest {
 
             assertEquals(snapshot.identitySchemaVersion, decoded.identitySchemaVersion)
             assertEquals(snapshot.identityNamespace, decoded.identityNamespace)
+            assertEquals("2.0", snapshot.identitySchemaVersion)
+            assertEquals("cp-identity", snapshot.identityNamespace)
             assertEquals("identity-round-trip", decoded.checkpointId)
 
             val restored = assertIs<Ok<ConstraintProgrammingCheckpointRestore, *, *>>(
@@ -473,8 +636,50 @@ class ConstraintProgrammingCheckpointProcessTest {
         return model
     }
 
+    private fun canonicalIdentityModel(
+        scope: String,
+        provenance: List<ModelElementOrigin>
+    ): ConstraintProgrammingModel {
+        val model = ConstraintProgrammingModel(
+            name = "canonical-checkpoint-model",
+            objectCategory = ObjectCategory.Minimum,
+            identityNamespace = "cp-canonical",
+            identitySchemaVersion = "1.0"
+        )
+        val value = IntVar("canonical-checkpoint-value")
+        model.registerVariable(
+            id = VariableId("variable:canonical-checkpoint-value"),
+            variable = value,
+            domain = IntegerDomain.interval(0, 3).value!!,
+            scope = scope,
+            origin = "legacy/canonical",
+            identityProvenance = provenance
+        )
+        val expression = ConstraintProgrammingExpression.Variable(value)
+        model.addConstraint(
+            constraint = ConstraintProgrammingConstraint.greaterOrEqual(expression, Int64.one).value!!,
+            id = ConstraintId("constraint:canonical-checkpoint-lower-bound"),
+            scope = scope,
+            origin = "legacy/canonical",
+            identityProvenance = provenance
+        )
+        model.minimize(
+            expression = expression,
+            id = ObjectiveId("objective:canonical-checkpoint"),
+            scope = scope,
+            origin = "legacy/canonical",
+            identityProvenance = provenance
+        )
+        return model
+    }
+
     private fun stableIdentityModel(name: String): Pair<ConstraintProgrammingModel, IntVar> {
-        val model = ConstraintProgrammingModel(name, ObjectCategory.Minimum)
+        val model = ConstraintProgrammingModel(
+            name = name,
+            objectCategory = ObjectCategory.Minimum,
+            identityNamespace = "cp-identity",
+            identitySchemaVersion = "2.0"
+        )
         val value = IntVar("checkpoint-identity-value")
         model.registerVariable(
             value,
@@ -496,16 +701,16 @@ class ConstraintProgrammingCheckpointProcessTest {
     private fun identityManifest(snapshot: ConstraintProgrammingModelSnapshot): List<String> {
         val elements = ArrayList<String>()
         snapshot.variables.forEach {
-            elements.add("variable|${it.id}|${it.scope}|${it.origin}")
+            elements.add("variable|${it.id}|${it.scope}|${it.origin}|${it.identityProvenance}")
         }
         snapshot.intervals.forEach {
-            elements.add("interval|${it.id}|${it.scope}|${it.origin}")
+            elements.add("interval|${it.id}|${it.scope}|${it.origin}|${it.identityProvenance}")
         }
         snapshot.constraints.forEach {
-            elements.add("constraint|${it.id}|${it.scope}|${it.origin}")
+            elements.add("constraint|${it.id}|${it.scope}|${it.origin}|${it.identityProvenance}")
         }
         snapshot.objectives.forEach {
-            elements.add("objective|${it.id}|${it.scope}|${it.origin}")
+            elements.add("objective|${it.id}|${it.scope}|${it.origin}|${it.identityProvenance}")
         }
         return elements.sorted()
     }

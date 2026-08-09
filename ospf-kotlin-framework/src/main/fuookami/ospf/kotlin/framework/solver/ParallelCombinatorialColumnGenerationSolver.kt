@@ -5,12 +5,20 @@
 */
 package fuookami.ospf.kotlin.framework.solver
 
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlinx.coroutines.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import org.apache.logging.log4j.kotlin.logger
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.error.SolverNotFoundError
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.SolvingStatusCallBack
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.core.solver.report.*
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.utils.functional.*
 
 /**
@@ -67,10 +75,10 @@ class ParallelCombinatorialColumnGenerationSolver(
         toLogModel: Boolean,
         registrationStatusCallBack: RegistrationStatusCallBack?,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Flt64FeasibleSolverOutput> {
+    ): Ret<Flt64SolveReport> {
         return when (mode) {
             ParallelCombinatorialMode.First -> {
-                var result: Flt64FeasibleSolverOutput? = null
+                var result: Flt64SolveReport? = null
                 val lock = Any()
                 try {
                     coroutineScope {
@@ -159,11 +167,11 @@ class ParallelCombinatorialColumnGenerationSolver(
                     if (successResults.isNotEmpty()) {
                         val bestResult = when (metaModel.objectCategory) {
                             ObjectCategory.Minimum -> {
-                                successResults.minBy { it.obj }
+                                successResults.minBy { it.solution?.objective ?: Flt64.zero }
                             }
 
                             ObjectCategory.Maximum -> {
-                                successResults.maxBy { it.obj }
+                                successResults.maxBy { it.solution?.objective ?: Flt64.zero }
                             }
                         }
                         Ok(bestResult)

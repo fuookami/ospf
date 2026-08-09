@@ -1,5 +1,10 @@
 package fuookami.ospf.kotlin.core.solver.report
 
+import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.utils.functional.Failed
+import fuookami.ospf.kotlin.utils.functional.Fatal
+import fuookami.ospf.kotlin.utils.functional.Try
+import fuookami.ospf.kotlin.utils.functional.ok
 import fuookami.ospf.kotlin.core.model.basic.ConstraintRelation as ModelConstraintRelation
 import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
 import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModelView
@@ -14,6 +19,9 @@ import fuookami.ospf.kotlin.core.model.intermediate.QuadraticTetradModelView
  * @property upperBound 上界编码 / Upper-bound encoding
  * @property scope 身份作用域 / Identity scope
  * @property origin 稳定来源 / Stable origin
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
+ * @property identityNamespace 元素身份命名空间 / Element identity namespace
+ * @property identitySchemaVersion 元素身份 schema / Element identity schema
  */
 data class NormalizedVariable(
     val id: VariableId,
@@ -21,7 +29,10 @@ data class NormalizedVariable(
     val lowerBound: String? = null,
     val upperBound: String? = null,
     val scope: ModelElementScope = ModelElementScope.ModelLocal,
-    val origin: ModelElementOrigin? = null
+    val origin: ModelElementOrigin? = null,
+    val identityProvenance: List<ModelElementOrigin> = emptyList(),
+    val identityNamespace: String? = null,
+    val identitySchemaVersion: String? = null
 )
 
 /** 规范化线性项 / Normalized linear term */
@@ -47,6 +58,9 @@ data class NormalizedQuadraticTerm(
  * @property quadraticTerms 二次项 / Quadratic terms
  * @property scope 身份作用域 / Identity scope
  * @property origin 稳定来源 / Stable origin
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
+ * @property identityNamespace 元素身份命名空间 / Element identity namespace
+ * @property identitySchemaVersion 元素身份 schema / Element identity schema
  */
 data class NormalizedConstraint(
     val id: ConstraintId,
@@ -55,7 +69,10 @@ data class NormalizedConstraint(
     val linearTerms: List<NormalizedLinearTerm>,
     val quadraticTerms: List<NormalizedQuadraticTerm> = emptyList(),
     val scope: ModelElementScope = ModelElementScope.ModelLocal,
-    val origin: ModelElementOrigin? = null
+    val origin: ModelElementOrigin? = null,
+    val identityProvenance: List<ModelElementOrigin> = emptyList(),
+    val identityNamespace: String? = null,
+    val identitySchemaVersion: String? = null
 )
 
 /**
@@ -68,6 +85,9 @@ data class NormalizedConstraint(
  * @property quadraticTerms 二次项 / Quadratic terms
  * @property scope 身份作用域 / Identity scope
  * @property origin 稳定来源 / Stable origin
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
+ * @property identityNamespace 元素身份命名空间 / Element identity namespace
+ * @property identitySchemaVersion 元素身份 schema / Element identity schema
  */
 data class NormalizedObjective(
     val id: ObjectiveId,
@@ -76,7 +96,10 @@ data class NormalizedObjective(
     val linearTerms: List<NormalizedLinearTerm>,
     val quadraticTerms: List<NormalizedQuadraticTerm> = emptyList(),
     val scope: ModelElementScope = ModelElementScope.ModelLocal,
-    val origin: ModelElementOrigin? = null
+    val origin: ModelElementOrigin? = null,
+    val identityProvenance: List<ModelElementOrigin> = emptyList(),
+    val identityNamespace: String? = null,
+    val identitySchemaVersion: String? = null
 )
 
 /**
@@ -91,16 +114,27 @@ data class NormalizedObjective(
  * @property objective 规范化目标 / Normalized objective
  * @property identityNamespace 身份命名空间 / Identity namespace
  * @property identitySchemaVersion 身份 schema / Identity schema
+ * @property identityValidation 身份元数据校验结果 / Identity metadata validation result
  */
 data class NormalizedMathematicalModel(
-    val schemaVersion: String = "1.0",
+    val schemaVersion: String = "1.1",
     val modelType: SolverModelType,
     val variables: List<NormalizedVariable>,
     val constraints: List<NormalizedConstraint>,
     val objective: NormalizedObjective,
     val identityNamespace: String? = null,
-    val identitySchemaVersion: String? = null
+    val identitySchemaVersion: String? = null,
+    val identityValidation: Try = validateNormalizedIdentityMetadata(
+        identityNamespace = identityNamespace,
+        identitySchemaVersion = identitySchemaVersion,
+        variables = variables,
+        constraints = constraints,
+        objective = objective
+    )
 ) {
+    /** Return the structured identity validation result. / 返回结构化身份校验结果。 */
+    fun validateIdentity(): Try = identityValidation
+
     /** 生成确定性规范文本 / Produce deterministic canonical text */
     fun canonicalText(): String {
         val variableLines = variables.sortedBy { it.id.value }.map { variable ->
@@ -112,15 +146,20 @@ data class NormalizedMathematicalModel(
                 encode(variable.upperBound ?: ""),
                 variable.scope.name,
                 encode(variable.origin?.kind ?: ""),
-                encode(variable.origin?.key ?: "")
+                encode(variable.origin?.key ?: ""),
+                provenanceText(variable.identityProvenance, variable.origin),
+                encode(variable.identityNamespace ?: ""),
+                encode(variable.identitySchemaVersion ?: "")
             ).joinToString("|")
         }
         val constraintLines = constraints.sortedBy { it.id.value }.map { constraint ->
-            val linear = constraint.linearTerms.sortedBy { it.variableId.value }.joinToString(",") { term ->
+            val linear = constraint.linearTerms.sortedWith(
+                compareBy({ it.variableId.value }, { it.coefficient })
+            ).joinToString(",") { term ->
                 "${encode(term.variableId.value)}:${encode(term.coefficient)}"
             }
-            val quadratic = constraint.quadraticTerms.sortedWith(
-                compareBy({ it.firstVariableId.value }, { it.secondVariableId.value })
+            val quadratic = constraint.quadraticTerms.map { it.canonicalized() }.sortedWith(
+                compareBy({ it.firstVariableId.value }, { it.secondVariableId.value }, { it.coefficient })
             ).joinToString(",") { term ->
                 "${encode(term.firstVariableId.value)}:${encode(term.secondVariableId.value)}:${encode(term.coefficient)}"
             }
@@ -133,14 +172,19 @@ data class NormalizedMathematicalModel(
                 quadratic,
                 constraint.scope.name,
                 encode(constraint.origin?.kind ?: ""),
-                encode(constraint.origin?.key ?: "")
+                encode(constraint.origin?.key ?: ""),
+                provenanceText(constraint.identityProvenance, constraint.origin),
+                encode(constraint.identityNamespace ?: ""),
+                encode(constraint.identitySchemaVersion ?: "")
             ).joinToString("|")
         }
-        val objectiveLinear = objective.linearTerms.sortedBy { it.variableId.value }.joinToString(",") { term ->
+        val objectiveLinear = objective.linearTerms.sortedWith(
+            compareBy({ it.variableId.value }, { it.coefficient })
+        ).joinToString(",") { term ->
             "${encode(term.variableId.value)}:${encode(term.coefficient)}"
         }
-        val objectiveQuadratic = objective.quadraticTerms.sortedWith(
-            compareBy({ it.firstVariableId.value }, { it.secondVariableId.value })
+        val objectiveQuadratic = objective.quadraticTerms.map { it.canonicalized() }.sortedWith(
+            compareBy({ it.firstVariableId.value }, { it.secondVariableId.value }, { it.coefficient })
         ).joinToString(",") { term ->
             "${encode(term.firstVariableId.value)}:${encode(term.secondVariableId.value)}:${encode(term.coefficient)}"
         }
@@ -153,7 +197,10 @@ data class NormalizedMathematicalModel(
             objectiveQuadratic,
             objective.scope.name,
             encode(objective.origin?.kind ?: ""),
-            encode(objective.origin?.key ?: "")
+            encode(objective.origin?.key ?: ""),
+            provenanceText(objective.identityProvenance, objective.origin),
+            encode(objective.identityNamespace ?: ""),
+            encode(objective.identitySchemaVersion ?: "")
         ).joinToString("|")
         return buildList {
             add("schema|${encode(schemaVersion)}")
@@ -179,6 +226,18 @@ data class NormalizedMathematicalModel(
             .replace(",", "\\,")
             .replace(":", "\\:")
     }
+
+    private fun provenanceText(
+        provenance: List<ModelElementOrigin>,
+        origin: ModelElementOrigin?
+    ): String {
+        return (provenance + listOfNotNull(origin))
+            .distinct()
+            .sortedWith(compareBy({ it.kind }, { it.key }))
+            .joinToString(",") { source ->
+                "${encode(source.kind)}:${encode(source.key)}"
+            }
+    }
 }
 
 /**
@@ -200,7 +259,12 @@ fun LinearTriadModelView.toNormalizedMathematicalModel(): NormalizedMathematical
             lowerBound = variable.lowerBound.toString(),
             upperBound = variable.upperBound.toString(),
             scope = variable.id?.let { variable.identityScope } ?: ModelElementScope.ModelLocal,
-            origin = variable.identityOrigin
+            origin = variable.identityOrigin,
+            identityProvenance = variable.identityProvenance.ifEmpty {
+                listOfNotNull(variable.identityOrigin)
+            },
+            identityNamespace = variable.identityNamespace,
+            identitySchemaVersion = variable.identitySchemaVersion
         )
     }
     val normalizedConstraints = constraints.indices.map { row ->
@@ -217,7 +281,12 @@ fun LinearTriadModelView.toNormalizedMathematicalModel(): NormalizedMathematical
             },
             scope = constraints.ids.getOrNull(row)?.let { constraints.identityScopeAt(row) }
                 ?: ModelElementScope.ModelLocal,
-            origin = constraints.identityOriginAt(row)
+            origin = constraints.identityOriginAt(row),
+            identityProvenance = constraints.identityProvenanceAt(row).ifEmpty {
+                listOfNotNull(constraints.identityOriginAt(row))
+            },
+            identityNamespace = constraints.identityNamespace,
+            identitySchemaVersion = constraints.identitySchemaVersion
         )
     }
     val normalizedObjective = NormalizedObjective(
@@ -232,16 +301,27 @@ fun LinearTriadModelView.toNormalizedMathematicalModel(): NormalizedMathematical
             )
         },
         scope = objective.id?.let { objective.identityScope } ?: ModelElementScope.ModelLocal,
-        origin = objective.identityOrigin
+        origin = objective.identityOrigin,
+        identityProvenance = objective.identityProvenance.ifEmpty {
+            listOfNotNull(objective.identityOrigin)
+        },
+        identityNamespace = objective.identityNamespace,
+        identitySchemaVersion = objective.identitySchemaVersion
     )
     return NormalizedMathematicalModel(
         modelType = if (containsInteger) SolverModelType.MIP else SolverModelType.LP,
         variables = normalizedVariables,
         constraints = normalizedConstraints,
         objective = normalizedObjective,
-        identityNamespace = identityNamespace,
-        identitySchemaVersion = identitySchemaVersion
-    )
+        identityNamespace = resolveIdentityMetadata(
+            preferred = constraints.identityNamespace,
+            candidates = variables.map { it.identityNamespace } + listOf(objective.identityNamespace)
+        ),
+        identitySchemaVersion = resolveIdentityMetadata(
+            preferred = constraints.identitySchemaVersion,
+            candidates = variables.map { it.identitySchemaVersion } + listOf(objective.identitySchemaVersion)
+        )
+    ).withSourceIdentityValidation(constraints.identityMetadataValidation)
 }
 
 /**
@@ -259,7 +339,12 @@ fun QuadraticTetradModelView.toNormalizedMathematicalModel(): NormalizedMathemat
             lowerBound = variable.lowerBound.toString(),
             upperBound = variable.upperBound.toString(),
             scope = variable.id?.let { variable.identityScope } ?: ModelElementScope.ModelLocal,
-            origin = variable.identityOrigin
+            origin = variable.identityOrigin,
+            identityProvenance = variable.identityProvenance.ifEmpty {
+                listOfNotNull(variable.identityOrigin)
+            },
+            identityNamespace = variable.identityNamespace,
+            identitySchemaVersion = variable.identitySchemaVersion
         )
     }
     val normalizedConstraints = constraints.indices.map { row ->
@@ -273,7 +358,7 @@ fun QuadraticTetradModelView.toNormalizedMathematicalModel(): NormalizedMathemat
             } else {
                 val second = variables.getOrNull(cell.colIndex2)?.id
                     ?: VariableId("model-local-variable:${cell.colIndex2}")
-                quadraticTerms += NormalizedQuadraticTerm(first, second, cell.coefficient.toString())
+                quadraticTerms += normalizedQuadraticTerm(first, second, cell.coefficient.toString())
             }
         }
         NormalizedConstraint(
@@ -284,7 +369,12 @@ fun QuadraticTetradModelView.toNormalizedMathematicalModel(): NormalizedMathemat
             quadraticTerms = quadraticTerms,
             scope = constraints.ids.getOrNull(row)?.let { constraints.identityScopeAt(row) }
                 ?: ModelElementScope.ModelLocal,
-            origin = constraints.identityOriginAt(row)
+            origin = constraints.identityOriginAt(row),
+            identityProvenance = constraints.identityProvenanceAt(row).ifEmpty {
+                listOfNotNull(constraints.identityOriginAt(row))
+            },
+            identityNamespace = constraints.identityNamespace,
+            identitySchemaVersion = constraints.identitySchemaVersion
         )
     }
     val linearTerms = ArrayList<NormalizedLinearTerm>()
@@ -297,7 +387,7 @@ fun QuadraticTetradModelView.toNormalizedMathematicalModel(): NormalizedMathemat
         } else {
             val second = variables.getOrNull(cell.colIndex2)?.id
                 ?: VariableId("model-local-variable:${cell.colIndex2}")
-            quadraticTerms += NormalizedQuadraticTerm(first, second, cell.coefficient.toString())
+            quadraticTerms += normalizedQuadraticTerm(first, second, cell.coefficient.toString())
         }
     }
     return NormalizedMathematicalModel(
@@ -315,11 +405,22 @@ fun QuadraticTetradModelView.toNormalizedMathematicalModel(): NormalizedMathemat
             linearTerms = linearTerms,
             quadraticTerms = quadraticTerms,
             scope = objective.id?.let { objective.identityScope } ?: ModelElementScope.ModelLocal,
-            origin = objective.identityOrigin
+            origin = objective.identityOrigin,
+            identityProvenance = objective.identityProvenance.ifEmpty {
+                listOfNotNull(objective.identityOrigin)
+            },
+            identityNamespace = objective.identityNamespace,
+            identitySchemaVersion = objective.identitySchemaVersion
         ),
-        identityNamespace = identityNamespace,
-        identitySchemaVersion = identitySchemaVersion
-    )
+        identityNamespace = resolveIdentityMetadata(
+            preferred = constraints.identityNamespace,
+            candidates = variables.map { it.identityNamespace } + listOf(objective.identityNamespace)
+        ),
+        identitySchemaVersion = resolveIdentityMetadata(
+            preferred = constraints.identitySchemaVersion,
+            candidates = variables.map { it.identitySchemaVersion } + listOf(objective.identitySchemaVersion)
+        )
+    ).withSourceIdentityValidation(constraints.identityMetadataValidation)
 }
 
 private fun ModelConstraintRelation.toReportRelation(): ConstraintRelation = when (this) {
@@ -329,3 +430,75 @@ private fun ModelConstraintRelation.toReportRelation(): ConstraintRelation = whe
 }
 
 private fun ObjectCategory.toNormalizedCategory(): String = name
+
+private fun resolveIdentityMetadata(
+    preferred: String?,
+    candidates: List<String?>
+): String? {
+    val values = buildList {
+        preferred?.takeIf { it.isNotBlank() }?.let(::add)
+        candidates.mapNotNullTo(this) { it?.takeIf(String::isNotBlank) }
+    }.distinct().sorted()
+    return values.singleOrNull()
+}
+
+private fun NormalizedMathematicalModel.withSourceIdentityValidation(
+    sourceValidation: Try
+): NormalizedMathematicalModel {
+    return when (sourceValidation) {
+        is Failed -> copy(identityValidation = Failed(sourceValidation.error))
+        is Fatal -> copy(identityValidation = Fatal(sourceValidation.errors))
+        else -> this
+    }
+}
+
+private fun normalizedQuadraticTerm(
+    firstVariableId: VariableId,
+    secondVariableId: VariableId,
+    coefficient: String
+): NormalizedQuadraticTerm {
+    return if (firstVariableId.value <= secondVariableId.value) {
+        NormalizedQuadraticTerm(firstVariableId, secondVariableId, coefficient)
+    } else {
+        NormalizedQuadraticTerm(secondVariableId, firstVariableId, coefficient)
+    }
+}
+
+private fun NormalizedQuadraticTerm.canonicalized(): NormalizedQuadraticTerm {
+    return normalizedQuadraticTerm(firstVariableId, secondVariableId, coefficient)
+}
+
+private fun validateNormalizedIdentityMetadata(
+    identityNamespace: String?,
+    identitySchemaVersion: String?,
+    variables: List<NormalizedVariable>,
+    constraints: List<NormalizedConstraint>,
+    objective: NormalizedObjective
+): Try {
+    val namespaces = buildList {
+        identityNamespace?.takeIf { it.isNotBlank() }?.let(::add)
+        variables.mapNotNullTo(this) { it.identityNamespace?.takeIf(String::isNotBlank) }
+        constraints.mapNotNullTo(this) { it.identityNamespace?.takeIf(String::isNotBlank) }
+        objective.identityNamespace?.takeIf { it.isNotBlank() }?.let(::add)
+    }.distinct()
+    if (namespaces.size > 1) {
+        return Failed(
+            ErrorCode.IllegalArgument,
+            "规范化模型 namespace 不一致 / Normalized model namespaces disagree"
+        )
+    }
+    val schemaVersions = buildList {
+        identitySchemaVersion?.takeIf { it.isNotBlank() }?.let(::add)
+        variables.mapNotNullTo(this) { it.identitySchemaVersion?.takeIf(String::isNotBlank) }
+        constraints.mapNotNullTo(this) { it.identitySchemaVersion?.takeIf(String::isNotBlank) }
+        objective.identitySchemaVersion?.takeIf { it.isNotBlank() }?.let(::add)
+    }.distinct()
+    return if (schemaVersions.size > 1) {
+        Failed(
+            ErrorCode.IllegalArgument,
+            "规范化模型 schema 不一致 / Normalized model schemas disagree"
+        )
+    } else {
+        ok
+    }
+}

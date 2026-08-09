@@ -21,7 +21,6 @@ import fuookami.ospf.kotlin.core.solver.report.BackendConfiguration
  * @property dumpIntermediateModelConcurrent 是否并发转储中间模型 / Whether to dump intermediate model concurrently
  * @property dumpIntermediateModelBounds 是否转储中间模型边界 / Whether to dump intermediate model bounds
  * @property dumpIntermediateModelForceBounds 是否强制转储中间模型边界 / Whether to force dump intermediate model bounds
- * @property extraConfig 额外配置 / Extra configuration
  * @property backendConfiguration 可审计 backend 配置 / Auditable backend configuration
 */
 data class SolverConfig(
@@ -43,10 +42,5 @@ data class SolverConfig(
     val dumpIntermediateModelConcurrent: Boolean? = null,
     val dumpIntermediateModelBounds: Boolean? = null,
     val dumpIntermediateModelForceBounds: Boolean? = null,
-    @Deprecated(
-        message = "请使用 backendConfiguration；extraConfig 无法序列化、脱敏或生成稳定指纹 / " +
-            "Use backendConfiguration; extraConfig cannot be serialized, redacted, or fingerprinted"
-    )
-    val extraConfig: Any? = null,
     val backendConfiguration: BackendConfiguration? = null
 )

@@ -154,7 +154,7 @@ private class GurobiLinearDiagnosticRun(
     }
 
     private suspend fun initialize(name: String): Try {
-        val gurobiConfig = solverConfig.extraConfig as? GurobiSolverConfig
+        val gurobiConfig = solverConfig.backendConfiguration as? GurobiSolverConfig
         val server = gurobiConfig?.server
         val password = gurobiConfig?.password
         val connectionTime = gurobiConfig?.connectionTime
@@ -448,7 +448,7 @@ private class GurobiQuadraticDiagnosticRun(
     }
 
     private suspend fun initialize(name: String): Try {
-        val gurobiConfig = solverConfig.extraConfig as? GurobiSolverConfig
+        val gurobiConfig = solverConfig.backendConfiguration as? GurobiSolverConfig
         val server = gurobiConfig?.server
         val password = gurobiConfig?.password
         val connectionTime = gurobiConfig?.connectionTime

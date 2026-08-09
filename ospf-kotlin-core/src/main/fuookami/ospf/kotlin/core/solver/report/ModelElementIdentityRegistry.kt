@@ -23,12 +23,14 @@ enum class ModelElementKind {
  * @property id 类型化稳定标识 / Typed stable identifier
  * @property scope 身份作用域 / Identity scope
  * @property origin 稳定来源 / Stable origin
+ * @property provenance 完整来源集合 / Complete source provenance
  */
 data class ModelElementIdentity(
     val kind: ModelElementKind,
     val id: ModelElementId,
     val scope: ModelElementScope,
-    val origin: ModelElementOrigin? = null
+    val origin: ModelElementOrigin? = null,
+    val provenance: List<ModelElementOrigin> = origin?.let(::listOf).orEmpty()
 )
 
 /**
@@ -57,15 +59,23 @@ class ModelElementIdentityRegistry(
      * @param element Variable object whose identity is being registered. / 要注册身份的变量对象。
      * @param id Stable variable identifier. / 稳定变量标识。
      * @param origin Optional source identity. / 可选的来源身份。
+     * @param provenance Complete source identities; defaults to origin when omitted. / 完整来源身份集合；省略时默认使用 origin。
      * @return Registration result. / 注册结果。
      */
     @Synchronized
     fun registerVariable(
         element: Any,
         id: VariableId,
-        origin: ModelElementOrigin? = null
+        origin: ModelElementOrigin? = null,
+        provenance: List<ModelElementOrigin> = emptyList()
     ): Try {
-        return register(element, ModelElementKind.Variable, ModelElementId(id.value), origin)
+        return register(
+            element = element,
+            kind = ModelElementKind.Variable,
+            id = ModelElementId(id.value),
+            origin = origin,
+            provenance = provenance
+        )
     }
 
     /**
@@ -74,15 +84,23 @@ class ModelElementIdentityRegistry(
      * @param element Constraint object whose identity is being registered. / 要注册身份的约束对象。
      * @param id Stable constraint identifier. / 稳定约束标识。
      * @param origin Optional source identity. / 可选的来源身份。
+     * @param provenance Complete source identities; defaults to origin when omitted. / 完整来源身份集合；省略时默认使用 origin。
      * @return Registration result. / 注册结果。
      */
     @Synchronized
     fun registerConstraint(
         element: Any,
         id: ConstraintId,
-        origin: ModelElementOrigin? = null
+        origin: ModelElementOrigin? = null,
+        provenance: List<ModelElementOrigin> = emptyList()
     ): Try {
-        return register(element, ModelElementKind.Constraint, ModelElementId(id.value), origin)
+        return register(
+            element = element,
+            kind = ModelElementKind.Constraint,
+            id = ModelElementId(id.value),
+            origin = origin,
+            provenance = provenance
+        )
     }
 
     /**
@@ -91,15 +109,23 @@ class ModelElementIdentityRegistry(
      * @param element Objective object whose identity is being registered. / 要注册身份的目标对象。
      * @param id Stable objective identifier. / 稳定目标标识。
      * @param origin Optional source identity. / 可选的来源身份。
+     * @param provenance Complete source identities; defaults to origin when omitted. / 完整来源身份集合；省略时默认使用 origin。
      * @return Registration result. / 注册结果。
      */
     @Synchronized
     fun registerObjective(
         element: Any,
         id: ObjectiveId,
-        origin: ModelElementOrigin? = null
+        origin: ModelElementOrigin? = null,
+        provenance: List<ModelElementOrigin> = emptyList()
     ): Try {
-        return register(element, ModelElementKind.Objective, ModelElementId(id.value), origin)
+        return register(
+            element = element,
+            kind = ModelElementKind.Objective,
+            id = ModelElementId(id.value),
+            origin = origin,
+            provenance = provenance
+        )
     }
 
     /**
@@ -240,7 +266,8 @@ class ModelElementIdentityRegistry(
         element: Any,
         kind: ModelElementKind,
         id: ModelElementId,
-        origin: ModelElementOrigin?
+        origin: ModelElementOrigin?,
+        provenance: List<ModelElementOrigin>
     ): Try {
         if (id.value.isBlank()) {
             return Failed(ErrorCode.IllegalArgument, "模型元素 ID 不能为空 / Model element ID must not be blank")
@@ -248,16 +275,35 @@ class ModelElementIdentityRegistry(
         if (RESERVED_PREFIXES.any(id.value::startsWith)) {
             return Failed(
                 ErrorCode.IllegalArgument,
-                "模型元素 ID 使用了保留的 model-local 前缀：${id.value} / " +
-                    "Model element ID uses the reserved model-local prefix: ${id.value}"
+                "模型元素 ID 使用了保留前缀：${id.value} / " +
+                    "Model element ID uses a reserved prefix: ${id.value}"
             )
         }
-        if (origin != null && (origin.kind.isBlank() || origin.key.isBlank())) {
-            return Failed(ErrorCode.IllegalArgument, "模型元素 origin 不能为空 / Model element origin must not be blank")
+        val canonicalProvenance = (if (provenance.isEmpty()) {
+            listOfNotNull(origin)
+        } else {
+            provenance
+        }).distinct().sortedWith(compareBy({ it.kind }, { it.key }))
+        if (canonicalProvenance.any { it.kind.isBlank() || it.key.isBlank() }) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "模型元素 provenance 不能为空 / Model element provenance entries must not be blank"
+            )
+        }
+        if (origin != null && origin !in canonicalProvenance) {
+            return Failed(
+                ErrorCode.IllegalArgument,
+                "模型元素 primary origin 必须属于 provenance / Model element primary origin must be included in provenance"
+            )
         }
         val existing = bindings[element]
         if (existing != null) {
-            return if (existing.kind == kind && existing.id == id && existing.origin == origin) {
+            return if (
+                existing.kind == kind &&
+                existing.id == id &&
+                existing.origin == origin &&
+                existing.provenance == canonicalProvenance
+            ) {
                 ok
             } else {
                 Failed(
@@ -282,13 +328,19 @@ class ModelElementIdentityRegistry(
                 fallbackBindings.remove(element)
             }
         }
-        val identity = ModelElementIdentity(kind, id, ModelElementScope.Stable, origin)
+        val identity = ModelElementIdentity(
+            kind = kind,
+            id = id,
+            scope = ModelElementScope.Stable,
+            origin = origin,
+            provenance = canonicalProvenance
+        )
         bindings[element] = identity
         ids[id] = kind to element
         return ok
     }
 
     private companion object {
-        val RESERVED_PREFIXES = listOf("model-local-", "artifact:feasibility:")
+        val RESERVED_PREFIXES = listOf("model-local-", "artifact:")
     }
 }

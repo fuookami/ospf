@@ -26,12 +26,13 @@ import fuookami.ospf.kotlin.core.solver.AbstractLinearSolver
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSession
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSolveOptions
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSolver
+import fuookami.ospf.kotlin.core.solver.toSolverStatus
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingConflict
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingFeasibleOutput
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingInfeasibleOutput
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingSolverOutput
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingUnknownOutput
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.output.SolverStatus
 import fuookami.ospf.kotlin.core.solver.report.BoundSide
 import fuookami.ospf.kotlin.core.solver.report.CancellationToken
@@ -41,7 +42,6 @@ import fuookami.ospf.kotlin.core.solver.report.SolveDiagnostics
 import fuookami.ospf.kotlin.core.solver.report.SolveIssue
 import fuookami.ospf.kotlin.core.solver.report.SolveIssueCategory
 import fuookami.ospf.kotlin.core.solver.report.SolveProof
-import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.report.SolveSolution
 import fuookami.ospf.kotlin.core.solver.report.SolutionPresence
 import fuookami.ospf.kotlin.core.solver.report.TerminationReason
@@ -142,16 +142,16 @@ data class MapConstraintProgrammingValueSource(
  * @return Value source backed by the solver vector. / 由求解器向量支持的值源。
  */
 fun masterSolutionValueSource(
-    output: FeasibleSolverOutput<Flt64>,
+    output: SolveReport<Flt64>,
     variables: List<AbstractVariableItem<*, *>> = emptyList()
 ): ConstraintProgrammingValueSource {
     val values = LinkedHashMap<String, Flt64>()
-    output.solution.forEachIndexed { index, value ->
+    output.values.forEachIndexed { index, value ->
         values["index:$index"] = value
         values[index.toString()] = value
     }
     variables.forEach { variable ->
-        output.solution.getOrNull(variable.index)?.let { value ->
+        output.values.getOrNull(variable.index)?.let { value ->
             values[variable.bendersStableKey()] = value
         }
     }
@@ -739,7 +739,7 @@ data class BendersIterationTrace(
  * @return Complete incumbent objective or an evaluation error. / 完整当前解目标值或求值错误。
  */
 typealias BendersCompleteObjectiveEvaluator = (
-    masterOutput: FeasibleSolverOutput<Flt64>,
+    masterOutput: SolveReport<Flt64>,
     assignment: BendersSubproblemAssignment,
     subproblemOutput: ConstraintProgrammingFeasibleOutput
 ) -> Ret<Flt64>
@@ -818,7 +818,7 @@ data class LogicBasedBendersOptions(
      */
     val completeObjectiveEvaluator: BendersCompleteObjectiveEvaluator? = null,
     val masterVariables: List<AbstractVariableItem<*, *>> = emptyList(),
-    val masterSolutionSource: ((FeasibleSolverOutput<Flt64>) -> Ret<ConstraintProgrammingValueSource>)? = null,
+    val masterSolutionSource: ((SolveReport<Flt64>) -> Ret<ConstraintProgrammingValueSource>)? = null,
     val constraintProgrammingOptions: ConstraintProgrammingSolveOptions = ConstraintProgrammingSolveOptions(),
     val cancellationToken: CancellationToken? = null,
     val progressReporter: ((BendersIterationTrace) -> Try)? = null,
@@ -842,7 +842,7 @@ data class LogicBasedBendersReport(
     val problemStatus: ProblemStatus,
     val terminationReason: TerminationReason,
     val proof: SolveProof,
-    val masterOutput: FeasibleSolverOutput<Flt64>? = null,
+    val masterOutput: SolveReport<Flt64>? = null,
     val assignment: BendersSubproblemAssignment? = null,
     val subproblemResult: LogicBasedBendersSubproblemResult? = null,
     val cuts: List<BendersMasterCut> = emptyList(),
@@ -869,8 +869,8 @@ data class LogicBasedBendersReport(
             },
             solution = output?.let {
                 SolveSolution(
-                    values = it.solution,
-                    objective = it.objValueOrNull
+                    values = it.values,
+                    objective = it.solution?.objective
                 )
             },
             proof = proof,
@@ -890,7 +890,7 @@ fun interface BendersMasterProblemSolver {
      * @param master Current mutable master model. / 当前可变主问题模型。
      * @return Feasible master output or a solver error. / 主问题可行输出或求解错误。
      */
-    suspend fun solve(master: LinearMetaModel<Flt64>): Ret<FeasibleSolverOutput<Flt64>>
+    suspend fun solve(master: LinearMetaModel<Flt64>): Ret<SolveReport<Flt64>>
 }
 
 /** Logic-Based Benders engine. / Logic-Based Benders 迭代引擎。
@@ -928,7 +928,7 @@ class LogicBasedBendersEngine(
         masterSolver = BendersMasterProblemSolver { master ->
             when (val result = masterSolver.solveMaster(master, FrameworkSolveOptions())) {
                 is Ok -> {
-                    val output = result.value as? FeasibleSolverOutput<Flt64>
+                    val output = result.value as? SolveReport<Flt64>
                     output?.let(::ok) ?: Failed(
                         ErrorCode.Other,
                         "主问题求解器未返回可行输出 / Master solver did not return a feasible output"
@@ -1060,7 +1060,7 @@ class LogicBasedBendersEngine(
                 }
             }
         }
-        var lastMaster: FeasibleSolverOutput<Flt64>? = null
+        var lastMaster: SolveReport<Flt64>? = null
         var lastAssignment: BendersSubproblemAssignment? = null
         var lastSubproblem: LogicBasedBendersSubproblemResult? = null
         var stallIterations = 0
@@ -1122,7 +1122,7 @@ class LogicBasedBendersEngine(
             }
             val masterOutput = (masterResult as Ok).value
             lastMaster = masterOutput
-            if (options.proofMode == BendersProofMode.Exact && masterOutput.status != SolverStatus.Optimal) {
+            if (options.proofMode == BendersProofMode.Exact && masterOutput.toSolverStatus() != SolverStatus.Optimal) {
                 return ok(
                     report(
                         status = ProblemStatus.Unknown,
@@ -1297,7 +1297,7 @@ class LogicBasedBendersEngine(
                                                 message = "Exact 模式缺少完整 Benders 目标评估契约 / " +
                                                     "Exact mode requires a complete Benders objective evaluator",
                                                 details = mapOf(
-                                                    "masterObjective" to masterOutput.obj.toString(),
+                                                    "masterObjective" to (masterOutput.solution?.objective ?: Flt64.zero).toString(),
                                                     "subproblemObjective" to (result.output.compatibleObjective()?.toString() ?: "missing")
                                                 )
                                             )
@@ -1311,7 +1311,7 @@ class LogicBasedBendersEngine(
                             }
                             val expectedObjective = completeObjective.value!!
                             val convergenceGap = masterConvergenceGap(master, masterOutput)
-                            val objectiveGap = (expectedObjective - masterOutput.obj).abs()
+                            val objectiveGap = (expectedObjective - (masterOutput.solution?.objective ?: Flt64.zero)).abs()
                             if (objectiveGap > options.optimalityTolerance) {
                                 return ok(
                                     report(
@@ -1330,7 +1330,7 @@ class LogicBasedBendersEngine(
                                                 message = "Exact 模式要求主问题目标与完整 Benders 目标一致 / " +
                                                     "Exact mode requires the master objective to match the complete Benders objective",
                                                 details = mapOf(
-                                                    "masterObjective" to masterOutput.obj.toString(),
+                                                    "masterObjective" to (masterOutput.solution?.objective ?: Flt64.zero).toString(),
                                                     "expectedCompleteObjective" to expectedObjective.toString(),
                                                     "subproblemObjective" to (result.output.compatibleObjective()?.toString() ?: "missing"),
                                                     "gap" to objectiveGap.toString(),
@@ -1744,12 +1744,14 @@ class LogicBasedBendersEngine(
 
     private fun masterConvergenceGap(
         master: LinearMetaModel<Flt64>,
-        output: FeasibleSolverOutput<Flt64>
+        output: SolveReport<Flt64>
     ): Flt64? {
         val bestBound = output.bestBound ?: return null
         val signedGap = when (master.objectCategory) {
-            fuookami.ospf.kotlin.core.model.basic.ObjectCategory.Minimum -> output.obj - bestBound
-            fuookami.ospf.kotlin.core.model.basic.ObjectCategory.Maximum -> bestBound - output.obj
+            fuookami.ospf.kotlin.core.model.basic.ObjectCategory.Minimum ->
+                (output.solution?.objective ?: Flt64.zero) - bestBound
+            fuookami.ospf.kotlin.core.model.basic.ObjectCategory.Maximum ->
+                bestBound - (output.solution?.objective ?: Flt64.zero)
         }
         return if (signedGap < Flt64.zero) null else signedGap.abs()
     }
@@ -1757,7 +1759,7 @@ class LogicBasedBendersEngine(
     private fun trace(
         iteration: Int,
         masterModel: LinearMetaModel<Flt64>,
-        master: FeasibleSolverOutput<Flt64>,
+        master: SolveReport<Flt64>,
         subproblem: BendersSubproblemStatus,
         objective: Flt64?,
         cutCount: Int,
@@ -1767,9 +1769,9 @@ class LogicBasedBendersEngine(
         val convergenceGap = masterConvergenceGap(masterModel, master)
         return BendersIterationTrace(
             iteration = iteration,
-            masterObjective = master.obj,
+            masterObjective = master.solution?.objective,
             masterBestBound = master.bestBound,
-            masterStatus = master.status,
+            masterStatus = master.toSolverStatus(),
             subproblemStatus = subproblem,
             subproblemObjective = objective,
             cutCount = cutCount,
@@ -1793,7 +1795,7 @@ class LogicBasedBendersEngine(
         status: ProblemStatus,
         termination: TerminationReason,
         proof: ProofStatus,
-        master: FeasibleSolverOutput<Flt64>?,
+        master: SolveReport<Flt64>?,
         assignment: BendersSubproblemAssignment?,
         subproblem: LogicBasedBendersSubproblemResult?,
         cuts: List<BendersMasterCut>,

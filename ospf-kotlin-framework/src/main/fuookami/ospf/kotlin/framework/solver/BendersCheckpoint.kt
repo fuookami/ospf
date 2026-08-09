@@ -319,7 +319,7 @@ object BendersCheckpointCodec {
         }
         val state = PortableConstraintProgrammingBendersState(
                 iteration = report.iterations.lastOrNull()?.iteration?.toLong()?.plus(1L) ?: 0L,
-                masterIncumbent = report.masterOutput?.objValueOrNull?.toString(),
+                masterIncumbent = report.masterOutput?.solution?.objective?.toString(),
                 masterBestBound = report.masterOutput?.bestBound?.toString(),
                 cuts = encoded,
                 trace = report.iterations.map(::encodeTrace),

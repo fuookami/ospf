@@ -14,10 +14,11 @@ import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
 import fuookami.ospf.kotlin.core.model.intermediate.QuadraticTetradModel
 import fuookami.ospf.kotlin.core.model.intermediate.QuadraticTetradModelView
 import fuookami.ospf.kotlin.core.model.mechanism.QuadraticMetaModel
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.output.SolvingStatusCallBack
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
 import fuookami.ospf.kotlin.core.solver.report.ModelElementIdentityRegistry
+import fuookami.ospf.kotlin.core.solver.report.ModelElementOrigin
 import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
 import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
 import fuookami.ospf.kotlin.core.solver.report.VariableId
@@ -67,17 +68,34 @@ class QuadraticMetaModelDumpIdentityPropagationTest {
                     name = "identity-quadratic-objective"
                 ) is Ok
             )
-            assertTrue(registry.registerVariable(x, VariableId("source:identity-quad-x")) is Ok)
+            val variablePrimary = ModelElementOrigin("source", "identity-quad-x")
+            val variableSecondary = ModelElementOrigin("source", "identity-quad-x-component")
+            val constraintPrimary = ModelElementOrigin("source", "identity-quad-constraint")
+            val constraintSecondary = ModelElementOrigin("source", "identity-quad-constraint-component")
+            val objectivePrimary = ModelElementOrigin("source", "identity-quad-objective")
+            val objectiveSecondary = ModelElementOrigin("source", "identity-quad-objective-component")
+            assertTrue(
+                registry.registerVariable(
+                    element = x,
+                    id = VariableId("source:identity-quad-x"),
+                    origin = variablePrimary,
+                    provenance = listOf(variableSecondary, variablePrimary)
+                ) is Ok
+            )
             assertTrue(
                 registry.registerConstraint(
-                    metaModel.constraints.single(),
-                    ConstraintId("source:identity-quad-constraint")
+                    element = metaModel.constraints.single(),
+                    id = ConstraintId("source:identity-quad-constraint"),
+                    origin = constraintPrimary,
+                    provenance = listOf(constraintSecondary, constraintPrimary)
                 ) is Ok
             )
             assertTrue(
                 registry.registerObjective(
-                    metaModel.flattenSubObjects.single(),
-                    ObjectiveId("source:identity-quad-objective")
+                    element = metaModel.flattenSubObjects.single(),
+                    id = ObjectiveId("source:identity-quad-objective"),
+                    origin = objectivePrimary,
+                    provenance = listOf(objectiveSecondary, objectivePrimary)
                 ) is Ok
             )
 
@@ -90,9 +108,160 @@ class QuadraticMetaModelDumpIdentityPropagationTest {
 
             assertEquals("quadratic-identity-propagation", tetrad.constraints.identityNamespace)
             assertEquals("source:identity-quad-x", tetrad.variables.single().id?.value)
+            assertEquals(
+                listOf(variablePrimary, variableSecondary),
+                tetrad.variables.single().identityProvenance
+            )
             assertEquals("source:identity-quad-constraint", tetrad.constraints.ids.single().value)
             assertEquals(ModelElementScope.Stable, tetrad.constraints.identityScopeAt(0))
+            assertEquals(
+                listOf(constraintPrimary, constraintSecondary),
+                tetrad.constraints.identityProvenanceAt(0)
+            )
             assertEquals("source:identity-quad-objective", tetrad.objective.id?.value)
+            assertEquals(
+                listOf(objectivePrimary, objectiveSecondary),
+                tetrad.objective.identityProvenance
+            )
+            assertTrue(tetrad.identityValidation is Ok)
+            mechanism.close()
+        } finally {
+            metaModel.close()
+        }
+    }
+
+    @Test
+    fun multipleStableObjectiveIdentitiesShouldProduceAggregateStableIdentity() = runBlocking {
+        val registry = ModelElementIdentityRegistry(
+            namespace = "aggregate-quadratic",
+            schemaVersion = "1.0"
+        )
+        val x = RealVar("aggregate-quadratic-x")
+        val metaModel = QuadraticMetaModel(
+            name = "aggregate-quadratic-model",
+            identityRegistry = registry
+        )
+
+        try {
+            assertTrue(metaModel.add(x) is Ok)
+            assertTrue(
+                metaModel.addObject(
+                    category = ObjectCategory.Minimum,
+                    flattenData = QuadraticFlattenData(
+                        monomials = listOf(QuadraticMonomial.linear(Flt64.one, x)),
+                        constant = Flt64.zero
+                    ),
+                    name = "aggregate-objective-a"
+                ) is Ok
+            )
+            assertTrue(
+                metaModel.addObject(
+                    category = ObjectCategory.Minimum,
+                    flattenData = QuadraticFlattenData(
+                        monomials = listOf(QuadraticMonomial.linear(Flt64(2.0), x)),
+                        constant = Flt64.zero
+                    ),
+                    name = "aggregate-objective-b"
+                ) is Ok
+            )
+
+            val firstOrigin = ModelElementOrigin("objective", "aggregate-a")
+            val firstSource = ModelElementOrigin("component", "aggregate-a")
+            val secondOrigin = ModelElementOrigin("objective", "aggregate-b")
+            val secondSource = ModelElementOrigin("component", "aggregate-b")
+            assertTrue(
+                registry.registerObjective(
+                    element = metaModel.flattenSubObjects[0],
+                    id = ObjectiveId("objective:aggregate-a"),
+                    origin = firstOrigin,
+                    provenance = listOf(firstSource, firstOrigin)
+                ) is Ok
+            )
+            assertTrue(
+                registry.registerObjective(
+                    element = metaModel.flattenSubObjects[1],
+                    id = ObjectiveId("objective:aggregate-b"),
+                    origin = secondOrigin,
+                    provenance = listOf(secondSource, secondOrigin)
+                ) is Ok
+            )
+
+            val solver = DumpOnlyQuadraticSolver()
+            val mechanism = (solver.dump(metaModel, null, null) as Ok).value
+            val tetrad = QuadraticTetradModel(
+                model = mechanism,
+                dumpConstraintsToBounds = false
+            )
+            val objectiveId = assertNotNull(tetrad.objective.id)
+            val expectedProvenance = listOf(firstOrigin, firstSource, secondOrigin, secondSource)
+                .sortedWith(compareBy({ it.kind }, { it.key }))
+
+            assertEquals(ModelElementScope.Stable, tetrad.objective.identityScope)
+            assertTrue(objectiveId.value.startsWith("artifact:"))
+            assertEquals(expectedProvenance, tetrad.objective.identityProvenance)
+            assertTrue(
+                tetrad.identityValidation is Ok,
+                "identity validation failed: ${tetrad.identityValidation}; objective=$objectiveId"
+            )
+            mechanism.close()
+        } finally {
+            metaModel.close()
+        }
+    }
+
+    @Test
+    fun incompleteMultipleObjectiveProvenanceMustRemainModelLocal() = runBlocking {
+        val registry = ModelElementIdentityRegistry(
+            namespace = "incomplete-quadratic",
+            schemaVersion = "1.0"
+        )
+        val x = RealVar("incomplete-quadratic-x")
+        val metaModel = QuadraticMetaModel(
+            name = "incomplete-quadratic-model",
+            identityRegistry = registry
+        )
+
+        try {
+            assertTrue(metaModel.add(x) is Ok)
+            assertTrue(
+                metaModel.addObject(
+                    category = ObjectCategory.Minimum,
+                    flattenData = QuadraticFlattenData(
+                        monomials = listOf(QuadraticMonomial.linear(Flt64.one, x)),
+                        constant = Flt64.zero
+                    ),
+                    name = "incomplete-objective-a"
+                ) is Ok
+            )
+            assertTrue(
+                metaModel.addObject(
+                    category = ObjectCategory.Minimum,
+                    flattenData = QuadraticFlattenData(
+                        monomials = listOf(QuadraticMonomial.linear(Flt64(2.0), x)),
+                        constant = Flt64.zero
+                    ),
+                    name = "incomplete-objective-b"
+                ) is Ok
+            )
+
+            val mechanism = (DumpOnlyQuadraticSolver().dump(metaModel, null, null) as Ok).value
+            assertTrue(
+                registry.registerObjective(
+                    element = mechanism.objectFunction,
+                    id = ObjectiveId("objective:incomplete-aggregate"),
+                    origin = ModelElementOrigin("objective", "incomplete-aggregate")
+                ) is Ok
+            )
+
+            val tetrad = QuadraticTetradModel(
+                model = mechanism,
+                dumpConstraintsToBounds = false
+            )
+
+            assertEquals(ModelElementScope.ModelLocal, tetrad.objective.identityScope)
+            assertEquals(ObjectiveId("model-local-objective:0"), tetrad.objective.id)
+            assertNull(tetrad.objective.identityOrigin)
+            assertTrue(tetrad.objective.identityProvenance.isEmpty())
             assertTrue(tetrad.identityValidation is Ok)
             mechanism.close()
         } finally {
@@ -108,7 +277,7 @@ private class DumpOnlyQuadraticSolver : AbstractQuadraticSolver {
     override suspend fun invoke(
         model: QuadraticTetradModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<FeasibleSolverOutput<Flt64>> {
+    ): Ret<SolveReport<Flt64>> {
         fail("DumpOnlyQuadraticSolver should not solve a model")
     }
 
@@ -116,7 +285,7 @@ private class DumpOnlyQuadraticSolver : AbstractQuadraticSolver {
         model: QuadraticTetradModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
         fail("DumpOnlyQuadraticSolver should not solve a model")
     }
 }

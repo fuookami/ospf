@@ -4,7 +4,7 @@
 package fuookami.ospf.kotlin.core.solver.iis
 
 import kotlin.time.*
-import fuookami.ospf.kotlin.utils.error.ErrorCode
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.utils.functional.*
 import fuookami.ospf.kotlin.math.algebra.number.*
 import fuookami.ospf.kotlin.core.model.basic.*
@@ -15,6 +15,8 @@ import fuookami.ospf.kotlin.core.solver.report.BoundSide
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
 import fuookami.ospf.kotlin.core.solver.report.InfeasibilityEvidence
 import fuookami.ospf.kotlin.core.solver.report.InfeasibilityEvidenceSource
+import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
+import fuookami.ospf.kotlin.core.solver.report.ProblemStatus
 import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.solver.report.diagnosticConstraintId
 import fuookami.ospf.kotlin.core.solver.report.diagnosticVariableId
@@ -118,7 +120,13 @@ private fun materializeNativeIIS(
             dualOrigin = original.dualOrigin,
             slack = original.slack,
             name = original.name,
-            initialResult = original.initialResult
+            initialResult = original.initialResult,
+            id = original.id,
+            identityScope = original.identityScope,
+            identityOrigin = original.identityOrigin,
+            identityNamespace = original.identityNamespace,
+            identitySchemaVersion = original.identitySchemaVersion,
+            identityProvenance = original.identityProvenance
         )
     }
     val constraints = filterConstraintByRowIndex(model.constraints, rows, oldToNewVariableIndexMap)
@@ -129,7 +137,13 @@ private fun materializeNativeIIS(
             val newColIndex2 = cell.colIndex2?.let { oldToNewVariableIndexMap[it] ?: return@mapNotNull null }
             QuadraticObjectiveCell(newColIndex1, newColIndex2, cell.coefficient.copy())
         },
-        constant = model.objective.constant.copy()
+        constant = model.objective.constant.copy(),
+        id = model.objective.id,
+        identityScope = model.objective.identityScope,
+        identityOrigin = model.objective.identityOrigin,
+        identityNamespace = model.objective.identityNamespace,
+        identitySchemaVersion = model.objective.identitySchemaVersion,
+        identityProvenance = model.objective.identityProvenance
     )
     val tokensInSolver = if (model is QuadraticTetradModel) {
         selectedIndices.mapNotNull { model.tokensInSolver.getOrNull(it) }
@@ -171,9 +185,7 @@ suspend fun computeLegacyIIS(
         solver = solver,
         config = config
     )) {
-        is Ok -> {
-            result.value
-        }
+        is Ok -> result.value
 
         is Failed -> {
             return Failed(result.error)
@@ -246,9 +258,7 @@ suspend fun computeLegacyIIS(
         constraintAmount = constraintAmount,
         config = config
     )) {
-        is Ok -> {
-            result.value
-        }
+        is Ok -> result.value
 
         is Failed -> {
             return Failed(result.error)
@@ -429,7 +439,26 @@ private fun filterConstraintByRowIndex(
         sources = relatedRows.map { constraints.sources[it] },
         origins = relatedRows.map { constraints.origins[it] },
         froms = relatedRows.map { constraints.froms[it] },
-        priorities = relatedRows.map { constraints.priorities[it] }
+        priorities = relatedRows.map { constraints.priorities[it] },
+        ids = relatedRows.map { row ->
+            constraints.ids.getOrNull(row)
+                ?: ConstraintId("model-local-constraint:$row")
+        },
+        identityNamespace = constraints.identityNamespace,
+        identitySchemaVersion = constraints.identitySchemaVersion,
+        identityScopes = relatedRows.map { row ->
+            if (constraints.ids.getOrNull(row) == null) {
+                ModelElementScope.ModelLocal
+            } else {
+                constraints.identityScopeAt(row)
+            }
+        },
+        identityOrigins = relatedRows.map { row ->
+            if (constraints.ids.getOrNull(row) == null) null else constraints.identityOriginAt(row)
+        },
+        identityProvenance = relatedRows.map { row ->
+            if (constraints.ids.getOrNull(row) == null) emptyList() else constraints.identityProvenanceAt(row)
+        }
     )
 }
 
@@ -491,7 +520,13 @@ private fun dump(
                 coefficient = cell.coefficient.copy()
             )
         },
-        constant = model.objective.constant.copy()
+        constant = model.objective.constant.copy(),
+        id = model.objective.id,
+        identityScope = model.objective.identityScope,
+        identityOrigin = model.objective.identityOrigin,
+        identityNamespace = model.objective.identityNamespace,
+        identitySchemaVersion = model.objective.identitySchemaVersion,
+        identityProvenance = model.objective.identityProvenance
     )
 
     val tokensInSolver = if (model is QuadraticTetradModel) {
@@ -514,7 +549,13 @@ private fun dump(
                     dualOrigin = relatedVariable.variable.dualOrigin,
                     slack = relatedVariable.variable.slack,
                     name = relatedVariable.variable.name,
-                    initialResult = relatedVariable.variable.initialResult
+                    initialResult = relatedVariable.variable.initialResult,
+                    id = relatedVariable.variable.id,
+                    identityScope = relatedVariable.variable.identityScope,
+                    identityOrigin = relatedVariable.variable.identityOrigin,
+                    identityNamespace = relatedVariable.variable.identityNamespace,
+                    identitySchemaVersion = relatedVariable.variable.identitySchemaVersion,
+                    identityProvenance = relatedVariable.variable.identityProvenance
                 )
             },
             constraints = constraints,
@@ -641,9 +682,16 @@ private suspend fun relaxSpecificComponents(
         }
     }
 
-    val result = when (val result = solver(elasticModel)) {
-        is Ok -> {
-            result.value
+    val result = when (val result = solver.solveReport(elasticModel)) {
+        is Ok -> when (result.value.problemStatus) {
+            ProblemStatus.Feasible -> result.value.solution?.values
+                ?: return Failed(Err(ErrorCode.ORSolutionInvalid, "Elastic quadratic solve completed without a solution."))
+            ProblemStatus.Infeasible,
+            ProblemStatus.InfeasibleOrUnbounded -> return Ok(false to emptyMap())
+            else -> return Failed(
+                ErrorCode.OREngineSolvingException,
+                "Elastic quadratic solve returned an inconclusive terminal status: ${result.value.problemStatus}."
+            )
         }
 
         is Failed -> {
@@ -660,8 +708,8 @@ private suspend fun relaxSpecificComponents(
     }
 
     val relaxedComponents = elasticModel.variables.associateNotNull { variable ->
-        if (variable.slack != null && result.solution.size > variable.index && result.solution[variable.index] geq tolerance) {
-            variable to result.solution[variable.index]
+        if (variable.slack != null && result.size > variable.index && result[variable.index] geq tolerance) {
+            variable to result[variable.index]
         } else {
             null
         }
@@ -703,7 +751,18 @@ private suspend fun performDeletionFiltering(
         candidate._upperBound = Flt64.zero
         val feasible = when (val result = solver(elasticModel)) {
             is Ok -> {
-                true
+                when (result.value.problemStatus) {
+                    ProblemStatus.Feasible -> true
+                    ProblemStatus.Infeasible,
+                    ProblemStatus.InfeasibleOrUnbounded -> false
+                    else -> {
+                        return Failed(
+                            ErrorCode.OREngineSolvingException,
+                            "IIS 删除过滤收到无法判定可行性的终态：${result.value.problemStatus} / " +
+                                "IIS deletion filtering received an inconclusive terminal status: ${result.value.problemStatus}"
+                        )
+                    }
+                }
             }
 
             is Failed -> {
@@ -774,7 +833,13 @@ private fun snapshotQuadraticModel(model: QuadraticTetradModelView): QuadraticTe
             QuadraticObjective(
                 category = model.objective.category,
                 objective = model.objective.objective.map { it.copy() },
-                constant = model.objective.constant.copy()
+                constant = model.objective.constant.copy(),
+                id = model.objective.id,
+                identityScope = model.objective.identityScope,
+                identityOrigin = model.objective.identityOrigin,
+                identityNamespace = model.objective.identityNamespace,
+                identitySchemaVersion = model.objective.identitySchemaVersion,
+                identityProvenance = model.objective.identityProvenance
             )
         )
     }

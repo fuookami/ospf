@@ -222,7 +222,7 @@ data object Demo11 {
         val solver = ScipLinearSolver()
         when (val ret = solveLinearMetaModel(solver, metaModel)) {
             is Ok -> {
-                metaModel.tokens.setSolution(ret.value.solution)
+                metaModel.tokens.setSolution(ret.value.values)
             }
 
             is Failed -> {

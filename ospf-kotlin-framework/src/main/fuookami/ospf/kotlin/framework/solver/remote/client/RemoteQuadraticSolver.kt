@@ -58,9 +58,17 @@ class RemoteQuadraticSolver(
     override suspend fun invoke(
         model: QuadraticTetradModelView,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<FeasibleSolverOutput<Flt64>> {
-        return when (val result = executeRemote(model)) {
-            is Ok -> result.value.toFeasibleOutput(model.variables.size)
+    ): Ret<SolveReport<Flt64>> {
+        return invoke(model, solvingStatusCallBack, null)
+    }
+
+    override suspend fun invoke(
+        model: QuadraticTetradModelView,
+        solvingStatusCallBack: SolvingStatusCallBack?,
+        cancellationToken: CancellationToken?
+    ): Ret<SolveReport<Flt64>> {
+        return when (val result = executeRemote(model, cancellationToken)) {
+            is Ok -> result.value.toSolveReport(model.variables.size)
             is Failed -> Failed(result.error)
             is Fatal -> Fatal(result.errors)
         }
@@ -70,22 +78,38 @@ class RemoteQuadraticSolver(
         model: QuadraticTetradModelView,
         progressContext: SolverProgressContext?
     ): Ret<SolveReport<Flt64>> {
-        return when (val result = executeRemote(model)) {
+        return solveReport(model, progressContext, null)
+    }
+
+    override suspend fun solveReport(
+        model: QuadraticTetradModelView,
+        progressContext: SolverProgressContext?,
+        cancellationToken: CancellationToken?
+    ): Ret<SolveReport<Flt64>> {
+        return when (val result = executeRemote(model, cancellationToken)) {
             is Ok -> result.value.toSolveReport(model.variables.size)
             is Failed -> Failed(result.error)
             is Fatal -> Fatal(result.errors)
         }
     }
 
-    private suspend fun executeRemote(model: QuadraticTetradModelView): Ret<SolveResult> {
+    private suspend fun executeRemote(
+        model: QuadraticTetradModelView,
+        cancellationToken: CancellationToken?
+    ): Ret<SolveResult> {
         when (val validation = model.identityValidation) {
             is Ok -> {}
             is Failed -> return Failed(validation.error)
             is Fatal -> return Fatal(validation.errors)
         }
+        val modelData = when (val serialized = OspfRemoteModelSerializer.modelData(model)) {
+            is Ok -> serialized.value
+            is Failed -> return Failed(serialized.error)
+            is Fatal -> return Fatal(serialized.errors)
+        }
         return solveRemote(
             payload = SolvePayload(
-                modelData = OspfRemoteModelSerializer.modelData(model),
+                modelData = modelData,
                 taskMeta = TaskMeta(targetType = TargetTypeName.of("quadratic"))
             ),
             taskId = runtimeConfig.taskIdProvider(),
@@ -93,7 +117,8 @@ class RemoteQuadraticSolver(
             nodeId = runtimeConfig.nodeId,
             tenantId = runtimeConfig.tenantId,
             quantum = runtimeConfig.quantum,
-            maxRounds = runtimeConfig.maxRounds
+            maxRounds = runtimeConfig.maxRounds,
+            cancellationToken = cancellationToken
         )
     }
 
@@ -101,11 +126,26 @@ class RemoteQuadraticSolver(
         model: QuadraticTetradModelView,
         solutionAmount: UInt64,
         solvingStatusCallBack: SolvingStatusCallBack?
-    ): Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>> {
-        return when (val result = invoke(model, solvingStatusCallBack)) {
-            is Ok -> Ok(result.value to listOf(result.value.solution))
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
+        return invoke(model, solutionAmount, solvingStatusCallBack, null)
+    }
+
+    override suspend fun invoke(
+        model: QuadraticTetradModelView,
+        solutionAmount: UInt64,
+        solvingStatusCallBack: SolvingStatusCallBack?,
+        cancellationToken: CancellationToken?
+    ): Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>> {
+        return when (val result = executeRemote(model, cancellationToken)) {
+            is Ok -> {
+                when (val report = result.value.toSolveReport(model.variables.size)) {
+                    is Ok -> Ok(report.value to if (report.value.solution == null) emptyList() else listOf(report.value.values))
+                    is Failed -> Failed(report.error)
+                    is Fatal -> Fatal(report.errors)
+                }
+            }
             is Failed -> Failed(result.error)
-            else -> result.map { it to emptyList() }
+            is Fatal -> Fatal(result.errors)
         }
     }
 
@@ -119,6 +159,7 @@ class RemoteQuadraticSolver(
      * @param tenantId 租户 ID / Tenant ID
      * @param quantum 时间片 / Quantum
      * @param maxRounds 最大轮数 / Maximum rounds
+     * @param cancellationToken 本地取消令牌 / Local cancellation token
      * @return 求解结果 / Solve result
     */
     suspend fun solveRemote(
@@ -128,7 +169,8 @@ class RemoteQuadraticSolver(
         nodeId: NodeId,
         tenantId: TenantId,
         quantum: Duration = runtimeConfig.quantum,
-        maxRounds: UInt64 = UInt64(64)
+        maxRounds: UInt64 = UInt64(64),
+        cancellationToken: CancellationToken? = null
     ): Ret<SolveResult> {
         val normalizedPayload = payload.copy(
             taskMeta = payload.taskMeta.copy(
@@ -142,18 +184,19 @@ class RemoteQuadraticSolver(
             nodeId = nodeId,
             tenantId = tenantId,
             quantum = quantum,
-            maxRounds = maxRounds
+            maxRounds = maxRounds,
+            cancellationToken = cancellationToken
         )
     }
 
     /**
-     * Converts the remote solve result to a feasible solver output.
-     * 将远程求解结果转换为可行求解器输出。
+     * Converts the remote incumbent artifact to a partial solve report.
+     * 将远程 incumbent artifact 转换为部分求解报告。
      *
      * @param variableCount 预期变量数量 / the expected number of variables
-     * @return 可行求解器输出或错误 / the feasible solver output or an error
+     * @return 部分求解报告或错误 / partial solve report or an error
     */
-    private suspend fun SolveResult.toFeasibleOutput(variableCount: Int): Ret<FeasibleSolverOutput<Flt64>> {
+    private suspend fun SolveResult.toIncumbentReport(variableCount: Int): Ret<SolveReport<Flt64>> {
         when (val validation = validateLinearQuadraticResult()) {
             is Ok -> {}
             is Failed -> return Failed(validation.error)
@@ -185,20 +228,24 @@ class RemoteQuadraticSolver(
         }
         val objective = solution.objectiveValue ?: objectiveValue
             ?: return Failed(Err(ErrorCode.ORSolutionInvalid, "Remote quadratic solution objective is missing."))
-        val solutionGap = solution.gap ?: gap ?: Flt64.zero
+        val solutionGap = solution.gap ?: gap
         val reportedBestBound = solution.statistics.remoteFlt64("bestBound")
             ?: statistics.remoteFlt64("bestBound")
         return Ok(
-            FeasibleSolverOutput(
-                obj = objective,
-                solution = solution.variableValues,
-                time = solution.elapsed,
-                possibleBestObj = reportedBestBound ?: objective,
-                gap = solutionGap,
-                status = if (optimal) SolverStatus.Optimal else SolverStatus.Feasible,
-                mipGap = solutionGap,
-                solveTime = solution.elapsed,
-                bestBound = reportedBestBound
+            SolveReport(
+                problemStatus = problemStatus.toCoreStatus(),
+                terminationReason = terminationReason.toCoreReason(),
+                solutionPresence = solutionPresence.toCorePresence(),
+                solution = SolveSolution(
+                    values = solution.variableValues,
+                    objective = objective
+                ),
+                proof = SolveProof(proofStatus.toCoreProof()),
+                statistics = SolveStatistics(
+                    solveTime = solution.elapsed,
+                    bestBound = reportedBestBound,
+                    gap = solutionGap
+                )
             )
         )
     }
@@ -210,10 +257,10 @@ class RemoteQuadraticSolver(
             is Fatal -> return Fatal(validation.errors)
         }
         val output = if (solutionPresence != RemoteSolutionPresence.NONE) {
-            when (val feasibleOutput = toFeasibleOutput(variableCount)) {
-                is Ok -> feasibleOutput.value
-                is Failed -> return Failed(feasibleOutput.error)
-                is Fatal -> return Fatal(feasibleOutput.errors)
+            when (val incumbentReport = toIncumbentReport(variableCount)) {
+                is Ok -> incumbentReport.value
+                is Failed -> return Failed(incumbentReport.error)
+                is Fatal -> return Fatal(incumbentReport.errors)
             }
         } else {
             null
@@ -225,13 +272,13 @@ class RemoteQuadraticSolver(
     }
 
     /**
-     * Converts the remote solve result to an empty solution output.
-     * 将远程求解结果转换为空解输出。
+     * Converts a remote result without an artifact into an empty solution report.
+     * 将没有 artifact 的远程结果转换为空解报告。
      *
      * @param variableCount 预期变量数量 / the expected number of variables
-     * @return 可行求解器输出或错误 / the feasible solver output or an error
+     * @return 空解报告或错误 / empty-solution report or an error
     */
-    private fun SolveResult.toEmptySolutionOutput(variableCount: Int): Ret<FeasibleSolverOutput<Flt64>> {
+    private fun SolveResult.toEmptySolutionOutput(variableCount: Int): Ret<SolveReport<Flt64>> {
         if (variableCount != 0) {
             return Failed(
                 Err(
@@ -242,19 +289,23 @@ class RemoteQuadraticSolver(
         }
         val objective = objectiveValue
             ?: return Failed(Err(ErrorCode.ORSolutionInvalid, "Remote quadratic solution objective is missing."))
-        val solutionGap = gap ?: Flt64.zero
+        val solutionGap = gap
         val reportedBestBound = statistics.remoteFlt64("bestBound")
         return Ok(
-            FeasibleSolverOutput(
-                obj = objective,
-                solution = emptyList(),
-                time = elapsed,
-                possibleBestObj = reportedBestBound ?: objective,
-                gap = solutionGap,
-                status = if (optimal) SolverStatus.Optimal else SolverStatus.Feasible,
-                mipGap = solutionGap,
-                solveTime = elapsed,
-                bestBound = reportedBestBound
+            SolveReport(
+                problemStatus = problemStatus.toCoreStatus(),
+                terminationReason = terminationReason.toCoreReason(),
+                solutionPresence = solutionPresence.toCorePresence(),
+                solution = SolveSolution(
+                    values = emptyList(),
+                    objective = objective
+                ),
+                proof = SolveProof(proofStatus.toCoreProof()),
+                statistics = SolveStatistics(
+                    solveTime = elapsed,
+                    bestBound = reportedBestBound,
+                    gap = solutionGap
+                )
             )
         )
     }
@@ -286,4 +337,3 @@ class RemoteQuadraticSolver(
         }
     }
 }
-

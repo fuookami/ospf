@@ -172,7 +172,7 @@ class BranchAndPriceAlgorithm<
                 // solve ip with initial column / 使用初始列求解 IP
                 val ipRet = when (val result = solver.solveMILP("${id.value}_$iteration", model)) {
                     is Ok -> {
-                        model.setSolution(result.value.solution)
+                        model.setSolution(result.value.values)
                         result.value
                     }
 
@@ -200,10 +200,10 @@ class BranchAndPriceAlgorithm<
                     }
                 }
                 mainProblemSolvingTimes += UInt64.one
-                mainProblemSolvingTime += ipRet.time
-                iteration.refreshIpObj(ipRet.obj)
+                mainProblemSolvingTime += ipRet.solveTime ?: Duration.ZERO
+                iteration.refreshIpObj(ipRet.solution?.objective ?: Flt64.zero)
 
-                if (ipRet.obj eq Flt64.zero) {
+                if ((ipRet.solution?.objective ?: Flt64.zero) eq Flt64.zero) {
                     return Ok(bestSolution)
                 }
 
@@ -479,7 +479,7 @@ class BranchAndPriceAlgorithm<
                     // 所有生产设备已经有被固定的列（串）或者被隐藏，求解一个 IP 结束本次主迭代
                     val thisIpRet = when (val result = solver.solveMILP("${id.value}_${iteration}_ip", model)) {
                         is Ok -> {
-                            model.setSolution(result.value.solution)
+                            model.setSolution(result.value.values)
                             result.value
                         }
 
@@ -492,13 +492,13 @@ class BranchAndPriceAlgorithm<
                         }
                     }
                     mainProblemSolvingTimes += UInt64.one
-                    mainProblemSolvingTime += thisIpRet.time
+                    mainProblemSolvingTime += thisIpRet.solveTime ?: Duration.ZERO
                     logMILPResults(iteration.iteration, model)
-                    if (iteration.refreshIpObj(thisIpRet.obj)) {
+                    if (iteration.refreshIpObj(thisIpRet.solution?.objective ?: Flt64.zero)) {
                         when (val result = analyzeSolution(iteration.iteration, model)) {
                             is Ok -> {
                                 bestSolution = result.value
-                                if (thisIpRet.obj eq Flt64.zero) {
+                                if ((thisIpRet.solution?.objective ?: Flt64.zero) eq Flt64.zero) {
                                     return Ok(bestSolution)
                                 }
                             }
@@ -617,8 +617,8 @@ class BranchAndPriceAlgorithm<
         }
 
         mainProblemSolvingTimes += UInt64.one
-        mainProblemSolvingTime += lpRet.result.time
-        if (iteration.refreshLpObj(lpRet.result.obj) && withKeeping) {
+        mainProblemSolvingTime += lpRet.result.solveTime ?: Duration.ZERO
+        if (iteration.refreshLpObj(lpRet.result.solution?.objective ?: Flt64.zero) && withKeeping) {
             when (val ret = keepTasks(iteration.iteration, model)) {
                 is Ok -> {}
 

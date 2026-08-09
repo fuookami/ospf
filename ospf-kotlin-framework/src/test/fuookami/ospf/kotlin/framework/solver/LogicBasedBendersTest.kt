@@ -35,12 +35,13 @@ import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgram
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSolveOptions
 import fuookami.ospf.kotlin.core.solver.constraint_programming.ConstraintProgrammingSolver
 import fuookami.ospf.kotlin.core.solver.constraint_programming.FakeConstraintProgrammingSolver
+import fuookami.ospf.kotlin.core.solver.toSolveReport
 import fuookami.ospf.kotlin.core.solver.constraint_programming.PortableConstraintProgrammingBendersState
 import fuookami.ospf.kotlin.core.solver.constraint_programming.PortableConstraintProgrammingCut
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingConflict
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingFeasibleOutput
 import fuookami.ospf.kotlin.core.solver.output.ConstraintProgrammingSolverOutput
-import fuookami.ospf.kotlin.core.solver.output.FeasibleSolverOutput
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
 import fuookami.ospf.kotlin.core.solver.output.SolverStatus
 import fuookami.ospf.kotlin.core.solver.report.EvidenceValidity
 import fuookami.ospf.kotlin.core.solver.report.ProofStatus
@@ -1005,7 +1006,7 @@ class LogicBasedBendersTest {
                 masterSolutionSource = { result ->
                     ok(
                         ConstraintProgrammingValueSource.of(
-                            mapOf("x" to result.solution[masterVariable.index])
+                            mapOf("x" to result.values[masterVariable.index])
                         )
                     )
                 }
@@ -1049,15 +1050,13 @@ class LogicBasedBendersTest {
         value: Flt64,
         obj: Flt64 = Flt64.zero,
         bestBound: Flt64? = null
-    ): FeasibleSolverOutput<Flt64> {
-        return FeasibleSolverOutput(
-            obj = obj,
-            solution = listOf(value),
-            time = ZERO,
-            possibleBestObj = Flt64.zero,
-            gap = Flt64.zero,
-            status = SolverStatus.Optimal,
-            bestBound = bestBound
+    ): SolveReport<Flt64> {
+        return SolverStatus.Optimal.toSolveReport(
+            objective = obj,
+            values = listOf(value),
+            solveTime = ZERO,
+            bestBound = bestBound ?: Flt64.zero,
+            gap = Flt64.zero
         )
     }
 
@@ -1072,7 +1071,7 @@ class LogicBasedBendersTest {
             masterSolutionSource = { result ->
                 ok(
                     ConstraintProgrammingValueSource.of(
-                        mapOf("x" to result.solution[masterVariable.index])
+                        mapOf("x" to result.values[masterVariable.index])
                     )
                 )
             }

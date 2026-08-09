@@ -19,6 +19,8 @@ import fuookami.ospf.kotlin.core.solver.output.*
 import fuookami.ospf.kotlin.core.solver.report.SolveDiagnostics
 import fuookami.ospf.kotlin.core.solver.report.SolveIssue
 import fuookami.ospf.kotlin.core.solver.report.SolveIssueCategory
+import fuookami.ospf.kotlin.core.solver.report.SolveReport
+import fuookami.ospf.kotlin.core.solver.report.SolveHandle
 
 /**
  * 使用默认选项求解线性模型。 / Solve a linear model with default options.
@@ -26,7 +28,7 @@ import fuookami.ospf.kotlin.core.solver.report.SolveIssueCategory
  * @param model 线性三元模型视图 / Linear triad model view
  * @return 求解结果 / Solve result
 */
-suspend fun AbstractLinearSolver.solve(model: LinearTriadModelView): Ret<FeasibleSolverOutput<Flt64>> {
+suspend fun AbstractLinearSolver.solve(model: LinearTriadModelView): Ret<SolveReport<Flt64>> {
     return solveWithOptions(model, SolveOptions())
 }
 
@@ -40,7 +42,10 @@ suspend fun AbstractLinearSolver.solve(model: LinearTriadModelView): Ret<Feasibl
 suspend fun AbstractLinearSolver.solveWithOptions(
     model: LinearTriadModelView,
     options: SolveOptions
-): Ret<FeasibleSolverOutput<Flt64>> {
+): Ret<SolveReport<Flt64>> {
+    if (options.cancellationToken?.isCancellationRequested == true) {
+        return Ok(cancelledSolveReport(options.cancellationToken.record?.reason))
+    }
     when (val identity = model.identityValidation) {
         is Ok -> {}
         is Failed -> return Failed(identity.error)
@@ -57,11 +62,13 @@ suspend fun AbstractLinearSolver.solveWithOptions(
             unwrapSolution(this@solveWithOptions(
                 model = model,
                 solutionAmount = solutionAmount,
-                solvingStatusCallBack = options.solvingStatusCallBack
+                solvingStatusCallBack = options.solvingStatusCallBack,
+                cancellationToken = options.cancellationToken
             ))
         } ?: this@solveWithOptions(
             model = model,
-            solvingStatusCallBack = options.solvingStatusCallBack
+            solvingStatusCallBack = options.solvingStatusCallBack,
+            cancellationToken = options.cancellationToken
         )
     }
 }
@@ -72,7 +79,7 @@ suspend fun AbstractLinearSolver.solveWithOptions(
  * @param model 二次四元模型视图 / Quadratic tetrad model view
  * @return 求解结果 / Solve result
 */
-suspend fun AbstractQuadraticSolver.solve(model: QuadraticTetradModelView): Ret<FeasibleSolverOutput<Flt64>> {
+suspend fun AbstractQuadraticSolver.solve(model: QuadraticTetradModelView): Ret<SolveReport<Flt64>> {
     return solveWithOptions(model, SolveOptions())
 }
 
@@ -86,7 +93,10 @@ suspend fun AbstractQuadraticSolver.solve(model: QuadraticTetradModelView): Ret<
 suspend fun AbstractQuadraticSolver.solveWithOptions(
     model: QuadraticTetradModelView,
     options: SolveOptions
-): Ret<FeasibleSolverOutput<Flt64>> {
+): Ret<SolveReport<Flt64>> {
+    if (options.cancellationToken?.isCancellationRequested == true) {
+        return Ok(cancelledSolveReport(options.cancellationToken.record?.reason))
+    }
     when (val identity = model.identityValidation) {
         is Ok -> {}
         is Failed -> return Failed(identity.error)
@@ -103,11 +113,13 @@ suspend fun AbstractQuadraticSolver.solveWithOptions(
             unwrapSolution(this@solveWithOptions(
                 model = model,
                 solutionAmount = solutionAmount,
-                solvingStatusCallBack = options.solvingStatusCallBack
+                solvingStatusCallBack = options.solvingStatusCallBack,
+                cancellationToken = options.cancellationToken
             ))
         } ?: this@solveWithOptions(
             model = model,
-            solvingStatusCallBack = options.solvingStatusCallBack
+            solvingStatusCallBack = options.solvingStatusCallBack,
+            cancellationToken = options.cancellationToken
         )
     }
 }
@@ -264,7 +276,8 @@ suspend fun AbstractLinearSolver.solveWithOptionsAndIISForSolutionPool(
         when (val result = this@solveWithOptionsAndIISForSolutionPool(
             model = model,
             solutionAmount = solutionAmount,
-            solvingStatusCallBack = statusBridge.callback
+            solvingStatusCallBack = statusBridge.callback,
+            cancellationToken = options.cancellationToken
         )) {
             is Ok -> {
                 Ok(result.value.first to result.value.second)
@@ -494,7 +507,8 @@ suspend fun AbstractQuadraticSolver.solveWithOptionsAndIISForSolutionPool(
         when (val result = this@solveWithOptionsAndIISForSolutionPool(
             model = model,
             solutionAmount = solutionAmount,
-            solvingStatusCallBack = statusBridge.callback
+            solvingStatusCallBack = statusBridge.callback,
+            cancellationToken = options.cancellationToken
         )) {
             is Ok -> {
                 Ok(result.value.first to result.value.second)
@@ -655,7 +669,7 @@ private fun <T> propagateStatusFailure(result: Try): Ret<T> {
  * @param result 包含求解器输出与解列表的配对结果 / A paired result containing solver output and solution list
  * @return 仅包含求解器输出的求解结果 / Solve result containing only the solver output
 */
-private fun unwrapSolution(result: Ret<Pair<FeasibleSolverOutput<Flt64>, List<List<Flt64>>>>): Ret<FeasibleSolverOutput<Flt64>> {
+private fun unwrapSolution(result: Ret<Pair<SolveReport<Flt64>, List<List<Flt64>>>>): Ret<SolveReport<Flt64>> {
     return when (result) {
         is Ok -> {
             Ok(result.value.first)
@@ -682,10 +696,11 @@ private fun unwrapSolution(result: Ret<Pair<FeasibleSolverOutput<Flt64>, List<Li
 fun AbstractLinearSolver.solveAsync(
     model: LinearTriadModelView,
     options: SolveOptions,
-    callBack: ((Ret<FeasibleSolverOutput<Flt64>>) -> Unit)? = null
-): CompletableFuture<Ret<FeasibleSolverOutput<Flt64>>> {
-    return coreSolverAsyncScope.future {
-        val result = solveWithOptions(model, options)
+    callBack: ((Ret<SolveReport<Flt64>>) -> Unit)? = null
+): CompletableFuture<Ret<SolveReport<Flt64>>> {
+    val token = options.cancellationToken ?: SolveHandle.create().token
+    return cancellableSolveFuture(token) {
+        val result = solveWithOptions(model, options.copy(cancellationToken = token))
         callBack?.invoke(result)
         result
     }
@@ -702,10 +717,11 @@ fun AbstractLinearSolver.solveAsync(
 fun AbstractQuadraticSolver.solveAsync(
     model: QuadraticTetradModelView,
     options: SolveOptions,
-    callBack: ((Ret<FeasibleSolverOutput<Flt64>>) -> Unit)? = null
-): CompletableFuture<Ret<FeasibleSolverOutput<Flt64>>> {
-    return coreSolverAsyncScope.future {
-        val result = solveWithOptions(model, options)
+    callBack: ((Ret<SolveReport<Flt64>>) -> Unit)? = null
+): CompletableFuture<Ret<SolveReport<Flt64>>> {
+    val token = options.cancellationToken ?: SolveHandle.create().token
+    return cancellableSolveFuture(token) {
+        val result = solveWithOptions(model, options.copy(cancellationToken = token))
         callBack?.invoke(result)
         result
     }

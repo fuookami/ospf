@@ -418,7 +418,8 @@ class Csp1dColumnGeneration<V : RealNumber<V>>(
 
                 hasValidLpResult = true
 
-                val lpObjective = lpResult.lpOutput.result.obj
+                val lpObjective = lpResult.lpOutput.result.solution?.objective
+                    ?: Flt64.zero
                 val shadowPrices = lpResult.shadowPrices
 
                 reportProgress(

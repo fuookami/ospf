@@ -6,6 +6,7 @@ package fuookami.ospf.kotlin.core.solver
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
 import fuookami.ospf.kotlin.core.model.basic.ModelBuildingStatusCallBack
 import fuookami.ospf.kotlin.core.solver.progress.SolverProgressContext
+import fuookami.ospf.kotlin.core.solver.report.CancellationToken
 import fuookami.ospf.kotlin.core.solver.value.SolveValueConversionPolicy
 import fuookami.ospf.kotlin.core.solver.output.SolvingStatusCallBack
 
@@ -17,13 +18,15 @@ import fuookami.ospf.kotlin.core.solver.output.SolvingStatusCallBack
  * @property solvingStatusCallBack 求解状态回调 / Solving status callback
  * @property progressContext 统一进度上报上下文 / Unified progress reporting context
  * @property valueConversionPolicy 值转换策略 / Value conversion policy
+ * @property cancellationToken 求解取消令牌 / Solve cancellation token
 */
 data class SolveOptions(
     val solutionAmount: UInt64? = null,
     val modelBuildingStatusCallBack: ModelBuildingStatusCallBack? = null,
     val solvingStatusCallBack: SolvingStatusCallBack? = null,
     val progressContext: SolverProgressContext? = null,
-    val valueConversionPolicy: SolveValueConversionPolicy? = null
+    val valueConversionPolicy: SolveValueConversionPolicy? = null,
+    val cancellationToken: CancellationToken? = null
 ) {
 
     /** 有效的值转换策略 / Effective value conversion policy */
@@ -37,6 +40,7 @@ data class SolveOptions(
         var solvingStatusCallBack: SolvingStatusCallBack? = null
         var progressContext: SolverProgressContext? = null
         var valueConversionPolicy: SolveValueConversionPolicy? = null
+        var cancellationToken: CancellationToken? = null
 
         /**
          * 构建求解选项。 / Build solve options.
@@ -49,7 +53,8 @@ data class SolveOptions(
                 modelBuildingStatusCallBack = modelBuildingStatusCallBack,
                 solvingStatusCallBack = solvingStatusCallBack,
                 progressContext = progressContext,
-                valueConversionPolicy = valueConversionPolicy
+                valueConversionPolicy = valueConversionPolicy,
+                cancellationToken = cancellationToken
             )
         }
     }

@@ -19,6 +19,8 @@ import fuookami.ospf.kotlin.core.model.intermediate.LinearTriadModel
 import fuookami.ospf.kotlin.core.model.intermediate.SparseMatrix
 import fuookami.ospf.kotlin.core.model.intermediate.SparseVector
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
+import fuookami.ospf.kotlin.core.solver.report.ModelElementOrigin
+import fuookami.ospf.kotlin.core.solver.report.ModelElementScope
 import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.variable.Continuous
 
@@ -77,7 +79,12 @@ class ScipLinearIdentityProjectionIT {
                     type = Continuous,
                     origin = null,
                     name = "x",
-                    id = VariableId("fixture:variable:x")
+                    id = VariableId("fixture:variable:x"),
+                    identityScope = ModelElementScope.Stable,
+                    identityOrigin = ModelElementOrigin("variable", "x"),
+                    identityNamespace = "fixture",
+                    identitySchemaVersion = "1.0",
+                    identityProvenance = listOf(ModelElementOrigin("variable", "x"))
                 ),
                 Variable(
                     index = 1,
@@ -94,7 +101,18 @@ class ScipLinearIdentityProjectionIT {
                 rhs = listOf(Flt64.one, Flt64.zero),
                 names = listOf("c0", "localCons"),
                 sources = listOf(ConstraintSource.Origin, ConstraintSource.Origin),
-                ids = listOf(ConstraintId("fixture:constraint:c0"))
+                ids = listOf(
+                    ConstraintId("fixture:constraint:c0"),
+                    ConstraintId("model-local-constraint:localCons")
+                ),
+                identityNamespace = "fixture",
+                identitySchemaVersion = "1.0",
+                identityScopes = listOf(ModelElementScope.Stable, ModelElementScope.ModelLocal),
+                identityOrigins = listOf(ModelElementOrigin("constraint", "c0"), null),
+                identityProvenance = listOf(
+                    listOf(ModelElementOrigin("constraint", "c0")),
+                    emptyList()
+                )
             ),
             name = "scip-identity-projection-it"
         )

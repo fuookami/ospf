@@ -1,19 +1,35 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2
 
+import fuookami.ospf.kotlin.core.solver.toSolveReport
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlin.time.Duration
+import fuookami.ospf.kotlin.core.solver.report.*
 import kotlinx.coroutines.runBlocking
+import fuookami.ospf.kotlin.core.solver.report.*
 import org.junit.jupiter.api.Assertions.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import org.junit.jupiter.api.Test
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.basic.RegistrationStatusCallBack
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.variable.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.symbol.inequality.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.symbol.polynomial.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.example.framework_demo.demo2.infrastructure.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.solver.*
 
 /** 验证 Demo2 Benders 主问题解会传递给子问题。 */
@@ -272,14 +288,13 @@ class Demo2BendersSolverTest {
             )
         }
 
-        private fun output(): FeasibleSolverOutput<Flt64> {
-            return FeasibleSolverOutput(
-                obj = Flt64.zero,
-                solution = listOf(Flt64(0.75), Flt64.zero),
-                time = Duration.ZERO,
-                possibleBestObj = Flt64.zero,
-                gap = Flt64.zero,
-                status = SolverStatus.Optimal
+        private fun output(): SolveReport<Flt64> {
+            return SolverStatus.Optimal.toSolveReport(
+                objective = Flt64.zero,
+                values = listOf(Flt64(0.75), Flt64.zero),
+                solveTime = Duration.ZERO,
+                bestBound = Flt64.zero,
+                gap = Flt64.zero
             )
         }
     }
@@ -315,14 +330,13 @@ class Demo2BendersSolverTest {
             )
         }
 
-        private fun output(obj: Flt64, objectValue: Flt64): FeasibleSolverOutput<Flt64> {
-            return FeasibleSolverOutput(
-                obj = obj,
-                solution = listOf(Flt64.zero, objectValue),
-                time = Duration.ZERO,
-                possibleBestObj = obj,
-                gap = Flt64.zero,
-                status = SolverStatus.Optimal
+        private fun output(obj: Flt64, objectValue: Flt64): SolveReport<Flt64> {
+            return SolverStatus.Optimal.toSolveReport(
+                objective = obj,
+                values = listOf(Flt64.zero, objectValue),
+                solveTime = Duration.ZERO,
+                bestBound = obj,
+                gap = Flt64.zero
             )
         }
     }
@@ -361,14 +375,13 @@ class Demo2BendersSolverTest {
             )
         }
 
-        private fun output(obj: Flt64, gap: Flt64): FeasibleSolverOutput<Flt64> {
-            return FeasibleSolverOutput(
-                obj = obj,
-                solution = listOf(Flt64(0.75), if (iteration == 1) Flt64(9.0) else Flt64(9.99)),
-                time = Duration.ZERO,
-                possibleBestObj = obj,
-                gap = gap,
-                status = SolverStatus.Optimal
+        private fun output(obj: Flt64, gap: Flt64): SolveReport<Flt64> {
+            return SolverStatus.Optimal.toSolveReport(
+                objective = obj,
+                values = listOf(Flt64(0.75), if (iteration == 1) Flt64(9.0) else Flt64(9.99)),
+                solveTime = Duration.ZERO,
+                bestBound = obj,
+                gap = gap
             )
         }
     }
@@ -412,14 +425,13 @@ class Demo2BendersSolverTest {
             )
         }
 
-        private fun output(obj: Flt64): FeasibleSolverOutput<Flt64> {
-            return FeasibleSolverOutput(
-                obj = obj,
-                solution = listOf(Flt64.zero, Flt64(10.0)),
-                time = Duration.ZERO,
-                possibleBestObj = obj,
-                gap = Flt64.zero,
-                status = SolverStatus.Optimal
+        private fun output(obj: Flt64): SolveReport<Flt64> {
+            return SolverStatus.Optimal.toSolveReport(
+                objective = obj,
+                values = listOf(Flt64.zero, Flt64(10.0)),
+                solveTime = Duration.ZERO,
+                bestBound = obj,
+                gap = Flt64.zero
             )
         }
     }
@@ -457,14 +469,13 @@ class Demo2BendersSolverTest {
             )
         }
 
-        private fun output(obj: Flt64): FeasibleSolverOutput<Flt64> {
-            return FeasibleSolverOutput(
-                obj = obj,
-                solution = listOf(Flt64(0.75), Flt64.one),
-                time = Duration.ZERO,
-                possibleBestObj = obj,
-                gap = Flt64.zero,
-                status = SolverStatus.Optimal
+        private fun output(obj: Flt64): SolveReport<Flt64> {
+            return SolverStatus.Optimal.toSolveReport(
+                objective = obj,
+                values = listOf(Flt64(0.75), Flt64.one),
+                solveTime = Duration.ZERO,
+                bestBound = obj,
+                gap = Flt64.zero
             )
         }
     }

@@ -1,11 +1,19 @@
 package fuookami.ospf.kotlin.example.framework_demo.demo2.infrastructure
 
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.error.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.math.algebra.number.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.variable.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.core.solver.output.*
+import fuookami.ospf.kotlin.core.solver.toSolverStatus
+import fuookami.ospf.kotlin.core.solver.report.*
 import fuookami.ospf.kotlin.framework.solver.*
 
 /**
@@ -72,29 +80,22 @@ object BendersSolver {
      * @param output 主问题的原始求解器输出 / The raw solver output from the master problem.
      * @return 包含 Flt64 解值的可行求解器输出，或错误 / The feasible solver output with Flt64 solution values, or an error.
     */
-    private fun requireFeasibleMasterOutput(output: SolverOutput): Ret<FeasibleSolverOutput<Flt64>> {
+    private fun requireFeasibleMasterOutput(output: SolverOutput): Ret<SolveReport<Flt64>> {
         return when (output) {
-            is FeasibleSolverOutput<*> -> {
-                val normalizedSolution = output.solution.mapNotNull { it as? Flt64 }
-                if (normalizedSolution.size != output.solution.size) {
+            is SolveReport<*> -> {
+                val solution = output.solution ?: return Failed(Err(
+                    ErrorCode.ORModelInfeasible,
+                    "Master feasible output does not contain an incumbent solution."
+                ))
+                val normalizedSolution = solution.values.mapNotNull { it as? Flt64 }
+                if (normalizedSolution.size != solution.values.size) {
                     Failed(Err(
                         ErrorCode.ORModelInfeasible,
                         "Master feasible output contains non-Flt64 solution values."
                     ))
                 } else {
-                    Ok(FeasibleSolverOutput(
-                        obj = output.obj,
-                        solution = normalizedSolution,
-                        time = output.time,
-                        possibleBestObj = output.possibleBestObj,
-                        gap = output.gap,
-                        status = output.status,
-                        iterations = output.iterations,
-                        nodeCount = output.nodeCount,
-                        bestBound = output.bestBound,
-                        mipGap = output.mipGap,
-                        solveTime = output.solveTime
-                    ))
+                    @Suppress("UNCHECKED_CAST")
+                    Ok(output as SolveReport<Flt64>)
                 }
             }
 
@@ -163,23 +164,28 @@ object BendersSolver {
                 is Fatal -> return Fatal(normalized.errors)
             }
 
-            if (masterFeasible.status != SolverStatus.Optimal) {
+            val masterStatus = masterFeasible.toSolverStatus()
+            if (masterStatus != SolverStatus.Optimal) {
                 return Failed(Err(
-                    masterFeasible.status.errCode
+                    masterStatus.errCode
                         ?: ErrorCode.OREngineSolvingException,
-                    "Benders 主问题终态为 ${masterFeasible.status}，需要最优主问题证书 / " +
-                        "Benders master ended with ${masterFeasible.status}; an optimal master certificate is required."
+                    "Benders 主问题终态为 $masterStatus，需要最优主问题证书 / " +
+                        "Benders master ended with $masterStatus; an optimal master certificate is required."
                 ))
             }
 
-            val masterObj = masterFeasible.obj.toDouble()
+            val masterObj = masterFeasible.solution?.objective?.toFlt64()?.toDouble()
+                ?: return Failed(Err(
+                    ErrorCode.ORModelInfeasible,
+                    "Master feasible output does not contain an objective value."
+                ))
             val objectTokenIndex = masterModel.tokens.indexOf(objectVariable)
                 ?: return Failed(Err(
                     ErrorCode.ApplicationError,
                     "Benders 主问题缺少目标变量 ${objectVariable.name} 的 token / " +
                         "Benders master is missing the token for objective variable ${objectVariable.name}."
                 ))
-            val masterObjectValue = masterFeasible.solution.getOrNull(objectTokenIndex)?.toDouble()
+            val masterObjectValue = masterFeasible.values.getOrNull(objectTokenIndex)?.toDouble()
                 ?: return Failed(Err(
                     ErrorCode.ApplicationError,
                     "Benders 主问题解缺少目标变量 ${objectVariable.name} 的值 / " +
@@ -205,7 +211,7 @@ object BendersSolver {
                         "Benders 主问题缺少固定变量 ${variable.name} 的 token / " +
                             "Benders master is missing a token for fixed variable ${variable.name}."
                     ))
-                val value = masterFeasible.solution.getOrNull(tokenIndex)
+                val value = masterFeasible.values.getOrNull(tokenIndex)
                     ?: return Failed(Err(
                         ErrorCode.ApplicationError,
                         "Benders 主问题解缺少固定变量 ${variable.name} 的值 / " +
@@ -260,7 +266,7 @@ object BendersSolver {
                         val timeMs = System.currentTimeMillis() - startTime
                         return Ok(BendersResult(
                             obj = masterObj,
-                            solution = masterFeasible.solution.map { it.toDouble() }.toDoubleArray(),
+                            solution = masterFeasible.values.map { it.toDouble() }.toDoubleArray(),
                             gap = currentGap,
                             timeMs = timeMs,
                             bendersIterations = iteration,

@@ -7,6 +7,7 @@ import fuookami.ospf.kotlin.core.model.basic.ObjectCategory
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
 import fuookami.ospf.kotlin.core.solver.report.BoundSide
 import fuookami.ospf.kotlin.core.solver.report.InfeasibilityMember
+import fuookami.ospf.kotlin.core.solver.report.ModelElementOrigin
 import fuookami.ospf.kotlin.core.solver.report.ObjectiveId
 import fuookami.ospf.kotlin.core.solver.report.VariableId
 import fuookami.ospf.kotlin.core.solver.report.VariableBoundRef
@@ -21,6 +22,7 @@ import fuookami.ospf.kotlin.core.solver.report.VariableDomainRef
  * @property domain 整数值域 / Integer domain
  * @property scope 身份作用域 / Identity scope
  * @property origin 稳定身份来源 / Stable identity origin
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
  */
 data class ConstraintProgrammingVariableSnapshot(
     val id: VariableId,
@@ -28,7 +30,8 @@ data class ConstraintProgrammingVariableSnapshot(
     val typeName: String,
     val domain: IntegerDomain,
     val scope: String = "model-local",
-    val origin: String? = null
+    val origin: String? = null,
+    val identityProvenance: List<ModelElementOrigin> = emptyList()
 )
 
 /**
@@ -51,6 +54,7 @@ data class ConstraintProgrammingExpressionSnapshot(
  * @property constraint 约束 AST / Constraint AST
  * @property scope 身份作用域 / Identity scope
  * @property origin 稳定身份来源 / Stable identity origin
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
  */
 data class ConstraintProgrammingConstraintSnapshot(
     val id: ConstraintId,
@@ -58,7 +62,8 @@ data class ConstraintProgrammingConstraintSnapshot(
     val groupName: String?,
     val constraint: ConstraintProgrammingConstraint,
     val scope: String = "model-local",
-    val origin: String? = null
+    val origin: String? = null,
+    val identityProvenance: List<ModelElementOrigin> = emptyList()
 )
 
 /**
@@ -70,6 +75,7 @@ data class ConstraintProgrammingConstraintSnapshot(
  * @property expression 目标表达式 / Objective expression
  * @property scope 身份作用域 / Identity scope
  * @property origin 稳定身份来源 / Stable identity origin
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
  */
 data class ConstraintProgrammingObjectiveSnapshot(
     val id: ObjectiveId,
@@ -77,7 +83,8 @@ data class ConstraintProgrammingObjectiveSnapshot(
     val name: String,
     val expression: ConstraintProgrammingExpression,
     val scope: String = "model-local",
-    val origin: String? = null
+    val origin: String? = null,
+    val identityProvenance: List<ModelElementOrigin> = emptyList()
 )
 
 /**
@@ -194,13 +201,32 @@ data class ConstraintProgrammingModelSnapshot(
         if (identitySchemaVersion.isBlank() || identityNamespace.isBlank()) {
             return false
         }
-        val elements = ArrayList<Triple<String, String, String?>>()
-        variables.forEach { elements += Triple(it.id.value, it.scope, it.origin) }
-        intervals.forEach { elements += Triple(it.id.value, it.scope, it.origin) }
-        constraints.forEach { elements += Triple(it.id.value, it.scope, it.origin) }
-        objectives.forEach { elements += Triple(it.id.value, it.scope, it.origin) }
-        if (elements.any { (id, scope, origin) ->
-                id.isBlank() || scope.isBlank() || (scope == "stable" && origin.isNullOrBlank())
+        val elements = buildList {
+            variables.forEach {
+                add(Triple(it.id.value, it.scope, it.origin to it.identityProvenance))
+            }
+            intervals.forEach {
+                add(Triple(it.id.value, it.scope, it.origin to it.identityProvenance))
+            }
+            constraints.forEach {
+                add(Triple(it.id.value, it.scope, it.origin to it.identityProvenance))
+            }
+            objectives.forEach {
+                add(Triple(it.id.value, it.scope, it.origin to it.identityProvenance))
+            }
+        }
+        if (elements.any { (id, scope, metadata) ->
+                id.isBlank() || validateConstraintProgrammingIdentity(
+                    id = id,
+                    scope = scope,
+                    origin = metadata.first,
+                    provenance = canonicalConstraintProgrammingIdentityProvenance(
+                        origin = metadata.first,
+                        provenance = metadata.second
+                    ),
+                    identityNamespace = identityNamespace,
+                    identitySchemaVersion = identitySchemaVersion
+                ) != null
             }) {
             return false
         }

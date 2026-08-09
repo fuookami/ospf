@@ -4,6 +4,7 @@
 package fuookami.ospf.kotlin.core.model.intermediate
 
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.utils.error.*
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.symbol.Linear
 import fuookami.ospf.kotlin.math.symbol.Quadratic
@@ -24,7 +25,11 @@ suspend fun solveDual(
     val dualModel = model.dual()
 
     return when (val result = solver(dualModel)) {
-        is Ok -> Ok(dualModel.tidyDualSolution(result.value.solution))
+        is Ok -> {
+            val solution = result.value.solution
+                ?: return Failed(Err(ErrorCode.IllegalArgument, "Dual solve completed without a solution."))
+            Ok(dualModel.tidyDualSolution(solution.values))
+        }
         is Failed -> Failed(result.error)
         is Fatal -> Fatal(result.errors)
     }
@@ -44,7 +49,11 @@ suspend fun solveFarkasDual(
     val dualModel = model.farkasDual()
 
     return when (val result = solver(dualModel)) {
-        is Ok -> Ok(dualModel.tidyDualSolution(result.value.solution))
+        is Ok -> {
+            val solution = result.value.solution
+                ?: return Failed(Err(ErrorCode.IllegalArgument, "Farkas dual solve completed without a solution."))
+            Ok(dualModel.tidyDualSolution(solution.values))
+        }
         is Failed -> Failed(result.error)
         is Fatal -> Fatal(result.errors)
     }
@@ -64,7 +73,11 @@ suspend fun solveDual(
     val dualModel = model.dual()
 
     return when (val result = solver(dualModel)) {
-        is Ok -> Ok(dualModel.tidyDualSolution(result.value.solution))
+        is Ok -> {
+            val solution = result.value.solution
+                ?: return Failed(Err(ErrorCode.IllegalArgument, "Quadratic dual solve completed without a solution."))
+            Ok(dualModel.tidyDualSolution(solution.values))
+        }
         is Failed -> Failed(result.error)
         is Fatal -> Fatal(result.errors)
     }
@@ -84,7 +97,11 @@ suspend fun solveFarkasDual(
     val dualModel = model.farkasDual()
 
     return when (val result = solver(dualModel)) {
-        is Ok -> Ok(dualModel.tidyDualSolution(result.value.solution))
+        is Ok -> {
+            val solution = result.value.solution
+                ?: return Failed(Err(ErrorCode.IllegalArgument, "Quadratic Farkas dual solve completed without a solution."))
+            Ok(dualModel.tidyDualSolution(solution.values))
+        }
         is Failed -> Failed(result.error)
         is Fatal -> Fatal(result.errors)
     }

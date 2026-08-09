@@ -7,7 +7,10 @@ import java.io.*
 import java.nio.file.Path
 import kotlin.io.path.*
 import fuookami.ospf.kotlin.utils.concept.Copyable
+import fuookami.ospf.kotlin.utils.functional.Failed
 import fuookami.ospf.kotlin.utils.functional.Try
+import fuookami.ospf.kotlin.utils.functional.ok
+import fuookami.ospf.kotlin.utils.error.ErrorCode
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.core.model.mechanism.Constraint
 import fuookami.ospf.kotlin.core.solver.report.ConstraintId
@@ -45,6 +48,7 @@ data class VariableSlack(
  * @property id            稳定变量 ID；为空时为 model-local / Stable variable ID; null means model-local
  * @property identityScope 身份作用域 / Identity scope
  * @property identityOrigin 稳定身份来源 / Stable identity origin
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
  * @property identityNamespace 身份命名空间 / Identity namespace
  * @property identitySchemaVersion 身份 schema 版本 / Identity schema version
 */
@@ -62,7 +66,8 @@ class Variable(
     val identityScope: ModelElementScope = ModelElementScope.ModelLocal,
     val identityOrigin: ModelElementOrigin? = null,
     val identityNamespace: String? = null,
-    val identitySchemaVersion: String? = null
+    val identitySchemaVersion: String? = null,
+    val identityProvenance: List<ModelElementOrigin> = emptyList()
 ) : Cloneable, Copyable<Variable> {
     internal var _lowerBound = lowerBound
     internal var _upperBound = upperBound
@@ -122,7 +127,8 @@ class Variable(
         identityScope = identityScope,
         identityOrigin = identityOrigin,
         identityNamespace = identityNamespace,
-        identitySchemaVersion = identitySchemaVersion
+        identitySchemaVersion = identitySchemaVersion,
+        identityProvenance = identityProvenance
     )
     override fun clone() = copy()
 
@@ -185,9 +191,12 @@ enum class ConstraintSource {
  * @param    ids             稳定约束 ID 列表 / List of stable constraint IDs
  * @param    identityScopes  每行身份作用域 / Identity scope for each row
  * @param    identityOrigins 每行稳定身份来源 / Stable identity origin for each row
+ * @param    identityProvenance 每行完整身份来源集合 / Complete identity provenance for each row
+ * @param    identityMetadataValidationOverride 复制或过滤时保留的身份元数据校验结果 / Identity metadata validation result preserved across copies or filters
  * @property ids             稳定约束 ID 列表 / Stable constraint ID list
  * @property identityScopes 每行身份作用域 / Identity scope for each row
  * @property identityOrigins 每行稳定身份来源 / Stable identity origin for each row
+ * @property identityProvenance 每行完整身份来源集合 / Complete identity provenance for each row
 */
 abstract class ModelConstraint<ConCell>(
     val constraintCount: Int,
@@ -199,7 +208,9 @@ abstract class ModelConstraint<ConCell>(
     identityNamespace: String? = null,
     identitySchemaVersion: String? = null,
     identityScopes: List<ModelElementScope> = emptyList(),
-    identityOrigins: List<ModelElementOrigin?> = emptyList()
+    identityOrigins: List<ModelElementOrigin?> = emptyList(),
+    identityProvenance: List<List<ModelElementOrigin>> = emptyList(),
+    identityMetadataValidationOverride: Try? = null
 ) : Cloneable, Copyable<ModelConstraint<ConCell>>, AutoCloseable
         where ConCell : ConstraintCell<ConCell>, ConCell : Copyable<ConCell> {
     internal val _signs = signs.toMutableList()
@@ -207,6 +218,10 @@ abstract class ModelConstraint<ConCell>(
     internal val _names = names.toMutableList()
     internal val _sources = sources.toMutableList()
     internal val _ids = ids.toMutableList()
+    private val idsInput = ids
+    private val identityScopesInput = identityScopes
+    private val identityOriginsInput = identityOrigins
+    private val identityProvenanceInput = identityProvenance
 
     abstract val lhs: List<List<ConCell>>
     val signs: List<ConstraintRelation> by ::_signs
@@ -222,16 +237,16 @@ abstract class ModelConstraint<ConCell>(
     /** Identity schema version carried by the originating registry. / 来源注册表携带的身份 schema 版本。 */
     var identitySchemaVersion: String? = identitySchemaVersion
 
-    private val _identityScopes = if (identityScopes.size == constraintCount) {
-        identityScopes.toMutableList()
-    } else {
-        MutableList(constraintCount) { ModelElementScope.ModelLocal }
+    private val _identityScopes = when {
+        identityScopes.isEmpty() -> MutableList(constraintCount) { ModelElementScope.ModelLocal }
+        identityScopes.size == constraintCount -> identityScopes.toMutableList()
+        else -> identityScopes.toMutableList()
     }
 
-    private val _identityOrigins = if (identityOrigins.size == constraintCount) {
-        identityOrigins.toMutableList()
-    } else {
-        MutableList<ModelElementOrigin?>(constraintCount) { null }
+    private val _identityOrigins = when {
+        identityOrigins.isEmpty() -> MutableList<ModelElementOrigin?>(constraintCount) { null }
+        identityOrigins.size == constraintCount -> identityOrigins.toMutableList()
+        else -> identityOrigins.toMutableList()
     }
 
     /** Per-row identity scopes. / 每行身份作用域。 */
@@ -239,6 +254,47 @@ abstract class ModelConstraint<ConCell>(
 
     /** Per-row stable identity origins. / 每行稳定身份来源。 */
     val identityOrigins: List<ModelElementOrigin?> by ::_identityOrigins
+
+    private val _identityProvenance = when {
+        identityProvenance.isEmpty() -> MutableList(constraintCount) { index ->
+            listOfNotNull(_identityOrigins.getOrNull(index))
+        }
+        identityProvenance.size == constraintCount -> identityProvenance.map { it.toList() }.toMutableList()
+        else -> identityProvenance.map { it.toList() }.toMutableList()
+    }
+
+    /** Per-row complete identity provenance. / 每行完整身份来源集合。 */
+    val identityProvenance: List<List<ModelElementOrigin>> by ::_identityProvenance
+
+    /**
+     * Validate identity metadata list shapes before any fallback is consumed. /
+     * 在任何回退值被消费前校验身份元数据列表形状。
+     *
+     * An empty list means that the corresponding metadata is intentionally model-local and
+     * remains a valid compatibility input. A non-empty list must describe every row; otherwise
+     * returning row-level fallback values would silently discard identity evidence. /
+     * 空列表表示调用方明确使用 model-local 兼容默认值，仍然有效；非空列表必须覆盖每一行，
+     * 否则返回按行回退值会静默丢弃身份证据。
+     */
+    val identityMetadataValidation: Try = identityMetadataValidationOverride ?: when {
+        idsInput.isNotEmpty() && idsInput.size != constraintCount -> Failed(
+            ErrorCode.IllegalArgument,
+            "约束 ID 列表长度与约束数不一致 / Constraint ID list length disagrees with constraint count"
+        )
+        identityScopesInput.isNotEmpty() && identityScopesInput.size != constraintCount -> Failed(
+            ErrorCode.IllegalArgument,
+            "约束身份 scope 列表长度与约束数不一致 / Constraint identity scope list length disagrees with constraint count"
+        )
+        identityOriginsInput.isNotEmpty() && identityOriginsInput.size != constraintCount -> Failed(
+            ErrorCode.IllegalArgument,
+            "约束身份 origin 列表长度与约束数不一致 / Constraint identity origin list length disagrees with constraint count"
+        )
+        identityProvenanceInput.isNotEmpty() && identityProvenanceInput.size != constraintCount -> Failed(
+            ErrorCode.IllegalArgument,
+            "约束身份 provenance 列表长度与约束数不一致 / Constraint identity provenance list length disagrees with constraint count"
+        )
+        else -> ok
+    }
 
     /** Return a row identity scope with model-local fallback. / 返回行身份作用域，缺失时回退为 model-local。
      *
@@ -255,6 +311,14 @@ abstract class ModelConstraint<ConCell>(
      */
     fun identityOriginAt(index: Int): ModelElementOrigin? = identityOrigins.getOrNull(index)
 
+    /** Return all source origins for a row. / 返回约束行的全部来源身份。
+     *
+     * @param index constraint row index / 约束行索引
+     * @return row provenance / 行来源集合
+     */
+    fun identityProvenanceAt(index: Int): List<ModelElementOrigin> =
+        identityProvenance.getOrNull(index).orEmpty()
+
     val size: Int get() = rhs.size
     val indices: IntRange get() = rhs.indices
 
@@ -268,6 +332,7 @@ abstract class ModelConstraint<ConCell>(
         _ids.clear()
         _identityScopes.clear()
         _identityOrigins.clear()
+        _identityProvenance.clear()
     }
 }
 
@@ -280,6 +345,7 @@ abstract class ModelConstraint<ConCell>(
  * @property id        稳定目标 ID；为空时为 model-local / Stable objective ID; null means model-local
  * @property identityScope 身份作用域 / Identity scope
  * @property identityOrigin 稳定身份来源 / Stable identity origin
+ * @property identityProvenance 完整身份来源集合 / Complete identity provenance
  * @property identityNamespace 身份命名空间 / Identity namespace
  * @property identitySchemaVersion 身份 schema 版本 / Identity schema version
 */
@@ -291,7 +357,8 @@ class Objective<C : Copyable<C>>(
     val identityScope: ModelElementScope = ModelElementScope.ModelLocal,
     val identityOrigin: ModelElementOrigin? = null,
     val identityNamespace: String? = null,
-    val identitySchemaVersion: String? = null
+    val identitySchemaVersion: String? = null,
+    val identityProvenance: List<ModelElementOrigin> = emptyList()
 ) : Cloneable, Copyable<Objective<C>> {
     override fun copy() = Objective(
         category = category,
@@ -301,7 +368,8 @@ class Objective<C : Copyable<C>>(
         identityScope = identityScope,
         identityOrigin = identityOrigin,
         identityNamespace = identityNamespace,
-        identitySchemaVersion = identitySchemaVersion
+        identitySchemaVersion = identitySchemaVersion,
+        identityProvenance = identityProvenance
     )
     override fun clone() = copy()
 }
@@ -414,4 +482,35 @@ interface BasicModelView<ConCell> : AutoCloseable
 interface ModelView<ConCell, ObjCell> : BasicModelView<ConCell>
         where ConCell : ConstraintCell<ConCell>, ConCell : Copyable<ConCell>, ObjCell : ModelCell<ObjCell>, ObjCell : Copyable<ObjCell> {
     val objective: Objective<ObjCell>
+
+    /**
+     * Resolve model-root identity metadata from every model element category. /
+     * 从模型的所有元素类别汇总模型根身份 metadata。
+     */
+    override val identityNamespace: String?
+        get() = resolveModelIdentityMetadata(
+            preferred = constraints.identityNamespace,
+            candidates = variables.map { it.identityNamespace } + listOf(objective.identityNamespace)
+        )
+
+    /**
+     * Resolve model-root identity schema from every model element category. /
+     * 从模型的所有元素类别汇总模型根身份 schema。
+     */
+    override val identitySchemaVersion: String?
+        get() = resolveModelIdentityMetadata(
+            preferred = constraints.identitySchemaVersion,
+            candidates = variables.map { it.identitySchemaVersion } + listOf(objective.identitySchemaVersion)
+        )
+}
+
+private fun resolveModelIdentityMetadata(
+    preferred: String?,
+    candidates: List<String?>
+): String? {
+    val values = buildList {
+        preferred?.takeIf { it.isNotBlank() }?.let(::add)
+        candidates.mapNotNullTo(this) { it?.takeIf(String::isNotBlank) }
+    }.distinct()
+    return values.singleOrNull()
 }
