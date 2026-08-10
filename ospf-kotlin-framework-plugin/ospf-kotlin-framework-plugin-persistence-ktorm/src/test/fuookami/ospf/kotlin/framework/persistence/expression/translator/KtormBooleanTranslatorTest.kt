@@ -29,10 +29,14 @@ import fuookami.ospf.kotlin.utils.functional.Failed
 
 @DisplayName("KtormBooleanTranslator Tests / Ktorm 布尔翻译器测试")
 class KtormBooleanTranslatorTest {
+    @JvmInline
+    private value class UserId(val value: Int)
+
     data class Entity(val age: Int)
 
     private object Users : Table<Nothing>("users") {
         val id = int("id")
+            .transform(::UserId, UserId::value)
         val age = int("age")
         val name = varchar("name")
         val status = varchar("status")
@@ -57,6 +61,20 @@ class KtormBooleanTranslatorTest {
     @Nested
     @DisplayName("Comparison Tests / 比较翻译测试")
     inner class ComparisonTests {
+        @Test
+        @DisplayName("should bind value object constants with column SQL type / 值对象常量应复用列 SQL 类型")
+        fun shouldBindValueObjectConstantWithColumnSqlType() {
+            val expr = Comparison(
+                ComparisonOperator.Eq,
+                ScalarReference<UserId>(PropertyPath.parse("id")),
+                ScalarConstant(UserId(7))
+            )
+
+            val translated = translator.translate(expr).valueOrFail().orFail() as BinaryExpression<*>
+
+            assertEquals(Users.id.sqlType, translated.right.sqlType)
+        }
+
         @Test
         @DisplayName("should support lt/le/gt/ge / 应支持 lt/le/gt/ge")
         fun shouldSupportLtLeGtGe() {

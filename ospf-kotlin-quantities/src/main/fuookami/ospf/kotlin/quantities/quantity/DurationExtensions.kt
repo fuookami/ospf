@@ -717,3 +717,32 @@ val Duration.inHoursQuantityUInt64: Ret<Quantity<UInt64>> get() = toQuantityUInt
 
 /** Duration 的 UInt64 天值作为时间物理量 / Duration value in days as UInt64 time quantity */
 val Duration.inDaysQuantityUInt64: Ret<Quantity<UInt64>> get() = toQuantityUInt64(Day)
+
+// ============================================================================
+// PhysicalUnit -> DurationUnit 转换 / PhysicalUnit to DurationUnit conversion
+// ============================================================================
+
+/**
+ * 将物理量时间单位转换为 kotlin.time.DurationUnit
+ * Convert physical quantity time unit to kotlin.time.DurationUnit
+ *
+ * 对于 Week、Year 等无对应 DurationUnit 的单位返回 null。 / Returns null for units like Week and Year that have no corresponding DurationUnit.
+ *
+ * 示例 / Example:
+ * ```kotlin
+ * val unit = Hour.toDurationUnit()  // DurationUnit.HOURS
+ * val unit2 = Week.toDurationUnit() // null
+ * ```
+ *
+ * @return 对应的 DurationUnit，或 null / The corresponding DurationUnit, or null
+*/
+fun PhysicalUnit.toDurationUnit(): DurationUnit? = when (this) {
+    Nanosecond  -> DurationUnit.NANOSECONDS
+    Microsecond -> DurationUnit.MICROSECONDS
+    Millisecond -> DurationUnit.MILLISECONDS
+    Second      -> DurationUnit.SECONDS
+    Minute      -> DurationUnit.MINUTES
+    Hour        -> DurationUnit.HOURS
+    Day         -> DurationUnit.DAYS
+    else        -> null
+}

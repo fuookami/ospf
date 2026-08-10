@@ -62,13 +62,16 @@ class KtormScalarTranslator(
      * @param value 常量值 / Constant value
      * @return Ktorm 参数表达式 / Ktorm argument expression
     */
-    private fun translateConstant(value: Any?): Ret<KtormScalarExpression<*>?> {
+    internal fun translateConstant(
+        value: Any?,
+        sqlType: SqlType<*>? = null
+    ): Ret<KtormScalarExpression<*>?> {
         if (value == null) {
             return unsupported("Null scalar constants are not supported in predicates")
         }
         @Suppress("UNCHECKED_CAST")
-        val sqlType = inferSqlType(value) as SqlType<Any>
-        return Ok(ArgumentExpression(value, sqlType))
+        val resolvedSqlType = (sqlType ?: inferSqlType(value)) as SqlType<Any>
+        return Ok(ArgumentExpression(value, resolvedSqlType))
     }
 
     /**

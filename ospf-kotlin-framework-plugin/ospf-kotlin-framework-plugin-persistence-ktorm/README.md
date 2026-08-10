@@ -114,11 +114,13 @@ Pass a `PatternMatchPolicy` to `KtormRepository` to control how `PatternMatch` e
 | `i64` | `Int64` | `BIGINT` | `BIGINT` (-5) | |
 | `f32` | `Flt32` | `FLOAT` | `FLOAT` (6) | |
 | `f64` | `Flt64` | `DOUBLE` | `DOUBLE` (8) | |
-| `fltx` | `FltX` | `DECIMAL` | `DECIMAL` (3) | Default scale = 2 |
+| `fltx` | `FltX` | `DECIMAL` | `DECIMAL` (3) | Default scale = 18 |
 | `fltx` | `FltX` | `DECIMAL` | `DECIMAL` (3) | Custom rounding mode |
 | `kotlinDatetime` | `kotlinx.datetime.LocalDateTime` | `DATETIME` | `TIMESTAMP` (93) | |
 | `instant` | `kotlin.time.Instant` | `TIMESTAMP` | `TIMESTAMP` (93) | |
 | `duration` | `kotlin.time.Duration` | `VARCHAR` | `VARCHAR` (12) | Stored as ISO-8601 string (`Duration.toIsoString`) |
+| `durationLong` | `kotlin.time.Duration` | `BIGINT` | `BIGINT` (-5) | Stored as long integer; unit defaults to milliseconds, configurable via `DurationUnit` parameter |
+| `durationMs` | `kotlin.time.Duration` | `BIGINT` | `BIGINT` (-5) | Stored as truncated whole milliseconds; non-finite or unrepresentable values are rejected |
 | `zoneId` | `java.time.ZoneId` | `VARCHAR` | `VARCHAR` (12) | Stored as IANA zone id (e.g. `America/New_York`) |
 | `zoneOffset` | `java.time.ZoneOffset` | `VARCHAR` | `VARCHAR` (12) | Stored as offset id (e.g. `+08:00`) |
 | `kotlinTimeZone` | `kotlinx.datetime.TimeZone` | `VARCHAR` | `VARCHAR` (12) | Stored as IANA zone id (e.g. `Europe/Berlin`) |

@@ -22,6 +22,8 @@ fun SolverConfig.configurationSnapshot(): BackendConfigurationSnapshot {
         add(BackendParameter("gap", BackendParameterValue.Decimal(gap.toString())))
         notImprovementTime?.let { add(BackendParameter("notImprovementTime", BackendParameterValue.Text(it.toString()))) }
         add(BackendParameter("improveThreshold", BackendParameterValue.Decimal(improveThreshold.toString())))
+        interruptibleTime?.let { add(BackendParameter("interruptibleTime", BackendParameterValue.Text(it.toString()))) }
+        interruptibleGap?.let { add(BackendParameter("interruptibleGap", BackendParameterValue.Decimal(it.toString()))) }
         backendConfiguration?.parameters()?.forEach { parameter ->
             add(parameter.copy(name = "backend.${parameter.name}"))
         }
@@ -50,6 +52,8 @@ fun solverProvenance(
     effective["gap"] = config.gap.toString()
     config.notImprovementTime?.let { effective["notImprovementTime"] = it.toString() }
     effective["improveThreshold"] = config.improveThreshold.toString()
+    config.interruptibleTime?.let { effective["interruptibleTime"] = it.toString() }
+    config.interruptibleGap?.let { effective["interruptibleGap"] = it.toString() }
     config.backendConfiguration?.parameters()?.forEach { parameter ->
         effective["backend.${parameter.name}"] = parameter.redactedValue()
     }

@@ -102,11 +102,13 @@ val binderResolver = KtormColumnBinder(UsersTable, mapping).asKtormResolver()
 | `i64` | `Int64` | `BIGINT` | `BIGINT` (-5) | |
 | `f32` | `Flt32` | `FLOAT` | `FLOAT` (6) | |
 | `f64` | `Flt64` | `DOUBLE` | `DOUBLE` (8) | |
-| `fltx` | `FltX` | `DECIMAL` | `DECIMAL` (3) | 默认精度 scale = 2 |
+| `fltx` | `FltX` | `DECIMAL` | `DECIMAL` (3) | 默认精度 scale = 18 |
 | `fltx` | `FltX` | `DECIMAL` | `DECIMAL` (3) | 自定义舍入模式 |
 | `kotlinDatetime` | `kotlinx.datetime.LocalDateTime` | `DATETIME` | `TIMESTAMP` (93) | |
 | `instant` | `kotlin.time.Instant` | `TIMESTAMP` | `TIMESTAMP` (93) | |
 | `duration` | `kotlin.time.Duration` | `VARCHAR` | `VARCHAR` (12) | 以 ISO-8601 字符串存储（`Duration.toIsoString`） |
+| `durationLong` | `kotlin.time.Duration` | `BIGINT` | `BIGINT` (-5) | 以长整数存储；单位默认毫秒，可通过 `DurationUnit` 参数指定 |
+| `durationMs` | `kotlin.time.Duration` | `BIGINT` | `BIGINT` (-5) | 以截断后的整毫秒存储；非有限或不可表示的值会被拒绝 |
 | `zoneId` | `java.time.ZoneId` | `VARCHAR` | `VARCHAR` (12) | 以 IANA 时区标识存储（如 `America/New_York`） |
 | `zoneOffset` | `java.time.ZoneOffset` | `VARCHAR` | `VARCHAR` (12) | 以偏移量标识存储（如 `+08:00`） |
 | `kotlinTimeZone` | `kotlinx.datetime.TimeZone` | `VARCHAR` | `VARCHAR` (12) | 以 IANA 时区标识存储（如 `Europe/Berlin`） |

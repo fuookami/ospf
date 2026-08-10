@@ -341,7 +341,10 @@ private class GurobiLinearSolverImpl(
                                     bestObj = currentObj
                                     bestBound = currentBound
                                     bestTime = currentTime
-                                } else if (currentTime - bestTime >= notImprovementTime) {
+                                } else if (currentTime - bestTime >= notImprovementTime
+                                    && config.interruptibleTime?.let { currentTime >= it } ?: true
+                                    && config.interruptibleGap?.let { (currentObj - currentBound).abs() ls it } ?: true
+                                ) {
                                     abort()
                                 }
                             }

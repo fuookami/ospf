@@ -16,6 +16,8 @@ import fuookami.ospf.kotlin.core.solver.report.BackendConfiguration
  * @property gap 间隙容忍度 / Gap tolerance
  * @property notImprovementTime 无改进时间限制 / No improvement time limit
  * @property improveThreshold 改进阈值 / Improvement threshold
+ * @property interruptibleTime 可中断时间，求解时间未达到前不触发 notImprovementTime 中断 / Interruptible time; notImprovementTime interrupt is suppressed before this
+ * @property interruptibleGap 可中断间隙，当前间隙大于等于此值时不触发 notImprovementTime 中断 / Interruptible gap threshold; notImprovementTime interrupt is suppressed when gap >= this
  * @property dumpMechanismModelConcurrent 是否并发转储机制模型 / Whether to dump mechanism model concurrently
  * @property dumpMechanismModelBlocking 是否阻塞转储机制模型 / Whether to dump mechanism model blocking
  * @property dumpIntermediateModelConcurrent 是否并发转储中间模型 / Whether to dump intermediate model concurrently
@@ -37,6 +39,8 @@ data class SolverConfig(
     val gap: Flt64 = Flt64.zero,
     val notImprovementTime: Duration? = null,
     val improveThreshold: Flt64 = Flt64.decimalPrecision,
+    val interruptibleTime: Duration? = null,
+    val interruptibleGap: Flt64? = null,
     val dumpMechanismModelConcurrent: Boolean? = null,
     val dumpMechanismModelBlocking: Boolean? = null,
     val dumpIntermediateModelConcurrent: Boolean? = null,

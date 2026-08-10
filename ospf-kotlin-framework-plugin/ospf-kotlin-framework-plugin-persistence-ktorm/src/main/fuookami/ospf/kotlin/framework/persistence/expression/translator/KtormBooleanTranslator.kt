@@ -87,10 +87,26 @@ class KtormBooleanTranslator(
      * @return Ktorm 比较条件 / Ktorm comparison condition
     */
     private fun translateComparison(expr: Comparison<*>): Ret<ColumnDeclaring<Boolean>?> {
-        val left = scalarTranslator.translate(expr.left).value
+        val translatedLeft = scalarTranslator.translate(expr.left).value
             ?: return unsupported("Unsupported left scalar expression: ${expr.left.typeName}", expr)
-        val right = scalarTranslator.translate(expr.right).value
+        val translatedRight = scalarTranslator.translate(expr.right).value
             ?: return unsupported("Unsupported right scalar expression: ${expr.right.typeName}", expr)
+        val leftConstant = expr.left as? ScalarConstant<*>
+        val rightReference = expr.right as? ScalarReference<*>
+        val left = if (leftConstant != null && rightReference != null) {
+            scalarTranslator.translateConstant(leftConstant.value, translatedRight.sqlType).value
+                ?: return unsupported("Unsupported left scalar constant: ${leftConstant.typeName}", expr)
+        } else {
+            translatedLeft
+        }
+        val rightConstant = expr.right as? ScalarConstant<*>
+        val leftReference = expr.left as? ScalarReference<*>
+        val right = if (rightConstant != null && leftReference != null) {
+            scalarTranslator.translateConstant(rightConstant.value, translatedLeft.sqlType).value
+                ?: return unsupported("Unsupported right scalar constant: ${rightConstant.typeName}", expr)
+        } else {
+            translatedRight
+        }
         return Ok(buildComparison(left, right, expr.operator))
     }
 
