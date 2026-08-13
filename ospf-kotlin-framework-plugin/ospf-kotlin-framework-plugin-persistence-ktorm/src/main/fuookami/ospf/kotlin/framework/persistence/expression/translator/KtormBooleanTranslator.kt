@@ -16,6 +16,7 @@ import org.ktorm.schema.BooleanSqlType
 import org.ktorm.schema.ColumnDeclaring
 import org.ktorm.schema.IntSqlType
 import org.ktorm.schema.SqlType
+import org.ktorm.schema.VarcharSqlType
 import fuookami.ospf.kotlin.framework.persistence.expression.*
 import fuookami.ospf.kotlin.math.symbol.expression.*
 import fuookami.ospf.kotlin.math.Trivalent
@@ -39,13 +40,23 @@ typealias KtormColumnResolver = PersistenceFieldResolver<ColumnDeclaring<*>>
  * @property resolveColumn 列解析函数 / Column resolver function
  * @property patternMatchPolicy 模式匹配策略 / Pattern match policy
  * @property unsupportedPredicatePolicy 不支持谓词时的策略 / Policy for unsupported predicates
+ * @property targetConstantBinder 目标 SQL 类型感知的常量绑定器 / Target-SQL-type-aware constant binder
 */
 class KtormBooleanTranslator(
     private val resolveColumn: KtormColumnResolver,
     private val patternMatchPolicy: PatternMatchPolicy = DefaultPatternMatchPolicy,
-    private val unsupportedPredicatePolicy: UnsupportedPredicatePolicy = UnsupportedPredicatePolicy.AlwaysFalse
+    private val unsupportedPredicatePolicy: UnsupportedPredicatePolicy = UnsupportedPredicatePolicy.AlwaysFalse,
+    private val parameterTypeSink: ((SqlType<*>) -> Unit)? = null,
+    private val resolveColumnDetailed: ((String) -> PersistenceFieldResolution<ColumnDeclaring<*>>)? = null,
+    private val targetConstantBinder: KtormTargetConstantBinder? = null
 ) {
-    private val scalarTranslator = KtormScalarTranslator(resolveColumn, unsupportedPredicatePolicy)
+    private val scalarTranslator = KtormScalarTranslator(
+        resolveColumn = resolveColumn,
+        unsupportedPredicatePolicy = unsupportedPredicatePolicy,
+        parameterTypeSink = parameterTypeSink,
+        resolveColumnDetailed = resolveColumnDetailed,
+        targetConstantBinder = targetConstantBinder
+    )
 
     /**
      * 翻译布尔表达式为 Ktorm 条件 / Translate boolean expression to Ktorm condition
@@ -87,25 +98,60 @@ class KtormBooleanTranslator(
      * @return Ktorm 比较条件 / Ktorm comparison condition
     */
     private fun translateComparison(expr: Comparison<*>): Ret<ColumnDeclaring<Boolean>?> {
-        val translatedLeft = scalarTranslator.translate(expr.left).value
-            ?: return unsupported("Unsupported left scalar expression: ${expr.left.typeName}", expr)
-        val translatedRight = scalarTranslator.translate(expr.right).value
-            ?: return unsupported("Unsupported right scalar expression: ${expr.right.typeName}", expr)
         val leftConstant = expr.left as? ScalarConstant<*>
-        val rightReference = expr.right as? ScalarReference<*>
-        val left = if (leftConstant != null && rightReference != null) {
-            scalarTranslator.translateConstant(leftConstant.value, translatedRight.sqlType).value
+        val rightConstant = expr.right as? ScalarConstant<*>
+        if (leftConstant != null && rightConstant != null) {
+            val leftResult = scalarTranslator.translateConstant(leftConstant.value)
+            if (leftResult.failed) return propagateScalarFailure(leftResult)
+            val left = leftResult.value
+                ?: return unsupported("Unsupported left scalar constant: ${leftConstant.typeName}", expr)
+            val rightResult = scalarTranslator.translateConstant(rightConstant.value)
+            if (rightResult.failed) return propagateScalarFailure(rightResult)
+            val right = rightResult.value
+                ?: return unsupported("Unsupported right scalar constant: ${rightConstant.typeName}", expr)
+            if (!compatibleSqlTypes(left.sqlType, right.sqlType)) {
+                return unsupported("Constant comparison operands have incompatible SQL types", expr)
+            }
+            return Ok(buildComparison(left, right, expr.operator))
+        }
+        val translatedLeft = if (leftConstant == null) {
+            val translated = scalarTranslator.translate(expr.left)
+            if (translated.failed) return propagateScalarFailure(translated)
+            translated.value
+                ?: return unsupported("Unsupported left scalar expression: ${expr.left.typeName}", expr)
+        } else {
+            null
+        }
+        val translatedRight = if (rightConstant == null) {
+            val translated = scalarTranslator.translate(expr.right)
+            if (translated.failed) return propagateScalarFailure(translated)
+            translated.value
+                ?: return unsupported("Unsupported right scalar expression: ${expr.right.typeName}", expr)
+        } else {
+            null
+        }
+        val left = if (leftConstant != null) {
+            val targetType = translatedRight?.sqlType
+                ?: return unsupported("A constant comparison operand requires a translated right operand", expr)
+            val translated = scalarTranslator.translateConstant(leftConstant.value, targetType)
+            if (translated.failed) return propagateScalarFailure(translated)
+            translated.value
                 ?: return unsupported("Unsupported left scalar constant: ${leftConstant.typeName}", expr)
         } else {
-            translatedLeft
+            translatedLeft ?: return unsupported("Missing translated left operand", expr)
         }
-        val rightConstant = expr.right as? ScalarConstant<*>
-        val leftReference = expr.left as? ScalarReference<*>
-        val right = if (rightConstant != null && leftReference != null) {
-            scalarTranslator.translateConstant(rightConstant.value, translatedLeft.sqlType).value
+        val right = if (rightConstant != null) {
+            val targetType = translatedLeft?.sqlType
+                ?: return unsupported("A constant comparison operand requires a translated left operand", expr)
+            val translated = scalarTranslator.translateConstant(rightConstant.value, targetType)
+            if (translated.failed) return propagateScalarFailure(translated)
+            translated.value
                 ?: return unsupported("Unsupported right scalar constant: ${rightConstant.typeName}", expr)
         } else {
-            translatedRight
+            translatedRight ?: return unsupported("Missing translated right operand", expr)
+        }
+        if (leftConstant == null && rightConstant == null && !compatibleSqlTypes(left.sqlType, right.sqlType)) {
+            return unsupported("Comparison operands have incompatible SQL types", expr)
         }
         return Ok(buildComparison(left, right, expr.operator))
     }
@@ -121,16 +167,16 @@ class KtormBooleanTranslator(
         val ref = expr.value as? ScalarReference<*>
             ?: return unsupported("IN value must be a column reference", expr)
         val column = resolveColumn(ref.path.value)
-            ?: return unsupported("Unresolved IN path: ${ref.path.value}", expr)
+            ?: return unsupported(resolveFailure(ref.path.value), expr)
         val values = expr.candidates.mapNotNull { (it as? ScalarConstant<*>)?.value }
         if (values.size != expr.candidates.size || values.isEmpty()) {
             return unsupported("IN candidates must be non-empty scalar constants", expr)
         }
 
-        @Suppress("UNCHECKED_CAST")
-        val sqlType = column.sqlType as SqlType<Any>
         val inValues = values.map { value ->
-            ArgumentExpression(value as Any, sqlType) as ScalarExpression<*>
+            val translated = scalarTranslator.translateConstant(value, column.sqlType)
+            if (translated.failed) return propagateScalarFailure(translated)
+            translated.value ?: return unsupported("Unsupported IN scalar constant", expr)
         }
         return Ok(InListExpression(
             left = column.asExpression(),
@@ -149,7 +195,7 @@ class KtormBooleanTranslator(
         val ref = expr.value as? ScalarReference<*>
             ?: return unsupported("Pattern value must be a column reference", expr)
         val column = resolveColumn(ref.path.value)
-            ?: return unsupported("Unresolved pattern path: ${ref.path.value}", expr)
+            ?: return unsupported(resolveFailure(ref.path.value), expr)
 
         val patternValue = (expr.pattern as? ScalarConstant<*>)?.value?.toString()
             ?: return unsupported("Pattern must be a scalar constant", expr)
@@ -167,6 +213,7 @@ class KtormBooleanTranslator(
             }
         }
 
+        parameterTypeSink?.invoke(VarcharSqlType)
         val condition = patternMatchPolicy.translateLike(column, sqlPattern, caseSensitive = true)
         return Ok(if (expr.negated) condition.not() else condition)
     }
@@ -180,7 +227,7 @@ class KtormBooleanTranslator(
     */
     private fun translateNullCheck(expr: NullCheck): Ret<ColumnDeclaring<Boolean>?> {
         val column = resolveColumn(expr.path.value)
-            ?: return unsupported("Unresolved null-check path: ${expr.path.value}", expr)
+            ?: return unsupported(resolveFailure(expr.path.value), expr)
         return Ok(if (expr.isNull) column.isNull() else column.isNotNull())
     }
 
@@ -191,8 +238,13 @@ class KtormBooleanTranslator(
      * @return Ktorm AND 条件 / Ktorm AND condition
     */
     private fun translateAnd(expr: AndExpression): Ret<ColumnDeclaring<Boolean>?> {
-        val conditions = expr.operands.map { translate(it).value ?: alwaysFalse() }
-        return Ok(conditions.reduce { acc, cond -> acc.and(cond) })
+        val conditions = mutableListOf<ColumnDeclaring<Boolean>>()
+        expr.operands.forEach { operand ->
+            val translated = translate(operand)
+            if (translated.failed) return propagateBooleanFailure(translated)
+            conditions += translated.value ?: return unsupported("Unsupported AND operand", expr)
+        }
+        return Ok(conditions.reduceOrNull { acc, condition -> acc.and(condition) } ?: alwaysTrue())
     }
 
     /**
@@ -202,8 +254,13 @@ class KtormBooleanTranslator(
      * @return Ktorm OR 条件 / Ktorm OR condition
     */
     private fun translateOr(expr: OrExpression): Ret<ColumnDeclaring<Boolean>?> {
-        val conditions = expr.operands.map { translate(it).value ?: alwaysFalse() }
-        return Ok(conditions.reduce { acc, cond -> acc.or(cond) })
+        val conditions = mutableListOf<ColumnDeclaring<Boolean>>()
+        expr.operands.forEach { operand ->
+            val translated = translate(operand)
+            if (translated.failed) return propagateBooleanFailure(translated)
+            conditions += translated.value ?: return unsupported("Unsupported OR operand", expr)
+        }
+        return Ok(conditions.reduceOrNull { acc, condition -> acc.or(condition) } ?: alwaysFalse())
     }
 
     /**
@@ -214,7 +271,9 @@ class KtormBooleanTranslator(
      * @return Ktorm NOT 条件 / Ktorm NOT condition
     */
     private fun translateNot(expr: NotExpression): Ret<ColumnDeclaring<Boolean>?> {
-        val condition = translate(expr.operand).value ?: return unsupported("Unsupported NOT operand", expr)
+        val translated = translate(expr.operand)
+        if (translated.failed) return propagateBooleanFailure(translated)
+        val condition = translated.value ?: return unsupported("Unsupported NOT operand", expr)
         return Ok(condition.not())
     }
 
@@ -273,6 +332,37 @@ class KtormBooleanTranslator(
                 Failed(detail.toError())
             }
         }
+    }
+
+    private fun resolveFailure(path: String): String {
+        return when (val result = resolveColumnDetailed?.invoke(path)) {
+            is PersistenceFieldResolution.Ambiguous -> {
+                "Ambiguous path $path: ${result.candidates.joinToString(", ")}"
+            }
+            is PersistenceFieldResolution.Missing -> "Unresolved path: $path"
+            is PersistenceFieldResolution.InvalidConfiguration -> result.reason
+            is PersistenceFieldResolution.Resolved, null -> "Unresolved path: $path"
+        }
+    }
+
+    private fun compatibleSqlTypes(left: SqlType<*>, right: SqlType<*>): Boolean {
+        return left.typeCode == right.typeCode && left.typeName == right.typeName
+    }
+
+    private fun propagateScalarFailure(
+        result: Ret<ScalarExpression<*>?>
+    ): Ret<ColumnDeclaring<Boolean>?> {
+        @Suppress("UNCHECKED_CAST")
+        val failed = result as Failed<ScalarExpression<*>?, ErrorCode, Error<ErrorCode>>
+        return Failed(failed.error)
+    }
+
+    private fun propagateBooleanFailure(
+        result: Ret<ColumnDeclaring<Boolean>?>
+    ): Ret<ColumnDeclaring<Boolean>?> {
+        @Suppress("UNCHECKED_CAST")
+        val failed = result as Failed<ColumnDeclaring<Boolean>?, ErrorCode, Error<ErrorCode>>
+        return Failed(failed.error)
     }
 
 /**

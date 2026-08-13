@@ -18,6 +18,7 @@ import org.ktorm.expression.UnaryExpressionType
 import org.ktorm.schema.int
 import org.ktorm.schema.Table
 import org.ktorm.schema.varchar
+import org.ktorm.support.sqlite.SQLiteDialect
 import fuookami.ospf.kotlin.framework.persistence.expression.NullsOrder
 import fuookami.ospf.kotlin.framework.persistence.expression.NullsOrderSupport
 import fuookami.ospf.kotlin.framework.persistence.expression.SortBy
@@ -39,7 +40,10 @@ class KtormOrderByTranslatorTest {
         }
     }
 
-    private fun newQuery() = Database.connect("jdbc:sqlite::memory:").from(Users).select(Users.id)
+    private fun newQuery() = Database.connect(
+        url = "jdbc:sqlite::memory:",
+        dialect = SQLiteDialect()
+    ).from(Users).select(Users.id)
 
     @Test
     @DisplayName("should apply nulls fallback when unsupported / 不支持时应启用 nulls 降级排序")

@@ -12,9 +12,17 @@ import org.ktorm.dsl.from
 import org.ktorm.dsl.insert
 import org.ktorm.dsl.select
 import org.ktorm.schema.Table
+import org.ktorm.support.sqlite.SQLiteDialect
+import fuookami.ospf.kotlin.math.algebra.number.FltX
+import fuookami.ospf.kotlin.math.algebra.number.UInt64
 
 private object DurationTable : Table<Nothing>("t_duration") {
     val durationMs = durationMs("duration_ms")
+}
+
+private object NumericTable : Table<Nothing>("t_numeric") {
+    val sequence = ui64("sequence")
+    val ratio = fltx("ratio")
 }
 
 class SqlTypeTest {
@@ -56,15 +64,62 @@ class SqlTypeTest {
         }
     }
 
+    @Test
+    fun `numeric value objects use transformed JDBC values`() {
+        val database = createNumericDatabase()
+        val sequence = UInt64(7UL)
+        val ratio = FltX("1.25")
+
+        database.insert(NumericTable) {
+            set(NumericTable.sequence, sequence)
+            set(NumericTable.ratio, ratio)
+        }
+
+        database.useConnection { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeQuery("SELECT sequence, ratio FROM t_numeric").use { resultSet ->
+                    assertEquals(true, resultSet.next())
+                    assertEquals(7L, resultSet.getLong("sequence"))
+                    assertEquals(0, resultSet.getBigDecimal("ratio").compareTo(java.math.BigDecimal("1.25")))
+                }
+            }
+        }
+
+        val row = database.from(NumericTable).select().iterator().next()
+        assertEquals(sequence, row[NumericTable.sequence])
+        assertEquals(ratio, row[NumericTable.ratio])
+    }
+
     private fun createDatabase(): Database {
         val dbFile = Files.createTempFile("ospf-duration-test", ".db").toFile().apply {
             deleteOnExit()
         }
-        return Database.connect("jdbc:sqlite:${dbFile.absolutePath}").also { database ->
+        return Database.connect(
+            url = "jdbc:sqlite:${dbFile.absolutePath}",
+            dialect = SQLiteDialect()
+        ).also { database ->
             database.useConnection { connection ->
                 connection.createStatement().use { statement ->
                     statement.execute(
                         "CREATE TABLE t_duration (duration_ms BIGINT NOT NULL)"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun createNumericDatabase(): Database {
+        val dbFile = Files.createTempFile("ospf-numeric-test", ".db").toFile().apply {
+            deleteOnExit()
+        }
+        return Database.connect(
+            url = "jdbc:sqlite:${dbFile.absolutePath}",
+            dialect = SQLiteDialect()
+        ).also { database ->
+            database.useConnection { connection ->
+                connection.createStatement().use { statement ->
+                    statement.execute(
+                        "CREATE TABLE t_numeric (sequence BIGINT NOT NULL, ratio DECIMAL(30, 18) NOT NULL)"
                     )
                 }
             }
