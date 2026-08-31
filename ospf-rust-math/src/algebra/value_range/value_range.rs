@@ -1,1823 +1,555 @@
-use std::cmp::{max, Ordering};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{
-    Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Range, RangeBounds, RangeFrom, RangeFull,
-    RangeInclusive, RangeTo, RangeToInclusive, Sub, SubAssign,
-};
-use std::time::{Duration, Instant};
+//! ValueRange - 值空间/区间
+//! ValueRange - Value range / interval
 
-use chrono::NaiveDateTime;
+use super::bound::Bound;
+use super::interval::IntervalTrait;
+use super::value_wrapper::ValueWrapper;
+use crate::algebra::concept::{Bounded, Fixed};
+use crate::operator::Contains;
+use std::fmt;
 
-use crate::algebra::concept::*;
-use crate::algebra::operator::*;
+// ============================================================================
+// ValueRange<T, IL, IU> - 值空间/区间
+// ============================================================================
 
-use super::bound::*;
-use super::error::IllegalArgumentError;
-use super::interval::*;
-use super::value_wrapper::*;
+/// ValueRange - 值空间/区间
+/// ValueRange - Value range / interval
+///
+/// 表示一个数值区间，支持下界和上界，以及开闭性质。
+/// Represents a numeric interval, supporting lower and upper bounds with openness.
+///
+/// # 类型参数 / Type Parameters
+/// - `T`: 数值类型
+/// - `IL`: 下界开闭性质类型（编译时 `Closed`/`Open` 或运行时 `Interval`）
+/// - `IU`: 上界开闭性质类型（编译时 `Closed`/`Open` 或运行时 `Interval`）
+/// - `T`: The numeric type
+/// - `IL`: Lower bound openness type (compile-time `Closed`/`Open` or runtime `Interval`)
+/// - `IU`: Upper bound openness type (compile-time `Closed`/`Open` or runtime `Interval`)
+///
+/// # 示例 / Examples
+///
+/// ## 编译时开闭性质（零开销）
+/// ## Compile-time openness (zero overhead)
+///
+/// ```
+/// use ospf_rust_math::algebra::value_range::{ValueRange, Bound, ValueWrapper, Closed, Open};
+///
+/// // 闭区间 [1, 10]
+/// let range: ValueRange<i64, Closed, Closed> = ValueRange::new(
+///     Bound::new(ValueWrapper::finite(1), Closed),
+///     Bound::new(ValueWrapper::finite(10), Closed),
+/// );
+///
+/// // 左闭右开区间 [1, 10)
+/// let range: ValueRange<i64, Closed, Open> = ValueRange::new(
+///     Bound::new(ValueWrapper::finite(1), Closed),
+///     Bound::new(ValueWrapper::finite(10), Open),
+/// );
+/// ```
+///
+/// ## 运行时开闭性质（灵活）
+/// ## Runtime openness (flexible)
+///
+/// ```
+/// use ospf_rust_math::algebra::value_range::{ValueRange, Bound, ValueWrapper, Interval};
+///
+/// // [0, +∞) - 半无限区间
+/// let range: ValueRange<i64> = ValueRange::new(
+///     Bound::new(ValueWrapper::finite(0), Interval::Closed),
+///     Bound::new(ValueWrapper::positive_infinity(), Interval::Open),
+/// );
+/// ```
+#[derive(Clone, Debug)]
+pub struct ValueRange<T, IL: IntervalTrait = super::interval::Interval, IU: IntervalTrait = super::interval::Interval> {
+    /// 下界
+    /// Lower bound
+    lower_bound: Bound<T, IL>,
+    /// 上界
+    /// Upper bound
+    upper_bound: Bound<T, IU>,
+}
 
-pub(self) fn empty<T: 'static + PartialOrd>(
-    lb: &ValueWrapper<T>,
-    ub: &ValueWrapper<T>,
-    lb_interval: Interval,
-    ub_interval: Interval,
-) -> bool {
-    if let ValueWrapper::NegInf = lb {
-        false
-    } else if let ValueWrapper::Inf = ub {
-        false
-    } else if let (ValueWrapper::Value(new_lb), ValueWrapper::Value(new_ub)) = (lb, ub) {
-        !(lb_interval.lb_op())(new_lb, new_ub) || !(ub_interval.ub_op())(new_ub, new_lb)
-    } else {
+impl<T, IL: IntervalTrait, IU: IntervalTrait> ValueRange<T, IL, IU> {
+    /// 创建新的值区间
+    /// Create a new value range
+    ///
+    /// # 参数 / Parameters
+    /// - `lower_bound`: 下界
+    /// - `upper_bound`: 上界
+    ///
+    /// # 返回 / Returns
+    /// 新的值区间实例
+    /// New value range instance
+    pub fn new(lower_bound: Bound<T, IL>, upper_bound: Bound<T, IU>) -> Self {
+        Self {
+            lower_bound,
+            upper_bound,
+        }
+    }
+
+    /// 获取下界
+    /// Get the lower bound
+    ///
+    /// # 返回 / Returns
+    /// 下界的引用
+    /// Reference to the lower bound
+    pub fn lower_bound(&self) -> &Bound<T, IL> {
+        &self.lower_bound
+    }
+
+    /// 获取上界
+    /// Get the upper bound
+    ///
+    /// # 返回 / Returns
+    /// 上界的引用
+    /// Reference to the upper bound
+    pub fn upper_bound(&self) -> &Bound<T, IU> {
+        &self.upper_bound
+    }
+
+    /// 判断下界是否为闭区间
+    /// Check if lower bound is closed
+    ///
+    /// # 返回 / Returns
+    /// 如果下界为闭区间返回 `true`，否则返回 `false`
+    /// Returns `true` if lower bound is closed, `false` otherwise
+    pub fn is_lower_closed(&self) -> bool {
+        self.lower_bound.is_closed()
+    }
+
+    /// 判断上界是否为闭区间
+    /// Check if upper bound is closed
+    ///
+    /// # 返回 / Returns
+    /// 如果上界为闭区间返回 `true`，否则返回 `false`
+    /// Returns `true` if upper bound is closed, `false` otherwise
+    pub fn is_upper_closed(&self) -> bool {
+        self.upper_bound.is_closed()
+    }
+
+    /// 判断下界是否为开区间
+    /// Check if lower bound is open
+    ///
+    /// # 返回 / Returns
+    /// 如果下界为开区间返回 `true`，否则返回 `false`
+    /// Returns `true` if lower bound is open, `false` otherwise
+    pub fn is_lower_open(&self) -> bool {
+        self.lower_bound.is_open()
+    }
+
+    /// 判断上界是否为开区间
+    /// Check if upper bound is open
+    ///
+    /// # 返回 / Returns
+    /// 如果上界为开区间返回 `true`，否则返回 `false`
+    /// Returns `true` if upper bound is open, `false` otherwise
+    pub fn is_upper_open(&self) -> bool {
+        self.upper_bound.is_open()
+    }
+}
+
+impl<T: PartialOrd, IL: IntervalTrait, IU: IntervalTrait> ValueRange<T, IL, IU> {
+    /// 判断值是否在区间内
+    /// Check if value is within the range
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 要检查的值
+    /// - `value`: The value to check
+    ///
+    /// # 返回 / Returns
+    /// 如果值在区间内返回 `true`，否则返回 `false`
+    /// Returns `true` if value is within range, `false` otherwise
+    pub fn contains_value(&self, value: &ValueWrapper<T>) -> bool {
+        self.lower_bound.is_above(value) && self.upper_bound.is_below(value)
+    }
+}
+
+// ============================================================================
+// Bounded trait 实现 / Bounded trait implementation
+// ============================================================================
+
+impl<T, IL: IntervalTrait, IU: IntervalTrait> Bounded for ValueRange<T, IL, IU> {
+    fn is_bounded() -> bool {
+        // ValueRange 本身是否是有界的取决于其边界是否是有限值
+        // 但这个方法返回的是类型的性质，不是实例的性质
+        // 对于 ValueRange，我们总是返回 true，因为它总是有一个定义的边界
+        // ValueRange's boundedness depends on whether its bounds are finite
+        // But this method returns the type's property, not the instance's property
+        // For ValueRange, we always return true since it always has defined bounds
         true
     }
 }
 
-pub(self) fn ls<T>(lhs: &Bound<T>, rhs: &Bound<T>) -> Ordering
-where
-    ValueWrapper<T>: PartialOrd,
-{
-    match lhs.value.partial_cmp(&rhs.value).unwrap() {
-        Ordering::Less => Ordering::Less,
-        Ordering::Equal => {
-            if lhs.interval.outer(&rhs.interval) {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
-        }
-        Ordering::Greater => Ordering::Greater,
+// ============================================================================
+// Fixed trait 实现 / Fixed trait implementation
+// ============================================================================
+
+impl<T: PartialEq, IL: IntervalTrait, IU: IntervalTrait> Fixed for ValueRange<T, IL, IU> {
+    fn is_fixed() -> bool {
+        // 类型层面上，ValueRange 不是固定的
+        // 实例层面上，只有当上下界相等且都是闭区间时才固定
+        // At type level, ValueRange is not fixed
+        // At instance level, it's fixed only when bounds are equal and both closed
+        false
     }
 }
 
-pub(self) fn gr<T>(lhs: &Bound<T>, rhs: &Bound<T>) -> Ordering
-where
-    ValueWrapper<T>: PartialOrd,
-{
-    match lhs.value.partial_cmp(&rhs.value).unwrap() {
-        Ordering::Less => Ordering::Less,
-        Ordering::Equal => {
-            if lhs.interval.outer(&rhs.interval) {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
-        }
-        Ordering::Greater => Ordering::Greater,
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct ValueRange<T> {
-    pub lb: Bound<T>,
-    pub ub: Bound<T>,
-}
-
-impl<T> ValueRange<T> {
-    pub fn new() -> Self {
-        Self {
-            lb: Bound::new(ValueWrapper::NegInf, Interval::Open),
-            ub: Bound::new(ValueWrapper::Inf, Interval::Open),
-        }
+impl<T: PartialEq, IL: IntervalTrait, IU: IntervalTrait> ValueRange<T, IL, IU> {
+    /// 判断区间是否退化为单点
+    /// Check if the range degenerates to a single point
+    ///
+    /// # 返回 / Returns
+    /// 如果区间退化为单点返回 `true`，否则返回 `false`
+    /// Returns `true` if degenerates to a point, `false` otherwise
+    pub fn is_degenerate(&self) -> bool {
+        // 上下界相等且都是闭区间时，区间退化为单点
+        // When bounds are equal and both closed, the range degenerates to a point
+        self.lower_bound.value() == self.upper_bound.value()
+            && self.lower_bound.is_closed()
+            && self.upper_bound.is_closed()
     }
 
-    pub fn new_with_constant(value: T) -> Self
-    where
-        T: Clone,
-    {
-        Self {
-            lb: Bound::new(ValueWrapper::Value(value.clone()), Interval::Closed),
-            ub: Bound::new(ValueWrapper::Value(value), Interval::Closed),
-        }
-    }
-
-    pub fn new_with(
-        lb: T,
-        ub: T,
-        lb_interval: Interval,
-        ub_interval: Interval,
-    ) -> Result<Self, IllegalArgumentError>
-    where
-        T: 'static + PartialOrd + Display,
-    {
-        let lower_bound_value = ValueWrapper::Value(lb);
-        let upper_bound_value = ValueWrapper::Value(ub);
-        Self::new_by(
-            lower_bound_value,
-            upper_bound_value,
-            lb_interval,
-            ub_interval,
-        )
-    }
-
-    pub fn new_with_lb(lb: T, lb_interval: Interval) -> Result<Self, IllegalArgumentError>
-    where
-        T: 'static + PartialOrd + Display,
-    {
-        let lower_bound_value = ValueWrapper::Value(lb);
-        Self::new_by(
-            lower_bound_value,
-            ValueWrapper::Inf,
-            lb_interval,
-            Interval::Open,
-        )
-    }
-
-    pub fn new_with_ub(ub: T, ub_interval: Interval) -> Result<Self, IllegalArgumentError>
-    where
-        T: 'static + PartialOrd + Display,
-    {
-        let upper_bound_value = ValueWrapper::Value(ub);
-        Self::new_by(
-            ValueWrapper::NegInf,
-            upper_bound_value,
-            Interval::Open,
-            ub_interval,
-        )
-    }
-
-    pub fn new_by(
-        lb: ValueWrapper<T>,
-        ub: ValueWrapper<T>,
-        lb_interval: Interval,
-        ub_interval: Interval,
-    ) -> Result<Self, IllegalArgumentError>
-    where
-        T: 'static + PartialOrd + Display,
-    {
-        if !empty(&lb, &ub, lb_interval, ub_interval) {
-            Ok(Self {
-                lb: Bound::new(lb, lb_interval),
-                ub: Bound::new(ub, ub_interval),
-            })
-        } else {
-            Err(IllegalArgumentError {
-                msg: format!(
-                    "Invalid range {}{}, {}{}",
-                    lb_interval.lb_sign(),
-                    lb,
-                    ub,
-                    ub_interval.ub_sign()
-                ),
-            })
-        }
-    }
-
-    pub fn fixed(&self) -> bool
-    where
-        T: PartialEq,
-    {
-        self.lb.interval == Interval::Closed
-            && self.ub.interval == Interval::Closed
-            && if let (ValueWrapper::Value(lower_value), ValueWrapper::Value(upper_value)) =
-                (&self.lb.value, &self.ub.value)
-            {
-                let eq_op = Equal::new();
-                eq_op(lower_value, upper_value)
-            } else {
-                false
-            }
-    }
-
-    pub fn fixed_value(&self) -> Option<&ValueWrapper<T>>
-    where
-        T: PartialEq,
-    {
-        if self.fixed() {
-            Some(&self.lb.value)
+    /// 获取退化点值（如果存在）
+    /// Get the degenerate point value (if exists)
+    ///
+    /// # 返回 / Returns
+    /// 如果区间退化为单点返回 `Some(value)`，否则返回 `None`
+    /// Returns `Some(value)` if degenerates to a point, `None` otherwise
+    pub fn degenerate_value(&self) -> Option<&T> {
+        if self.is_degenerate() {
+            self.lower_bound.value().unwrap()
         } else {
             None
         }
     }
+}
 
-    pub fn mean(&self) -> Result<ValueWrapper<T>, IllegalArgumentError>
-    where
-        T: RealNumber,
-        for<'a> &'a ValueWrapper<T>:
-            Add<&'a ValueWrapper<T>, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
-        ValueWrapper<T>: for<'a> Div<&'a T, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
-    {
-        (&self.lb.value + &self.ub.value)? / T::TWO
-    }
+// ============================================================================
+// Contains trait 实现 / Contains trait implementation
+// ============================================================================
 
-    pub fn diff(&self) -> Result<ValueWrapper<T>, IllegalArgumentError>
-    where
-        for<'a> &'a ValueWrapper<T>:
-            Sub<&'a ValueWrapper<T>, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
-    {
-        &self.ub.value - &self.lb.value
-    }
-
-    pub fn gap(&self) -> Result<ValueWrapper<T>, IllegalArgumentError>
-    where
-        T: RealNumber + Ord,
-        for<'a> &'a T: Abs<Output = T>,
-        for<'a> &'a ValueWrapper<T>:
-            Add<&'a ValueWrapper<T>, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
-        for<'a> &'a ValueWrapper<T>:
-            Sub<&'a ValueWrapper<T>, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
-        ValueWrapper<T>: for<'a> Div<&'a T, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
-    {
-        self.diff()? / max(T::DECIMAL_PRECISION, &self.mean()?.unwrap().abs())
-    }
-
-    pub fn union(&self, rhs: &ValueRange<T>) -> Option<ValueRange<T>>
-    where
-        T: 'static + PartialOrd + Display + Clone,
-    {
-        if self.ub.value < rhs.lb.value || rhs.ub.value < self.lb.value {
-            return None;
-        }
-
-        let new_lb = if self.lb.value < rhs.lb.value {
-            &self.lb.value
-        } else {
-            &rhs.lb.value
-        };
-        let new_lb_interval = match self.lb.value.partial_cmp(&rhs.lb.value) {
-            Some(Ordering::Less) => self.lb.interval,
-            Some(Ordering::Greater) => rhs.lb.interval,
-            _ => self.lb.interval.union(&rhs.lb.interval),
-        };
-        let new_ub = if self.ub.value < rhs.ub.value {
-            &rhs.ub.value
-        } else {
-            &self.ub.value
-        };
-        let new_ub_interval = match self.ub.value.partial_cmp(&rhs.ub.value) {
-            Some(Ordering::Less) => rhs.ub.interval,
-            Some(Ordering::Greater) => self.ub.interval,
-            _ => self.ub.interval.union(&rhs.ub.interval),
-        };
-        match ValueRange::new_by(
-            new_lb.clone(),
-            new_ub.clone(),
-            new_lb_interval,
-            new_ub_interval,
-        ) {
-            Ok(new_range) => Some(new_range),
-            Err(_) => None,
-        }
-    }
-
-    pub fn intersect(&self, rhs: &ValueRange<T>) -> Option<ValueRange<T>>
-    where
-        T: 'static + PartialOrd + Display + Clone,
-    {
-        let new_lb = if self.lb.value < rhs.lb.value {
-            &rhs.lb.value
-        } else {
-            &self.lb.value
-        };
-        let new_lb_interval = if self.lb.value.is_inf_or_neg_inf() {
-            rhs.lb.interval
-        } else if rhs.lb.value.is_inf_or_neg_inf() {
-            self.lb.interval
-        } else {
-            match self.lb.value.partial_cmp(&rhs.lb.value) {
-                Some(Ordering::Less) => rhs.lb.interval,
-                Some(Ordering::Greater) => self.lb.interval,
-                _ => self.lb.interval.intersect(&rhs.lb.interval),
-            }
-        };
-        let new_ub = if self.ub.value < rhs.ub.value {
-            &self.ub.value
-        } else {
-            &rhs.ub.value
-        };
-        let new_ub_interval = if self.ub.value.is_inf_or_neg_inf() {
-            rhs.ub.interval
-        } else if rhs.ub.value.is_inf_or_neg_inf() {
-            self.ub.interval
-        } else {
-            match self.ub.value.partial_cmp(&rhs.ub.value) {
-                Some(Ordering::Less) => self.ub.interval,
-                Some(Ordering::Greater) => rhs.ub.interval,
-                _ => self.ub.interval.intersect(&rhs.ub.interval),
-            }
-        };
-        match ValueRange::new_by(
-            new_lb.clone(),
-            new_ub.clone(),
-            new_lb_interval,
-            new_ub_interval,
-        ) {
-            Ok(new_range) => Some(new_range),
-            Err(_) => None,
-        }
-    }
-
-    pub fn contains(&self, value: &T) -> bool
-    where
-        ValueWrapper<T>: PartialOrd<T>,
-        T: 'static,
-    {
-        (self.lb.interval.lb_op())(&self.lb.value, value)
-            && (self.ub.interval.ub_op())(&self.ub.value, value)
-    }
-
-    pub fn contains_range(&self, range: &ValueRange<T>) -> bool
-    where
-        ValueWrapper<T>: PartialOrd,
-        T: 'static,
-    {
-        let lb_interval = self.lb.interval.intersect(&range.lb.interval);
-        let ub_interval = self.ub.interval.intersect(&range.ub.interval);
-        (lb_interval.lb_op())(&self.lb.value, &range.lb.value)
-            && (ub_interval.ub_op())(&self.ub.value, &range.ub.value)
+impl<T: PartialOrd, IL: IntervalTrait, IU: IntervalTrait> Contains<ValueWrapper<T>> for ValueRange<T, IL, IU> {
+    fn contains(&self, value: &ValueWrapper<T>) -> bool {
+        self.contains_value(value)
     }
 }
 
-impl<T: Display> Display for ValueRange<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl<T: PartialOrd + Clone, IL: IntervalTrait, IU: IntervalTrait> Contains<T> for ValueRange<T, IL, IU> {
+    fn contains(&self, value: &T) -> bool {
+        self.contains_value(&ValueWrapper::finite(value.clone()))
+    }
+}
+
+// ============================================================================
+// PartialEq 实现 / PartialEq implementation
+// ============================================================================
+
+impl<T: PartialEq, IL: IntervalTrait, IU: IntervalTrait> PartialEq for ValueRange<T, IL, IU>
+where
+    IL: PartialEq,
+    IU: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.lower_bound == other.lower_bound && self.upper_bound == other.upper_bound
+    }
+}
+
+impl<T: Eq, IL: IntervalTrait + Eq, IU: IntervalTrait + Eq> Eq for ValueRange<T, IL, IU> {}
+
+// ============================================================================
+// Display 实现 / Display implementation
+// ============================================================================
+
+impl<T: fmt::Display, IL: IntervalTrait, IU: IntervalTrait> fmt::Display for ValueRange<T, IL, IU> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}{}, {}{}",
-            self.lb.interval.lb_sign(),
-            self.lb.value,
-            self.ub.value,
-            self.ub.interval.ub_sign()
+            self.lower_bound.interval().lower_sign(),
+            self.lower_bound.value(),
+            self.upper_bound.value(),
+            self.upper_bound.interval().upper_sign()
         )
     }
 }
 
-impl<T: Display> Debug for ValueRange<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}{}, {}{}",
-            self.lb.interval.lb_sign(),
-            self.lb.value,
-            self.ub.value,
-            self.ub.interval.ub_sign()
-        )
-    }
-}
+// ============================================================================
+// Default 实现 / Default implementation
+// ============================================================================
 
-impl<T> From<Range<T>> for ValueRange<T> {
-    fn from(range: Range<T>) -> Self {
+impl<T: Default, IL: IntervalTrait + Default, IU: IntervalTrait + Default> Default for ValueRange<T, IL, IU> {
+    fn default() -> Self {
         Self {
-            lb: Bound::new(ValueWrapper::Value(range.start), Interval::Closed),
-            ub: Bound::new(ValueWrapper::Value(range.end), Interval::Open),
+            lower_bound: Bound::default(),
+            upper_bound: Bound::default(),
         }
     }
 }
 
-impl<T: Clone> From<&Range<T>> for ValueRange<T> {
-    fn from(range: &Range<T>) -> Self {
-        Self {
-            lb: Bound::new(ValueWrapper::Value(range.start.clone()), Interval::Closed),
-            ub: Bound::new(ValueWrapper::Value(range.end.clone()), Interval::Open),
-        }
-    }
-}
-
-impl<T> From<RangeFrom<T>> for ValueRange<T> {
-    fn from(range: RangeFrom<T>) -> Self {
-        Self {
-            lb: Bound::new(ValueWrapper::Value(range.start), Interval::Closed),
-            ub: Bound::new(ValueWrapper::Inf, Interval::Open),
-        }
-    }
-}
-
-impl<T: Clone> From<&RangeFrom<T>> for ValueRange<T> {
-    fn from(range: &RangeFrom<T>) -> Self {
-        Self {
-            lb: Bound::new(ValueWrapper::Value(range.start.clone()), Interval::Closed),
-            ub: Bound::new(ValueWrapper::Inf, Interval::Open),
-        }
-    }
-}
-
-impl<T: Clone> From<RangeInclusive<T>> for ValueRange<T> {
-    fn from(range: RangeInclusive<T>) -> Self {
-        Self {
-            lb: Bound::new(ValueWrapper::Value(range.start().clone()), Interval::Closed),
-            ub: Bound::new(ValueWrapper::Value(range.end().clone()), Interval::Closed),
-        }
-    }
-}
-
-impl<T: Clone> From<&RangeInclusive<T>> for ValueRange<T> {
-    fn from(range: &RangeInclusive<T>) -> Self {
-        Self {
-            lb: Bound::new(ValueWrapper::Value(range.start().clone()), Interval::Closed),
-            ub: Bound::new(ValueWrapper::Value(range.end().clone()), Interval::Closed),
-        }
-    }
-}
-
-impl<T> From<RangeTo<T>> for ValueRange<T> {
-    fn from(range: RangeTo<T>) -> Self {
-        Self {
-            lb: Bound::new(ValueWrapper::NegInf, Interval::Open),
-            ub: Bound::new(ValueWrapper::Value(range.end), Interval::Open),
-        }
-    }
-}
-
-impl<T: Clone> From<&RangeTo<T>> for ValueRange<T> {
-    fn from(range: &RangeTo<T>) -> Self {
-        Self {
-            lb: Bound::new(ValueWrapper::NegInf, Interval::Open),
-            ub: Bound::new(ValueWrapper::Value(range.end.clone()), Interval::Open),
-        }
-    }
-}
-
-impl<T> From<RangeToInclusive<T>> for ValueRange<T> {
-    fn from(range: RangeToInclusive<T>) -> Self {
-        Self {
-            lb: Bound::new(ValueWrapper::NegInf, Interval::Open),
-            ub: Bound::new(ValueWrapper::Value(range.end), Interval::Closed),
-        }
-    }
-}
-
-impl<T: Clone> From<&RangeToInclusive<T>> for ValueRange<T> {
-    fn from(range: &RangeToInclusive<T>) -> Self {
-        Self {
-            lb: Bound::new(ValueWrapper::NegInf, Interval::Open),
-            ub: Bound::new(ValueWrapper::Value(range.end.clone()), Interval::Closed),
-        }
-    }
-}
-
-impl From<RangeFull> for ValueRange<i64> {
-    fn from(_range: RangeFull) -> Self {
-        Self {
-            lb: Bound::new(ValueWrapper::NegInf, Interval::Open),
-            ub: Bound::new(ValueWrapper::Inf, Interval::Open),
-        }
-    }
-}
-
-impl<T> From<&RangeFull> for ValueRange<T> {
-    fn from(_range: &RangeFull) -> Self {
-        Self {
-            lb: Bound::new(ValueWrapper::NegInf, Interval::Open),
-            ub: Bound::new(ValueWrapper::Inf, Interval::Open),
-        }
-    }
-}
-
-impl<T, U> From<&ValueRange<U>> for ValueRange<T>
-where
-    Bound<T>: for<'a> From<&'a Bound<U>>,
-{
-    fn from(value: &ValueRange<U>) -> Self {
-        Self {
-            lb: Bound::from(&value.lb),
-            ub: Bound::from(&value.ub),
-        }
-    }
-}
-
-impl<T, U> PartialEq<ValueRange<U>> for ValueRange<T>
-where
-    ValueWrapper<T>: PartialEq<ValueWrapper<U>>,
-{
-    fn eq(&self, other: &ValueRange<U>) -> bool {
-        self.lb == other.lb && self.ub == other.ub
-    }
-}
-
-macro_rules! value_range_template {
-    ($type:ident, $rhs:ident) => {
-        impl Add<$rhs> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: $rhs) -> Self::Output {
-                let new_lb = (self.lb + rhs)?;
-                let new_ub = (self.ub + rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Add<&'a $rhs> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a $rhs) -> Self::Output {
-                let new_lb = (self.lb + rhs)?;
-                let new_ub = (self.ub + rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Add<$rhs> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: $rhs) -> Self::Output {
-                let new_lb = (self.lb + rhs)?;
-                let new_ub = (self.ub + rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a, 'b> Add<&'b $rhs> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'b $rhs) -> Self::Output {
-                let new_lb = (self.lb + rhs)?;
-                let new_ub = (self.ub + rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl AddAssign<$rhs> for ValueRange<$type> {
-            fn add_assign(&mut self, rhs: $rhs) {
-                let new_lb = (self.lb + rhs).expect("illegal argument");
-                let new_ub = (self.ub + rhs).expect("illegal argument");
-                self.lb = new_lb;
-                self.ub = new_ub;
-            }
-        }
-
-        impl<'a> AddAssign<&'a $rhs> for ValueRange<$type> {
-            fn add_assign(&mut self, rhs: &'a $rhs) {
-                let new_lb = (self.lb + rhs).expect("illegal argument");
-                let new_ub = (self.ub + rhs).expect("illegal argument");
-                self.lb = new_lb;
-                self.ub = new_ub;
-            }
-        }
-
-        impl Sub<$rhs> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: $rhs) -> Self::Output {
-                let new_lb = (self.lb - rhs)?;
-                let new_ub = (self.ub - rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Sub<&'a $rhs> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a $rhs) -> Self::Output {
-                let new_lb = (self.lb - rhs)?;
-                let new_ub = (self.ub - rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Sub<$rhs> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: $rhs) -> Self::Output {
-                let new_lb = (self.lb - rhs)?;
-                let new_ub = (self.ub - rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a, 'b> Sub<&'b $rhs> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'b $rhs) -> Self::Output {
-                let new_lb = (self.lb - rhs)?;
-                let new_ub = (self.ub - rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl SubAssign<$rhs> for ValueRange<$type> {
-            fn sub_assign(&mut self, rhs: $rhs) {
-                let new_lb = (self.lb - rhs).expect("illegal argument");
-                let new_ub = (self.ub - rhs).expect("illegal argument");
-                self.lb = new_lb;
-                self.ub = new_ub;
-            }
-        }
-
-        impl<'a> SubAssign<&'a $rhs> for ValueRange<$type> {
-            fn sub_assign(&mut self, rhs: &'a $rhs) {
-                let new_lb = (self.lb - rhs).expect("illegal argument");
-                let new_ub = (self.ub - rhs).expect("illegal argument");
-                self.lb = new_lb;
-                self.ub = new_ub;
-            }
-        }
-    };
-}
-value_range_template!(Instant, Duration);
-value_range_template!(NaiveDateTime, Duration);
-
-macro_rules! signed_value_range_template {
-    ($($type:ident)*) => ($(
-        impl Neg for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Neg>::Output>, IllegalArgumentError>;
-
-            fn neg(self) -> Self::Output {
-                let new_lb = (-self.ub)?;
-                let new_ub = (-self.lb)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl Neg for &ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Neg>::Output>, IllegalArgumentError>;
-
-            fn neg(self) -> Self::Output {
-                let new_lb = (-self.ub)?;
-                let new_ub = (-self.lb)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-    )*)
-}
-signed_value_range_template! { i8 i16 i32 i64 i128 isize f32 f64 }
-
-macro_rules! real_number_value_range_template {
-    ($($type:ident)*) => ($(
-        impl Add<$type> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: $type) -> Self::Output {
-                let new_lb = (self.lb + rhs)?;
-                let new_ub = (self.ub + rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Add<&'a $type> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Add<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a $type) -> Self::Output {
-                let new_lb = (self.lb + rhs)?;
-                let new_ub = (self.ub + rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Add<$type> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: $type) -> Self::Output {
-                let new_lb = (self.lb + rhs)?;
-                let new_ub = (self.ub + rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a, 'b> Add<&'b $type> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Add<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'b $type) -> Self::Output {
-                let new_lb = (self.lb + rhs)?;
-                let new_ub = (self.ub + rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl AddAssign<$type> for ValueRange<$type> {
-            fn add_assign(&mut self, rhs: $type) {
-                let new_lb = (self.lb + rhs).expect("illegal argument");
-                let new_ub = (self.ub + rhs).expect("illegal argument");
-                self.lb = new_lb;
-                self.ub = new_ub;
-            }
-        }
-
-        impl<'a> AddAssign<&'a $type> for ValueRange<$type> {
-            fn add_assign(&mut self, rhs: &'a $type) {
-                let new_lb = (self.lb + rhs).expect("illegal argument");
-                let new_ub = (self.ub + rhs).expect("illegal argument");
-                self.lb = new_lb;
-                self.ub = new_ub;
-            }
-        }
-
-        impl Add<ValueRange<$type>> for $type {
-            type Output = Result<ValueRange<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: ValueRange<$type>) -> Self::Output {
-                let new_lb = (self + rhs.lb)?;
-                let new_ub = (self + rhs.ub)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Add<ValueRange<$type>> for &'a $type {
-            type Output = Result<ValueRange<<&'a $type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: ValueRange<$type>) -> Self::Output {
-                let new_lb = (self + rhs.lb)?;
-                let new_ub = (self + rhs.ub)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Add<&'a ValueRange<$type>> for $type {
-            type Output = Result<ValueRange<<$type as Add<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a ValueRange<$type>) -> Self::Output {
-                let new_lb = (self + rhs.lb)?;
-                let new_ub = (self + rhs.ub)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a, 'b> Add<&'b ValueRange<$type>> for &'a $type {
-            type Output = Result<ValueRange<<&'a $type as Add<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'b ValueRange<$type>) -> Self::Output {
-                let new_lb = (self + rhs.lb)?;
-                let new_ub = (self + rhs.ub)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl Add<ValueRange<$type>> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: ValueRange<$type>) -> Self::Output {
-                let new_lb = (self.lb + rhs.lb)?;
-                let new_ub = (self.ub + rhs.ub)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Add<&'a ValueRange<$type>> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Add<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a ValueRange<$type>) -> Self::Output {
-                let new_lb = (self.lb + rhs.lb)?;
-                let new_ub = (self.ub + rhs.ub)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Add<ValueRange<$type>> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: ValueRange<$type>) -> Self::Output {
-                let new_lb = (self.lb + rhs.lb)?;
-                let new_ub = (self.ub + rhs.ub)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a, 'b> Add<&'b ValueRange<$type>> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Add<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'b ValueRange<$type>) -> Self::Output {
-                let new_lb = (self.lb + rhs.lb)?;
-                let new_ub = (self.ub + rhs.ub)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl AddAssign<ValueRange<$type>> for ValueRange<$type> {
-            fn add_assign(&mut self, rhs: ValueRange<$type>) {
-                let new_lb = (self.lb + rhs.lb).expect("illegal argument");
-                let new_ub = (self.ub + rhs.ub).expect("illegal argument");
-                self.lb = new_lb;
-                self.ub = new_ub;
-            }
-        }
-
-        impl<'a> AddAssign<&'a ValueRange<$type>> for ValueRange<$type> {
-            fn add_assign(&mut self, rhs: &'a ValueRange<$type>) {
-                let new_lb = (self.lb + rhs.lb).expect("illegal argument");
-                let new_ub = (self.ub + rhs.ub).expect("illegal argument");
-                self.lb = new_lb;
-                self.ub = new_ub;
-            }
-        }
-
-        impl Sub<$type> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: $type) -> Self::Output {
-                let new_lb = (self.lb - rhs)?;
-                let new_ub = (self.ub - rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Sub<&'a $type> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Sub<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a $type) -> Self::Output {
-                let new_lb = (self.lb - rhs)?;
-                let new_ub = (self.ub - rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Sub<$type> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: $type) -> Self::Output {
-                let new_lb = (self.lb - rhs)?;
-                let new_ub = (self.ub - rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a, 'b> Sub<&'b $type> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Sub<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'b $type) -> Self::Output {
-                let new_lb = (self.lb - rhs)?;
-                let new_ub = (self.ub - rhs)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl SubAssign<$type> for ValueRange<$type> {
-            fn sub_assign(&mut self, rhs: $type) {
-                let new_lb = (self.lb - rhs).expect("illegal argument");
-                let new_ub = (self.ub - rhs).expect("illegal argument");
-                self.lb = new_lb;
-                self.ub = new_ub;
-            }
-        }
-
-        impl<'a> SubAssign<&'a $type> for ValueRange<$type> {
-            fn sub_assign(&mut self, rhs: &'a $type) {
-                let new_lb = (self.lb - rhs).expect("illegal argument");
-                let new_ub = (self.ub - rhs).expect("illegal argument");
-                self.lb = new_lb;
-                self.ub = new_ub;
-            }
-        }
-
-        impl Sub<ValueRange<$type>> for $type {
-            type Output = Result<ValueRange<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: ValueRange<$type>) -> Self::Output {
-                let new_lb = (self - rhs.ub)?;
-                let new_ub = (self - rhs.lb)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Sub<ValueRange<$type>> for &'a $type {
-            type Output = Result<ValueRange<<&'a $type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: ValueRange<$type>) -> Self::Output {
-                let new_lb = (self - rhs.ub)?;
-                let new_ub = (self - rhs.lb)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Sub<&'a ValueRange<$type>> for $type {
-            type Output = Result<ValueRange<<$type as Sub<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a ValueRange<$type>) -> Self::Output {
-                let new_lb = (self - rhs.ub)?;
-                let new_ub = (self - rhs.lb)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a, 'b> Sub<&'b ValueRange<$type>> for &'a $type {
-            type Output = Result<ValueRange<<&'a $type as Sub<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'b ValueRange<$type>) -> Self::Output {
-                let new_lb = (self - rhs.ub)?;
-                let new_ub = (self - rhs.lb)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl Sub<ValueRange<$type>> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: ValueRange<$type>) -> Self::Output {
-                let new_lb = (self.lb - rhs.ub)?;
-                let new_ub = (self.ub - rhs.lb)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Sub<&'a ValueRange<$type>> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Sub<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a ValueRange<$type>) -> Self::Output {
-                let new_lb = (self.lb - rhs.ub)?;
-                let new_ub = (self.ub - rhs.lb)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a> Sub<ValueRange<$type>> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: ValueRange<$type>) -> Self::Output {
-                let new_lb = (self.lb - rhs.ub)?;
-                let new_ub = (self.ub - rhs.lb)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl<'a, 'b> Sub<&'b ValueRange<$type>> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Sub<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'b ValueRange<$type>) -> Self::Output {
-                let new_lb = (self.lb - rhs.ub)?;
-                let new_ub = (self.ub - rhs.lb)?;
-                Ok(ValueRange {
-                    lb: new_lb,
-                    ub: new_ub,
-                })
-            }
-        }
-
-        impl SubAssign<ValueRange<$type>> for ValueRange<$type> {
-            fn sub_assign(&mut self, rhs: ValueRange<$type>) {
-                let new_lb = (self.lb - rhs.ub).expect("illegal argument");
-                let new_ub = (self.ub - rhs.lb).expect("illegal argument");
-                self.lb = new_lb;
-                self.ub = new_ub;
-            }
-        }
-
-        impl<'a> SubAssign<&'a ValueRange<$type>> for ValueRange<$type> {
-            fn sub_assign(&mut self, rhs: &'a ValueRange<$type>) {
-                let new_lb = (self.lb - rhs.ub).expect("illegal argument");
-                let new_ub = (self.ub - rhs.lb).expect("illegal argument");
-                self.lb = new_lb;
-                self.ub = new_ub;
-            }
-        }
-
-        impl Mul<$type> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: $type) -> Self::Output {
-                if &rhs >= $type::ZERO {
-                    let new_lb = (self.lb * rhs)?;
-                    let new_ub = (self.ub * rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    let new_lb = (self.ub * rhs)?;
-                    let new_ub = (self.lb * rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                }
-            }
-        }
-
-        impl<'a> Mul<&'a $type> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Mul<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'a $type) -> Self::Output {
-                if rhs >= $type::ZERO {
-                    let new_lb = (self.lb * rhs)?;
-                    let new_ub = (self.ub * rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    let new_lb = (self.ub * rhs)?;
-                    let new_ub = (self.lb * rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                }
-            }
-        }
-
-        impl<'a> Mul<$type> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: $type) -> Self::Output {
-                if &rhs >= $type::ZERO {
-                    let new_lb = (self.lb * rhs)?;
-                    let new_ub = (self.ub * rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    let new_lb = (self.ub * rhs)?;
-                    let new_ub = (self.lb * rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                }
-            }
-        }
-
-        impl<'a, 'b> Mul<&'b $type> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Mul<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'b $type) -> Self::Output {
-                if rhs >= $type::ZERO {
-                    let new_lb = (self.lb * rhs)?;
-                    let new_ub = (self.ub * rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    let new_lb = (self.ub * rhs)?;
-                    let new_ub = (self.lb * rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                }
-            }
-        }
-
-        impl MulAssign<$type> for ValueRange<$type> {
-            fn mul_assign(&mut self, rhs: $type) {
-                if &rhs >= $type::ZERO {
-                    let new_lb = (self.lb * rhs).expect("illegal argument");
-                    let new_ub = (self.ub * rhs).expect("illegal argument");
-                    self.lb = new_lb;
-                    self.ub = new_ub;
-                } else {
-                    let new_lb = (self.ub * rhs).expect("illegal argument");
-                    let new_ub = (self.lb * rhs).expect("illegal argument");
-                    self.lb = new_lb;
-                    self.ub = new_ub;
-                }
-            }
-        }
-
-        impl<'a> MulAssign<&'a $type> for ValueRange<$type> {
-            fn mul_assign(&mut self, rhs: &'a $type) {
-                if rhs >= $type::ZERO {
-                    let new_lb = (self.lb * rhs).expect("illegal argument");
-                    let new_ub = (self.ub * rhs).expect("illegal argument");
-                    self.lb = new_lb;
-                    self.ub = new_ub;
-                } else {
-                    let new_lb = (self.ub * rhs).expect("illegal argument");
-                    let new_ub = (self.lb * rhs).expect("illegal argument");
-                    self.lb = new_lb;
-                    self.ub = new_ub;
-                }
-            }
-        }
-
-        impl Mul<ValueRange<$type>> for $type {
-            type Output = Result<ValueRange<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: ValueRange<$type>) -> Self::Output {
-                if &self >= $type::ZERO {
-                    let new_lb = (self * rhs.lb)?;
-                    let new_ub = (self * rhs.ub)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    let new_lb = (self * rhs.ub)?;
-                    let new_ub = (self * rhs.lb)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                }
-            }
-        }
-
-        impl<'a> Mul<ValueRange<$type>> for &'a $type {
-            type Output = Result<ValueRange<<&'a $type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: ValueRange<$type>) -> Self::Output {
-                if self >= $type::ZERO {
-                    let new_lb = (self * rhs.lb)?;
-                    let new_ub = (self * rhs.ub)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    let new_lb = (self * rhs.ub)?;
-                    let new_ub = (self * rhs.lb)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                }
-            }
-        }
-
-        impl<'a> Mul<&'a ValueRange<$type>> for $type {
-            type Output = Result<ValueRange<<$type as Mul<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'a ValueRange<$type>) -> Self::Output {
-                if &self >= $type::ZERO {
-                    let new_lb = (self * rhs.lb)?;
-                    let new_ub = (self * rhs.ub)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    let new_lb = (self * rhs.ub)?;
-                    let new_ub = (self * rhs.lb)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                }
-            }
-        }
-
-        impl<'a, 'b> Mul<&'b ValueRange<$type>> for &'a $type {
-            type Output = Result<ValueRange<<&'a $type as Mul<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'b ValueRange<$type>) -> Self::Output {
-                if self >= $type::ZERO {
-                    let new_lb = (self * rhs.lb)?;
-                    let new_ub = (self * rhs.ub)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    let new_lb = (self * rhs.ub)?;
-                    let new_ub = (self * rhs.lb)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                }
-            }
-        }
-
-        impl Mul<ValueRange<$type>> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: ValueRange<$type>) -> Self::Output {
-                let bounds = vec![(self.lb * rhs.lb)?, (self.lb * rhs.ub)?, (self.ub * rhs.lb)?, (self.ub * rhs.ub)?];
-                let new_lb = bounds.iter().min_by(|lhs, rhs| ls(lhs, rhs)).unwrap();
-                let new_ub = bounds.iter().max_by(|lhs, rhs| gr(lhs, rhs)).unwrap();
-                Ok(ValueRange {
-                    lb: *new_lb,
-                    ub: *new_ub,
-                })
-            }
-        }
-
-        impl<'a> Mul<&'a ValueRange<$type>> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Mul<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'a ValueRange<$type>) -> Self::Output {
-                let bounds = vec![(self.lb * rhs.lb)?, (self.lb * rhs.ub)?, (self.ub * rhs.lb)?, (self.ub * rhs.ub)?];
-                let new_lb = bounds.iter().min_by(|lhs, rhs| ls(lhs, rhs)).unwrap();
-                let new_ub = bounds.iter().max_by(|lhs, rhs| gr(lhs, rhs)).unwrap();
-                Ok(ValueRange {
-                    lb: *new_lb,
-                    ub: *new_ub,
-                })
-            }
-        }
-
-        impl<'a> Mul<ValueRange<$type>> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: ValueRange<$type>) -> Self::Output {
-                let bounds = vec![(self.lb * rhs.lb)?, (self.lb * rhs.ub)?, (self.ub * rhs.lb)?, (self.ub * rhs.ub)?];
-                let new_lb = bounds.iter().min_by(|lhs, rhs| ls(lhs, rhs)).unwrap();
-                let new_ub = bounds.iter().max_by(|lhs, rhs| gr(lhs, rhs)).unwrap();
-                Ok(ValueRange {
-                    lb: *new_lb,
-                    ub: *new_ub,
-                })
-            }
-        }
-
-        impl<'a, 'b> Mul<&'b ValueRange<$type>> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Mul<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'b ValueRange<$type>) -> Self::Output {
-                let bounds = vec![(self.lb * rhs.lb)?, (self.lb * rhs.ub)?, (self.ub * rhs.lb)?, (self.ub * rhs.ub)?];
-                let new_lb = bounds.iter().min_by(|lhs, rhs| ls(lhs, rhs)).unwrap();
-                let new_ub = bounds.iter().max_by(|lhs, rhs| gr(lhs, rhs)).unwrap();
-                Ok(ValueRange {
-                    lb: *new_lb,
-                    ub: *new_ub,
-                })
-            }
-        }
-
-        impl MulAssign<ValueRange<$type>> for ValueRange<$type> {
-            fn mul_assign(&mut self, rhs: ValueRange<$type>) {
-                let bounds = vec![
-                    (self.lb * rhs.lb).expect("illegal argument"),
-                    (self.lb * rhs.ub).expect("illegal argument"),
-                    (self.ub * rhs.lb).expect("illegal argument"),
-                    (self.ub * rhs.ub).expect("illegal argument")
-                ];
-                let new_lb = bounds.iter().min_by(|lhs, rhs| ls(lhs, rhs)).unwrap();
-                let new_ub = bounds.iter().max_by(|lhs, rhs| gr(lhs, rhs)).unwrap();
-                self.lb = *new_lb;
-                self.ub = *new_ub;
-            }
-        }
-
-        impl<'a> MulAssign<&'a ValueRange<$type>> for ValueRange<$type> {
-            fn mul_assign(&mut self, rhs: &'a ValueRange<$type>) {
-                let bounds = vec![
-                    (self.lb * rhs.lb).expect("illegal argument"),
-                    (self.lb * rhs.ub).expect("illegal argument"),
-                    (self.ub * rhs.lb).expect("illegal argument"),
-                    (self.ub * rhs.ub).expect("illegal argument")
-                ];
-                let new_lb = bounds.iter().min_by(|lhs, rhs| ls(lhs, rhs)).unwrap();
-                let new_ub = bounds.iter().max_by(|lhs, rhs| gr(lhs, rhs)).unwrap();
-                self.lb = *new_lb;
-                self.ub = *new_ub;
-            }
-        }
-
-        impl Div<$type> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: $type) -> Self::Output {
-                if &rhs > $type::ZERO {
-                    let new_lb = (self.lb / rhs)?;
-                    let new_ub = (self.ub / rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else if &rhs < $type::ZERO {
-                    let new_lb = (self.ub / rhs)?;
-                    let new_ub = (self.lb / rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    Err(IllegalArgumentError {
-                        msg: "division by zero".to_string()
-                    })
-                }
-            }
-        }
-
-        impl<'a> Div<&'a $type> for ValueRange<$type> {
-            type Output = Result<ValueRange<<$type as Div<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'a $type) -> Self::Output {
-                if rhs > $type::ZERO {
-                    let new_lb = (self.lb / rhs)?;
-                    let new_ub = (self.ub / rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else if rhs < $type::ZERO {
-                    let new_lb = (self.ub / rhs)?;
-                    let new_ub = (self.lb / rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    Err(IllegalArgumentError {
-                        msg: "division by zero".to_string()
-                    })
-                }
-            }
-        }
-
-        impl<'a> Div<$type> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: $type) -> Self::Output {
-                if &rhs > $type::ZERO {
-                    let new_lb = (self.lb / rhs)?;
-                    let new_ub = (self.ub / rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else if &rhs < $type::ZERO {
-                    let new_lb = (self.ub / rhs)?;
-                    let new_ub = (self.lb / rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    Err(IllegalArgumentError {
-                        msg: "division by zero".to_string()
-                    })
-                }
-            }
-        }
-
-        impl<'a, 'b> Div<&'b $type> for &'a ValueRange<$type> {
-            type Output = Result<ValueRange<<&'a $type as Div<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'b $type) -> Self::Output {
-                if rhs > $type::ZERO {
-                    let new_lb = (self.lb / rhs)?;
-                    let new_ub = (self.ub / rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else if rhs < $type::ZERO {
-                    let new_lb = (self.ub / rhs)?;
-                    let new_ub = (self.lb / rhs)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    Err(IllegalArgumentError {
-                        msg: "division by zero".to_string()
-                    })
-                }
-            }
-        }
-
-        impl DivAssign<$type> for ValueRange<$type> {
-            fn div_assign(&mut self, rhs: $type) {
-                if &rhs > $type::ZERO {
-                    let new_lb = (self.lb / rhs).expect("illegal argument");
-                    let new_ub = (self.ub / rhs).expect("illegal argument");
-                    self.lb = new_lb;
-                    self.ub = new_ub;
-                } else if &rhs < $type::ZERO {
-                    let new_lb = (self.ub / rhs).expect("illegal argument");
-                    let new_ub = (self.lb / rhs).expect("illegal argument");
-                    self.lb = new_lb;
-                    self.ub = new_ub;
-                } else {
-                    panic!("division by zero")
-                }
-            }
-        }
-
-        impl<'a> DivAssign<&'a $type> for ValueRange<$type> {
-            fn div_assign(&mut self, rhs: &'a $type) {
-                if rhs > $type::ZERO {
-                    let new_lb = (self.lb / rhs).expect("illegal argument");
-                    let new_ub = (self.ub / rhs).expect("illegal argument");
-                    self.lb = new_lb;
-                    self.ub = new_ub;
-                } else if rhs < $type::ZERO {
-                    let new_lb = (self.ub / rhs).expect("illegal argument");
-                    let new_ub = (self.lb / rhs).expect("illegal argument");
-                    self.lb = new_lb;
-                    self.ub = new_ub;
-                } else {
-                    panic!("division by zero")
-                }
-            }
-        }
-
-        impl Div<ValueRange<$type>> for $type {
-            type Output = Result<ValueRange<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: ValueRange<$type>) -> Self::Output {
-                if &self > $type::ZERO {
-                    let new_lb = (self / rhs.lb)?;
-                    let new_ub = (self / rhs.ub)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else if &self < $type::ZERO {
-                    let new_lb = (self / rhs.ub)?;
-                    let new_ub = (self / rhs.lb)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    Err(IllegalArgumentError {
-                        msg: "division by zero".to_string()
-                    })
-                }
-            }
-        }
-
-        impl<'a> Div<ValueRange<$type>> for &'a $type {
-            type Output = Result<ValueRange<<&'a $type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: ValueRange<$type>) -> Self::Output {
-                if self > $type::ZERO {
-                    let new_lb = (self / rhs.lb)?;
-                    let new_ub = (self / rhs.ub)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else if self < $type::ZERO {
-                    let new_lb = (self / rhs.ub)?;
-                    let new_ub = (self / rhs.lb)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    Err(IllegalArgumentError {
-                        msg: "division by zero".to_string()
-                    })
-                }
-            }
-        }
-
-        impl<'a> Div<&'a ValueRange<$type>> for $type {
-            type Output = Result<ValueRange<<$type as Div<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'a ValueRange<$type>) -> Self::Output {
-                if &self > $type::ZERO {
-                    let new_lb = (self / rhs.lb)?;
-                    let new_ub = (self / rhs.ub)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else if &self < $type::ZERO {
-                    let new_lb = (self / rhs.ub)?;
-                    let new_ub = (self / rhs.lb)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    Err(IllegalArgumentError {
-                        msg: "division by zero".to_string()
-                    })
-                }
-            }
-        }
-
-        impl<'a, 'b> Div<&'b ValueRange<$type>> for &'a $type {
-            type Output = Result<ValueRange<<&'a $type as Div<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'b ValueRange<$type>) -> Self::Output {
-                if self > $type::ZERO {
-                    let new_lb = (self / rhs.lb)?;
-                    let new_ub = (self / rhs.ub)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else if self < $type::ZERO {
-                    let new_lb = (self / rhs.ub)?;
-                    let new_ub = (self / rhs.lb)?;
-                    Ok(ValueRange {
-                        lb: new_lb,
-                        ub: new_ub,
-                    })
-                } else {
-                    Err(IllegalArgumentError {
-                        msg: "division by zero".to_string()
-                    })
-                }
-            }
-        }
-    )*)
-}
-real_number_value_range_template! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize f32 f64 }
-
-#[macro_export]
-macro_rules! value_range {
-    ((..,$ub:expr)) => {
-        ValueRange::new_with_ub($ub, Interval::Open)
-    };
-    ([..,$ub:expr]) => {
-        ValueRange::new_with_ub($ub, Interval::Closed)
-    };
-    (($lb:expr,..)) => {
-        ValueRange::new_with_lb($lb, Interval::Open)
-    };
-    ([$lb:expr,..]) => {
-        ValueRange::new_with_lb($lb, Interval::Closed)
-    };
-    (($lb:expr, $ub:expr)) => {
-        ValueRange::new_with($lb, $ub, Interval::Open, Interval::Open)
-    };
-    ([$lb:expr, $ub:expr]) => {
-        ValueRange::new_with($lb, $ub, Interval::Closed, Interval::Closed)
-    };
-    ((($lb:expr)..$ub:expr)) => {
-        ValueRange::new_with($lb, $ub, Interval::Closed, Interval::Open)
-    };
-}
+// ============================================================================
+// 测试 / Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::algebra::value_range::{Closed, Open, Interval};
+
+    // ========================================================================
+    // 基本功能测试 / Basic functionality tests
+    // ========================================================================
 
     #[test]
-    fn test_constructor() {
-        let open_range = value_range!((1.0f64, 2.0f64));
-        assert!(open_range.is_ok());
-        assert_eq!(open_range.as_ref().unwrap().lb.value.unwrap(), &1.0);
-        assert_eq!(open_range.as_ref().unwrap().ub.interval, Interval::Open);
-        assert_eq!(open_range.as_ref().unwrap().ub.value.unwrap(), &2.0);
-        assert_eq!(open_range.as_ref().unwrap().ub.interval, Interval::Open);
-        let closed_range = value_range!([1.0f64, 2.0f64]);
-        assert!(closed_range.is_ok());
-        assert_eq!(closed_range.as_ref().unwrap().lb.value.unwrap(), &1.0);
-        assert_eq!(closed_range.as_ref().unwrap().ub.interval, Interval::Closed);
-        assert_eq!(closed_range.as_ref().unwrap().ub.value.unwrap(), &2.0);
-        assert_eq!(closed_range.as_ref().unwrap().ub.interval, Interval::Closed);
-        let range_range = value_range!((1.0f64, 2.0f64)).unwrap();
-        assert_eq!(range_range.lb.value.unwrap(), &1.0);
-        assert_eq!(range_range.ub.interval, Interval::Open);
-        assert_eq!(range_range.ub.value.unwrap(), &2.0);
-        assert_eq!(range_range.ub.interval, Interval::Open);
-        let range_inclusive_range = value_range!([1.0f64, 2.0f64]).unwrap();
-        assert_eq!(range_inclusive_range.lb.value.unwrap(), &1.0);
-        assert_eq!(range_inclusive_range.ub.interval, Interval::Closed);
-        assert_eq!(range_inclusive_range.ub.value.unwrap(), &2.0);
-        assert_eq!(range_inclusive_range.ub.interval, Interval::Closed);
-        let invalid_range = value_range!([2.0f64, 1.0f64]);
-        assert!(invalid_range.is_err());
+    fn test_value_range_closed() {
+        let range: ValueRange<i64, Closed, Closed> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Closed),
+            Bound::new(ValueWrapper::finite(10), Closed),
+        );
+
+        assert!(range.is_lower_closed());
+        assert!(range.is_upper_closed());
+        assert!(!range.is_lower_open());
+        assert!(!range.is_upper_open());
     }
 
     #[test]
-    fn test_plus() {
-        let range = value_range!([1.0f64, 2.0f64]).unwrap();
-        let added_range = (range + 1.0f64).unwrap();
-        assert_eq!(added_range.lb.value.unwrap(), &2.0);
-        assert_eq!(added_range.ub.value.unwrap(), &3.0);
-        let twice_range = (range + range).unwrap();
-        assert_eq!(twice_range.lb.value.unwrap(), &2.0);
-        assert_eq!(twice_range.ub.value.unwrap(), &4.0);
-        let inf_range = (range + f64::INFINITY).unwrap();
-        assert_eq!(inf_range.lb.value.unwrap(), f64::INF.as_ref().unwrap());
-        assert_eq!(inf_range.lb.interval, Interval::Open);
-        assert_eq!(inf_range.ub.value.unwrap(), f64::INF.as_ref().unwrap());
-        assert_eq!(inf_range.ub.interval, Interval::Open);
-        let neg_inf_range = (range - f64::INFINITY).unwrap();
-        assert_eq!(
-            neg_inf_range.lb.value.unwrap(),
-            f64::NEG_INF.as_ref().unwrap()
+    fn test_value_range_open() {
+        let range: ValueRange<i64, Open, Open> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Open),
+            Bound::new(ValueWrapper::finite(10), Open),
         );
-        assert_eq!(neg_inf_range.lb.interval, Interval::Open);
-        assert_eq!(
-            neg_inf_range.ub.value.unwrap(),
-            f64::NEG_INF.as_ref().unwrap()
-        );
-        assert_eq!(neg_inf_range.ub.interval, Interval::Open);
-        let inf_range2 = (value_range!([1.0f64, ..]).unwrap() + 1.0f64).unwrap();
-        assert_eq!(inf_range2.lb.value.unwrap(), &2.0);
-        assert_eq!(inf_range2.lb.interval, Interval::Closed);
-        assert_eq!(inf_range2.ub.value.unwrap(), f64::INF.as_ref().unwrap());
-        assert_eq!(inf_range2.ub.interval, Interval::Open);
-        let neg_inf_range2 = (value_range!([.., 1.0f64]).unwrap() + 1.0f64).unwrap();
-        assert_eq!(
-            neg_inf_range2.lb.value.unwrap(),
-            f64::NEG_INF.as_ref().unwrap()
-        );
-        assert_eq!(neg_inf_range2.lb.interval, Interval::Open);
-        assert_eq!(neg_inf_range2.ub.value.unwrap(), &2.0);
-        assert_eq!(neg_inf_range2.ub.interval, Interval::Closed);
+
+        assert!(range.is_lower_open());
+        assert!(range.is_upper_open());
+        assert!(!range.is_lower_closed());
+        assert!(!range.is_upper_closed());
     }
 
     #[test]
-    fn test_subtract() {
-        let range = value_range!([1.0f64, 2.0f64]).unwrap();
-        let added_range = (range - 1.0f64).unwrap();
-        assert_eq!(added_range.lb.value.unwrap(), &0.0);
-        assert_eq!(added_range.ub.value.unwrap(), &1.0);
-        let twice_range = (range - range).unwrap();
-        assert_eq!(twice_range.lb.value.unwrap(), &-1.0);
-        assert_eq!(twice_range.ub.value.unwrap(), &1.0);
+    fn test_value_range_mixed_compile_time() {
+        // [1, 10) - 左闭右开
+        let range: ValueRange<i64, Closed, Open> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Closed),
+            Bound::new(ValueWrapper::finite(10), Open),
+        );
+
+        assert!(range.is_lower_closed());
+        assert!(range.is_upper_open());
+
+        // (1, 10] - 左开右闭
+        let range: ValueRange<i64, Open, Closed> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Open),
+            Bound::new(ValueWrapper::finite(10), Closed),
+        );
+
+        assert!(range.is_lower_open());
+        assert!(range.is_upper_closed());
     }
 
     #[test]
-    fn test_multiply() {
-        let range = value_range!([1.0f64, 2.0f64]).unwrap();
-        let zero_range = (range * 0.0f64).unwrap();
-        assert!(zero_range.fixed());
-        assert_eq!(zero_range.fixed_value().unwrap().unwrap(), &0.0);
-        let twice_range = (range * 2.0f64).unwrap();
-        assert_eq!(twice_range.lb.value.unwrap(), &2.0);
-        assert_eq!(twice_range.ub.value.unwrap(), &4.0);
-        let neg_twice_range = (range * -2.0f64).unwrap();
-        assert_eq!(neg_twice_range.lb.value.unwrap(), &-4.0);
-        assert_eq!(neg_twice_range.ub.value.unwrap(), &-2.0);
-        let square_range = (range * range).unwrap();
-        assert_eq!(square_range.lb.value.unwrap(), &1.0);
-        assert_eq!(square_range.ub.value.unwrap(), &4.0);
+    fn test_value_range_runtime_interval() {
+        let range: ValueRange<i64> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Interval::Closed),
+            Bound::new(ValueWrapper::finite(10), Interval::Open),
+        );
+
+        assert!(range.is_lower_closed());
+        assert!(range.is_upper_open());
+    }
+
+    // ========================================================================
+    // contains 测试 / contains tests
+    // ========================================================================
+
+    #[test]
+    fn test_contains_closed() {
+        let range: ValueRange<i64, Closed, Closed> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Closed),
+            Bound::new(ValueWrapper::finite(10), Closed),
+        );
+
+        // 闭区间 [1, 10]
+        assert!(range.contains_value(&ValueWrapper::finite(1))); // 边界值
+        assert!(range.contains_value(&ValueWrapper::finite(5))); // 中间值
+        assert!(range.contains_value(&ValueWrapper::finite(10))); // 边界值
+        assert!(!range.contains_value(&ValueWrapper::finite(0))); // 小于下界
+        assert!(!range.contains_value(&ValueWrapper::finite(11))); // 大于上界
     }
 
     #[test]
-    fn test_divide() {
-        let range = value_range!([1.0f64, 2.0f64]).unwrap();
-        let half_range = (range / 2.0f64).unwrap();
-        assert_eq!(half_range.lb.value.unwrap(), &0.5);
-        assert_eq!(half_range.ub.value.unwrap(), &1.0);
-        let neg_half_range = (range / -2.0f64).unwrap();
-        assert_eq!(neg_half_range.lb.value.unwrap(), &-1.0);
-        assert_eq!(neg_half_range.ub.value.unwrap(), &-0.5);
+    fn test_contains_open() {
+        let range: ValueRange<i64, Open, Open> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Open),
+            Bound::new(ValueWrapper::finite(10), Open),
+        );
+
+        // 开区间 (1, 10)
+        assert!(!range.contains_value(&ValueWrapper::finite(1))); // 边界值不包含
+        assert!(range.contains_value(&ValueWrapper::finite(5))); // 中间值
+        assert!(!range.contains_value(&ValueWrapper::finite(10))); // 边界值不包含
+        assert!(!range.contains_value(&ValueWrapper::finite(0))); // 小于下界
+        assert!(!range.contains_value(&ValueWrapper::finite(11))); // 大于上界
     }
 
     #[test]
-    fn test_intersection() {
-        let range = value_range!([1.0f64, 3.0f64]).unwrap();
-        let left_half_range1 = value_range!([0.0f64, 2.0f64]).unwrap().intersect(&range);
-        assert!(left_half_range1.is_some());
-        assert_eq!(left_half_range1.unwrap().lb.value.unwrap(), &1.0);
-        assert_eq!(left_half_range1.unwrap().ub.value.unwrap(), &2.0);
-        let right_half_range1 = range.intersect(&value_range!([0.0f64, 2.0f64]).unwrap());
-        assert!(right_half_range1.is_some());
-        assert_eq!(right_half_range1.unwrap().lb.value.unwrap(), &1.0);
-        assert_eq!(right_half_range1.unwrap().ub.value.unwrap(), &2.0);
-        let left_half_range2 = value_range!([2.0f64, 4.0f64]).unwrap().intersect(&range);
-        assert!(left_half_range2.is_some());
-        assert_eq!(left_half_range2.unwrap().lb.value.unwrap(), &2.0);
-        assert_eq!(left_half_range2.unwrap().ub.value.unwrap(), &3.0);
-        let right_half_range2 = range.intersect(&value_range!([2.0f64, 4.0f64]).unwrap());
-        assert!(right_half_range2.is_some());
-        assert_eq!(right_half_range2.unwrap().lb.value.unwrap(), &2.0);
-        assert_eq!(right_half_range2.unwrap().ub.value.unwrap(), &3.0);
-        let none_range = range.intersect(&value_range!([4.0f64, 10.0f64]).unwrap());
-        assert!(none_range.is_none());
-        let inf_range = range.intersect(&value_range!([1.0f64, ..]).unwrap());
-        assert!(inf_range.is_some());
-        assert_eq!(inf_range.as_ref().unwrap().lb.value.unwrap(), &1.0);
-        assert_eq!(inf_range.as_ref().unwrap().lb.interval, Interval::Closed);
-        assert_eq!(inf_range.as_ref().unwrap().ub.value.unwrap(), &3.0);
-        assert_eq!(inf_range.as_ref().unwrap().ub.interval, Interval::Closed);
-        let neg_inf_range = range.intersect(&value_range!([.., 2.0f64]).unwrap());
-        assert!(neg_inf_range.is_some());
-        assert_eq!(neg_inf_range.as_ref().unwrap().lb.value.unwrap(), &1.0);
-        assert_eq!(
-            neg_inf_range.as_ref().unwrap().lb.interval,
-            Interval::Closed
+    fn test_contains_mixed_compile_time() {
+        // [1, 10) - 左闭右开
+        let range: ValueRange<i64, Closed, Open> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Closed),
+            Bound::new(ValueWrapper::finite(10), Open),
         );
-        assert_eq!(neg_inf_range.as_ref().unwrap().ub.value.unwrap(), &2.0);
-        assert_eq!(
-            neg_inf_range.as_ref().unwrap().ub.interval,
-            Interval::Closed
+
+        assert!(range.contains_value(&ValueWrapper::finite(1))); // 左边界包含
+        assert!(!range.contains_value(&ValueWrapper::finite(10))); // 右边界不包含
+        assert!(range.contains_value(&ValueWrapper::finite(5))); // 中间值
+
+        // (1, 10] - 左开右闭
+        let range: ValueRange<i64, Open, Closed> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Open),
+            Bound::new(ValueWrapper::finite(10), Closed),
         );
+
+        assert!(!range.contains_value(&ValueWrapper::finite(1))); // 左边界不包含
+        assert!(range.contains_value(&ValueWrapper::finite(10))); // 右边界包含
+        assert!(range.contains_value(&ValueWrapper::finite(5))); // 中间值
     }
 
     #[test]
-    fn test_union() {
-        let range = value_range!([1.0f64, 3.0f64]).unwrap();
-        let union_range1 = range.union(&value_range!([0.0f64, 2.0f64]).unwrap());
-        assert!(union_range1.is_some());
-        assert_eq!(union_range1.unwrap().lb.value.unwrap(), &0.0);
-        assert_eq!(union_range1.unwrap().ub.value.unwrap(), &3.0);
-        let union_range2 = range.union(&value_range!([2.0f64, 10.0f64]).unwrap());
-        assert!(union_range2.is_some());
-        assert_eq!(union_range2.unwrap().lb.value.unwrap(), &1.0);
-        assert_eq!(union_range2.unwrap().ub.value.unwrap(), &10.0);
-        let union_range3 = range.union(&value_range!([0.0f64, 10.0f64]).unwrap());
-        assert!(union_range3.is_some());
-        assert_eq!(union_range3.unwrap().lb.value.unwrap(), &0.0);
-        assert_eq!(union_range3.unwrap().ub.value.unwrap(), &10.0);
-        let none_range = range.union(&value_range!([4.0f64, 10.0f64]).unwrap());
-        assert!(none_range.is_none());
-        let inf_range = range.union(&value_range!([1.0f64, ..]).unwrap());
-        assert!(inf_range.is_some());
-        assert_eq!(inf_range.as_ref().unwrap().lb.value.unwrap(), &1.0);
-        assert_eq!(inf_range.as_ref().unwrap().lb.interval, Interval::Closed);
-        assert_eq!(
-            inf_range.as_ref().unwrap().ub.value.unwrap(),
-            f64::INF.as_ref().unwrap()
+    fn test_contains_mixed_runtime() {
+        let range: ValueRange<i64> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Interval::Closed),
+            Bound::new(ValueWrapper::finite(10), Interval::Open),
         );
-        assert_eq!(inf_range.as_ref().unwrap().ub.interval, Interval::Open);
-        let neg_inf_range = range.union(&value_range!([.., 1.0f64]).unwrap());
-        assert!(neg_inf_range.is_some());
-        assert_eq!(
-            neg_inf_range.as_ref().unwrap().lb.value.unwrap(),
-            f64::NEG_INF.as_ref().unwrap()
-        );
-        assert_eq!(neg_inf_range.as_ref().unwrap().lb.interval, Interval::Open);
-        assert_eq!(neg_inf_range.as_ref().unwrap().ub.value.unwrap(), &3.0);
-        assert_eq!(
-            neg_inf_range.as_ref().unwrap().ub.interval,
-            Interval::Closed
-        );
+
+        // 半开半闭区间 [1, 10)
+        assert!(range.contains_value(&ValueWrapper::finite(1))); // 闭区间边界值
+        assert!(range.contains_value(&ValueWrapper::finite(5))); // 中间值
+        assert!(!range.contains_value(&ValueWrapper::finite(10))); // 开区间边界值不包含
     }
 
     #[test]
-    fn test_contains() {
-        let range = value_range!([1.0f64, 3.0f64]).unwrap();
-        assert!(range.contains(&1.0f64));
-        assert!(range.contains(&2.0f64));
-        assert!(range.contains(&3.0f64));
-        assert!(!range.contains(&0.0f64));
-        assert!(!range.contains(&4.0f64));
+    fn test_contains_infinity() {
+        let range: ValueRange<i64> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(0), Interval::Closed),
+            Bound::new(ValueWrapper::positive_infinity(), Interval::Open),
+        );
 
-        assert!(range.contains_range(&value_range!([1.0f64, 2.0f64]).unwrap()));
-        assert!(range.contains_range(&value_range!([2.0f64, 3.0f64]).unwrap()));
-        assert!(range.contains_range(&value_range!([1.0f64, 3.0f64]).unwrap()));
-        assert!(!range.contains_range(&value_range!([0.0f64, 1.0f64]).unwrap()));
-        assert!(!range.contains_range(&value_range!([0.0f64, 2.0f64]).unwrap()));
-        assert!(!range.contains_range(&value_range!([2.0f64, 10.0f64]).unwrap()));
+        // [0, +∞)
+        assert!(range.contains_value(&ValueWrapper::finite(0)));
+        assert!(range.contains_value(&ValueWrapper::finite(100)));
+        assert!(!range.contains_value(&ValueWrapper::finite(-1)));
+        assert!(!range.contains_value(&ValueWrapper::positive_infinity())); // 开区间不包含 +∞
+    }
+
+    // ========================================================================
+    // is_degenerate 测试 / is_degenerate tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_degenerate() {
+        // 退化为单点 [5, 5]
+        let degenerate: ValueRange<i64, Closed, Closed> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(5), Closed),
+            Bound::new(ValueWrapper::finite(5), Closed),
+        );
+        assert!(degenerate.is_degenerate());
+        assert_eq!(degenerate.degenerate_value(), Some(&5));
+
+        // 非退化 [1, 10]
+        let non_degenerate: ValueRange<i64, Closed, Closed> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Closed),
+            Bound::new(ValueWrapper::finite(10), Closed),
+        );
+        assert!(!non_degenerate.is_degenerate());
+        assert_eq!(non_degenerate.degenerate_value(), None);
+
+        // 值相等但开区间 (5, 5) - 不包含任何值，但不是退化
+        let open_same: ValueRange<i64, Open, Open> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(5), Open),
+            Bound::new(ValueWrapper::finite(5), Open),
+        );
+        assert!(!open_same.is_degenerate()); // 开区间不退化
+
+        // 值相等但混合开闭 [5, 5) - 不是退化
+        let mixed: ValueRange<i64, Closed, Open> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(5), Closed),
+            Bound::new(ValueWrapper::finite(5), Open),
+        );
+        assert!(!mixed.is_degenerate()); // 混合开闭不退化
+    }
+
+    // ========================================================================
+    // Display 测试 / Display tests
+    // ========================================================================
+
+    #[test]
+    fn test_display() {
+        let closed: ValueRange<i64, Closed, Closed> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Closed),
+            Bound::new(ValueWrapper::finite(10), Closed),
+        );
+        assert_eq!(format!("{}", closed), "[1, 10]");
+
+        let open: ValueRange<i64, Open, Open> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Open),
+            Bound::new(ValueWrapper::finite(10), Open),
+        );
+        assert_eq!(format!("{}", open), "(1, 10)");
+
+        let mixed: ValueRange<i64, Closed, Open> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Closed),
+            Bound::new(ValueWrapper::finite(10), Open),
+        );
+        assert_eq!(format!("{}", mixed), "[1, 10)");
+
+        let infinity: ValueRange<i64> = ValueRange::new(
+            Bound::new(ValueWrapper::negative_infinity(), Interval::Open),
+            Bound::new(ValueWrapper::positive_infinity(), Interval::Open),
+        );
+        assert_eq!(format!("{}", infinity), "(-∞, +∞)");
+    }
+
+    // ========================================================================
+    // 相等性测试 / Equality tests
+    // ========================================================================
+
+    #[test]
+    fn test_eq() {
+        let a: ValueRange<i64, Closed, Closed> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Closed),
+            Bound::new(ValueWrapper::finite(10), Closed),
+        );
+        let b: ValueRange<i64, Closed, Closed> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Closed),
+            Bound::new(ValueWrapper::finite(10), Closed),
+        );
+        let c: ValueRange<i64, Closed, Closed> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Closed),
+            Bound::new(ValueWrapper::finite(20), Closed),
+        );
+
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    // ========================================================================
+    // Contains trait 测试 / Contains trait tests
+    // ========================================================================
+
+    #[test]
+    fn test_contains_trait() {
+        let range: ValueRange<i64, Closed, Closed> = ValueRange::new(
+            Bound::new(ValueWrapper::finite(1), Closed),
+            Bound::new(ValueWrapper::finite(10), Closed),
+        );
+
+        // 测试 Contains<T> 实现
+        // Test Contains<T> implementation
+        use crate::operator::Contains;
+        assert!(range.contains(&5_i64));
+        assert!(range.contains(&1_i64));
+        assert!(range.contains(&10_i64));
+        assert!(!range.contains(&0_i64));
+        assert!(!range.contains(&11_i64));
     }
 }

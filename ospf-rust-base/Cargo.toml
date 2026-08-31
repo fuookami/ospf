@@ -1,18 +1,19 @@
 [package]
 name = "ospf-rust-base"
 version = "0.1.0"
+edition = "2024"
 authors = ["fuookami <wfuookami@gmail.com>"]
-edition = "2021"
 description = "Base definition for ospf-rust."
-license = "Apache-2.0"
+license = "MIT"
 
 homepage = "https://github.com/fuookami/ospf-rust"
 repository = "https://github.com/fuookami/ospf-rust"
 readme = "../README.md"
 
 [dependencies]
-strum = { version = "0.26.3", features = ["derive"] }
+strum = { version = "0.27.2", features = ["derive"] }
 paste = "1.0.15"
+cc-traits = { git = "https://github.com/fuookami/cc-traits" }
 
 [profile.dev]
 opt-level = 0

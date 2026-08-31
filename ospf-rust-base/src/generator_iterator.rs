@@ -13,3 +13,22 @@ impl<G: Coroutine + Unpin> Iterator for GeneratorIterator<G> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generator_iterator() {
+        let mut generator = GeneratorIterator(#[coroutine] || {
+            yield 1;
+            yield 2;
+            yield 3;
+        });
+
+        assert_eq!(generator.next(), Some(1));
+        assert_eq!(generator.next(), Some(2));
+        assert_eq!(generator.next(), Some(3));
+        assert_eq!(generator.next(), None);
+    }
+}

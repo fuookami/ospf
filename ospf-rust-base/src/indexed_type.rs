@@ -1,11 +1,10 @@
 use std::any::TypeId;
-use std::cell::{Cell, SyncUnsafeCell};
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::marker::PhantomData;
 use std::ops::Deref;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Debug, Clone)]
 pub struct Index<T: 'static> {
@@ -56,7 +55,15 @@ impl<T: 'static> Deref for ManualIndex<T> {
     type Target = usize;
 
     fn deref(&self) -> &usize {
-        unsafe { self.index.as_ptr().as_ref_unchecked().as_ref().unwrap() }
+        if self.indexed() {
+            unsafe {
+                let opt_ptr = self.index.as_ptr();
+                let opt_ref = &*opt_ptr;
+                opt_ref.as_ref().unwrap_unchecked()
+            }
+        } else {
+            panic!("Attempted to deref ManualIndex that is not indexed");
+        }
     }
 }
 
@@ -122,30 +129,186 @@ impl IndexGeneratorImpl {
 }
 
 struct IndexGenerator {
-    inner: Option<HashMap<TypeId, Arc<Mutex<IndexGeneratorImpl>>>>,
+    inner: HashMap<TypeId, Arc<Mutex<IndexGeneratorImpl>>>,
 }
 
-static mut INDEX_GENERATOR: SyncUnsafeCell<IndexGenerator> =
-    SyncUnsafeCell::new(IndexGenerator { inner: None });
-
 impl IndexGenerator {
-    pub fn self_instance() -> &'static mut IndexGenerator {
-        let mut instance = unsafe { INDEX_GENERATOR.get().as_mut_unchecked() };
-        if instance.inner.is_none() {
-            instance.inner = Some(HashMap::new());
+    fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
         }
-        instance
+    }
+
+    fn get_or_init() -> &'static Mutex<IndexGenerator> {
+        static INSTANCE: OnceLock<Mutex<IndexGenerator>> = OnceLock::new();
+        INSTANCE.get_or_init(|| Mutex::new(IndexGenerator::new()))
     }
 
     pub fn instance<T: 'static>() -> Arc<Mutex<IndexGeneratorImpl>> {
-        let instance = Self::self_instance();
-        instance
+        let generator = Self::get_or_init();
+        let mut guard = generator.lock().unwrap();
+        
+        guard
             .inner
-            .as_mut()
-            .unwrap()
             .entry(TypeId::of::<T>())
-            .insert_entry(Arc::new(Mutex::new(IndexGeneratorImpl::new())))
-            .get()
+            .or_insert_with(|| Arc::new(Mutex::new(IndexGeneratorImpl::new())))
             .clone()
     }
 }
+
+#[macro_export]
+macro_rules! indexed_type {
+    ($vis:vis struct $name:ident { $($fieldVis:vis $field:ident: $type:ty),* }) => {
+        impl Indexed for $name {
+            fn index(&self) -> usize {
+                *self.index
+            }
+        }
+
+        impl From<$name> for usize {
+            fn from(value: $name) -> usize {
+                *value.index
+            }
+        }
+
+        impl<'a> From<&'a $name> for usize {
+            fn from(value: &'a $name) -> usize {
+                *value.index
+            }
+        }
+
+        impl From<$name> for isize {
+            fn from(value: $name) -> isize {
+                *value.index as isize
+            }
+        }
+
+        impl<'a> From<&'a $name> for isize {
+            fn from(value: &'a $name) -> isize {
+                *value.index as isize
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! auto_indexed_type {
+    ($(#[$derive:meta])* $vis:vis struct $name:ident { $($fieldVis:vis $field:ident: $type:ty),* }) => {
+        $(#[$derive])*
+        $vis struct $name {
+            $($fieldVis $field: $type),*,
+            index: Index<$name>,
+        }
+
+        indexed_type!($vis struct $name { $($fieldVis $field: $type),* });
+    };
+}
+
+#[macro_export]
+macro_rules! manual_indexed_type {
+    ($(#[$derive:meta])* $vis:vis struct $name:ident { $($fieldVis:vis $field:ident: $type:ty),* }) => {
+        $(#[$derive])*
+        $vis struct $name {
+            $($fieldVis $field: $type),*,
+            index: ManualIndex<$name>,
+        }
+
+        indexed_type!($vis struct $name { $($fieldVis $field: $type),* });
+
+        impl ManualIndexed<$name> for $name {
+           fn indexed(&self) -> bool {
+               self.index.indexed()
+           }
+
+           fn set_index(&self, index: usize) {
+               self.index.set_index(index)
+           }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! indexed {
+    ($name:ident { $($field:ident: $val:expr),* }) => {
+        $name {
+            $($field: $val),*,
+            index: Default::default(),
+        }
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    auto_indexed_type! {
+        pub struct TestAutoIndexed {
+            pub name: &'static str,
+            pub value: u32
+        }
+    }
+
+    #[test]
+    fn test_auto_indexed_type() {
+        let instance1 = indexed!(TestAutoIndexed { name: "test1", value: 1 });
+        let instance2 = indexed!(TestAutoIndexed { name: "test2", value: 2 });
+
+        assert_eq!(instance1.index(), 0);
+        assert_eq!(instance2.index(), 1);
+
+        let index1: usize = instance1.into();
+        let index2: isize = (&instance2).into();
+        assert_eq!(index1, 0);
+        assert_eq!(index2, 1);
+    }
+
+    manual_indexed_type! {
+        pub struct TestManualIndexed {
+            pub name: &'static str,
+            pub value: u32
+        }
+    }
+
+    #[test]
+    fn test_manual_indexed_type() {
+        let instance1 = indexed!(TestManualIndexed { name: "test1", value: 1 });
+        let instance2 = indexed!(TestManualIndexed { name: "test2", value: 2 });
+
+        assert!(!instance1.indexed());
+        assert!(!instance2.indexed());
+
+        instance1.set_index(10);
+        instance2.set_indexed();
+
+        assert!(instance1.indexed());
+        assert!(instance2.indexed());
+        assert_eq!(instance1.index(), 10);
+        assert_eq!(instance2.index(), 0);
+
+        let index1: usize = instance1.into();
+        let index2: isize = (&instance2).into();
+        assert_eq!(index1, 10);
+        assert_eq!(index2, 0);
+    }
+
+    auto_indexed_type! {
+        pub struct TestIndexFlush {
+            pub name: &'static str,
+            pub value: u32
+        }
+    }
+
+    #[test]
+    fn test_flush() {
+        let instance1 = indexed!(TestIndexFlush { name: "test1", value: 1 });
+        assert_eq!(instance1.index(), 0);
+
+        TestIndexFlush::flush();
+        let instance2 = indexed!(TestIndexFlush { name: "test2", value: 2 });
+        assert_eq!(instance2.index(), 0);
+    }
+}
+
+pub use crate::auto_indexed_type;
+pub use crate::manual_indexed_type;
+pub use crate::indexed;

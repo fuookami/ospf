@@ -1,596 +1,493 @@
-use std::ops::{Add, Div, Mul, Neg, Sub};
-use std::time::{Duration, Instant};
+//! Bound - 边界
+//! Bound - Boundary
 
-use chrono::NaiveDateTime;
-
-use super::error::IllegalArgumentError;
-use super::interval::Interval;
+use super::interval::IntervalTrait;
 use super::value_wrapper::ValueWrapper;
+use std::fmt;
 
-#[non_exhaustive]
-#[derive(Clone, Copy)]
-pub struct Bound<T> {
-    pub value: ValueWrapper<T>,
-    pub interval: Interval,
+// ============================================================================
+// Bound<T, I> - 边界
+// ============================================================================
+
+/// Bound - 边界
+/// Bound - Boundary
+///
+/// 表示区间的单个边界，包含值和开闭性质。
+/// Represents a single boundary of an interval, containing value and openness.
+///
+/// # 类型参数 / Type Parameters
+/// - `T`: 边界值的类型
+/// - `I`: 开闭性质类型（编译时 `Closed`/`Open` 或运行时 `Interval`）
+/// - `T`: The boundary value type
+/// - `I`: The openness type (compile-time `Closed`/`Open` or runtime `Interval`)
+///
+/// # 示例 / Examples
+/// ```
+/// use ospf_rust_math::algebra::value_range::{Bound, ValueWrapper, Interval, Closed, Open};
+///
+/// // 编译时开闭性质
+/// // Compile-time openness
+/// let closed_bound = Bound::new(ValueWrapper::finite(10_i64), Closed);
+/// assert!(closed_bound.is_closed());
+/// assert_eq!(closed_bound.value().unwrap(), Some(&10));
+///
+/// // 运行时开闭性质
+/// // Runtime openness
+/// let open_bound: Bound<i64, Interval> = Bound::new(ValueWrapper::finite(10_i64), Interval::Open);
+/// assert!(open_bound.is_open());
+/// ```
+#[derive(Clone, Debug)]
+pub struct Bound<T, I: IntervalTrait = super::interval::Interval> {
+    /// 边界值
+    /// Boundary value
+    value: ValueWrapper<T>,
+    /// 开闭性质
+    /// Openness
+    interval: I,
 }
 
-impl<T> Bound<T> {
-    pub fn new(value: ValueWrapper<T>, interval: Interval) -> Self {
-        match value {
-            ValueWrapper::Value(_) => Self { value, interval },
-            _ => Self {
-                value,
-                interval: Interval::Open,
-            },
-        }
+impl<T, I: IntervalTrait> Bound<T, I> {
+    /// 创建新的边界
+    /// Create a new boundary
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 边界值
+    /// - `interval`: 开闭性质
+    ///
+    /// # 返回 / Returns
+    /// 新的边界实例
+    /// New boundary instance
+    pub fn new(value: ValueWrapper<T>, interval: I) -> Self {
+        Self { value, interval }
     }
-}
 
-impl<T, U> From<&Bound<U>> for Bound<T>
-where
-    ValueWrapper<T>: for<'a> From<&'a ValueWrapper<U>>,
-{
-    fn from(bound: &Bound<U>) -> Self {
+    /// 创建闭区间边界
+    /// Create a closed boundary
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 边界值
+    ///
+    /// # 返回 / Returns
+    /// 闭区间边界
+    /// Closed boundary
+    pub fn closed(value: ValueWrapper<T>) -> Self
+    where
+        I: Default,
+    {
         Self {
-            value: ValueWrapper::from(&bound.value),
-            interval: bound.interval,
+            value,
+            interval: I::default(),
+        }
+    }
+
+    /// 获取边界值
+    /// Get the boundary value
+    ///
+    /// # 返回 / Returns
+    /// 边界值的引用
+    /// Reference to the boundary value
+    pub fn value(&self) -> &ValueWrapper<T> {
+        &self.value
+    }
+
+    /// 获取开闭性质
+    /// Get the openness
+    ///
+    /// # 返回 / Returns
+    /// 开闭性质
+    /// The openness
+    pub fn interval(&self) -> I {
+        self.interval
+    }
+
+    /// 判断是否为闭区间边界
+    /// Check if it's a closed boundary
+    ///
+    /// # 返回 / Returns
+    /// 如果为闭区间返回 `true`，否则返回 `false`
+    /// Returns `true` if closed, `false` otherwise
+    pub fn is_closed(&self) -> bool {
+        self.interval.is_closed()
+    }
+
+    /// 判断是否为开区间边界
+    /// Check if it's an open boundary
+    ///
+    /// # 返回 / Returns
+    /// 如果为开区间返回 `true`，否则返回 `false`
+    /// Returns `true` if open, `false` otherwise
+    pub fn is_open(&self) -> bool {
+        self.interval.is_open()
+    }
+
+    /// 判断边界值是否为有限值
+    /// Check if boundary value is finite
+    ///
+    /// # 返回 / Returns
+    /// 如果边界值为有限值返回 `true`，否则返回 `false`
+    /// Returns `true` if finite, `false` otherwise
+    pub fn is_finite(&self) -> bool {
+        self.value.is_finite()
+    }
+
+    /// 判断边界值是否为无穷大
+    /// Check if boundary value is infinity
+    ///
+    /// # 返回 / Returns
+    /// 如果边界值为无穷大返回 `true`，否则返回 `false`
+    /// Returns `true` if infinity, `false` otherwise
+    pub fn is_infinity(&self) -> bool {
+        self.value.is_infinity()
+    }
+
+    /// 判断边界值是否为正无穷
+    /// Check if boundary value is positive infinity
+    ///
+    /// # 返回 / Returns
+    /// 如果边界值为正无穷返回 `true`，否则返回 `false`
+    /// Returns `true` if positive infinity, `false` otherwise
+    pub fn is_positive_infinity(&self) -> bool {
+        self.value.is_positive_infinity()
+    }
+
+    /// 判断边界值是否为负无穷
+    /// Check if boundary value is negative infinity
+    ///
+    /// # 返回 / Returns
+    /// 如果边界值为负无穷返回 `true`，否则返回 `false`
+    /// Returns `true` if negative infinity, `false` otherwise
+    pub fn is_negative_infinity(&self) -> bool {
+        self.value.is_negative_infinity()
+    }
+
+    /// 映射边界值
+    /// Map the boundary value
+    ///
+    /// # 参数 / Parameters
+    /// - `f`: 映射函数
+    /// - `f`: The mapping function
+    ///
+    /// # 返回 / Returns
+    /// 映射后的新边界
+    /// New boundary after mapping
+    pub fn map<U, F>(self, f: F) -> Bound<U, I>
+    where
+        F: FnOnce(T) -> U,
+    {
+        Bound {
+            value: self.value.map(f),
+            interval: self.interval,
         }
     }
 }
 
-impl<T, U> PartialEq<U> for Bound<T>
-where
-    ValueWrapper<T>: PartialEq<U>,
-{
-    fn eq(&self, other: &U) -> bool {
-        self.value.eq(other) && self.interval == Interval::Closed
+// ============================================================================
+// PartialEq 实现 / PartialEq implementation
+// ============================================================================
+
+impl<T: PartialEq, I: IntervalTrait> PartialEq for Bound<T, I> {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value && self.interval == other.interval
     }
 }
 
-impl<T, U> PartialEq<Bound<U>> for Bound<T>
-where
-    ValueWrapper<T>: PartialEq<ValueWrapper<U>>,
-{
-    fn eq(&self, other: &Bound<U>) -> bool {
-        self.value.eq(&other.value) && self.interval == other.interval
+impl<T: Eq, I: IntervalTrait + Eq> Eq for Bound<T, I> {}
+
+// ============================================================================
+// PartialOrd 实现 / PartialOrd implementation
+// ============================================================================
+
+impl<T: PartialOrd, I: IntervalTrait> PartialOrd for Bound<T, I> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.value.partial_cmp(&other.value)
     }
 }
 
-macro_rules! bound_template {
-    ($type:ident, $rhs:ident) => {
-        impl Add<$rhs> for Bound<$type> {
-            type Output = Result<Bound<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
+// ============================================================================
+// Display 实现 / Display implementation
+// ============================================================================
 
-            fn add(self, rhs: $rhs) -> Self::Output {
-                let value = (self.value + rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a> Add<&'a $rhs> for Bound<$type> {
-            type Output = Result<Bound<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a $rhs) -> Self::Output {
-                let value = self.value.add(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a> Add<$rhs> for &'a Bound<$type> {
-            type Output = Result<Bound<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: $rhs) -> Self::Output {
-                let value = self.value.add(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a, 'b> Add<&'a $rhs> for &'b Bound<$type> {
-            type Output = Result<Bound<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a $rhs) -> Self::Output {
-                let value = self.value.add(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl Sub<$rhs> for Bound<$type> {
-            type Output = Result<Bound<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: $rhs) -> Self::Output {
-                let value = self.value.sub(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a> Sub<&'a $rhs> for Bound<$type> {
-            type Output = Result<Bound<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a $rhs) -> Self::Output {
-                let value = self.value.sub(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a> Sub<$rhs> for &'a Bound<$type> {
-            type Output = Result<Bound<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: $rhs) -> Self::Output {
-                let value = self.value.sub(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a, 'b> Sub<&'a $rhs> for &'b Bound<$type> {
-            type Output = Result<Bound<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a $rhs) -> Self::Output {
-                let value = self.value.sub(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-    };
+impl<T: fmt::Display, I: IntervalTrait> fmt::Display for Bound<T, I> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.interval.lower_sign(), self.value)
+    }
 }
-bound_template!(Instant, Duration);
-bound_template!(NaiveDateTime, Duration);
-bound_template!(Duration, Duration);
 
-macro_rules! signed_bound_template {
-    ($($type:ident)*) => ($(
-        impl Neg for Bound<$type> {
-            type Output = Result<Bound<<$type as Neg>::Output>, IllegalArgumentError>;
+// ============================================================================
+// Default 实现 / Default implementation
+// ============================================================================
 
-            fn neg(self) -> Self::Output {
-                let value = self.value.neg()?;
-                Ok(Bound::new(value, self.interval))
-            }
+impl<T: Default, I: IntervalTrait + Default> Default for Bound<T, I> {
+    fn default() -> Self {
+        Self {
+            value: ValueWrapper::finite(T::default()),
+            interval: I::default(),
         }
-
-        impl<'a> Neg for &'a Bound<$type> {
-            type Output = Result<Bound<<$type as Neg>::Output>, IllegalArgumentError>;
-
-            fn neg(self) -> Self::Output {
-                let value = self.value.neg()?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-    )*)
+    }
 }
-signed_bound_template! { i8 i16 i32 i64 i128 isize f32 f64 }
 
-macro_rules! real_number_bound_template {
-    ($($type:ident)*) => ($(
-        impl Add<$type> for Bound<$type> {
-            type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
+// ============================================================================
+// 辅助方法 / Helper methods
+// ============================================================================
 
-            fn add(self, rhs: $type) -> Self::Output {
-                let value = self.value.add(rhs)?;
-                Ok(Bound::new(value, self.interval))
+impl<T: PartialOrd, I: IntervalTrait> Bound<T, I> {
+    /// 判断值是否在边界正确的一侧（用于下界）
+    /// Check if value is on the correct side of boundary (for lower bound)
+    ///
+    /// 对于下界，值应该 >= 边界值（闭区间）或 > 边界值（开区间）
+    /// For lower bound, value should be >= boundary (closed) or > boundary (open)
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 要检查的值
+    /// - `value`: The value to check
+    ///
+    /// # 返回 / Returns
+    /// 如果值在下界正确的一侧返回 `true`，否则返回 `false`
+    /// Returns `true` if value is on correct side, `false` otherwise
+    pub fn is_above(&self, value: &ValueWrapper<T>) -> bool {
+        match (&self.value, value) {
+            // 负无穷下界：任何值都在正确的一侧
+            // Negative infinity lower bound: any value is on correct side
+            (ValueWrapper::NegativeInfinity, _) => true,
+            // 正无穷下界：没有值在正确的一侧
+            // Positive infinity lower bound: no value is on correct side
+            (ValueWrapper::PositiveInfinity, _) => false,
+            // 有限值下界
+            // Finite lower bound
+            (ValueWrapper::Finite(bound), ValueWrapper::Finite(v)) => {
+                if self.is_closed() {
+                    v >= bound
+                } else {
+                    v > bound
+                }
             }
+            // 有限值下界 vs 无穷大值
+            // Finite lower bound vs infinity value
+            (ValueWrapper::Finite(_), ValueWrapper::PositiveInfinity) => true,
+            (ValueWrapper::Finite(_), ValueWrapper::NegativeInfinity) => false,
         }
+    }
 
-        impl<'a> Add<&'a $type> for Bound<$type> {
-            type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.add(rhs)?;
-                Ok(Bound::new(value, self.interval))
+    /// 判断值是否在边界正确的一侧（用于上界）
+    /// Check if value is on the correct side of boundary (for upper bound)
+    ///
+    /// 对于上界，值应该 <= 边界值（闭区间）或 < 边界值（开区间）
+    /// For upper bound, value should be <= boundary (closed) or < boundary (open)
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 要检查的值
+    /// - `value`: The value to check
+    ///
+    /// # 返回 / Returns
+    /// 如果值在上界正确的一侧返回 `true`，否则返回 `false`
+    /// Returns `true` if value is on correct side, `false` otherwise
+    pub fn is_below(&self, value: &ValueWrapper<T>) -> bool {
+        match (&self.value, value) {
+            // 正无穷上界：任何值都在正确的一侧
+            // Positive infinity upper bound: any value is on correct side
+            (ValueWrapper::PositiveInfinity, _) => true,
+            // 负无穷上界：没有值在正确的一侧
+            // Negative infinity upper bound: no value is on correct side
+            (ValueWrapper::NegativeInfinity, _) => false,
+            // 有限值上界
+            // Finite upper bound
+            (ValueWrapper::Finite(bound), ValueWrapper::Finite(v)) => {
+                if self.is_closed() {
+                    v <= bound
+                } else {
+                    v < bound
+                }
             }
+            // 有限值上界 vs 无穷大值
+            // Finite upper bound vs infinity value
+            (ValueWrapper::Finite(_), ValueWrapper::PositiveInfinity) => false,
+            (ValueWrapper::Finite(_), ValueWrapper::NegativeInfinity) => true,
         }
-
-        impl<'a> Add<$type> for &'a Bound<$type> {
-            type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: $type) -> Self::Output {
-                let value = self.value.add(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a, 'b> Add<&'a $type> for &'b Bound<$type> {
-            type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.add(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl Add<Bound<$type>> for $type {
-            type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: Bound<$type>) -> Self::Output {
-                let value = self.add(rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl<'a> Add<Bound<$type>> for &'a $type {
-            type Output = Result<Bound<<&'a $type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: Bound<$type>) -> Self::Output {
-                let value = self.add(rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl<'a> Add<&'a Bound<$type>> for $type {
-            type Output = Result<Bound<<$type as Add<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.add(rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl<'a, 'b> Add<&'b Bound<$type>> for &'a $type {
-            type Output = Result<Bound<<&'a $type as Add<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'b Bound<$type>) -> Self::Output {
-                let value = self.add(rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl Add<Bound<$type>> for Bound<$type> {
-            type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: Bound<$type>) -> Self::Output {
-                let value = self.value.add(rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl<'a> Add<&'a Bound<$type>> for Bound<$type> {
-            type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.value.add(rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl<'a> Add<Bound<$type>> for &'a Bound<$type> {
-            type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: Bound<$type>) -> Self::Output {
-                let value = self.value.add(rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl<'a, 'b> Add<&'a Bound<$type>> for &'b Bound<$type> {
-            type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.value.add(rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl Sub<$type> for Bound<$type> {
-            type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: $type) -> Self::Output {
-                let value = self.value.sub(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a> Sub<&'a $type> for Bound<$type> {
-            type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.sub(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a> Sub<$type> for &'a Bound<$type> {
-            type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: $type) -> Self::Output {
-                let value = self.value.sub(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a, 'b> Sub<&'a $type> for &'b Bound<$type> {
-            type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.sub(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl Sub<Bound<$type>> for $type {
-            type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: Bound<$type>) -> Self::Output {
-                let value = self.sub(rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl<'a> Sub<Bound<$type>> for &'a $type {
-            type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: Bound<$type>) -> Self::Output {
-                let value = self.sub(rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl<'a> Sub<&'a Bound<$type>> for $type {
-            type Output = Result<Bound<<$type as Sub<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.sub(rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl<'a, 'b> Sub<&'b Bound<$type>> for &'a $type {
-            type Output = Result<Bound<<$type as Sub<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'b Bound<$type>) -> Self::Output {
-                let value = self.sub(rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl Sub<Bound<$type>> for Bound<$type> {
-            type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: Bound<$type>) -> Self::Output {
-                let value = self.value.sub(rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl<'a> Sub<&'a Bound<$type>> for Bound<$type> {
-            type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.value.sub(rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl<'a> Sub<Bound<$type>> for &'a Bound<$type> {
-            type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: Bound<$type>) -> Self::Output {
-                let value = self.value.sub(rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl<'a, 'b> Sub<&'a Bound<$type>> for &'b Bound<$type> {
-            type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.value.sub(rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl Mul<$type> for Bound<$type> {
-            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: $type) -> Self::Output {
-                let value = self.value.mul(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a> Mul<&'a $type> for Bound<$type> {
-            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.mul(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a> Mul<$type> for &'a Bound<$type> {
-            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: $type) -> Self::Output {
-                let value = self.value.mul(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a, 'b> Mul<&'a $type> for &'b Bound<$type> {
-            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.mul(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl Mul<Bound<$type>> for $type {
-            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: Bound<$type>) -> Self::Output {
-                let value = self.mul(rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl<'a> Mul<Bound<$type>> for &'a $type {
-            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: Bound<$type>) -> Self::Output {
-                let value = self.mul(rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl<'a> Mul<&'a Bound<$type>> for $type {
-            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.mul(rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl<'a, 'b> Mul<&'b Bound<$type>> for &'a $type {
-            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'b Bound<$type>) -> Self::Output {
-                let value = self.mul(rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl Mul<Bound<$type>> for Bound<$type> {
-            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: Bound<$type>) -> Self::Output {
-                let value = self.value.mul(rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl<'a> Mul<&'a Bound<$type>> for Bound<$type> {
-            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.value.mul(rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl<'a> Mul<Bound<$type>> for &'a Bound<$type> {
-            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: Bound<$type>) -> Self::Output {
-                let value = self.value.mul(rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl<'a, 'b> Mul<&'a Bound<$type>> for &'b Bound<$type> {
-            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.value.mul(rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl Div<$type> for Bound<$type> {
-            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: $type) -> Self::Output {
-                let value = self.value.div(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a> Div<&'a $type> for Bound<$type> {
-            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.div(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a> Div<$type> for &'a Bound<$type> {
-            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: $type) -> Self::Output {
-                let value = self.value.div(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl<'a, 'b> Div<&'a $type> for &'b Bound<$type> {
-            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.div(rhs)?;
-                Ok(Bound::new(value, self.interval))
-            }
-        }
-
-        impl Div<Bound<$type>> for $type {
-            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: Bound<$type>) -> Self::Output {
-                let value = (self / rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl<'a> Div<Bound<$type>> for &'a $type {
-            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: Bound<$type>) -> Self::Output {
-                let value = (self / rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl<'a> Div<&'a Bound<$type>> for $type {
-            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = (self / rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl<'a, 'b> Div<&'b Bound<$type>> for &'a $type {
-            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'b Bound<$type>) -> Self::Output {
-                let value = (self / rhs.value)?;
-                Ok(Bound::new(value, rhs.interval))
-            }
-        }
-
-        impl Div<Bound<$type>> for Bound<$type> {
-            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: Bound<$type>) -> Self::Output {
-                let value = (self.value / rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl<'a> Div<&'a Bound<$type>> for Bound<$type> {
-            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = (self.value / rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl<'a> Div<Bound<$type>> for &'a Bound<$type> {
-            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: Bound<$type>) -> Self::Output {
-                let value = (self.value / rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-
-        impl<'a, 'b> Div<&'a Bound<$type>> for &'b Bound<$type> {
-            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = (self.value / rhs.value)?;
-                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
-            }
-        }
-    )*)
+    }
 }
-real_number_bound_template! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize f32 f64 }
+
+// ============================================================================
+// 测试 / Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::algebra::value_range::{Closed, Open, Interval};
+
+    // ========================================================================
+    // 基本功能测试 / Basic functionality tests
+    // ========================================================================
+
+    #[test]
+    fn test_bound_closed() {
+        let bound = Bound::new(ValueWrapper::finite(10_i64), Closed);
+        assert!(bound.is_closed());
+        assert!(!bound.is_open());
+        assert!(bound.is_finite());
+        assert!(!bound.is_infinity());
+        assert_eq!(bound.value().unwrap(), Some(&10));
+    }
+
+    #[test]
+    fn test_bound_open() {
+        let bound = Bound::new(ValueWrapper::finite(10_i64), Open);
+        assert!(bound.is_open());
+        assert!(!bound.is_closed());
+        assert!(bound.is_finite());
+    }
+
+    #[test]
+    fn test_bound_infinity() {
+        let pos_inf = Bound::new(ValueWrapper::<i64>::positive_infinity(), Open);
+        assert!(pos_inf.is_positive_infinity());
+        assert!(pos_inf.is_infinity());
+        assert!(!pos_inf.is_finite());
+
+        let neg_inf = Bound::new(ValueWrapper::<i64>::negative_infinity(), Closed);
+        assert!(neg_inf.is_negative_infinity());
+        assert!(neg_inf.is_infinity());
+        assert!(!neg_inf.is_finite());
+    }
+
+    #[test]
+    fn test_bound_interval_runtime() {
+        let closed = Bound::new(ValueWrapper::finite(10_i64), Interval::Closed);
+        assert!(closed.is_closed());
+
+        let open = Bound::new(ValueWrapper::finite(10_i64), Interval::Open);
+        assert!(open.is_open());
+    }
+
+    // ========================================================================
+    // 相等性测试 / Equality tests
+    // ========================================================================
+
+    #[test]
+    fn test_bound_eq() {
+        let a = Bound::new(ValueWrapper::finite(10_i64), Closed);
+        let b = Bound::new(ValueWrapper::finite(10_i64), Closed);
+        let c = Bound::new(ValueWrapper::finite(10_i64), Open);
+        let d = Bound::new(ValueWrapper::finite(20_i64), Closed);
+
+        assert_eq!(a, b);
+        assert_ne!(a, c); // 不同开闭性质
+        assert_ne!(a, d); // 不同值
+    }
+
+    // ========================================================================
+    // 比较测试 / Comparison tests
+    // ========================================================================
+
+    #[test]
+    fn test_bound_ord() {
+        let a = Bound::new(ValueWrapper::finite(10_i64), Closed);
+        let b = Bound::new(ValueWrapper::finite(20_i64), Closed);
+        let pos_inf = Bound::new(ValueWrapper::<i64>::positive_infinity(), Closed);
+        let neg_inf = Bound::new(ValueWrapper::<i64>::negative_infinity(), Closed);
+
+        assert!(a < b);
+        assert!(neg_inf < a);
+        assert!(a < pos_inf);
+    }
+
+    // ========================================================================
+    // is_above / is_below 测试 / is_above / is_below tests
+    // ========================================================================
+
+    #[test]
+    fn test_bound_is_above_closed() {
+        let bound = Bound::new(ValueWrapper::finite(10_i64), Closed);
+
+        // 闭区间：值 >= 边界值
+        assert!(bound.is_above(&ValueWrapper::finite(10_i64))); // 等于边界
+        assert!(bound.is_above(&ValueWrapper::finite(15_i64))); // 大于边界
+        assert!(!bound.is_above(&ValueWrapper::finite(5_i64))); // 小于边界
+    }
+
+    #[test]
+    fn test_bound_is_above_open() {
+        let bound = Bound::new(ValueWrapper::finite(10_i64), Open);
+
+        // 开区间：值 > 边界值
+        assert!(!bound.is_above(&ValueWrapper::finite(10_i64))); // 等于边界
+        assert!(bound.is_above(&ValueWrapper::finite(15_i64))); // 大于边界
+        assert!(!bound.is_above(&ValueWrapper::finite(5_i64))); // 小于边界
+    }
+
+    #[test]
+    fn test_bound_is_below_closed() {
+        let bound = Bound::new(ValueWrapper::finite(10_i64), Closed);
+
+        // 闭区间：值 <= 边界值
+        assert!(bound.is_below(&ValueWrapper::finite(10_i64))); // 等于边界
+        assert!(bound.is_below(&ValueWrapper::finite(5_i64))); // 小于边界
+        assert!(!bound.is_below(&ValueWrapper::finite(15_i64))); // 大于边界
+    }
+
+    #[test]
+    fn test_bound_is_below_open() {
+        let bound = Bound::new(ValueWrapper::finite(10_i64), Open);
+
+        // 开区间：值 < 边界值
+        assert!(!bound.is_below(&ValueWrapper::finite(10_i64))); // 等于边界
+        assert!(bound.is_below(&ValueWrapper::finite(5_i64))); // 小于边界
+        assert!(!bound.is_below(&ValueWrapper::finite(15_i64))); // 大于边界
+    }
+
+    #[test]
+    fn test_bound_is_above_infinity() {
+        let neg_inf_bound = Bound::new(ValueWrapper::<i64>::negative_infinity(), Open);
+        let pos_inf_bound = Bound::new(ValueWrapper::<i64>::positive_infinity(), Open);
+
+        // 负无穷下界：任何值都在正确的一侧
+        assert!(neg_inf_bound.is_above(&ValueWrapper::finite(100_i64)));
+        assert!(neg_inf_bound.is_above(&ValueWrapper::<i64>::positive_infinity()));
+
+        // 正无穷下界：没有值在正确的一侧
+        assert!(!pos_inf_bound.is_above(&ValueWrapper::finite(100_i64)));
+        assert!(!pos_inf_bound.is_above(&ValueWrapper::<i64>::negative_infinity()));
+    }
+
+    #[test]
+    fn test_bound_is_below_infinity() {
+        let pos_inf_bound = Bound::new(ValueWrapper::<i64>::positive_infinity(), Open);
+        let neg_inf_bound = Bound::new(ValueWrapper::<i64>::negative_infinity(), Open);
+
+        // 正无穷上界：任何值都在正确的一侧
+        assert!(pos_inf_bound.is_below(&ValueWrapper::finite(100_i64)));
+        assert!(pos_inf_bound.is_below(&ValueWrapper::<i64>::negative_infinity()));
+
+        // 负无穷上界：没有值在正确的一侧
+        assert!(!neg_inf_bound.is_below(&ValueWrapper::finite(100_i64)));
+        assert!(!neg_inf_bound.is_below(&ValueWrapper::<i64>::positive_infinity()));
+    }
+
+    // ========================================================================
+    // Display 测试 / Display tests
+    // ========================================================================
+
+    #[test]
+    fn test_bound_display() {
+        let closed = Bound::new(ValueWrapper::finite(10_i64), Closed);
+        let open = Bound::new(ValueWrapper::finite(10_i64), Open);
+        let pos_inf = Bound::new(ValueWrapper::<i64>::positive_infinity(), Open);
+
+        assert_eq!(format!("{}", closed), "[10");
+        assert_eq!(format!("{}", open), "(10");
+        assert_eq!(format!("{}", pos_inf), "(+∞");
+    }
+
+    // ========================================================================
+    // map 测试 / map tests
+    // ========================================================================
+
+    #[test]
+    fn test_bound_map() {
+        let bound = Bound::new(ValueWrapper::finite(10_i64), Closed);
+        let mapped = bound.map(|x| x * 2);
+
+        assert_eq!(mapped.value().unwrap(), Some(&20));
+        assert!(mapped.is_closed());
+    }
+}

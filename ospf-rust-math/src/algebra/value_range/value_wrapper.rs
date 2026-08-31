@@ -1,2262 +1,375 @@
+//! ValueWrapper - 值包装器
+//! ValueWrapper - Value wrapper
+
+use crate::algebra::concept::Infinite;
 use std::cmp::Ordering;
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Div, Mul, Neg, Sub};
-use std::time::{Duration, Instant};
+use std::fmt;
 
-use chrono::NaiveDateTime;
+// ============================================================================
+// ValueWrapper<T> - 值包装器
+// ============================================================================
 
-use super::error::IllegalArgumentError;
-use crate::algebra::concept::{Infinity, NegativeInfinity, RealNumber, SemiArithmetic};
-
-#[derive(Clone, Copy)]
-#[non_exhaustive]
+/// ValueWrapper - 值包装器
+/// ValueWrapper - Value wrapper
+///
+/// 为任意数值类型添加无穷大支持。
+/// Adds infinity support to any numeric type.
+///
+/// # 类型参数 / Type Parameters
+/// - `T`: 被包装的数值类型
+/// - `T`: The wrapped numeric type
+///
+/// # 示例 / Examples
+/// ```
+/// use ospf_rust_math::algebra::value_range::ValueWrapper;
+///
+/// // 创建有限值
+/// // Create finite value
+/// let finite = ValueWrapper::finite(42_i64);
+/// assert!(finite.is_finite());
+/// assert_eq!(finite.unwrap(), Some(&42));
+///
+/// // 创建正无穷
+/// // Create positive infinity
+/// let pos_inf = ValueWrapper::<i64>::positive_infinity();
+/// assert!(pos_inf.is_positive_infinity());
+///
+/// // 创建负无穷
+/// // Create negative infinity
+/// let neg_inf = ValueWrapper::<i64>::negative_infinity();
+/// assert!(neg_inf.is_negative_infinity());
+/// ```
+#[derive(Clone, Debug)]
 pub enum ValueWrapper<T> {
-    Value(T),
-    Inf,
-    NegInf,
+    /// 正常值 / Normal value
+    Finite(T),
+    /// 正无穷 / Positive infinity
+    PositiveInfinity,
+    /// 负无穷 / Negative infinity
+    NegativeInfinity,
 }
 
 impl<T> ValueWrapper<T> {
-    pub fn is_inf_or_neg_inf(&self) -> bool {
+    /// 创建有限值
+    /// Create a finite value
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 有限值
+    /// - `value`: The finite value
+    ///
+    /// # 返回 / Returns
+    /// 包装后的有限值
+    /// The wrapped finite value
+    pub fn finite(value: T) -> Self {
+        ValueWrapper::Finite(value)
+    }
+
+    /// 创建正无穷
+    /// Create positive infinity
+    ///
+    /// # 返回 / Returns
+    /// 表示正无穷的包装值
+    /// The wrapper representing positive infinity
+    pub fn positive_infinity() -> Self {
+        ValueWrapper::PositiveInfinity
+    }
+
+    /// 创建负无穷
+    /// Create negative infinity
+    ///
+    /// # 返回 / Returns
+    /// 表示负无穷的包装值
+    /// The wrapper representing negative infinity
+    pub fn negative_infinity() -> Self {
+        ValueWrapper::NegativeInfinity
+    }
+
+    /// 判断是否为有限值
+    /// Check if value is finite
+    ///
+    /// # 返回 / Returns
+    /// 如果为有限值返回 `true`，否则返回 `false`
+    /// Returns `true` if finite, `false` otherwise
+    pub fn is_finite(&self) -> bool {
+        matches!(self, ValueWrapper::Finite(_))
+    }
+
+    /// 判断是否为无穷大（正或负）
+    /// Check if value is infinity (positive or negative)
+    ///
+    /// # 返回 / Returns
+    /// 如果为无穷大返回 `true`，否则返回 `false`
+    /// Returns `true` if infinity, `false` otherwise
+    pub fn is_infinity(&self) -> bool {
+        matches!(
+            self,
+            ValueWrapper::PositiveInfinity | ValueWrapper::NegativeInfinity
+        )
+    }
+
+    /// 判断是否为正无穷
+    /// Check if value is positive infinity
+    ///
+    /// # 返回 / Returns
+    /// 如果为正无穷返回 `true`，否则返回 `false`
+    /// Returns `true` if positive infinity, `false` otherwise
+    pub fn is_positive_infinity(&self) -> bool {
+        matches!(self, ValueWrapper::PositiveInfinity)
+    }
+
+    /// 判断是否为负无穷
+    /// Check if value is negative infinity
+    ///
+    /// # 返回 / Returns
+    /// 如果为负无穷返回 `true`，否则返回 `false`
+    /// Returns `true` if negative infinity, `false` otherwise
+    pub fn is_negative_infinity(&self) -> bool {
+        matches!(self, ValueWrapper::NegativeInfinity)
+    }
+
+    /// 获取内部值（如果是有限值）
+    /// Get the inner value (if finite)
+    ///
+    /// # 返回 / Returns
+    /// 如果为有限值返回 `Some(&value)`，否则返回 `None`
+    /// Returns `Some(&value)` if finite, `None` otherwise
+    pub fn unwrap(&self) -> Option<&T> {
         match self {
-            Self::Inf | Self::NegInf => true,
+            ValueWrapper::Finite(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// 映射内部值（如果是有限值）
+    /// Map the inner value (if finite)
+    ///
+    /// # 参数 / Parameters
+    /// - `f`: 映射函数
+    /// - `f`: The mapping function
+    ///
+    /// # 返回 / Returns
+    /// 如果为有限值返回映射后的新值，否则保持无穷大状态
+    /// Returns mapped value if finite, preserves infinity status otherwise
+    pub fn map<U, F>(self, f: F) -> ValueWrapper<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            ValueWrapper::Finite(value) => ValueWrapper::Finite(f(value)),
+            ValueWrapper::PositiveInfinity => ValueWrapper::PositiveInfinity,
+            ValueWrapper::NegativeInfinity => ValueWrapper::NegativeInfinity,
+        }
+    }
+}
+
+// ============================================================================
+// PartialEq 实现 / PartialEq implementation
+// ============================================================================
+
+impl<T: PartialEq> PartialEq for ValueWrapper<T> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => a == b,
+            (ValueWrapper::PositiveInfinity, ValueWrapper::PositiveInfinity) => true,
+            (ValueWrapper::NegativeInfinity, ValueWrapper::NegativeInfinity) => true,
             _ => false,
         }
     }
 }
 
-pub trait ValueWrapperUnwrap<T> {
-    fn unwrap(&self) -> &T;
-}
+impl<T: Eq> Eq for ValueWrapper<T> {}
 
-impl<T> ValueWrapperUnwrap<T> for ValueWrapper<T> {
-    default fn unwrap(&self) -> &T {
-        match self {
-            Self::Value(value) => value,
-            Self::Inf => panic!("Cannot unwrap infinity value"),
-            Self::NegInf => panic!("Cannot unwrap negative infinity value"),
+// ============================================================================
+// PartialOrd 实现 / PartialOrd implementation
+// ============================================================================
+
+impl<T: PartialOrd> PartialOrd for ValueWrapper<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (ValueWrapper::NegativeInfinity, ValueWrapper::NegativeInfinity) => {
+                Some(Ordering::Equal)
+            }
+            (ValueWrapper::NegativeInfinity, _) => Some(Ordering::Less),
+            (_, ValueWrapper::NegativeInfinity) => Some(Ordering::Greater),
+            (ValueWrapper::PositiveInfinity, ValueWrapper::PositiveInfinity) => {
+                Some(Ordering::Equal)
+            }
+            (ValueWrapper::PositiveInfinity, _) => Some(Ordering::Greater),
+            (_, ValueWrapper::PositiveInfinity) => Some(Ordering::Less),
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => a.partial_cmp(b),
         }
     }
 }
 
-impl<T: RealNumber> ValueWrapperUnwrap<T> for ValueWrapper<T> {
-    fn unwrap(&self) -> &T {
+// ============================================================================
+// Display 实现 / Display implementation
+// ============================================================================
+
+impl<T: fmt::Display> fmt::Display for ValueWrapper<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Value(value) => value,
-            Self::Inf => T::INF.as_ref().unwrap(),
-            Self::NegInf => T::NEG_INF.as_ref().unwrap(),
+            ValueWrapper::Finite(value) => write!(f, "{}", value),
+            ValueWrapper::PositiveInfinity => write!(f, "+∞"),
+            ValueWrapper::NegativeInfinity => write!(f, "-∞"),
         }
     }
 }
 
-impl<T> From<Infinity> for ValueWrapper<T> {
-    fn from(_: Infinity) -> Self {
-        Self::Inf
+// ============================================================================
+// Default 实现 / Default implementation
+// ============================================================================
+
+impl<T: Default> Default for ValueWrapper<T> {
+    fn default() -> Self {
+        ValueWrapper::Finite(T::default())
     }
 }
 
-impl<T> From<NegativeInfinity> for ValueWrapper<T> {
-    fn from(_: NegativeInfinity) -> Self {
-        Self::NegInf
-    }
-}
+// ============================================================================
+// 从原生类型转换 / From native type conversions
+// ============================================================================
 
-impl<T: SemiArithmetic> From<T> for ValueWrapper<T> {
-    default fn from(value: T) -> Self {
-        Self::Value(value)
-    }
-}
-
-impl<T: RealNumber> From<T> for ValueWrapper<T> {
+impl<T> From<T> for ValueWrapper<T> {
     fn from(value: T) -> Self {
-        if value.is_inf() {
-            Self::Inf
-        } else if value.is_neg_inf() {
-            Self::NegInf
-        } else if value.is_nan() {
-            panic!("Illegal argument NaN for value range!!!")
-        } else {
-            Self::Value(value)
-        }
+        ValueWrapper::Finite(value)
     }
 }
 
-impl<T: for<'a> From<&'a U>, U> From<&ValueWrapper<U>> for ValueWrapper<T> {
-    fn from(value: &ValueWrapper<U>) -> Self {
-        match value {
-            ValueWrapper::Value(value) => ValueWrapper::Value(T::from(value)),
-            ValueWrapper::Inf => ValueWrapper::Inf,
-            ValueWrapper::NegInf => ValueWrapper::NegInf,
-        }
+// ============================================================================
+// Infinite trait 实现 / Infinite trait implementation
+// ============================================================================
+
+impl<T: Infinite> Infinite for ValueWrapper<T> {
+    fn infinity() -> Option<Self> {
+        Some(ValueWrapper::PositiveInfinity)
+    }
+
+    fn negative_infinity() -> Option<Self> {
+        Some(ValueWrapper::NegativeInfinity)
+    }
+
+    fn is_infinity(&self) -> bool {
+        self.is_infinity()
+    }
+
+    fn is_positive_infinity(&self) -> bool {
+        self.is_positive_infinity()
+    }
+
+    fn is_negative_infinity(&self) -> bool {
+        self.is_negative_infinity()
     }
 }
 
-impl<T: Display> Display for ValueWrapper<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Value(value) => write!(f, "{}", value),
-            Self::Inf => write!(f, "inf"),
-            Self::NegInf => write!(f, "-inf"),
-        }
+// ============================================================================
+// 测试 / Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================
+    // ValueWrapper 测试 / ValueWrapper tests
+    // ========================================================================
+
+    #[test]
+    fn test_value_wrapper_finite() {
+        let wrapper = ValueWrapper::finite(42_i64);
+        assert!(wrapper.is_finite());
+        assert!(!wrapper.is_infinity());
+        assert_eq!(wrapper.unwrap(), Some(&42));
+    }
+
+    #[test]
+    fn test_value_wrapper_positive_infinity() {
+        let wrapper = ValueWrapper::<i64>::positive_infinity();
+        assert!(!wrapper.is_finite());
+        assert!(wrapper.is_infinity());
+        assert!(wrapper.is_positive_infinity());
+        assert!(!wrapper.is_negative_infinity());
+        assert_eq!(wrapper.unwrap(), None);
+    }
+
+    #[test]
+    fn test_value_wrapper_negative_infinity() {
+        let wrapper = ValueWrapper::<i64>::negative_infinity();
+        assert!(!wrapper.is_finite());
+        assert!(wrapper.is_infinity());
+        assert!(!wrapper.is_positive_infinity());
+        assert!(wrapper.is_negative_infinity());
+        assert_eq!(wrapper.unwrap(), None);
+    }
+
+    #[test]
+    fn test_value_wrapper_eq() {
+        let a = ValueWrapper::finite(42_i64);
+        let b = ValueWrapper::finite(42_i64);
+        let c = ValueWrapper::finite(43_i64);
+        let pos_inf = ValueWrapper::<i64>::positive_infinity();
+        let neg_inf = ValueWrapper::<i64>::negative_infinity();
+
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        assert_ne!(a, pos_inf);
+        assert_ne!(pos_inf, neg_inf);
+        assert_eq!(
+            pos_inf,
+            ValueWrapper::<i64>::positive_infinity()
+        );
+    }
+
+    #[test]
+    fn test_value_wrapper_ord() {
+        let a = ValueWrapper::finite(42_i64);
+        let b = ValueWrapper::finite(43_i64);
+        let pos_inf = ValueWrapper::<i64>::positive_infinity();
+        let neg_inf = ValueWrapper::<i64>::negative_infinity();
+
+        assert!(a < b);
+        assert!(neg_inf < a);
+        assert!(a < pos_inf);
+        assert!(neg_inf < pos_inf);
+    }
+
+    #[test]
+    fn test_value_wrapper_display() {
+        let finite = ValueWrapper::finite(42_i64);
+        let pos_inf = ValueWrapper::<i64>::positive_infinity();
+        let neg_inf = ValueWrapper::<i64>::negative_infinity();
+
+        assert_eq!(format!("{}", finite), "42");
+        assert_eq!(format!("{}", pos_inf), "+∞");
+        assert_eq!(format!("{}", neg_inf), "-∞");
+    }
+
+    #[test]
+    fn test_value_wrapper_map() {
+        let finite = ValueWrapper::finite(42_i64);
+        let mapped = finite.map(|x| x * 2);
+        assert_eq!(mapped.unwrap(), Some(&84));
+
+        let pos_inf = ValueWrapper::<i64>::positive_infinity();
+        let mapped_inf = pos_inf.map(|x: i64| x * 2);
+        assert!(mapped_inf.is_positive_infinity());
+    }
+
+    #[test]
+    fn test_value_wrapper_from() {
+        let wrapper: ValueWrapper<i64> = ValueWrapper::from(42);
+        assert!(wrapper.is_finite());
+        assert_eq!(wrapper.unwrap(), Some(&42));
+    }
+
+    #[test]
+    fn test_value_wrapper_infinite_trait() {
+        assert!(ValueWrapper::<i64>::infinity().is_some());
+        assert!(ValueWrapper::<i64>::negative_infinity().is_some());
+
+        let pos_inf = ValueWrapper::<i64>::infinity().unwrap();
+        let neg_inf = ValueWrapper::<i64>::negative_infinity().unwrap();
+
+        assert!(pos_inf.is_positive_infinity());
+        assert!(neg_inf.is_negative_infinity());
     }
 }
-
-impl<T: Display> Debug for ValueWrapper<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Value(value) => write!(f, "{}", value),
-            Self::Inf => write!(f, "inf"),
-            Self::NegInf => write!(f, "-inf"),
-        }
-    }
-}
-
-impl<T, U: SemiArithmetic> PartialEq<U> for ValueWrapper<T>
-where
-    T: PartialEq<U>,
-{
-    default fn eq(&self, other: &U) -> bool {
-        match self {
-            ValueWrapper::Value(value) => value.eq(other),
-            ValueWrapper::Inf => false,
-            ValueWrapper::NegInf => false,
-        }
-    }
-}
-
-impl<T, U: RealNumber> PartialEq<U> for ValueWrapper<T>
-where
-    T: PartialEq<U>,
-{
-    fn eq(&self, other: &U) -> bool {
-        if other.is_nan() {
-            false
-        } else if other.is_inf() {
-            match self {
-                ValueWrapper::Value(_) | ValueWrapper::NegInf => false,
-                ValueWrapper::Inf => true,
-            }
-        } else if other.is_neg_inf() {
-            match self {
-                ValueWrapper::Value(_) | ValueWrapper::Inf => false,
-                ValueWrapper::NegInf => true,
-            }
-        } else {
-            match self {
-                ValueWrapper::Value(value) => value.eq(other),
-                ValueWrapper::Inf => false,
-                ValueWrapper::NegInf => false,
-            }
-        }
-    }
-}
-
-impl<T, U> PartialEq<ValueWrapper<U>> for ValueWrapper<T>
-where
-    T: PartialEq<U>,
-{
-    default fn eq(&self, other: &ValueWrapper<U>) -> bool {
-        match self {
-            ValueWrapper::Value(value) => match other {
-                ValueWrapper::Value(other_value) => value.eq(other_value),
-                _ => false,
-            },
-            ValueWrapper::Inf => match other {
-                ValueWrapper::Inf => true,
-                _ => false,
-            },
-            ValueWrapper::NegInf => match other {
-                ValueWrapper::NegInf => true,
-                _ => false,
-            },
-        }
-    }
-}
-
-impl<T, U: SemiArithmetic> PartialOrd<U> for ValueWrapper<T>
-where
-    T: PartialOrd<U>,
-{
-    default fn partial_cmp(&self, rhs: &U) -> Option<Ordering> {
-        match self {
-            ValueWrapper::Value(lhs_value) => lhs_value.partial_cmp(rhs),
-            ValueWrapper::Inf => Some(Ordering::Greater),
-            ValueWrapper::NegInf => Some(Ordering::Less),
-        }
-    }
-}
-
-impl<T, U: RealNumber> PartialOrd<U> for ValueWrapper<T>
-where
-    T: PartialOrd<U>,
-{
-    fn partial_cmp(&self, rhs: &U) -> Option<Ordering> {
-        if rhs.is_nan() {
-            None
-        } else if rhs.is_inf() {
-            match self {
-                ValueWrapper::Value(_) | ValueWrapper::NegInf => Some(Ordering::Less),
-                ValueWrapper::Inf => Some(Ordering::Equal),
-            }
-        } else if rhs.is_neg_inf() {
-            match self {
-                ValueWrapper::Value(_) | ValueWrapper::Inf => Some(Ordering::Greater),
-                ValueWrapper::NegInf => Some(Ordering::Equal),
-            }
-        } else {
-            match self {
-                ValueWrapper::Value(lhs_value) => lhs_value.partial_cmp(rhs),
-                ValueWrapper::Inf => Some(Ordering::Greater),
-                ValueWrapper::NegInf => Some(Ordering::Less),
-            }
-        }
-    }
-}
-
-impl<T, U> PartialOrd<ValueWrapper<U>> for ValueWrapper<T>
-where
-    T: PartialOrd<U>,
-{
-    default fn partial_cmp(&self, rhs: &ValueWrapper<U>) -> Option<Ordering> {
-        match self {
-            ValueWrapper::Value(lhs_value) => match rhs {
-                ValueWrapper::Value(rhs_value) => lhs_value.partial_cmp(rhs_value),
-                ValueWrapper::Inf => Some(Ordering::Less),
-                ValueWrapper::NegInf => Some(Ordering::Greater),
-            },
-            ValueWrapper::Inf => match rhs {
-                ValueWrapper::Value(_) | ValueWrapper::NegInf => Some(Ordering::Greater),
-                ValueWrapper::Inf => Some(Ordering::Equal),
-            },
-            ValueWrapper::NegInf => match rhs {
-                ValueWrapper::Value(_) | ValueWrapper::Inf => Some(Ordering::Less),
-                ValueWrapper::NegInf => Some(Ordering::Equal),
-            },
-        }
-    }
-}
-
-macro_rules! value_wrapper_template {
-    ($type:ident, $rhs:ident) => {
-        impl From<$type> for ValueWrapper<$type> {
-            fn from(value: $type) -> Self {
-                Self::Value(value)
-            }
-        }
-
-        impl<'a> From<&'a $type> for ValueWrapper<$type> {
-            fn from(value: &'a $type) -> Self {
-                Self::Value(*value)
-            }
-        }
-
-        impl PartialEq<$type> for ValueWrapper<$type> {
-            fn eq(&self, other: &$type) -> bool {
-                match self {
-                    Self::Value(value) => value == other,
-                    ValueWrapper::Inf => false,
-                    ValueWrapper::NegInf => false,
-                }
-            }
-        }
-
-        impl PartialOrd<$type> for ValueWrapper<$type> {
-            fn partial_cmp(&self, rhs: &$type) -> Option<Ordering> {
-                match self {
-                    ValueWrapper::Value(value) => value.partial_cmp(rhs),
-                    ValueWrapper::Inf => Some(Ordering::Less),
-                    ValueWrapper::NegInf => Some(Ordering::Greater),
-                }
-            }
-        }
-
-        impl Add<$rhs> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: $rhs) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value + rhs)),
-                    ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                    ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                }
-            }
-        }
-
-        impl<'a> Add<&'a $rhs> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a $rhs) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => {
-                        Ok(ValueWrapper::from(lhs_value + rhs.clone()))
-                    }
-                    ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                    ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                }
-            }
-        }
-
-        impl<'a> Add<$rhs> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: $rhs) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => {
-                        Ok(ValueWrapper::from(lhs_value.clone() + rhs))
-                    }
-                    ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                    ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                }
-            }
-        }
-
-        impl<'a, 'b> Add<&'b $rhs> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'b $rhs) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => {
-                        Ok(ValueWrapper::from(lhs_value.clone() + rhs.clone()))
-                    }
-                    ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                    ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                }
-            }
-        }
-
-        impl Sub<$rhs> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: $rhs) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value - rhs)),
-                    ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                    ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                }
-            }
-        }
-
-        impl<'a> Sub<&'a $rhs> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a $rhs) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => {
-                        Ok(ValueWrapper::from(lhs_value - rhs.clone()))
-                    }
-                    ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                    ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                }
-            }
-        }
-
-        impl<'a> Sub<$rhs> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: $rhs) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => {
-                        Ok(ValueWrapper::from(lhs_value.clone() - rhs))
-                    }
-                    ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                    ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                }
-            }
-        }
-
-        impl<'a, 'b> Sub<&'b $rhs> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'b $rhs) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => {
-                        Ok(ValueWrapper::from(lhs_value.clone() - rhs.clone()))
-                    }
-                    ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                    ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                }
-            }
-        }
-    };
-}
-value_wrapper_template!(Instant, Duration);
-value_wrapper_template!(NaiveDateTime, Duration);
-value_wrapper_template!(Duration, Duration);
-
-macro_rules! signed_value_wrapper_template {
-    ($($type:ident)*) => ($(
-        impl Neg for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Neg>::Output>, IllegalArgumentError>;
-
-            fn neg(self) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(value) => Ok(ValueWrapper::from(-value)),
-                    ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                    ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                }
-            }
-        }
-
-        impl<'a> Neg for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Neg>::Output>, IllegalArgumentError>;
-
-            fn neg(self) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(value) => Ok(ValueWrapper::from(-value)),
-                    ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                    ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                }
-            }
-        }
-    )*)
-}
-signed_value_wrapper_template! { i8 i16 i32 i64 i128 isize f32 f64 }
-
-macro_rules! real_number_value_wrapper_template {
-    ($($type:ident)*) => ($(
-        impl Add<$type> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value + rhs)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl<'a> Add<&'a $type> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Add<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value + rhs)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl<'a> Add<$type> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value + rhs)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl<'a, 'b> Add<&'b $type> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Add<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'b $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value + rhs)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl Add<ValueWrapper<$type>> for $type {
-            type Output = Result<ValueWrapper<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self + rhs_value)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl<'a> Add<&'a ValueWrapper<$type>> for $type {
-            type Output = Result<ValueWrapper<<$type as Add<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self + rhs_value)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl<'a> Add<ValueWrapper<$type>> for &'a $type {
-            type Output = Result<ValueWrapper<<&'a $type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self + rhs_value)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl<'a, 'b> Add<&'b ValueWrapper<$type>> for &'a $type {
-            type Output = Result<ValueWrapper<<&'a $type as Add<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'b ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self + rhs_value)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl Add<ValueWrapper<$type>> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value + rhs_value)),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    },
-                }
-            }
-        }
-
-        impl<'a> Add<&'a ValueWrapper<$type>> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Add<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'a ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value + rhs_value)),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    },
-                }
-            }
-        }
-
-        impl<'a> Add<ValueWrapper<$type>> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Add<$type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value + rhs_value)),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    },
-                }
-            }
-        }
-
-        impl<'a, 'b> Add<&'b ValueWrapper<$type>> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Add<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn add(self, rhs: &'b ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value + rhs_value)),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid addition between inf and -inf!!!".to_string(),
-                        }),
-                    },
-                }
-            }
-        }
-
-        impl Sub<$type> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value - rhs)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl<'a> Sub<&'a $type> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Sub<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value - rhs)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl<'a> Sub<$type> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value - rhs)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl<'a, 'b> Sub<&'b $type> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Sub<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'b $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value - rhs)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl Sub<ValueWrapper<$type>> for $type {
-            type Output = Result<ValueWrapper<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self - rhs_value)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl<'a> Sub<&'a ValueWrapper<$type>> for $type {
-            type Output = Result<ValueWrapper<<$type as Sub<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self - rhs_value)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl<'a> Sub<ValueWrapper<$type>> for &'a $type {
-            type Output = Result<ValueWrapper<<&'a $type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self - rhs_value)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl<'a, 'b> Sub<&'b ValueWrapper<$type>> for &'a $type {
-            type Output = Result<ValueWrapper<<&'a $type as Sub<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'b ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self - rhs_value)),
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                }
-            }
-        }
-
-        impl Sub<ValueWrapper<$type>> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value - rhs_value)),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between inf and inf!!!".to_string(),
-                        }),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between -inf and -inf!!!".to_string(),
-                        }),
-                    },
-                }
-            }
-        }
-
-        impl<'a> Sub<&'a ValueWrapper<$type>> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Sub<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'a ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value - rhs_value)),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between inf and inf!!!".to_string(),
-                        }),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between -inf and -inf!!!".to_string(),
-                        }),
-                    },
-                }
-            }
-        }
-
-        impl<'a> Sub<ValueWrapper<$type>> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Sub<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value - rhs_value)),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between inf and inf!!!".to_string(),
-                        }),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between -inf and -inf!!!".to_string(),
-                        }),
-                    },
-                }
-            }
-        }
-
-        impl<'a, 'b> Sub<&'b ValueWrapper<$type>> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Sub<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn sub(self, rhs: &'b ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value - rhs_value)),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between inf and inf!!!".to_string(),
-                        }),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "invalid subtraction between -inf and -inf!!!".to_string(),
-                        }),
-                    },
-                }
-            }
-        }
-
-        impl Mul<$type> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value * rhs)),
-                        ValueWrapper::Inf => {
-                            if &rhs >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if &rhs >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl<'a> Mul<&'a $type> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Mul<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'a $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value * rhs)),
-                        ValueWrapper::Inf => {
-                            if rhs >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if rhs >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl<'a> Mul<$type> for ValueWrapper<&'a $type> {
-            type Output = Result<ValueWrapper<<&'a $type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value * rhs)),
-                        ValueWrapper::Inf => {
-                            if &rhs >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if &rhs >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl<'a, 'b> Mul<&'b $type> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Mul<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'b $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value * rhs)),
-                        ValueWrapper::Inf => {
-                            if rhs >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if rhs >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl Mul<ValueWrapper<$type>> for $type {
-            type Output = Result<ValueWrapper<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self * rhs_value)),
-                        ValueWrapper::Inf => {
-                            if &self >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if &self >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl<'a> Mul<&'a ValueWrapper<$type>> for $type {
-            type Output = Result<ValueWrapper<<$type as Mul<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'a ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self * rhs_value)),
-                        ValueWrapper::Inf => {
-                            if &self >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if &self >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl<'a> Mul<ValueWrapper<$type>> for &'a $type {
-            type Output = Result<ValueWrapper<<$type as Mul<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self * rhs_value)),
-                        ValueWrapper::Inf => {
-                            if self >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if self >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl<'a, 'b> Mul<&'b ValueWrapper<$type>> for &'a $type {
-            type Output = Result<ValueWrapper<<&'a $type as Mul<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'b ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self * rhs_value)),
-                        ValueWrapper::Inf => {
-                            if self >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if self >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl Mul<ValueWrapper<$type>> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value * rhs_value)),
-                        ValueWrapper::Inf => {
-                            if &lhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if &lhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if &rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if &rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                        ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                    },
-                }
-            }
-        }
-
-        impl<'a> Mul<&'a ValueWrapper<$type>> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Mul<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'a ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value * rhs_value)),
-                        ValueWrapper::Inf => {
-                            if &lhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if &lhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                        ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                    },
-                }
-            }
-        }
-
-        impl<'a> Mul<ValueWrapper<$type>> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Mul<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value * rhs_value)),
-                        ValueWrapper::Inf => {
-                            if lhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if lhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if &rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if &rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                        ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                    },
-                }
-            }
-        }
-
-        impl<'a, 'b> Mul<&'b ValueWrapper<$type>> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Mul<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn mul(self, rhs: &'b ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value * rhs_value)),
-                        ValueWrapper::Inf => {
-                            if lhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if lhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                        ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                        ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                    },
-                }
-            }
-        }
-
-        impl Div<$type> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and -inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value / rhs)),
-                        ValueWrapper::Inf => {
-                            if &rhs >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if &rhs >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl<'a> Div<&'a $type> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Div<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'a $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and -inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value / rhs)),
-                        ValueWrapper::Inf => {
-                            if rhs >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if rhs >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl<'a> Div<$type> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and -inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value / rhs)),
-                        ValueWrapper::Inf => {
-                            if &rhs >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if &rhs >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl<'a, 'b> Div<&'b $type> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Div<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'b $type) -> Self::Output {
-                if rhs.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if rhs.is_inf() {
-                    match self {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if rhs.is_neg_inf() {
-                    match self {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and -inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match self {
-                        ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value / rhs)),
-                        ValueWrapper::Inf => {
-                            if rhs >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if rhs >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl Div<ValueWrapper<$type>> for $type {
-            type Output = Result<ValueWrapper<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and -inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self / rhs_value)),
-                        ValueWrapper::Inf => {
-                            if &self >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if &self >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl<'a> Div<ValueWrapper<$type>> for &'a $type {
-            type Output = Result<ValueWrapper<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and -inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self / rhs_value)),
-                        ValueWrapper::Inf => {
-                            if self >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if self >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl<'a> Div<&'a ValueWrapper<$type>> for $type {
-            type Output = Result<ValueWrapper<<$type as Div<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'a ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and -inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self / rhs_value)),
-                        ValueWrapper::Inf => {
-                            if &self >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if &self >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl<'a, 'b> Div<&'b ValueWrapper<$type>> for &'a $type {
-            type Output = Result<ValueWrapper<<$type as Div<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'b ValueWrapper<$type>) -> Self::Output {
-                if self.is_nan() {
-                    Err(IllegalArgumentError {
-                        msg: "Illegal argument NaN for value range!!!".to_string(),
-                    })
-                } else if self.is_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and inf!!!".to_string(),
-                        }),
-                    }
-                } else if self.is_neg_inf() {
-                    match rhs {
-                        ValueWrapper::Value(_) => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and -inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and -inf!!!".to_string(),
-                        }),
-                    }
-                } else {
-                    match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(self / rhs_value)),
-                        ValueWrapper::Inf => {
-                            if self >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::NegInf => {
-                            if self >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        impl Div<ValueWrapper<$type>> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value / rhs_value)),
-                        ValueWrapper::Inf | ValueWrapper::NegInf => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if &rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and -inf!!!".to_string(),
-                        }),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if &rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and -inf!!!".to_string(),
-                        }),
-                    },
-                }
-            }
-        }
-
-        impl<'a> Div<ValueWrapper<$type>> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Div<$type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value / rhs_value)),
-                        ValueWrapper::Inf | ValueWrapper::NegInf => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if &rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and -inf!!!".to_string(),
-                        }),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if &rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and -inf!!!".to_string(),
-                        }),
-                    },
-                }
-            }
-        }
-
-        impl<'a> Div<&'a ValueWrapper<$type>> for ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<$type as Div<&'a $type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'a ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value / rhs_value)),
-                        ValueWrapper::Inf | ValueWrapper::NegInf => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and -inf!!!".to_string(),
-                        }),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and -inf!!!".to_string(),
-                        }),
-                    },
-                }
-            }
-        }
-
-        impl<'a, 'b> Div<&'b ValueWrapper<$type>> for &'a ValueWrapper<$type> {
-            type Output = Result<ValueWrapper<<&'a $type as Div<&'b $type>>::Output>, IllegalArgumentError>;
-
-            fn div(self, rhs: &'b ValueWrapper<$type>) -> Self::Output {
-                match self {
-                    ValueWrapper::Value(lhs_value) => match rhs {
-                        ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value / rhs_value)),
-                        ValueWrapper::Inf | ValueWrapper::NegInf => {
-                            Ok(ValueWrapper::from(<$type as Div<$type>>::Output::ZERO.clone()))
-                        }
-                    },
-                    ValueWrapper::Inf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::Inf)
-                            } else {
-                                Ok(ValueWrapper::NegInf)
-                            }
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between inf and -inf!!!".to_string(),
-                        }),
-                    },
-                    ValueWrapper::NegInf => match rhs {
-                        ValueWrapper::Value(rhs_value) => {
-                            if rhs_value >= $type::ZERO {
-                                Ok(ValueWrapper::NegInf)
-                            } else {
-                                Ok(ValueWrapper::Inf)
-                            }
-                        }
-                        ValueWrapper::Inf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and inf!!!".to_string(),
-                        }),
-                        ValueWrapper::NegInf => Err(IllegalArgumentError {
-                            msg: "Invalid div between -inf and -inf!!!".to_string(),
-                        }),
-                    },
-                }
-            }
-        }
-    )*)
-}
-real_number_value_wrapper_template! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize f32 f64 }

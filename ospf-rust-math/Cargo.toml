@@ -1,33 +1,17 @@
 [package]
 name = "ospf-rust-math"
 version = "0.1.0"
-authors = ["fuookami <wfuookami@gmail.com>"]
-edition = "2021"
-description = "A math utils for ospf-rust."
-license = "Apache-2.0"
-
-homepage = "https://github.com/fuookami/ospf-rust"
-repository = "https://github.com/fuookami/ospf-rust"
-readme = "../README.md"
+edition = "2024"
 
 [dependencies]
-paste = "1.0.15"
-num = "0.4.3"
-bigdecimal = "0.4.7"
-chrono = "0.4.39"
-strum = { version = "0.26.3", features = ["derive"] }
-dyn-clone = "1.0.17"
+bigdecimal = "0.4"
+num-bigint = "0.4"
+num-rational = "0.4"
+num-traits = "0.2"
 
-[dependencies.ospf-rust-base]
-path = "../ospf-rust-base"
-version = "0.1.0"
+[dev-dependencies]
+criterion = "0.5"
 
-[dependencies.ospf-rust-multiarray]
-path = "../ospf-rust-multiarray"
-version = "0.1.0"
-
-[profile.dev]
-opt-level = 0
-
-[profile.release]
-opt-level = 3
+[[bench]]
+name = "value_range_bench"
+harness = false
