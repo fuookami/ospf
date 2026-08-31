@@ -3,17 +3,22 @@
 //! 实现产能排程约束和目标 Pipeline。
 //! Implements capacity scheduling constraint and objective pipelines.
 
-use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::model::object::SubObjective;
+use std::collections::HashMap;
+
+use ospf_rust_core::error::Result;
 use ospf_rust_core::model::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::model::mechanism::constraint_group::ConstraintGroup;
-use ospf_rust_framework::model::pipeline::Pipeline;
-use ospf_rust_core::error::Result;
+use ospf_rust_core::model::object::SubObjective;
+use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearIntermediateSymbol;
+use ospf_rust_framework::model::pipeline::Pipeline;
+use ospf_rust_framework::solver::column_generation_solver::LinearDualSolution;
 
+use crate::domain::capacity_scheduling::iterative::IterativeCapacityCompilation;
 use crate::domain::capacity_scheduling::model::{
-    CapacityCompilation, CapacityOrderCompilation, ProductionActionTrait,
+    CapacityColumn, CapacityCompilation, CapacityOrderCompilation, ProductionActionTrait,
 };
+use crate::domain::common::{ConstraintIndexKey, ConstraintIndexMap, ExecutorId, ExecutorIdTrait};
 
 // ============================================================================
 // 约束型 Pipeline / Constraint Pipelines
@@ -30,8 +35,8 @@ use crate::domain::capacity_scheduling::model::{
 pub struct ExecutorCapacityConstraint {
     name: String,
     group: Option<ConstraintGroup>,
-    /// (capacity_usage_model_index, capacity_limit) 列表
-    /// 每项对应一个 executor-slot 对
+    /// (capacity_usage_model_index, capacity_limit) 列表 / List
+    /// 每项对应一个 executor-slot 对 / Each item corresponds to an executor-slot pair
     pub constraints: Vec<(usize, f64)>,
 }
 
@@ -41,7 +46,9 @@ impl ExecutorCapacityConstraint {
         compilation: &CapacityCompilation<A>,
         slot_capacity: f64,
     ) -> Self {
-        let constraints: Vec<(usize, f64)> = compilation.capacity_symbols.iter()
+        let constraints: Vec<(usize, f64)> = compilation
+            .capacity_symbols
+            .iter()
             .enumerate()
             .filter_map(|(idx, sym)| {
                 let poly = sym.as_ref().to_linear_polynomial();
@@ -55,7 +62,14 @@ impl ExecutorCapacityConstraint {
             .collect();
 
         Self {
-            name: format!("{}_executor_capacity", compilation.actions.first().map(|a| a.executor_id()).unwrap_or("cap")),
+            name: format!(
+                "{}_executor_capacity",
+                compilation
+                    .actions
+                    .first()
+                    .map(|action| action.executor_id().to_string())
+                    .unwrap_or_else(|| "cap".to_string()),
+            ),
             group: None,
             constraints,
         }
@@ -63,18 +77,175 @@ impl ExecutorCapacityConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for ExecutorCapacityConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (idx, (cap_idx, limit)) in self.constraints.iter().enumerate() {
             let terms = vec![LinearMonomial::new(1.0, *cap_idx)];
             if let Err(e) = model.add_le_constraint(
-                &terms.iter().map(|m| (m.var_index(), *m.coefficient())).collect::<Vec<_>>(),
+                &terms
+                    .iter()
+                    .map(|m| (m.var_index(), *m.coefficient()))
+                    .collect::<Vec<_>>(),
                 *limit,
                 &format!("{}_{}", self.name, idx),
             ) {
                 log::warn!("Failed to register {}_{}: {:?}", self.name, idx, e);
+            }
+        }
+    }
+
+    fn invoke(&self, _model: &MetaModel<f64>) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// 产能列选择约束 / Capacity-column selection constraint
+///
+/// 对每个活跃 `(executor, slot)` 组添加恰选一条产能列的约束：
+/// `sum(column_selection) == 1`。
+///
+/// Adds an exactly-one capacity-column constraint for every active
+/// `(executor, slot)` group: `sum(column_selection) == 1`.
+#[derive(Debug)]
+pub struct CapacityColumnSelectionConstraint<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
+    name: String,
+    group: Option<ConstraintGroup>,
+    /// 执行器-时隙选列项 / Executor-slot column-selection terms
+    pub selection_polynomials: Vec<(I, usize, Vec<(usize, f64)>)>,
+}
+
+impl<I> CapacityColumnSelectionConstraint<I>
+where
+    I: ExecutorIdTrait,
+{
+    /// 从迭代产能编译创建约束 / Create from iterative capacity compilation
+    ///
+    /// 使用编译当前活跃的列变量快照，覆盖全部执行器-时隙组。
+    /// Uses the compilation's current active-column-variable snapshot and
+    /// covers every executor-slot group.
+    pub fn from_iterative_compilation<A>(compilation: &IterativeCapacityCompilation<A>) -> Self
+    where
+        A: ProductionActionTrait<ExecutorId = I>,
+    {
+        let active_groups = compilation
+            .executor_ids
+            .iter()
+            .flat_map(|executor_id| {
+                (0..compilation.slot_count).map(move |slot_index| (executor_id.clone(), slot_index))
+            })
+            .collect::<Vec<_>>();
+        Self::from_columns(active_groups, compilation.active_column_variables())
+    }
+
+    /// 从活跃列变量映射创建约束 / Create from active column-variable mappings
+    pub fn from_columns<'a, A, Groups, Columns>(
+        active_groups: Groups,
+        column_variables: Columns,
+    ) -> Self
+    where
+        A: ProductionActionTrait<ExecutorId = I> + 'a,
+        Groups: IntoIterator<Item = (I, usize)>,
+        Columns: IntoIterator<Item = (&'a CapacityColumn<A>, usize)>,
+    {
+        let mut selection_polynomials = active_groups
+            .into_iter()
+            .map(|(executor_id, slot_index)| (executor_id, slot_index, Vec::new()))
+            .collect::<Vec<_>>();
+
+        for (column, variable_index) in column_variables {
+            if let Some((_, _, terms)) =
+                selection_polynomials
+                    .iter_mut()
+                    .find(|(executor_id, slot_index, _)| {
+                        *executor_id == column.executor_id && *slot_index == column.slot_index
+                    })
+            {
+                terms.push((variable_index, 1.0));
+            }
+        }
+
+        selection_polynomials.sort_by(|lhs, rhs| {
+            lhs.0
+                .to_string()
+                .cmp(&rhs.0.to_string())
+                .then_with(|| lhs.1.cmp(&rhs.1))
+        });
+        Self {
+            name: "capacity_column_selection".to_string(),
+            group: None,
+            selection_polynomials,
+        }
+    }
+
+    /// 约束名称 / Constraint name
+    pub fn constraint_name(executor_id: &I, slot_index: usize) -> String {
+        format!("capacity_column_selection_{}_{}", executor_id, slot_index)
+    }
+
+    /// 注册约束索引映射 / Register constraint-index mappings
+    pub fn register_constraint_indexes(
+        &self,
+        constraint_index_map: &mut ConstraintIndexMap,
+        constraint_name_to_index: &HashMap<String, usize>,
+    ) {
+        for (executor_id, slot_index, _) in &self.selection_polynomials {
+            let name = Self::constraint_name(executor_id, *slot_index);
+            if let Some(&dual_index) = constraint_name_to_index.get(&name) {
+                constraint_index_map.register(
+                    ConstraintIndexKey::capacity_column_selection(
+                        executor_id.to_string(),
+                        *slot_index,
+                    ),
+                    name,
+                    dual_index,
+                );
+            }
+        }
+    }
+
+    /// 提取产能列选择影子价格 / Extract capacity-column selection shadow prices
+    pub fn extract_shadow_prices(
+        &self,
+        dual_solution: &LinearDualSolution,
+        constraint_index_map: &ConstraintIndexMap,
+    ) -> HashMap<(I, usize), f64> {
+        let mut prices = HashMap::new();
+        for (executor_id, slot_index, _) in &self.selection_polynomials {
+            let key =
+                ConstraintIndexKey::capacity_column_selection(executor_id.to_string(), *slot_index);
+            if let Some(price) = constraint_index_map.dual_value(&key, &dual_solution.constraints) {
+                prices.insert((executor_id.clone(), *slot_index), price);
+            }
+        }
+        prices
+    }
+}
+
+impl<I> Pipeline<MetaModel<f64>> for CapacityColumnSelectionConstraint<I>
+where
+    I: ExecutorIdTrait,
+{
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
+
+    fn register(&self, model: &mut MetaModel<f64>) {
+        for (executor_id, slot_index, terms) in &self.selection_polynomials {
+            let name = Self::constraint_name(executor_id, *slot_index);
+            if let Err(error) = model.add_eq_constraint(terms, 1.0, &name) {
+                log::warn!("Failed to register {}: {:?}", name, error);
             }
         }
     }
@@ -100,12 +271,12 @@ pub struct OrderConstraint {
     name: String,
     group: Option<ConstraintGroup>,
     /// 订单编译约束多项式 / Order compilation constraint polynomials
-    /// 每项为 (terms, rhs) 表示 sum(terms) <= rhs
+    /// 每项为 (terms, rhs) 表示 sum(terms) <= rhs / Each item is (terms, rhs) representing sum(terms) <= rhs
     pub order_polynomials: Vec<(Vec<(usize, f64)>, f64)>,
     /// x >= b 约束 / x >= b constraints
-    pub x_ge_b_constraints: Vec<(usize, usize)>,  // (x_model_index, b_model_index)
+    pub x_ge_b_constraints: Vec<(usize, usize)>, // (x_model_index, b_model_index)
     /// x <= M * b 约束 / x <= M * b constraints
-    pub x_le_mb_constraints: Vec<(usize, usize, f64)>,  // (x_model_index, b_model_index, M)
+    pub x_le_mb_constraints: Vec<(usize, usize, f64)>, // (x_model_index, b_model_index, M)
 }
 
 impl OrderConstraint {
@@ -127,7 +298,11 @@ impl OrderConstraint {
             for oi in 0..n_orders {
                 let mut terms = Vec::new();
                 for ai in 0..n_actions {
-                    if let Some(b_idx) = compilation.b.as_ref().and_then(|b| b.model_index(&ai, &si, &oi)) {
+                    if let Some(b_idx) = compilation
+                        .b
+                        .as_ref()
+                        .and_then(|b| b.model_index(&ai, &si, &oi))
+                    {
                         terms.push((b_idx, 1.0));
                     }
                 }
@@ -145,8 +320,14 @@ impl OrderConstraint {
             for si in 0..n_slots {
                 for oi in 0..n_orders {
                     if let (Some(x_idx), Some(b_idx)) = (
-                        compilation.x.as_ref().and_then(|x| x.model_index(&ai, &si, &oi)),
-                        compilation.b.as_ref().and_then(|b| b.model_index(&ai, &si, &oi)),
+                        compilation
+                            .x
+                            .as_ref()
+                            .and_then(|x| x.model_index(&ai, &si, &oi)),
+                        compilation
+                            .b
+                            .as_ref()
+                            .and_then(|b| b.model_index(&ai, &si, &oi)),
                     ) {
                         x_ge_b_constraints.push((x_idx, b_idx));
                         x_le_mb_constraints.push((x_idx, b_idx, big_m));
@@ -166,13 +347,19 @@ impl OrderConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for OrderConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         // 1. sum(b[action, slot, order]) <= 1
         for (idx, (terms, rhs)) in self.order_polynomials.iter().enumerate() {
-            if let Err(e) = model.add_le_constraint(terms, *rhs, &format!("{}_order_{}", self.name, idx)) {
+            if let Err(e) =
+                model.add_le_constraint(terms, *rhs, &format!("{}_order_{}", self.name, idx))
+            {
                 log::warn!("Failed to register {}_order_{}: {:?}", self.name, idx, e);
             }
         }
@@ -253,14 +440,20 @@ impl CapacityCostMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for CapacityCostMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -275,6 +468,8 @@ impl Pipeline<MetaModel<f64>> for CapacityCostMinimization {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::domain::capacity_scheduling::model::BasicProductionAction;
 
@@ -282,9 +477,9 @@ mod tests {
     fn test_executor_capacity_constraint() {
         let mut model = MetaModel::<f64>::new("test_executor_cap");
 
-        let actions = vec![
-            BasicProductionAction::new("a1", "Action 1", "exec_1", 1.0, 10.0),
-        ];
+        let actions = vec![BasicProductionAction::new(
+            "a1", "Action 1", "exec_1", 1.0, 10.0,
+        )];
         let executor_ids = vec!["exec_1".to_string()];
 
         let mut compilation = CapacityCompilation::new(actions, executor_ids, 2);
@@ -297,12 +492,86 @@ mod tests {
     }
 
     #[test]
+    fn test_capacity_column_selection_registers_and_preserves_zero_dual() {
+        let mut model = MetaModel::<f64>::new("test_capacity_column_selection");
+        let actions = vec![BasicProductionAction::new(
+            "a1", "Action 1", "exec_1", 1.0, 10.0,
+        )];
+        let executor_ids = vec!["exec_1".to_string()];
+        let mut compilation = CapacityCompilation::new(actions, executor_ids, 2);
+        compilation.register(&mut model).unwrap();
+        let x = compilation.x.as_ref().unwrap();
+
+        let first = CapacityColumn::<BasicProductionAction>::new("exec_1", 0, 0, 0.0);
+        let second = CapacityColumn::<BasicProductionAction>::new("exec_1", 1, 0, 0.0);
+        let constraint = CapacityColumnSelectionConstraint::from_columns(
+            vec![("exec_1".into(), 0), ("exec_1".into(), 1)],
+            vec![
+                (&first, x.model_index(&0, &0).unwrap()),
+                (&second, x.model_index(&0, &1).unwrap()),
+            ],
+        );
+        constraint.register(&mut model);
+
+        assert_eq!(constraint.selection_polynomials.len(), 2);
+        assert_eq!(model.num_constraints(), 2);
+
+        let names = HashMap::from([
+            ("capacity_column_selection_exec_1_0".to_string(), 0),
+            ("capacity_column_selection_exec_1_1".to_string(), 1),
+        ]);
+        let mut indexes = ConstraintIndexMap::new();
+        constraint.register_constraint_indexes(&mut indexes, &names);
+        let prices = constraint.extract_shadow_prices(
+            &LinearDualSolution::new(vec![0.0, 3.0], Vec::new()),
+            &indexes,
+        );
+
+        assert_eq!(prices.get(&("exec_1".into(), 0)), Some(&0.0));
+        assert_eq!(prices.get(&("exec_1".into(), 1)), Some(&3.0));
+    }
+
+    #[test]
+    fn test_capacity_column_selection_uses_iterative_active_snapshot() {
+        let actions = vec![BasicProductionAction::new(
+            "a1", "Action 1", "exec_1", 1.0, 10.0,
+        )];
+        let mut compilation = IterativeCapacityCompilation::new(actions, vec!["exec_1"], 2);
+        let mut model = MetaModel::<f64>::new("test_iterative_capacity_column_selection");
+        compilation.register(&mut model).unwrap();
+        let added = compilation
+            .add_columns(
+                0,
+                vec![
+                    CapacityColumn::new("exec_1", 0, 0, 0.0),
+                    CapacityColumn::new("exec_1", 0, 1, 0.0),
+                ],
+                &mut model,
+            )
+            .unwrap();
+
+        let before = CapacityColumnSelectionConstraint::from_iterative_compilation(&compilation);
+        assert_eq!(before.selection_polynomials[0].2.len(), 2);
+        assert!(before.selection_polynomials[1].2.is_empty());
+
+        compilation
+            .remove_columns(&[added[0].index], &mut model)
+            .unwrap();
+        let after = CapacityColumnSelectionConstraint::from_iterative_compilation(&compilation);
+        assert_eq!(
+            after.selection_polynomials[0].2,
+            vec![(added[1].model_index, 1.0)]
+        );
+        assert!(after.selection_polynomials[1].2.is_empty());
+    }
+
+    #[test]
     fn test_order_constraint() {
         let mut model = MetaModel::<f64>::new("test_order_constraint");
 
-        let actions = vec![
-            BasicProductionAction::new("a1", "Action 1", "exec_1", 1.0, 10.0),
-        ];
+        let actions = vec![BasicProductionAction::new(
+            "a1", "Action 1", "exec_1", 1.0, 10.0,
+        )];
         let executor_ids = vec!["exec_1".to_string()];
 
         let mut compilation = CapacityOrderCompilation::new(actions, executor_ids, 2, 3);
@@ -320,9 +589,9 @@ mod tests {
     fn test_capacity_cost_minimization() {
         let mut model = MetaModel::<f64>::new("test_cap_cost");
 
-        let actions = vec![
-            BasicProductionAction::new("a1", "Action 1", "exec_1", 1.0, 10.0),
-        ];
+        let actions = vec![BasicProductionAction::new(
+            "a1", "Action 1", "exec_1", 1.0, 10.0,
+        )];
         let executor_ids = vec!["exec_1".to_string()];
 
         let mut compilation = CapacityCompilation::new(actions, executor_ids, 2);

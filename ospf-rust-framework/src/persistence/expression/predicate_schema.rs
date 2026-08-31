@@ -213,7 +213,9 @@ pub fn runtime_field(path: impl AsRef<str>) -> FieldPath<ExpressionValue> {
 /// Field mapping.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldMapping<C = String> {
+    /// 领域属性路径 / Domain property path
     pub path: PropertyPath,
+    /// 后端字段表示 / Backend field representation
     pub backend_field: C,
 }
 

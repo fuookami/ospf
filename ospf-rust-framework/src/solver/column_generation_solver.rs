@@ -546,7 +546,7 @@ pub trait ColumnGenerationSolver: Send + Sync {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>>
     where
         Self: Sized,
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_with_options(meta_model, FrameworkSolveOptions::default())
     }
@@ -561,7 +561,7 @@ pub trait ColumnGenerationSolver: Send + Sync {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>>
     where
         Self: Sized,
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         let mechanism_model = match meta_model.try_to_mechanism_model_with_status_callback(
             options.model_building_status_callback.as_ref(),
@@ -601,7 +601,7 @@ pub trait ColumnGenerationSolver: Send + Sync {
     >
     where
         Self: Sized,
-        V: SolveValue,
+        V: SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_typed_with_options(meta_model, FrameworkSolveOptions::default())
     }
@@ -618,7 +618,7 @@ pub trait ColumnGenerationSolver: Send + Sync {
     >
     where
         Self: Sized,
-        V: SolveValue,
+        V: SolveValue + std::ops::Add<Output = V>,
     {
         let policy = options.value_conversion_policy;
         let solve_future = self.solve_with_options(meta_model, options);
@@ -638,7 +638,7 @@ pub trait ColumnGenerationSolver: Send + Sync {
     fn solve<V>(&self, meta_model: &ospf_rust_core::model::MetaModel<V>) -> Result<FeasibleSolution>
     where
         Self: Sized,
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_with_options(meta_model, FrameworkSolveOptions::default())
     }
@@ -653,7 +653,7 @@ pub trait ColumnGenerationSolver: Send + Sync {
     ) -> Result<FeasibleSolution>
     where
         Self: Sized,
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         let mechanism_model = meta_model.try_to_mechanism_model_with_status_callback(
             options.model_building_status_callback.as_ref(),
@@ -682,7 +682,7 @@ pub trait ColumnGenerationSolver: Send + Sync {
     ) -> Result<FeasibleSolutionV<V>>
     where
         Self: Sized,
-        V: SolveValue,
+        V: SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_typed_with_options(meta_model, FrameworkSolveOptions::default())
     }
@@ -697,7 +697,7 @@ pub trait ColumnGenerationSolver: Send + Sync {
     ) -> Result<FeasibleSolutionV<V>>
     where
         Self: Sized,
-        V: SolveValue,
+        V: SolveValue + std::ops::Add<Output = V>,
     {
         let policy = options.value_conversion_policy;
         self.solve_with_options(meta_model, options)?

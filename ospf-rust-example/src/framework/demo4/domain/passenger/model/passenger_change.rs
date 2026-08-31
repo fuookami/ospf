@@ -1,3 +1,4 @@
+//! 旅客变更模型模块 / Passenger change model module.
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -11,43 +12,50 @@ use crate::framework::demo4::infrastructure::PassengerClass;
 /// 旅客变更注册的变量索引 / Passenger change registered variable indices
 #[derive(Debug, Clone)]
 pub struct PassengerChangeVariables {
-    /// class_change_symbol_idx = LinearExpressionSymbol 的 solver index
+    /// class_change_symbol_idx = LinearExpressionSymbol 的 solver 索引 / solver index for LinearExpressionSymbol
     pub class_change_symbol_idx: usize,
-    /// flight_change_symbol_idx = LinearExpressionSymbol 的 solver index
+    /// flight_change_symbol_idx = LinearExpressionSymbol 的 solver 索引 / solver index for LinearExpressionSymbol
     pub flight_change_symbol_idx: usize,
-    /// class_change_if_idx = IfFunction(class_change_decision, then=1, else=0) 的结果变量 solver index
+    /// class_change_if_idx = IfFunction(class_change_decision, then=1, else=0) 的结果变量 solver 索引
+    /// / solver index for IfFunction result variable; value is 1 when class change is active, 0 otherwise
     /// 当舱位变更生效时值为 1，否则为 0
     pub class_change_if_idx: usize,
-    /// flight_change_if_idx = IfFunction(flight_change_decision, then=1, else=0) 的结果变量 solver index
+    /// flight_change_if_idx = IfFunction(flight_change_decision, then=1, else=0) 的结果变量 solver 索引
+    /// / solver index for IfFunction result variable; value is 1 when flight change is active, 0 otherwise
     /// 当航班变更生效时值为 1，否则为 0
     pub flight_change_if_idx: usize,
 }
 
 /// 旅客变更 / Passenger change
-/// 对齐 Kotlin PassengerChange
+/// 对齐 Kotlin PassengerChange / Aligned with Kotlin PassengerChange
 #[derive(Debug, Clone)]
 pub struct PassengerChange {
+    /// 旅客信息 / Passenger info
     pub passenger: Passenger,
+    /// 原航班标识 / Original flight identifier
     pub from_flight: String,
+    /// 新航班标识 / New flight identifier
     pub to_flight: String,
+    /// 原舱位 / Original class
     pub from_class: PassengerClass,
+    /// 新舱位 / New class
     pub to_class: PassengerClass,
 }
 
 impl PassengerChange {
-    /// 注册旅客变更符号到模型
+    /// 注册旅客变更符号到模型 / Register passenger change symbol to the model
     ///
-    /// 对齐 Kotlin PassengerChange.register:
-    /// 1. 注册舱位变更 LinearExpressionSymbol
-    /// 2. 注册航班变更 LinearExpressionSymbol
-    /// 3. 注册舱位变更决策二元变量
-    /// 4. 注册航班变更决策二元变量
-    /// 5. 创建舱位变更 IfFunction (class_change_if)
-    /// 6. 创建航班变更 IfFunction (flight_change_if)
+    /// 对齐 Kotlin PassengerChange.register / Aligned with Kotlin PassengerChange.register:
+    /// 1. 注册舱位变更 LinearExpressionSymbol / Register class change LinearExpressionSymbol
+    /// 2. 注册航班变更 LinearExpressionSymbol / Register flight change LinearExpressionSymbol
+    /// 3. 注册舱位变更决策二元变量 / Register class change decision binary variable
+    /// 4. 注册航班变更决策二元变量 / Register flight change decision binary variable
+    /// 5. 创建舱位变更 IfFunction (class_change_if) / Create class change IfFunction
+    /// 6. 创建航班变更 IfFunction (flight_change_if) / Create flight change IfFunction
     ///
-    /// # Arguments
-    /// * `model` - 模型实例
-    /// * `next_id` - 下一个可用的符号 ID
+    /// # Arguments / 参数
+    /// * `model` - 模型实例 / Model instance
+    /// * `next_id` - 下一个可用的符号 ID / Next available symbol ID
     pub fn register(
         &self,
         model: &mut MetaModel<f64>,

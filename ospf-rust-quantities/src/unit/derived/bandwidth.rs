@@ -1,8 +1,6 @@
-//! Bandwidth units - 带宽单位
-//! Bandwidth units - SI bandwidth units
+//! 带宽单位 / Bandwidth units
 //!
-//! 提供带宽量纲的 SI 单位定义，带宽为信息量除以时间，包括比特每秒、千比特每秒等。
-//! Provides SI unit definitions for bandwidth dimension, bandwidth is information divided by time, including bit per second, kilobit per second, etc.
+//! 提供带宽量纲的 SI 单位定义，带宽为信息量除以时间，包括比特每秒、千比特每秒等 / Provides SI unit definitions for bandwidth dimension, bandwidth is information divided by time, including bit per second, kilobit per second, etc
 
 use super::information::{
     Bit, Byte, Exabit, Gigabit, Kilobit, Kilobyte, Megabit, Megabyte, Petabit, Terabit,

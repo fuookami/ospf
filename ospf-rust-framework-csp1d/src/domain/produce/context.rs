@@ -10,7 +10,7 @@ use ospf_rust_core::solver::SolveValue;
 use ospf_rust_framework::model::Pipeline;
 
 use crate::domain::material::{
-    from_f64, to_f64, Csp1dQuantity, CuttingPlan,
+    from_f64, to_f64, Csp1dQuantity, CuttingPlan, MaterialId,
     Material, Machine, ProductDemand,
 };
 use crate::domain::length_assignment::{
@@ -58,16 +58,19 @@ const BUILTIN_CONSTRAINT_GROUP_IDS: [u64; 5] = [
 
 /// 模型上下文 / Model context
 pub trait Csp1dModelContext<V: SolveValue> {
+    /// 注册变量和约束到模型 / Register variables and constraints to the model
     fn register(&mut self, model: &mut MetaModel<f64>) -> crate::Csp1dResult<()>;
 
+    /// 从模型提取解 / Extract solution from the model
     fn extract_solution(
         &self,
         model: &ospf_rust_core::model::MetaModel<f64>,
     ) -> crate::Csp1dResult<Produce<V>>;
 }
 
-/// 列生成上下文 / Iterative context
+/// 列生成迭代上下文 / Iterative context for column generation
 pub trait Csp1dIterativeContext<V: SolveValue>: Csp1dModelContext<V> {
+    /// 向模型添加新列 / Add new columns to the model
     fn add_columns(
         &mut self,
         iteration: u64,
@@ -75,12 +78,14 @@ pub trait Csp1dIterativeContext<V: SolveValue>: Csp1dModelContext<V> {
         model: &mut MetaModel<f64>,
     ) -> crate::Csp1dResult<Vec<CuttingPlan<V>>>;
 
+    /// 从模型移除列 / Remove columns from the model
     fn remove_columns(
         &mut self,
         plan_indices: &[usize],
         model: &mut MetaModel<f64>,
     ) -> crate::Csp1dResult<Vec<CuttingPlan<V>>>;
 
+    /// 从对偶解提取影子价格 / Extract shadow prices from dual solution
     fn extract_shadow_price(
         &self,
         model: &MetaModel<f64>,
@@ -202,7 +207,7 @@ impl<V: SolveValue> Csp1dModelContext<V> for Csp1dProduceContext<V> {
 
     fn extract_solution(&self, model: &MetaModel<f64>) -> crate::Csp1dResult<Produce<V>> {
         let mut selected_plans = Vec::new();
-        let mut material_usage_map: BTreeMap<String, u64> = BTreeMap::new();
+        let mut material_usage_map: BTreeMap<MaterialId, u64> = BTreeMap::new();
         for (plan_index, plan) in self.produce.cutting_plans.iter().enumerate() {
             if !self.produce.is_plan_active(plan_index) {
                 continue;
@@ -601,7 +606,7 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
         let yield_analysis = super::extraction::analyze_yield(&produce, &self.produce.demands);
         let mut total_trim_width = 0.0;
         let mut total_rest_material = 0.0;
-        let mut material_costs = BTreeMap::<String, f64>::new();
+        let mut material_costs = BTreeMap::<MaterialId, f64>::new();
         for usage in &produce.cutting_plans {
             let amount = usage.amount as f64;
             let rest_width = usage

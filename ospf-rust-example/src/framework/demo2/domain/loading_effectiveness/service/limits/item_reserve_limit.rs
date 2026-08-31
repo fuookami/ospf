@@ -1,10 +1,11 @@
+//! 物品预留限制 / Item reserve limits
 use std::error::Error;
 use ospf_rust_core::model::{MetaModel, LinearObjectiveInput};
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
-/// 物品保留限制: 最大化装载量，低优先级物品不强制装载
+/// 物品保留限制: 最大化装载量，低优先级物品不强制装载 / Item reserve limit: maximize loading, low-priority items not forced
 /// 对齐 Kotlin ItemReserveLimit
 ///
 /// Kotlin 语义: model.minimize(sum(coefficient - coefficient * loaded[i]))

@@ -66,7 +66,7 @@
 
         let generator = SimpleBlockGenerator::new(SimpleBlockGeneratorConfig::default());
         let items = vec![ActualItem {
-            id: "i1".to_string(),
+            id: "i1".into(),
             name: "Test".to_string(),
             package_code: None,
             pack: None,
@@ -97,7 +97,7 @@
 
         let generator = CirclePackingLayerGenerator::new();
         let items = vec![ActualItem {
-            id: "c1".to_string(),
+            id: "c1".into(),
             name: "Cylinder".to_string(),
             package_code: None,
             pack: None,
@@ -120,7 +120,7 @@
                 height: meters(10.0),
                 depth: meters(10.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             });
         let results = generator.generate(&request);
@@ -139,7 +139,7 @@
         let generator = CirclePackingLayerGenerator::new();
         let items = vec![
             ActualItem {
-                id: "cx".to_string(),
+                id: "cx".into(),
                 name: "Cylinder X".to_string(),
                 package_code: None,
                 pack: None,
@@ -157,7 +157,7 @@
                 }),
             },
             ActualItem {
-                id: "cz".to_string(),
+                id: "cz".into(),
                 name: "Cylinder Z".to_string(),
                 package_code: None,
                 pack: None,
@@ -181,7 +181,7 @@
                 height: meters(10.0),
                 depth: meters(10.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(4);

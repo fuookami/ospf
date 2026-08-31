@@ -3,11 +3,11 @@
 pub struct MetaModelRmpExecutorConfig {
     /// 模型名称 / Model name
     pub model_name: String,
-    /// no-op shadow price 向量 / No-op shadow price vector
+    /// 空操作影子价格向量 / No-op shadow price vector
     pub shadow_prices: Vec<f64>,
-    /// no-op 原始解向量 / No-op primal solution vector
+    /// 空操作原始解向量 / No-op primal solution vector
     pub primal_solution: Vec<f64>,
-    /// no-op 目标值 / No-op objective
+    /// 空操作目标值 / No-op objective
     pub objective: Option<f64>,
 }
 
@@ -27,9 +27,9 @@ impl Default for MetaModelRmpExecutorConfig {
 pub struct MetaModelFinalExecutorConfig {
     /// 模型名称 / Model name
     pub model_name: String,
-    /// no-op 原始解向量 / No-op primal solution vector
+    /// 空操作原始解向量 / No-op primal solution vector
     pub primal_solution: Vec<f64>,
-    /// no-op 目标值 / No-op objective
+    /// 空操作目标值 / No-op objective
     pub objective: Option<f64>,
 }
 
@@ -52,7 +52,8 @@ pub struct MetaModelExecutorSolveResult {
     pub primal_solution: Vec<f64>,
     /// 对偶解向量 / Dual solution vector
     pub dual_solution: Vec<f64>,
+    /// 扩展影子价格 / Additional typed shadow prices
+    pub additional_shadow_prices: HashMap<String, f64>,
     /// 附加信息 / Additional information
     pub info: HashMap<String, String>,
 }
-

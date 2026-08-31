@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 
 use ospf_rust_core::solver::SolveValue;
 
+use crate::domain::material::MaterialId;
+
 pub mod model;
 
 #[allow(unused_imports)]
@@ -23,9 +25,10 @@ pub enum RestMaterialMeasure {
     RestWidthByMaterialLengthProxy,
 }
 
-/// Waste 分析 / Waste analysis
+/// 浪费分析指标 / Waste analysis metrics
 #[derive(Debug, Clone, Default)]
 pub struct WasteAnalysis<V: SolveValue> {
+    /// 指标映射 / Metrics map
     pub metrics: BTreeMap<String, V>,
 }
 
@@ -35,7 +38,7 @@ pub struct WasteMinimizationConfig<V: SolveValue> {
     /// 余宽惩罚权重 / Trim width penalty
     pub trim_width_penalty: Option<V>,
     /// 物料成本惩罚 / Material cost penalty
-    pub material_cost_penalty: BTreeMap<String, V>,
+    pub material_cost_penalty: BTreeMap<MaterialId, V>,
     /// 超产面积惩罚 / Over-production area penalty
     pub over_production_area_penalty: Option<V>,
     /// 余料惩罚 / Rest material penalty
@@ -78,15 +81,18 @@ pub struct WasteMinimizationResult<V: SolveValue> {
     pub analysis: WasteAnalysis<V>,
 }
 
-/// Waste 聚合 / Waste aggregation
+/// 浪费聚合 / Waste aggregation
 #[derive(Debug, Clone, Default)]
 pub struct WasteAggregation<V: SolveValue> {
+    /// 浪费分析 / Waste analysis
     pub analysis: Option<WasteAnalysis<V>>,
 }
 
-/// 余宽浪费 / Rest width waste
+/// 物料成本建模 / Modeled material cost
 #[derive(Debug, Clone)]
 pub struct ModeledMaterialCost<V: SolveValue> {
-    pub material_id: String,
+    /// 物料 ID / Material id
+    pub material_id: MaterialId,
+    /// 成本值 / Cost value
     pub cost: V,
 }

@@ -1,3 +1,4 @@
+//! ELD 邻接限制 / ELD adjacent limits
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;

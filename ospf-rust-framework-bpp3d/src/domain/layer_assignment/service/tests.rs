@@ -89,7 +89,7 @@ mod tests {
         let entries = vec![
             Bpp3dDemandEntry {
                 mode: Bpp3dDemandMode::Item,
-                key: Bpp3dDemandKey::Item { id: "item1".to_string() },
+                key: Bpp3dDemandKey::Item { id: "item1".into() },
                 demand: 10.0,
             },
         ];
@@ -120,7 +120,7 @@ mod tests {
     fn demand_shadow_price_key() {
         let key = DemandShadowPriceKey {
             mode: Bpp3dDemandMode::Item,
-            key: Bpp3dDemandKey::Item { id: "item1".to_string() },
+            key: Bpp3dDemandKey::Item { id: "item1".into() },
         };
         assert_eq!(key.mode, Bpp3dDemandMode::Item);
     }

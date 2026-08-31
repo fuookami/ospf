@@ -55,13 +55,20 @@ Kotlin `bpp3d-domain-layer-selection-context` is mapped into Rust application or
 | `domain::layer_assignment::*` | Layer-assignment context, aggregation, limits, objectives, and dynamic columns. | migration |
 | `domain::layer_generation::*` | Layer candidate generation traits, requests, diagnostics, and strategy implementations. | migration |
 | `domain::packing::*` | Packing conversion, geometry guard, packed-bin solution, and render adaptation. | migration |
+| `domain::packing::PackingGeometryContract` | Injectable final packing geometry validation. | migration |
 | `infrastructure::*` | Shared geometry, orientation, shape, PWL, and renderer DTO types. | stable within migration |
 
 ## Modeling Extensions
 
-Add solver behavior through `MetaModelSolverBackend` or the RMP/final executor traits. Add new layer candidate sources by implementing the layer-generation traits. Add request-level business rules through domain policies such as package-rule policies instead of embedding arbitrary closures inside serializable models.
+Add solver behavior through `MetaModelSolverBackend` or the RMP/final executor traits. Add new layer candidate sources by implementing the layer-generation traits. Inject business-specific final geometry validation with `PackingGeometryContract` and `ColumnGenerationApplicationService::with_geometry_guard`. Add request-level business rules through domain policies such as package-rule policies instead of embedding arbitrary closures inside serializable models.
 
 New constraints, objectives, and result extraction should be added in domain contexts, aggregations, model components, or pipelines. Application code should compose those extension points rather than duplicating domain modeling logic.
+
+Column-generation lifecycle extensions provide `execute_result` on RMP/final executors with
+typed failure stages, `ColumnGenerationRmpModelExtension` and
+`ColumnGenerationFinalModelExtension` for additional model content, typed RMP
+`additional_shadow_prices`, `create_algorithm_with` for algorithm factories, and fallible
+initial-column/candidate-filter entry points.
 
 ## Generic Numeric Boundaries
 

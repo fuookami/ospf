@@ -1,8 +1,6 @@
-//! Power units - 功率单位
-//! Power units - SI power units
+//! 功率单位 / Power units
 //!
-//! 提供功率量纲的 SI 单位定义，包括瓦特、千瓦、兆瓦、马力等。
-//! Provides SI unit definitions for power dimension, including watt, kilowatt, megawatt, horsepower, etc.
+//! 提供功率量纲的 SI 单位定义，包括瓦特、千瓦、兆瓦、马力等 / Provides SI unit definitions for power dimension, including watt, kilowatt, megawatt, horsepower, etc
 
 use crate::dimension::derived::Power;
 use crate::scale::{KILO, MEGA, MILLI};

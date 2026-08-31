@@ -1,3 +1,4 @@
+//! 平均空气动力弦领域模块 / Mean aerodynamic chord domain module.
 pub mod model;
 pub mod service;
 
@@ -6,12 +7,16 @@ use model::*;
 /// MAC 领域聚合 / MAC domain aggregation (对齐 Kotlin mac Aggregation)
 #[derive(Debug)]
 pub struct Aggregation {
+    /// 力矩 / Torque
     pub torque: Torque,
+    /// 平均气动力弦 / Mean Aerodynamic Chord
     pub mac: Mac,
+    /// 水平安定面列表 / Horizontal stabilizer list
     pub horizontal_stabilizers: Vec<HorizontalStabilizer>,
 }
 
 impl Aggregation {
+    /// 注册 MAC 领域所有符号到模型 / Register all MAC domain symbols to model
     pub fn register(
         &self,
         _stowage_mode: &str,
@@ -27,6 +32,7 @@ impl Aggregation {
         Ok(())
     }
 
+    /// 注册 Benders 主问题所需的 MAC 符号 / Register MAC symbols for Benders master problem
     pub fn register_for_benders_mp(
         &self,
         model: &mut ospf_rust_core::model::MetaModel<f64>,
@@ -34,6 +40,7 @@ impl Aggregation {
         self.register("FullLoad", model)
     }
 
+    /// 注册 Benders 子问题所需的 MAC 符号 / Register MAC symbols for Benders sub-problem
     pub fn register_for_benders_sp(
         &self,
         _model: &mut ospf_rust_core::model::MetaModel<f64>,
@@ -45,10 +52,12 @@ impl Aggregation {
 /// MAC 上下文 / MAC context (对齐 Kotlin MacContext)
 #[derive(Debug)]
 pub struct MacContext {
+    /// MAC 领域聚合 / MAC domain aggregation
     pub aggregation: Option<Aggregation>,
 }
 
 impl MacContext {
+    /// 创建空的 MAC 上下文 / Create an empty MAC context
     pub fn new() -> Self {
         Self { aggregation: None }
     }
@@ -85,6 +94,7 @@ impl MacContext {
         Ok(())
     }
 
+    /// 注册 MAC 上下文中的符号到模型 / Register MAC context symbols to model
     pub fn register(
         &self,
         stowage_mode: &str,

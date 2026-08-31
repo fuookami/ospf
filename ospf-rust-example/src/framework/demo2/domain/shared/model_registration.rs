@@ -4,11 +4,8 @@
 //! Provides shared logic for variable registration and objective construction, called by the Application layer.
 
 use std::error::Error;
-use std::sync::Arc;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::symbol::LinearExpressionSymbol;
-use ospf_rust_core::symbol::flatten::LinearMonomial;
 use ospf_rust_core::variable::{BinaryVariableItem, UContinuousVariableItem, VariableId};
 
 use crate::framework::demo2::infrastructure::dto::Demo2Request;
@@ -23,13 +20,13 @@ pub struct RegistrationResult {
     pub x_idx: Vec<Vec<usize>>,
     /// 偏差变量索引（仅预分配和重量推荐模式） / Deviation variable index (only for predistribution and weight recommendation modes)
     pub z: Option<usize>,
-    /// estimateLoadWeight[p] 中间符号索引 / estimateLoadWeight intermediate symbol indices
+    /// estimateLoadWeight[p] 派生变量索引 / estimateLoadWeight derived-variable indices
     /// 对齐 Kotlin Load.estimateLoadWeight: sum(cargo_weight * x[c][p]) for all cargos c
     pub estimate_load_weight_idx: Vec<usize>,
-    /// estimateLoaded[p] 中间符号索引 / estimateLoaded intermediate symbol indices
+    /// estimateLoaded[p] 派生变量索引 / estimateLoaded derived-variable indices
     /// 对齐 Kotlin Load.estimateLoaded: Binaryzation(sum(x[c][p]) for all cargos c)
     pub estimate_loaded_idx: Vec<usize>,
-    /// loaded[c] 中间符号索引 / loaded intermediate symbol indices
+    /// loaded[c] 派生变量索引 / loaded derived-variable indices
     /// 对齐 Kotlin Stowage.loaded[i]: sum(stowage[i][j]) for all positions j
     pub loaded_idx: Vec<usize>,
 }
@@ -37,8 +34,8 @@ pub struct RegistrationResult {
 /// 注册决策变量 / Register decision variables
 ///
 /// 根据模式创建二元决策变量和可选的偏差变量。
-/// 同时注册中间符号：estimateLoadWeight、estimateLoaded、loaded。
-/// Creates binary decision variables, optional deviation variable, and intermediate symbols.
+/// 同时注册派生辅助变量：estimateLoadWeight、estimateLoaded、loaded。
+/// Creates binary decision variables, an optional deviation variable, and derived auxiliary variables.
 pub fn register_variables(
     request: &Demo2Request,
     model: &mut MetaModel<f64>,
@@ -67,147 +64,102 @@ pub fn register_variables(
         Demo2PipelineMode::FullLoad => None,
     };
 
-    // 注册 estimateLoadWeight[p] 中间符号
-    // 对齐 Kotlin Load.estimateLoadWeight: sum(cargo_weight * x[c][p])
-    let mut next_id = 10000u64;
-    let mut estimate_load_weight_idx = vec![0usize; pos_count];
-    for p in 0..pos_count {
-        let monomials: Vec<LinearMonomial<f64>> = (0..cargo_count)
-            .map(|c| LinearMonomial::new(request.cargos[c].weight, x_idx[c][p]))
-            .collect();
-        let symbol = LinearExpressionSymbol::new(
-            next_id,
-            &format!("estimate_load_weight_{}", p),
-            monomials,
-            0.0,
-        );
-        model.add_symbol(Arc::new(symbol))?;
-        estimate_load_weight_idx[p] = next_id as usize;
-        next_id += 1;
-    }
-
-    // 注册 estimateLoaded[p] 中间符号
-    // 对齐 Kotlin Load.estimateLoaded: Binaryzation(sum(x[c][p]))
-    // 使用 LinearExpressionSymbol 表示 sum(x[c][p])，语义为"该位置是否有装载"
-    let mut estimate_loaded_idx = vec![0usize; pos_count];
-    for p in 0..pos_count {
-        let monomials: Vec<LinearMonomial<f64>> = (0..cargo_count)
-            .map(|c| LinearMonomial::new(1.0, x_idx[c][p]))
-            .collect();
-        let symbol = LinearExpressionSymbol::new(
-            next_id,
-            &format!("estimate_loaded_{}", p),
-            monomials,
-            0.0,
-        );
-        model.add_symbol(Arc::new(symbol))?;
-        estimate_loaded_idx[p] = next_id as usize;
-        next_id += 1;
-    }
-
-    // 注册 loaded[c] 中间符号
-    // 对齐 Kotlin Stowage.loaded[i]: sum(x[c][p] for all positions p)
-    let mut loaded_idx = vec![0usize; cargo_count];
-    for c in 0..cargo_count {
-        let monomials: Vec<LinearMonomial<f64>> = (0..pos_count)
-            .map(|p| LinearMonomial::new(1.0, x_idx[c][p]))
-            .collect();
-        let symbol = LinearExpressionSymbol::new(
-            next_id,
-            &format!("loaded_{}", c),
-            monomials,
-            0.0,
-        );
-        model.add_symbol(Arc::new(symbol))?;
-        loaded_idx[c] = next_id as usize;
-        next_id += 1;
-    }
+    let derived = register_derived_variables(request, model, &x_idx)?;
 
     Ok(RegistrationResult {
         x_idx,
         z,
-        estimate_load_weight_idx,
-        estimate_loaded_idx,
-        loaded_idx,
+        estimate_load_weight_idx: derived.estimate_load_weight_idx,
+        estimate_loaded_idx: derived.estimate_loaded_idx,
+        loaded_idx: derived.loaded_idx,
     })
 }
 
-/// 中间符号索引 / Intermediate symbol indices
+/// 派生变量索引 / Derived variable indices
 ///
-/// 包含 estimateLoadWeight、estimateLoaded、loaded 三组中间符号的索引。
-/// Intermediate symbol indices for estimateLoadWeight, estimateLoaded, loaded.
-pub struct IntermediateSymbolIndices {
+/// 包含 estimateLoadWeight、estimateLoaded、loaded 三组辅助变量的索引。
+/// Auxiliary variable indices for estimateLoadWeight, estimateLoaded, and loaded.
+pub struct DerivedVariableIndices {
+    /// 各位置的估算装载重量变量索引 / Estimated load-weight variable index for each position
     pub estimate_load_weight_idx: Vec<usize>,
+    /// 各位置的估算装载数量变量索引 / Estimated loaded-count variable index for each position
     pub estimate_loaded_idx: Vec<usize>,
+    /// 各货物的装载数量变量索引 / Loaded-count variable index for each cargo
     pub loaded_idx: Vec<usize>,
 }
 
-/// 注册中间符号 / Register intermediate symbols
+/// 注册派生变量 / Register derived variables
 ///
-/// 给定已有的 x_idx，注册 estimateLoadWeight、estimateLoaded、loaded 中间符号。
-/// 可用于 Benders 分解等需要独立注册中间符号的场景。
-pub fn register_intermediate_symbols(
+/// 给定已有的 x_idx，注册 estimateLoadWeight、estimateLoaded、loaded 辅助变量及其定义等式。
+/// Registers auxiliary variables and defining equalities for an existing x_idx, including Benders models.
+pub fn register_derived_variables(
     request: &Demo2Request,
     model: &mut MetaModel<f64>,
     x_idx: &[Vec<usize>],
-    start_id: u64,
-) -> Result<IntermediateSymbolIndices, Box<dyn Error>> {
+) -> Result<DerivedVariableIndices, Box<dyn Error>> {
     let cargo_count = request.cargos.len();
     let pos_count = request.positions.len();
-    let mut next_id = start_id;
 
     // estimateLoadWeight[p] = sum(cargo_weight * x[c][p])
     let mut estimate_load_weight_idx = vec![0usize; pos_count];
     for p in 0..pos_count {
-        let monomials: Vec<LinearMonomial<f64>> = (0..cargo_count)
-            .map(|c| LinearMonomial::new(request.cargos[c].weight, x_idx[c][p]))
-            .collect();
-        let symbol = LinearExpressionSymbol::new(
-            next_id,
-            &format!("estimate_load_weight_{}", p),
-            monomials,
-            0.0,
+        let index = model.register_variable(UContinuousVariableItem::auto(&format!(
+            "estimate_load_weight_{}",
+            p
+        )))?;
+        let mut terms = Vec::with_capacity(cargo_count + 1);
+        terms.push((index, 1.0));
+        terms.extend(
+            (0..cargo_count).map(|c| (x_idx[c][p], -request.cargos[c].weight)),
         );
-        model.add_symbol(Arc::new(symbol))?;
-        estimate_load_weight_idx[p] = next_id as usize;
-        next_id += 1;
+        model.add_linear_constraint(
+            &terms,
+            ConstraintRelation::Equal,
+            0.0,
+            &format!("define_estimate_load_weight_{}", p),
+        )?;
+        estimate_load_weight_idx[p] = index;
     }
 
     // estimateLoaded[p] = sum(x[c][p])
     let mut estimate_loaded_idx = vec![0usize; pos_count];
     for p in 0..pos_count {
-        let monomials: Vec<LinearMonomial<f64>> = (0..cargo_count)
-            .map(|c| LinearMonomial::new(1.0, x_idx[c][p]))
-            .collect();
-        let symbol = LinearExpressionSymbol::new(
-            next_id,
-            &format!("estimate_loaded_{}", p),
-            monomials,
+        let index = model.register_variable(UContinuousVariableItem::auto(&format!(
+            "estimate_loaded_{}",
+            p
+        )))?;
+        let mut terms = Vec::with_capacity(cargo_count + 1);
+        terms.push((index, 1.0));
+        terms.extend((0..cargo_count).map(|c| (x_idx[c][p], -1.0)));
+        model.add_linear_constraint(
+            &terms,
+            ConstraintRelation::Equal,
             0.0,
-        );
-        model.add_symbol(Arc::new(symbol))?;
-        estimate_loaded_idx[p] = next_id as usize;
-        next_id += 1;
+            &format!("define_estimate_loaded_{}", p),
+        )?;
+        estimate_loaded_idx[p] = index;
     }
 
     // loaded[c] = sum(x[c][p])
     let mut loaded_idx = vec![0usize; cargo_count];
     for c in 0..cargo_count {
-        let monomials: Vec<LinearMonomial<f64>> = (0..pos_count)
-            .map(|p| LinearMonomial::new(1.0, x_idx[c][p]))
-            .collect();
-        let symbol = LinearExpressionSymbol::new(
-            next_id,
-            &format!("loaded_{}", c),
-            monomials,
+        let index = model.register_variable(UContinuousVariableItem::auto(&format!(
+            "loaded_{}",
+            c
+        )))?;
+        let mut terms = Vec::with_capacity(pos_count + 1);
+        terms.push((index, 1.0));
+        terms.extend((0..pos_count).map(|p| (x_idx[c][p], -1.0)));
+        model.add_linear_constraint(
+            &terms,
+            ConstraintRelation::Equal,
             0.0,
-        );
-        model.add_symbol(Arc::new(symbol))?;
-        loaded_idx[c] = next_id as usize;
-        next_id += 1;
+            &format!("define_loaded_{}", c),
+        )?;
+        loaded_idx[c] = index;
     }
 
-    Ok(IntermediateSymbolIndices {
+    Ok(DerivedVariableIndices {
         estimate_load_weight_idx,
         estimate_loaded_idx,
         loaded_idx,
@@ -293,4 +245,41 @@ pub fn register_benders_variables(
     }
 
     Ok((x_idx_master, x_idx_sub, fixed_variable_ids))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derived_variable_indices_are_valid_solver_columns() {
+        let request = Demo2Request::sample();
+        let mut model = MetaModel::<f64>::new("demo2_derived_variable_indices");
+        let registration = register_variables(
+            &request,
+            &mut model,
+            "x",
+            Demo2PipelineMode::FullLoad,
+        )
+        .expect("derived variables should register");
+        let variable_count = model.num_tokens();
+
+        assert!(
+            registration
+                .estimate_load_weight_idx
+                .iter()
+                .chain(registration.estimate_loaded_idx.iter())
+                .chain(registration.loaded_idx.iter())
+                .all(|index| *index < variable_count)
+        );
+
+        let triad = model
+            .try_to_linear_triad_model()
+            .expect("derived variable definitions should convert");
+        assert!(triad.A.rows.iter().all(|row| {
+            row.entries
+                .iter()
+                .all(|(index, _)| *index < triad.num_variables())
+        }));
+    }
 }

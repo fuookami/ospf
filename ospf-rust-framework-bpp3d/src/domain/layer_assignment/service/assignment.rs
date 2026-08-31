@@ -19,17 +19,17 @@ where
     pub x: Option<IndexedVariableCombination1<usize, UContinuous>>,
     /// 列变量上界 / Column variable upper bounds
     pub upper_bounds: Vec<Option<f64>>,
-    /// 每层载重符号 load_weight[layer] = sum(x[layer] * weight[layer])
-    /// Per-layer load weight symbols
+    /// 每层载重符号 / Per-layer load weight symbols
+    /// load_weight[layer] = sum(x[layer] * weight[layer])
     pub load_weight_symbols: Vec<Arc<ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol<f64>>>,
-    /// 每层体积符号 load_volume[layer] = sum(x[layer] * volume[layer])
-    /// Per-layer load volume symbols
+    /// 每层体积符号 / Per-layer load volume symbols
+    /// load_volume[layer] = sum(x[layer] * volume[layer])
     pub load_volume_symbols: Vec<Arc<ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol<f64>>>,
-    /// 每层深度符号 load_depth[layer] = sum(x[layer] * depth[layer])
-    /// Per-layer load depth symbols
+    /// 每层深度符号 / Per-layer load depth symbols
+    /// load_depth[layer] = sum(x[layer] * depth[layer])
     pub load_depth_symbols: Vec<Arc<ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol<f64>>>,
-    /// 每层需求覆盖符号 load[layer] = sum(x[layer] * demand_coeff[layer])
-    /// Per-layer demand coverage symbols
+    /// 每层需求覆盖符号 / Per-layer demand coverage symbols
+    /// load[layer] = sum(x[layer] * demand_coeff[layer])
     pub load_symbols: Vec<Arc<ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol<f64>>>,
 }
 
@@ -159,7 +159,7 @@ impl<V: Debug + Clone + Send + Sync, U: ospf_rust_quantities::unit::concept::Uni
                 "x",
                 &keys,
                 model,
-                |key| format!("x_{:?}", key),
+                |key| format!("{:?}", key),
                 |key| {
                     let ub = upper_bounds.get(*key).copied().flatten();
                     VariableRange::new(Some(0.0), ub)
@@ -194,14 +194,14 @@ where
     pub x: Option<IndexedVariableCombination2<usize, usize, Binary>>,
     /// 箱使用标记 v[bin] / Bin usage markers v[bin]
     pub v: Option<IndexedVariableCombination1<usize, Binary>>,
-    /// 每箱载重符号 load_weight[bin] = sum(x[bin, layer] * weight[layer])
-    /// Per-bin load weight symbols
+    /// 每箱载重符号 / Per-bin load weight symbols
+    /// load_weight[bin] = sum(x[bin, layer] * weight[layer])
     pub load_weight_symbols: Vec<Arc<ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol<f64>>>,
-    /// 每箱体积符号 load_volume[bin] = sum(x[bin, layer] * volume[layer])
-    /// Per-bin load volume symbols
+    /// 每箱体积符号 / Per-bin load volume symbols
+    /// load_volume[bin] = sum(x[bin, layer] * volume[layer])
     pub load_volume_symbols: Vec<Arc<ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol<f64>>>,
-    /// 每箱深度符号 load_depth[bin] = sum(x[bin, layer] * depth[layer])
-    /// Per-bin load depth symbols
+    /// 每箱深度符号 / Per-bin load depth symbols
+    /// load_depth[bin] = sum(x[bin, layer] * depth[layer])
     pub load_depth_symbols: Vec<Arc<ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol<f64>>>,
 }
 
@@ -312,7 +312,7 @@ impl<V: Debug + Clone + Send + Sync, U: ospf_rust_quantities::unit::concept::Uni
                     &bin_keys,
                     &layer_keys,
                     model,
-                    |k1, k2| format!("x_{:?}_{:?}", k1, k2),
+                    |k1, k2| format!("{:?}_{:?}", k1, k2),
                     |_k1, _k2| VariableRange::new(Some(0.0), Some(1.0)),
                 )
                 .map_err(|e| format!("Failed to register PreciseAssignment x variables: {:?}", e))?,
@@ -324,7 +324,7 @@ impl<V: Debug + Clone + Send + Sync, U: ospf_rust_quantities::unit::concept::Uni
                     "v",
                     &bin_keys,
                     model,
-                    |key| format!("v_{:?}", key),
+                    |key| format!("{:?}", key),
                     |_key| VariableRange::new(Some(0.0), Some(1.0)),
                 )
                 .map_err(|e| format!("Failed to register PreciseAssignment v variables: {:?}", e))?,
@@ -333,4 +333,3 @@ impl<V: Debug + Clone + Send + Sync, U: ospf_rust_quantities::unit::concept::Uni
         Ok(())
     }
 }
-

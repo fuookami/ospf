@@ -1,23 +1,34 @@
 //! 排序描述
 //! Sort descriptor
 
+/// 排序方向 / Sort direction
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortDirection {
+    /// 升序 / Ascending
     Asc,
+    /// 降序 / Descending
     Desc,
 }
 
+/// 空值排序方式 / Null ordering mode
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NullsOrder {
+    /// 空值排在前面 / Nulls first
     NullsFirst,
+    /// 空值排在后面 / Nulls last
     NullsLast,
 }
 
+/// 空值排序支持策略 / Null ordering support policy
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NullsOrderSupport {
+    /// 自动，由后端决定 / Auto, decided by the backend
     Auto,
+    /// 始终支持 / Always supported
     Always,
+    /// 从不支持 / Never supported
     Never,
+    /// 仅升序时支持 / Supported only for ascending order
     OnlyAsc,
 }
 
@@ -39,10 +50,14 @@ impl Default for NullsOrderSupport {
     }
 }
 
+/// 排序项 / Sort item
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SortItem {
+    /// 字段路径 / Field path
     pub path: ospf_rust_math::symbol::PropertyPath,
+    /// 排序方向 / Sort direction
     pub direction: SortDirection,
+    /// 空值排序方式 / Null ordering
     pub nulls: Option<NullsOrder>,
 }
 
@@ -74,8 +89,10 @@ impl SortItem {
     }
 }
 
+/// 排序描述集合 / Sort descriptor collection
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SortBy {
+    /// 排序项列表 / Sort items
     pub items: Vec<SortItem>,
 }
 

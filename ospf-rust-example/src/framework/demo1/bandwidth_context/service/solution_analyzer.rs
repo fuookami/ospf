@@ -1,17 +1,25 @@
+//! 求解结果分析器模块 / Solution analyzer module
+
 use std::collections::HashMap;
 use crate::framework::demo1::route_context::model::{Assignment, Edge, Graph, Node, NodeKind, Service};
 use super::super::aggregation::Aggregation;
 
-/// 从求解结果中提取服务路径（DFS 追踪）
+/// 求解结果分析器：从求解结果中提取服务路径（DFS 追踪） / Solution analyzer: extract service paths from solution (DFS tracing)
+///
 /// 对齐 Kotlin SolutionAnalyzer
 pub struct SolutionAnalyzer<'a> {
+    /// 图结构 / Graph structure
     graph: &'a Graph,
+    /// 服务列表 / Service list
     services: &'a [Service],
+    /// 分配数据 / Assignment data
     assignment: &'a Assignment,
+    /// 带宽聚合数据 / Bandwidth aggregation data
     aggregation: &'a Aggregation,
 }
 
 impl<'a> SolutionAnalyzer<'a> {
+    /// 创建新的求解结果分析器 / Create a new solution analyzer
     pub fn new(
         graph: &'a Graph,
         services: &'a [Service],
@@ -21,8 +29,10 @@ impl<'a> SolutionAnalyzer<'a> {
         Self { graph, services, assignment, aggregation }
     }
 
-    /// 分析求解结果，返回服务路径列表
-    /// 每条路径是从 assigned node 到 client node 的节点序列
+    /// 分析求解结果，返回服务路径列表 / Analyze the solution and return service path list
+    ///
+    /// 每条路径是从 assigned node 到 client node 的节点序列。
+    /// Each path is a node sequence from assigned node to client node.
     ///
     /// 使用符号组合的多项式提取变量索引：
     /// - node_assignment[node] 的多项式包含 x[node, s] 的单项式
@@ -86,7 +96,7 @@ impl<'a> SolutionAnalyzer<'a> {
         all_links
     }
 
-    /// DFS 递归追踪路径
+    /// DFS 递归追踪路径 / DFS recursive path tracing
     fn find_link(
         &self,
         edges: &[(usize, usize)],

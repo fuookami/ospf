@@ -6,7 +6,7 @@ use ospf_rust_core::solver::SolveValue;
 
 use crate::domain::material::{
     from_f64, shadow_price_unit_symbol, to_f64, Csp1dQuantity,
-    ProductDemand,
+    ProductDemand, ProductId,
 };
 use crate::domain::r#yield::{
     ModeledOverProduction, ModeledUnderProduction, ProductOutput, YieldAnalysis,
@@ -19,7 +19,7 @@ pub fn analyze_yield<V: SolveValue>(
     produce: &Produce<V>,
     demands: &[ProductDemand<V>],
 ) -> YieldAnalysis<V> {
-    let mut supplied = BTreeMap::<(String, String), (ProductDemand<V>, f64)>::new();
+    let mut supplied = BTreeMap::<(ProductId, String), (ProductDemand<V>, f64)>::new();
     for usage in &produce.cutting_plans {
         for contribution in &usage.plan.demand_contributions {
             let key = (

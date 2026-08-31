@@ -14,6 +14,9 @@ pub use branch_and_price::{
     BranchSearchHooks, BranchSearchOrder, BranchSearchResult, NoopBranchCutCallback,
     NoopBranchNodeCallback, NoopStrongBranching, StrongBranchCandidate, StrongBranchingStrategy,
 };
-pub use bunch_column_generation::{BunchBranchAndPriceAlgorithm, BunchCGPolicy};
+pub use bunch_column_generation::{
+    BranchGroup, BranchGroupTracker, BunchBranchAndPriceAlgorithm, BunchCGPolicy,
+    BunchPricingRequest,
+};
 pub use policy::ColumnGenerationPolicy;
 pub use task_column_generation::TaskColumnGenerationAlgorithm;

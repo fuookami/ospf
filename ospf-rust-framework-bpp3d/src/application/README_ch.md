@@ -35,7 +35,7 @@ application 层负责编排 CSV 加载、solver backend 选择、列生成流程
 
 ## 扩展点
 
-新增 solver 行为应通过 `MetaModelSolverBackend` 或 RMP/final executor trait 接入。新增数据协议应放在 CSV materializer 边界。新增对比输出应通过 fixture suite 和 run-report DTO 实现，不要把领域建模逻辑塞回 application flow。
+新增 solver 行为应通过 `MetaModelSolverBackend` 或 RMP/final executor trait 接入。最终几何校验可通过 `ColumnGenerationApplicationService::with_geometry_guard` 注入 `PackingGeometryContract` 实现，无需修改 application flow。新增数据协议应放在 CSV materializer 边界。新增对比输出应通过 fixture suite 和 run-report DTO 实现，不要把领域建模逻辑塞回 application flow。
 
 ## 生命周期与数据流
 

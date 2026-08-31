@@ -1,3 +1,4 @@
+//! 航班容量模型模块 / Flight capacity model module
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -7,13 +8,16 @@ use ospf_rust_core::symbol::LinearExpressionSymbol;
 /// 对齐 Kotlin FlightCapacity
 #[derive(Debug, Clone)]
 pub struct FlightCapacity {
+    /// 航班标识 / Flight identifier
     pub flight_id: String,
+    /// 旅客容量 / Passenger capacity
     pub passenger_capacity: u64,
+    /// 货物容量 / Cargo capacity
     pub cargo_capacity: f64,
 }
 
 impl FlightCapacity {
-    /// 注册容量符号到模型
+    /// 注册容量符号到模型 / Register capacity symbols to model
     /// 对齐 Kotlin FlightCapacity.register
     pub fn register(
         &self,

@@ -1,5 +1,4 @@
-//! If-Then 蕴含函数符号。
-//! If-Then implication function symbol.
+//! If-Then 蕴含函数符号 / If-Then implication function symbol
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -120,13 +119,21 @@ pub struct IfThenFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 符号 ID / Symbol ID
     id: IntermediateSymbolId,
+    /// 前提不等式 / Premise inequality
     premise: LinearInequality<V>,
+    /// 结论不等式 / Consequence inequality
     consequence: LinearInequality<V>,
+    /// 前提不等式指示函数 / Premise inequality indicator function
     premise_indicator: InequalityFunction<V>,
+    /// 结论不等式指示函数 / Consequence inequality indicator function
     consequence_indicator: InequalityFunction<V>,
+    /// 结果二值变量 / Result binary variable
     result_var: BinaryVariableItem,
+    /// 是否为约束模式 / Whether constraint mode is enabled
     constraint_mode: bool,
+    /// 声明的依赖 ID / Declared dependency IDs
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -134,6 +141,7 @@ impl<V> IfThenFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建新的条件执行函数 / Create a new if-then function
     pub fn new(
         id: u64,
         name: &str,
@@ -169,6 +177,7 @@ where
         Self::new(id, &name, premise, consequence, big_m)
     }
 
+    /// 创建指示模式的条件执行函数 / Create an indicator-mode if-then function
     pub fn indicator(
         id: u64,
         name: &str,
@@ -208,6 +217,7 @@ where
         Self::indicator(id, &name, premise, consequence, big_m)
     }
 
+    /// 创建指定模式的条件执行函数 / Create an if-then function with specified mode
     pub fn with_mode(
         id: u64,
         name: &str,
@@ -246,31 +256,38 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &BinaryVariableItem {
         &self.result_var
     }
 
+    /// 获取前提指示变量 / Get the premise indicator variable
     pub fn premise_indicator_variable(&self) -> &BinaryVariableItem {
         self.premise_indicator.result_variable()
     }
 
+    /// 获取结论指示变量 / Get the consequence indicator variable
     pub fn consequence_indicator_variable(&self) -> &BinaryVariableItem {
         self.consequence_indicator.result_variable()
     }
 
+    /// 获取前提不等式 / Get the premise inequality
     pub fn premise(&self) -> &LinearInequality<V> {
         &self.premise
     }
 
+    /// 获取结论不等式 / Get the consequence inequality
     pub fn consequence(&self) -> &LinearInequality<V> {
         &self.consequence
     }
 
+    /// 是否为约束模式 / Whether constraint mode is enabled
     pub fn is_constraint_mode(&self) -> bool {
         self.constraint_mode
     }

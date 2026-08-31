@@ -1,5 +1,4 @@
-//! 语义化函数符号便利入口。
-//! Semantic function-symbol convenience entry points.
+//! 语义化函数符号便利入口 / Semantic function-symbol convenience entry points
 
 use std::fmt::Debug;
 use num_traits::FromPrimitive;

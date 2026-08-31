@@ -1,9 +1,12 @@
 #[cfg(feature = "serde")]
-fn apply_continuous_radius_solutions(
-    service: &ColumnGenerationApplicationService,
+fn apply_continuous_radius_solutions<G>(
+    service: &ColumnGenerationApplicationService<G>,
     flow: &mut ColumnGenerationApplicationFlowResult,
     component: Option<&ContinuousRadiusModelComponent>,
-) -> Result<(), Vec<String>> {
+) -> Result<(), Vec<String>>
+where
+    G: PackingGeometryContract<f64, Meter>,
+{
     let Some(component) = component else {
         return Ok(());
     };

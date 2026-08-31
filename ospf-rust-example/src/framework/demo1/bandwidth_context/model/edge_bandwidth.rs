@@ -1,3 +1,5 @@
+//! 边带宽模型：定义边-服务维度的带宽变量与符号 / Edge bandwidth model: defines edge-service dimension bandwidth variables and symbols
+
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol, flat_map1};
@@ -10,13 +12,18 @@ type YCombination = VariableCombination<UInteger, Shape<2>>;
 /// 一维线性表达式符号组合类型别名 / 1D linear expression symbol combination type alias
 type BandwidthSymbols = SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>;
 
+/// 边带宽模型 / Edge bandwidth model
 pub struct EdgeBandwidth {
+    /// 二维连续变量组合 y[edge, service] / 2D continuous variable combination y[edge, service]
     pub y: YCombination,
+    /// y 变量的索引映射 / Index mapping for y variables
     pub y_idx: MultiArray<usize, Shape<2>>,
+    /// 带宽符号组合 / Bandwidth symbol combination
     pub bandwidth: BandwidthSymbols,
 }
 
 impl EdgeBandwidth {
+    /// 创建新的边带宽模型 / Create a new edge bandwidth model
     pub fn new() -> Self {
         let y = VariableCombination::new(Shape::new([0, 0]), "y");
         let y_idx = MultiArrayBuilder::from_list(Shape::new([0, 0]), vec![]);
@@ -26,6 +33,7 @@ impl EdgeBandwidth {
         Self { y, y_idx, bandwidth }
     }
 
+    /// 注册边带宽变量和符号到模型 / Register edge bandwidth variables and symbols into the model
     pub fn register(
         &mut self,
         model: &mut MetaModel<f64>,

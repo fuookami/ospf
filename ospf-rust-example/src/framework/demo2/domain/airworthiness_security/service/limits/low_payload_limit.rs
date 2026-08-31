@@ -1,3 +1,4 @@
+//! 低载荷限制 / Low payload limits
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;

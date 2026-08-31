@@ -197,9 +197,9 @@ impl Pipeline<MetaModel<f64>> for ExecutorCompilationConstraint {
 /// Prevents two conflicting tasks from being assigned to the same executor.
 pub struct TaskConflictConstraint {
     name: String,
-    /// 冲突对：(task_i, task_j, executor)
+    /// 冲突对：(task_i, task_j, executor) / Conflict pairs: (task_i, task_j, executor)
     pub conflict_pairs: Vec<(usize, usize, usize)>,
-    /// x[task, executor] 的模型索引获取器
+    /// x[task, executor] 的模型索引获取器 / x[task, executor] model index accessor
     pub x_model_index: Arc<dyn Fn(usize, usize) -> Option<usize> + Send + Sync>,
 }
 
@@ -255,9 +255,9 @@ impl Pipeline<MetaModel<f64>> for TaskConflictConstraint {
 /// Prevents time-overlapping tasks from being assigned to the same executor.
 pub struct TaskTimeConflictConstraint {
     name: String,
-    /// 时间重叠对：(task_i, task_j, executor)
+    /// 时间重叠对：(task_i, task_j, executor) / Time overlap pairs: (task_i, task_j, executor)
     pub overlap_pairs: Vec<(usize, usize, usize)>,
-    /// x[task, executor] 的模型索引获取器
+    /// x[task, executor] 的模型索引获取器 / x[task, executor] model index accessor
     pub x_model_index: Arc<dyn Fn(usize, usize) -> Option<usize> + Send + Sync>,
 }
 
@@ -315,7 +315,7 @@ impl Pipeline<MetaModel<f64>> for TaskTimeConflictConstraint {
 pub struct TaskDelayTimeConstraint {
     name: String,
     group: Option<ConstraintGroup>,
-    /// (est_model_index, scheduled_start_value) 列表
+    /// (est_model_index, scheduled_start_value) 列表 / List
     pub constraints: Vec<(usize, f64)>,
 }
 
@@ -357,7 +357,7 @@ impl Pipeline<MetaModel<f64>> for TaskDelayTimeConstraint {
 pub struct TaskAdvanceTimeConstraint {
     name: String,
     group: Option<ConstraintGroup>,
-    /// (est_model_index, scheduled_start_value) 列表
+    /// (est_model_index, scheduled_start_value) 列表 / List
     pub constraints: Vec<(usize, f64)>,
 }
 
@@ -402,7 +402,7 @@ impl Pipeline<MetaModel<f64>> for TaskAdvanceTimeConstraint {
 #[derive(Debug)]
 pub struct TaskExecutorCostMinimization {
     name: String,
-    /// (x_model_index, cost) 列表
+    /// (x_model_index, cost) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -443,7 +443,7 @@ impl Pipeline<MetaModel<f64>> for TaskExecutorCostMinimization {
 #[derive(Debug)]
 pub struct TaskCostMinimization {
     name: String,
-    /// (y_model_index, cost) 列表
+    /// (y_model_index, cost) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -484,7 +484,7 @@ impl Pipeline<MetaModel<f64>> for TaskCostMinimization {
 #[derive(Debug)]
 pub struct MakespanMinimization {
     name: String,
-    /// makespan 结果变量的模型索引
+    /// makespan 结果变量的模型索引 / Makespan result variable model index
     pub makespan_model_index: usize,
     /// 目标系数 / Objective coefficient
     pub coefficient: f64,
@@ -719,7 +719,7 @@ impl SwitchTimeMinimization {
 #[derive(Debug)]
 pub struct TaskDelayTimeMinimization {
     name: String,
-    /// (delay_time_model_index, coefficient) 列表
+    /// (delay_time_model_index, coefficient) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -760,7 +760,7 @@ impl Pipeline<MetaModel<f64>> for TaskDelayTimeMinimization {
 #[derive(Debug)]
 pub struct TaskAdvanceTimeMinimization {
     name: String,
-    /// (advance_time_model_index, coefficient) 列表
+    /// (advance_time_model_index, coefficient) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -802,7 +802,7 @@ impl Pipeline<MetaModel<f64>> for TaskAdvanceTimeMinimization {
 pub struct TaskOverMaxDelayTimeConstraint {
     name: String,
     group: Option<ConstraintGroup>,
-    /// (delay_time_model_index, max_delay_value) 列表
+    /// (delay_time_model_index, max_delay_value) 列表 / List
     /// 只有 `max_delay` 非空的任务才出现在此列表中。
     /// Only tasks with non-null `max_delay` appear in this list.
     pub constraints: Vec<(usize, f64)>,
@@ -865,7 +865,7 @@ impl Pipeline<MetaModel<f64>> for TaskOverMaxDelayTimeConstraint {
 pub struct TaskOverMaxAdvanceTimeConstraint {
     name: String,
     group: Option<ConstraintGroup>,
-    /// (advance_time_model_index, max_advance_value) 列表
+    /// (advance_time_model_index, max_advance_value) 列表 / List
     pub constraints: Vec<(usize, f64)>,
 }
 
@@ -924,8 +924,8 @@ impl Pipeline<MetaModel<f64>> for TaskOverMaxAdvanceTimeConstraint {
 pub struct TaskDelayLastEndTimeConstraint {
     name: String,
     group: Option<ConstraintGroup>,
-    /// (est_model_index, adjusted_bound) 列表
-    /// adjusted_bound = last_end_time - duration（solver 值域）
+    /// (est_model_index, adjusted_bound) 列表 / List
+    /// adjusted_bound = last_end_time - duration（solver 值域）/ adjusted_bound = last_end_time - duration (solver domain)
     pub constraints: Vec<(usize, f64)>,
 }
 
@@ -992,8 +992,8 @@ impl Pipeline<MetaModel<f64>> for TaskDelayLastEndTimeConstraint {
 pub struct TaskAdvanceEarliestEndTimeConstraint {
     name: String,
     group: Option<ConstraintGroup>,
-    /// (est_model_index, adjusted_bound) 列表
-    /// adjusted_bound = earliest_end_time - duration（solver 值域）
+    /// (est_model_index, adjusted_bound) 列表 / List
+    /// adjusted_bound = earliest_end_time - duration（solver 值域）/ adjusted_bound = earliest_end_time - duration (solver domain)
     pub constraints: Vec<(usize, f64)>,
 }
 
@@ -1053,7 +1053,7 @@ impl Pipeline<MetaModel<f64>> for TaskAdvanceEarliestEndTimeConstraint {
 #[derive(Debug)]
 pub struct ExecutorCostMinimization {
     name: String,
-    /// (executor_compilation_model_index, executor_cost) 列表
+    /// (executor_compilation_model_index, executor_cost) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -1095,7 +1095,7 @@ impl Pipeline<MetaModel<f64>> for ExecutorCostMinimization {
 #[derive(Debug)]
 pub struct ExecutorLeisureMinimization {
     name: String,
-    /// z[executor] 的模型索引列表
+    /// z[executor] 的模型索引列表 / z[executor] model index list
     pub leisure_indices: Vec<usize>,
 }
 
@@ -1327,14 +1327,16 @@ mod tests {
 
     impl IntegrationTestTask {
         fn new(id: &str, name: &str) -> Self {
-            Self { id: id.to_string(), name: name.to_string() }
+            Self { id: id.into(), name: name.to_string() }
         }
     }
 
     use crate::domain::task::{BasicAssignmentPolicy, BasicExecutor};
 
     impl<E: crate::domain::task::ExecutorTrait, A: crate::domain::task::AssignmentPolicyTrait<E>> TaskTrait<E, A> for IntegrationTestTask {
-        fn id(&self) -> &str { &self.id }
+        type Id = String;
+
+        fn id(&self) -> &Self::Id { &self.id }
         fn name(&self) -> &str { &self.name }
     }
 

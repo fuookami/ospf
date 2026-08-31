@@ -23,9 +23,11 @@ pub struct Load {
     pub demand_entries: Vec<Bpp3dDemandEntry>,
     /// 负载表达式 load[layer] / Load expressions load[layer]
     pub load: IndexedLinearExpressionSymbols1<usize>,
-    /// 过载表达式 overLoad[layer] / Overload expressions
+    /// 过载表达式 / Overload expressions
+    /// overLoad[layer]
     pub over_load: IndexedLinearExpressionSymbols1<usize>,
-    /// 欠载表达式 lessLoad[layer] / Less-load expressions
+    /// 欠载表达式 / Less-load expressions
+    /// lessLoad[layer]
     pub less_load: IndexedLinearExpressionSymbols1<usize>,
 }
 

@@ -17,6 +17,7 @@
             layer_block_traces: HashMap::new(),
             layer_placement_traces: HashMap::new(),
             continuous_radius_component: None,
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::new(),
         };
         let executor = MetaModelRmpExecutor::new(MetaModelRmpExecutorConfig {
@@ -63,6 +64,7 @@
             layer_block_traces: HashMap::new(),
             layer_placement_traces: HashMap::new(),
             continuous_radius_component: None,
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::new(),
         };
         let executor = MetaModelFinalExecutor::new(MetaModelFinalExecutorConfig {
@@ -101,12 +103,12 @@
             demand_coverage: vec![
                 Bpp3dLayerDemandCoverage::new(
                     Bpp3dDemandMode::Item,
-                    Bpp3dDemandKey::Item { id: "heavy".to_string() },
+                    Bpp3dDemandKey::Item { id: "heavy".into() },
                     2.0,
                 ),
                 Bpp3dLayerDemandCoverage::new(
                     Bpp3dDemandMode::ItemAmount,
-                    Bpp3dDemandKey::Item { id: "light".to_string() },
+                    Bpp3dDemandKey::Item { id: "light".into() },
                     3.0,
                 ),
             ],
@@ -170,7 +172,7 @@
             depth: meters(1.0),
             demand_coverage: vec![Bpp3dLayerDemandCoverage::new(
                 Bpp3dDemandMode::Item,
-                Bpp3dDemandKey::Item { id: "i0".to_string() },
+                Bpp3dDemandKey::Item { id: "i0".into() },
                 1.0,
             )],
         };
@@ -211,7 +213,7 @@
             depth: meters(1.0),
             demand_coverage: vec![Bpp3dLayerDemandCoverage::new(
                 Bpp3dDemandMode::Item,
-                Bpp3dDemandKey::Item { id: "i0".to_string() },
+                Bpp3dDemandKey::Item { id: "i0".into() },
                 2.0,
             )],
         };
@@ -226,7 +228,7 @@
                 0,
                 vec![LayerPlacementTrace {
                     item_index: 0,
-                    item_id: "i0".to_string(),
+                    item_id: "i0".into(),
                     position: MetricPoint3 {
                         x: meters(0.0),
                         y: meters(0.0),
@@ -237,6 +239,7 @@
                 }],
             )]),
             continuous_radius_component: None,
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::new(),
         };
         let executor = MetaModelFinalExecutor::new(MetaModelFinalExecutorConfig {
@@ -264,7 +267,7 @@
             depth: meters(4.0),
             demand_coverage: vec![Bpp3dLayerDemandCoverage::new(
                 Bpp3dDemandMode::Item,
-                Bpp3dDemandKey::Item { id: "i0".to_string() },
+                Bpp3dDemandKey::Item { id: "i0".into() },
                 4.0,
             )],
         };
@@ -279,7 +282,7 @@
                 vec![LayerBlockTrace {
                     block_index: 0,
                     item_index: 0,
-                    item_id: "i0".to_string(),
+                    item_id: "i0".into(),
                     orientation: Orientation::Upright,
                     nx: 2,
                     ny: 2,
@@ -299,6 +302,7 @@
             )]),
             layer_placement_traces: HashMap::new(),
             continuous_radius_component: None,
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::new(),
         };
         let executor = MetaModelFinalExecutor::new(MetaModelFinalExecutorConfig {
@@ -360,6 +364,7 @@
             layer_block_traces: HashMap::new(),
             layer_placement_traces: HashMap::new(),
             continuous_radius_component: None,
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::new(),
         };
         let rmp = SolverBackedMetaModelRmpExecutor::new(
@@ -373,17 +378,23 @@
 
         let rmp_execution = rmp.execute(&state);
         let final_execution = final_executor.execute(&state);
+        let rmp_error = rmp.execute_result(&state).unwrap_err();
+        let final_error = final_executor.execute_result(&state).unwrap_err();
 
         assert_eq!(rmp_execution.info["status"], "solve_failed");
         assert_eq!(rmp_execution.info["backend"], "failing");
         assert_eq!(rmp_execution.info["error"], "rmp unavailable");
         assert!(rmp_execution.diagnostics.is_some());
         assert!(rmp_execution.shadow_price_summary.is_empty());
+        assert_eq!(rmp_error.stage, ColumnGenerationFailureStage::RestrictedMasterProblem);
+        assert_eq!(rmp_error.message, "rmp unavailable");
         assert_eq!(final_execution.info["status"], "solve_failed");
         assert_eq!(final_execution.info["backend"], "failing");
         assert_eq!(final_execution.info["error"], "final infeasible");
         assert!(final_execution.diagnostics.is_some());
         assert!(final_execution.layers.is_empty());
+        assert_eq!(final_error.stage, ColumnGenerationFailureStage::FinalMilp);
+        assert_eq!(final_error.message, "final infeasible");
     }
 
     #[test]
@@ -405,6 +416,7 @@
             layer_block_traces: HashMap::new(),
             layer_placement_traces: HashMap::new(),
             continuous_radius_component: None,
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::new(),
         };
         let executor = MetaModelFinalExecutor::new(MetaModelFinalExecutorConfig {
@@ -431,7 +443,7 @@
             depth: meters(1.0),
             demand_coverage: vec![Bpp3dLayerDemandCoverage::new(
                 Bpp3dDemandMode::Item,
-                Bpp3dDemandKey::Item { id: "missing".to_string() },
+                Bpp3dDemandKey::Item { id: "missing".into() },
                 1.0,
             )],
         };
@@ -444,6 +456,7 @@
             layer_block_traces: HashMap::new(),
             layer_placement_traces: HashMap::new(),
             continuous_radius_component: None,
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::new(),
         };
         let executor = MetaModelFinalExecutor::new(MetaModelFinalExecutorConfig {
@@ -471,7 +484,7 @@
             depth: meters(1.0),
             demand_coverage: vec![Bpp3dLayerDemandCoverage::new(
                 Bpp3dDemandMode::Item,
-                Bpp3dDemandKey::Item { id: "i0".to_string() },
+                Bpp3dDemandKey::Item { id: "i0".into() },
                 1.0,
             )],
         };
@@ -484,6 +497,7 @@
             layer_block_traces: HashMap::new(),
             layer_placement_traces: HashMap::new(),
             continuous_radius_component: None,
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::new(),
         };
         let executor = MetaModelFinalExecutor::new(MetaModelFinalExecutorConfig {
@@ -511,7 +525,7 @@
             depth: meters(1.0),
             demand_coverage: vec![Bpp3dLayerDemandCoverage::new(
                 Bpp3dDemandMode::Item,
-                Bpp3dDemandKey::Item { id: "i0".to_string() },
+                Bpp3dDemandKey::Item { id: "i0".into() },
                 1.0,
             )],
         };
@@ -526,7 +540,7 @@
                 vec![LayerBlockTrace {
                     block_index: 0,
                     item_index: 99,
-                    item_id: "missing".to_string(),
+                    item_id: "missing".into(),
                     orientation: Orientation::Upright,
                     nx: 1,
                     ny: 1,
@@ -546,6 +560,7 @@
             )]),
             layer_placement_traces: HashMap::new(),
             continuous_radius_component: None,
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::new(),
         };
         let executor = MetaModelFinalExecutor::new(MetaModelFinalExecutorConfig {
@@ -581,6 +596,7 @@
                     objective: Some(7.0),
                     primal_solution: vec![1.0; diagnostics.variable_count],
                     dual_solution: vec![1.25; diagnostics.demand_count],
+                    additional_shadow_prices: HashMap::new(),
                     info: HashMap::from([("backend_phase".to_string(), "rmp".to_string())]),
                 })
             }
@@ -598,6 +614,7 @@
                     objective: Some(3.0),
                     primal_solution,
                     dual_solution: Vec::new(),
+                    additional_shadow_prices: HashMap::new(),
                     info: HashMap::from([("backend_phase".to_string(), "final".to_string())]),
                 })
             }
@@ -627,6 +644,7 @@
             layer_block_traces: HashMap::new(),
             layer_placement_traces: HashMap::new(),
             continuous_radius_component: None,
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::new(),
         };
         let rmp = SolverBackedMetaModelRmpExecutor::new(
@@ -710,6 +728,7 @@
             layer_block_traces: HashMap::new(),
             layer_placement_traces: HashMap::new(),
             continuous_radius_component: None,
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::new(),
         };
         let backend = ColumnGenerationSolverMetaModelBackend::new(MockSolver);

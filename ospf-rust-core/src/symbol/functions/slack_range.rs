@@ -1,6 +1,6 @@
-//! Slack range function symbol.
+//! 范围松弛函数符号 / Slack-range function symbol
 //!
-//! - `SlackRangeFunction`: distance to a closed interval.
+//! - `SlackRangeFunction`：到闭区间的距离 / distance to a closed interval
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -57,20 +57,29 @@ where
     V::from_f64(value)
 }
 
-/// Distance to a closed interval `[lower, upper]`:
-/// `max(lower - x, x - upper, 0)`.
+/// 范围松弛函数 / Slack-range function
 ///
+/// 到闭区间 `[lower, upper]` 的距离：`max(lower - x, x - upper, 0)`。
+/// Distance to a closed interval `[lower, upper]`: `max(lower - x, x - upper, 0)`.
+///
+/// 此实现内部复用精确最大值约束。
 /// This implementation reuses exact-max constraints internally.
 #[derive(Debug, Clone)]
 pub struct SlackRangeFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 符号 ID / Symbol ID
     id: IntermediateSymbolId,
+    /// 输入多项式 / Input polynomial
     input: Linear<V>,
+    /// 下界 / Lower bound
     lower: V,
+    /// 上界 / Upper bound
     upper: V,
+    /// 内部最大值函数 / Inner maximum function
     inner: MaxFunction<V>,
+    /// 声明的依赖 ID / Declared dependency IDs
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -78,6 +87,7 @@ impl<V> SlackRangeFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
 {
+    /// 创建新的范围松弛函数 / Create a new slack-range function
     pub fn new(id: u64, name: &str, input: Linear<V>, lower: V, upper: V) -> Self {
         let lower_f64 = to_f64(&lower).expect("convert lower to f64");
         let upper_f64 = to_f64(&upper).expect("convert upper to f64");
@@ -124,6 +134,7 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -167,18 +178,22 @@ where
         cloned
     }
 
+    /// 获取输入多项式 / Get the input polynomial
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
+    /// 获取下界 / Get the lower bound
     pub fn lower_bound(&self) -> &V {
         &self.lower
     }
 
+    /// 获取上界 / Get the upper bound
     pub fn upper_bound(&self) -> &V {
         &self.upper
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }

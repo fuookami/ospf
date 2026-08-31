@@ -83,97 +83,170 @@ pub struct Csp1dKpiKeys;
 
 #[allow(non_upper_case_globals, non_snake_case)]
 impl Csp1dKpiKeys {
+    /// 选中方案数 / Selected plan count
     pub const SelectedPlanCount: &'static str = "selectedPlanCount";
+    /// 选中批次数 / Selected batch count
     pub const SelectedBatchCount: &'static str = "selectedBatchCount";
+    /// 满足需求数 / Satisfied demand count
     pub const SatisfiedDemandCount: &'static str = "satisfiedDemandCount";
+    /// 未满足需求数 / Unmet demand count
     pub const UnmetDemandCount: &'static str = "unmetDemandCount";
+    /// 物料使用数 / Material usage count
     pub const MaterialUsageCount: &'static str = "materialUsageCount";
+    /// 设备使用数 / Machine usage count
     pub const MachineUsageCount: &'static str = "machineUsageCount";
+    /// 生成方案数 / Generated plan count
     pub const GeneratedPlanCount: &'static str = "generatedPlanCount";
+    /// Top 方案数 / Top plan count
     pub const TopPlanCount: &'static str = "topPlanCount";
+    /// 产出率指标数 / Yield metric count
     pub const YieldMetricCount: &'static str = "yieldMetricCount";
+    /// 损耗指标数 / Waste metric count
     pub const WasteMetricCount: &'static str = "wasteMetricCount";
+    /// 长度指标数 / Length metric count
     pub const LengthMetricCount: &'static str = "lengthMetricCount";
+    /// 解状态 / Solution status
     pub const SolutionStatus: &'static str = "solutionStatus";
+    /// 终止原因 / Termination reason
     pub const TerminationReason: &'static str = "terminationReason";
+    /// 最终 MILP 状态 / Final MILP status
     pub const FinalMilpStatus: &'static str = "finalMilpStatus";
+    /// 部分解是否可用 / Whether partial solution is available
     pub const PartialSolutionAvailable: &'static str = "partialSolutionAvailable";
+    /// 失败信息 / Failure message
     pub const FailureMessage: &'static str = "failureMessage";
+    /// 列生成终止原因 / Column generation termination reason
     pub const ColumnGenerationTerminationReason: &'static str = "columnGeneration.terminationReason";
+    /// 列生成迭代次数 / Column generation iteration count
     pub const ColumnGenerationIterationCount: &'static str = "columnGeneration.iterationCount";
+    /// 列生成定价方案数 / Column generation priced plan count
     pub const ColumnGenerationPricedPlanCount: &'static str = "columnGeneration.pricedPlanCount";
+    /// 列生成最后 LP 目标值 / Column generation last LP objective
     pub const ColumnGenerationLastLpObjective: &'static str = "columnGeneration.lastLpObjective";
+    /// 列生成最后方案数 / Column generation last plan count
     pub const ColumnGenerationLastPlanCount: &'static str = "columnGeneration.lastPlanCount";
+    /// 初始生成访问节点数 / Initial generation visited nodes
     pub const InitialGenerationVisitedNodes: &'static str = "initialGeneration.visitedNodes";
+    /// 初始生成候选数 / Initial generation generated candidates
     pub const InitialGenerationGeneratedCandidates: &'static str = "initialGeneration.generatedCandidates";
+    /// 初始生成接受方案数 / Initial generation accepted plans
     pub const InitialGenerationAcceptedPlans: &'static str = "initialGeneration.acceptedPlans";
+    /// 初始生成不可行候选数 / Initial generation infeasible candidates
     pub const InitialGenerationInfeasibleCandidates: &'static str = "initialGeneration.infeasibleCandidates";
+    /// 初始生成重复候选数 / Initial generation duplicate candidates
     pub const InitialGenerationDuplicateCandidates: &'static str = "initialGeneration.duplicateCandidates";
+    /// 初始生成被支配候选数 / Initial generation dominated candidates
     pub const InitialGenerationDominatedCandidates: &'static str = "initialGeneration.dominatedCandidates";
+    /// 初始生成宽度剪枝节点数 / Initial generation width-bound pruned nodes
     pub const InitialGenerationWidthBoundPrunedNodes: &'static str = "initialGeneration.widthBoundPrunedNodes";
+    /// 初始生成刀数剪枝节点数 / Initial generation knife-bound pruned nodes
     pub const InitialGenerationKnifeBoundPrunedNodes: &'static str = "initialGeneration.knifeBoundPrunedNodes";
+    /// 初始生成长度剪枝条目数 / Initial generation length-bound pruned entries
     pub const InitialGenerationLengthBoundPrunedEntries: &'static str = "initialGeneration.lengthBoundPrunedEntries";
+    /// 初始生成物料宽度索引缓存命中数 / Initial generation material width index cache hits
     pub const InitialGenerationMaterialWidthIndexCacheHits: &'static str = "initialGeneration.materialWidthIndexCacheHits";
+    /// 初始生成物料切片模板缓存命中数 / Initial generation material slice template cache hits
     pub const InitialGenerationMaterialSliceTemplateCacheHits: &'static str = "initialGeneration.materialSliceTemplateCacheHits";
+    /// 初始生成数量缓存命中数 / Initial generation quantity cache hits
     pub const InitialGenerationQuantityCacheHits: &'static str = "initialGeneration.quantityCacheHits";
+    /// 初始生成数量缓存未命中数 / Initial generation quantity cache misses
     pub const InitialGenerationQuantityCacheMisses: &'static str = "initialGeneration.quantityCacheMisses";
+    /// 初始生成物料切片模板缓存未命中数 / Initial generation material slice template cache misses
     pub const InitialGenerationMaterialSliceTemplateCacheMisses: &'static str = "initialGeneration.materialSliceTemplateCacheMisses";
+    /// 初始生成跨工作线程重复候选数 / Initial generation cross-worker duplicate candidates
     pub const InitialGenerationCrossWorkerDuplicateCandidates: &'static str = "initialGeneration.crossWorkerDuplicateCandidates";
+    /// 初始生成跨贡献被支配数 / Initial generation cross-contribution dominated
     pub const InitialGenerationCrossContributionDominated: &'static str = "initialGeneration.crossContributionDominated";
+    /// 初始生成耗时（毫秒） / Initial generation elapsed milliseconds
     pub const InitialGenerationElapsedMilliseconds: &'static str = "initialGeneration.elapsedMilliseconds";
+    /// 初始生成停止原因 / Initial generation stop reason
     pub const InitialGenerationStopReason: &'static str = "initialGeneration.stopReason";
+    /// 初始访问节点数（渲染用） / Initial visited nodes (for rendering)
     pub const InitialVisitedNodes: &'static str = "initialVisitedNodes";
+    /// 初始候选数（渲染用） / Initial generated candidates (for rendering)
     pub const InitialGeneratedCandidates: &'static str = "initialGeneratedCandidates";
+    /// 初始接受方案数（渲染用） / Initial accepted plans (for rendering)
     pub const InitialAcceptedPlans: &'static str = "initialAcceptedPlans";
+    /// 初始不可行候选数（渲染用） / Initial infeasible candidates (for rendering)
     pub const InitialInfeasibleCandidates: &'static str = "initialInfeasibleCandidates";
+    /// 初始重复候选数（渲染用） / Initial duplicate candidates (for rendering)
     pub const InitialDuplicateCandidates: &'static str = "initialDuplicateCandidates";
+    /// 初始被支配候选数（渲染用） / Initial dominated candidates (for rendering)
     pub const InitialDominatedCandidates: &'static str = "initialDominatedCandidates";
+    /// 初始宽度剪枝节点数（渲染用） / Initial width-bound pruned nodes (for rendering)
     pub const InitialWidthBoundPrunedNodes: &'static str = "initialWidthBoundPrunedNodes";
+    /// 初始刀数剪枝节点数（渲染用） / Initial knife-bound pruned nodes (for rendering)
     pub const InitialKnifeBoundPrunedNodes: &'static str = "initialKnifeBoundPrunedNodes";
+    /// 初始长度剪枝条目数（渲染用） / Initial length-bound pruned entries (for rendering)
     pub const InitialLengthBoundPrunedEntries: &'static str = "initialLengthBoundPrunedEntries";
+    /// 初始物料宽度索引缓存命中数（渲染用） / Initial material width index cache hits (for rendering)
     pub const InitialMaterialWidthIndexCacheHits: &'static str = "initialMaterialWidthIndexCacheHits";
+    /// 初始物料切片模板缓存命中数（渲染用） / Initial material slice template cache hits (for rendering)
     pub const InitialMaterialSliceTemplateCacheHits: &'static str = "initialMaterialSliceTemplateCacheHits";
+    /// 初始生成耗时毫秒（渲染用） / Initial generation elapsed milliseconds (for rendering)
     pub const InitialGenerationElapsedMillisecondsRender: &'static str = "initialGenerationElapsedMilliseconds";
+    /// 初始生成停止原因（渲染用） / Initial generation stop reason (for rendering)
     pub const InitialGenerationStopReasonRender: &'static str = "initialGenerationStopReason";
+    /// 定价生成访问节点数 / Pricing generation visited nodes
     pub const PricingVisitedNodes: &'static str = "pricingGeneration.visitedNodes";
+    /// 定价生成候选数 / Pricing generation generated candidates
     pub const PricingGeneratedCandidates: &'static str = "pricingGeneration.generatedCandidates";
+    /// 定价生成接受方案数 / Pricing generation accepted plans
     pub const PricingAcceptedPlans: &'static str = "pricingGeneration.acceptedPlans";
+    /// 定价生成不可行候选数 / Pricing generation infeasible candidates
     pub const PricingInfeasibleCandidates: &'static str = "pricingGeneration.infeasibleCandidates";
+    /// 定价生成重复候选数 / Pricing generation duplicate candidates
     pub const PricingDuplicateCandidates: &'static str = "pricingGeneration.duplicateCandidates";
+    /// 定价生成被支配候选数 / Pricing generation dominated candidates
     pub const PricingDominatedCandidates: &'static str = "pricingGeneration.dominatedCandidates";
+    /// 定价生成耗时（毫秒） / Pricing generation elapsed milliseconds
     pub const PricingElapsedMilliseconds: &'static str = "pricingGeneration.elapsedMilliseconds";
+    /// 定价生成停止原因 / Pricing generation stop reason
     pub const PricingStopReason: &'static str = "pricingGeneration.stopReason";
+    /// LP 失败信息 / LP failure message
     pub const LpFailureMessage: &'static str = "lpFailureMessage";
+    /// 总切缝宽度 / Total trim width
     pub const TotalTrimWidth: &'static str = "totalTrimWidth";
+    /// 总余料 / Total rest material
     pub const TotalRestMaterial: &'static str = "totalRestMaterial";
+    /// 超产面积 / Over-production area
     pub const OverProductionArea: &'static str = "overProductionArea";
+    /// 超产面积度量 / Over-production area measure
     pub const OverProductionAreaMeasure: &'static str = "overProductionAreaMeasure";
+    /// 余料度量 / Rest material measure
     pub const RestMaterialMeasure: &'static str = "restMaterialMeasure";
 
+    /// 物料使用批次数键 / Material usage batch count key
     pub fn materialUsageBatchCount(material_id: &str) -> String {
         format!("materialUsage.{material_id}.batchCount")
     }
 
+    /// 设备产能使用量键 / Machine capacity used key
     pub fn machineCapacityUsed(machine_id: &str) -> String {
         format!("machineCapacityUsed.{machine_id}")
     }
 
+    /// 欠产量键 / Under-production key
     pub fn underProduction(product_id: &str, unit_symbol: &str) -> String {
         format!("underProduction.{product_id}.{unit_symbol}")
     }
 
+    /// 超产量键 / Over-production key
     pub fn overProduction(product_id: &str, unit_symbol: &str) -> String {
         format!("overProduction.{product_id}.{unit_symbol}")
     }
 
+    /// 物料成本键 / Material cost key
     pub fn materialCost(material_id: &str) -> String {
         format!("materialCost.{material_id}")
     }
 
+    /// 已分配长度键 / Assigned length key
     pub fn assignedLength(product_id: &str) -> String {
         format!("assignedLength.{product_id}")
     }
 
+    /// 超长量键 / Over-length key
     pub fn overLength(product_id: &str) -> String {
         format!("overLength.{product_id}")
     }
@@ -182,33 +255,53 @@ impl Csp1dKpiKeys {
 /// CSP1D KPI / CSP1D KPI
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Csp1dKpi {
+    /// 选中方案数 / Selected plan count
     pub selected_plan_count: u64,
+    /// 选中批次数 / Selected batch count
     pub selected_batch_count: u64,
+    /// 满足需求数 / Satisfied demand count
     pub satisfied_demand_count: u64,
+    /// 未满足需求数 / Unmet demand count
     pub unmet_demand_count: u64,
+    /// 物料使用数 / Material usage count
     pub material_usage_count: u64,
+    /// 设备使用数 / Machine usage count
     pub machine_usage_count: u64,
+    /// 生成方案数 / Generated plan count
     pub generated_plan_count: u64,
+    /// Top 方案数 / Top plan count
     pub top_plan_count: u64,
+    /// 产出率指标数 / Yield metric count
     pub yield_metric_count: u64,
+    /// 损耗指标数 / Waste metric count
     pub waste_metric_count: u64,
+    /// 长度指标数 / Length metric count
     pub length_metric_count: u64,
+    /// 详细 KPI 映射 / Detailed KPI map
     pub details: BTreeMap<String, String>,
 }
 
 /// CSP1D 问题定义 / CSP1D problem definition
 #[derive(Debug, Clone)]
 pub struct Csp1dProblem<V: SolveValue> {
+    /// 产品列表 / Product list
     pub products: Vec<Product<V>>,
+    /// 物料列表 / Material list
     pub materials: Vec<Material<V>>,
+    /// 设备列表 / Machine list
     pub machines: Vec<Machine<V>>,
+    /// 配规列表 / Costar list
     pub costars: Vec<Costar<V>>,
+    /// 需求列表 / Demand list
     pub demands: Vec<ProductDemand<V>>,
+    /// 列生成配置 / Column generation configuration
     pub configuration: Csp1dConfiguration,
+    /// 一站式求解配置 / One-stop solve configuration
     pub solve_config: Option<Csp1dSolveConfig<V>>,
 }
 
 impl<V: SolveValue> Csp1dProblem<V> {
+    /// 创建问题定义 / Create a problem definition
     pub fn new(
         products: Vec<Product<V>>,
         materials: Vec<Material<V>>,
@@ -367,8 +460,11 @@ impl<V: SolveValue> Csp1dProblemBuilder<V> {
 /// CSP1D 求解配置 / CSP1D solving configuration
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Csp1dConfiguration {
+    /// 最大初始方案数 / Maximum initial plan count
     pub max_initial_plans: u64,
+    /// 最大定价方案数 / Maximum pricing plan count
     pub max_pricing_plans: u64,
+    /// 迭代上限 / Iteration limit
     pub iteration_limit: u64,
 }
 
@@ -385,13 +481,21 @@ impl Default for Csp1dConfiguration {
 /// CSP1D 一站式求解配置 / CSP1D one-stop solve configuration
 #[derive(Debug, Clone)]
 pub struct Csp1dSolveConfig<V: SolveValue> {
+    /// 列生成配置 / Column generation configuration
     pub column_generation: Csp1dConfiguration,
+    /// 产出率建模配置 / Yield modeling configuration
     pub yield_config: Option<YieldModelingConfig<V>>,
+    /// 损耗最小化配置 / Waste minimization configuration
     pub waste_config: Option<WasteMinimizationConfig<V>>,
+    /// 长度分配配置 / Length assignment configuration
     pub length_config: Option<crate::domain::length_assignment::LengthAssignmentModelingConfig<V>>,
+    /// Top-K 方案上限 / Top-K plan limit
     pub top_k_plan_limit: Option<u64>,
+    /// 是否允许部分解 / Whether partial solution is allowed
     pub allow_partial_solution: bool,
+    /// 建模扩展列表 / Modeling extension list
     pub extensions: Vec<Csp1dModelingExtension<V>>,
+    /// 扩展集 / Extension set
     pub extension_set: Csp1dExtensionSet<V>,
 }
 
@@ -411,6 +515,7 @@ impl<V: SolveValue> Default for Csp1dSolveConfig<V> {
 }
 
 impl<V: SolveValue> Csp1dSolveConfig<V> {
+    /// 合并所有扩展（去重） / Merge all extensions (deduplicated)
     pub fn all_extensions(&self) -> Vec<Csp1dModelingExtension<V>> {
         let mut extensions = self.extensions.clone();
         for extension in &self.extension_set.modeling_extensions {
@@ -701,20 +806,31 @@ where
 /// CSP1D 解 / CSP1D solution
 #[derive(Debug, Clone)]
 pub struct Csp1dSolution<V: SolveValue> {
+    /// 产出结果 / Produce result
     pub produce: Produce<V>,
+    /// 产出率结果 / Yield modeling result
     pub yield_result: Option<crate::domain::r#yield::YieldModelingResult<V>>,
+    /// 损耗结果 / Waste minimization result
     pub waste_result: Option<crate::domain::wasting_minimization::WasteMinimizationResult<V>>,
+    /// 长度分配结果 / Length assignment result
     pub length_result: Option<LengthAssignmentResult<V>>,
+    /// 生成方案列表 / Generated cutting plans
     pub generated_plans: Vec<CuttingPlan<V>>,
+    /// KPI / KPI
     pub kpi: Csp1dKpi,
+    /// 渲染数据 / Render data
     pub render: RenderSchemaDTO,
+    /// 解状态 / Solution status
     pub status: Csp1dSolutionStatus,
+    /// 失败信息 / Failure message
     pub failure_message: Option<String>,
+    /// Top 方案列表 / Top cutting plans
     pub top_plans: Vec<CuttingPlan<V>>,
 }
 
 /// CSP1D 解分析器 / CSP1D solution analyzer
 pub trait Csp1dSolutionAnalyzer<V: SolveValue>: Send + Sync {
+    /// 分析解 / Analyze the solution
     fn analyze(
         &self,
         problem: &Csp1dProblem<V>,

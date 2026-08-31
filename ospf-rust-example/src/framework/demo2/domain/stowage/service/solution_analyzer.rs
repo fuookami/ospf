@@ -1,3 +1,4 @@
+//! 装载方案分析器 / Solution analyzer
 use crate::framework::demo2::domain::stowage::context::StowageContext;
 use crate::framework::demo2::infrastructure::dto::Demo2Response;
 
@@ -6,6 +7,7 @@ use crate::framework::demo2::infrastructure::dto::Demo2Response;
 pub struct StowageSolutionAnalyzer;
 
 impl StowageSolutionAnalyzer {
+    /// 分析装载方案，提取分配结果 / Analyze stowage solution and extract assignment results
     pub fn analyze(
         context: &StowageContext<'_>,
         solution: &[f64],

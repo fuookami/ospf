@@ -15,6 +15,20 @@ use ospf_rust_framework::{
     ScipLinearBendersDecompositionSolver, ScipQuadraticBendersDecompositionSolver, SolveOptions,
 };
 
+#[cfg(feature = "async")]
+fn resolve<T>(future: impl std::future::Future<Output = T>) -> T {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("test runtime should build")
+        .block_on(future)
+}
+
+#[cfg(not(feature = "async"))]
+fn resolve<T>(value: T) -> T {
+    value
+}
+
 fn build_mip_model(name: &str) -> LinearTriadModel {
     let mut basic = BasicLinearTriadModel::new(name);
     let item_count = 36usize;
@@ -71,7 +85,7 @@ fn scip_column_generation_native_callback_can_interrupt_on_node_where_point() {
     let solver = ScipColumnGenerationSolver::new()
         .with_native_callback(Some(callback))
         .with_telemetry_min_interval(0.1);
-    let result = solver.solve_milp_with_options(&model, SolveOptions::default());
+    let result = resolve(solver.solve_milp_with_options(&model, SolveOptions::default()));
     assert!(
         result.is_err(),
         "framework solve should surface user interrupt as error"
@@ -127,8 +141,7 @@ fn scip_column_generation_native_observers_are_aggregated() {
         .add_native_observer(observer1)
         .add_native_observer(observer2)
         .with_telemetry_min_interval(0.1);
-    let result = solver
-        .solve_milp_with_options(&model, SolveOptions::default())
+    let result = resolve(solver.solve_milp_with_options(&model, SolveOptions::default()))
         .expect("framework native observers should solve");
     assert!(result.obj.is_finite(), "expected finite objective");
     let hits1 = observer1_hits.load(Ordering::SeqCst);
@@ -158,7 +171,7 @@ fn scip_column_generation_native_observer_interrupt_surfaces_user_interrupt_erro
     let solver = ScipColumnGenerationSolver::new()
         .add_native_observer(observer)
         .with_telemetry_min_interval(0.1);
-    let result = solver.solve_milp_with_options(&model, SolveOptions::default());
+    let result = resolve(solver.solve_milp_with_options(&model, SolveOptions::default()));
     assert!(
         result.is_err(),
         "framework solve should surface user interrupt as error"
@@ -206,7 +219,7 @@ fn scip_linear_benders_native_callback_interrupt_surfaces_user_interrupt_error()
         ScipLinearBendersDecompositionSolver::with_config(SCIPConfig::new().with_output(false))
             .with_native_callback(Some(callback))
             .with_telemetry_min_interval(0.1);
-    let result = solver.solve_master(&model, &[]);
+    let result = resolve(solver.solve_master(&model, &[]));
     match result {
         Ok(output) => {
             assert!(
@@ -258,7 +271,7 @@ fn scip_quadratic_benders_native_callback_interrupt_surfaces_user_interrupt_erro
         ScipQuadraticBendersDecompositionSolver::with_config(SCIPConfig::new().with_output(false))
             .with_native_callback(Some(callback))
             .with_telemetry_min_interval(0.1);
-    let result = solver.solve_master(&model, &[]);
+    let result = resolve(solver.solve_master(&model, &[]));
     match result {
         Ok(output) => {
             assert!(

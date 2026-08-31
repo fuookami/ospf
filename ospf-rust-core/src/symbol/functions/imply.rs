@@ -1,5 +1,4 @@
-//! 逻辑蕴含函数符号。
-//! Logical implication function symbol.
+//! 逻辑蕴含函数符号 / Logical implication function symbol
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -137,6 +136,8 @@ impl<V> ImplyFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 使用指定 ID 和名称创建蕴含函数。
+    /// Create an implication function with the given ID, name, premise, consequence, and big-M value.
     pub fn new(
         id: u64,
         name: &str,
@@ -198,11 +199,15 @@ where
         Self::new(id, &name, premise, consequence, big_m)
     }
 
+    /// 设置声明的依赖符号 ID 列表，用于构建依赖关系图。
+    /// Set the declared dependency symbol IDs, used for building the dependency graph.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回蕴含结果的二值变量。
+    /// Return the binary result variable of the implication.
     pub fn result_variable(&self) -> &BinaryVariableItem {
         &self.result_var
     }

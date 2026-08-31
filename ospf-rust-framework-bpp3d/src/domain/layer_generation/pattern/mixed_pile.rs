@@ -1,6 +1,6 @@
 fn select_mixed_pattern_pile_with_size<V, U>(
     selected_items: &[PatternSelectedItem<V>],
-    package_attributes: &HashMap<String, PackageAttribute>,
+    package_attributes: &HashMap<ItemId, PackageAttribute>,
     package_rule_policy: &dyn LayerGenerationPackageRulePolicy<V, U>,
     remaining: &HashMap<usize, u64>,
     bin: &BinType<V, U>,
@@ -44,7 +44,7 @@ where
 
 fn select_mixed_pattern_pile_recursive<V, U>(
     selected_items: &[PatternSelectedItem<V>],
-    package_attributes: &HashMap<String, PackageAttribute>,
+    package_attributes: &HashMap<ItemId, PackageAttribute>,
     package_rule_policy: &dyn LayerGenerationPackageRulePolicy<V, U>,
     remaining: &HashMap<usize, u64>,
     bin: &BinType<V, U>,
@@ -99,7 +99,7 @@ where
 
 fn select_mixed_pattern_pile_with_repeated_unit<V, U>(
     selected_items: &[PatternSelectedItem<V>],
-    package_attributes: &HashMap<String, PackageAttribute>,
+    package_attributes: &HashMap<ItemId, PackageAttribute>,
     package_rule_policy: &dyn LayerGenerationPackageRulePolicy<V, U>,
     remaining: &HashMap<usize, u64>,
     bin: &BinType<V, U>,
@@ -142,7 +142,7 @@ where
 
 fn build_mixed_pattern_pile<V, U>(
     units: &[PatternSelectedItem<V>],
-    package_attributes: &HashMap<String, PackageAttribute>,
+    package_attributes: &HashMap<ItemId, PackageAttribute>,
     package_rule_policy: &dyn LayerGenerationPackageRulePolicy<V, U>,
     remaining: &HashMap<usize, u64>,
     bin: &BinType<V, U>,
@@ -198,7 +198,7 @@ where
 
 fn mixed_pattern_pile_allows_stacking<V, U>(
     units: &[PatternSelectedItem<V>],
-    package_attributes: &HashMap<String, PackageAttribute>,
+    package_attributes: &HashMap<ItemId, PackageAttribute>,
     package_rule_policy: &dyn LayerGenerationPackageRulePolicy<V, U>,
     bin: &BinType<V, U>,
 ) -> bool

@@ -1,8 +1,10 @@
+//! 服务成本目标 / Service cost objective
+
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use crate::framework::demo1::route_context::model::{Assignment, Service};
 
-/// 服务成本目标函数
+/// 服务成本目标函数 / Service cost objective function
 ///
 /// 从 node_assignment[node] 符号组合取多项式：
 /// node_assignment[node] = sum(x[node, s] for all s)
@@ -32,7 +34,7 @@ pub fn apply_service_cost_objective(
     Ok(())
 }
 
-/// 通过 x_idx 反查指定 var_index 对应的 service 索引
+/// 通过 x_idx 反查指定 var_index 对应的 service 索引 / Reverse-lookup service index for specified var_index via x_idx
 fn find_service_for_x_var(var_index: usize, row: usize, assignment: &Assignment) -> Option<usize> {
     let service_count = assignment.x_idx.shape[1];
     for s in 0..service_count {

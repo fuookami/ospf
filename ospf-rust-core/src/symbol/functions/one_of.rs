@@ -1,4 +1,4 @@
-//! OneOf and IfElse function symbols.
+//! 选一函数与 If-Else 函数符号 / OneOf and IfElse function symbols
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -75,16 +75,24 @@ where
 const DEFAULT_BIG_M: f64 = 1_000_000.0;
 const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
 
+/// 选一函数 / One-of function
+///
+/// 通过二值选择器选择一个表达式并返回加权和。
 /// Select one expression by binary selectors and return weighted sum.
 #[derive(Debug, Clone)]
 pub struct OneOfFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 符号 ID / Symbol ID
     id: IntermediateSymbolId,
+    /// 输入多项式列表 / Input polynomials
     polynomials: Vec<Linear<V>>,
+    /// 结果连续变量 / Result continuous variable
     result_var: ContinuousVariableItem,
+    /// 选择器二值变量列表 / Selection binary variables
     selection_vars: Vec<BinaryVariableItem>,
+    /// 声明的依赖 ID / Declared dependency IDs
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -92,6 +100,7 @@ impl<V> OneOfFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建新的选一函数 / Create a new one-of function
     pub fn new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> Self {
         let n = polynomials.len();
         let group_id = new_group_id();

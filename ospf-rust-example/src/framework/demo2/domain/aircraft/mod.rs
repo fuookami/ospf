@@ -1,3 +1,4 @@
+//! 飞机领域模块 / Aircraft domain module.
 pub mod model;
 pub mod service;
 
@@ -8,21 +9,31 @@ use super::shared::units;
 /// 飞机领域聚合 / Aircraft domain aggregation
 #[derive(Debug)]
 pub struct Aggregation {
+    /// 注册号 / Registration number
     pub reg_no: String,
+    /// 飞机型号 / Aircraft model
     pub aircraft_model: AircraftModel,
+    /// 气动公式 / Aerodynamic formula
     pub formula: Formula,
+    /// 机身数据 / Fuselage data
     pub fuselage: Fuselage,
+    /// 燃油箱列表 / Fuel tank list
     pub fuel_tanks: Vec<FuelTank>,
+    /// 各飞行阶段燃油常数 / Fuel constants per flight phase
     pub fuel: HashMap<FlightPhase, FuelConstant>,
+    /// 甲板列表 / Deck list
     pub decks: Vec<Deck>,
+    /// 各类型的邻接关系 / Neighbours by type
     pub neighbours: HashMap<NeighbourType, Vec<Neighbour>>,
 }
 
 impl Aggregation {
+    /// 获取所有舱位 / Get all positions across decks
     pub fn positions(&self) -> Vec<&Position> {
         self.decks.iter().flat_map(|d| d.positions.iter()).collect()
     }
 
+    /// 获取冲突舱位对 / Get conflicting position pairs
     pub fn conflict_positions(&self) -> Vec<PositionPair> {
         let positions = self.positions();
         let mut conflicts = Vec::new();
@@ -38,15 +49,17 @@ impl Aggregation {
 /// 飞机上下文 / Aircraft context
 #[derive(Debug)]
 pub struct AircraftContext {
+    /// 飞机聚合 / Aircraft aggregation
     pub aggregation: Option<Aggregation>,
 }
 
 impl AircraftContext {
+    /// 创建空的飞机上下文 / Create an empty aircraft context
     pub fn new() -> Self {
         Self { aggregation: None }
     }
 
-    /// 从请求数据初始化飞机聚合
+    /// 从请求数据初始化飞机聚合 / Initialize aircraft aggregation from request data
     pub fn init(
         &mut self,
         request: &crate::framework::demo2::infrastructure::dto::Demo2Request,

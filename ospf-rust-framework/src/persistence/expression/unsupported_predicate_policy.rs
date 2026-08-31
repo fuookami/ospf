@@ -1,6 +1,7 @@
 //! 不支持谓词策略
 //! Unsupported predicate policy
 
+/// 不支持谓词策略 / Unsupported predicate policy
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedPredicatePolicy {
     /// 无法下推时翻译为恒假条件。

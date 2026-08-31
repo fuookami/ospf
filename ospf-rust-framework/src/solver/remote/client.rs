@@ -24,8 +24,11 @@ static REMOTE_CONTEXT_COUNTER: AtomicU64 = AtomicU64::new(1);
 /// Remote solve options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RemoteSolveOptions {
+    /// 时间片长度 / Quantum duration
     pub quantum: Duration,
+    /// 最大轮数 / Maximum rounds
     pub max_rounds: u64,
+    /// 是否每轮导出检查点 / Whether to export checkpoint each round
     pub export_checkpoint_each_round: bool,
 }
 
@@ -92,9 +95,13 @@ impl RemoteSolveOptions {
 /// Remote solve context.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteSolveContext {
+    /// 任务 ID / Task ID
     pub task_id: TaskId,
+    /// 切片 ID / Slice ID
     pub slice_id: SliceId,
+    /// 节点 ID / Node ID
     pub node_id: NodeId,
+    /// 租户 ID / Tenant ID
     pub tenant_id: TenantId,
 }
 

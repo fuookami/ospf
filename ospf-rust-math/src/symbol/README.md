@@ -23,9 +23,30 @@ symbol/
 ├── polynomial/      # Polynomials (Linear, Quadratic, Canonical)
 ├── inequality/      # Inequalities (Comparison, LinearInequality, etc.)
 ├── operation/       # Operations (Evaluate, Differentiate, ToLaTeX, etc.)
+├── expression/      # Runtime expression system (ScalarExpression, BooleanExpression, evaluation, parsing)
 ├── macros/          # Construction macros
-├── parser/          # Expression parser (optional, requires "parser" feature)
+├── category/        # Symbol categories
+├── parser/          # Boolean expression parser (optional, requires "parser" feature)
 └── serde.rs         # Serialization (optional, requires "serde" feature)
+```
+
+### expression/ Submodule Structure
+
+The runtime expression system is a core submodule supporting dynamic expression construction, evaluation, parsing, and serialization:
+
+```
+expression/
+├── mod.rs           # Module registration + boolean expression parser/serialization/tests
+├── property_path.rs # PropertyPath + PathSymbol
+├── operators.rs     # Operator enums (Unary/Binary/Comparison/PatternMatch/Boolean/NullCheck)
+├── value.rs         # ExpressionValue runtime value type
+├── scalar.rs        # ScalarExpression<T> scalar expression AST
+├── boolean.rs       # BooleanExpression<T> boolean expression AST
+├── dsl.rs           # DSL traits (ScalarExpressionDsl, PathBuilder, BooleanExpressionDsl) + constructors
+├── evaluation.rs    # EvaluationContext + evaluate_boolean/evaluate_scalar_expression
+├── normalize.rs     # Boolean normalization (flatten, constant_fold, deduplicate, de_morgan, structural_key)
+├── math_functions.rs # ScalarFunctionEvaluator trait + MathFunctionEvaluator (17 math.* functions)
+└── scalar_parser.rs # Scalar expression parser (optional, requires "parser" feature)
 ```
 
 ## Core Types
@@ -63,6 +84,63 @@ symbol/
 | `LinearInequality<T>`       | `Linear op value`    | `2x + 3y ≤ 5`  |
 | `QuadraticInequality<T>`    | `Quadratic op value` | `x² + y² ≤ 10` |
 | `CanonicalInequality<T, E>` | `Canonical op value` | `x²y³ ≥ 1`     |
+
+### Runtime Expressions
+
+The expression submodule provides a runtime expression system for constructing, evaluating, parsing, and serializing dynamic expressions. Unlike the compile-time symbolic computation of the polynomial module, the expression module constructs and evaluates expressions dynamically at runtime, supporting conditional branching, function calls, and property path references.
+
+#### Core Types
+
+| Type                          | Description                                                          |
+|-------------------------------|----------------------------------------------------------------------|
+| `PropertyPath`                | Property path (e.g., `user.address.city`), with segments, parent/child paths |
+| `PathSymbol`                  | Path symbol bridging `PropertyPath` and `DynSymbol`                  |
+| `ExpressionValue`             | Runtime value enum (`Null` / `Boolean` / `Number` / `String`)       |
+| `ScalarExpression<T>`         | Scalar expression AST (constant, reference, unary/binary, function, conditional, boolean wrapper) |
+| `BooleanExpression<T>`        | Boolean expression AST (constant, comparison, In, pattern match, null check, And/Or/Not) |
+| `PathBuilder<T>`              | Path builder for chaining reference and comparison construction      |
+
+#### Operators
+
+| Enum                   | Values                                                |
+|------------------------|-------------------------------------------------------|
+| `UnaryOperator`        | `Negate`, `Positive`, `Abs`                           |
+| `BinaryOperator`       | `Add`, `Subtract`, `Multiply`, `Divide`, `Modulo`, `Power` |
+| `ComparisonOperator`   | `Eq`, `Ne`, `Lt`, `Le`, `Gt`, `Ge`                    |
+| `PatternMatchMode`     | `Like`, `Exact`, `Prefix`, `Suffix`, `Contains`, `Regex` |
+| `BooleanOperator`      | `And`, `Or`                                           |
+| `NullCheckType`        | `IsNull`, `IsNotNull`                                 |
+
+#### Scalar Expression Variants
+
+`ScalarExpression<T>` supports the following variants:
+
+| Variant           | Description                                              |
+|-------------------|----------------------------------------------------------|
+| `Constant`        | Constant value                                           |
+| `Reference`       | Property path reference                                  |
+| `SymbolReference` | Dynamic symbol reference                                 |
+| `Unary`           | Unary operation (negation, positive, absolute value)   |
+| `Binary`          | Binary operation (add/subtract/multiply/divide/mod/power)|
+| `Function`        | Function call (e.g., `abs`, `math.sqrt`)                 |
+| `Conditional`      | Conditional expression (`if/then/else` or ternary `?:`) |
+| `Boolean`         | Boolean wrapper expression (boolean as scalar value)     |
+| `Custom`          | Custom expression (with payload and description)        |
+
+#### Boolean Expression Variants
+
+`BooleanExpression<T>` supports the following variants:
+
+| Variant          | Description                                       |
+|------------------|---------------------------------------------------|
+| `Constant`       | Three-valued logic constant (`True` / `False` / `Unknown`) |
+| `Comparison`     | Comparison expression (comparing two scalars)     |
+| `In`             | Set membership check                               |
+| `PatternMatch`   | Pattern matching (`like`, `regex`, prefix/suffix/contains) |
+| `NullCheck`      | Null check (`is null` / `is not null`)            |
+| `And` / `Or`     | Logical AND/OR (supports multiple operands)        |
+| `Not`            | Logical NOT                                        |
+| `Custom`         | Custom boolean expression                         |
 
 ## Usage Examples
 
@@ -148,6 +226,89 @@ let grad_fn = linear.compile_gradient(&[x, y]);
 let gradient = grad_fn(&[2.0, 3.0]); // [2.0, 3.0]
 ```
 
+### Runtime Expression Construction and Evaluation
+
+```rust
+use ospf_rust_math::symbol::expression::{
+    ScalarExpression, BooleanExpression, ExpressionValue, MapEvaluationContext,
+    evaluate_scalar_expression, MathFunctionEvaluator,
+};
+
+// Construct scalar expression: x * 2 + 3
+let x = ScalarExpression::<ExpressionValue>::reference("x");
+let expr = ScalarExpression::add_expr(
+    ScalarExpression::multiply_expr(x.clone(), 2.0.into()),
+    3.0.into(),
+);
+
+// Construct conditional: if x > 0 then x else 0
+let condition = BooleanExpression::gt(x.clone(), 0.0.into());
+let conditional = ScalarExpression::conditional(condition, x, 0.0.into());
+
+// Evaluation context
+let ctx = MapEvaluationContext::from_string_map([
+    ("x", ExpressionValue::Number(5.0)),
+]);
+
+// Evaluate (using MathFunctionEvaluator for math.* functions)
+let result = evaluate_scalar_expression(&expr, &ctx, &MathFunctionEvaluator);
+assert_eq!(result, Some(ExpressionValue::Number(13.0)));
+```
+
+### Expression Parsing (requires "parser" feature)
+
+```rust
+use ospf_rust_math::symbol::expression::{
+    parse_scalar_expression, evaluate_scalar_expression,
+    MapEvaluationContext, MathFunctionEvaluator, ExpressionValue,
+};
+
+// Parse scalar expression string
+let expr = parse_scalar_expression("if math.sqrt(x) > 2 then x else 0 fi").unwrap();
+
+let ctx = MapEvaluationContext::from_string_map([
+    ("x", ExpressionValue::Number(16.0)),
+]);
+
+let result = evaluate_scalar_expression(&expr, &ctx, &MathFunctionEvaluator);
+assert_eq!(result, Some(ExpressionValue::Number(16.0)));
+```
+
+Supported parsing syntax:
+
+- Arithmetic: `+`, `-`, `*`, `/`, `%`, `^`, `**`
+- Comparison: `>`, `<`, `>=`, `<=`, `==`, `!=`, `<>`
+- Logical: `&&`, `||`, `!`, `and`, `or`, `not`
+- Conditional: `? :` ternary, `if/then/else/fi`
+- Functions: `name(args)`, `math.sqrt`, `math.pow`, `math.PI`, `math.E`, etc.
+- Literals: numbers, strings, `true`, `false`, `null`
+
+### Boolean Expression Normalization
+
+```rust
+use ospf_rust_math::symbol::expression::{
+    BooleanExpression, ScalarExpression, ExpressionValue,
+    flatten_boolean_expression, constant_fold_boolean_expression,
+};
+
+let x = ScalarExpression::<ExpressionValue>::reference("x");
+// Build nested And/Or: (x > 0 && x < 10) || (x > 100)
+let inner = BooleanExpression::and(vec![
+    BooleanExpression::gt(x.clone(), 0.0.into()),
+    BooleanExpression::lt(x.clone(), 10.0.into()),
+]);
+let nested = BooleanExpression::or(vec![
+    inner,
+    BooleanExpression::gt(x, 100.0.into()),
+]);
+
+// Flatten nested And/Or
+let flat = flatten_boolean_expression(&nested);
+
+// Constant folding: eliminate constant True/False operands
+let folded = constant_fold_boolean_expression(&flat);
+```
+
 ## Implemented Features
 
 | Feature                       | Status | Description                                                      |
@@ -157,6 +318,12 @@ let gradient = grad_fn(&[2.0, 3.0]); // [2.0, 3.0]
 | Quadratic monomial/polynomial | ✅      | `QuadraticMonomial<T>`, `Quadratic<T>`                           |
 | Canonical monomial/polynomial | ✅      | `CanonicalMonomial<T, E>`, `Canonical<T, E>`                     |
 | Inequalities                  | ✅      | `LinearInequality`, `QuadraticInequality`, `CanonicalInequality` |
+| Runtime expressions           | ✅      | `ScalarExpression`, `BooleanExpression`, `ExpressionValue`     |
+| Expression evaluation         | ✅      | `evaluate_scalar_expression`, `evaluate_boolean`, injectable function evaluator |
+| Math function table           | ✅      | `MathFunctionEvaluator` (17 math.* functions)                    |
+| Boolean normalization          | ✅      | flatten, constant_fold, deduplicate, de_morgan, structural_key   |
+| Conditional expressions        | ✅      | `if/then/else/fi`, ternary `?:`, `Conditional` AST variant       |
+| Scalar parser                  | ✅      | `parse_scalar_expression` (optional feature)                     |
 | Evaluation                    | ✅      | `Evaluate`, `EvaluateOrdered` traits                             |
 | Differentiation               | ✅      | `Differentiate`, `SecondOrderDifferentiate` traits               |
 | Matrix form                   | ✅      | `ToMatrixForm` trait                                             |

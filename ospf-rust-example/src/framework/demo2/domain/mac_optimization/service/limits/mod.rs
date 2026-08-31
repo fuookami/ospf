@@ -1,3 +1,4 @@
+//! MAC 优化约束限制 / MAC optimization constraint limits.
 pub mod horizontal_stabilizer_limit;
 pub mod lateral_balance_limit;
 pub mod longitudinal_balance_limit;

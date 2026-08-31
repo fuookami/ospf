@@ -1,4 +1,4 @@
-//! Semi-continuous variable function symbol.
+//! 半连续变量函数符号 / Semi-continuous variable function symbol
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -43,17 +43,26 @@ where
     })
 }
 
+/// 半正定函数（max(x, 0)）/ Semi-positive function (max(x, 0))
+///
+/// 表示半连续变量：要么为 0，要么在 [lower, upper] 范围内。
 /// Represents a semi-continuous variable: either 0 or in range [lower, upper].
 #[derive(Debug, Clone)]
 pub struct SemiFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 符号 ID / Symbol ID
     id: IntermediateSymbolId,
+    /// 结果连续变量 / Result continuous variable
     result_var: ContinuousVariableItem,
+    /// 指示器二值变量 / Indicator binary variable
     indicator_var: BinaryVariableItem,
+    /// 下界 / Lower bound
     lower: V,
+    /// 上界 / Upper bound
     upper: V,
+    /// 声明的依赖 ID / Declared dependency IDs
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -61,6 +70,7 @@ impl<V> SemiFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建新的半连续函数 / Create a new semi-continuous function
     pub fn new(id: u64, name: &str, lower: V, upper: V) -> Self {
         let group_id = new_group_id();
         let result_var = ContinuousVariableItem::create(VariableId::new(group_id, 0), name);
@@ -169,23 +179,28 @@ where
         Self::try_from_variable(id, name, variable, lower, upper)
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取指示器变量 / Get the indicator variable
     pub fn indicator_variable(&self) -> &BinaryVariableItem {
         &self.indicator_var
     }
 
+    /// 获取下界 / Get the lower bound
     pub fn lower_bound(&self) -> &V {
         &self.lower
     }
 
+    /// 获取上界 / Get the upper bound
     pub fn upper_bound(&self) -> &V {
         &self.upper
     }

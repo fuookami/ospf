@@ -1,11 +1,16 @@
+//! 需求约束模块 / Demand constraint module
+
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
 use ospf_rust_multiarray::{MultiArray, Shape};
 use crate::framework::demo1::route_context::model::{Edge, Node, Service};
 
+/// 一维线性表达式符号组合类型别名 / 1D linear expression symbol combination type alias
 type Symbols1D = SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>;
 
+/// 需求约束：对每个客户节点，入边带宽之和 >= 需求 / Demand constraint: for each client node, sum of incoming edge bandwidth >= demand
+///
 /// 对齐 Kotlin DemandConstraint:
 /// 对每个 client 节点，sum(y[e][s] for incoming edges) >= demand
 ///

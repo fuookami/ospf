@@ -1,7 +1,7 @@
     #[test]
     fn pattern_layer_generator_uses_block_loading_fallback_for_cylinder_items() {
         let items = vec![ActualItem {
-            id: "cyl".to_string(),
+            id: "cyl".into(),
             name: "Cylinder".to_string(),
             package_code: None,
             pack: None,
@@ -24,7 +24,7 @@
                 height: meters(10.0),
                 depth: meters(10.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             });
 
@@ -43,7 +43,7 @@
     #[test]
     fn pattern_layer_generator_applies_with_piling_limit() {
         let items = vec![ActualItem {
-            id: "i0".to_string(),
+            id: "i0".into(),
             name: "Item".to_string(),
             package_code: None,
             pack: None,
@@ -57,7 +57,7 @@
         let request = LayerGenerationRequest::new(0, items)
             .with_demand_entries(vec![LayerGenerationDemandEntry {
                 mode: Bpp3dDemandMode::Item,
-                key: Bpp3dDemandKey::Item { id: "i0".to_string() },
+                key: Bpp3dDemandKey::Item { id: "i0".into() },
                 demand: 4.0,
                 satisfied: 0.0,
             }])
@@ -66,7 +66,7 @@
                 height: meters(4.0),
                 depth: meters(2.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -88,7 +88,7 @@
     #[test]
     fn pattern_layer_generator_uses_step_pile_amount() {
         let items = vec![ActualItem {
-            id: "i0".to_string(),
+            id: "i0".into(),
             name: "Item".to_string(),
             package_code: None,
             pack: None,
@@ -102,7 +102,7 @@
         let request = LayerGenerationRequest::new(0, items)
             .with_demand_entries(vec![LayerGenerationDemandEntry {
                 mode: Bpp3dDemandMode::Item,
-                key: Bpp3dDemandKey::Item { id: "i0".to_string() },
+                key: Bpp3dDemandKey::Item { id: "i0".into() },
                 demand: 6.0,
                 satisfied: 0.0,
             }])
@@ -111,7 +111,7 @@
                 height: meters(3.0),
                 depth: meters(2.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -155,7 +155,7 @@
     fn pattern_layer_generator_builds_mixed_height_pile() {
         let items = vec![
             ActualItem {
-                id: "tall".to_string(),
+                id: "tall".into(),
                 name: "Tall".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -167,7 +167,7 @@
                 shape_spec_override: Some(PackageShapeSpec::Cuboid),
             },
             ActualItem {
-                id: "short".to_string(),
+                id: "short".into(),
                 name: "Short".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -183,13 +183,13 @@
             .with_demand_entries(vec![
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "short".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "short".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "tall".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "tall".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
@@ -199,7 +199,7 @@
                 height: meters(3.0),
                 depth: meters(2.0),
                 capacity: meters(10.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -225,7 +225,7 @@
             .demand_coverage
             .iter()
             .any(|coverage| {
-                coverage.key == Bpp3dDemandKey::Item { id: "short".to_string() }
+                coverage.key == Bpp3dDemandKey::Item { id: "short".into() }
                     && coverage.coefficient == 1.0
             }));
         assert!(results[0]
@@ -233,7 +233,7 @@
             .demand_coverage
             .iter()
             .any(|coverage| {
-                coverage.key == Bpp3dDemandKey::Item { id: "tall".to_string() }
+                coverage.key == Bpp3dDemandKey::Item { id: "tall".into() }
                     && coverage.coefficient == 1.0
             }));
         assert!(results[0]
@@ -246,7 +246,7 @@
     fn pattern_layer_generator_sorts_single_item_candidates_by_height_fit() {
         let items = vec![
             ActualItem {
-                id: "tall".to_string(),
+                id: "tall".into(),
                 name: "Tall".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -258,7 +258,7 @@
                 shape_spec_override: Some(PackageShapeSpec::Cuboid),
             },
             ActualItem {
-                id: "short".to_string(),
+                id: "short".into(),
                 name: "Short".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -274,13 +274,13 @@
             .with_demand_entries(vec![
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "short".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "short".into() },
                     demand: 3.0,
                     satisfied: 0.0,
                 },
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "tall".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "tall".into() },
                     demand: 2.0,
                     satisfied: 0.0,
                 },
@@ -290,7 +290,7 @@
                 height: meters(3.0),
                 depth: meters(2.0),
                 capacity: meters(10.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -313,7 +313,7 @@
             .demand_coverage
             .iter()
             .any(|coverage| {
-                coverage.key == Bpp3dDemandKey::Item { id: "short".to_string() }
+                coverage.key == Bpp3dDemandKey::Item { id: "short".into() }
                     && coverage.coefficient == 1.0
         }));
     }

@@ -1,3 +1,5 @@
+//! 波数单位 / Wavenumber units
+
 use crate::unit::{CTUnit, CTUnitReciprocal};
 use super::length::Meter;
 

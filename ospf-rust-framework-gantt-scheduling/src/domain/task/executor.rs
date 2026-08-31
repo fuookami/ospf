@@ -5,14 +5,19 @@
 
 use time::OffsetDateTime;
 
+use crate::domain::common::{ExecutorId, ExecutorIdTrait};
+
 /// 执行者 trait / Executor trait
 ///
 /// 定义可以执行任务的实体接口，如工人、机器、产线等。
 /// Defines the interface for entities that can execute tasks,
 /// such as workers, machines, production lines, etc.
 pub trait ExecutorTrait: Send + Sync + std::fmt::Debug + Clone + PartialEq + Eq + std::hash::Hash + 'static {
+    /// 执行者 ID 类型 / Executor id type
+    type Id: ExecutorIdTrait;
+
     /// 执行者 ID / Executor ID
-    fn id(&self) -> &str;
+    fn id(&self) -> &Self::Id;
 
     /// 执行者名称 / Executor name
     fn name(&self) -> &str;
@@ -21,7 +26,7 @@ pub trait ExecutorTrait: Send + Sync + std::fmt::Debug + Clone + PartialEq + Eq 
     ///
     /// 默认返回 `id()`。子类可覆盖以区分逻辑 ID 和实际 ID。
     /// Defaults to `id()`. Subclasses may override to distinguish logical ID from actual ID.
-    fn actual_id(&self) -> &str {
+    fn actual_id(&self) -> &Self::Id {
         self.id()
     }
 
@@ -77,14 +82,14 @@ impl<T, E: ExecutorTrait> ExecutorInitialUsability<T, E> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BasicExecutor {
     /// 执行者 ID / Executor ID
-    pub id: String,
+    pub id: ExecutorId,
     /// 执行者名称 / Executor name
     pub name: String,
 }
 
 impl BasicExecutor {
     /// 创建新的基础执行者 / Create new basic executor
-    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
+    pub fn new(id: impl Into<ExecutorId>, name: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             name: name.into(),
@@ -93,7 +98,9 @@ impl BasicExecutor {
 }
 
 impl ExecutorTrait for BasicExecutor {
-    fn id(&self) -> &str {
+    type Id = ExecutorId;
+
+    fn id(&self) -> &Self::Id {
         &self.id
     }
 

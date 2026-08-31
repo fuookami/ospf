@@ -18,11 +18,11 @@
             height: meters(10.0),
             depth: meters(10.0),
             capacity: meters(1000.0),
-            type_code: "BIN".to_string(),
+            type_code: "BIN".into(),
             is_main: true,
         };
         let items = vec![ActualItem {
-            id: "i1".to_string(),
+            id: "i1".into(),
             name: "Item 1".to_string(),
             package_code: None,
             pack: None,
@@ -37,7 +37,7 @@
             .with_bin(bin)
             .with_demand_entries(vec![LayerGenerationDemandEntry {
                 mode: Bpp3dDemandMode::Item,
-                key: Bpp3dDemandKey::Item { id: "i1".to_string() },
+                key: Bpp3dDemandKey::Item { id: "i1".into() },
                 demand: 1.0,
                 satisfied: 0.0,
             }]);
@@ -53,7 +53,7 @@
     fn block_layer_generator_respects_package_depth_bounds() {
         let generator = BlockLayerGenerator::new();
         let items = vec![ActualItem {
-            id: "depth".to_string(),
+            id: "depth".into(),
             name: "Depth".to_string(),
             package_code: None,
             pack: None,
@@ -77,7 +77,7 @@
             .with_package_attributes(attributes)
             .with_demand_entries(vec![LayerGenerationDemandEntry {
                 mode: Bpp3dDemandMode::Item,
-                key: Bpp3dDemandKey::Item { id: "depth".to_string() },
+                key: Bpp3dDemandKey::Item { id: "depth".into() },
                 demand: 4.0,
                 satisfied: 0.0,
             }])
@@ -86,7 +86,7 @@
                 height: meters(4.0),
                 depth: meters(4.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(5);
@@ -104,7 +104,7 @@
         let request: LayerGenerationRequest<f64, Meter> = LayerGenerationRequest::new(
             0,
             vec![ActualItem {
-                id: "i1".to_string(),
+                id: "i1".into(),
                 name: "Item 1".to_string(),
                 package_code: None,
                 pack: None,
@@ -121,7 +121,7 @@
             height: meters(5.0),
             depth: meters(5.0),
             capacity: meters(100.0),
-            type_code: "BIN".to_string(),
+            type_code: "BIN".into(),
             is_main: true,
         });
         let results = generator.generate(&request);
@@ -137,7 +137,7 @@
             0,
             vec![
                 ActualItem {
-                    id: "i1".to_string(),
+                    id: "i1".into(),
                     name: "Item 1".to_string(),
                     package_code: None,
                     pack: None,
@@ -149,7 +149,7 @@
                     shape_spec_override: None,
                 },
                 ActualItem {
-                    id: "i2".to_string(),
+                    id: "i2".into(),
                     name: "Item 2".to_string(),
                     package_code: None,
                     pack: None,
@@ -167,7 +167,7 @@
             height: meters(5.0),
             depth: meters(5.0),
             capacity: meters(100.0),
-            type_code: "BIN".to_string(),
+            type_code: "BIN".into(),
             is_main: true,
         });
         let results = generator.generate(&request);
@@ -183,7 +183,7 @@
             0,
             vec![
                 ActualItem {
-                    id: "heavy".to_string(),
+                    id: "heavy".into(),
                     name: "Heavy".to_string(),
                     package_code: None,
                     pack: None,
@@ -195,7 +195,7 @@
                     shape_spec_override: None,
                 },
                 ActualItem {
-                    id: "bottom".to_string(),
+                    id: "bottom".into(),
                     name: "Bottom".to_string(),
                     package_code: None,
                     pack: None,
@@ -220,7 +220,7 @@
             height: meters(5.0),
             depth: meters(10.0),
             capacity: meters(100.0),
-            type_code: "BIN".to_string(),
+            type_code: "BIN".into(),
             is_main: true,
         });
 

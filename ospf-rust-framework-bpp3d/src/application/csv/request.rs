@@ -47,7 +47,7 @@ impl CsvMaterializedApplicationRequest {
             .collect::<std::collections::HashSet<_>>();
         let mut pattern_counts = std::collections::HashMap::<String, usize>::new();
         for (item_id, pattern) in &self.patterned_items {
-            if item_ids.contains(item_id) {
+            if item_ids.contains(item_id.as_str()) {
                 diagnostics.push(format!(
                     "patterned item '{}' mapped to pattern '{}'",
                     item_id,
@@ -65,7 +65,7 @@ impl CsvMaterializedApplicationRequest {
         let mut max_stack_layers = Vec::new();
         let mut tags = std::collections::BTreeSet::new();
         for (item_id, attribute) in &self.package_attributes {
-            if !item_ids.contains(item_id) {
+            if !item_ids.contains(item_id.as_str()) {
                 diagnostics.push(format!(
                     "package attribute '{}' references unknown item",
                     item_id,

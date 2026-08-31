@@ -11,7 +11,7 @@ where
         .demand_entries
         .iter()
         .find_map(|entry| match &entry.key {
-            Bpp3dDemandKey::Item { id } if id == item_id => {
+            Bpp3dDemandKey::Item { id } if id.as_str() == item_id => {
                 Some(entry.remaining().ceil().to_u64().unwrap_or(1).max(1))
             }
             _ => None,

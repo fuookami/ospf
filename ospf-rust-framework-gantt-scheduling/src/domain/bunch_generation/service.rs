@@ -3,11 +3,13 @@
 //! 提供基于时隙、已计划任务和未计划任务的列生成辅助服务。
 //! Provides column-generation helper services for slot-based, planned, and unplanned tasks.
 
+use std::any::Any;
 use std::collections::{HashMap, HashSet};
 
 use crate::domain::bunch_compilation::model::{BunchEntry, SlotBasedBunchEntry};
 use crate::domain::bunch_generation::model::{Graph, Node, TaskNode};
 use crate::domain::bunch_generation::pricing::BunchPricingProblem;
+use crate::domain::common::{ExecutorId, ExecutorIdTrait};
 use crate::domain::task::{AssignmentPolicyTrait, ExecutorTrait, TaskTrait};
 use crate::infrastructure::{TimeRange, TimeSlot};
 use crate::{GanttError, GanttResult};
@@ -74,16 +76,33 @@ impl<'a, T> BunchTaskCandidate<'a, T> {
 /// 提供通用过滤边界：可用执行器、排除任务、必选任务和每束任务数量上限。
 /// Provides generic filtering boundaries: enabled executors,
 /// excluded tasks, required tasks, and max task count per bunch.
-#[derive(Debug, Clone, Default)]
-pub struct SlotConstraints {
+#[derive(Debug, Clone)]
+pub struct SlotConstraints<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
     /// 可用执行器 ID；为空表示不限制 / Enabled executor ids; empty means unrestricted
-    pub enabled_executor_ids: HashSet<String>,
+    pub enabled_executor_ids: HashSet<I>,
     /// 排除任务索引 / Excluded task indices
     pub excluded_task_indices: HashSet<usize>,
     /// 必须包含的任务索引 / Required task indices
     pub required_task_indices: HashSet<usize>,
     /// 每束任务数量上限 / Max tasks per bunch
     pub max_tasks_per_bunch: Option<usize>,
+}
+
+impl<I> Default for SlotConstraints<I>
+where
+    I: ExecutorIdTrait,
+{
+    fn default() -> Self {
+        Self {
+            enabled_executor_ids: HashSet::new(),
+            excluded_task_indices: HashSet::new(),
+            required_task_indices: HashSet::new(),
+            max_tasks_per_bunch: None,
+        }
+    }
 }
 
 /// 束可行性策略 / Bunch feasibility policy
@@ -108,9 +127,22 @@ where
     fn allow_bunch(
         &self,
         executor: &E,
-        bunch: &BunchEntry,
+        bunch: &BunchEntry<E::Id>,
         slot: &TimeRange,
     ) -> bool;
+
+    /// 判断携带完整定价上下文的候选束是否可行 / Check a bunch with complete pricing context
+    fn allow_bunch_with_pricing_request<S>(
+        &self,
+        request: &SlotBunchPricingRequest<'_, S, E::Id>,
+        executor: &E,
+        bunch: &BunchEntry<E::Id>,
+    ) -> bool
+    where
+        S: TimeSlot,
+    {
+        self.allow_bunch(executor, bunch, request.slot.time())
+    }
 }
 
 /// 默认束可行性策略 / Default bunch feasibility policy
@@ -127,14 +159,22 @@ where
         true
     }
 
-    fn allow_bunch(&self, _executor: &E, _bunch: &BunchEntry, _slot: &TimeRange) -> bool {
+    fn allow_bunch(
+        &self,
+        _executor: &E,
+        _bunch: &BunchEntry<E::Id>,
+        _slot: &TimeRange,
+    ) -> bool {
         true
     }
 }
 
-impl SlotConstraints {
+impl<I> SlotConstraints<I>
+where
+    I: ExecutorIdTrait,
+{
     /// 判断执行器是否可用 / Check whether an executor is enabled
-    pub fn supports_executor(&self, executor_id: &str) -> bool {
+    pub fn supports_executor(&self, executor_id: &I) -> bool {
         self.enabled_executor_ids.is_empty() || self.enabled_executor_ids.contains(executor_id)
     }
 
@@ -144,7 +184,7 @@ impl SlotConstraints {
     }
 
     /// 校验生成的束是否满足约束 / Validate generated bunch against constraints
-    pub fn accepts_bunch(&self, bunch: &BunchEntry) -> bool {
+    pub fn accepts_bunch(&self, bunch: &BunchEntry<I>) -> bool {
         if !self.supports_executor(&bunch.executor_id) {
             return false;
         }
@@ -167,22 +207,27 @@ impl SlotConstraints {
 /// Narrows Kotlin-side `CapacityIntermediateValues` to the parts required by generators:
 /// slots and slot-constraint mapping.
 #[derive(Debug, Clone)]
-pub struct CapacityIntermediateValues<S>
+pub struct CapacityIntermediateValues<S, I = ExecutorId>
 where
     S: TimeSlot,
+    I: ExecutorIdTrait,
 {
     /// 时隙列表 / Slot list
     pub slots: Vec<S>,
     /// 时隙约束映射 / Slot constraints by slot index
-    pub slot_constraints: HashMap<usize, SlotConstraints>,
+    pub slot_constraints: HashMap<usize, SlotConstraints<I>>,
 }
 
-impl<S> CapacityIntermediateValues<S>
+impl<S, I> CapacityIntermediateValues<S, I>
 where
     S: TimeSlot,
+    I: ExecutorIdTrait,
 {
     /// 创建产能中间值 / Create capacity intermediate values
-    pub fn new(slots: Vec<S>, slot_constraints: HashMap<usize, SlotConstraints>) -> Self {
+    pub fn new(
+        slots: Vec<S>,
+        slot_constraints: HashMap<usize, SlotConstraints<I>>,
+    ) -> Self {
         Self {
             slots,
             slot_constraints,
@@ -190,8 +235,74 @@ where
     }
 
     /// 获取时隙约束 / Get slot constraints
-    pub fn slot_constraints(&self, slot_index: usize) -> Option<&SlotConstraints> {
+    pub fn slot_constraints(&self, slot_index: usize) -> Option<&SlotConstraints<I>> {
         self.slot_constraints.get(&slot_index)
+    }
+}
+
+/// 时隙束定价请求 / Slot bunch pricing request
+///
+/// 将入口状态与分支限制连同常规定价参数一并传递给可扩展的定价策略。
+/// Carries entry state and branch restrictions together with ordinary pricing
+/// parameters for extensible pricing policies.
+pub struct SlotBunchPricingRequest<'a, S, I = ExecutorId>
+where
+    S: TimeSlot,
+    I: ExecutorIdTrait,
+{
+    /// 当前迭代 / Current iteration
+    pub iteration: usize,
+    /// 时隙索引 / Slot index
+    pub slot_index: usize,
+    /// 目标时隙 / Target slot
+    pub slot: &'a S,
+    /// 时隙约束 / Slot constraints
+    pub constraints: &'a SlotConstraints<I>,
+    /// 任务影子价格 / Task shadow prices
+    pub shadow_prices: &'a HashMap<usize, f64>,
+    /// 时隙入口状态 / Slot entry state
+    pub entry_state: Option<&'a (dyn Any + Send + Sync)>,
+    /// 分支限制 / Branch restrictions
+    pub branch_restrictions: HashSet<String>,
+}
+
+impl<'a, S, I> SlotBunchPricingRequest<'a, S, I>
+where
+    S: TimeSlot,
+    I: ExecutorIdTrait,
+{
+    /// 创建基础定价请求 / Create a basic pricing request
+    pub fn new(
+        iteration: usize,
+        slot_index: usize,
+        slot: &'a S,
+        constraints: &'a SlotConstraints<I>,
+        shadow_prices: &'a HashMap<usize, f64>,
+    ) -> Self {
+        Self {
+            iteration,
+            slot_index,
+            slot,
+            constraints,
+            shadow_prices,
+            entry_state: None,
+            branch_restrictions: HashSet::new(),
+        }
+    }
+
+    /// 设置时隙入口状态 / Set slot entry state
+    pub fn with_entry_state(mut self, entry_state: &'a (dyn Any + Send + Sync)) -> Self {
+        self.entry_state = Some(entry_state);
+        self
+    }
+
+    /// 设置分支限制 / Set branch restrictions
+    pub fn with_branch_restrictions(
+        mut self,
+        branch_restrictions: impl IntoIterator<Item = String>,
+    ) -> Self {
+        self.branch_restrictions = branch_restrictions.into_iter().collect();
+        self
     }
 }
 
@@ -231,10 +342,10 @@ where
         iteration: usize,
         slot_index: usize,
         slot: &S,
-        constraints: &SlotConstraints,
+        constraints: &SlotConstraints<E::Id>,
         candidates: &[BunchTaskCandidate<'_, T>],
         shadow_prices: &HashMap<usize, f64>,
-    ) -> GanttResult<Vec<SlotBasedBunchEntry>>
+    ) -> GanttResult<Vec<SlotBasedBunchEntry<E::Id>>>
     where
         T: TaskTrait<E, A>,
         A: AssignmentPolicyTrait<E>,
@@ -257,18 +368,59 @@ where
         iteration: usize,
         slot_index: usize,
         slot: &S,
-        constraints: &SlotConstraints,
+        constraints: &SlotConstraints<E::Id>,
         candidates: &[BunchTaskCandidate<'_, T>],
         shadow_prices: &HashMap<usize, f64>,
         feasibility_policy: &P,
-    ) -> GanttResult<Vec<SlotBasedBunchEntry>>
+    ) -> GanttResult<Vec<SlotBasedBunchEntry<E::Id>>>
     where
         T: TaskTrait<E, A>,
         A: AssignmentPolicyTrait<E>,
         S: TimeSlot,
         P: BunchFeasibilityPolicy<E, T, A>,
     {
-        if slot.time().is_empty() {
+        let request = SlotBunchPricingRequest::new(
+            iteration,
+            slot_index,
+            slot,
+            constraints,
+            shadow_prices,
+        );
+        self.generate_with_pricing_request_and_policy(&request, candidates, feasibility_policy)
+    }
+
+    /// 使用完整定价请求生成束 / Generate bunches with a complete pricing request
+    pub fn generate_with_pricing_request<T, A, S>(
+        &self,
+        request: &SlotBunchPricingRequest<'_, S, E::Id>,
+        candidates: &[BunchTaskCandidate<'_, T>],
+    ) -> GanttResult<Vec<SlotBasedBunchEntry<E::Id>>>
+    where
+        T: TaskTrait<E, A>,
+        A: AssignmentPolicyTrait<E>,
+        S: TimeSlot,
+    {
+        self.generate_with_pricing_request_and_policy(
+            request,
+            candidates,
+            &DefaultBunchFeasibilityPolicy,
+        )
+    }
+
+    /// 使用策略和完整定价请求生成束 / Generate bunches with a policy and complete pricing request
+    pub fn generate_with_pricing_request_and_policy<T, A, S, P>(
+        &self,
+        request: &SlotBunchPricingRequest<'_, S, E::Id>,
+        candidates: &[BunchTaskCandidate<'_, T>],
+        feasibility_policy: &P,
+    ) -> GanttResult<Vec<SlotBasedBunchEntry<E::Id>>>
+    where
+        T: TaskTrait<E, A>,
+        A: AssignmentPolicyTrait<E>,
+        S: TimeSlot,
+        P: BunchFeasibilityPolicy<E, T, A>,
+    {
+        if request.slot.time().is_empty() {
             return Err(GanttError::InvalidTimeRange {
                 message: "slot time range is empty".to_string(),
             });
@@ -276,34 +428,39 @@ where
 
         let mut result = Vec::new();
         for executor in &self.executors {
-            if !constraints.supports_executor(executor.id()) {
+            if !request.constraints.supports_executor(executor.id()) {
                 continue;
             }
 
             let graph = self.build_pricing_graph(
-                slot.time(),
+                request.slot.time(),
                 executor,
-                constraints,
+                request.constraints,
                 candidates,
                 feasibility_policy,
             )?;
-            let mut pricing = BunchPricingProblem::new(executor.id().to_string(), graph);
-            pricing.set_shadow_prices(shadow_prices.clone());
+            let mut pricing = BunchPricingProblem::new_with_id(executor.id().clone(), graph);
+            pricing.set_shadow_prices(request.shadow_prices.clone());
 
-            let max_tasks = constraints
+            let max_tasks = request.constraints
                 .max_tasks_per_bunch
                 .unwrap_or(self.config.max_tasks_per_bunch);
-            let mut generated: Vec<BunchEntry> = pricing
+            let mut generated: Vec<BunchEntry<E::Id>> = pricing
                 .solve(0)
                 .into_iter()
                 .filter(|bunch| {
                     bunch.task_indices.len() <= max_tasks
-                        && constraints.accepts_bunch(bunch)
-                        && feasibility_policy.allow_bunch(executor, bunch, slot.time())
+                        && request.constraints.accepts_bunch(bunch)
+                        && feasibility_policy.allow_bunch_with_pricing_request(
+                            request,
+                            executor,
+                            bunch,
+                        )
                 })
                 .take(self.config.max_columns_per_executor)
                 .map(|mut bunch| {
-                    bunch.iteration = iteration;
+                    bunch.iteration = request.iteration;
+                    bunch.slot_index = Some(request.slot_index);
                     bunch
                 })
                 .collect();
@@ -311,13 +468,13 @@ where
             generated.sort_by(|a, b| a.cost.total_cmp(&b.cost));
             result.extend(generated.into_iter().map(|bunch| SlotBasedBunchEntry {
                 bunch,
-                slot_index,
+                slot_index: request.slot_index,
             }));
         }
 
         if result.is_empty() && !self.config.allow_empty_slot {
             return Err(GanttError::EmptyResult {
-                message: format!("no bunch generated for slot {}", slot_index),
+                message: format!("no bunch generated for slot {}", request.slot_index),
             });
         }
 
@@ -328,10 +485,10 @@ where
     pub fn generate_all<T, A, S>(
         &self,
         iteration: usize,
-        intermediate_values: &CapacityIntermediateValues<S>,
+        intermediate_values: &CapacityIntermediateValues<S, E::Id>,
         candidates: &[BunchTaskCandidate<'_, T>],
         shadow_prices: &HashMap<usize, f64>,
-    ) -> GanttResult<Vec<SlotBasedBunchEntry>>
+    ) -> GanttResult<Vec<SlotBasedBunchEntry<E::Id>>>
     where
         T: TaskTrait<E, A>,
         A: AssignmentPolicyTrait<E>,
@@ -350,11 +507,11 @@ where
     pub fn generate_all_with_policy<T, A, S, P>(
         &self,
         iteration: usize,
-        intermediate_values: &CapacityIntermediateValues<S>,
+        intermediate_values: &CapacityIntermediateValues<S, E::Id>,
         candidates: &[BunchTaskCandidate<'_, T>],
         shadow_prices: &HashMap<usize, f64>,
         feasibility_policy: &P,
-    ) -> GanttResult<Vec<SlotBasedBunchEntry>>
+    ) -> GanttResult<Vec<SlotBasedBunchEntry<E::Id>>>
     where
         T: TaskTrait<E, A>,
         A: AssignmentPolicyTrait<E>,
@@ -382,7 +539,7 @@ where
         &self,
         slot_time: &TimeRange,
         executor: &E,
-        constraints: &SlotConstraints,
+        constraints: &SlotConstraints<E::Id>,
         candidates: &[BunchTaskCandidate<'_, T>],
         feasibility_policy: &impl BunchFeasibilityPolicy<E, T, A>,
     ) -> GanttResult<Graph>
@@ -477,10 +634,10 @@ where
         iteration: usize,
         slot_index: usize,
         slot: &S,
-        constraints: &SlotConstraints,
+        constraints: &SlotConstraints<E::Id>,
         candidates: &[BunchTaskCandidate<'_, T>],
         shadow_prices: &HashMap<usize, f64>,
-    ) -> GanttResult<Vec<SlotBasedBunchEntry>>
+    ) -> GanttResult<Vec<SlotBasedBunchEntry<E::Id>>>
     where
         T: TaskTrait<E, A>,
         A: AssignmentPolicyTrait<E>,
@@ -530,10 +687,10 @@ where
         iteration: usize,
         slot_index: usize,
         slot: &S,
-        constraints: &SlotConstraints,
+        constraints: &SlotConstraints<E::Id>,
         candidates: &[BunchTaskCandidate<'_, T>],
         shadow_prices: &HashMap<usize, f64>,
-    ) -> GanttResult<Vec<SlotBasedBunchEntry>>
+    ) -> GanttResult<Vec<SlotBasedBunchEntry<E::Id>>>
     where
         T: TaskTrait<E, A>,
         A: AssignmentPolicyTrait<E>,
@@ -623,7 +780,7 @@ mod tests {
     impl TestTask {
         fn new(id: &str, start: OffsetDateTime, duration: Duration) -> Self {
             Self {
-                id: id.to_string(),
+                id: id.into(),
                 name: id.to_string(),
                 time: Some(TimeRange::new(start, start + duration)),
                 window: None,
@@ -634,7 +791,7 @@ mod tests {
 
         fn unplanned(id: &str, window: TimeRange) -> Self {
             Self {
-                id: id.to_string(),
+                id: id.into(),
                 name: id.to_string(),
                 time: None,
                 window: Some(window),
@@ -645,7 +802,9 @@ mod tests {
     }
 
     impl TaskTrait<BasicExecutor, BasicAssignmentPolicy<BasicExecutor>> for TestTask {
-        fn id(&self) -> &str {
+        type Id = String;
+
+        fn id(&self) -> &Self::Id {
             &self.id
         }
 
@@ -727,6 +886,47 @@ mod tests {
         assert!(bunches
             .iter()
             .all(|entry| entry.bunch.task_indices.len() <= 2));
+    }
+
+    #[test]
+    fn test_slot_pricing_request_carries_entry_state_and_branch_restrictions() {
+        let executor = BasicExecutor::new("exec_1", "Executor 1");
+        let generator = SlotBasedBunchGenerator::new(
+            vec![executor],
+            BunchGenerationConfig {
+                max_columns_per_executor: 4,
+                max_tasks_per_bunch: 1,
+                allow_order_change: false,
+                allow_empty_slot: false,
+            },
+        );
+        let slot = TestSlot {
+            time: TimeRange::new(h(8), h(18)),
+        };
+        let task = TestTask::new("t0", h(9), Duration::hours(1));
+        let candidates = [BunchTaskCandidate::new(0, &task, true)];
+        let constraints = SlotConstraints::default();
+        let shadow_prices = HashMap::from([(0, 2.0)]);
+        let entry_state = "entry_state".to_string();
+        let request = SlotBunchPricingRequest::new(
+            2,
+            0,
+            &slot,
+            &constraints,
+            &shadow_prices,
+        )
+        .with_entry_state(&entry_state)
+        .with_branch_restrictions(["branch_a".to_string()]);
+
+        assert!(request.entry_state.is_some());
+        assert!(request.branch_restrictions.contains("branch_a"));
+
+        let bunches = generator
+            .generate_with_pricing_request(&request, &candidates)
+            .unwrap();
+        assert!(!bunches.is_empty());
+        assert!(bunches.iter().all(|entry| entry.slot_index == 0));
+        assert!(bunches.iter().all(|entry| entry.bunch.iteration == 2));
     }
 
     #[test]

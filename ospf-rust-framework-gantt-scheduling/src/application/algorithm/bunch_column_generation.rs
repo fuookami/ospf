@@ -32,7 +32,8 @@ use crate::application::iteration::Iteration;
 use crate::domain::bunch_compilation::context::IterativeBunchCompilationContext;
 use crate::domain::bunch_compilation::model::{BunchEntry, BunchSolution};
 use crate::domain::common::{
-    ConstraintIndexMap, GanttDynamicModelLifecycle, GanttModelStateFacade,
+    ConstraintIndexMap, ExecutorId, ExecutorIdTrait, GanttDynamicModelLifecycle,
+    GanttModelStateFacade,
 };
 
 /// 束级列生成策略 / Bunch column generation policy
@@ -43,20 +44,161 @@ use crate::domain::common::{
 /// Defines injection strategies for column generation:
 /// context building, shadow price mapping, reduced cost calculation,
 /// and bunch generation.
-pub trait BunchCGPolicy: Send + Sync {
+/// 执行器分支组 / Executor branch group
+///
+/// 普通束以执行器为组；时隙束以 `(executor, slot)` 为组。
+/// Ordinary bunches use an executor group; slot-based bunches use an
+/// `(executor, slot)` group.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BranchGroup<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
+    /// 执行器 ID / Executor id
+    pub executor_id: I,
+    /// 时隙索引；普通束为 None / Slot index; None for ordinary bunches
+    pub slot_index: Option<usize>,
+}
+
+impl<I> From<&BunchEntry<I>> for BranchGroup<I>
+where
+    I: ExecutorIdTrait,
+{
+    fn from(bunch: &BunchEntry<I>) -> Self {
+        Self {
+            executor_id: bunch.executor_id.clone(),
+            slot_index: bunch.slot_index,
+        }
+    }
+}
+
+/// 分支组跟踪器 / Branch group tracker
+///
+/// 只有执行器的全部已知 group 均固定时才把它从本地定价中移除。
+/// An executor leaves local pricing only after every known group is fixed.
+#[derive(Debug, Clone)]
+pub struct BranchGroupTracker<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
+    groups_by_executor: HashMap<I, HashSet<Option<usize>>>,
+    fixed_groups: HashSet<BranchGroup<I>>,
+}
+
+impl<I> Default for BranchGroupTracker<I>
+where
+    I: ExecutorIdTrait,
+{
+    fn default() -> Self {
+        Self {
+            groups_by_executor: HashMap::new(),
+            fixed_groups: HashSet::new(),
+        }
+    }
+}
+
+impl<I> BranchGroupTracker<I>
+where
+    I: ExecutorIdTrait,
+{
+    /// 登记束所属的分支组 / Register a bunch branch group
+    pub fn observe(&mut self, bunch: &BunchEntry<I>) {
+        self.groups_by_executor
+            .entry(bunch.executor_id.clone())
+            .or_default()
+            .insert(bunch.slot_index);
+    }
+
+    /// 标记一个束所属 group 已固定 / Mark a bunch group as fixed
+    pub fn mark_fixed(&mut self, bunch: &BunchEntry<I>) {
+        self.observe(bunch);
+        self.fixed_groups.insert(BranchGroup::from(bunch));
+    }
+
+    /// 清空固定状态并保留已知 group / Clear fixed state while retaining known groups
+    pub fn clear_fixed(&mut self) {
+        self.fixed_groups.clear();
+    }
+
+    /// 返回指定执行器是否所有已知 group 均固定 / Check whether all known groups are fixed
+    pub fn is_executor_fully_fixed(&self, executor_id: &I) -> bool {
+        let Some(groups) = self.groups_by_executor.get(executor_id) else {
+            return false;
+        };
+        !groups.is_empty() && groups.iter().all(|slot_index| {
+            self.fixed_groups.contains(&BranchGroup {
+                executor_id: executor_id.clone(),
+                slot_index: *slot_index,
+            })
+        })
+    }
+
+    /// 返回所有固定 group / Return all fixed groups
+    pub fn fixed_groups(&self) -> &HashSet<BranchGroup<I>> {
+        &self.fixed_groups
+    }
+}
+
+/// 束定价请求 / Bunch pricing request
+///
+/// 承载时隙级分支状态和最小列配额，供精确定价器消费。
+/// Carries slot-level branch state and column quota for exact pricing.
+#[derive(Debug, Clone)]
+pub struct BunchPricingRequest<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
+    /// 当前迭代 / Current iteration
+    pub iteration: usize,
+    /// 可定价执行器 / Executors available for pricing
+    pub executor_ids: Vec<I>,
+    /// 任务影子价格 / Task shadow prices
+    pub shadow_prices: HashMap<usize, f64>,
+    /// 执行器-时隙影子价格 / Executor-slot shadow prices
+    pub executor_slot_shadow_prices: HashMap<(I, usize), f64>,
+    /// 已固定 group / Fixed groups
+    pub fixed_groups: HashSet<BranchGroup<I>>,
+    /// 已保留 group / Kept groups
+    pub kept_groups: HashSet<BranchGroup<I>>,
+    /// 隐藏执行器 / Hidden executors
+    pub hidden_executors: HashSet<I>,
+    /// 每个未固定执行器的最小列数 / Minimum columns per non-fixed executor
+    pub min_column_amount_per_executor: usize,
+}
+
+/// 束级列生成策略 / Bunch column generation policy
+pub trait BunchCGPolicy<I = ExecutorId>: Send + Sync
+where
+    I: ExecutorIdTrait,
+{
     /// 构建影子价格映射 / Build shadow price map
     fn build_shadow_price_map(&self) -> HashMap<usize, f64>;
 
     /// 计算 reduced cost / Calculate reduced cost
-    fn reduced_cost(&self, shadow_prices: &HashMap<usize, f64>, bunch: &BunchEntry) -> f64;
+    fn reduced_cost(&self, shadow_prices: &HashMap<usize, f64>, bunch: &BunchEntry<I>) -> f64;
 
     /// 生成新束 / Generate new bunches
     fn generate_bunches(
         &self,
         iteration: usize,
-        executor_ids: &[String],
+        executor_ids: &[I],
         shadow_prices: &HashMap<usize, f64>,
-    ) -> Vec<BunchEntry>;
+    ) -> Vec<BunchEntry<I>>;
+
+    /// 使用完整定价请求生成新束 / Generate bunches with a complete pricing request
+    ///
+    /// 默认实现保留旧接口行为，避免已有策略被迫同步迁移。
+    /// The default preserves the legacy interface so existing policies remain compatible.
+    fn generate_bunches_with_request(
+        &self,
+        request: &BunchPricingRequest<I>,
+    ) -> GanttResult<Vec<BunchEntry<I>>> {
+        Ok(self.generate_bunches(
+            request.iteration,
+            &request.executor_ids,
+            &request.shadow_prices,
+        ))
+    }
 }
 
 /// 束级分支定价算法 / Bunch-level branch and price algorithm
@@ -67,7 +209,7 @@ pub struct BunchBranchAndPriceAlgorithm<C, S, P>
 where
     C: IterativeBunchCompilationContext,
     S: ColumnGenerationSolver,
-    P: BunchCGPolicy,
+    P: BunchCGPolicy<C::ExecutorId>,
 {
     /// 编译上下文 / Compilation context
     pub context: C,
@@ -78,18 +220,22 @@ where
     /// 配置 / Configuration
     pub configuration: ColumnGenerationPolicy,
     /// 执行器 ID 列表 / Executor ID list
-    pub executor_ids: Vec<String>,
+    pub executor_ids: Vec<C::ExecutorId>,
 
     /// 迭代状态 / Iteration state
     pub iteration: Iteration,
     /// 影子价格 / Shadow prices
     pub shadow_prices: HashMap<usize, f64>,
+    /// 执行器-时隙影子价格 / Executor-slot shadow prices
+    pub executor_slot_shadow_prices: HashMap<(C::ExecutorId, usize), f64>,
     /// 已固定的束 / Fixed bunches
     pub fixed_bunches: HashSet<usize>,
     /// 保留的束 / Kept bunches
     pub kept_bunches: HashSet<usize>,
     /// 隐藏的执行器 / Hidden executors
-    pub hidden_executors: HashSet<String>,
+    pub hidden_executors: HashSet<C::ExecutorId>,
+    /// 分支组状态 / Branch group state
+    pub branch_groups: BranchGroupTracker<C::ExecutorId>,
     /// 动态模型状态 / Dynamic model state
     pub model_state: GanttModelStateFacade,
     /// 动态模型生命周期 / Dynamic model lifecycle
@@ -114,17 +260,24 @@ where
 /// Stores rollback-capable application state so consecutive node solves on the same
 /// algorithm instance do not leak state into each other.
 #[derive(Debug, Clone)]
-struct BunchBranchAndPriceSnapshot {
+struct BunchBranchAndPriceSnapshot<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
     /// 迭代状态 / Iteration state
     iteration: Iteration,
     /// 影子价格 / Shadow prices
     shadow_prices: HashMap<usize, f64>,
+    /// 执行器-时隙影子价格 / Executor-slot shadow prices
+    executor_slot_shadow_prices: HashMap<(I, usize), f64>,
     /// 已固定的束 / Fixed bunches
     fixed_bunches: HashSet<usize>,
     /// 保留的束 / Kept bunches
     kept_bunches: HashSet<usize>,
     /// 隐藏的执行器 / Hidden executors
-    hidden_executors: HashSet<String>,
+    hidden_executors: HashSet<I>,
+    /// 分支组状态 / Branch group state
+    branch_groups: BranchGroupTracker<I>,
     /// 动态模型状态 / Dynamic model state
     model_state: GanttModelStateFacade,
     /// 动态模型生命周期 / Dynamic model lifecycle
@@ -144,9 +297,12 @@ struct BunchBranchAndPriceSnapshot {
 /// Stores context state in addition to application state. A fresh `MetaModel` is
 /// built by the caller; this snapshot restores only the algorithm instance state.
 #[derive(Debug, Clone)]
-struct BunchBranchAndPriceIsolatedSnapshot<C> {
+struct BunchBranchAndPriceIsolatedSnapshot<C>
+where
+    C: IterativeBunchCompilationContext,
+{
     /// application 状态快照 / Application-state snapshot
-    application: BunchBranchAndPriceSnapshot,
+    application: BunchBranchAndPriceSnapshot<C::ExecutorId>,
     /// 编译上下文 / Compilation context
     context: C,
 }
@@ -155,7 +311,7 @@ impl<C, S, P> std::fmt::Debug for BunchBranchAndPriceAlgorithm<C, S, P>
 where
     C: IterativeBunchCompilationContext,
     S: ColumnGenerationSolver,
-    P: BunchCGPolicy,
+    P: BunchCGPolicy<C::ExecutorId>,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BunchBranchAndPriceAlgorithm")
@@ -170,16 +326,17 @@ impl<C, S, P> BunchBranchAndPriceAlgorithm<C, S, P>
 where
     C: IterativeBunchCompilationContext,
     S: ColumnGenerationSolver,
-    P: BunchCGPolicy,
+    P: BunchCGPolicy<C::ExecutorId>,
 {
     /// 创建算法实例 / Create algorithm instance
     pub fn new(
         context: C,
         solver: S,
         policy: P,
-        executor_ids: Vec<String>,
+        executor_ids: Vec<impl Into<C::ExecutorId>>,
         configuration: ColumnGenerationPolicy,
     ) -> Self {
+        let executor_ids = executor_ids.into_iter().map(Into::into).collect();
         Self {
             context,
             solver,
@@ -188,9 +345,11 @@ where
             executor_ids,
             iteration: Iteration::new(),
             shadow_prices: HashMap::new(),
+            executor_slot_shadow_prices: HashMap::new(),
             fixed_bunches: HashSet::new(),
             kept_bunches: HashSet::new(),
             hidden_executors: HashSet::new(),
+            branch_groups: BranchGroupTracker::default(),
             model_state: GanttModelStateFacade::new(),
             lifecycle: GanttDynamicModelLifecycle::new(),
             constraint_index_map: ConstraintIndexMap::new(),
@@ -245,6 +404,7 @@ where
         // 3. 固定/保留初始解中的束
         let fixed = self.context.extract_fixed(&ip_result.solution);
         self.fixed_bunches = fixed;
+        self.refresh_branch_groups();
 
         let kept = self.context.extract_kept(&ip_result.solution);
         self.kept_bunches = kept;
@@ -258,9 +418,10 @@ where
             && self.iteration.elapsed() < self.configuration.time_limit
         {
             // ---- 全局列生成 ----
-            self.shadow_prices = match self.solve_rmp_lp(model) {
-                Ok(lp_result) => {
-                    if self.iteration.record_lp(lp_result.result.obj) {
+        self.shadow_prices = match self.solve_rmp_lp(model) {
+            Ok(lp_result) => {
+                self.executor_slot_shadow_prices = self.extract_executor_slot_shadow_prices(&lp_result);
+                if self.iteration.record_lp(lp_result.result.obj) {
                         self.kept_bunches
                             .extend(self.context.extract_kept(&lp_result.result.solution));
                     }
@@ -274,11 +435,7 @@ where
 
             // 全局列生成（1 次）
             self.iteration.next_iteration();
-            let new_bunches = self.policy.generate_bunches(
-                self.iteration.iteration,
-                &self.executor_ids,
-                &self.shadow_prices,
-            );
+            let new_bunches = self.generate_bunches(&self.executor_ids)?;
 
             if !new_bunches.is_empty() {
                 self.add_columns(self.iteration.iteration, new_bunches, model)?;
@@ -290,6 +447,7 @@ where
                             .extend(self.context.extract_kept(&lp_result.result.solution));
                     }
                     self.shadow_prices = self.extract_shadow_prices(&lp_result);
+                    self.executor_slot_shadow_prices = self.extract_executor_slot_shadow_prices(&lp_result);
                 }
 
                 // 列移除
@@ -308,6 +466,7 @@ where
             loop {
                 self.shadow_prices = match self.solve_rmp_lp(model) {
                     Ok(lp_result) => {
+                        self.executor_slot_shadow_prices = self.extract_executor_slot_shadow_prices(&lp_result);
                         self.iteration.record_lp(lp_result.result.obj);
                         self.extract_shadow_prices(&lp_result)
                     }
@@ -315,11 +474,7 @@ where
                 };
 
                 self.iteration.next_iteration();
-                let local_bunches = self.policy.generate_bunches(
-                    self.iteration.iteration,
-                    &free_executor_list,
-                    &self.shadow_prices,
-                );
+                let local_bunches = self.generate_bunches(&free_executor_list)?;
 
                 if local_bunches.is_empty() {
                     break;
@@ -335,12 +490,9 @@ where
                     model,
                 )?;
                 if !new_fixed.is_empty() {
-                    // 从自由执行器列表中移除已固定的执行器
-                    for bunch_idx in &new_fixed {
-                        if let Some(entry) = self.context.get_bunch_entry(*bunch_idx) {
-                            free_executor_list.retain(|id| id != &entry.executor_id);
-                        }
-                    }
+                    // 仅当一个执行器的全部时隙 group 已固定时才移除它。
+                    // Remove an executor only after every slot group is fixed.
+                    free_executor_list = self.select_free_executors();
                 } else {
                     break;
                 }
@@ -450,13 +602,15 @@ where
     // ---- 内部方法 / Internal methods ----
 
     /// 创建 application 状态快照 / Create application-state snapshot
-    fn snapshot(&self) -> BunchBranchAndPriceSnapshot {
+    fn snapshot(&self) -> BunchBranchAndPriceSnapshot<C::ExecutorId> {
         BunchBranchAndPriceSnapshot {
             iteration: self.iteration.clone(),
             shadow_prices: self.shadow_prices.clone(),
+            executor_slot_shadow_prices: self.executor_slot_shadow_prices.clone(),
             fixed_bunches: self.fixed_bunches.clone(),
             kept_bunches: self.kept_bunches.clone(),
             hidden_executors: self.hidden_executors.clone(),
+            branch_groups: self.branch_groups.clone(),
             model_state: self.model_state.clone(),
             lifecycle: self.lifecycle.clone(),
             best_solution: self.best_solution.clone(),
@@ -477,12 +631,14 @@ where
     }
 
     /// 恢复 application 状态快照 / Restore application-state snapshot
-    fn restore(&mut self, snapshot: BunchBranchAndPriceSnapshot) {
+    fn restore(&mut self, snapshot: BunchBranchAndPriceSnapshot<C::ExecutorId>) {
         self.iteration = snapshot.iteration;
         self.shadow_prices = snapshot.shadow_prices;
+        self.executor_slot_shadow_prices = snapshot.executor_slot_shadow_prices;
         self.fixed_bunches = snapshot.fixed_bunches;
         self.kept_bunches = snapshot.kept_bunches;
         self.hidden_executors = snapshot.hidden_executors;
+        self.branch_groups = snapshot.branch_groups;
         self.model_state = snapshot.model_state;
         self.lifecycle = snapshot.lifecycle;
         self.best_solution = snapshot.best_solution;
@@ -508,6 +664,7 @@ where
                 self.fixed_bunches.insert(decision.target_index);
             }
         }
+        self.refresh_branch_groups();
         self.sync_model_state_from_lifecycle();
     }
 
@@ -541,14 +698,30 @@ where
     }
 
     /// 求解 RMP LP / Solve RMP LP
-    fn solve_rmp_lp(&self, model: &mut MetaModel<f64>) -> GanttResult<LPResult> {
+    fn solve_rmp_lp(&mut self, model: &mut MetaModel<f64>) -> GanttResult<LPResult> {
         let options = FrameworkSolveOptions::new();
         let triad_model =
-            model
+                model
                 .try_to_linear_triad_model()
                 .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to convert model: {:?}", e),
                 })?;
+
+        // LP 对偶向量按展平模型的约束顺序返回。每次动态加列或刷新模型后，
+        // 重新从当前约束名构建索引，确保 task/executor-slot 对偶不会读取过期位置。
+        // LP duals are returned in flattened constraint order. Rebuild the index after
+        // every dynamic model refresh so task and executor-slot duals use current rows.
+        self.constraint_name_to_index = triad_model
+            .basic
+            .constraint_names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| (name.clone(), index))
+            .collect();
+        self.constraint_index_map = self
+            .context
+            .build_constraint_index_map(&self.constraint_name_to_index);
+
         let result = solve_lp_with_options_sync(&self.solver, &triad_model, options).map_err(|e| {
             GanttError::Calculation {
                 message: format!("LP solve failed: {:?}", e),
@@ -571,7 +744,7 @@ where
     fn add_columns(
         &mut self,
         iteration: usize,
-        new_bunches: Vec<BunchEntry>,
+        new_bunches: Vec<BunchEntry<C::ExecutorId>>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<Vec<usize>> {
         // 更新束索引
@@ -584,7 +757,9 @@ where
         }
         self.bunch_index_counter += updated_bunches.len();
 
-        self.context.add_columns(iteration, updated_bunches, model)
+        let added = self.context.add_columns(iteration, updated_bunches, model)?;
+        self.refresh_branch_groups();
+        Ok(added)
     }
 
     /// MILP 求解后刷新生命周期 / Refresh lifecycle after MILP solve
@@ -602,35 +777,50 @@ where
     }
 
     /// 选择自由执行器 / Select free executors
-    fn select_free_executors(&self) -> Vec<String> {
+    fn select_free_executors(&self) -> Vec<C::ExecutorId> {
         self.executor_ids
             .iter()
-            .filter(|id| !self.hidden_executors.contains(*id))
+            .filter(|id| {
+                !self.hidden_executors.contains(*id)
+                    && !self.branch_groups.is_executor_fully_fixed(id)
+            })
             .cloned()
             .collect()
+    }
+
+    /// 提取执行器-时隙影子价格 / Extract executor-slot shadow prices
+    fn extract_executor_slot_shadow_prices(
+        &self,
+        lp_result: &LPResult,
+    ) -> HashMap<(C::ExecutorId, usize), f64> {
+        self.context.extract_executor_slot_shadow_prices(
+            &lp_result.dual_solution,
+            &self.constraint_index_map,
+        )
     }
 
     /// 全局固定 / Globally fix
     fn globally_fix(
         &mut self,
-        free_executors: &[String],
+        free_executors: &[C::ExecutorId],
         model: &mut MetaModel<f64>,
     ) -> GanttResult<HashSet<usize>> {
-        let free_set = free_executors.iter().collect::<HashSet<_>>();
+        let free_set = free_executors.iter().cloned().collect::<HashSet<_>>();
         let current_fixed = self
             .fixed_bunches
             .iter()
             .copied()
             .filter(|bunch_index| {
-                self.context
-                    .get_bunch_entry(*bunch_index)
-                    .map_or(true, |entry| !free_set.contains(&entry.executor_id))
+                self.context.get_bunch_entry(*bunch_index).map_or(true, |entry| {
+                    entry.slot_index.is_some() || !free_set.contains(&entry.executor_id)
+                })
             })
             .collect::<HashSet<_>>();
 
         self.context.globally_fix_in_model(&current_fixed, model)?;
         self.lifecycle.fix_columns(current_fixed.iter().copied());
         self.fixed_bunches = current_fixed.clone();
+        self.refresh_branch_groups();
         self.sync_model_state_from_lifecycle();
         Ok(current_fixed)
     }
@@ -651,6 +841,7 @@ where
             model,
         )?;
         self.fixed_bunches.extend(newly_fixed.iter().copied());
+        self.refresh_branch_groups();
         self.lifecycle.fix_columns(newly_fixed.iter().copied());
         self.sync_model_state_from_lifecycle();
         Ok(newly_fixed)
@@ -699,6 +890,7 @@ where
         self.fixed_bunches.clear();
         self.kept_bunches.clear();
         self.hidden_executors.clear();
+        self.branch_groups.clear_fixed();
         self.shadow_prices.clear();
         self.lifecycle.flush();
         model.flush(false);
@@ -713,6 +905,44 @@ where
     /// 同步兼容字段 / Sync compatibility field
     pub(crate) fn sync_model_state_from_lifecycle(&mut self) {
         self.model_state = self.lifecycle.column_state_facade();
+    }
+
+    /// 构造并执行定价请求 / Build and execute pricing request
+    fn generate_bunches(
+        &self,
+        executor_ids: &[C::ExecutorId],
+    ) -> GanttResult<Vec<BunchEntry<C::ExecutorId>>> {
+        let kept_groups = self
+            .kept_bunches
+            .iter()
+            .filter_map(|bunch_index| self.context.get_bunch_entry(*bunch_index))
+            .map(|bunch| BranchGroup::from(&bunch))
+            .collect();
+        self.policy.generate_bunches_with_request(&BunchPricingRequest {
+            iteration: self.iteration.iteration,
+            executor_ids: executor_ids.to_vec(),
+            shadow_prices: self.shadow_prices.clone(),
+            executor_slot_shadow_prices: self.executor_slot_shadow_prices.clone(),
+            fixed_groups: self.branch_groups.fixed_groups().clone(),
+            kept_groups,
+            hidden_executors: self.hidden_executors.clone(),
+            min_column_amount_per_executor: self.configuration.min_column_amount_per_executor,
+        })
+    }
+
+    /// 根据当前固定列重建分支 group 状态 / Rebuild branch groups from current fixed columns
+    fn refresh_branch_groups(&mut self) {
+        self.branch_groups.clear_fixed();
+        for bunch_index in 0..self.bunch_index_counter {
+            let Some(bunch) = self.context.get_bunch_entry(bunch_index) else {
+                continue;
+            };
+            if self.fixed_bunches.contains(&bunch_index) {
+                self.branch_groups.mark_fixed(&bunch);
+            } else {
+                self.branch_groups.observe(&bunch);
+            }
+        }
     }
 }
 
@@ -766,10 +996,39 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::{Display, Formatter};
+
     use super::*;
     use ospf_rust_core::error::{CoreError, Result as CoreResult, SolverError};
     use ospf_rust_core::model::intermediate::LinearTriadModel;
     use ospf_rust_framework::solver::column_generation_solver::LinearDualSolution;
+
+    #[test]
+    fn branch_group_tracker_keeps_executor_until_all_slots_are_fixed() {
+        let mut tracker = BranchGroupTracker::<ExecutorId>::default();
+        let first = BunchEntry {
+            index: 0,
+            executor_id: "exec_1".into(),
+            task_indices: vec![0],
+            cost: 1.0,
+            iteration: 0,
+            slot_index: Some(0),
+        };
+        let second = BunchEntry {
+            index: 1,
+            executor_id: "exec_1".into(),
+            task_indices: vec![1],
+            cost: 1.0,
+            iteration: 0,
+            slot_index: Some(1),
+        };
+        tracker.observe(&first);
+        tracker.observe(&second);
+        tracker.mark_fixed(&first);
+        assert!(!tracker.is_executor_fully_fixed(&"exec_1".into()));
+        tracker.mark_fixed(&second);
+        assert!(tracker.is_executor_fully_fixed(&"exec_1".into()));
+    }
 
     #[test]
     fn test_bunch_branch_and_price_policy_defaults() {
@@ -794,9 +1053,46 @@ mod tests {
         fn generate_bunches(
             &self,
             _iteration: usize,
-            _executor_ids: &[String],
+            _executor_ids: &[ExecutorId],
             _shadow_prices: &HashMap<usize, f64>,
         ) -> Vec<BunchEntry> {
+            Vec::new()
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    struct WorkUnitId(u64);
+
+    impl Display for WorkUnitId {
+        fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(formatter, "{}", self.0)
+        }
+    }
+
+    impl ExecutorIdTrait for WorkUnitId {}
+
+    #[derive(Debug, Clone)]
+    struct WorkUnitBunchPolicy;
+
+    impl BunchCGPolicy<WorkUnitId> for WorkUnitBunchPolicy {
+        fn build_shadow_price_map(&self) -> HashMap<usize, f64> {
+            HashMap::new()
+        }
+
+        fn reduced_cost(
+            &self,
+            _shadow_prices: &HashMap<usize, f64>,
+            bunch: &BunchEntry<WorkUnitId>,
+        ) -> f64 {
+            bunch.cost
+        }
+
+        fn generate_bunches(
+            &self,
+            _iteration: usize,
+            _executor_ids: &[WorkUnitId],
+            _shadow_prices: &HashMap<usize, f64>,
+        ) -> Vec<BunchEntry<WorkUnitId>> {
             Vec::new()
         }
     }
@@ -851,6 +1147,27 @@ mod tests {
                 LinearDualSolution::default(),
             ))
         }
+    }
+
+    #[test]
+    fn test_business_executor_id_builds_and_solves_minimal_model() {
+        let executor_id = WorkUnitId(42);
+        let context = crate::domain::bunch_compilation::context::BasicBunchCompilationContext::<
+            WorkUnitId,
+        >::new_with_ids(1, vec![executor_id.clone()], false);
+        let mut algorithm = BunchBranchAndPriceAlgorithm::new(
+            context,
+            MockColumnGenerationSolver,
+            WorkUnitBunchPolicy,
+            vec![executor_id.clone()],
+            ColumnGenerationPolicy::default(),
+        );
+        let mut model = MetaModel::<f64>::new("work_unit_id_minimal_model");
+
+        let solution = algorithm.run(&mut model).unwrap();
+
+        assert!(solution.selected_bunches.is_empty());
+        assert_eq!(algorithm.context.compilation.base.executor_ids, vec![executor_id]);
     }
 
     #[derive(Debug, Clone)]
@@ -1114,7 +1431,7 @@ mod tests {
             fn generate_bunches(
                 &self,
                 iteration: usize,
-                executor_ids: &[String],
+                executor_ids: &[ExecutorId],
                 _shadow_prices: &HashMap<usize, f64>,
             ) -> Vec<BunchEntry> {
                 executor_ids
@@ -1125,6 +1442,7 @@ mod tests {
                         task_indices: vec![0],
                         cost: 1.0,
                         iteration,
+                        slot_index: None,
                     })
                     .into_iter()
                     .collect()

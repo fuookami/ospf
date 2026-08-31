@@ -1603,21 +1603,21 @@ fn produce_context_registers_yield_waste_length_pipelines() {
     yield_config.over_production_penalty.insert(demand_key.clone(), 5.0);
     yield_config.over_production_upper_bound.insert(demand_key, 2.0);
     let mut material_cost_penalty = BTreeMap::new();
-    material_cost_penalty.insert("m1".to_string(), 3.0);
+    material_cost_penalty.insert("m1".into(), 3.0);
     let mut length_config = LengthAssignmentModelingConfig::default();
-    length_config.dynamic_product_ids.insert("p-dyn".to_string());
+    length_config.dynamic_product_ids.insert("p-dyn".into());
     length_config
         .assigned_length_lower_bound
-        .insert("p-dyn".to_string(), 1.0);
+        .insert("p-dyn".into(), 1.0);
     length_config
         .assigned_length_upper_bound
-        .insert("p-dyn".to_string(), 5.0);
+        .insert("p-dyn".into(), 5.0);
     length_config
         .over_length_upper_bound
-        .insert("p-dyn".to_string(), 4.0);
+        .insert("p-dyn".into(), 4.0);
     length_config
         .over_length_penalty
-        .insert("p-dyn".to_string(), 11.0);
+        .insert("p-dyn".into(), 11.0);
     length_config.total_length_penalty = Some(13.0);
     length_config.batch_min_penalty = Some(0.5);
     let waste_config = WasteMinimizationConfig {
@@ -1719,11 +1719,11 @@ fn yield_and_length_results_prefer_solver_slack_values() {
     yield_config.under_production_penalty.insert(demand_key.clone(), 7.0);
     yield_config.over_production_penalty.insert(demand_key, 5.0);
     let mut length_config = LengthAssignmentModelingConfig::default();
-    length_config.dynamic_product_ids.insert("p-dyn".to_string());
+    length_config.dynamic_product_ids.insert("p-dyn".into());
     length_config.total_length_penalty = Some(1.0);
     length_config
         .over_length_penalty
-        .insert("p-dyn".to_string(), 2.0);
+        .insert("p-dyn".into(), 2.0);
     let input = ProduceInput {
         cutting_plans: vec![over_producing_plan("plan-slack")],
         demands: vec![short_demand, dynamic_demand()],
@@ -1798,7 +1798,7 @@ fn yield_and_length_results_prefer_solver_slack_values() {
 #[test]
 fn add_columns_refreshes_builtin_constraints_and_full_objective() {
     let mut material_cost_penalty = BTreeMap::new();
-    material_cost_penalty.insert("m1".to_string(), 3.0);
+    material_cost_penalty.insert("m1".into(), 3.0);
     let waste_config = WasteMinimizationConfig {
         trim_width_penalty: Some(0.25),
         material_cost_penalty,
@@ -2222,7 +2222,7 @@ fn generator_dominance_pruning_replaces_same_contribution_worse_rest_width() {
         generation_strategies: Vec::new(),
         candidate_filters: Vec::new(),
         width_feasibility_check: None,
-        canonical_key_overrides: vec![Arc::new(|plan: &CuttingPlan<f64>| Some(plan.id.clone()))],
+        canonical_key_overrides: vec![Arc::new(|plan: &CuttingPlan<f64>| Some(plan.id.to_string()))],
         dominance_accept_overrides: Vec::new(),
     };
     let generator = DFSGenerator::with_constraints(GenerationConstraints {
@@ -2375,7 +2375,7 @@ fn merge_generation_reports_matches_kotlin_parallel_merge_semantics() {
                 Some(if plan.slices[0].width.value == 20.0 {
                     "same-width".to_string()
                 } else {
-                    plan.id.clone()
+                    plan.id.to_string()
                 })
             })),
     );
@@ -2707,7 +2707,7 @@ fn column_generation_recovery_applies_plan_pool_warm_start_trace() {
 #[test]
 fn column_generation_extracts_yield_waste_length_results_and_kpi_details() {
     let mut material_cost_penalty = BTreeMap::new();
-    material_cost_penalty.insert("m1".to_string(), 3.0);
+    material_cost_penalty.insert("m1".into(), 3.0);
     let solve_config = csp1d_solve_config::<f64, _>(|builder| {
         builder
             .column_generation_limits(1, 0, 0)

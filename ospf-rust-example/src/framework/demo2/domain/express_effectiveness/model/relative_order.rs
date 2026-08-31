@@ -1,3 +1,4 @@
+//! 相对顺序模型 / Relative order model
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
@@ -8,13 +9,14 @@ use ospf_rust_core::symbol::function::IfFunction;
 /// 相对顺序 / Relative order (对齐 Kotlin RelativeOrder)
 #[derive(Debug, Clone)]
 pub struct RelativeOrder {
+    /// 物品前置依赖映射 / Item precedence mapping (item_id -> items that must load before it)
     pub precedence: HashMap<String, Vec<String>>, // item_id -> [must_load_before items]
 }
 
-/// RelativeOrder IfFunction 注册结果
+/// RelativeOrder IfFunction 注册结果 / RelativeOrder IfFunction registration result
 #[derive(Debug, Clone)]
 pub struct RelativeOrderVariables {
-    /// order_if[i] = IfFunction(condition=loaded[item], then=1, else=0) 的结果变量 solver index
+    /// order_if 的结果变量 solver index / Solver index of order_if result variable
     /// 当物品被装载时值为 1，否则为 0；用于相对顺序约束
     pub order_if: usize,
 }

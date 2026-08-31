@@ -1,5 +1,4 @@
-//! MaxMin/MinMax 函数符号。
-//! MaxMin/MinMax function symbols.
+//! MaxMin/MinMax 函数符号 / MaxMin/MinMax function symbols
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -33,21 +32,28 @@ impl<V> MaxMinFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建新的 MaxMin 函数 / Create a new MaxMin function
     pub fn new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> Self {
         Self {
             inner: MinFunction::new(id, name, polynomials, true),
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.inner = self.inner.with_declared_dependencies(dependency_ids);
         self
     }
 
+    /// 获取结果变量 / Get the result variable
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
 
+    /// 获取输入多项式列表 / Get the input polynomials
+    /// 获取输入多项式列表 / Get the input polynomials
     pub fn polynomials(&self) -> &[Linear<V>] {
         self.inner.polynomials()
     }
@@ -223,21 +229,25 @@ impl<V> MinMaxFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建新的 MinMax 函数 / Create a new MinMax function
     pub fn new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> Self {
         Self {
             inner: MaxFunction::new(id, name, polynomials, true),
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.inner = self.inner.with_declared_dependencies(dependency_ids);
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
 
+    /// 获取输入多项式列表 / Get the input polynomials
     pub fn polynomials(&self) -> &[Linear<V>] {
         self.inner.polynomials()
     }

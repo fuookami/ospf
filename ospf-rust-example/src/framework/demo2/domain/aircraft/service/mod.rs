@@ -1,3 +1,4 @@
+//! 飞机领域服务 / Aircraft domain service.
 pub mod aggregation_initializer;
 pub mod loading_order_output_exporter;
 pub mod neighbour_calculator;

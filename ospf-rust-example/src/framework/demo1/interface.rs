@@ -1,3 +1,5 @@
+//! 接口层：框架示例1 入口与数据解析 / Interface layer: framework demo1 entry point and data parsing
+
 use std::error::Error;
 use crate::framework::demo1::application::Ssp;
 use crate::framework::demo1::infrastructure::dto::{ClientNodeDTO, EdgeDTO, Input};
@@ -62,6 +64,7 @@ const DATA: &str = r#"28 45 12
 10 7 10
 11 24 23"#;
 
+/// 运行框架示例1入口 / Run framework demo1 entry point
 pub fn run() -> Result<(), Box<dyn Error>> {
     let input = read(DATA)?;
     let mut app = Ssp::new();
@@ -74,6 +77,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// 从原始数据解析输入 / Parse input from raw data
 fn read(data: &str) -> Result<Input, Box<dyn Error>> {
     let lines: Vec<&str> = data
         .lines()

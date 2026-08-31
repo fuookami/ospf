@@ -1,8 +1,8 @@
-//! 浜屾澶氶」寮?
+//! 二次多项式
 //! Quadratic polynomial
 //!
-//! 褰㈠紡锛毼?c岬⑩奔S岬獗?+ 危 d岬岬?+ e
-//! Form: 危 c岬⑩奔S岬獗?+ 危 d岬岬?+ e
+//! 形式：Σ cᵢⱼSᵢSⱼ + Σ dᵢSᵢ + e
+//! Form: Σ cᵢⱼSᵢSⱼ + Σ dᵢSᵢ + e
 
 use crate::algebra::concept::{AbelianGroup, AbelianGroupRef};
 use crate::operator::{
@@ -18,23 +18,23 @@ use std::fmt;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 // ============================================================================
-// Quadratic - 浜屾澶氶」寮?
+// Quadratic - 二次多项式
 // ============================================================================
 
-/// 浜屾澶氶」寮?/ Quadratic polynomial
+/// 二次多项式 / Quadratic polynomial
 ///
-/// 褰㈠紡锛歚危 c岬⑩奔S岬獗?+ 危 d岬岬?+ e`
-/// Form: `危 c岬⑩奔S岬獗?+ 危 d岬岬?+ e`
+/// 形式：`Σ cᵢⱼSᵢSⱼ + Σ dᵢSᵢ + e`
+/// Form: `Σ cᵢⱼSᵢSⱼ + Σ dᵢSᵢ + e`
 #[derive(Clone, Debug, PartialEq)]
 pub struct Quadratic<T> {
-    /// 鍗曢」寮忓垪琛?/ List of monomials
+    /// 单项式列表 / List of monomials
     pub monomials: Vec<QuadraticMonomial<T>>,
-    /// 甯告暟椤?/ Constant term
+    /// 常数项 / Constant term
     pub constant: T,
 }
 
 impl<T> Quadratic<T> {
-    /// 鍒涘缓鏂扮殑浜屾澶氶」寮?
+    /// 创建新的二次多项式
     /// Create a new quadratic polynomial
     pub fn new(monomials: Vec<QuadraticMonomial<T>>, constant: T) -> Self {
         Self {
@@ -43,7 +43,7 @@ impl<T> Quadratic<T> {
         }
     }
 
-    /// 鍒涘缓甯告暟澶氶」寮?
+    /// 创建常数多项式
     /// Create a constant polynomial
     pub fn from_constant(value: T) -> Self
     where
@@ -55,7 +55,7 @@ impl<T> Quadratic<T> {
         }
     }
 
-    /// 鍒涘缓闆跺椤瑰紡
+    /// 创建零多项式
     /// Create a zero polynomial
     pub fn zero() -> Self
     where
@@ -67,25 +67,25 @@ impl<T> Quadratic<T> {
         }
     }
 
-    /// 鑾峰彇鍗曢」寮忔暟閲?
+    /// 获取单项式数量
     /// Get the number of monomials
     pub fn len(&self) -> usize {
         self.monomials.len()
     }
 
-    /// 鏄惁涓虹┖
+    /// 是否为空
     /// Check if empty
     pub fn is_empty(&self) -> bool {
         self.monomials.is_empty()
     }
 
-    /// 鏄惁涓哄父鏁?
+    /// 是否为常数
     /// Check if this is a constant
     pub fn is_constant(&self) -> bool {
         self.monomials.is_empty()
     }
 
-    /// 鑾峰彇甯告暟椤瑰紩鐢?
+    /// 获取常数项引用
     /// Get reference to constant term
     pub fn get_constant(&self) -> &T {
         &self.constant
@@ -93,7 +93,7 @@ impl<T> Quadratic<T> {
 }
 
 impl<T> Quadratic<T> {
-    /// 鏄犲皠绯绘暟锛堝師鍦颁慨鏀癸級
+    /// 映射系数（原地修改）
     /// Map the coefficients (in-place modification)
     pub fn map_coefficients<F>(&mut self, f: &F)
     where
@@ -106,10 +106,10 @@ impl<T> Quadratic<T> {
     }
 }
 
-// 寮曠敤鐗堟湰锛?Quadratic<T> -> Quadratic<T>
+// 引用版本：Quadratic<T> -> Quadratic<T>
 // Reference version: &Quadratic<T> -> Quadratic<T>
 impl<T: Clone> Quadratic<T> {
-    /// 鏄犲皠绯绘暟锛堣繑鍥炴柊瀹炰緥锛?
+    /// 映射系数（返回新实例）
     /// Map the coefficients (returns new instance)
     pub fn mapped_coefficients<F>(&self, f: &F) -> Self
     where
@@ -127,7 +127,7 @@ impl<T: Clone> Quadratic<T> {
 }
 
 impl<T: Clone + num_traits::Zero + PartialEq> Quadratic<T> {
-    /// 鍘熷湴绠€鍖栧椤瑰紡锛堝悎骞跺悓绫婚」锛岀Щ闄ら浂绯绘暟椤癸級
+    /// 原地简化多项式（合并同类项，移除零系数项）
     /// Simplify polynomial in-place (combine like terms, remove zero coefficients)
     pub fn simplify(&mut self) {
         let mut term_coefficients: HashMap<(OwnedSymbol, Option<OwnedSymbol>), T> = HashMap::new();
@@ -151,10 +151,10 @@ impl<T: Clone + num_traits::Zero + PartialEq> Quadratic<T> {
             .collect();
     }
 
-    /// 杩斿洖绠€鍖栧悗鐨勫椤瑰紡锛堝悎骞跺悓绫婚」锛岀Щ闄ら浂绯绘暟椤癸級
+    /// 返回简化后的多项式（合并同类项，移除零系数项）
     /// Return simplified polynomial (combine like terms, remove zero coefficients)
     ///
-    /// 涓?`simplify` 涓嶅悓锛屾鏂规硶杩斿洖鏂扮殑澶氶」寮忥紝涓嶄慨鏀瑰師瀹炰緥銆?
+    /// 与 `simplify` 不同，此方法返回新的多项式，不修改原实例。
     /// Unlike `simplify`, this method returns a new polynomial without modifying the original.
     pub fn simplified(self) -> Self {
         let mut term_coefficients: HashMap<(OwnedSymbol, Option<OwnedSymbol>), T> = HashMap::new();
@@ -185,7 +185,7 @@ impl<T: Clone + num_traits::Zero + PartialEq> Quadratic<T> {
 }
 
 // ============================================================================
-// 杩愮畻瀹炵幇 / Operation Implementations
+// 运算实现 / Operation Implementations
 // ============================================================================
 
 impl<T: AbelianGroup> Add for Quadratic<T> {
@@ -241,7 +241,7 @@ impl<T: Clone + std::ops::Div<T, Output = T>> std::ops::Div<T> for Quadratic<T> 
     }
 }
 
-// 涓哄叿浣撶被鍨嬪疄鐜板弽鍚戞爣閲忎箻娉?
+// 为具体类型实现反向标量乘法
 // Implement reverse scalar multiplication for concrete types
 macro_rules! impl_mul_scalar_for_quadratic {
     ($($t:ty),*) => {
@@ -265,7 +265,7 @@ macro_rules! impl_mul_scalar_for_quadratic {
 impl_mul_scalar_for_quadratic!(f32, f64, i8, i16, i32, i64, i128, isize);
 
 // ============================================================================
-// 鏍囬噺寮曠敤杩愮畻 / Scalar Reference Operations
+// 标量引用运算 / Scalar Reference Operations
 // ============================================================================
 
 // Mul: Quadratic<T> * &T
@@ -373,7 +373,7 @@ impl<T: for<'a> DivAssign<&'a T>> DivAssign<&T> for Quadratic<T> {
 }
 
 // ============================================================================
-// &Quadratic<T> 杩愮畻 / Operations for &Quadratic<T>
+// &Quadratic<T> 运算 / Operations for &Quadratic<T>
 // ============================================================================
 
 // Add: &Quadratic<T> + T
@@ -584,18 +584,18 @@ impl<T: AbelianGroupRef> Add<&Linear<T>> for &Quadratic<T> {
 }
 
 // ============================================================================
-// 璺ㄧ被鍨嬪姞娉曡繍绠?/ Cross-type Addition Operations
+// 跨类型加法运算 / Cross-type Addition Operations
 // ============================================================================
 
-// O81: Quadratic<T> + Linear<T> 鈫?Quadratic<T>
-// 浜屾澶氶」寮?+ 绾挎€у椤瑰紡 = 浜屾澶氶」寮?
+// O81: Quadratic<T> + Linear<T> → Quadratic<T>
+// 二次多项式 + 线性多项式 = 二次多项式
 // Quadratic polynomial + Linear polynomial = Quadratic polynomial
 impl<T: AbelianGroup> Add<Linear<T>> for Quadratic<T> {
     type Output = Quadratic<T>;
 
     fn add(self, rhs: Linear<T>) -> Self::Output {
         let mut monomials = self.monomials;
-        // 鐩存帴杞崲 LinearMonomial 涓?QuadraticMonomial锛岄伩鍏嶅垱寤轰复鏃?vec
+        // 直接转换 LinearMonomial 为 QuadraticMonomial，避免创建临时 vec
         // Directly convert LinearMonomial to QuadraticMonomial, avoiding temporary vec
         monomials.extend(
             rhs.monomials
@@ -628,7 +628,7 @@ impl<T: AbelianGroupRef> Add<&Linear<T>> for Quadratic<T> {
 }
 
 // ============================================================================
-// 鍙嶅悜鏍囬噺杩愮畻 / Reverse Scalar Operations
+// 反向标量运算 / Reverse Scalar Operations
 // ============================================================================
 
 macro_rules! impl_scalar_ref_ops_for_quadratic {
@@ -745,7 +745,7 @@ macro_rules! impl_scalar_ref_ops_for_quadratic {
 impl_scalar_ref_ops_for_quadratic!(f32, f64, i8, i16, i32, i64, i128, isize);
 
 // ============================================================================
-// 澶氶」寮忓紩鐢ㄨ繍绠?/ Polynomial Reference Operations
+// 多项式引用运算 / Polynomial Reference Operations
 // ============================================================================
 
 // Add: Quadratic<T> + &Quadratic<T>
@@ -813,7 +813,7 @@ impl<T: AbelianGroupRef> SubAssign<&Self> for Quadratic<T> {
 }
 
 // ============================================================================
-// 鍗曢」寮忚繍绠?/ Monomial Operations
+// 单项式运算 / Monomial Operations
 // ============================================================================
 
 // AddAssign: Quadratic<T> += QuadraticMonomial<T>
@@ -989,7 +989,7 @@ impl<T: AbelianGroup + NegRef + Clone> Sub<&Quadratic<T>> for &QuadraticMonomial
 }
 
 // ============================================================================
-// 绗﹀彿杩愮畻 / Symbol Operations
+// 符号运算 / Symbol Operations
 // ============================================================================
 
 // Add: Quadratic<T> + OwnedSymbol
@@ -1169,14 +1169,14 @@ impl<T: One + Neg<Output = T>> SubAssign<&OwnedSymbol> for Quadratic<T> {
 }
 
 // ============================================================================
-// 绫诲瀷鎻愬崌鏂规硶 / Type Promotion Methods
+// 类型提升方法 / Type Promotion Methods
 // ============================================================================
 
 impl<T: Clone + Zero + One> Quadratic<T> {
-    /// 绫诲瀷鎻愬崌鍒版爣鍑嗗椤瑰紡锛堜娇鐢ㄩ粯璁ゆ寚鏁扮被鍨?i32锛?
+    /// 类型提升到标准多项式（使用默认指数类型 i32）
     /// Promote to canonical polynomial (using default exponent type i32)
     ///
-    /// 灏嗕簩娆″椤瑰紡杞崲涓烘爣鍑嗗椤瑰紡銆?
+    /// 将二次多项式转换为标准多项式。
     /// Converts quadratic polynomial to canonical polynomial.
     pub fn into_canonical(self) -> Canonical<T, i32> {
         let mut monomials: Vec<CanonicalMonomial<T, i32>> = Vec::new();
@@ -1186,13 +1186,13 @@ impl<T: Clone + Zero + One> Quadratic<T> {
 
             match m.symbol2 {
                 Some(symbol2) => {
-                    // 浜屾椤? c * S1 * S2
+                    // 二次项：c * S1 * S2
                     // Quadratic term: c * S1 * S2
                     powers.insert(m.symbol1, 1);
                     powers.entry(symbol2).and_modify(|e| *e += 1).or_insert(1);
                 }
                 None => {
-                    // 绾挎€ч」: c * S1
+                    // 线性项：c * S1
                     // Linear term: c * S1
                     powers.insert(m.symbol1, 1);
                 }
@@ -1207,10 +1207,10 @@ impl<T: Clone + Zero + One> Quadratic<T> {
         }
     }
 
-    /// 绫诲瀷鎻愬崌鍒版爣鍑嗗椤瑰紡锛堟寚瀹氭寚鏁扮被鍨嬶級
+    /// 类型提升到标准多项式（指定指数类型）
     /// Promote to canonical polynomial with specified exponent type
     ///
-    /// 灏嗕簩娆″椤瑰紡杞崲涓烘爣鍑嗗椤瑰紡銆?
+    /// 将二次多项式转换为标准多项式。
     /// Converts quadratic polynomial to canonical polynomial.
     pub fn into_canonical_with_exponent<E: Exponent + One + std::ops::Add<Output = E> + Clone>(
         self,
@@ -1222,7 +1222,7 @@ impl<T: Clone + Zero + One> Quadratic<T> {
 
             match m.symbol2 {
                 Some(symbol2) => {
-                    // 浜屾椤? c * S1 * S2
+                    // 二次项：c * S1 * S2
                     // Quadratic term: c * S1 * S2
                     powers.insert(m.symbol1, E::one());
                     powers
@@ -1234,7 +1234,7 @@ impl<T: Clone + Zero + One> Quadratic<T> {
                         .or_insert(E::one());
                 }
                 None => {
-                    // 绾挎€ч」: c * S1
+                    // 线性项：c * S1
                     // Linear term: c * S1
                     powers.insert(m.symbol1, E::one());
                 }
@@ -1251,16 +1251,16 @@ impl<T: Clone + Zero + One> Quadratic<T> {
 }
 
 // ============================================================================
-// 澶氶」寮忎箻娉曟柟娉?/ Polynomial Multiplication Methods
+// 多项式乘法方法 / Polynomial Multiplication Methods
 // ============================================================================
 
 impl<T: Clone + Zero + One + MulRef> Quadratic<T> {
-    /// 浜屾澶氶」寮忎箻绾挎€у椤瑰紡锛岀粨鏋滀负鏍囧噯澶氶」寮?
+    /// 二次多项式乘线性多项式，结果为标准多项式
     /// Quadratic polynomial times linear polynomial, result is canonical
     ///
-    /// (危 c岬⑩奔S岬獗?+ 危 d岬岬?+ e) 脳 (危 a鈧朣鈧?+ b)
+    /// (Σ cᵢⱼSᵢSⱼ + Σ dᵢSᵢ + e) × (Σ aₖSₖ + b)
     ///
-    /// # 绀轰緥 / Example
+    /// # 示例 / Example
     /// ```
     /// // (x虏 + 2y) * (3z - 1) = 3x虏z - x虏 + 6yz - 2y
     /// ```
@@ -1270,13 +1270,13 @@ impl<T: Clone + Zero + One + MulRef> Quadratic<T> {
         self_canonical.multiply(other_canonical)
     }
 
-    /// 浜屾澶氶」寮忎箻娉曪紝缁撴灉涓烘爣鍑嗗椤瑰紡
+    /// 二次多项式乘法，结果为标准多项式
     /// Quadratic polynomial multiplication, result is canonical
     ///
-    /// 涓や釜浜屾澶氶」寮忕浉涔樹細浜х敓鏈€楂樺洓娆＄殑澶氶」寮忋€?
+    /// 两个二次多项式相乘会产生最高四次的多项式。
     /// Multiplying two quadratic polynomials results in up to quartic polynomial.
     ///
-    /// # 绀轰緥 / Example
+    /// # 示例 / Example
     /// ```
     /// // (x虏 + 1) * (y虏 - 2) = x虏y虏 - 2x虏 + y虏 - 2
     /// ```
@@ -1288,7 +1288,7 @@ impl<T: Clone + Zero + One + MulRef> Quadratic<T> {
 }
 
 // ============================================================================
-// Display 瀹炵幇 / Display Implementation
+// Display 实现 / Display Implementation
 // ============================================================================
 
 impl<T> fmt::Display for Quadratic<T>
@@ -1326,13 +1326,13 @@ where
 }
 
 // ============================================================================
-// 寰垎瀹炵幇 / Differentiation Implementation
+// 微分实现 / Differentiation Implementation
 // ============================================================================
 
 use crate::symbol::operation::{Differentiate, SecondOrderDifferentiate};
 
 impl<T: Clone> Differentiate<T> for Quadratic<T> {
-    /// Quadratic 鐨勫亸瀵兼槸 Linear<T>
+    /// Quadratic 的偏导是 Linear<T>
     /// Quadratic's partial derivative is Linear<T>
     type Derivative = Linear<T>;
 
@@ -1346,11 +1346,11 @@ impl<T: Clone> Differentiate<T> for Quadratic<T> {
         for monomial in &self.monomials {
             match &monomial.symbol2 {
                 Some(symbol2) => {
-                    // 浜屾椤? c * S1 * S2
+                    // 二次项：c * S1 * S2
                     // Quadratic term: c * S1 * S2
-                    // 瀵?S1 姹傚: c * S2
+                    // 对 S1 求导：c * S2
                     // Derivative with respect to S1: c * S2
-                    // 瀵?S2 姹傚: c * S1
+                    // 对 S2 求导：c * S1
                     // Derivative with respect to S2: c * S1
                     if monomial.symbol1 == *symbol {
                         monomials.push(LinearMonomial::new(
@@ -1365,9 +1365,9 @@ impl<T: Clone> Differentiate<T> for Quadratic<T> {
                     }
                 }
                 None => {
-                    // 绾挎€ч」: c * S1
+                    // 线性项：c * S1
                     // Linear term: c * S1
-                    // 瀵?S1 姹傚: c (甯告暟)
+                    // 对 S1 求导：c（常数）
                     // Derivative with respect to S1: c (constant)
                     if monomial.symbol1 == *symbol {
                         constant += &monomial.coefficient;
@@ -1388,23 +1388,23 @@ impl<T: Clone> SecondOrderDifferentiate<T> for Quadratic<T> {
         let n = symbols.len();
         let mut hessian = vec![vec![T::zero(); n]; n];
 
-        // 閬嶅巻鎵€鏈変簩娆￠」
+        // 遍历所有二次项
         // Iterate through all quadratic terms
         for monomial in &self.monomials {
             if let Some(symbol2) = &monomial.symbol2 {
-                // 鎵惧埌 symbol1 鍜?symbol2 鍦?symbols 涓殑绱㈠紩
+                // 找到 symbol1 和 symbol2 在 symbols 中的索引
                 // Find indices of symbol1 and symbol2 in symbols
                 let idx1 = symbols.iter().position(|s| *s == monomial.symbol1);
                 let idx2 = symbols.iter().position(|s| *s == *symbol2);
 
                 if let (Some(i), Some(j)) = (idx1, idx2) {
                     if i == j {
-                        // S1 * S1 (鍗?S1^2)锛屼簩闃跺鏁版槸 2 * c
+                        // S1 * S1（即 S1^2），二阶导数是 2 * c
                         // S1 * S1 (i.e., S1^2), second derivative is 2 * c
                         hessian[i][i] += &monomial.coefficient;
                         hessian[i][i] += &monomial.coefficient;
                     } else {
-                        // S1 * S2锛屾贩鍚堝亸瀵兼槸 c
+                        // S1 * S2，混合偏导是 c
                         // S1 * S2, mixed partial derivative is c
                         hessian[i][j] += &monomial.coefficient;
                         hessian[j][i] += &monomial.coefficient;
@@ -1418,7 +1418,7 @@ impl<T: Clone> SecondOrderDifferentiate<T> for Quadratic<T> {
 }
 
 // ============================================================================
-// 姹傚€煎疄鐜?/ Evaluate Implementation
+// 求值实现 / Evaluate Implementation
 // ============================================================================
 
 use crate::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
@@ -1430,7 +1430,7 @@ impl<T: Clone> Evaluate<T> for Quadratic<T> {
     {
         let mut result = self.constant.clone();
 
-        // 浣跨敤鍗曢」寮忕殑 evaluate 鏂规硶
+        // 使用单项式的 evaluate 方法
         // Use monomial's evaluate method
         for monomial in &self.monomials {
             result = result + monomial.evaluate(values);
@@ -1449,13 +1449,13 @@ impl<T: Clone> Evaluate<T> for Quadratic<T> {
         for monomial in &self.monomials {
             let partial = monomial.partial_evaluate(values);
 
-            // 鍒ゆ柇閮ㄥ垎姹傚€煎悗鐨勭姸鎬?
+            // 判断部分求值后的状态
             // Determine state after partial evaluation
             let is_fully_evaluated = match (&monomial.symbol2, &partial.symbol2) {
                 (Some(_), None) => {
-                    // 鍘熸潵鏄簩娆￠」锛岀幇鍦ㄦ槸绾挎€ч」
+                    // 原来是二次项，现在是线性项
                     // Was quadratic term, now linear term
-                    // 鍒ゆ柇鏄惁涓や釜绗﹀彿閮芥湁鍊?
+                    // 判断是否两个符号都有值
                     // Check if both symbols have values
                     values.contains_key(&monomial.symbol1)
                         && monomial
@@ -1465,7 +1465,7 @@ impl<T: Clone> Evaluate<T> for Quadratic<T> {
                             .unwrap_or(false)
                 }
                 (None, None) => {
-                    // 鍘熸潵鏄嚎鎬ч」
+                    // 原来是线性项
                     // Was linear term
                     values.contains_key(&monomial.symbol1)
                 }
@@ -1473,11 +1473,11 @@ impl<T: Clone> Evaluate<T> for Quadratic<T> {
             };
 
             if is_fully_evaluated {
-                // 鎵€鏈夌鍙烽兘鏈夊€硷紝鍔犲埌甯告暟椤?
+                // 所有符号都有值，加到常数项
                 // All symbols have values, add to constant
                 new_constant = new_constant + partial.coefficient;
             } else {
-                // 淇濈暀鍗曢」寮?
+                // 保留单项式
                 // Keep monomial
                 new_monomials.push(partial);
             }
@@ -1494,7 +1494,7 @@ impl<T: Clone> EvaluateOrdered<T> for Quadratic<T> {
     {
         let mut result = self.constant.clone();
 
-        // 浣跨敤鍗曢」寮忕殑 evaluate_ordered 鏂规硶
+        // 使用单项式的 evaluate_ordered 方法
         // Use monomial's evaluate_ordered method
         for monomial in &self.monomials {
             result = result + monomial.evaluate_ordered(symbols, values);
@@ -1505,7 +1505,7 @@ impl<T: Clone> EvaluateOrdered<T> for Quadratic<T> {
 }
 
 // ============================================================================
-// 绫诲瀷杞崲瀹炵幇 / Type Conversion Implementations
+// 类型转换实现 / Type Conversion Implementations
 // ============================================================================
 
 use crate::symbol::operation::{QuadraticMatrixForm, ToMatrixForm};
@@ -1518,7 +1518,7 @@ impl<T: Clone + Zero + One, E: Exponent + One + Add<Output = E> + Clone> ToCanon
     }
 }
 
-// 寮曠敤鐗堟湰锛?Quadratic<T> -> Canonical<T, E>
+// 引用版本：Quadratic<T> -> Canonical<T, E>
 // Reference version: &Quadratic<T> -> Canonical<T, E>
 impl<T: Clone + Zero + One, E: Exponent + One + Add<Output = E> + Clone> ToCanonical<T, E>
     for &Quadratic<T>
@@ -1572,28 +1572,28 @@ impl<
         let mut q_matrix: Vec<Vec<T>> = vec![vec![T::zero(); n]; n];
         let mut c_vector: Vec<T> = vec![T::zero(); n];
 
-        // 寤虹珛绗﹀彿鍒扮储寮曠殑鏄犲皠
+        // 建立符号到索引的映射
         // Build symbol to index mapping
         let symbol_index: HashMap<&OwnedSymbol, usize> =
             symbols.iter().enumerate().map(|(i, s)| (s, i)).collect();
 
-        // 濉厖绯绘暟
+        // 填充系数
         // Fill coefficients
         for monomial in &self.monomials {
             match &monomial.symbol2 {
                 Some(symbol2) => {
-                    // 浜屾椤? c * S1 * S2
+                    // 二次项：c * S1 * S2
                     // Quadratic term: c * S1 * S2
                     if let (Some(&i), Some(&j)) = (
                         symbol_index.get(&monomial.symbol1),
                         symbol_index.get(symbol2),
                     ) {
                         if i == j {
-                            // S1^2 椤癸紝Q[i][i] += c
+                            // S1^2 项，Q[i][i] += c
                             // S1^2 term, Q[i][i] += c
                             q_matrix[i][i] += &monomial.coefficient;
                         } else {
-                            // S1 * S2 椤癸紝瀵圭О浣嶇疆鍚勫姞 c/2
+                            // S1 * S2 项，对称位置各加 c/2
                             // S1 * S2 term, add c/2 to symmetric positions
                             q_matrix[i][j] += &monomial.coefficient;
                             q_matrix[j][i] += &monomial.coefficient;
@@ -1601,7 +1601,7 @@ impl<
                     }
                 }
                 None => {
-                    // 绾挎€ч」: c * S1
+                    // 线性项：c * S1
                     // Linear term: c * S1
                     if let Some(&i) = symbol_index.get(&monomial.symbol1) {
                         c_vector[i] += &monomial.coefficient;
@@ -1622,13 +1622,13 @@ impl<
         let mut monomials: Vec<QuadraticMonomial<T>> = Vec::new();
         let n = form.symbols.len();
 
-        // 浠?Q 鐭╅樀鏋勫缓浜屾椤?
+        // 从 Q 矩阵构建二次项
         // Build quadratic terms from Q matrix
         for i in 0..n {
             for j in i..n {
                 if !form.q_matrix[i][j].is_zero() {
                     if i == j {
-                        // 瀵硅绾垮厓绱狅細S_i^2 椤?
+                        // 对角线元素：S_i^2 项
                         // Diagonal element: S_i^2 term
                         monomials.push(QuadraticMonomial::quadratic(
                             form.q_matrix[i][j].clone(),
@@ -1636,9 +1636,9 @@ impl<
                             form.symbols[i].clone(),
                         ));
                     } else {
-                        // 闈炲瑙掔嚎鍏冪礌锛歋_i * S_j 椤癸紙瀵圭О鐭╅樀锛屽彧鍙栦竴鍗婏級
+                        // 非对角线元素：S_i * S_j 项（对称矩阵，只取一半）
                         // Off-diagonal element: S_i * S_j term (symmetric matrix, take only half)
-                        // 鐢变簬鏄绉扮殑锛孮[i][j] = Q[j][i]锛屾墍浠ュ彧浣跨敤 Q[i][j]
+                        // 由于是对称的，Q[i][j] = Q[j][i]，所以只使用 Q[i][j]
                         monomials.push(QuadraticMonomial::quadratic(
                             form.q_matrix[i][j].clone(),
                             form.symbols[i].clone(),
@@ -1649,7 +1649,7 @@ impl<
             }
         }
 
-        // 浠?c 鍚戦噺鏋勫缓绾挎€ч」
+        // 从 c 向量构建线性项
         // Build linear terms from c vector
         for i in 0..n {
             if !form.c_vector[i].is_zero() {
@@ -1665,10 +1665,10 @@ impl<
 }
 
 // ============================================================================
-// TryToLinear 瀹炵幇 / TryToLinear Implementation
+// TryToLinear 实现 / TryToLinear Implementation
 // ============================================================================
 
-/// Quadratic 鍙互灏濊瘯杞崲涓?Linear锛屽彧鏈夊綋鎵€鏈夐」閮芥槸绾挎€ч」鏃舵墠鑳芥垚鍔?
+/// Quadratic 可以尝试转换为 Linear，只有当所有项都是线性项时才能成功
 /// Quadratic can try to convert to Linear, succeeds only if all terms are linear
 impl<T: Zero + Clone> TryToLinear<T> for Quadratic<T> {
     fn try_to_linear(self) -> Result<Linear<T>, TryToLinearError> {
@@ -1677,12 +1677,12 @@ impl<T: Zero + Clone> TryToLinear<T> for Quadratic<T> {
         for monomial in self.monomials {
             match monomial.symbol2 {
                 Some(_) => {
-                    // 瀛樺湪浜屾椤癸紝鏃犳硶杞崲
+                    // 存在二次项，无法转换
                     // Quadratic term exists, cannot convert
                     return Err(TryToLinearError::HasHigherOrderTerms);
                 }
                 None => {
-                    // 绾挎€ч」
+                    // 线性项
                     // Linear term
                     linear_monomials
                         .push(LinearMonomial::new(monomial.coefficient, monomial.symbol1));
@@ -1694,7 +1694,7 @@ impl<T: Zero + Clone> TryToLinear<T> for Quadratic<T> {
     }
 }
 
-/// &Quadratic 鐨?TryToLinear 瀹炵幇
+/// &Quadratic 的 TryToLinear 实现
 /// TryToLinear implementation for &Quadratic
 impl<T: Zero + Clone> TryToLinear<T> for &Quadratic<T> {
     fn try_to_linear(self) -> Result<Linear<T>, TryToLinearError> {
@@ -1703,12 +1703,12 @@ impl<T: Zero + Clone> TryToLinear<T> for &Quadratic<T> {
         for monomial in &self.monomials {
             match &monomial.symbol2 {
                 Some(_) => {
-                    // 瀛樺湪浜屾椤癸紝鏃犳硶杞崲
+                    // 存在二次项，无法转换
                     // Quadratic term exists, cannot convert
                     return Err(TryToLinearError::HasHigherOrderTerms);
                 }
                 None => {
-                    // 绾挎€ч」
+                    // 线性项
                     // Linear term
                     linear_monomials.push(LinearMonomial::new(
                         monomial.coefficient.clone(),
@@ -1723,7 +1723,7 @@ impl<T: Zero + Clone> TryToLinear<T> for &Quadratic<T> {
 }
 
 // ============================================================================
-// 娴嬭瘯 / Tests
+// 测试 / Tests
 // ============================================================================
 
 #[cfg(test)]

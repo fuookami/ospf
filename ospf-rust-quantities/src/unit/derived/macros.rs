@@ -1,8 +1,6 @@
-//! Unit definition macros - 单位定义宏
-//! Unit definition macros - Macros for defining SI units
+//! 单位定义宏 / Unit definition macros
 //!
-//! 提供用于定义 SI 单位的宏，包括基本单位定义宏和导出单位定义宏。
-//! Provides macros for defining SI units, including base unit definition macros and derived unit definition macros.
+//! 提供用于定义 SI 单位的宏，包括基本单位定义宏和导出单位定义宏 / Provides macros for defining SI units, including base unit definition macros and derived unit definition macros
 
 /// 定义 SI 单位（运行时 + 编译时）
 /// Define SI unit (runtime + compile-time)

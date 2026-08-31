@@ -93,7 +93,7 @@ pub trait QuadraticMetaModelSolverExt: QuadraticSolver {
         meta_model: &'a MetaModel<V>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>>
     where
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_meta_with_options(meta_model, FrameworkSolveOptions::default())
     }
@@ -106,7 +106,7 @@ pub trait QuadraticMetaModelSolverExt: QuadraticSolver {
         options: FrameworkSolveOptions,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>>
     where
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         let mechanism_model = match meta_model.try_to_mechanism_model_with_status_callback(
             options.model_building_status_callback.as_ref(),
@@ -144,7 +144,7 @@ pub trait QuadraticMetaModelSolverExt: QuadraticSolver {
     /// 简化入口：求解 MetaModel / Simplified entry: solve MetaModel
     fn solve_meta<V>(&self, meta_model: &MetaModel<V>) -> Result<FeasibleSolution>
     where
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_meta_with_options(meta_model, FrameworkSolveOptions::default())
     }
@@ -157,7 +157,7 @@ pub trait QuadraticMetaModelSolverExt: QuadraticSolver {
         options: FrameworkSolveOptions,
     ) -> Result<FeasibleSolution>
     where
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         let mechanism_model = meta_model.try_to_mechanism_model_with_status_callback(
             options.model_building_status_callback.as_ref(),

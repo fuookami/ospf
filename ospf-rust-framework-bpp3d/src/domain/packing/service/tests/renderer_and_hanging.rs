@@ -6,7 +6,7 @@
         let item = PackedItem {
             item_index: 0,
             item: crate::domain::item::ActualItem {
-                id: "cyl".to_string(),
+                id: "cyl".into(),
                 name: "Cylinder".to_string(),
                 package_code: None,
                 pack: None,
@@ -65,7 +65,7 @@
         let cylinder = PackedItem {
             item_index: 0,
             item: crate::domain::item::ActualItem {
-                id: "cyl_x".to_string(),
+                id: "cyl_x".into(),
                 name: "Cylinder X".to_string(),
                 package_code: None,
                 pack: None,

@@ -6,7 +6,7 @@
 //! Defines core model components for the column generation master problem:
 //! BunchCompilation, BunchAggregation, SlotBasedBunch, BunchSchedulingSolution, etc.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use ospf_rust_core::model::MetaModel;
@@ -14,9 +14,10 @@ use ospf_rust_core::model::flatten::LinearMonomial;
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::variable::Binary;
 
+use crate::domain::common::{ExecutorId, ExecutorIdTrait};
 use crate::domain::task_compilation::adapter::next_gantt_symbol_id;
-use crate::GanttResult;
 use crate::GanttError;
+use crate::GanttResult;
 
 // ============================================================================
 // 任务束聚合 / Bunch Aggregation
@@ -27,35 +28,44 @@ use crate::GanttError;
 /// 管理任务束集合的添加、去重和移除追踪。
 /// Manages bunch collection with deduplication and removal tracking.
 #[derive(Clone)]
-pub struct BunchAggregation {
+pub struct BunchAggregation<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
     /// 按迭代分组的束列表 / Bunches grouped by iteration
     bunches_by_iteration: Vec<Vec<usize>>,
     /// 所有活跃束索引 / All active bunch indices
-    bunches: Vec<BunchEntry>,
+    bunches: Vec<BunchEntry<I>>,
     /// 已移除的束索引 / Removed bunch indices
     removed: HashSet<usize>,
     /// 迭代计数 / Iteration count
     iteration_count: usize,
 }
 
-use std::collections::HashSet;
-
 /// 束条目 / Bunch entry
 #[derive(Debug, Clone)]
-pub struct BunchEntry {
+pub struct BunchEntry<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
     /// 束索引 / Bunch index
     pub index: usize,
     /// 执行器 ID / Executor ID
-    pub executor_id: String,
+    pub executor_id: I,
     /// 包含的任务索引 / Contained task indices
     pub task_indices: Vec<usize>,
     /// 束成本 / Bunch cost
     pub cost: f64,
     /// 所属迭代 / Iteration
     pub iteration: usize,
+    /// 所属时隙；普通任务束为 None / Slot index; None for non-slot-based bunches
+    pub slot_index: Option<usize>,
 }
 
-impl std::fmt::Debug for BunchAggregation {
+impl<I> std::fmt::Debug for BunchAggregation<I>
+where
+    I: ExecutorIdTrait,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BunchAggregation")
             .field("bunch_count", &self.bunches.len())
@@ -65,9 +75,12 @@ impl std::fmt::Debug for BunchAggregation {
     }
 }
 
-impl BunchAggregation {
-    /// 创建新的任务束聚合 / Create new bunch aggregation
-    pub fn new() -> Self {
+impl<I> BunchAggregation<I>
+where
+    I: ExecutorIdTrait,
+{
+    /// 为业务 ID 创建新的任务束聚合 / Create new bunch aggregation for domain ids
+    pub fn new_for_ids() -> Self {
         Self {
             bunches_by_iteration: Vec::new(),
             bunches: Vec::new(),
@@ -77,13 +90,19 @@ impl BunchAggregation {
     }
 
     /// 添加新束（去重）/ Add new bunches (with deduplication)
-    pub fn add_bunches(&mut self, iteration: usize, new_bunches: Vec<BunchEntry>) -> Vec<usize> {
+    pub fn add_bunches(
+        &mut self,
+        iteration: usize,
+        new_bunches: Vec<BunchEntry<I>>,
+    ) -> Vec<usize> {
         let mut added = Vec::new();
         for bunch in new_bunches {
-            // 简单去重：检查是否已存在相同执行器和任务集合的束
+            // 执行器、时隙和任务集合共同确定束的去重键。
+            // Executor, slot, and task set jointly define the bunch deduplication key.
             let is_duplicate = self.bunches.iter().any(|existing| {
                 existing.executor_id == bunch.executor_id
                     && existing.task_indices == bunch.task_indices
+                    && existing.slot_index == bunch.slot_index
             });
             if !is_duplicate {
                 let idx = bunch.index;
@@ -103,14 +122,14 @@ impl BunchAggregation {
     }
 
     /// 获取所有活跃束 / Get all active bunches
-    pub fn bunches(&self) -> Vec<&BunchEntry> {
+    pub fn bunches(&self) -> Vec<&BunchEntry<I>> {
         self.bunches.iter()
             .filter(|b| !self.removed.contains(&b.index))
             .collect()
     }
 
     /// 获取指定迭代的束 / Get bunches for a specific iteration
-    pub fn bunches_for_iteration(&self, iteration: usize) -> Vec<&BunchEntry> {
+    pub fn bunches_for_iteration(&self, iteration: usize) -> Vec<&BunchEntry<I>> {
         self.bunches_by_iteration.get(iteration)
             .map(|indices| {
                 indices.iter()
@@ -132,19 +151,29 @@ impl BunchAggregation {
     }
 
     /// 获取所有束条目（包含已移除的）/ Get all bunch entries (including removed)
-    pub fn all_bunches(&self) -> &[BunchEntry] {
+    pub fn all_bunches(&self) -> &[BunchEntry<I>] {
         &self.bunches
     }
 
     /// 获取束条目 / Get bunch entry by index field
-    pub fn get_bunch(&self, index: usize) -> Option<&BunchEntry> {
+    pub fn get_bunch(&self, index: usize) -> Option<&BunchEntry<I>> {
         self.bunches.iter().find(|b| b.index == index)
     }
 }
 
-impl Default for BunchAggregation {
+impl<I> Default for BunchAggregation<I>
+where
+    I: ExecutorIdTrait,
+{
     fn default() -> Self {
-        Self::new()
+        Self::new_for_ids()
+    }
+}
+
+impl BunchAggregation<ExecutorId> {
+    /// 创建新的任务束聚合 / Create new bunch aggregation
+    pub fn new() -> Self {
+        Self::new_for_ids()
     }
 }
 
@@ -170,15 +199,18 @@ impl Default for BunchAggregation {
 /// - `taskCompilation[task]` task compilation expressions
 /// - `executorCompilation[executor]` executor compilation expressions
 #[derive(Clone)]
-pub struct BunchCompilation {
+pub struct BunchCompilation<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
     /// 任务数量 / Task count
     pub n_tasks: usize,
     /// 执行器 ID 列表 / Executor ID list
-    pub executor_ids: Vec<String>,
+    pub executor_ids: Vec<I>,
     /// 是否启用执行器空闲变量 / Whether executor leisure variables are enabled
     pub with_executor_leisure: bool,
     /// 束聚合 / Bunch aggregation
-    pub aggregation: BunchAggregation,
+    pub aggregation: BunchAggregation<I>,
     /// y[task] 取消变量索引 / y[task] cancellation variable indices
     pub y_indices: Vec<usize>,
     /// z[executor] 空闲变量索引 / z[executor] leisure variable indices
@@ -193,7 +225,10 @@ pub struct BunchCompilation {
     pub executor_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>>,
 }
 
-impl std::fmt::Debug for BunchCompilation {
+impl<I> std::fmt::Debug for BunchCompilation<I>
+where
+    I: ExecutorIdTrait,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BunchCompilation")
             .field("n_tasks", &self.n_tasks)
@@ -204,14 +239,22 @@ impl std::fmt::Debug for BunchCompilation {
     }
 }
 
-impl BunchCompilation {
-    /// 创建新的任务束编译 / Create new bunch compilation
-    pub fn new(n_tasks: usize, executor_ids: Vec<String>, with_executor_leisure: bool) -> Self {
+impl<I> BunchCompilation<I>
+where
+    I: ExecutorIdTrait,
+{
+    /// 使用业务 ID 创建新的任务束编译 / Create new bunch compilation with domain ids
+    pub fn new_with_ids(
+        n_tasks: usize,
+        executor_ids: Vec<impl Into<I>>,
+        with_executor_leisure: bool,
+    ) -> Self {
+        let executor_ids = executor_ids.into_iter().map(Into::into).collect();
         Self {
             n_tasks,
             executor_ids,
             with_executor_leisure,
-            aggregation: BunchAggregation::new(),
+            aggregation: BunchAggregation::new_for_ids(),
             y_indices: Vec::with_capacity(n_tasks),
             z_indices: Vec::new(),
             x_indices: Vec::new(),
@@ -328,7 +371,7 @@ impl BunchCompilation {
     pub fn add_columns(
         &mut self,
         iteration: usize,
-        new_bunches: Vec<BunchEntry>,
+        new_bunches: Vec<BunchEntry<I>>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<Vec<usize>> {
         let deduped = self.aggregation.add_bunches(iteration, new_bunches);
@@ -358,6 +401,17 @@ impl BunchCompilation {
         self.x_indices[iteration].extend(iteration_x_indices);
 
         Ok(deduped)
+    }
+}
+
+impl BunchCompilation<ExecutorId> {
+    /// 创建新的任务束编译 / Create new bunch compilation
+    pub fn new(
+        n_tasks: usize,
+        executor_ids: Vec<impl Into<ExecutorId>>,
+        with_executor_leisure: bool,
+    ) -> Self {
+        Self::new_with_ids(n_tasks, executor_ids, with_executor_leisure)
     }
 }
 
@@ -418,9 +472,12 @@ impl BunchSolution {
 /// 关联束与其所属的时隙。
 /// Associates a bunch with its time slot.
 #[derive(Debug, Clone)]
-pub struct SlotBasedBunchEntry {
+pub struct SlotBasedBunchEntry<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
     /// 基础束条目 / Base bunch entry
-    pub bunch: BunchEntry,
+    pub bunch: BunchEntry<I>,
     /// 时隙索引 / Slot index
     pub slot_index: usize,
 }
@@ -455,17 +512,19 @@ mod tests {
         let entries = vec![
             BunchEntry {
                 index: 0,
-                executor_id: "exec_1".to_string(),
+                executor_id: "exec_1".into(),
                 task_indices: vec![0, 1],
                 cost: 10.0,
                 iteration: 0,
+                slot_index: None,
             },
             BunchEntry {
                 index: 1,
-                executor_id: "exec_2".to_string(),
+                executor_id: "exec_2".into(),
                 task_indices: vec![2],
                 cost: 5.0,
                 iteration: 0,
+                slot_index: None,
             },
         ];
         let added = agg.add_bunches(0, entries);
@@ -478,10 +537,11 @@ mod tests {
         let mut agg = BunchAggregation::new();
         let e1 = BunchEntry {
             index: 0,
-            executor_id: "exec_1".to_string(),
+            executor_id: "exec_1".into(),
             task_indices: vec![0, 1],
             cost: 10.0,
             iteration: 0,
+            slot_index: None,
         };
         let added1 = agg.add_bunches(0, vec![e1.clone()]);
         assert_eq!(added1.len(), 1);
@@ -489,14 +549,43 @@ mod tests {
         // 重复添加相同执行器和任务集合的束应被去重
         let dup = BunchEntry {
             index: 1,
-            executor_id: "exec_1".to_string(),
+            executor_id: "exec_1".into(),
             task_indices: vec![0, 1],
             cost: 12.0,
             iteration: 0,
+            slot_index: None,
         };
         let added2 = agg.add_bunches(0, vec![dup]);
         assert_eq!(added2.len(), 0);
         assert_eq!(agg.active_count(), 1);
+    }
+
+    #[test]
+    fn test_bunch_aggregation_keeps_same_tasks_in_different_slots() {
+        let mut aggregation = BunchAggregation::new();
+        let entries = vec![
+            BunchEntry {
+                index: 0,
+                executor_id: "exec_1".into(),
+                task_indices: vec![0],
+                cost: 10.0,
+                iteration: 0,
+                slot_index: Some(0),
+            },
+            BunchEntry {
+                index: 1,
+                executor_id: "exec_1".into(),
+                task_indices: vec![0],
+                cost: 10.0,
+                iteration: 0,
+                slot_index: Some(1),
+            },
+        ];
+
+        let added = aggregation.add_bunches(0, entries);
+
+        assert_eq!(added, vec![0, 1]);
+        assert_eq!(aggregation.active_count(), 2);
     }
 
     #[test]

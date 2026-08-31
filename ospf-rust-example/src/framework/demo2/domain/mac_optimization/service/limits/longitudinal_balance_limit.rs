@@ -1,3 +1,4 @@
+//! 纵向平衡限制 / Longitudinal balance limits
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::{ConstraintRelation, LinearObjectiveInput, MetaModel};

@@ -1,3 +1,4 @@
+//! 聚合初始化器模块 / Aggregation initializer module
 use std::collections::HashMap;
 use super::super::model::{FlightTaskReverse, Graph};
 use super::route_graph_generator::{FlightTaskInfo, RouteGraphGenerator, RouteGraphGeneratorConfig};
@@ -7,8 +8,11 @@ use super::operator::FeasibilityJudger;
 /// 聚合初始化器 / Aggregation initializer
 /// 对齐 FSRA AggregationInitializer
 pub struct AggregationInitializer {
+    /// 可行性判断器 / Feasibility judger
     pub feasibility_judger: FeasibilityJudger,
+    /// 是否允许换序 / Whether order change is allowed
     pub with_order_change: bool,
+    /// 时间差限制 / Time difference limit
     pub time_difference_limit: time::Duration,
 }
 
@@ -68,7 +72,10 @@ impl AggregationInitializer {
 /// 聚合初始化结果 / Aggregation initialization result
 #[derive(Debug)]
 pub struct AggregationResult {
+    /// 任务对换管理器 / Flight task reverse manager
     pub flight_task_reverse: FlightTaskReverse,
+    /// 按飞机分组的路线图 / Route graphs grouped by aircraft
     pub graphs_by_aircraft: HashMap<String, Graph>,
+    /// 初始编组列表 / Initial bunch list
     pub initial_bunches: Vec<Vec<String>>,
 }

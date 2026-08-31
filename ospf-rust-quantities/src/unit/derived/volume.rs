@@ -1,8 +1,6 @@
-//! Volume units - 体积单位
-//! Volume units - SI volume units
+//! 体积单位 / Volume units
 //!
-//! 提供体积量纲的 SI 单位定义，包括立方米、升、毫升等。
-//! Provides SI unit definitions for volume dimension, including cubic meter, liter, milliliter, etc.
+//! 提供体积量纲的 SI 单位定义，包括立方米、升、毫升等 / Provides SI unit definitions for volume dimension, including cubic meter, liter, milliliter, etc
 
 use crate::dimension::derived::Volume;
 use crate::scale::Scale;

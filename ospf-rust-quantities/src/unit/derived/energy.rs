@@ -1,3 +1,5 @@
+//! 能量单位 / Energy units
+
 use crate::dimension::derived::Energy;
 use crate::scale::{GIGA, KILO, MEGA, Scale};
 use crate::unit::{CTUnit, CTUnitMul};

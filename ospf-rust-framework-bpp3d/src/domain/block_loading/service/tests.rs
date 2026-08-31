@@ -15,7 +15,7 @@ mod tests {
 
     fn make_cuboid_item(id: &str, w: f64, h: f64, d: f64, weight: f64) -> ActualItem<f64, Meter> {
         ActualItem {
-            id: id.to_string(),
+            id: id.into(),
             name: format!("Item {}", id),
             package_code: None,
             pack: None,
@@ -36,7 +36,7 @@ mod tests {
             Axis3::Z => (diameter, diameter, h),
         };
         ActualItem {
-            id: id.to_string(),
+            id: id.into(),
             name: format!("Cylinder {}", id),
             package_code: None,
             pack: None,

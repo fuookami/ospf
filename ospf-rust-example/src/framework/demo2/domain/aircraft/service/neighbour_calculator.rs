@@ -1,3 +1,4 @@
+//! 邻接关系计算器 / Neighbour relationship calculator
 use crate::framework::demo2::domain::aircraft::model::{Neighbour, NeighbourType, Position};
 
 /// 邻接计算器 / Neighbour calculator

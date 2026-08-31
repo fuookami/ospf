@@ -234,7 +234,7 @@
     #[test]
     fn actual_item_enabled_orientations_apply_package_orientation_rules() {
         let item = ActualItem {
-            id: "i0".to_string(),
+            id: "i0".into(),
             name: "Item".to_string(),
             package_code: None,
             pack: None,
@@ -250,7 +250,7 @@
             height: meters(3.0),
             depth: meters(4.0),
             capacity: meters(10.0),
-            type_code: "b0".to_string(),
+            type_code: "b0".into(),
             is_main: true,
         };
         let attribute = PackageAttribute {

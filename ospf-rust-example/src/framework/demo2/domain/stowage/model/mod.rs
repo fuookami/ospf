@@ -1,3 +1,4 @@
+//! 装载领域模型 / Stowage domain model.
 pub mod appointment;
 pub mod ballast;
 pub mod biological_limit;

@@ -1,3 +1,5 @@
+//! Big-M 约束策略与多项式界推断工具 / Big-M constraint policy and polynomial bound inference utilities
+
 use std::fmt::Debug;
 use num_traits::{FromPrimitive, ToPrimitive};
 use crate::error::{ModelError, Result};
@@ -5,6 +7,8 @@ use crate::model::{ConstraintRelation, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::Token;
 
+/// Big-M 策略配置，包含回退值与最小值。
+/// Big-M policy configuration with fallback and minimum values.
 #[derive(Debug, Clone, Copy)]
 pub struct BigMPolicy {
     fallback: f64,
@@ -12,18 +16,26 @@ pub struct BigMPolicy {
 }
 
 impl BigMPolicy {
+    /// 创建新的 Big-M 策略配置。
+    /// Create a new Big-M policy configuration.
     pub const fn new(fallback: f64, min: f64) -> Self {
         Self { fallback, min }
     }
 
+    /// 返回回退 Big-M 值。
+    /// Returns the fallback Big-M value.
     pub const fn fallback(&self) -> f64 {
         self.fallback
     }
 
+    /// 返回最小 Big-M 值。
+    /// Returns the minimum Big-M value.
     pub const fn min(&self) -> f64 {
         self.min
     }
 
+    /// 解析推断的 Big-M 值，若无推断值则使用回退值，并确保不低于最小值。
+    /// Resolves the inferred Big-M value, falling back if none, and clamping to the minimum.
     pub fn resolve(&self, inferred: Option<f64>) -> f64 {
         inferred.unwrap_or(self.fallback).max(self.min)
     }
@@ -33,9 +45,11 @@ impl BigMPolicy {
 // Constants
 // ============================================================================
 
+/// 无更紧界可用时的默认 Big-M 值。
 /// Default big M value used when no better bound is available.
 pub const DEFAULT_BIG_M: f64 = 1_000_000.0;
 
+/// 保证数值稳定性的最小 Big-M 值。
 /// Minimum big M value to ensure numerical stability.
 pub const MIN_BIG_M: f64 = 1.0;
 
@@ -49,13 +63,22 @@ pub(crate) const STRICT_NONZERO_BOUNDARY: f64 = NONZERO_TOLERANCE + f64::EPSILON
 // LinearPolynomialBounds
 // ============================================================================
 
+/// 线性多项式表达式的界。
+///
+/// 存储线性多项式在一组有界变量上的下界和上界，
+/// 用于 Big-M 推断和约束生成。
+///
 /// Bounds for a linear polynomial expression.
 ///
 /// Stores the lower and upper bounds of a linear polynomial over a set
 /// of bounded variables. Used for big M inference and constraint generation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinearPolynomialBounds<V> {
+    /// 下界。
+    /// Lower bound.
     pub lower: Option<V>,
+    /// 上界。
+    /// Upper bound.
     pub upper: Option<V>,
 }
 
@@ -63,6 +86,10 @@ impl<V> LinearPolynomialBounds<V>
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
 {
+    /// 从线性多项式及其变量列表计算界。
+    ///
+    /// 若任何变量无界或计算结果不有限，则返回 `None`。
+    ///
     /// Compute bounds from a linear polynomial and its token list.
     ///
     /// Returns `None` if any variable is unbounded or if the computed
@@ -75,6 +102,10 @@ where
         })
     }
 
+    /// 计算绝对界（|下界| 和 |上界| 的最大值）。
+    ///
+    /// 若界不可用则返回 `None`。
+    ///
     /// Compute the absolute bound (max of |lower| and |upper|).
     ///
     /// Returns `None` if bounds are not available.
@@ -86,6 +117,7 @@ where
 }
 
 impl LinearPolynomialBounds<f64> {
+    /// 从线性多项式及其变量列表计算界（f64 特化版本）。
     /// Compute bounds from a linear polynomial and its token list (f64 specialization).
     pub fn from_polynomial_f64(poly: &Linear<f64>, tokens: &[Token<f64>]) -> Option<Self> {
         let (lower, upper) = infer_linear_bounds_from_tokens(poly, tokens)?;
@@ -100,6 +132,10 @@ impl LinearPolynomialBounds<f64> {
 // Public API: Big M Utilities
 // ============================================================================
 
+/// 返回默认 Big-M 值（1,000,000.0）。
+///
+/// 当无法从变量范围推断更紧的界时使用的回退值。
+///
 /// Returns the default big M value (1,000,000.0).
 ///
 /// This is the fallback value used when no tighter bound can be inferred
@@ -108,6 +144,11 @@ pub fn default_big_m() -> f64 {
     DEFAULT_BIG_M
 }
 
+/// 确保 Big-M 值为正且至少为 [`MIN_BIG_M`]。
+///
+/// 若 `m` 小于 [`MIN_BIG_M`]，则返回 [`MIN_BIG_M`]。
+/// 这可防止推断界过小时产生退化约束。
+///
 /// Ensures the big M value is positive and at least [`MIN_BIG_M`].
 ///
 /// If `m` is less than [`MIN_BIG_M`], returns [`MIN_BIG_M`] instead.
@@ -175,6 +216,13 @@ where
 // Public API: Indicator Constraints
 // ============================================================================
 
+/// 生成正指示变量的约束。
+///
+/// 当指示变量为 1 时：多项式 > 0（严格，使用 epsilon 容差）。
+/// 当指示变量为 0 时：多项式 <= 0。
+///
+/// 返回 `(LinearInequality, name)` 对的向量。
+///
 /// Generates constraints for a positive indicator.
 ///
 /// When indicator is 1: polynomial > 0 (strict, using epsilon tolerance).
@@ -345,6 +393,13 @@ where
     Ok(constraints)
 }
 
+/// 生成非负指示变量的约束。
+///
+/// 当指示变量为 1 时：多项式 >= 0。
+/// 当指示变量为 0 时：多项式 < 0。
+///
+/// 返回 `(LinearInequality, name)` 对的向量。
+///
 /// Generates constraints for a non-negative indicator.
 ///
 /// When indicator is 1: polynomial >= 0.
@@ -419,6 +474,13 @@ where
     Ok(constraints)
 }
 
+/// 生成负指示变量的约束。
+///
+/// 当指示变量为 1 时：多项式 < 0（严格，使用 epsilon 容差）。
+/// 当指示变量为 0 时：多项式 >= 0。
+///
+/// 返回 `(LinearInequality, name)` 对的向量。
+///
 /// Generates constraints for a negative indicator.
 ///
 /// When indicator is 1: polynomial < 0 (strict, using epsilon tolerance).
@@ -493,6 +555,15 @@ where
     Ok(constraints)
 }
 
+/// 生成非零指示变量的约束。
+///
+/// 当指示变量为 1 时：|多项式| > epsilon（多项式非零）。
+/// 当指示变量为 0 时：|多项式| <= epsilon（多项式近似为零）。
+///
+/// 需要 `side_index` 作为辅助二元变量，用于跟踪多项式非零时的符号。
+///
+/// 返回 `(LinearInequality, name)` 对的向量（4 条约束）。
+///
 /// Generates constraints for a non-zero indicator.
 ///
 /// When indicator is 1: |polynomial| > epsilon (polynomial is non-zero).
@@ -637,6 +708,16 @@ where
 // Bounds Inference (existing functions below)
 // ============================================================================
 
+/// 从线性多项式及其变量列表推断下界和上界。
+///
+/// 遍历每个单项式，根据系数符号和变量范围计算贡献，
+/// 汇总得到多项式的整体值域。若任何变量无界或结果不有限则返回 `None`。
+///
+/// Infer lower and upper bounds from a linear polynomial and its token list.
+///
+/// Iterates over each monomial, computing contributions based on coefficient sign
+/// and variable bounds, then aggregates into the overall polynomial range.
+/// Returns `None` if any variable is unbounded or the result is not finite.
 pub fn infer_linear_bounds_from_tokens<V>(
     poly: &Linear<V>,
     tokens: &[Token<V>],
@@ -671,6 +752,9 @@ where
     Some((lower, upper))
 }
 
+/// 从线性多项式及其变量列表推断绝对界（|下界| 和 |上界| 的最大值）。
+///
+/// Infer the absolute bound (max of |lower| and |upper|) from a linear polynomial and its token list.
 pub fn infer_linear_abs_bound_from_tokens<V>(poly: &Linear<V>, tokens: &[Token<V>]) -> Option<f64>
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
@@ -679,6 +763,9 @@ where
     Some(lower.abs().max(upper.abs()))
 }
 
+/// 从线性多项式及其变量列表推断偏移后的下界和上界（减去右侧值）。
+///
+/// Infer shifted bounds (subtracting right-hand side) from a linear polynomial and its token list.
 #[allow(dead_code)]
 pub fn infer_linear_shifted_bounds_from_tokens<V>(
     poly: &Linear<V>,
@@ -698,6 +785,9 @@ where
     Some((lower, upper))
 }
 
+/// 从线性多项式及其变量列表推断偏移后的绝对界（减去右侧值后取 |下界| 和 |上界| 的最大值）。
+///
+/// Infer shifted absolute bound (max of |lower| and |upper| after subtracting right-hand side).
 #[allow(dead_code)]
 pub fn infer_linear_shifted_abs_bound_from_tokens<V>(
     poly: &Linear<V>,

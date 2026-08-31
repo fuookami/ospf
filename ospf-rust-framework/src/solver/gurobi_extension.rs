@@ -36,6 +36,7 @@ use super::quadratic_benders_decomposition_solver::{
 /// Gurobi 列生成求解器 / Gurobi column generation solver
 #[derive(Debug)]
 pub struct GurobiColumnGenerationSolver {
+    /// 内部列生成适配器 / Inner column generation adapter
     inner: CoreColumnGenerationAdapter<CoreGurobiSolver>,
 }
 
@@ -117,14 +118,17 @@ impl GurobiColumnGenerationSolver {
         self.map_config(|config| config.with_telemetry_min_interval(seconds))
     }
 
+    /// 启用或禁用数值诊断 / Enable or disable numeric diagnostics
     pub fn with_numeric_diagnostics(self, enabled: bool) -> Self {
         self.map_config(|config| config.with_numeric_diagnostics(enabled))
     }
 
+    /// 启用或禁用自动应用数值诊断配置 / Enable or disable auto-apply numeric diagnostics profile
     pub fn with_auto_apply_numeric_profile(self, enabled: bool) -> Self {
         self.map_config(|config| config.with_auto_apply_numeric_profile(enabled))
     }
 
+    /// 设置数值诊断回调 / Set numeric diagnostics callback
     pub fn with_numeric_diagnostics_callback(
         self,
         callback: Option<GurobiNumericDiagnosticsCallback>,
@@ -132,6 +136,7 @@ impl GurobiColumnGenerationSolver {
         self.map_config(|config| config.with_numeric_diagnostics_callback(callback))
     }
 
+    /// 追加数值诊断回调 / Append numeric diagnostics callback
     pub fn add_numeric_diagnostics_callback(
         mut self,
         callback: GurobiNumericDiagnosticsCallback,
@@ -247,10 +252,12 @@ impl GurobiColumnGenerationSolver {
         self
     }
 
+    /// 设置原生观察者列表 / Set native observer list
     pub fn with_native_observers(self, observers: Vec<GurobiNativeObserver>) -> Self {
         self.map_config(|config| config.with_native_observers(observers))
     }
 
+    /// 追加原生观察者 / Append native observer
     pub fn add_native_observer(mut self, observer: GurobiNativeObserver) -> Self {
         self.inner
             .solver_mut()
@@ -329,6 +336,7 @@ impl ColumnGenerationSolver for GurobiColumnGenerationSolver {
 /// Gurobi 线性 Benders 分解求解器 / Gurobi linear Benders decomposition solver
 #[derive(Debug)]
 pub struct GurobiLinearBendersDecompositionSolver {
+    /// 内部线性 Benders 适配器 / Inner linear Benders adapter
     inner: CoreLinearBendersAdapter<CoreGurobiSolver>,
 }
 
@@ -426,14 +434,17 @@ impl GurobiLinearBendersDecompositionSolver {
         self.map_config(|config| config.with_telemetry_min_interval(seconds))
     }
 
+    /// 启用或禁用数值诊断 / Enable or disable numeric diagnostics
     pub fn with_numeric_diagnostics(self, enabled: bool) -> Self {
         self.map_config(|config| config.with_numeric_diagnostics(enabled))
     }
 
+    /// 启用或禁用自动应用数值诊断配置 / Enable or disable auto-apply numeric diagnostics profile
     pub fn with_auto_apply_numeric_profile(self, enabled: bool) -> Self {
         self.map_config(|config| config.with_auto_apply_numeric_profile(enabled))
     }
 
+    /// 设置数值诊断回调 / Set numeric diagnostics callback
     pub fn with_numeric_diagnostics_callback(
         self,
         callback: Option<GurobiNumericDiagnosticsCallback>,
@@ -441,6 +452,7 @@ impl GurobiLinearBendersDecompositionSolver {
         self.map_config(|config| config.with_numeric_diagnostics_callback(callback))
     }
 
+    /// 追加数值诊断回调 / Append numeric diagnostics callback
     pub fn add_numeric_diagnostics_callback(
         mut self,
         callback: GurobiNumericDiagnosticsCallback,
@@ -556,10 +568,12 @@ impl GurobiLinearBendersDecompositionSolver {
         self
     }
 
+    /// 设置原生观察者列表 / Set native observer list
     pub fn with_native_observers(self, observers: Vec<GurobiNativeObserver>) -> Self {
         self.map_config(|config| config.with_native_observers(observers))
     }
 
+    /// 追加原生观察者 / Append native observer
     pub fn add_native_observer(mut self, observer: GurobiNativeObserver) -> Self {
         self.inner
             .solver_mut()
@@ -639,7 +653,9 @@ impl LinearBendersDecompositionSolver for GurobiLinearBendersDecompositionSolver
 /// Gurobi Benders decomposition solver (linear + quadratic)
 #[derive(Debug)]
 pub struct GurobiBendersDecompositionSolver {
+    /// 线性 Benders 子求解器 / Linear Benders sub-solver
     linear: GurobiLinearBendersDecompositionSolver,
+    /// 二次 Benders 适配器 / Quadratic Benders adapter
     quadratic: CoreQuadraticBendersAdapter<CoreGurobiSolver>,
 }
 
@@ -753,14 +769,17 @@ impl GurobiBendersDecompositionSolver {
         self.map_configs(|config| config.with_telemetry_min_interval(seconds))
     }
 
+    /// 启用或禁用数值诊断 / Enable or disable numeric diagnostics
     pub fn with_numeric_diagnostics(self, enabled: bool) -> Self {
         self.map_configs(|config| config.with_numeric_diagnostics(enabled))
     }
 
+    /// 启用或禁用自动应用数值诊断配置 / Enable or disable auto-apply numeric diagnostics profile
     pub fn with_auto_apply_numeric_profile(self, enabled: bool) -> Self {
         self.map_configs(|config| config.with_auto_apply_numeric_profile(enabled))
     }
 
+    /// 设置数值诊断回调 / Set numeric diagnostics callback
     pub fn with_numeric_diagnostics_callback(
         self,
         callback: Option<GurobiNumericDiagnosticsCallback>,
@@ -768,6 +787,7 @@ impl GurobiBendersDecompositionSolver {
         self.map_configs(|config| config.with_numeric_diagnostics_callback(callback.clone()))
     }
 
+    /// 追加数值诊断回调 / Append numeric diagnostics callback
     pub fn add_numeric_diagnostics_callback(
         mut self,
         callback: GurobiNumericDiagnosticsCallback,
@@ -930,10 +950,12 @@ impl GurobiBendersDecompositionSolver {
         self
     }
 
+    /// 设置原生观察者列表 / Set native observer list
     pub fn with_native_observers(self, observers: Vec<GurobiNativeObserver>) -> Self {
         self.map_configs(|config| config.with_native_observers(observers.clone()))
     }
 
+    /// 追加原生观察者 / Append native observer
     pub fn add_native_observer(mut self, observer: GurobiNativeObserver) -> Self {
         self.linear
             .inner

@@ -1,12 +1,18 @@
+//! 服务容量约束模块 / Service capacity constraint module
+
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
 use ospf_rust_multiarray::{MultiArray, Shape};
 use crate::framework::demo1::route_context::model::{Edge, Node, Service};
 
+/// 一维线性表达式符号组合类型别名 / 1D linear expression symbol combination type alias
 type Symbols1D = SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>;
+/// 二维线性表达式符号组合类型别名 / 2D linear expression symbol combination type alias
 type Symbols2D = SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<2>>;
 
+/// 服务容量约束：outFlow[node, service] <= x[node, service] * capacity / Service capacity constraint
+///
 /// 对齐 Kotlin ServiceCapacityConstraint:
 /// outFlow[node, service] <= x[node, service] * capacity
 /// 其中 outFlow = 出度 - 入度 (仅计算 normal node 之间的边)
@@ -63,7 +69,7 @@ pub fn apply_service_capacity_constraints(
     Ok(())
 }
 
-/// 从 bandwidth[e] 的多项式中提取指定 service s 的系数
+/// 从 bandwidth[e] 的多项式中提取指定 service s 的系数 / Extract coefficient for specified service s from bandwidth[e] polynomial
 fn extract_service_coeff(
     bandwidth: &Symbols1D,
     edge_index: usize,

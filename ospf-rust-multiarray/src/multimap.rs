@@ -1,9 +1,15 @@
+//! 多维多键映射类型 / Multi-dimensional multi-key map types.
+//!
+//! 提供二维、三维、四维嵌套 HashMap 封装，支持多键查询、通配过滤与自动清理。
+//! Provides 2/3/4-dimensional nested HashMap wrappers with multi-key lookup, wildcard filtering, and automatic cleanup.
+
 use std::collections::HashMap;
 use std::hash::Hash;
 
 /// 二维多键映射 / Two-key nested map.
 #[derive(Clone, Debug, Default)]
 pub struct MultiMap2<K1, K2, V> {
+    /// 内部嵌套存储 / Inner nested storage.
     data: HashMap<K1, HashMap<K2, V>>,
 }
 
@@ -12,30 +18,34 @@ where
     K1: Eq + Hash,
     K2: Eq + Hash,
 {
+    /// 创建空的二维映射 / Create an empty two-key map.
     pub fn new() -> Self {
         Self {
             data: HashMap::new(),
         }
     }
 
+    /// 清空所有键值对 / Remove all key-value pairs.
     pub fn clear(&mut self) {
         self.data.clear();
     }
 
+    /// 返回所有层级的键值对总数 / Return the total number of value entries across all levels.
     pub fn len(&self) -> usize {
         self.data.values().map(HashMap::len).sum()
     }
 
+    /// 判断映射是否为空 / Return true if the map contains no entries.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// 插入键值对，若已存在则返回旧值 / Insert a value; return the previous value if the key pair already existed.
     pub fn insert(&mut self, k1: K1, k2: K2, value: V) -> Option<V> {
         self.data.entry(k1).or_default().insert(k2, value)
     }
 
-    /// 获取值，缺失时插入默认值。
-    /// Get a value, inserting the default when it is missing.
+    /// 获取值，缺失时插入默认值 / Get a value, inserting the default when it is missing.
     pub fn get_or_insert_with<F>(&mut self, k1: K1, k2: K2, default: F) -> &mut V
     where
         F: FnOnce() -> V,
@@ -47,14 +57,17 @@ where
             .or_insert_with(default)
     }
 
+    /// 获取值的不可变引用 / Get an immutable reference to the value.
     pub fn get(&self, k1: &K1, k2: &K2) -> Option<&V> {
         self.data.get(k1)?.get(k2)
     }
 
+    /// 获取值的可变引用 / Get a mutable reference to the value.
     pub fn get_mut(&mut self, k1: &K1, k2: &K2) -> Option<&mut V> {
         self.data.get_mut(k1)?.get_mut(k2)
     }
 
+    /// 移除键值对，自动清理空层级 / Remove a key-value pair, automatically cleaning up empty levels.
     pub fn remove(&mut self, k1: &K1, k2: &K2) -> Option<V> {
         let mut remove_level1 = false;
         let value = {
@@ -95,14 +108,17 @@ where
         values
     }
 
+    /// 返回所有值的引用 / Return references to all values.
     pub fn values_all(&self) -> Vec<&V> {
         self.values_match(None, None)
     }
 
+    /// 获取内部嵌套映射的不可变引用 / Get an immutable reference to the inner nested map.
     pub fn as_nested_map(&self) -> &HashMap<K1, HashMap<K2, V>> {
         &self.data
     }
 
+    /// 获取内部嵌套映射的可变引用 / Get a mutable reference to the inner nested map.
     pub fn as_nested_map_mut(&mut self) -> &mut HashMap<K1, HashMap<K2, V>> {
         &mut self.data
     }
@@ -111,6 +127,7 @@ where
 /// 三维多键映射 / Three-key nested map.
 #[derive(Clone, Debug, Default)]
 pub struct MultiMap3<K1, K2, K3, V> {
+    /// 内部嵌套存储 / Inner nested storage.
     data: HashMap<K1, HashMap<K2, HashMap<K3, V>>>,
 }
 
@@ -120,16 +137,19 @@ where
     K2: Eq + Hash,
     K3: Eq + Hash,
 {
+    /// 创建空的三维映射 / Create an empty three-key map.
     pub fn new() -> Self {
         Self {
             data: HashMap::new(),
         }
     }
 
+    /// 清空所有键值对 / Remove all key-value pairs.
     pub fn clear(&mut self) {
         self.data.clear();
     }
 
+    /// 返回所有层级的键值对总数 / Return the total number of value entries across all levels.
     pub fn len(&self) -> usize {
         self.data
             .values()
@@ -137,10 +157,12 @@ where
             .sum()
     }
 
+    /// 判断映射是否为空 / Return true if the map contains no entries.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// 插入键值对，若已存在则返回旧值 / Insert a value; return the previous value if the key triple already existed.
     pub fn insert(&mut self, k1: K1, k2: K2, k3: K3, value: V) -> Option<V> {
         self.data
             .entry(k1)
@@ -150,8 +172,7 @@ where
             .insert(k3, value)
     }
 
-    /// 获取值，缺失时插入默认值。
-    /// Get a value, inserting the default when it is missing.
+    /// 获取值，缺失时插入默认值 / Get a value, inserting the default when it is missing.
     pub fn get_or_insert_with<F>(&mut self, k1: K1, k2: K2, k3: K3, default: F) -> &mut V
     where
         F: FnOnce() -> V,
@@ -165,14 +186,17 @@ where
             .or_insert_with(default)
     }
 
+    /// 获取值的不可变引用 / Get an immutable reference to the value.
     pub fn get(&self, k1: &K1, k2: &K2, k3: &K3) -> Option<&V> {
         self.data.get(k1)?.get(k2)?.get(k3)
     }
 
+    /// 获取值的可变引用 / Get a mutable reference to the value.
     pub fn get_mut(&mut self, k1: &K1, k2: &K2, k3: &K3) -> Option<&mut V> {
         self.data.get_mut(k1)?.get_mut(k2)?.get_mut(k3)
     }
 
+    /// 移除键值对，自动清理空层级 / Remove a key-value pair, automatically cleaning up empty levels.
     pub fn remove(&mut self, k1: &K1, k2: &K2, k3: &K3) -> Option<V> {
         let mut remove_level2 = false;
         let mut remove_level1 = false;
@@ -228,14 +252,17 @@ where
         values
     }
 
+    /// 返回所有值的引用 / Return references to all values.
     pub fn values_all(&self) -> Vec<&V> {
         self.values_match(None, None, None)
     }
 
+    /// 获取内部嵌套映射的不可变引用 / Get an immutable reference to the inner nested map.
     pub fn as_nested_map(&self) -> &HashMap<K1, HashMap<K2, HashMap<K3, V>>> {
         &self.data
     }
 
+    /// 获取内部嵌套映射的可变引用 / Get a mutable reference to the inner nested map.
     pub fn as_nested_map_mut(&mut self) -> &mut HashMap<K1, HashMap<K2, HashMap<K3, V>>> {
         &mut self.data
     }
@@ -244,6 +271,7 @@ where
 /// 四维多键映射 / Four-key nested map.
 #[derive(Clone, Debug, Default)]
 pub struct MultiMap4<K1, K2, K3, K4, V> {
+    /// 内部嵌套存储 / Inner nested storage.
     data: HashMap<K1, HashMap<K2, HashMap<K3, HashMap<K4, V>>>>,
 }
 
@@ -254,16 +282,19 @@ where
     K3: Eq + Hash,
     K4: Eq + Hash,
 {
+    /// 创建空的四维映射 / Create an empty four-key map.
     pub fn new() -> Self {
         Self {
             data: HashMap::new(),
         }
     }
 
+    /// 清空所有键值对 / Remove all key-value pairs.
     pub fn clear(&mut self) {
         self.data.clear();
     }
 
+    /// 返回所有层级的键值对总数 / Return the total number of value entries across all levels.
     pub fn len(&self) -> usize {
         self.data
             .values()
@@ -276,10 +307,12 @@ where
             .sum()
     }
 
+    /// 判断映射是否为空 / Return true if the map contains no entries.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// 插入键值对，若已存在则返回旧值 / Insert a value; return the previous value if the key quadruple already existed.
     pub fn insert(&mut self, k1: K1, k2: K2, k3: K3, k4: K4, value: V) -> Option<V> {
         self.data
             .entry(k1)
@@ -291,8 +324,7 @@ where
             .insert(k4, value)
     }
 
-    /// 获取值，缺失时插入默认值。
-    /// Get a value, inserting the default when it is missing.
+    /// 获取值，缺失时插入默认值 / Get a value, inserting the default when it is missing.
     pub fn get_or_insert_with<F>(&mut self, k1: K1, k2: K2, k3: K3, k4: K4, default: F) -> &mut V
     where
         F: FnOnce() -> V,
@@ -308,14 +340,17 @@ where
             .or_insert_with(default)
     }
 
+    /// 获取值的不可变引用 / Get an immutable reference to the value.
     pub fn get(&self, k1: &K1, k2: &K2, k3: &K3, k4: &K4) -> Option<&V> {
         self.data.get(k1)?.get(k2)?.get(k3)?.get(k4)
     }
 
+    /// 获取值的可变引用 / Get a mutable reference to the value.
     pub fn get_mut(&mut self, k1: &K1, k2: &K2, k3: &K3, k4: &K4) -> Option<&mut V> {
         self.data.get_mut(k1)?.get_mut(k2)?.get_mut(k3)?.get_mut(k4)
     }
 
+    /// 移除键值对，自动清理空层级 / Remove a key-value pair, automatically cleaning up empty levels.
     pub fn remove(&mut self, k1: &K1, k2: &K2, k3: &K3, k4: &K4) -> Option<V> {
         let mut remove_level3 = false;
         let mut remove_level2 = false;
@@ -395,14 +430,17 @@ where
         values
     }
 
+    /// 返回所有值的引用 / Return references to all values.
     pub fn values_all(&self) -> Vec<&V> {
         self.values_match(None, None, None, None)
     }
 
+    /// 获取内部嵌套映射的不可变引用 / Get an immutable reference to the inner nested map.
     pub fn as_nested_map(&self) -> &HashMap<K1, HashMap<K2, HashMap<K3, HashMap<K4, V>>>> {
         &self.data
     }
 
+    /// 获取内部嵌套映射的可变引用 / Get a mutable reference to the inner nested map.
     pub fn as_nested_map_mut(
         &mut self,
     ) -> &mut HashMap<K1, HashMap<K2, HashMap<K3, HashMap<K4, V>>>> {

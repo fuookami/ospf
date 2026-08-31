@@ -44,7 +44,7 @@ fn materialize_item(
     }
 
     Ok(ActualItem {
-        id: record.item_id.clone(),
+        id: record.item_id.clone().into(),
         name: record.name.clone(),
         package_code: record.package_code.clone().or_else(|| {
             record
@@ -129,7 +129,7 @@ fn materialize_continuous_radius_component(
             blocked_variables.push(variable_name.clone());
         }
         prototypes.push(ContinuousCylinderRadiusSolverPrototype {
-            item_id: record.item_id.clone(),
+            item_id: record.item_id.clone().into(),
             source: function_key.to_string(),
             axis,
             variable_name,
@@ -296,7 +296,7 @@ fn materialize_bin(record: &CsvBinRecord) -> BinType<f64, Meter> {
         height: meters(record.height),
         depth: meters(record.depth),
         capacity: meters(record.capacity),
-        type_code: record.type_code.clone(),
+        type_code: record.type_code.clone().into(),
         is_main: record.is_main.unwrap_or(false),
     }
 }

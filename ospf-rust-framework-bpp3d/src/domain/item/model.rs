@@ -23,6 +23,7 @@ use crate::infrastructure::pwl_approximation::{
 use crate::infrastructure::orientation::{Orientation, OrientationCategory};
 use crate::infrastructure::packing_shape::{PackingShape3, cuboid_packing_shape, cylinder_packing_shape};
 
+include!("model/id.rs");
 include!("model/package_shape.rs");
 include!("model/cargo_attribute.rs");
 include!("model/material.rs");

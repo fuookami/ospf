@@ -1,9 +1,7 @@
 
-//! Scale - 比例尺
-//! Scale - Unit scale for physical quantities
+//! 比例尺 / Scale
 //!
-//! 保持 base^exponent 形式的符号运算，避免精度损失
-//! Maintains base^exponent form for symbolic computation, avoiding precision loss
+//! 保持 base^exponent 形式的符号运算，避免精度损失 / Maintains base^exponent form for symbolic computation, avoiding precision loss
 
 use std::cmp::Ordering;
 use std::ops::{Div, Mul};
@@ -232,7 +230,7 @@ impl Eq for Scale {}
 // SI 前缀静态实例 / SI prefix static instances
 // ============================================================================
 
-/// atto: 10^-18
+/// 阿托 / atto: 10^-18
 pub static ATTO: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(
         ScaleBase::float(BigDecimal::from(10)),
@@ -240,7 +238,7 @@ pub static ATTO: Lazy<Scale> = Lazy::new(|| {
     )
 });
 
-/// femto: 10^-15
+/// 飞母托 / femto: 10^-15
 pub static FEMTO: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(
         ScaleBase::float(BigDecimal::from(10)),
@@ -248,7 +246,7 @@ pub static FEMTO: Lazy<Scale> = Lazy::new(|| {
     )
 });
 
-/// pico: 10^-12
+/// 皮可 / pico: 10^-12
 pub static PICO: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(
         ScaleBase::float(BigDecimal::from(10)),
@@ -256,67 +254,67 @@ pub static PICO: Lazy<Scale> = Lazy::new(|| {
     )
 });
 
-/// nano: 10^-9
+/// 纳诺 / nano: 10^-9
 pub static NANO: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(-9))
 });
 
-/// micro: 10^-6
+/// 微 / micro: 10^-6
 pub static MICRO: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(-6))
 });
 
-/// milli: 10^-3
+/// 毫 / milli: 10^-3
 pub static MILLI: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(-3))
 });
 
-/// centi: 10^-2
+/// 厘 / centi: 10^-2
 pub static CENTI: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(-2))
 });
 
-/// deci: 10^-1
+/// 分 / deci: 10^-1
 pub static DECI: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(-1))
 });
 
-/// deca: 10^1
+/// 十 / deca: 10^1
 pub static DECA: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(1))
 });
 
-/// hecto: 10^2
+/// 百 / hecto: 10^2
 pub static HECTO: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(2))
 });
 
-/// kilo: 10^3
+/// 千 / kilo: 10^3
 pub static KILO: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(3))
 });
 
-/// mega: 10^6
+/// 兆 / mega: 10^6
 pub static MEGA: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(6))
 });
 
-/// giga: 10^9
+/// 吉咖 / giga: 10^9
 pub static GIGA: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(9))
 });
 
-/// tera: 10^12
+/// 太拉 / tera: 10^12
 pub static TERA: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(12))
 });
 
-/// peta: 10^15
+/// 拍它 / peta: 10^15
 pub static PETA: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(15))
 });
 
-/// exa: 10^18
+/// 艾可萨 / exa: 10^18
 pub static EXA: Lazy<Scale> = Lazy::new(|| {
     Scale::from_base_exponent(ScaleBase::float(BigDecimal::from(10)), BigDecimal::from(18))
 });

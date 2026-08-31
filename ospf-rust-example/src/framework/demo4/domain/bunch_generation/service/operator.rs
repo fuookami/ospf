@@ -1,4 +1,5 @@
-use time::Duration;
+//! 算子类型定义模块 / Operator type definitions module
+use time::{Duration, OffsetDateTime};
 
 /// 可行性判断器 / Feasibility judger (对齐 FSRA Operator.kt FeasibilityJudger)
 pub type FeasibilityJudger = Box<dyn Fn(&str, Option<&str>, &str) -> bool + Send + Sync>;
@@ -14,5 +15,3 @@ pub type CostCalculator = Box<dyn Fn(&str, Option<&str>, &str) -> f64 + Send + S
 
 /// 总成本计算器 / Total cost calculator
 pub type TotalCostCalculator = Box<dyn Fn(&[String]) -> f64 + Send + Sync>;
-
-use time::OffsetDateTime;

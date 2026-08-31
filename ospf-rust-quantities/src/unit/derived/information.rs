@@ -1,8 +1,6 @@
-//! Information units - 信息量单位
-//! Information units - Information units (bit, byte, etc.)
+//! 信息量单位 / Information units
 //!
-//! 提供信息量量纲的单位定义，包括比特、字节、千比特、兆比特等。
-//! Provides unit definitions for information dimension, including bit, byte, kilobit, megabit, etc.
+//! 提供信息量量纲的单位定义，包括比特、字节、千比特、兆比特等 / Provides unit definitions for information dimension, including bit, byte, kilobit, megabit, etc
 
 use bigdecimal::BigDecimal;
 use once_cell::sync::Lazy;

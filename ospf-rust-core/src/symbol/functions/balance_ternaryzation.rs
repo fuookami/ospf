@@ -1,4 +1,4 @@
-//! Balanced ternary variable function symbol.
+//! 平衡三值变量函数符号 / Balanced ternary variable function symbol
 
 use std::any::Any;
 use std::collections::HashSet;

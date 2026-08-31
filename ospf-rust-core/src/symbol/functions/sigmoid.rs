@@ -1,4 +1,4 @@
-//! Sigmoid function symbol.
+//! Sigmoid 函数符号 / Sigmoid function symbol
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -68,13 +68,17 @@ where
     })
 }
 
+/// Sigmoid 精度级别 / Sigmoid precision level
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SigmoidPrecision {
+    /// 完整精度（更多采样点） / Full precision (more sampling points)
     Full,
+    /// 半精度（较少采样点） / Half precision (fewer sampling points)
     Half,
 }
 
-/// Piecewise-linear sigmoid symbol with exact-value evaluator.
+/// 分段线性 Sigmoid 函数符号，支持精确值求值。
+/// Piecewise-linear sigmoid function symbol with exact-value evaluator.
 #[derive(Debug, Clone)]
 pub struct SigmoidFunction<V = f64>
 where
@@ -91,10 +95,12 @@ impl<V> SigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive + ToPrimitive,
 {
+    /// 创建新的 Sigmoid 函数（默认完整精度）/ Create a new sigmoid function (default full precision)
     pub fn new(id: u64, name: &str, input: Linear<V>) -> Self {
         Self::with_precision(id, name, input, SigmoidPrecision::Full)
     }
 
+    /// 使用指定精度创建 Sigmoid 函数 / Create a sigmoid function with specified precision
     pub fn with_precision(
         id: u64,
         name: &str,
@@ -110,6 +116,7 @@ where
         )
     }
 
+    /// 使用指定精度和小数精度创建 Sigmoid 函数 / Create a sigmoid function with specified precision and decimal precision
     pub fn with_precision_decimal(
         id: u64,
         name: &str,
@@ -137,6 +144,7 @@ where
         }
     }
 
+    /// 使用自定义采样点创建 Sigmoid 函数 / Create a sigmoid function with custom sampling points
     pub fn with_points(id: u64, name: &str, input: Linear<V>, points: Vec<Point2<V>>) -> Self {
         let segment_group_id = new_group_id();
         let segment_vars = (0..points.len().saturating_sub(1))
@@ -157,6 +165,7 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -169,18 +178,22 @@ where
         cloned
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
 
+    /// 获取插值采样点 / Get the interpolation sampling points
     pub fn points(&self) -> &[Point2<V>] {
         self.inner.points()
     }
 
+    /// 获取分段选择器变量 / Get the segment selector variables
     pub fn segment_variables(&self) -> &[BinaryVariableItem] {
         &self.segment_vars
     }
 
+    /// 计算 Sigmoid 函数值 / Compute the sigmoid function value
     pub fn sigmoid(x: f64) -> f64 {
         1.0 / (1.0 + (-x).exp())
     }
@@ -189,6 +202,7 @@ where
         -((1.0 - y) / y).ln()
     }
 
+    /// 根据精度级别生成采样点 / Generate sampling points based on precision level
     pub fn sampling_points(precision: SigmoidPrecision, decimal_precision: V) -> Vec<Point2<V>> {
         let mut decimal = to_f64(&decimal_precision).unwrap_or(1e-5);
         if !decimal.is_finite() || decimal <= 0.0 {

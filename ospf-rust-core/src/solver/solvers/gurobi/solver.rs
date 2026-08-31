@@ -317,6 +317,30 @@ impl GurobiSolver {
                 )))
             })?;
         }
+        if let Some(seed) = self.config.seed {
+            env.set(param::Seed, seed).map_err(|e| {
+                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
+                    "Gurobi param error: {}",
+                    e
+                )))
+            })?;
+        }
+        if let Some(tolerance) = self.config.optimality_tolerance {
+            env.set(param::OptimalityTol, tolerance).map_err(|e| {
+                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
+                    "Gurobi param error: {}",
+                    e
+                )))
+            })?;
+        }
+        if let Some(tolerance) = self.config.feasibility_tolerance {
+            env.set(param::FeasibilityTol, tolerance).map_err(|e| {
+                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
+                    "Gurobi param error: {}",
+                    e
+                )))
+            })?;
+        }
         if let Some(ref log_file) = self.config.log_file {
             env.set(param::LogFile, log_file.clone()).map_err(|e| {
                 crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
@@ -365,6 +389,30 @@ impl GurobiSolver {
         }
         if let Some(threads) = self.config.threads {
             env.set(param::Threads, threads).map_err(|e| {
+                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
+                    "Gurobi param error: {}",
+                    e
+                )))
+            })?;
+        }
+        if let Some(seed) = self.config.seed {
+            env.set(param::Seed, seed).map_err(|e| {
+                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
+                    "Gurobi param error: {}",
+                    e
+                )))
+            })?;
+        }
+        if let Some(tolerance) = self.config.optimality_tolerance {
+            env.set(param::OptimalityTol, tolerance).map_err(|e| {
+                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
+                    "Gurobi param error: {}",
+                    e
+                )))
+            })?;
+        }
+        if let Some(tolerance) = self.config.feasibility_tolerance {
+            env.set(param::FeasibilityTol, tolerance).map_err(|e| {
                 crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
                     "Gurobi param error: {}",
                     e

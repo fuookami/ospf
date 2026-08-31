@@ -6,7 +6,7 @@
 #[derive(Debug, Clone)]
 pub struct ContinuousCylinderRadiusSolverPrototype {
     /// 货物标识 / Item id
-    pub item_id: String,
+    pub item_id: ItemId,
     /// 来源 / Source
     pub source: String,
     /// 对齐轴 / Alignment axis

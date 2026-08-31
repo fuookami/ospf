@@ -10,3 +10,4 @@ htmlReport
 ./target-temp
 /.codegraph
 .supergoal/
+*.tmp

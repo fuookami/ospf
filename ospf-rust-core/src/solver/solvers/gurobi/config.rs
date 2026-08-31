@@ -4,6 +4,7 @@
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
+
 use crate::error::Result;
 use crate::model::ObjectiveCategory;
 use crate::solver::{SolverConfig, SolverStatus};
@@ -174,6 +175,12 @@ pub struct GurobiConfig {
     pub output_flag: bool,
     /// 线程数 / Number of threads
     pub threads: Option<i32>,
+    /// 随机种子 / Random seed
+    pub seed: Option<i32>,
+    /// 最优性容差 / Optimality tolerance
+    pub optimality_tolerance: Option<f64>,
+    /// 可行性容差 / Feasibility tolerance
+    pub feasibility_tolerance: Option<f64>,
     /// 零系数容差 / Zero-coefficient tolerance
     pub coefficient_zero_tolerance: f64,
     /// 数值稳定性关注级别（0-3）/ Numeric focus level (0-3)
@@ -227,6 +234,9 @@ impl fmt::Debug for GurobiConfig {
             .field("max_iterations", &self.max_iterations)
             .field("output_flag", &self.output_flag)
             .field("threads", &self.threads)
+            .field("seed", &self.seed)
+            .field("optimality_tolerance", &self.optimality_tolerance)
+            .field("feasibility_tolerance", &self.feasibility_tolerance)
             .field(
                 "coefficient_zero_tolerance",
                 &self.coefficient_zero_tolerance,
@@ -281,6 +291,9 @@ impl Default for GurobiConfig {
             max_iterations: None,
             output_flag: true,
             threads: None,
+            seed: None,
+            optimality_tolerance: None,
+            feasibility_tolerance: None,
             coefficient_zero_tolerance: 1e-13,
             numeric_focus: None,
             scale_flag: None,
@@ -318,6 +331,9 @@ impl From<&SolverConfig> for GurobiConfig {
         gurobi_config.threads = config
             .threads
             .map(|threads| threads.min(i32::MAX as usize) as i32);
+        gurobi_config.seed = config.seed.map(|seed| seed.min(i32::MAX as u64) as i32);
+        gurobi_config.optimality_tolerance = config.optimality_tolerance;
+        gurobi_config.feasibility_tolerance = config.feasibility_tolerance;
         gurobi_config.node_limit = config
             .node_limit
             .map(|limit| limit.min(i32::MAX as usize) as i32);
@@ -498,6 +514,26 @@ impl GurobiConfig {
     /// 设置线程数 / Set threads
     pub fn with_threads(mut self, threads: i32) -> Self {
         self.threads = Some(threads);
+        self
+    }
+
+    /// 设置随机种子 / Set random seed
+    pub fn with_seed(mut self, seed: i32) -> Self {
+        self.seed = Some(seed.max(0));
+        self
+    }
+
+    /// 设置最优性容差 / Set optimality tolerance
+    pub fn with_optimality_tolerance(mut self, tolerance: f64) -> Self {
+        self.optimality_tolerance =
+            (tolerance.is_finite() && tolerance > 0.0).then_some(tolerance);
+        self
+    }
+
+    /// 设置可行性容差 / Set feasibility tolerance
+    pub fn with_feasibility_tolerance(mut self, tolerance: f64) -> Self {
+        self.feasibility_tolerance =
+            (tolerance.is_finite() && tolerance > 0.0).then_some(tolerance);
         self
     }
 

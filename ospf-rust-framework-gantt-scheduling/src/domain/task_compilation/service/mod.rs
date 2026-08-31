@@ -175,12 +175,14 @@ mod tests {
 
     impl TestTask {
         fn new(id: &str, name: &str) -> Self {
-            Self { id: id.to_string(), name: name.to_string() }
+            Self { id: id.into(), name: name.to_string() }
         }
     }
 
     impl<E: ExecutorTrait, A: AssignmentPolicyTrait<E>> TaskTrait<E, A> for TestTask {
-        fn id(&self) -> &str { &self.id }
+        type Id = String;
+
+        fn id(&self) -> &Self::Id { &self.id }
         fn name(&self) -> &str { &self.name }
     }
 

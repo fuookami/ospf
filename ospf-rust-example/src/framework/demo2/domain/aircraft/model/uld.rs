@@ -1,7 +1,10 @@
+//! ULD（集装器）模型定义 / ULD (Unit Load Device) model definitions
 /// ULD 分类 / ULD category (对齐 Kotlin ULDCategory)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UldCategory {
+    /// 集装板 / Pallet
     Pallet,
+    /// 集装箱 / Container
     Container,
 }
 
@@ -13,6 +16,7 @@ pub enum UldCode {
 }
 
 impl UldCode {
+    /// 获取 ULD 分类 / Get ULD category
     pub fn category(&self) -> UldCategory {
         match self {
             UldCode::PAG | UldCode::PAJ | UldCode::PMC | UldCode::PMD

@@ -1,6 +1,11 @@
+//! Demo4 基础设施层 / Demo4 infrastructure layer.
+/// 数据传输对象模块 / Data transfer object module
 pub mod dto;
+/// 即时查询模块 / Instant query module
 pub mod instant;
+/// 语义参数模块 / Semantic parameter module
 pub mod semantic_parameter;
+/// 求解器模块 / Solver module
 pub mod solver;
 
 /// IATA 三字码 / IATA 3-letter code

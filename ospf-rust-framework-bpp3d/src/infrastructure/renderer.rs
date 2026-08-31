@@ -186,7 +186,7 @@ mod tests {
         let plan = RenderLoadingPlanDto {
             group: "g1".to_string(),
             name: "bin1".to_string(),
-            type_code: "BIN".to_string(),
+            type_code: "BIN".into(),
             width: 10.0,
             height: 10.0,
             depth: 10.0,

@@ -1,3 +1,4 @@
+//! Common 模块 / Common module
 use std::error::Error;
 use std::sync::Arc;
 

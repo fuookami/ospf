@@ -471,6 +471,27 @@ impl SCIPSolver {
                 .set_int_param("parallel/maxnthreads", threads)
                 .map_err(|e| Self::map_scip_error("set param", e))?;
         }
+        if let Some(seed) = self.config.seed {
+            model = model
+                .set_int_param("randomization/randomseedshift", seed)
+                .map_err(|e| Self::map_scip_error("set param", e))?;
+            model = model
+                .set_int_param("randomization/permutationseed", seed)
+                .map_err(|e| Self::map_scip_error("set param", e))?;
+            model = model
+                .set_int_param("randomization/lpseed", seed)
+                .map_err(|e| Self::map_scip_error("set param", e))?;
+        }
+        if let Some(tolerance) = self.config.optimality_tolerance {
+            model = model
+                .set_real_param("numerics/dualfeastol", tolerance)
+                .map_err(|e| Self::map_scip_error("set param", e))?;
+        }
+        if let Some(tolerance) = self.config.feasibility_tolerance {
+            model = model
+                .set_real_param("numerics/feastol", tolerance)
+                .map_err(|e| Self::map_scip_error("set param", e))?;
+        }
         if let Some(ref log_file) = self.config.log_file {
             model = model
                 .set_str_param("output/file", log_file)
@@ -1161,6 +1182,9 @@ mod tests {
             .with_heuristics_priority(3)
             .with_no_improvement_time_limit(30.0)
             .with_improvement_tolerance(1e-6)
+            .with_seed(42)
+            .with_optimality_tolerance(1e-8)
+            .with_feasibility_tolerance(1e-7)
             .with_telemetry_min_interval(0.2);
 
         assert_eq!(config.time_limit, Some(120.0));
@@ -1173,7 +1197,24 @@ mod tests {
         assert_eq!(config.heuristics_priority, Some(3));
         assert_eq!(config.no_improvement_time_limit, Some(30.0));
         assert_eq!(config.improvement_tolerance, Some(1e-6));
+        assert_eq!(config.seed, Some(42));
+        assert_eq!(config.optimality_tolerance, Some(1e-8));
+        assert_eq!(config.feasibility_tolerance, Some(1e-7));
         assert_eq!(config.telemetry_min_interval, Some(0.2));
+    }
+
+    #[test]
+    fn test_common_config_preserves_deterministic_parameters() {
+        let common = crate::solver::SolverConfig::new("scip")
+            .with_seed(42)
+            .with_optimality_tolerance(1e-8)
+            .with_feasibility_tolerance(1e-7);
+
+        let config = SCIPConfig::from(&common);
+
+        assert_eq!(config.seed, Some(42));
+        assert_eq!(config.optimality_tolerance, Some(1e-8));
+        assert_eq!(config.feasibility_tolerance, Some(1e-7));
     }
 
     #[test]

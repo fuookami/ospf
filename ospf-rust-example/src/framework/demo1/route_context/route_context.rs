@@ -1,18 +1,24 @@
+//! 路由上下文 / Route context
+
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use crate::framework::demo1::infrastructure::dto::Input;
 use super::aggregation::Aggregation;
 use super::model::{Assignment, Edge, Graph, Node, NodeKind, Service};
 
+/// 路由上下文 / Route context
 pub struct RouteContext {
+    /// 聚合数据 / Aggregation data
     pub aggregation: Option<Aggregation>,
 }
 
 impl RouteContext {
+    /// 创建新的路由上下文 / Create a new route context
     pub fn new() -> Self {
         Self { aggregation: None }
     }
 
+    /// 从输入数据初始化路由上下文 / Initialize route context from input data
     pub fn init(&mut self, input: &Input) -> Result<(), Box<dyn Error>> {
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
@@ -81,6 +87,7 @@ impl RouteContext {
         Ok(())
     }
 
+    /// 注册路由相关变量和符号到模型 / Register route-related variables and symbols into the model
     pub fn register(&mut self, model: &mut MetaModel<f64>) -> Result<(), Box<dyn Error>> {
         let agg = self
             .aggregation
@@ -92,6 +99,7 @@ impl RouteContext {
         Ok(())
     }
 
+    /// 构建路由相关约束和目标 / Construct route-related constraints and objectives
     pub fn construct(&self, model: &mut MetaModel<f64>) -> Result<(), Box<dyn Error>> {
         let agg = self
             .aggregation
@@ -101,6 +109,7 @@ impl RouteContext {
         super::service::generate_pipelines(agg, model)
     }
 
+    /// 获取指定普通节点和服务的分配变量索引 / Get assignment variable index for specified normal node and service
     pub fn assignment_variable(&self, normal_node_idx: usize, service_idx: usize) -> Option<usize> {
         let agg = self.aggregation.as_ref()?;
         let row = agg

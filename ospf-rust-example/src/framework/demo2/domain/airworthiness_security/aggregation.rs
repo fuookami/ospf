@@ -1,3 +1,4 @@
+//! 适航性安全聚合 / Airworthiness security aggregation
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
@@ -19,14 +20,22 @@ pub struct AirworthinessAggregation {
     pub lateral_moment_symbol: Option<Arc<LinearExpressionSymbol<f64>>>,
     /// 每位置重量符号 / Per-position weight symbols
     pub per_position_weight_symbols: Vec<Option<Arc<LinearExpressionSymbol<f64>>>>,
-    // 向后兼容字段，后续移除 / Backward-compatible fields, remove later
+    /// 总载荷裸系数（向后兼容，后续移除）/ Total payload raw coefficients (backward-compatible, remove later)
     pub total_payload_coefficients: Vec<(usize, f64)>,
+    /// 纵向力矩裸系数（向后兼容，后续移除）/ Envelope longitudinal moment raw coefficients (backward-compatible, remove later)
     pub envelope_longitudinal_moment_coefficients: Vec<(usize, f64)>,
+    /// 横向力矩裸系数（向后兼容，后续移除）/ Lateral moment raw coefficients (backward-compatible, remove later)
     pub lateral_moment_coefficients: Vec<(usize, f64)>,
+    /// 每位置重量裸系数（向后兼容，后续移除）/ Per-position weight raw coefficients (backward-compatible, remove later)
     pub per_position_weight_coefficients: Vec<Vec<(usize, f64)>>,
 }
 
 impl AirworthinessAggregation {
+    /// 从适航性上下文构建聚合 / Build aggregation from airworthiness context
+    ///
+    /// 遍历所有位置和货物，计算总载荷、纵向力矩、横向力矩和每位置重量的系数。
+    /// Iterates over all positions and cargos, computing coefficients for
+    /// total payload, longitudinal moment, lateral moment, and per-position weight.
     pub fn from_context(context: &AirworthinessContext<'_>) -> Self {
         let pos_count = context.request.positions.len();
         let mut total_payload_monomials = Vec::new();

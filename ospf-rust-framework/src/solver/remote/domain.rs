@@ -51,20 +51,35 @@ macro_rules! remote_string_id {
     };
 }
 
+/// 任务 ID。 / Task ID.
 remote_string_id!(TaskId);
+/// 切片 ID。 / Slice ID.
 remote_string_id!(SliceId);
+/// 节点 ID。 / Node ID.
 remote_string_id!(NodeId);
+/// 租户 ID。 / Tenant ID.
 remote_string_id!(TenantId);
+/// 请求 ID。 / Request ID.
 remote_string_id!(RequestId);
+/// 句柄 ID。 / Handle ID.
 remote_string_id!(HandleId);
+/// 追踪 ID。 / Trace ID.
 remote_string_id!(TraceId);
+/// 对象版本。 / Object version.
 remote_string_id!(ObjectVersion);
+/// 对象 ETag。 / Object ETag.
 remote_string_id!(ObjectEtag);
+/// 求解器类型名称。 / Solver type name.
 remote_string_id!(SolverTypeName);
+/// 目标类型名称。 / Target type name.
 remote_string_id!(TargetTypeName);
+/// 预算范围 ID。 / Budget scope ID.
 remote_string_id!(BudgetScopeId);
+/// 操作者 ID。 / Operator ID.
 remote_string_id!(OperatorId);
+/// 操作来源。 / Operation source.
 remote_string_id!(OperationSource);
+/// 原因码。 / Reason code.
 remote_string_id!(ReasonCode);
 
 /// 对象路径。
@@ -120,6 +135,7 @@ impl Display for ObjectPath {
 pub mod duration_millis {
     use super::*;
 
+    /// 序列化 Duration 为毫秒数 / Serialize Duration as milliseconds
     pub fn serialize<S>(value: &Duration, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -127,6 +143,7 @@ pub mod duration_millis {
         serializer.serialize_u64(value.as_millis() as u64)
     }
 
+    /// 从毫秒数反序列化 Duration / Deserialize Duration from milliseconds
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
     where
         D: Deserializer<'de>,
@@ -140,6 +157,7 @@ pub mod duration_millis {
 pub mod option_duration_millis {
     use super::*;
 
+    /// 序列化可选 Duration 为毫秒数 / Serialize optional Duration as milliseconds
     pub fn serialize<S>(value: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -149,6 +167,7 @@ pub mod option_duration_millis {
             .serialize(serializer)
     }
 
+    /// 从毫秒数反序列化可选 Duration / Deserialize optional Duration from milliseconds
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
     where
         D: Deserializer<'de>,
@@ -163,6 +182,7 @@ pub mod epoch_millis {
     use super::*;
     use serde::ser::Error;
 
+    /// 序列化 SystemTime 为 epoch 毫秒数 / Serialize SystemTime as epoch milliseconds
     pub fn serialize<S>(value: &SystemTime, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -174,6 +194,7 @@ pub mod epoch_millis {
         serializer.serialize_u64(millis)
     }
 
+    /// 从 epoch 毫秒数反序列化 SystemTime / Deserialize SystemTime from epoch milliseconds
     pub fn deserialize<'de, D>(deserializer: D) -> Result<SystemTime, D::Error>
     where
         D: Deserializer<'de>,
@@ -187,6 +208,7 @@ pub mod epoch_millis {
 pub mod option_epoch_millis {
     use super::*;
 
+    /// 序列化可选 SystemTime 为 epoch 毫秒数 / Serialize optional SystemTime as epoch milliseconds
     pub fn serialize<S>(value: &Option<SystemTime>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -200,6 +222,7 @@ pub mod option_epoch_millis {
         millis.serialize(serializer)
     }
 
+    /// 从 epoch 毫秒数反序列化可选 SystemTime / Deserialize optional SystemTime from epoch milliseconds
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<SystemTime>, D::Error>
     where
         D: Deserializer<'de>,
@@ -214,7 +237,9 @@ pub mod option_epoch_millis {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TaskComplexity {
+    /// 简单 / Simple
     Simple,
+    /// 复杂 / Complex
     Complex,
 }
 
@@ -223,7 +248,9 @@ pub enum TaskComplexity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TimeSensitivity {
+    /// 实时 / Realtime
     Realtime,
+    /// 非实时 / Non-realtime
     NonRealtime,
 }
 
@@ -232,16 +259,27 @@ pub enum TimeSensitivity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum TaskStatus {
+    /// 已创建 / Created
     Created,
+    /// 已接受 / Accepted
     Accepted,
+    /// 已入队 / Queued
     Queued,
+    /// 调度中 / Dispatching
     Dispatching,
+    /// 运行中 / Running
     Running,
+    /// 已挂起 / Suspended
     Suspended,
+    /// 已完成 / Completed
     Completed,
+    /// 停止中 / Stopping
     Stopping,
+    /// 已停止 / Stopped
     Stopped,
+    /// 已失败 / Failed
     Failed,
+    /// 等待预算 / Waiting for budget
     WaitingForBudget,
 }
 
@@ -250,11 +288,17 @@ pub enum TaskStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SliceStatus {
+    /// 已规划 / Planned
     Planned,
+    /// 运行中 / Running
     Running,
+    /// 检查点导出中 / Checkpointing
     Checkpointing,
+    /// 已挂起 / Suspended
     Suspended,
+    /// 已完成 / Completed
     Completed,
+    /// 已失败 / Failed
     Failed,
 }
 
@@ -263,8 +307,11 @@ pub enum SliceStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SolverType {
+    /// SCIP 求解器 / SCIP solver
     Scip,
+    /// Gurobi 求解器 / Gurobi solver
     Gurobi,
+    /// 自动选择 / Auto select
     Auto,
 }
 
@@ -273,8 +320,11 @@ pub enum SolverType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum NormalizedModelType {
+    /// 线性 / Linear
     Linear,
+    /// 二次 / Quadratic
     Quadratic,
+    /// 未知 / Unknown
     Unknown,
 }
 
@@ -282,9 +332,12 @@ pub enum NormalizedModelType {
 /// Object reference.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObjectRef {
+    /// 对象路径 / Object path
     pub path: ObjectPath,
+    /// 对象版本 / Object version
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<ObjectVersion>,
+    /// 对象 ETag / Object ETag
     #[serde(skip_serializing_if = "Option::is_none")]
     pub etag: Option<ObjectEtag>,
 }
@@ -326,10 +379,13 @@ impl ObjectRef {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskMeta {
+    /// 求解器类型名称 / Solver type name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub solver_type: Option<SolverTypeName>,
+    /// 目标类型名称 / Target type name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_type: Option<TargetTypeName>,
+    /// 时间限制 / Time limit
     #[serde(
         rename = "timeLimitMs",
         default,
@@ -337,12 +393,16 @@ pub struct TaskMeta {
         skip_serializing_if = "Option::is_none"
     )]
     pub time_limit: Option<Duration>,
+    /// 解数量限制 / Solution limit
     #[serde(skip_serializing_if = "Option::is_none")]
     pub solution_limit: Option<usize>,
+    /// 预估变量数 / Estimated variable count
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_variable_count: Option<usize>,
+    /// 预估约束数 / Estimated constraint count
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_constraint_count: Option<usize>,
+    /// 历史运行时间 / Historical runtime
     #[serde(
         rename = "historicalRuntimeMs",
         default,
@@ -350,6 +410,7 @@ pub struct TaskMeta {
         skip_serializing_if = "Option::is_none"
     )]
     pub historical_runtime: Option<Duration>,
+    /// 附加元数据 / Additional metadata
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub metadata: BTreeMap<String, String>,
 }
@@ -370,14 +431,19 @@ impl TaskMeta {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelData {
+    /// 对象引用 / Object reference
     #[serde(rename = "ref", skip_serializing_if = "Option::is_none")]
     pub object_ref: Option<ObjectRef>,
+    /// 线性模型 / Linear model
     #[serde(skip_serializing_if = "Option::is_none")]
     pub linear_model: Option<SerializedLinearModel>,
+    /// 二次模型 / Quadratic model
     #[serde(skip_serializing_if = "Option::is_none")]
     pub quadratic_model: Option<SerializedQuadraticModel>,
+    /// 原始字节 / Raw bytes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_bytes: Option<Vec<u8>>,
+    /// 格式标识 / Format identifier
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
 }
@@ -450,6 +516,7 @@ impl ModelData {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SolverConfig {
+    /// 时间限制 / Time limit
     #[serde(
         rename = "timeLimitMs",
         default,
@@ -457,12 +524,16 @@ pub struct SolverConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub time_limit: Option<Duration>,
+    /// 解数量限制 / Solution limit
     #[serde(skip_serializing_if = "Option::is_none")]
     pub solution_limit: Option<usize>,
+    /// MIP 间隙容差 / MIP gap tolerance
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mip_gap_tolerance: Option<f64>,
+    /// 线程数 / Thread count
     #[serde(skip_serializing_if = "Option::is_none")]
     pub threads: Option<usize>,
+    /// 求解器参数 / Solver parameters
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub solver_params: BTreeMap<String, String>,
 }
@@ -472,15 +543,21 @@ pub struct SolverConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SolvePayload {
+    /// 模型数据 / Model data
     pub model_data: ModelData,
+    /// 配置引用 / Config reference
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_ref: Option<ObjectRef>,
+    /// 求解配置 / Solver config
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config: Option<SolverConfig>,
+    /// 快照引用 / Snapshot reference
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snapshot_ref: Option<ObjectRef>,
+    /// 任务元数据 / Task metadata
     #[serde(default)]
     pub task_meta: TaskMeta,
+    /// 扩展字段 / Extension fields
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extension: BTreeMap<String, String>,
 }
@@ -550,10 +627,15 @@ impl SolvePayload {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionHandle {
+    /// 句柄 ID / Handle ID
     pub handle_id: HandleId,
+    /// 任务 ID / Task ID
     pub task_id: TaskId,
+    /// 切片 ID / Slice ID
     pub slice_id: SliceId,
+    /// 节点 ID / Node ID
     pub node_id: NodeId,
+    /// 启动时间 / Started at
     #[serde(rename = "startedAtEpochMs", with = "epoch_millis")]
     pub started_at: SystemTime,
 }
@@ -563,13 +645,20 @@ pub struct ExecutionHandle {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SliceResult {
+    /// 切片 ID / Slice ID
     pub slice_id: SliceId,
+    /// 是否完成 / Whether completed
     pub completed: bool,
+    /// 是否可行 / Whether feasible
     pub feasible: bool,
+    /// 目标函数值 / Objective value
     pub objective_value: Option<f64>,
+    /// MIP 间隙 / MIP gap
     pub gap: Option<f64>,
+    /// 已用时间 / Elapsed time
     #[serde(rename = "elapsedMs", with = "duration_millis")]
     pub elapsed: Duration,
+    /// 附加消息 / Additional message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
@@ -579,18 +668,27 @@ pub struct SliceResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SolveResult {
+    /// 是否可行 / Whether feasible
     pub feasible: bool,
+    /// 是否最优 / Whether optimal
     pub optimal: bool,
+    /// 目标函数值 / Objective value
     pub objective_value: Option<f64>,
+    /// MIP 间隙 / MIP gap
     pub gap: Option<f64>,
+    /// 已用时间 / Elapsed time
     #[serde(rename = "elapsedMs", with = "duration_millis")]
     pub elapsed: Duration,
+    /// 检查点引用 / Checkpoint reference
     #[serde(skip_serializing_if = "Option::is_none")]
     pub checkpoint_ref: Option<ObjectRef>,
+    /// 结果引用 / Result reference
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result_ref: Option<ObjectRef>,
+    /// 附加消息 / Additional message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// 扩展字段 / Extension fields
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extension: BTreeMap<String, String>,
 }
@@ -622,10 +720,15 @@ impl SolveResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SerializedVariableType {
+    /// 连续 / Continuous
     Continuous,
+    /// 二元 / Binary
     Binary,
+    /// 整数 / Integer
     Integer,
+    /// 半连续 / Semi-continuous
     SemiContinuous,
+    /// 半整数 / Semi-integer
     SemiInteger,
 }
 
@@ -634,8 +737,11 @@ pub enum SerializedVariableType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SerializedConstraintSign {
+    /// 小于等于 / Less than or equal
     LessEqual,
+    /// 大于等于 / Greater than or equal
     GreaterEqual,
+    /// 等于 / Equal
     Equal,
 }
 
@@ -644,7 +750,9 @@ pub enum SerializedConstraintSign {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SerializedObjectiveCategory {
+    /// 最小化 / Minimize
     Minimize,
+    /// 最大化 / Maximize
     Maximize,
 }
 
@@ -653,8 +761,11 @@ pub enum SerializedObjectiveCategory {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedConstraintCell {
+    /// 行索引 / Row index
     pub row_index: usize,
+    /// 列索引 / Column index
     pub col_index: usize,
+    /// 系数 / Coefficient
     pub coefficient: f64,
 }
 
@@ -663,7 +774,9 @@ pub struct SerializedConstraintCell {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedObjectiveCell {
+    /// 列索引 / Column index
     pub col_index: usize,
+    /// 系数 / Coefficient
     pub coefficient: f64,
 }
 
@@ -672,10 +785,15 @@ pub struct SerializedObjectiveCell {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedVariable {
+    /// 变量索引 / Variable index
     pub index: usize,
+    /// 变量名称 / Variable name
     pub name: String,
+    /// 下界 / Lower bound
     pub lower_bound: f64,
+    /// 上界 / Upper bound
     pub upper_bound: f64,
+    /// 变量类型 / Variable type
     #[serde(rename = "type")]
     pub variable_type: SerializedVariableType,
 }
@@ -685,9 +803,13 @@ pub struct SerializedVariable {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedConstraint {
+    /// 约束矩阵单元 / Constraint matrix cells
     pub cells: Vec<SerializedConstraintCell>,
+    /// 约束符号 / Constraint sign
     pub sign: SerializedConstraintSign,
+    /// 右端项 / Right-hand side
     pub rhs: f64,
+    /// 约束名称 / Constraint name
     pub name: String,
 }
 
@@ -696,8 +818,11 @@ pub struct SerializedConstraint {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedObjective {
+    /// 目标类型 / Objective category
     pub category: SerializedObjectiveCategory,
+    /// 目标函数单元 / Objective cells
     pub cells: Vec<SerializedObjectiveCell>,
+    /// 常数项 / Constant term
     pub constant: f64,
 }
 
@@ -706,9 +831,13 @@ pub struct SerializedObjective {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedLinearModel {
+    /// 模型名称 / Model name
     pub name: String,
+    /// 变量列表 / Variables
     pub variables: Vec<SerializedVariable>,
+    /// 约束列表 / Constraints
     pub constraints: Vec<SerializedConstraint>,
+    /// 目标函数 / Objective
     pub objective: SerializedObjective,
 }
 
@@ -746,9 +875,13 @@ impl SerializedLinearModel {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedQuadraticConstraintCell {
+    /// 行索引 / Row index
     pub row_index: usize,
+    /// 列索引1 / Column index 1
     pub col_index1: usize,
+    /// 列索引2 / Column index 2
     pub col_index2: usize,
+    /// 系数 / Coefficient
     pub coefficient: f64,
 }
 
@@ -757,10 +890,15 @@ pub struct SerializedQuadraticConstraintCell {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedQuadraticConstraint {
+    /// 线性部分单元 / Linear part cells
     pub linear_cells: Vec<SerializedConstraintCell>,
+    /// 二次部分单元 / Quadratic part cells
     pub quadratic_cells: Vec<SerializedQuadraticConstraintCell>,
+    /// 约束符号 / Constraint sign
     pub sign: SerializedConstraintSign,
+    /// 右端项 / Right-hand side
     pub rhs: f64,
+    /// 约束名称 / Constraint name
     pub name: String,
 }
 
@@ -769,8 +907,11 @@ pub struct SerializedQuadraticConstraint {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedQuadraticObjectiveCell {
+    /// 列索引1 / Column index 1
     pub col_index1: usize,
+    /// 列索引2 / Column index 2
     pub col_index2: usize,
+    /// 系数 / Coefficient
     pub coefficient: f64,
 }
 
@@ -779,9 +920,13 @@ pub struct SerializedQuadraticObjectiveCell {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedQuadraticObjective {
+    /// 目标类型 / Objective category
     pub category: SerializedObjectiveCategory,
+    /// 线性部分单元 / Linear part cells
     pub linear_cells: Vec<SerializedObjectiveCell>,
+    /// 二次部分单元 / Quadratic part cells
     pub quadratic_cells: Vec<SerializedQuadraticObjectiveCell>,
+    /// 常数项 / Constant term
     pub constant: f64,
 }
 
@@ -790,10 +935,15 @@ pub struct SerializedQuadraticObjective {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedQuadraticModel {
+    /// 模型名称 / Model name
     pub name: String,
+    /// 变量列表 / Variables
     pub variables: Vec<SerializedVariable>,
+    /// 线性约束列表 / Linear constraints
     pub linear_constraints: Vec<SerializedConstraint>,
+    /// 二次约束列表 / Quadratic constraints
     pub quadratic_constraints: Vec<SerializedQuadraticConstraint>,
+    /// 目标函数 / Objective
     pub objective: SerializedQuadraticObjective,
 }
 
@@ -802,16 +952,24 @@ pub struct SerializedQuadraticModel {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedSolution {
+    /// 是否可行 / Whether feasible
     pub feasible: bool,
+    /// 是否最优 / Whether optimal
     pub optimal: bool,
+    /// 目标函数值 / Objective value
     pub objective_value: Option<f64>,
+    /// MIP 间隙 / MIP gap
     pub gap: Option<f64>,
+    /// 变量取值 / Variable values
     #[serde(default)]
     pub variable_values: Vec<f64>,
+    /// 已用时间 / Elapsed time
     #[serde(rename = "elapsedMs", with = "duration_millis")]
     pub elapsed: Duration,
+    /// 求解器状态 / Solver status
     #[serde(default)]
     pub solver_status: String,
+    /// 附加消息 / Additional message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
@@ -868,21 +1026,37 @@ impl SerializedSolution {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RemoteSolverErrorCode {
+    /// 无效参数 / Invalid argument
     InvalidArgument,
+    /// 无效任务状态转换 / Invalid task state transition
     InvalidTaskStateTransition,
+    /// 无可用合格节点 / No eligible node available
     NoEligibleNodeAvailable,
+    /// 节点离线 / Node offline
     NodeOffline,
+    /// 求解器执行失败 / Solver execution failed
     SolverExecutionFailed,
+    /// 检查点导出失败 / Checkpoint export failed
     CheckpointExportFailed,
+    /// 事件发布失败 / Event publish failed
     EventPublishFailed,
+    /// 存储 IO 失败 / Storage I/O failed
     StorageIoFailed,
+    /// 任务在最大轮次内未终止 / Task not terminal within max rounds
     TaskNotTerminalWithinMaxRounds,
+    /// 无兼容节点可用 / No compatible node available
     NoCompatibleNodeAvailable,
+    /// 任务失败 / Task failed
     TaskFailed,
+    /// 任务硬超时失败 / Task failed hard timeout
     TaskFailedHardTimeout,
+    /// 任务切片超时失败 / Task failed slice timeout
     TaskFailedSliceTimeout,
+    /// 任务预算超限失败 / Task failed budget exceeded
     TaskFailedBudgetExceeded,
+    /// 远程求解在最大轮次内未完成 / Remote solve not completed within max rounds
     RemoteSolveNotCompletedWithinMaxRounds,
+    /// 内部错误 / Internal error
     InternalError,
 }
 
@@ -891,8 +1065,11 @@ pub enum RemoteSolverErrorCode {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct RemoteSolverError {
+    /// 错误码 / Error code
     pub code: RemoteSolverErrorCode,
+    /// 错误消息 / Error message
     pub message: String,
+    /// 附加元数据 / Additional metadata
     pub metadata: BTreeMap<String, String>,
 }
 

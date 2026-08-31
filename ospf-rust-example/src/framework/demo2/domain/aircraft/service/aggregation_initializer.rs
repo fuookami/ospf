@@ -1,3 +1,4 @@
+//! 飞机聚合初始化器 / Aircraft aggregation initializer
 use crate::framework::demo2::domain::aircraft::model::*;
 use crate::framework::demo2::domain::aircraft::Aggregation;
 use crate::framework::demo2::domain::shared::units;
@@ -9,7 +10,7 @@ use std::collections::HashMap;
 pub struct AircraftAggregationInitializer;
 
 impl AircraftAggregationInitializer {
-    /// 从请求数据初始化飞机聚合
+    /// 从请求数据初始化飞机聚合 / Initialize aircraft aggregation from request data
     /// 对齐 Kotlin AggregationInitializer.initialize
     pub fn initialize(request: &Demo2Request) -> Option<Aggregation> {
         let aircraft_type = match request.aircraft_type {

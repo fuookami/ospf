@@ -154,6 +154,20 @@ mod tests {
     }
 
     #[test]
+    fn test_common_config_preserves_deterministic_parameters() {
+        let common = crate::solver::SolverConfig::new("gurobi")
+            .with_seed(42)
+            .with_optimality_tolerance(1e-8)
+            .with_feasibility_tolerance(1e-7);
+
+        let config = GurobiConfig::from(&common);
+
+        assert_eq!(config.seed, Some(42));
+        assert_eq!(config.optimality_tolerance, Some(1e-8));
+        assert_eq!(config.feasibility_tolerance, Some(1e-7));
+    }
+
+    #[test]
     fn test_numeric_profiles_defaults() {
         let robust = GurobiConfig::robust_defaults();
         assert_eq!(robust.time_limit, Some(30.0));

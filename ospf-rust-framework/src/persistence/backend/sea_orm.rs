@@ -31,7 +31,9 @@ pub struct SeaOrmBackend;
 /// SeaORM translator configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SeaOrmTranslatorConfig {
+    /// 不支持谓词策略 / Unsupported predicate policy
     pub unsupported_predicate_policy: UnsupportedPredicatePolicy,
+    /// 是否用 CASE 表达式模拟 NULLS FIRST/LAST / Whether NULLS FIRST/LAST should be emulated with CASE expressions
     pub emulate_nulls_order: bool,
 }
 
@@ -67,8 +69,11 @@ impl SeaOrmTranslatorConfig {
 /// SeaORM translation error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SeaOrmTranslationError {
+    /// 不支持的谓词 / Unsupported predicate
     UnsupportedPredicate(String),
+    /// 未解析的字段 / Unresolved field
     UnresolvedField(String),
+    /// 无效表达式 / Invalid expression
     InvalidExpression(String),
 }
 
@@ -88,7 +93,9 @@ impl std::error::Error for SeaOrmTranslationError {}
 /// SeaORM repository error.
 #[derive(Debug)]
 pub enum SeaOrmRepositoryError {
+    /// 翻译错误 / Translation error
     Translation(SeaOrmTranslationError),
+    /// 数据库错误 / Database error
     Database(DbErr),
 }
 
@@ -126,7 +133,9 @@ impl From<DbErr> for SeaOrmRepositoryError {
 /// SeaORM order expression.
 #[derive(Debug, Clone)]
 pub struct SeaOrmOrderBy {
+    /// 排序表达式 / Order expression
     pub expression: SimpleExpr,
+    /// 排序方向 / Sort direction
     pub order: Order,
 }
 
@@ -134,7 +143,9 @@ pub struct SeaOrmOrderBy {
 /// SeaORM update assignment expression.
 #[derive(Debug, Clone)]
 pub struct SeaOrmUpdateAssignment {
+    /// 列名 / Column name
     pub column: String,
+    /// 赋值表达式 / Value expression
     pub value: SimpleExpr,
 }
 
@@ -447,6 +458,17 @@ where
             }
             ScalarExpression::Function { name, arguments } => {
                 self.translate_scalar_function(name, arguments)
+            }
+            ScalarExpression::Conditional { .. } => {
+                Err(SeaOrmTranslationError::UnsupportedPredicate(
+                    "conditional scalar expression is not supported by SeaORM translator"
+                        .to_string(),
+                ))
+            }
+            ScalarExpression::Boolean(_) => {
+                Err(SeaOrmTranslationError::UnsupportedPredicate(
+                    "boolean scalar expression is not supported by SeaORM translator".to_string(),
+                ))
             }
             ScalarExpression::Custom { description, .. } => {
                 Err(SeaOrmTranslationError::UnsupportedPredicate(
@@ -949,6 +971,30 @@ mod tests {
         assert!(matches!(
             err,
             SeaOrmTranslationError::UnsupportedPredicate(_)
+        ));
+    }
+
+    #[test]
+    fn reports_unsupported_conditional_and_boolean_scalar_expressions() {
+        let conditional = ScalarExpression::conditional(
+            runtime_field("age").ge(18),
+            ScalarExpression::constant(ExpressionValue::from(1)),
+            ScalarExpression::constant(ExpressionValue::from(0)),
+        );
+        let boolean = ScalarExpression::boolean_expr(runtime_field("status").eq("active"));
+
+        let conditional_err = translator().translate_scalar(&conditional).unwrap_err();
+        let boolean_err = translator().translate_scalar(&boolean).unwrap_err();
+
+        assert!(matches!(
+            conditional_err,
+            SeaOrmTranslationError::UnsupportedPredicate(message)
+                if message.contains("conditional scalar expression")
+        ));
+        assert!(matches!(
+            boolean_err,
+            SeaOrmTranslationError::UnsupportedPredicate(message)
+                if message.contains("boolean scalar expression")
         ));
     }
 

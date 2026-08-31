@@ -1,3 +1,6 @@
+//! HashMap / MultiMap 对 MultiArray 值的便捷访问与修改扩展。
+//! Convenience access and mutation extensions for HashMap / MultiMap values of MultiArray.
+
 use std::collections::HashMap;
 use std::hash::Hash;
 use crate::error::MappingIndexError;
@@ -8,6 +11,7 @@ use crate::shape::AbstractShape;
 
 /// Map 全值访问扩展 / Get all values extension for HashMap.
 pub trait MapAllValuesExt<V> {
+    /// 获取 HashMap 中所有值的引用列表 / Get a list of references to all values in the HashMap.
     fn values_all(&self) -> Vec<&V>;
 }
 
@@ -26,10 +30,13 @@ where
     S: AbstractShape,
     C: MultiArrayCollection<T>,
 {
+    /// 按线性索引获取数组元素引用 / Get a reference to an array element by linear index.
     fn array_get_linear(&self, key: &K, index: usize) -> Option<&T>;
 
+    /// 按多维向量索引获取数组元素引用 / Get a reference to an array element by multi-dimensional vector index.
     fn array_get_vector(&self, key: &K, vector: &S::VectorType) -> Option<&T>;
 
+    /// 按虚拟向量创建数组视图 / Create an array view using a dummy vector.
     fn array_view_by_dummy(
         &self,
         key: &K,
@@ -74,8 +81,10 @@ where
     S: AbstractShape,
     C: MultiArrayCollection<T>,
 {
+    /// 按线性索引设置数组元素值 / Set an array element value by linear index.
     fn array_set_linear(&mut self, key: &K, index: usize, value: T) -> bool;
 
+    /// 按多维向量索引设置数组元素值 / Set an array element value by multi-dimensional vector index.
     fn array_set_vector(&mut self, key: &K, vector: &S::VectorType, value: T) -> bool;
 }
 
@@ -118,8 +127,10 @@ where
     S: AbstractShape,
     C: MultiArrayCollection<T>,
 {
+    /// 按线性索引获取数组元素引用 / Get a reference to an array element by linear index.
     fn array_get_linear(&self, k1: &K1, k2: &K2, index: usize) -> Option<&T>;
 
+    /// 按多维向量索引获取数组元素引用 / Get a reference to an array element by multi-dimensional vector index.
     fn array_get_vector(&self, k1: &K1, k2: &K2, vector: &S::VectorType) -> Option<&T>;
 }
 
@@ -146,13 +157,16 @@ where
     }
 }
 
+/// MultiMap2 中 MultiArray 值的可变访问扩展 / Mutable access extension for MultiMap2 values as MultiArray.
 pub trait MultiMap2ArrayMutExt<K1, K2, T, S, C>
 where
     S: AbstractShape,
     C: MultiArrayCollection<T>,
 {
+    /// 按线性索引设置数组元素值 / Set an array element value by linear index.
     fn array_set_linear(&mut self, k1: &K1, k2: &K2, index: usize, value: T) -> bool;
 
+    /// 按多维向量索引设置数组元素值 / Set an array element value by multi-dimensional vector index.
     fn array_set_vector(&mut self, k1: &K1, k2: &K2, vector: &S::VectorType, value: T) -> bool;
 }
 
@@ -197,8 +211,10 @@ where
     S: AbstractShape,
     C: MultiArrayCollection<T>,
 {
+    /// 按线性索引获取数组元素引用 / Get a reference to an array element by linear index.
     fn array_get_linear(&self, k1: &K1, k2: &K2, k3: &K3, index: usize) -> Option<&T>;
 
+    /// 按多维向量索引获取数组元素引用 / Get a reference to an array element by multi-dimensional vector index.
     fn array_get_vector(&self, k1: &K1, k2: &K2, k3: &K3, vector: &S::VectorType) -> Option<&T>;
 }
 
@@ -227,13 +243,16 @@ where
     }
 }
 
+/// MultiMap3 中 MultiArray 值的可变访问扩展 / Mutable access extension for MultiMap3 values as MultiArray.
 pub trait MultiMap3ArrayMutExt<K1, K2, K3, T, S, C>
 where
     S: AbstractShape,
     C: MultiArrayCollection<T>,
 {
+    /// 按线性索引设置数组元素值 / Set an array element value by linear index.
     fn array_set_linear(&mut self, k1: &K1, k2: &K2, k3: &K3, index: usize, value: T) -> bool;
 
+    /// 按多维向量索引设置数组元素值 / Set an array element value by multi-dimensional vector index.
     fn array_set_vector(
         &mut self,
         k1: &K1,
@@ -293,8 +312,10 @@ where
     S: AbstractShape,
     C: MultiArrayCollection<T>,
 {
+    /// 按线性索引获取数组元素引用 / Get a reference to an array element by linear index.
     fn array_get_linear(&self, k1: &K1, k2: &K2, k3: &K3, k4: &K4, index: usize) -> Option<&T>;
 
+    /// 按多维向量索引获取数组元素引用 / Get a reference to an array element by multi-dimensional vector index.
     fn array_get_vector(
         &self,
         k1: &K1,
@@ -338,11 +359,13 @@ where
     }
 }
 
+/// MultiMap4 中 MultiArray 值的可变访问扩展 / Mutable access extension for MultiMap4 values as MultiArray.
 pub trait MultiMap4ArrayMutExt<K1, K2, K3, K4, T, S, C>
 where
     S: AbstractShape,
     C: MultiArrayCollection<T>,
 {
+    /// 按线性索引设置数组元素值 / Set an array element value by linear index.
     fn array_set_linear(
         &mut self,
         k1: &K1,
@@ -353,6 +376,7 @@ where
         value: T,
     ) -> bool;
 
+    /// 按多维向量索引设置数组元素值 / Set an array element value by multi-dimensional vector index.
     fn array_set_vector(
         &mut self,
         k1: &K1,

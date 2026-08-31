@@ -1,3 +1,4 @@
+//! 分散空舱装载限制 / Divide empty loading limits
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
@@ -16,12 +17,15 @@ use crate::framework::demo2::domain::stowage::model::cargo::CargoCode;
 /// - `empty_between_cargo` / `empty_cargo_between_cargo` / `empty_between_empty_cargo`: 按 adjacentPositions 维度
 #[derive(Debug, Clone)]
 pub struct EmptyFlagVariables {
+    /// 非空货物与相邻舱位之间的空舱标志 / Empty flag between non-empty cargo and adjacent position
     /// empty_between_cargo[pair_idx] = IfFunction(loadAmount1 - (loadAmount2 + 1))
     /// loadAmount1 = loadAmountOf(position1) { !Empty }, loadAmount2 = loadAmount[position2]
     pub empty_between_cargo: Vec<usize>,
+    /// 空货物与非空货物之间的空舱标志 / Empty flag for empty cargo between non-empty cargo
     /// empty_cargo_between_cargo[pair_idx] = IfFunction((loadAmount1 + loadAmount2) - 2)
     /// loadAmount1 = loadAmountOf(position1) { Empty }, loadAmount2 = loadAmountOf(position2) { !Empty }
     pub empty_cargo_between_cargo: Vec<usize>,
+    /// 空货物与相邻舱位之间的空舱标志 / Empty flag between empty cargo and adjacent position
     /// empty_between_empty_cargo[pair_idx] = IfFunction(loadAmount1 - (loadAmount2 + 1))
     /// loadAmount1 = loadAmountOf(position1) { Empty }, loadAmount2 = loadAmount[position2]
     pub empty_between_empty_cargo: Vec<usize>,

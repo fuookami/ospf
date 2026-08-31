@@ -6,6 +6,7 @@
 use time::{Duration, OffsetDateTime};
 use std::collections::HashSet;
 use super::ExecutorTrait;
+use crate::domain::common::{TaskPlanId, TaskPlanIdTrait};
 use crate::infrastructure::TimeRange;
 
 /// 任务状态 / Task status
@@ -39,8 +40,11 @@ pub trait TaskPlanTrait<E>: Send + Sync + std::fmt::Debug + 'static
 where
     E: ExecutorTrait,
 {
+    /// 计划 ID 类型 / Plan id type
+    type Id: TaskPlanIdTrait;
+
     /// 计划 ID / Plan ID
-    fn id(&self) -> &str;
+    fn id(&self) -> &Self::Id;
     /// 计划名称 / Plan name
     fn name(&self) -> &str;
     /// 状态集合 / Status set
@@ -117,7 +121,7 @@ where
 #[derive(Debug, Clone)]
 pub struct SingleStepTaskPlan<E: ExecutorTrait> {
     /// 计划 ID / Plan ID
-    pub id: String,
+    pub id: TaskPlanId,
     /// 计划名称 / Plan name
     pub name: String,
     /// 可用执行者列表 / Enabled executors list
@@ -143,7 +147,7 @@ pub struct SingleStepTaskPlan<E: ExecutorTrait> {
 impl<E: ExecutorTrait> SingleStepTaskPlan<E> {
     /// 创建新的单步任务计划 / Create new single step task plan
     pub fn new(
-        id: impl Into<String>,
+        id: impl Into<TaskPlanId>,
         name: impl Into<String>,
         enabled_executors: Vec<E>,
     ) -> Self {
@@ -200,7 +204,9 @@ impl<E: ExecutorTrait> SingleStepTaskPlan<E> {
 }
 
 impl<E: ExecutorTrait> TaskPlanTrait<E> for SingleStepTaskPlan<E> {
-    fn id(&self) -> &str {
+    type Id = TaskPlanId;
+
+    fn id(&self) -> &Self::Id {
         &self.id
     }
 

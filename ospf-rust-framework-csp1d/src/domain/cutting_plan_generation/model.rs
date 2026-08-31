@@ -8,7 +8,7 @@ use ospf_rust_core::solver::SolveValue;
 
 use crate::domain::material::{
     to_f64, Costar, Csp1dQuantity, CuttingPlan, CuttingPlanSlice, Machine, Material, Product,
-    ProductDemand, ShadowPriceMap,
+    ProductDemand, ShadowPriceMap, MaterialId,
 };
 use crate::domain::produce::{Csp1dDomainPolicy, Csp1dGenerationStrategy, Csp1dPricingPolicy};
 
@@ -305,31 +305,52 @@ impl<V: SolveValue> Default for CuttingPlanGenerationInput<V> {
 /// 生成终止原因 / Generation stop reason
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CuttingPlanGenerationStopReason {
+    /// 搜索穷尽 / Search exhausted
     Exhausted,
+    /// 达到最大方案数 / Reached maximum plan count
     MaxPlans,
+    /// 超时 / Timed out
     Timeout,
 }
 
 /// 生成统计 / Generation statistics
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CuttingPlanGenerationStatistics {
+    /// 访问节点数 / Visited node count
     pub visited_nodes: i64,
+    /// 生成候选数 / Generated candidate count
     pub generated_candidates: i64,
+    /// 接受方案数 / Accepted plan count
     pub accepted_plans: i64,
+    /// 不可行候选数 / Infeasible candidate count
     pub infeasible_candidates: i64,
+    /// 重复候选数 / Duplicate candidate count
     pub duplicate_candidates: i64,
+    /// 被支配候选数 / Dominated candidate count
     pub dominated_candidates: i64,
+    /// 幅宽上界剪枝节点数 / Width-bound pruned node count
     pub width_bound_pruned_nodes: i64,
+    /// 刀数约束剪枝节点数 / Knife-bound pruned node count
     pub knife_bound_pruned_nodes: i64,
+    /// 长度约束剪枝条目数 / Length-bound pruned entry count
     pub length_bound_pruned_entries: i64,
+    /// 物料幅宽索引缓存命中数 / Material width index cache hit count
     pub material_width_index_cache_hits: i64,
+    /// 物料切片模板缓存命中数 / Material slice template cache hit count
     pub material_slice_template_cache_hits: i64,
+    /// 数量缓存命中数 / Quantity cache hit count
     pub quantity_cache_hits: i64,
+    /// 数量缓存未命中数 / Quantity cache miss count
     pub quantity_cache_misses: i64,
+    /// 物料切片模板缓存未命中数 / Material slice template cache miss count
     pub material_slice_template_cache_misses: i64,
+    /// 跨工作线程重复候选数 / Cross-worker duplicate candidate count
     pub cross_worker_duplicate_candidates: i64,
+    /// 跨贡献支配数 / Cross-contribution dominated count
     pub cross_contribution_dominated: i64,
+    /// 耗时毫秒 / Elapsed milliseconds
     pub elapsed_milliseconds: i64,
+    /// 停止原因 / Stop reason
     pub stop_reason: CuttingPlanGenerationStopReason,
 }
 
@@ -353,23 +374,41 @@ impl CuttingPlanGenerationStopReason {
 /// benchmark 快照 / Benchmark snapshot
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CuttingPlanGenerationBenchmarkSnapshot {
+    /// 生成器名称 / Generator name
     pub generator_name: String,
+    /// 访问节点数 / Visited node count
     pub visited_nodes: i64,
+    /// 生成候选数 / Generated candidate count
     pub generated_candidates: i64,
+    /// 接受方案数 / Accepted plan count
     pub accepted_plans: i64,
+    /// 不可行候选数 / Infeasible candidate count
     pub infeasible_candidates: i64,
+    /// 重复候选数 / Duplicate candidate count
     pub duplicate_candidates: i64,
+    /// 被支配候选数 / Dominated candidate count
     pub dominated_candidates: i64,
+    /// 幅宽上界剪枝节点数 / Width-bound pruned node count
     pub width_bound_pruned_nodes: i64,
+    /// 刀数约束剪枝节点数 / Knife-bound pruned node count
     pub knife_bound_pruned_nodes: i64,
+    /// 长度约束剪枝条目数 / Length-bound pruned entry count
     pub length_bound_pruned_entries: i64,
+    /// 物料幅宽索引缓存命中数 / Material width index cache hit count
     pub material_width_index_cache_hits: i64,
+    /// 物料切片模板缓存命中数 / Material slice template cache hit count
     pub material_slice_template_cache_hits: i64,
+    /// 数量缓存命中数 / Quantity cache hit count
     pub quantity_cache_hits: i64,
+    /// 数量缓存未命中数 / Quantity cache miss count
     pub quantity_cache_misses: i64,
+    /// 物料切片模板缓存未命中数 / Material slice template cache miss count
     pub material_slice_template_cache_misses: i64,
+    /// 跨工作线程重复候选数 / Cross-worker duplicate candidate count
     pub cross_worker_duplicate_candidates: i64,
+    /// 跨贡献支配数 / Cross-contribution dominated count
     pub cross_contribution_dominated: i64,
+    /// 停止原因 / Stop reason
     pub stop_reason: CuttingPlanGenerationStopReason,
 }
 
@@ -430,7 +469,9 @@ impl CuttingPlanGenerationBenchmarkSnapshot {
 /// 生成报告 / Generation report
 #[derive(Debug, Clone)]
 pub struct CuttingPlanGenerationReport<V: SolveValue> {
+    /// 生成的切割方案 / Generated cutting plans
     pub plans: Vec<CuttingPlan<V>>,
+    /// 生成统计 / Generation statistics
     pub statistics: CuttingPlanGenerationStatistics,
 }
 
@@ -639,10 +680,14 @@ impl<V: SolveValue> Default for Csp1dPricingInput<V> {
 /// 定价目标配置 / Pricing objective configuration
 #[derive(Debug, Clone)]
 pub struct Csp1dPricingObjectiveConfig<V: SolveValue> {
+    /// 方案使用惩罚 / Plan usage penalty
     pub plan_usage_penalty: Option<V>,
+    /// 余宽惩罚 / Trim width penalty
     pub trim_width_penalty: Option<V>,
+    /// 余料惩罚 / Rest material penalty
     pub rest_material_penalty: Option<V>,
-    pub material_cost_penalty: std::collections::BTreeMap<String, V>,
+    /// 物料成本惩罚 / Material cost penalties
+    pub material_cost_penalty: std::collections::BTreeMap<MaterialId, V>,
 }
 
 impl<V: SolveValue> Default for Csp1dPricingObjectiveConfig<V> {

@@ -1,3 +1,4 @@
+//! 压舱物重量限制 / Ballast weight limits
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;

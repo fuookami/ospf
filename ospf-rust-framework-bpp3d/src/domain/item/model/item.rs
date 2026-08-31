@@ -9,7 +9,7 @@
 #[derive(Debug, Clone)]
 pub struct ActualItem<V, U: UnitTrait> {
     /// 标识 / ID
-    pub id: String,
+    pub id: ItemId,
     /// 名称 / Name
     pub name: String,
     /// 包装编码 / Package code

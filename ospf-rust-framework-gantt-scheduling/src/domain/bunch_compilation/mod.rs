@@ -26,3 +26,4 @@ pub use slot_based::{
     SlotBasedCapacityPreSolver,
     StaticSlotBasedCapacityPreSolver,
 };
+pub use service::limits::ExecutorSlotCompilationConstraint;

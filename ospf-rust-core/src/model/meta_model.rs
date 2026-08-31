@@ -42,6 +42,7 @@ impl<V> LinearExpressionBuilder<V>
 where
     V: Zero,
 {
+    /// 创建空的线性表达式构建器。 / Create an empty linear expression builder.
     pub fn new() -> Self {
         Self {
             terms: Vec::new(),
@@ -60,6 +61,7 @@ where
 }
 
 impl<V> LinearExpressionBuilder<V> {
+    /// 创建带指定常数项的线性表达式构建器。 / Create a linear expression builder with the specified constant term.
     pub fn with_constant(constant_term: V) -> Self {
         Self {
             terms: Vec::new(),
@@ -67,11 +69,13 @@ impl<V> LinearExpressionBuilder<V> {
         }
     }
 
+    /// 添加一个项（变量索引与系数）。 / Add a term (variable index and coefficient).
     pub fn term(mut self, index: usize, coefficient: V) -> Self {
         self.terms.push((index, coefficient));
         self
     }
 
+    /// 批量添加项。 / Add multiple terms.
     pub fn terms<I>(mut self, terms: I) -> Self
     where
         I: IntoIterator<Item = (usize, V)>,
@@ -80,11 +84,13 @@ impl<V> LinearExpressionBuilder<V> {
         self
     }
 
+    /// 设置常数项。 / Set the constant term.
     pub fn constant(mut self, constant_term: V) -> Self {
         self.constant_term = constant_term;
         self
     }
 
+    /// 拆分为项列表和常数项。 / Decompose into terms list and constant term.
     pub fn into_parts(self) -> (Vec<(usize, V)>, V) {
         (self.terms, self.constant_term)
     }
@@ -94,6 +100,7 @@ impl<V> LinearExpressionBuilder<V>
 where
     V: Clone,
 {
+    /// 构建为线性多项式。 / Build into a linear polynomial.
     pub fn build(self) -> Linear<V> {
         let (terms, constant_term) = self.into_parts();
         let monomials = terms
@@ -103,6 +110,7 @@ where
         Linear::new(monomials, constant_term)
     }
 
+    /// 构建为小于等于约束。 / Build into a less-than-or-equal constraint.
     pub fn le(self, rhs: V, name: impl Into<String>) -> LinearConstraintInput<V> {
         let (terms, constant_term) = self.into_parts();
         LinearConstraintInput::new(
@@ -114,6 +122,7 @@ where
         )
     }
 
+    /// 构建为大于等于约束。 / Build into a greater-than-or-equal constraint.
     pub fn ge(self, rhs: V, name: impl Into<String>) -> LinearConstraintInput<V> {
         let (terms, constant_term) = self.into_parts();
         LinearConstraintInput::new(
@@ -125,6 +134,7 @@ where
         )
     }
 
+    /// 构建为等式约束。 / Build into an equality constraint.
     pub fn eq(self, rhs: V, name: impl Into<String>) -> LinearConstraintInput<V> {
         let (terms, constant_term) = self.into_parts();
         LinearConstraintInput::new(name, terms, constant_term, ConstraintRelation::Equal, rhs)
@@ -135,11 +145,13 @@ impl<V> LinearExpressionBuilder<V>
 where
     V: Clone + One + Zero,
 {
+    /// 构建为最大化目标。 / Build into a maximization objective.
     pub fn maximize(self, name: impl Into<String>) -> LinearObjectiveInput<V> {
         let (terms, _constant_term) = self.into_parts();
         LinearObjectiveInput::maximize(name).terms(terms)
     }
 
+    /// 构建为最小化目标。 / Build into a minimization objective.
     pub fn minimize(self, name: impl Into<String>) -> LinearObjectiveInput<V> {
         let (terms, _constant_term) = self.into_parts();
         LinearObjectiveInput::minimize(name).terms(terms)
@@ -150,18 +162,28 @@ where
 /// Linear constraint input.
 #[derive(Debug, Clone)]
 pub struct LinearConstraintInput<V = f64> {
+    /// 约束名称。 / Constraint name.
     pub name: String,
+    /// 线性项列表（变量索引，系数）。 / Linear terms list (variable index, coefficient).
     pub terms: Vec<(usize, V)>,
+    /// 常数项。 / Constant term.
     pub constant_term: V,
+    /// 约束关系。 / Constraint relation.
     pub relation: ConstraintRelation,
+    /// 右端项。 / Right-hand side value.
     pub rhs: V,
+    /// 约束组。 / Constraint group.
     pub group: Option<Arc<ConstraintGroup>>,
+    /// 是否为延迟约束。 / Whether this is a lazy constraint.
     pub lazy: bool,
+    /// 优先级。 / Priority.
     pub priority: u32,
+    /// 附加参数。 / Additional arguments.
     pub args: Option<String>,
 }
 
 impl<V> LinearConstraintInput<V> {
+    /// 创建新的线性约束输入。 / Create a new linear constraint input.
     pub fn new(
         name: impl Into<String>,
         terms: Vec<(usize, V)>,
@@ -182,26 +204,31 @@ impl<V> LinearConstraintInput<V> {
         }
     }
 
+    /// 设置约束组。 / Set the constraint group.
     pub fn group(mut self, group: Option<Arc<ConstraintGroup>>) -> Self {
         self.group = group;
         self
     }
 
+    /// 设置是否为延迟约束。 / Set whether this is a lazy constraint.
     pub fn lazy(mut self, lazy: bool) -> Self {
         self.lazy = lazy;
         self
     }
 
+    /// 设置优先级。 / Set the priority.
     pub fn priority(mut self, priority: u32) -> Self {
         self.priority = priority;
         self
     }
 
+    /// 设置约束优先级（强类型）。 / Set the constraint priority (strongly typed).
     pub fn constraint_priority(mut self, priority: ConstraintPriority) -> Self {
         self.priority = priority.into();
         self
     }
 
+    /// 设置附加参数。 / Set additional arguments.
     pub fn args(mut self, args: Option<String>) -> Self {
         self.args = args;
         self
@@ -212,11 +239,13 @@ impl<V> LinearConstraintInput<V>
 where
     V: Clone,
 {
+    /// 添加一个项（变量索引与系数）。 / Add a term (variable index and coefficient).
     pub fn term(mut self, index: usize, coefficient: V) -> Self {
         self.terms.push((index, coefficient));
         self
     }
 
+    /// 批量添加项。 / Add multiple terms.
     pub fn terms<I>(mut self, terms: I) -> Self
     where
         I: IntoIterator<Item = (usize, V)>,
@@ -225,6 +254,7 @@ where
         self
     }
 
+    /// 设置常数项。 / Set the constant term.
     pub fn constant(mut self, constant_term: V) -> Self {
         self.constant_term = constant_term;
         self
@@ -235,6 +265,7 @@ impl<V> LinearConstraintInput<V>
 where
     V: Zero,
 {
+    /// 创建小于等于约束（无项）。 / Create a less-than-or-equal constraint (no terms).
     pub fn less_equal(name: impl Into<String>, rhs: V) -> Self {
         Self::new(
             name,
@@ -245,6 +276,7 @@ where
         )
     }
 
+    /// 创建大于等于约束（无项）。 / Create a greater-than-or-equal constraint (no terms).
     pub fn greater_equal(name: impl Into<String>, rhs: V) -> Self {
         Self::new(
             name,
@@ -255,6 +287,7 @@ where
         )
     }
 
+    /// 创建等式约束（无项）。 / Create an equality constraint (no terms).
     pub fn equal(name: impl Into<String>, rhs: V) -> Self {
         Self::new(name, Vec::new(), V::zero(), ConstraintRelation::Equal, rhs)
     }
@@ -264,9 +297,13 @@ where
 /// Linear objective input.
 #[derive(Debug, Clone)]
 pub struct LinearObjectiveInput<V = f64> {
+    /// 目标名称。 / Objective name.
     pub name: String,
+    /// 目标类型。 / Objective category.
     pub category: ObjectiveCategory,
+    /// 线性项列表（变量索引，系数）。 / Linear terms list (variable index, coefficient).
     pub terms: Vec<(usize, V)>,
+    /// 权重。 / Weight.
     pub weight: V,
 }
 
@@ -274,6 +311,7 @@ impl<V> LinearObjectiveInput<V>
 where
     V: Zero + One,
 {
+    /// 创建最大化目标。 / Create a maximization objective.
     pub fn maximize(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -283,6 +321,7 @@ where
         }
     }
 
+    /// 创建最小化目标。 / Create a minimization objective.
     pub fn minimize(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -294,11 +333,13 @@ where
 }
 
 impl<V> LinearObjectiveInput<V> {
+    /// 设置目标类型。 / Set the objective category.
     pub fn category(mut self, category: ObjectiveCategory) -> Self {
         self.category = category;
         self
     }
 
+    /// 设置权重。 / Set the weight.
     pub fn weight(mut self, weight: V) -> Self {
         self.weight = weight;
         self
@@ -309,11 +350,13 @@ impl<V> LinearObjectiveInput<V>
 where
     V: Clone,
 {
+    /// 添加一个项（变量索引与系数）。 / Add a term (variable index and coefficient).
     pub fn term(mut self, index: usize, coefficient: V) -> Self {
         self.terms.push((index, coefficient));
         self
     }
 
+    /// 批量添加项。 / Add multiple terms.
     pub fn terms<I>(mut self, terms: I) -> Self
     where
         I: IntoIterator<Item = (usize, V)>,

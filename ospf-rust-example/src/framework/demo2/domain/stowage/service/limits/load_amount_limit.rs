@@ -1,3 +1,4 @@
+//! 装载数量限制 / Load amount limits
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;

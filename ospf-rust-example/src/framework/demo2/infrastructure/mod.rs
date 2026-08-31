@@ -1,3 +1,4 @@
+//! Demo2 基础设施层 / Demo2 infrastructure layer.
 pub mod benders_solver;
 pub mod benders_strategy;
 pub mod dto;

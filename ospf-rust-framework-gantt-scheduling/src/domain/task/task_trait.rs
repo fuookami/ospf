@@ -3,10 +3,14 @@
 //! 定义任务的核心接口，包括时间、成本、约束和分配。
 //! Defines the core interface for tasks, including time, cost, constraints, and assignment.
 
-use time::{Duration, OffsetDateTime};
 use std::collections::HashSet;
-use super::{ExecutorTrait, AssignmentPolicyTrait, TaskStatus};
+
+use time::{Duration, OffsetDateTime};
+
+use crate::domain::common::{TaskId, TaskIdTrait};
 use crate::infrastructure::TimeRange;
+
+use super::{AssignmentPolicyTrait, ExecutorTrait, TaskStatus};
 
 /// 任务类型标识 / Task type identifier
 ///
@@ -35,16 +39,22 @@ impl TaskType {
 /// 复合键，包含任务 ID 和类型。
 /// Composite key containing task ID and type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TaskKey {
+pub struct TaskKey<I = TaskId>
+where
+    I: TaskIdTrait,
+{
     /// 任务 ID / Task ID
-    pub id: String,
+    pub id: I,
     /// 任务类型 / Task type
     pub type_: TaskType,
 }
 
-impl TaskKey {
+impl<I> TaskKey<I>
+where
+    I: TaskIdTrait,
+{
     /// 创建新的任务键 / Create new task key
-    pub fn new(id: impl Into<String>, type_: TaskType) -> Self {
+    pub fn new(id: impl Into<I>, type_: TaskType) -> Self {
         Self { id: id.into(), type_ }
     }
 }
@@ -62,12 +72,15 @@ where
     E: ExecutorTrait,
     A: AssignmentPolicyTrait<E>,
 {
+    /// 任务 ID 类型 / Task id type
+    type Id: TaskIdTrait;
+
     // ========================================================================
     // 核心属性（必须实现）/ Core properties (must implement)
     // ========================================================================
 
     /// 任务 ID / Task ID
-    fn id(&self) -> &str;
+    fn id(&self) -> &Self::Id;
     /// 任务名称 / Task name
     fn name(&self) -> &str;
 
@@ -81,12 +94,12 @@ where
     }
 
     /// 任务键 / Task key
-    fn key(&self) -> TaskKey {
-        TaskKey::new(self.id(), self.type_())
+    fn key(&self) -> TaskKey<Self::Id> {
+        TaskKey::new(self.id().clone(), self.type_())
     }
 
     /// 实际 ID / Actual ID
-    fn actual_id(&self) -> &str {
+    fn actual_id(&self) -> &Self::Id {
         self.id()
     }
 
@@ -305,8 +318,8 @@ where
     /// Connection time between two adjacent tasks.
     fn connection_time(
         &self,
-        _prev_task: Option<&dyn TaskTrait<E, A>>,
-        _succ_task: Option<&dyn TaskTrait<E, A>>,
+        _prev_task: Option<&dyn TaskTrait<E, A, Id = Self::Id>>,
+        _succ_task: Option<&dyn TaskTrait<E, A, Id = Self::Id>>,
     ) -> Option<Duration> {
         None
     }
@@ -315,8 +328,8 @@ where
     fn connection_time_for_executor(
         &self,
         _executor: &E,
-        _prev_task: Option<&dyn TaskTrait<E, A>>,
-        _succ_task: Option<&dyn TaskTrait<E, A>>,
+        _prev_task: Option<&dyn TaskTrait<E, A, Id = Self::Id>>,
+        _succ_task: Option<&dyn TaskTrait<E, A, Id = Self::Id>>,
     ) -> Duration {
         Duration::ZERO
     }

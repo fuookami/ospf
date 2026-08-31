@@ -1,8 +1,6 @@
-//! Resistance units - 电阻单位
-//! Resistance units - SI resistance units
+//! 电阻单位 / Resistance units
 //!
-//! 提供电阻量纲的 SI 单位定义，包括欧姆、千欧、兆欧等。
-//! Provides SI unit definitions for resistance dimension, including ohm, kiloohm, megaohm, etc.
+//! 提供电阻量纲的 SI 单位定义，包括欧姆、千欧、兆欧等 / Provides SI unit definitions for resistance dimension, including ohm, kiloohm, megaohm, etc
 
 use crate::dimension::derived::Resistance;
 use crate::scale::{KILO, MEGA};

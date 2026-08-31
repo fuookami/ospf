@@ -1,3 +1,14 @@
+//! 适航安全约束限制 / Airworthiness security constraint limits
+//!
+//! 包含各种适航性约束的实现，如相邻间隙、压舱物、CLIM、
+//! 累积载荷、包络线、水平安定面、线密度、低载荷、业载、
+//! 表面密度、总重、非对称线密度、区域载荷等限制。
+//!
+//! Contains implementations of various airworthiness constraints, such as
+//! adjacent gap, ballast weight, CLIM, cumulative load, envelope,
+//! horizontal stabilizer, linear density, low payload, payload,
+//! surface density, total weight, unsymmetrical linear density,
+//! and zone load limits.
 pub mod adjacent_gap_limit;
 pub mod ballast_weight_limit;
 pub mod clim_limit;

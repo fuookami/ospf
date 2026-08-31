@@ -1,3 +1,9 @@
+//! 物理量的功能扩展模块 / Functional extension module for quantities
+//!
+//! 提供维度追踪、单位转换、表达式求值、时长转换、最值运算和值域操作等功能扩展。
+//! Provides functional extensions for dimension tracking, unit conversion,
+//! expression evaluation, duration conversion, min/max operations, and value range operations.
+
 use std::collections::HashMap;
 use std::ops::{Add, Mul, Sub};
 use std::sync::RwLock;
@@ -16,22 +22,36 @@ use crate::unit::conversion_value::UnitConversionValue;
 use crate::unit::derived::{Day, Hour, Microsecond, Millisecond, Minute, Nanosecond, Second, Year};
 use crate::unit::{CTUnit, Unit};
 
+/// 算术运算类型 / Arithmetic operation types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operation {
+    /// 加法 / Addition
     Add,
+    /// 减法 / Subtraction
     Subtract,
+    /// 乘法 / Multiplication
     Multiply,
+    /// 除法 / Division
     Divide,
 }
 
+/// 带有维度信息的符号 / A symbol with associated dimension information
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DimensionedSymbol {
+    /// 符号 / The symbol
     pub symbol: OwnedSymbol,
+    /// 导出量纲 / The derived quantity (dimension)
     pub quantity: DerivedQuantity,
+    /// 首选单位 / Preferred unit for display
     pub preferred_unit: Option<Unit>,
 }
 
 impl DimensionedSymbol {
+    /// 创建新的带维度符号 / Create a new dimensioned symbol
+    ///
+    /// - `symbol` - 符号 / the symbol
+    /// - `quantity` - 导出量纲 / the derived quantity
+    /// - `preferred_unit` - 首选单位 / preferred unit
     pub fn new(
         symbol: OwnedSymbol,
         quantity: DerivedQuantity,
@@ -44,39 +64,48 @@ impl DimensionedSymbol {
         }
     }
 
+    /// 判断是否可与另一个符号做加法（量纲相同） / Check if this symbol can be added to another (same dimension)
     pub fn can_add_to(&self, other: &Self) -> bool {
         self.quantity == other.quantity
     }
 
+    /// 与另一个符号相乘，返回结果量纲 / Multiply with another symbol, returning the resulting dimension
     pub fn multiply_with(&self, other: &Self) -> DerivedQuantity {
         (&self.quantity * &other.quantity).build()
     }
 
+    /// 除以另一个符号，返回结果量纲 / Divide by another symbol, returning the resulting dimension
     pub fn divide_by(&self, other: &Self) -> DerivedQuantity {
         (&self.quantity / &other.quantity).build()
     }
 }
 
+/// 符号维度注册表，将符号映射到其维度信息 / Registry mapping symbols to their dimension information
 #[derive(Debug, Default)]
 pub struct SymbolDimensionRegistry {
+    /// 符号到维度信息的映射 / Map from symbol to its dimensioned info
     symbol_dimensions: RwLock<HashMap<OwnedSymbol, DimensionedSymbol>>,
 }
 
 impl SymbolDimensionRegistry {
+    /// 创建空的符号维度注册表 / Create an empty symbol dimension registry
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// 注册一个带维度符号 / Register a dimensioned symbol
     pub fn register(&self, symbol: DimensionedSymbol) {
         let mut guard = write_unwrap!(self.symbol_dimensions);
         guard.insert(symbol.symbol.clone(), symbol);
     }
 
+    /// 获取符号的维度信息 / Get the dimension info for a symbol
     pub fn get_dimension(&self, symbol: &OwnedSymbol) -> Option<DimensionedSymbol> {
         let guard = read_unwrap!(self.symbol_dimensions);
         guard.get(symbol).cloned()
     }
 
+    /// 验证一组符号是否可进行加减运算（量纲必须一致） / Validate that a set of symbols can be added/subtracted (dimensions must match)
     pub fn validate_add_sub_dimension(&self, symbols: &[OwnedSymbol]) -> Ret<()> {
         if symbols.is_empty() {
             return Ok(());
@@ -109,6 +138,7 @@ impl SymbolDimensionRegistry {
         Ok(())
     }
 
+    /// 根据运算类型推断两个符号运算后的量纲 / Infer the resulting dimension from two symbols and an operation
     pub fn infer_dimension(
         &self,
         symbol1: &OwnedSymbol,
@@ -149,30 +179,44 @@ impl SymbolDimensionRegistry {
         }
     }
 
+    /// 检查符号是否已注册 / Check if a symbol is registered
     pub fn is_registered(&self, symbol: &OwnedSymbol) -> bool {
         let guard = read_unwrap!(self.symbol_dimensions);
         guard.contains_key(symbol)
     }
 
+    /// 注销符号，返回是否成功移除 / Unregister a symbol, returning whether it was removed
     pub fn unregister(&self, symbol: &OwnedSymbol) -> bool {
         let mut guard = write_unwrap!(self.symbol_dimensions);
         guard.remove(symbol).is_some()
     }
 
+    /// 清空所有已注册的符号 / Clear all registered symbols
     pub fn clear(&self) {
         let mut guard = write_unwrap!(self.symbol_dimensions);
         guard.clear();
     }
 }
 
+/// 线性物理量类型别名 / Linear quantity type alias
 pub type QuantityLinear<V, U = Unit> = Quantity<Linear<V>, U>;
+/// 二次物理量类型别名 / Quadratic quantity type alias
 pub type QuantityQuadratic<V, U = Unit> = Quantity<Quadratic<V>, U>;
+/// 规范物理量类型别名 / Canonical quantity type alias
 pub type QuantityCanonical<V, U = Unit> = Quantity<Canonical<V>, U>;
 
+/// 线性物理量的运行时扩展 / Runtime extension trait for linear quantities
+///
+/// 提供带维度检查的单位转换和加减运算。
+/// Provides dimension-checked unit conversion, addition, and subtraction.
 pub trait RuntimeLinearQuantityExt<V> {
+    /// 转换到目标单位，量纲不匹配时返回错误 / Convert to the target unit; returns error on dimension mismatch
     fn to_unit(&self, target: &Unit) -> Ret<QuantityLinear<V>>;
+    /// 尝试转换到目标单位，失败时返回 None / Try converting to the target unit; returns None on failure
     fn try_to_unit(&self, target: &Unit) -> Option<QuantityLinear<V>>;
+    /// 带维度检查的加法 / Dimension-checked addition
     fn checked_add(&self, other: &QuantityLinear<V>) -> Ret<QuantityLinear<V>>;
+    /// 带维度检查的减法 / Dimension-checked subtraction
     fn checked_sub(&self, other: &QuantityLinear<V>) -> Ret<QuantityLinear<V>>;
 }
 
@@ -256,10 +300,18 @@ where
     }
 }
 
+/// 二次物理量的运行时扩展 / Runtime extension trait for quadratic quantities
+///
+/// 提供带维度检查的单位转换和加减运算。
+/// Provides dimension-checked unit conversion, addition, and subtraction.
 pub trait RuntimeQuadraticQuantityExt<V> {
+    /// 转换到目标单位，量纲不匹配时返回错误 / Convert to the target unit; returns error on dimension mismatch
     fn to_unit(&self, target: &Unit) -> Ret<QuantityQuadratic<V>>;
+    /// 尝试转换到目标单位，失败时返回 None / Try converting to the target unit; returns None on failure
     fn try_to_unit(&self, target: &Unit) -> Option<QuantityQuadratic<V>>;
+    /// 带维度检查的加法 / Dimension-checked addition
     fn checked_add(&self, other: &QuantityQuadratic<V>) -> Ret<QuantityQuadratic<V>>;
+    /// 带维度检查的减法 / Dimension-checked subtraction
     fn checked_sub(&self, other: &QuantityQuadratic<V>) -> Ret<QuantityQuadratic<V>>;
 }
 
@@ -345,13 +397,21 @@ where
     }
 }
 
+/// 规范物理量的运行时扩展 / Runtime extension trait for canonical quantities
+///
+/// 提供带维度检查的单位转换和加减运算。
+/// Provides dimension-checked unit conversion, addition, and subtraction.
 pub trait RuntimeCanonicalQuantityExt<V, E: Exponent> {
+    /// 转换到目标单位，量纲不匹配时返回错误 / Convert to the target unit; returns error on dimension mismatch
     fn to_unit(&self, target: &Unit) -> Ret<Quantity<Canonical<V, E>, Unit>>;
+    /// 尝试转换到目标单位，失败时返回 None / Try converting to the target unit; returns None on failure
     fn try_to_unit(&self, target: &Unit) -> Option<Quantity<Canonical<V, E>, Unit>>;
+    /// 带维度检查的加法 / Dimension-checked addition
     fn checked_add(
         &self,
         other: &Quantity<Canonical<V, E>, Unit>,
     ) -> Ret<Quantity<Canonical<V, E>, Unit>>;
+    /// 带维度检查的减法 / Dimension-checked subtraction
     fn checked_sub(
         &self,
         other: &Quantity<Canonical<V, E>, Unit>,
@@ -447,15 +507,19 @@ where
     }
 }
 
+/// 线性物理量的表达式求值扩展 / Expression evaluation extension for linear quantities
 pub trait LinearQuantityEvaluateExt<V, U: UnitTrait> {
+    /// 用给定值完全求值，返回常数物理量 / Fully evaluate with given values, returning a constant quantity
     fn evaluate(&self, values: &HashMap<OwnedSymbol, V>) -> Quantity<V, U>
     where
         V: Evaluatable;
 
+    /// 用给定值部分求值，返回仍含未求值符号的线性物理量 / Partially evaluate with given values, returning a linear quantity with remaining symbols
     fn partial_evaluate(&self, values: &HashMap<OwnedSymbol, V>) -> QuantityLinear<V, U>
     where
         V: Evaluatable;
 
+    /// 按符号顺序用值数组求值 / Evaluate using ordered symbol-value pairs
     fn evaluate_ordered(&self, symbols: &[OwnedSymbol], values: &[V]) -> Quantity<V, U>
     where
         V: Evaluatable;
@@ -497,15 +561,19 @@ where
     }
 }
 
+/// 二次物理量的表达式求值扩展 / Expression evaluation extension for quadratic quantities
 pub trait QuadraticQuantityEvaluateExt<V, U: UnitTrait> {
+    /// 用给定值完全求值，返回常数物理量 / Fully evaluate with given values, returning a constant quantity
     fn evaluate(&self, values: &HashMap<OwnedSymbol, V>) -> Quantity<V, U>
     where
         V: Evaluatable;
 
+    /// 用给定值部分求值，返回仍含未求值符号的二次物理量 / Partially evaluate with given values, returning a quadratic quantity with remaining symbols
     fn partial_evaluate(&self, values: &HashMap<OwnedSymbol, V>) -> QuantityQuadratic<V, U>
     where
         V: Evaluatable;
 
+    /// 按符号顺序用值数组求值 / Evaluate using ordered symbol-value pairs
     fn evaluate_ordered(&self, symbols: &[OwnedSymbol], values: &[V]) -> Quantity<V, U>
     where
         V: Evaluatable;
@@ -547,15 +615,19 @@ where
     }
 }
 
+/// 规范物理量的表达式求值扩展 / Expression evaluation extension for canonical quantities
 pub trait CanonicalQuantityEvaluateExt<V, E: Exponent, U: UnitTrait> {
+    /// 用给定值完全求值，返回常数物理量 / Fully evaluate with given values, returning a constant quantity
     fn evaluate(&self, values: &HashMap<OwnedSymbol, V>) -> Quantity<V, U>
     where
         V: Evaluatable;
 
+    /// 用给定值部分求值，返回仍含未求值符号的规范物理量 / Partially evaluate with given values, returning a canonical quantity with remaining symbols
     fn partial_evaluate(&self, values: &HashMap<OwnedSymbol, V>) -> Quantity<Canonical<V, E>, U>
     where
         V: Evaluatable;
 
+    /// 按符号顺序用值数组求值 / Evaluate using ordered symbol-value pairs
     fn evaluate_ordered(&self, symbols: &[OwnedSymbol], values: &[V]) -> Quantity<V, U>
     where
         V: Evaluatable;
@@ -598,6 +670,7 @@ where
     }
 }
 
+/// 确保单位为时间量纲 / Ensure the unit has a time dimension
 fn ensure_time_unit(unit: &Unit) -> Ret<()> {
     let second_unit = Second::INSTANT.clone();
     if unit.same_dimension(&second_unit) {
@@ -611,7 +684,9 @@ fn ensure_time_unit(unit: &Unit) -> Ret<()> {
     }
 }
 
+/// 时长物理量扩展，将时间物理量转换为标准时长 / Duration quantity extension, converting a time quantity to a standard Duration
 pub trait DurationQuantityExt {
+    /// 转换为 `std::time::Duration`，要求物理量为时间量纲且非负 / Convert to `std::time::Duration`; requires time dimension and non-negative value
     fn to_duration(&self) -> Ret<Duration>;
 }
 
@@ -640,19 +715,28 @@ impl DurationQuantityExt for Quantity<BigDecimal, Unit> {
     }
 }
 
+/// 标准时长到物理量的转换扩展 / Extension for converting a standard Duration to a time quantity
 pub trait DurationToQuantityExt {
+    /// 转换为指定时间单位的物理量 / Convert to a quantity in the specified time unit
     fn to_time_quantity(&self, unit: &Unit) -> Ret<Quantity<BigDecimal, Unit>>;
+    /// 自动选择最合适的时间单位（默认阈值 1000） / Auto-select the best-fit time unit (default threshold 1000)
     fn to_time_quantity_best_fit(&self) -> Quantity<BigDecimal, Unit> {
         self.to_time_quantity_best_fit_with_threshold(1000.0)
     }
+    /// 自动选择最合适的时间单位，可指定阈值 / Auto-select the best-fit time unit with a custom threshold
     fn to_time_quantity_best_fit_with_threshold(
         &self,
         threshold: f64,
     ) -> Quantity<BigDecimal, Unit>;
+    /// 转换为秒物理量 / Convert to a seconds quantity
     fn to_seconds_quantity(&self) -> Quantity<BigDecimal, Unit>;
+    /// 转换为毫秒物理量 / Convert to a milliseconds quantity
     fn to_milliseconds_quantity(&self) -> Quantity<BigDecimal, Unit>;
+    /// 转换为分钟物理量 / Convert to a minutes quantity
     fn to_minutes_quantity(&self) -> Quantity<BigDecimal, Unit>;
+    /// 转换为小时物理量 / Convert to an hours quantity
     fn to_hours_quantity(&self) -> Quantity<BigDecimal, Unit>;
+    /// 转换为天物理量 / Convert to a days quantity
     fn to_days_quantity(&self) -> Quantity<BigDecimal, Unit>;
 }
 
@@ -739,6 +823,7 @@ impl DurationToQuantityExt for Duration {
     }
 }
 
+/// 返回两个物理量中的较小值，不可比较时返回 None / Return the lesser of two quantities; returns None if not comparable
 pub fn quantity_min<V, U>(lhs: &Quantity<V, U>, rhs: &Quantity<V, U>) -> Option<Quantity<V, U>>
 where
     U: UnitTrait,
@@ -750,6 +835,7 @@ where
     }
 }
 
+/// 返回两个物理量中的较大值，不可比较时返回 None / Return the greater of two quantities; returns None if not comparable
 pub fn quantity_max<V, U>(lhs: &Quantity<V, U>, rhs: &Quantity<V, U>) -> Option<Quantity<V, U>>
 where
     U: UnitTrait,
@@ -761,8 +847,11 @@ where
     }
 }
 
+/// 物理量最值扩展 / Min/max extension for quantities
 pub trait QuantityMinMaxExt: Sized {
+    /// 返回自身与另一个物理量中的较小值 / Return the lesser of self and another quantity
     fn min_with(&self, other: &Self) -> Option<Self>;
+    /// 返回自身与另一个物理量中的较大值 / Return the greater of self and another quantity
     fn max_with(&self, other: &Self) -> Option<Self>;
 }
 
@@ -780,9 +869,13 @@ where
     }
 }
 
+/// 物理量值域扩展，提取上下界和差值 / Value range extension for quantities, extracting bounds and difference
 pub trait QuantityValueRangeExt<V, U: UnitTrait, IL: IntervalTrait, IU: IntervalTrait> {
+    /// 获取下界物理量 / Get the lower bound as a quantity
     fn lower_bound_quantity(&self) -> Quantity<ValueWrapper<V>, U>;
+    /// 获取上界物理量 / Get the upper bound as a quantity
     fn upper_bound_quantity(&self) -> Quantity<ValueWrapper<V>, U>;
+    /// 获取上下界差值物理量 / Get the difference between upper and lower bounds as a quantity
     fn diff_quantity(&self) -> Quantity<ValueWrapper<V>, U>
     where
         ValueWrapper<V>: Sub<Output = ValueWrapper<V>>;
@@ -814,7 +907,9 @@ where
     }
 }
 
+/// 物理量边界值扩展 / Bound value extension for quantities
 pub trait QuantityBoundExt<V, U: UnitTrait, I: IntervalTrait> {
+    /// 获取边界值物理量 / Get the bound value as a quantity
     fn bound_value_quantity(&self) -> Quantity<ValueWrapper<V>, U>;
 }
 
@@ -829,12 +924,15 @@ where
     }
 }
 
+/// 物理量值包装器扩展，提取内部有限值 / Value wrapper extension for quantities, extracting the inner finite value
 pub trait QuantityValueWrapperExt<V, U: UnitTrait> {
+    /// 尝试解包为有限值物理量，无穷大返回 None / Try unwrapping to a finite-value quantity; returns None for infinities
     fn unwrap_quantity(&self) -> Option<Quantity<V, U>>
     where
         V: Clone,
         U: Clone;
 
+    /// 等价于 `unwrap_quantity`，无穷大返回 None / Equivalent to `unwrap_quantity`; returns None for infinities
     fn unwrap_or_none(&self) -> Option<Quantity<V, U>>
     where
         V: Clone,
@@ -843,6 +941,7 @@ pub trait QuantityValueWrapperExt<V, U: UnitTrait> {
         self.unwrap_quantity()
     }
 
+    /// 消费自身并解包为有限值物理量 / Consume self and unwrap to a finite-value quantity
     fn into_unwrapped_quantity(self) -> Option<Quantity<V, U>>;
 }
 

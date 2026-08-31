@@ -1,3 +1,4 @@
+//! 压舱物模型 / Ballast model
 use super::position::Position;
 use super::load::LoadVariables;
 use std::error::Error;
@@ -10,17 +11,20 @@ use ospf_rust_core::variable::UContinuousVariableItem;
 /// 压舱物变量索引 / Ballast variable indices
 #[derive(Debug, Clone)]
 pub struct BallastVariables {
-    /// ballastWeight = 压舱物重量变量
+    /// 压舱物重量变量索引 / Ballast weight variable index
     pub ballast_weight: usize,
-    /// ballastPositions = 可以放置压舱物的舱位索引
+    /// 可放置压舱物的舱位索引 / Indices of positions where ballast can be placed
     pub ballast_positions: Vec<usize>,
 }
 
 /// 压舱物 / Ballast (对齐 Kotlin Ballast)
 #[derive(Debug)]
 pub struct Ballast {
+    /// 可放置压舱物的舱位列表 / Positions where ballast can be placed
     pub ballast_positions: Vec<Position>,
+    /// 最小压舱物重量 / Minimum ballast weight
     pub min_ballast_weight: Option<f64>,
+    /// 建议压舱物重量 / Advice ballast weight
     pub advice_ballast_weight: Option<f64>,
 }
 

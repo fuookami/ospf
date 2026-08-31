@@ -1,3 +1,4 @@
+//! 装载模型 / Stowage model
 use super::item::{Item, ItemStatus};
 use super::position::Position;
 use std::error::Error;
@@ -10,12 +11,16 @@ use ospf_rust_core::variable::{BinaryVariableItem, UContinuousVariableItem};
 /// 装载模式 / Stowage mode (对齐 Kotlin StowageMode)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StowageMode {
+    /// 满载模式 / Full load mode
     FullLoad,
+    /// 预分配模式 / Predistribution mode
     Predistribution,
+    /// 重量推荐模式 / Weight recommendation mode
     WeightRecommendation,
 }
 
 impl StowageMode {
+    /// 是否启用 MAC 优化 / Whether MAC optimization is enabled
     pub fn with_mac_optimization(&self) -> bool {
         matches!(self, StowageMode::FullLoad | StowageMode::WeightRecommendation)
     }
@@ -24,28 +29,32 @@ impl StowageMode {
 /// 装载变量索引 / Stowage variable indices
 #[derive(Debug, Clone)]
 pub struct StowageVariables {
-    /// x[i][j] = 物品 i 是否装载到舱位 j
+    /// 物品装载决策变量索引 / Item-to-position assignment variable indices
     pub x: Vec<Vec<usize>>,
-    /// u[i][j] = 物品 i 是否需要在舱位 j 调整
+    /// 物品调整变量索引 / Item adjustment variable indices
     pub u: Vec<Vec<usize>>,
-    /// stowage[i][j] = 装载状态中间符号索引
+    /// 装载状态中间符号索引 / Stowage status intermediate symbol indices
     pub stowage: Vec<Vec<usize>>,
-    /// loaded[i] = 物品 i 是否被装载到任何舱位
+    /// 物品是否被装载索引 / Whether item is loaded to any position
     pub loaded: Vec<usize>,
 }
 
 /// 装载 / Stowage (对齐 Kotlin Stowage)
 #[derive(Debug)]
 pub struct Stowage {
+    /// 物品列表 / Item list
     pub items: Vec<Item>,
+    /// 舱位列表 / Position list
     pub positions: Vec<Position>,
 }
 
 impl Stowage {
+    /// 判断物品是否需要装载到指定舱位 / Whether the item needs stowage at the specified position
     pub fn stowage_needed(item: &Item, position: &Position) -> bool {
         item.status.stowage_needed() && position.status.stowage_needed && position.enabled(item)
     }
 
+    /// 判断物品是否需要调整到指定舱位 / Whether the item needs adjustment at the specified position
     pub fn adjustment_needed(item: &Item, position: &Position) -> bool {
         if !item.status.adjustment_needed() {
             return false;

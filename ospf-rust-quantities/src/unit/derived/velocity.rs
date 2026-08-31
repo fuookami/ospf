@@ -1,8 +1,6 @@
-//! Velocity units - 速度单位
-//! Velocity units - SI velocity units
+//! 速度单位 / Velocity units
 //!
-//! 提供速度量纲的 SI 单位定义，包括米每秒、千米每小时等。
-//! Provides SI unit definitions for velocity dimension, including meter per second, kilometer per hour, etc.
+//! 提供速度量纲的 SI 单位定义，包括米每秒、千米每小时等 / Provides SI unit definitions for velocity dimension, including meter per second, kilometer per hour, etc
 
 use super::length::{
     Cetimeter, FRNauticalMile, Foot, Inch, Kilometer, Meter, Mile, NauticalMile, RUNauticalMile,

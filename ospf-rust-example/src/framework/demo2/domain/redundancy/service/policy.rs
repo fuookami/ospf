@@ -1,8 +1,13 @@
+//! 冗余管线规格 / Redundancy pipeline specifications
 use crate::framework::demo2::domain::shared::mode_switch::ModeSelector;
 use crate::framework::demo2::domain::shared::pipeline_policy::PipelineSpec;
 use crate::framework::demo2::domain::redundancy::service::limits;
 use crate::framework::demo2::domain::redundancy::service::pipeline_list_generator::RedundancyPipelineStep;
 
+/// 冗余管线规格列表 / Redundancy pipeline specification list
+///
+/// 定义冗余领域中各约束步骤的优先级和模式选择器。
+/// Defines priority and mode selectors for each constraint step in the redundancy domain.
 pub fn pipeline_specs() -> Vec<PipelineSpec<RedundancyPipelineStep>> {
     vec![
         PipelineSpec {

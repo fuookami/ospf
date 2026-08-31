@@ -1,3 +1,4 @@
+//! 航班链接模型模块 / Flight link model module
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -7,13 +8,16 @@ use ospf_rust_core::symbol::LinearExpressionSymbol;
 /// 对齐 Kotlin FlightLink
 #[derive(Debug, Clone)]
 pub struct FlightLink {
+    /// 前序航班标识 / Preceding flight identifier
     pub from_flight: String,
+    /// 后序航班标识 / Succeeding flight identifier
     pub to_flight: String,
+    /// 连接时间 / Connection time
     pub connection_time: time::Duration,
 }
 
 impl FlightLink {
-    /// 注册航班链接符号到模型
+    /// 注册航班链接符号到模型 / Register flight link symbols to model
     /// 对齐 Kotlin FlightLink.register
     pub fn register(
         &self,

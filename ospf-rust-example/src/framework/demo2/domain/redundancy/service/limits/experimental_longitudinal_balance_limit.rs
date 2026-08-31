@@ -1,3 +1,4 @@
+//! 实验性纵向平衡限制 / Experimental longitudinal balance limits
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::{LinearObjectiveInput, MetaModel};
@@ -7,7 +8,7 @@ use crate::framework::demo2::domain::redundancy::aggregation::RedundancyAggregat
 use crate::framework::demo2::domain::redundancy::context::RedundancyContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
-/// 实验性纵向平衡限制: 最小化纵向力矩偏差松弛
+/// 实验性纵向平衡限制: 最小化纵向力矩偏差松弛 / Experimental longitudinal balance limit: minimize longitudinal torque deviation slack
 /// 对齐 Kotlin ExperimentalLongitudinalBalanceLimit
 ///
 /// Kotlin: model.minimize(coefficient * longitudinalBalance.longitudinalTorqueSlack)

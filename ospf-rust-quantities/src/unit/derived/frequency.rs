@@ -1,8 +1,6 @@
-//! Frequency units - 频率单位
-//! Frequency units - SI frequency units
+//! 频率单位 / Frequency units
 //!
-//! 提供频率量纲的 SI 单位定义，包括赫兹、千赫、兆赫、吉赫等。
-//! Provides SI unit definitions for frequency dimension, including hertz, kilohertz, megahertz, gigahertz, etc.
+//! 提供频率量纲的 SI 单位定义，包括赫兹、千赫、兆赫、吉赫等 / Provides SI unit definitions for frequency dimension, including hertz, kilohertz, megahertz, gigahertz, etc
 
 use crate::dimension::derived::Frequency;
 use crate::scale::{GIGA, KILO, MEGA, Scale};

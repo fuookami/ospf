@@ -17,13 +17,12 @@ use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::variable::VariableRange;
 
 use crate::domain::bunch_compilation::model::{BunchCompilation, BunchEntry, BunchSolution};
+use crate::domain::common::{ExecutorId, ExecutorIdTrait};
 use crate::domain::task_compilation::adapter::{
-    extract_value, next_gantt_symbol_id,
-    symbols_to_indexed_1d,
-    IndexedLinearExpressionSymbols1,
+    IndexedLinearExpressionSymbols1, extract_value, next_gantt_symbol_id, symbols_to_indexed_1d,
 };
-use crate::GanttResult;
 use crate::GanttError;
+use crate::GanttResult;
 
 /// 迭代束编译 / Iterative bunch compilation
 ///
@@ -35,9 +34,12 @@ use crate::GanttError;
 /// Core design: Since Rust's LinearExpressionSymbol is immutable, intermediate
 /// expressions are rebuilt when columns are added or removed.
 #[derive(Clone)]
-pub struct IterativeBunchCompilation {
+pub struct IterativeBunchCompilation<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
     /// 基础束编译 / Base bunch compilation
-    pub base: BunchCompilation,
+    pub base: BunchCompilation<I>,
 
     // ---- 累积项源（Option C：分开存储，按需重建）----
     // Accumulated term sources (Option C: store separately, rebuild on demand)
@@ -55,7 +57,10 @@ pub struct IterativeBunchCompilation {
     pub bunch_x_map: HashMap<usize, usize>,
 }
 
-impl std::fmt::Debug for IterativeBunchCompilation {
+impl<I> std::fmt::Debug for IterativeBunchCompilation<I>
+where
+    I: ExecutorIdTrait,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("IterativeBunchCompilation")
             .field("n_tasks", &self.base.n_tasks)
@@ -67,10 +72,22 @@ impl std::fmt::Debug for IterativeBunchCompilation {
     }
 }
 
-impl IterativeBunchCompilation {
-    /// 创建迭代束编译 / Create iterative bunch compilation
-    pub fn new(n_tasks: usize, executor_ids: Vec<String>, with_executor_leisure: bool) -> Self {
-        let base = BunchCompilation::new(n_tasks, executor_ids.clone(), with_executor_leisure);
+impl<I> IterativeBunchCompilation<I>
+where
+    I: ExecutorIdTrait,
+{
+    /// 使用业务 ID 创建迭代束编译 / Create iterative bunch compilation with domain ids
+    pub fn new_with_ids(
+        n_tasks: usize,
+        executor_ids: Vec<impl Into<I>>,
+        with_executor_leisure: bool,
+    ) -> Self {
+        let executor_ids = executor_ids.into_iter().map(Into::into).collect::<Vec<_>>();
+        let base = BunchCompilation::new_with_ids(
+            n_tasks,
+            executor_ids.clone(),
+            with_executor_leisure,
+        );
         let n_executors = executor_ids.len();
 
         Self {
@@ -116,7 +133,7 @@ impl IterativeBunchCompilation {
     pub fn add_columns(
         &mut self,
         iteration: usize,
-        new_bunches: Vec<BunchEntry>,
+        new_bunches: Vec<BunchEntry<I>>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<Vec<usize>> {
         // 委托基础编译注册 x 变量
@@ -479,7 +496,7 @@ impl IterativeBunchCompilation {
     }
 
     /// 提取隐藏执行器 / Extract hidden executors
-    pub fn extract_hidden_executors(&self, solution: &[f64]) -> HashSet<String> {
+    pub fn extract_hidden_executors(&self, solution: &[f64]) -> HashSet<I> {
         let mut hidden = HashSet::new();
         for (executor_index, &z_idx) in self.base.z_indices.iter().enumerate() {
             if let Some(value) = extract_value(solution, z_idx) {
@@ -574,7 +591,7 @@ impl IterativeBunchCompilation {
     }
 
     /// 获取束条目 / Get bunch entry
-    pub fn get_bunch_entry(&self, bunch_index: usize) -> Option<BunchEntry> {
+    pub fn get_bunch_entry(&self, bunch_index: usize) -> Option<BunchEntry<I>> {
         self.base.aggregation.get_bunch(bunch_index).cloned()
     }
 
@@ -586,8 +603,22 @@ impl IterativeBunchCompilation {
     // ---- 内部辅助方法 / Internal helper methods ----
 
     /// 找到执行器 ID 对应的索引 / Find executor index by ID
-    fn find_executor_index(&self, executor_id: &str) -> Option<usize> {
-        self.base.executor_ids.iter().position(|id| id == executor_id)
+    fn find_executor_index(&self, executor_id: &I) -> Option<usize> {
+        self.base
+            .executor_ids
+            .iter()
+            .position(|id| id == executor_id)
+    }
+}
+
+impl IterativeBunchCompilation<ExecutorId> {
+    /// 创建迭代束编译 / Create iterative bunch compilation
+    pub fn new(
+        n_tasks: usize,
+        executor_ids: Vec<impl Into<ExecutorId>>,
+        with_executor_leisure: bool,
+    ) -> Self {
+        Self::new_with_ids(n_tasks, executor_ids, with_executor_leisure)
     }
 }
 
@@ -640,17 +671,19 @@ mod tests {
         let bunches = vec![
             BunchEntry {
                 index: 0,
-                executor_id: "exec_1".to_string(),
+                executor_id: "exec_1".into(),
                 task_indices: vec![0, 1],
                 cost: 5.0,
                 iteration: 0,
+                slot_index: None,
             },
             BunchEntry {
                 index: 1,
-                executor_id: "exec_2".to_string(),
+                executor_id: "exec_2".into(),
                 task_indices: vec![2],
                 cost: 3.0,
                 iteration: 0,
+                slot_index: None,
             },
         ];
 
@@ -692,17 +725,19 @@ mod tests {
         let bunches = vec![
             BunchEntry {
                 index: 0,
-                executor_id: "exec_1".to_string(),
+                executor_id: "exec_1".into(),
                 task_indices: vec![0],
                 cost: 2.0,
                 iteration: 0,
+                slot_index: None,
             },
             BunchEntry {
                 index: 1,
-                executor_id: "exec_1".to_string(),
+                executor_id: "exec_1".into(),
                 task_indices: vec![1],
                 cost: 3.0,
                 iteration: 0,
+                slot_index: None,
             },
         ];
 
@@ -730,10 +765,11 @@ mod tests {
                 0,
                 vec![BunchEntry {
                     index: 0,
-                    executor_id: "exec_1".to_string(),
+                    executor_id: "exec_1".into(),
                     task_indices: vec![0],
                     cost: 2.0,
                     iteration: 0,
+                    slot_index: None,
                 }],
                 &mut model,
             )
@@ -765,17 +801,19 @@ mod tests {
         let bunches = vec![
             BunchEntry {
                 index: 0,
-                executor_id: "exec_1".to_string(),
+                executor_id: "exec_1".into(),
                 task_indices: vec![0, 1],
                 cost: 5.0,
                 iteration: 0,
+                slot_index: None,
             },
             BunchEntry {
                 index: 1,
-                executor_id: "exec_2".to_string(),
+                executor_id: "exec_2".into(),
                 task_indices: vec![2],
                 cost: 3.0,
                 iteration: 0,
+                slot_index: None,
             },
         ];
 
@@ -825,10 +863,11 @@ mod tests {
         let bunches_1 = vec![
             BunchEntry {
                 index: 0,
-                executor_id: "exec_1".to_string(),
+                executor_id: "exec_1".into(),
                 task_indices: vec![0, 1],
                 cost: 5.0,
                 iteration: 0,
+                slot_index: None,
             },
         ];
         compilation.add_columns(0, bunches_1, &mut model).unwrap();
@@ -837,17 +876,19 @@ mod tests {
         let bunches_2 = vec![
             BunchEntry {
                 index: 1,
-                executor_id: "exec_1".to_string(),
+                executor_id: "exec_1".into(),
                 task_indices: vec![0, 1], // 同执行器、同任务集合 → 去重
                 cost: 4.0,
                 iteration: 1,
+                slot_index: None,
             },
             BunchEntry {
                 index: 2,
-                executor_id: "exec_1".to_string(),
+                executor_id: "exec_1".into(),
                 task_indices: vec![0], // 不同任务集合 → 不去重
                 cost: 2.0,
                 iteration: 1,
+                slot_index: None,
             },
         ];
         let added = compilation.add_columns(1, bunches_2, &mut model).unwrap();

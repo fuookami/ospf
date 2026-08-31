@@ -1,4 +1,4 @@
-//! Intermediate-model LP export helpers.
+//! 中间模型 LP 导出辅助工具。 / Intermediate-model LP export helpers.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -18,7 +18,6 @@ use crate::symbol::flatten::{Linear, Quadratic};
 use crate::token::Token;
 use crate::variable::{VariableRange, VariableType};
 
-/// Unified LP export interface for intermediate models.
 /// 模型文件格式 / Model file format
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelFileFormat {
@@ -222,24 +221,24 @@ where
 
 /// 统一 LP 导出接口 / Unified LP export interface
 pub trait LPExportableModel {
-    /// Serialize model into LP-format text with dump options.
     /// 使用转储选项序列化为 LP 格式文本。
+    /// Serialize model into LP-format text with dump options.
     fn to_lp_string_with_options(&self, options: &DumpOptions) -> String;
 
-    /// Serialize model into LP-format text.
     /// 序列化为 LP 格式文本。
+    /// Serialize model into LP-format text.
     fn to_lp_string(&self) -> String {
         self.to_lp_string_with_options(&DumpOptions::default())
     }
 
-    /// Write LP-format text to writer.
     /// 将 LP 格式文本写入 writer。
+    /// Write LP-format text to writer.
     fn write_lp_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         writer.write_all(self.to_lp_string().as_bytes())
     }
 
-    /// Write LP-format text to writer with dump options.
     /// 使用转储选项将 LP 格式文本写入 writer。
+    /// Write LP-format text to writer with dump options.
     fn write_lp_to_with_options<W: Write>(
         &self,
         writer: &mut W,
@@ -248,14 +247,14 @@ pub trait LPExportableModel {
         writer.write_all(self.to_lp_string_with_options(options).as_bytes())
     }
 
-    /// Write LP-format text to file.
     /// 将 LP 格式文本写入文件。
+    /// Write LP-format text to file.
     fn write_lp<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
         fs::write(path, self.to_lp_string())
     }
 
-    /// Write LP-format text to file with dump options.
     /// 使用转储选项将 LP 格式文本写入文件。
+    /// Write LP-format text to file with dump options.
     fn write_lp_with_options<P: AsRef<Path>>(
         &self,
         path: P,
@@ -264,14 +263,14 @@ pub trait LPExportableModel {
         fs::write(path, self.to_lp_string_with_options(options))
     }
 
-    /// Export LP-format text to file.
     /// 导出 LP 格式文本到文件。
+    /// Export LP-format text to file.
     fn export_lp<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
         self.write_lp(path)
     }
 
-    /// Export LP-format text to file with dump options.
     /// 使用转储选项导出 LP 格式文本到文件。
+    /// Export LP-format text to file with dump options.
     fn export_lp_with_options<P: AsRef<Path>>(
         &self,
         path: P,
@@ -280,8 +279,8 @@ pub trait LPExportableModel {
         self.write_lp_with_options(path, options)
     }
 
-    /// Export model to file with selected format.
     /// 按指定格式导出模型到文件。
+    /// Export model to file with selected format.
     fn export<P: AsRef<Path>>(&self, path: P, format: ModelFileFormat) -> io::Result<()> {
         match format {
             ModelFileFormat::Lp => self.export_lp(path),
@@ -289,8 +288,8 @@ pub trait LPExportableModel {
         }
     }
 
-    /// Export model to file with selected format and dump options.
     /// 使用转储选项按指定格式导出模型到文件。
+    /// Export model to file with selected format and dump options.
     fn export_with_options<P: AsRef<Path>>(
         &self,
         path: P,
@@ -303,14 +302,14 @@ pub trait LPExportableModel {
         }
     }
 
-    /// Dump LP-format text to file.
     /// 转储 LP 格式文本到文件。
+    /// Dump LP-format text to file.
     fn dump_lp<P: AsRef<Path>>(&self, path: P, options: &DumpOptions) -> io::Result<()> {
         self.export_lp_with_options(path, options)
     }
 
-    /// Dump model to file with selected format.
     /// 按指定格式转储模型到文件。
+    /// Dump model to file with selected format.
     fn dump<P: AsRef<Path>>(
         &self,
         path: P,

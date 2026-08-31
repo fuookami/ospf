@@ -1,3 +1,4 @@
+//! 编组生成上下文模块 / Bunch generation context module
 use std::collections::HashMap;
 use super::model::{FlightTaskReverse, Graph};
 use super::service::{
@@ -8,15 +9,22 @@ use super::service::{
 /// Bunch 生成上下文 / Bunch generation context
 /// 对齐 FSRA BunchGenerationContext
 pub struct BunchGenerationContext {
+    /// 飞机标识列表 / Aircraft identifier list
     pub aircraft_ids: Vec<String>,
+    /// 飞机位置映射 / Aircraft location map
     pub aircraft_locations: HashMap<String, String>,
+    /// 锁定任务列表 / Locked task list
     pub locked_tasks: Vec<String>,
+    /// 最大编组数量 / Maximum bunch count
     pub max_bunches: usize,
+    /// 缩减成本阈值 / Reduced cost threshold
     pub reduced_cost_threshold: f64,
+    /// 是否允许换序 / Whether order change is allowed
     pub with_order_change: bool,
 }
 
 impl BunchGenerationContext {
+    /// 创建新的编组生成上下文 / Create new bunch generation context
     pub fn new(
         aircraft_ids: Vec<String>,
         aircraft_locations: HashMap<String, String>,

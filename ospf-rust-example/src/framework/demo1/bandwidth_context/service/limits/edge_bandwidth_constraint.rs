@@ -1,12 +1,15 @@
+//! 边带宽约束模块 / Edge bandwidth constraint module
+
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
 use ospf_rust_multiarray::{MultiArray, Shape};
 use crate::framework::demo1::route_context::model::{Edge, Node, Service};
 
+/// 一维线性表达式符号组合类型别名 / 1D linear expression symbol combination type alias
 type Symbols1D = SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>;
 
-/// 从多项式中提取指定 var_index 的系数，不存在则返回 0.0
+/// 从多项式中提取指定 var_index 的系数，不存在则返回 0.0 / Extract coefficient for specified var_index from polynomial, returns 0.0 if not found
 fn coeff_for_var(poly: &ospf_rust_core::symbol::flatten::Linear<f64>, var_index: usize) -> f64 {
     poly.monomials()
         .iter()
@@ -15,6 +18,8 @@ fn coeff_for_var(poly: &ospf_rust_core::symbol::flatten::Linear<f64>, var_index:
         .unwrap_or(0.0)
 }
 
+/// 边带宽约束：y[edge, service] <= serviceAssignment[service] * maxBandwidth / Edge bandwidth constraint
+///
 /// 对齐 Kotlin EdgeBandwidthConstraint:
 /// y[edge, service] <= serviceAssignment[service] * maxBandwidth
 ///
@@ -69,7 +74,7 @@ pub fn apply_edge_bandwidth_constraints(
     Ok(())
 }
 
-/// 通过 y_idx 反查指定 var_index 对应的 service 索引
+/// 通过 y_idx 反查指定 var_index 对应的 service 索引 / Reverse-lookup service index for specified var_index via y_idx
 fn find_service_for_var(
     var_index: usize,
     edge_index: usize,

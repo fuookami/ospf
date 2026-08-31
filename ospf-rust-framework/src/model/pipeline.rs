@@ -4,9 +4,9 @@
 //! 本模块提供三种管道 trait：
 //! This module provides three pipeline traits:
 //!
-//! - [`Pipeline`] - 基础管道，用于模型构建和约束添加
-//! - [`CGPipeline`] - 列生成管道，支持 Shadow Price 管理
-//! - [`HAPipeline`] - 启发式算法管道，用于解的评估
+//! - [`Pipeline`] - 基础管道，用于模型构建和约束添加 / Basic pipeline for model building and constraint addition
+//! - [`CGPipeline`] - 列生成管道，支持 Shadow Price 管理 / Column generation pipeline with Shadow Price management
+//! - [`HAPipeline`] - 启发式算法管道，用于解的评估 / Heuristic algorithm pipeline for solution evaluation
 
 use std::any::Any;
 use std::fmt::Debug;

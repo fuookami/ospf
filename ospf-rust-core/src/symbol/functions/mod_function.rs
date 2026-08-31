@@ -1,4 +1,4 @@
-//! Modulo function symbol.
+//! 取模函数符号 / Modulo function symbol
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -69,17 +69,30 @@ where
 
 const MOD_EPSILON: f64 = 1e-8;
 
-/// Modulo function symbol.
+/// 取模函数符号 / Modulo function symbol.
+///
+/// 表示取模运算 `input mod divisor`，将线性多项式输入对除数取模，
+/// 结果为余数部分，同时引入整数商变量。
+///
+/// Represents the modulo operation `input mod divisor`, taking the remainder
+/// of a linear polynomial input divided by the divisor, with an integer
+/// quotient variable introduced alongside the result.
 #[derive(Debug, Clone)]
 pub struct ModFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 中间符号标识符 / Intermediate symbol identifier
     id: IntermediateSymbolId,
+    /// 输入线性多项式 / Input linear polynomial
     input: Linear<V>,
+    /// 除数 / Divisor
     divisor: V,
+    /// 余数结果变量（连续变量） / Remainder result variable (continuous)
     result_var: ContinuousVariableItem,
+    /// 商变量（整数变量） / Quotient variable (integer)
     quotient_var: IntegerVariableItem,
+    /// 显式声明的依赖标识符列表 / Explicitly declared dependency identifier list
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -87,6 +100,7 @@ impl<V> ModFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建新的取模函数符号 / Create a new modulo function symbol
     pub fn new(id: u64, name: &str, input: Linear<V>, divisor: V) -> Self {
         let group_id = new_group_id();
         let result_var = ContinuousVariableItem::create(VariableId::new(group_id, 0), name);
@@ -103,6 +117,7 @@ where
         }
     }
 
+    /// 设置显式声明的依赖标识符 / Set explicitly declared dependency identifiers
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -114,18 +129,22 @@ where
         cloned
     }
 
+    /// 获取余数结果变量的引用 / Get a reference to the remainder result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取输入线性多项式的引用 / Get a reference to the input linear polynomial
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
+    /// 获取除数的引用 / Get a reference to the divisor
     pub fn divisor(&self) -> &V {
         &self.divisor
     }
 
+    /// 获取商变量的引用 / Get a reference to the quotient variable
     pub fn quotient_variable(&self) -> &IntegerVariableItem {
         &self.quotient_var
     }

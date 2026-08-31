@@ -1,3 +1,4 @@
+//! MAC 聚合初始化器 / MAC aggregation initializer
 use crate::framework::demo2::domain::aircraft::AircraftContext;
 use crate::framework::demo2::domain::mac::{Aggregation, model::*};
 use crate::framework::demo2::domain::stowage::context::StowageContext;

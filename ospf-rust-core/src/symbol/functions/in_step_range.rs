@@ -1,4 +1,4 @@
-//! In-step-range function symbol.
+//! 步进范围函数符号 / In-step-range function symbol
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -18,6 +18,7 @@ use super::super::{
 };
 use super::big_m::{BigMPolicy, infer_linear_bounds_from_tokens};
 
+/// 对线性多项式进行求值 / Evaluate a linear polynomial
 fn evaluate_linear<V>(
     poly: &Linear<V>,
     token_table: &dyn TokenList<V>,
@@ -41,6 +42,7 @@ where
     Some(value)
 }
 
+/// 将值转换为 f64 / Convert a value to f64
 fn to_f64<V>(value: &V) -> Option<f64>
 where
     V: ToPrimitive,
@@ -48,6 +50,7 @@ where
     value.to_f64()
 }
 
+/// 从 f64 转换为值类型 / Convert from f64 into value type
 fn from_f64<V>(value: f64) -> Option<V>
 where
     V: FromPrimitive,
@@ -55,6 +58,7 @@ where
     V::from_f64(value)
 }
 
+/// 将 f64 转换为值类型，失败时返回错误 / Convert f64 to value type, returning error on failure
 fn convert_f64_to_v<V>(value: f64, context: &str) -> Result<V>
 where
     V: FromPrimitive,
@@ -68,24 +72,37 @@ where
     })
 }
 
+/// 默认大 M 常量 / Default big-M constant
 const DEFAULT_BIG_M: f64 = 1_000_000.0;
+/// 大 M 策略 / Big-M policy
 const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
+/// 最大步进点数 / Maximum number of step points
 const MAX_STEP_POINTS: usize = 4096;
+/// 步进精度容差 / Step epsilon tolerance
 const STEP_EPSILON: f64 = 1e-8;
 
-/// Checks if value is in step range.
+/// 步进范围函数，判断值是否在步进范围内。
+/// In-step-range function, checks if a value falls within a stepped range.
 #[derive(Debug, Clone)]
 pub struct InStepRangeFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 中间符号 ID / Intermediate symbol ID
     id: IntermediateSymbolId,
+    /// 输入线性多项式 / Input linear polynomial
     input: Linear<V>,
+    /// 下界 / Lower bound
     lower: V,
+    /// 上界 / Upper bound
     upper: V,
+    /// 步长 / Step size
     step: V,
+    /// 辅助变量组 ID / Auxiliary variable group ID
     aux_group_id: usize,
+    /// 结果二值变量 / Result binary variable
     result_var: BinaryVariableItem,
+    /// 声明的依赖 ID / Declared dependency IDs
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -103,6 +120,16 @@ where
         + FromPrimitive,
     f64: IntoValue<V>,
 {
+    /// 创建新函数 / Create a new function
+    /// 创建新的步进范围函数 / Creates a new in-step-range function.
+    ///
+    /// # 参数 / # Parameters
+    /// - `id` — 符号唯一标识符 / Symbol unique identifier
+    /// - `name` — 符号名称 / Symbol name
+    /// - `input` — 输入线性多项式 / Input linear polynomial
+    /// - `lower` — 下界 / Lower bound
+    /// - `upper` — 上界 / Upper bound
+    /// - `step` — 步长 / Step size
     pub fn new(id: u64, name: &str, input: Linear<V>, lower: V, upper: V, step: V) -> Self {
         let aux_group_id = new_group_id();
         let result_var = BinaryVariableItem::create(VariableId::new(aux_group_id, 0), name);
@@ -119,27 +146,33 @@ where
         }
     }
 
+    /// 设置显式声明的依赖标识符 / Sets the explicitly declared dependency identifiers.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回结果二值变量的引用 / Returns a reference to the result binary variable.
     pub fn result_variable(&self) -> &BinaryVariableItem {
         &self.result_var
     }
 
+    /// 返回输入线性多项式的引用 / Returns a reference to the input linear polynomial.
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
+    /// 返回下界的引用 / Returns a reference to the lower bound.
     pub fn lower_bound(&self) -> &V {
         &self.lower
     }
 
+    /// 返回上界的引用 / Returns a reference to the upper bound.
     pub fn upper_bound(&self) -> &V {
         &self.upper
     }
 
+    /// 返回步长的引用 / Returns a reference to the step size.
     pub fn step(&self) -> &V {
         &self.step
     }

@@ -1,3 +1,4 @@
+//! 转移邻接装载模型 / Transfer adjacent loading model
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -7,14 +8,16 @@ use ospf_rust_core::symbol::function::IfFunction;
 /// 转运邻接装载 / Transfer adjacent loading (对齐 Kotlin TransferAdjacentLoading)
 #[derive(Debug, Clone)]
 pub struct TransferAdjacentLoading {
+    /// 物品标识 / Item identifier
     pub item_id: String,
+    /// 邻接舱位标识 / Adjacent position identifier
     pub adjacent_position_id: String,
 }
 
-/// TransferAdjacentLoading IfFunction 注册结果
+/// TransferAdjacentLoading IfFunction 注册结果 / TransferAdjacentLoading IfFunction registration result
 #[derive(Debug, Clone)]
 pub struct TransferAdjacentLoadingVariables {
-    /// loading_if = IfFunction(condition=x[item][adjacent_position], then=1, else=0) 的结果变量 solver index
+    /// loading_if 的结果变量 solver index / Solver index of loading_if result variable
     /// 当物品被装载到邻接舱位时值为 1，否则为 0
     pub loading_if: usize,
 }

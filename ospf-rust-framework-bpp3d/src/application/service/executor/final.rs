@@ -1,5 +1,5 @@
 
-/// MetaModel final MILP executor / MetaModel final MILP executor
+/// MetaModel 最终 MILP 执行器 / MetaModel final MILP executor
 #[derive(Debug, Clone, Default)]
 pub struct MetaModelFinalExecutor {
     /// 配置 / Config
@@ -87,6 +87,16 @@ impl MetaModelFinalExecutor {
         state: &ColumnGenerationApplicationState,
         backend: &dyn MetaModelSolverBackend,
     ) -> ColumnGenerationFinalExecution {
+        self.execute_with_backend_and_extension(state, backend, None)
+    }
+
+    /// 使用 backend 和可选模型扩展执行 final / Execute final with backend and optional extension
+    pub fn execute_with_backend_and_extension(
+        &self,
+        state: &ColumnGenerationApplicationState,
+        backend: &dyn MetaModelSolverBackend,
+        extension: Option<&dyn ColumnGenerationFinalModelExtension>,
+    ) -> ColumnGenerationFinalExecution {
         let (mut context, assignment, demand_entries) = self.build_context(state);
         let mut model = MetaModel::<f64>::new(&self.config.model_name);
 
@@ -96,6 +106,7 @@ impl MetaModelFinalExecutor {
                 layers: Vec::new(),
                 packed_bins: Vec::new(),
                 objective: None,
+                final_solved: false,
                 diagnostics: None,
                 info: HashMap::from([
                     ("executor".to_string(), "meta_model_final".to_string()),
@@ -135,11 +146,20 @@ impl MetaModelFinalExecutor {
         )));
 
         // Step 4: Register limits and invoke
-        if let Err(error) = context.register_limits(&mut model).and_then(|_| context.invoke(&model)) {
+        if let Err(error) = context
+            .register_limits(&mut model)
+            .and_then(|_| {
+                extension
+                    .map(|extension| extension.register(state, &mut model))
+                    .unwrap_or(Ok(()))
+            })
+            .and_then(|_| context.invoke(&model))
+        {
             return ColumnGenerationFinalExecution {
                 layers: Vec::new(),
                 packed_bins: Vec::new(),
                 objective: None,
+                final_solved: false,
                 diagnostics: None,
                 info: HashMap::from([
                     ("executor".to_string(), "meta_model_final".to_string()),
@@ -156,6 +176,7 @@ impl MetaModelFinalExecutor {
                         layers: Vec::new(),
                         packed_bins: Vec::new(),
                         objective: None,
+                        final_solved: false,
                         diagnostics: None,
                         info: HashMap::from([
                             ("executor".to_string(), "meta_model_final".to_string()),
@@ -192,6 +213,7 @@ impl MetaModelFinalExecutor {
                     layers: Vec::new(),
                     packed_bins: Vec::new(),
                     objective: None,
+                    final_solved: false,
                     diagnostics: Some(diagnostics),
                     info: HashMap::from([
                         ("executor".to_string(), "meta_model_final".to_string()),
@@ -218,6 +240,7 @@ impl MetaModelFinalExecutor {
                 layers: Vec::new(),
                 packed_bins: Vec::new(),
                 objective: None,
+                final_solved: false,
                 diagnostics: None,
                 info: HashMap::from([
                     ("executor".to_string(), "meta_model_final".to_string()),
@@ -361,6 +384,7 @@ impl MetaModelFinalExecutor {
             layers: output_layers,
             packed_bins,
             objective: solve.objective,
+            final_solved: true,
             diagnostics: Some(diagnostics),
             info,
         }

@@ -1,3 +1,4 @@
+//! 力矩模型 / Torque model
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -7,8 +8,11 @@ use ospf_rust_core::symbol::flatten::LinearMonomial;
 /// 力矩 / Torque (对齐 Kotlin Torque)
 #[derive(Debug, Clone)]
 pub struct Torque {
+    /// 估算纵向力矩 / Estimated longitudinal torque
     pub estimate_longitudinal: f64,
+    /// 实际纵向力矩 / Actual longitudinal torque
     pub actual_longitudinal: f64,
+    /// 横向力矩 / Lateral torque
     pub lateral: f64,
 }
 

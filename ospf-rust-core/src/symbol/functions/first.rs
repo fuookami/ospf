@@ -1,4 +1,4 @@
-//! First function symbol.
+//! 首个满足条件函数符号 / First-satisfying function symbol
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -68,19 +68,33 @@ where
     })
 }
 
+/// 默认大 M 常量 / Default big-M constant
 const DEFAULT_BIG_M: f64 = 1_000_000.0;
+/// 大 M 策略 / Big-M policy
 const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
 
+/// 首个满足条件函数 / First-satisfying function
+///
+/// 返回第一个条件为真的表达式值。
 /// Return the first expression value whose condition is true.
+///
+/// 数学形式 / Mathematical Form:
+/// - result = polynomials[i]，其中 conditions[i] 为首个为真的条件
+/// - result = polynomials[i] where conditions[i] is the first true condition
 #[derive(Debug, Clone)]
 pub struct FirstFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 中间符号 ID / Intermediate symbol ID
     id: IntermediateSymbolId,
+    /// 多项式列表 / Polynomial list
     polynomials: Vec<Linear<V>>,
+    /// 条件二值变量列表 / Condition binary variable list
     conditions: Vec<BinaryVariableItem>,
+    /// 结果连续变量 / Result continuous variable
     result_var: ContinuousVariableItem,
+    /// 声明的依赖 ID / Declared dependency IDs
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -88,6 +102,7 @@ impl<V> FirstFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建新函数 / Create a new function
     pub fn new(
         id: u64,
         name: &str,
@@ -105,19 +120,23 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取多项式列表 / Get the polynomial list
     pub fn polynomials(&self) -> &[Linear<V>] {
         &self.polynomials
     }
 
+    /// 获取条件二值变量列表 / Get the condition binary variable list
     pub fn condition_variables(&self) -> &[BinaryVariableItem] {
         &self.conditions
     }

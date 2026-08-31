@@ -50,7 +50,7 @@ where
     /// - `prefix`: 变量名前缀 / Variable name prefix
     /// - `keys`: 领域键列表 / Domain key list
     /// - `model`: 元模型 / Meta model
-    /// - `name_gen`: 名称生成器，接收键引用 / Name generator, receives key reference
+    /// - `name_gen`: 名称后缀生成器，接收键引用 / Name suffix generator, receives key reference
     /// - `range_gen`: 范围生成器，接收键引用 / Range generator, receives key reference
     pub fn new(
         prefix: &str,
@@ -183,6 +183,10 @@ where
 {
     /// 创建并注册二维索引变量组合
     /// Create and register a 2D indexed variable combination
+    ///
+    /// `name_gen` 生成变量名称后缀，`prefix` 由底层变量组合统一添加。
+    /// `name_gen` produces the variable name suffix; the underlying variable
+    /// combination adds `prefix` exactly once.
     pub fn new(
         prefix: &str,
         keys1: &[K1],

@@ -1,3 +1,4 @@
+//! 装载约束限制 / Stowage constraint limits.
 pub mod aog_mat_bulk_conflict_limit;
 pub mod appointment_limit;
 pub mod assignment_limit;

@@ -1,3 +1,5 @@
+//! 可行性判断器 / Feasibility judger
+
 use super::super::model::{Link, Restriction, RestrictionCheckingResult};
 
 /// 可行性判断器 / Feasibility judger
@@ -5,6 +7,7 @@ use super::super::model::{Link, Restriction, RestrictionCheckingResult};
 pub struct FeasibilityJudger;
 
 impl FeasibilityJudger {
+    /// 判断任务组合是否可行 / Judge whether the task combination is feasible
     pub fn judge(
         &self,
         _task_ids: &[String],
@@ -35,6 +38,8 @@ impl FeasibilityJudger {
 /// 可行性结果 / Feasibility result
 #[derive(Debug, Clone)]
 pub struct FeasibilityResult {
+    /// 是否可行 / Whether feasible
     pub feasible: bool,
+    /// 违规原因列表 / Violation reason list
     pub violations: Vec<String>,
 }

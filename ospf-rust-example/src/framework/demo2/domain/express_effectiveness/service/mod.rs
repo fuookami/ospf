@@ -1,3 +1,4 @@
+//! 快递效能领域服务 / Express effectiveness domain service.
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::express_effectiveness::aggregation::ExpressEffectivenessAggregation;
@@ -9,6 +10,9 @@ mod limits;
 pub(crate) mod pipeline_list_generator;
 mod policy;
 
+/// 应用快递效能流水线 / Apply express effectiveness pipeline
+///
+/// 根据流水线模式构建上下文和聚合数据，依次执行各约束和目标注册步骤。
 pub fn apply_express_effectiveness_pipeline(
     model: &mut MetaModel<f64>,
     request: &Demo2Request,

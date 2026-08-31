@@ -1,3 +1,4 @@
+//! 领域管线应用 / Domain pipeline application
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::airworthiness_security::service::apply_airworthiness_security_pipeline;
@@ -10,6 +11,10 @@ use crate::framework::demo2::domain::soft_security::service::apply_soft_security
 use crate::framework::demo2::domain::stowage::service::apply_stowage_pipeline;
 use crate::framework::demo2::infrastructure::dto::Demo2Request;
 
+/// 应用领域管线 / Apply domain pipeline
+///
+/// 按顺序执行所有领域约束管线：装载、适航、MAC优化、装载效能、快递效能、软安全、冗余。
+/// Executes all domain constraint pipelines in order: stowage, airworthiness, MAC optimization, loading effectiveness, express effectiveness, soft security, redundancy.
 pub fn apply_domain_pipeline(
     mode: Demo2PipelineMode,
     model: &mut MetaModel<f64>,

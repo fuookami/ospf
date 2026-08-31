@@ -10,7 +10,9 @@ pub struct CornucopiaBackend;
 /// Cornucopia generated query binding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CornucopiaQueryBinding {
+    /// 查询函数名 / Query function name
     pub query_name: String,
+    /// SQL 文件路径 / SQL file path
     pub sql_file: Option<String>,
 }
 
@@ -36,9 +38,13 @@ impl CornucopiaQueryBinding {
 /// Cornucopia repository function bindings.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CornucopiaRepositoryBindings {
+    /// 查询绑定 / Find query binding
     pub find: Option<CornucopiaQueryBinding>,
+    /// 计数绑定 / Count query binding
     pub count: Option<CornucopiaQueryBinding>,
+    /// 更新绑定 / Update query binding
     pub update: Option<CornucopiaQueryBinding>,
+    /// 删除绑定 / Delete query binding
     pub delete: Option<CornucopiaQueryBinding>,
 }
 

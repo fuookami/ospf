@@ -1,4 +1,4 @@
-//! Rounding function symbol.
+//! 取整函数符号 / Rounding function symbol
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -76,15 +76,25 @@ const DEFAULT_BIG_M: f64 = 1_000_000.0;
 const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
 const ROUNDING_EPSILON: f64 = 1e-8;
 
+/// 取整类型。
 /// Rounding type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RoundingKind {
+    /// 向下取整（floor）。
+    /// Round towards negative infinity (floor).
     Floor,
+    /// 向上取整（ceil）。
+    /// Round towards positive infinity (ceil).
     Ceil,
+    /// 四舍五入（round）。
+    /// Round to nearest integer (round).
     Round,
+    /// 截断取整（trunc）。
+    /// Round towards zero (trunc).
     Trunc,
 }
 
+/// 取整函数符号。
 /// Rounding function symbol.
 #[derive(Debug, Clone)]
 pub struct RoundingFunction<V = f64>
@@ -104,6 +114,8 @@ impl<V> RoundingFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 使用指定 ID 与名称创建取整函数。
+    /// Create a rounding function with the given id and name.
     pub fn new(id: u64, name: &str, input: Linear<V>, kind: RoundingKind) -> Self {
         let group_id = new_group_id();
         let result_var = ContinuousVariableItem::create(VariableId::new(group_id, 0), name);
@@ -148,6 +160,8 @@ where
         Self::new(id, &name, input, kind)
     }
 
+    /// 使用指定 ID 与名称创建 floor 函数。
+    /// Create a floor function with the given id and name.
     pub fn floor(id: u64, name: &str, input: Linear<V>) -> Self {
         Self::new(id, name, input, RoundingKind::Floor)
     }
@@ -166,6 +180,8 @@ where
         Self::floor(id, &name, input)
     }
 
+    /// 使用指定 ID 与名称创建 ceil 函数。
+    /// Create a ceil function with the given id and name.
     pub fn ceil(id: u64, name: &str, input: Linear<V>) -> Self {
         Self::new(id, name, input, RoundingKind::Ceil)
     }
@@ -184,6 +200,8 @@ where
         Self::ceil(id, &name, input)
     }
 
+    /// 使用指定 ID 与名称创建 round 函数。
+    /// Create a round function with the given id and name.
     pub fn round(id: u64, name: &str, input: Linear<V>) -> Self {
         Self::new(id, name, input, RoundingKind::Round)
     }
@@ -202,6 +220,8 @@ where
         Self::round(id, &name, input)
     }
 
+    /// 使用指定 ID 与名称创建 trunc 函数。
+    /// Create a trunc function with the given id and name.
     pub fn trunc(id: u64, name: &str, input: Linear<V>) -> Self {
         Self::new(id, name, input, RoundingKind::Trunc)
     }
@@ -220,6 +240,8 @@ where
         Self::trunc(id, &name, input)
     }
 
+    /// 设置声明的依赖符号 ID 列表，返回修改后的自身。
+    /// Set the declared dependency symbol IDs, returning the modified self.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -231,22 +253,32 @@ where
         cloned
     }
 
+    /// 获取结果变量的引用。
+    /// Get a reference to the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取整数变量的引用。
+    /// Get a reference to the integer variable.
     pub fn integer_variable(&self) -> &IntegerVariableItem {
         &self.integer_var
     }
 
+    /// 获取符号变量的引用（仅 Round 和 Trunc 类型存在）。
+    /// Get a reference to the sign variable (only present for Round and Trunc kinds).
     pub fn sign_variable(&self) -> Option<&BinaryVariableItem> {
         self.sign_var.as_ref()
     }
 
+    /// 获取输入多项式的引用。
+    /// Get a reference to the input polynomial.
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
+    /// 获取取整类型。
+    /// Get the rounding kind.
     pub fn rounding_kind(&self) -> RoundingKind {
         self.kind
     }

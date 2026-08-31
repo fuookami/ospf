@@ -80,6 +80,7 @@ fn refresh_shadow_price_by_key_as_args(
 
 /// 增量扩展管线 / Incremental extension pipeline
 pub trait Csp1dIncrementalPipeline<V: SolveValue>: Pipeline<MetaModel<f64>> {
+    /// 向模型添加新列并更新增量约束 / Add new columns to the model and update incremental constraints
     fn add_columns(
         &self,
         _context: &dyn super::Csp1dModelingContext<V>,

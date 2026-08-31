@@ -1,8 +1,8 @@
-//! Masking function symbol.
+//! 掩码函数符号 / Masking function symbol
 //!
-//! `masking(x, m)` behaves like:
-//! - `x`, when `m = 1`
-//! - `0`, when `m = 0`
+//! `masking(x, m)` 的行为 / `masking(x, m)` behaves like:
+//! - 当 `m = 1` 时返回 `x` / `x`, when `m = 1`
+//! - 当 `m = 0` 时返回 `0` / `0`, when `m = 0`
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};

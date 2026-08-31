@@ -1,4 +1,4 @@
-//! Ceiling function symbol.
+//! 向上取整函数符号 / Ceiling function symbol
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -74,19 +74,24 @@ const DEFAULT_BIG_M: f64 = 1_000_000.0;
 const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
 const ROUNDING_EPSILON: f64 = 1e-8;
 
-/// Ceiling function symbol.
+/// 向上取整函数符号 / Ceiling function symbol.
 ///
-/// Mathematical Form:
+/// 数学形式 / Mathematical Form:
 /// - result = ceil(x)
 #[derive(Debug, Clone)]
 pub struct CeilingFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 中间符号标识 / Intermediate symbol identifier
     id: IntermediateSymbolId,
+    /// 输入线性多项式 / Input linear polynomial
     input: Linear<V>,
+    /// 结果连续变量 / Result continuous variable
     result_var: ContinuousVariableItem,
+    /// 辅助整数变量 / Auxiliary integer variable
     integer_var: IntegerVariableItem,
+    /// 声明的依赖标识列表 / Declared dependency identifier list
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -94,7 +99,7 @@ impl<V> CeilingFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
-    /// Create new ceiling function.
+    /// 创建新的向上取整函数 / Create new ceiling function.
     pub fn new(id: u64, name: &str, input: Linear<V>) -> Self {
         let group_id = new_group_id();
         let result_var =
@@ -111,27 +116,30 @@ where
         }
     }
 
-    /// Create a ceiling function with an auto id and caller-provided name.
+    /// 使用自动标识和调用方指定名称创建向上取整函数 / Create a ceiling function with an auto id and caller-provided name.
     pub fn named(name: impl AsRef<str>, input: Linear<V>) -> Self {
         Self::new(next_auto_intermediate_symbol_id(), name.as_ref(), input)
     }
 
-    /// Create a ceiling function with an auto id and auto-generated name.
+    /// 使用自动标识和自动生成名称创建向上取整函数 / Create a ceiling function with an auto id and auto-generated name.
     pub fn auto(input: Linear<V>) -> Self {
         let id = next_auto_intermediate_symbol_id();
         let name = auto_intermediate_symbol_name("ceiling", id);
         Self::new(id, &name, input)
     }
 
+    /// 设置声明的依赖标识 / Set declared dependency identifiers.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取输入线性多项式 / Get the input linear polynomial.
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
+    /// 获取结果连续变量 / Get the result continuous variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }

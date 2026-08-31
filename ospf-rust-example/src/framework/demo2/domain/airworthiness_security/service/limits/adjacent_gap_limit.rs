@@ -1,3 +1,4 @@
+//! 相邻位置载荷间隙限制 / Adjacent position load gap limits
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;

@@ -1,5 +1,7 @@
-/// Try 辅助函数 / Try helper functions
-/// 对齐 Kotlin TryHelpers
+//! Try 辅助函数 / Try helper functions
+/// Try 辅助函数模块 / Try helper functions module
+///
+/// 对齐 Kotlin TryHelpers / Aligned with Kotlin TryHelpers
 
 /// 将 Option 转换为 Result
 pub fn try_option<T>(value: Option<T>, message: &str) -> Result<T, String> {

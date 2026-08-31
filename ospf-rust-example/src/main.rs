@@ -1,3 +1,4 @@
+//! Main / Main
 #[cfg(feature = "backend-gurobi")]
 mod core;
 #[cfg(feature = "backend-gurobi")]

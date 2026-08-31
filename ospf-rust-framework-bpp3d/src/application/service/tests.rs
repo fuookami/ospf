@@ -26,14 +26,14 @@ mod tests {
             height: meters(10.0),
             depth: meters(10.0),
             capacity: meters(1000.0),
-            type_code: "BIN".to_string(),
+            type_code: "BIN".into(),
             is_main: true,
         }
     }
 
     fn item(id: &str) -> ActualItem<f64, Meter> {
         ActualItem {
-            id: id.to_string(),
+            id: id.into(),
             name: id.to_string(),
             package_code: None,
             pack: None,

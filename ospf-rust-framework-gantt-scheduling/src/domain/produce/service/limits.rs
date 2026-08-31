@@ -165,7 +165,7 @@ impl Pipeline<MetaModel<f64>> for ConsumptionQuantityConstraint {
 #[derive(Debug)]
 pub struct ProduceOverQuantityMinimization {
     name: String,
-    /// (over_quantity_solver_index, coefficient) 列表
+    /// (over_quantity_solver_index, coefficient) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -207,7 +207,7 @@ impl Pipeline<MetaModel<f64>> for ProduceOverQuantityMinimization {
 #[derive(Debug)]
 pub struct ProduceLessQuantityMinimization {
     name: String,
-    /// (less_quantity_solver_index, coefficient) 列表
+    /// (less_quantity_solver_index, coefficient) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -252,7 +252,7 @@ impl Pipeline<MetaModel<f64>> for ProduceLessQuantityMinimization {
 #[derive(Debug)]
 pub struct ProduceQuantityMaximization {
     name: String,
-    /// (quantity_solver_index, coefficient) 列表
+    /// (quantity_solver_index, coefficient) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -312,7 +312,7 @@ impl Pipeline<MetaModel<f64>> for ProduceQuantityMaximization {
 #[derive(Debug)]
 pub struct ProduceQuantityMinimization {
     name: String,
-    /// (quantity_solver_index, coefficient) 列表
+    /// (quantity_solver_index, coefficient) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -368,7 +368,7 @@ impl Pipeline<MetaModel<f64>> for ProduceQuantityMinimization {
 #[derive(Debug)]
 pub struct ConsumptionOverQuantityMinimization {
     name: String,
-    /// (over_quantity_solver_index, coefficient) 列表
+    /// (over_quantity_solver_index, coefficient) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -410,7 +410,7 @@ impl Pipeline<MetaModel<f64>> for ConsumptionOverQuantityMinimization {
 #[derive(Debug)]
 pub struct ConsumptionLessQuantityMinimization {
     name: String,
-    /// (less_quantity_solver_index, coefficient) 列表
+    /// (less_quantity_solver_index, coefficient) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -452,7 +452,7 @@ impl Pipeline<MetaModel<f64>> for ConsumptionLessQuantityMinimization {
 #[derive(Debug)]
 pub struct ConsumptionQuantityMaximization {
     name: String,
-    /// (quantity_solver_index, coefficient) 列表
+    /// (quantity_solver_index, coefficient) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -508,7 +508,7 @@ impl Pipeline<MetaModel<f64>> for ConsumptionQuantityMaximization {
 #[derive(Debug)]
 pub struct ConsumptionQuantityMinimization {
     name: String,
-    /// (quantity_solver_index, coefficient) 列表
+    /// (quantity_solver_index, coefficient) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 

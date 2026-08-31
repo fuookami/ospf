@@ -1,8 +1,6 @@
-//! Catalytic activity units - 催化活度单位
-//! Catalytic activity units - SI catalytic activity units
+//! 催化活度单位 / Catalytic activity units
 //!
-//! 提供催化活度量纲的 SI 单位定义，包括开特、毫开特、微开特、酶单位等。
-//! Provides SI unit definitions for catalytic activity dimension, including katal, millikatal, microkatal, enzyme unit, etc.
+//! 提供催化活度量纲的 SI 单位定义，包括开特、毫开特、微开特、酶单位等 / Provides SI unit definitions for catalytic activity dimension, including katal, millikatal, microkatal, enzyme unit, etc
 
 use crate::dimension::derived::CatalyticActivity;
 use crate::scale::{MICRO, MILLI, Scale};

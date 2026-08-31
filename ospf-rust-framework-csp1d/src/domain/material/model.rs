@@ -16,6 +16,8 @@ use crate::infrastructure::dto::{
     RenderCuttingPlanDTO, RenderCuttingPlanProductionDTO, RenderProductionType, RenderSchemaDTO,
 };
 
+include!("id.rs");
+
 /// CSP1D 运行时物理量 / CSP1D runtime quantity
 pub type Csp1dQuantity<V> = Quantity<V, Unit>;
 
@@ -293,7 +295,7 @@ impl<V: SolveValue> WidthRange<V> {
 #[derive(Debug, Clone)]
 pub struct Material<V: SolveValue> {
     /// 物料 ID / Material id
-    pub id: String,
+    pub id: MaterialId,
     /// 名称 / Name
     pub name: String,
     /// 幅宽范围 / Width range
@@ -303,7 +305,7 @@ pub struct Material<V: SolveValue> {
     /// 单位重量 / Unit weight
     pub unit_weight: Option<Csp1dQuantity<V>>,
     /// 绑定设备 ID / Bound machine id
-    pub machine_id: Option<String>,
+    pub machine_id: Option<MachineId>,
     /// 可用批次数 / Available batches
     pub available_batches: u64,
 }
@@ -379,7 +381,7 @@ impl<V: SolveValue> Material<V> {
 #[derive(Debug, Clone)]
 pub struct ProductLegacyInput<V: SolveValue> {
     /// 产品 ID / Product id
-    pub id: String,
+    pub id: ProductId,
     /// 名称 / Name
     pub name: String,
     /// 无单位幅宽列表 / Unitless width list
@@ -400,7 +402,7 @@ pub struct ProductLegacyInput<V: SolveValue> {
 #[derive(Debug, Clone)]
 pub struct Product<V: SolveValue> {
     /// 产品 ID / Product id
-    pub id: String,
+    pub id: ProductId,
     /// 名称 / Name
     pub name: String,
     /// 可选幅宽 / Candidate widths
@@ -454,7 +456,7 @@ impl<V: SolveValue> Product<V> {
 
     /// 创建动态长度产品 / Create dynamic-length product
     pub fn dynamic_length_of(
-        id: impl Into<String>,
+        id: impl Into<ProductId>,
         name: impl Into<String>,
         width: Vec<Csp1dQuantity<V>>,
     ) -> Self {
@@ -463,7 +465,7 @@ impl<V: SolveValue> Product<V> {
 
     /// 创建动态长度产品（带单位重量） / Create dynamic-length product with unit weight
     pub fn dynamic_length_of_with_unit_weight(
-        id: impl Into<String>,
+        id: impl Into<ProductId>,
         name: impl Into<String>,
         width: Vec<Csp1dQuantity<V>>,
         unit_weight: Option<Csp1dQuantity<V>>,
@@ -648,7 +650,7 @@ impl<V: SolveValue> ProductDemand<V> {
 #[derive(Debug, Clone)]
 pub struct Costar<V: SolveValue> {
     /// 配规 ID / Costar id
-    pub id: String,
+    pub id: CostarId,
     /// 名称 / Name
     pub name: String,
     /// 幅宽 / Width
@@ -681,7 +683,7 @@ impl<V: SolveValue> Production<V> for Costar<V> {
 #[derive(Debug, Clone)]
 pub struct Machine<V: SolveValue> {
     /// 设备 ID / Machine id
-    pub id: String,
+    pub id: MachineId,
     /// 名称 / Name
     pub name: String,
     /// 最大批次数 / Maximum batch count
@@ -837,11 +839,11 @@ impl<V: SolveValue> CuttingPlanDemandContribution<V> {
 #[derive(Debug, Clone)]
 pub struct CuttingPlan<V: SolveValue> {
     /// 方案 ID / Plan id
-    pub id: String,
+    pub id: CuttingPlanId,
     /// 物料 / Material
     pub material: Material<V>,
     /// 设备 ID / Machine id
-    pub machine_id: Option<String>,
+    pub machine_id: Option<MachineId>,
     /// 切片 / Slices
     pub slices: Vec<CuttingPlanSlice<V>>,
     /// 需求贡献 / Demand contributions
@@ -864,7 +866,10 @@ impl<V: SolveValue> CuttingPlan<V> {
         format!(
             "{}|{}|{}|{}|{}",
             self.material.id,
-            self.machine_id.clone().unwrap_or_default(),
+            self.machine_id
+                .as_ref()
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
             capacity_consumption,
             slices,
             demand_contributions,
@@ -923,7 +928,7 @@ fn canonical_slice_keys<V: SolveValue>(slices: &[CuttingPlanSlice<V>]) -> Vec<St
 fn canonical_demand_contribution_keys<V: SolveValue>(
     contributions: &[CuttingPlanDemandContribution<V>],
 ) -> Vec<String> {
-    let mut grouped: BTreeMap<(String, String), V> = BTreeMap::new();
+    let mut grouped: BTreeMap<(ProductId, String), V> = BTreeMap::new();
     for contribution in contributions {
         let key = (
             contribution.product.id.clone(),
@@ -991,30 +996,42 @@ pub enum Csp1dShadowPriceKey {
     YieldOverProductionBound(YieldOverProductionBoundShadowPriceKey),
 }
 
+/// 产品需求影子价格键 / Product demand shadow price key
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProductDemandShadowPriceKey {
-    pub product_id: String,
+    /// 产品 ID / Product id
+    pub product_id: ProductId,
+    /// 单位符号 / Unit symbol
     pub unit_symbol: String,
 }
 
+/// 物料使用影子价格键 / Material usage shadow price key
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MaterialUsageShadowPriceKey {
-    pub material_id: String,
+    /// 物料 ID / Material id
+    pub material_id: MaterialId,
 }
 
+/// 设备批次影子价格键 / Machine batch shadow price key
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MachineBatchShadowPriceKey {
-    pub machine_id: String,
+    /// 设备 ID / Machine id
+    pub machine_id: MachineId,
 }
 
+/// 设备产能影子价格键 / Machine capacity shadow price key
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MachineCapacityShadowPriceKey {
-    pub machine_id: String,
+    /// 设备 ID / Machine id
+    pub machine_id: MachineId,
 }
 
+/// 产出超产上界影子价格键 / Yield over-production bound shadow price key
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct YieldOverProductionBoundShadowPriceKey {
-    pub product_id: String,
+    /// 产品 ID / Product id
+    pub product_id: ProductId,
+    /// 单位符号 / Unit symbol
     pub unit_symbol: String,
 }
 
@@ -1057,28 +1074,28 @@ pub fn shadow_price_key_from_string(value: &str) -> Option<Csp1dShadowPriceKey> 
     match family {
         "product-demand" => Some(Csp1dShadowPriceKey::ProductDemand(
             ProductDemandShadowPriceKey {
-                product_id: colon_parts.next()?.to_string(),
+                product_id: colon_parts.next()?.into(),
                 unit_symbol: colon_parts.next()?.to_string(),
             },
         )),
         "material-usage" => Some(Csp1dShadowPriceKey::MaterialUsage(
             MaterialUsageShadowPriceKey {
-                material_id: colon_parts.next()?.to_string(),
+                material_id: colon_parts.next()?.into(),
             },
         )),
         "machine-batch" => Some(Csp1dShadowPriceKey::MachineBatch(
             MachineBatchShadowPriceKey {
-                machine_id: colon_parts.next()?.to_string(),
+                machine_id: colon_parts.next()?.into(),
             },
         )),
         "machine-capacity" => Some(Csp1dShadowPriceKey::MachineCapacity(
             MachineCapacityShadowPriceKey {
-                machine_id: colon_parts.next()?.to_string(),
+                machine_id: colon_parts.next()?.into(),
             },
         )),
         "yield-over-production-bound" => Some(Csp1dShadowPriceKey::YieldOverProductionBound(
             YieldOverProductionBoundShadowPriceKey {
-                product_id: colon_parts.next()?.to_string(),
+                product_id: colon_parts.next()?.into(),
                 unit_symbol: colon_parts.next()?.to_string(),
             },
         )),
@@ -1092,28 +1109,28 @@ fn shadow_price_key_from_legacy_string(value: &str) -> Option<Csp1dShadowPriceKe
     match family {
         "productDemand" => Some(Csp1dShadowPriceKey::ProductDemand(
             ProductDemandShadowPriceKey {
-                product_id: parts.next()?.to_string(),
+                product_id: parts.next()?.into(),
                 unit_symbol: parts.next()?.to_string(),
             },
         )),
         "materialUsage" => Some(Csp1dShadowPriceKey::MaterialUsage(
             MaterialUsageShadowPriceKey {
-                material_id: parts.next()?.to_string(),
+                material_id: parts.next()?.into(),
             },
         )),
         "machineBatch" => Some(Csp1dShadowPriceKey::MachineBatch(
             MachineBatchShadowPriceKey {
-                machine_id: parts.next()?.to_string(),
+                machine_id: parts.next()?.into(),
             },
         )),
         "machineCapacity" => Some(Csp1dShadowPriceKey::MachineCapacity(
             MachineCapacityShadowPriceKey {
-                machine_id: parts.next()?.to_string(),
+                machine_id: parts.next()?.into(),
             },
         )),
         "yieldOverProductionBound" => Some(Csp1dShadowPriceKey::YieldOverProductionBound(
             YieldOverProductionBoundShadowPriceKey {
-                product_id: parts.next()?.to_string(),
+                product_id: parts.next()?.into(),
                 unit_symbol: parts.next()?.to_string(),
             },
         )),
@@ -1183,7 +1200,7 @@ pub fn render_cutting_plan<V: SolveValue>(
         .collect();
     let rest_width = plan.rest_width();
     let mut info = BTreeMap::new();
-    info.insert("planId".to_string(), plan.id.clone());
+    info.insert("planId".to_string(), plan.id.to_string());
     if let Some(rest_width) = &rest_width {
         info.insert("restWidth".to_string(), format!("{:?}", rest_width.value));
     }
@@ -1191,11 +1208,12 @@ pub fn render_cutting_plan<V: SolveValue>(
         group: vec![
             plan.material.name.clone(),
             plan.machine_id
-                .clone()
+                .as_ref()
+                .map(|id| id.to_string())
                 .unwrap_or_else(|| "unassigned-machine".to_string()),
         ],
-        id: plan.id.clone(),
-        material_id: plan.material.id.clone(),
+        id: plan.id.to_string(),
+        material_id: plan.material.id.to_string(),
         amount,
         productions,
         width: plan

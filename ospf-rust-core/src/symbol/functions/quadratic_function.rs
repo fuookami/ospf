@@ -1,21 +1,18 @@
-//! Quadratic-input function symbol wrappers.
+//! 二次输入函数符号包装 / Quadratic-input function symbol wrappers
 //!
-//! # Rust Extension Note
+//! # Rust 扩展说明 / Rust Extension Note
 //!
-//! This file contains Quadratic*Function wrappers that provide quadratic polynomial
-//! views of base function symbols. These are Rust-specific extensions that don't have
-//! direct 1:1 Kotlin file counterparts.
+//! 本文件包含 Quadratic*Function 包装器，提供基础函数符号的二次多项式视图 / This file contains Quadratic*Function wrappers that provide quadratic polynomial views of base function symbols
+//! 这些是 Rust 特有的扩展，没有直接的 1:1 Kotlin 文件对应 / These are Rust-specific extensions that don't have direct 1:1 Kotlin file counterparts
 //!
-//! Kotlin has 4 independent QuadraticXxx.kt files:
+//! Kotlin 有 4 个独立的 QuadraticXxx.kt 文件 / Kotlin has 4 independent QuadraticXxx.kt files:
 //! - QuadraticLinear.kt → `quadratic_linear.rs`
 //! - QuadraticMin.kt → `quadratic_min.rs`
 //! - QuadraticMaskingRange.kt → `quadratic_masking_range.rs`
 //! - QuadraticInStepRange.kt → `quadratic_in_step_range.rs`
 //!
-//! The remaining 14 Quadratic* types in this file are Rust extensions that combine
-//! quadratic polynomial views with base function symbols. They are kept here for
-//! convenience and backward compatibility, rather than being split into individual files
-//! that would each contain only a single struct.
+//! 本文件中剩余的 14 个 Quadratic* 类型是 Rust 扩展 / The remaining 14 Quadratic* types in this file are Rust extensions
+//! 它们将二次多项式视图与基础函数符号组合在一起，为了便利和向后兼容而保留在此 / that combine quadratic polynomial views with base function symbols, kept here for convenience and backward compatibility
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -49,6 +46,7 @@ use super::{
 };
 use super::quadratic_linear::*;
 
+/// 二次输入的二值化函数符号 / Quadratic-input binaryzation function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticBinaryzationFunction<V = f64>
 where
@@ -65,6 +63,7 @@ impl<V> QuadraticBinaryzationFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建新的二次输入二值化函数 / Create a new quadratic-input binaryzation function
     pub fn new(
         id: u64,
         name: &str,
@@ -96,6 +95,7 @@ where
         }
     }
 
+    /// 使用指定 Big-M 创建 / Create with specified Big-M
     pub fn with_big_m(id: u64, name: &str, input: Quadratic<V>, big_m: V) -> Self {
         Self::new(
             id,
@@ -107,6 +107,7 @@ where
         )
     }
 
+    /// 使用指定阈值创建 / Create with specified threshold
     pub fn with_threshold(id: u64, name: &str, input: Quadratic<V>, threshold: V) -> Self {
         Self::new(
             id,
@@ -118,11 +119,13 @@ where
         )
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &BinaryVariableItem {
         self.inner.result_variable()
     }
@@ -352,6 +355,7 @@ where
     }
 }
 
+/// 二次输入的不等式函数符号 / Quadratic-input inequality function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticInequalityFunction<V = f64>
 where
@@ -368,6 +372,7 @@ impl<V> QuadraticInequalityFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建新的二次输入不等式函数 / Create a new quadratic-input inequality function
     pub fn new(
         id: u64,
         name: &str,
@@ -399,19 +404,23 @@ where
         }
     }
 
+    /// 创建小于等于不等式 / Create a less-than-or-equal inequality
     pub fn less_equal(id: u64, name: &str, input: Quadratic<V>, right: V, big_m: V) -> Self {
         Self::new(id, name, input, right, InequalityKind::LessEqual, big_m)
     }
 
+    /// 创建大于等于不等式 / Create a greater-than-or-equal inequality
     pub fn greater_equal(id: u64, name: &str, input: Quadratic<V>, right: V, big_m: V) -> Self {
         Self::new(id, name, input, right, InequalityKind::GreaterEqual, big_m)
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &BinaryVariableItem {
         self.inner.result_variable()
     }
@@ -644,6 +653,7 @@ where
     }
 }
 
+/// 二次输入的取整函数符号 / Quadratic-input rounding function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticRoundingFunction<V = f64>
 where
@@ -660,6 +670,7 @@ impl<V> QuadraticRoundingFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建新的二次输入取整函数 / Create a new quadratic-input rounding function
     pub fn new(id: u64, name: &str, input: Quadratic<V>, kind: RoundingKind) -> Self {
         let bridge = QuadraticLinearFunction::new(
             auxiliary_id(id, 301),
@@ -684,27 +695,33 @@ where
         }
     }
 
+    /// 创建向下取整函数 / Create a floor rounding function
     pub fn floor(id: u64, name: &str, input: Quadratic<V>) -> Self {
         Self::new(id, name, input, RoundingKind::Floor)
     }
 
+    /// 创建向上取整函数 / Create a ceil rounding function
     pub fn ceil(id: u64, name: &str, input: Quadratic<V>) -> Self {
         Self::new(id, name, input, RoundingKind::Ceil)
     }
 
+    /// 创建四舍五入函数 / Create a round function
     pub fn round(id: u64, name: &str, input: Quadratic<V>) -> Self {
         Self::new(id, name, input, RoundingKind::Round)
     }
 
+    /// 创建截断取整函数 / Create a trunc function
     pub fn trunc(id: u64, name: &str, input: Quadratic<V>) -> Self {
         Self::new(id, name, input, RoundingKind::Trunc)
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
@@ -935,6 +952,7 @@ where
     }
 }
 
+/// 二次输入的取模函数符号 / Quadratic-input modulo function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticModFunction<V = f64>
 where
@@ -951,6 +969,7 @@ impl<V> QuadraticModFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建新的二次输入取模函数 / Create a new quadratic-input modulo function
     pub fn new(id: u64, name: &str, input: Quadratic<V>, divisor: V) -> Self {
         let bridge = QuadraticLinearFunction::new(
             auxiliary_id(id, 401),
@@ -975,11 +994,13 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
@@ -1182,6 +1203,7 @@ where
     }
 }
 
+/// 二次输入的最大值函数符号 / Quadratic-input maximum function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticMaxFunction<V = f64>
 where
@@ -1198,6 +1220,7 @@ impl<V> QuadraticMaxFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建新的二次输入最大值函数 / Create a new quadratic-input maximum function
     pub fn new(id: u64, name: &str, inputs: Vec<Quadratic<V>>, exact: bool) -> Self {
         let bridges: Vec<QuadraticLinearFunction<V>> = inputs
             .iter()
@@ -1233,11 +1256,13 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
@@ -1484,6 +1509,7 @@ where
     }
 }
 
+/// 二次输入的松弛函数符号 / Quadratic-input slack function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticSlackFunction<V = f64>
 where
@@ -1502,6 +1528,7 @@ impl<V> QuadraticSlackFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建新的二次输入松弛函数 / Create a new quadratic-input slack function
     pub fn new(id: u64, name: &str, left: Quadratic<V>, right: Quadratic<V>) -> Self {
         Self::with_big_m(
             id,
@@ -1512,10 +1539,12 @@ where
         )
     }
 
+    /// 使用指定目标值创建 / Create with specified target value
     pub fn with_target(id: u64, name: &str, left: Quadratic<V>, right_value: V) -> Self {
         Self::new(id, name, left, Quadratic::new(vec![], right_value))
     }
 
+    /// 使用指定 Big-M 创建 / Create with specified Big-M
     pub fn with_big_m(
         id: u64,
         name: &str,
@@ -1560,11 +1589,13 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
@@ -1828,6 +1859,7 @@ where
     }
 }
 
+/// 二次输入的区间松弛函数符号 / Quadratic-input range slack function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticSlackRangeFunction<V = f64>
 where
@@ -1846,6 +1878,7 @@ impl<V> QuadraticSlackRangeFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive + ToPrimitive,
 {
+    /// 创建新的二次输入区间松弛函数 / Create a new quadratic-input range slack function
     pub fn new(id: u64, name: &str, input: Quadratic<V>, lower: V, upper: V) -> Self {
         let bridge = QuadraticLinearFunction::new(
             auxiliary_id(id, 801),
@@ -1872,11 +1905,13 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
@@ -2070,6 +2105,7 @@ where
     }
 }
 
+/// 二次输入的掩码函数符号 / Quadratic-input masking function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticMaskingFunction<V = f64>
 where
@@ -2086,6 +2122,7 @@ impl<V> QuadraticMaskingFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建新的二次输入掩码函数 / Create a new quadratic-input masking function
     pub fn new(id: u64, name: &str, input: Quadratic<V>, mask_var: BinaryVariableItem) -> Self {
         let bridge = QuadraticLinearFunction::new(
             auxiliary_id(id, 851),
@@ -2110,6 +2147,7 @@ where
         }
     }
 
+    /// 使用指定 Big-M 创建 / Create with specified Big-M
     pub fn with_big_m(
         id: u64,
         name: &str,
@@ -2140,15 +2178,18 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
 
+    /// 获取掩码变量 / Get the mask variable
     pub fn mask_variable(&self) -> &BinaryVariableItem {
         self.inner.mask_variable()
     }
@@ -2376,6 +2417,7 @@ where
     }
 }
 
+/// 二次输入的正弦函数符号 / Quadratic-input sine function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticSinFunction<V = f64>
 where
@@ -2392,6 +2434,7 @@ impl<V> QuadraticSinFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建新的二次输入正弦函数 / Create a new quadratic-input sine function
     pub fn new(id: u64, name: &str, input: Quadratic<V>) -> Self {
         let bridge = QuadraticLinearFunction::new(
             auxiliary_id(id, 901),
@@ -2416,11 +2459,13 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
@@ -2612,6 +2657,7 @@ where
     }
 }
 
+/// 二次输入的余弦函数符号 / Quadratic-input cosine function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticCosFunction<V = f64>
 where
@@ -2628,6 +2674,7 @@ impl<V> QuadraticCosFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建新的二次输入余弦函数 / Create a new quadratic-input cosine function
     pub fn new(id: u64, name: &str, input: Quadratic<V>) -> Self {
         let bridge = QuadraticLinearFunction::new(
             auxiliary_id(id, 1001),
@@ -2652,11 +2699,13 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
@@ -2848,6 +2897,7 @@ where
     }
 }
 
+/// 二次输入的单变量线性分段插值函数符号 / Quadratic-input univariate linear piecewise interpolation function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticUnivariateLinearPiecewiseFunction<V = f64>
 where
@@ -2864,6 +2914,7 @@ impl<V> QuadraticUnivariateLinearPiecewiseFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive + ToPrimitive,
 {
+    /// 创建新的二次输入单变量分段线性插值函数 / Create a new quadratic-input univariate linear piecewise interpolation function
     pub fn new(id: u64, name: &str, input: Quadratic<V>, points: Vec<Point2<V>>) -> Self {
         let bridge = QuadraticLinearFunction::new(
             auxiliary_id(id, 1101),
@@ -2888,11 +2939,13 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
@@ -3103,6 +3156,7 @@ where
     }
 }
 
+/// 二次输入的双变量线性分段插值函数符号 / Quadratic-input bivariate linear piecewise interpolation function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticBivariateLinearPiecewiseFunction<V = f64>
 where
@@ -3119,6 +3173,7 @@ impl<V> QuadraticBivariateLinearPiecewiseFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive + ToPrimitive,
 {
+    /// 创建新的二次输入双变量分段线性插值函数 / Create a new quadratic-input bivariate piecewise linear interpolation function
     pub fn new(
         id: u64,
         name: &str,
@@ -3161,11 +3216,13 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
@@ -3375,6 +3432,7 @@ where
     }
 }
 
+/// 二次输入的半正定函数符号（max(f, 0））/ Quadratic-input semi-definite function symbol (max(f, 0))
 #[derive(Debug, Clone)]
 pub struct QuadraticSemiFunction<V = f64>
 where
@@ -3391,6 +3449,7 @@ impl<V> QuadraticSemiFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建新的二次输入半正定函数 / Create a new quadratic-input semi-definite function
     pub fn new(id: u64, name: &str, input: Quadratic<V>) -> Self {
         let bridge = QuadraticLinearFunction::new(
             auxiliary_id(id, 1401),
@@ -3415,11 +3474,13 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
@@ -3640,6 +3701,7 @@ where
     }
 }
 
+/// 二次输入的 Sigmoid 函数符号 / Quadratic-input sigmoid function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticSigmoidFunction<V = f64>
 where
@@ -3656,6 +3718,7 @@ impl<V> QuadraticSigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive + ToPrimitive,
 {
+    /// 创建新的二次输入 Sigmoid 函数 / Create a new quadratic-input sigmoid function
     pub fn new(id: u64, name: &str, input: Quadratic<V>) -> Self {
         let bridge = QuadraticLinearFunction::new(
             auxiliary_id(id, 1601),
@@ -3679,6 +3742,7 @@ where
         }
     }
 
+    /// 使用指定精度创建 / Create with specified precision
     pub fn with_precision(
         id: u64,
         name: &str,
@@ -3707,11 +3771,13 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }

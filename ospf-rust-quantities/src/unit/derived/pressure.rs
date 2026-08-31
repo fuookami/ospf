@@ -1,8 +1,6 @@
-//! Pressure units - 压力单位
-//! Pressure units - SI pressure units
+//! 压力单位 / Pressure units
 //!
-//! 提供压力量纲的 SI 单位定义，包括帕斯卡、千帕、兆帕、巴等。
-//! Provides SI unit definitions for pressure dimension, including pascal, kilopascal, megapascal, bar, etc.
+//! 提供压力量纲的 SI 单位定义，包括帕斯卡、千帕、兆帕、巴等 / Provides SI unit definitions for pressure dimension, including pascal, kilopascal, megapascal, bar, etc
 
 use crate::dimension::derived::Pressure;
 use crate::scale::{HECTO, KILO, MEGA, MILLI, Scale};

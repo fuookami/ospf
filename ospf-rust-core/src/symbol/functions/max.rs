@@ -1,4 +1,4 @@
-//! Min/max function symbols.
+//! 最小值/最大值函数符号 / Min/max function symbols
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -71,16 +71,24 @@ where
     })
 }
 
+/// 最小值函数 / Minimum function
+///
+/// 表示 min(p1, p2, ..., pn)。
 /// Represents min(p1, p2, ..., pn).
 #[derive(Debug, Clone)]
 pub struct MinFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 符号 ID / Symbol ID
     id: IntermediateSymbolId,
+    /// 输入多项式列表 / Input polynomials
     polynomials: Vec<Linear<V>>,
+    /// 结果连续变量 / Result continuous variable
     result_var: ContinuousVariableItem,
+    /// 选择器二值变量列表（精确模式） / Selector binary variables (exact mode)
     binary_vars: Option<Vec<BinaryVariableItem>>,
+    /// 声明的依赖 ID / Declared dependency IDs
     declared_dependency_ids: Vec<u64>,
 }
 

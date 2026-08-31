@@ -1,3 +1,4 @@
+//! AOG/MAT 散货冲突限制 / AOG/MAT bulk conflict limits
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;

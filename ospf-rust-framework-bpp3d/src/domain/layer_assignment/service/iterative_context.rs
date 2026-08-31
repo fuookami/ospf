@@ -3,7 +3,8 @@
 
 /// 迭代层列 / Iterative layer column
 ///
-/// 记录领域层列索引、所属迭代以及对应的 RMP `x[layer]` 模型变量索引。
+/// 记录领域层列索引、所属迭代以及对应的
+/// RMP `x[layer]` 模型变量索引。
 /// Records the domain layer-column index, owning iteration, and corresponding
 /// RMP `x[layer]` model variable index.
 #[derive(Debug, Clone)]
@@ -108,6 +109,8 @@ where
 
     /// 添加列并注册到现有模型 / Add columns and register them to an existing model
     ///
+    /// 注意：变量注册延迟到 `ImpreciseAssignment::register()` 中执行。
+    /// 此方法仅跟踪层和上界。
     /// Note: Variable registration is deferred to `ImpreciseAssignment::register()`.
     /// This method only tracks layers and upper bounds.
     pub fn add_columns_to_model(

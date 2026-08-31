@@ -1,3 +1,4 @@
+//! 预测装载重量限制 / Predicate load weight limits
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;

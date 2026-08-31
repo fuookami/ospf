@@ -35,7 +35,7 @@ The application layer coordinates CSV loading, solver backend selection, column-
 
 ## Extension Points
 
-Add solver behavior through `MetaModelSolverBackend` or the RMP/final executor traits. Add dataset protocols at the CSV materializer boundary. Add comparison output through the fixture suite and run-report DTOs instead of embedding domain modeling logic in application flow.
+Add solver behavior through `MetaModelSolverBackend` or the RMP/final executor traits. Use `ColumnGenerationApplicationService::with_geometry_guard` with a `PackingGeometryContract` implementation to replace final geometry validation without changing application flow. Add dataset protocols at the CSV materializer boundary. Add comparison output through the fixture suite and run-report DTOs instead of embedding domain modeling logic in application flow.
 
 ## Lifecycle and Data Flow
 

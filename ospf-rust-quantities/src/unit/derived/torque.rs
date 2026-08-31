@@ -1,8 +1,6 @@
-//! Torque units - 扭矩单位
-//! Torque units - SI torque units
+//! 扭矩单位 / Torque units
 //!
-//! 提供扭矩量纲的 SI 单位定义，扭矩与能量同量纲，包括牛顿米等。
-//! Provides SI unit definitions for torque dimension, torque has the same dimension as energy, including newton meter, etc.
+//! 提供扭矩量纲的 SI 单位定义，扭矩与能量同量纲，包括牛顿米等 / Provides SI unit definitions for torque dimension, torque has the same dimension as energy, including newton meter, etc
 
 use crate::unit::{CTUnit, CTUnitMul};
 use super::force::{KilogramForce, Newton};

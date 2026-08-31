@@ -1,3 +1,4 @@
+//! 建议压舱物重量限制 / Advice ballast weight limits
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::{LinearObjectiveInput, MetaModel};
@@ -7,7 +8,7 @@ use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAgg
 use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
-/// 建议压舱物重量限制
+/// 建议压舱物重量限制 / Advice ballast weight limit
 /// 对齐 Kotlin AdviceBallastWeightLimit
 ///
 /// Kotlin 使用 exampleThresholdSlack(ballastWeight, adviceBallastWeight) 创建松弛函数，

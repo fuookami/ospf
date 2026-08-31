@@ -1,10 +1,11 @@
+//! 物品需重新称重限制 / Item reweigh-needed limits
 use std::error::Error;
 use ospf_rust_core::model::{MetaModel, LinearObjectiveInput};
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
-/// 物品重新称重限制: 需要重新称重的物品应尽量不装载
+/// 物品重新称重限制: 需要重新称重的物品应尽量不装载 / Item reweigh needed limit: items needing reweigh should be loaded as little as possible
 /// 对齐 Kotlin ItemReweighNeededLimit
 ///
 /// Kotlin 语义: model.minimize(sum(coefficient * loaded[i]) for items needing reweigh)

@@ -1,9 +1,12 @@
+//! 中转节点带宽约束模块 / Transfer node bandwidth constraint module
+
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
 use ospf_rust_multiarray::{MultiArray, Shape};
 use crate::framework::demo1::route_context::model::{Edge, Node, Service};
 
+/// 一维线性表达式符号组合类型别名 / 1D linear expression symbol combination type alias
 type Symbols1D = SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>;
 
 /// 计算节点的最大出度带宽 / Compute max outgoing bandwidth of a node
@@ -15,7 +18,8 @@ fn max_out_degree(node_idx: usize, edges: &[Edge]) -> f64 {
         .sum()
 }
 
-/// 中转节点带宽约束 / Transfer node bandwidth constraint
+/// 中转节点带宽约束：outFlow[node] <= nodeAssignment[node] * maxOutDegree / Transfer node bandwidth constraint
+///
 /// 对齐 Kotlin TransferNodeBandwidthConstraint:
 /// outFlow[node] <= nodeAssignment[node] * maxOutDegree
 ///
@@ -76,7 +80,7 @@ pub fn apply_transfer_node_bandwidth_constraints(
     Ok(())
 }
 
-/// 从 bandwidth[e] 的多项式中提取指定 service s 的系数
+/// 从 bandwidth[e] 的多项式中提取指定 service s 的系数 / Extract coefficient for specified service s from bandwidth[e] polynomial
 fn extract_service_coeff(
     bandwidth: &Symbols1D,
     edge_index: usize,

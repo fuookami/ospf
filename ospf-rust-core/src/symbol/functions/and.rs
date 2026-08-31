@@ -1,5 +1,4 @@
-//! 逻辑函数符号
-//! Logic Function Symbols
+//! 逻辑函数符号 / Logic function symbols
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -215,6 +214,9 @@ where
 }
 
 /// 与函数 / And Function
+///
+/// 当所有输入多项式均非零时结果为 1，否则为 0。
+/// Result is 1 when all input polynomials are nonzero, 0 otherwise.
 #[derive(Debug, Clone)]
 pub struct AndFunction<V = f64>
 where
@@ -223,7 +225,9 @@ where
     id: IntermediateSymbolId,
     polynomials: Vec<Linear<V>>,
     result_var: BinaryVariableItem,
+    /// 非零指示二值变量列表 / Nonzero indicator binary variables
     indicator_vars: Vec<BinaryVariableItem>,
+    /// 辅助松弛二值变量列表 / Auxiliary side binary variables
     side_vars: Vec<BinaryVariableItem>,
 }
 

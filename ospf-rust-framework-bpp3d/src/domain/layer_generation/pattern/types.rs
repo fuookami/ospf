@@ -5,7 +5,7 @@ where
 {
     pile_index: usize,
     item_index: usize,
-    item_id: String,
+    item_id: ItemId,
     orientation: Orientation,
     x: V,
     y: V,
@@ -23,7 +23,7 @@ where
     V: Debug + Clone + Send + Sync,
 {
     item_index: usize,
-    item_id: String,
+    item_id: ItemId,
     orientation: Orientation,
     orientation_enabled: bool,
     width: V,

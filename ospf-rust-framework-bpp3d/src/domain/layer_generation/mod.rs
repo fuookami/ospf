@@ -25,7 +25,7 @@ use ospf_rust_quantities::unit::physical_unit::CTUnit;
 use crate::domain::bla::BottomUpLeftJustifiedAlgorithm;
 use crate::domain::bla::service::{BlaConfig, BlaProjection};
 use crate::domain::item::{
-    ActualItem, BinLayer, BinType, Bpp3dDemandKey, Bpp3dDemandMode,
+    ActualItem, BinLayer, BinType, Bpp3dDemandKey, Bpp3dDemandMode, ItemId,
     Bpp3dLayerDemandCoverage, CylinderShapeContract, PackageAttribute, PackageOrientationRuleInput,
     PackagePlacementBottomContext, PackagePlacementStackingInput, PackageShapeSpec,
     PackageStackingInput, PatternConfig, PatternNextPointPolicy, PatternProjectionOrientation,

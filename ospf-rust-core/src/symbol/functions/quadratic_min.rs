@@ -1,4 +1,4 @@
-//! Quadratic min function.
+//! 二次最小值函数 / Quadratic min function
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};

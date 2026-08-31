@@ -1,122 +1,124 @@
-//! 鍩烘湰绾挎€т笁瑙掓ā鍨?
+//! 基本线性三角模型
 //! Basic Linear Triad Model
 
 use std::collections::HashMap;
 use crate::token::Token;
 use crate::variable::{VariableId, VariableType};
 
-/// 绋€鐤忓悜閲?/ Sparse Vector
+/// 稀疏向量 / Sparse Vector
 ///
-/// 鐢ㄤ簬楂樻晥琛ㄧず绋€鐤忔暟鎹€?
-/// Used for efficient representation of sparse data.
+/// 用于高效表示稀疏数据。 / Used for efficient representation of sparse data.
 #[derive(Debug, Clone, Default)]
 pub struct SparseVector<V> {
-    /// 绱㈠紩鍜屽€煎 / Index-value pairs
+    /// 索引和值对 / Index-value pairs
     pub entries: Vec<(usize, V)>,
 }
 
 impl<V: Clone + Default> SparseVector<V> {
-    /// 鍒涘缓绌哄悜閲?/ Create empty vector
+    /// 创建空向量 / Create empty vector
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
         }
     }
 
-    /// 娣诲姞鍏冪礌 / Add element
+    /// 添加元素 / Add element
     pub fn add(&mut self, index: usize, value: V) {
         self.entries.push((index, value));
     }
 
-    /// 鑾峰彇鍏冪礌鏁伴噺 / Get element count
+    /// 获取元素数量 / Get element count
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
-    /// 妫€鏌ユ槸鍚︿负绌?/ Check if empty
+    /// 检查是否为空 / Check if empty
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 }
 
-/// 绋€鐤忕煩闃?/ Sparse Matrix
+/// 稀疏矩阵 / Sparse Matrix
 ///
-/// 鐢ㄤ簬楂樻晥琛ㄧず绾︽潫鐭╅樀銆?
-/// Used for efficient representation of constraint matrices.
+/// 用于高效表示约束矩阵。 / Used for efficient representation of constraint matrices.
 #[derive(Debug, Clone, Default)]
 pub struct SparseMatrix<V> {
-    /// 琛屾暟鎹?/ Row data
+    /// 行数据 / Row data
     pub rows: Vec<SparseVector<V>>,
 }
 
 impl<V: Clone + Default> SparseMatrix<V> {
-    /// 鍒涘缓绌虹煩闃?/ Create empty matrix
+    /// 创建空矩阵 / Create empty matrix
     pub fn new() -> Self {
         Self { rows: Vec::new() }
     }
 
-    /// 娣诲姞琛?/ Add row
+    /// 添加行 / Add row
     pub fn add_row(&mut self, row: SparseVector<V>) {
         self.rows.push(row);
     }
 
-    /// 鑾峰彇琛屾暟 / Get row count
+    /// 获取行数 / Get row count
     pub fn rows(&self) -> usize {
         self.rows.len()
     }
 
-    /// 鑾峰彇鎸囧畾琛?/ Get specific row
+    /// 获取指定行 / Get specific row
     pub fn get_row(&self, index: usize) -> Option<&SparseVector<V>> {
         self.rows.get(index)
     }
 }
 
-/// 鍩烘湰绾挎€т笁瑙掓ā鍨?/ Basic Linear Triad Model
+/// 基本线性三角模型 / Basic Linear Triad Model
 ///
-/// 鍙寘鍚彉閲忓拰绾︽潫鐨勬爣鍑嗗舰寮忥紝涓嶅寘鍚洰鏍囧嚱鏁般€?
-/// Standard form with only variables and constraints, without objective.
+/// 只包含变量和约束的标准形式，不包含目标函数。 / Standard form with only variables and constraints, without objective.
 ///
-/// # 鐢ㄩ€?/ Use Cases
+/// # 用途 / Use Cases
 ///
-/// 1. **瀵瑰伓妯″瀷**: 浠庡熀鏈嚎鎬т笁瑙掓ā鍨嬬敓鎴愬鍋堕棶棰?
-/// 2. **澶氱洰鏍囦紭鍖?*: 缁勫悎澶氫釜鐩爣鍑芥暟涓庣浉鍚岀害鏉熼泦
-/// 3. **绾︽潫鍏变韩**: 涓嶅悓鐩爣鍑芥暟鍏变韩鐩稿悓绾︽潫闆?
+/// 1. **对偶模型**: 从基本线性三角模型生成对偶问题
+/// 2. **多目标优化**: 组合多个目标函数与相同约束集
+/// 3. **约束共享**: 不同目标函数共享相同约束集
 ///
 /// 1. **Dual Model**: Generate dual problem from basic linear triad model
 /// 2. **Multi-objective Optimization**: Compose multiple objectives with same constraint set
 /// 3. **Constraint Sharing**: Different objectives sharing same constraint set
 ///
-/// 鏍囧噯褰㈠紡: Ax 鈮?b, x 鈭?[lb, ub]
-/// Standard form: Ax 鈮?b, x 鈭?[lb, ub]
+/// 标准形式: Ax <= b, x in [lb, ub] / Standard form: Ax <= b, x in [lb, ub]
 #[allow(non_snake_case)]
 #[derive(Debug, Clone)]
 pub struct BasicLinearTriadModel {
-    /// 妯″瀷鍚嶇О / Model name
+    /// 模型名称 / Model name
     pub name: String,
-    /// 鍙橀噺鍒楄〃 / Variable list
+    /// 变量列表 / Variable list
     pub variables: Vec<Token<f64>>,
-    /// 绾︽潫鐭╅樀 / Constraint matrix
+    /// 约束矩阵 / Constraint matrix
     pub A: SparseMatrix<f64>,
-    /// 绾︽潫鍙充晶 / Right-hand side
+    /// 约束右侧 / Right-hand side
     pub b: Vec<f64>,
+    /// 约束名称列表 / Constraint names
     pub constraint_names: Vec<String>,
+    /// 约束组 ID 列表 / Constraint group IDs
     pub constraint_group_ids: Vec<Option<u64>>,
+    /// 约束惰性标志列表 / Constraint lazy flags
     pub constraint_lazy_flags: Vec<bool>,
+    /// 约束优先级列表 / Constraint priorities
     pub constraint_priorities: Vec<u32>,
+    /// 约束参数列表 / Constraint args
     pub constraint_args: Vec<Option<String>>,
+    /// 约束来源符号 ID 列表 / Constraint source symbol IDs
     pub constraint_source_symbol_ids: Vec<Option<u64>>,
-    /// 鍙橀噺涓嬬晫 / Lower bounds
+    /// 变量下界 / Lower bounds
     pub lb: Vec<f64>,
-    /// 鍙橀噺涓婄晫 / Upper bounds
+    /// 变量上界 / Upper bounds
     pub ub: Vec<f64>,
-    /// 鍙橀噺绫诲瀷 / Variable types
+    /// 变量类型 / Variable types
     pub var_types: Vec<VariableType>,
-    /// Token ID 鍒扮储寮曠殑鏄犲皠 / Token ID to index mapping
+    /// Token ID 到索引的映射 / Token ID to index mapping
     token_index: HashMap<VariableId, usize>,
 }
 
 impl BasicLinearTriadModel {
-    /// 鍒涘缓绌烘ā鍨?/ Create empty model
+    /// 创建空模型 / Create empty model
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -136,7 +138,7 @@ impl BasicLinearTriadModel {
         }
     }
 
-    /// 娣诲姞鍙橀噺 / Add variable
+    /// 添加变量 / Add variable
     pub fn add_variable(&mut self, token: Token<f64>) -> usize {
         let idx = self.variables.len();
         let lower = token.variable.lower_bound().unwrap_or(f64::NEG_INFINITY);
@@ -150,7 +152,7 @@ impl BasicLinearTriadModel {
         idx
     }
 
-    /// Add variable with explicit bounds.
+    /// 添加带显式边界的变量。 / Add variable with explicit bounds.
     pub fn add_variable_with_bounds(
         &mut self,
         token: Token<f64>,
@@ -167,12 +169,13 @@ impl BasicLinearTriadModel {
         idx
     }
 
-    /// Add one row: `row^T x <= rhs`.
+    /// 添加一行约束：`row^T x <= rhs`。 / Add one row: `row^T x <= rhs`.
     pub fn add_constraint(&mut self, row: SparseVector<f64>, rhs: f64) -> usize {
         let idx = self.b.len();
         self.add_constraint_with_metadata(row, rhs, format!("c{}", idx), None, false, 0, None, None)
     }
 
+    /// 添加带元数据的约束行。 / Add constraint row with metadata.
     pub fn add_constraint_with_metadata(
         &mut self,
         row: SparseVector<f64>,
@@ -196,32 +199,32 @@ impl BasicLinearTriadModel {
         idx
     }
 
-    /// 鑾峰彇鍙橀噺鏁伴噺 / Get variable count
+    /// 获取变量数量 / Get variable count
     pub fn num_variables(&self) -> usize {
         self.variables.len()
     }
 
-    /// 鑾峰彇绾︽潫鏁伴噺 / Get constraint count
+    /// 获取约束数量 / Get constraint count
     pub fn num_constraints(&self) -> usize {
         self.b.len()
     }
 
-    /// 閫氳繃 ID 鏌ユ壘鍙橀噺绱㈠紩 / Find variable index by ID
+    /// 通过 ID 查找变量索引 / Find variable index by ID
     pub fn find_variable_index(&self, id: VariableId) -> Option<usize> {
         self.token_index.get(&id).copied()
     }
 
-    /// 閫氳繃 ID 鏌ユ壘鍙橀噺 / Find variable by ID
+    /// 通过 ID 查找变量 / Find variable by ID
     pub fn find_variable(&self, id: VariableId) -> Option<&Token<f64>> {
         self.token_index.get(&id).map(|&idx| &self.variables[idx])
     }
 
-    /// 鍏嬮殕绾︽潫缁撴瀯锛堢敤浜庡鍋惰浆鎹級/ Clone constraint structure (for dual transformation)
+    /// 克隆约束结构（用于对偶转换） / Clone constraint structure (for dual transformation)
     pub fn clone_constraints(&self) -> (SparseMatrix<f64>, Vec<f64>) {
         (self.A.clone(), self.b.clone())
     }
 
-    /// 鑾峰彇鍙橀噺杈圭晫 / Get variable bounds
+    /// 获取变量边界 / Get variable bounds
     pub fn get_bounds(&self, index: usize) -> Option<(f64, f64)> {
         if index < self.variables.len() {
             Some((self.lb[index], self.ub[index]))
@@ -230,7 +233,7 @@ impl BasicLinearTriadModel {
         }
     }
 
-    /// 璁剧疆鍙橀噺杈圭晫 / Set variable bounds
+    /// 设置变量边界 / Set variable bounds
     pub fn set_bounds(&mut self, index: usize, lb: f64, ub: f64) {
         if index < self.variables.len() {
             self.lb[index] = lb;
@@ -245,5 +248,5 @@ impl Default for BasicLinearTriadModel {
     }
 }
 
-/// f64 绮惧害鐨勫熀鏈嚎鎬т笁瑙掓ā鍨?/ Basic linear triad model with f64 precision
+/// f64 精度的基本线性三角模型 / Basic linear triad model with f64 precision
 pub type BasicLinearTriadModelF64 = BasicLinearTriadModel;

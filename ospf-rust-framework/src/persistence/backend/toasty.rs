@@ -13,9 +13,13 @@ pub struct ToastyBackend;
 /// Toasty operation kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastyOperation {
+    /// 查询 / Find
     Find,
+    /// 计数 / Count
     Count,
+    /// 更新 / Update
     Update,
+    /// 删除 / Delete
     Delete,
 }
 
@@ -23,9 +27,13 @@ pub enum ToastyOperation {
 /// Toasty typed repository plan.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToastyRepositoryPlan {
+    /// 操作类型 / Operation kind
     pub operation: ToastyOperation,
+    /// 条件表达式 / Where expression
     pub where_expr: BooleanExpression<ExpressionValue>,
+    /// 查询选项 / Query options
     pub options: RepositoryQuery,
+    /// 更新赋值集合 / Update assignments
     pub assignments: UpdateAssignments<ExpressionValue>,
 }
 

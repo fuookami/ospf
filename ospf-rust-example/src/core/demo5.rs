@@ -1,3 +1,4 @@
+//! Demo5 模块 / Demo5 module
 use std::error::Error;
 
 use ospf_rust_multiarray::{MultiArray, Shape};

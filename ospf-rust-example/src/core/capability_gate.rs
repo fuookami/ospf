@@ -1,3 +1,4 @@
+//! Capability Gate 模块 / Capability Gate module
 use std::error::Error;
 
 use ospf_rust_core::solver::{LinearSolver, SolverCapability, SolverInfo, SolverOutput, SolverStatus};

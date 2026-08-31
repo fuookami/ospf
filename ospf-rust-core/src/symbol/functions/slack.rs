@@ -1,6 +1,6 @@
-//! Slack function symbol.
+//! 松弛函数符号模块 / Slack function symbol module
 //!
-//! - `SlackFunction`: absolute deviation between two expressions.
+//! - `SlackFunction`: 两个表达式之间的绝对偏差 / Absolute deviation between two expressions
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -21,7 +21,9 @@ use super::super::{
 };
 use super::big_m::infer_linear_difference_abs_bound_from_tokens;
 
+/// 默认 Big-M 值 / Default Big-M value
 const DEFAULT_BIG_M: f64 = 1_000_000.0;
+/// 最小 Big-M 值 / Minimum Big-M value
 const MIN_BIG_M: f64 = 1.0;
 
 fn evaluate_linear<V>(
@@ -74,6 +76,8 @@ where
     })
 }
 
+/// 两个表达式之间的绝对松弛量：`slack = |left - right|`。
+///
 /// Absolute slack between two expressions:
 /// `slack = |left - right|`.
 #[derive(Debug, Clone)]
@@ -81,12 +85,19 @@ pub struct SlackFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 中间符号标识符 / Intermediate symbol identifier
     id: IntermediateSymbolId,
+    /// 左侧线性表达式 / Left-hand side linear expression
     left: Linear<V>,
+    /// 右侧线性表达式 / Right-hand side linear expression
     right: Linear<V>,
+    /// 松弛结果连续变量 / Slack result continuous variable
     result_var: ContinuousVariableItem,
+    /// 分支方向二元变量 / Branch direction binary variable
     side_var: BinaryVariableItem,
+    /// Big-M 参数 / Big-M parameter
     big_m: V,
+    /// 显式声明的依赖标识列表 / Explicitly declared dependency identifier list
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -94,6 +105,8 @@ impl<V> SlackFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建松弛函数，使用默认 Big-M 值。
+    /// Create a slack function with the default Big-M value.
     pub fn new(id: u64, name: &str, left: Linear<V>, right: Linear<V>) -> Self {
         Self::with_big_m(
             id,
@@ -123,6 +136,8 @@ where
         Self::new(id, &name, left, right)
     }
 
+    /// 创建目标值松弛函数，右侧为常数值。
+    /// Create a target-value slack function with a constant right-hand side.
     pub fn with_target(id: u64, name: &str, left: Linear<V>, right_value: V) -> Self {
         Self::new(id, name, left, Linear::new(vec![], right_value))
     }
@@ -146,6 +161,8 @@ where
         Self::with_target(id, &name, left, right_value)
     }
 
+    /// 创建松弛函数，使用自定义 Big-M 值。
+    /// Create a slack function with a custom Big-M value.
     pub fn with_big_m(id: u64, name: &str, left: Linear<V>, right: Linear<V>, big_m: V) -> Self {
         let group_id = new_group_id();
         let result_var = ContinuousVariableItem::create(
@@ -192,6 +209,8 @@ where
         Self::with_big_m(id, &name, left, right, big_m)
     }
 
+    /// 设置显式声明的依赖标识列表。
+    /// Set the explicitly declared dependency identifier list.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -210,18 +229,26 @@ where
         cloned
     }
 
+    /// 返回左侧线性表达式的引用。
+    /// Return a reference to the left-hand side linear expression.
     pub fn left_polynomial(&self) -> &Linear<V> {
         &self.left
     }
 
+    /// 返回右侧线性表达式的引用。
+    /// Return a reference to the right-hand side linear expression.
     pub fn right_polynomial(&self) -> &Linear<V> {
         &self.right
     }
 
+    /// 返回松弛结果连续变量的引用。
+    /// Return a reference to the slack result continuous variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 返回 Big-M 参数的引用。
+    /// Return a reference to the Big-M parameter.
     pub fn big_m(&self) -> &V {
         &self.big_m
     }
@@ -260,7 +287,7 @@ where
 
     fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
         infer_linear_difference_abs_bound_from_tokens(&self.left, &self.right, tokens)
-            .map(|big_m| big_m.max(MIN_BIG_M))
+            .map(|difference_abs_bound| (2.0 * difference_abs_bound).max(MIN_BIG_M))
     }
 
     fn build_mechanism_constraints(
@@ -663,9 +690,10 @@ mod tests {
             .find(|monomial| monomial.var_index() == 2)
             .expect("side term should exist");
 
-        // 2x + 1 with x in [-2, 3] => range [-3, 7], therefore M = 7.
-        assert!((branch.inequality.rhs - 7.0).abs() <= 1e-9);
-        assert!((*side_term.coefficient() - 7.0).abs() <= 1e-9);
+        // 2x + 1 在 [-3, 7] 内，分支约束需要 M = 2 * max(|diff|) = 14。
+        // 2x + 1 is in [-3, 7], and the branch constraints require M = 2 * max(|diff|) = 14.
+        assert!((branch.inequality.rhs - 14.0).abs() <= 1e-9);
+        assert!((*side_term.coefficient() - 14.0).abs() <= 1e-9);
     }
 
     #[test]

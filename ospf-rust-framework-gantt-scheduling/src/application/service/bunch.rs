@@ -9,7 +9,7 @@ use ospf_rust_core::model::MetaModel;
 use ospf_rust_framework::solver::column_generation_solver::ColumnGenerationSolver;
 
 use crate::application::algorithm::bunch_column_generation::{
-    BunchBranchAndPriceAlgorithm, BunchCGPolicy,
+    BranchGroup, BunchBranchAndPriceAlgorithm, BunchCGPolicy, BunchPricingRequest,
 };
 use crate::application::algorithm::policy::ColumnGenerationPolicy;
 use crate::application::algorithm::{
@@ -17,13 +17,19 @@ use crate::application::algorithm::{
 };
 use crate::domain::bunch_compilation::context::IterativeBunchCompilationContext;
 use crate::domain::bunch_compilation::model::{BunchEntry, BunchSolution};
+use crate::domain::bunch_compilation::slot_based::{
+    CapacityPreSolveSolver, SlotBasedBunchCompilationContext,
+};
 use crate::domain::bunch_generation::{
     BunchFeasibilityPolicy, BunchTaskCandidate, CapacityIntermediateValues, SlotBasedBunchGenerator,
 };
+#[cfg(test)]
+use crate::domain::common::ExecutorId;
 use crate::domain::task::{
     AssignmentPolicyTrait, BunchCostPolicy, DefaultBunchCostPolicy, ExecutorTrait, TaskTrait,
 };
 use crate::infrastructure::TimeSlot;
+use crate::GanttResult;
 
 /// 束级列生成算法入口 / Bunch column-generation algorithm entry
 ///
@@ -33,15 +39,67 @@ pub fn create_bunch_branch_and_price<C, S, P>(
     context: C,
     solver: S,
     policy: P,
-    executor_ids: Vec<String>,
+    executor_ids: Vec<impl Into<C::ExecutorId>>,
     configuration: ColumnGenerationPolicy,
 ) -> BunchBranchAndPriceAlgorithm<C, S, P>
 where
     C: IterativeBunchCompilationContext,
     S: ColumnGenerationSolver,
-    P: BunchCGPolicy,
+    P: BunchCGPolicy<C::ExecutorId>,
 {
     BunchBranchAndPriceAlgorithm::new(context, solver, policy, executor_ids, configuration)
+}
+
+/// 通过产能预求解创建时隙级分支定价算法 / Create slot branch-and-price through capacity pre-solving
+///
+/// 该入口将产能预求解结果固化到默认束生成策略中，后续每轮定价直接通过
+/// `generate_all_with_policy` 使用同一份时隙约束快照。
+/// This entry captures the capacity pre-solve result in the default bunch-generation
+/// policy so every pricing round uses the same slot-constraint snapshot through
+/// `generate_all_with_policy`.
+pub fn create_slot_bunch_branch_and_price<'a, C, CS, E, T, A, TS, P>(
+    mut context: C,
+    capacity_model: &mut MetaModel<f64>,
+    capacity_solver: &CapacityPreSolveSolver<'_>,
+    solver: CS,
+    generator: SlotBasedBunchGenerator<E>,
+    candidates: Vec<BunchTaskCandidate<'a, T>>,
+    feasibility_policy: P,
+    executor_ids: Vec<impl Into<C::ExecutorId>>,
+    configuration: ColumnGenerationPolicy,
+) -> GanttResult<
+    BunchBranchAndPriceAlgorithm<
+        C,
+        CS,
+        DefaultBunchGenerationPolicy<'a, E, T, A, TS, P>,
+    >,
+>
+where
+    C: SlotBasedBunchCompilationContext<TS>
+        + IterativeBunchCompilationContext<ExecutorId = E::Id>,
+    CS: ColumnGenerationSolver,
+    E: ExecutorTrait,
+    T: TaskTrait<E, A>,
+    A: AssignmentPolicyTrait<E>,
+    TS: TimeSlot + Clone,
+    P: BunchFeasibilityPolicy<E, T, A>,
+{
+    let intermediate_values = context
+        .pre_solve_capacity(capacity_model, capacity_solver)?
+        .clone();
+    let policy = DefaultBunchGenerationPolicy::new(
+        generator,
+        &intermediate_values,
+        candidates,
+        feasibility_policy,
+    );
+    Ok(create_bunch_branch_and_price(
+        context,
+        solver,
+        policy,
+        executor_ids,
+        configuration,
+    ))
 }
 
 /// 搜索隔离的束级分支定价树 / Search isolated bunch branch-and-price tree
@@ -58,7 +116,7 @@ pub fn search_bunch_branch_and_price_with_fresh_model<C, S, P, F>(
 where
     C: IterativeBunchCompilationContext + Clone,
     S: ColumnGenerationSolver,
-    P: BunchCGPolicy,
+    P: BunchCGPolicy<C::ExecutorId>,
     F: FnMut() -> MetaModel<f64>,
 {
     let search = BranchAndPriceTreeSearch::new(config);
@@ -75,7 +133,7 @@ pub fn search_bunch_branch_and_price_with_hooks<C, S, P, F>(
 where
     C: IterativeBunchCompilationContext + Clone,
     S: ColumnGenerationSolver,
-    P: BunchCGPolicy,
+    P: BunchCGPolicy<C::ExecutorId>,
     F: FnMut() -> MetaModel<f64>,
 {
     let search = BranchAndPriceTreeSearch::new(config);
@@ -97,14 +155,14 @@ where
     E: ExecutorTrait,
     T: TaskTrait<E, A>,
     A: AssignmentPolicyTrait<E>,
-    S: TimeSlot,
+    S: TimeSlot + Clone,
     P: BunchFeasibilityPolicy<E, T, A>,
-    C: BunchCostPolicy,
+    C: BunchCostPolicy<E::Id>,
 {
     /// 基于时隙的生成器 / Slot-based generator
     pub generator: SlotBasedBunchGenerator<E>,
     /// 产能中间值 / Capacity intermediate values
-    pub intermediate_values: &'a CapacityIntermediateValues<S>,
+    pub intermediate_values: CapacityIntermediateValues<S, E::Id>,
     /// 候选任务 / Candidate tasks
     pub candidates: Vec<BunchTaskCandidate<'a, T>>,
     /// 可行性策略 / Feasibility policy
@@ -120,19 +178,19 @@ where
     E: ExecutorTrait,
     T: TaskTrait<E, A>,
     A: AssignmentPolicyTrait<E>,
-    S: TimeSlot,
+    S: TimeSlot + Clone,
     P: BunchFeasibilityPolicy<E, T, A>,
 {
     /// 创建默认束生成策略 / Create default bunch generation policy
     pub fn new(
         generator: SlotBasedBunchGenerator<E>,
-        intermediate_values: &'a CapacityIntermediateValues<S>,
+        intermediate_values: &CapacityIntermediateValues<S, E::Id>,
         candidates: Vec<BunchTaskCandidate<'a, T>>,
         feasibility_policy: P,
     ) -> Self {
         Self {
             generator,
-            intermediate_values,
+            intermediate_values: intermediate_values.clone(),
             candidates,
             feasibility_policy,
             cost_policy: DefaultBunchCostPolicy,
@@ -146,21 +204,21 @@ where
     E: ExecutorTrait,
     T: TaskTrait<E, A>,
     A: AssignmentPolicyTrait<E>,
-    S: TimeSlot,
+    S: TimeSlot + Clone,
     P: BunchFeasibilityPolicy<E, T, A>,
-    C: BunchCostPolicy,
+    C: BunchCostPolicy<E::Id>,
 {
     /// 创建带成本策略的默认束生成策略 / Create default bunch generation policy with cost policy
     pub fn with_cost_policy(
         generator: SlotBasedBunchGenerator<E>,
-        intermediate_values: &'a CapacityIntermediateValues<S>,
+        intermediate_values: &CapacityIntermediateValues<S, E::Id>,
         candidates: Vec<BunchTaskCandidate<'a, T>>,
         feasibility_policy: P,
         cost_policy: C,
     ) -> Self {
         Self {
             generator,
-            intermediate_values,
+            intermediate_values: intermediate_values.clone(),
             candidates,
             feasibility_policy,
             cost_policy,
@@ -169,29 +227,34 @@ where
     }
 }
 
-impl<E, T, A, S, P, C> BunchCGPolicy for DefaultBunchGenerationPolicy<'_, E, T, A, S, P, C>
+impl<E, T, A, S, P, C> BunchCGPolicy<E::Id>
+    for DefaultBunchGenerationPolicy<'_, E, T, A, S, P, C>
 where
     E: ExecutorTrait,
     T: TaskTrait<E, A>,
     A: AssignmentPolicyTrait<E>,
-    S: TimeSlot,
+    S: TimeSlot + Clone,
     P: BunchFeasibilityPolicy<E, T, A>,
-    C: BunchCostPolicy,
+    C: BunchCostPolicy<E::Id>,
 {
     fn build_shadow_price_map(&self) -> HashMap<usize, f64> {
         HashMap::new()
     }
 
-    fn reduced_cost(&self, shadow_prices: &HashMap<usize, f64>, bunch: &BunchEntry) -> f64 {
+    fn reduced_cost(
+        &self,
+        shadow_prices: &HashMap<usize, f64>,
+        bunch: &BunchEntry<E::Id>,
+    ) -> f64 {
         self.cost_policy.reduced_cost(bunch, shadow_prices)
     }
 
     fn generate_bunches(
         &self,
         iteration: usize,
-        executor_ids: &[String],
+        executor_ids: &[E::Id],
         shadow_prices: &HashMap<usize, f64>,
-    ) -> Vec<BunchEntry> {
+    ) -> Vec<BunchEntry<E::Id>> {
         let mut generator = self.generator.clone();
         generator
             .executors
@@ -200,7 +263,7 @@ where
         generator
             .generate_all_with_policy(
                 iteration,
-                self.intermediate_values,
+                &self.intermediate_values,
                 &self.candidates,
                 shadow_prices,
                 &self.feasibility_policy,
@@ -210,10 +273,53 @@ where
             .map(|entry| entry.bunch)
             .collect()
     }
+
+    fn generate_bunches_with_request(
+        &self,
+        request: &BunchPricingRequest<E::Id>,
+    ) -> GanttResult<Vec<BunchEntry<E::Id>>> {
+        let mut generator = self.generator.clone();
+        generator
+            .executors
+            .retain(|executor| request.executor_ids.iter().any(|id| id == executor.id()));
+        generator.config.max_columns_per_executor = generator
+            .config
+            .max_columns_per_executor
+            .max(request.min_column_amount_per_executor);
+
+        let mut generated = generator.generate_all_with_policy(
+            request.iteration,
+            &self.intermediate_values,
+            &self.candidates,
+            &request.shadow_prices,
+            &self.feasibility_policy,
+        )?
+        .into_iter()
+        .filter_map(|mut entry| {
+            let group = BranchGroup {
+                executor_id: entry.bunch.executor_id.clone(),
+                slot_index: Some(entry.slot_index),
+            };
+            if request.fixed_groups.contains(&group) {
+                return None;
+            }
+            if let Some(price) = request
+                .executor_slot_shadow_prices
+                .get(&(entry.bunch.executor_id.clone(), entry.slot_index))
+            {
+                entry.bunch.cost -= *price;
+            }
+            Some(entry.bunch)
+        })
+        .collect::<Vec<_>>();
+        generated.sort_by(|lhs, rhs| lhs.cost.total_cmp(&rhs.cost));
+        Ok(generated)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Duration as StdDuration;
 
@@ -233,6 +339,9 @@ mod tests {
         BranchAndPriceTreeSearch, BranchNodeSolveOutput, BranchSearchConfig, BranchSearchOrder,
     };
     use crate::domain::bunch_compilation::context::BasicBunchCompilationContext;
+    use crate::domain::bunch_compilation::slot_based::{
+        BasicSlotBasedBunchCompilationContext, StaticSlotBasedCapacityPreSolver,
+    };
     use crate::domain::bunch_generation::{
         BunchGenerationConfig, DefaultBunchFeasibilityPolicy, SlotConstraints,
     };
@@ -264,7 +373,9 @@ mod tests {
     }
 
     impl TaskTrait<BasicExecutor, BasicAssignmentPolicy<BasicExecutor>> for TestTask {
-        fn id(&self) -> &str {
+        type Id = String;
+
+        fn id(&self) -> &Self::Id {
             &self.id
         }
 
@@ -297,7 +408,7 @@ mod tests {
         constraints.insert(0, SlotConstraints::default());
         let intermediate_values = CapacityIntermediateValues::new(slots, constraints);
         let task = TestTask {
-            id: "task_1".to_string(),
+            id: "task_1".into(),
             name: "Task 1".to_string(),
             time: TimeRange::new(h(9), h(10)),
         };
@@ -310,10 +421,64 @@ mod tests {
         );
 
         let bunches =
-            policy.generate_bunches(1, &["exec_1".to_string()], &HashMap::from([(0, 2.0)]));
+            policy.generate_bunches(1, &["exec_1".into()], &HashMap::from([(0, 2.0)]));
 
         assert!(!bunches.is_empty());
         assert!(bunches.iter().all(|bunch| bunch.executor_id == "exec_1"));
+    }
+
+    #[test]
+    fn test_slot_branch_and_price_entry_captures_pre_solve_values() {
+        let executor = BasicExecutor::new("exec_1", "Executor 1");
+        let executor_id = executor.id.clone();
+        let slots = vec![TestSlot {
+            time: TimeRange::new(h(8), h(18)),
+        }];
+        let constraints = HashMap::from([(0, SlotConstraints::default())]);
+        let intermediate_values = CapacityIntermediateValues::new(slots.clone(), constraints);
+        let context = BasicSlotBasedBunchCompilationContext::new(
+            BasicBunchCompilationContext::new(1, vec![executor_id.clone()], false),
+            slots,
+            Box::new(StaticSlotBasedCapacityPreSolver::new(intermediate_values)),
+        );
+        let task = TestTask {
+            id: "task_1".into(),
+            name: "Task 1".to_string(),
+            time: TimeRange::new(h(9), h(10)),
+        };
+        let called = Arc::new(AtomicBool::new(false));
+        let called_by_solver = Arc::clone(&called);
+        let capacity_solver = move |_model: &MetaModel<f64>| {
+            called_by_solver.store(true, Ordering::SeqCst);
+            Ok(Vec::new())
+        };
+        let mut capacity_model = MetaModel::<f64>::new("capacity_pre_solve");
+
+        let algorithm = create_slot_bunch_branch_and_price(
+            context,
+            &mut capacity_model,
+            &capacity_solver,
+            ZeroSolver,
+            SlotBasedBunchGenerator::new(
+                vec![executor],
+                BunchGenerationConfig::default(),
+            ),
+            vec![BunchTaskCandidate::new(0, &task, false)],
+            DefaultBunchFeasibilityPolicy,
+            vec![executor_id.clone()],
+            ColumnGenerationPolicy::default(),
+        )
+        .unwrap();
+        let bunches = algorithm.policy.generate_bunches(
+            0,
+            &[executor_id],
+            &HashMap::from([(0, 2.0)]),
+        );
+
+        assert!(called.load(Ordering::SeqCst));
+        assert_eq!(algorithm.policy.intermediate_values.slots.len(), 1);
+        assert!(!bunches.is_empty());
+        assert!(bunches.iter().all(|bunch| bunch.slot_index == Some(0)));
     }
 
     #[test]
@@ -328,7 +493,7 @@ mod tests {
         constraints.insert(0, SlotConstraints::default());
         let intermediate_values = CapacityIntermediateValues::new(slots, constraints);
         let task = TestTask {
-            id: "task_1".to_string(),
+            id: "task_1".into(),
             name: "Task 1".to_string(),
             time: TimeRange::new(h(9), h(10)),
         };
@@ -349,10 +514,11 @@ mod tests {
         );
         let bunch = BunchEntry {
             index: 0,
-            executor_id: "exec_1".to_string(),
+            executor_id: "exec_1".into(),
             task_indices: vec![0],
             cost: 3.0,
             iteration: 0,
+            slot_index: None,
         };
 
         let reduced = policy.reduced_cost(&HashMap::from([(0, 2.0)]), &bunch);
@@ -380,12 +546,12 @@ mod tests {
         let intermediate_values = CapacityIntermediateValues::new(slots, constraints);
         let tasks = [
             TestTask {
-                id: "task_1".to_string(),
+                id: "task_1".into(),
                 name: "Task 1".to_string(),
                 time: TimeRange::new(h(9), h(10)),
             },
             TestTask {
-                id: "task_2".to_string(),
+                id: "task_2".into(),
                 name: "Task 2".to_string(),
                 time: TimeRange::new(h(11), h(12)),
             },
@@ -403,7 +569,7 @@ mod tests {
         );
         let generated_bunches = policy.generate_bunches(
             0,
-            &["exec_1".to_string()],
+            &["exec_1".into()],
             &HashMap::from([(0, 3.0), (1, 4.0)]),
         );
 
@@ -472,7 +638,7 @@ mod tests {
         fn generate_bunches(
             &self,
             _iteration: usize,
-            _executor_ids: &[String],
+            _executor_ids: &[ExecutorId],
             _shadow_prices: &HashMap<usize, f64>,
         ) -> Vec<BunchEntry> {
             Vec::new()
@@ -693,7 +859,7 @@ mod tests {
         fn generate_bunches(
             &self,
             iteration: usize,
-            executor_ids: &[String],
+            executor_ids: &[ExecutorId],
             _shadow_prices: &HashMap<usize, f64>,
         ) -> Vec<BunchEntry> {
             if iteration != 1 {
@@ -708,6 +874,7 @@ mod tests {
                     task_indices: vec![0],
                     cost: 1.0,
                     iteration,
+                    slot_index: None,
                 })
                 .into_iter()
                 .collect()

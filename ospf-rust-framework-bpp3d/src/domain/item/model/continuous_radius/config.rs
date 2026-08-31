@@ -2,7 +2,7 @@
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContinuousCylinderRadiusSolution {
     /// 货物标识 / Item id
-    pub item_id: String,
+    pub item_id: ItemId,
     /// 来源 / Source
     pub source: String,
     /// 变量名 / Variable name

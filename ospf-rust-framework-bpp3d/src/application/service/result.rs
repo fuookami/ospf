@@ -40,6 +40,8 @@ pub struct ColumnGenerationApplicationState {
     pub layer_placement_traces: HashMap<usize, Vec<LayerPlacementTrace<f64, Meter>>>,
     /// 连续半径模型组件 / Continuous radius model component
     pub continuous_radius_component: Option<ContinuousRadiusModelComponent>,
+    /// 扩展影子价格 / Additional shadow prices from the latest RMP
+    pub additional_shadow_prices: HashMap<String, f64>,
     /// 附加信息 / Additional information
     pub info: HashMap<String, String>,
 }
@@ -51,6 +53,8 @@ pub struct ColumnGenerationRmpExecution {
     pub objective: Option<f64>,
     /// 影子价格摘要 / Shadow price summary
     pub shadow_price_summary: HashMap<String, f64>,
+    /// 扩展影子价格 / Additional typed shadow prices
+    pub additional_shadow_prices: HashMap<String, f64>,
     /// 模型诊断 / Model diagnostics
     pub diagnostics: Option<MetaModelExecutionDiagnostics>,
     /// 附加信息 / Additional information
@@ -66,6 +70,8 @@ pub struct ColumnGenerationFinalExecution {
     pub packed_bins: Vec<PackedBin<f64, Meter>>,
     /// 目标值 / Objective
     pub objective: Option<f64>,
+    /// 是否实际调用最终求解器 / Whether a final solver was actually invoked
+    pub final_solved: bool,
     /// 模型诊断 / Model diagnostics
     pub diagnostics: Option<MetaModelExecutionDiagnostics>,
     /// 附加信息 / Additional information
@@ -169,4 +175,3 @@ fn backend_feature_diagnostics(backend: &str, feature: &str) -> Vec<String> {
         backend == "fake" || backend == "noop",
     )]
 }
-

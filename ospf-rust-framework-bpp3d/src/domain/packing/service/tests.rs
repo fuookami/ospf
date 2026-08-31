@@ -23,7 +23,7 @@ mod tests {
             height: meters(10.0),
             depth: meters(10.0),
             capacity: meters(1000.0),
-            type_code: "BIN-10".to_string(),
+            type_code: "BIN-10".into(),
             is_main: true,
         }
     }
@@ -32,7 +32,7 @@ mod tests {
         PackedItem {
             item_index: index,
             item: crate::domain::item::ActualItem {
-                id: format!("item_{}", index),
+                id: format!("item_{}", index).into(),
                 name: format!("Item {}", index),
                 package_code: None,
                 pack: None,

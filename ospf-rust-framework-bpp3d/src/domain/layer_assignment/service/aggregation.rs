@@ -65,6 +65,9 @@ where
         if let Some(ref mut assignment) = self.precise_assignment {
             assignment.register(model)?;
         }
+        // Load 和 Capacity 持有中间表达式，
+        // 不是模型变量，因此不直接注册到 MetaModel。
+        // 它们在 invoke() 期间由 limits 填充。
         // Load and Capacity hold intermediate expressions,
         // not model variables, so they don't register to MetaModel directly.
         // They are populated by limits during invoke().

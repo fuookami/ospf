@@ -1,6 +1,4 @@
-//! If-in function symbol.
-//! 检查输入值是否属于离散值集合
-//! Checks whether an input value belongs to a set of discrete values.
+//! If-in 函数符号 / If-in function symbol
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -74,6 +72,7 @@ where
 const MIN_BIG_M: f64 = 1.0;
 const STEP_EPSILON: f64 = 1e-8;
 
+/// 检查输入值是否属于离散值集合。
 /// Checks whether an input value belongs to a discrete set of values.
 ///
 /// 数学形式 / Mathematical Form:
@@ -83,12 +82,19 @@ pub struct IfInFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 中间符号标识符 / Intermediate symbol identifier
     id: IntermediateSymbolId,
+    /// 输入线性多项式 / Input linear polynomial
     input: Linear<V>,
+    /// 结果二值变量 / Result binary variable
     result_var: BinaryVariableItem,
+    /// 离散值集合 / Set of discrete values
     values: Vec<V>,
+    /// 大 M 参数，用于机制约束松弛 / Big-M parameter for mechanism constraint relaxation
     big_m: V,
+    /// 辅助变量组标识符 / Auxiliary variable group identifier
     aux_group_id: usize,
+    /// 声明的依赖符号 ID 列表 / Declared dependency symbol IDs
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -144,23 +150,33 @@ where
         Self::new(id, &name, input, values, big_m)
     }
 
+    /// 设置声明的依赖符号 ID 列表，返回修改后的自身。
+    /// Set the declared dependency symbol IDs, returning the modified self.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果二值变量的引用。
+    /// Get a reference to the result binary variable.
     pub fn result_variable(&self) -> &BinaryVariableItem {
         &self.result_var
     }
 
+    /// 获取输入线性多项式的引用。
+    /// Get a reference to the input linear polynomial.
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
+    /// 获取离散值集合的切片。
+    /// Get a slice of the discrete value set.
     pub fn values(&self) -> &[V] {
         &self.values
     }
 
+    /// 获取大 M 参数的引用。
+    /// Get a reference to the big-M parameter.
     pub fn big_m(&self) -> &V {
         &self.big_m
     }

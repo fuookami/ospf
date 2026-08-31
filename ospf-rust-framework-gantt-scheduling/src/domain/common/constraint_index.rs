@@ -18,6 +18,20 @@ pub enum ConstraintIndexKey {
         /// 执行器 ID / Executor id
         executor_id: String,
     },
+    /// 执行器-时隙编译约束 / Executor-slot compilation constraint
+    ExecutorSlotCompilation {
+        /// 执行器 ID / Executor id
+        executor_id: String,
+        /// 时隙索引 / Slot index
+        slot_index: usize,
+    },
+    /// 产能列选择约束 / Capacity-column selection constraint
+    CapacityColumnSelection {
+        /// 执行器 ID / Executor id
+        executor_id: String,
+        /// 时隙索引 / Slot index
+        slot_index: usize,
+    },
     /// 任务束约束 / Bunch constraint
     Bunch {
         /// 束索引 / Bunch index
@@ -42,6 +56,28 @@ impl ConstraintIndexKey {
     pub fn executor_compilation(executor_id: impl Into<String>) -> Self {
         Self::ExecutorCompilation {
             executor_id: executor_id.into(),
+        }
+    }
+
+    /// 创建执行器-时隙编译 key / Create executor-slot compilation key
+    pub fn executor_slot_compilation(
+        executor_id: impl Into<String>,
+        slot_index: usize,
+    ) -> Self {
+        Self::ExecutorSlotCompilation {
+            executor_id: executor_id.into(),
+            slot_index,
+        }
+    }
+
+    /// 创建产能列选择 key / Create capacity-column selection key
+    pub fn capacity_column_selection(
+        executor_id: impl Into<String>,
+        slot_index: usize,
+    ) -> Self {
+        Self::CapacityColumnSelection {
+            executor_id: executor_id.into(),
+            slot_index,
         }
     }
 
@@ -109,6 +145,39 @@ impl ConstraintIndexMap {
                     constraint_name,
                     dual_index,
                 );
+            }
+        }
+    }
+
+    /// 注册执行器-时隙编译约束映射 / Register executor-slot compilation constraint mappings
+    pub fn register_executor_slot_compilation_constraints<I>(
+        &mut self,
+        executor_ids: I,
+        slot_count: usize,
+        constraint_name_to_index: &HashMap<String, usize>,
+    )
+    where
+        I: IntoIterator,
+        I::Item: std::fmt::Display,
+    {
+        for executor_id in executor_ids {
+            let executor_id = executor_id.to_string();
+            for slot_index in 0..slot_count {
+                let constraint_name = format!(
+                    "executor_slot_compilation_{}_{}",
+                    executor_id,
+                    slot_index,
+                );
+                if let Some(&dual_index) = constraint_name_to_index.get(&constraint_name) {
+                    self.register(
+                        ConstraintIndexKey::executor_slot_compilation(
+                            executor_id.clone(),
+                            slot_index,
+                        ),
+                        constraint_name,
+                        dual_index,
+                    );
+                }
             }
         }
     }

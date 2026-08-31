@@ -1,17 +1,24 @@
-//! 迁移算子
-//! Migration Operators
+//! 迁移算子 / Migration Operators
+//!
+//! 定义岛屿模型中迁移操作的标准接口和多种实现，
+//! 包括简单迁移、环形迁移和随机迁移。
+//! Defines the standard interface and multiple implementations for migration operations
+//! in the island model, including simple, ring, and random migration.
 
 use super::{Individual, Population};
 
 /// 迁移算子 trait / Migration Operator Trait
 ///
-/// 定义迁移操作的标准接口。
-/// Defines standard interface for migration operations.
+/// 定义迁移操作的标准接口，用于在岛屿模型的不同种群之间交换个体。
+/// Defines the standard interface for migration operations, used to exchange individuals between different populations in the island model.
 pub trait MigrationOperator<I, G>: Send + Sync
 where
     I: Individual<G>,
 {
     /// 执行迁移操作 / Perform migration
+    ///
+    /// 将个体从源种群迁移到目标种群。
+    /// Migrates individuals from the source population to the target population.
     ///
     /// # 参数 / Parameters
     /// - `source`: 源种群 / Source population
@@ -22,8 +29,8 @@ where
 
 /// 简单迁移 / Simple Migration
 ///
-/// 将最优个体从源种群迁移到目标种群。
-/// Migrates best individuals from source to target population.
+/// 将最优个体从源种群迁移到目标种群，可选择是否替换目标种群中最差的个体。
+/// Migrates best individuals from source to target population, with an option to replace the worst individuals in the target population.
 #[derive(Debug, Clone, Copy)]
 pub struct SimpleMigration {
     /// 是否替换最差个体 / Whether to replace worst individuals
@@ -31,6 +38,10 @@ pub struct SimpleMigration {
 }
 
 impl SimpleMigration {
+    /// 创建新迁移算子 / Create new migration operator
+    ///
+    /// # 参数 / Parameters
+    /// - `replace_worst`: 是否替换目标种群中最差个体 / Whether to replace worst individuals in target population
     pub fn new(replace_worst: bool) -> Self {
         Self { replace_worst }
     }
@@ -86,8 +97,8 @@ where
 
 /// 环形迁移 / Ring Migration
 ///
-/// 多个种群之间环形迁移。
-/// Ring migration among multiple populations.
+/// 多个种群之间环形迁移，每个种群将个体迁移到下一个种群。
+/// Ring migration among multiple populations, where each population migrates individuals to the next population.
 #[derive(Debug, Clone, Copy)]
 pub struct RingMigration {
     /// 迁移数量 / Number to migrate
@@ -95,6 +106,10 @@ pub struct RingMigration {
 }
 
 impl RingMigration {
+    /// 创建新环形迁移算子 / Create new ring migration operator
+    ///
+    /// # 参数 / Parameters
+    /// - `migration_count`: 每次迁移的个体数量 / Number of individuals to migrate each time
     pub fn new(migration_count: usize) -> Self {
         Self { migration_count }
     }
@@ -108,6 +123,9 @@ impl Default for RingMigration {
 
 impl RingMigration {
     /// 执行环形迁移 / Perform ring migration
+    ///
+    /// 在多个种群之间执行环形迁移，每个种群将个体发送到下一个种群。
+    /// Performs ring migration among multiple populations, where each population sends individuals to the next.
     ///
     /// # 参数 / Parameters
     /// - `populations`: 种群列表 / Population list
@@ -149,8 +167,8 @@ impl RingMigration {
 
 /// 随机迁移 / Random Migration
 ///
-/// 随机选择个体进行迁移。
-/// Randomly selects individuals for migration.
+/// 随机选择个体进行迁移，按迁移概率间隔选取源种群中的个体。
+/// Randomly selects individuals for migration, picking individuals from the source population at intervals based on the migration rate.
 #[derive(Debug, Clone, Copy)]
 pub struct RandomMigration {
     /// 迁移概率 / Migration probability
@@ -158,6 +176,10 @@ pub struct RandomMigration {
 }
 
 impl RandomMigration {
+    /// 创建新随机迁移算子 / Create new random migration operator
+    ///
+    /// # 参数 / Parameters
+    /// - `migration_rate`: 迁移概率 / Migration probability
     pub fn new(migration_rate: f64) -> Self {
         Self { migration_rate }
     }

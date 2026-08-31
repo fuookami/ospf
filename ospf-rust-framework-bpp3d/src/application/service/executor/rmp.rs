@@ -1,4 +1,4 @@
-/// MetaModel RMP executor / MetaModel RMP executor
+/// MetaModel RMP 执行器 / MetaModel RMP executor
 #[derive(Debug, Clone, Default)]
 pub struct MetaModelRmpExecutor {
     /// 配置 / Config
@@ -112,6 +112,16 @@ impl MetaModelRmpExecutor {
         state: &ColumnGenerationApplicationState,
         backend: &dyn MetaModelSolverBackend,
     ) -> ColumnGenerationRmpExecution {
+        self.execute_with_backend_and_extension(state, backend, None)
+    }
+
+    /// 使用 backend 和可选模型扩展执行 RMP / Execute RMP with backend and optional extension
+    pub fn execute_with_backend_and_extension(
+        &self,
+        state: &ColumnGenerationApplicationState,
+        backend: &dyn MetaModelSolverBackend,
+        extension: Option<&dyn ColumnGenerationRmpModelExtension>,
+    ) -> ColumnGenerationRmpExecution {
         let mut model = MetaModel::<f64>::new(&self.config.model_name);
         let (
             mut context,
@@ -125,6 +135,7 @@ impl MetaModelRmpExecutor {
                 return ColumnGenerationRmpExecution {
                     objective: None,
                     shadow_price_summary: HashMap::new(),
+                    additional_shadow_prices: HashMap::new(),
                     diagnostics: None,
                     info: HashMap::from([
                         ("executor".to_string(), "meta_model_rmp".to_string()),
@@ -134,10 +145,19 @@ impl MetaModelRmpExecutor {
                 };
             }
         };
-        if let Err(error) = context.register(&mut model).and_then(|_| context.invoke(&model)) {
+        if let Err(error) = context
+            .register(&mut model)
+            .and_then(|_| {
+                extension
+                    .map(|extension| extension.register(state, &mut model))
+                    .unwrap_or(Ok(()))
+            })
+            .and_then(|_| context.invoke(&model))
+        {
             return ColumnGenerationRmpExecution {
                 objective: None,
                 shadow_price_summary: HashMap::new(),
+                additional_shadow_prices: HashMap::new(),
                 diagnostics: None,
                 info: HashMap::from([
                     ("executor".to_string(), "meta_model_rmp".to_string()),
@@ -169,6 +189,7 @@ impl MetaModelRmpExecutor {
                 return ColumnGenerationRmpExecution {
                     objective: None,
                     shadow_price_summary: HashMap::new(),
+                    additional_shadow_prices: HashMap::new(),
                     diagnostics: Some(diagnostics),
                     info: HashMap::from([
                         ("executor".to_string(), "meta_model_rmp".to_string()),
@@ -179,6 +200,12 @@ impl MetaModelRmpExecutor {
                 };
             }
         };
+        let mut additional_shadow_prices = solve
+            .additional_shadow_prices
+            .clone();
+        additional_shadow_prices.extend(extension
+            .map(|extension| extension.additional_shadow_prices(state, &model, &solve))
+            .unwrap_or_default());
         lifecycle.set_solution_to_model(&mut model, solve.primal_solution.clone());
         let layer_columns = iterative_context
             .columns
@@ -223,6 +250,7 @@ impl MetaModelRmpExecutor {
         ColumnGenerationRmpExecution {
             objective: solve.objective,
             shadow_price_summary,
+            additional_shadow_prices,
             diagnostics: Some(diagnostics),
             info,
         }

@@ -1,9 +1,10 @@
+//! 旅客约束限制 / Passenger constraint limits.
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use super::super::model::{Passenger, PassengerAmount, PassengerCancel, PassengerChange};
 
 /// 旅客航班容量约束 / Passenger flight capacity constraint
-/// 对齐 Kotlin PassengerFlightCapacityConstraint
+/// 对齐 Kotlin PassengerFlightCapacityConstraint / Aligned with Kotlin PassengerFlightCapacityConstraint
 pub fn apply_passenger_flight_capacity_constraint(
     _model: &mut MetaModel<f64>,
     amounts: &[PassengerAmount],
@@ -24,7 +25,7 @@ pub fn apply_passenger_flight_capacity_constraint(
 }
 
 /// 旅客航线取消约束 / Passenger route cancel constraint
-/// 对齐 Kotlin PassengerRouteCancelConstraint
+/// 对齐 Kotlin PassengerRouteCancelConstraint / Aligned with Kotlin PassengerRouteCancelConstraint
 pub fn apply_passenger_route_cancel_constraint(
     _model: &mut MetaModel<f64>,
     cancels: &[PassengerCancel],
@@ -38,7 +39,7 @@ pub fn apply_passenger_route_cancel_constraint(
 }
 
 /// 旅客航班变更约束 / Passenger flight change constraint
-/// 对齐 Kotlin PassengerFlightChangeConstraint
+/// 对齐 Kotlin PassengerFlightChangeConstraint / Aligned with Kotlin PassengerFlightChangeConstraint
 pub fn apply_passenger_flight_change_constraint(
     _model: &mut MetaModel<f64>,
     changes: &[PassengerChange],
@@ -52,7 +53,7 @@ pub fn apply_passenger_flight_change_constraint(
 }
 
 /// 旅客取消最小化 / Passenger cancel minimization
-/// 对齐 Kotlin PassengerCancelMinimization
+/// 对齐 Kotlin PassengerCancelMinimization / Aligned with Kotlin PassengerCancelMinimization
 pub fn apply_passenger_cancel_minimization(
     _model: &mut MetaModel<f64>,
     cancels: &[PassengerCancel],
@@ -67,7 +68,7 @@ pub fn apply_passenger_cancel_minimization(
 }
 
 /// 旅客舱位变更最小化 / Passenger class change minimization
-/// 对齐 Kotlin PassengerClassChangeMinimization
+/// 对齐 Kotlin PassengerClassChangeMinimization / Aligned with Kotlin PassengerClassChangeMinimization
 pub fn apply_passenger_class_change_minimization(
     _model: &mut MetaModel<f64>,
     changes: &[PassengerChange],
@@ -81,7 +82,7 @@ pub fn apply_passenger_class_change_minimization(
 }
 
 /// 旅客航班变更最小化 / Passenger flight change minimization
-/// 对齐 Kotlin PassengerFlightChangeMinimization
+/// 对齐 Kotlin PassengerFlightChangeMinimization / Aligned with Kotlin PassengerFlightChangeMinimization
 pub fn apply_passenger_flight_change_minimization(
     _model: &mut MetaModel<f64>,
     changes: &[PassengerChange],

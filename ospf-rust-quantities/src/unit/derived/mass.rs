@@ -1,8 +1,6 @@
-//! Mass units - 质量单位
-//! Mass units - SI mass units (kilogram, gram, etc.)
+//! 质量单位 / Mass units
 //!
-//! 提供质量量纲的 SI 单位定义，包括千克、克、毫克、吨等。
-//! Provides SI unit definitions for mass dimension, including kilogram, gram, milligram, tonne, etc.
+//! 提供质量量纲的 SI 单位定义，包括千克、克、毫克、吨等 / Provides SI unit definitions for mass dimension, including kilogram, gram, milligram, tonne, etc
 
 use crate::dimension::derived::Mass;
 use crate::scale::{KILO, MILLI, Scale};

@@ -28,7 +28,7 @@ where
     if !block_traces_allow_package_rules(request, bin, &block_traces) {
         return None;
     }
-    let mut coverage_by_item = HashMap::<String, f64>::new();
+    let mut coverage_by_item = HashMap::<ItemId, f64>::new();
     let mut max_depth = V::zero();
     for trace in &block_traces {
         *coverage_by_item.entry(trace.item_id.clone()).or_default() +=

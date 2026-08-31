@@ -1,3 +1,4 @@
+//! 不宜空舱限制 / Empty hated limits
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
@@ -8,10 +9,11 @@ use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAgg
 use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
-/// 空舱厌恶限制: 目标函数中惩罚空舱位
+/// 空舱厌恶限制: 目标函数中惩罚空舱位 / Empty hated limit: penalize empty positions in objective
 /// 对齐 Kotlin EmptyHatedLimit
 ///
 /// 创建辅助变量 y[p] 表示舱位是否为空，并在目标函数中添加惩罚项
+/// Creates auxiliary variable y[p] indicating whether a position is empty, and adds penalty terms to the objective
 pub fn apply_empty_hated_limits(
     model: &mut MetaModel<f64>,
     context: &SoftSecurityContext<'_>,

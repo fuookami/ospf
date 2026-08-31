@@ -1,3 +1,4 @@
+//! 装载顺序输出导出器 / Loading order output exporter
 use crate::framework::demo2::domain::aircraft::Aggregation;
 
 /// 装载顺序输出导出器 / Loading order output exporter

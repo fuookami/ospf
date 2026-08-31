@@ -10,6 +10,7 @@ impl ColumnGenerationRmpExecutor for MockColumnGenerationRmpExecutor {
         ColumnGenerationRmpExecution {
             objective: self.objective,
             shadow_price_summary: HashMap::new(),
+            additional_shadow_prices: HashMap::new(),
             diagnostics: None,
             info: HashMap::from([
                 ("executor".to_string(), "mock_rmp".to_string()),
@@ -29,6 +30,7 @@ impl ColumnGenerationFinalExecutor for MockColumnGenerationFinalExecutor {
             layers: state.layers.clone(),
             packed_bins: Vec::new(),
             objective: None,
+            final_solved: true,
             diagnostics: None,
             info: HashMap::from([
                 ("executor".to_string(), "mock_final".to_string()),

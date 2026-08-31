@@ -1,3 +1,4 @@
+//! 拖车装载模型 / Trailer loading model
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
@@ -11,14 +12,16 @@ use crate::framework::demo2::infrastructure::dto::PositionPair;
 /// 拖车装载 / Trailer loading (对齐 Kotlin TrailerLoading)
 #[derive(Debug, Clone)]
 pub struct TrailerLoading {
+    /// 拖车信息 / Trailer information
     pub trailer: Trailer,
+    /// 舱位标识 / Position identifier
     pub position_id: String,
 }
 
 /// TrailerLoading IfFunction 注册结果 / TrailerLoading IfFunction registration result
 #[derive(Debug, Clone)]
 pub struct TrailerLoadingVariables {
-    /// loading_if = IfFunction(condition=sum(loaded[item]), then=1, else=0) 的结果变量 solver index
+    /// loading_if 的结果变量 solver index / Solver index of loading_if result variable
     /// 当拖车上的任一物品被装载时值为 1，否则为 0
     pub loading_if: usize,
 }
@@ -27,7 +30,7 @@ pub struct TrailerLoadingVariables {
 /// 对齐 Kotlin TrailerLoading.trailerChange / trailerCircling
 #[derive(Debug, Clone)]
 pub struct TrailerChangeVariables {
-    /// trailer_change[t][p] = IfFunction 的结果变量 solver index
+    /// trailer_change 的结果变量 solver index 二维数组 / 2D array of trailer_change result variable solver indices
     /// 对齐 Kotlin trailerChange: LinearIntermediateSymbols2
     /// 维度: [ordered_trailers.len(), adjacent_positions.len()]
     pub trailer_change: Vec<Vec<usize>>,

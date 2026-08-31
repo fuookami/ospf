@@ -6,9 +6,9 @@
 //!
 //! # 核心概念 / Core Concepts
 //!
-//! - [`ShadowPriceKey`] - Shadow Price 键，用于标识 Shadow Price
-//! - [`ShadowPrice`] - Shadow Price 数据结构
-//! - [`ShadowPriceMap`] - Shadow Price 映射表 trait
+//! - [`ShadowPriceKey`] - Shadow Price 键，用于标识 Shadow Price / Shadow Price key for identifying shadow prices
+//! - [`ShadowPrice`] - Shadow Price 数据结构 / Shadow Price data structure
+//! - [`ShadowPriceMap`] - Shadow Price 映射表 trait / Shadow Price map trait
 
 use std::any::TypeId;
 use std::collections::HashMap;

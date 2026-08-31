@@ -1,3 +1,5 @@
+//! 带宽上下文：注册与构建带宽相关变量、符号和约束 / Bandwidth context: register and construct bandwidth-related variables, symbols, and constraints
+
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
@@ -8,15 +10,19 @@ use crate::framework::demo1::route_context::RouteContext;
 use super::aggregation::Aggregation;
 use super::model::{EdgeBandwidth, NodeBandwidth, ServiceBandwidth};
 
+/// 带宽上下文 / Bandwidth context
 pub struct BandwidthContext {
+    /// 聚合数据 / Aggregation data
     pub aggregation: Option<Aggregation>,
 }
 
 impl BandwidthContext {
+    /// 创建新的带宽上下文 / Create a new bandwidth context
     pub fn new() -> Self {
         Self { aggregation: None }
     }
 
+    /// 注册带宽相关变量和符号到模型 / Register bandwidth-related variables and symbols into the model
     pub fn register(
         &mut self,
         model: &mut MetaModel<f64>,
@@ -57,6 +63,7 @@ impl BandwidthContext {
         Ok(())
     }
 
+    /// 构建带宽相关约束和目标 / Construct bandwidth-related constraints and objectives
     pub fn construct(
         &self,
         model: &mut MetaModel<f64>,
@@ -84,6 +91,7 @@ impl BandwidthContext {
         )
     }
 
+    /// 分析求解结果，返回服务路径列表 / Analyze the solution and return service path list
     pub fn analyze(
         &self,
         route_context: &RouteContext,
@@ -108,9 +116,10 @@ impl BandwidthContext {
     }
 }
 
-/// 构建 ServiceBandwidth 符号组合
+/// 构建 ServiceBandwidth 符号组合 / Build ServiceBandwidth symbol combination
 ///
 /// 对每个 (node, service) 对，构建入度/出度/出流多项式：
+/// For each (node, service) pair, build in-degree/out-degree/out-flow polynomials:
 /// - in_degree[node][s] = sum(y[e][s] for e where edge.to == node)
 /// - out_degree[node][s] = sum(y[e][s] for e where edge.from == node)
 /// - out_flow[node][s] = out_degree - in_degree
@@ -200,9 +209,10 @@ fn build_service_bandwidth(
     Ok(ServiceBandwidth { in_degree, out_degree, out_flow })
 }
 
-/// 构建 NodeBandwidth 符号组合
+/// 构建 NodeBandwidth 符号组合 / Build NodeBandwidth symbol combination
 ///
 /// 对每个 node，将 ServiceBandwidth 的 [node, *] 维度求和：
+/// For each node, sum the [node, *] dimension of ServiceBandwidth:
 /// - in_degree[node] = sum(svc_bw.in_degree[node][s] for all s)
 /// - out_degree[node] = sum(svc_bw.out_degree[node][s] for all s)
 /// - out_flow[node] = sum(svc_bw.out_flow[node][s] for all s)
@@ -273,7 +283,7 @@ fn build_node_bandwidth(
     Ok(NodeBandwidth { in_degree, out_degree, out_flow })
 }
 
-/// 从 bandwidth[e] 的多项式中提取指定 service s 的系数
+/// 从 bandwidth[e] 的多项式中提取指定 service s 的系数 / Extract coefficient for specified service s from bandwidth[e] polynomial
 fn extract_service_coeff_from_bw(
     bandwidth: &SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
     edge_index: usize,

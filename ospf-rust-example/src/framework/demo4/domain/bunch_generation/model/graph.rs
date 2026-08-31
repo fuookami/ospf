@@ -1,3 +1,4 @@
+//! 路线图模型模块 / Route graph model module
 use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
 
@@ -7,12 +8,20 @@ pub enum Node {
     /// 根节点 / Root node
     Root,
     /// 任务节点 / Task node
-    Task { task_id: String, time: OffsetDateTime, index: u64 },
+    Task {
+        /// 任务标识 / Task identifier
+        task_id: String,
+        /// 任务时间 / Task time
+        time: OffsetDateTime,
+        /// 节点索引 / Node index
+        index: u64,
+    },
     /// 终止节点 / End node
     End,
 }
 
 impl Node {
+    /// 获取节点索引 / Get node index
     pub fn index(&self) -> u64 {
         match self {
             Node::Root => 0,
@@ -21,6 +30,7 @@ impl Node {
         }
     }
 
+    /// 获取节点时间 / Get node time
     pub fn time(&self) -> Option<OffsetDateTime> {
         match self {
             Node::Root => None,
@@ -29,18 +39,22 @@ impl Node {
         }
     }
 
+    /// 是否为根节点 / Whether this is a root node
     pub fn is_root(&self) -> bool {
         matches!(self, Node::Root)
     }
 
+    /// 是否为终止节点 / Whether this is an end node
     pub fn is_end(&self) -> bool {
         matches!(self, Node::End)
     }
 
+    /// 是否为任务节点 / Whether this is a task node
     pub fn is_task(&self) -> bool {
         matches!(self, Node::Task { .. })
     }
 
+    /// 获取任务标识 / Get task identifier
     pub fn task_id(&self) -> Option<&str> {
         match self {
             Node::Task { task_id, .. } => Some(task_id),
@@ -52,18 +66,23 @@ impl Node {
 /// 边 / Edge (对齐 FSRA Graph.kt Edge)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Edge {
+    /// 起始节点 / Source node
     pub from: Node,
+    /// 目标节点 / Target node
     pub to: Node,
 }
 
 /// 图 / Graph (对齐 FSRA Graph.kt Graph)
 #[derive(Debug, Clone)]
 pub struct Graph {
+    /// 节点映射 / Node map (index -> Node)
     pub nodes: HashMap<u64, Node>,
+    /// 边映射 / Edge map (Node -> Edge set)
     pub edges: HashMap<Node, HashSet<Edge>>,
 }
 
 impl Graph {
+    /// 创建包含根节点和终止节点的新图 / Create new graph with root and end nodes
     pub fn new() -> Self {
         let mut graph = Self {
             nodes: HashMap::new(),

@@ -1,3 +1,4 @@
+//! 装载效能领域模型 / Loading effectiveness domain model.
 pub mod advice_loading;
 pub mod sequential_loading;
 pub mod trailer;

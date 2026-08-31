@@ -1,3 +1,4 @@
+//! 同出发地邻接限制 / Same source adjacent limits
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -6,7 +7,7 @@ use ospf_rust_core::symbol::function::IfFunction;
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 
-/// Same-source adjacent limit: maximize same-source cargo adjacency.
+/// 同来源邻接限制: 最大化同来源货物的邻接性 / Same-source adjacent limit: maximize same-source cargo adjacency
 ///
 /// Aligned with Kotlin SameSourceAdjacentLimit + TransferAdjacentLoading.
 /// For each source and each adjacent position pair, creates an IfFunction

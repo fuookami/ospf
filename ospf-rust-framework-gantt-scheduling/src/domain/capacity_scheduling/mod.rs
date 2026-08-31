@@ -13,6 +13,7 @@ use ospf_rust_framework::model::pipeline::Pipeline;
 
 use crate::GanttResult;
 
+pub mod iterative;
 pub mod model;
 pub mod service;
 
@@ -20,22 +21,17 @@ pub mod service;
 // 公共重导出 / Public re-exports
 // ========================================================================
 
+pub use iterative::{IterativeCapacityColumn, IterativeCapacityCompilation};
+
 pub use model::{
-    ProductionActionTrait,
-    BasicProductionAction,
-    CapacityCompilation,
-    CapacityOrderCompilation,
-    CapacityColumn,
-    CapacityColumnAggregation,
-    CapacitySchedulingSolution,
-    ActionAllocation,
-    ExecutorCapacityResult,
+    ActionAllocation, BasicProductionAction, CapacityColumn, CapacityColumnAggregation,
+    CapacityCompilation, CapacityOrderCompilation, CapacitySchedulingSolution,
+    ExecutorCapacityResult, ProductionActionTrait,
 };
 
 pub use service::{
-    ExecutorCapacityConstraint,
+    CapacityColumnSelectionConstraint, CapacityCostMinimization, ExecutorCapacityConstraint,
     OrderConstraint,
-    CapacityCostMinimization,
 };
 
 // ========================================================================
@@ -58,7 +54,7 @@ impl<A: ProductionActionTrait> CapacitySchedulingAggregation<A> {
     /// 创建无序产能聚合 / Create no-order capacity aggregation
     pub fn new_no_order(
         actions: Vec<A>,
-        executor_ids: Vec<String>,
+        executor_ids: Vec<impl Into<A::ExecutorId>>,
         slot_count: usize,
     ) -> Self {
         Self {
@@ -70,10 +66,11 @@ impl<A: ProductionActionTrait> CapacitySchedulingAggregation<A> {
     /// 创建带序产能聚合 / Create ordered capacity aggregation
     pub fn new_with_order(
         actions: Vec<A>,
-        executor_ids: Vec<String>,
+        executor_ids: Vec<impl Into<A::ExecutorId>>,
         slot_count: usize,
         max_order: usize,
     ) -> Self {
+        let executor_ids = executor_ids.into_iter().map(Into::into).collect::<Vec<_>>();
         Self {
             compilation: CapacityCompilation::new(
                 actions.clone(),
@@ -141,7 +138,8 @@ impl<A: ProductionActionTrait> CapacitySchedulingContext<A> {
     /// 调用验证 / Invoke validation
     pub fn invoke(&self, model: &MetaModel<f64>) -> crate::GanttResult<()> {
         for limit in &self.limits {
-            limit.invoke(model)
+            limit
+                .invoke(model)
                 .map_err(|e| crate::GanttError::Calculation {
                     message: format!("Limit invoke failed: {:?}", e),
                 })?;

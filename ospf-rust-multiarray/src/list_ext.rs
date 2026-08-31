@@ -1,3 +1,5 @@
+//! 二维/三维列表通配访问扩展 / 2D/3D list wildcard access extensions.
+
 /// 二维列表类型别名 / 2D list type alias.
 pub type List2<T> = std::vec::Vec<std::vec::Vec<T>>;
 
@@ -96,18 +98,22 @@ pub trait List3Ext<T> {
     /// 通配匹配值，None 表示该维度全选 / Wildcard match, None means all on that dimension.
     fn values_match(&self, i: Option<usize>, j: Option<usize>, k: Option<usize>) -> Vec<&T>;
 
+    /// 获取指定第一维索引上的全部值 / Get all values at the first dimension index.
     fn values_at_i(&self, i: usize) -> Vec<&T> {
         self.values_match(Some(i), None, None)
     }
 
+    /// 获取指定第二维索引上的全部值 / Get all values at the second dimension index.
     fn values_at_j(&self, j: usize) -> Vec<&T> {
         self.values_match(None, Some(j), None)
     }
 
+    /// 获取指定第三维索引上的全部值 / Get all values at the third dimension index.
     fn values_at_k(&self, k: usize) -> Vec<&T> {
         self.values_match(None, None, Some(k))
     }
 
+    /// 获取所有值 / Get all values.
     fn values_all(&self) -> Vec<&T> {
         self.values_match(None, None, None)
     }

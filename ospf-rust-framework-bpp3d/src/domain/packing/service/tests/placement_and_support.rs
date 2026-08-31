@@ -2,7 +2,7 @@
     fn layer_placement_adapter_uses_oriented_cylinder_shape() {
         let adapter = LayerPlacementAdapter::new();
         let item = ActualItem {
-            id: "cyl-y".to_string(),
+            id: "cyl-y".into(),
             name: "Cylinder Y".to_string(),
             package_code: None,
             pack: None,
@@ -40,7 +40,7 @@
         let item = PackedItem {
             item_index: 0,
             item: crate::domain::item::ActualItem {
-                id: "cyl".to_string(),
+                id: "cyl".into(),
                 name: "Cylinder".to_string(),
                 package_code: None,
                 pack: None,
@@ -85,7 +85,7 @@
         let cylinder = PackedItem {
             item_index: 1,
             item: crate::domain::item::ActualItem {
-                id: "cyl_x".to_string(),
+                id: "cyl_x".into(),
                 name: "Cylinder X".to_string(),
                 package_code: None,
                 pack: None,

@@ -1,8 +1,6 @@
-//! Time units - 时间单位
-//! Time units - SI time units (second, minute, hour, etc.)
+//! 时间单位 / Time units
 //!
-//! 提供时间量纲的单位定义，包括秒、毫秒、微秒、纳秒、分、时、天、周等。
-//! Provides unit definitions for time dimension, including second, millisecond, microsecond, nanosecond, minute, hour, day, week, etc.
+//! 提供时间量纲的单位定义，包括秒、毫秒、微秒、纳秒、分、时、天、周等 / Provides unit definitions for time dimension, including second, millisecond, microsecond, nanosecond, minute, hour, day, week, etc
 
 use crate::dimension::derived::Time;
 use crate::scale::{MICRO, MILLI, NANO, SEXAGESIMAL, Scale};

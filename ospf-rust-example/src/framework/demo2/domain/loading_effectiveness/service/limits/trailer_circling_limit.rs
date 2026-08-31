@@ -1,3 +1,4 @@
+//! 拖车绕行限制 / Trailer circling limits
 use std::error::Error;
 use std::collections::BTreeSet;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
@@ -5,7 +6,7 @@ use crate::framework::demo2::domain::loading_effectiveness::aggregation::Loading
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
-/// 拖车循环限制: 最小化拖车循环
+/// 拖车循环限制: 最小化拖车循环 / Trailer circling limit: minimize trailer circling
 /// 对齐 Kotlin TrailerCirclingLimit
 ///
 /// Kotlin 语义: model.minimize(sum of trailerCircling intermediate symbols for adjacent positions)

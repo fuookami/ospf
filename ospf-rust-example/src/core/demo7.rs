@@ -1,3 +1,4 @@
+//! Demo7 模块 / Demo7 module
 use std::error::Error;
 
 use ospf_rust_multiarray::Shape;

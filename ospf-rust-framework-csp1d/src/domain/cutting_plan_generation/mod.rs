@@ -29,7 +29,7 @@ pub fn width_feasibility_check_from_policies<V: SolveValue>(
     }
     Some(std::sync::Arc::new(move |material, product, product_width| {
         let plan = CuttingPlan {
-            id: format!("width-check-{}-{}", material.id, product.id),
+            id: format!("width-check-{}-{}", material.id, product.id).into(),
             material: material.clone(),
             machine_id: material.machine_id.clone(),
             slices: vec![CuttingPlanSlice {
@@ -53,8 +53,10 @@ pub fn width_feasibility_check_from_policies<V: SolveValue>(
 
 /// 初始切割方案生成器 / Initial cutting plan generator
 pub trait Csp1dInitialCuttingPlanGenerator<V: SolveValue>: Send + Sync {
+    /// 生成切割方案 / Generate cutting plans
     fn generate(&self, input: &CuttingPlanGenerationInput<V>) -> Vec<CuttingPlan<V>>;
 
+    /// 生成切割方案并返回报告 / Generate cutting plans with report
     fn generate_with_report(
         &self,
         input: &CuttingPlanGenerationInput<V>,
@@ -73,8 +75,10 @@ pub trait Csp1dInitialCuttingPlanGenerator<V: SolveValue>: Send + Sync {
 
 /// 定价生成器 / Pricing generator
 pub trait Csp1dPricingGenerator<V: SolveValue>: Send + Sync {
+    /// 生成定价方案 / Generate pricing plans
     fn generate(&self, input: &Csp1dPricingInput<V>) -> Vec<CuttingPlan<V>>;
 
+    /// 生成定价方案并返回报告 / Generate pricing plans with report
     fn generate_with_report(
         &self,
         input: &Csp1dPricingInput<V>,
@@ -92,6 +96,9 @@ pub trait Csp1dPricingGenerator<V: SolveValue>: Send + Sync {
 }
 
 /// 简单初始生成器 / Simple initial cutting plan generator
+///
+/// 为每个物料和需求组合生成单产品方案。
+/// Generates single-product plans for each material-demand combination.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SimpleInitialCuttingPlanGenerator;
 
@@ -110,7 +117,7 @@ impl<V: SolveValue> Csp1dInitialCuttingPlanGenerator<V> for SimpleInitialCutting
                     continue;
                 };
                 let plan = CuttingPlan {
-                    id: format!("init-{}-{}-{}", material.id, demand.product.id, plans.len()),
+                    id: format!("init-{}-{}-{}", material.id, demand.product.id, plans.len()).into(),
                     material: material.clone(),
                     machine_id: material.machine_id.clone(),
                     slices: vec![CuttingPlanSlice {
@@ -150,10 +157,16 @@ impl<V: SolveValue> Csp1dInitialCuttingPlanGenerator<V> for SimpleInitialCutting
 }
 
 /// N-Same 生成器 / N-Same generator
+///
+/// 为每个物料和需求组合生成同产品多刀方案。
+/// Generates same-product multi-knife plans for each material-demand combination.
 #[derive(Debug, Clone)]
 pub struct NSameGenerator<V: SolveValue> {
+    /// 生成约束 / Generation constraints
     pub constraints: GenerationConstraints<V>,
+    /// 是否生成全部可行数量 / Whether to generate all feasible amounts
     pub all_amount: bool,
+    /// 最大方案数 / Maximum plan count
     pub max_plans: u64,
 }
 
@@ -203,10 +216,16 @@ impl<V: SolveValue> Csp1dInitialCuttingPlanGenerator<V> for NSameGenerator<V> {
 }
 
 /// N-Sum 生成器 / N-Sum generator
+///
+/// 通过组合搜索生成多产品混合方案。
+/// Generates multi-product mixed plans through combination search.
 #[derive(Debug, Clone)]
 pub struct NSumGenerator<V: SolveValue> {
+    /// 生成约束 / Generation constraints
     pub constraints: GenerationConstraints<V>,
+    /// 最大搜索深度 / Maximum search depth
     pub max_depth: u64,
+    /// 最大方案数 / Maximum plan count
     pub max_plans: u64,
 }
 
@@ -262,9 +281,14 @@ impl<V: SolveValue> Csp1dInitialCuttingPlanGenerator<V> for NSumGenerator<V> {
 }
 
 /// DFS 生成器 / DFS generator
+///
+/// 深度优先搜索生成组合方案。
+/// Generates combination plans via depth-first search.
 #[derive(Debug, Clone)]
 pub struct DFSGenerator<V: SolveValue> {
+    /// 生成约束 / Generation constraints
     pub constraints: GenerationConstraints<V>,
+    /// 最大方案数 / Maximum plan count
     pub max_plans: u64,
 }
 
@@ -311,9 +335,14 @@ impl<V: SolveValue> Csp1dInitialCuttingPlanGenerator<V> for DFSGenerator<V> {
 }
 
 /// FullSum 生成器 / FullSum generator
+///
+/// 全组合搜索生成方案。
+/// Generates plans through full combination search.
 #[derive(Debug, Clone)]
 pub struct FullSumGenerator<V: SolveValue> {
+    /// 生成约束 / Generation constraints
     pub constraints: GenerationConstraints<V>,
+    /// 最大方案数 / Maximum plan count
     pub max_plans: u64,
 }
 
@@ -357,8 +386,12 @@ impl<V: SolveValue> Csp1dInitialCuttingPlanGenerator<V> for FullSumGenerator<V> 
 }
 
 /// 配规填充器 / Costar filler
+///
+/// 用配规切片填充切割方案的余宽。
+/// Fills rest width of cutting plans with costar slices.
 #[derive(Debug, Clone, Default)]
 pub struct CostarFiller {
+    /// 每个幅宽最大配规数量 / Maximum costar amount per width
     pub max_costar_amount_per_width: u64,
 }
 
@@ -467,6 +500,9 @@ impl CostarFiller {
 }
 
 /// 简单定价生成器 / Simple pricing generator
+///
+/// 为每个正影子价格需求生成单产品定价方案。
+/// Generates single-product pricing plans for each demand with positive shadow price.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SimplePricingGenerator;
 
@@ -501,7 +537,7 @@ impl<V: SolveValue> Csp1dPricingGenerator<V> for SimplePricingGenerator {
                 continue;
             };
             let plan = CuttingPlan {
-                id: format!("pricing-{}-{}-{}", material.id, demand.product.id, plans.len()),
+                id: format!("pricing-{}-{}-{}", material.id, demand.product.id, plans.len()).into(),
                 material: material.clone(),
                 machine_id: material.machine_id.clone(),
                 slices: vec![CuttingPlanSlice {
@@ -541,12 +577,17 @@ impl<V: SolveValue> Csp1dPricingGenerator<V> for SimplePricingGenerator {
 }
 
 /// reduced cost 定价生成器 / Reduced cost pricing generator
+///
+/// 使用枚举器生成候选方案，按 reduced cost 排序筛选改善方案。
+/// Uses an enumerator to generate candidates, then filters improving plans by reduced cost.
 #[derive(Debug, Clone)]
 pub struct ReducedCostPricingGenerator<G> {
+    /// 候选方案枚举器 / Candidate plan enumerator
     pub enumerator: G,
 }
 
 impl<G> ReducedCostPricingGenerator<G> {
+    /// 创建定价生成器 / Create pricing generator
     pub fn new(enumerator: G) -> Self {
         Self { enumerator }
     }
@@ -1087,7 +1128,7 @@ fn build_plan<V: SolveValue>(
     plan_index: usize,
 ) -> CuttingPlan<V> {
     CuttingPlan {
-        id: format!("{prefix}-{}-{plan_index}", material.id),
+        id: format!("{prefix}-{}-{plan_index}", material.id).into(),
         material: material.clone(),
         machine_id: material.machine_id.clone(),
         slices,
@@ -1191,7 +1232,10 @@ fn plan_dominance_key<V: SolveValue>(plan: &CuttingPlan<V>) -> String {
     format!(
         "{}|{}|{}|{}",
         plan.material.id,
-        plan.machine_id.clone().unwrap_or_default(),
+        plan.machine_id
+            .as_ref()
+            .map(|id| id.to_string())
+            .unwrap_or_default(),
         plan.capacity_consumption
             .as_ref()
             .map(|quantity| format!("{:?}:{}", quantity.value, quantity.unit.symbol()))
@@ -1204,14 +1248,17 @@ fn plan_relaxed_dominance_key<V: SolveValue>(plan: &CuttingPlan<V>) -> String {
     let mut product_ids = plan
         .demand_contributions
         .iter()
-        .map(|contribution| contribution.product.id.clone())
+        .map(|contribution| contribution.product.id.to_string())
         .collect::<Vec<_>>();
     product_ids.sort();
     product_ids.dedup();
     format!(
         "{}|{}|{}",
         plan.material.id,
-        plan.machine_id.clone().unwrap_or_default(),
+        plan.machine_id
+            .as_ref()
+            .map(|id| id.to_string())
+            .unwrap_or_default(),
         product_ids.join(",")
     )
 }

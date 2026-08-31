@@ -3,8 +3,10 @@
 
 use ospf_rust_math::symbol::{ExpressionValue, PropertyPath, ScalarExpression};
 
+/// 更新赋值集合 / Update assignment collection
 #[derive(Debug, Clone, PartialEq)]
 pub struct UpdateAssignments<T = ExpressionValue> {
+    /// 赋值项列表 / Assignment items
     pub items: Vec<UpdateAssignment<T>>,
 }
 
@@ -105,10 +107,14 @@ impl<T> std::ops::Add for UpdateAssignments<T> {
     }
 }
 
+/// 更新赋值项 / Update assignment item
 #[derive(Debug, Clone, PartialEq)]
 pub enum UpdateAssignment<T = ExpressionValue> {
+    /// 设置字段值 / Set a field value
     SetValue(SetValue<T>),
+    /// 设置字段为空 / Set a field to null
     SetNull(SetNull),
+    /// 通过表达式设置字段值 / Set a field from an expression
     SetFromExpression(SetFromExpression<T>),
 }
 
@@ -124,9 +130,12 @@ impl<T> UpdateAssignment<T> {
     }
 }
 
+/// 设置值赋值项 / Set-value assignment item
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetValue<T = ExpressionValue> {
+    /// 字段路径 / Field path
     pub path: PropertyPath,
+    /// 设置值 / Value to set
     pub value: T,
 }
 
@@ -141,8 +150,10 @@ impl<T> SetValue<T> {
     }
 }
 
+/// 设置空值赋值项 / Set-null assignment item
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetNull {
+    /// 字段路径 / Field path
     pub path: PropertyPath,
 }
 
@@ -154,9 +165,12 @@ impl SetNull {
     }
 }
 
+/// 表达式赋值项 / Expression assignment item
 #[derive(Debug, Clone, PartialEq)]
 pub struct SetFromExpression<T = ExpressionValue> {
+    /// 字段路径 / Field path
     pub path: PropertyPath,
+    /// 赋值表达式 / Assignment expression
     pub expression: ScalarExpression<T>,
 }
 

@@ -1,5 +1,7 @@
-//! Yield domain model types
+//! 产出率领域模型类型 / Yield domain model types
 //!
+//! 包含 [`YieldSlackVariables`]，封装 [`OptionalIndexedVariableArray`] 用于
+//! 管理欠产和过产松弛变量索引。
 //! Contains [`YieldSlackVariables`] which wraps [`OptionalIndexedVariableArray`] for
 //! managing under-production and over-production slack variable indices.
 
@@ -9,12 +11,17 @@ use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::variable::{UContinuous, VariableRange};
 use ospf_rust_framework::model::OptionalIndexedVariableArray;
 
-/// Yield slack variable tracking using [`OptionalIndexedVariableArray`].
+/// 使用 [`OptionalIndexedVariableArray`] 的产出率松弛变量跟踪。 / Yield slack variable tracking using [`OptionalIndexedVariableArray`].
 ///
+/// 管理欠产和过产松弛变量索引，
+/// 用基于 [`OptionalIndexedVariableArray<usize, UContinuous>`] 的类型化索引访问
+/// 替代原始 `Vec<Option<usize>>`。
 /// Manages under-production and over-production slack variable indices,
 /// replacing raw `Vec<Option<usize>>` with typed, indexed access backed by
 /// [`OptionalIndexedVariableArray<usize, UContinuous>`].
 ///
+/// 维护并行的 `Vec<Option<usize>>` 缓存以提供向后兼容的位置访问
+/// 并支持 `Clone` 语义。
 /// A parallel `Vec<Option<usize>>` cache is maintained for backward-compatible
 /// positional access and to support `Clone` semantics.
 pub struct YieldSlackVariables {
@@ -27,7 +34,7 @@ pub struct YieldSlackVariables {
 }
 
 impl YieldSlackVariables {
-    /// Create a new yield slack variables tracker.
+    /// 创建新的产出率松弛变量跟踪器。 / Create a new yield slack variables tracker.
     pub fn new() -> Self {
         Self {
             inner_under: OptionalIndexedVariableArray::new("under_production"),
@@ -39,7 +46,7 @@ impl YieldSlackVariables {
         }
     }
 
-    /// Clear all registered variables for re-registration.
+    /// 清除所有已注册变量以便重新注册。 / Clear all registered variables for re-registration.
     pub fn clear(&mut self) {
         self.inner_under = OptionalIndexedVariableArray::new(&self.prefix_under);
         self.inner_over = OptionalIndexedVariableArray::new(&self.prefix_over);
@@ -47,18 +54,21 @@ impl YieldSlackVariables {
         self.over_cache.clear();
     }
 
-    /// Record that no under-production variable exists for this demand index.
+    /// 记录此需求索引不存在欠产变量。 / Record that no under-production variable exists for this demand index.
     pub fn push_under_none(&mut self) {
         self.under_cache.push(None);
     }
 
-    /// Record that no over-production variable exists for this demand index.
+    /// 记录此需求索引不存在过产变量。 / Record that no over-production variable exists for this demand index.
     pub fn push_over_none(&mut self) {
         self.over_cache.push(None);
     }
 
+    /// 为给定需求索引注册欠产变量。
     /// Register an under-production variable for the given demand index.
     ///
+    /// 通过内部 [`OptionalIndexedVariableArray`] 在模型中注册，
+    /// 并将索引记录到位置缓存中。
     /// Registers in the model via the inner [`OptionalIndexedVariableArray`] and
     /// records the index in the positional cache.
     pub fn register_under(
@@ -79,8 +89,11 @@ impl YieldSlackVariables {
         Ok(())
     }
 
+    /// 为给定需求索引注册过产变量。
     /// Register an over-production variable for the given demand index.
     ///
+    /// 通过内部 [`OptionalIndexedVariableArray`] 在模型中注册，
+    /// 并将索引记录到位置缓存中。
     /// Registers in the model via the inner [`OptionalIndexedVariableArray`] and
     /// records the index in the positional cache.
     pub fn register_over(
@@ -101,27 +114,27 @@ impl YieldSlackVariables {
         Ok(())
     }
 
-    /// Get the under-production variable index for a demand.
+    /// 获取需求的欠产变量索引。 / Get the under-production variable index for a demand.
     pub fn under_index(&self, demand_index: usize) -> Option<usize> {
         self.under_cache.get(demand_index).copied().flatten()
     }
 
-    /// Get the over-production variable index for a demand.
+    /// 获取需求的过产变量索引。 / Get the over-production variable index for a demand.
     pub fn over_index(&self, demand_index: usize) -> Option<usize> {
         self.over_cache.get(demand_index).copied().flatten()
     }
 
-    /// Backward-compatible positional access to under-production indices.
+    /// 向后兼容的欠产索引位置访问。 / Backward-compatible positional access to under-production indices.
     pub fn under_production(&self) -> &[Option<usize>] {
         &self.under_cache
     }
 
-    /// Backward-compatible positional access to over-production indices.
+    /// 向后兼容的过产索引位置访问。 / Backward-compatible positional access to over-production indices.
     pub fn over_production(&self) -> &[Option<usize>] {
         &self.over_cache
     }
 
-    /// Whether any slack variables have been registered.
+    /// 是否已注册任何松弛变量。 / Whether any slack variables have been registered.
     pub fn has_any(&self) -> bool {
         !self.inner_under.is_empty() || !self.inner_over.is_empty()
     }

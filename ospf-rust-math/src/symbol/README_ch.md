@@ -22,9 +22,30 @@ symbol/
 ├── polynomial/      # 多项式 (Linear, Quadratic, Canonical)
 ├── inequality/      # 不等式 (Comparison, LinearInequality, 等)
 ├── operation/       # 运算操作 (Evaluate, Differentiate, ToLaTeX, 等)
+├── expression/      # 运行时表达式系统 (ScalarExpression, BooleanExpression, 求值, 解析)
 ├── macros/          # 构造宏
-├── parser/          # 表达式解析器（可选，需要 "parser" feature）
+├── category/        # 符号分类
+├── parser/          # 布尔表达式解析器（可选，需要 "parser" feature）
 └── serde.rs         # 序列化（可选，需要 "serde" feature）
+```
+
+### expression/ 子模块结构
+
+运行时表达式系统是本模块的核心子模块，支持动态表达式构造、求值、解析和序列化：
+
+```
+expression/
+├── mod.rs           # 模块注册 + 布尔表达式解析器/序列化/测试
+├── property_path.rs # PropertyPath 属性路径 + PathSymbol 路径符号
+├── operators.rs     # 操作符枚举 (Unary/Binary/Comparison/PatternMatch/Boolean/NullCheck)
+├── value.rs         # ExpressionValue 运行时值类型
+├── scalar.rs        # ScalarExpression<T> 标量表达式 AST
+├── boolean.rs       # BooleanExpression<T> 布尔表达式 AST
+├── dsl.rs           # DSL trait (ScalarExpressionDsl, PathBuilder, BooleanExpressionDsl) + 便捷构造函数
+├── evaluation.rs    # EvaluationContext 求值上下文 + evaluate_boolean/evaluate_scalar_expression
+├── normalize.rs     # 布尔表达式规范化 (flatten, constant_fold, deduplicate, de_morgan, structural_key)
+├── math_functions.rs # ScalarFunctionEvaluator trait + MathFunctionEvaluator (17 个 math.* 函数)
+└── scalar_parser.rs # 标量表达式解析器（可选，需要 "parser" feature）
 ```
 
 ## 核心类型
@@ -62,6 +83,63 @@ symbol/
 | `LinearInequality<T>`       | `Linear op value`    | `2x + 3y ≤ 5`  |
 | `QuadraticInequality<T>`    | `Quadratic op value` | `x² + y² ≤ 10` |
 | `CanonicalInequality<T, E>` | `Canonical op value` | `x²y³ ≥ 1`     |
+
+### 运行时表达式
+
+expression 子模块提供运行时表达式系统，用于构造、求值、解析和序列化动态表达式。与 polynomial 模块的编译时符号运算不同，expression 模块在运行时动态构造和求值表达式，支持条件分支、函数调用和属性路径引用。
+
+#### 核心类型
+
+| 类型                          | 描述                                                          |
+|-------------------------------|---------------------------------------------------------------|
+| `PropertyPath`                | 属性路径（如 `user.address.city`），支持分段、父子路径、子路径判断 |
+| `PathSymbol`                  | 路径符号，桥接 `PropertyPath` 与 `DynSymbol`                    |
+| `ExpressionValue`             | 运行时值枚举（`Null` / `Boolean` / `Number` / `String`）        |
+| `ScalarExpression<T>`         | 标量表达式 AST（常量、引用、一元/二元运算、函数、条件、布尔包装） |
+| `BooleanExpression<T>`        | 布尔表达式 AST（常量、比较、In、模式匹配、空值检查、And/Or/Not） |
+| `PathBuilder<T>`              | 路径构建器，链式构造引用与比较表达式                          |
+
+#### 操作符
+
+| 枚举                     | 值                                                     |
+|--------------------------|--------------------------------------------------------|
+| `UnaryOperator`          | `Negate`、`Positive`、`Abs`                            |
+| `BinaryOperator`         | `Add`、`Subtract`、`Multiply`、`Divide`、`Modulo`、`Power` |
+| `ComparisonOperator`     | `Eq`、`Ne`、`Lt`、`Le`、`Gt`、`Ge`                     |
+| `PatternMatchMode`       | `Like`、`Exact`、`Prefix`、`Suffix`、`Contains`、`Regex` |
+| `BooleanOperator`        | `And`、`Or`                                            |
+| `NullCheckType`          | `IsNull`、`IsNotNull`                                  |
+
+#### 标量表达式变体
+
+`ScalarExpression<T>` 支持以下变体：
+
+| 变体               | 描述                                                |
+|--------------------|-----------------------------------------------------|
+| `Constant`         | 常量值                                              |
+| `Reference`        | 属性路径引用                                        |
+| `SymbolReference`  | 动态符号引用                                        |
+| `Unary`            | 一元操作（取负、正号、绝对值）                      |
+| `Binary`           | 二元操作（加减乘除、取模、幂运算）                  |
+| `Function`         | 函数调用（如 `abs`、`math.sqrt`）                   |
+| `Conditional`      | 条件表达式（`if/then/else` 或三元 `?:`）            |
+| `Boolean`          | 布尔包装表达式（将布尔表达式作为标量值）            |
+| `Custom`           | 自定义表达式（带 payload 与描述）                   |
+
+#### 布尔表达式变体
+
+`BooleanExpression<T>` 支持以下变体：
+
+| 变体             | 描述                                       |
+|------------------|--------------------------------------------|
+| `Constant`       | 三值逻辑常量（`True` / `False` / `Unknown`）|
+| `Comparison`     | 比较表达式（两个标量的比较运算）           |
+| `In`             | 集合成员判断                               |
+| `PatternMatch`   | 模式匹配（`like`、`regex`、前缀/后缀/包含）|
+| `NullCheck`      | 空值检查（`is null` / `is not null`）      |
+| `And` / `Or`     | 逻辑与/或（支持多操作数）                  |
+| `Not`            | 逻辑非                                     |
+| `Custom`         | 自定义布尔表达式                           |
 
 ## 使用示例
 
@@ -147,6 +225,89 @@ let grad_fn = linear.compile_gradient(&[x, y]);
 let gradient = grad_fn(&[2.0, 3.0]); // [2.0, 3.0]
 ```
 
+### 运行时表达式构造与求值
+
+```rust
+use ospf_rust_math::symbol::expression::{
+    ScalarExpression, BooleanExpression, ExpressionValue, MapEvaluationContext,
+    evaluate_scalar_expression, MathFunctionEvaluator,
+};
+
+// 构造标量表达式：x * 2 + 3
+let x = ScalarExpression::<ExpressionValue>::reference("x");
+let expr = ScalarExpression::add_expr(
+    ScalarExpression::multiply_expr(x.clone(), 2.0.into()),
+    3.0.into(),
+);
+
+// 构造条件表达式：if x > 0 then x else 0
+let condition = BooleanExpression::gt(x.clone(), 0.0.into());
+let conditional = ScalarExpression::conditional(condition, x, 0.0.into());
+
+// 求值上下文
+let ctx = MapEvaluationContext::from_string_map([
+    ("x", ExpressionValue::Number(5.0)),
+]);
+
+// 求值（使用 MathFunctionEvaluator 支持 math.* 函数）
+let result = evaluate_scalar_expression(&expr, &ctx, &MathFunctionEvaluator);
+assert_eq!(result, Some(ExpressionValue::Number(13.0)));
+```
+
+### 表达式解析（需要 "parser" feature）
+
+```rust
+use ospf_rust_math::symbol::expression::{
+    parse_scalar_expression, evaluate_scalar_expression,
+    MapEvaluationContext, MathFunctionEvaluator, ExpressionValue,
+};
+
+// 解析标量表达式字符串
+let expr = parse_scalar_expression("if math.sqrt(x) > 2 then x else 0 fi").unwrap();
+
+let ctx = MapEvaluationContext::from_string_map([
+    ("x", ExpressionValue::Number(16.0)),
+]);
+
+let result = evaluate_scalar_expression(&expr, &ctx, &MathFunctionEvaluator);
+assert_eq!(result, Some(ExpressionValue::Number(16.0)));
+```
+
+支持的解析语法：
+
+- 算术：`+`、`-`、`*`、`/`、`%`、`^`、`**`
+- 比较：`>`、`<`、`>=`、`<=`、`==`、`!=`、`<>`
+- 逻辑：`&&`、`||`、`!`、`and`、`or`、`not`
+- 条件：`? :` 三元、`if/then/else/fi`
+- 函数：`name(args)`、`math.sqrt`、`math.pow`、`math.PI`、`math.E` 等
+- 字面量：数字、字符串、`true`、`false`、`null`
+
+### 布尔表达式规范化
+
+```rust
+use ospf_rust_math::symbol::expression::{
+    BooleanExpression, ScalarExpression, ExpressionValue,
+    flatten_boolean_expression, constant_fold_boolean_expression,
+};
+
+let x = ScalarExpression::<ExpressionValue>::reference("x");
+// 构造嵌套的 And/Or：(x > 0 && x < 10) || (x > 100)
+let inner = BooleanExpression::and(vec![
+    BooleanExpression::gt(x.clone(), 0.0.into()),
+    BooleanExpression::lt(x.clone(), 10.0.into()),
+]);
+let nested = BooleanExpression::or(vec![
+    inner,
+    BooleanExpression::gt(x, 100.0.into()),
+]);
+
+// 扁平化嵌套的 And/Or
+let flat = flatten_boolean_expression(&nested);
+
+// 常量折叠：消除常量 True/False 操作数
+let folded = constant_fold_boolean_expression(&flat);
+```
+
 ## 已实现功能
 
 | 功能        | 状态 | 描述                                                               |
@@ -156,6 +317,12 @@ let gradient = grad_fn(&[2.0, 3.0]); // [2.0, 3.0]
 | 二次单项式/多项式 | ✅  | `QuadraticMonomial<T>`, `Quadratic<T>`                           |
 | 标准单项式/多项式 | ✅  | `CanonicalMonomial<T, E>`, `Canonical<T, E>`                     |
 | 不等式       | ✅  | `LinearInequality`, `QuadraticInequality`, `CanonicalInequality` |
+| 运行时表达式  | ✅  | `ScalarExpression`, `BooleanExpression`, `ExpressionValue`      |
+| 表达式求值    | ✅  | `evaluate_scalar_expression`, `evaluate_boolean`, 可注入函数求值器 |
+| 数学函数表    | ✅  | `MathFunctionEvaluator`（17 个 math.* 函数）                      |
+| 布尔规范化    | ✅  | flatten, constant_fold, deduplicate, de_morgan, structural_key   |
+| 条件表达式    | ✅  | `if/then/else/fi`、三元 `?:`、`Conditional` AST 变体              |
+| 标量解析器    | ✅  | `parse_scalar_expression`（可选 feature）                        |
 | 求值        | ✅  | `Evaluate`, `EvaluateOrdered` traits                             |
 | 微分        | ✅  | `Differentiate`, `SecondOrderDifferentiate` traits               |
 | 矩阵形式      | ✅  | `ToMatrixForm` trait                                             |

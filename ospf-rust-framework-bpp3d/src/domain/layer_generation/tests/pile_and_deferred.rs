@@ -1,7 +1,7 @@
     #[test]
     fn pile_layer_generator_respects_package_max_stack_layers() {
         let items = vec![ActualItem {
-            id: "limited".to_string(),
+            id: "limited".into(),
             name: "Limited".to_string(),
             package_code: None,
             pack: None,
@@ -24,7 +24,7 @@
             .with_package_attributes(attributes)
             .with_demand_entries(vec![LayerGenerationDemandEntry {
                 mode: Bpp3dDemandMode::Item,
-                key: Bpp3dDemandKey::Item { id: "limited".to_string() },
+                key: Bpp3dDemandKey::Item { id: "limited".into() },
                 demand: 5.0,
                 satisfied: 0.0,
             }])
@@ -33,7 +33,7 @@
                 height: meters(5.0),
                 depth: meters(2.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -48,7 +48,7 @@
     #[test]
     fn pattern_layer_generator_allows_remainder_pattern() {
         let items = vec![ActualItem {
-            id: "i0".to_string(),
+            id: "i0".into(),
             name: "Item".to_string(),
             package_code: None,
             pack: None,
@@ -62,7 +62,7 @@
         let request = LayerGenerationRequest::new(0, items)
             .with_demand_entries(vec![LayerGenerationDemandEntry {
                 mode: Bpp3dDemandMode::Item,
-                key: Bpp3dDemandKey::Item { id: "i0".to_string() },
+                key: Bpp3dDemandKey::Item { id: "i0".into() },
                 demand: 1.0,
                 satisfied: 0.0,
             }])
@@ -71,7 +71,7 @@
                 height: meters(1.0),
                 depth: meters(2.0),
                 capacity: meters(10.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -107,7 +107,7 @@
     #[test]
     fn pattern_layer_generator_repeats_pattern_until_remaining_is_empty() {
         let items = vec![ActualItem {
-            id: "tall".to_string(),
+            id: "tall".into(),
             name: "Tall".to_string(),
             package_code: Some("mix".to_string()),
             pack: None,
@@ -118,7 +118,7 @@
             enabled_orientations: vec![Orientation::Upright],
             shape_spec_override: Some(PackageShapeSpec::Cuboid),
         }, ActualItem {
-            id: "short".to_string(),
+            id: "short".into(),
             name: "Short".to_string(),
             package_code: Some("mix".to_string()),
             pack: None,
@@ -133,13 +133,13 @@
             .with_demand_entries(vec![
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "tall".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "tall".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "short".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "short".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
@@ -149,7 +149,7 @@
                 height: meters(3.0),
                 depth: meters(2.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(2);
@@ -171,7 +171,7 @@
     fn deferred_layer_generators_rotate_items_and_use_shadow_prices() {
         let items = vec![
             ActualItem {
-                id: "i0".to_string(),
+                id: "i0".into(),
                 name: "Item0".to_string(),
                 package_code: None,
                 pack: None,
@@ -183,7 +183,7 @@
                 shape_spec_override: Some(PackageShapeSpec::Cuboid),
             },
             ActualItem {
-                id: "i1".to_string(),
+                id: "i1".into(),
                 name: "Item1".to_string(),
                 package_code: None,
                 pack: None,
@@ -199,7 +199,7 @@
         shadow_prices.insert(
             DemandShadowPriceKey {
                 mode: Bpp3dDemandMode::Item,
-                key: Bpp3dDemandKey::Item { id: "i1".to_string() },
+                key: Bpp3dDemandKey::Item { id: "i1".into() },
             },
             2.5,
         );
@@ -209,7 +209,7 @@
                 height: meters(5.0),
                 depth: meters(5.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_shadow_prices(shadow_prices)
@@ -227,11 +227,11 @@
         assert_eq!(results[0].layer.demand_coverage[0].coefficient, 0.5);
         assert_eq!(
             results[0].layer.demand_coverage[0].key,
-            Bpp3dDemandKey::Item { id: "i1".to_string() },
+            Bpp3dDemandKey::Item { id: "i1".into() },
         );
         assert_eq!(
             results[1].layer.demand_coverage[0].key,
-            Bpp3dDemandKey::Item { id: "i0".to_string() },
+            Bpp3dDemandKey::Item { id: "i0".into() },
         );
         assert!(results[0].numeric_score.unwrap() > results[1].numeric_score.unwrap());
         assert_eq!(results[0].score, Some(1.25));

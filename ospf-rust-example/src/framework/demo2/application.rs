@@ -1,3 +1,4 @@
+//! Demo2 应用层 / Demo2 application layer
 use std::error::Error;
 use super::domain::{
 
@@ -6,6 +7,7 @@ use super::domain::{
 };
 use super::infrastructure::dto::{AircraftTypeInput, Demo2Request, SolvePolicy};
 
+/// 运行 Demo2 应用示例 / Run the Demo2 application example
 pub fn run() -> Result<(), Box<dyn Error>> {
     let request = Demo2Request::sample();
     let full_load = FullLoadApplication;

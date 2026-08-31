@@ -1,9 +1,10 @@
+//! 拖车更换限制 / Trailer change limits
 use std::error::Error;
 use ospf_rust_core::model::{MetaModel, LinearObjectiveInput};
 use crate::framework::demo2::domain::loading_effectiveness::model::TrailerChangeVariables;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
-/// 拖车更换限制: 最小化拖车更换次数
+/// 拖车更换限制: 最小化拖车更换次数 / Trailer change limit: minimize trailer change count
 /// 对齐 Kotlin TrailerChangeLimit
 ///
 /// Kotlin 语义:

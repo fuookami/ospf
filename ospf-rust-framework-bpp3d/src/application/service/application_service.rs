@@ -7,20 +7,20 @@
 /// Provides a lightweight application entry point composing config, layer
 /// generation, and packing analysis.
 #[derive(Debug, Clone)]
-pub struct ColumnGenerationApplicationService {
+pub struct ColumnGenerationApplicationService<G = PackingGeometryGuard> {
     /// 配置 / Config
     pub config: ColumnGenerationConfig,
     /// 装箱分析器 / Packing analyzer
-    pub packing_analyzer: ColumnGenerationPackingAnalyzer,
+    pub packing_analyzer: ColumnGenerationPackingAnalyzer<G>,
 }
 
-impl Default for ColumnGenerationApplicationService {
+impl Default for ColumnGenerationApplicationService<PackingGeometryGuard> {
     fn default() -> Self {
         Self::new(ColumnGenerationConfig::default())
     }
 }
 
-impl ColumnGenerationApplicationService {
+impl ColumnGenerationApplicationService<PackingGeometryGuard> {
     /// 创建应用服务 / Create application service
     pub fn new(config: ColumnGenerationConfig) -> Self {
         Self {
@@ -28,14 +28,41 @@ impl ColumnGenerationApplicationService {
             packing_analyzer: ColumnGenerationPackingAnalyzer::new(),
         }
     }
+}
 
+impl<G> ColumnGenerationApplicationService<G> {
+    /// 使用自定义几何校验策略创建应用服务 / Create application service with custom geometry validation strategy
+    pub fn with_geometry_guard(config: ColumnGenerationConfig, geometry_guard: G) -> Self {
+        Self {
+            config,
+            packing_analyzer: ColumnGenerationPackingAnalyzer::with_geometry_guard(
+                geometry_guard,
+            ),
+        }
+    }
+}
+
+impl<G> ColumnGenerationApplicationService<G>
+where
+    G: PackingGeometryContract<f64, Meter>,
+{
     /// 创建列生成算法 / Create column generation algorithm
     pub fn create_algorithm<V, U>(&self) -> ColumnGenerationAlgorithm<V, U>
     where
         V: Field + Clone + Debug + Send + Sync + PartialEq + num_traits::FloatConst,
         U: UnitTrait + Debug + Clone + Send + Sync,
     {
-        ColumnGenerationAlgorithm::new(self.config.clone())
+        self.create_algorithm_with(|config| ColumnGenerationAlgorithm::new(config))
+    }
+
+    /// 使用工厂创建列生成算法 / Create column generation algorithm with a factory
+    pub fn create_algorithm_with<V, U, F>(&self, factory: F) -> ColumnGenerationAlgorithm<V, U>
+    where
+        V: Field + Clone + Debug + Send + Sync + PartialEq + num_traits::FloatConst,
+        U: UnitTrait + Debug + Clone + Send + Sync,
+        F: FnOnce(ColumnGenerationConfig) -> ColumnGenerationAlgorithm<V, U>,
+    {
+        factory(self.config.clone())
     }
 
     /// 分析装箱结果 / Analyze packing result
@@ -45,7 +72,8 @@ impl ColumnGenerationApplicationService {
     ) -> Result<ColumnGenerationPackingAnalysis<V, U>, Vec<String>>
     where
         V: num_traits::Float + Field + Clone + Debug + Send + Sync + PartialOrd + num_traits::FloatConst + Into<f64>,
-        U: CTUnit + Default + Clone,
+        U: CTUnit + Default + Clone + Debug + Send + Sync,
+        G: PackingGeometryContract<V, U>,
     {
         self.packing_analyzer.analyze(packed_bins)
     }
@@ -104,7 +132,7 @@ impl ColumnGenerationApplicationService {
         let mut algorithm = self.create_algorithm::<f64, Meter>();
         let initial_layers = ensure_layer_demand_coverage(initial_layers, &items);
         algorithm.add_initial_layers(initial_layers.clone());
-        let state = application_state_from_algorithm_with_continuous_radius(
+        let mut state = application_state_from_algorithm_with_continuous_radius(
             &algorithm,
             items,
             bins,
@@ -113,7 +141,11 @@ impl ColumnGenerationApplicationService {
             HashMap::new(),
             continuous_radius_component,
         );
-        let rmp = rmp_executor.execute(&state);
+        let rmp = rmp_executor
+            .execute_result(&state)
+            .map_err(|error| vec![format!("{:?}: {}", error.stage, error.message)])?;
+        algorithm.state.additional_shadow_prices = rmp.additional_shadow_prices.clone();
+        state.additional_shadow_prices = algorithm.state.additional_shadow_prices.clone();
         if let Some(objective) = rmp.objective {
             algorithm.state.observe_objective(
                 objective,
@@ -121,7 +153,9 @@ impl ColumnGenerationApplicationService {
                 self.config.reduced_cost_tolerance,
             );
         }
-        let final_execution = final_executor.execute(&state);
+        let final_execution = final_executor
+            .execute_result(&state)
+            .map_err(|error| vec![format!("{:?}: {}", error.stage, error.message)])?;
         let packing_analysis = if final_execution.packed_bins.is_empty() {
             None
         } else {
@@ -129,6 +163,9 @@ impl ColumnGenerationApplicationService {
         };
         let mut info = HashMap::new();
         info.extend(rmp.info.iter().map(|(k, v)| (format!("rmp_{}", k), v.clone())));
+        info.extend(rmp.additional_shadow_prices.iter().map(|(k, v)| {
+            (format!("rmp_additional_shadow_price_{}", k), v.to_string())
+        }));
         info.extend(final_execution.info.iter().map(|(k, v)| (format!("final_{}", k), v.clone())));
         let result = ColumnGenerationResult {
             state: algorithm.state,
@@ -197,7 +234,10 @@ impl ColumnGenerationApplicationService {
             HashMap::new(),
             HashMap::new(),
         );
-        let first_rmp = rmp_executor.execute(&initial_state);
+        let first_rmp = rmp_executor
+            .execute_result(&initial_state)
+            .map_err(|error| vec![format!("{:?}: {}", error.stage, error.message)])?;
+        algorithm.state.additional_shadow_prices = first_rmp.additional_shadow_prices.clone();
         if let Some(objective) = first_rmp.objective {
             algorithm.state.observe_objective(
                 objective,
@@ -266,7 +306,7 @@ impl ColumnGenerationApplicationService {
             .collect::<HashMap<_, _>>();
         algorithm.state.advance_iteration();
 
-        let refreshed_state = application_state_from_algorithm_with_continuous_radius(
+        let mut refreshed_state = application_state_from_algorithm_with_continuous_radius(
             &algorithm,
             items,
             bins,
@@ -275,7 +315,11 @@ impl ColumnGenerationApplicationService {
             layer_placement_traces,
             continuous_radius_component,
         );
-        let rmp = rmp_executor.execute(&refreshed_state);
+        let rmp = rmp_executor
+            .execute_result(&refreshed_state)
+            .map_err(|error| vec![format!("{:?}: {}", error.stage, error.message)])?;
+        algorithm.state.additional_shadow_prices = rmp.additional_shadow_prices.clone();
+        refreshed_state.additional_shadow_prices = algorithm.state.additional_shadow_prices.clone();
         if let Some(objective) = rmp.objective {
             algorithm.state.observe_objective(
                 objective,
@@ -283,7 +327,9 @@ impl ColumnGenerationApplicationService {
                 self.config.reduced_cost_tolerance,
             );
         }
-        let final_execution = final_executor.execute(&refreshed_state);
+        let final_execution = final_executor
+            .execute_result(&refreshed_state)
+            .map_err(|error| vec![format!("{:?}: {}", error.stage, error.message)])?;
         let packing_analysis = if final_execution.packed_bins.is_empty() {
             None
         } else {
@@ -294,6 +340,9 @@ impl ColumnGenerationApplicationService {
             ("generated_layer_count".to_string(), (algorithm.state.total_columns.saturating_sub(refreshed_state.initial_layers.len())).to_string()),
         ]);
         info.extend(rmp.info.iter().map(|(k, v)| (format!("rmp_{}", k), v.clone())));
+        info.extend(rmp.additional_shadow_prices.iter().map(|(k, v)| {
+            (format!("rmp_additional_shadow_price_{}", k), v.to_string())
+        }));
         info.extend(final_execution.info.iter().map(|(k, v)| (format!("final_{}", k), v.clone())));
         let result = ColumnGenerationResult {
             state: algorithm.state,

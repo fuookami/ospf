@@ -18,7 +18,9 @@ pub struct RbatisBackend;
 /// Rbatis parameterized statement.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RbatisStatement {
+    /// SQL 语句 / SQL statement
     pub sql: String,
+    /// 参数列表 / Parameter list
     pub args: Vec<ExpressionValue>,
 }
 

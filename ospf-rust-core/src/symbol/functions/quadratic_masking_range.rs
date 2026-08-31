@@ -1,4 +1,4 @@
-//! Quadratic masking range function.
+//! 二次掩码范围函数 / Quadratic masking range function
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};

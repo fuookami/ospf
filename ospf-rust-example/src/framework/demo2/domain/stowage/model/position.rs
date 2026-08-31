@@ -1,3 +1,4 @@
+//! 舱位模型 / Position model (stowage)
 use super::item::{Item, ItemLocationTag, ItemStatus};
 use super::super::super::shared::units;
 use std::error::Error;
@@ -10,20 +11,30 @@ use ospf_rust_core::symbol::flatten::LinearMonomial;
 /// 舱位状态代码 / Position status code (对齐 Kotlin PositionStatusCode)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PositionStatusCode {
+    /// 已装载 / Loaded
     Loaded,
+    /// 未装载 / Unloaded
     Unloaded,
+    /// 已预分配 / Preassigned
     Preassigned,
+    /// 已预留 / Reserved
     Reserved,
 }
 
 /// 舱位状态 / Position status (对齐 Kotlin PositionStatus)
 #[derive(Debug, Clone)]
 pub struct PositionStatus {
+    /// 状态代码 / Status code
     pub code: PositionStatusCode,
+    /// 是否可用 / Whether available
     pub available: bool,
+    /// 是否需要装载 / Whether stowage is needed
     pub stowage_needed: bool,
+    /// 是否需要调整 / Whether adjustment is needed
     pub adjustment_needed: bool,
+    /// 是否需要预测装载重量 / Whether predicate load weight is needed
     pub predicate_weight_needed: bool,
+    /// 是否需要推荐装载重量 / Whether recommended load weight is needed
     pub recommended_weight_needed: bool,
     /// 最小预测装载重量 / Minimum predicate load weight (对齐 Kotlin plw.min)
     /// 当 predicate_weight_needed == true 时必须有值。
@@ -34,17 +45,29 @@ pub struct PositionStatus {
 /// 舱位 / Position (stowage domain, 对齐 Kotlin stowage Position)
 #[derive(Debug, Clone)]
 pub struct Position {
+    /// 舱位标识 / Position identifier
     pub id: String,
+    /// 空间名称 / Space name
     pub space_name: String,
+    /// 最大装载数量 / Maximum load amount
     pub max_load_amount: u64,
+    /// 最大装载重量 / Maximum load weight
     pub max_load_weight: f64, // 保留 f64 用于约束注册边界
+    /// 舱位状态 / Position status
     pub status: PositionStatus,
+    /// 已装载物品列表 / Loaded item identifiers
     pub loaded_items: Vec<String>,
+    /// 是否为主舱 / Whether on main deck
     pub is_main_deck: bool,
+    /// 是否为下舱 / Whether on lower deck
     pub is_low_deck: bool,
+    /// 是否为散货舱 / Whether bulk compartment
     pub is_bulk: bool,
+    /// 是否为前舱 / Whether head compartment
     pub is_head: bool,
+    /// 是否为后舱 / Whether tail compartment
     pub is_tail: bool,
+    /// 允许的 ULD 代码列表 / Enabled ULD codes
     pub enabled_uld_codes: Vec<String>,
 }
 

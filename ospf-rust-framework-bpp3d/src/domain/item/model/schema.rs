@@ -23,7 +23,7 @@ pub enum Bpp3dDemandMode {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Bpp3dDemandKey {
     /// 货物键 / Item key
-    Item { id: String },
+    Item { id: ItemId },
     /// 物料键 / Material key
     Material { no: String },
 }

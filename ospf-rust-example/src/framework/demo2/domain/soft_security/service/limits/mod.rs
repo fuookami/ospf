@@ -1,3 +1,4 @@
+//! 软安全约束限制 / Soft security constraint limits.
 pub mod adjacent_separation_limit;
 pub mod advice_ballast_weight_limit;
 pub mod divide_empty_loading_limit;

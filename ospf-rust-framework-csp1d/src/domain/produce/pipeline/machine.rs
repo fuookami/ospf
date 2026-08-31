@@ -113,10 +113,10 @@ impl<V: SolveValue> Csp1dCGPipeline<V> for MachineConstraintPipeline<V> {
                 return 0.0;
             };
             let batch_key = Csp1dShadowPriceKey::MachineBatch(MachineBatchShadowPriceKey {
-                machine_id: machine_id.to_string(),
+                machine_id: machine_id.into(),
             });
             let capacity_key = Csp1dShadowPriceKey::MachineCapacity(MachineCapacityShadowPriceKey {
-                machine_id: machine_id.to_string(),
+                machine_id: machine_id.into(),
             });
             let capacity_consumption = plan
                 .capacity_consumption

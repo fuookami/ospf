@@ -1,5 +1,4 @@
-//! 绝对值函数符号
-//! Abs Function Symbol
+//! 绝对值函数符号 / Abs function symbol
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};

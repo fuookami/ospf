@@ -8,27 +8,34 @@ use std::collections::{HashMap, HashSet};
 use crate::domain::bunch_compilation::model::BunchEntry;
 use crate::domain::bunch_generation::label::Label;
 use crate::domain::bunch_generation::model::{Graph, Node};
+use crate::domain::common::{ExecutorId, ExecutorIdTrait};
 use crate::domain::task::Cost;
 
 /// 束定价问题 / Bunch pricing problem
 ///
 /// 基于影子价格和 Graph/Label 算法生成新束。
 /// Generates new bunches based on shadow prices and Graph/Label algorithm.
-pub struct BunchPricingProblem {
+pub struct BunchPricingProblem<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
     /// 定价图 / Pricing graph
     pub graph: Graph,
     /// 执行器 ID / Executor ID
-    pub executor_id: String,
+    pub executor_id: I,
     /// 任务影子价格 / Task shadow prices (task_index -> price)
     pub task_shadow_prices: HashMap<usize, f64>,
 }
 
-impl BunchPricingProblem {
-    /// 创建定价问题 / Create pricing problem
-    pub fn new(executor_id: String, graph: Graph) -> Self {
+impl<I> BunchPricingProblem<I>
+where
+    I: ExecutorIdTrait,
+{
+    /// 使用业务 ID 创建定价问题 / Create pricing problem with domain id
+    pub fn new_with_id(executor_id: impl Into<I>, graph: Graph) -> Self {
         Self {
             graph,
-            executor_id,
+            executor_id: executor_id.into(),
             task_shadow_prices: HashMap::new(),
         }
     }
@@ -42,7 +49,7 @@ impl BunchPricingProblem {
     ///
     /// 返回 reduced cost < 0 的束列表。
     /// Returns list of bunches with negative reduced cost.
-    pub fn solve(&self, bunch_index_offset: usize) -> Vec<BunchEntry> {
+    pub fn solve(&self, bunch_index_offset: usize) -> Vec<BunchEntry<I>> {
         let algorithm = LabelSettingAlgorithm::new(
             &self.graph,
             &self.task_shadow_prices,
@@ -62,6 +69,7 @@ impl BunchPricingProblem {
                             task_indices,
                             cost: reduced_cost,
                             iteration: 0, // 由调用方设置
+                            slot_index: None,
                         });
                     }
                 }
@@ -69,6 +77,13 @@ impl BunchPricingProblem {
         }
 
         bunches
+    }
+}
+
+impl BunchPricingProblem<ExecutorId> {
+    /// 创建定价问题 / Create pricing problem
+    pub fn new(executor_id: impl Into<ExecutorId>, graph: Graph) -> Self {
+        Self::new_with_id(executor_id, graph)
     }
 }
 

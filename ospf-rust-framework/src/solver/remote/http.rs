@@ -19,9 +19,13 @@ use super::port::{ObjectStoragePort, SolverExecutionPort};
 /// HTTP transport configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RemoteSolverHttpTransportConfig {
+    /// 连接超时 / Connect timeout
     pub connect_timeout: Option<Duration>,
+    /// 请求超时 / Request timeout
     pub request_timeout: Option<Duration>,
+    /// 默认请求头 / Default request headers
     pub headers: BTreeMap<String, String>,
+    /// 传输属性 / Transport properties
     pub properties: BTreeMap<String, String>,
 }
 
@@ -29,9 +33,13 @@ pub struct RemoteSolverHttpTransportConfig {
 /// Remote solver HTTP request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteSolverHttpRequest {
+    /// HTTP 方法 / HTTP method
     pub method: String,
+    /// 请求 URL / Request URL
     pub url: String,
+    /// 请求头 / Request headers
     pub headers: BTreeMap<String, String>,
+    /// 请求体 / Request body
     pub body: Option<String>,
 }
 
@@ -39,7 +47,9 @@ pub struct RemoteSolverHttpRequest {
 /// Remote solver HTTP response.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteSolverHttpResponse {
+    /// HTTP 状态码 / HTTP status code
     pub status_code: u16,
+    /// 响应体 / Response body
     pub body: String,
 }
 
@@ -598,21 +608,30 @@ where
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteTaskSubmitRequest {
+    /// 载荷对象路径 / Payload object path
     pub payload_ref: ObjectPath,
+    /// 请求 ID / Request ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request_id: Option<RequestId>,
+    /// 租户 ID / Tenant ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tenant_id: Option<TenantId>,
+    /// 任务复杂度 / Task complexity
     #[serde(skip_serializing_if = "Option::is_none")]
     pub complexity: Option<TaskComplexity>,
+    /// 时间敏感度 / Time sensitivity
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time_sensitivity: Option<TimeSensitivity>,
+    /// 优先级 / Priority
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority: Option<i32>,
+    /// 预算范围 ID / Budget scope ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub budget_scope: Option<BudgetScopeId>,
+    /// 预算上限 / Budget limit
     #[serde(skip_serializing_if = "Option::is_none")]
     pub budget_limit: Option<f64>,
+    /// 截止时间 / Deadline
     #[serde(
         rename = "deadlineEpochMs",
         default,
@@ -627,9 +646,13 @@ pub struct RemoteTaskSubmitRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteTaskSubmitResponse {
+    /// 任务 ID / Task ID
     pub task_id: TaskId,
+    /// 是否已接受 / Whether accepted
     pub accepted: bool,
+    /// 任务状态 / Task status
     pub status: TaskStatus,
+    /// 响应消息 / Response message
     pub message: String,
 }
 
@@ -638,11 +661,16 @@ pub struct RemoteTaskSubmitResponse {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteTaskView {
+    /// 任务 ID / Task ID
     pub task_id: TaskId,
+    /// 租户 ID / Tenant ID
     pub tenant_id: TenantId,
+    /// 任务状态 / Task status
     pub status: TaskStatus,
+    /// 当前节点 ID / Current node ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_node_id: Option<NodeId>,
+    /// 最新检查点引用 / Latest checkpoint reference
     #[serde(
         alias = "latestCheckpointPath",
         default,
@@ -650,6 +678,7 @@ pub struct RemoteTaskView {
         skip_serializing_if = "Option::is_none"
     )]
     pub latest_checkpoint_ref: Option<ObjectRef>,
+    /// 最新结果引用 / Latest result reference
     #[serde(
         alias = "latestResultPath",
         default,
@@ -657,6 +686,7 @@ pub struct RemoteTaskView {
         skip_serializing_if = "Option::is_none"
     )]
     pub latest_result_ref: Option<ObjectRef>,
+    /// 已消耗成本 / Consumed cost
     pub consumed_cost: f64,
 }
 
@@ -665,7 +695,9 @@ pub struct RemoteTaskView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteTaskAction {
+    /// 任务 ID / Task ID
     pub task_id: TaskId,
+    /// 任务状态 / Task status
     pub status: TaskStatus,
 }
 
@@ -674,10 +706,13 @@ pub struct RemoteTaskAction {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteTaskStopRequest {
+    /// 停止原因码 / Stop reason code
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<ReasonCode>,
+    /// 操作者 ID / Operator ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operator: Option<OperatorId>,
+    /// 操作来源 / Operation source
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<super::domain::OperationSource>,
 }
@@ -687,10 +722,13 @@ pub struct RemoteTaskStopRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteTaskResumeRequest {
+    /// 操作者 ID / Operator ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operator: Option<OperatorId>,
+    /// 操作来源 / Operation source
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<super::domain::OperationSource>,
+    /// 恢复原因码 / Resume reason code
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<ReasonCode>,
 }

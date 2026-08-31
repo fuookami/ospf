@@ -17,7 +17,7 @@ use crate::domain::cutting_plan_generation::{
     CuttingPlanGenerationStatistics, ReducedCostPricingGenerator, SimpleInitialCuttingPlanGenerator,
     width_feasibility_check_from_policies,
 };
-use crate::domain::material::{from_f64, render_cutting_plan, to_f64, CuttingPlan};
+use crate::domain::material::{from_f64, render_cutting_plan, to_f64, CuttingPlan, MaterialId};
 use crate::domain::produce::{
     accept_partial_by_policies, allow_recovery_fallback_by_policies,
     filter_initial_plans_by_policies_with_context, is_equivalent_by_policies,
@@ -29,84 +29,123 @@ use crate::domain::produce::{
 /// 列生成终止原因 / Column generation termination reason
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Csp1dTerminationReason {
+    /// 达到迭代上限 / Iteration limit reached
     IterationLimitReached,
+    /// LP 求解失败 / LP solve failed
     LpSolveFailed,
+    /// LP 不可行 / LP infeasible
     LpInfeasible,
+    /// 定价已收敛 / Pricing converged
     PricingConverged,
+    /// 全部重复方案 / All duplicate plans
     AllDuplicates,
+    /// 无初始方案 / No initial plans
     NoInitialPlans,
 }
 
 /// 列生成每轮迭代记录 / Column generation iteration record
 #[derive(Debug, Clone, PartialEq)]
 pub struct Csp1dIterationRecord {
+    /// 迭代号 / Iteration number
     pub iteration: i64,
+    /// LP 目标值 / LP objective value
     pub lp_objective: f64,
+    /// 定价前方案数 / Plan count before pricing
     pub plan_count_before: i64,
+    /// 定价方案数 / Priced plan count
     pub priced_plan_count: u64,
+    /// 定价后方案数 / Plan count after pricing
     pub plan_count_after: i64,
 }
 
 /// 最终 MILP 状态 / Final MILP status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Csp1dFinalMilpStatus {
+    /// 未尝试 / Not attempted
     NotAttempted,
+    /// 已求解 / Solved
     Solved,
+    /// 求解失败 / Failed
     Failed,
 }
 
 /// 列生成求解追踪信息 / Column generation solve trace
 #[derive(Debug, Clone, PartialEq)]
 pub struct Csp1dColumnGenerationTrace {
+    /// 初始方案数 / Initial plan count
     pub initial_plan_count: u64,
+    /// 最终方案数 / Final plan count
     pub final_plan_count: u64,
+    /// 每轮定价方案数 / Priced plan count per iteration
     pub priced_plan_count: Vec<u64>,
+    /// 终止原因 / Termination reason
     pub termination_reason: Csp1dTerminationReason,
+    /// 迭代记录 / Iteration records
     pub iterations: Vec<Csp1dIterationRecord>,
+    /// 初始生成统计 / Initial generation statistics
     pub initial_generation_statistics: Option<CuttingPlanGenerationStatistics>,
+    /// 最终 MILP 状态 / Final MILP status
     pub final_milp_status: Csp1dFinalMilpStatus,
+    /// 部分解是否可用 / Whether partial solution is available
     pub partial_solution_available: bool,
+    /// 失败信息 / Failure message
     pub failure_message: Option<String>,
+    /// 定价生成统计 / Pricing generation statistics
     pub pricing_generation_statistics: Option<CuttingPlanGenerationStatistics>,
+    /// LP 失败信息 / LP failure message
     pub lp_failure_message: Option<String>,
 }
 
 /// 列生成结果 / Column generation result
 #[derive(Debug, Clone)]
 pub struct Csp1dColumnGenerationResult<V: SolveValue> {
+    /// 解 / Solution
     pub solution: Csp1dSolution<V>,
+    /// 追踪信息 / Trace
     pub trace: Csp1dColumnGenerationTrace,
 }
 
 /// 恢复状态 / Recovery status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Csp1dRecoveryStatus {
+    /// 已求解 / Solved
     Solved,
+    /// 已回退到无 warm start 重试 / Retried without warm start
     RetriedWithoutWarmStart,
+    /// 回退已禁用 / Fallback disabled
     FallbackDisabled,
+    /// 求解失败 / Solve failed
     SolveFailed,
 }
 
 /// warm start 处理状态 / Warm start handling status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Csp1dWarmStartStatus {
+    /// 未提供 / Not provided
     NotProvided,
+    /// 已忽略 / Ignored
     Ignored,
+    /// 适配器不支持 / Adapter unsupported
     AdapterUnsupported,
+    /// 已应用 / Applied
     Applied,
+    /// 无效 / Invalid
     Invalid,
 }
 
 /// warm start / Warm start
 #[derive(Debug, Clone, Default)]
 pub struct Csp1dWarmStart<V: SolveValue> {
+    /// 切割方案列表 / Cutting plan list
     pub cutting_plans: Vec<crate::domain::material::CuttingPlan<V>>,
+    /// 上一次解 / Previous solution
     pub previous_solution: Option<Csp1dSolution<V>>,
 }
 
 /// 恢复选项 / Recovery options
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Csp1dRecoveryOptions {
+    /// 是否在 warm start 失败时回退到无 warm start 重试 / Whether to retry without warm start on failure
     pub retry_without_warm_start: bool,
 }
 
@@ -121,9 +160,13 @@ impl Default for Csp1dRecoveryOptions {
 /// 恢复输入 / Recovery input
 #[derive(Debug, Clone)]
 pub struct Csp1dRecoveryInput<V: SolveValue> {
+    /// 问题定义 / Problem definition
     pub problem: Option<Csp1dProblem<V>>,
+    /// 求解配置 / Solve configuration
     pub solve_config: Option<Csp1dSolveConfig<V>>,
+    /// warm start 数据 / Warm start data
     pub warm_start: Option<Csp1dWarmStart<V>>,
+    /// 恢复选项 / Recovery options
     pub options: Csp1dRecoveryOptions,
 }
 
@@ -141,28 +184,41 @@ impl<V: SolveValue> Default for Csp1dRecoveryInput<V> {
 /// 恢复追踪 / Recovery trace
 #[derive(Debug, Clone, PartialEq)]
 pub struct Csp1dRecoveryTrace {
+    /// 恢复状态 / Recovery status
     pub status: Csp1dRecoveryStatus,
+    /// warm start 处理状态 / Warm start handling status
     pub warm_start_status: Csp1dWarmStartStatus,
+    /// 尝试次数 / Attempt count
     pub attempt_count: i64,
+    /// warm start 方案数 / Warm start plan count
     pub warm_start_plan_count: i64,
+    /// 已应用 warm start 方案数 / Applied warm start plan count
     pub applied_warm_start_plan_count: i64,
+    /// 已应用 warm start 使用量数 / Applied warm start usage count
     pub applied_warm_start_usage_count: i64,
+    /// 信息 / Message
     pub message: Option<String>,
 }
 
 /// 恢复结果 / Recovery result
 #[derive(Debug, Clone)]
 pub struct Csp1dRecoveryResult<V: SolveValue> {
+    /// 解 / Solution
     pub solution: Csp1dSolution<V>,
+    /// 追踪信息 / Trace
     pub trace: Csp1dRecoveryTrace,
 }
 
 /// warm start adapter 输入 / Warm start adapter input
 #[derive(Debug, Clone)]
 pub struct Csp1dWarmStartAdapterInput<V: SolveValue> {
+    /// 问题定义 / Problem definition
     pub problem: Option<Csp1dProblem<V>>,
+    /// 求解配置 / Solve configuration
     pub solve_config: Option<Csp1dSolveConfig<V>>,
+    /// warm start 数据 / Warm start data
     pub warm_start: Option<Csp1dWarmStart<V>>,
+    /// 切割方案列表 / Cutting plan list
     pub cutting_plans: Vec<crate::domain::material::CuttingPlan<V>>,
 }
 
@@ -179,10 +235,15 @@ impl<V: SolveValue> Default for Csp1dWarmStartAdapterInput<V> {
 
 /// warm start adapter 结果 / Warm start adapter result
 pub struct Csp1dWarmStartAdapterResult<V: SolveValue> {
+    /// 初始生成器 / Initial generator
     pub initial_generator: Option<Box<dyn Fn(&CuttingPlanGenerationInput<V>) -> Vec<CuttingPlan<V>> + Send + Sync>>,
+    /// 初始方案使用量 / Initial plan usages
     pub initial_plan_usages: Vec<crate::domain::produce::CuttingPlanUsage<V>>,
+    /// 已应用方案数 / Applied plan count
     pub applied_plan_count: i64,
+    /// 已应用使用量数 / Applied usage count
     pub applied_usage_count: i64,
+    /// 信息 / Message
     pub message: Option<String>,
 }
 
@@ -224,6 +285,7 @@ impl<V: SolveValue> Clone for Csp1dWarmStartAdapterResult<V> {
 
 /// warm start adapter / Warm start adapter
 pub trait Csp1dWarmStartAdapter<V: SolveValue>: Send + Sync {
+    /// 应用 warm start / Apply warm start
     fn apply(&self, input: Csp1dWarmStartAdapterInput<V>) -> Csp1dWarmStartAdapterResult<V>;
 }
 
@@ -246,6 +308,7 @@ impl<V: SolveValue> Csp1dWarmStartAdapter<V> for Csp1dUnsupportedWarmStartAdapte
 /// 方案池 warm start adapter / Cutting-plan-pool warm start adapter
 #[derive(Debug, Clone)]
 pub struct Csp1dWarmStartPlanPoolAdapter {
+    /// 是否追加回退方案 / Whether to append fallback plans
     pub append_fallback_plans: bool,
 }
 
@@ -308,7 +371,9 @@ fn warm_start_plan_usages<V: SolveValue>(
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
 pub struct Csp1dRecoveryFallbackDisabledException {
+    /// 异常信息 / Exception message
     pub message: String,
+    /// 恢复追踪 / Recovery trace
     pub trace: Csp1dRecoveryTrace,
 }
 
@@ -316,19 +381,29 @@ pub struct Csp1dRecoveryFallbackDisabledException {
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
 pub struct Csp1dRecoverySolveException {
+    /// 异常信息 / Exception message
     pub message: String,
+    /// 恢复追踪 / Recovery trace
     pub trace: Csp1dRecoveryTrace,
 }
 
 /// 列生成入口 / Column generation entry
 pub struct Csp1dColumnGeneration<V: SolveValue> {
+    /// 列生成配置 / Column generation configuration
     pub configuration: Csp1dConfiguration,
+    /// 初始方案生成器 / Initial cutting plan generator
     pub initial_generator: Box<dyn Csp1dInitialCuttingPlanGenerator<V>>,
+    /// 定价生成器 / Pricing generator
     pub pricing_generator: Box<dyn Csp1dPricingGenerator<V>>,
+    /// 解分析器 / Solution analyzer
     pub analyzer: Box<dyn Csp1dSolutionAnalyzer<V>>,
+    /// 产出率建模配置 / Yield modeling configuration
     pub yield_config: Option<crate::domain::r#yield::YieldModelingConfig<V>>,
+    /// 损耗最小化配置 / Waste minimization configuration
     pub waste_config: Option<crate::domain::wasting_minimization::WasteMinimizationConfig<V>>,
+    /// 长度分配配置 / Length assignment configuration
     pub length_config: Option<crate::domain::length_assignment::LengthAssignmentModelingConfig<V>>,
+    /// warm start 方案使用量 / Warm start plan usages
     pub warm_start_plan_usages: Vec<crate::domain::produce::CuttingPlanUsage<V>>,
 }
 
@@ -361,6 +436,7 @@ impl<V: SolveValue> Default for Csp1dColumnGeneration<V> {
 }
 
 impl<V: SolveValue> Csp1dColumnGeneration<V> {
+    /// 使用自定义生成器创建 / Create with custom generators
     pub fn with_generators(
         initial_generator: Box<dyn Csp1dInitialCuttingPlanGenerator<V>>,
         pricing_generator: Box<dyn Csp1dPricingGenerator<V>>,
@@ -372,6 +448,7 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
         }
     }
 
+    /// 求解（不含追踪） / Solve without trace
     pub fn solve(
         &self,
         problem: Csp1dProblem<V>,
@@ -380,6 +457,7 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
         self.solve_with_trace(problem, solve_config).solution
     }
 
+    /// 带追踪求解 / Solve with trace
     pub fn solve_with_trace(
         &self,
         problem: Csp1dProblem<V>,
@@ -772,12 +850,19 @@ impl<V: SolveValue> Csp1dSchedule<V> {
 
 /// 普通 MILP 入口 / Plain MILP entry
 pub struct Csp1dMilp<V: SolveValue> {
+    /// 列生成配置 / Column generation configuration
     pub configuration: Csp1dConfiguration,
+    /// 初始方案生成器 / Initial cutting plan generator
     pub initial_generator: Box<dyn Csp1dInitialCuttingPlanGenerator<V>>,
+    /// 解分析器 / Solution analyzer
     pub analyzer: Box<dyn Csp1dSolutionAnalyzer<V>>,
+    /// 产出率建模配置 / Yield modeling configuration
     pub yield_config: Option<crate::domain::r#yield::YieldModelingConfig<V>>,
+    /// 损耗最小化配置 / Waste minimization configuration
     pub waste_config: Option<crate::domain::wasting_minimization::WasteMinimizationConfig<V>>,
+    /// 长度分配配置 / Length assignment configuration
     pub length_config: Option<crate::domain::length_assignment::LengthAssignmentModelingConfig<V>>,
+    /// warm start 方案使用量 / Warm start plan usages
     pub warm_start_plan_usages: Vec<crate::domain::produce::CuttingPlanUsage<V>>,
 }
 
@@ -1102,7 +1187,9 @@ impl Csp1dMilpSolver {
 
 /// 恢复入口 / Recovery entry
 pub struct Csp1dRecovery<V: SolveValue> {
+    /// 列生成求解入口 / Column generation solve entry
     pub milp: Csp1dColumnGeneration<V>,
+    /// warm start 适配器 / Warm start adapter
     pub warm_start_adapter: Box<dyn Csp1dWarmStartAdapter<V>>,
 }
 
@@ -1125,6 +1212,7 @@ impl<V: SolveValue> Default for Csp1dRecovery<V> {
 }
 
 impl<V: SolveValue> Csp1dRecovery<V> {
+    /// 使用 warm start 适配器创建 / Create with warm start adapter
     pub fn with_warm_start_adapter(
         milp: Csp1dColumnGeneration<V>,
         warm_start_adapter: Box<dyn Csp1dWarmStartAdapter<V>>,
@@ -1135,6 +1223,7 @@ impl<V: SolveValue> Csp1dRecovery<V> {
         }
     }
 
+    /// 求解（不含追踪） / Solve without trace
     pub fn solve(
         &self,
         problem: Csp1dProblem<V>,
@@ -1143,6 +1232,7 @@ impl<V: SolveValue> Csp1dRecovery<V> {
         self.milp.solve(problem, solve_config)
     }
 
+    /// 带恢复追踪求解 / Solve with recovery trace
     pub fn solve_with_trace(
         &self,
         input: Csp1dRecoveryInput<V>,
@@ -1153,7 +1243,9 @@ impl<V: SolveValue> Csp1dRecovery<V> {
 
 /// 列生成恢复入口 / Column-generation recovery entry
 pub struct Csp1dColumnGenerationRecovery<V: SolveValue> {
+    /// 列生成求解入口 / Column generation solve entry
     pub column_generation: Csp1dColumnGeneration<V>,
+    /// warm start 适配器 / Warm start adapter
     pub warm_start_adapter: Box<dyn Csp1dWarmStartAdapter<V>>,
 }
 
@@ -2066,7 +2158,7 @@ fn select_plans_heuristically<V: SolveValue>(
             ))
         })
         .collect::<std::collections::BTreeMap<_, _>>();
-    let mut material_usage = std::collections::BTreeMap::<String, u64>::new();
+    let mut material_usage = std::collections::BTreeMap::<MaterialId, u64>::new();
     for demand in &problem.demands {
         let key = (demand.product.id.clone(), demand.quantity.unit.symbol().to_string());
         let target = *required.get(&key).unwrap_or(&0.0);

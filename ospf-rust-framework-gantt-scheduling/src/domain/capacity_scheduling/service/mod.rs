@@ -6,7 +6,6 @@
 pub mod limits;
 
 pub use limits::{
-    ExecutorCapacityConstraint,
+    CapacityColumnSelectionConstraint, CapacityCostMinimization, ExecutorCapacityConstraint,
     OrderConstraint,
-    CapacityCostMinimization,
 };

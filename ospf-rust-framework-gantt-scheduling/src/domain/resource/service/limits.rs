@@ -106,7 +106,7 @@ impl Pipeline<MetaModel<f64>> for ResourceCapacityConstraint {
 #[derive(Debug)]
 pub struct ResourceOverQuantityMinimization {
     name: String,
-    /// (over_quantity_solver_index, coefficient) 列表
+    /// (over_quantity_solver_index, coefficient) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 
@@ -151,7 +151,7 @@ impl Pipeline<MetaModel<f64>> for ResourceOverQuantityMinimization {
 #[derive(Debug)]
 pub struct ResourceLessQuantityMinimization {
     name: String,
-    /// (less_quantity_solver_index, coefficient) 列表
+    /// (less_quantity_solver_index, coefficient) 列表 / List
     pub cost_terms: Vec<(usize, f64)>,
 }
 

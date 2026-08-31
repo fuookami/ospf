@@ -1,3 +1,4 @@
+//! Demo2 领域服务 / Demo2 domain service.
 pub mod domain_pipeline;
 pub mod policy_registry;
 
@@ -11,7 +12,7 @@ mod tests {
         let expected = vec![
             DomainPolicySnapshot {
                 domain: "stowage",
-                step_counts: vec![1, 1, 1],
+                step_counts: vec![2, 1, 1],
             },
             DomainPolicySnapshot {
                 domain: "airworthiness",
@@ -31,11 +32,11 @@ mod tests {
             },
             DomainPolicySnapshot {
                 domain: "soft_security",
-                step_counts: vec![2, 1, 2],
+                step_counts: vec![3, 2, 3],
             },
             DomainPolicySnapshot {
                 domain: "redundancy",
-                step_counts: vec![1, 0, 1],
+                step_counts: vec![3, 0, 3],
             },
         ];
         assert_eq!(snapshots.len(), expected.len());

@@ -56,6 +56,7 @@
 | API | 职责 | 稳定性 |
 | --- | --- | --- |
 | `domain::task::{TaskTrait, ExecutorTrait, AssignmentPolicyTrait, TaskPlanTrait}` | 核心 task 与 assignment 抽象。 | migration |
+| `domain::common::{GanttId, ExecutorIdTrait, TaskIdTrait, TaskPlanIdTrait}` | 强类型业务 ID 契约与默认字符串 newtype。 | migration |
 | `domain::task::{TaskStepGraph, TaskStepTrait, BasicTaskStep, StepRelation}` | multi-step task dependency model。 | migration |
 | `domain::task::{Cost, BunchCostPolicy, CostBreakdown, DefaultBunchCostPolicy}` | cost 与 reduced-cost policy surface。 | migration |
 | `domain::task::{SolverValueAdapter, F64SolverValueAdapter}` | 泛型 solver value conversion 和 `f64` 边界。 | migration |
@@ -63,7 +64,7 @@
 | `domain::capacity_scheduling::{CapacityCompilation, CapacityOrderCompilation, CapacityColumn, CapacityColumnAggregation, CapacitySchedulingSolution}` | capacity scheduling 注册和提取。 | migration |
 | `domain::bunch_compilation::{BasicBunchCompilationContext, IterativeBunchCompilationContext, BasicSlotBasedBunchCompilationContext, SlotBasedBunchCompilationContext, SlotBasedCapacityPreSolver, BunchEntry, BunchSolution}` | bunch master problem 和 slot-based column lifecycle。 | migration |
 | `domain::bunch_generation::{SlotBasedBunchGenerator, BunchFeasibilityPolicy, BunchTaskCandidate, CapacityIntermediateValues}` | pricing 与 feasibility 扩展面。 | migration |
-| `application::service::{create_bunch_branch_and_price, search_bunch_branch_and_price_with_fresh_model, search_bunch_branch_and_price_with_hooks}` | application helper constructor 和 search 入口。 | migration |
+| `application::service::{create_bunch_branch_and_price, create_slot_bunch_branch_and_price, search_bunch_branch_and_price_with_fresh_model, search_bunch_branch_and_price_with_hooks}` | application helper constructor、slot capacity pre-solving 和 search 入口。 | migration |
 | `application::algorithm::{BranchAndPriceTreeSearch, StrongBranchingStrategy, BranchCutCallback, BranchNodeCallback}` | 隔离 branch-and-price tree search hook。 | migration |
 | `domain::common::GanttDynamicModelLifecycle` | shared framework dynamic lifecycle 的兼容 alias。 | migration |
 | `infrastructure::{CalendarPolicy, CompositeCalendarPolicy}` | calendar 扩展 policy surface。 | migration |
@@ -82,6 +83,13 @@
 8. `domain::common::ConstraintIndexMap` 支持稳定 shadow-price extraction。
 9. `application::algorithm::BranchAndPriceTreeSearch` 暴露 strong branching、cut 和 node tracing hook。
 
+本次列生成扩展还包括：
+
+10. `domain::bunch_compilation::ExecutorSlotCompilationConstraint` 为每个 `(executor, slot)` 注册恰选一列约束。
+11. `ConstraintIndexMap` 支持 executor-slot 对偶值；`BunchPricingRequest` 将 slot 对偶、固定/保留 group 和最小列配额传入定价策略。
+12. `BranchGroupTracker` 按 `(executor, slot)` 跟踪分支状态，部分 slot 固定时不会误移除整个 executor。
+13. `SlotBunchPricingRequest` 将时隙入口状态和分支限制传入时隙定价策略；`CapacityColumnSelectionConstraint` 支持产能列恰选约束及其对偶提取。
+
 ## 泛型数值边界
 
 domain API 通过 `SolverValueAdapter` 使用泛型 solver-value 抽象。`F64SolverValueAdapter` 标记当前 `f64` solver 边界。solver conversion 集中在 context registration、application solver call 和 result extraction，不应散落在 domain logic 中。
@@ -92,15 +100,16 @@ domain API 通过 `SolverValueAdapter` 使用泛型 solver-value 抽象。`F64So
 
 ## 求解生命周期
 
-已测试 branch-and-price application flow：
+已测试 slot branch-and-price application flow：
 
-1. 为每个 branch node 构造新的 `MetaModel<f64>`。
-2. 注册 bunch compilation context。
-3. 求解 initial MILP。
-4. 求解 RMP LP，并通过 context 提取 shadow price。
-5. 通过 `BunchCGPolicy` 生成 bunch，并使用 `add_columns` 注册。
-6. 求解 final MILP，并通过共享 context 提取 `BunchSolution`。
-7. 在进入下一个 tree node 前恢复 application 和 context state。
+1. 预求解 capacity，并把 `CapacityIntermediateValues` 固化到 bunch-generation policy。
+2. 为每个 branch node 构造新的 `MetaModel<f64>`。
+3. 注册 bunch compilation context。
+4. 求解 initial MILP。
+5. 求解 RMP LP，并通过 context 提取 shadow price。
+6. 通过 `BunchCGPolicy` 生成 slot bunch，并使用 `add_columns` 注册。
+7. 求解 final MILP，并通过共享 context 提取 `BunchSolution`。
+8. 在进入下一个 tree node 前恢复 application 和 context state。
 
 multi-node tree search 优先使用 `solve_branch_node_with_fresh_model`，它会恢复 application state、dynamic lifecycle 和 compilation context，并在求解后丢弃 node-local `MetaModel`。
 

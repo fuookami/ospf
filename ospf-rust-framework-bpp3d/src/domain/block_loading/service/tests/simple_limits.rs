@@ -25,7 +25,7 @@
         let generator = SimpleBlockGenerator::new(config);
 
         let items = vec![ActualItem {
-            id: "i1".to_string(),
+            id: "i1".into(),
             name: "Test".to_string(),
             package_code: None,
             pack: None,
@@ -74,7 +74,7 @@
             ..Default::default()
         });
         let items = vec![ActualItem {
-            id: "i1".to_string(),
+            id: "i1".into(),
             name: "Test".to_string(),
             package_code: None,
             pack: None,
@@ -104,7 +104,7 @@
     fn simple_block_generator_respects_package_depth_bounds() {
         let generator = SimpleBlockGenerator::default_generator();
         let items = vec![ActualItem {
-            id: "i1".to_string(),
+            id: "i1".into(),
             name: "Test".to_string(),
             package_code: None,
             pack: None,
@@ -146,7 +146,7 @@
     fn simple_block_generator_adds_side_on_top_orientation() {
         let generator = SimpleBlockGenerator::default_generator();
         let items = vec![ActualItem {
-            id: "i1".to_string(),
+            id: "i1".into(),
             name: "Test".to_string(),
             package_code: None,
             pack: None,
@@ -192,7 +192,7 @@
     fn simple_block_generator_orientation_rule_uses_container_space() {
         let generator = SimpleBlockGenerator::default_generator();
         let items = vec![ActualItem {
-            id: "i1".to_string(),
+            id: "i1".into(),
             name: "Test".to_string(),
             package_code: None,
             pack: None,
@@ -235,7 +235,7 @@
     fn simple_block_generator_respects_package_bounds_for_cylinder() {
         let generator = SimpleBlockGenerator::default_generator();
         let items = vec![ActualItem {
-            id: "c1".to_string(),
+            id: "c1".into(),
             name: "Cylinder".to_string(),
             package_code: None,
             pack: None,

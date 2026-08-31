@@ -1,3 +1,4 @@
+//! 初始飞行任务束生成器模块 / Initial flight task bunch generator module
 use std::collections::HashMap;
 use super::super::model::Graph;
 

@@ -16,7 +16,7 @@
         }
 
         let item = ActualItem {
-            id: "i0".to_string(),
+            id: "i0".into(),
             name: "Item".to_string(),
             package_code: Some("p".to_string()),
             pack: None,
@@ -33,12 +33,12 @@
                 height: meters(5.0),
                 depth: meters(5.0),
                 capacity: meters(10.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_demand_entries(vec![LayerGenerationDemandEntry {
                 mode: Bpp3dDemandMode::Item,
-                key: Bpp3dDemandKey::Item { id: "i0".to_string() },
+                key: Bpp3dDemandKey::Item { id: "i0".into() },
                 demand: 1.0,
                 satisfied: 0.0,
             }])
@@ -64,7 +64,7 @@
     fn pattern_layer_generator_reuses_item_in_three_sum_mixed_pile() {
         let items = vec![
             ActualItem {
-                id: "thin".to_string(),
+                id: "thin".into(),
                 name: "Thin".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -76,7 +76,7 @@
                 shape_spec_override: Some(PackageShapeSpec::Cuboid),
             },
             ActualItem {
-                id: "cap".to_string(),
+                id: "cap".into(),
                 name: "Cap".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -92,13 +92,13 @@
             .with_demand_entries(vec![
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "thin".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "thin".into() },
                     demand: 2.0,
                     satisfied: 0.0,
                 },
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "cap".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "cap".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
@@ -108,7 +108,7 @@
                 height: meters(4.0),
                 depth: meters(2.0),
                 capacity: meters(10.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -139,7 +139,7 @@
             .demand_coverage
             .iter()
             .any(|coverage| {
-                coverage.key == Bpp3dDemandKey::Item { id: "thin".to_string() }
+                coverage.key == Bpp3dDemandKey::Item { id: "thin".into() }
                     && coverage.coefficient == 2.0
             }));
     }
@@ -163,7 +163,7 @@
         let units = vec![
             PatternSelectedItem {
                 item_index: 0,
-                item_id: "base".to_string(),
+                item_id: "base".into(),
                 orientation: Orientation::Upright,
                 orientation_enabled: true,
                 width: 2.0,
@@ -173,7 +173,7 @@
             },
             PatternSelectedItem {
                 item_index: 1,
-                item_id: "top".to_string(),
+                item_id: "top".into(),
                 orientation: Orientation::Upright,
                 orientation_enabled: true,
                 width: 2.0,
@@ -183,8 +183,8 @@
             },
         ];
         let attributes = HashMap::from([
-            ("base".to_string(), PackageAttribute::default()),
-            ("top".to_string(), PackageAttribute::default()),
+            ("base".into(), PackageAttribute::default()),
+            ("top".into(), PackageAttribute::default()),
         ]);
         let remaining = HashMap::from([(0usize, 1u64), (1usize, 1u64)]);
         let bin = BinType {
@@ -192,7 +192,7 @@
             height: meters(3.0),
             depth: meters(2.0),
             capacity: meters(10.0),
-            type_code: "BIN".to_string(),
+            type_code: "BIN".into(),
             is_main: true,
         };
         let default_policy = DefaultLayerGenerationPackageRulePolicy;
@@ -237,7 +237,7 @@
         let request = LayerGenerationRequest::new(
             0,
             vec![ActualItem {
-                id: "blocked".to_string(),
+                id: "blocked".into(),
                 name: "Blocked".to_string(),
                 package_code: None,
                 pack: None,
@@ -254,12 +254,12 @@
             height: meters(4.0),
             depth: meters(4.0),
             capacity: meters(100.0),
-            type_code: "BIN".to_string(),
+            type_code: "BIN".into(),
             is_main: true,
         })
         .with_demand_entries(vec![LayerGenerationDemandEntry {
             mode: Bpp3dDemandMode::Item,
-            key: Bpp3dDemandKey::Item { id: "blocked".to_string() },
+            key: Bpp3dDemandKey::Item { id: "blocked".into() },
             demand: 1.0,
             satisfied: 0.0,
         }])
@@ -288,7 +288,7 @@
         let request = LayerGenerationRequest::new(
             0,
             vec![ActualItem {
-                id: "rot".to_string(),
+                id: "rot".into(),
                 name: "Rotated".to_string(),
                 package_code: None,
                 pack: None,
@@ -305,7 +305,7 @@
             height: meters(3.0),
             depth: meters(2.0),
             capacity: meters(100.0),
-            type_code: "BIN".to_string(),
+            type_code: "BIN".into(),
             is_main: true,
         })
         .with_package_rule_policy(Arc::new(ForbidRotatedPolicy));
@@ -334,7 +334,7 @@
         let request = LayerGenerationRequest::new(
             0,
             vec![ActualItem {
-                id: "pile".to_string(),
+                id: "pile".into(),
                 name: "Pile".to_string(),
                 package_code: None,
                 pack: None,
@@ -352,12 +352,12 @@
             height: meters(3.0),
             depth: meters(2.0),
             capacity: meters(100.0),
-            type_code: "BIN".to_string(),
+            type_code: "BIN".into(),
             is_main: true,
         })
         .with_demand_entries(vec![LayerGenerationDemandEntry {
             mode: Bpp3dDemandMode::Item,
-            key: Bpp3dDemandKey::Item { id: "pile".to_string() },
+            key: Bpp3dDemandKey::Item { id: "pile".into() },
             demand: 3.0,
             satisfied: 0.0,
         }])
@@ -372,7 +372,7 @@
     #[test]
     fn pattern_layer_generator_respects_package_orientation_rule() {
         let items = vec![ActualItem {
-            id: "i0".to_string(),
+            id: "i0".into(),
             name: "Item".to_string(),
             package_code: None,
             pack: None,
@@ -400,7 +400,7 @@
                 height: meters(10.0),
                 depth: meters(10.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -426,7 +426,7 @@
     #[test]
     fn pattern_layer_generator_checks_same_item_pile_with_selected_orientation() {
         let items = vec![ActualItem {
-            id: "side".to_string(),
+            id: "side".into(),
             name: "Side item".to_string(),
             package_code: None,
             pack: None,
@@ -451,7 +451,7 @@
             .with_package_attributes(attributes)
             .with_demand_entries(vec![LayerGenerationDemandEntry {
                 mode: Bpp3dDemandMode::Item,
-                key: Bpp3dDemandKey::Item { id: "side".to_string() },
+                key: Bpp3dDemandKey::Item { id: "side".into() },
                 demand: 2.0,
                 satisfied: 0.0,
             }])
@@ -460,7 +460,7 @@
                 height: meters(10.0),
                 depth: meters(10.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -487,7 +487,7 @@
     #[test]
     fn pattern_layer_generator_same_item_pile_uses_bin_space_for_orientation_rules() {
         let items = vec![ActualItem {
-            id: "wide_space".to_string(),
+            id: "wide_space".into(),
             name: "Wide-space item".to_string(),
             package_code: None,
             pack: None,
@@ -513,7 +513,7 @@
             .with_package_attributes(attributes)
             .with_demand_entries(vec![LayerGenerationDemandEntry {
                 mode: Bpp3dDemandMode::Item,
-                key: Bpp3dDemandKey::Item { id: "wide_space".to_string() },
+                key: Bpp3dDemandKey::Item { id: "wide_space".into() },
                 demand: 2.0,
                 satisfied: 0.0,
             }])
@@ -522,7 +522,7 @@
                 height: meters(3.0),
                 depth: meters(6.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -549,7 +549,7 @@
     #[test]
     fn pattern_layer_generator_adds_side_on_top_orientation() {
         let items = vec![ActualItem {
-            id: "top_side".to_string(),
+            id: "top_side".into(),
             name: "Top-side item".to_string(),
             package_code: None,
             pack: None,
@@ -575,7 +575,7 @@
             .with_package_attributes(attributes)
             .with_demand_entries(vec![LayerGenerationDemandEntry {
                 mode: Bpp3dDemandMode::Item,
-                key: Bpp3dDemandKey::Item { id: "top_side".to_string() },
+                key: Bpp3dDemandKey::Item { id: "top_side".into() },
                 demand: 2.0,
                 satisfied: 0.0,
             }])
@@ -584,7 +584,7 @@
                 height: meters(2.0),
                 depth: meters(2.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -613,7 +613,7 @@
     fn pattern_layer_generator_respects_package_pair_stacking_rule() {
         let items = vec![
             ActualItem {
-                id: "base".to_string(),
+                id: "base".into(),
                 name: "Base".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -625,7 +625,7 @@
                 shape_spec_override: Some(PackageShapeSpec::Cuboid),
             },
             ActualItem {
-                id: "wide".to_string(),
+                id: "wide".into(),
                 name: "Wide".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -651,13 +651,13 @@
             .with_demand_entries(vec![
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "base".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "base".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "wide".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "wide".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
@@ -667,7 +667,7 @@
                 height: meters(3.0),
                 depth: meters(3.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -690,7 +690,7 @@
     fn pattern_layer_generator_respects_package_placement_stacking_rule() {
         let items = vec![
             ActualItem {
-                id: "pallet".to_string(),
+                id: "pallet".into(),
                 name: "Pallet".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -702,7 +702,7 @@
                 shape_spec_override: Some(PackageShapeSpec::Cuboid),
             },
             ActualItem {
-                id: "middle".to_string(),
+                id: "middle".into(),
                 name: "Middle".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -714,7 +714,7 @@
                 shape_spec_override: Some(PackageShapeSpec::Cuboid),
             },
             ActualItem {
-                id: "top".to_string(),
+                id: "top".into(),
                 name: "Top".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -749,19 +749,19 @@
             .with_demand_entries(vec![
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "pallet".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "pallet".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "middle".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "middle".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "top".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "top".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
@@ -771,7 +771,7 @@
                 height: meters(3.0),
                 depth: meters(2.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);
@@ -794,7 +794,7 @@
         let units = vec![
             PatternSelectedItem {
                 item_index: 0,
-                item_id: "bottom".to_string(),
+                item_id: "bottom".into(),
                 orientation: Orientation::Upright,
                 orientation_enabled: true,
                 width: 2.0,
@@ -804,7 +804,7 @@
             },
             PatternSelectedItem {
                 item_index: 1,
-                item_id: "top".to_string(),
+                item_id: "top".into(),
                 orientation: Orientation::Upright,
                 orientation_enabled: true,
                 width: 4.0,
@@ -813,10 +813,10 @@
                 weight: 1.0,
             },
         ];
-        let mut strict_attributes = HashMap::new();
-        strict_attributes.insert("bottom".to_string(), PackageAttribute::default());
+        let mut strict_attributes = HashMap::<ItemId, PackageAttribute>::new();
+        strict_attributes.insert("bottom".into(), PackageAttribute::default());
         strict_attributes.insert(
-            "top".to_string(),
+            "top".into(),
             PackageAttribute {
                 hanging_policy: HangingPolicy::Absolute {
                     max_difference: 0.0,
@@ -825,10 +825,10 @@
                 ..Default::default()
             },
         );
-        let mut relaxed_attributes = HashMap::new();
-        relaxed_attributes.insert("bottom".to_string(), PackageAttribute::default());
+        let mut relaxed_attributes = HashMap::<ItemId, PackageAttribute>::new();
+        relaxed_attributes.insert("bottom".into(), PackageAttribute::default());
         relaxed_attributes.insert(
-            "top".to_string(),
+            "top".into(),
             PackageAttribute {
                 hanging_policy: HangingPolicy::Absolute {
                     max_difference: 100.0,
@@ -843,7 +843,7 @@
             height: meters(10.0),
             depth: meters(10.0),
             capacity: meters(100.0),
-            type_code: "BIN".to_string(),
+            type_code: "BIN".into(),
             is_main: true,
         };
         let policy = DefaultLayerGenerationPackageRulePolicy;
@@ -856,7 +856,7 @@
     fn pattern_layer_generator_respects_package_mixed_loading_rule() {
         let items = vec![
             ActualItem {
-                id: "solo".to_string(),
+                id: "solo".into(),
                 name: "Solo".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -868,7 +868,7 @@
                 shape_spec_override: Some(PackageShapeSpec::Cuboid),
             },
             ActualItem {
-                id: "other".to_string(),
+                id: "other".into(),
                 name: "Other".to_string(),
                 package_code: Some("mix".to_string()),
                 pack: None,
@@ -894,13 +894,13 @@
             .with_demand_entries(vec![
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "solo".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "solo".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "other".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "other".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
@@ -910,7 +910,7 @@
                 height: meters(2.0),
                 depth: meters(2.0),
                 capacity: meters(100.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_max_candidates(1);

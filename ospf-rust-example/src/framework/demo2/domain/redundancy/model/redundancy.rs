@@ -1,3 +1,4 @@
+//! 冗余模型 / Redundancy model
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -11,12 +12,16 @@ use ospf_rust_core::symbol::function::SlackFunction;
 /// - `redundancySlack = |main_deck_capacity - actual_load|`
 #[derive(Debug, Clone)]
 pub struct Redundancy {
+    /// 主甲板容量 / Main deck capacity
     pub main_deck_capacity: f64,
+    /// 实际装载量 / Actual load
     pub actual_load: f64,
+    /// 冗余松弛值 / Redundancy slack value
     pub slack: f64,
 }
 
 impl Redundancy {
+    /// 计算冗余量（容量减去实际装载） / Calculate redundancy (capacity minus actual load)
     pub fn redundancy(&self) -> f64 {
         self.main_deck_capacity - self.actual_load
     }

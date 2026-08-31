@@ -19,6 +19,7 @@ struct RawProduct {
     demand: f64,
 }
 
+/// 运行 CSP1D 下料问题示例 / Run CSP1D cutting stock problem example
 pub fn run() -> Result<(), Box<dyn Error>> {
     let raw_length = 1000.0_f64;
     let raw_products = vec![
@@ -33,7 +34,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         .enumerate()
         .map(|(index, raw)| {
             Product::legacy(ProductLegacyInput {
-                id: format!("p-{index}"),
+                id: format!("p-{index}").into(),
                 name: format!("product-{}", raw.width as i64),
                 width: vec![raw.width],
                 length: None,

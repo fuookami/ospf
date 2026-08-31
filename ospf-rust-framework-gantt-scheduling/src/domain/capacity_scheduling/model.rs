@@ -9,19 +9,21 @@
 
 use std::sync::Arc;
 
-use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::flatten::LinearMonomial;
+use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::LinearIntermediateSymbol;
 use ospf_rust_core::variable::{Binary, UInteger, VariableRange};
 
-use crate::domain::task_compilation::adapter::{
-    IndexedVariableArray2, IndexedVariableArray3, next_gantt_symbol_id,
-    symbols_to_indexed_1d,
-    IndexedLinearExpressionSymbols1,
+use crate::domain::common::{
+    ExecutorId, ExecutorIdTrait, ProductionActionId, ProductionActionIdTrait,
 };
-use crate::GanttResult;
+use crate::domain::task_compilation::adapter::{
+    next_gantt_symbol_id, symbols_to_indexed_1d, IndexedLinearExpressionSymbols1,
+    IndexedVariableArray2, IndexedVariableArray3,
+};
 use crate::GanttError;
+use crate::GanttResult;
 
 fn rounded_positive_amount(value: f64) -> Option<u64> {
     if !value.is_finite() {
@@ -47,12 +49,17 @@ fn rounded_positive_amount(value: f64) -> Option<u64> {
 /// Defines the basic action unit in capacity scheduling.
 /// Each action is bound to an executor and specifies its capacity consumption and cost.
 pub trait ProductionActionTrait: Send + Sync + std::fmt::Debug + Clone + 'static {
+    /// 动作 ID 类型 / Action id type
+    type Id: ProductionActionIdTrait;
+    /// 执行者 ID 类型 / Executor id type
+    type ExecutorId: ExecutorIdTrait;
+
     /// 动作 ID / Action ID
-    fn id(&self) -> &str;
+    fn id(&self) -> &Self::Id;
     /// 动作名称 / Action name
     fn name(&self) -> &str;
     /// 关联的执行器 ID / Associated executor ID
-    fn executor_id(&self) -> &str;
+    fn executor_id(&self) -> &Self::ExecutorId;
     /// 是否离散（批次计数）/ Whether discrete (batch count)
     ///
     /// 离散动作以批次为单位计算，连续动作以时长为单位。
@@ -78,11 +85,11 @@ pub trait ProductionActionTrait: Send + Sync + std::fmt::Debug + Clone + 'static
 #[derive(Debug, Clone)]
 pub struct BasicProductionAction {
     /// 动作 ID / Action ID
-    pub id: String,
+    pub id: ProductionActionId,
     /// 动作名称 / Action name
     pub name: String,
     /// 关联执行器 ID / Associated executor ID
-    pub executor_id: String,
+    pub executor_id: ExecutorId,
     /// 是否离散 / Whether discrete
     pub discrete: bool,
     /// 单位产能 / Unit capacity
@@ -94,9 +101,9 @@ pub struct BasicProductionAction {
 impl BasicProductionAction {
     /// 创建新的基础生产动作 / Create new basic production action
     pub fn new(
-        id: impl Into<String>,
+        id: impl Into<ProductionActionId>,
         name: impl Into<String>,
-        executor_id: impl Into<String>,
+        executor_id: impl Into<ExecutorId>,
         unit_capacity: f64,
         unit_cost: f64,
     ) -> Self {
@@ -112,12 +119,27 @@ impl BasicProductionAction {
 }
 
 impl ProductionActionTrait for BasicProductionAction {
-    fn id(&self) -> &str { &self.id }
-    fn name(&self) -> &str { &self.name }
-    fn executor_id(&self) -> &str { &self.executor_id }
-    fn discrete(&self) -> bool { self.discrete }
-    fn unit_capacity(&self) -> f64 { self.unit_capacity }
-    fn unit_cost(&self) -> f64 { self.unit_cost }
+    type Id = ProductionActionId;
+    type ExecutorId = ExecutorId;
+
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn executor_id(&self) -> &Self::ExecutorId {
+        &self.executor_id
+    }
+    fn discrete(&self) -> bool {
+        self.discrete
+    }
+    fn unit_capacity(&self) -> f64 {
+        self.unit_capacity
+    }
+    fn unit_cost(&self) -> f64 {
+        self.unit_cost
+    }
 }
 
 // ============================================================================
@@ -136,7 +158,7 @@ pub struct CapacityCompilation<A: ProductionActionTrait> {
     /// 生产动作列表 / Production actions
     pub actions: Vec<A>,
     /// 执行器 ID 列表 / Executor IDs
-    pub executor_ids: Vec<String>,
+    pub executor_ids: Vec<A::ExecutorId>,
     /// 时隙数量 / Number of time slots
     pub slot_count: usize,
     /// x[action, slot] 分配变量 / x[action, slot] allocation variables
@@ -155,7 +177,12 @@ pub struct CapacityCompilation<A: ProductionActionTrait> {
 
 impl<A: ProductionActionTrait> CapacityCompilation<A> {
     /// 创建新的产能编译 / Create new capacity compilation
-    pub fn new(actions: Vec<A>, executor_ids: Vec<String>, slot_count: usize) -> Self {
+    pub fn new(
+        actions: Vec<A>,
+        executor_ids: Vec<impl Into<A::ExecutorId>>,
+        slot_count: usize,
+    ) -> Self {
+        let executor_ids = executor_ids.into_iter().map(Into::into).collect();
         Self {
             actions,
             executor_ids,
@@ -196,21 +223,25 @@ impl<A: ProductionActionTrait> CapacityCompilation<A> {
         self.operation_time_symbols.clear();
         for (ai, action) in self.actions.iter().enumerate() {
             for si in 0..self.slot_count {
-                let x_idx = self.x.as_ref().unwrap().model_index(&ai, &si)
+                let x_idx = self
+                    .x
+                    .as_ref()
+                    .unwrap()
+                    .model_index(&ai, &si)
                     .ok_or_else(|| GanttError::Calculation {
                         message: format!("cap_x[{}, {}] model index not found", ai, si),
                     })?;
                 let upper_bound = action.upper_bound_at(si) as f64;
-                model.set_variable_range_by_index(
-                    x_idx,
-                    VariableRange::bounded(0.0, upper_bound),
-                ).map_err(|e| GanttError::Calculation {
-                    message: format!("Failed to set cap_x[{}, {}] upper bound: {:?}", ai, si, e),
-                })?;
+                model
+                    .set_variable_range_by_index(x_idx, VariableRange::bounded(0.0, upper_bound))
+                    .map_err(|e| GanttError::Calculation {
+                        message: format!(
+                            "Failed to set cap_x[{}, {}] upper bound: {:?}",
+                            ai, si, e
+                        ),
+                    })?;
 
-                let terms = vec![
-                    LinearMonomial::new(action.unit_capacity(), x_idx),
-                ];
+                let terms = vec![LinearMonomial::new(action.unit_capacity(), x_idx)];
                 let symbol_id = next_gantt_symbol_id();
                 let symbol = Arc::new(LinearExpressionSymbol::new(
                     symbol_id,
@@ -218,9 +249,13 @@ impl<A: ProductionActionTrait> CapacityCompilation<A> {
                     terms,
                     0.0,
                 ));
-                model.add_symbol(symbol.clone())
+                model
+                    .add_symbol(symbol.clone())
                     .map_err(|e| GanttError::Calculation {
-                        message: format!("Failed to register operation_time_{}_{}: {:?}", ai, si, e),
+                        message: format!(
+                            "Failed to register operation_time_{}_{}: {:?}",
+                            ai, si, e
+                        ),
                     })?;
                 self.operation_time_symbols.push(symbol);
             }
@@ -251,7 +286,8 @@ impl<A: ProductionActionTrait> CapacityCompilation<A> {
                     terms,
                     0.0,
                 ));
-                model.add_symbol(symbol.clone())
+                model
+                    .add_symbol(symbol.clone())
                     .map_err(|e| GanttError::Calculation {
                         message: format!("Failed to register capacity_{}_{}: {:?}", ei, si, e),
                     })?;
@@ -264,10 +300,17 @@ impl<A: ProductionActionTrait> CapacityCompilation<A> {
         for (ai, action) in self.actions.iter().enumerate() {
             for si in 0..self.slot_count {
                 if action.unit_cost() != 0.0 {
-                    let x_idx = self.x.as_ref().unwrap().model_index(&ai, &si)
-                        .ok_or_else(|| GanttError::Calculation {
-                            message: format!("cap_x[{}, {}] model index not found for cost", ai, si),
-                        })?;
+                    let x_idx =
+                        self.x
+                            .as_ref()
+                            .unwrap()
+                            .model_index(&ai, &si)
+                            .ok_or_else(|| GanttError::Calculation {
+                                message: format!(
+                                    "cap_x[{}, {}] model index not found for cost",
+                                    ai, si
+                                ),
+                            })?;
                     cost_terms.push(LinearMonomial::new(action.unit_cost(), x_idx));
                 }
             }
@@ -281,7 +324,8 @@ impl<A: ProductionActionTrait> CapacityCompilation<A> {
                 cost_terms,
                 0.0,
             ));
-            model.add_symbol(cost_symbol)
+            model
+                .add_symbol(cost_symbol)
                 .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to register capacity_cost: {:?}", e),
                 })?;
@@ -295,21 +339,22 @@ impl<A: ProductionActionTrait> CapacityCompilation<A> {
         // 构建索引符号组合 / Build indexed symbol combinations
         let op_time_keys: Vec<usize> = (0..self.operation_time_symbols.len()).collect();
         self.operation_time_indexed = Some(symbols_to_indexed_1d(
-            "operation_time", &op_time_keys, &self.operation_time_symbols,
+            "operation_time",
+            &op_time_keys,
+            &self.operation_time_symbols,
         ));
         let cap_keys: Vec<usize> = (0..self.capacity_symbols.len()).collect();
         self.capacity_indexed = Some(symbols_to_indexed_1d(
-            "capacity", &cap_keys, &self.capacity_symbols,
+            "capacity",
+            &cap_keys,
+            &self.capacity_symbols,
         ));
 
         Ok(())
     }
 
     /// 从解中提取结果 / Extract solution from model
-    pub fn extract_solution(
-        &self,
-        solution: &[f64],
-    ) -> CapacitySchedulingSolution<A> {
+    pub fn extract_solution(&self, solution: &[f64]) -> CapacitySchedulingSolution<A> {
         let Some(x) = self.x.as_ref() else {
             return CapacitySchedulingSolution {
                 actions: self.actions.clone(),
@@ -342,14 +387,13 @@ impl<A: ProductionActionTrait> CapacityCompilation<A> {
         let mut executor_capacities = Vec::new();
         for executor_id in &self.executor_ids {
             for si in 0..self.slot_count {
-                let total_capacity = action_allocations.iter()
+                let total_capacity = action_allocations
+                    .iter()
                     .filter(|allocation| {
                         allocation.slot_index == si
                             && allocation.action.executor_id() == executor_id
                     })
-                    .map(|allocation| {
-                        allocation.amount as f64 * allocation.action.unit_capacity()
-                    })
+                    .map(|allocation| allocation.amount as f64 * allocation.action.unit_capacity())
                     .sum::<f64>();
                 if total_capacity > f64::EPSILON {
                     executor_capacities.push(ExecutorCapacityResult {
@@ -384,7 +428,7 @@ pub struct CapacityOrderCompilation<A: ProductionActionTrait> {
     /// 生产动作列表 / Production actions
     pub actions: Vec<A>,
     /// 执行器 ID 列表 / Executor IDs
-    pub executor_ids: Vec<String>,
+    pub executor_ids: Vec<A::ExecutorId>,
     /// 时隙数量 / Number of time slots
     pub slot_count: usize,
     /// 最大订单数 / Maximum order count
@@ -418,7 +462,13 @@ impl<A: ProductionActionTrait> std::fmt::Debug for CapacityOrderCompilation<A> {
 
 impl<A: ProductionActionTrait> CapacityOrderCompilation<A> {
     /// 创建新的带序产能编译 / Create new ordered capacity compilation
-    pub fn new(actions: Vec<A>, executor_ids: Vec<String>, slot_count: usize, max_order: usize) -> Self {
+    pub fn new(
+        actions: Vec<A>,
+        executor_ids: Vec<impl Into<A::ExecutorId>>,
+        slot_count: usize,
+        max_order: usize,
+    ) -> Self {
+        let executor_ids = executor_ids.into_iter().map(Into::into).collect();
         Self {
             actions,
             executor_ids,
@@ -464,20 +514,26 @@ impl<A: ProductionActionTrait> CapacityOrderCompilation<A> {
             for si in 0..self.slot_count {
                 let mut terms = Vec::new();
                 for oi in 0..self.max_order {
-                    let x_idx = self.x.as_ref().unwrap().model_index(&ai, &si, &oi)
+                    let x_idx = self
+                        .x
+                        .as_ref()
+                        .unwrap()
+                        .model_index(&ai, &si, &oi)
                         .ok_or_else(|| GanttError::Calculation {
                             message: format!("cap_x[{},{},{}] model index not found", ai, si, oi),
                         })?;
                     let upper_bound = action.upper_bound_at(si) as f64;
-                    model.set_variable_range_by_index(
-                        x_idx,
-                        VariableRange::bounded(0.0, upper_bound),
-                    ).map_err(|e| GanttError::Calculation {
-                        message: format!(
-                            "Failed to set cap_x[{},{},{}] upper bound: {:?}",
-                            ai, si, oi, e
-                        ),
-                    })?;
+                    model
+                        .set_variable_range_by_index(
+                            x_idx,
+                            VariableRange::bounded(0.0, upper_bound),
+                        )
+                        .map_err(|e| GanttError::Calculation {
+                            message: format!(
+                                "Failed to set cap_x[{},{},{}] upper bound: {:?}",
+                                ai, si, oi, e
+                            ),
+                        })?;
                     terms.push(LinearMonomial::new(action.unit_capacity(), x_idx));
                 }
 
@@ -488,9 +544,13 @@ impl<A: ProductionActionTrait> CapacityOrderCompilation<A> {
                     terms,
                     0.0,
                 ));
-                model.add_symbol(symbol.clone())
+                model
+                    .add_symbol(symbol.clone())
                     .map_err(|e| GanttError::Calculation {
-                        message: format!("Failed to register operation_time_{}_{}: {:?}", ai, si, e),
+                        message: format!(
+                            "Failed to register operation_time_{}_{}: {:?}",
+                            ai, si, e
+                        ),
                     })?;
                 self.operation_time_symbols.push(symbol);
             }
@@ -519,7 +579,8 @@ impl<A: ProductionActionTrait> CapacityOrderCompilation<A> {
                     terms,
                     0.0,
                 ));
-                model.add_symbol(symbol.clone())
+                model
+                    .add_symbol(symbol.clone())
                     .map_err(|e| GanttError::Calculation {
                         message: format!("Failed to register capacity_{}_{}: {:?}", ei, si, e),
                     })?;
@@ -533,7 +594,11 @@ impl<A: ProductionActionTrait> CapacityOrderCompilation<A> {
             for si in 0..self.slot_count {
                 for oi in 0..self.max_order {
                     if action.unit_cost() != 0.0 {
-                        let x_idx = self.x.as_ref().unwrap().model_index(&ai, &si, &oi)
+                        let x_idx = self
+                            .x
+                            .as_ref()
+                            .unwrap()
+                            .model_index(&ai, &si, &oi)
                             .ok_or_else(|| GanttError::Calculation {
                                 message: format!("cap_x[{},{},{}] for cost not found", ai, si, oi),
                             })?;
@@ -551,7 +616,8 @@ impl<A: ProductionActionTrait> CapacityOrderCompilation<A> {
                 cost_terms,
                 0.0,
             ));
-            model.add_symbol(cost_symbol)
+            model
+                .add_symbol(cost_symbol)
                 .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to register capacity_cost: {:?}", e),
                 })?;
@@ -561,21 +627,22 @@ impl<A: ProductionActionTrait> CapacityOrderCompilation<A> {
         // 构建索引符号组合 / Build indexed symbol combinations
         let op_time_keys: Vec<usize> = (0..self.operation_time_symbols.len()).collect();
         self.operation_time_indexed = Some(symbols_to_indexed_1d(
-            "operation_time", &op_time_keys, &self.operation_time_symbols,
+            "operation_time",
+            &op_time_keys,
+            &self.operation_time_symbols,
         ));
         let cap_keys: Vec<usize> = (0..self.capacity_symbols.len()).collect();
         self.capacity_indexed = Some(symbols_to_indexed_1d(
-            "capacity", &cap_keys, &self.capacity_symbols,
+            "capacity",
+            &cap_keys,
+            &self.capacity_symbols,
         ));
 
         Ok(())
     }
 
     /// 从解中提取结果 / Extract solution from model
-    pub fn extract_solution(
-        &self,
-        solution: &[f64],
-    ) -> CapacitySchedulingSolution<A> {
+    pub fn extract_solution(&self, solution: &[f64]) -> CapacitySchedulingSolution<A> {
         let Some(x) = self.x.as_ref() else {
             return CapacitySchedulingSolution {
                 actions: self.actions.clone(),
@@ -610,14 +677,13 @@ impl<A: ProductionActionTrait> CapacityOrderCompilation<A> {
         let mut executor_capacities = Vec::new();
         for executor_id in &self.executor_ids {
             for si in 0..self.slot_count {
-                let total_capacity = action_allocations.iter()
+                let total_capacity = action_allocations
+                    .iter()
                     .filter(|allocation| {
                         allocation.slot_index == si
                             && allocation.action.executor_id() == executor_id
                     })
-                    .map(|allocation| {
-                        allocation.amount as f64 * allocation.action.unit_capacity()
-                    })
+                    .map(|allocation| allocation.amount as f64 * allocation.action.unit_capacity())
                     .sum::<f64>();
                 if total_capacity > f64::EPSILON {
                     executor_capacities.push(ExecutorCapacityResult {
@@ -647,11 +713,12 @@ impl<A: ProductionActionTrait> CapacityOrderCompilation<A> {
 /// 列的业务等价性由执行器、时隙、顺序和动作分配共同决定。
 ///
 /// In column generation, each CapacityColumn represents a feasible capacity allocation plan.
-/// Business equivalence is determined by executor, slot, order, and action allocations.
+/// 业务等价由执行器、时隙、顺序、稳定键和动作分配共同决定。
+/// Business equivalence is determined by executor, slot, order, stable key, and action allocations.
 #[derive(Debug, Clone)]
 pub struct CapacityColumn<A: ProductionActionTrait> {
     /// 关联的执行器 ID / Associated executor ID
-    pub executor_id: String,
+    pub executor_id: A::ExecutorId,
     /// 时隙索引 / Slot index
     pub slot_index: usize,
     /// 订单索引 / Order index
@@ -660,23 +727,42 @@ pub struct CapacityColumn<A: ProductionActionTrait> {
     pub allocations: Vec<(A, u64)>,
     /// 列成本 / Column cost
     pub cost: f64,
+    /// 稳定列身份 / Stable column identity
+    ///
+    /// 下游领域可用该键区分分配相同但业务来源不同的列。
+    /// Downstream domains may use this key to distinguish columns with identical
+    /// allocations but different business origins.
+    pub key: Option<String>,
 }
 
 impl<A: ProductionActionTrait> CapacityColumn<A> {
     /// 创建新的产能列 / Create new capacity column
-    pub fn new(executor_id: impl Into<String>, slot_index: usize, order: usize, cost: f64) -> Self {
+    pub fn new(
+        executor_id: impl Into<A::ExecutorId>,
+        slot_index: usize,
+        order: usize,
+        cost: f64,
+    ) -> Self {
         Self {
             executor_id: executor_id.into(),
             slot_index,
             order,
             allocations: Vec::new(),
             cost,
+            key: None,
         }
     }
 
+    /// 设置稳定列身份 / Set stable column identity
+    pub fn with_key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
     /// 获取指定动作的分配量 / Get allocation amount for specified action
-    pub fn amount_for(&self, action_id: &str) -> u64 {
-        self.allocations.iter()
+    pub fn amount_for(&self, action_id: &A::Id) -> u64 {
+        self.allocations
+            .iter()
             .find(|(a, _)| a.id() == action_id)
             .map(|(_, amount)| *amount)
             .unwrap_or(0)
@@ -697,13 +783,16 @@ impl<A: ProductionActionTrait> CapacityColumn<A> {
         self.executor_id == other.executor_id
             && self.slot_index == other.slot_index
             && self.order == other.order
+            && self.key == other.key
             && self.allocations.len() == other.allocations.len()
-            && self.allocations.iter().all(|(action, amount)| {
-                other.amount_for(action.id()) == *amount
-            })
-            && other.allocations.iter().all(|(action, amount)| {
-                self.amount_for(action.id()) == *amount
-            })
+            && self
+                .allocations
+                .iter()
+                .all(|(action, amount)| other.amount_for(action.id()) == *amount)
+            && other
+                .allocations
+                .iter()
+                .all(|(action, amount)| self.amount_for(action.id()) == *amount)
     }
 }
 
@@ -726,9 +815,12 @@ pub struct ActionAllocation<A: ProductionActionTrait> {
 
 /// 执行器产能结果 / Executor capacity result
 #[derive(Debug, Clone)]
-pub struct ExecutorCapacityResult {
+pub struct ExecutorCapacityResult<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
     /// 执行器 ID / Executor ID
-    pub executor_id: String,
+    pub executor_id: I,
     /// 时隙索引 / Slot index
     pub slot_index: usize,
     /// 总使用产能 / Total used capacity
@@ -743,7 +835,7 @@ pub struct CapacitySchedulingSolution<A: ProductionActionTrait> {
     /// 动作分配列表 / Action allocation list
     pub action_allocations: Vec<ActionAllocation<A>>,
     /// 执行器产能列表 / Executor capacity list
-    pub executor_capacities: Vec<ExecutorCapacityResult>,
+    pub executor_capacities: Vec<ExecutorCapacityResult<A::ExecutorId>>,
 }
 
 // ============================================================================
@@ -782,9 +874,10 @@ impl<A: ProductionActionTrait> CapacityColumnAggregation<A> {
     ) -> Vec<CapacityColumn<A>> {
         let mut unduplicated_new_columns: Vec<CapacityColumn<A>> = Vec::new();
         for column in new_columns {
-            if unduplicated_new_columns.iter().all(|existing| {
-                !column.has_same_plan(existing)
-            }) {
+            if unduplicated_new_columns
+                .iter()
+                .all(|existing| !column.has_same_plan(existing))
+            {
                 unduplicated_new_columns.push(column);
             }
         }
@@ -792,9 +885,9 @@ impl<A: ProductionActionTrait> CapacityColumnAggregation<A> {
         let unduplicated_columns: Vec<_> = unduplicated_new_columns
             .into_iter()
             .filter(|column| {
-                self.columns.iter().all(|existing| {
-                    !column.has_same_plan(existing)
-                })
+                self.columns
+                    .iter()
+                    .all(|existing| !column.has_same_plan(existing))
             })
             .collect();
 
@@ -809,19 +902,22 @@ impl<A: ProductionActionTrait> CapacityColumnAggregation<A> {
 
     /// 移除单列 / Remove one column
     pub fn remove_column(&mut self, column: &CapacityColumn<A>) {
-        if self.removed_columns.iter().any(|existing| {
-            column.has_same_plan(existing)
-        }) {
+        if self
+            .removed_columns
+            .iter()
+            .any(|existing| column.has_same_plan(existing))
+        {
             return;
         }
-        if let Some(removed) = self.columns.iter()
+        if let Some(removed) = self
+            .columns
+            .iter()
             .find(|existing| column.has_same_plan(existing))
             .cloned()
         {
             self.removed_columns.push(removed);
-            self.columns.retain(|existing| {
-                !column.has_same_plan(existing)
-            });
+            self.columns
+                .retain(|existing| !column.has_same_plan(existing));
         }
     }
 
@@ -834,7 +930,8 @@ impl<A: ProductionActionTrait> CapacityColumnAggregation<A> {
 
     /// 最新非空迭代列 / Last non-empty iteration columns
     pub fn last_iteration_columns(&self) -> &[CapacityColumn<A>] {
-        self.columns_by_iteration.iter()
+        self.columns_by_iteration
+            .iter()
             .rev()
             .find(|columns| !columns.is_empty())
             .map(Vec::as_slice)
@@ -895,8 +992,8 @@ mod tests {
         compilation.register(&mut model).unwrap();
 
         assert!(compilation.x.is_some());
-        assert_eq!(compilation.operation_time_symbols.len(), 4);  // 2 actions * 2 slots
-        assert_eq!(compilation.capacity_symbols.len(), 2);  // 1 executor * 2 slots
+        assert_eq!(compilation.operation_time_symbols.len(), 4); // 2 actions * 2 slots
+        assert_eq!(compilation.capacity_symbols.len(), 2); // 1 executor * 2 slots
     }
 
     #[test]
@@ -925,12 +1022,10 @@ mod tests {
         assert_eq!(result.action_allocations[0].order, 0);
         assert_eq!(result.executor_capacities.len(), 2);
         assert!(result.executor_capacities.iter().any(|capacity| {
-            capacity.slot_index == 0
-                && (capacity.total_capacity - 3.0).abs() < f64::EPSILON
+            capacity.slot_index == 0 && (capacity.total_capacity - 3.0).abs() < f64::EPSILON
         }));
         assert!(result.executor_capacities.iter().any(|capacity| {
-            capacity.slot_index == 1
-                && (capacity.total_capacity - 6.0).abs() < f64::EPSILON
+            capacity.slot_index == 1 && (capacity.total_capacity - 6.0).abs() < f64::EPSILON
         }));
     }
 
@@ -943,12 +1038,27 @@ mod tests {
         }
 
         impl ProductionActionTrait for BoundedAction {
-            fn id(&self) -> &str { self.inner.id() }
-            fn name(&self) -> &str { self.inner.name() }
-            fn executor_id(&self) -> &str { self.inner.executor_id() }
-            fn unit_capacity(&self) -> f64 { self.inner.unit_capacity() }
-            fn unit_cost(&self) -> f64 { self.inner.unit_cost() }
-            fn upper_bound_at(&self, _slot: usize) -> u64 { self.upper }
+            type Id = ProductionActionId;
+            type ExecutorId = ExecutorId;
+
+            fn id(&self) -> &Self::Id {
+                self.inner.id()
+            }
+            fn name(&self) -> &str {
+                self.inner.name()
+            }
+            fn executor_id(&self) -> &Self::ExecutorId {
+                self.inner.executor_id()
+            }
+            fn unit_capacity(&self) -> f64 {
+                self.inner.unit_capacity()
+            }
+            fn unit_cost(&self) -> f64 {
+                self.inner.unit_cost()
+            }
+            fn upper_bound_at(&self, _slot: usize) -> u64 {
+                self.upper
+            }
         }
 
         let mut model = MetaModel::<f64>::new("test_capacity_upper_bound");
@@ -971,9 +1081,9 @@ mod tests {
     fn test_capacity_order_compilation_registration() {
         let mut model = MetaModel::<f64>::new("test_capacity_order");
 
-        let actions = vec![
-            BasicProductionAction::new("a1", "Action 1", "exec_1", 1.0, 10.0),
-        ];
+        let actions = vec![BasicProductionAction::new(
+            "a1", "Action 1", "exec_1", 1.0, 10.0,
+        )];
         let executor_ids = vec!["exec_1".to_string()];
 
         let mut compilation = CapacityOrderCompilation::new(actions, executor_ids, 2, 3);
@@ -981,17 +1091,17 @@ mod tests {
 
         assert!(compilation.x.is_some());
         assert!(compilation.b.is_some());
-        assert_eq!(compilation.operation_time_symbols.len(), 2);  // 1 action * 2 slots
-        assert_eq!(compilation.capacity_symbols.len(), 2);  // 1 executor * 2 slots
+        assert_eq!(compilation.operation_time_symbols.len(), 2); // 1 action * 2 slots
+        assert_eq!(compilation.capacity_symbols.len(), 2); // 1 executor * 2 slots
     }
 
     #[test]
     fn test_capacity_order_compilation_extract_solution() {
         let mut model = MetaModel::<f64>::new("test_capacity_order_extract");
 
-        let actions = vec![
-            BasicProductionAction::new("a1", "Action 1", "exec_1", 2.0, 10.0),
-        ];
+        let actions = vec![BasicProductionAction::new(
+            "a1", "Action 1", "exec_1", 2.0, 10.0,
+        )];
         let executor_ids = vec!["exec_1".to_string()];
 
         let mut compilation = CapacityOrderCompilation::new(actions, executor_ids, 2, 3);
@@ -1017,8 +1127,11 @@ mod tests {
         let mut column = CapacityColumn::new("exec_1", 0, 0, 10.0);
         column.allocations.push((action, 5));
 
-        assert_eq!(column.amount_for("a1"), 5);
-        assert_eq!(column.amount_for("nonexistent"), 0);
+        assert_eq!(column.amount_for(&ProductionActionId::from("a1")), 5);
+        assert_eq!(
+            column.amount_for(&ProductionActionId::from("nonexistent")),
+            0
+        );
         assert_eq!(column.total_amount(), 5);
         assert!(!column.is_empty());
     }

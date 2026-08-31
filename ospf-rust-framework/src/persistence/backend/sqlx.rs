@@ -25,9 +25,13 @@ pub struct SqlxBackend;
 /// SQL dialect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqlxDialect {
+    /// 通用方言 / Generic dialect
     Generic,
+    /// PostgreSQL 方言 / PostgreSQL dialect
     Postgres,
+    /// MySQL 方言 / MySQL dialect
     MySql,
+    /// SQLite 方言 / SQLite dialect
     Sqlite,
 }
 
@@ -69,9 +73,13 @@ impl Default for SqlxDialect {
 /// SQLx translator configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SqlxTranslatorConfig {
+    /// SQL 方言 / SQL dialect
     pub dialect: SqlxDialect,
+    /// 是否引用标识符 / Whether identifiers should be quoted
     pub quote_identifiers: bool,
+    /// 不支持谓词策略 / Unsupported predicate policy
     pub unsupported_predicate_policy: UnsupportedPredicatePolicy,
+    /// 空值排序支持策略 / Null ordering support policy
     pub nulls_order_support: NullsOrderSupport,
 }
 
@@ -123,7 +131,9 @@ impl SqlxTranslatorConfig {
 /// SQL fragment.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SqlxSql {
+    /// SQL 语句 / SQL statement
     pub sql: String,
+    /// 参数列表 / Parameter list
     pub params: Vec<ExpressionValue>,
 }
 
@@ -148,8 +158,11 @@ impl SqlxSql {
 /// SQLx translation error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SqlxTranslationError {
+    /// 不支持的谓词 / Unsupported predicate
     UnsupportedPredicate(String),
+    /// 未解析的字段 / Unresolved field
     UnresolvedField(String),
+    /// 无效表达式 / Invalid expression
     InvalidExpression(String),
 }
 
@@ -558,6 +571,17 @@ where
             }
             ScalarExpression::Function { name, arguments } => {
                 self.translate_scalar_function(name, arguments)
+            }
+            ScalarExpression::Conditional { .. } => {
+                Err(SqlxTranslationError::UnsupportedPredicate(
+                    "conditional scalar expression is not supported by SQLx translator"
+                        .to_string(),
+                ))
+            }
+            ScalarExpression::Boolean(_) => {
+                Err(SqlxTranslationError::UnsupportedPredicate(
+                    "boolean scalar expression is not supported by SQLx translator".to_string(),
+                ))
             }
             ScalarExpression::Custom { description, .. } => {
                 Err(SqlxTranslationError::UnsupportedPredicate(
@@ -1009,6 +1033,30 @@ mod tests {
         let err = translator.translate_boolean(&expression).unwrap_err();
 
         assert!(matches!(err, SqlxTranslationError::UnsupportedPredicate(_)));
+    }
+
+    #[test]
+    fn reports_unsupported_conditional_and_boolean_scalar_expressions() {
+        let conditional = ScalarExpression::conditional(
+            runtime_field("age").ge(18),
+            ScalarExpression::constant(ExpressionValue::from(1)),
+            ScalarExpression::constant(ExpressionValue::from(0)),
+        );
+        let boolean = ScalarExpression::boolean_expr(runtime_field("status").eq("active"));
+
+        let conditional_err = translator().translate_scalar(&conditional).unwrap_err();
+        let boolean_err = translator().translate_scalar(&boolean).unwrap_err();
+
+        assert!(matches!(
+            conditional_err,
+            SqlxTranslationError::UnsupportedPredicate(message)
+                if message.contains("conditional scalar expression")
+        ));
+        assert!(matches!(
+            boolean_err,
+            SqlxTranslationError::UnsupportedPredicate(message)
+                if message.contains("boolean scalar expression")
+        ));
     }
 
     #[test]

@@ -10,8 +10,8 @@ use ospf_rust_base::error_enum;
 // BPP3D 领域错误
 // ============================================================================
 
-// BPP3D 能力不支持错误 / BPP3D capability not supported error
 error_type!(
+    /// BPP3D 能力不支持错误 / BPP3D capability not supported error
     #[derive(Clone, Debug)]
     pub struct Bpp3dCapabilityError {
         /// 不支持的能力名称 / Name of the unsupported capability
@@ -33,8 +33,8 @@ impl ospf_rust_base::error::Error for Bpp3dCapabilityError {
     fn msg(&self) -> String { format!("{}", self) }
 }
 
-// BPP3D 求解错误 / BPP3D solving error
 error_type!(
+    /// BPP3D 求解错误 / BPP3D solving error
     #[derive(Clone, Debug)]
     pub struct Bpp3dSolvingError {
         /// 错误详情 / Error detail
@@ -56,8 +56,8 @@ impl ospf_rust_base::error::Error for Bpp3dSolvingError {
     fn msg(&self) -> String { format!("{}", self) }
 }
 
-// BPP3D 内部错误 / BPP3D internal error
 error_type!(
+    /// BPP3D 内部错误 / BPP3D internal error
     #[derive(Clone, Debug)]
     pub struct Bpp3dInternalError {
         /// 错误详情 / Error detail
@@ -79,8 +79,8 @@ impl ospf_rust_base::error::Error for Bpp3dInternalError {
     fn msg(&self) -> String { format!("{}", self) }
 }
 
-// BPP3D 参数验证错误 / BPP3D parameter validation error
 error_type!(
+    /// BPP3D 参数验证错误 / BPP3D parameter validation error
     #[derive(Clone, Debug)]
     pub struct Bpp3dValidationError {
         /// 错误详情 / Error detail
@@ -102,8 +102,8 @@ impl ospf_rust_base::error::Error for Bpp3dValidationError {
     fn msg(&self) -> String { format!("{}", self) }
 }
 
-// BPP3D 统一错误枚举 / BPP3D unified error enum
 error_enum!(
+    /// BPP3D 统一错误枚举 / BPP3D unified error enum
     #[derive(Clone)]
     pub enum Bpp3dError {
         Capability(Bpp3dCapabilityError),

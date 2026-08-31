@@ -1,3 +1,5 @@
+//! 带宽管道列表生成器模块 / Bandwidth pipeline list generator module
+
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_multiarray::{MultiArray, Shape};
@@ -10,9 +12,11 @@ use super::limits::{
 };
 
 /// 带宽管道列表生成器 / Bandwidth pipeline list generator
+///
 /// 对齐 Kotlin bandwidth_context/service/PipelineListGenerator
 ///
-/// 从符号组合取多项式构建约束，y_idx 仅用于 var_index → service 反查。
+/// 从符号组合取多项式构建约束，y_idx 仅用于 var_index 到 service 的反查。
+/// Builds constraints from symbol combination polynomials; y_idx is only used for var_index to service reverse lookup.
 pub fn generate_pipelines(
     aggregation: &Aggregation,
     model: &mut MetaModel<f64>,

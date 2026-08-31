@@ -1,4 +1,5 @@
 #![allow(unused_imports, dead_code)]
+//! 框架示例模块 / Framework examples module.
 
 pub mod demo1;
 pub mod demo2;

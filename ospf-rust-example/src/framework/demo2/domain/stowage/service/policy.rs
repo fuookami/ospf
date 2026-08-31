@@ -1,8 +1,10 @@
+//! 装载管线规格 / Stowage pipeline specifications
 use crate::framework::demo2::domain::shared::mode_switch::ModeSelector;
 use crate::framework::demo2::domain::shared::pipeline_policy::PipelineSpec;
 use crate::framework::demo2::domain::stowage::service::limits;
 use crate::framework::demo2::domain::stowage::service::pipeline_list_generator::StowagePipelineStep;
 
+/// 装载管线规格列表 / Stowage pipeline specification list
 pub fn pipeline_specs() -> Vec<PipelineSpec<StowagePipelineStep>> {
     vec![
         PipelineSpec {

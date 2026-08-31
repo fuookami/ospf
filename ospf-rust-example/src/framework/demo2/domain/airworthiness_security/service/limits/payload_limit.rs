@@ -1,9 +1,14 @@
+//! 载荷限制 / Payload limits
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;
 use crate::framework::demo2::domain::airworthiness_security::context::AirworthinessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
+/// 业载限制 / Payload limit
+///
+/// 对齐 Kotlin PayloadLimit: 总业载在上下限范围内。
+/// Aligns with Kotlin PayloadLimit: total payload within upper and lower bounds.
 pub fn apply_payload_limits(
     model: &mut MetaModel<f64>,
     context: &AirworthinessContext<'_>,

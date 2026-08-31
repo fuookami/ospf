@@ -3,13 +3,18 @@
 //! 定义产出/消耗的物料类型标记。
 //! Defines material type markers for production/consumption.
 
+use crate::domain::common::{ProductionMaterialId, ProductionMaterialIdTrait};
+
 /// 物料 trait / Material trait
 ///
 /// 所有物料的基础接口。
 /// Base interface for all materials.
 pub trait MaterialTrait: Send + Sync + std::fmt::Debug + 'static {
+    /// 物料 ID 类型 / Material id type
+    type Id: ProductionMaterialIdTrait;
+
     /// 物料 ID / Material ID
-    fn id(&self) -> &str;
+    fn id(&self) -> &Self::Id;
     /// 物料名称 / Material name
     fn name(&self) -> &str;
 }
@@ -19,22 +24,33 @@ pub trait MaterialTrait: Send + Sync + std::fmt::Debug + 'static {
 /// 产出侧的成品物料。
 /// Finished product on the production side.
 #[derive(Debug, Clone)]
-pub struct Product {
+pub struct Product<I = ProductionMaterialId>
+where
+    I: ProductionMaterialIdTrait,
+{
     /// 产品 ID / Product ID
-    pub id: String,
+    pub id: I,
     /// 产品名称 / Product name
     pub name: String,
 }
 
-impl Product {
+impl<I> Product<I>
+where
+    I: ProductionMaterialIdTrait,
+{
     /// 创建新产品 / Create new product
-    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
+    pub fn new(id: impl Into<I>, name: impl Into<String>) -> Self {
         Self { id: id.into(), name: name.into() }
     }
 }
 
-impl MaterialTrait for Product {
-    fn id(&self) -> &str { &self.id }
+impl<I> MaterialTrait for Product<I>
+where
+    I: ProductionMaterialIdTrait,
+{
+    type Id = I;
+
+    fn id(&self) -> &Self::Id { &self.id }
     fn name(&self) -> &str { &self.name }
 }
 
@@ -43,22 +59,33 @@ impl MaterialTrait for Product {
 /// 中间产品物料。
 /// Intermediate product material.
 #[derive(Debug, Clone)]
-pub struct SemiProduct {
+pub struct SemiProduct<I = ProductionMaterialId>
+where
+    I: ProductionMaterialIdTrait,
+{
     /// 半成品 ID / Semi-product ID
-    pub id: String,
+    pub id: I,
     /// 半成品名称 / Semi-product name
     pub name: String,
 }
 
-impl SemiProduct {
+impl<I> SemiProduct<I>
+where
+    I: ProductionMaterialIdTrait,
+{
     /// 创建新半成品 / Create new semi-product
-    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
+    pub fn new(id: impl Into<I>, name: impl Into<String>) -> Self {
         Self { id: id.into(), name: name.into() }
     }
 }
 
-impl MaterialTrait for SemiProduct {
-    fn id(&self) -> &str { &self.id }
+impl<I> MaterialTrait for SemiProduct<I>
+where
+    I: ProductionMaterialIdTrait,
+{
+    type Id = I;
+
+    fn id(&self) -> &Self::Id { &self.id }
     fn name(&self) -> &str { &self.name }
 }
 
@@ -67,21 +94,32 @@ impl MaterialTrait for SemiProduct {
 /// 消耗侧的原料。
 /// Raw material on the consumption side.
 #[derive(Debug, Clone)]
-pub struct RawMaterial {
+pub struct RawMaterial<I = ProductionMaterialId>
+where
+    I: ProductionMaterialIdTrait,
+{
     /// 原材料 ID / Raw material ID
-    pub id: String,
+    pub id: I,
     /// 原材料名称 / Raw material name
     pub name: String,
 }
 
-impl RawMaterial {
+impl<I> RawMaterial<I>
+where
+    I: ProductionMaterialIdTrait,
+{
     /// 创建新原材料 / Create new raw material
-    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
+    pub fn new(id: impl Into<I>, name: impl Into<String>) -> Self {
         Self { id: id.into(), name: name.into() }
     }
 }
 
-impl MaterialTrait for RawMaterial {
-    fn id(&self) -> &str { &self.id }
+impl<I> MaterialTrait for RawMaterial<I>
+where
+    I: ProductionMaterialIdTrait,
+{
+    type Id = I;
+
+    fn id(&self) -> &Self::Id { &self.id }
     fn name(&self) -> &str { &self.name }
 }

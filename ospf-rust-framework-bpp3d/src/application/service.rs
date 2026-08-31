@@ -41,8 +41,8 @@ use crate::domain::layer_generation::{
     LayerPlacementTrace, PatternLayerGenerator, PileLayerGenerator,
 };
 use crate::domain::packing::{
-    LayerTraceReplayAdapter, PackedBin, Packer, PackingGeometryGuard, PackingRendererAdapter,
-    PackingResult,
+    LayerTraceReplayAdapter, PackedBin, Packer, PackingGeometryContract, PackingGeometryGuard,
+    PackingRendererAdapter, PackingResult,
 };
 use crate::infrastructure::orientation::Orientation;
 use crate::infrastructure::renderer::RenderLoadingPlanDto;

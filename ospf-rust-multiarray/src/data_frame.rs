@@ -1,3 +1,6 @@
+//! 数据帧模块，提供二维表格数据结构及列名索引。
+//! Data frame module providing a two-dimensional tabular data structure with column name indexing.
+
 use std::any::Any;
 use std::collections::HashMap;
 use std::ops::{Bound, Deref, DerefMut, Index, IndexMut, Range, RangeBounds};
@@ -7,14 +10,22 @@ use super::multi_array::{MultiArray, MultiArrayBuilder, MultiArrayCollection};
 use super::multi_array_view::MultiArrayView;
 use super::shape::{AbstractShape, Shape};
 
+/// 数据帧，基于多维数组的二维表格结构，支持列名索引。
+/// Data frame, a two-dimensional tabular structure based on a multi-array with column name indexing.
 pub struct DataFrame<T = Box<dyn Any>, C = Vec<Option<T>>>
 where
     C: MultiArrayCollection<Option<T>>,
 {
+    /// 内部存储的二维可空值多维数组。
+    /// Internal two-dimensional nullable-value multi-array storage.
     array: MultiArray<Option<T>, Shape<2>, C>,
 
+    /// 列名列表，按列索引顺序排列。
+    /// Column name list, ordered by column index.
     column_names: Vec<String>,
 
+    /// 列名到列索引的映射，用于按名称快速查找列。
+    /// Mapping from column name to column index for fast lookup by name.
     column_index: HashMap<String, usize>,
 }
 
@@ -22,36 +33,43 @@ impl<T, C> DataFrame<T, C>
 where
     C: MultiArrayCollection<Option<T>>,
 {
+    /// 获取行数 / Get the number of rows.
     #[inline]
     pub fn nrows(&self) -> usize {
         self.array.shape.len_of_dimension(0).expect("shape dimension 0 should be valid in nrows")
     }
 
+    /// 获取列数 / Get the number of columns.
     #[inline]
     pub fn ncols(&self) -> usize {
         self.array.shape.len_of_dimension(1).expect("shape dimension 1 should be valid in ncols")
     }
 
+    /// 获取列名切片 / Get a slice of column names.
     #[inline]
     pub fn column_names(&self) -> &[String] {
         &self.column_names
     }
 
+    /// 根据列名获取列索引 / Get column index by column name.
     #[inline]
     pub fn get_column_index(&self, name: &str) -> Option<usize> {
         self.column_index.get(name).copied()
     }
 
+    /// 获取内部多维数组的不可变引用 / Get an immutable reference to the internal multi-array.
     #[inline]
     pub fn as_array(&self) -> &MultiArray<Option<T>, Shape<2>, C> {
         &self.array
     }
 
+    /// 获取内部多维数组的可变引用 / Get a mutable reference to the internal multi-array.
     #[inline]
     pub fn as_array_mut(&mut self) -> &mut MultiArray<Option<T>, Shape<2>, C> {
         &mut self.array
     }
 
+    /// 根据行列索引获取单元格值的不可变引用 / Get an immutable reference to a cell value by row and column index.
     #[inline]
     pub fn get(&self, row: usize, col_index: usize) -> Option<&Option<T>> {
         let ncols = self.ncols();
@@ -63,6 +81,7 @@ where
         }
     }
 
+    /// 根据行列索引获取单元格值的可变引用 / Get a mutable reference to a cell value by row and column index.
     #[inline]
     pub fn get_mut(&mut self, row: usize, col_index: usize) -> Option<&mut Option<T>> {
         let ncols = self.ncols();
@@ -74,28 +93,33 @@ where
         }
     }
 
+    /// 根据行索引和列名获取单元格值的不可变引用 / Get an immutable reference to a cell value by row index and column name.
     pub fn get_by_name(&self, row: usize, col_name: &str) -> Option<&Option<T>> {
         let col_index = self.column_index.get(col_name).copied()?;
         self.get(row, col_index)
     }
 
+    /// 根据行索引和列名获取单元格值的可变引用 / Get a mutable reference to a cell value by row index and column name.
     pub fn get_mut_by_name(&mut self, row: usize, col_name: &str) -> Option<&mut Option<T>> {
         let col_index = self.column_index.get(col_name).copied()?;
         self.get_mut(row, col_index)
     }
 
+    /// 根据行列索引设置单元格值 / Set a cell value by row and column index.
     #[inline]
     pub fn set(&mut self, row: usize, col_index: usize, value: Option<T>) {
         let ncols = self.ncols();
         self.array[row * ncols + col_index] = value;
     }
 
+    /// 根据行索引和列名设置单元格值 / Set a cell value by row index and column name.
     pub fn set_by_name(&mut self, row: usize, col_name: &str, value: Option<T>) {
         if let Some(&col_index) = self.column_index.get(col_name) {
             self.set(row, col_index, value);
         }
     }
 
+    /// 获取指定行的视图 / Get a view of the specified row.
     pub fn get_row(
         &self,
         row: usize,
@@ -111,6 +135,7 @@ where
         Some(MultiArrayView::new_by_dummy(&self.array, &dummy_vector))
     }
 
+    /// 获取指定列的视图 / Get a view of the specified column by index.
     pub fn get_column(
         &self,
         col_index: usize,
@@ -126,6 +151,7 @@ where
         Some(MultiArrayView::new_by_dummy(&self.array, &dummy_vector))
     }
 
+    /// 根据列名获取列视图 / Get a view of the specified column by name.
     pub fn get_column_by_name(
         &self,
         col_name: &str,
@@ -186,6 +212,7 @@ where
         MultiArrayBuilder::new_by(shape, |flat_index, _| self.array[flat_index].clone())
     }
 
+    /// 获取形状引用 / Get a reference to the shape.
     #[inline]
     pub fn shape(&self) -> &Shape<2> {
         &self.array.shape
@@ -356,6 +383,8 @@ where
 }
 
 impl<T> DataFrame<T, Vec<Option<T>>> {
+    /// 创建指定行列数的数据帧，所有单元格初始化为 None。
+    /// Create a data frame with the given row and column counts, all cells initialized to None.
     pub fn new(nrows: usize, ncols: usize, column_names: Vec<String>) -> Self {
         assert_eq!(
             column_names.len(),
@@ -379,6 +408,8 @@ impl<T> DataFrame<T, Vec<Option<T>>> {
         }
     }
 
+    /// 创建指定行列数的数据帧，所有单元格初始化为给定值的 Some 包裹。
+    /// Create a data frame with the given row and column counts, all cells initialized to Some(value).
     pub fn new_with(nrows: usize, ncols: usize, column_names: Vec<String>, value: T) -> Self
     where
         T: Clone,
@@ -405,6 +436,8 @@ impl<T> DataFrame<T, Vec<Option<T>>> {
         }
     }
 
+    /// 使用生成函数创建数据帧，生成函数接收行列索引并返回单元格值。
+    /// Create a data frame using a generator function that receives row and column indices and returns cell values.
     pub fn new_by<G>(nrows: usize, ncols: usize, column_names: Vec<String>, generator: G) -> Self
     where
         G: Fn(usize, usize) -> Option<T>,
@@ -655,6 +688,8 @@ where
     }
 }
 
+/// 数据帧视图类型别名，基于多维数组视图。
+/// Data frame view type alias, based on a multi-array view.
 pub type DataFrameView<'a, T, C = Vec<Option<T>>> =
     MultiArrayView<'a, Option<T>, Shape<2>, AccessOrder, C>;
 
@@ -720,13 +755,17 @@ impl<T> DataFrameRowsBuilder<T> {
     }
 }
 
+/// 数据帧构建器，提供静态方法创建 DataFrame。
+/// Data frame builder providing static methods to create DataFrames.
 pub struct DataFrameBuilder {}
 
 impl DataFrameBuilder {
+    /// 创建指定行列数的数据帧 / Create a data frame with the given row and column counts.
     pub fn new<T>(nrows: usize, ncols: usize, column_names: Vec<String>) -> DataFrame<T> {
         DataFrame::new(nrows, ncols, column_names)
     }
 
+    /// 创建指定行列数的数据帧，所有单元格初始化为给定值 / Create a data frame with all cells initialized to the given value.
     pub fn new_with<T: Clone>(
         nrows: usize,
         ncols: usize,
@@ -736,6 +775,7 @@ impl DataFrameBuilder {
         DataFrame::new_with(nrows, ncols, column_names, value)
     }
 
+    /// 使用生成函数创建数据帧 / Create a data frame using a generator function.
     pub fn new_by<T, G>(
         nrows: usize,
         ncols: usize,
@@ -748,6 +788,7 @@ impl DataFrameBuilder {
         DataFrame::new_by(nrows, ncols, column_names, generator)
     }
 
+    /// 从有序列数据构建数据帧 / Create a data frame from ordered column data.
     pub fn from_columns<T, I, N>(columns: I) -> DataFrame<T>
     where
         I: IntoIterator<Item = (N, Vec<Option<T>>)>,
@@ -757,6 +798,7 @@ impl DataFrameBuilder {
         DataFrame::from_columns(columns)
     }
 
+    /// 从行数据构建数据帧 / Create a data frame from row data.
     pub fn from_rows<T, I, N>(column_names: I, rows: Vec<Vec<Option<T>>>) -> DataFrame<T>
     where
         I: IntoIterator<Item = N>,
@@ -765,6 +807,7 @@ impl DataFrameBuilder {
         DataFrame::from_rows(column_names, rows)
     }
 
+    /// 使用行构建器创建数据帧 / Create a data frame with a row builder.
     pub fn build_rows<T, I, N, F>(column_names: I, block: F) -> DataFrame<T>
     where
         I: IntoIterator<Item = N>,

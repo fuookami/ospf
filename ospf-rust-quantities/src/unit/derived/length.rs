@@ -1,8 +1,6 @@
-//! Length units - 长度单位
-//! Length units - SI length units (meter, kilometer, etc.)
+//! 长度单位 / Length units
 //!
-//! 提供长度量纲的 SI 单位定义，包括米、千米、厘米、毫米、微米、纳米等。
-//! Provides SI unit definitions for length dimension, including meter, kilometer, centimeter, millimeter, micrometer, nanometer, etc.
+//! 提供长度量纲的 SI 单位定义，包括米、千米、厘米、毫米、微米、纳米等 / Provides SI unit definitions for length dimension, including meter, kilometer, centimeter, millimeter, micrometer, nanometer, etc
 
 use crate::dimension::derived::Length;
 use crate::scale::{CENTI, DECA, DECI, HECTO, KILO, MICRO, MILLI, NANO, PICO, Scale};

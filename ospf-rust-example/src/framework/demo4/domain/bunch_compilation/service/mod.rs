@@ -1,3 +1,5 @@
+//! 编组编制领域服务 / Bunch compilation domain service.
+/// 编组编译约束模块 / Bunch compilation constraints module
 pub mod limits;
 
 /// 空闲飞机选择器 / Free aircraft selector

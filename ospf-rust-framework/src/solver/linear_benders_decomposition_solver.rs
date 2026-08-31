@@ -334,7 +334,7 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         sub_meta_model: &'a MetaModel<V>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>>
     where
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_meta_with_options(
             master_meta_model,
@@ -353,7 +353,7 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         options: FrameworkSolveOptions,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>>
     where
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         let master_mechanism_model = match master_meta_model
             .try_to_mechanism_model_with_status_callback(
@@ -412,7 +412,7 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         Box<dyn std::future::Future<Output = Result<FeasibleSolutionV<V>>> + Send + 'a>,
     >
     where
-        V: SolveValue,
+        V: SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_meta_typed_with_options(
             master_meta_model,
@@ -433,7 +433,7 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         Box<dyn std::future::Future<Output = Result<FeasibleSolutionV<V>>> + Send + 'a>,
     >
     where
-        V: SolveValue,
+        V: SolveValue + std::ops::Add<Output = V>,
     {
         let policy = options.value_conversion_policy;
         let solve_future = self.solve_meta_with_options(master_meta_model, sub_meta_model, options);
@@ -449,7 +449,7 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         sub_meta_model: &MetaModel<V>,
     ) -> Result<FeasibleSolution>
     where
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_meta_with_options(
             master_meta_model,
@@ -468,7 +468,7 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         options: FrameworkSolveOptions,
     ) -> Result<FeasibleSolution>
     where
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         let master_mechanism_model = master_meta_model
             .try_to_mechanism_model_with_status_callback(
@@ -504,7 +504,7 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         sub_meta_model: &MetaModel<V>,
     ) -> Result<FeasibleSolutionV<V>>
     where
-        V: SolveValue,
+        V: SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_meta_typed_with_options(
             master_meta_model,
@@ -523,7 +523,7 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         options: FrameworkSolveOptions,
     ) -> Result<FeasibleSolutionV<V>>
     where
-        V: SolveValue,
+        V: SolveValue + std::ops::Add<Output = V>,
     {
         let policy = options.value_conversion_policy;
         self.solve_meta_with_options(master_meta_model, sub_meta_model, options)?
@@ -1087,7 +1087,7 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         sub_meta_model: &'a MetaModel<V>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>>
     where
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_meta_quadratic_with_options(
             master_meta_model,
@@ -1106,7 +1106,7 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         options: FrameworkSolveOptions,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>>
     where
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         let master_mechanism_model = match master_meta_model
             .try_to_mechanism_model_with_status_callback(
@@ -1166,7 +1166,7 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         Box<dyn std::future::Future<Output = Result<FeasibleSolutionV<V>>> + Send + 'a>,
     >
     where
-        V: SolveValue,
+        V: SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_meta_quadratic_typed_with_options(
             master_meta_model,
@@ -1187,7 +1187,7 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         Box<dyn std::future::Future<Output = Result<FeasibleSolutionV<V>>> + Send + 'a>,
     >
     where
-        V: SolveValue,
+        V: SolveValue + std::ops::Add<Output = V>,
     {
         let policy = options.value_conversion_policy;
         let solve_future =
@@ -1204,7 +1204,7 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         sub_meta_model: &MetaModel<V>,
     ) -> Result<FeasibleSolution>
     where
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_meta_quadratic_with_options(
             master_meta_model,
@@ -1223,7 +1223,7 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         options: FrameworkSolveOptions,
     ) -> Result<FeasibleSolution>
     where
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         let master_mechanism_model = master_meta_model
             .try_to_mechanism_model_with_status_callback(
@@ -1259,7 +1259,7 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         sub_meta_model: &MetaModel<V>,
     ) -> Result<FeasibleSolutionV<V>>
     where
-        V: SolveValue,
+        V: SolveValue + std::ops::Add<Output = V>,
     {
         self.solve_meta_quadratic_typed_with_options(
             master_meta_model,
@@ -1278,7 +1278,7 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         options: FrameworkSolveOptions,
     ) -> Result<FeasibleSolutionV<V>>
     where
-        V: SolveValue,
+        V: SolveValue + std::ops::Add<Output = V>,
     {
         let policy = options.value_conversion_policy;
         self.solve_meta_quadratic_with_options(master_meta_model, sub_meta_model, options)?

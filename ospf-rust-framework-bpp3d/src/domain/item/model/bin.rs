@@ -14,7 +14,7 @@ pub struct BinType<V, U: UnitTrait> {
     /// 容量 / Capacity
     pub capacity: Quantity<V, U>,
     /// 类型编码 / Type code
-    pub type_code: String,
+    pub type_code: BinTypeId,
     /// 是否主箱 / Whether this is the main bin
     pub is_main: bool,
 }

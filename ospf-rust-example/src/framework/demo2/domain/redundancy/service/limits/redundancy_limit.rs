@@ -1,3 +1,4 @@
+//! 冗余范围限制 / Redundancy range limits
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::{LinearObjectiveInput, MetaModel};
@@ -7,7 +8,7 @@ use crate::framework::demo2::domain::redundancy::aggregation::RedundancyAggregat
 use crate::framework::demo2::domain::redundancy::context::RedundancyContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
-/// 冗余限制: 最小化冗余松弛变量
+/// 冗余限制: 最小化冗余松弛变量 / Redundancy limit: minimize redundancy slack variable
 /// 对齐 Kotlin RedundancyLimit
 ///
 /// Kotlin: model.minimize(coefficient * redundancy.redundancySlack)

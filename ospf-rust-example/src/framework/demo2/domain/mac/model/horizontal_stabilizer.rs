@@ -1,3 +1,4 @@
+//! 水平安定面模型 / Horizontal stabilizer model
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -23,8 +24,11 @@ pub struct HorizontalStabilizerVariables {
 /// 现替换为完整的 SlackFunction + AbsFunction 对齐 Kotlin。
 #[derive(Debug, Clone)]
 pub struct HorizontalStabilizer {
+    /// 安定面标识 / Stabilizer key identifier
     pub key: String,
+    /// 安定面配平点列表 (横坐标, 纵坐标) / Stabilizer trim points (x, y)
     pub points: Vec<(f64, f64)>,
+    /// 安定面限制值 / Stabilizer limit value
     pub limit: f64,
 }
 

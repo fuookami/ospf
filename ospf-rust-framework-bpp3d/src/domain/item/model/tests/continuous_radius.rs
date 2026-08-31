@@ -2,7 +2,7 @@
     fn continuous_radius_model_component_info() {
         let component = ContinuousRadiusModelComponent {
             prototypes: vec![ContinuousCylinderRadiusSolverPrototype {
-                item_id: "c1".to_string(),
+                item_id: "c1".into(),
                 source: "test".to_string(),
                 axis: Axis3::Y,
                 variable_name: "r_1".to_string(),
@@ -26,7 +26,7 @@
     fn continuous_radius_solution_updates_item_shape() {
         let component = ContinuousRadiusModelComponent {
             prototypes: vec![ContinuousCylinderRadiusSolverPrototype {
-                item_id: "c1".to_string(),
+                item_id: "c1".into(),
                 source: "weight".to_string(),
                 axis: Axis3::Y,
                 variable_name: "r_c1_weight".to_string(),
@@ -59,7 +59,7 @@
         assert_eq!(solutions[0].segment_index, Some(2));
 
         let mut items = vec![ActualItem {
-            id: "c1".to_string(),
+            id: "c1".into(),
             name: "Cylinder".to_string(),
             package_code: None,
             pack: None,
@@ -89,7 +89,7 @@
     fn continuous_radius_solution_rejects_out_of_bounds_info() {
         let component = ContinuousRadiusModelComponent {
             prototypes: vec![ContinuousCylinderRadiusSolverPrototype {
-                item_id: "c1".to_string(),
+                item_id: "c1".into(),
                 source: "weight".to_string(),
                 axis: Axis3::Y,
                 variable_name: "r_c1_weight".to_string(),
@@ -115,7 +115,7 @@
     fn continuous_radius_registers_pwl_solver_model_and_extracts_primal() {
         let component = ContinuousRadiusModelComponent {
             prototypes: vec![ContinuousCylinderRadiusSolverPrototype {
-                item_id: "c1".to_string(),
+                item_id: "c1".into(),
                 source: "weight".to_string(),
                 axis: Axis3::Y,
                 variable_name: "r_c1_weight".to_string(),
@@ -178,7 +178,7 @@
     fn continuous_radius_registers_business_weight_objective() {
         let component = ContinuousRadiusModelComponent {
             prototypes: vec![ContinuousCylinderRadiusSolverPrototype {
-                item_id: "c1".to_string(),
+                item_id: "c1".into(),
                 source: "cylinder_weight".to_string(),
                 axis: Axis3::Y,
                 variable_name: "r_c1_weight".to_string(),

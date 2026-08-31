@@ -1,8 +1,6 @@
-//! Force units - 力单位
-//! Force units - SI force units
+//! 力单位 / Force units
 //!
-//! 提供力量纲的 SI 单位定义，包括牛顿、千牛、兆牛、千克力等。
-//! Provides SI unit definitions for force dimension, including newton, kilonewton, meganewton, kilogram-force, etc.
+//! 提供力量纲的 SI 单位定义，包括牛顿、千牛、兆牛、千克力等 / Provides SI unit definitions for force dimension, including newton, kilonewton, meganewton, kilogram-force, etc
 
 use crate::dimension::derived::Force;
 use crate::scale::{KILO, MEGA, Scale};

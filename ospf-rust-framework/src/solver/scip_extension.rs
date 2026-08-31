@@ -28,6 +28,7 @@ use super::quadratic_benders_decomposition_solver::{
 /// SCIP 列生成求解器 / SCIP column generation solver
 #[derive(Debug)]
 pub struct ScipColumnGenerationSolver {
+    /// 内部列生成适配器 / Inner column-generation adapter wrapping the core SCIP solver
     inner: CoreColumnGenerationAdapter<CoreScipSolver>,
 }
 
@@ -76,10 +77,12 @@ impl ScipColumnGenerationSolver {
         self.map_config(|config| config.with_gap(gap))
     }
 
+    /// 设置节点数限制 / Set node limit
     pub fn with_node_limit(self, limit: i64) -> Self {
         self.map_config(|config| config.with_node_limit(limit))
     }
 
+    /// 设置内存限制（MB，旧接口）/ Set memory limit in MB (legacy alias)
     pub fn with_mem_limit(self, limit_mb: f64) -> Self {
         self.map_config(|config| config.with_mem_limit(limit_mb))
     }
@@ -94,18 +97,22 @@ impl ScipColumnGenerationSolver {
         self.map_config(|config| config.with_memory_limit_gb(memory_limit_gb))
     }
 
+    /// 设置控制台输出频率 / Set console display frequency
     pub fn with_display_freq(self, freq: i32) -> Self {
         self.map_config(|config| config.with_display_freq(freq))
     }
 
+    /// 设置启发式优先级 / Set heuristics priority
     pub fn with_heuristics_priority(self, priority: i32) -> Self {
         self.map_config(|config| config.with_heuristics_priority(priority))
     }
 
+    /// 设置无改进时间限制（秒）/ Set no-improvement time limit in seconds
     pub fn with_no_improvement_time_limit(self, seconds: f64) -> Self {
         self.map_config(|config| config.with_no_improvement_time_limit(seconds))
     }
 
+    /// 设置改进容差 / Set improvement tolerance
     pub fn with_improvement_tolerance(self, tolerance: f64) -> Self {
         self.map_config(|config| config.with_improvement_tolerance(tolerance))
     }
@@ -115,67 +122,83 @@ impl ScipColumnGenerationSolver {
         self.map_config(|config| config.with_improve_threshold(threshold))
     }
 
+    /// 设置遥测最小间隔（秒）/ Set telemetry minimum interval in seconds
     pub fn with_telemetry_min_interval(self, seconds: f64) -> Self {
         self.map_config(|config| config.with_telemetry_min_interval(seconds))
     }
 
+    /// 设置阶段回调（替换已有） / Set stage callback (replaces existing)
     pub fn with_stage_callback(self, callback: Option<SCIPStageCallback>) -> Self {
         self.map_config(|config| config.with_stage_callback(callback))
     }
 
+    /// 添加阶段回调 / Add stage callback
     pub fn add_stage_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_config(|config| config.add_stage_callback(callback))
     }
 
+    /// 为指定阶段添加回调 / Add callback for a specific stage
     pub fn add_stage_callback_for(self, stage: SCIPStage, callback: SCIPStageCallback) -> Self {
         self.map_config(|config| config.add_stage_callback_for(stage, callback))
     }
 
+    /// 添加建模完成后回调 / Add callback invoked after modeling
     pub fn add_after_modeling_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_config(|config| config.add_after_modeling_callback(callback))
     }
 
+    /// 添加配置阶段回调 / Add callback invoked at configuration stage
     pub fn add_configuration_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_config(|config| config.add_configuration_callback(callback))
     }
 
+    /// 添加解分析回调 / Add callback invoked when analyzing solution
     pub fn add_analyzing_solution_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_config(|config| config.add_analyzing_solution_callback(callback))
     }
 
+    /// 添加求解失败后回调 / Add callback invoked after solve failure
     pub fn add_after_failure_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_config(|config| config.add_after_failure_callback(callback))
     }
 
+    /// 设置遥测回调（替换已有） / Set telemetry callback (replaces existing)
     pub fn with_telemetry_callback(self, callback: Option<SCIPTelemetryCallback>) -> Self {
         self.map_config(|config| config.with_telemetry_callback(callback))
     }
 
+    /// 添加遥测回调 / Add telemetry callback
     pub fn add_telemetry_callback(self, callback: SCIPTelemetryCallback) -> Self {
         self.map_config(|config| config.add_telemetry_callback(callback))
     }
 
+    /// 设置快照观察者列表（替换已有） / Set snapshot observers (replaces existing)
     pub fn with_snapshot_observers(self, observers: Vec<SCIPSnapshotObserver>) -> Self {
         self.map_config(|config| config.with_snapshot_observers(observers))
     }
 
+    /// 添加快照观察者 / Add snapshot observer
     pub fn add_snapshot_observer(self, observer: SCIPSnapshotObserver) -> Self {
         self.map_config(|config| config.add_snapshot_observer(observer))
     }
 
+    /// 设置原生回调（替换已有） / Set native callback (replaces existing)
     pub fn with_native_callback(self, callback: Option<SCIPNativeCallback>) -> Self {
         self.map_config(|config| config.with_native_callback(callback))
     }
 
+    /// 添加原生回调（替换已有） / Add native callback (replaces previous)
     pub fn add_native_callback(mut self, callback: SCIPNativeCallback) -> Self {
         self.inner.solver_mut().config_mut().native_callback = Some(callback);
         self
     }
 
+    /// 设置原生观察者列表（替换已有） / Set native observers (replaces existing)
     pub fn with_native_observers(self, observers: Vec<SCIPNativeObserver>) -> Self {
         self.map_config(|config| config.with_native_observers(observers))
     }
 
+    /// 添加原生观察者 / Add native observer
     pub fn add_native_observer(mut self, observer: SCIPNativeObserver) -> Self {
         self.inner
             .solver_mut()
@@ -236,6 +259,7 @@ impl ColumnGenerationSolver for ScipColumnGenerationSolver {
 /// SCIP 线性 Benders 分解求解器 / SCIP linear Benders decomposition solver
 #[derive(Debug)]
 pub struct ScipLinearBendersDecompositionSolver {
+    /// 内部线性 Benders 适配器 / Inner linear Benders adapter wrapping the core SCIP solver
     inner: CoreLinearBendersAdapter<CoreScipSolver>,
 }
 
@@ -300,10 +324,12 @@ impl ScipLinearBendersDecompositionSolver {
         self.map_config(|config| config.with_gap(gap))
     }
 
+    /// 设置节点数限制 / Set node limit
     pub fn with_node_limit(self, limit: i64) -> Self {
         self.map_config(|config| config.with_node_limit(limit))
     }
 
+    /// 设置内存限制（MB，旧接口）/ Set memory limit in MB (legacy alias)
     pub fn with_mem_limit(self, limit_mb: f64) -> Self {
         self.map_config(|config| config.with_mem_limit(limit_mb))
     }
@@ -318,18 +344,22 @@ impl ScipLinearBendersDecompositionSolver {
         self.map_config(|config| config.with_memory_limit_gb(memory_limit_gb))
     }
 
+    /// 设置控制台输出频率 / Set console display frequency
     pub fn with_display_freq(self, freq: i32) -> Self {
         self.map_config(|config| config.with_display_freq(freq))
     }
 
+    /// 设置启发式优先级 / Set heuristics priority
     pub fn with_heuristics_priority(self, priority: i32) -> Self {
         self.map_config(|config| config.with_heuristics_priority(priority))
     }
 
+    /// 设置无改进时间限制（秒）/ Set no-improvement time limit in seconds
     pub fn with_no_improvement_time_limit(self, seconds: f64) -> Self {
         self.map_config(|config| config.with_no_improvement_time_limit(seconds))
     }
 
+    /// 设置改进容差 / Set improvement tolerance
     pub fn with_improvement_tolerance(self, tolerance: f64) -> Self {
         self.map_config(|config| config.with_improvement_tolerance(tolerance))
     }
@@ -339,67 +369,83 @@ impl ScipLinearBendersDecompositionSolver {
         self.map_config(|config| config.with_improve_threshold(threshold))
     }
 
+    /// 设置遥测最小间隔（秒）/ Set telemetry minimum interval in seconds
     pub fn with_telemetry_min_interval(self, seconds: f64) -> Self {
         self.map_config(|config| config.with_telemetry_min_interval(seconds))
     }
 
+    /// 设置阶段回调（替换已有） / Set stage callback (replaces existing)
     pub fn with_stage_callback(self, callback: Option<SCIPStageCallback>) -> Self {
         self.map_config(|config| config.with_stage_callback(callback))
     }
 
+    /// 添加阶段回调 / Add stage callback
     pub fn add_stage_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_config(|config| config.add_stage_callback(callback))
     }
 
+    /// 为指定阶段添加回调 / Add callback for a specific stage
     pub fn add_stage_callback_for(self, stage: SCIPStage, callback: SCIPStageCallback) -> Self {
         self.map_config(|config| config.add_stage_callback_for(stage, callback))
     }
 
+    /// 添加建模完成后回调 / Add callback invoked after modeling
     pub fn add_after_modeling_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_config(|config| config.add_after_modeling_callback(callback))
     }
 
+    /// 添加配置阶段回调 / Add callback invoked at configuration stage
     pub fn add_configuration_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_config(|config| config.add_configuration_callback(callback))
     }
 
+    /// 添加解分析回调 / Add callback invoked when analyzing solution
     pub fn add_analyzing_solution_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_config(|config| config.add_analyzing_solution_callback(callback))
     }
 
+    /// 添加求解失败后回调 / Add callback invoked after solve failure
     pub fn add_after_failure_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_config(|config| config.add_after_failure_callback(callback))
     }
 
+    /// 设置遥测回调（替换已有） / Set telemetry callback (replaces existing)
     pub fn with_telemetry_callback(self, callback: Option<SCIPTelemetryCallback>) -> Self {
         self.map_config(|config| config.with_telemetry_callback(callback))
     }
 
+    /// 添加遥测回调 / Add telemetry callback
     pub fn add_telemetry_callback(self, callback: SCIPTelemetryCallback) -> Self {
         self.map_config(|config| config.add_telemetry_callback(callback))
     }
 
+    /// 设置快照观察者列表（替换已有） / Set snapshot observers (replaces existing)
     pub fn with_snapshot_observers(self, observers: Vec<SCIPSnapshotObserver>) -> Self {
         self.map_config(|config| config.with_snapshot_observers(observers))
     }
 
+    /// 添加快照观察者 / Add snapshot observer
     pub fn add_snapshot_observer(self, observer: SCIPSnapshotObserver) -> Self {
         self.map_config(|config| config.add_snapshot_observer(observer))
     }
 
+    /// 设置原生回调（替换已有） / Set native callback (replaces existing)
     pub fn with_native_callback(self, callback: Option<SCIPNativeCallback>) -> Self {
         self.map_config(|config| config.with_native_callback(callback))
     }
 
+    /// 添加原生回调（替换已有） / Add native callback (replaces previous)
     pub fn add_native_callback(mut self, callback: SCIPNativeCallback) -> Self {
         self.inner.solver_mut().config_mut().native_callback = Some(callback);
         self
     }
 
+    /// 设置原生观察者列表（替换已有） / Set native observers (replaces existing)
     pub fn with_native_observers(self, observers: Vec<SCIPNativeObserver>) -> Self {
         self.map_config(|config| config.with_native_observers(observers))
     }
 
+    /// 添加原生观察者 / Add native observer
     pub fn add_native_observer(mut self, observer: SCIPNativeObserver) -> Self {
         self.inner
             .solver_mut()
@@ -461,7 +507,9 @@ impl LinearBendersDecompositionSolver for ScipLinearBendersDecompositionSolver {
 /// SCIP Benders decomposition solver (linear + quadratic)
 #[derive(Debug)]
 pub struct ScipQuadraticBendersDecompositionSolver {
+    /// 线性 Benders 求解器 / Linear Benders solver
     linear: ScipLinearBendersDecompositionSolver,
+    /// 二次 Benders 适配器 / Quadratic Benders adapter
     quadratic: CoreQuadraticBendersAdapter<CoreScipSolver>,
 }
 
@@ -521,6 +569,7 @@ impl ScipQuadraticBendersDecompositionSolver {
         }
     }
 
+    /// 设置节点数限制 / Set node limit
     pub fn with_node_limit(self, limit: i64) -> Self {
         self.map_configs(|config| config.with_node_limit(limit))
     }
@@ -535,6 +584,7 @@ impl ScipQuadraticBendersDecompositionSolver {
         self.map_configs(|config| config.with_gap(gap))
     }
 
+    /// 设置内存限制（MB，旧接口）/ Set memory limit in MB (legacy alias)
     pub fn with_mem_limit(self, limit_mb: f64) -> Self {
         self.map_configs(|config| config.with_mem_limit(limit_mb))
     }
@@ -549,18 +599,22 @@ impl ScipQuadraticBendersDecompositionSolver {
         self.map_configs(|config| config.with_memory_limit_gb(memory_limit_gb))
     }
 
+    /// 设置控制台输出频率 / Set console display frequency
     pub fn with_display_freq(self, freq: i32) -> Self {
         self.map_configs(|config| config.with_display_freq(freq))
     }
 
+    /// 设置启发式优先级 / Set heuristics priority
     pub fn with_heuristics_priority(self, priority: i32) -> Self {
         self.map_configs(|config| config.with_heuristics_priority(priority))
     }
 
+    /// 设置无改进时间限制（秒）/ Set no-improvement time limit in seconds
     pub fn with_no_improvement_time_limit(self, seconds: f64) -> Self {
         self.map_configs(|config| config.with_no_improvement_time_limit(seconds))
     }
 
+    /// 设置改进容差 / Set improvement tolerance
     pub fn with_improvement_tolerance(self, tolerance: f64) -> Self {
         self.map_configs(|config| config.with_improvement_tolerance(tolerance))
     }
@@ -570,68 +624,84 @@ impl ScipQuadraticBendersDecompositionSolver {
         self.map_configs(|config| config.with_improve_threshold(threshold))
     }
 
+    /// 设置遥测最小间隔（秒）/ Set telemetry minimum interval in seconds
     pub fn with_telemetry_min_interval(self, seconds: f64) -> Self {
         self.map_configs(|config| config.with_telemetry_min_interval(seconds))
     }
 
+    /// 设置阶段回调（替换已有） / Set stage callback (replaces existing)
     pub fn with_stage_callback(self, callback: Option<SCIPStageCallback>) -> Self {
         self.map_configs(|config| config.with_stage_callback(callback.clone()))
     }
 
+    /// 添加阶段回调 / Add stage callback
     pub fn add_stage_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_configs(|config| config.add_stage_callback(callback.clone()))
     }
 
+    /// 为指定阶段添加回调 / Add callback for a specific stage
     pub fn add_stage_callback_for(self, stage: SCIPStage, callback: SCIPStageCallback) -> Self {
         self.map_configs(|config| config.add_stage_callback_for(stage, callback.clone()))
     }
 
+    /// 添加建模完成后回调 / Add callback invoked after modeling
     pub fn add_after_modeling_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_configs(|config| config.add_after_modeling_callback(callback.clone()))
     }
 
+    /// 添加配置阶段回调 / Add callback invoked at configuration stage
     pub fn add_configuration_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_configs(|config| config.add_configuration_callback(callback.clone()))
     }
 
+    /// 添加解分析回调 / Add callback invoked when analyzing solution
     pub fn add_analyzing_solution_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_configs(|config| config.add_analyzing_solution_callback(callback.clone()))
     }
 
+    /// 添加求解失败后回调 / Add callback invoked after solve failure
     pub fn add_after_failure_callback(self, callback: SCIPStageCallback) -> Self {
         self.map_configs(|config| config.add_after_failure_callback(callback.clone()))
     }
 
+    /// 设置遥测回调（替换已有） / Set telemetry callback (replaces existing)
     pub fn with_telemetry_callback(self, callback: Option<SCIPTelemetryCallback>) -> Self {
         self.map_configs(|config| config.with_telemetry_callback(callback.clone()))
     }
 
+    /// 添加遥测回调 / Add telemetry callback
     pub fn add_telemetry_callback(self, callback: SCIPTelemetryCallback) -> Self {
         self.map_configs(|config| config.add_telemetry_callback(callback.clone()))
     }
 
+    /// 设置快照观察者列表（替换已有） / Set snapshot observers (replaces existing)
     pub fn with_snapshot_observers(self, observers: Vec<SCIPSnapshotObserver>) -> Self {
         self.map_configs(|config| config.with_snapshot_observers(observers.clone()))
     }
 
+    /// 添加快照观察者 / Add snapshot observer
     pub fn add_snapshot_observer(self, observer: SCIPSnapshotObserver) -> Self {
         self.map_configs(|config| config.add_snapshot_observer(observer.clone()))
     }
 
+    /// 设置原生回调（替换已有） / Set native callback (replaces existing)
     pub fn with_native_callback(self, callback: Option<SCIPNativeCallback>) -> Self {
         self.map_configs(|config| config.with_native_callback(callback.clone()))
     }
 
+    /// 添加原生回调（替换已有，同时应用于线性与二次路径） / Add native callback (replaces previous, applied to both linear and quadratic paths)
     pub fn add_native_callback(mut self, callback: SCIPNativeCallback) -> Self {
         self.linear.inner.solver_mut().config_mut().native_callback = Some(callback.clone());
         self.quadratic.solver_mut().config_mut().native_callback = Some(callback);
         self
     }
 
+    /// 设置原生观察者列表（替换已有） / Set native observers (replaces existing)
     pub fn with_native_observers(self, observers: Vec<SCIPNativeObserver>) -> Self {
         self.map_configs(|config| config.with_native_observers(observers.clone()))
     }
 
+    /// 添加原生观察者（同时应用于线性与二次路径） / Add native observer (applied to both linear and quadratic paths)
     pub fn add_native_observer(mut self, observer: SCIPNativeObserver) -> Self {
         self.linear
             .inner
@@ -789,8 +859,11 @@ mod tests {
         )
     }
 
-    fn build_true_quadratic_subproblem(rhs: f64) -> QuadraticTetradModel {
-        let x = ContinuousVariableItem::auto("sub_x");
+    fn build_true_quadratic_subproblem(
+        rhs: f64,
+        fixed_variable_id: VariableId,
+    ) -> QuadraticTetradModel {
+        let x = ContinuousVariableItem::create(fixed_variable_id, "sub_x");
         let mut basic = BasicQuadraticTetradModel::new("scip_quadratic_subproblem");
         basic.linear.add_variable(Token::from_generic(x, 0));
 
@@ -810,11 +883,11 @@ mod tests {
     #[test]
     fn scip_quadratic_benders_subproblem_feasible_uses_solver_dual_chain() {
         let (mechanism_model, objective_variable, fixed_variable_ids) = build_cut_context();
+        let model = build_true_quadratic_subproblem(1.0, fixed_variable_ids[0]);
         let solver = ScipQuadraticBendersDecompositionSolver::with_config(
             SCIPConfig::new().with_output(false),
         )
         .with_cut_context(mechanism_model, objective_variable, fixed_variable_ids);
-        let model = build_true_quadratic_subproblem(1.0);
 
         let result = solver
             .solve_sub_quadratic(&model, &[0.0])
@@ -830,11 +903,11 @@ mod tests {
     #[test]
     fn scip_quadratic_benders_subproblem_infeasible_uses_solver_farkas_chain() {
         let (mechanism_model, objective_variable, fixed_variable_ids) = build_cut_context();
+        let model = build_true_quadratic_subproblem(-1.0, fixed_variable_ids[0]);
         let solver = ScipQuadraticBendersDecompositionSolver::with_config(
             SCIPConfig::new().with_output(false),
         )
         .with_cut_context(mechanism_model, objective_variable, fixed_variable_ids);
-        let model = build_true_quadratic_subproblem(-1.0);
 
         let result = solver
             .solve_sub_quadratic(&model, &[0.0])
@@ -1135,8 +1208,11 @@ mod async_tests {
         )
     }
 
-    fn build_true_quadratic_subproblem(rhs: f64) -> QuadraticTetradModel {
-        let x = ContinuousVariableItem::auto("sub_x");
+    fn build_true_quadratic_subproblem(
+        rhs: f64,
+        fixed_variable_id: VariableId,
+    ) -> QuadraticTetradModel {
+        let x = ContinuousVariableItem::create(fixed_variable_id, "sub_x");
         let mut basic = BasicQuadraticTetradModel::new("scip_quadratic_subproblem_async");
         basic.linear.add_variable(Token::from_generic(x, 0));
 
@@ -1156,11 +1232,11 @@ mod async_tests {
     #[tokio::test]
     async fn scip_quadratic_benders_subproblem_feasible_uses_solver_dual_chain_async() {
         let (mechanism_model, objective_variable, fixed_variable_ids) = build_cut_context();
+        let model = build_true_quadratic_subproblem(1.0, fixed_variable_ids[0]);
         let solver = ScipQuadraticBendersDecompositionSolver::with_config(
             SCIPConfig::new().with_output(false),
         )
         .with_cut_context(mechanism_model, objective_variable, fixed_variable_ids);
-        let model = build_true_quadratic_subproblem(1.0);
 
         let result = solver
             .solve_sub_quadratic(&model, &[0.0])
@@ -1177,11 +1253,11 @@ mod async_tests {
     #[tokio::test]
     async fn scip_quadratic_benders_subproblem_infeasible_uses_solver_farkas_chain_async() {
         let (mechanism_model, objective_variable, fixed_variable_ids) = build_cut_context();
+        let model = build_true_quadratic_subproblem(-1.0, fixed_variable_ids[0]);
         let solver = ScipQuadraticBendersDecompositionSolver::with_config(
             SCIPConfig::new().with_output(false),
         )
         .with_cut_context(mechanism_model, objective_variable, fixed_variable_ids);
-        let model = build_true_quadratic_subproblem(-1.0);
 
         let result = solver
             .solve_sub_quadratic(&model, &[0.0])

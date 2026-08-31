@@ -1,8 +1,6 @@
-//! Plane angle units - 平面角单位
-//! Plane angle units - SI plane angle units (radian, degree, etc.)
+//! 平面角单位 / Plane angle units
 //!
-//! 提供平面角量纲的 SI 单位定义，包括弧度、度、角分、角秒等。
-//! Provides SI unit definitions for plane angle dimension, including radian, degree, arc minute, arc second, etc.
+//! 提供平面角量纲的 SI 单位定义，包括弧度、度、角分、角秒等 / Provides SI unit definitions for plane angle dimension, including radian, degree, arc minute, arc second, etc
 
 use once_cell::sync::Lazy;
 use crate::dimension::derived::PlaneAngle;

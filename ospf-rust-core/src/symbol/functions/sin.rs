@@ -1,4 +1,4 @@
-//! Sine function symbol.
+//! 正弦函数符号 / Sine function symbol
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -75,6 +75,7 @@ where
     })
 }
 
+/// 构建三角函数的分段断点 / Build piecewise breakpoints for trigonometric functions
 pub(crate) fn build_breakpoints() -> Vec<f64> {
     let step = (TRIG_DOMAIN_MAX - TRIG_DOMAIN_MIN) / (TRIG_SEGMENTS as f64);
     (0..=TRIG_SEGMENTS)
@@ -82,6 +83,8 @@ pub(crate) fn build_breakpoints() -> Vec<f64> {
         .collect()
 }
 
+/// 构建分段线性逼近的辅助变量（偏移变量和选择器变量）
+/// Build auxiliary variables (offset and selector) for piecewise-linear approximation
 pub(crate) fn build_piecewise_auxiliary_variables(
     name: &str,
     prefix: &str,
@@ -113,6 +116,8 @@ pub(crate) fn build_piecewise_auxiliary_variables(
     (group_id, offset_vars, selector_vars)
 }
 
+/// 构建分段线性逼近的机理约束
+/// Build mechanism constraints for piecewise-linear approximation
 pub(crate) fn build_piecewise_constraints<V>(
     symbol_name: &str,
     input: &Linear<V>,
@@ -400,7 +405,10 @@ where
     Ok(constraints)
 }
 
-/// Sine function symbol.
+/// 正弦函数符号 / Sine function symbol.
+///
+/// 使用分段线性逼近对 `sin(input)` 建模，其中 input 为线性多项式。
+/// Models `sin(input)` using piecewise-linear approximation, where input is a linear polynomial.
 #[derive(Debug, Clone)]
 pub struct SinFunction<V = f64>
 where
@@ -419,6 +427,7 @@ impl<V> SinFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建新的正弦函数 / Create a new sine function
     pub fn new(id: u64, name: &str, input: Linear<V>) -> Self {
         let breakpoints = build_breakpoints();
         let (group_id, offset_vars, selector_vars) =
@@ -440,6 +449,7 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -451,10 +461,12 @@ where
         cloned
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取输入多项式 / Get the input polynomial
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }

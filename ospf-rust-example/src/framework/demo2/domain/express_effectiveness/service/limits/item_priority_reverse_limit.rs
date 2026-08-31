@@ -1,3 +1,4 @@
+//! 物品优先级反向限制 / Item priority reverse limits
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
@@ -7,7 +8,7 @@ use crate::framework::demo2::domain::express_effectiveness::aggregation::Express
 use crate::framework::demo2::domain::express_effectiveness::context::ExpressEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
-/// 物品优先级反转限制: 低优先级货物不能在高优先级之前装载
+/// 物品优先级反转限制: 低优先级货物不能在高优先级之前装载 / Item priority reverse limit: lower-priority cargos cannot load before higher-priority ones
 /// 对齐 Kotlin ItemPriorityReverseLimit
 ///
 /// Kotlin 使用 model.minimize(sum(unloading.itemPriorityReverse)) 最小化优先级反转。

@@ -1,3 +1,4 @@
+//! 机队平衡模型模块 / Fleet balance model module
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -6,16 +7,22 @@ use ospf_rust_core::symbol::LinearExpressionSymbol;
 /// 机队平衡检查点 / Fleet balance checkpoint
 #[derive(Debug, Clone)]
 pub struct FleetBalanceCheckpoint {
+    /// 机场标识 / Airport identifier
     pub airport: String,
+    /// 检查点时间 / Checkpoint time
     pub time: time::OffsetDateTime,
+    /// 期望平衡数 / Expected balance count
     pub expected_balance: i64,
 }
 
 /// 机队平衡限制 / Fleet balance limit
 #[derive(Debug, Clone)]
 pub struct FleetBalanceLimit {
+    /// 飞机类型 / Aircraft type
     pub aircraft_type: String,
+    /// 最小平衡数 / Minimum balance count
     pub min_balance: i64,
+    /// 最大平衡数 / Maximum balance count
     pub max_balance: i64,
 }
 
@@ -23,16 +30,20 @@ pub struct FleetBalanceLimit {
 /// 对齐 Kotlin FleetBalance
 #[derive(Debug, Clone)]
 pub struct FleetBalance {
+    /// 飞机类型 / Aircraft type
     pub aircraft_type: String,
+    /// 平衡数 / Balance count
     pub balance: i64,
+    /// 检查点列表 / Checkpoint list
     pub checkpoints: Vec<FleetBalanceCheckpoint>,
+    /// 限制列表 / Limit list
     pub limits: Vec<FleetBalanceLimit>,
     /// 松弛变量索引 / Slack variable indices (populated during register)
     slack_indices: Vec<usize>,
 }
 
 impl FleetBalance {
-    /// 注册机队平衡符号到模型
+    /// 注册机队平衡符号到模型 / Register fleet balance symbols to model
     /// 对齐 Kotlin FleetBalance.register
     pub fn register(
         &mut self,

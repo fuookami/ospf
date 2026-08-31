@@ -1,4 +1,10 @@
-﻿use std::collections::HashMap;
+//! 稀疏分块多维数组模块 / Sparse block multi-dimensional array module.
+//!
+//! 提供仅存储已设置坐标的稀疏多维数组，以及从稠密数组按过滤条件构建稀疏数组的能力。
+//! Provides sparse multi-dimensional arrays that only store explicitly set coordinates,
+//! along with the ability to build sparse arrays from dense arrays with a filter predicate.
+
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use crate::multi_array::{MultiArray, MultiArrayBuilder, MultiArrayCollection};
@@ -163,6 +169,7 @@ where
 pub struct BlockMultiArrayBuilder;
 
 impl BlockMultiArrayBuilder {
+    /// 创建空稀疏数组 / Create an empty sparse array.
     pub fn empty<T, S, C>(shape: S) -> BlockMultiArray<T, S, C>
     where
         S: AbstractShape,
@@ -171,6 +178,7 @@ impl BlockMultiArrayBuilder {
         BlockMultiArray::new(shape)
     }
 
+    /// 从稠密数组按过滤条件构建稀疏数组 / Build sparse array from dense array with a filter predicate.
     pub fn from_multi_array<T, S, C, AC, F>(
         array: &MultiArray<T, S, AC>,
         filter: F,

@@ -1,3 +1,4 @@
+//! 装载领域服务 / Stowage domain service.
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
@@ -9,6 +10,7 @@ mod limits;
 pub(crate) mod pipeline_list_generator;
 mod policy;
 
+/// 应用装载管线约束 / Apply stowage pipeline constraints
 pub fn apply_stowage_pipeline(
     model: &mut MetaModel<f64>,
     request: &Demo2Request,

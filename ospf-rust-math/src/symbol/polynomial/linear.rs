@@ -1,8 +1,8 @@
-//! 绾挎€у椤瑰紡
+//! 线性多项式
 //! Linear polynomial
 //!
-//! 褰㈠紡锛毼?c岬岬?+ b
-//! Form: 危 c岬岬?+ b
+//! 形式：Σ cᵢSᵢ + b
+//! Form: Σ cᵢSᵢ + b
 
 use crate::algebra::concept::{AbelianGroup, AbelianGroupRef, Scalar};
 use crate::operator::{
@@ -15,23 +15,23 @@ use std::fmt;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 // ============================================================================
-// Linear - 绾挎€у椤瑰紡
+// Linear - 线性多项式
 // ============================================================================
 
-/// 绾挎€у椤瑰紡 / Linear polynomial
+/// 线性多项式 / Linear polynomial
 ///
-/// 褰㈠紡锛歚危 c岬岬?+ b`锛屽叾涓?`c岬 鏄郴鏁帮紝`S岬 鏄鍙凤紝`b` 鏄父鏁伴」銆?
-/// Form: `危 c岬岬?+ b`, where `c岬 are coefficients, `S岬 are symbols, and `b` is the constant.
+/// 形式：`Σ cᵢSᵢ + b`，其中 `cᵢ` 是系数，`Sᵢ` 是符号，`b` 是常数项。
+/// Form: `Σ cᵢSᵢ + b`, where `cᵢ` are coefficients, `Sᵢ` are symbols, and `b` is the constant.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Linear<T> {
-    /// 鍗曢」寮忓垪琛?/ List of monomials
+    /// 单项式列表 / List of monomials
     pub monomials: Vec<LinearMonomial<T>>,
-    /// 甯告暟椤?/ Constant term
+    /// 常数项 / Constant term
     pub constant: T,
 }
 
 impl<T> Linear<T> {
-    /// 鍒涘缓鏂扮殑绾挎€у椤瑰紡
+    /// 创建新的线性多项式
     /// Create a new linear polynomial
     pub fn new(monomials: Vec<LinearMonomial<T>>, constant: T) -> Self {
         Self {
@@ -40,7 +40,7 @@ impl<T> Linear<T> {
         }
     }
 
-    /// 鍒涘缓甯告暟澶氶」寮?
+    /// 创建常数多项式
     /// Create a constant polynomial
     pub fn from_constant(value: T) -> Self
     where
@@ -52,7 +52,7 @@ impl<T> Linear<T> {
         }
     }
 
-    /// 鍒涘缓闆跺椤瑰紡
+    /// 创建零多项式
     /// Create a zero polynomial
     pub fn zero() -> Self
     where
@@ -64,25 +64,25 @@ impl<T> Linear<T> {
         }
     }
 
-    /// 鑾峰彇鍗曢」寮忔暟閲?
+    /// 获取单项式数量
     /// Get the number of monomials
     pub fn len(&self) -> usize {
         self.monomials.len()
     }
 
-    /// 鏄惁涓虹┖
+    /// 是否为空
     /// Check if empty
     pub fn is_empty(&self) -> bool {
         self.monomials.is_empty()
     }
 
-    /// 鏄惁涓哄父鏁?
+    /// 是否为常数
     /// Check if this is a constant
     pub fn is_constant(&self) -> bool {
         self.monomials.is_empty()
     }
 
-    /// 鑾峰彇甯告暟椤瑰紩鐢?
+    /// 获取常数项引用
     /// Get reference to constant term
     pub fn get_constant(&self) -> &T {
         &self.constant
@@ -90,7 +90,7 @@ impl<T> Linear<T> {
 }
 
 impl<T: Clone> Linear<T> {
-    /// 鏄犲皠绯绘暟锛堝師鍦颁慨鏀癸級
+    /// 映射系数（原地修改）
     /// Map the coefficients (in-place modification)
     pub fn map_coefficients<F>(&mut self, f: &F)
     where
@@ -103,10 +103,10 @@ impl<T: Clone> Linear<T> {
     }
 }
 
-// 寮曠敤鐗堟湰锛?Linear<T> -> Linear<T>
+// 引用版本：Linear<T> -> Linear<T>
 // Reference version: &Linear<T> -> Linear<T>
 impl<T: Clone> Linear<T> {
-    /// 鏄犲皠绯绘暟锛堣繑鍥炴柊瀹炰緥锛?
+    /// 映射系数（返回新实例）
     /// Map the coefficients (returns new instance)
     pub fn mapped_coefficients<F>(&self, f: &F) -> Self
     where
@@ -124,12 +124,12 @@ impl<T: Clone> Linear<T> {
 }
 
 impl<T: Zero + PartialEq + AddAssign> Linear<T> {
-    /// 鍘熷湴绠€鍖栧椤瑰紡锛堝悎骞跺悓绫婚」锛岀Щ闄ら浂绯绘暟椤癸級
+    /// 原地简化多项式（合并同类项，移除零系数项）
     /// Simplify polynomial in-place (combine like terms, remove zero coefficients)
     pub fn simplify(&mut self) {
         let mut symbol_coefficients: HashMap<OwnedSymbol, T> = HashMap::new();
 
-        // 鍚堝苟鍚岀被椤?/ Combine like terms
+        // 合并同类项 / Combine like terms
         for monomial in self.monomials.drain(..) {
             if monomial.coefficient.is_zero() {
                 continue;
@@ -140,7 +140,7 @@ impl<T: Zero + PartialEq + AddAssign> Linear<T> {
             *entry += monomial.coefficient;
         }
 
-        // 绉婚櫎闆剁郴鏁伴」骞堕噸鏂板～鍏?/ Remove zero coefficients and refill
+        // 移除零系数项并重新填充 / Remove zero coefficients and refill
         self.monomials = symbol_coefficients
             .into_iter()
             .filter(|(_, c)| !c.is_zero())
@@ -148,15 +148,15 @@ impl<T: Zero + PartialEq + AddAssign> Linear<T> {
             .collect();
     }
 
-    /// 杩斿洖绠€鍖栧悗鐨勫椤瑰紡锛堝悎骞跺悓绫婚」锛岀Щ闄ら浂绯绘暟椤癸級
+    /// 返回简化后的多项式（合并同类项，移除零系数项）
     /// Return simplified polynomial (combine like terms, remove zero coefficients)
     ///
-    /// 涓?`simplify` 涓嶅悓锛屾鏂规硶杩斿洖鏂扮殑澶氶」寮忥紝涓嶄慨鏀瑰師瀹炰緥銆?
+    /// 与 `simplify` 不同，此方法返回新的多项式，不修改原实例。
     /// Unlike `simplify`, this method returns a new polynomial without modifying the original.
     pub fn simplified(self) -> Self {
         let mut symbol_coefficients: HashMap<OwnedSymbol, T> = HashMap::new();
 
-        // 鍚堝苟鍚岀被椤?/ Combine like terms
+        // 合并同类项 / Combine like terms
         for monomial in self.monomials {
             if monomial.coefficient.is_zero() {
                 continue;
@@ -167,7 +167,7 @@ impl<T: Zero + PartialEq + AddAssign> Linear<T> {
             *entry += monomial.coefficient;
         }
 
-        // 绉婚櫎闆剁郴鏁伴」骞舵敹闆?/ Remove zero coefficients and collect
+        // 移除零系数项并收集 / Remove zero coefficients and collect
         let monomials: Vec<LinearMonomial<T>> = symbol_coefficients
             .into_iter()
             .filter(|(_, c)| !c.is_zero())
@@ -182,7 +182,7 @@ impl<T: Zero + PartialEq + AddAssign> Linear<T> {
 }
 
 // ============================================================================
-// 浜屽厓杩愮畻绗? Add, Sub, Neg / Binary Operators: Add, Sub, Neg
+// 二元运算符 Add, Sub, Neg / Binary Operators: Add, Sub, Neg
 // ============================================================================
 
 // --- Add: Linear<T> + Linear<T> ---
@@ -254,7 +254,7 @@ impl<T: AbelianGroup> Neg for Linear<T> {
 }
 
 // ============================================================================
-// 澶嶅悎璧嬪€艰繍绠楃: AddAssign, SubAssign, MulAssign, DivAssign
+// 复合赋值运算符: AddAssign, SubAssign, MulAssign, DivAssign
 // ============================================================================
 
 // --- AddAssign: Linear<T> += Linear<T> ---
@@ -417,7 +417,7 @@ impl<T: DivRef> DivAssign<&T> for Linear<T> {
 }
 
 // ============================================================================
-// 鏍囬噺杩愮畻: Linear<T> 卤脳梅 T / Scalar Operations: Linear<T> 卤脳梅 T
+// 标量运算 / Scalar Operations
 // ============================================================================
 
 // --- Add: Linear<T> + T ---
@@ -521,10 +521,10 @@ impl<T: DivRef> Div<&T> for Linear<T> {
 }
 
 // ============================================================================
-// 鍙嶅悜鏍囬噺杩愮畻: T 卤脳 Linear<T> / Reverse Scalar Operations: T 卤脳 Linear<T>
+// 反向标量运算 / Reverse Scalar Operations
 // ============================================================================
 
-// 浣跨敤瀹忎负鍏蜂綋绫诲瀷瀹炵幇鍙嶅悜杩愮畻
+// 使用宏为具体类型实现反向运算
 macro_rules! impl_scalar_ops_for_linear {
     ($($t:ty),*) => {
         $(
@@ -569,7 +569,7 @@ macro_rules! impl_scalar_ops_for_linear {
 impl_scalar_ops_for_linear!(f32, f64, i8, i16, i32, i64, i128, isize);
 
 // ============================================================================
-// &Linear<T> 鐨勮繍绠?/ Operations for &Linear<T>
+// &Linear<T> 的运算 / Operations for &Linear<T>
 // ============================================================================
 
 // --- Add: &Linear<T> + T ---
@@ -841,7 +841,7 @@ impl<T: One + Neg<Output = T> + Clone> Sub<&OwnedSymbol> for &Linear<T> {
 }
 
 // ============================================================================
-// 鍙嶅悜寮曠敤鏍囬噺杩愮畻: &T 卤脳 Linear<T> / Reverse Reference Scalar Operations
+// 反向引用标量运算 / Reverse Reference Scalar Operations
 // ============================================================================
 
 macro_rules! impl_scalar_ref_ops_for_linear {
@@ -958,7 +958,7 @@ macro_rules! impl_scalar_ref_ops_for_linear {
 impl_scalar_ref_ops_for_linear!(f32, f64, i8, i16, i32, i64, i128, isize);
 
 // ============================================================================
-// 绗﹀彿杩愮畻: Linear<T> 卤 OwnedSymbol / Symbol Operations: Linear<T> 卤 OwnedSymbol
+// 符号运算 / Symbol Operations
 // ============================================================================
 
 // --- Add: Linear<T> + OwnedSymbol ---
@@ -1130,7 +1130,7 @@ impl<T: One + NegRef + Clone> Sub<&Linear<T>> for &OwnedSymbol {
 }
 
 // ============================================================================
-// 璺ㄧ被鍨嬭繍绠? Linear<T> + Quadratic<T> / Cross-type: Linear<T> + Quadratic<T>
+// 跨类型运算 Linear<T> + Quadratic<T> / Cross-type: Linear<T> + Quadratic<T>
 // ============================================================================
 
 // --- Add: Linear<T> + Quadratic<T> ---
@@ -1161,16 +1161,16 @@ impl<T: AbelianGroupRef> Add<&Quadratic<T>> for Linear<T> {
 }
 
 // ============================================================================
-// 澶氶」寮忎箻娉? Linear<T> * Linear<T> 鈫?Quadratic<T> / Polynomial Multiplication
+// 多项式乘法 / Polynomial Multiplication
 // ============================================================================
 
 impl<T: Zero + MulRef> Linear<T> {
-    /// 绾挎€у椤瑰紡涔樻硶锛岀粨鏋滀负浜屾澶氶」寮?
+    /// 线性多项式乘法，结果为二次多项式
     /// Linear polynomial multiplication, result is quadratic
     ///
-    /// (危 c岬岬?+ b) 脳 (危 d獗糞獗?+ e) = 危 c岬獗糞岬獗?+ 危 c岬S岬?+ 危 d獗糱S獗?+ be
+    /// (Σ cᵢSᵢ + b) × (Σ dⱼSⱼ + e) = Σ cᵢdⱼSᵢSⱼ + Σ cᵢeSᵢ + Σ dⱼbSⱼ + be
     ///
-    /// # 绀轰緥 / Example
+    /// # 示例 / Example
     /// ```
     /// // (2x + 1) * (3y - 2) = 6xy - 4x + 3y - 2
     /// ```
@@ -1178,15 +1178,15 @@ impl<T: Zero + MulRef> Linear<T> {
         self.multiply_ref(&other)
     }
 
-    /// 绾挎€у椤瑰紡涔樻硶锛堝紩鐢ㄧ増鏈級锛岀粨鏋滀负浜屾澶氶」寮?
+    /// 线性多项式乘法（引用版本），结果为二次多项式
     /// Linear polynomial multiplication (reference version), result is quadratic
     ///
-    /// (危 c岬岬?+ b) 脳 (危 d獗糞獗?+ e) = 危 c岬獗糞岬獗?+ 危 c岬S岬?+ 危 d獗糱S獗?+ be
+    /// (Σ cᵢSᵢ + b) × (Σ dⱼSⱼ + e) = Σ cᵢdⱼSᵢSⱼ + Σ cᵢeSᵢ + Σ dⱼbSⱼ + be
     pub fn multiply_ref(&self, other: &Linear<T>) -> Quadratic<T> {
         let mut monomials: Vec<QuadraticMonomial<T>> = Vec::new();
 
-        // 浜屾椤癸細c岬獗糞岬獗?
-        // Quadratic terms: c岬獗糞岬獗?
+        // 二次项：cᵢdⱼSᵢSⱼ
+        // Quadratic terms: cᵢdⱼSᵢSⱼ
         for m1 in &self.monomials {
             for m2 in &other.monomials {
                 monomials.push(QuadraticMonomial::quadratic(
@@ -1197,7 +1197,7 @@ impl<T: Zero + MulRef> Linear<T> {
             }
         }
 
-        // 绾挎€ч」鏉ヨ嚜 self 鐨勭郴鏁颁箻 other 鐨勫父鏁?
+        // 线性项来自 self 的系数乘 other 的常数
         // Linear terms from self's coefficients times other's constant
         for m1 in &self.monomials {
             monomials.push(QuadraticMonomial::linear(
@@ -1206,7 +1206,7 @@ impl<T: Zero + MulRef> Linear<T> {
             ));
         }
 
-        // 绾挎€ч」鏉ヨ嚜 other 鐨勭郴鏁颁箻 self 鐨勫父鏁?
+        // 线性项来自 other 的系数乘 self 的常数
         // Linear terms from other's coefficients times self's constant
         for m2 in &other.monomials {
             monomials.push(QuadraticMonomial::linear(
@@ -1215,7 +1215,7 @@ impl<T: Zero + MulRef> Linear<T> {
             ));
         }
 
-        // 甯告暟椤?
+        // 常数项
         // Constant term
         let constant = T::mul_ref(&self.constant, &other.constant);
 
@@ -1226,7 +1226,7 @@ impl<T: Zero + MulRef> Linear<T> {
     }
 }
 
-// --- Mul: Linear<T> * &Linear<T> 鈫?Quadratic<T> ---
+// --- Mul: Linear<T> * &Linear<T> → Quadratic<T> ---
 impl<T: Zero + MulRef> Mul<&Self> for Linear<T> {
     type Output = Quadratic<T>;
 
@@ -1235,7 +1235,7 @@ impl<T: Zero + MulRef> Mul<&Self> for Linear<T> {
     }
 }
 
-// --- Mul: &Linear<T> * Linear<T> 鈫?Quadratic<T> ---
+// --- Mul: &Linear<T> * Linear<T> → Quadratic<T> ---
 impl<T: Zero + MulRef> Mul<Linear<T>> for &Linear<T> {
     type Output = Quadratic<T>;
 
@@ -1244,7 +1244,7 @@ impl<T: Zero + MulRef> Mul<Linear<T>> for &Linear<T> {
     }
 }
 
-// --- Mul: &Linear<T> * &Linear<T> 鈫?Quadratic<T> ---
+// --- Mul: &Linear<T> * &Linear<T> → Quadratic<T> ---
 impl<T: Zero + MulRef> Mul for &Linear<T> {
     type Output = Quadratic<T>;
 
@@ -1254,18 +1254,18 @@ impl<T: Zero + MulRef> Mul for &Linear<T> {
 }
 
 // ============================================================================
-// 鍗曢」寮忎箻娉? Linear<T> * LinearMonomial<T> 鈫?Quadratic<T> / Monomial Multiplication
+// 单项式乘法 Linear<T> * LinearMonomial<T> →Quadratic<T> / Monomial Multiplication
 // ============================================================================
 
-// --- Mul: Linear<T> * LinearMonomial<T> 鈫?Quadratic<T> ---
+// --- Mul: Linear<T> * LinearMonomial<T> → Quadratic<T> ---
 impl<T: Zero + MulRef> Mul<LinearMonomial<T>> for Linear<T> {
     type Output = Quadratic<T>;
 
     fn mul(self, rhs: LinearMonomial<T>) -> Self::Output {
         let mut monomials: Vec<QuadraticMonomial<T>> = Vec::new();
 
-        // 浜屾椤癸細c岬?* d * S岬?* S
-        // Quadratic terms: c岬?* d * S岬?* S
+        // 二次项：cᵢ * d * Sᵢ * S
+        // Quadratic terms: cᵢ * d * Sᵢ * S
         for m in &self.monomials {
             monomials.push(QuadraticMonomial::quadratic(
                 T::mul_ref(&m.coefficient, &rhs.coefficient),
@@ -1274,7 +1274,7 @@ impl<T: Zero + MulRef> Mul<LinearMonomial<T>> for Linear<T> {
             ));
         }
 
-        // 绾挎€ч」锛歞 * constant * S
+        // 线性项：d * constant * S
         // Linear term: d * constant * S
         if !self.constant.is_zero() {
             monomials.push(QuadraticMonomial::linear(
@@ -1283,7 +1283,7 @@ impl<T: Zero + MulRef> Mul<LinearMonomial<T>> for Linear<T> {
             ));
         }
 
-        // 鏉ヨ嚜 self 鐨勭嚎鎬ч」涔樹互 rhs 鐨勭郴鏁?
+        // 来自 self 的线性项乘以 rhs 的系数
         // Linear terms from self times rhs's coefficient
         for m in &self.monomials {
             monomials.push(QuadraticMonomial::linear(
@@ -1299,7 +1299,7 @@ impl<T: Zero + MulRef> Mul<LinearMonomial<T>> for Linear<T> {
     }
 }
 
-// --- Mul: Linear<T> * &LinearMonomial<T> 鈫?Quadratic<T> ---
+// --- Mul: Linear<T> * &LinearMonomial<T> → Quadratic<T> ---
 impl<T: Zero + MulRef + Clone> Mul<&LinearMonomial<T>> for Linear<T> {
     type Output = Quadratic<T>;
 
@@ -1308,7 +1308,7 @@ impl<T: Zero + MulRef + Clone> Mul<&LinearMonomial<T>> for Linear<T> {
     }
 }
 
-// --- Mul: &Linear<T> * LinearMonomial<T> 鈫?Quadratic<T> ---
+// --- Mul: &Linear<T> * LinearMonomial<T> → Quadratic<T> ---
 impl<T: Zero + MulRef + Clone> Mul<LinearMonomial<T>> for &Linear<T> {
     type Output = Quadratic<T>;
 
@@ -1317,7 +1317,7 @@ impl<T: Zero + MulRef + Clone> Mul<LinearMonomial<T>> for &Linear<T> {
     }
 }
 
-// --- Mul: &Linear<T> * &LinearMonomial<T> 鈫?Quadratic<T> ---
+// --- Mul: &Linear<T> * &LinearMonomial<T> → Quadratic<T> ---
 impl<T: Zero + MulRef + Clone> Mul<&LinearMonomial<T>> for &Linear<T> {
     type Output = Quadratic<T>;
 
@@ -1326,7 +1326,7 @@ impl<T: Zero + MulRef + Clone> Mul<&LinearMonomial<T>> for &Linear<T> {
     }
 }
 
-// --- Mul: LinearMonomial<T> * Linear<T> 鈫?Quadratic<T> ---
+// --- Mul: LinearMonomial<T> * Linear<T> → Quadratic<T> ---
 impl<T: Zero + MulRef> Mul<Linear<T>> for LinearMonomial<T> {
     type Output = Quadratic<T>;
 
@@ -1335,7 +1335,7 @@ impl<T: Zero + MulRef> Mul<Linear<T>> for LinearMonomial<T> {
     }
 }
 
-// --- Mul: LinearMonomial<T> * &Linear<T> 鈫?Quadratic<T> ---
+// --- Mul: LinearMonomial<T> * &Linear<T> → Quadratic<T> ---
 impl<T: Zero + MulRef + Clone> Mul<&Linear<T>> for LinearMonomial<T> {
     type Output = Quadratic<T>;
 
@@ -1344,7 +1344,7 @@ impl<T: Zero + MulRef + Clone> Mul<&Linear<T>> for LinearMonomial<T> {
     }
 }
 
-// --- Mul: &LinearMonomial<T> * Linear<T> 鈫?Quadratic<T> ---
+// --- Mul: &LinearMonomial<T> * Linear<T> → Quadratic<T> ---
 impl<T: Zero + MulRef + Clone> Mul<Linear<T>> for &LinearMonomial<T> {
     type Output = Quadratic<T>;
 
@@ -1353,7 +1353,7 @@ impl<T: Zero + MulRef + Clone> Mul<Linear<T>> for &LinearMonomial<T> {
     }
 }
 
-// --- Mul: &LinearMonomial<T> * &Linear<T> 鈫?Quadratic<T> ---
+// --- Mul: &LinearMonomial<T> * &Linear<T> → Quadratic<T> ---
 impl<T: Zero + MulRef + Clone> Mul<&Linear<T>> for &LinearMonomial<T> {
     type Output = Quadratic<T>;
 
@@ -1363,10 +1363,10 @@ impl<T: Zero + MulRef + Clone> Mul<&Linear<T>> for &LinearMonomial<T> {
 }
 
 // ============================================================================
-// 鍗曢」寮忎箻娉? Linear<T> * OwnedSymbol 鈫?Quadratic<T> / Symbol Multiplication
+// 单项式乘法 Linear<T> * OwnedSymbol →Quadratic<T> / Symbol Multiplication
 // ============================================================================
 
-// --- Mul: Linear<T> * OwnedSymbol 鈫?Quadratic<T> ---
+// --- Mul: Linear<T> * OwnedSymbol → Quadratic<T> ---
 impl<T: Zero + One + MulRef + Clone> Mul<OwnedSymbol> for Linear<T> {
     type Output = Quadratic<T>;
 
@@ -1377,8 +1377,8 @@ impl<T: Zero + One + MulRef + Clone> Mul<OwnedSymbol> for Linear<T> {
         } = self;
         let mut monomials: Vec<QuadraticMonomial<T>> = Vec::new();
 
-        // 浜屾椤癸細c岬?* S岬?* S
-        // Quadratic terms: c岬?* S岬?* S
+        // 二次项：cᵢ * Sᵢ * S
+        // Quadratic terms: cᵢ * Sᵢ * S
         for m in linear_monomials {
             monomials.push(QuadraticMonomial::quadratic(
                 m.coefficient,
@@ -1387,7 +1387,7 @@ impl<T: Zero + One + MulRef + Clone> Mul<OwnedSymbol> for Linear<T> {
             ));
         }
 
-        // 绾挎€ч」锛歝onstant * S
+        // 线性项：constant * S
         // Linear term: constant * S
         if !constant.is_zero() {
             monomials.push(QuadraticMonomial::linear(constant, rhs));
@@ -1400,7 +1400,7 @@ impl<T: Zero + One + MulRef + Clone> Mul<OwnedSymbol> for Linear<T> {
     }
 }
 
-// --- Mul: Linear<T> * &OwnedSymbol 鈫?Quadratic<T> ---
+// --- Mul: Linear<T> * &OwnedSymbol → Quadratic<T> ---
 impl<T: Zero + One + MulRef + Clone> Mul<&OwnedSymbol> for Linear<T> {
     type Output = Quadratic<T>;
 
@@ -1430,15 +1430,15 @@ impl<T: Zero + One + MulRef + Clone> Mul<&OwnedSymbol> for Linear<T> {
     }
 }
 
-// --- Mul: &Linear<T> * OwnedSymbol 鈫?Quadratic<T> ---
+// --- Mul: &Linear<T> * OwnedSymbol → Quadratic<T> ---
 impl<T: Zero + One + MulRef + Clone> Mul<OwnedSymbol> for &Linear<T> {
     type Output = Quadratic<T>;
 
     fn mul(self, rhs: OwnedSymbol) -> Self::Output {
         let mut monomials: Vec<QuadraticMonomial<T>> = Vec::new();
 
-        // 浜屾椤癸細c岬?* S岬?* S
-        // Quadratic terms: c岬?* S岬?* S
+        // 二次项：cᵢ * Sᵢ * S
+        // Quadratic terms: cᵢ * Sᵢ * S
         for m in &self.monomials {
             monomials.push(QuadraticMonomial::quadratic(
                 m.coefficient.clone(),
@@ -1447,7 +1447,7 @@ impl<T: Zero + One + MulRef + Clone> Mul<OwnedSymbol> for &Linear<T> {
             ));
         }
 
-        // 绾挎€ч」锛歝onstant * S
+        // 线性项：constant * S
         // Linear term: constant * S
         if !self.constant.is_zero() {
             monomials.push(QuadraticMonomial::linear(self.constant.clone(), rhs));
@@ -1460,7 +1460,7 @@ impl<T: Zero + One + MulRef + Clone> Mul<OwnedSymbol> for &Linear<T> {
     }
 }
 
-// --- Mul: &Linear<T> * &OwnedSymbol 鈫?Quadratic<T> ---
+// --- Mul: &Linear<T> * &OwnedSymbol → Quadratic<T> ---
 impl<T: Zero + One + MulRef + Clone> Mul<&OwnedSymbol> for &Linear<T> {
     type Output = Quadratic<T>;
 
@@ -1489,7 +1489,7 @@ impl<T: Zero + One + MulRef + Clone> Mul<&OwnedSymbol> for &Linear<T> {
     }
 }
 
-// --- Mul: OwnedSymbol * Linear<T> 鈫?Quadratic<T> ---
+// --- Mul: OwnedSymbol * Linear<T> → Quadratic<T> ---
 impl<T: Zero + One + MulRef + Clone> Mul<Linear<T>> for OwnedSymbol {
     type Output = Quadratic<T>;
 
@@ -1498,7 +1498,7 @@ impl<T: Zero + One + MulRef + Clone> Mul<Linear<T>> for OwnedSymbol {
     }
 }
 
-// --- Mul: OwnedSymbol * &Linear<T> 鈫?Quadratic<T> ---
+// --- Mul: OwnedSymbol * &Linear<T> → Quadratic<T> ---
 impl<T: Zero + One + MulRef + Clone> Mul<&Linear<T>> for OwnedSymbol {
     type Output = Quadratic<T>;
 
@@ -1507,7 +1507,7 @@ impl<T: Zero + One + MulRef + Clone> Mul<&Linear<T>> for OwnedSymbol {
     }
 }
 
-// --- Mul: &OwnedSymbol * Linear<T> 鈫?Quadratic<T> ---
+// --- Mul: &OwnedSymbol * Linear<T> → Quadratic<T> ---
 impl<T: Zero + One + MulRef + Clone> Mul<Linear<T>> for &OwnedSymbol {
     type Output = Quadratic<T>;
 
@@ -1516,7 +1516,7 @@ impl<T: Zero + One + MulRef + Clone> Mul<Linear<T>> for &OwnedSymbol {
     }
 }
 
-// --- Mul: &OwnedSymbol * &Linear<T> 鈫?Quadratic<T> ---
+// --- Mul: &OwnedSymbol * &Linear<T> → Quadratic<T> ---
 impl<T: Zero + One + MulRef + Clone> Mul<&Linear<T>> for &OwnedSymbol {
     type Output = Quadratic<T>;
 
@@ -1526,22 +1526,22 @@ impl<T: Zero + One + MulRef + Clone> Mul<&Linear<T>> for &OwnedSymbol {
 }
 
 // ============================================================================
-// 杈呭姪鏂规硶锛歀inear 涓?LinearMonomial 鐨勪箻娉?/ Helper Methods
+// 辅助方法：Linear 与 LinearMonomial 的乘法 / Helper Methods
 // ============================================================================
 
 impl<T: Zero + MulRef + Clone> Linear<T> {
-    /// 绾挎€у椤瑰紡涔樹互绾挎€у崟椤瑰紡锛岀粨鏋滀负浜屾澶氶」寮?
+    /// 线性多项式乘以线性单项式，结果为二次多项式
     /// Linear polynomial times linear monomial, result is quadratic
     pub fn multiply_linear_monomial(self, rhs: LinearMonomial<T>) -> Quadratic<T> {
         self * rhs
     }
 
-    /// 绾挎€у椤瑰紡涔樹互绾挎€у崟椤瑰紡锛堝紩鐢ㄧ増鏈級
+    /// 线性多项式乘以线性单项式（引用版本）
     /// Linear polynomial times linear monomial (reference version)
     pub fn multiply_linear_monomial_ref(&self, rhs: &LinearMonomial<T>) -> Quadratic<T> {
         let mut monomials: Vec<QuadraticMonomial<T>> = Vec::new();
 
-        // 浜屾椤癸細c岬?* d * S岬?* S
+        // 二次项：cᵢ * d * Sᵢ * S
         for m in &self.monomials {
             monomials.push(QuadraticMonomial::quadratic(
                 T::mul_ref(&m.coefficient, &rhs.coefficient),
@@ -1550,7 +1550,7 @@ impl<T: Zero + MulRef + Clone> Linear<T> {
             ));
         }
 
-        // 绾挎€ч」锛歞 * constant * S
+        // 线性项：d * constant * S
         if !self.constant.is_zero() {
             monomials.push(QuadraticMonomial::linear(
                 T::mul_ref(&self.constant, &rhs.coefficient),
@@ -1558,7 +1558,7 @@ impl<T: Zero + MulRef + Clone> Linear<T> {
             ));
         }
 
-        // 鏉ヨ嚜 self 鐨勭嚎鎬ч」涔樹互 rhs 鐨勭郴鏁?
+        // 来自 self 的线性项乘以 rhs 的系数
         for m in &self.monomials {
             monomials.push(QuadraticMonomial::linear(
                 T::mul_ref(&m.coefficient, &rhs.coefficient),
@@ -1574,7 +1574,7 @@ impl<T: Zero + MulRef + Clone> Linear<T> {
 }
 
 // ============================================================================
-// Display 瀹炵幇 / Display Implementation
+// Display 实现 / Display Implementation
 // ============================================================================
 
 impl<T> fmt::Display for Linear<T>
@@ -1612,13 +1612,13 @@ where
 }
 
 // ============================================================================
-// 寰垎瀹炵幇 / Differentiation Implementation
+// 微分实现 / Differentiation Implementation
 // ============================================================================
 
 use crate::symbol::operation::{Differentiate, SecondOrderDifferentiate};
 
 impl<T> Differentiate<T> for Linear<T> {
-    /// Linear 鐨勫亸瀵兼槸甯告暟 T
+    /// Linear 的偏导是常数 T
     /// Linear's partial derivative is constant T
     type Derivative = T;
 
@@ -1643,7 +1643,7 @@ impl<T: Clone> SecondOrderDifferentiate<T> for Linear<T> {
     where
         T: Zero + for<'a> AddAssign<&'a T>,
     {
-        // Linear 鐨勪簩闃跺鏁板缁堜负闆剁煩闃?
+        // Linear 的二阶导数始终为零矩阵
         // Linear's second derivative is always zero matrix
         let n = symbols.len();
         vec![vec![T::zero(); n]; n]
@@ -1651,7 +1651,7 @@ impl<T: Clone> SecondOrderDifferentiate<T> for Linear<T> {
 }
 
 // ============================================================================
-// 姹傚€煎疄鐜?/ Evaluate Implementation
+// 求值实现 / Evaluate Implementation
 // ============================================================================
 
 use crate::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
@@ -1663,7 +1663,7 @@ impl<T: Clone> Evaluate<T> for Linear<T> {
     {
         let mut result = self.constant.clone();
 
-        // 浣跨敤鍗曢」寮忕殑 evaluate 鏂规硶
+        // 使用单项式的 evaluate 方法
         // Use monomial's evaluate method
         for monomial in &self.monomials {
             result = result + monomial.evaluate(values);
@@ -1682,11 +1682,11 @@ impl<T: Clone> Evaluate<T> for Linear<T> {
         for monomial in &self.monomials {
             let partial = monomial.partial_evaluate(values);
             if values.contains_key(&monomial.symbol) {
-                // 绗﹀彿鏈夊€硷紝閮ㄥ垎姹傚€煎悗鍙樹负"甯告暟"锛屽姞鍒板父鏁伴」
+                // 符号有值，部分求值后变为"常数"，加到常数项
                 // Symbol has value, after partial evaluation becomes "constant", add to constant
                 new_constant = new_constant + partial.coefficient;
             } else {
-                // 绗﹀彿鏃犲€硷紝淇濈暀鍗曢」寮?
+                // 符号无值，保留单项式
                 // Symbol has no value, keep monomial
                 new_monomials.push(partial);
             }
@@ -1703,7 +1703,7 @@ impl<T: Clone> EvaluateOrdered<T> for Linear<T> {
     {
         let mut result = self.constant.clone();
 
-        // 浣跨敤鍗曢」寮忕殑 evaluate_ordered 鏂规硶
+        // 使用单项式的 evaluate_ordered 方法
         // Use monomial's evaluate_ordered method
         for monomial in &self.monomials {
             result = result + monomial.evaluate_ordered(symbols, values);
@@ -1714,7 +1714,7 @@ impl<T: Clone> EvaluateOrdered<T> for Linear<T> {
 }
 
 // ============================================================================
-// 绫诲瀷杞崲瀹炵幇 / Type Conversion Implementations
+// 类型转换实现 / Type Conversion Implementations
 // ============================================================================
 
 use crate::symbol::operation::{
@@ -1750,7 +1750,7 @@ impl<T> ToQuadratic<T> for Linear<T> {
     }
 }
 
-// 寮曠敤鐗堟湰锛?Linear<T> -> Quadratic<T>
+// 引用版本：Linear<T> -> Quadratic<T>
 // Reference version: &Linear<T> -> Quadratic<T>
 impl<T: Clone> ToQuadratic<T> for &Linear<T> {
     fn to_quadratic(self) -> Quadratic<T> {
@@ -1789,7 +1789,7 @@ impl<T: Clone + Zero + One, E: Exponent + One> ToCanonical<T, E> for Linear<T> {
     }
 }
 
-// 寮曠敤鐗堟湰锛?Linear<T> -> Canonical<T, E>
+// 引用版本：Linear<T> -> Canonical<T, E>
 // Reference version: &Linear<T> -> Canonical<T, E>
 impl<T: Clone + Zero + One, E: Exponent + One> ToCanonical<T, E> for &Linear<T> {
     fn to_canonical(self) -> Canonical<T, E> {
@@ -1818,12 +1818,12 @@ impl<T: Clone + Zero + PartialEq + for<'a> AddAssign<&'a T>> ToMatrixForm<T> for
         let n = symbols.len();
         let mut coefficients = vec![T::zero(); n];
 
-        // 寤虹珛绗﹀彿鍒扮储寮曠殑鏄犲皠
+        // 建立符号到索引的映射
         // Build symbol to index mapping
         let symbol_index: HashMap<&OwnedSymbol, usize> =
             symbols.iter().enumerate().map(|(i, s)| (s, i)).collect();
 
-        // 濉厖绯绘暟
+        // 填充系数
         // Fill coefficients
         for monomial in &self.monomials {
             if let Some(&idx) = symbol_index.get(&monomial.symbol) {
@@ -1852,7 +1852,7 @@ impl<T: Clone + Zero + PartialEq + for<'a> AddAssign<&'a T>> ToMatrixForm<T> for
 }
 
 // ============================================================================
-// 鍖洪棿鏋佸€艰绠?/ Interval Extremum Calculation
+// 区间极值计算 / Interval Extremum Calculation
 // ============================================================================
 
 use crate::algebra::value_range::{Bound, Interval, ValueRange, ValueWrapper};
@@ -1861,31 +1861,31 @@ impl<T> Linear<T>
 where
     T: Clone + PartialOrd + Zero + ZeroRef + AddRef + MulRef + 'static,
 {
-    /// 璁＄畻绾挎€у椤瑰紡鍦ㄧ粰瀹氱鍙峰尯闂村€兼椂鐨勬瀬鍊艰寖鍥?
+    /// 计算线性多项式在给定符号区间值时的极值范围
     /// Calculate the extremum range of linear polynomial given symbol interval values
     ///
-    /// 瀵逛簬绾挎€у椤瑰紡锛屾瀬鍊煎湪鍙橀噺鍖洪棿鐨勮竟鐣岀偣杈惧埌銆?
+    /// 对于线性多项式，极值在变量区间的边界点达到。
     /// For linear polynomials, extrema are achieved at variable interval boundaries.
     ///
-    /// # 鍙傛暟 / Arguments
-    /// - `intervals`: 绗﹀彿鍒板尯闂寸殑鏄犲皠 / Symbol to interval mapping
+    /// # 参数 / Arguments
+    /// - `intervals`: 符号到区间的映射 / Symbol to interval mapping
     ///
-    /// # 杩斿洖 / Returns
-    /// 缁撴灉鍖洪棿锛堟渶灏忓€煎拰鏈€澶у€硷級
+    /// 结果区间（最小值和最大值）
+    /// 结果区间（最小值和最大值）
     /// Result interval (minimum and maximum)
     ///
-    /// # 绀轰緥 / Example
+    /// # 示例 / Example
     /// ```rust,ignore
-    /// // 瀵逛簬 2x - 3y + 1
+    /// // 对于 2x - 3y + 1
     /// // x 鈭?[1, 3], y 鈭?[2, 5]
-    /// // 鏈€灏忓€? 2*1 - 3*5 + 1 = 2 - 15 + 1 = -12
-    /// // 鏈€澶у€? 2*3 - 3*2 + 1 = 6 - 6 + 1 = 1
+    /// // 最小值 2*1 - 3*5 + 1 = 2 - 15 + 1 = -12
+    /// // 最大值 2*3 - 3*2 + 1 = 6 - 6 + 1 = 1
     /// ```
     pub fn evaluate_interval_extremum(
         &self,
         intervals: &HashMap<OwnedSymbol, ValueRange<T>>,
     ) -> ValueRange<T> {
-        // 鍒濆鍖栨渶灏忓€煎拰鏈€澶у€间负甯告暟椤?
+        // 初始化最小值和最大值为常数项
         // Initialize min and max as constant
         let mut min_val = self.constant.clone();
         let mut max_val = self.constant.clone();
@@ -1894,7 +1894,7 @@ where
             let coef = &monomial.coefficient;
 
             if let Some(interval) = intervals.get(&monomial.symbol) {
-                // 鑾峰彇鍖洪棿鐨勪笅鐣屽拰涓婄晫
+                // 获取区间的下界和上界
                 // Get lower and upper bounds of interval
                 let lower = interval.lower_bound().value();
                 let upper = interval.upper_bound().value();
@@ -1935,7 +1935,7 @@ where
 }
 
 // ============================================================================
-// 娴嬭瘯 / Tests
+// 测试 / Tests
 // ============================================================================
 
 #[cfg(test)]
@@ -2049,7 +2049,7 @@ mod tests {
         let quadratic: Quadratic<f64> = linear.to_quadratic();
         assert_eq!(quadratic.monomials.len(), 2);
         assert_eq!(quadratic.constant, 1.0);
-        // 鎵€鏈夐」搴斾负绾挎€ч」锛坰ymbol2 = None锛?
+        // 所有序列应为线性项（symbol2 = None）
         for m in &quadratic.monomials {
             assert!(m.symbol2.is_none());
         }
@@ -2063,7 +2063,7 @@ mod tests {
         let canonical: Canonical<f64, i32> = linear.to_canonical();
         assert_eq!(canonical.monomials.len(), 1);
         assert_eq!(canonical.constant, 1.0);
-        // 妫€鏌ュ箓娆?
+        // 检查幂次
         let powers = &canonical.monomials[0].powers;
         assert_eq!(powers.get(&x), Some(&1));
     }
@@ -2100,23 +2100,23 @@ mod tests {
         assert_eq!(form.coefficients, vec![2.0, 3.0]);
         assert_eq!(form.constant, 1.0);
 
-        // 浠庣煩闃靛舰寮忚繕鍘?
+        // 从矩阵形式还原
         let restored = Linear::from_matrix_form(&form);
         assert_eq!(restored.constant, 1.0);
     }
 
     #[test]
     fn test_evaluate_interval_extremum() {
-        // 娴嬭瘯鍖洪棿鏋佸€艰绠?/ Test interval extremum calculation
-        // 瀵逛簬绾挎€у椤瑰紡 2x - 3y + 1
+        // 测试区间极值计算 / Test interval extremum calculation
+        // 对于线性多项式 2x - 3y + 1
         // x 鈭?[1, 3], y 鈭?[2, 5]
-        // 鏈€灏忓€? 2*1 - 3*5 + 1 = 2 - 15 + 1 = -12
-        // 鏈€澶у€? 2*3 - 3*2 + 1 = 6 - 6 + 1 = 1
+        // 最小值 2*1 - 3*5 + 1 = 2 - 15 + 1 = -12
+        // 最大值 2*3 - 3*2 + 1 = 6 - 6 + 1 = 1
 
         let x = make_symbol("x", 1);
         let y = make_symbol("y", 2);
 
-        // 鍒涘缓绾挎€у椤瑰紡锛?x - 3y + 1
+        // 创建线性多项式：2x - 3y + 1
         // Create linear polynomial: 2x - 3y + 1
         let poly = Linear::new(
             vec![
@@ -2126,7 +2126,7 @@ mod tests {
             1.0,
         );
 
-        // 瀹氫箟鍙橀噺鍖洪棿 / Define variable intervals
+        // 定义变量区间 / Define variable intervals
         let x_interval = ValueRange::<f64>::from_bounds(
             Bound::new(ValueWrapper::finite(1.0), Interval::Closed),
             Bound::new(ValueWrapper::finite(3.0), Interval::Closed),
@@ -2140,7 +2140,7 @@ mod tests {
 
         let result = poly.evaluate_interval_extremum(&intervals);
 
-        // 楠岃瘉缁撴灉
+        // 验证结果
         // Verify result
         let min_val = result.lower_bound().value().unwrap().unwrap();
         let max_val = result.upper_bound().value().unwrap().unwrap();
@@ -2151,11 +2151,11 @@ mod tests {
 
     #[test]
     fn test_evaluate_interval_extremum_positive_only() {
-        // 鎵€鏈夌郴鏁颁负姝ｇ殑鎯呭喌 / All coefficients positive
+        // 所有系数为正的情况 / All coefficients positive
         // 2x + 3y + 1
         // x 鈭?[1, 3], y 鈭?[2, 5]
-        // 鏈€灏忓€? 2*1 + 3*2 + 1 = 2 + 6 + 1 = 9
-        // 鏈€澶у€? 2*3 + 3*5 + 1 = 6 + 15 + 1 = 22
+        // 最小值 2*1 + 3*2 + 1 = 2 + 6 + 1 = 9
+        // 最大值 2*3 + 3*5 + 1 = 6 + 15 + 1 = 22
 
         let x = make_symbol("x", 1);
         let y = make_symbol("y", 2);

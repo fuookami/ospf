@@ -27,7 +27,7 @@
         let mut request: LayerGenerationRequest<f64, Meter> = LayerGenerationRequest::new(
             0,
             vec![ActualItem {
-                id: "i0".to_string(),
+                id: "i0".into(),
                 name: "Item".to_string(),
                 package_code: None,
                 pack: None,
@@ -44,7 +44,7 @@
             height: meters(5.0),
             depth: meters(5.0),
             capacity: meters(100.0),
-            type_code: "BIN".to_string(),
+            type_code: "BIN".into(),
             is_main: true,
         })
         .with_max_candidates(2);

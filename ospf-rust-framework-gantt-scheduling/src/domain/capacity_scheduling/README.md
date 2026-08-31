@@ -10,12 +10,14 @@ This directory contains capacity scheduling model components and pipelines. It m
 - Register unordered and ordered capacity compilation variables.
 - Extract capacity scheduling solutions from solver-order values.
 - Maintain capacity columns for iterative and column-generation workflows.
+- Rebuild active column terms after columns are added or removed.
 - Provide capacity constraints and capacity-cost objectives.
 
 ## Modules
 
 - `model.rs`: production actions, capacity compilation, ordered capacity compilation, capacity columns, aggregation, and solution extraction.
-- `service/limits.rs`: executor capacity constraints, order constraints, and capacity cost minimization.
+- `iterative.rs`: stable per-column variables, active-column snapshots, add/remove lifecycle, and solution extraction for column generation.
+- `service/limits.rs`: executor capacity constraints, active capacity-column selection constraints, order constraints, and capacity cost minimization.
 - `service/mod.rs`: service-level re-exports.
 
 ## Public API
@@ -26,10 +28,13 @@ This directory contains capacity scheduling model components and pipelines. It m
 - `CapacityOrderCompilation`
 - `CapacityColumn`
 - `CapacityColumnAggregation`
+- `IterativeCapacityColumn`
+- `IterativeCapacityCompilation`
 - `CapacitySchedulingSolution`
 - `ActionAllocation`
 - `ExecutorCapacityResult`
 - `ExecutorCapacityConstraint`
+- `CapacityColumnSelectionConstraint`
 - `OrderConstraint`
 - `CapacityCostMinimization`
 - `CapacitySchedulingAggregation`
@@ -41,7 +46,7 @@ Extend capacity scheduling through `ProductionActionTrait`, capacity columns, or
 
 ## Lifecycle and Data Flow
 
-Production actions and executor-slot candidates are compiled into capacity variables, optional ordered compilation adds sequence-sensitive variables, limit pipelines register capacity constraints and cost objectives, and solution extraction produces action allocations plus executor capacity results.
+Production actions and executor-slot candidates are compiled into capacity variables, optional ordered compilation adds sequence-sensitive variables, and iterative compilation registers a stable variable for every generated column. After `add_columns` or `remove_columns`, consume `active_column_variables` or construct `CapacityColumnSelectionConstraint::from_iterative_compilation` to rebuild active terms. Limit pipelines register capacity constraints and cost objectives, and solution extraction produces action allocations plus executor capacity results.
 
 ## Verification
 

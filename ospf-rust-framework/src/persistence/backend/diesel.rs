@@ -17,8 +17,11 @@ pub struct DieselBackend;
 /// Diesel typed adapter plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DieselExpressionPlan<C> {
+    /// 已解析字段 / Resolved fields
     pub fields: Vec<C>,
+    /// 未解析路径 / Unresolved paths
     pub unresolved_paths: Vec<String>,
+    /// 是否需要 boxed query / Whether a boxed query is required
     pub requires_boxed_query: bool,
 }
 
@@ -203,6 +206,16 @@ impl<R> DieselExpressionPlanner<R> {
                     self.collect_scalar(argument, plan);
                 }
             }
+            ScalarExpression::Conditional {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.collect_boolean(condition, plan);
+                self.collect_scalar(then_branch, plan);
+                self.collect_scalar(else_branch, plan);
+            }
+            ScalarExpression::Boolean(expression) => self.collect_boolean(expression, plan),
             ScalarExpression::Constant(_) | ScalarExpression::Custom { .. } => {}
         }
     }
@@ -228,5 +241,32 @@ mod tests {
         assert_eq!(plan.unresolved_paths, vec!["missing"]);
         assert!(plan.requires_boxed_query);
         assert!(!plan.is_fully_resolved());
+    }
+
+    #[test]
+    fn diesel_planner_collects_fields_from_conditional_and_boolean_scalars() {
+        let planner = DieselExpressionPlanner::new(|path: &str| match path {
+            "status" => Some("users.status"),
+            "score" => Some("users.score"),
+            "age" => Some("users.age"),
+            _ => None,
+        });
+        let conditional = ScalarExpression::conditional(
+            runtime_field("status").eq("active"),
+            ScalarExpression::reference("score"),
+            ScalarExpression::boolean_expr(runtime_field("age").ge(18)),
+        );
+        let expression = BooleanExpression::eq(
+            conditional,
+            ScalarExpression::constant(ExpressionValue::from(1)),
+        );
+
+        let plan = planner.plan_query(&expression, None);
+
+        assert_eq!(
+            plan.fields,
+            vec!["users.status", "users.score", "users.age"]
+        );
+        assert!(plan.is_fully_resolved());
     }
 }

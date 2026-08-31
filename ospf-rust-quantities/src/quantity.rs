@@ -1,4 +1,4 @@
-//e! Quantity - 物理量
+//! Quantity - 物理量
 //! Quantity - Physical quantity
 //!
 //! 统一的物理量类型，支持编译时和运行时两种模式：
@@ -717,7 +717,13 @@ where
 /// 用于支持 `Quantity<Linear<T>, U> * T` 形式的标量乘法。
 /// Used to support scalar multiplication in the form `Quantity<Linear<T>, U> * T`.
 pub trait ScalarMul<S> {
+    /// 标量乘法的输出类型 / Output type of scalar multiplication
     type Output;
+
+    /// 执行标量乘法 / Perform scalar multiplication
+    ///
+    /// 将物理量的值与不同类型的标量相乘，单位保持不变。
+    /// Multiplies the quantity's value by a scalar of a different type, keeping the unit unchanged.
     fn scalar_mul(self, rhs: S) -> Self::Output;
 }
 

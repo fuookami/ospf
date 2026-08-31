@@ -61,7 +61,7 @@ impl PackingRendererAdapter {
                 };
 
                 crate::infrastructure::renderer::RenderLoadingPlanItemDto {
-                    name: item.item.id.clone(),
+                    name: item.item.id.to_string(),
                     package_type: "default".to_string(),
                     width: item.packing_shape.bounding_width.value.clone().into(),
                     height: item.packing_shape.bounding_height.value.clone().into(),
@@ -92,7 +92,7 @@ impl PackingRendererAdapter {
             crate::infrastructure::renderer::RenderLoadingPlanDto {
                 group: "default".to_string(),
                 name: bin.name.clone(),
-                type_code: bin.bin_type.type_code.clone(),
+                type_code: bin.bin_type.type_code.to_string(),
                 width: bin.bin_type.width.value.clone().into(),
                 height: bin.bin_type.height.value.clone().into(),
                 depth: bin.bin_type.depth.value.clone().into(),

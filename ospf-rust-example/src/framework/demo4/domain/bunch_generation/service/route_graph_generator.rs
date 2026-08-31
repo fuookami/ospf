@@ -1,3 +1,4 @@
+//! 路线图生成器模块 / Route graph generator module
 use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
 use super::super::model::{Graph, Node, Edge, FlightTaskReverse};
@@ -6,6 +7,7 @@ use super::operator::FeasibilityJudger;
 /// 路线图生成器配置 / Route graph generator configuration
 #[derive(Debug, Clone)]
 pub struct RouteGraphGeneratorConfig {
+    /// 是否允许换序 / Whether order change is allowed
     pub with_order_change: bool,
 }
 
@@ -23,6 +25,7 @@ pub struct RouteGraphGenerator {
 }
 
 impl RouteGraphGenerator {
+    /// 创建新的路线图生成器 / Create new route graph generator
     pub fn new(
         reverse: FlightTaskReverse,
         config: RouteGraphGeneratorConfig,
@@ -125,9 +128,13 @@ impl RouteGraphGenerator {
 /// 飞行任务信息 / Flight task info
 #[derive(Debug, Clone)]
 pub struct FlightTaskInfo {
+    /// 任务标识 / Task identifier
     pub id: String,
+    /// 出发机场 / Departure airport
     pub dep: String,
+    /// 到达机场 / Arrival airport
     pub arr: String,
+    /// 出发时间 / Departure time
     pub dep_time: OffsetDateTime,
 }
 

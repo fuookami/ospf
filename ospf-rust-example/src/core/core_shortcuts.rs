@@ -1,3 +1,4 @@
+//! Core Shortcuts 模块 / Core Shortcuts module
 use std::error::Error;
 
 use ospf_rust_multiarray::{MultiArray, Shape};

@@ -1,3 +1,4 @@
+//! 包络线模型 / Envelope model
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -15,6 +16,7 @@ use ospf_rust_core::symbol::function::{Point2, UnivariateLinearPiecewiseFunction
 /// - 输出: index (通过分段线性插值计算)
 #[derive(Debug, Clone)]
 pub struct Envelope {
+    /// 包络线数据点 (总重量, 索引) / Envelope data points (total weight, index)
     pub points: Vec<(f64, f64)>, // (totalWeight, index)
 }
 

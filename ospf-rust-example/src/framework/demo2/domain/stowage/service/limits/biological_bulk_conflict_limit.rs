@@ -1,3 +1,4 @@
+//! 生物散货冲突限制 / Biological bulk conflict limits
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;

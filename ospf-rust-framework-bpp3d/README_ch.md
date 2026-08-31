@@ -55,13 +55,20 @@ Kotlin `bpp3d-domain-layer-selection-context` 在 Rust 中映射到 application 
 | `domain::layer_assignment::*` | layer-assignment context、aggregation、limit、objective 和动态列。 | migration |
 | `domain::layer_generation::*` | 层候选生成 trait、request、diagnostics 和策略实现。 | migration |
 | `domain::packing::*` | packing 转换、geometry guard、packed-bin solution 和 render adaptation。 | migration |
+| `domain::packing::PackingGeometryContract` | 可注入的最终装箱几何校验。 | migration |
 | `infrastructure::*` | 共享 geometry、orientation、shape、PWL 和 renderer DTO 类型。 | stable within migration |
 
 ## 建模扩展点
 
-solver 行为通过 `MetaModelSolverBackend` 或 RMP/final executor trait 接入。新的 layer candidate source 应实现 layer-generation trait。请求级业务规则应通过 package-rule policy 等 domain policy 注入，不要把任意闭包塞进可序列化模型。
+solver 行为通过 `MetaModelSolverBackend` 或 RMP/final executor trait 接入。新的 layer candidate source 应实现 layer-generation trait。业务专用的最终几何校验通过 `PackingGeometryContract` 和 `ColumnGenerationApplicationService::with_geometry_guard` 注入。请求级业务规则应通过 package-rule policy 等 domain policy 注入，不要把任意闭包塞进可序列化模型。
 
 新增约束、目标和结果提取应放在 domain context、aggregation、model component 或 pipeline 中。application 代码负责组合这些扩展点，而不是复制 domain 建模逻辑。
+
+列生成生命周期扩展：
+
+1. `ColumnGenerationRmpExecutor::execute_result` 和 `ColumnGenerationFinalExecutor::execute_result` 将注册/求解失败以 `Result` 传播，并标注 `RestrictedMasterProblem` 或 `FinalMilp` 阶段。
+2. `ColumnGenerationRmpModelExtension`、`ColumnGenerationFinalModelExtension` 可在标准 RMP/final context 上追加模型内容；RMP 扩展可返回类型化 `additional_shadow_prices`。
+3. `ColumnGenerationApplicationService::create_algorithm_with` 支持替换算法装配；算法还提供可失败的初始列和候选过滤入口。
 
 ## 泛型数值边界
 

@@ -1,4 +1,4 @@
-//! Univariate linear piecewise interpolation function symbol.
+//! 一元线性分段插值函数符号 / Univariate linear piecewise interpolation function symbol
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -67,18 +67,23 @@ where
     })
 }
 
+/// 二维点 / 2D point
 #[derive(Debug, Clone)]
 pub struct Point2<V> {
+    /// x 坐标 / x coordinate
     pub x: V,
+    /// y 坐标（函数值）/ y coordinate (function value)
     pub y: V,
 }
 
 impl<V> Point2<V> {
+    /// 创建新的二维点 / Create a new 2D point
     pub fn new(x: V, y: V) -> Self {
         Self { x, y }
     }
 }
 
+/// 使用凸组合的单变量分段线性插值函数。
 /// Univariate piecewise linear interpolation using convex combinations.
 #[derive(Debug, Clone)]
 pub struct UnivariateLinearPiecewiseFunction<V = f64>
@@ -97,6 +102,7 @@ impl<V> UnivariateLinearPiecewiseFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
 {
+    /// 创建新的单变量分段线性插值函数 / Create a new univariate piecewise linear interpolation function
     pub fn new(id: u64, name: &str, input: Linear<V>, mut points: Vec<Point2<V>>) -> Self {
         assert!(
             !points.is_empty(),
@@ -147,6 +153,7 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -158,18 +165,22 @@ where
         cloned
     }
 
+    /// 获取输入多项式 / Get the input polynomial
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
+    /// 获取插值采样点 / Get the interpolation sampling points
     pub fn points(&self) -> &[Point2<V>] {
         &self.points
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取 lambda 变量列表 / Get the lambda variables
     pub fn lambda_variables(&self) -> &[ContinuousVariableItem] {
         &self.lambda_vars
     }

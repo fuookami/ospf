@@ -1,8 +1,7 @@
-//! Satisfied-amount inequality function symbols.
+//! 满足数量不等式函数符号 / Satisfied-amount inequality function symbols
 //!
-//! Thin wrappers around [`SatisfiedAmountFunction`] that expose distinct type names
-//! aligned with the Kotlin codebase. Each struct delegates all trait behaviour to its
-//! inner `SatisfiedAmountFunction`.
+//! 对 [`SatisfiedAmountFunction`] 的薄包装，暴露与 Kotlin 代码库对齐的不同类型名称 / Thin wrappers around [`SatisfiedAmountFunction`] that expose distinct type names aligned with the Kotlin codebase
+//! 每个结构体将所有 trait 行为委托给其内部的 `SatisfiedAmountFunction` / Each struct delegates all trait behaviour to its inner `SatisfiedAmountFunction`
 
 use std::any::Any;
 use std::collections::HashSet;

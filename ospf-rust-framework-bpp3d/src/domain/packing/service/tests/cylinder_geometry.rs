@@ -8,7 +8,7 @@
         let cylinder = PackedItem {
             item_index: 0,
             item: crate::domain::item::ActualItem {
-                id: "cyl_y".to_string(),
+                id: "cyl_y".into(),
                 name: "Cylinder Y".to_string(),
                 package_code: None,
                 pack: None,
@@ -52,7 +52,7 @@
         let cyl0 = PackedItem {
             item_index: 0,
             item: crate::domain::item::ActualItem {
-                id: "cyl_0".to_string(),
+                id: "cyl_0".into(),
                 name: "Cyl 0".to_string(),
                 package_code: None,
                 pack: None,
@@ -79,7 +79,7 @@
         let cyl1 = PackedItem {
             item_index: 1,
             item: crate::domain::item::ActualItem {
-                id: "cyl_1".to_string(),
+                id: "cyl_1".into(),
                 name: "Cyl 1".to_string(),
                 package_code: None,
                 pack: None,
@@ -109,7 +109,7 @@
                 height: meters(20.0),
                 depth: meters(20.0),
                 capacity: meters(8000.0),
-                type_code: "BIN-20".to_string(),
+                type_code: "BIN-20".into(),
                 is_main: true,
             },
             batch_no: None,
@@ -129,7 +129,7 @@
         let cyl0 = PackedItem {
             item_index: 0,
             item: crate::domain::item::ActualItem {
-                id: "cyl_0".to_string(),
+                id: "cyl_0".into(),
                 name: "Cyl 0".to_string(),
                 package_code: None,
                 pack: None,
@@ -156,7 +156,7 @@
         let cyl1 = PackedItem {
             item_index: 1,
             item: crate::domain::item::ActualItem {
-                id: "cyl_1".to_string(),
+                id: "cyl_1".into(),
                 name: "Cyl 1".to_string(),
                 package_code: None,
                 pack: None,
@@ -186,7 +186,7 @@
                 height: meters(20.0),
                 depth: meters(20.0),
                 capacity: meters(8000.0),
-                type_code: "BIN-20".to_string(),
+                type_code: "BIN-20".into(),
                 is_main: true,
             },
             batch_no: None,

@@ -1,4 +1,4 @@
-//! Expression symbol types.
+//! 表达式符号类型 / Expression symbol types.
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -14,15 +14,19 @@ use super::{
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 use crate::token::TokenList;
 
-/// Generic expression symbol.
+/// 通用表达式符号 / Generic expression symbol.
 #[derive(Debug, Clone)]
 pub struct ExpressionSymbol<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 符号标识符 / Symbol identifier.
     id: IntermediateSymbolId,
+    /// 符号类别 / Symbol category.
     category: Category,
+    /// 缓存值 / Cached value.
     cached_value: Option<V>,
+    /// 声明的依赖 ID 列表 / Declared dependency IDs.
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -30,6 +34,7 @@ impl<V> ExpressionSymbol<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 使用指定 ID、名称和类别创建表达式符号 / Create an expression symbol with the given ID, name, and category.
     pub fn new(id: u64, name: &str, category: Category) -> Self {
         Self {
             id: IntermediateSymbolId::new(id, name),
@@ -39,6 +44,7 @@ where
         }
     }
 
+    /// 使用指定 ID、名称、类别和依赖 ID 创建表达式符号 / Create an expression symbol with the given ID, name, category, and dependency IDs.
     pub fn with_dependencies(
         id: u64,
         name: &str,
@@ -126,14 +132,17 @@ where
     }
 }
 
-/// Generic linear expression symbol.
+/// 通用线性表达式符号 / Generic linear expression symbol.
 #[derive(Debug, Clone)]
 pub struct LinearExpressionSymbol<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 内部表达式符号 / Inner expression symbol.
     inner: ExpressionSymbol<V>,
+    /// 线性单项式列表 / Linear monomials.
     monomials: Vec<LinearMonomial<V>>,
+    /// 常数项 / Constant term.
     constant: V,
 }
 
@@ -141,6 +150,7 @@ impl<V> LinearExpressionSymbol<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 使用指定 ID、名称、单项式和常数项创建线性表达式符号 / Create a linear expression symbol with the given ID, name, monomials, and constant.
     pub fn new(id: u64, name: &str, monomials: Vec<LinearMonomial<V>>, constant: V) -> Self {
         Self {
             inner: ExpressionSymbol::new(id, name, Category::Linear),
@@ -149,6 +159,7 @@ where
         }
     }
 
+    /// 使用指定 ID、名称、单项式、常数项和依赖 ID 创建线性表达式符号 / Create a linear expression symbol with the given ID, name, monomials, constant, and dependency IDs.
     pub fn new_with_dependencies(
         id: u64,
         name: &str,
@@ -276,14 +287,17 @@ where
     }
 }
 
-/// Generic quadratic expression symbol.
+/// 通用二次表达式符号 / Generic quadratic expression symbol.
 #[derive(Debug, Clone)]
 pub struct QuadraticExpressionSymbol<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 内部表达式符号 / Inner expression symbol.
     inner: ExpressionSymbol<V>,
+    /// 二次单项式列表 / Quadratic monomials.
     monomials: Vec<QuadraticMonomial<V>>,
+    /// 常数项 / Constant term.
     constant: V,
 }
 
@@ -291,6 +305,7 @@ impl<V> QuadraticExpressionSymbol<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 使用指定 ID、名称、单项式和常数项创建二次表达式符号 / Create a quadratic expression symbol with the given ID, name, monomials, and constant.
     pub fn new(id: u64, name: &str, monomials: Vec<QuadraticMonomial<V>>, constant: V) -> Self {
         Self {
             inner: ExpressionSymbol::new(id, name, Category::Quadratic),
@@ -299,6 +314,7 @@ where
         }
     }
 
+    /// 使用指定 ID、名称、单项式、常数项和依赖 ID 创建二次表达式符号 / Create a quadratic expression symbol with the given ID, name, monomials, constant, and dependency IDs.
     pub fn new_with_dependencies(
         id: u64,
         name: &str,

@@ -1,4 +1,4 @@
-//! Bivariate linear piecewise interpolation function symbol.
+//! 二元线性分段插值函数符号 / Bivariate linear piecewise interpolation function symbol
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -57,6 +57,7 @@ impl<V> Point3<V> {
     }
 }
 
+/// 使用凸组合的双变量分段线性插值。
 /// Bivariate piecewise linear interpolation using convex combinations.
 #[derive(Debug, Clone)]
 pub struct BivariateLinearPiecewiseFunction<V = f64>
@@ -76,6 +77,7 @@ impl<V> BivariateLinearPiecewiseFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
 {
+    /// 创建新的双变量分段线性插值函数 / Create a new bivariate piecewise linear interpolation function
     pub fn new(
         id: u64,
         name: &str,
@@ -112,6 +114,7 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -124,22 +127,27 @@ where
         cloned
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取 lambda 变量列表 / Get the lambda variables
     pub fn lambda_variables(&self) -> &[ContinuousVariableItem] {
         &self.lambda_vars
     }
 
+    /// 获取 x 输入多项式 / Get the x input polynomial
     pub fn x_input_polynomial(&self) -> &Linear<V> {
         &self.x_input
     }
 
+    /// 获取 y 输入多项式 / Get the y input polynomial
     pub fn y_input_polynomial(&self) -> &Linear<V> {
         &self.y_input
     }
 
+    /// 获取插值采样点 / Get the interpolation sampling points
     pub fn points(&self) -> &[Point3<V>] {
         &self.points
     }

@@ -1,3 +1,5 @@
+//! 管道列表生成器 / Pipeline list generator
+
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use super::super::aggregation::Aggregation;

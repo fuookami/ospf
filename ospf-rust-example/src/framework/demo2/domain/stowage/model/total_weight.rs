@@ -1,3 +1,4 @@
+//! 总重模型 / Total weight model
 use std::collections::HashMap;
 use super::super::super::aircraft::model::{AircraftModel, FlightPhase, FuelConstant, Fuselage};
 use super::super::super::shared::units::{quantity_value_in_unit, quantity_value_in_unit_or_default, weight_unit};
@@ -11,16 +12,18 @@ use ospf_rust_core::symbol::flatten::LinearMonomial;
 /// 总重变量索引 / Total weight variable indices
 #[derive(Debug, Clone)]
 pub struct TotalWeightVariables {
-    /// estimateTotalWeight[phase] = 各阶段估算总重
+    /// 各阶段估算总重 / Estimate total weight by flight phase
     pub estimate_total_weight: HashMap<FlightPhase, usize>,
-    /// actualTotalWeight[phase] = 各阶段实际总重
+    /// 各阶段实际总重 / Actual total weight by flight phase
     pub actual_total_weight: HashMap<FlightPhase, usize>,
 }
 
 /// 总重 / Total weight (对齐 Kotlin TotalWeight)
 #[derive(Debug)]
 pub struct TotalWeight {
+    /// 各阶段最大总重 / Maximum total weight by flight phase
     pub max_total_weight: HashMap<FlightPhase, f64>,
+    /// 各阶段计算总重 / Computed total weight by flight phase
     pub computed_total_weight: HashMap<FlightPhase, f64>,
 }
 

@@ -1,11 +1,15 @@
+//! 任务对换管理模块 / Flight task reverse management module
 use std::collections::HashMap;
 use time::Duration;
 
 /// 可对换任务对 / Reversible pair (对齐 FSRA FlightTaskReverse.ReversiblePair)
 #[derive(Debug, Clone)]
 pub struct ReversiblePair {
+    /// 前序任务标识 / Preceding task identifier
     pub prev_task_id: String,
+    /// 后序任务标识 / Succeeding task identifier
     pub succ_task_id: String,
+    /// 是否对称 / Whether symmetrical
     pub symmetrical: bool,
 }
 
@@ -18,6 +22,7 @@ pub struct FlightTaskReverse {
 }
 
 impl FlightTaskReverse {
+    /// 默认时间差限制 / Default time difference limit
     pub const DEFAULT_TIME_DIFFERENCE_LIMIT: Duration = Duration::hours(5);
 
     /// 创建任务对换管理器 / Create flight task reverse

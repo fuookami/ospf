@@ -11,20 +11,36 @@ pub struct ColumnGenerationPackingAnalysis<V, U: UnitTrait> {
 }
 
 /// 列生成装箱分析器 / Column generation packing analyzer
-#[derive(Debug, Clone, Default)]
-pub struct ColumnGenerationPackingAnalyzer {
+#[derive(Debug, Clone)]
+pub struct ColumnGenerationPackingAnalyzer<G = PackingGeometryGuard> {
     /// 装箱器 / Packer
     pub packer: Packer,
     /// 渲染适配器 / Renderer adapter
     pub renderer: PackingRendererAdapter,
+    /// 几何校验策略 / Geometry validation strategy
+    pub geometry_guard: G,
 }
 
-impl ColumnGenerationPackingAnalyzer {
+impl Default for ColumnGenerationPackingAnalyzer<PackingGeometryGuard> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ColumnGenerationPackingAnalyzer<PackingGeometryGuard> {
     /// 创建分析器 / Create analyzer
     pub fn new() -> Self {
+        Self::with_geometry_guard(PackingGeometryGuard::new())
+    }
+}
+
+impl<G> ColumnGenerationPackingAnalyzer<G> {
+    /// 使用自定义几何校验策略创建分析器 / Create analyzer with custom geometry validation strategy
+    pub fn with_geometry_guard(geometry_guard: G) -> Self {
         Self {
             packer: Packer::new(),
             renderer: PackingRendererAdapter::new(),
+            geometry_guard,
         }
     }
 
@@ -35,10 +51,11 @@ impl ColumnGenerationPackingAnalyzer {
     ) -> Result<ColumnGenerationPackingAnalysis<V, U>, Vec<String>>
     where
         V: num_traits::Float + Field + Clone + Debug + Send + Sync + PartialOrd + num_traits::FloatConst + Into<f64>,
-        U: CTUnit + Default + Clone,
+        U: CTUnit + Default + Clone + Debug + Send + Sync,
+        G: PackingGeometryContract<V, U>,
     {
         for packed_bin in &packed_bins {
-            PackingGeometryGuard::validate(packed_bin)?;
+            self.geometry_guard.validate(packed_bin)?;
         }
 
         let packing_result = self.packer.invoke(packed_bins);

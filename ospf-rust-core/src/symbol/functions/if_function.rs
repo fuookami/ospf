@@ -1,5 +1,4 @@
-//! If 函数符号
-//! If Function Symbol
+//! If 函数符号 / If function symbol
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -81,12 +80,19 @@ pub struct IfFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 符号 ID / Symbol ID
     id: IntermediateSymbolId,
+    /// 条件多项式 / Condition polynomial
     condition: Linear<V>,
+    /// then 表达式 / Then expression
     then_expr: Linear<V>,
+    /// else 表达式 / Else expression
     else_expr: Linear<V>,
+    /// 结果连续变量 / Result continuous variable
     result_var: ContinuousVariableItem,
+    /// 条件指示二值变量 / Condition indicator binary variable
     condition_indicator: BinaryVariableItem,
+    /// 声明的依赖 ID / Declared dependency IDs
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -148,15 +154,18 @@ where
         Self::new(id, &name, condition, then_expr, else_expr)
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取条件多项式 / Get the condition polynomial
     pub fn condition_polynomial(&self) -> &Linear<V> {
         &self.condition
     }
 
+    /// 获取 then 多项式 / Get the then polynomial
     pub fn then_polynomial(&self) -> &Linear<V> {
         &self.then_expr
     }

@@ -1,3 +1,4 @@
+//! 冗余领域服务 / Redundancy domain service.
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::redundancy::aggregation::RedundancyAggregation;
@@ -9,6 +10,10 @@ mod limits;
 pub(crate) mod pipeline_list_generator;
 mod policy;
 
+/// 应用冗余管线 / Apply redundancy pipeline
+///
+/// 根据管线模式依次执行冗余约束步骤。
+/// Executes redundancy constraint steps sequentially based on pipeline mode.
 pub fn apply_redundancy_pipeline(
     model: &mut MetaModel<f64>,
     request: &Demo2Request,

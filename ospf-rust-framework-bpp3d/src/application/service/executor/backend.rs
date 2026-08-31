@@ -1,4 +1,4 @@
-/// MetaModel solver backend / MetaModel solver backend
+/// MetaModel 求解器后端 / MetaModel solver backend
 pub trait MetaModelSolverBackend: Debug + Send + Sync {
     /// backend 名称 / Backend name
     fn name(&self) -> &str;
@@ -18,7 +18,7 @@ pub trait MetaModelSolverBackend: Debug + Send + Sync {
     ) -> Result<MetaModelExecutorSolveResult, String>;
 }
 
-/// no-op MetaModel solver backend / No-op MetaModel solver backend
+/// 空操作 MetaModel 求解器后端 / No-op MetaModel solver backend
 #[derive(Debug, Clone, Default)]
 pub struct NoopMetaModelSolverBackend;
 
@@ -44,7 +44,7 @@ impl MetaModelSolverBackend for NoopMetaModelSolverBackend {
     }
 }
 
-/// ColumnGenerationSolver MetaModel backend / ColumnGenerationSolver MetaModel backend
+/// 列生成求解器 MetaModel 后端 / ColumnGenerationSolver MetaModel backend
 ///
 /// 该 adapter 复用 framework 的 solver 入口，RMP 使用 LP 求解并读取 dual，
 /// final 使用 MILP 求解并读取 primal solution。
@@ -128,6 +128,7 @@ where
             objective: Some(result.result.obj),
             primal_solution: result.result.solution,
             dual_solution: result.dual_solution.constraints,
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::from([
                 ("backend_kind".to_string(), "column_generation_solver".to_string()),
                 ("backend_phase".to_string(), "rmp".to_string()),
@@ -148,6 +149,7 @@ where
             objective: Some(result.obj),
             primal_solution: result.solution,
             dual_solution: Vec::new(),
+            additional_shadow_prices: HashMap::new(),
             info: HashMap::from([
                 ("backend_kind".to_string(), "column_generation_solver".to_string()),
                 ("backend_phase".to_string(), "final".to_string()),
@@ -155,4 +157,3 @@ where
         })
     }
 }
-

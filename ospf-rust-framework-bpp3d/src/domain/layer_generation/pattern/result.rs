@@ -10,7 +10,7 @@ where
     V: Field + num_traits::Float + Clone + Debug + Send + Sync + PartialEq + PartialOrd + num_traits::FloatConst,
     U: ospf_rust_quantities::unit::concept::UnitTrait + CTUnit + Default + Debug + Clone + Send + Sync,
 {
-    let mut coverage_by_item = HashMap::<String, f64>::new();
+    let mut coverage_by_item = HashMap::<ItemId, f64>::new();
     let mut max_depth = V::zero();
     let mut max_height = V::zero();
     for placement in &placements {

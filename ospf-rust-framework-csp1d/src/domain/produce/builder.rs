@@ -26,15 +26,25 @@ use super::{
 /// CSP1D 产出上下文 builder / CSP1D produce context builder
 #[derive(Clone)]
 pub struct Csp1dProduceContextBuilder<V: SolveValue> {
+    /// 产出输入 / Produce input
     input: ProduceInput<V>,
+    /// Yield 配置 / Yield configuration
     yield_config: Option<YieldModelingConfig<V>>,
+    /// Waste 配置 / Waste minimization configuration
     waste_config: Option<WasteMinimizationConfig<V>>,
+    /// Length 配置 / Length assignment configuration
     length_config: Option<LengthAssignmentModelingConfig<V>>,
+    /// 建模模式 / Modeling mode
     mode: Csp1dModelingMode,
+    /// 是否最终 MILP / Whether final MILP
     is_final_milp: bool,
+    /// 额外管线 / Extra pipelines
     extra_pipelines: Vec<Arc<dyn Pipeline<MetaModel<f64>> + Send + Sync>>,
+    /// 增量扩展管线 / Incremental extension pipelines
     incremental_pipelines: Vec<Arc<dyn Csp1dIncrementalPipeline<V>>>,
+    /// 目标策略 / Objective policies
     objective_policies: Vec<Arc<dyn Csp1dObjectivePolicy<V>>>,
+    /// 建模扩展 / Modeling extensions
     extensions: Vec<Csp1dModelingExtension<V>>,
 }
 

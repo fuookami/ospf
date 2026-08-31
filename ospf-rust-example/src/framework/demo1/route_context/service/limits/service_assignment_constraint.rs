@@ -1,8 +1,11 @@
+//! 服务分配约束 / Service assignment constraint
+
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo1::route_context::model::Assignment;
 
-/// 服务分配约束：每个 service 最多被一个 normal node 使用
+/// 服务分配约束：每个服务最多被一个普通节点使用 / Service assignment constraint: each service is used by at most one normal node
+///
 /// sum(x[node, s] for all nodes) <= 1
 ///
 /// 从 service_assignment[s] 符号组合取多项式：

@@ -1,3 +1,4 @@
+//! 平均气动弦模型 / Mean aerodynamic chord model
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -6,7 +7,9 @@ use ospf_rust_core::symbol::LinearExpressionSymbol;
 /// MAC (平均气动力弦) / Mean Aerodynamic Chord (对齐 Kotlin MAC)
 #[derive(Debug, Clone)]
 pub struct Mac {
+    /// MAC 值 / MAC value
     pub value: f64,
+    /// MAC 百分比 / MAC percentage
     pub percentage: f64,
 }
 

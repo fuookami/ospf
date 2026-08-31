@@ -2,7 +2,7 @@
     fn layer_generation_demand_entry_remaining() {
         let entry = LayerGenerationDemandEntry {
             mode: Bpp3dDemandMode::Item,
-            key: Bpp3dDemandKey::Item { id: "item1".to_string() },
+            key: Bpp3dDemandKey::Item { id: "item1".into() },
             demand: 10.0,
             satisfied: 7.0,
         };
@@ -13,7 +13,7 @@
     fn layer_generation_demand_entry_remaining_zero() {
         let entry = LayerGenerationDemandEntry {
             mode: Bpp3dDemandMode::Item,
-            key: Bpp3dDemandKey::Item { id: "item1".to_string() },
+            key: Bpp3dDemandKey::Item { id: "item1".into() },
             demand: 5.0,
             satisfied: 8.0,
         };

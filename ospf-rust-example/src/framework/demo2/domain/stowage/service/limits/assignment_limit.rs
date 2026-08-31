@@ -1,3 +1,4 @@
+//! 分配限制 / Assignment limits
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;

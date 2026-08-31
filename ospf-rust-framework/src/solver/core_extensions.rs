@@ -575,6 +575,62 @@ pub(crate) fn fixed_variables_by_id(
     fixed
 }
 
+fn fix_linear_subproblem_variables(
+    model: &mut LinearTriadModel,
+    master_solution: &[f64],
+    preferred_ids: &[VariableId],
+) {
+    if preferred_ids.is_empty() {
+        for (index, value) in master_solution.iter().copied().enumerate() {
+            if index >= model.num_variables() {
+                break;
+            }
+            model.lb[index] = value;
+            model.ub[index] = value;
+        }
+        return;
+    }
+
+    for (variable_id, value) in preferred_ids
+        .iter()
+        .copied()
+        .zip(master_solution.iter().copied())
+    {
+        if let Some(index) = model.find_variable_index(variable_id) {
+            model.lb[index] = value;
+            model.ub[index] = value;
+        }
+    }
+}
+
+fn fix_quadratic_subproblem_variables(
+    model: &mut QuadraticTetradModel,
+    master_solution: &[f64],
+    preferred_ids: &[VariableId],
+) {
+    if preferred_ids.is_empty() {
+        for (index, value) in master_solution.iter().copied().enumerate() {
+            if index >= model.num_variables() {
+                break;
+            }
+            model.basic.linear.lb[index] = value;
+            model.basic.linear.ub[index] = value;
+        }
+        return;
+    }
+
+    for (variable_id, value) in preferred_ids
+        .iter()
+        .copied()
+        .zip(master_solution.iter().copied())
+    {
+        if let Some(index) = model.basic.linear.find_variable_index(variable_id) {
+            model.basic.linear.lb[index] = value;
+            model.basic.linear.ub[index] = value;
+        }
+    }
+}
+
 pub(crate) fn linear_inequality_to_cut(
     inequality: &LinearInequality<f64>,
     name: String,
@@ -800,7 +856,7 @@ where
     >
     where
         Self: Sized,
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         let mechanism_model = match meta_model.try_to_mechanism_model_with_status_callback(
             options.model_building_status_callback.as_ref(),
@@ -874,7 +930,7 @@ where
     ) -> Result<FeasibleSolutionV<V>>
     where
         Self: Sized,
-        V: ospf_rust_core::solver::SolveValue,
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
     {
         let mechanism_model = meta_model.try_to_mechanism_model_with_status_callback(
             options.model_building_status_callback.as_ref(),
@@ -946,13 +1002,12 @@ where
         master_solution: &[f64],
     ) -> LinearTriadModel {
         let mut fixed_model = model.clone();
-        for (index, value) in master_solution.iter().copied().enumerate() {
-            if index >= fixed_model.num_variables() {
-                break;
-            }
-            fixed_model.lb[index] = value;
-            fixed_model.ub[index] = value;
-        }
+        let fixed_variable_ids = self
+            .cut_context
+            .as_ref()
+            .map(|context| context.fixed_variable_ids.as_slice())
+            .unwrap_or_default();
+        fix_linear_subproblem_variables(&mut fixed_model, master_solution, fixed_variable_ids);
         fixed_model.linear_relax();
         fixed_model
     }
@@ -1169,13 +1224,12 @@ where
         master_solution: &[f64],
     ) -> QuadraticTetradModel {
         let mut fixed_model = model.clone();
-        for (index, value) in master_solution.iter().copied().enumerate() {
-            if index >= fixed_model.num_variables() {
-                break;
-            }
-            fixed_model.basic.linear.lb[index] = value;
-            fixed_model.basic.linear.ub[index] = value;
-        }
+        let fixed_variable_ids = self
+            .cut_context
+            .as_ref()
+            .map(|context| context.fixed_variable_ids.as_slice())
+            .unwrap_or_default();
+        fix_quadratic_subproblem_variables(&mut fixed_model, master_solution, fixed_variable_ids);
         fixed_model.linear_relax();
         fixed_model
     }
@@ -1382,13 +1436,16 @@ where
         master_solution: &[f64],
     ) -> Result<LinearSubResult> {
         let mut fixed_subproblem = model.clone();
-        for (index, value) in master_solution.iter().copied().enumerate() {
-            if index >= fixed_subproblem.num_variables() {
-                break;
-            }
-            fixed_subproblem.lb[index] = value;
-            fixed_subproblem.ub[index] = value;
-        }
+        let fixed_variable_ids = self
+            .cut_context
+            .as_ref()
+            .map(|context| context.fixed_variable_ids.as_slice())
+            .unwrap_or_default();
+        fix_linear_subproblem_variables(
+            &mut fixed_subproblem,
+            master_solution,
+            fixed_variable_ids,
+        );
         fixed_subproblem.linear_relax();
 
         let sub_output = self.solver.solve_linear(&fixed_subproblem)?;
@@ -1642,6 +1699,49 @@ mod tests {
 
     #[derive(Debug)]
     struct MockCoreColumnGenerationSolver;
+
+    #[test]
+    fn linear_subproblem_fixes_only_declared_shared_variables_by_id() {
+        let local = ContinuousVariableItem::auto("local");
+        let shared = ContinuousVariableItem::auto("shared");
+        let shared_id = shared.id();
+        let mut basic = BasicLinearTriadModel::new("linear_fixed_variables");
+        basic.add_variable(Token::from_generic(local, 0));
+        basic.add_variable(Token::from_generic(shared, 1));
+        let mut model = LinearTriadModel::from_basic(basic);
+
+        fix_linear_subproblem_variables(&mut model, &[3.0, 99.0], &[shared_id]);
+
+        assert!(model.lb[0].is_infinite() && model.lb[0].is_sign_negative());
+        assert!(model.ub[0].is_infinite() && model.ub[0].is_sign_positive());
+        assert_eq!(model.lb[1], 3.0);
+        assert_eq!(model.ub[1], 3.0);
+    }
+
+    #[test]
+    fn quadratic_subproblem_fixes_only_declared_shared_variables_by_id() {
+        let local = ContinuousVariableItem::auto("local");
+        let shared = ContinuousVariableItem::auto("shared");
+        let shared_id = shared.id();
+        let mut linear = BasicLinearTriadModel::new("quadratic_fixed_variables");
+        linear.add_variable(Token::from_generic(local, 0));
+        linear.add_variable(Token::from_generic(shared, 1));
+        let basic = BasicQuadraticTetradModel::from_linear(linear);
+        let mut model = QuadraticTetradModel::from_basic(basic);
+
+        fix_quadratic_subproblem_variables(&mut model, &[4.0, 99.0], &[shared_id]);
+
+        assert!(
+            model.basic.linear.lb[0].is_infinite()
+                && model.basic.linear.lb[0].is_sign_negative()
+        );
+        assert!(
+            model.basic.linear.ub[0].is_infinite()
+                && model.basic.linear.ub[0].is_sign_positive()
+        );
+        assert_eq!(model.basic.linear.lb[1], 4.0);
+        assert_eq!(model.basic.linear.ub[1], 4.0);
+    }
 
     #[test]
     fn solution_vector_from_output_returns_solution_for_feasible_output() {

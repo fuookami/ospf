@@ -1,23 +1,23 @@
 //! # ChunkedVec - 分块存储容器
 //!
-//! ## Overview / 概述
+//! ## 概述 / Overview
 //!
+//! 本模块提供 `ChunkedVec<T>`，一个分块存储容器，专为并行处理和大型多维数组的高效内存管理而设计。
 //! This module provides `ChunkedVec<T>`, a chunked storage container designed for
 //! parallel processing and efficient memory management of large multi-dimensional arrays.
 //!
-//! 本模块提供 `ChunkedVec<T>`，一个分块存储容器，专为并行处理和大型多维数组的高效内存管理而设计。
+//! ## 主要特性 / Key Features
 //!
-//! ## Key Features / 主要特性
+//! - 基于分块的存储，更好的缓存局部性 / Chunk-based storage for better cache locality
+//! - 并行处理支持 / Parallel processing support
+//! - 大数组内存效率高 / Memory-efficient for large arrays
 //!
-//! - Chunk-based storage for better cache locality / 基于分块的存储，更好的缓存局部性
-//! - Parallel processing support / 并行处理支持
-//! - Memory-efficient for large arrays / 大数组内存效率高
-//!
-//! ## Example / 示例
+//! ## 示例 / Example
 //!
 //! ```rust
 //! use ospf_rust_base::chunked_collection::ChunkedVec;
 //!
+//! // 使用默认块大小（4096 个元素）创建 ChunkedVec
 //! // Create a ChunkedVec with default chunk size (4096 elements)
 //! let mut vec: ChunkedVec<i32> = ChunkedVec::new();
 //! vec.push(1);
@@ -32,49 +32,44 @@ use cc_traits::{
 };
 use std::ops::{Index, IndexMut};
 
-/// Default chunk size in elements (4KB / sizeof(T) for typical types)
-/// 默认块大小（元素数量），对于典型类型约为 4KB / sizeof(T)
+/// 默认块大小（元素数量），对于典型类型约为 4KB / sizeof(T) / Default chunk size in elements (4KB / sizeof(T) for typical types)
 pub const DEFAULT_CHUNK_SIZE: usize = 4096;
 
 /// # ChunkedVec - 分块存储容器
 ///
-/// A chunked storage container that stores elements in fixed-size chunks.
-/// This design provides several advantages for multi-dimensional arrays:
-///
 /// 分块存储容器，将元素存储在固定大小的块中。
 /// 这种设计为多维数组提供了几个优势：
 ///
-/// ## Advantages / 优势
+/// A chunked storage container that stores elements in fixed-size chunks.
+/// This design provides several advantages for multi-dimensional arrays:
 ///
-/// 1. **Cache locality**: Each chunk fits in CPU cache / 缓存局部性：每个块适合 CPU 缓存
-/// 2. **Parallel processing**: Chunks can be processed independently / 并行处理：块可以独立处理
-/// 3. **Memory efficiency**: Avoids large contiguous allocations / 内存效率：避免大块连续分配
-/// 4. **Resizability**: Efficient growth without reallocation / 可调整性：无需重新分配的高效增长
+/// ## 优势 / Advantages
 ///
-/// ## Type Parameters / 类型参数
+/// 1. **缓存局部性**：每个块适合 CPU 缓存 / **Cache locality**: Each chunk fits in CPU cache
+/// 2. **并行处理**：块可以独立处理 / **Parallel processing**: Chunks can be processed independently
+/// 3. **内存效率**：避免大块连续分配 / **Memory efficiency**: Avoids large contiguous allocations
+/// 4. **可调整性**：无需重新分配的高效增长 / **Resizability**: Efficient growth without reallocation
 ///
-/// - `T` - The element type / 元素类型
+/// ## 类型参数 / Type Parameters
+///
+/// - `T` - 元素类型 / The element type
 #[derive(Debug, Clone)]
 pub struct ChunkedVec<T> {
-    /// The chunks storing elements / 存储元素的块
+    /// 存储元素的块 / The chunks storing elements
     chunks: Vec<Vec<T>>,
-    /// Number of elements per chunk / 每块的元素数量
+    /// 每块的元素数量 / Number of elements per chunk
     chunk_size: usize,
-    /// Total number of elements / 元素总数
+    /// 元素总数 / Total number of elements
     len: usize,
 }
 
 impl<T> ChunkedVec<T> {
-    /// Create a new empty ChunkedVec with default chunk size.
-    ///
-    /// 使用默认块大小创建新的空 ChunkedVec。
+    /// 使用默认块大小创建新的空 ChunkedVec / Create a new empty ChunkedVec with default chunk size
     pub fn new() -> Self {
         Self::with_chunk_size(DEFAULT_CHUNK_SIZE)
     }
 
-    /// Create a new empty ChunkedVec with a specific chunk size.
-    ///
-    /// 使用指定块大小创建新的空 ChunkedVec。
+    /// 使用指定块大小创建新的空 ChunkedVec / Create a new empty ChunkedVec with a specific chunk size
     pub fn with_chunk_size(chunk_size: usize) -> Self {
         assert!(chunk_size > 0, "Chunk size must be greater than 0");
         Self {
@@ -84,9 +79,7 @@ impl<T> ChunkedVec<T> {
         }
     }
 
-    /// Create a ChunkedVec with specified capacity.
-    ///
-    /// 创建具有指定容量的 ChunkedVec。
+    /// 创建具有指定容量的 ChunkedVec / Create a ChunkedVec with specified capacity
     pub fn with_capacity(capacity: usize, chunk_size: usize) -> Self {
         assert!(chunk_size > 0, "Chunk size must be greater than 0");
         let num_chunks = (capacity + chunk_size - 1) / chunk_size;
@@ -97,32 +90,32 @@ impl<T> ChunkedVec<T> {
         }
     }
 
-    /// Get the chunk size (elements per chunk).
+    /// 获取块大小（每块元素数） / Get the chunk size (elements per chunk)
     pub fn chunk_size(&self) -> usize {
         self.chunk_size
     }
 
-    /// Get the number of chunks.
+    /// 获取块数量 / Get the number of chunks
     pub fn chunk_count(&self) -> usize {
         self.chunks.len()
     }
 
-    /// Get the total number of elements.
+    /// 获取元素总数 / Get the total number of elements
     pub fn len(&self) -> usize {
         self.len
     }
 
-    /// Check if the ChunkedVec is empty.
+    /// 检查 ChunkedVec 是否为空 / Check if the ChunkedVec is empty
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
-    /// Get the capacity (allocated space) in elements.
+    /// 获取已分配容量（元素数） / Get the capacity (allocated space) in elements
     pub fn capacity(&self) -> usize {
         self.chunks.len() * self.chunk_size
     }
 
-    /// Push an element to the end.
+    /// 在末尾添加元素 / Push an element to the end
     pub fn push(&mut self, value: T) {
         let chunk_index = self.len / self.chunk_size;
         if chunk_index >= self.chunks.len() {
@@ -132,7 +125,7 @@ impl<T> ChunkedVec<T> {
         self.len += 1;
     }
 
-    /// Pop an element from the end.
+    /// 从末尾弹出元素 / Pop an element from the end
     pub fn pop(&mut self) -> Option<T> {
         if self.len == 0 {
             return None;
@@ -146,7 +139,7 @@ impl<T> ChunkedVec<T> {
         element
     }
 
-    /// Get a reference to an element by index.
+    /// 按索引获取元素的引用 / Get a reference to an element by index
     pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len {
             return None;
@@ -156,7 +149,7 @@ impl<T> ChunkedVec<T> {
         Some(&self.chunks[chunk_index][element_index])
     }
 
-    /// Get a mutable reference to an element by index.
+    /// 按索引获取元素的可变引用 / Get a mutable reference to an element by index
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         if index >= self.len {
             return None;
@@ -166,27 +159,27 @@ impl<T> ChunkedVec<T> {
         Some(&mut self.chunks[chunk_index][element_index])
     }
 
-    /// Get a reference to a chunk by index.
+    /// 按索引获取块的引用 / Get a reference to a chunk by index
     pub fn chunk(&self, chunk_index: usize) -> Option<&[T]> {
         self.chunks.get(chunk_index).map(|v| v.as_slice())
     }
 
-    /// Get a mutable reference to a chunk by index.
+    /// 按索引获取块的可变引用 / Get a mutable reference to a chunk by index
     pub fn chunk_mut(&mut self, chunk_index: usize) -> Option<&mut [T]> {
         self.chunks.get_mut(chunk_index).map(|v| v.as_mut_slice())
     }
 
-    /// Iterate over all chunks (for parallel processing).
+    /// 遍历所有块（用于并行处理） / Iterate over all chunks (for parallel processing)
     pub fn chunks(&self) -> impl Iterator<Item = &[T]> {
         self.chunks.iter().map(|v| v.as_slice())
     }
 
-    /// Iterate mutably over all chunks (for parallel processing).
+    /// 可变遍历所有块（用于并行处理） / Iterate mutably over all chunks (for parallel processing)
     pub fn chunks_mut(&mut self) -> impl Iterator<Item = &mut [T]> {
         self.chunks.iter_mut().map(|v| v.as_mut_slice())
     }
 
-    /// Get the valid element range for a chunk.
+    /// 获取块的有效元素范围 / Get the valid element range for a chunk
     pub fn chunk_range(&self, chunk_index: usize) -> Option<std::ops::Range<usize>> {
         if chunk_index >= self.chunks.len() {
             return None;
@@ -196,13 +189,13 @@ impl<T> ChunkedVec<T> {
         Some(start..end)
     }
 
-    /// Clear all elements.
+    /// 清空所有元素 / Clear all elements
     pub fn clear(&mut self) {
         self.chunks.clear();
         self.len = 0;
     }
 
-    /// Reserve capacity for at least `additional` more elements.
+    /// 为至少 `additional` 个额外元素预留容量 / Reserve capacity for at least `additional` more elements
     pub fn reserve(&mut self, additional: usize) {
         let new_len = self.len + additional;
         let needed_chunks = (new_len + self.chunk_size - 1) / self.chunk_size;
@@ -215,7 +208,7 @@ impl<T> ChunkedVec<T> {
         }
     }
 
-    /// Resize the ChunkedVec, filling new elements with a value.
+    /// 调整 ChunkedVec 大小，用指定值填充新元素 / Resize the ChunkedVec, filling new elements with a value
     pub fn resize(&mut self, new_len: usize, value: T)
     where
         T: Clone,
@@ -232,7 +225,7 @@ impl<T> ChunkedVec<T> {
         }
     }
 
-    /// Convert to a flat Vec.
+    /// 转换为扁平 Vec / Convert to a flat Vec
     pub fn into_vec(self) -> Vec<T> {
         let mut result = Vec::with_capacity(self.len);
         for chunk in self.chunks {
@@ -241,7 +234,7 @@ impl<T> ChunkedVec<T> {
         result
     }
 
-    /// Convert to a flat Vec (alias for into_vec for compatibility).
+    /// 转换为扁平 Vec（into_vec 的兼容别名） / Convert to a flat Vec (alias for into_vec for compatibility)
     pub fn to_vec(&self) -> Vec<T>
     where
         T: Clone,
@@ -253,12 +246,12 @@ impl<T> ChunkedVec<T> {
         result
     }
 
-    /// Create an iterator over elements.
+    /// 创建元素迭代器 / Create an iterator over elements
     pub fn iter(&self) -> ChunkedVecIter<'_, T> {
         ChunkedVecIter::new(self)
     }
 
-    /// Create a mutable iterator over elements.
+    /// 创建元素可变迭代器 / Create a mutable iterator over elements
     pub fn iter_mut(&mut self) -> ChunkedVecIterMut<'_, T> {
         ChunkedVecIterMut::new(self)
     }
@@ -354,16 +347,16 @@ impl<'a, T> IntoIterator for &'a mut ChunkedVec<T> {
     }
 }
 
-/// # ChunkedVecIter - Iterator for ChunkedVec
+/// # ChunkedVecIter - ChunkedVec 的迭代器
 ///
-/// An iterator over immutable references to elements in a ChunkedVec.
+/// ChunkedVec 中元素的不可变引用迭代器 / An iterator over immutable references to elements in a ChunkedVec.
 pub struct ChunkedVecIter<'a, T> {
     vec: &'a ChunkedVec<T>,
     current_index: usize,
 }
 
 impl<'a, T> ChunkedVecIter<'a, T> {
-    /// Create a new iterator.
+    /// 创建新的迭代器 / Create a new iterator
     pub fn new(vec: &'a ChunkedVec<T>) -> Self {
         Self {
             vec,
@@ -395,9 +388,9 @@ impl<'a, T> Iterator for ChunkedVecIter<'a, T> {
 
 impl<'a, T> ExactSizeIterator for ChunkedVecIter<'a, T> {}
 
-/// # ChunkedVecIterMut - Mutable Iterator for ChunkedVec
+/// # ChunkedVecIterMut - ChunkedVec 的可变迭代器
 ///
-/// An iterator over mutable references to elements in a ChunkedVec.
+/// ChunkedVec 中元素的可变引用迭代器 / An iterator over mutable references to elements in a ChunkedVec.
 pub struct ChunkedVecIterMut<'a, T> {
     chunks: std::slice::IterMut<'a, Vec<T>>,
     current_chunk: &'a mut [T],
@@ -407,7 +400,7 @@ pub struct ChunkedVecIterMut<'a, T> {
 }
 
 impl<'a, T> ChunkedVecIterMut<'a, T> {
-    /// Create a new mutable iterator.
+    /// 创建新的可变迭代器 / Create a new mutable iterator
     pub fn new(vec: &'a mut ChunkedVec<T>) -> Self {
         let total_len = vec.len;
         let mut chunks = vec.chunks.iter_mut();

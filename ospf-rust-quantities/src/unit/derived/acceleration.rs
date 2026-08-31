@@ -1,8 +1,6 @@
-//! Acceleration units - 加速度单位
-//! Acceleration units - SI acceleration units
+//! 加速度单位 / Acceleration units
 //!
-//! 提供加速度量纲的 SI 单位定义，包括米每二次方秒、标准重力加速度等。
-//! Provides SI unit definitions for acceleration dimension, including meter per second squared, standard gravity, etc.
+//! 提供加速度量纲的 SI 单位定义，包括米每二次方秒、标准重力加速度等 / Provides SI unit definitions for acceleration dimension, including meter per second squared, standard gravity, etc
 
 use crate::dimension::derived::Acceleration;
 use crate::scale::Scale;

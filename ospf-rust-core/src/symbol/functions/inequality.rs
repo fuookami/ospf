@@ -1,4 +1,4 @@
-//! Inequality function symbol.
+//! 不等式函数符号 / Inequality function symbol
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -73,16 +73,25 @@ where
     })
 }
 
+/// 不等式类型。
+/// Inequality kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InequalityKind {
+    /// 小于等于 / Less than or equal
     LessEqual,
+    /// 大于等于 / Greater than or equal
     GreaterEqual,
+    /// 严格小于 / Strictly less than
     Less,
+    /// 严格大于 / Strictly greater than
     Greater,
+    /// 等于 / Equal
     Equal,
+    /// 不等于 / Not equal
     NotEqual,
 }
 
+/// 不等式指示函数，返回 0 或 1。
 /// Represents an inequality condition, returns 0 or 1.
 #[derive(Debug, Clone)]
 pub struct InequalityFunction<V = f64>
@@ -103,6 +112,8 @@ impl<V> InequalityFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建不等式指示函数。
+    /// Create a new inequality indicator function.
     pub fn new(
         id: u64,
         name: &str,
@@ -161,6 +172,8 @@ where
         Self::new(id, &name, left, right, kind, big_m)
     }
 
+    /// 创建 `<=` 指示函数。
+    /// Create a `<=` indicator function.
     pub fn less_equal(id: u64, name: &str, left: Linear<V>, right: V, big_m: V) -> Self {
         Self::new(id, name, left, right, InequalityKind::LessEqual, big_m)
     }
@@ -185,6 +198,8 @@ where
         Self::less_equal(id, &name, left, right, big_m)
     }
 
+    /// 创建 `>=` 指示函数。
+    /// Create a `>=` indicator function.
     pub fn greater_equal(id: u64, name: &str, left: Linear<V>, right: V, big_m: V) -> Self {
         Self::new(id, name, left, right, InequalityKind::GreaterEqual, big_m)
     }

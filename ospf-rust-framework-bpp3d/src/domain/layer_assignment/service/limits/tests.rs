@@ -25,7 +25,7 @@ mod tests {
             height: meters(10.0),
             depth: meters(10.0),
             capacity: meters(1000.0),
-            type_code: "BIN-10".to_string(),
+            type_code: "BIN-10".into(),
             is_main: true,
         }
     }
@@ -44,7 +44,7 @@ mod tests {
     fn demand_constraint_shadow_price_key() {
         let entry = Bpp3dDemandEntry {
             mode: crate::domain::item::Bpp3dDemandMode::Item,
-            key: crate::domain::item::Bpp3dDemandKey::Item { id: "item1".to_string() },
+            key: crate::domain::item::Bpp3dDemandKey::Item { id: "item1".into() },
             demand: 10.0,
         };
         let key = DemandConstraint::<f64, Meter>::shadow_price_key(&entry);
@@ -53,7 +53,7 @@ mod tests {
 
     #[test]
     fn demand_constraint_registers_linear_cover_rows() {
-        let key = Bpp3dDemandKey::Item { id: "item1".to_string() };
+        let key = Bpp3dDemandKey::Item { id: "item1".into() };
         let mut assignment = ImpreciseAssignment {
             layers: vec![
                 make_layer(1.0).with_demand_coverage(vec![Bpp3dLayerDemandCoverage::new(
@@ -121,7 +121,7 @@ mod tests {
         let entries = vec![
             Bpp3dDemandEntry {
                 mode: crate::domain::item::Bpp3dDemandMode::Item,
-                key: crate::domain::item::Bpp3dDemandKey::Item { id: "item1".to_string() },
+                key: crate::domain::item::Bpp3dDemandKey::Item { id: "item1".into() },
                 demand: 10.0,
             },
         ];
@@ -136,7 +136,7 @@ mod tests {
         // 验证 shadow price 已写入 map
         let sp_key = DemandShadowPriceKey {
             mode: crate::domain::item::Bpp3dDemandMode::Item,
-            key: crate::domain::item::Bpp3dDemandKey::Item { id: "item1".to_string() },
+            key: crate::domain::item::Bpp3dDemandKey::Item { id: "item1".into() },
         };
         let lookup_key = ShadowPriceKey::named::<DemandShadowPriceKey>(format!("{:?}", sp_key));
         let sp = map.get(&lookup_key);
@@ -158,7 +158,7 @@ mod tests {
         let entries = vec![
             Bpp3dDemandEntry {
                 mode: crate::domain::item::Bpp3dDemandMode::Item,
-                key: crate::domain::item::Bpp3dDemandKey::Item { id: "item1".to_string() },
+                key: crate::domain::item::Bpp3dDemandKey::Item { id: "item1".into() },
                 demand: 10.0,
             },
         ];
@@ -170,7 +170,7 @@ mod tests {
         let mut map: BasicShadowPriceMap<DemandShadowPriceKey> = BasicShadowPriceMap::new();
         let sp_key = DemandShadowPriceKey {
             mode: crate::domain::item::Bpp3dDemandMode::Item,
-            key: crate::domain::item::Bpp3dDemandKey::Item { id: "item1".to_string() },
+            key: crate::domain::item::Bpp3dDemandKey::Item { id: "item1".into() },
         };
         let lookup_key = ShadowPriceKey::named::<DemandShadowPriceKey>(format!("{:?}", sp_key));
         map.put(ShadowPrice::new(lookup_key, 3.0));

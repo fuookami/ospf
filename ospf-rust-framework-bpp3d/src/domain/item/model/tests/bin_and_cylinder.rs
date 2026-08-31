@@ -24,7 +24,7 @@
             height: meters(10.0),
             depth: meters(10.0),
             capacity: meters(1000.0),
-            type_code: "BIN-10".to_string(),
+            type_code: "BIN-10".into(),
             is_main: true,
         };
         assert!(bin_type.is_main);
@@ -33,7 +33,7 @@
 
     #[test]
     fn bin_layer_demand_coverage_lookup() {
-        let key = Bpp3dDemandKey::Item { id: "i1".to_string() };
+        let key = Bpp3dDemandKey::Item { id: "i1".into() };
         let layer: BinLayer<f64, Meter> = BinLayer {
             iteration: 0,
             from: "test".to_string(),
@@ -62,7 +62,7 @@
     fn cylinder_shape_contract_has_cylinder() {
         let items = vec![
             ActualItem {
-                id: "cuboid".to_string(),
+                id: "cuboid".into(),
                 name: "Cuboid".to_string(),
                 package_code: None,
                 pack: None,
@@ -78,7 +78,7 @@
 
         let items_with_cyl = vec![
             ActualItem {
-                id: "cyl".to_string(),
+                id: "cyl".into(),
                 name: "Cylinder".to_string(),
                 package_code: None,
                 pack: None,

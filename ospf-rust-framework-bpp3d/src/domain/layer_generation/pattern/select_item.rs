@@ -1,6 +1,6 @@
 fn select_pattern_item<'a, V, U>(
     indexed_items: &'a [(usize, ActualItem<V, U>)],
-    package_attributes: &HashMap<String, PackageAttribute>,
+    package_attributes: &HashMap<ItemId, PackageAttribute>,
     package_rule_policy: &dyn LayerGenerationPackageRulePolicy<V, U>,
     remaining: &HashMap<usize, u64>,
     step: &PatternStep,
@@ -48,7 +48,7 @@ where
 
 fn select_mixed_pattern_pile<V, U>(
     indexed_items: &[(usize, ActualItem<V, U>)],
-    package_attributes: &HashMap<String, PackageAttribute>,
+    package_attributes: &HashMap<ItemId, PackageAttribute>,
     package_rule_policy: &dyn LayerGenerationPackageRulePolicy<V, U>,
     remaining: &HashMap<usize, u64>,
     step: &PatternStep,
@@ -106,7 +106,7 @@ where
 
 fn pattern_selectable_items<V, U>(
     indexed_items: &[(usize, ActualItem<V, U>)],
-    package_attributes: &HashMap<String, PackageAttribute>,
+    package_attributes: &HashMap<ItemId, PackageAttribute>,
     package_rule_policy: &dyn LayerGenerationPackageRulePolicy<V, U>,
     remaining: &HashMap<usize, u64>,
     step: &PatternStep,

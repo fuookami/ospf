@@ -15,7 +15,7 @@
             ) -> Vec<LayerGenerationResult<f64, Meter>> {
                 let key = DemandShadowPriceKey {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "i1".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "i1".into() },
                 };
                 if !request.shadow_prices.contains_key(&key) {
                     return Vec::new();
@@ -161,7 +161,7 @@ l1,b1,4
                         depth: meters(2.0),
                         demand_coverage: vec![Bpp3dLayerDemandCoverage::new(
                             Bpp3dDemandMode::Item,
-                            Bpp3dDemandKey::Item { id: "i1".to_string() },
+                            Bpp3dDemandKey::Item { id: "i1".into() },
                             1.0,
                         )],
                     },
@@ -171,7 +171,7 @@ l1,b1,4
                     block_traces: Vec::new(),
                     placement_traces: vec![LayerPlacementTrace {
                         item_index: 0,
-                        item_id: "i1".to_string(),
+                        item_id: "i1".into(),
                         position: MetricPoint3 {
                             x: meters(0.0),
                             y: meters(0.0),
@@ -256,7 +256,7 @@ l1,b1,4
             layer.bin = None;
             layer.demand_coverage = vec![Bpp3dLayerDemandCoverage::new(
                 Bpp3dDemandMode::Item,
-                Bpp3dDemandKey::Item { id: "missing".to_string() },
+                Bpp3dDemandKey::Item { id: "missing".into() },
                 1.0,
             )];
         }

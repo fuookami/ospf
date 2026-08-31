@@ -6,7 +6,7 @@ use ospf_rust_core::solver::SolveValue;
 
 use crate::domain::material::{
     shadow_price_unit_symbol, Csp1dQuantity, Product, ProductDemand,
-    ProductDemandShadowPriceKey,
+    ProductDemandShadowPriceKey, ProductId,
 };
 
 pub mod model;
@@ -17,63 +17,81 @@ pub use model::*;
 /// 需求聚合键 / Demand aggregation key
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DemandAggregationKey {
-    pub product_id: String,
+    /// 产品 ID / Product id
+    pub product_id: ProductId,
+    /// 单位符号 / Unit symbol
     pub unit_symbol: String,
 }
 
-/// 欠产 / Under-production
+/// 欠产记录 / Under-production record
 #[derive(Debug, Clone)]
 pub struct ModeledUnderProduction<V: SolveValue> {
+    /// 对应需求 / Corresponding demand
     pub demand: ProductDemand<V>,
+    /// 欠产缺口量 / Shortfall quantity
     pub shortfall: Csp1dQuantity<V>,
 }
 
-/// 超产 / Over-production
+/// 超产记录 / Over-production record
 #[derive(Debug, Clone)]
 pub struct ModeledOverProduction<V: SolveValue> {
+    /// 对应需求 / Corresponding demand
     pub demand: ProductDemand<V>,
+    /// 超产盈余量 / Surplus quantity
     pub surplus: Csp1dQuantity<V>,
 }
 
-/// 产品产出 / Product output
+/// 产品产出统计 / Product output statistics
 #[derive(Debug, Clone)]
 pub struct ProductOutput<V: SolveValue> {
+    /// 产品 / Product
     pub product: Product<V>,
+    /// 总产出量 / Total output quantity
     pub total_quantity: Csp1dQuantity<V>,
+    /// 需求模式 / Demand mode
     pub mode: Option<crate::domain::material::DemandMode>,
 }
 
-/// 产出分析 / Yield analysis
+/// 产出分析结果 / Yield analysis result
 #[derive(Debug, Clone)]
 pub struct YieldAnalysis<V: SolveValue> {
+    /// 欠产列表 / Under-production list
     pub under_productions: Vec<ModeledUnderProduction<V>>,
+    /// 超产列表 / Over-production list
     pub over_productions: Vec<ModeledOverProduction<V>>,
+    /// 产出列表 / Output list
     pub outputs: Vec<ProductOutput<V>>,
 }
 
-/// Yield 配置 / Yield modeling config
+/// Yield 建模配置 / Yield modeling configuration
 #[derive(Debug, Clone, Default)]
 pub struct YieldModelingConfig<V: SolveValue> {
+    /// 欠产惩罚权重 / Under-production penalty weights
     pub under_production_penalty: BTreeMap<crate::domain::material::ProductDemandShadowPriceKey, V>,
+    /// 超产惩罚权重 / Over-production penalty weights
     pub over_production_penalty: BTreeMap<crate::domain::material::ProductDemandShadowPriceKey, V>,
+    /// 超产上界 / Over-production upper bounds
     pub over_production_upper_bound: BTreeMap<crate::domain::material::ProductDemandShadowPriceKey, V>,
 }
 
-/// Yield 结果 / Yield modeling result
+/// Yield 建模结果 / Yield modeling result
 #[derive(Debug, Clone)]
 pub struct YieldModelingResult<V: SolveValue> {
+    /// 产出分析 / Yield analysis
     pub analysis: YieldAnalysis<V>,
 }
 
 /// Yield 上下文 / Yield context
 #[derive(Debug, Clone)]
 pub struct YieldContext<V: SolveValue> {
+    /// 建模配置 / Modeling configuration
     pub config: YieldModelingConfig<V>,
 }
 
 /// Yield 聚合 / Yield aggregation
 #[derive(Debug, Clone, Default)]
 pub struct YieldAggregation<V: SolveValue> {
+    /// 产出列表 / Output list
     pub outputs: Vec<ProductOutput<V>>,
 }
 

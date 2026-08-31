@@ -24,8 +24,11 @@ pub struct MongoDbBackend;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MongoDbConfig {
+    /// 连接 URI / Connection URI
     pub uri: String,
+    /// 数据库名 / Database name
     pub database: String,
+    /// 默认 collection 名称 / Default collection name
     pub default_collection: Option<String>,
 }
 
@@ -52,7 +55,9 @@ impl MongoDbConfig {
 /// MongoDB client handle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MongoDbClientHandle<C> {
+    /// 配置 / Configuration
     pub config: MongoDbConfig,
+    /// 客户端实例 / Client instance
     pub client: C,
 }
 
@@ -60,8 +65,11 @@ pub struct MongoDbClientHandle<C> {
 /// MongoDB translation error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MongoDbTranslationError {
+    /// 不支持的谓词 / Unsupported predicate
     UnsupportedPredicate(String),
+    /// 未解析的字段 / Unresolved field
     UnresolvedField(String),
+    /// 无效表达式 / Invalid expression
     InvalidExpression(String),
 }
 
@@ -375,9 +383,13 @@ where
 /// MongoDB repository operation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MongoDbOperation {
+    /// collection 名称 / Collection name
     pub collection: String,
+    /// 过滤条件文档 / Filter document
     pub filter: Option<Value>,
+    /// 更新操作文档 / Update document
     pub update: Option<Value>,
+    /// 插入文档 / Insert document
     pub document: Option<Value>,
 }
 

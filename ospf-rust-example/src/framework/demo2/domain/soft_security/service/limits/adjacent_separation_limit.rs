@@ -1,9 +1,14 @@
+//! 相邻隔离限制 / Adjacent separation limits
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAggregation;
 use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
 
+/// 相邻分离限制 / Adjacent separation limit
+///
+/// 需要分离的货物不能同时装载在相邻舱位。
+/// Cargos requiring separation cannot be loaded in adjacent positions simultaneously.
 pub fn apply_adjacent_separation_limits(
     model: &mut MetaModel<f64>,
     context: &SoftSecurityContext<'_>,

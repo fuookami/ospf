@@ -22,13 +22,19 @@ pub struct QuadraticTetradModel {
     pub c: Vec<f64>,
     /// 二次目标矩阵 / Quadratic objective matrix
     pub Q: SparseMatrix<f64>,
-    /// 二次约束 / Quadratic constraints
+    /// 二次约束列表 / Quadratic constraints
     pub quadratic_constraints: Vec<QuadraticInequality<f64>>,
+    /// 二次约束名称列表 / Quadratic constraint names
     pub quadratic_constraint_names: Vec<String>,
+    /// 二次约束组 ID 列表 / Quadratic constraint group IDs
     pub quadratic_constraint_group_ids: Vec<Option<u64>>,
+    /// 二次约束惰性标志列表 / Quadratic constraint lazy flags
     pub quadratic_constraint_lazy_flags: Vec<bool>,
+    /// 二次约束优先级列表 / Quadratic constraint priorities
     pub quadratic_constraint_priorities: Vec<u32>,
+    /// 二次约束参数列表 / Quadratic constraint args
     pub quadratic_constraint_args: Vec<Option<String>>,
+    /// 二次约束来源符号 ID 列表 / Quadratic constraint source symbol IDs
     pub quadratic_constraint_source_symbol_ids: Vec<Option<u64>>,
     /// 目标方向 / Objective direction
     pub objective_category: ObjectiveCategory,
@@ -103,6 +109,7 @@ impl QuadraticTetradModel {
         self.Q = Q;
     }
 
+    /// 添加带元数据的二次约束。 / Add quadratic constraint with metadata.
     pub fn add_quadratic_constraint_with_metadata(
         &mut self,
         inequality: QuadraticInequality<f64>,
@@ -164,6 +171,7 @@ impl QuadraticTetradModel {
         &self.Q
     }
 
+    /// 获取二次约束数量 / Get quadratic constraint count
     pub fn num_quadratic_constraints(&self) -> usize {
         self.quadratic_constraints.len()
     }

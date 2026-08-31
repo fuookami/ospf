@@ -4,7 +4,7 @@
         // Two items: large-bottom and small-bottom (depth >= width for Front pattern step)
         let items = vec![
             ActualItem {
-                id: "large".to_string(),
+                id: "large".into(),
                 name: "Large".to_string(),
                 package_code: None,
                 pack: None,
@@ -16,7 +16,7 @@
                 shape_spec_override: Some(PackageShapeSpec::Cuboid),
             },
             ActualItem {
-                id: "small".to_string(),
+                id: "small".into(),
                 name: "Small".to_string(),
                 package_code: None,
                 pack: None,
@@ -34,19 +34,19 @@
                 height: meters(10.0),
                 depth: meters(20.0),
                 capacity: meters(1000.0),
-                type_code: "BIN".to_string(),
+                type_code: "BIN".into(),
                 is_main: true,
             })
             .with_demand_entries(vec![
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "large".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "large".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
                 LayerGenerationDemandEntry {
                     mode: Bpp3dDemandMode::Item,
-                    key: Bpp3dDemandKey::Item { id: "small".to_string() },
+                    key: Bpp3dDemandKey::Item { id: "small".into() },
                     demand: 1.0,
                     satisfied: 0.0,
                 },
@@ -70,7 +70,7 @@
         assert!(!result_no_filter.is_empty());
         let no_filter_ids: std::collections::HashSet<String> = result_no_filter
             .iter()
-            .flat_map(|r| r.placement_traces.iter().map(|t| t.item_id.clone()))
+            .flat_map(|r| r.placement_traces.iter().map(|t| t.item_id.to_string()))
             .collect();
         assert!(no_filter_ids.contains("large"));
         assert!(no_filter_ids.contains("small"));

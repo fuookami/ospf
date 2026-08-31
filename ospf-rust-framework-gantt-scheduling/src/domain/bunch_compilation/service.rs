@@ -17,6 +17,8 @@ pub mod limits {
     use ospf_rust_core::error::Result;
 
     use crate::domain::bunch_compilation::model::BunchCompilation;
+    use crate::domain::bunch_compilation::slot_based::SlotBasedBunchCompilationContext;
+    use crate::domain::common::ExecutorIdTrait;
 
     // ============================================================================
     // 约束型 Pipeline / Constraint Pipelines
@@ -183,6 +185,106 @@ pub mod limits {
         }
     }
 
+    /// 执行器-时隙编译约束 / Executor-slot compilation constraint
+    ///
+    /// 每个执行器在每个时隙恰好选择一列。构造时从 slot context 读取权威
+    /// `(executor, slot) -> x` 映射，保证约束与动态加列保持一致。
+    /// Exactly one column is selected for each executor and slot. The constraint
+    /// reads the authoritative `(executor, slot) -> x` mapping from the slot context.
+    #[derive(Debug)]
+    pub struct ExecutorSlotCompilationConstraint<I>
+    where
+        I: ExecutorIdTrait,
+    {
+        name: String,
+        group: Option<ConstraintGroup>,
+        /// 执行器-时隙线性项 / Executor-slot linear terms
+        pub executor_slot_polynomials: Vec<(I, usize, Vec<(usize, f64)>)>,
+    }
+
+    impl<I> ExecutorSlotCompilationConstraint<I>
+    where
+        I: ExecutorIdTrait,
+    {
+        /// 从 slot compilation context 创建约束 / Create constraint from slot compilation context
+        pub fn from_context<S, C>(context: &C) -> Self
+        where
+            S: crate::infrastructure::TimeSlot + Clone,
+            C: SlotBasedBunchCompilationContext<S, ExecutorId = I>,
+        {
+            let mut executor_slot_polynomials = context
+                .x_by_executor_slot()
+                .into_iter()
+                .map(|((executor_id, slot_index), indices)| {
+                    (
+                        executor_id,
+                        slot_index,
+                        indices.into_iter().map(|index| (index, 1.0)).collect(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            executor_slot_polynomials.sort_by(|lhs, rhs| {
+                lhs.0
+                    .cmp(&rhs.0)
+                    .then_with(|| lhs.1.cmp(&rhs.1))
+            });
+            Self {
+                name: "executor_slot_compilation".to_string(),
+                group: None,
+                executor_slot_polynomials,
+            }
+        }
+
+        /// 创建空约束 / Create an empty constraint
+        ///
+        /// 调用方可在模型注册前填充 `executor_slot_polynomials`，用于没有具体
+        /// slot context 类型信息的组合场景。
+        /// Callers may populate `executor_slot_polynomials` before registration when
+        /// composing without a concrete slot-context type.
+        pub fn new() -> Self {
+            Self {
+                name: "executor_slot_compilation".to_string(),
+                group: None,
+                executor_slot_polynomials: Vec::new(),
+            }
+        }
+
+        /// 约束名 / Constraint name
+        pub fn constraint_name(executor_id: &I, slot_index: usize) -> String {
+            format!("executor_slot_compilation_{}_{}", executor_id, slot_index)
+        }
+    }
+
+    impl<I> Default for ExecutorSlotCompilationConstraint<I>
+    where
+        I: ExecutorIdTrait,
+    {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl<I> Pipeline<MetaModel<f64>> for ExecutorSlotCompilationConstraint<I>
+    where
+        I: ExecutorIdTrait,
+    {
+        fn name(&self) -> &str { &self.name }
+        fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+
+        fn register(&self, model: &mut MetaModel<f64>) {
+            for (executor_id, slot_index, terms) in &self.executor_slot_polynomials {
+                let name = Self::constraint_name(executor_id, *slot_index);
+                if let Err(error) = model.add_eq_constraint(terms, 1.0, &name) {
+                    log::warn!("Failed to register {}: {:?}", name, error);
+                }
+            }
+        }
+
+        fn invoke(&self, _model: &MetaModel<f64>) -> Result<()> {
+            Ok(())
+        }
+    }
+
     // ============================================================================
     // 目标型 Pipeline / Objective Pipelines
     // ============================================================================
@@ -253,8 +355,86 @@ pub mod limits {
 
     #[cfg(test)]
     mod tests {
+        use std::collections::HashMap;
+
         use super::*;
+        use crate::domain::bunch_compilation::context::{
+            BasicBunchCompilationContext, IterativeBunchCompilationContext,
+        };
         use crate::domain::bunch_compilation::model::{BunchCompilation, BunchEntry};
+        use crate::domain::bunch_compilation::slot_based::{
+            BasicSlotBasedBunchCompilationContext, StaticSlotBasedCapacityPreSolver,
+        };
+        use crate::domain::bunch_generation::{CapacityIntermediateValues, SlotConstraints};
+        use crate::domain::task::BasicExecutor;
+        use crate::infrastructure::{TimeRange, TimeSlot};
+        use time::macros::datetime;
+
+        #[derive(Debug, Clone)]
+        struct TestSlot(TimeRange);
+
+        impl TimeSlot for TestSlot {
+            fn time(&self) -> &TimeRange { &self.0 }
+
+            fn sub_of(&self, sub_time: &TimeRange) -> Option<Self> {
+                self.0.intersection(sub_time).map(Self)
+            }
+        }
+
+        #[test]
+        fn executor_slot_constraint_registers_each_pair() {
+            let slots = vec![
+                TestSlot(TimeRange::new(
+                    datetime!(2020-08-30 08:00 UTC),
+                    datetime!(2020-08-30 09:00 UTC),
+                )),
+                TestSlot(TimeRange::new(
+                    datetime!(2020-08-30 09:00 UTC),
+                    datetime!(2020-08-30 10:00 UTC),
+                )),
+            ];
+            let executor = BasicExecutor::new("exec_1", "Executor 1");
+            let values = CapacityIntermediateValues::new(
+                slots.clone(),
+                HashMap::from([(0, SlotConstraints::default()), (1, SlotConstraints::default())]),
+            );
+            let mut context = BasicSlotBasedBunchCompilationContext::new(
+                BasicBunchCompilationContext::new(0, vec![executor.id.clone()], false),
+                slots,
+                Box::new(StaticSlotBasedCapacityPreSolver::new(values)),
+            );
+            let mut model = MetaModel::<f64>::new("executor_slot_constraint");
+            context.register(&mut model).unwrap();
+            context
+                .add_columns(
+                    0,
+                    vec![
+                        BunchEntry {
+                            index: 0,
+                            executor_id: executor.id.clone(),
+                            task_indices: vec![],
+                            cost: 1.0,
+                            iteration: 0,
+                            slot_index: Some(0),
+                        },
+                        BunchEntry {
+                            index: 1,
+                            executor_id: executor.id.clone(),
+                            task_indices: vec![],
+                            cost: 1.0,
+                            iteration: 0,
+                            slot_index: Some(1),
+                        },
+                    ],
+                    &mut model,
+                )
+                .unwrap();
+
+            let constraint = ExecutorSlotCompilationConstraint::from_context::<TestSlot, _>(&context);
+            constraint.register(&mut model);
+            assert_eq!(constraint.executor_slot_polynomials.len(), 2);
+            assert_eq!(model.num_constraints(), 2);
+        }
 
         #[test]
         fn test_bunch_task_compilation_constraint() {
@@ -271,10 +451,11 @@ pub mod limits {
             let bunches = vec![
                 BunchEntry {
                     index: 0,
-                    executor_id: "exec_1".to_string(),
+                    executor_id: "exec_1".into(),
                     task_indices: vec![0, 1],
                     cost: 10.0,
                     iteration: 0,
+                    slot_index: None,
                 },
             ];
             compilation.add_columns(0, bunches, &mut model).unwrap();
@@ -299,10 +480,11 @@ pub mod limits {
             let bunches = vec![
                 BunchEntry {
                     index: 0,
-                    executor_id: "exec_1".to_string(),
+                    executor_id: "exec_1".into(),
                     task_indices: vec![0],
                     cost: 5.0,
                     iteration: 0,
+                    slot_index: None,
                 },
             ];
             compilation.add_columns(0, bunches, &mut model).unwrap();
@@ -327,17 +509,19 @@ pub mod limits {
             let bunches = vec![
                 BunchEntry {
                     index: 0,
-                    executor_id: "exec_1".to_string(),
+                    executor_id: "exec_1".into(),
                     task_indices: vec![0],
                     cost: 5.0,
                     iteration: 0,
+                    slot_index: None,
                 },
                 BunchEntry {
                     index: 1,
-                    executor_id: "exec_1".to_string(),
+                    executor_id: "exec_1".into(),
                     task_indices: vec![1],
                     cost: 8.0,
                     iteration: 0,
+                    slot_index: None,
                 },
             ];
             compilation.add_columns(0, bunches, &mut model).unwrap();

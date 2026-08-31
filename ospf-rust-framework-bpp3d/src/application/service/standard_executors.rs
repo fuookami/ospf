@@ -22,6 +22,26 @@ impl ColumnGenerationStandardExecutors {
         context.add_generator(Box::new(HistoricalLayerGenerator::new()));
         context
     }
+
+    /// 使用 RMP 模型扩展执行标准 RMP / Execute standard RMP with a model extension
+    pub fn execute_rmp_with_extension(
+        executor: &MetaModelRmpExecutor,
+        state: &ColumnGenerationApplicationState,
+        backend: &dyn MetaModelSolverBackend,
+        extension: &dyn ColumnGenerationRmpModelExtension,
+    ) -> ColumnGenerationRmpExecution {
+        executor.execute_with_backend_and_extension(state, backend, Some(extension))
+    }
+
+    /// 使用 final 模型扩展执行标准 final / Execute standard final with a model extension
+    pub fn execute_final_with_extension(
+        executor: &MetaModelFinalExecutor,
+        state: &ColumnGenerationApplicationState,
+        backend: &dyn MetaModelSolverBackend,
+        extension: &dyn ColumnGenerationFinalModelExtension,
+    ) -> ColumnGenerationFinalExecution {
+        executor.execute_with_backend_and_extension(state, backend, Some(extension))
+    }
 }
 
 // ============================================================================

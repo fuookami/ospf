@@ -1,3 +1,4 @@
+//! 水平安定面限制 / Horizontal stabilizer limits
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;

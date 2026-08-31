@@ -26,6 +26,23 @@ where
     pub state: ColumnGenerationState,
 }
 
+/// 列生成失败上下文 / Column-generation failure context
+#[derive(Debug, Clone)]
+pub struct ColumnGenerationFailure {
+    /// 失败阶段 / Failure stage
+    pub stage: ColumnGenerationFailureStage,
+    /// 失败时状态 / State at failure
+    pub state: ColumnGenerationState,
+    /// 原始错误 / Original errors
+    pub errors: Vec<String>,
+}
+
+/// 列生成失败分析器 / Column-generation failure analyzer
+pub trait ColumnGenerationFailureAnalyzer: Send + Sync {
+    /// 分析失败 / Analyze failure
+    fn analyze(&self, failure: &ColumnGenerationFailure);
+}
+
 impl<V, U> ColumnGenerationAlgorithm<V, U>
 where
     V: Field + Clone + Debug + Send + Sync + PartialEq + num_traits::FloatConst,
@@ -62,6 +79,38 @@ where
     pub fn add_initial_layers(&mut self, layers: Vec<BinLayer<V, U>>) -> Vec<BinLayer<V, U>> {
         let added = self.add_columns_with_iteration(0, layers);
         added
+    }
+
+    /// 使用可失败提供器添加初始列 / Add initial columns from a fallible provider
+    pub fn add_initial_layers_with_result<F>(
+        &mut self,
+        provider: F,
+    ) -> Result<Vec<BinLayer<V, U>>, ColumnGenerationFailure>
+    where
+        F: FnOnce() -> Result<Vec<BinLayer<V, U>>, String>,
+    {
+        let layers = provider().map_err(|error| ColumnGenerationFailure {
+            stage: ColumnGenerationFailureStage::InitialColumns,
+            state: self.state.clone(),
+            errors: vec![error],
+        })?;
+        Ok(self.add_initial_layers(layers))
+    }
+
+    /// 对候选列执行可失败过滤 / Apply a fallible candidate filter
+    pub fn filter_candidates_with_result<F>(
+        &self,
+        candidates: Vec<LayerGenerationResult<V, U>>,
+        filter: F,
+    ) -> Result<Vec<LayerGenerationResult<V, U>>, ColumnGenerationFailure>
+    where
+        F: FnOnce(Vec<LayerGenerationResult<V, U>>) -> Result<Vec<LayerGenerationResult<V, U>>, String>,
+    {
+        filter(candidates).map_err(|error| ColumnGenerationFailure {
+            stage: ColumnGenerationFailureStage::CandidateFilter,
+            state: self.state.clone(),
+            errors: vec![error],
+        })
     }
 
     /// 添加层列 / Add layer columns

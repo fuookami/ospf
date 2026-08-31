@@ -4,10 +4,14 @@
 //! Provides time-to-value discretization, rounding, and time slot generation capabilities.
 
 use std::marker::PhantomData;
+
 use time::{Duration, OffsetDateTime};
+
 use ospf_rust_core::solver::value::SolveValue;
 use ospf_rust_core::solver::value::SolveValueConversionPolicy;
-use crate::infrastructure::{TimeRange, merge};
+
+use crate::infrastructure::{merge, TimeRange};
+use crate::{GanttError, GanttResult};
 
 /// 持续时间单位 / Duration unit
 ///
@@ -25,16 +29,34 @@ pub enum DurationUnit {
 }
 
 impl DurationUnit {
+    fn nanoseconds_per_unit(self) -> f64 {
+        match self {
+            DurationUnit::Seconds => 1_000_000_000.0,
+            DurationUnit::Minutes => 60_000_000_000.0,
+            DurationUnit::Hours => 3_600_000_000_000.0,
+        }
+    }
+
+    /// 尝试从数值创建持续时间 / Try to create duration from value
+    pub fn try_from_value(self, value: f64) -> GanttResult<Duration> {
+        let nanoseconds = value * self.nanoseconds_per_unit();
+        if !nanoseconds.is_finite()
+            || nanoseconds < i64::MIN as f64
+            || nanoseconds > i64::MAX as f64
+        {
+            return Err(GanttError::InvalidDuration {
+                message: format!("duration value {value} is not finite or is out of range"),
+            });
+        }
+        Ok(Duration::nanoseconds(nanoseconds.round() as i64))
+    }
+
     /// 从 DurationUnit 创建 Duration / Create Duration from DurationUnit
     ///
     /// 将给定数值按此单位转换为 `time::Duration`。
     /// Converts the given value to `time::Duration` using this unit.
     pub fn from_value(&self, value: f64) -> Duration {
-        match self {
-            DurationUnit::Seconds => Duration::seconds(value as i64),
-            DurationUnit::Minutes => Duration::minutes(value as i64),
-            DurationUnit::Hours => Duration::hours(value as i64),
-        }
+        self.try_from_value(value).unwrap_or(Duration::ZERO)
     }
 
     /// 将 Duration 转换为此单位的数值 / Convert Duration to value in this unit
@@ -42,11 +64,7 @@ impl DurationUnit {
     /// 返回持续时间在此单位下的数值表示。
     /// Returns the numeric representation of the duration in this unit.
     pub fn to_value(&self, duration: Duration) -> f64 {
-        match self {
-            DurationUnit::Seconds => duration.whole_seconds() as f64,
-            DurationUnit::Minutes => duration.whole_minutes() as f64,
-            DurationUnit::Hours => duration.whole_hours() as f64,
-        }
+        duration.whole_nanoseconds() as f64 / self.nanoseconds_per_unit()
     }
 
     /// 获取上级单位 / Get upper-level unit
@@ -140,6 +158,15 @@ pub struct TimeWindow<V: SolveValue> {
 }
 
 impl<V: SolveValue> TimeWindow<V> {
+    fn validate_interval(interval: Duration) -> GanttResult<()> {
+        if interval <= Duration::ZERO {
+            return Err(GanttError::InvalidDuration {
+                message: "time window interval must be positive".to_string(),
+            });
+        }
+        Ok(())
+    }
+
     /// 创建新的时间窗口 / Create new time window
     pub fn new(
         window: TimeRange,
@@ -158,6 +185,24 @@ impl<V: SolveValue> TimeWindow<V> {
         }
     }
 
+    /// 创建经过校验的时间窗口 / Create a validated time window
+    pub fn try_new(
+        window: TimeRange,
+        continues: bool,
+        duration_unit: DurationUnit,
+        date_offset: Duration,
+        interval: Duration,
+    ) -> GanttResult<Self> {
+        Self::validate_interval(interval)?;
+        Ok(Self::new(
+            window,
+            continues,
+            duration_unit,
+            date_offset,
+            interval,
+        ))
+    }
+
     /// 创建秒级时间窗口 / Create seconds-level time window
     ///
     /// # 参数 / Parameters
@@ -170,6 +215,24 @@ impl<V: SolveValue> TimeWindow<V> {
         let date_offset_dur = DurationUnit::Seconds.from_value(GanttValueAdapter::<V>::to_f64(&date_offset));
         let interval_dur = DurationUnit::Seconds.from_value(GanttValueAdapter::<V>::to_f64(&interval));
         Self::new(window, continues, DurationUnit::Seconds, date_offset_dur, interval_dur)
+    }
+
+    /// 创建经过校验的秒级时间窗口 / Create a validated seconds-level time window
+    pub fn try_seconds(
+        window: TimeRange,
+        date_offset: V,
+        continues: bool,
+        interval: V,
+    ) -> GanttResult<Self> {
+        Self::try_new(
+            window,
+            continues,
+            DurationUnit::Seconds,
+            DurationUnit::Seconds
+                .try_from_value(GanttValueAdapter::<V>::to_f64(&date_offset))?,
+            DurationUnit::Seconds
+                .try_from_value(GanttValueAdapter::<V>::to_f64(&interval))?,
+        )
     }
 
     /// 创建分钟级时间窗口 / Create minutes-level time window
@@ -186,6 +249,24 @@ impl<V: SolveValue> TimeWindow<V> {
         Self::new(window, continues, DurationUnit::Minutes, date_offset_dur, interval_dur)
     }
 
+    /// 创建经过校验的分钟级时间窗口 / Create a validated minutes-level time window
+    pub fn try_minutes(
+        window: TimeRange,
+        date_offset: V,
+        continues: bool,
+        interval: V,
+    ) -> GanttResult<Self> {
+        Self::try_new(
+            window,
+            continues,
+            DurationUnit::Minutes,
+            DurationUnit::Minutes
+                .try_from_value(GanttValueAdapter::<V>::to_f64(&date_offset))?,
+            DurationUnit::Minutes
+                .try_from_value(GanttValueAdapter::<V>::to_f64(&interval))?,
+        )
+    }
+
     /// 创建小时级时间窗口 / Create hours-level time window
     ///
     /// # 参数 / Parameters
@@ -198,6 +279,24 @@ impl<V: SolveValue> TimeWindow<V> {
         let date_offset_dur = DurationUnit::Hours.from_value(GanttValueAdapter::<V>::to_f64(&date_offset));
         let interval_dur = DurationUnit::Hours.from_value(GanttValueAdapter::<V>::to_f64(&interval));
         Self::new(window, continues, DurationUnit::Hours, date_offset_dur, interval_dur)
+    }
+
+    /// 创建经过校验的小时级时间窗口 / Create a validated hours-level time window
+    pub fn try_hours(
+        window: TimeRange,
+        date_offset: V,
+        continues: bool,
+        interval: V,
+    ) -> GanttResult<Self> {
+        Self::try_new(
+            window,
+            continues,
+            DurationUnit::Hours,
+            DurationUnit::Hours
+                .try_from_value(GanttValueAdapter::<V>::to_f64(&date_offset))?,
+            DurationUnit::Hours
+                .try_from_value(GanttValueAdapter::<V>::to_f64(&interval))?,
+        )
     }
 
     /// 创建新的时间窗口（保持配置）/ Create new time window with same config
@@ -331,11 +430,22 @@ impl<V: SolveValue> TimeWindow<V> {
         self.time_slots_of(self.interval)
     }
 
+    /// 按默认间隔尝试划分时间段 / Try to divide time slots by default interval
+    pub fn try_time_slots(&self) -> GanttResult<Vec<TimeRange>> {
+        self.try_time_slots_of(self.interval)
+    }
+
     /// 按指定间隔划分时间段 / Divide time slots by specified interval
     ///
     /// 最后一个时间段可能不足一个完整间隔。
     /// The last slot may be shorter than a full interval.
     pub fn time_slots_of(&self, interval: Duration) -> Vec<TimeRange> {
+        self.try_time_slots_of(interval).unwrap_or_default()
+    }
+
+    /// 按指定间隔尝试划分时间段 / Try to divide time slots by specified interval
+    pub fn try_time_slots_of(&self, interval: Duration) -> GanttResult<Vec<TimeRange>> {
+        Self::validate_interval(interval)?;
         let mut slots = Vec::new();
         let start = self.window.start;
         let end = self.window.end;
@@ -348,7 +458,7 @@ impl<V: SolveValue> TimeWindow<V> {
             current += slot_duration;
         }
 
-        slots
+        Ok(slots)
     }
 
     /// 按上级间隔划分的舍入时间段 / Generate rounded time slots by upper interval
@@ -366,6 +476,9 @@ impl<V: SolveValue> TimeWindow<V> {
         interval: Duration,
         excluded_times: &[TimeRange],
     ) -> Vec<TimeRange> {
+        if interval <= Duration::ZERO {
+            return vec![];
+        }
         let start = self.window.start;
         let end = self.window.end;
 
@@ -597,6 +710,65 @@ mod tests {
         assert_eq!(slots.len(), 4);
         assert_eq!(slots[0], TimeRange::new(h(8), h(9)));
         assert_eq!(slots[3], TimeRange::new(h(11), h(12)));
+    }
+
+    #[test]
+    fn test_fractional_hour_time_slots_preserve_boundaries() {
+        let window: TimeWindow<f64> = TimeWindow::try_hours(
+            TimeRange::new(h(8), h(10)),
+            0.0,
+            true,
+            0.5,
+        )
+        .unwrap();
+
+        let slots = window.try_time_slots().unwrap();
+
+        assert_eq!(slots.len(), 4);
+        assert_eq!(slots[0], TimeRange::new(h(8), h(8) + Duration::minutes(30)));
+        assert_eq!(slots[3], TimeRange::new(h(9) + Duration::minutes(30), h(10)));
+    }
+
+    #[test]
+    fn test_time_slots_keep_short_final_slot() {
+        let window: TimeWindow<f64> = TimeWindow::try_minutes(
+            TimeRange::new(h(8), h(9)),
+            0.0,
+            true,
+            40.0,
+        )
+        .unwrap();
+
+        let slots = window.try_time_slots().unwrap();
+
+        assert_eq!(slots.len(), 2);
+        assert_eq!(slots[0], TimeRange::new(h(8), h(8) + Duration::minutes(40)));
+        assert_eq!(slots[1], TimeRange::new(h(8) + Duration::minutes(40), h(9)));
+    }
+
+    #[test]
+    fn test_invalid_interval_is_rejected_without_looping() {
+        let result = TimeWindow::<f64>::try_hours(
+            TimeRange::new(h(8), h(10)),
+            0.0,
+            true,
+            0.0,
+        );
+        assert!(matches!(result, Err(GanttError::InvalidDuration { .. })));
+
+        let unchecked = TimeWindow::<f64>::hours(
+            TimeRange::new(h(8), h(10)),
+            0.0,
+            true,
+            0.0,
+        );
+        assert!(unchecked.time_slots().is_empty());
+    }
+
+    #[test]
+    fn test_non_finite_duration_is_rejected() {
+        let result = DurationUnit::Seconds.try_from_value(f64::NAN);
+        assert!(matches!(result, Err(GanttError::InvalidDuration { .. })));
     }
 
     #[test]

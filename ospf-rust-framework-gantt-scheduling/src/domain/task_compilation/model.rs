@@ -1435,7 +1435,7 @@ mod tests {
 
     impl TestTask {
         fn new(id: &str, name: &str) -> Self {
-            Self { id: id.to_string(), name: name.to_string() }
+            Self { id: id.into(), name: name.to_string() }
         }
     }
 
@@ -1443,7 +1443,9 @@ mod tests {
     use crate::infrastructure::TimeRange;
 
     impl<E: ExecutorTrait, A: AssignmentPolicyTrait<E>> TaskTrait<E, A> for TestTask {
-        fn id(&self) -> &str { &self.id }
+        type Id = String;
+
+        fn id(&self) -> &Self::Id { &self.id }
         fn name(&self) -> &str { &self.name }
     }
 
@@ -1457,7 +1459,7 @@ mod tests {
     impl TimedTestTask {
         fn new(id: &str, name: &str, time: TimeRange) -> Self {
             Self {
-                id: id.to_string(),
+                id: id.into(),
                 name: name.to_string(),
                 time,
             }
@@ -1465,7 +1467,9 @@ mod tests {
     }
 
     impl<E: ExecutorTrait, A: AssignmentPolicyTrait<E>> TaskTrait<E, A> for TimedTestTask {
-        fn id(&self) -> &str { &self.id }
+        type Id = String;
+
+        fn id(&self) -> &Self::Id { &self.id }
         fn name(&self) -> &str { &self.name }
         fn time(&self) -> Option<&TimeRange> { Some(&self.time) }
     }

@@ -1,3 +1,5 @@
+//! 最早起飞时间计算器 / Earliest departure time calculator
+
 use time::OffsetDateTime;
 use super::super::model::Link;
 
@@ -6,6 +8,7 @@ use super::super::model::Link;
 pub struct MinimumDepartureTimeCalculator;
 
 impl MinimumDepartureTimeCalculator {
+    /// 根据到达时间和连接时间计算最小出发时间 / Calculate minimum departure time based on arrival time and connection time
     pub fn calculate(
         &self,
         arrival_time: OffsetDateTime,

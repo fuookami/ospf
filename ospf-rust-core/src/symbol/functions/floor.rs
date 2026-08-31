@@ -1,4 +1,4 @@
-//! Floor function symbol.
+//! 向下取整函数符号 / Floor function symbol
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -68,23 +68,32 @@ where
     })
 }
 
+/// 默认大 M 常量 / Default big-M constant
 const DEFAULT_BIG_M: f64 = 1_000_000.0;
+/// 大 M 策略 / Big-M policy
 const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
+/// 舍入精度常量 / Rounding epsilon constant
 const ROUNDING_EPSILON: f64 = 1e-8;
 
-/// Floor function symbol.
+/// 向下取整函数 / Floor function
 ///
-/// Mathematical Form:
+/// 数学形式 / Mathematical Form:
+/// - result = floor(x) = 不大于 x 的最大整数
 /// - result = floor(x) = largest integer <= x
 #[derive(Debug, Clone)]
 pub struct FloorFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 中间符号 ID / Intermediate symbol ID
     id: IntermediateSymbolId,
+    /// 输入多项式 / Input polynomial
     input: Linear<V>,
+    /// 结果连续变量 / Result continuous variable
     result_var: ContinuousVariableItem,
+    /// 整数变量 / Integer variable
     integer_var: IntegerVariableItem,
+    /// 声明的依赖 ID / Declared dependency IDs
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -92,7 +101,7 @@ impl<V> FloorFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
-    /// Create new floor function.
+    /// 创建新函数 / Create a new function
     pub fn new(id: u64, name: &str, input: Linear<V>) -> Self {
         let group_id = new_group_id();
         let result_var = ContinuousVariableItem::create(VariableId::new(group_id, 0), name);
@@ -108,11 +117,13 @@ where
         }
     }
 
+    /// 使用自动 ID 与调用方提供的名称创建向下取整函数。
     /// Create a floor function with an auto id and caller-provided name.
     pub fn named(name: impl AsRef<str>, input: Linear<V>) -> Self {
         Self::new(next_auto_intermediate_symbol_id(), name.as_ref(), input)
     }
 
+    /// 使用自动 ID 与自动名称创建向下取整函数。
     /// Create a floor function with an auto id and auto-generated name.
     pub fn auto(input: Linear<V>) -> Self {
         let id = next_auto_intermediate_symbol_id();

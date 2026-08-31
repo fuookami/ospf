@@ -1,4 +1,4 @@
-//! Same-as function symbol.
+//! 同值函数符号 / Same-as function symbol
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -73,18 +73,28 @@ const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
 const ZERO_INDICATOR_TOLERANCE: f64 = 1.0e-10;
 const ZERO_INDICATOR_STRICT_BOUNDARY: f64 = ZERO_INDICATOR_TOLERANCE * 16.0 + f64::EPSILON * 16.0;
 
-/// Checks if two polynomials are effectively equal.
+/// 同值函数 / Same-as function
+///
+/// 检查两个多项式是否在容差范围内相等。
+/// Checks if two polynomials are effectively equal within tolerance.
 #[derive(Debug, Clone)]
 pub struct SameAsFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 符号 ID / Symbol ID
     id: IntermediateSymbolId,
+    /// 第一个多项式 / First polynomial
     first: Linear<V>,
+    /// 第二个多项式 / Second polynomial
     second: Linear<V>,
+    /// 结果二值变量 / Result binary variable
     result_var: BinaryVariableItem,
+    /// 辅助松弛二值变量 / Auxiliary side binary variable
     side_var: BinaryVariableItem,
+    /// 容差 / Tolerance
     tolerance: V,
+    /// 声明的依赖 ID / Declared dependency IDs
     declared_dependency_ids: Vec<u64>,
 }
 
@@ -92,6 +102,7 @@ impl<V> SameAsFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建新的同值函数 / Create a new same-as function
     pub fn new(id: u64, name: &str, first: Linear<V>, second: Linear<V>, tolerance: V) -> Self {
         let group_id = new_group_id();
         let result_var = BinaryVariableItem::create(VariableId::new(group_id, 0), name);
@@ -109,27 +120,33 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &BinaryVariableItem {
         &self.result_var
     }
 
+    /// 获取第一个多项式 / Get the first polynomial
     pub fn first_polynomial(&self) -> &Linear<V> {
         &self.first
     }
 
+    /// 获取第二个多项式 / Get the second polynomial
     pub fn second_polynomial(&self) -> &Linear<V> {
         &self.second
     }
 
+    /// 获取容差 / Get the tolerance
     pub fn tolerance(&self) -> &V {
         &self.tolerance
     }
 
+    /// 获取辅助松弛变量 / Get the auxiliary side variable
     pub fn side_variable(&self) -> &BinaryVariableItem {
         &self.side_var
     }

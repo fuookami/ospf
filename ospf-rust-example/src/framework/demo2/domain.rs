@@ -1,3 +1,4 @@
+//! 领域层 / Domain layer
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::object::ObjectiveCategory;
@@ -35,36 +36,62 @@ use crate::framework::demo2::infrastructure::dto::{
     Demo2Response, LoadingOrderResponse,
 };
 
+/// Demo2 领域模块，包含飞机装载与配重平衡的各子域 / Demo2 domain module containing aircraft loading and weight balance sub-domains
 pub mod aircraft;
+/// 适航安全约束子域 / Airworthiness security constraints sub-domain
 pub mod airworthiness_security;
+/// 快递效能子域 / Express cargo effectiveness sub-domain
 pub mod express_effectiveness;
+/// 装载效能子域 / Loading effectiveness sub-domain
 pub mod loading_effectiveness;
+/// 平均气动弦长（MAC）计算子域 / Mean Aerodynamic Chord calculation sub-domain
 pub mod mac;
+/// MAC 优化子域 / MAC optimization sub-domain
 pub mod mac_optimization;
+/// 载荷最大化子域 / Payload maximization sub-domain
 pub mod payload_maximization;
+/// 推荐重量均衡子域 / Recommended weight equalization sub-domain
 pub mod recommended_weight_equalization;
+/// 冗余约束子域 / Redundancy constraints sub-domain
 pub mod redundancy;
+/// 领域服务子域 / Domain service sub-domain
 pub mod service;
+/// 共享工具与类型子域 / Shared utilities and types sub-domain
 pub mod shared;
+/// 软安全约束子域 / Soft security constraints sub-domain
 pub mod soft_security;
+/// 装载方案子域 / Stowage plan sub-domain
 pub mod stowage;
 
+/// 满载应用 / Full-load application
 pub struct FullLoadApplication;
+/// 预分配应用 / Predistribution application
 pub struct PredistributionApplication;
+/// 重量推荐应用 / Weight recommendation application
 pub struct WeightRecommendationApplication;
+/// 装机顺序应用 / Loading order application
 pub struct LoadingOrderApplication;
 
+/// 有效的 Benders 自适应配置 / Effective Benders adaptive configuration
 #[derive(Clone, Copy)]
 struct EffectiveBendersAdaptiveConfig {
+    /// 最小二值变量数阈值 / Minimum binary variable count threshold
     min_binary_variables: usize,
+    /// 最大迭代次数 / Maximum iteration count
     max_iterations: usize,
+    /// 收敛容差 / Convergence tolerance
     tolerance: f64,
+    /// 最大停滞迭代次数 / Maximum stall iterations
     max_stall_iterations: Option<usize>,
+    /// 目标停滞迭代次数 / Objective stall iterations
     objective_stall_iterations: Option<usize>,
 }
 
+/// 求解模式 / Solve mode
 enum SolveMode {
+    /// 混合整数线性规划直接求解 / MILP direct solve
     Milp,
+    /// Benders 分解求解 / Benders decomposition solve
     Benders(EffectiveBendersAdaptiveConfig),
 }
 
@@ -74,24 +101,40 @@ const BENDERS_QUALITY_REASON_PROGRESS_GUARD_TRIGGERED: &str = "progress_guard_tr
 const BENDERS_QUALITY_REASON_CUT_EFFICIENCY_LOW: &str = "cut_efficiency_low";
 const BENDERS_QUALITY_REASON_TRAJECTORY_WEAK: &str = "trajectory_weak";
 
+/// Benders 质量守卫配置 / Benders quality guard configuration
 #[derive(Clone, Copy)]
 struct BendersQualityGuardConfig {
+    /// 弱间隙乘数 / Weak gap multiplier
     weak_gap_multiplier: f64,
+    /// 弱间隙下限 / Weak gap floor
     weak_gap_floor: f64,
+    /// 迭代压力百分比 / Iteration pressure percentage
     iteration_pressure_percent: usize,
+    /// 切割密度最小迭代数 / Cut density minimum iterations
     cut_density_min_iterations: usize,
+    /// 切割密度阈值 / Cut density threshold
     cut_density_threshold: f64,
+    /// 轨迹最小快照数 / Trajectory minimum snapshots
     trajectory_min_snapshots: usize,
+    /// 轨迹步长乘数 / Trajectory step multiplier
     trajectory_step_multiplier: f64,
+    /// 轨迹步长下限 / Trajectory step floor
     trajectory_step_floor: f64,
+    /// 时间守卫最小毫秒数 / Time guard minimum milliseconds
     time_guard_min_ms: u128,
+    /// 评分-间隙权重 / Score gap weight
     score_gap_weight: f64,
+    /// 评分-时间权重 / Score time weight
     score_time_weight: f64,
+    /// 评分-迭代权重 / Score iteration weight
     score_iteration_weight: f64,
+    /// 评分-切割密度权重 / Score cut density weight
     score_cut_density_weight: f64,
+    /// 评分-轨迹权重 / Score trajectory weight
     score_trajectory_weight: f64,
 }
 
+/// 检查飞机类型是否受支持 / Check if the aircraft type is supported
 fn supported_aircraft(aircraft_type: AircraftTypeInput) -> bool {
     matches!(
         aircraft_type,
@@ -99,6 +142,7 @@ fn supported_aircraft(aircraft_type: AircraftTypeInput) -> bool {
     )
 }
 
+/// 返回默认的 Benders 质量守卫配置 / Return default Benders quality guard configuration
 fn default_benders_quality_guard_config() -> BendersQualityGuardConfig {
     BendersQualityGuardConfig {
         weak_gap_multiplier: 20.0,
@@ -118,6 +162,7 @@ fn default_benders_quality_guard_config() -> BendersQualityGuardConfig {
     }
 }
 
+/// 归一化 Benders 质量评分权重 / Normalize Benders quality score weights
 fn normalize_benders_quality_weights(
     gap_weight: f64,
     time_weight: f64,
@@ -144,6 +189,7 @@ fn normalize_benders_quality_weights(
     }
 }
 
+/// 解析 Benders 质量守卫配置（合并覆盖值） / Resolve Benders quality guard config (merging overrides)
 fn resolve_benders_quality_guard_config(
     override_config: Option<BendersQualityOverrideConfig>,
 ) -> BendersQualityGuardConfig {
@@ -217,6 +263,7 @@ fn resolve_benders_quality_guard_config(
     }
 }
 
+/// 根据问题规模调整 Benders 自适应配置 / Tune Benders adaptive config based on problem size
 fn tune_benders_adaptive_config(
     configured: BendersAdaptiveConfig,
     binary_variables: usize,
@@ -293,6 +340,7 @@ fn tune_benders_adaptive_config(
     }
 }
 
+/// 解析求解模式（MILP 或 Benders） / Resolve solve mode (MILP or Benders)
 fn resolve_solve_mode(request: &Demo2Request, notes: &mut Vec<String>) -> SolveMode {
     let binary_variables = request.cargos.len() * request.positions.len();
     let tuned_adaptive = tune_benders_adaptive_config(request.benders_adaptive, binary_variables);
@@ -400,6 +448,7 @@ fn resolve_solve_mode(request: &Demo2Request, notes: &mut Vec<String>) -> SolveM
     }
 }
 
+/// 记录求解路径诊断 / Push solver path diagnostic note
 fn push_solver_path_note(notes: &mut Vec<String>, solver_path: &str) {
     notes.push(format!("solver_path={}", solver_path));
     push_grouped_note(
@@ -411,6 +460,7 @@ fn push_solver_path_note(notes: &mut Vec<String>, solver_path: &str) {
     );
 }
 
+/// 记录 Benders 求解失败诊断 / Push Benders failure diagnostic note
 fn push_benders_failed_note(notes: &mut Vec<String>, message: &str) {
     notes.push(format!("benders_failed: {}", message));
     push_grouped_note(
@@ -422,6 +472,7 @@ fn push_benders_failed_note(notes: &mut Vec<String>, message: &str) {
     );
 }
 
+/// 记录 Benders 运行时信息（迭代数、间隙、耗时） / Push Benders runtime notes (iterations, gap, time)
 fn push_benders_runtime_notes(
     notes: &mut Vec<String>,
     benders_iterations: usize,
@@ -454,10 +505,12 @@ fn push_benders_runtime_notes(
     );
 }
 
+/// 解析 Benders 间隙守卫阈值 / Resolve Benders gap guard threshold
 fn resolve_benders_gap_guard(adaptive: &EffectiveBendersAdaptiveConfig) -> f64 {
     (adaptive.tolerance * 100.0).max(1e-4).min(0.2)
 }
 
+/// 记录 Benders 间隙守卫超限诊断 / Push Benders gap guard exceeded diagnostic note
 fn push_benders_gap_guard_exceeded_note(notes: &mut Vec<String>, benders_gap: f64, gap_guard: f64) {
     notes.push(format!(
         "benders_gap_guard_exceeded: gap={:.6} > guard={:.6}",
@@ -472,6 +525,7 @@ fn push_benders_gap_guard_exceeded_note(notes: &mut Vec<String>, benders_gap: f6
     );
 }
 
+/// 解析 Benders 时间守卫阈值（毫秒） / Resolve Benders time guard threshold in milliseconds
 fn resolve_benders_time_guard_ms(
     adaptive: &EffectiveBendersAdaptiveConfig,
     quality_guard: &BendersQualityGuardConfig,
@@ -490,6 +544,7 @@ fn resolve_benders_time_guard_ms(
         .max(quality_guard.time_guard_min_ms)
 }
 
+/// 记录 Benders 时间守卫超限诊断 / Push Benders time guard exceeded diagnostic note
 fn push_benders_time_guard_exceeded_note(
     notes: &mut Vec<String>,
     benders_time_ms: u128,
@@ -508,6 +563,7 @@ fn push_benders_time_guard_exceeded_note(
     );
 }
 
+/// 记录 Benders 进度守卫触发诊断 / Push Benders progress guard triggered diagnostic note
 fn push_benders_progress_guard_triggered_note(
     notes: &mut Vec<String>,
     benders_iterations: usize,
@@ -531,6 +587,7 @@ fn push_benders_progress_guard_triggered_note(
     );
 }
 
+/// 记录 Benders 切割效率低诊断 / Push Benders cut efficiency low diagnostic note
 fn push_benders_cut_efficiency_low_note(
     notes: &mut Vec<String>,
     executed_iterations: usize,
@@ -553,6 +610,7 @@ fn push_benders_cut_efficiency_low_note(
     );
 }
 
+/// 记录 Benders 轨迹弱诊断 / Push Benders trajectory weak diagnostic note
 fn push_benders_trajectory_weak_note(
     notes: &mut Vec<String>,
     snapshots: &[BendersIterationSnapshot],
@@ -588,6 +646,7 @@ fn push_benders_trajectory_weak_note(
     );
 }
 
+/// 记录 Benders 质量动作诊断 / Push Benders quality action diagnostic note
 fn push_benders_quality_action_note(notes: &mut Vec<String>, action: &str, reason: &str) {
     notes.push(format!(
         "benders_quality_action={},reason={}",
@@ -602,6 +661,7 @@ fn push_benders_quality_action_note(notes: &mut Vec<String>, action: &str, reaso
     );
 }
 
+/// 解析 Benders 质量评分（0-100） / Resolve Benders quality score (0-100)
 fn resolve_benders_quality_score(
     adaptive: &EffectiveBendersAdaptiveConfig,
     quality_guard: &BendersQualityGuardConfig,
@@ -677,6 +737,7 @@ fn resolve_benders_quality_score(
     (score * 100.0).clamp(0.0, 100.0)
 }
 
+/// 记录 Benders 质量评分诊断 / Push Benders quality score diagnostic note
 fn push_benders_quality_score_note(notes: &mut Vec<String>, quality_score: f64) {
     notes.push(format!("benders_quality_score={:.2}", quality_score));
     push_grouped_note(
@@ -688,6 +749,7 @@ fn push_benders_quality_score_note(notes: &mut Vec<String>, quality_score: f64) 
     );
 }
 
+/// 解析 Benders 质量降级原因 / Resolve Benders quality degradation reason
 fn resolve_benders_quality_reason(
     adaptive: &EffectiveBendersAdaptiveConfig,
     quality_guard: &BendersQualityGuardConfig,
@@ -754,6 +816,7 @@ fn resolve_benders_quality_reason(
     None
 }
 
+/// 构造无解响应 / Construct no-solution response
 fn no_solution_response(status: &str, notes: Vec<String>) -> Demo2Response {
     let diagnostics = build_structured_diagnostics(&notes);
     Demo2Response {
@@ -765,6 +828,7 @@ fn no_solution_response(status: &str, notes: Vec<String>) -> Demo2Response {
     }
 }
 
+/// 构造 Demo2 响应 / Construct Demo2 response
 fn demo2_response(
     status: String,
     objective: Option<f64>,
@@ -781,6 +845,7 @@ fn demo2_response(
     }
 }
 
+/// 追加核心可行性诊断（检查载荷、包线、位置容量等） / Append core feasibility diagnostics (check payload, envelope, position capacity, etc.)
 fn append_core_feasibility_diagnostics(request: &Demo2Request, notes: &mut Vec<String>) {
     let total_capacity: f64 = request
         .positions
@@ -856,6 +921,7 @@ fn append_core_feasibility_diagnostics(request: &Demo2Request, notes: &mut Vec<S
     }
 }
 
+/// 追加关键约束诊断（容量利用率、包线接近、横向不平衡、冗余集中度） / Append critical constraint notes (capacity utilization, envelope proximity, lateral imbalance, redundancy concentration)
 fn append_critical_constraint_notes(
     request: &Demo2Request,
     x_idx: &[Vec<usize>],
@@ -1025,6 +1091,7 @@ fn append_critical_constraint_notes(
     }
 }
 
+/// 使用 Benders 分解求解线性模型 / Solve linear model using Benders decomposition
 fn solve_linear_benders(
     master_model: &MetaModel<f64>,
     sub_model: &MetaModel<f64>,
@@ -1048,6 +1115,7 @@ fn solve_linear_benders(
     Ok(solver.solve_meta_typed_with_options(master_model, sub_model, options)?)
 }
 
+/// 求解元模型，若无可行解返回 None / Solve meta model, returning None if infeasible
 fn solve_meta_typed_if_feasible(
     model: MetaModel<f64>,
 ) -> Result<Option<FeasibleSolverOutput<f64>>, Box<dyn Error>> {
@@ -1055,6 +1123,7 @@ fn solve_meta_typed_if_feasible(
     solve_linear_meta_model_typed_if_feasible(model, &solver)
 }
 
+/// 分析解向量，生成货位分配与关键约束诊断 / Analyze solution vector, generating cargo-position assignments and critical constraint diagnostics
 fn analyze_solution_vector(
     request: &Demo2Request,
     x_idx: &[Vec<usize>],
@@ -1079,6 +1148,7 @@ fn analyze_solution_vector(
 }
 
 impl FullLoadApplication {
+    /// 执行满载应用求解 / Execute full-load application solve
     pub fn execute(&self, request: Demo2Request) -> Result<Demo2Response, Box<dyn Error>> {
         self.init(&request)?;
         let mut notes = Vec::new();
@@ -1319,24 +1389,25 @@ impl FullLoadApplication {
                 request, &mut master_model, &mut sub_model, "x",
             )?;
 
+        let master_intermediates = shared::model_registration::register_derived_variables(
+            request,
+            &mut master_model,
+            &x_idx_master,
+        )?;
+        let sub_intermediates = shared::model_registration::register_derived_variables(
+            request,
+            &mut sub_model,
+            &x_idx_sub,
+        )?;
         let registration = shared::model_registration::RegistrationResult {
             x_idx: x_idx_master.clone(),
             z: None,
-            estimate_load_weight_idx: Vec::new(),
-            estimate_loaded_idx: Vec::new(),
-            loaded_idx: Vec::new(),
+            estimate_load_weight_idx: master_intermediates.estimate_load_weight_idx.clone(),
+            estimate_loaded_idx: master_intermediates.estimate_loaded_idx.clone(),
+            loaded_idx: master_intermediates.loaded_idx.clone(),
         };
         shared::model_registration::construct_objective(
             request, &mut master_model, &registration, Demo2PipelineMode::FullLoad,
-        )?;
-
-        // 注册中间符号 for master model
-        let master_intermediates = shared::model_registration::register_intermediate_symbols(
-            request, &mut master_model, &x_idx_master, 10000,
-        )?;
-        // 注册中间符号 for sub model
-        let sub_intermediates = shared::model_registration::register_intermediate_symbols(
-            request, &mut sub_model, &x_idx_sub, 10000,
         )?;
 
         stowage::service::apply_stowage_pipeline(
@@ -1449,6 +1520,7 @@ impl FullLoadApplication {
 }
 
 impl PredistributionApplication {
+    /// 执行预分配应用求解 / Execute predistribution application solve
     pub fn execute(&self, request: Demo2Request) -> Result<Demo2Response, Box<dyn Error>> {
         self.init(&request)?;
         let mut notes = Vec::new();
@@ -1701,22 +1773,25 @@ impl PredistributionApplication {
 
         let z = master_model
             .register_variable(UContinuousVariableItem::auto("pre_benders_max_deviation"))?;
+        let master_intermediates = shared::model_registration::register_derived_variables(
+            request,
+            &mut master_model,
+            &x_idx_master,
+        )?;
+        let sub_intermediates = shared::model_registration::register_derived_variables(
+            request,
+            &mut sub_model,
+            &x_idx_sub,
+        )?;
         let registration = shared::model_registration::RegistrationResult {
             x_idx: x_idx_master.clone(),
             z: Some(z),
-            estimate_load_weight_idx: Vec::new(),
-            estimate_loaded_idx: Vec::new(),
-            loaded_idx: Vec::new(),
+            estimate_load_weight_idx: master_intermediates.estimate_load_weight_idx.clone(),
+            estimate_loaded_idx: master_intermediates.estimate_loaded_idx.clone(),
+            loaded_idx: master_intermediates.loaded_idx.clone(),
         };
         shared::model_registration::construct_objective(
             request, &mut master_model, &registration, Demo2PipelineMode::Predistribution,
-        )?;
-
-        let master_intermediates = shared::model_registration::register_intermediate_symbols(
-            request, &mut master_model, &x_idx_master, 10000,
-        )?;
-        let sub_intermediates = shared::model_registration::register_intermediate_symbols(
-            request, &mut sub_model, &x_idx_sub, 10000,
         )?;
 
         stowage::service::apply_stowage_pipeline(
@@ -1822,6 +1897,7 @@ impl PredistributionApplication {
 }
 
 impl WeightRecommendationApplication {
+    /// 执行重量推荐应用求解 / Execute weight recommendation application solve
     pub fn execute(&self, request: Demo2Request) -> Result<Demo2Response, Box<dyn Error>> {
         self.init(&request)?;
         let mut notes = Vec::new();
@@ -2068,22 +2144,25 @@ impl WeightRecommendationApplication {
 
         let z = master_model
             .register_variable(UContinuousVariableItem::auto("wr_benders_max_deviation"))?;
+        let master_intermediates = shared::model_registration::register_derived_variables(
+            request,
+            &mut master_model,
+            &x_idx_master,
+        )?;
+        let sub_intermediates = shared::model_registration::register_derived_variables(
+            request,
+            &mut sub_model,
+            &x_idx_sub,
+        )?;
         let registration = shared::model_registration::RegistrationResult {
             x_idx: x_idx_master.clone(),
             z: Some(z),
-            estimate_load_weight_idx: Vec::new(),
-            estimate_loaded_idx: Vec::new(),
-            loaded_idx: Vec::new(),
+            estimate_load_weight_idx: master_intermediates.estimate_load_weight_idx.clone(),
+            estimate_loaded_idx: master_intermediates.estimate_loaded_idx.clone(),
+            loaded_idx: master_intermediates.loaded_idx.clone(),
         };
         shared::model_registration::construct_objective(
             request, &mut master_model, &registration, Demo2PipelineMode::WeightRecommendation,
-        )?;
-
-        let master_intermediates = shared::model_registration::register_intermediate_symbols(
-            request, &mut master_model, &x_idx_master, 10000,
-        )?;
-        let sub_intermediates = shared::model_registration::register_intermediate_symbols(
-            request, &mut sub_model, &x_idx_sub, 10000,
         )?;
 
         stowage::service::apply_stowage_pipeline(
@@ -2196,6 +2275,7 @@ impl WeightRecommendationApplication {
 }
 
 impl LoadingOrderApplication {
+    /// 执行装机顺序应用 / Execute loading order application
     pub fn execute(&self, request: Demo2Request) -> Result<LoadingOrderResponse, Box<dyn Error>> {
         self.init(&request)?;
         let mut notes = Vec::new();
@@ -2285,7 +2365,12 @@ mod tests {
             .execute(request)
             .expect("benders-no-fallback should be handled as response");
 
-        assert!(output.status == "Optimal" || output.status == "Feasible");
+        assert!(
+            output.status == "Optimal" || output.status == "Feasible",
+            "unexpected status `{}` with notes {:?}",
+            output.status,
+            output.notes
+        );
         assert!(
             output
                 .notes
@@ -2349,7 +2434,12 @@ mod tests {
             .execute(request)
             .expect("full-load benders fallback branch should be handled as response");
 
-        assert!(output.status == "Optimal" || output.status == "Feasible");
+        assert!(
+            output.status == "Optimal" || output.status == "Feasible",
+            "unexpected status `{}` with notes {:?}",
+            output.status,
+            output.notes
+        );
         assert!(
             output
                 .notes
@@ -2377,7 +2467,12 @@ mod tests {
             .execute(request)
             .expect("predistribution benders branch should be handled as response");
 
-        assert!(output.status == "Optimal" || output.status == "Feasible");
+        assert!(
+            output.status == "Optimal" || output.status == "Feasible",
+            "unexpected status `{}` with notes {:?}",
+            output.status,
+            output.notes
+        );
         assert!(
             output
                 .notes
@@ -2692,7 +2787,12 @@ mod tests {
             .execute(request)
             .expect("weight recommendation benders-no-fallback should be handled as response");
 
-        assert!(output.status == "Optimal" || output.status == "Feasible");
+        assert!(
+            output.status == "Optimal" || output.status == "Feasible",
+            "unexpected status `{}` with notes {:?}",
+            output.status,
+            output.notes
+        );
         assert!(
             output
                 .notes
@@ -3475,6 +3575,7 @@ mod tests {
         assert!(
             sub_constraint_names
                 .iter()
+                .filter(|name| !name.starts_with("define_"))
                 .all(|name| name.starts_with("airworthiness_security_"))
         );
     }
@@ -3510,6 +3611,7 @@ mod tests {
         assert!(
             sub_constraint_names
                 .iter()
+                .filter(|name| !name.starts_with("define_"))
                 .all(|name| name.starts_with("airworthiness_security_"))
         );
     }
@@ -3545,6 +3647,7 @@ mod tests {
         assert!(
             sub_constraint_names
                 .iter()
+                .filter(|name| !name.starts_with("define_"))
                 .all(|name| name.starts_with("airworthiness_security_"))
         );
     }
@@ -3590,6 +3693,7 @@ mod tests {
                     loaded_items: Vec::new(),
                 predicate_load_weight_min: None,
         }];
+        request.adjacent_positions.clear();
         request.payload_upper_bound = 10.0;
         request.min_payload_ratio = 0.0;
         request.max_adjacent_load_gap = 10.0;
@@ -3603,7 +3707,12 @@ mod tests {
         let app = FullLoadApplication;
         let output = app.execute(request).expect("full-load should run");
 
-        assert!(output.status == "Optimal" || output.status == "Feasible");
+        assert!(
+            output.status == "Optimal" || output.status == "Feasible",
+            "unexpected status `{}` with notes {:?}",
+            output.status,
+            output.notes
+        );
         assert!(output.diagnostics.iter().any(|note| {
             note.level == "critical"
                 && note.group.as_deref() == Some("airworthiness")
@@ -3680,7 +3789,12 @@ mod tests {
         let app = FullLoadApplication;
         let output = app.execute(request).expect("full-load should run");
 
-        assert!(output.status == "Optimal" || output.status == "Feasible");
+        assert!(
+            output.status == "Optimal" || output.status == "Feasible",
+            "unexpected status `{}` with notes {:?}",
+            output.status,
+            output.notes
+        );
         assert!(output.diagnostics.iter().any(|note| {
             note.level == "critical"
                 && note.group.as_deref() == Some("redundancy")

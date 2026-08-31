@@ -1,10 +1,11 @@
+//! 物品优先级限制 / Item priority limits
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::express_effectiveness::aggregation::ExpressEffectivenessAggregation;
 use crate::framework::demo2::domain::express_effectiveness::context::ExpressEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
-/// 物品优先级限制: 高优先级货物优先装载
+/// 物品优先级限制: 高优先级货物必须装载 / Item priority limit: high-priority cargos must be loaded
 /// 对齐 Kotlin ItemPriorityLimit
 pub fn apply_item_priority_limits(
     model: &mut MetaModel<f64>,

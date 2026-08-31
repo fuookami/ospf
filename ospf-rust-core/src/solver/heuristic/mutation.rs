@@ -1,17 +1,24 @@
-//! 变异算子
-//! Mutation Operators
+//! 变异算子 / Mutation Operators
+//!
+//! 定义遗传算法中变异操作的标准接口和多种实现，
+//! 包括高斯变异、多项式变异、位翻转变异和整数变异。
+//! Defines the standard interface and multiple implementations for mutation operations
+//! in genetic algorithms, including Gaussian, polynomial, bit-flip, and integer mutation.
 
 use super::Individual;
 
 /// 变异算子 trait / Mutation Operator Trait
 ///
-/// 定义变异操作的标准接口。
-/// Defines standard interface for mutation operations.
+/// 定义变异操作的标准接口，用于对个体基因进行随机扰动以维持种群多样性。
+/// Defines the standard interface for mutation operations, used to randomly perturb individual genes to maintain population diversity.
 pub trait MutationOperator<I, G>: Send + Sync
 where
     I: Individual<G>,
 {
     /// 执行变异操作 / Perform mutation
+    ///
+    /// 对个体基因进行随机扰动，返回变异后的新个体。
+    /// Randomly perturbs individual genes and returns a new mutated individual.
     ///
     /// # 参数 / Parameters
     /// - `individual`: 待变异个体 / Individual to mutate
@@ -23,8 +30,8 @@ where
 
 /// 高斯变异 / Gaussian Mutation
 ///
-/// 对实数编码的个体添加高斯噪声。
-/// Adds Gaussian noise to real-valued individuals.
+/// 对实数编码的个体添加高斯噪声，以标准差 sigma 控制扰动幅度。
+/// Adds Gaussian noise to real-valued individuals, controlling perturbation magnitude with standard deviation sigma.
 #[derive(Debug, Clone, Copy)]
 pub struct GaussianMutation {
     /// 变异概率 / Mutation probability
@@ -34,6 +41,11 @@ pub struct GaussianMutation {
 }
 
 impl GaussianMutation {
+    /// 创建新变异算子 / Create new mutation operator
+    ///
+    /// # 参数 / Parameters
+    /// - `rate`: 变异概率 / Mutation probability
+    /// - `sigma`: 高斯噪声标准差 / Standard deviation of Gaussian noise
     pub fn new(rate: f64, sigma: f64) -> Self {
         Self { rate, sigma }
     }
@@ -73,8 +85,10 @@ where
 
 /// 多项式变异 / Polynomial Mutation
 ///
-/// 适用于实数编码的变异算子。
-/// Mutation operator suitable for real-valued encoding.
+/// 适用于实数编码的变异算子，通过多项式分布控制扰动幅度，
+/// 分布指数 eta 越大则变异越靠近原值。
+/// Mutation operator suitable for real-valued encoding, controlling perturbation magnitude
+/// through polynomial distribution; larger distribution index eta produces mutations closer to the original value.
 #[derive(Debug, Clone, Copy)]
 pub struct PolynomialMutation {
     /// 变异概率 / Mutation probability
@@ -84,6 +98,11 @@ pub struct PolynomialMutation {
 }
 
 impl PolynomialMutation {
+    /// 创建新变异算子 / Create new mutation operator
+    ///
+    /// # 参数 / Parameters
+    /// - `rate`: 变异概率 / Mutation probability
+    /// - `eta`: 分布指数，值越大变异越靠近原值 / Distribution index, larger values produce mutations closer to the original
     pub fn new(rate: f64, eta: f64) -> Self {
         Self { rate, eta }
     }
@@ -122,8 +141,8 @@ where
 
 /// 位翻转变异 / Bit-flip Mutation
 ///
-/// 适用于二进制编码的变异算子。
-/// Mutation operator suitable for binary encoding.
+/// 适用于二进制编码的变异算子，以指定概率翻转每个基因位。
+/// Mutation operator suitable for binary encoding, flipping each gene bit with the specified probability.
 #[derive(Debug, Clone, Copy)]
 pub struct BitFlipMutation {
     /// 变异概率 / Mutation probability
@@ -131,6 +150,10 @@ pub struct BitFlipMutation {
 }
 
 impl BitFlipMutation {
+    /// 创建新变异算子 / Create new mutation operator
+    ///
+    /// # 参数 / Parameters
+    /// - `rate`: 位翻转概率 / Bit-flip probability
     pub fn new(rate: f64) -> Self {
         Self { rate }
     }
@@ -164,8 +187,8 @@ where
 
 /// 整数变异 / Integer Mutation
 ///
-/// 适用于整数编码的变异算子。
-/// Mutation operator suitable for integer encoding.
+/// 适用于整数编码的变异算子，以指定概率对基因值加减固定范围。
+/// Mutation operator suitable for integer encoding, adding or subtracting a fixed range to gene values with the specified probability.
 #[derive(Debug, Clone, Copy)]
 pub struct IntegerMutation {
     /// 变异概率 / Mutation probability
@@ -175,6 +198,11 @@ pub struct IntegerMutation {
 }
 
 impl IntegerMutation {
+    /// 创建新变异算子 / Create new mutation operator
+    ///
+    /// # 参数 / Parameters
+    /// - `rate`: 变异概率 / Mutation probability
+    /// - `range`: 变异时的变化范围 / Change range during mutation
     pub fn new(rate: f64, range: i64) -> Self {
         Self { rate, range }
     }
@@ -210,8 +238,13 @@ where
 
 /// 边界修正 / Boundary Correction
 ///
-/// 将变异后的基因值限制在有效范围内。
-/// Restricts mutated gene values to valid range.
+/// 将变异后的基因值限制在有效范围内 [lower, upper]。
+/// Restricts mutated gene values to the valid range [lower, upper].
+///
+/// # 参数 / Parameters
+/// - `individual`: 待修正个体 / Individual to correct
+/// - `lower`: 下界 / Lower bound
+/// - `upper`: 上界 / Upper bound
 pub fn clamp_genes<I>(individual: &mut I, lower: f64, upper: f64)
 where
     I: Individual<f64>,

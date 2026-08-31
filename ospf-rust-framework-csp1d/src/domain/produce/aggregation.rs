@@ -6,7 +6,7 @@ use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::solver::SolveValue;
 use ospf_rust_core::variable::{Continuous, UInteger, VariableRange};
 
-use crate::domain::material::{CuttingPlan, Material, Machine, ProductDemand};
+use crate::domain::material::{CuttingPlan, CuttingPlanId, Material, Machine, ProductDemand};
 
 use super::model::{DerivedPlanExpressionSymbols, PlanUsageVariablePool};
 use super::CuttingPlanUsage;
@@ -27,7 +27,7 @@ pub struct ProduceAggregation<V: SolveValue> {
     /// 已注册的批量表达式符号 / Registered batch expression symbols
     batch_symbols: Option<DerivedPlanExpressionSymbols>,
     plans_iteration: Vec<Vec<CuttingPlan<V>>>,
-    registered_ids: HashSet<String>,
+    registered_ids: HashSet<CuttingPlanId>,
     registered_keys: HashSet<String>,
     variable_pool: PlanUsageVariablePool<V>,
     retired_plan_indices: HashSet<usize>,

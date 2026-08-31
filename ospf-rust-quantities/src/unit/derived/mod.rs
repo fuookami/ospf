@@ -1,8 +1,6 @@
-//! Derived units - 导出单位
-//! Derived units - SI derived units organized by dimension
+//! 导出单位 / Derived units
 //!
-//! 按量纲分类组织的 SI 导出单位，提供运行时和编译时两种表示方式。
-//! SI derived units organized by dimension, providing both runtime and compile-time representations.
+//! 按量纲分类组织的 SI 导出单位，提供运行时和编译时两种表示方式 / SI derived units organized by dimension, providing both runtime and compile-time representations
 //!
 //! # 分类 / Categories
 //! - 基本物理量：长度、质量、时间、电流、温度、物质的量、发光强度、信息量、角度

@@ -1,3 +1,4 @@
+//! 编组编制约束限制 / Bunch compilation constraint limits.
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};

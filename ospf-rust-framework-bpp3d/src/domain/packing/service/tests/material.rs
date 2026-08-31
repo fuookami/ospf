@@ -46,7 +46,7 @@
         let item = PackedItem {
             item_index: 0,
             item: ActualItem {
-                id: "item_0".to_string(),
+                id: "item_0".into(),
                 name: "Item 0".to_string(),
                 package_code: Some("PKG001".to_string()),
                 pack: Some(pack),

@@ -1,3 +1,4 @@
+//! 普通散货目的地分配限制 / Normal bulk destination assignment limits
 use std::error::Error;
 use std::collections::BTreeMap;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};

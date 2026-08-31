@@ -1,7 +1,7 @@
     #[test]
     fn patterned_item_and_package_attribute_report_diagnostics() {
         let item = ActualItem {
-            id: "i0".to_string(),
+            id: "i0".into(),
             name: "Item".to_string(),
             package_code: None,
             pack: None,
@@ -78,7 +78,7 @@
             amount: 1,
         };
         let small = ActualItem {
-            id: "small".to_string(),
+            id: "small".into(),
             name: "Small".to_string(),
             package_code: None,
             pack: Some(small_pack),
@@ -90,7 +90,7 @@
             shape_spec_override: Some(PackageShapeSpec::Cuboid),
         };
         let large = ActualItem {
-            id: "large".to_string(),
+            id: "large".into(),
             name: "Large".to_string(),
             package_code: None,
             pack: Some(large_pack),
@@ -215,7 +215,7 @@
             &[
                 (
                     ActualItem {
-                        id: "small".to_string(),
+                        id: "small".into(),
                         name: "Small".to_string(),
                         package_code: None,
                         pack: Some(Package {
@@ -253,7 +253,7 @@
             &[
                 (
                     ActualItem {
-                        id: "small".to_string(),
+                        id: "small".into(),
                         name: "Small".to_string(),
                         package_code: None,
                         pack: Some(Package {
@@ -281,7 +281,7 @@
                 ),
                 (
                     ActualItem {
-                        id: "large".to_string(),
+                        id: "large".into(),
                         name: "Large".to_string(),
                         package_code: None,
                         pack: Some(Package {
@@ -325,7 +325,7 @@
             &attribute,
             &[(
                 ActualItem {
-                    id: "upright".to_string(),
+                    id: "upright".into(),
                     name: "Upright".to_string(),
                     package_code: None,
                     pack: None,

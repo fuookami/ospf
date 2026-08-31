@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use crate::domain::bunch_compilation::model::BunchEntry;
+use crate::domain::common::{ExecutorId, ExecutorIdTrait};
 
 /// 成本分解 / Cost breakdown
 #[derive(Debug, Clone, PartialEq)]
@@ -52,16 +53,19 @@ impl Default for CostBreakdown {
 }
 
 /// 任务束成本策略 / Bunch cost policy
-pub trait BunchCostPolicy: Send + Sync {
+pub trait BunchCostPolicy<I = ExecutorId>: Send + Sync
+where
+    I: ExecutorIdTrait,
+{
     /// 计算成本分解 / Calculate cost breakdown
     fn cost_breakdown(
         &self,
-        bunch: &BunchEntry,
+        bunch: &BunchEntry<I>,
         shadow_prices: &HashMap<usize, f64>,
     ) -> CostBreakdown;
 
     /// 计算 reduced cost / Calculate reduced cost
-    fn reduced_cost(&self, bunch: &BunchEntry, shadow_prices: &HashMap<usize, f64>) -> f64 {
+    fn reduced_cost(&self, bunch: &BunchEntry<I>, shadow_prices: &HashMap<usize, f64>) -> f64 {
         self.cost_breakdown(bunch, shadow_prices).total()
             - bunch
                 .task_indices
@@ -75,10 +79,13 @@ pub trait BunchCostPolicy: Send + Sync {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DefaultBunchCostPolicy;
 
-impl BunchCostPolicy for DefaultBunchCostPolicy {
+impl<I> BunchCostPolicy<I> for DefaultBunchCostPolicy
+where
+    I: ExecutorIdTrait,
+{
     fn cost_breakdown(
         &self,
-        bunch: &BunchEntry,
+        bunch: &BunchEntry<I>,
         _shadow_prices: &HashMap<usize, f64>,
     ) -> CostBreakdown {
         CostBreakdown {
@@ -89,30 +96,37 @@ impl BunchCostPolicy for DefaultBunchCostPolicy {
 }
 
 /// 函数式任务束成本策略 / Functional bunch cost policy
-pub struct FunctionalBunchCostPolicy<F>
+pub struct FunctionalBunchCostPolicy<F, I = ExecutorId>
 where
-    F: Fn(&BunchEntry, &HashMap<usize, f64>) -> CostBreakdown + Send + Sync,
+    F: Fn(&BunchEntry<I>, &HashMap<usize, f64>) -> CostBreakdown + Send + Sync,
+    I: ExecutorIdTrait,
 {
     calculate: F,
+    _id: std::marker::PhantomData<I>,
 }
 
-impl<F> FunctionalBunchCostPolicy<F>
+impl<F, I> FunctionalBunchCostPolicy<F, I>
 where
-    F: Fn(&BunchEntry, &HashMap<usize, f64>) -> CostBreakdown + Send + Sync,
+    F: Fn(&BunchEntry<I>, &HashMap<usize, f64>) -> CostBreakdown + Send + Sync,
+    I: ExecutorIdTrait,
 {
     /// 创建函数式成本策略 / Create functional cost policy
     pub fn new(calculate: F) -> Self {
-        Self { calculate }
+        Self {
+            calculate,
+            _id: std::marker::PhantomData,
+        }
     }
 }
 
-impl<F> BunchCostPolicy for FunctionalBunchCostPolicy<F>
+impl<F, I> BunchCostPolicy<I> for FunctionalBunchCostPolicy<F, I>
 where
-    F: Fn(&BunchEntry, &HashMap<usize, f64>) -> CostBreakdown + Send + Sync,
+    F: Fn(&BunchEntry<I>, &HashMap<usize, f64>) -> CostBreakdown + Send + Sync,
+    I: ExecutorIdTrait,
 {
     fn cost_breakdown(
         &self,
-        bunch: &BunchEntry,
+        bunch: &BunchEntry<I>,
         shadow_prices: &HashMap<usize, f64>,
     ) -> CostBreakdown {
         (self.calculate)(bunch, shadow_prices)
@@ -125,12 +139,13 @@ mod tests {
 
     #[test]
     fn test_default_bunch_cost_policy_uses_bunch_cost() {
-        let bunch = BunchEntry {
+        let bunch: BunchEntry = BunchEntry {
             index: 0,
-            executor_id: "exec_1".to_string(),
+            executor_id: "exec_1".into(),
             task_indices: vec![0, 1],
             cost: 10.0,
             iteration: 0,
+            slot_index: None,
         };
         let policy = DefaultBunchCostPolicy;
         let reduced = policy.reduced_cost(&bunch, &HashMap::from([(0, 2.0), (1, 3.0)]));
@@ -140,12 +155,13 @@ mod tests {
 
     #[test]
     fn test_functional_bunch_cost_policy_injects_business_penalty() {
-        let bunch = BunchEntry {
+        let bunch: BunchEntry = BunchEntry {
             index: 0,
-            executor_id: "exec_1".to_string(),
+            executor_id: "exec_1".into(),
             task_indices: vec![0],
             cost: 1.0,
             iteration: 0,
+            slot_index: None,
         };
         let policy = FunctionalBunchCostPolicy::new(|bunch, _shadow_prices| CostBreakdown {
             task_cost: bunch.cost,

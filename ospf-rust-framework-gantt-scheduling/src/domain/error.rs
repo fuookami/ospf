@@ -10,8 +10,8 @@ use ospf_rust_base::error_enum;
 // 甘特调度领域错误
 // ============================================================================
 
-// 甘特调度能力错误 / Gantt scheduling capability error
 error_type!(
+    /// 甘特调度能力错误 / Gantt scheduling capability error
     #[derive(Clone, Debug)]
     pub struct GanttSchedulingCapabilityError {
         /// 错误详情 / Error detail
@@ -33,8 +33,8 @@ impl Error for GanttSchedulingCapabilityError {
     fn msg(&self) -> String { format!("{}", self) }
 }
 
-// 甘特调度生命周期错误 / Gantt scheduling lifecycle error
 error_type!(
+    /// 甘特调度生命周期错误 / Gantt scheduling lifecycle error
     #[derive(Clone, Debug)]
     pub struct GanttSchedulingLifecycleError {
         /// 错误详情 / Error detail
@@ -56,8 +56,8 @@ impl Error for GanttSchedulingLifecycleError {
     fn msg(&self) -> String { format!("{}", self) }
 }
 
-// 甘特调度求解错误 / Gantt scheduling solving error
 error_type!(
+    /// 甘特调度求解错误 / Gantt scheduling solving error
     #[derive(Clone, Debug)]
     pub struct GanttSchedulingSolvingError {
         /// 错误详情 / Error detail
@@ -79,8 +79,8 @@ impl Error for GanttSchedulingSolvingError {
     fn msg(&self) -> String { format!("{}", self) }
 }
 
-// 甘特调度验证错误 / Gantt scheduling validation error
 error_type!(
+    /// 甘特调度验证错误 / Gantt scheduling validation error
     #[derive(Clone, Debug)]
     pub struct GanttSchedulingValidationError {
         /// 错误详情 / Error detail
@@ -102,8 +102,8 @@ impl Error for GanttSchedulingValidationError {
     fn msg(&self) -> String { format!("{}", self) }
 }
 
-// 甘特调度统一错误枚举 / Gantt scheduling unified error enum
 error_enum!(
+    /// 甘特调度统一错误枚举 / Gantt scheduling unified error enum
     #[derive(Clone)]
     pub enum GanttSchedulingError {
         Capability(GanttSchedulingCapabilityError),
@@ -113,8 +113,8 @@ error_enum!(
     }
 );
 
-// 域错误到 crate 级错误的转换
-// Domain error to crate-level error conversion
+/// 域错误到 crate 级错误的转换
+/// Domain error to crate-level error conversion
 impl From<GanttSchedulingError> for crate::GanttError {
     fn from(err: GanttSchedulingError) -> Self {
         match err {

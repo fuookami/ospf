@@ -4,10 +4,15 @@
 use ospf_rust_math::symbol::{BooleanExpression, ExpressionValue};
 use super::{SortBy, UpdateAssignments};
 
+/// 仓储查询选项。
+/// Repository query options.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RepositoryQuery {
+    /// 排序描述 / Sort descriptor
     pub sort_by: Option<SortBy>,
+    /// 返回数量限制 / Result limit
     pub limit: Option<usize>,
+    /// 偏移量 / Result offset
     pub offset: Option<usize>,
 }
 
@@ -43,6 +48,7 @@ impl RepositoryQuery {
 /// 表达式仓储接口。
 /// Expression repository interface.
 pub trait ExpressionRepository<E, T = ExpressionValue> {
+    /// 错误类型 / Error type
     type Error;
 
     /// 查询实体。

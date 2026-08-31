@@ -56,6 +56,7 @@ Ordinary MILP, RMP LP, and final MILP share context and iterative compilation en
 | API | Responsibility | Stability |
 | --- | --- | --- |
 | `domain::task::{TaskTrait, ExecutorTrait, AssignmentPolicyTrait, TaskPlanTrait}` | Core task and assignment abstractions. | migration |
+| `domain::common::{GanttId, ExecutorIdTrait, TaskIdTrait, TaskPlanIdTrait}` | Strongly typed business ID contracts with default string newtypes. | migration |
 | `domain::task::{TaskStepGraph, TaskStepTrait, BasicTaskStep, StepRelation}` | Multi-step task dependency model. | migration |
 | `domain::task::{Cost, BunchCostPolicy, CostBreakdown, DefaultBunchCostPolicy}` | Cost and reduced-cost policy surface. | migration |
 | `domain::task::{SolverValueAdapter, F64SolverValueAdapter}` | Generic solver value conversion and `f64` boundary. | migration |
@@ -63,7 +64,7 @@ Ordinary MILP, RMP LP, and final MILP share context and iterative compilation en
 | `domain::capacity_scheduling::{CapacityCompilation, CapacityOrderCompilation, CapacityColumn, CapacityColumnAggregation, CapacitySchedulingSolution}` | Capacity scheduling registration and extraction. | migration |
 | `domain::bunch_compilation::{BasicBunchCompilationContext, IterativeBunchCompilationContext, BasicSlotBasedBunchCompilationContext, SlotBasedBunchCompilationContext, SlotBasedCapacityPreSolver, BunchEntry, BunchSolution}` | Bunch master problem and slot-based column lifecycle. | migration |
 | `domain::bunch_generation::{SlotBasedBunchGenerator, BunchFeasibilityPolicy, BunchTaskCandidate, CapacityIntermediateValues}` | Pricing and feasibility extension surface. | migration |
-| `application::service::{create_bunch_branch_and_price, search_bunch_branch_and_price_with_fresh_model, search_bunch_branch_and_price_with_hooks}` | Application helper constructors and search entries. | migration |
+| `application::service::{create_bunch_branch_and_price, create_slot_bunch_branch_and_price, search_bunch_branch_and_price_with_fresh_model, search_bunch_branch_and_price_with_hooks}` | Application helper constructors, slot capacity pre-solving, and search entries. | migration |
 | `application::algorithm::{BranchAndPriceTreeSearch, StrongBranchingStrategy, BranchCutCallback, BranchNodeCallback}` | Isolated branch-and-price tree search hooks. | migration |
 | `domain::common::GanttDynamicModelLifecycle` | Compatibility alias over shared framework dynamic lifecycle. | migration |
 | `infrastructure::{CalendarPolicy, CompositeCalendarPolicy}` | Calendar extension policy surface. | migration |
@@ -82,6 +83,14 @@ Extension points include:
 8. `domain::common::ConstraintIndexMap` for stable shadow-price extraction.
 9. `application::algorithm::BranchAndPriceTreeSearch` hooks for strong branching, cuts, and node tracing.
 
+Slot-aware column-generation additions include `ExecutorSlotCompilationConstraint` for
+exactly-one selection per `(executor, slot)`, typed executor-slot dual extraction through
+`ConstraintIndexMap`, and `BunchPricingRequest` for slot duals, branch groups, and minimum
+column quotas. `BranchGroupTracker` keeps an executor active until all known slot groups
+are fixed. `SlotBunchPricingRequest` carries slot entry state and branch restrictions into
+slot-pricing policies, while `CapacityColumnSelectionConstraint` registers and extracts
+exactly-one capacity-column selections.
+
 ## Generic Numeric Boundaries
 
 Domain APIs use generic solver-value abstractions through `SolverValueAdapter`. `F64SolverValueAdapter` marks the current `f64` solver boundary. Solver conversion remains concentrated in context registration, application solver calls, and result extraction rather than scattered through domain logic.
@@ -92,15 +101,16 @@ Time, duration, capacity, resource amount, production amount, consumption amount
 
 ## Solve Lifecycle
 
-The tested branch-and-price application flow is:
+The tested slot branch-and-price application flow is:
 
-1. Build a fresh `MetaModel<f64>` per branch node.
-2. Register the bunch compilation context.
-3. Solve the initial MILP.
-4. Solve the RMP LP and extract shadow prices through the context.
-5. Generate bunches through `BunchCGPolicy` and register them with `add_columns`.
-6. Solve the final MILP and extract `BunchSolution` through the shared context.
-7. Restore application and context state before moving to the next tree node.
+1. Pre-solve capacity and capture `CapacityIntermediateValues` in the bunch-generation policy.
+2. Build a fresh `MetaModel<f64>` per branch node.
+3. Register the bunch compilation context.
+4. Solve the initial MILP.
+5. Solve the RMP LP and extract shadow prices through the context.
+6. Generate slot bunches through `BunchCGPolicy` and register them with `add_columns`.
+7. Solve the final MILP and extract `BunchSolution` through the shared context.
+8. Restore application and context state before moving to the next tree node.
 
 For multi-node tree search, prefer `solve_branch_node_with_fresh_model`, which restores application state, the dynamic lifecycle, and the compilation context while discarding the node-local `MetaModel` after solve.
 

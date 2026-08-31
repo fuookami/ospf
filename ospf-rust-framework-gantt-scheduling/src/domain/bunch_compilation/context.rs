@@ -14,12 +14,13 @@ use ospf_rust_framework::model::shadow_price::{
 };
 use ospf_rust_framework::solver::column_generation_solver::LinearDualSolution;
 
-use crate::GanttResult;
 use crate::domain::bunch_compilation::iterative::IterativeBunchCompilation;
 use crate::domain::bunch_compilation::model::{BunchEntry, BunchSolution};
 use crate::domain::common::{
-    ConstraintIndexMap, GanttDynamicModelLifecycle, GanttModelStateFacade,
+    ConstraintIndexMap, ExecutorId, ExecutorIdTrait, GanttDynamicModelLifecycle,
+    GanttModelStateFacade,
 };
+use crate::GanttResult;
 
 // ============================================================================
 // 束编译上下文 trait / Bunch Compilation Context Trait
@@ -30,6 +31,9 @@ use crate::domain::common::{
 /// 定义迭代列生成中束编译上下文的接口。
 /// Defines interface for bunch compilation context in iterative column generation.
 pub trait IterativeBunchCompilationContext: Send + Sync {
+    /// 执行者 ID 类型 / Executor id type
+    type ExecutorId: ExecutorIdTrait;
+
     /// 注册到模型 / Register to model
     fn register(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()>;
 
@@ -37,7 +41,7 @@ pub trait IterativeBunchCompilationContext: Send + Sync {
     fn add_columns(
         &mut self,
         iteration: usize,
-        new_bunches: Vec<BunchEntry>,
+        new_bunches: Vec<BunchEntry<Self::ExecutorId>>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<Vec<usize>>;
 
@@ -135,6 +139,19 @@ pub trait IterativeBunchCompilationContext: Send + Sync {
         }
     }
 
+    /// 提取执行器-时隙影子价格 / Extract executor-slot shadow prices
+    ///
+    /// 普通束编译上下文不注册时隙约束，默认返回空映射。
+    /// Ordinary bunch compilation contexts do not register slot constraints, so
+    /// the default implementation returns an empty map.
+    fn extract_executor_slot_shadow_prices(
+        &self,
+        _dual_solution: &LinearDualSolution,
+        _constraint_index_map: &ConstraintIndexMap,
+    ) -> HashMap<(Self::ExecutorId, usize), f64> {
+        HashMap::new()
+    }
+
     /// 影子价格任务数量 / Task count for shadow price extraction
     fn task_count_for_shadow_price(&self) -> usize;
 
@@ -145,7 +162,7 @@ pub trait IterativeBunchCompilationContext: Send + Sync {
     fn extract_kept(&self, solution: &[f64]) -> HashSet<usize>;
 
     /// 提取隐藏执行器 / Extract hidden executors
-    fn extract_hidden_executors(&self, _solution: &[f64]) -> HashSet<String> {
+    fn extract_hidden_executors(&self, _solution: &[f64]) -> HashSet<Self::ExecutorId> {
         HashSet::new()
     }
 
@@ -187,7 +204,7 @@ pub trait IterativeBunchCompilationContext: Send + Sync {
     fn column_count(&self) -> usize;
 
     /// 获取束条目 / Get bunch entry
-    fn get_bunch_entry(&self, bunch_index: usize) -> Option<BunchEntry>;
+    fn get_bunch_entry(&self, bunch_index: usize) -> Option<BunchEntry<Self::ExecutorId>>;
 }
 
 /// 基础束编译上下文实现 / Basic bunch compilation context implementation
@@ -195,16 +212,26 @@ pub trait IterativeBunchCompilationContext: Send + Sync {
 /// 使用 IterativeBunchCompilation 实现的默认上下文。
 /// Default context implementation using IterativeBunchCompilation.
 #[derive(Clone, Debug)]
-pub struct BasicBunchCompilationContext {
+pub struct BasicBunchCompilationContext<I = ExecutorId>
+where
+    I: ExecutorIdTrait,
+{
     /// 迭代束编译 / Iterative bunch compilation
-    pub compilation: IterativeBunchCompilation,
+    pub compilation: IterativeBunchCompilation<I>,
 }
 
-impl BasicBunchCompilationContext {
-    /// 创建基础束编译上下文 / Create basic bunch compilation context
-    pub fn new(n_tasks: usize, executor_ids: Vec<String>, with_executor_leisure: bool) -> Self {
+impl<I> BasicBunchCompilationContext<I>
+where
+    I: ExecutorIdTrait,
+{
+    /// 使用业务 ID 创建基础束编译上下文 / Create basic bunch compilation context with domain ids
+    pub fn new_with_ids(
+        n_tasks: usize,
+        executor_ids: Vec<impl Into<I>>,
+        with_executor_leisure: bool,
+    ) -> Self {
         Self {
-            compilation: IterativeBunchCompilation::new(
+            compilation: IterativeBunchCompilation::new_with_ids(
                 n_tasks,
                 executor_ids,
                 with_executor_leisure,
@@ -213,7 +240,23 @@ impl BasicBunchCompilationContext {
     }
 }
 
-impl IterativeBunchCompilationContext for BasicBunchCompilationContext {
+impl BasicBunchCompilationContext<ExecutorId> {
+    /// 创建基础束编译上下文 / Create basic bunch compilation context
+    pub fn new(
+        n_tasks: usize,
+        executor_ids: Vec<impl Into<ExecutorId>>,
+        with_executor_leisure: bool,
+    ) -> Self {
+        Self::new_with_ids(n_tasks, executor_ids, with_executor_leisure)
+    }
+}
+
+impl<I> IterativeBunchCompilationContext for BasicBunchCompilationContext<I>
+where
+    I: ExecutorIdTrait,
+{
+    type ExecutorId = I;
+
     fn register(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
         self.compilation.register(model)
     }
@@ -221,7 +264,7 @@ impl IterativeBunchCompilationContext for BasicBunchCompilationContext {
     fn add_columns(
         &mut self,
         iteration: usize,
-        new_bunches: Vec<BunchEntry>,
+        new_bunches: Vec<BunchEntry<Self::ExecutorId>>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<Vec<usize>> {
         self.compilation.add_columns(iteration, new_bunches, model)
@@ -310,7 +353,7 @@ impl IterativeBunchCompilationContext for BasicBunchCompilationContext {
         self.compilation.extract_kept(solution)
     }
 
-    fn extract_hidden_executors(&self, solution: &[f64]) -> HashSet<String> {
+    fn extract_hidden_executors(&self, solution: &[f64]) -> HashSet<Self::ExecutorId> {
         self.compilation.extract_hidden_executors(solution)
     }
 
@@ -322,7 +365,10 @@ impl IterativeBunchCompilationContext for BasicBunchCompilationContext {
         self.compilation.active_bunch_count()
     }
 
-    fn get_bunch_entry(&self, bunch_index: usize) -> Option<BunchEntry> {
+    fn get_bunch_entry(
+        &self,
+        bunch_index: usize,
+    ) -> Option<BunchEntry<Self::ExecutorId>> {
         self.compilation.get_bunch_entry(bunch_index)
     }
 }
@@ -424,10 +470,11 @@ mod tests {
 
         let bunches = vec![BunchEntry {
             index: 0,
-            executor_id: "exec_1".to_string(),
+            executor_id: "exec_1".into(),
             task_indices: vec![0, 1],
             cost: 5.0,
             iteration: 0,
+            slot_index: None,
         }];
 
         let added = ctx.add_columns(0, bunches, &mut model).unwrap();
@@ -500,17 +547,19 @@ mod tests {
             vec![
                 BunchEntry {
                     index: 0,
-                    executor_id: "exec_1".to_string(),
+                    executor_id: "exec_1".into(),
                     task_indices: vec![0],
                     cost: 1.0,
                     iteration: 0,
+                    slot_index: None,
                 },
                 BunchEntry {
                     index: 1,
-                    executor_id: "exec_1".to_string(),
+                    executor_id: "exec_1".into(),
                     task_indices: vec![1],
                     cost: 1.0,
                     iteration: 0,
+                    slot_index: None,
                 },
             ],
             &mut model,
@@ -540,17 +589,19 @@ mod tests {
             vec![
                 BunchEntry {
                     index: 0,
-                    executor_id: "exec_1".to_string(),
+                    executor_id: "exec_1".into(),
                     task_indices: vec![0],
                     cost: 1.0,
                     iteration: 0,
+                    slot_index: None,
                 },
                 BunchEntry {
                     index: 1,
-                    executor_id: "exec_1".to_string(),
+                    executor_id: "exec_1".into(),
                     task_indices: vec![1],
                     cost: 1.0,
                     iteration: 0,
+                    slot_index: None,
                 },
             ],
             &mut model,
@@ -577,10 +628,11 @@ mod tests {
             0,
             vec![BunchEntry {
                 index: 0,
-                executor_id: "exec_1".to_string(),
+                executor_id: "exec_1".into(),
                 task_indices: vec![0],
                 cost: 1.0,
                 iteration: 0,
+                slot_index: None,
             }],
             &mut model,
         )
@@ -608,17 +660,19 @@ mod tests {
             vec![
                 BunchEntry {
                     index: 0,
-                    executor_id: "exec_1".to_string(),
+                    executor_id: "exec_1".into(),
                     task_indices: vec![0],
                     cost: 1.0,
                     iteration: 0,
+                    slot_index: None,
                 },
                 BunchEntry {
                     index: 1,
-                    executor_id: "exec_1".to_string(),
+                    executor_id: "exec_1".into(),
                     task_indices: vec![1],
                     cost: 1.0,
                     iteration: 0,
+                    slot_index: None,
                 },
             ],
             &mut model,

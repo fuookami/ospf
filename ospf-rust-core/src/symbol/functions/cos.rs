@@ -1,4 +1,4 @@
-//! Cosine function symbol.
+//! 余弦函数符号 / Cosine function symbol
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -58,7 +58,10 @@ where
     V::from_f64(value)
 }
 
-/// Cosine function symbol.
+/// 余弦函数符号 / Cosine function symbol.
+///
+/// 使用分段线性逼近对 `cos(input)` 建模，其中 input 为线性多项式。
+/// Models `cos(input)` using piecewise-linear approximation, where input is a linear polynomial.
 #[derive(Debug, Clone)]
 pub struct CosFunction<V = f64>
 where
@@ -77,6 +80,7 @@ impl<V> CosFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建新的余弦函数 / Create a new cosine function
     pub fn new(id: u64, name: &str, input: Linear<V>) -> Self {
         let breakpoints = build_breakpoints();
         let (group_id, offset_vars, selector_vars) =
@@ -98,6 +102,7 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -109,10 +114,12 @@ where
         cloned
     }
 
+    /// 获取结果变量 / Get the result variable
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取输入多项式 / Get the input polynomial
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }

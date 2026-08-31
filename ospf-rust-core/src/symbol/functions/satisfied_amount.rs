@@ -1,4 +1,4 @@
-//! Satisfied amount function symbol.
+//! 满足数量函数符号 / Satisfied amount function symbol
 
 use std::any::Any;
 use std::collections::HashSet;

@@ -36,7 +36,7 @@ pub struct LayerGenerationStackingUnit<V> {
     /// 货物索引 / Item index
     pub item_index: usize,
     /// 货物 ID / Item id
-    pub item_id: String,
+    pub item_id: ItemId,
     /// 朝向 / Orientation
     pub orientation: Orientation,
     /// 朝向是否在普通允许列表中 / Whether orientation is normally enabled
@@ -119,7 +119,7 @@ where
     /// 货物列表 / Items
     pub items: Vec<ActualItem<V, U>>,
     /// 包装属性 / Package attributes
-    pub package_attributes: HashMap<String, PackageAttribute>,
+    pub package_attributes: HashMap<ItemId, PackageAttribute>,
     /// 包装规则策略 / Package rule policy
     pub package_rule_policy: Arc<dyn LayerGenerationPackageRulePolicy<V, U>>,
     /// 现有层 / Existing layers
@@ -174,11 +174,17 @@ where
     }
 
     /// 设置包装属性 / Set package attributes
-    pub fn with_package_attributes(
+    pub fn with_package_attributes<I>(
         mut self,
-        attributes: HashMap<String, PackageAttribute>,
-    ) -> Self {
-        self.package_attributes = attributes;
+        attributes: HashMap<I, PackageAttribute>,
+    ) -> Self
+    where
+        I: Into<ItemId>,
+    {
+        self.package_attributes = attributes
+            .into_iter()
+            .map(|(id, attribute)| (id.into(), attribute))
+            .collect();
         self
     }
 
@@ -215,7 +221,7 @@ where
     /// 物品索引 / Item index
     pub item_index: usize,
     /// 物品 ID / Item id
-    pub item_id: String,
+    pub item_id: ItemId,
     /// 位置 / Position
     pub position: MetricPoint3<V, U>,
     /// 朝向 / Orientation
@@ -239,7 +245,7 @@ where
     /// 物品索引 / Item index
     pub item_index: usize,
     /// 物品 ID / Item id
-    pub item_id: String,
+    pub item_id: ItemId,
     /// 朝向 / Orientation
     pub orientation: Orientation,
     /// X 方向数量 / X direction count

@@ -46,7 +46,7 @@ fn append_simple_block_trace<V, U>(
         .items
         .get(original_index)
         .map(|item| item.id.clone())
-        .unwrap_or_else(|| format!("item-{}", original_index));
+        .unwrap_or_else(|| format!("item-{}", original_index).into());
     traces.push(LayerBlockTrace {
         block_index: traces.len(),
         item_index: original_index,

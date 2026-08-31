@@ -88,7 +88,7 @@ fn selected_layer_reports(
             index,
             iteration: layer.iteration,
             from: layer.from.clone(),
-            bin_type: layer.bin.as_ref().map(|bin| bin.type_code.clone()),
+            bin_type: layer.bin.as_ref().map(|bin| bin.type_code.to_string()),
             depth: layer.depth.value,
             coverage: layer
                 .demand_coverage
@@ -118,7 +118,7 @@ fn packed_bin_reports(
             loading_orders.sort_unstable();
             super::report::Bpp3dPackedBinReport {
                 name: bin.name.clone(),
-                bin_type: bin.bin_type.type_code.clone(),
+                bin_type: bin.bin_type.type_code.to_string(),
                 item_count: bin.items.len(),
                 batch_no: bin.batch_no.clone(),
                 loading_orders,
@@ -304,8 +304,8 @@ fn layer_trace_key(layer: &BinLayer<f64, Meter>) -> String {
     format!("{}:{}", layer.from, layer.depth.value)
 }
 
-fn item_shadow_price_key(item_id: impl Into<String>) -> String {
-    format!("item:{}", item_id.into())
+fn item_shadow_price_key(item_id: impl AsRef<str>) -> String {
+    format!("item:{}", item_id.as_ref())
 }
 
 fn application_state_from_algorithm(
@@ -345,6 +345,7 @@ fn application_state_from_algorithm_with_continuous_radius(
         layer_block_traces,
         layer_placement_traces,
         continuous_radius_component,
+        additional_shadow_prices: algorithm.state.additional_shadow_prices.clone(),
         info: HashMap::new(),
     }
 }
@@ -408,7 +409,7 @@ fn layer_generation_shadow_prices(
                 (
                     DemandShadowPriceKey {
                         mode: Bpp3dDemandMode::Item,
-                        key: Bpp3dDemandKey::Item { id: id.to_string() },
+                        key: Bpp3dDemandKey::Item { id: id.into() },
                     },
                     *value,
                 )

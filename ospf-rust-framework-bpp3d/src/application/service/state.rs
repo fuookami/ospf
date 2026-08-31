@@ -34,6 +34,8 @@ pub struct ColumnGenerationState {
     pub best_objective: Option<f64>,
     /// 状态 / Status
     pub status: ColumnGenerationStatus,
+    /// 扩展影子价格 / Additional shadow prices from RMP extensions
+    pub additional_shadow_prices: HashMap<String, f64>,
     /// 开始时间 / Start time
     pub started_at: Instant,
 }
@@ -53,6 +55,7 @@ impl ColumnGenerationState {
             not_better_iterations: 0,
             best_objective: None,
             status: ColumnGenerationStatus::NotStarted,
+            additional_shadow_prices: HashMap::new(),
             started_at: Instant::now(),
         }
     }
@@ -119,4 +122,3 @@ impl ColumnGenerationState {
         true
     }
 }
-

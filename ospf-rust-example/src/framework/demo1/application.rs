@@ -1,3 +1,5 @@
+//! 应用层：SSP 求解器 / Application layer: SSP solver
+
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::object::ObjectiveCategory;
@@ -8,11 +10,14 @@ use crate::framework::demo1::route_context::RouteContext;
 
 /// SSP 求解器 / SSP solver
 pub struct Ssp {
+    /// 路由上下文 / Route context
     route_context: RouteContext,
+    /// 带宽上下文 / Bandwidth context
     bandwidth_context: BandwidthContext,
 }
 
 impl Ssp {
+    /// 创建新的 SSP 求解器 / Create a new SSP solver
     pub fn new() -> Self {
         Self {
             route_context: RouteContext::new(),
@@ -20,6 +25,7 @@ impl Ssp {
         }
     }
 
+    /// 求解带宽/路由优化问题 / Solve the bandwidth/route optimization problem
     pub fn solve(&mut self, input: Input) -> Result<Output, Box<dyn Error>> {
         self.route_context.init(&input)?;
 

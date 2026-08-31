@@ -1,17 +1,24 @@
-//! 选择算子
-//! Selection Operators
+//! 选择算子 / Selection Operators
+//!
+//! 定义遗传算法中选择操作的标准接口和多种实现，
+//! 包括锦标赛选择、轮盘赌选择、精英选择和排名选择。
+//! Defines the standard interface and multiple implementations for selection operations
+//! in genetic algorithms, including tournament, roulette wheel, elitism, and rank selection.
 
 use super::{FitnessComparator, Individual, Population};
 
 /// 选择算子 trait / Selection Operator Trait
 ///
-/// 定义选择操作的标准接口。
-/// Defines standard interface for selection operations.
+/// 定义选择操作的标准接口，用于从种群中选择个体参与交叉或保留。
+/// Defines the standard interface for selection operations, used to select individuals from a population for crossover or preservation.
 pub trait SelectionOperator<I, G>: Send + Sync
 where
     I: Individual<G>,
 {
     /// 从种群中选择个体 / Select individual from population
+    ///
+    /// 根据选择策略从种群中选择一个个体。
+    /// Selects one individual from the population according to the selection strategy.
     ///
     /// # 参数 / Parameters
     /// - `population`: 种群 / Population
@@ -21,6 +28,9 @@ where
     fn select(&self, population: &Population<I, G>) -> usize;
 
     /// 选择多个个体 / Select multiple individuals
+    ///
+    /// 根据选择策略从种群中选择多个个体，默认实现为重复调用 `select`。
+    /// Selects multiple individuals from the population according to the selection strategy; default implementation repeatedly calls `select`.
     ///
     /// # 参数 / Parameters
     /// - `population`: 种群 / Population
@@ -47,6 +57,9 @@ pub struct TournamentSelection {
 
 impl TournamentSelection {
     /// 创建新算子 / Create new operator
+    ///
+    /// # 参数 / Parameters
+    /// - `tournament_size`: 锦标赛大小 / Tournament size
     pub fn new(tournament_size: usize) -> Self {
         Self {
             tournament_size,
@@ -54,12 +67,18 @@ impl TournamentSelection {
         }
     }
 
-    /// 创建默认算子 / Create default operator
+    /// 创建默认算子（锦标赛大小 3）/ Create default operator (tournament size 3)
     pub fn default_size() -> Self {
         Self::new(3)
     }
 
     /// 设置比较器 / Set comparator
+    ///
+    /// 设置适应度比较策略（最大化或最小化）。
+    /// Sets the fitness comparison strategy (maximize or minimize).
+    ///
+    /// # 参数 / Parameters
+    /// - `comparator`: 适应度比较器 / Fitness comparator
     pub fn with_comparator(mut self, comparator: FitnessComparator) -> Self {
         self.comparator = comparator;
         self
@@ -105,8 +124,8 @@ where
 
 /// 轮盘赌选择 / Roulette Wheel Selection
 ///
-/// 根据适应度比例选择个体。
-/// Selects individuals based on fitness proportion.
+/// 根据适应度比例选择个体，适应度越高的个体被选中的概率越大。
+/// Selects individuals based on fitness proportion; individuals with higher fitness have a greater probability of being selected.
 #[derive(Debug, Clone, Copy)]
 pub struct RouletteWheelSelection {
     /// 适应度比较器 / Fitness comparator
@@ -114,6 +133,7 @@ pub struct RouletteWheelSelection {
 }
 
 impl RouletteWheelSelection {
+    /// 创建新选择算子 / Create new selection operator
     pub fn new() -> Self {
         Self {
             comparator: FitnessComparator::Maximize,
@@ -165,8 +185,8 @@ where
 
 /// 精英选择 / Elitism Selection
 ///
-/// 直接保留最优的 k 个个体。
-/// Directly preserves the best k individuals.
+/// 直接保留最优的 k 个个体，确保最优解不会在进化过程中丢失。
+/// Directly preserves the best k individuals, ensuring the best solution is not lost during evolution.
 #[derive(Debug, Clone, Copy)]
 pub struct ElitismSelection {
     /// 精英数量 / Number of elites
@@ -176,6 +196,10 @@ pub struct ElitismSelection {
 }
 
 impl ElitismSelection {
+    /// 创建新精英选择算子 / Create new elitism selection operator
+    ///
+    /// # 参数 / Parameters
+    /// - `elite_count`: 保留的精英数量 / Number of elites to preserve
     pub fn new(elite_count: usize) -> Self {
         Self {
             elite_count,
@@ -240,8 +264,8 @@ where
 
 /// 排名选择 / Rank Selection
 ///
-/// 根据排名而非适应度选择个体。
-/// Selects individuals based on rank rather than fitness.
+/// 根据排名而非适应度选择个体，避免适应度差异过大导致的选择压力失衡。
+/// Selects individuals based on rank rather than fitness, avoiding selection pressure imbalance caused by large fitness differences.
 #[derive(Debug, Clone, Copy)]
 pub struct RankSelection {
     /// 选择压力 / Selection pressure
@@ -251,6 +275,10 @@ pub struct RankSelection {
 }
 
 impl RankSelection {
+    /// 创建新排名选择算子 / Create new rank selection operator
+    ///
+    /// # 参数 / Parameters
+    /// - `pressure`: 选择压力，值越大排名靠前的个体被选中的概率越高 / Selection pressure, larger values give higher probability to top-ranked individuals
     pub fn new(pressure: f64) -> Self {
         Self {
             pressure,

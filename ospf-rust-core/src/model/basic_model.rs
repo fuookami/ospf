@@ -1,5 +1,4 @@
-//! 基本模型
-//! Basic Model
+//! 基本模型 / Basic Model
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -24,8 +23,7 @@ use crate::variable::{
 
 /// 基本模型 / Basic Model
 ///
-/// 只包含变量和约束的基本模型层，不包含目标函数。
-/// Basic model layer containing only variables and constraints, without objective.
+/// 只包含变量和约束的基本模型层，不包含目标函数 / Basic model layer containing only variables and constraints, without objective
 pub struct BasicModel<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
@@ -104,17 +102,17 @@ where
         }
     }
 
-    /// 鑾峰彇妯″瀷閰嶇疆 / Get model configuration
+    /// 获取模型配置 / Get model configuration
     pub fn config(&self) -> &BasicModelConfiguration {
         &self.config
     }
 
-    /// 鑾峰彇鍙彉妯″瀷閰嶇疆 / Get mutable model configuration
+    /// 获取可变模型配置 / Get mutable model configuration
     pub fn config_mut(&mut self) -> &mut BasicModelConfiguration {
         &mut self.config
     }
 
-    /// 璁剧疆妯″瀷閰嶇疆 / Set model configuration
+    /// 设置模型配置 / Set model configuration
     pub fn set_config(&mut self, config: BasicModelConfiguration) {
         self.config = config;
     }
@@ -187,7 +185,7 @@ where
         ordered
     }
 
-    /// Register one token into model storage with duplicate-id guard.
+    /// 注册一个令牌到模型存储（带重复 ID 守卫） / Register one token into model storage with duplicate-id guard.
     fn push_token(&mut self, mut token: Token<V>) -> Result<usize> {
         let idx = self.tokens.len();
         let var_id = token.id();
@@ -253,8 +251,7 @@ where
 
     /// 注册泛型变量 / Register generic variable
     ///
-    /// 将泛型变量项注册到模型中。
-    /// Registers a generic variable item to the model.
+    /// 将泛型变量项注册到模型中 / Registers a generic variable item to the model
     ///
     /// # 示例 / Examples
     ///
@@ -287,8 +284,7 @@ where
 
     /// 自动注册泛型变量 / Register generic variable with auto-generated ID
     ///
-    /// 使用全局变量 ID 生成器自动创建并注册变量。
-    /// Automatically creates and registers a variable using the global variable ID generator.
+    /// 使用全局变量 ID 生成器自动创建并注册变量 / Automatically creates and registers a variable using the global variable ID generator
     pub fn register_auto_variable<VT: VariableTypeTrait>(&mut self, name: &str) -> Result<usize>
     where
         VT::Value: IntoValue<V>,
@@ -298,8 +294,7 @@ where
 
     /// 自动注册带范围的泛型变量 / Register ranged generic variable with auto-generated ID
     ///
-    /// 使用全局变量 ID 生成器自动创建并注册带范围变量。
-    /// Automatically creates and registers a ranged variable using the global variable ID generator.
+    /// 使用全局变量 ID 生成器自动创建并注册带范围变量 / Automatically creates and registers a ranged variable using the global variable ID generator
     pub fn register_auto_variable_with_range<VT: VariableTypeTrait>(
         &mut self,
         name: &str,
@@ -403,12 +398,9 @@ where
         Ok(())
     }
 
-    /// 批量注册符号组合。
-    /// Batch register symbol combination.
+    /// 批量注册符号组合 / Batch register symbol combination
     ///
-    /// 遍历符号组合中的每个符号，逐个注册到模型中。
-    ///
-    /// Iterates over each symbol in the combination and registers them one by one.
+    /// 遍历符号组合中的每个符号，逐个注册到模型中 / Iterates over each symbol in the combination and registers them one by one
     ///
     /// # 参数 / Parameters
     ///
@@ -427,7 +419,7 @@ where
         Ok(())
     }
 
-    /// Add a symbol and declare its dependencies in one call.
+    /// 添加符号并声明其依赖（一次调用） / Add a symbol and declare its dependencies in one call.
     pub fn add_symbol_with_dependencies<I>(
         &mut self,
         symbol: Arc<dyn IntermediateSymbol<V>>,
@@ -459,7 +451,7 @@ where
         self.add_symbol_dependencies(symbol_id, dependency_ids)
     }
 
-    /// Add one declared symbol dependency edge: `symbol_id` depends on `dependency_id`.
+    /// 添加一条符号依赖边：`symbol_id` 依赖于 `dependency_id` / Add one declared symbol dependency edge: `symbol_id` depends on `dependency_id`.
     pub fn add_symbol_dependency(&mut self, symbol_id: u64, dependency_id: u64) -> Result<()> {
         if symbol_id == dependency_id {
             return Err(ModelError::InvalidConstraint(format!(
@@ -488,7 +480,7 @@ where
         Ok(())
     }
 
-    /// Add multiple declared dependencies for one symbol.
+    /// 为一个符号添加多条声明依赖 / Add multiple declared dependencies for one symbol.
     pub fn add_symbol_dependencies<I>(&mut self, symbol_id: u64, dependency_ids: I) -> Result<()>
     where
         I: IntoIterator<Item = u64>,
@@ -499,7 +491,7 @@ where
         Ok(())
     }
 
-    /// Get declared dependency ids of one symbol.
+    /// 获取一个符号的声明依赖 ID 列表 / Get declared dependency ids of one symbol.
     pub fn symbol_dependency_ids(&self, symbol_id: u64) -> Vec<u64> {
         let mut dependency_ids = self
             .symbol_dependencies
@@ -512,6 +504,7 @@ where
         dependency_ids
     }
 
+    /// 添加约束 / Add constraint
     pub fn add_constraint(
         &mut self,
         constraint: MetaConstraint<LinearInequality<V>>,
@@ -713,10 +706,8 @@ where
 
     /// 刷新动态模型状态 / Flush dynamic model state
     ///
-    /// 与 Kotlin 可变 `TokenTable.flush()` 对齐：刷新会清除当前解、重建 token
-    /// 上下文并刷新中间符号缓存。
-    /// Aligns with Kotlin mutable `TokenTable.flush()`: flushing clears the current
-    /// solution, rebuilds token contexts, and flushes intermediate-symbol caches.
+    /// 与 Kotlin 可变 `TokenTable.flush()` 对齐：刷新会清除当前解、重建 token 上下文并刷新中间符号缓存
+    /// Aligns with Kotlin mutable `TokenTable.flush()`: flushing clears the current solution, rebuilds token contexts, and flushes intermediate-symbol caches
     pub fn flush(&mut self, force: bool) {
         for token in &self.tokens {
             token.clear_result();
@@ -736,7 +727,7 @@ where
         }
         values
     }
-    /// ??????????????????/ Evaluate symbol with value cache context
+    /// 评估符号值（带值缓存上下文） / Evaluate symbol with value cache context
     pub fn evaluate_symbol(&mut self, symbol: &dyn IntermediateSymbol<V>) -> Option<V> {
         self.ensure_value_cache_context();
         let dependency_chain = self.collect_declared_dependency_chain(symbol.id().id);
@@ -751,18 +742,18 @@ where
         }
         symbol.evaluate(&mut ctx)
     }
-    /// ?????????????????? / Compute symbol range with range cache context
+    /// 计算符号范围（带范围缓存上下文） / Compute symbol range with range cache context
     pub fn symbol_range(&mut self, symbol: &dyn IntermediateSymbol<V>) -> Option<VariableRange<V>> {
         self.ensure_range_cache_context();
         let mut ctx = IntermediateSymbolRangeContext::new(&mut self.range_cache_ctx);
         symbol.range_in_context(&mut ctx)
     }
-    /// ??ID ???????????/ Evaluate registered symbol by id
+    /// 通过 ID 评估已注册符号值 / Evaluate registered symbol by id
     pub fn evaluate_registered_symbol(&mut self, symbol_id: u64) -> Option<V> {
         let symbol = self.find_registered_symbol(symbol_id)?;
         self.evaluate_symbol(symbol.as_ref())
     }
-    /// ??ID ??????????????/ Get registered symbol range by id
+    /// 通过 ID 获取已注册符号范围 / Get registered symbol range by id
     pub fn registered_symbol_range(&mut self, symbol_id: u64) -> Option<VariableRange<V>> {
         let symbol = self.find_registered_symbol(symbol_id)?;
         self.symbol_range(symbol.as_ref())

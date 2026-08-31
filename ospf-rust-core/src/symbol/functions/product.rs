@@ -1,9 +1,7 @@
-//! Quadratic product function symbol.
+//! 二次乘积函数符号 / Quadratic product function symbol
 //!
-//! `ProductFunction` models the product of two linear polynomials:
-//! `y = left * right`.
-//! The symbol itself is quadratic and can be used in expression/evaluation
-//! pipelines even when no linearized mechanism constraints are required.
+//! `ProductFunction` 建模两个线性多项式的乘积：`y = left * right` / `ProductFunction` models the product of two linear polynomials: `y = left * right`
+//! 该符号本身是二次的，即使不需要线性化机理约束，也可以在表达式/求值流水线中使用 / The symbol itself is quadratic and can be used in expression/evaluation pipelines even when no linearized mechanism constraints are required
 
 use std::any::Any;
 use std::collections::HashSet;
@@ -59,7 +57,10 @@ where
     Some(value)
 }
 
-/// Product of two linear polynomials.
+/// 两个线性多项式的乘积函数符号 / Product function of two linear polynomials.
+///
+/// 建模 `y = left * right`，其中 left 和 right 均为线性多项式。
+/// Models `y = left * right`, where both left and right are linear polynomials.
 #[derive(Debug, Clone)]
 pub struct ProductFunction<V = f64>
 where
@@ -75,6 +76,7 @@ impl<V> ProductFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建新的乘积函数 / Create a new product function
     pub fn new(id: u64, name: &str, left: Linear<V>, right: Linear<V>) -> Self {
         Self {
             id: IntermediateSymbolId::new(id, name),
@@ -84,15 +86,18 @@ where
         }
     }
 
+    /// 设置声明的依赖 ID / Set declared dependency IDs
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取左侧多项式 / Get the left polynomial
     pub fn left_polynomial(&self) -> &Linear<V> {
         &self.left
     }
 
+    /// 获取右侧多项式 / Get the right polynomial
     pub fn right_polynomial(&self) -> &Linear<V> {
         &self.right
     }

@@ -28,6 +28,10 @@ pub mod task_trait;
 // 公共重导出 / Public re-exports
 // ========================================================================
 
+pub use crate::domain::common::{
+    executor_id, task_id, task_plan_id, task_step_id, ExecutorId, TaskId, TaskPlanId, TaskStepId,
+};
+
 pub use executor::{BasicExecutor, ExecutorInitialUsability, ExecutorTrait};
 
 pub use assignment::{AssignmentPolicyTrait, BasicAssignmentPolicy, ExecutorChange};
@@ -54,6 +58,7 @@ pub use scheduling_solver_value_adapter::{
 };
 
 pub use shadow_price::{
-    BunchGanttSchedulingShadowPriceArguments, GanttSchedulingShadowPriceArguments,
-    GanttShadowPriceKey,
+    BunchGanttSchedulingShadowPriceArguments, ExecutorSlotCompilationShadowPriceKey,
+    GanttSchedulingShadowPriceArguments, GanttShadowPriceKey,
+    SlotBunchGanttSchedulingShadowPriceArguments,
 };

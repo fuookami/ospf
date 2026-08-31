@@ -1,3 +1,5 @@
+//! P0 评估测试模块 / P0 evaluation tests module.
+
 use std::f64::consts::PI;
 use std::sync::Arc;
 use crate::model::BasicModel;

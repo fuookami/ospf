@@ -1,4 +1,4 @@
-//! Quadratic linear bridge function.
+//! 二次线性桥接函数 / Quadratic linear bridge function
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};

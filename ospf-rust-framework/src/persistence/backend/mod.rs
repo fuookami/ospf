@@ -22,19 +22,33 @@ pub mod toasty;
 /// Backend feature capability snapshot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PersistenceBackendFeatures {
+    /// 是否启用 sqlx / Whether sqlx is enabled
     pub sqlx: bool,
+    /// 是否启用 sqlx postgres / Whether sqlx postgres is enabled
     pub sqlx_postgres: bool,
+    /// 是否启用 sqlx mysql / Whether sqlx mysql is enabled
     pub sqlx_mysql: bool,
+    /// 是否启用 sqlx sqlite / Whether sqlx sqlite is enabled
     pub sqlx_sqlite: bool,
+    /// 是否启用 diesel / Whether diesel is enabled
     pub diesel: bool,
+    /// 是否启用 diesel postgres / Whether diesel postgres is enabled
     pub diesel_postgres: bool,
+    /// 是否启用 diesel mysql / Whether diesel mysql is enabled
     pub diesel_mysql: bool,
+    /// 是否启用 diesel sqlite / Whether diesel sqlite is enabled
     pub diesel_sqlite: bool,
+    /// 是否启用 sea-orm / Whether sea-orm is enabled
     pub sea_orm: bool,
+    /// 是否启用 toasty / Whether toasty is enabled
     pub toasty: bool,
+    /// 是否启用 rbatis / Whether rbatis is enabled
     pub rbatis: bool,
+    /// 是否启用 cornucopia / Whether cornucopia is enabled
     pub cornucopia: bool,
+    /// 是否启用 mongodb / Whether mongodb is enabled
     pub mongodb: bool,
+    /// 是否启用 redis / Whether redis is enabled
     pub redis: bool,
 }
 

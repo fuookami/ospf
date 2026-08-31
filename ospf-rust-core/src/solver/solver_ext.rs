@@ -1,5 +1,4 @@
-//! 求解器扩展入口
-//! Solver Extension Entry Points
+//! 求解器扩展入口 / Solver Extension Entry Points
 
 use std::ops::Add;
 #[cfg(feature = "async")]
@@ -664,8 +663,7 @@ pub trait SolverExt: Solver {
         self.solve_typed_with_options(model, &SolveOptions::default())
     }
 
-    /// 统一 typed 可行输出入口（参数对象）/
-    /// Unified typed feasible output entry (options object)
+    /// 统一 typed 可行输出入口（参数对象）/ Unified typed feasible output entry (options object)
     fn solve_typed_with_options<V>(
         &self,
         model: &MetaModel<V>,
@@ -731,8 +729,7 @@ pub trait SolverExt: Solver {
         self.solve_typed_multi_with_options(model, &options)
     }
 
-    /// 统一 typed MetaModel 多解入口（参数对象）/
-    /// Unified typed MetaModel multi-solution entry (options object)
+    /// 统一 typed MetaModel 多解入口（参数对象）/ Unified typed MetaModel multi-solution entry (options object)
     fn solve_typed_multi_with_options<V>(
         &self,
         model: &MetaModel<V>,
@@ -764,8 +761,7 @@ pub trait SolverExt: Solver {
         self.solve_with_options_and_iis(model, &SolveOptions::default(), iis_config)
     }
 
-    /// 统一 MetaModel 求解 + IIS fallback（参数对象）/
-    /// Unified MetaModel solve with IIS fallback (options object)
+    /// 统一 MetaModel 求解 + IIS fallback（参数对象）/ Unified MetaModel solve with IIS fallback (options object)
     fn solve_with_options_and_iis<V>(
         &self,
         model: &MetaModel<V>,

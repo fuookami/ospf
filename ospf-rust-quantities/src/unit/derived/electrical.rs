@@ -1,3 +1,5 @@
+//! 电学单位 / Electrical units
+
 use crate::dimension::derived::{Capacitance, ElectricCharge, ElectricCurrent, ElectricPotential};
 use crate::scale::{KILO, MEGA, MICRO, MILLI, NANO, PICO};
 use crate::unit::{CTUnit, CTUnitDiv, CTUnitMul};

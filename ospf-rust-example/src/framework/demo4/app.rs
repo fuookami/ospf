@@ -1,3 +1,8 @@
+//! Demo4 应用层 / Demo4 application layer
+//!
+//! 航班调度与恢复示例的应用入口，包含框架 trait 实现与演示流程。
+//! Application entry for airline scheduling and recovery demo, with framework trait implementations and showcase flow.
+
 use std::error::Error;
 use std::collections::HashSet;
 use time::{Date, Duration, Month, OffsetDateTime, Time};
@@ -17,6 +22,7 @@ use super::domain::task::model::{
 };
 use super::infrastructure::{AircraftRegisterNumber, AircraftMinorTypeCode, AircraftTypeCode, Icao, PassengerClass};
 
+/// 构造 OffsetDateTime 辅助函数 / Helper to construct an OffsetDateTime from date-time components
 fn dt(year: i32, month: Month, day: u8, hour: u8, min: u8, sec: u8) -> OffsetDateTime {
     Date::from_calendar_date(year, month, day)
         .expect("valid date")
@@ -32,8 +38,11 @@ fn dt(year: i32, month: Month, day: u8, hour: u8, min: u8, sec: u8) -> OffsetDat
 /// 对齐 Kotlin Demo4Task (实现 IterativeAbstractTask)
 #[derive(Debug, Clone)]
 struct Demo4Task {
+    /// 任务唯一标识 / Unique task identifier
     id: String,
+    /// 任务名称 / Task name
     name: String,
+    /// 迭代次数 / Iteration count
     iteration: i64,
 }
 
@@ -48,7 +57,9 @@ impl Demo4Task {
 }
 
 impl TaskTrait<Demo4Executor, Demo4AssignmentPolicy> for Demo4Task {
-    fn id(&self) -> &str { &self.id }
+    type Id = String;
+
+    fn id(&self) -> &Self::Id { &self.id }
     fn name(&self) -> &str { &self.name }
 
     fn type_(&self) -> TaskType {
@@ -73,7 +84,9 @@ impl TaskTrait<Demo4Executor, Demo4AssignmentPolicy> for Demo4Task {
 /// 对齐 Kotlin Executor
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Demo4Executor {
+    /// 执行者唯一标识 / Unique executor identifier
     id: String,
+    /// 执行者名称 / Executor name
     name: String,
 }
 
@@ -84,7 +97,9 @@ impl Demo4Executor {
 }
 
 impl ExecutorTrait for Demo4Executor {
-    fn id(&self) -> &str { &self.id }
+    type Id = String;
+
+    fn id(&self) -> &Self::Id { &self.id }
     fn name(&self) -> &str { &self.name }
 }
 
@@ -92,7 +107,9 @@ impl ExecutorTrait for Demo4Executor {
 /// 对齐 Kotlin AssignmentPolicy
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Demo4AssignmentPolicy {
+    /// 指定执行者 / Assigned executor
     executor: Option<Demo4Executor>,
+    /// 指定时间范围 / Assigned time range
     time: Option<TimeRange>,
 }
 
@@ -106,6 +123,7 @@ impl AssignmentPolicyTrait<Demo4Executor> for Demo4AssignmentPolicy {
     }
 }
 
+/// 运行 Demo4 航班调度示例 / Run Demo4 airline scheduling example
 pub fn run() -> Result<(), Box<dyn Error>> {
     println!("=== Framework Demo4 (Airline Scheduling) ===");
 
@@ -263,7 +281,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         demo4_executor.id(), demo4_executor.name());
 
     // TaskKey
-    let task_key = TaskKey::new("CA1234", TaskType::default_type());
+    let task_key: TaskKey<String> = TaskKey::new("CA1234", TaskType::default_type());
     println!("TaskKey: id={}, type={}", task_key.id, task_key.type_.name);
 
     // TimeWindow value conversions

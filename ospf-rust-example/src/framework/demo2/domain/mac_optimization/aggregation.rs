@@ -1,3 +1,4 @@
+//! 重心优化聚合 / MAC optimization aggregation
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
@@ -10,7 +11,9 @@ use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 /// 同时持有显式中间符号和向后兼容的裸系数。
 /// Holds both explicit intermediate symbols and backward-compatible raw coefficients.
 pub struct MacOptimizationAggregation {
+    /// 目标平衡值 / Target balance value
     pub target_balance: f64,
+    /// 最大力臂绝对值 / Maximum arm absolute value
     pub max_arm_abs: f64,
     /// 纵向力矩符号 / Longitudinal moment symbol
     pub long_moment_symbol: Option<Arc<LinearExpressionSymbol<f64>>>,
@@ -20,14 +23,18 @@ pub struct MacOptimizationAggregation {
     pub lat_moment_symbol: Option<Arc<LinearExpressionSymbol<f64>>>,
     /// 负横向力矩符号 / Negative lateral moment symbol
     pub neg_lat_moment_symbol: Option<Arc<LinearExpressionSymbol<f64>>>,
-    // 向后兼容字段 / Backward-compatible fields
+    /// 纵向力矩裸系数 (向后兼容) / Longitudinal moment raw coefficients (backward-compatible)
     pub long_moment: Vec<(usize, f64)>,
+    /// 负纵向力矩裸系数 (向后兼容) / Negative longitudinal moment raw coefficients (backward-compatible)
     pub neg_long_moment: Vec<(usize, f64)>,
+    /// 横向力矩裸系数 (向后兼容) / Lateral moment raw coefficients (backward-compatible)
     pub lat_moment: Vec<(usize, f64)>,
+    /// 负横向力矩裸系数 (向后兼容) / Negative lateral moment raw coefficients (backward-compatible)
     pub neg_lat_moment: Vec<(usize, f64)>,
 }
 
 impl MacOptimizationAggregation {
+    /// 从 MAC 优化上下文构建聚合 / Build aggregation from MAC optimization context
     pub fn from_context(context: &MacOptimizationContext<'_>) -> Self {
         let total_capacity: f64 = context
             .request

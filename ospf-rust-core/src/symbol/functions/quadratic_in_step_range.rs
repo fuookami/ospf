@@ -1,4 +1,4 @@
-//! Quadratic in-step-range function.
+//! 二次步进范围函数 / Quadratic in-step-range function
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};

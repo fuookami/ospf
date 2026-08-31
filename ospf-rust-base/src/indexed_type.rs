@@ -215,6 +215,7 @@ impl IndexGenerator {
         INSTANCE.get_or_init(|| Mutex::new(IndexGenerator::new()))
     }
 
+    /// 获取指定类型的索引生成器单例 / Get the index generator singleton for the specified type
     pub fn instance<T: 'static>() -> Arc<Mutex<IndexGeneratorImpl>> {
         let generator = Self::get_or_init();
         let mut guard = lock_unwrap!(generator);

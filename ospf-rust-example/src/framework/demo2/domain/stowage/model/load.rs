@@ -1,3 +1,4 @@
+//! 装载量模型 / Load model
 use super::item::Item;
 use super::position::Position;
 use super::stowage::{Stowage, StowageVariables};
@@ -15,38 +16,38 @@ use ospf_rust_core::variable::{UContinuousVariableItem, UIntegerVariableItem, Va
 /// 装载量变量索引 / Load variable indices
 #[derive(Debug, Clone)]
 pub struct LoadVariables {
-    /// y[j] = 舱位 j 的预测装载重量
+    /// 舱位预测装载重量索引 / Predicted load weight index per position
     pub y: Vec<usize>,
-    /// z[j] = 舱位 j 的推荐装载重量
+    /// 舱位推荐装载重量索引 / Recommended load weight index per position
     pub z: Vec<usize>,
-    /// loadAmount[j] = 舱位 j 的装载数量
+    /// 舱位装载数量索引 / Load amount index per position
     pub load_amount: Vec<usize>,
-    /// full[j] = 舱位 j 是否装满 (BinaryzationFunction result variable solver index)
+    /// 舱位是否装满索引 / Whether position is full (BinaryzationFunction result index)
     pub full: Vec<usize>,
-    /// estimateLoadWeight[j] = 舱位 j 的估算装载重量
+    /// 舱位估算装载重量索引 / Estimated load weight index per position
     pub estimate_load_weight: Vec<usize>,
-    /// actualLoadWeight[j] = 舱位 j 的实际装载重量
+    /// 舱位实际装载重量索引 / Actual load weight index per position
     pub actual_load_weight: Vec<usize>,
-    /// predicateLoadWeightSlack[j] = |estimateLoadWeight - actualLoadWeight| (SlackFunction result variable solver index)
+    /// 预测装载重量松弛索引 / Predicate load weight slack index (SlackFunction result)
     pub predicate_load_weight_slack: Vec<usize>,
-    /// y_same_as[j] = SameAsFunction(y, actualLoadWeight) result variable solver index
+    /// y 与 actualLoadWeight 相同性检查索引 / SameAsFunction(y, actualLoadWeight) result index
     pub y_same_as: Vec<usize>,
-    /// z_same_as[j] = SameAsFunction(z, estimateLoadWeight) result variable solver index
+    /// z 与 estimateLoadWeight 相同性检查索引 / SameAsFunction(z, estimateLoadWeight) result index
     pub z_same_as: Vec<usize>,
-    /// y_if[j] = IfFunction(condition, then_expr, else_expr) result variable solver index
+    /// y 条件中间符号索引 / IfFunction condition result index for y
     pub y_if: Vec<usize>,
-    /// estimate_loaded[j] = OrFunction(full[j], y_if[j]) - combines full status with conditional loading
-    /// Result variable solver index; 1 if position j is estimated as loaded (full or y_if nonzero)
+    /// 估算是否已装载索引 / Estimated loaded index (OrFunction result; 1 if position is estimated loaded)
     pub estimate_loaded: Vec<usize>,
-    /// actual_loaded[j] = OrFunction(full[j], z_if[j]) - combines full status with actual conditional loading
-    /// Result variable solver index; 1 if position j is actually loaded (full or z_if nonzero)
+    /// 实际是否已装载索引 / Actual loaded index (1 if position is actually loaded)
     pub actual_loaded: Vec<usize>,
 }
 
 /// 装载量 / Load (对齐 Kotlin Load)
 #[derive(Debug)]
 pub struct Load {
+    /// 物品列表 / Item list
     pub items: Vec<Item>,
+    /// 舱位列表 / Position list
     pub positions: Vec<Position>,
 }
 

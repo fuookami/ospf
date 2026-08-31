@@ -25,7 +25,7 @@ where
             let key = item
                 .package_code
                 .clone()
-                .unwrap_or_else(|| item.id.clone());
+                .unwrap_or_else(|| item.id.to_string());
             if let Some((_, group_items)) = groups.iter_mut().find(|(group_key, _)| group_key == &key) {
                 group_items.push((index, item.clone()));
             } else {

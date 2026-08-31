@@ -1,3 +1,4 @@
+//! 飞机领域模型 / Aircraft domain model.
 pub mod aircraft_model;
 pub mod deck;
 pub mod flight_phase;

@@ -7,7 +7,9 @@
 /// 存储中间线性表达式，用于约束和目标注册。
 /// Stores intermediate linear expressions for constraint and objective registration.
 ///
+/// **已弃用**：请改用 `build_linear_expression_symbol` 创建 `LinearExpressionSymbol`。
 /// **Deprecated**: Use `LinearExpressionSymbol` via `build_linear_expression_symbol` instead.
+/// 此类型仅为旧测试代码的向后兼容而保留。
 /// This type is retained only for backward compatibility with legacy test code.
 #[deprecated(note = "Use LinearExpressionSymbol via build_linear_expression_symbol instead")]
 #[derive(Debug, Clone)]

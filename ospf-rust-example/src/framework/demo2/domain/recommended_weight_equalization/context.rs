@@ -1,3 +1,4 @@
+//! 推荐重量均衡上下文 / Recommended weight equalization context
 use super::aggregation::Aggregation;
 use crate::framework::demo2::domain::stowage::model::{LoadVariables, Position};
 
@@ -5,15 +6,17 @@ use crate::framework::demo2::domain::stowage::model::{LoadVariables, Position};
 /// 对齐 Kotlin RecommendedWeightEqualizationContext
 #[derive(Debug)]
 pub struct RecommendedWeightEqualizationContext {
+    /// 推荐重量均衡聚合 / Recommended weight equalization aggregation
     pub aggregation: Option<Aggregation>,
 }
 
 impl RecommendedWeightEqualizationContext {
+    /// 创建新的推荐重量均衡上下文 / Create a new recommended weight equalization context
     pub fn new() -> Self {
         Self { aggregation: None }
     }
 
-    /// 从飞机和装载上下文初始化
+    /// 从飞机和装载上下文初始化 / Initialize from aircraft and stowage context
     /// 对齐 Kotlin RecommendedWeightEqualizationContext.init
     pub fn init(
         &mut self,
@@ -26,6 +29,7 @@ impl RecommendedWeightEqualizationContext {
         Ok(())
     }
 
+    /// 注册推荐重量均衡约束到模型 / Register recommended weight equalization constraints to model
     pub fn register(
         &self,
         model: &mut ospf_rust_core::model::MetaModel<f64>,

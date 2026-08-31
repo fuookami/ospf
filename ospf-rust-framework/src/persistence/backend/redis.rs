@@ -13,7 +13,9 @@ pub struct RedisBackend;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RedisConfig {
+    /// 连接 URL / Connection URL
     pub url: String,
+    /// key 前缀 / Key prefix
     pub key_prefix: Option<String>,
 }
 
@@ -48,7 +50,9 @@ impl RedisConfig {
 /// Redis client handle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RedisClientHandle<C> {
+    /// 配置 / Configuration
     pub config: RedisConfig,
+    /// 客户端实例 / Client instance
     pub client: C,
 }
 
@@ -56,7 +60,9 @@ pub struct RedisClientHandle<C> {
 /// Redis command descriptor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RedisCommand {
+    /// 命令名 / Command name
     pub name: String,
+    /// 命令参数 / Command arguments
     pub args: Vec<String>,
 }
 

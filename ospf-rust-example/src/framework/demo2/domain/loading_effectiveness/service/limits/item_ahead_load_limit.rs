@@ -1,10 +1,11 @@
+//! 物品前置装载限制 / Item ahead load limits
 use std::error::Error;
 use ospf_rust_core::model::{LinearObjectiveInput, MetaModel};
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
-/// 物品提前装载限制: 优先级高的货物应优先装载
+/// 物品提前装载限制: 优先级高的货物应优先装载 / Item ahead load limit: higher-priority cargos should load first
 /// 对齐 Kotlin ItemAheadLoadLimit
 ///
 /// Kotlin 使用 model.minimize(sum(coefficient(item) * stowage.loaded[i])) 最小化装载状态。

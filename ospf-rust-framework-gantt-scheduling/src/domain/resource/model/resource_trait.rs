@@ -5,6 +5,7 @@
 
 use std::fmt::Debug;
 use super::capacity::ResourceCapacity;
+use crate::domain::common::{ResourceId, ResourceIdTrait};
 use crate::infrastructure::TimeRange;
 
 /// 资源 trait / Resource trait
@@ -12,8 +13,11 @@ use crate::infrastructure::TimeRange;
 /// 所有资源的基础接口，提供 ID、名称、容量列表和初始量。
 /// Base interface for all resources, providing ID, name, capacity list, and initial quantity.
 pub trait ResourceTrait: Send + Sync + Debug + 'static {
+    /// 资源 ID 类型 / Resource id type
+    type Id: ResourceIdTrait;
+
     /// 资源 ID / Resource ID
-    fn id(&self) -> &str;
+    fn id(&self) -> &Self::Id;
     /// 资源名称 / Resource name
     fn name(&self) -> &str;
     /// 容量列表 / Capacity list
@@ -64,7 +68,7 @@ pub trait ConnectionResourceTrait: ResourceTrait {
 /// Provides a minimal execution resource implementation using a callback for task consumption.
 pub struct BasicExecutionResource {
     /// 资源 ID / Resource ID
-    pub id: String,
+    pub id: ResourceId,
     /// 资源名称 / Resource name
     pub name: String,
     /// 容量列表 / Capacity list
@@ -88,7 +92,9 @@ impl std::fmt::Debug for BasicExecutionResource {
 use std::sync::Arc;
 
 impl ResourceTrait for BasicExecutionResource {
-    fn id(&self) -> &str { &self.id }
+    type Id = ResourceId;
+
+    fn id(&self) -> &Self::Id { &self.id }
     fn name(&self) -> &str { &self.name }
     fn capacities(&self) -> &[ResourceCapacity] { &self.capacities }
     fn initial_quantity(&self) -> f64 { self.initial_quantity }
@@ -106,7 +112,7 @@ impl ExecutionResourceTrait for BasicExecutionResource {
 /// Provides a minimal storage resource implementation using callbacks for task cost/supply.
 pub struct BasicStorageResource {
     /// 资源 ID / Resource ID
-    pub id: String,
+    pub id: ResourceId,
     /// 资源名称 / Resource name
     pub name: String,
     /// 容量列表 / Capacity list
@@ -134,7 +140,9 @@ impl std::fmt::Debug for BasicStorageResource {
 }
 
 impl ResourceTrait for BasicStorageResource {
-    fn id(&self) -> &str { &self.id }
+    type Id = ResourceId;
+
+    fn id(&self) -> &Self::Id { &self.id }
     fn name(&self) -> &str { &self.name }
     fn capacities(&self) -> &[ResourceCapacity] { &self.capacities }
     fn initial_quantity(&self) -> f64 { self.initial_quantity }
@@ -164,7 +172,7 @@ impl StorageResourceTrait for BasicStorageResource {
 /// Provides a minimal connection resource implementation using callback for connection consumption.
 pub struct BasicConnectionResource {
     /// 资源 ID / Resource ID
-    pub id: String,
+    pub id: ResourceId,
     /// 资源名称 / Resource name
     pub name: String,
     /// 容量列表 / Capacity list
@@ -186,7 +194,9 @@ impl std::fmt::Debug for BasicConnectionResource {
 }
 
 impl ResourceTrait for BasicConnectionResource {
-    fn id(&self) -> &str { &self.id }
+    type Id = ResourceId;
+
+    fn id(&self) -> &Self::Id { &self.id }
     fn name(&self) -> &str { &self.name }
     fn capacities(&self) -> &[ResourceCapacity] { &self.capacities }
     fn initial_quantity(&self) -> f64 { self.initial_quantity }
@@ -215,7 +225,7 @@ mod tests {
     #[test]
     fn test_basic_execution_resource() {
         let resource = BasicExecutionResource {
-            id: "machine_1".to_string(),
+            id: "machine_1".into(),
             name: "Machine 1".to_string(),
             capacities: vec![ResourceCapacity::new(test_time_range(), 0.0, 100.0)],
             initial_quantity: 0.0,
@@ -229,7 +239,7 @@ mod tests {
     #[test]
     fn test_basic_storage_resource() {
         let resource = BasicStorageResource {
-            id: "warehouse_1".to_string(),
+            id: "warehouse_1".into(),
             name: "Warehouse 1".to_string(),
             capacities: vec![ResourceCapacity::new(test_time_range(), 0.0, 1000.0)],
             initial_quantity: 500.0,
@@ -249,7 +259,7 @@ mod tests {
     #[test]
     fn test_basic_connection_resource() {
         let resource = BasicConnectionResource {
-            id: "transport_1".to_string(),
+            id: "transport_1".into(),
             name: "Transport 1".to_string(),
             capacities: vec![ResourceCapacity::new(test_time_range(), 0.0, 100.0)],
             initial_quantity: 0.0,

@@ -1,3 +1,4 @@
+//! 顺序装载模型 / Sequential loading model
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -7,15 +8,18 @@ use ospf_rust_core::symbol::function::IfFunction;
 /// 顺序装载 / Sequential loading (对齐 Kotlin SequentialLoading)
 #[derive(Debug, Clone)]
 pub struct SequentialLoading {
+    /// 物品标识 / Item identifier
     pub item_id: String,
+    /// 舱位标识 / Position identifier
     pub position_id: String,
+    /// 装载顺序 / Loading order
     pub order: u32,
 }
 
 /// SequentialLoading IfFunction 注册结果 / SequentialLoading IfFunction registration result
 #[derive(Debug, Clone)]
 pub struct SequentialLoadingVariables {
-    /// loading_if = IfFunction(condition=loaded[item], then=1, else=0) 的结果变量 solver index
+    /// loading_if 的结果变量 solver index / Solver index of loading_if result variable
     /// 当物品被装载时值为 1，否则为 0
     pub loading_if: usize,
 }

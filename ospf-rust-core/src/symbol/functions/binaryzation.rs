@@ -1,4 +1,4 @@
-//! Binaryzation function symbol.
+//! 二值化函数符号 / Binaryzation function symbol
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};

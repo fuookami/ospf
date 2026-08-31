@@ -53,7 +53,7 @@
     #[test]
     fn actual_item_cuboid_packing_shape() {
         let item = ActualItem {
-            id: "item1".to_string(),
+            id: "item1".into(),
             name: "Test Item".to_string(),
             package_code: None,
             pack: None,
@@ -72,7 +72,7 @@
     #[test]
     fn actual_item_cylinder_packing_shape() {
         let item = ActualItem {
-            id: "cyl1".to_string(),
+            id: "cyl1".into(),
             name: "Cylinder Item".to_string(),
             package_code: None,
             pack: None,
@@ -101,7 +101,7 @@
     #[test]
     fn actual_item_cylinder_packing_shape_uses_axis_length() {
         let x_axis = ActualItem {
-            id: "cyl-x".to_string(),
+            id: "cyl-x".into(),
             name: "Cylinder X".to_string(),
             package_code: None,
             pack: None,
@@ -119,7 +119,7 @@
             }),
         };
         let z_axis = ActualItem {
-            id: "cyl-z".to_string(),
+            id: "cyl-z".into(),
             name: "Cylinder Z".to_string(),
             package_code: None,
             pack: None,
@@ -153,7 +153,7 @@
     #[test]
     fn actual_item_oriented_cylinder_packing_shape_updates_axis() {
         let item = ActualItem {
-            id: "cyl-y".to_string(),
+            id: "cyl-y".into(),
             name: "Cylinder Y".to_string(),
             package_code: None,
             pack: None,

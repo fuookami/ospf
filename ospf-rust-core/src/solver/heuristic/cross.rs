@@ -1,17 +1,24 @@
-//! 交叉算子
-//! Crossover Operators
+//! 交叉算子 / Crossover Operators
+//!
+//! 定义遗传算法中交叉操作的标准接口和多种实现，
+//! 包括单点交叉、双点交叉、均匀交叉和模拟二进制交叉。
+//! Defines the standard interface and multiple implementations for crossover operations
+//! in genetic algorithms, including single-point, two-point, uniform, and simulated binary crossover.
 
 use super::Individual;
 
 /// 交叉算子 trait / Crossover Operator Trait
 ///
-/// 定义交叉操作的标准接口。
-/// Defines standard interface for crossover operations.
+/// 定义交叉操作的标准接口，用于将两个父代个体组合产生子代。
+/// Defines the standard interface for crossover operations, used to combine two parent individuals to produce offspring.
 pub trait CrossoverOperator<I, G>: Send + Sync
 where
     I: Individual<G>,
 {
     /// 执行交叉操作 / Perform crossover
+    ///
+    /// 将两个父代个体的基因进行重组，产生两个子代个体。
+    /// Recombines the genes of two parent individuals to produce two offspring individuals.
     ///
     /// # 参数 / Parameters
     /// - `parent1`: 父代 1 / Parent 1
@@ -34,11 +41,14 @@ pub struct SinglePointCrossover {
 
 impl SinglePointCrossover {
     /// 创建新算子 / Create new operator
+    ///
+    /// # 参数 / Parameters
+    /// - `rate`: 交叉概率 / Crossover probability
     pub fn new(rate: f64) -> Self {
         Self { rate }
     }
 
-    /// 创建默认算子 / Create default operator
+    /// 创建默认算子（交叉概率 0.8）/ Create default operator (crossover rate 0.8)
     pub fn default_rate() -> Self {
         Self { rate: 0.8 }
     }
@@ -90,6 +100,10 @@ pub struct TwoPointCrossover {
 }
 
 impl TwoPointCrossover {
+    /// 创建新算子 / Create new operator
+    ///
+    /// # 参数 / Parameters
+    /// - `rate`: 交叉概率 / Crossover probability
     pub fn new(rate: f64) -> Self {
         Self { rate }
     }
@@ -143,6 +157,11 @@ pub struct UniformCrossover {
 }
 
 impl UniformCrossover {
+    /// 创建新算子 / Create new operator
+    ///
+    /// # 参数 / Parameters
+    /// - `rate`: 交叉概率 / Crossover probability
+    /// - `swap_rate`: 基因交换概率 / Gene swap probability
     pub fn new(rate: f64, swap_rate: f64) -> Self {
         Self { rate, swap_rate }
     }
@@ -187,8 +206,10 @@ where
 
 /// 模拟二进制交叉 (SBX) / Simulated Binary Crossover
 ///
-/// 适用于实数编码的交叉算子。
-/// Crossover operator suitable for real-valued encoding.
+/// 适用于实数编码的交叉算子，通过模拟二进制交叉的分布特性
+/// 生成与父代接近的子代。
+/// Crossover operator suitable for real-valued encoding, generating offspring
+/// close to the parents by simulating the distribution characteristics of binary crossover.
 #[derive(Debug, Clone, Copy)]
 pub struct SimulatedBinaryCrossover {
     /// 交叉概率 / Crossover probability
@@ -198,6 +219,11 @@ pub struct SimulatedBinaryCrossover {
 }
 
 impl SimulatedBinaryCrossover {
+    /// 创建新算子 / Create new operator
+    ///
+    /// # 参数 / Parameters
+    /// - `rate`: 交叉概率 / Crossover probability
+    /// - `eta`: 分布指数，值越大子代越接近父代 / Distribution index, larger values produce offspring closer to parents
     pub fn new(rate: f64, eta: f64) -> Self {
         Self { rate, eta }
     }
@@ -247,7 +273,7 @@ where
     }
 }
 
-/// 二进制交叉 / Binary Crossover
+/// 二进制编码的单点交叉实现 / Single-point crossover implementation for binary encoding
 impl<I> CrossoverOperator<I, bool> for SinglePointCrossover
 where
     I: Individual<bool>,

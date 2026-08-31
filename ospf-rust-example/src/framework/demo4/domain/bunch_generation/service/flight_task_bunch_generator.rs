@@ -1,18 +1,26 @@
+//! 飞行任务束生成器模块 / Flight task bunch generator module
 use std::collections::{HashMap, HashSet};
 use super::super::model::{Graph, Node};
 
 /// Label 状态 / Label state (对齐 FSRA FlightTaskBunchGenerator label)
 #[derive(Debug, Clone)]
 pub struct Label {
+    /// 当前节点 / Current node
     pub current_node: Node,
+    /// 已访问任务列表 / Visited task list
     pub visited_tasks: Vec<String>,
+    /// 当前时间 / Current time
     pub current_time: f64,
+    /// 原始成本 / Original cost
     pub original_cost: f64,
+    /// 影子价格扣减 / Shadow price deduction
     pub shadow_price_deduction: f64,
+    /// 缩减成本 / Reduced cost
     pub reduced_cost: f64,
 }
 
 impl Label {
+    /// 创建新的标签 / Create new label
     pub fn new(start_node: Node) -> Self {
         Self {
             current_node: start_node,
@@ -24,6 +32,7 @@ impl Label {
         }
     }
 
+    /// 扩展标签到下一节点 / Extend label to next node
     pub fn extend(
         &self,
         next_node: Node,
@@ -48,11 +57,14 @@ impl Label {
 /// 飞行任务束生成器 / Flight task bunch generator
 /// 对齐 FSRA FlightTaskBunchGenerator (Label Setting pricing)
 pub struct FlightTaskBunchGenerator {
+    /// 最大编组数量 / Maximum bunch count
     pub max_bunches: usize,
+    /// 缩减成本阈值 / Reduced cost threshold
     pub reduced_cost_threshold: f64,
 }
 
 impl FlightTaskBunchGenerator {
+    /// 创建新的飞行任务束生成器 / Create new flight task bunch generator
     pub fn new(max_bunches: usize, reduced_cost_threshold: f64) -> Self {
         Self { max_bunches, reduced_cost_threshold }
     }
@@ -142,8 +154,11 @@ impl FlightTaskBunchGenerator {
 /// 生成的束 / Generated bunch
 #[derive(Debug, Clone)]
 pub struct GeneratedBunch {
+    /// 任务标识列表 / Task identifier list
     pub task_ids: Vec<String>,
+    /// 原始成本 / Original cost
     pub original_cost: f64,
+    /// 缩减成本 / Reduced cost
     pub reduced_cost: f64,
 }
 

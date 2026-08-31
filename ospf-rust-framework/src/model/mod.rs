@@ -6,19 +6,19 @@
 //!
 //! # 核心概念 / Core Concepts
 //!
-//! - [`Pipeline`] - 基础管道 trait
-//! - [`CGPipeline`] - 列生成管道 trait
-//! - [`HAPipeline`] - 启发式算法管道 trait
-//! - [`ShadowPrice`] - Shadow Price 数据结构
-//! - [`ShadowPriceMap`] - Shadow Price 映射表
-//! - [`IndexedVariableCombination1`] - 一维索引变量组合
-//! - [`IndexedVariableCombination2`] - 二维索引变量组合
-//! - [`IndexedLinearExpressionSymbols1`] - 一维索引符号组合
-//! - [`IndexedLinearExpressionSymbols2`] - 二维索引符号组合
-//! - [`OptionalIndexedVariableArray`] - 稀疏索引变量数组
-//! - [`OptionalIndexedLinearExpressionSymbols`] - 稀疏索引符号组合
-//! - [`AppendableVariablePool`] - 可追加变量池
-//! - [`AppendableSymbolPool`] - 可追加符号池
+//! - [`Pipeline`] - 基础管道 trait / Basic pipeline trait
+//! - [`CGPipeline`] - 列生成管道 trait / Column generation pipeline trait
+//! - [`HAPipeline`] - 启发式算法管道 trait / Heuristic algorithm pipeline trait
+//! - [`ShadowPrice`] - Shadow Price 数据结构 / Shadow Price data structure
+//! - [`ShadowPriceMap`] - Shadow Price 映射表 / Shadow Price map
+//! - [`IndexedVariableCombination1`] - 一维索引变量组合 / 1D indexed variable combination
+//! - [`IndexedVariableCombination2`] - 二维索引变量组合 / 2D indexed variable combination
+//! - [`IndexedLinearExpressionSymbols1`] - 一维索引符号组合 / 1D indexed symbol combination
+//! - [`IndexedLinearExpressionSymbols2`] - 二维索引符号组合 / 2D indexed symbol combination
+//! - [`OptionalIndexedVariableArray`] - 稀疏索引变量数组 / Sparse indexed variable array
+//! - [`OptionalIndexedLinearExpressionSymbols`] - 稀疏索引符号组合 / Sparse indexed symbol combination
+//! - [`AppendableVariablePool`] - 可追加变量池 / Appendable variable pool
+//! - [`AppendableSymbolPool`] - 可追加符号池 / Appendable symbol pool
 
 pub mod appendable_pool;
 pub mod dynamic_lifecycle;

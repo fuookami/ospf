@@ -1,3 +1,8 @@
+//! 适航安全领域服务 / Airworthiness security domain service
+//!
+//! 提供适航性约束的应用管道，包括各种限制条件的注册和执行。
+//! Provides the airworthiness constraint application pipeline,
+//! including registration and execution of various limit conditions.
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;
@@ -9,6 +14,11 @@ mod limits;
 pub(crate) mod pipeline_list_generator;
 mod policy;
 
+/// 应用适航性安全管道 / Apply airworthiness security pipeline
+///
+/// 根据管道模式依次执行所有适航性约束步骤，将约束注册到模型中。
+/// Executes all airworthiness constraint steps in order based on the pipeline mode,
+/// registering constraints into the model.
 pub fn apply_airworthiness_security_pipeline(
     model: &mut MetaModel<f64>,
     request: &Demo2Request,

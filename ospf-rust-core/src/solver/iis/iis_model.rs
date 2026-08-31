@@ -1,5 +1,4 @@
-//! IIS 模型定义
-//! IIS Model Definition
+//! IIS 模型定义 / IIS Model Definition
 
 use std::collections::HashSet;
 use crate::model::intermediate::{BasicLinearTriadModel, LinearTriadModel, LinearTriadModelView};
@@ -19,8 +18,9 @@ pub struct LinearIISModel {
     pub lower_bound_indices: Vec<usize>,
     /// 变量上界索引列表 / Variable upper bound index list
     pub upper_bound_indices: Vec<usize>,
-    /// 原始模型的引用信息 / Reference info to original model
+    /// 原始模型约束数量 / Original model constraint count
     pub original_num_constraints: usize,
+    /// 原始模型变量数量 / Original model variable count
     pub original_num_variables: usize,
     /// 计算时间 / Computation time
     pub computation_time: std::time::Duration,

@@ -1,3 +1,4 @@
+//! 载荷模型 / Payload model
 use super::item::Item;
 use super::position::Position;
 use super::load::LoadVariables;
@@ -11,24 +12,24 @@ use ospf_rust_core::symbol::flatten::LinearMonomial;
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::Unit;
 
-/// Payload variable indices (aligned with Kotlin Payload)
+/// 载荷变量索引 / Payload variable indices (对齐 Kotlin Payload)
 #[derive(Debug, Clone)]
 pub struct PayloadVariables {
-    /// mainEstimatePayload = main deck estimate payload
+    /// 主舱估算载荷 / Main deck estimate payload
     pub main_estimate_payload: usize,
-    /// lowEstimatePayload = lower deck estimate payload
+    /// 下舱估算载荷 / Lower deck estimate payload
     pub low_estimate_payload: usize,
-    /// estimatePayload = total estimate payload
+    /// 总估算载荷 / Total estimate payload
     pub estimate_payload: usize,
-    /// mainActualPayload = main deck actual payload
+    /// 主舱实际载荷 / Main deck actual payload
     pub main_actual_payload: usize,
-    /// lowActualPayload = lower deck actual payload
+    /// 下舱实际载荷 / Lower deck actual payload
     pub low_actual_payload: usize,
-    /// actualPayload = total actual payload
+    /// 总实际载荷 / Total actual payload
     pub actual_payload: usize,
 }
 
-/// Payload model (aligned with Kotlin Payload)
+/// 载荷模型 / Payload model (对齐 Kotlin Payload)
 ///
 /// Creates 6 intermediate symbols for payload by deck and estimation type:
 /// - mainEstimatePayload: main deck estimate (estimateLoadWeight or constant for FullLoad)
@@ -39,17 +40,22 @@ pub struct PayloadVariables {
 /// - actualPayload: total actual
 #[derive(Debug)]
 pub struct Payload {
+    /// 计划载荷 / Planned payload
     pub planned_payload: Quantity<f64, Unit>,
+    /// 最大载荷 / Maximum payload
     pub max_payload: Quantity<f64, Unit>,
+    /// 计算载荷 / Computed payload
     pub computed_payload: Option<Quantity<f64, Unit>>,
+    /// 物品列表 / Item list
     pub items: Vec<Item>,
+    /// 舱位列表 / Position list
     pub positions: Vec<Position>,
 }
 
 impl Payload {
-    /// Register payload intermediate symbols into the model.
+    /// 注册载荷中间符号到模型 / Register payload intermediate symbols into the model
     ///
-    /// Aligned with Kotlin Payload.register:
+    /// 对齐 Kotlin Payload.register:
     /// - FullLoad: constant sums of item weights by deck location
     /// - Predistribution: mainEstimate/lowEstimate from estimateLoadWeight by deck,
     ///   estimatePayload from computed/planned payload constant
