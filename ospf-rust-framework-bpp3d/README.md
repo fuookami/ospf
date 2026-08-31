@@ -1,61 +1,21 @@
 # OSPF Rust Framework BPP3D
 
-🇺🇸 English | 🇨🇳 [简体中文](README_ch.md)
+:us: English | :cn: [简体中文](README_ch.md)
 
 This crate is the Rust migration target for `ospf-kotlin-framework-bpp3d`.
-The current state provides the BPP3D infrastructure, item domain, layer assignment,
-layer generation, packing context, and the first application-layer orchestration APIs.
+It now provides the BPP3D infrastructure, item domain, BLA/block-loading/layer-generation contexts, layer-assignment pipelines, packing context, CSV protocol adapters, renderer DTOs, and application-level column-generation orchestration.
 
-Application APIs currently cover column-generation config/state/result types,
-layer-generation orchestration, depth-boundary orientation validation,
-known-coordinate placement adaptation, packing analysis, and renderer DTO output.
-With the `serde` feature enabled, application CSV APIs also cover schema guarding,
-multi-table dataset loading, typed CSV records, and request draft construction.
-The application service also exposes mock RMP/final executor seams so materialized
-CSV requests can run through the orchestration flow before real solver adapters land.
-It now also provides solver-agnostic `MetaModel` RMP/final executor skeletons,
-including registration diagnostics and no-op shadow/final extraction boundaries.
-Solver-backed executor wrappers can already consume a pluggable backend result,
-which keeps the next Gurobi/SCIP adapter outside the application service.
-On non-`async` builds, `ColumnGenerationSolverMetaModelBackend` adapts framework
-`ColumnGenerationSolver` LP/MILP outputs into the same executor backend contract.
-The application service also has a one-round RMP -> shadow-price generation ->
-column refresh -> final orchestration entry for validating column updates.
-The current MetaModel assignment wiring registers minimal solvable demand cover,
-final assignment activation, bin depth, and bin-count objective pipelines, and
-`serde` CSV materialized requests can exercise the same solver-backed one-round flow
-with a pluggable backend.
-Layer candidates now carry explicit demand coverage metadata, and the application
-fills default item coverage for materialized/CSV flows before RMP and final execution.
-Layer generation results also expose block and placement traces, with
-`BlockLayerGenerator` producing simple-block trace candidates for coverage-aware flows.
-Selected coverage layers can now be converted into minimal packed bins and renderer
-DTOs through the existing final execution analysis path.
-Generated placement traces are also carried through the one-round application state,
-allowing selected generated layers to replay into packed bins and CSV render fixtures.
-Block traces now have the same replay path for simple-block generated layers, and
-empty/mismatched final flows report structured diagnostics instead of silently dropping output.
-Advanced generator skeletons, solver dataset no-run diagnostics, and conservative
-continuous-radius CSV render fixtures are available as migration guardrails.
-Trace replay has moved into the packing domain adapter, while serde smoke fixtures,
-PatternedItem/PackageAttribute skeletons, and deferred objective/limit diagnostics
-cover the next set of Kotlin migration guardrails.
-The serde dataset suite now carries multiple smoke fixtures, fake one-round execution,
-feature-matrix no-run diagnostics, PatternedItem demand coverage, PackageAttribute
-packing diagnostics, deferred registration plans, and request-aware generator diagnostics.
-It also supports JSON manifest- and directory-driven fixture loading, CSV PatternedItem /
-PackageAttribute materialization, and conservative non-empty Pattern/Pile/Historical layer candidates.
-Crate-level regression fixtures now exercise manifest loading, unified batch reports,
-business-rule diagnostics, semantic deferred objective/constraint registration, and
-configurable Pattern/Pile/Historical candidate generation.
-Kotlin Gurobi grouped-layer and material-width-amount CSV samples can now be adapted
-through the same serde fixture suite, including PWL radius ranges, mixed cuboid/cylinder
-items, and Kotlin-style axis enum tokens.
-Fixture manifests now carry group/tag/backend-smoke metadata, and batch reports summarize
-load, materialization, no-run, fake execution, backend-smoke, render-plan, and diagnostic counts.
-CSV business-rule validation aggregates patterned-item groups, package attributes, tags,
-and default coverage diagnostics. Deferred Pattern/Pile/Historical generators also rotate
-across multiple items and preserve shadow-price-aware scoring diagnostics, while the
-deferred RestAmount/TailBinLoadingRate/BinLoadingOrder hooks have MetaModel registration tests.
+The modeling path is centered on `MetaModel`: RMP and final MILP assembly share `LayerAssignmentContext`, `LayerAssignmentAggregation`, variable components, demand/depth/activation limits, and objective pipelines. Application services coordinate solver backends, CSV materialization, trace/KPI diagnostics, and renderer adaptation, while placement/block trace replay remains in the packing domain.
 
-See [bpp3d.md](bpp3d.md) for the detailed migration target, checklist, and acceptance criteria.
+Current migration coverage includes:
+
+1. Solver-agnostic `MetaModel` RMP/final executors, pluggable backend wrappers, and a one-round RMP -> shadow-price generation -> column refresh -> final flow.
+2. Demand coverage metadata on generated layers, stable demand shadow-price keys, selected-layer extraction, and packed-bin/render replay from placement or block traces.
+3. BLA local/global layer candidates, simple-block layer candidates, multi-round axis `ComplexBlockGenerator`, bounded DFS space-splitting, MLHS branch/depth candidate ranking, circle-packing grid candidates for fixed/discrete cylinder radii, and request-aware Pattern/Pile/Historical generators.
+4. Axis-aware cuboid and cylinder geometry, guarded horizontal-cylinder final validation, PWL continuous-radius metadata/fixtures, and renderer `actualVolume` output.
+5. CSV schema guards, Kotlin Gurobi grouped-layer/material-width-amount adapters, manifest and recursive directory fixture loading, backend survey/no-run/fake fallback reports, and feature-matrix diagnostics.
+6. PatternedItem conservative demand coverage, PackageAttribute validation/packing diagnostics, and RestAmount/TailBinLoadingRate/BinLoadingOrder MetaModel registration hooks.
+
+The manifest now mirrors the full Kotlin Gurobi CSV sample set into 22 fixtures, including 19 Kotlin-derived dataset samples plus 3 local regression fixtures. The full manifest suite is covered by real Gurobi 10 and SCIP feature-gated tests when those solvers are available locally.
+
+Known remaining gaps are documented in [bpp3d.md](bpp3d.md). In short, the crate has a working Rust-style framework baseline with full-manifest real solver coverage; the remaining boundaries are the documented long-term non-goals.

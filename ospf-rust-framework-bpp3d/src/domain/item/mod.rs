@@ -8,9 +8,17 @@ pub mod service;
 
 pub use model::{
     ActualItem, Bin, BinLayer, BinType, Bpp3dDemandKey, Bpp3dDemandMode, Bpp3dDemandValue,
-    Bpp3dLayerDemandCoverage, ContinuousCylinderRadiusSolverPrototype,
-    ContinuousRadiusModelComponent, ContinuousRadiusRegistrationPlan, CylinderShapeContract,
-    CylinderCapabilityStatus, DemandStatistics, Material, MaterialKey, MaterialType, Package,
-    PackageAttribute, PackageShape, PackageShapeSpec, PackingProgram, PatternedItem,
-    PatternedItemKey,
+    Bpp3dLayerDemandCoverage, BottomDimensionRange, CargoAttributeKey,
+    ContinuousCylinderRadiusSolution, ContinuousCylinderRadiusSolverPrototype,
+    ContinuousRadiusModelComponent, ContinuousRadiusModelRegistration,
+    ContinuousRadiusObjectivePolicy, ContinuousRadiusWeightFunction,
+    ContinuousRadiusRegistrationPlan, ContinuousRadiusVariableRegistration,
+    CylinderShapeContract, CylinderCapabilityStatus, DemandStatistics, DeformationAttribute,
+    HangingPolicy, Material, MaterialKey, MaterialType, Package, PackageAttribute, PackageCategory,
+    PackageClassification, PackageOrientationRule, PackageOrientationRuleInput,
+    PackagePairStackingRule, PackagePlacementBottomContext, PackagePlacementStackingInput,
+    PackagePlacementStackingRule, PackageShape, PackageShapeSpec, PackageStackingInput,
+    PackageType, PackingProgram, PackingProgramMaterialValue, PatternConfig, PatternDefinition,
+    PatternedItem, PatternedItemKey, PatternNextPointPolicy, PatternProjectionOrientation,
+    PatternStep, StackingOnPolicy, WeightAttribute,
 };

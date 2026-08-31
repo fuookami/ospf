@@ -8,3 +8,4 @@ Cargo.lock
 /.VSCodeCounter
 htmlReport
 ./target-temp
+/.codegraph

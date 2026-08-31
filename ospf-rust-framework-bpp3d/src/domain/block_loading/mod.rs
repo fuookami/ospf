@@ -9,6 +9,7 @@ pub mod service;
 pub use model::{Block, SimpleBlock, ComplexBlock, ItemView, Space, BlockPlacement};
 
 pub use service::{
-    SimpleBlockGenerator, SimpleBlockGeneratorConfig,
-    ComplexBlockGenerator, DepthFirstSearchAlgorithm, MultiLayerHeuristicSearchAlgorithm,
+    ComplexBlockGenerator, ComplexBlockGeneratorConfig, DepthFirstSearchAlgorithm,
+    DepthFirstSearchConfig, MultiLayerHeuristicSearchAlgorithm,
+    MultiLayerHeuristicSearchConfig, SimpleBlockGenerator, SimpleBlockGeneratorConfig,
 };

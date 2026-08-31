@@ -562,6 +562,104 @@ impl DynamicModelLifecycle {
     }
 }
 
+/// 动态列上下文 / Dynamic column context
+///
+/// 为领域列生成模型提供统一的列索引映射和 lifecycle 同步入口。
+/// 领域框架只需要维护“领域列索引 -> `MetaModel` 变量索引”的映射，
+/// 隐藏、固定、移除、flush 和解提取语义由 framework lifecycle 统一承接。
+/// Provides a unified column-index mapping and lifecycle synchronization entry
+/// for domain column-generation models. Domain frameworks only need to maintain
+/// the mapping from domain column indices to `MetaModel` variable indices, while
+/// hide, fix, remove, flush, and solution-extraction semantics are handled by the
+/// shared framework lifecycle.
+pub trait DynamicColumnContext {
+    /// 返回领域列到模型变量索引的映射 / Return domain-column to model-variable mappings
+    fn column_model_indices(&self, columns: &[usize]) -> Vec<(usize, usize)>;
+
+    /// 标记领域列已移除 / Mark domain columns as removed
+    fn mark_columns_removed(&mut self, columns: &[usize]);
+
+    /// 活跃列数量 / Active column count
+    fn active_column_count(&self) -> usize;
+
+    /// 已移除列数量 / Removed column count
+    fn removed_column_count(&self) -> usize;
+
+    /// 隐藏领域列并同步模型 / Hide domain columns and sync model
+    fn hide_dynamic_columns_in_model(
+        &self,
+        lifecycle: &mut DynamicModelLifecycle,
+        model: &mut MetaModel<f64>,
+        columns: &[usize],
+    ) -> Result<()> {
+        let model_indices = self
+            .column_model_indices(columns)
+            .into_iter()
+            .map(|(_, model_index)| model_index)
+            .collect::<Vec<_>>();
+        lifecycle.hide_columns_in_model(model, model_indices)
+    }
+
+    /// 固定领域列并同步模型 / Fix domain columns and sync model
+    fn fix_dynamic_columns_in_model(
+        &self,
+        lifecycle: &mut DynamicModelLifecycle,
+        model: &mut MetaModel<f64>,
+        columns: &[usize],
+    ) -> Result<()> {
+        let model_indices = self
+            .column_model_indices(columns)
+            .into_iter()
+            .map(|(_, model_index)| model_index)
+            .collect::<Vec<_>>();
+        lifecycle.fix_columns_in_model(model, model_indices)
+    }
+
+    /// 移除领域列并同步模型 / Remove domain columns and sync model
+    fn remove_dynamic_columns_in_model(
+        &mut self,
+        lifecycle: &mut DynamicModelLifecycle,
+        model: &mut MetaModel<f64>,
+        columns: &[usize],
+    ) -> Result<()> {
+        let model_indices = self
+            .column_model_indices(columns)
+            .into_iter()
+            .map(|(_, model_index)| model_index)
+            .collect::<Vec<_>>();
+        self.mark_columns_removed(columns);
+        lifecycle.remove_columns_in_model(model, model_indices)
+    }
+
+    /// 刷新 lifecycle 并同步模型 / Flush lifecycle and sync model
+    fn flush_dynamic_model(
+        &mut self,
+        lifecycle: &mut DynamicModelLifecycle,
+        model: &mut MetaModel<f64>,
+        force: bool,
+    ) -> Result<()> {
+        lifecycle.flush_model(model, force)
+    }
+
+    /// 提取 lifecycle 可选列解 / Extract lifecycle-selectable column values
+    fn extract_selectable_column_values(
+        &self,
+        columns: &[usize],
+        solution: &[f64],
+        lifecycle: &DynamicModelLifecycle,
+    ) -> HashMap<usize, f64> {
+        self.column_model_indices(columns)
+            .into_iter()
+            .filter_map(|(column, model_index)| {
+                if !lifecycle.state().is_selectable(model_index) {
+                    return None;
+                }
+                solution.get(model_index).copied().map(|value| (column, value))
+            })
+            .collect()
+    }
+}
+
 fn sorted_columns(columns: &HashSet<usize>) -> Vec<usize> {
     let mut columns = columns.iter().copied().collect::<Vec<_>>();
     columns.sort_unstable();

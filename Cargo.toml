@@ -8,6 +8,7 @@ members = [
     "ospf-rust-core",
     "ospf-rust-framework",
     "ospf-rust-framework-bpp3d",
+    "ospf-rust-framework-csp1d",
     "ospf-rust-framework-gantt-scheduling",
     "ospf-rust-example"
 ]

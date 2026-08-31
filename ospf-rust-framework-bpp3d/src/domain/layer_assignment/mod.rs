@@ -16,6 +16,7 @@ pub use service::{
     ImpreciseAssignment, PreciseAssignment,
     Load, Capacity, PreciseLoadCapacity,
     Bpp3dDemandEntry, DemandShadowPriceKey,
+    IterativeLayerAssignmentContext, IterativeLayerColumn,
     LayerAggregation, LayerAssignmentAggregation, LayerAssignmentContext,
     SolutionAnalyzer,
 };

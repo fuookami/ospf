@@ -4,6 +4,7 @@
 //! Bottom-Up-Left-Justified algorithm implementation for 2D greedy placement.
 
 use std::fmt::Debug;
+use std::cmp::Ordering;
 
 use ospf_rust_math::algebra::Field;
 use ospf_rust_quantities::quantity::Quantity;
@@ -27,6 +28,10 @@ pub struct BlaProjection<V, U: UnitTrait> {
     pub footprint: ShapeFootprint2<V, U>,
     /// 原始三维形状索引 / Original 3D shape index
     pub item_index: usize,
+    /// 是否仅允许底部放置 / Whether the item must stay at the bottom
+    pub bottom_only: bool,
+    /// 原始高度 / Original height
+    pub height: Quantity<V, U>,
     /// 重量（用于排序）/ Weight (for sorting)
     pub weight: Quantity<V, U>,
     /// 允许旋转 / Allow rotation
@@ -98,11 +103,11 @@ impl BlaConfig {
 
 /// Bottom-Up-Left-Justified 算法 / Bottom-Up-Left-Justified algorithm
 ///
-/// 二维贪心放置算法，按照重量从大到小排序投影，
+/// 二维贪心放置算法，按照底部优先、尺寸和重量排序投影，
 /// 依次寻找左下角最靠近原点的可行位置。
 ///
-/// 2D greedy placement algorithm that sorts projections by weight (descending),
-/// and sequentially finds the bottom-left-most feasible position.
+/// 2D greedy placement algorithm that sorts projections by bottom-only priority,
+/// shape size, height, and weight, then finds the bottom-left-most feasible position.
 #[derive(Debug, Clone)]
 pub struct BottomUpLeftJustifiedAlgorithm<V, U: UnitTrait> {
     /// 容器宽度 / Container width
@@ -133,17 +138,16 @@ where
 
     /// 执行 BLA 放置 / Execute BLA placement
     ///
-    /// 对投影按重量降序排序，依次在容器中寻找最左下角的可行位置。
+    /// 对投影按底部优先、尺寸和重量排序，依次在容器中寻找最左下角的可行位置。
     /// Returns placements for projections that fit, and None for those that don't.
     ///
-    /// Sorts projections by weight (descending), and sequentially finds
-    /// the bottom-left-most feasible position in the container.
+    /// Sorts projections by bottom-only priority, shape size, height, and weight,
+    /// then sequentially finds the bottom-left-most feasible position in the container.
     pub fn invoke(&self, projections: &[BlaProjection<V, U>]) -> Vec<Option<BlaPlacement<V, U>>> {
-        // 按重量降序排序投影索引
         let mut sorted_indices: Vec<usize> = (0..projections.len()).collect();
         sorted_indices.sort_by(|&a, &b| {
-            projections[b].weight.value.partial_cmp(&projections[a].weight.value)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            self.compare_projection(&projections[a], &projections[b])
+                .then_with(|| a.cmp(&b))
         });
 
         let mut placements: Vec<Option<BlaPlacement<V, U>>> = vec![None; projections.len()];
@@ -171,6 +175,41 @@ where
         }
 
         placements
+    }
+
+    /// 比较投影装载优先级 / Compare projection loading priority
+    fn compare_projection(
+        &self,
+        lhs: &BlaProjection<V, U>,
+        rhs: &BlaProjection<V, U>,
+    ) -> Ordering {
+        if lhs.bottom_only != rhs.bottom_only {
+            return rhs.bottom_only.cmp(&lhs.bottom_only);
+        }
+        let (lhs_width, lhs_depth) = self.footprint_dimensions(&lhs.footprint, false);
+        let (rhs_width, rhs_depth) = self.footprint_dimensions(&rhs.footprint, false);
+        rhs_width
+            .value
+            .partial_cmp(&lhs_width.value)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| {
+                rhs_depth
+                    .value
+                    .partial_cmp(&lhs_depth.value)
+                    .unwrap_or(Ordering::Equal)
+            })
+            .then_with(|| {
+                rhs.height
+                    .value
+                    .partial_cmp(&lhs.height.value)
+                    .unwrap_or(Ordering::Equal)
+            })
+            .then_with(|| {
+                rhs.weight
+                    .value
+                    .partial_cmp(&lhs.weight.value)
+                    .unwrap_or(Ordering::Equal)
+            })
     }
 
     /// 获取足迹的宽深尺寸 / Get footprint width and depth dimensions
@@ -313,6 +352,8 @@ mod tests {
                 depth: meters(4.0),
             },
             item_index: 0,
+            bottom_only: false,
+            height: meters(3.0),
             weight: meters(1.0),
             allow_rotation: true,
         }];
@@ -340,6 +381,8 @@ mod tests {
                     depth: meters(5.0),
                 },
                 item_index: 0,
+                bottom_only: false,
+                height: meters(5.0),
                 weight: meters(2.0),
                 allow_rotation: true,
             },
@@ -349,6 +392,8 @@ mod tests {
                     depth: meters(5.0),
                 },
                 item_index: 1,
+                bottom_only: false,
+                height: meters(5.0),
                 weight: meters(1.0),
                 allow_rotation: true,
             },
@@ -387,6 +432,8 @@ mod tests {
                 depth: meters(6.0),
             },
             item_index: 0,
+            bottom_only: false,
+            height: meters(6.0),
             weight: meters(1.0),
             allow_rotation: false,
         }];
@@ -408,6 +455,8 @@ mod tests {
                 radius: meters(2.0),
             },
             item_index: 0,
+            bottom_only: false,
+            height: meters(4.0),
             weight: meters(1.0),
             allow_rotation: false,
         }];
@@ -431,6 +480,8 @@ mod tests {
                 depth: meters(8.0),
             },
             item_index: 0,
+            bottom_only: false,
+            height: meters(8.0),
             weight: meters(1.0),
             allow_rotation: true,
         }];
@@ -454,6 +505,8 @@ mod tests {
                 depth: meters(8.0),
             },
             item_index: 0,
+            bottom_only: false,
+            height: meters(8.0),
             weight: meters(1.0),
             allow_rotation: true,
         }];
@@ -478,6 +531,8 @@ mod tests {
                     depth: meters(5.0),
                 },
                 item_index: 0,
+                bottom_only: false,
+                height: meters(5.0),
                 weight: meters(2.0),
                 allow_rotation: true,
             },
@@ -487,6 +542,8 @@ mod tests {
                     depth: meters(3.0),
                 },
                 item_index: 1,
+                bottom_only: false,
+                height: meters(3.0),
                 weight: meters(1.0),
                 allow_rotation: true,
             },
@@ -495,5 +552,47 @@ mod tests {
         let placements = bla.invoke(&projections);
         assert!(placements[0].is_some());
         assert!(placements[1].is_none()); // 容器已满
+    }
+
+    #[test]
+    fn bla_bottom_only_precedes_weight() {
+        let bla = BottomUpLeftJustifiedAlgorithm::new(
+            meters(10.0),
+            meters(10.0),
+            BlaConfig::default(),
+        );
+
+        let projections = vec![
+            BlaProjection {
+                footprint: ShapeFootprint2::Rectangle {
+                    width: meters(4.0),
+                    depth: meters(4.0),
+                },
+                item_index: 0,
+                bottom_only: false,
+                height: meters(4.0),
+                weight: meters(10.0),
+                allow_rotation: true,
+            },
+            BlaProjection {
+                footprint: ShapeFootprint2::Rectangle {
+                    width: meters(4.0),
+                    depth: meters(4.0),
+                },
+                item_index: 1,
+                bottom_only: true,
+                height: meters(4.0),
+                weight: meters(1.0),
+                allow_rotation: true,
+            },
+        ];
+
+        let placements = bla.invoke(&projections);
+        assert!(placements[0].is_some());
+        assert!(placements[1].is_some());
+        assert_eq!(placements[1].as_ref().unwrap().position.x.value, 0.0);
+        assert_eq!(placements[1].as_ref().unwrap().position.y.value, 0.0);
+        assert_eq!(placements[0].as_ref().unwrap().position.x.value, 4.0);
+        assert_eq!(placements[0].as_ref().unwrap().position.y.value, 0.0);
     }
 }

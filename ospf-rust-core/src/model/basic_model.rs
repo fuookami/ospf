@@ -504,6 +504,31 @@ where
         Ok(())
     }
 
+    /// 保留满足条件的约束 / Retain constraints matching predicate
+    pub fn retain_constraints<F>(&mut self, mut predicate: F) -> usize
+    where
+        F: FnMut(&MetaConstraint<LinearInequality<V>>) -> bool,
+    {
+        let original_len = self.constraints.len();
+        self.constraints.retain(|constraint| predicate(constraint));
+        let removed = original_len - self.constraints.len();
+        if removed > 0 {
+            self.invalidate_all_caches();
+        }
+        removed
+    }
+
+    /// 按约束组 ID 移除约束 / Remove constraints by constraint group id
+    pub fn remove_constraints_by_group_id(&mut self, group_id: u64) -> usize {
+        self.retain_constraints(|constraint| {
+            constraint
+                .group
+                .as_ref()
+                .map(|group| group.id != group_id)
+                .unwrap_or(true)
+        })
+    }
+
     /// 创建约束组 / Create constraint group
     pub fn create_constraint_group(&mut self, id: u64, name: &str) -> Result<Arc<ConstraintGroup>> {
         if self.constraint_groups.contains_key(&id) {

@@ -579,6 +579,21 @@ where
         self.basic.add_constraint(constraint)
     }
 
+    /// 保留满足条件的约束。
+    /// Retain constraints matching predicate.
+    pub fn retain_constraints<F>(&mut self, predicate: F) -> usize
+    where
+        F: FnMut(&MetaConstraint<LinearInequality<V>>) -> bool,
+    {
+        self.basic.retain_constraints(predicate)
+    }
+
+    /// 按约束组 ID 移除约束。
+    /// Remove constraints by constraint group id.
+    pub fn remove_constraints_by_group_id(&mut self, group_id: u64) -> usize {
+        self.basic.remove_constraints_by_group_id(group_id)
+    }
+
     /// 添加线性多项式约束。
     /// Add a linear polynomial constraint.
     pub fn add_linear_polynomial_constraint(
@@ -2764,6 +2779,70 @@ mod tests {
         assert!(!constraint.lazy);
         assert_eq!(constraint.priority, 0);
         assert!(constraint.args.is_none());
+    }
+
+    #[test]
+    fn remove_constraints_by_group_id_removes_only_matching_group() {
+        let mut model = MetaModel::<f64>::new("meta_constraint_remove_by_group");
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(595),
+            "x_remove_group",
+            VariableRange::bounded(-10.0, 10.0),
+        );
+        let x_index = model.register_variable(x).unwrap();
+        let group = model.create_constraint_group(702, "remove_group").unwrap();
+        let other_group = model.create_constraint_group(703, "keep_group").unwrap();
+
+        let grouped = MetaConstraint::new(
+            LinearInequality::new(
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+                ConstraintRelation::LessEqual,
+                2.0,
+            ),
+            "remove_grouped",
+        )
+        .with_group(group);
+        model.add_constraint(grouped).unwrap();
+        let kept_grouped = MetaConstraint::new(
+            LinearInequality::new(
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+                ConstraintRelation::GreaterEqual,
+                -2.0,
+            ),
+            "keep_grouped",
+        )
+        .with_group(other_group);
+        model.add_constraint(kept_grouped).unwrap();
+        model
+            .add_linear_constraint(
+                &[(x_index, 1.0)],
+                ConstraintRelation::LessEqual,
+                3.0,
+                "keep_ungrouped",
+            )
+            .unwrap();
+
+        assert_eq!(model.constraints().len(), 3);
+        assert_eq!(model.remove_constraints_by_group_id(702), 1);
+        assert_eq!(model.constraints().len(), 2);
+        assert!(
+            model
+                .constraints()
+                .iter()
+                .all(|constraint| constraint.name != "remove_grouped")
+        );
+        assert!(
+            model
+                .constraints()
+                .iter()
+                .any(|constraint| constraint.name == "keep_grouped")
+        );
+        assert!(
+            model
+                .constraints()
+                .iter()
+                .any(|constraint| constraint.name == "keep_ungrouped")
+        );
     }
 
     #[test]
