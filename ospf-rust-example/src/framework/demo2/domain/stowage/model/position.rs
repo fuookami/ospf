@@ -25,6 +25,10 @@ pub struct PositionStatus {
     pub adjustment_needed: bool,
     pub predicate_weight_needed: bool,
     pub recommended_weight_needed: bool,
+    /// 最小预测装载重量 / Minimum predicate load weight (对齐 Kotlin plw.min)
+    /// 当 predicate_weight_needed == true 时必须有值。
+    /// Must be present when predicate_weight_needed == true.
+    pub predicate_load_weight_min: Option<f64>,
 }
 
 /// 舱位 / Position (stowage domain, 对齐 Kotlin stowage Position)

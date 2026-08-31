@@ -14,6 +14,8 @@ pub fn apply_stowage_pipeline(
     request: &Demo2Request,
     x_idx: &[Vec<usize>],
     mode: Demo2PipelineMode,
+    loaded_idx: &[usize],
+    estimate_loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
     let context = StowageContext {
         request,
@@ -22,7 +24,7 @@ pub fn apply_stowage_pipeline(
     };
     let aggregation = StowageAggregation::from_context(&context);
     for step in pipeline_list_generator::pipeline_steps(context.mode) {
-        step(model, &context, &aggregation)?;
+        step(model, &context, &aggregation, loaded_idx, estimate_loaded_idx)?;
     }
     Ok(())
 }

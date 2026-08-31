@@ -1288,7 +1288,13 @@ impl FullLoadApplication {
         shared::model_registration::construct_objective(
             request, model, &registration, Demo2PipelineMode::FullLoad,
         )?;
-        apply_domain_pipeline(Demo2PipelineMode::FullLoad, model, request, &registration.x_idx, registration.z)?;
+        apply_domain_pipeline(
+            Demo2PipelineMode::FullLoad, model, request,
+            &registration.x_idx, registration.z,
+            &registration.estimate_load_weight_idx,
+            &registration.estimate_loaded_idx,
+            &registration.loaded_idx,
+        )?;
 
         Ok(registration.x_idx)
     }
@@ -1316,9 +1322,21 @@ impl FullLoadApplication {
         let registration = shared::model_registration::RegistrationResult {
             x_idx: x_idx_master.clone(),
             z: None,
+            estimate_load_weight_idx: Vec::new(),
+            estimate_loaded_idx: Vec::new(),
+            loaded_idx: Vec::new(),
         };
         shared::model_registration::construct_objective(
             request, &mut master_model, &registration, Demo2PipelineMode::FullLoad,
+        )?;
+
+        // 注册中间符号 for master model
+        let master_intermediates = shared::model_registration::register_intermediate_symbols(
+            request, &mut master_model, &x_idx_master, 10000,
+        )?;
+        // 注册中间符号 for sub model
+        let sub_intermediates = shared::model_registration::register_intermediate_symbols(
+            request, &mut sub_model, &x_idx_sub, 10000,
         )?;
 
         stowage::service::apply_stowage_pipeline(
@@ -1326,6 +1344,8 @@ impl FullLoadApplication {
             request,
             &x_idx_master,
             Demo2PipelineMode::FullLoad,
+            &master_intermediates.loaded_idx,
+            &master_intermediates.estimate_loaded_idx,
         )?;
         loading_effectiveness::service::apply_loading_effectiveness_pipeline(
             &mut master_model,
@@ -1364,6 +1384,8 @@ impl FullLoadApplication {
             request,
             &x_idx_sub,
             Demo2PipelineMode::FullLoad,
+            &sub_intermediates.estimate_load_weight_idx,
+            &sub_intermediates.estimate_loaded_idx,
         )?;
 
         Ok((master_model, sub_model, x_idx_master, fixed_variable_ids))
@@ -1642,6 +1664,9 @@ impl PredistributionApplication {
             request,
             &registration.x_idx,
             registration.z,
+            &registration.estimate_load_weight_idx,
+            &registration.estimate_loaded_idx,
+            &registration.loaded_idx,
         )?;
 
         Ok(registration.x_idx)
@@ -1679,9 +1704,19 @@ impl PredistributionApplication {
         let registration = shared::model_registration::RegistrationResult {
             x_idx: x_idx_master.clone(),
             z: Some(z),
+            estimate_load_weight_idx: Vec::new(),
+            estimate_loaded_idx: Vec::new(),
+            loaded_idx: Vec::new(),
         };
         shared::model_registration::construct_objective(
             request, &mut master_model, &registration, Demo2PipelineMode::Predistribution,
+        )?;
+
+        let master_intermediates = shared::model_registration::register_intermediate_symbols(
+            request, &mut master_model, &x_idx_master, 10000,
+        )?;
+        let sub_intermediates = shared::model_registration::register_intermediate_symbols(
+            request, &mut sub_model, &x_idx_sub, 10000,
         )?;
 
         stowage::service::apply_stowage_pipeline(
@@ -1689,6 +1724,8 @@ impl PredistributionApplication {
             request,
             &x_idx_master,
             Demo2PipelineMode::Predistribution,
+            &master_intermediates.loaded_idx,
+            &master_intermediates.estimate_loaded_idx,
         )?;
         loading_effectiveness::service::apply_loading_effectiveness_pipeline(
             &mut master_model,
@@ -1727,6 +1764,8 @@ impl PredistributionApplication {
             request,
             &x_idx_sub,
             Demo2PipelineMode::Predistribution,
+            &sub_intermediates.estimate_load_weight_idx,
+            &sub_intermediates.estimate_loaded_idx,
         )?;
 
         Ok((master_model, sub_model, x_idx_master, fixed_variable_ids))
@@ -1998,6 +2037,9 @@ impl WeightRecommendationApplication {
             request,
             &registration.x_idx,
             registration.z,
+            &registration.estimate_load_weight_idx,
+            &registration.estimate_loaded_idx,
+            &registration.loaded_idx,
         )?;
 
         Ok(registration.x_idx)
@@ -2029,9 +2071,19 @@ impl WeightRecommendationApplication {
         let registration = shared::model_registration::RegistrationResult {
             x_idx: x_idx_master.clone(),
             z: Some(z),
+            estimate_load_weight_idx: Vec::new(),
+            estimate_loaded_idx: Vec::new(),
+            loaded_idx: Vec::new(),
         };
         shared::model_registration::construct_objective(
             request, &mut master_model, &registration, Demo2PipelineMode::WeightRecommendation,
+        )?;
+
+        let master_intermediates = shared::model_registration::register_intermediate_symbols(
+            request, &mut master_model, &x_idx_master, 10000,
+        )?;
+        let sub_intermediates = shared::model_registration::register_intermediate_symbols(
+            request, &mut sub_model, &x_idx_sub, 10000,
         )?;
 
         stowage::service::apply_stowage_pipeline(
@@ -2039,6 +2091,8 @@ impl WeightRecommendationApplication {
             request,
             &x_idx_master,
             Demo2PipelineMode::WeightRecommendation,
+            &master_intermediates.loaded_idx,
+            &master_intermediates.estimate_loaded_idx,
         )?;
         loading_effectiveness::service::apply_loading_effectiveness_pipeline(
             &mut master_model,
@@ -2077,6 +2131,8 @@ impl WeightRecommendationApplication {
             request,
             &x_idx_sub,
             Demo2PipelineMode::WeightRecommendation,
+            &sub_intermediates.estimate_load_weight_idx,
+            &sub_intermediates.estimate_loaded_idx,
         )?;
 
         Ok((master_model, sub_model, x_idx_master, fixed_variable_ids))
@@ -2536,6 +2592,7 @@ mod tests {
                 source: String::from("S1"),
                 destination: String::from("D1"),
                 requires_separation: false,
+                code: None,
             },
             crate::framework::demo2::infrastructure::dto::CargoInput {
                 name: String::from("H2"),
@@ -2544,6 +2601,7 @@ mod tests {
                 source: String::from("S2"),
                 destination: String::from("D2"),
                 requires_separation: false,
+                code: None,
             },
             crate::framework::demo2::infrastructure::dto::CargoInput {
                 name: String::from("L1"),
@@ -2552,6 +2610,7 @@ mod tests {
                 source: String::from("S3"),
                 destination: String::from("D3"),
                 requires_separation: false,
+                code: None,
             },
         ];
         request.positions = vec![
@@ -2564,6 +2623,7 @@ mod tests {
                     length: 2.0,
                     max_load_count: 3,
                     loaded_items: Vec::new(),
+                predicate_load_weight_min: None,
             },
             crate::framework::demo2::infrastructure::dto::PositionInput {
                 name: String::from("P2"),
@@ -2574,6 +2634,7 @@ mod tests {
                     length: 2.0,
                     max_load_count: 3,
                     loaded_items: Vec::new(),
+                predicate_load_weight_min: None,
             },
         ];
         request.payload_upper_bound = 40.0;
@@ -2931,6 +2992,7 @@ mod tests {
                 source: String::from("S"),
                 destination: String::from("D"),
                 requires_separation: false,
+                code: None,
             })
             .collect();
         request.positions = (0..10)
@@ -2943,6 +3005,7 @@ mod tests {
                 length: 2.0,
                 max_load_count: 3,
                 loaded_items: Vec::new(),
+                predicate_load_weight_min: None,
             })
             .collect();
 
@@ -3514,6 +3577,7 @@ mod tests {
             source: String::from("S1"),
             destination: String::from("D1"),
             requires_separation: false,
+                code: None,
         }];
         request.positions = vec![PositionInput {
             name: String::from("P1"),
@@ -3524,6 +3588,7 @@ mod tests {
                     length: 2.0,
                     max_load_count: 3,
                     loaded_items: Vec::new(),
+                predicate_load_weight_min: None,
         }];
         request.payload_upper_bound = 10.0;
         request.min_payload_ratio = 0.0;
@@ -3557,6 +3622,7 @@ mod tests {
                 source: String::from("S1"),
                 destination: String::from("D1"),
                 requires_separation: false,
+                code: None,
             },
             CargoInput {
                 name: String::from("D1_2"),
@@ -3565,6 +3631,7 @@ mod tests {
                 source: String::from("S2"),
                 destination: String::from("D1"),
                 requires_separation: false,
+                code: None,
             },
             CargoInput {
                 name: String::from("D1_3"),
@@ -3573,6 +3640,7 @@ mod tests {
                 source: String::from("S3"),
                 destination: String::from("D1"),
                 requires_separation: false,
+                code: None,
             },
         ];
         request.positions = vec![
@@ -3585,6 +3653,7 @@ mod tests {
                     length: 2.0,
                     max_load_count: 3,
                     loaded_items: Vec::new(),
+                predicate_load_weight_min: None,
             },
             PositionInput {
                 name: String::from("P2"),
@@ -3595,6 +3664,7 @@ mod tests {
                     length: 2.0,
                     max_load_count: 3,
                     loaded_items: Vec::new(),
+                predicate_load_weight_min: None,
             },
         ];
         request.payload_upper_bound = 20.0;

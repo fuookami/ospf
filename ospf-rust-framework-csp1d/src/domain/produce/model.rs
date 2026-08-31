@@ -363,7 +363,14 @@ impl DerivedPlanExpressionSymbols {
     }
 }
 
+/// 从符号提取 `(variable_index, coefficient)` 项。
 /// Extract `(variable_index, coefficient)` terms from a symbol at the given index.
+///
+/// 注意：这是从已注册 `LinearExpressionSymbol` 展开的系数，
+/// 不是独立的裸系数。符号是源，这里只是 `add_linear_constraint` API 的适配层。
+/// Note: These are coefficients expanded from registered `LinearExpressionSymbol`s,
+/// not independent raw coefficients. The symbols are the source of truth;
+/// this is the adapter layer for `add_linear_constraint` API.
 fn extract_terms_from_symbol(
     symbols: &LinearExpressionSymbols1<f64>,
     index: usize,

@@ -14,11 +14,13 @@ pub fn apply_airworthiness_security_pipeline(
     request: &Demo2Request,
     x_idx: &[Vec<usize>],
     mode: Demo2PipelineMode,
+    estimate_load_weight_idx: &[usize],
+    estimate_loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
     let context = AirworthinessContext::new(request, x_idx, mode);
     let aggregation = AirworthinessAggregation::from_context(&context);
     for step in pipeline_list_generator::pipeline_steps(context.mode) {
-        step(model, &context, &aggregation)?;
+        step(model, &context, &aggregation, estimate_load_weight_idx, estimate_loaded_idx)?;
     }
     Ok(())
 }

@@ -1,33 +1,85 @@
 use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::sync::Arc;
+use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::function::IfFunction;
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
-/// 同来源邻接限制: 同一来源的货物应装载在相邻舱位
-/// 对齐 Kotlin SameSourceAdjacentLimit (目标函数: 最大化同源邻接)
+/// Same-source adjacent limit: maximize same-source cargo adjacency.
+///
+/// Aligned with Kotlin SameSourceAdjacentLimit + TransferAdjacentLoading.
+/// For each source and each adjacent position pair, creates an IfFunction
+/// indicator that equals 1 when the combined load amount of that source's
+/// cargo at both positions is nonzero (condition != 0). The sum of all indicators
+/// is added as a maximization objective to encourage same-source cargo
+/// to be placed at adjacent positions.
 pub fn apply_same_source_adjacent_limits(
-    _model: &mut MetaModel<f64>,
-    _context: &LoadingEffectivenessContext<'_>,
+    model: &mut MetaModel<f64>,
+    context: &LoadingEffectivenessContext<'_>,
     aggregation: &LoadingEffectivenessAggregation,
 ) -> Result<(), Box<dyn Error>> {
-    // 对齐 Kotlin - 需要 TransferAdjacentLoading 中间符号
-    // 当前实现: 使用简化的邻接约束
-    // 对于同一来源的货物对，如果它们在相邻舱位，则奖励
+    let adjacent_positions = &context.request.adjacent_positions;
+    if adjacent_positions.is_empty() {
+        return Ok(());
+    }
+
+    let mut next_id = 51000u64;
+    let mut objective_terms: Vec<(usize, f64)> = Vec::new();
+
     for (_source, cargos) in &aggregation.cargos_by_source {
         if cargos.len() <= 1 {
             continue;
         }
-        // 对于同一来源的每对货物，约束它们尽量在相邻舱位
-        for i in 0..cargos.len() {
-            for j in (i + 1)..cargos.len() {
-                let c1 = cargos[i];
-                let c2 = cargos[j];
-                // 如果两个货物都装载，它们应该在相邻舱位
-                // 简化实现: 不添加硬约束，仅在目标函数中鼓励
-                let _ = (c1, c2);
+
+        for pair in adjacent_positions.iter() {
+            // loadAmount1 = sum(x_idx[c][pair.first] for c in source group)
+            let mut load_amount_1_monomials: Vec<LinearMonomial<f64>> = Vec::new();
+            for &c in cargos {
+                if pair.first < context.x_idx[c].len() {
+                    load_amount_1_monomials
+                        .push(LinearMonomial::new(1.0, context.x_idx[c][pair.first]));
+                }
             }
+
+            // loadAmount2 = sum(x_idx[c][pair.second] for c in source group)
+            let mut load_amount_2_monomials: Vec<LinearMonomial<f64>> = Vec::new();
+            for &c in cargos {
+                if pair.second < context.x_idx[c].len() {
+                    load_amount_2_monomials
+                        .push(LinearMonomial::new(1.0, context.x_idx[c][pair.second]));
+                }
+            }
+
+            // condition = loadAmount1 + loadAmount2 - 2
+            // Aligned with Kotlin: IfFunction(condition = loadAmount1 + loadAmount2 - Flt64.two)
+            let mut condition_monomials = load_amount_1_monomials;
+            condition_monomials.extend(load_amount_2_monomials);
+
+            let condition = Linear::new(condition_monomials, -2.0);
+            let then_expr = Linear::new(Vec::new(), 1.0);
+            let else_expr = Linear::new(Vec::new(), 0.0);
+
+            let if_fn = IfFunction::new(
+                next_id,
+                &format!(
+                    "same_source_adjacent_{}_{}_{}",
+                    _source, pair.first, pair.second
+                ),
+                condition,
+                then_expr,
+                else_expr,
+            );
+            let result_idx = if_fn.result_variable().index();
+            model.add_symbol(Arc::new(if_fn))?;
+            objective_terms.push((result_idx, 1.0));
+            next_id += 1;
         }
     }
+
+    if !objective_terms.is_empty() {
+        model.add_linear_objective(&objective_terms, "same_source_adjacent");
+    }
+
     Ok(())
 }

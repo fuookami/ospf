@@ -8,6 +8,8 @@ pub fn apply_envelope_limits(
     model: &mut MetaModel<f64>,
     context: &AirworthinessContext<'_>,
     aggregation: &AirworthinessAggregation,
+    _estimate_load_weight_idx: &[usize],
+    _estimate_loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
     model.add_linear_constraint(
         &aggregation.envelope_longitudinal_moment_coefficients,

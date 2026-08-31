@@ -1,16 +1,16 @@
 use super::item::Item;
 use super::position::Position;
 use super::stowage::{Stowage, StowageVariables};
-use super::super::shared::units::{quantity_value_in_unit, weight_unit};
+use super::super::super::shared::units::{quantity_value_in_unit, weight_unit};
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::{
-    BinaryzationFunction, IfFunction, SameAsFunction, SlackFunction,
+    BinaryzationFunction, IfFunction, OrFunction, SameAsFunction, SlackFunction,
 };
-use ospf_rust_core::variable::UContinuousVariableItem;
+use ospf_rust_core::variable::{UContinuousVariableItem, UIntegerVariableItem, VariableRange};
 
 /// 装载量变量索引 / Load variable indices
 #[derive(Debug, Clone)]
@@ -35,6 +35,12 @@ pub struct LoadVariables {
     pub z_same_as: Vec<usize>,
     /// y_if[j] = IfFunction(condition, then_expr, else_expr) result variable solver index
     pub y_if: Vec<usize>,
+    /// estimate_loaded[j] = OrFunction(full[j], y_if[j]) - combines full status with conditional loading
+    /// Result variable solver index; 1 if position j is estimated as loaded (full or y_if nonzero)
+    pub estimate_loaded: Vec<usize>,
+    /// actual_loaded[j] = OrFunction(full[j], z_if[j]) - combines full status with actual conditional loading
+    /// Result variable solver index; 1 if position j is actually loaded (full or z_if nonzero)
+    pub actual_loaded: Vec<usize>,
 }
 
 /// 装载量 / Load (对齐 Kotlin Load)
@@ -57,13 +63,20 @@ impl Load {
     /// 7. 创建 predicateLoadWeightSlack[j] 松弛函数 (SlackFunction)
     /// 8. 创建 y_same_as[j] / z_same_as[j] 相同性检查 (SameAsFunction)
     /// 9. 创建 y_if[j] 条件中间符号 (IfFunction)
+    /// 10. 创建 z_if[j] 条件中间符号 (IfFunction)
+    /// 11. 创建 estimateLoaded[j] = OrFunction(loadedItem, y_if, z_if)
+    /// 12. 创建 actualLoaded[j] = BinaryzationFunction(loadAmount >= 1)
     ///
     /// Kotlin-Rust 映射 / Kotlin-Rust Mapping:
-    /// - `predicateLoadWeightSlack[j]` -> `SlackFunction(|estimateLoadWeight - actualLoadWeight|)`
+    /// - `predicateLoadWeightSlack[j]` -> `SlackFunction(y, loadAmount * plw_min)` 或 `SlackFunction(y, plw_min)`
     /// - `full[j]`                     -> `BinaryzationFunction(loadAmount >= mla)`
+    /// - `loadedItem[j]`               -> `BinaryzationFunction(loadAmount >= 1)`
     /// - `y_same_as[j]`                -> `SameAsFunction(y, actualLoadWeight)`
     /// - `z_same_as[j]`                -> `SameAsFunction(z, estimateLoadWeight)`
     /// - `y_if[j]`                     -> `IfFunction(loadAmount >= 1, y_same_as, y)`
+    /// - `z_if[j]`                     -> `IfFunction(loadAmount >= 1, z_same_as, z)`
+    /// - `estimateLoaded[j]`           -> `OrFunction(full[j], y_if[j])`
+    /// - `actualLoaded[j]`             -> `OrFunction(full[j], z_if[j])`
     pub fn register(
         &self,
         model: &mut MetaModel<f64>,
@@ -73,18 +86,32 @@ impl Load {
         let position_count = self.positions.len();
         let mut next_id = 30000u64;
 
-        // 1. 注册 y[j] 预测装载重量变量
+        // 1. 注册 y[j] 预测装载重量变量（仅当 predicateWeightNeeded）
+        // Kotlin: if (predicateWeightNeeded) y[j] = Variable(...)
+        // 类型: UContinuous，上界: position.max_load_weight
         let mut y_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
-            let var = UContinuousVariableItem::auto(&format!("y_{}", position.id));
-            y_idx[j] = model.register_variable(var)?;
+            if position.status.predicate_weight_needed {
+                let var = UContinuousVariableItem::auto_with_range(
+                    &format!("y_{}", position.id),
+                    VariableRange::bounded(0.0, position.max_load_weight),
+                );
+                y_idx[j] = model.register_variable(var)?;
+            }
         }
 
-        // 2. 注册 z[j] 推荐装载重量变量
+        // 2. 注册 z[j] 推荐装载重量变量（仅当 recommendedWeightNeeded）
+        // Kotlin: if (recommendedWeightNeeded) z[j] = QuantityUIntVariable1(...)
+        // 类型: UInteger（非负整数），上界: position.max_load_weight
         let mut z_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
-            let var = UContinuousVariableItem::auto(&format!("z_{}", position.id));
-            z_idx[j] = model.register_variable(var)?;
+            if position.status.recommended_weight_needed {
+                let var = UIntegerVariableItem::auto_with_range(
+                    &format!("z_{}", position.id),
+                    VariableRange::bounded(0.0, position.max_load_weight),
+                );
+                z_idx[j] = model.register_variable(var)?;
+            }
         }
 
         // 3. 创建 loadAmount[j] 中间符号 (LinearExpressionSymbol, 保留)
@@ -128,7 +155,9 @@ impl Load {
         }
 
         // 5. 创建 estimateLoadWeight[j] 中间符号 (LinearExpressionSymbol, 保留)
-        // estimateLoadWeight[j] = sum(item.weight.value * stowage[i][j]) + y[j] + z[j]
+        // Kotlin: estimateLoadWeight[j] = sum(item.weight * stowage[i][j])
+        //         + (if predicateWeightNeeded then y[j] else 0)
+        //         + (if recommendedWeightNeeded then z[j] else 0)
         let wu = weight_unit();
         let mut estimate_load_weight_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
@@ -137,8 +166,14 @@ impl Load {
                 let w = quantity_value_in_unit(&item.weight, &wu)?;
                 monomials.push(LinearMonomial::new(w, stowage_vars.stowage[i][j]));
             }
-            monomials.push(LinearMonomial::new(1.0, y_idx[j]));
-            monomials.push(LinearMonomial::new(1.0, z_idx[j]));
+            // 条件添加 y[j]：仅当 predicateWeightNeeded
+            if position.status.predicate_weight_needed {
+                monomials.push(LinearMonomial::new(1.0, y_idx[j]));
+            }
+            // 条件添加 z[j]：仅当 recommendedWeightNeeded
+            if position.status.recommended_weight_needed {
+                monomials.push(LinearMonomial::new(1.0, z_idx[j]));
+            }
             let symbol = LinearExpressionSymbol::new(
                 next_id,
                 &format!("estimate_load_weight_{}", position.id),
@@ -171,83 +206,114 @@ impl Load {
         }
 
         // 7. 创建 predicateLoadWeightSlack[j] 松弛函数 (SlackFunction)
-        // Kotlin: val predicateLoadWeightSlack = SlackFunction(estimateLoadWeight, actualLoadWeight)
-        // slack = |estimateLoadWeight - actualLoadWeight|
+        // Kotlin 语义：
+        //   if (!predicateWeightNeeded) → 常量 0
+        //   else:
+        //     val plw_min = position.predicateLoadWeightMin  // 必须有值
+        //     if (position.maxLoadAmount == 1 && (stowageNeeded || adjustmentNeeded))
+        //       slack = Slack(y[j], loadAmount[j] * plw_min)
+        //     else
+        //       slack = Slack(y[j], plw_min)
         let mut slack_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
-            let left = Linear::new(
-                vec![LinearMonomial::new(1.0, estimate_load_weight_idx[j])],
-                0.0,
-            );
-            let right = Linear::new(
-                vec![LinearMonomial::new(1.0, actual_load_weight_idx[j])],
-                0.0,
-            );
-            let slack_fn = SlackFunction::new(
-                next_id,
-                &format!("predicate_load_weight_slack_{}", position.id),
-                left,
-                right,
-            );
-            let result_idx = slack_fn.result_variable().index();
-            model.add_symbol(Arc::new(slack_fn))?;
-            slack_idx[j] = result_idx;
-            next_id += 1;
+            if position.status.predicate_weight_needed {
+                let plw_min = position.status.predicate_load_weight_min.ok_or_else(|| {
+                    Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!(
+                            "Position {} requires predicate_load_weight_min when predicate_weight_needed=true",
+                            position.id
+                        ),
+                    )) as Box<dyn std::error::Error>
+                })?;
+
+                let left = Linear::new(
+                    vec![LinearMonomial::new(1.0, y_idx[j])],
+                    0.0,
+                );
+
+                let right = if position.max_load_amount == 1
+                    && (position.status.stowage_needed || position.status.adjustment_needed)
+                {
+                    // Slack(y[j], loadAmount[j] * plw_min)
+                    Linear::new(
+                        vec![LinearMonomial::new(plw_min, load_amount_idx[j])],
+                        0.0,
+                    )
+                } else {
+                    // Slack(y[j], plw_min)
+                    Linear::new(Vec::new(), plw_min)
+                };
+
+                let slack_fn = SlackFunction::new(
+                    next_id,
+                    &format!("predicate_load_weight_slack_{}", position.id),
+                    left,
+                    right,
+                );
+                let result_idx = slack_fn.result_variable().index();
+                model.add_symbol(Arc::new(slack_fn))?;
+                slack_idx[j] = result_idx;
+                next_id += 1;
+            }
+            // else: slack_idx[j] remains 0 (constant 0)
         }
 
         // 8. 创建 y_same_as[j] = SameAsFunction(y, actualLoadWeight) 中间符号
-        // Kotlin: val y_same_as = SameAsFunction(y[j], actualLoadWeight[j])
+        // 仅当 predicate_weight_needed 时创建
         let mut y_same_as_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
-            let first = Linear::new(vec![LinearMonomial::new(1.0, y_idx[j])], 0.0);
-            let second = Linear::new(
-                vec![LinearMonomial::new(1.0, actual_load_weight_idx[j])],
-                0.0,
-            );
-            let same_as_fn =
-                SameAsFunction::new(next_id, &format!("y_same_as_{}", position.id), first, second, 0.0);
-            let result_idx = same_as_fn.result_variable().index();
-            model.add_symbol(Arc::new(same_as_fn))?;
-            y_same_as_idx[j] = result_idx;
-            next_id += 1;
+            if position.status.predicate_weight_needed {
+                let first = Linear::new(vec![LinearMonomial::new(1.0, y_idx[j])], 0.0);
+                let second = Linear::new(
+                    vec![LinearMonomial::new(1.0, actual_load_weight_idx[j])],
+                    0.0,
+                );
+                let same_as_fn =
+                    SameAsFunction::new(next_id, &format!("y_same_as_{}", position.id), first, second, 0.0);
+                let result_idx = same_as_fn.result_variable().index();
+                model.add_symbol(Arc::new(same_as_fn))?;
+                y_same_as_idx[j] = result_idx;
+                next_id += 1;
+            }
         }
 
         // 9. 创建 z_same_as[j] = SameAsFunction(z, estimateLoadWeight) 中间符号
-        // Kotlin: val z_same_as = SameAsFunction(z[j], estimateLoadWeight[j])
+        // 仅当 recommended_weight_needed 时创建
         let mut z_same_as_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
-            let first = Linear::new(vec![LinearMonomial::new(1.0, z_idx[j])], 0.0);
-            let second = Linear::new(
-                vec![LinearMonomial::new(1.0, estimate_load_weight_idx[j])],
-                0.0,
-            );
-            let same_as_fn =
-                SameAsFunction::new(next_id, &format!("z_same_as_{}", position.id), first, second, 0.0);
-            let result_idx = same_as_fn.result_variable().index();
-            model.add_symbol(Arc::new(same_as_fn))?;
-            z_same_as_idx[j] = result_idx;
-            next_id += 1;
+            if position.status.recommended_weight_needed {
+                let first = Linear::new(vec![LinearMonomial::new(1.0, z_idx[j])], 0.0);
+                let second = Linear::new(
+                    vec![LinearMonomial::new(1.0, estimate_load_weight_idx[j])],
+                    0.0,
+                );
+                let same_as_fn =
+                    SameAsFunction::new(next_id, &format!("z_same_as_{}", position.id), first, second, 0.0);
+                let result_idx = same_as_fn.result_variable().index();
+                model.add_symbol(Arc::new(same_as_fn))?;
+                z_same_as_idx[j] = result_idx;
+                next_id += 1;
+            }
         }
 
         // 10. 创建 y_if[j] = IfFunction(loadAmount >= 1, then_=y_same_as, else_=y) 中间符号
-        // Kotlin: val y_if = IfFunction(condition = loadAmount[i] geq 1, then_ = y_same_as, else_ = y[i])
+        // 仅当 predicate_weight_needed 时创建
         let mut y_if_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
-            // condition: loadAmount[j] - 1 (nonzero when loadAmount >= 1)
-            let condition = Linear::new(
-                vec![LinearMonomial::new(1.0, load_amount_idx[j])],
-                -1.0,
-            );
-            // then_expr: y_same_as result (uses result variable index)
-            let then_expr = Linear::new(
-                vec![LinearMonomial::new(1.0, y_same_as_idx[j])],
-                0.0,
-            );
-            // else_expr: y[j]
-            let else_expr = Linear::new(vec![LinearMonomial::new(1.0, y_idx[j])], 0.0);
-            let if_fn = IfFunction::new(
-                next_id,
-                &format!("y_if_{}", position.id),
+            if position.status.predicate_weight_needed {
+                let condition = Linear::new(
+                    vec![LinearMonomial::new(1.0, load_amount_idx[j])],
+                    -1.0,
+                );
+                let then_expr = Linear::new(
+                    vec![LinearMonomial::new(1.0, y_same_as_idx[j])],
+                    0.0,
+                );
+                let else_expr = Linear::new(vec![LinearMonomial::new(1.0, y_idx[j])], 0.0);
+                let if_fn = IfFunction::new(
+                    next_id,
+                    &format!("y_if_{}", position.id),
                 condition,
                 then_expr,
                 else_expr,
@@ -255,6 +321,114 @@ impl Load {
             let result_idx = if_fn.result_variable().index();
             model.add_symbol(Arc::new(if_fn))?;
             y_if_idx[j] = result_idx;
+            next_id += 1;
+            }
+        }
+
+        // 11. 创建 z_if[j] = IfFunction(loadAmount >= 1, then_=z_same_as, else_=z) 中间符号
+        // 仅当 recommended_weight_needed 时创建
+        let mut z_if_idx = vec![0usize; position_count];
+        for (j, position) in self.positions.iter().enumerate() {
+            if position.status.recommended_weight_needed {
+                let condition = Linear::new(
+                    vec![LinearMonomial::new(1.0, load_amount_idx[j])],
+                    -1.0,
+                );
+                let then_expr = Linear::new(
+                    vec![LinearMonomial::new(1.0, z_same_as_idx[j])],
+                    0.0,
+                );
+                let else_expr = Linear::new(vec![LinearMonomial::new(1.0, z_idx[j])], 0.0);
+                let if_fn = IfFunction::new(
+                    next_id,
+                    &format!("z_if_{}", position.id),
+                    condition,
+                    then_expr,
+                    else_expr,
+                );
+                let result_idx = if_fn.result_variable().index();
+                model.add_symbol(Arc::new(if_fn))?;
+                z_if_idx[j] = result_idx;
+                next_id += 1;
+            }
+        }
+
+        // 12. 创建 estimateLoaded[j] = OrFunction(loadedItem, y_if, z_if)
+        // Kotlin: estimateLoaded = Or(loadedItem, predicateWeightNeeded, recommendedWeightNeeded)
+        // loadedItem = Binaryzation(loadAmount) (not full = Binaryzation(loadAmount >= mla))
+        // predicateWeightNeeded = y_if (IfFunction, only when predicate_weight_needed)
+        // recommendedWeightNeeded = z_if (IfFunction, only when recommended_weight_needed)
+        let mut estimate_loaded_idx = vec![0usize; position_count];
+        for (j, position) in self.positions.iter().enumerate() {
+            // loadedItem = Binaryzation(loadAmount >= 1)
+            // Kotlin: loadedItem = Binaryzation(loadAmount[j])
+            // threshold = 1.0 means position is loaded when loadAmount >= 1
+            let load_amount_linear = Linear::new(
+                vec![LinearMonomial::new(1.0, load_amount_idx[j])],
+                0.0,
+            );
+            let loaded_fn = BinaryzationFunction::with_threshold(
+                next_id,
+                &format!("loaded_item_{}", position.id),
+                load_amount_linear,
+                1.0,
+            );
+            let loaded_idx = loaded_fn.result_variable().index();
+            model.add_symbol(Arc::new(loaded_fn))?;
+            next_id += 1;
+
+            let mut or_inputs: Vec<Linear<f64>> = Vec::new();
+            or_inputs.push(Linear::new(
+                vec![LinearMonomial::new(1.0, loaded_idx)],
+                0.0,
+            ));
+
+            // y_if: only when predicate_weight_needed
+            if position.status.predicate_weight_needed {
+                or_inputs.push(Linear::new(
+                    vec![LinearMonomial::new(1.0, y_if_idx[j])],
+                    0.0,
+                ));
+            }
+
+            // z_if: only when recommended_weight_needed
+            if position.status.recommended_weight_needed {
+                or_inputs.push(Linear::new(
+                    vec![LinearMonomial::new(1.0, z_if_idx[j])],
+                    0.0,
+                ));
+            }
+
+            let or_fn = OrFunction::new(
+                next_id,
+                &format!("estimate_loaded_{}", position.id),
+                or_inputs,
+            );
+            let result_idx = or_fn.result_variable().index();
+            model.add_symbol(Arc::new(or_fn))?;
+            estimate_loaded_idx[j] = result_idx;
+            next_id += 1;
+        }
+
+        // 13. 创建 actualLoaded[j] = Binaryzation(loadAmount)
+        // Kotlin: actualLoaded = loadedItem = Binaryzation(loadAmount)
+        let mut actual_loaded_idx = vec![0usize; position_count];
+        for (j, position) in self.positions.iter().enumerate() {
+            let load_amount_linear = Linear::new(
+                vec![LinearMonomial::new(1.0, load_amount_idx[j])],
+                0.0,
+            );
+            // actualLoaded = Binaryzation(loadAmount >= 1)
+            // threshold = 1.0 means position is loaded when loadAmount >= 1
+            let actual_fn = BinaryzationFunction::with_threshold(
+                next_id,
+                &format!("actual_loaded_{}", position.id),
+                load_amount_linear,
+                1.0,
+            );
+            let result_idx = actual_fn.result_variable().index();
+            model.add_symbol(Arc::new(actual_fn))?;
+            actual_loaded_idx[j] = result_idx;
             next_id += 1;
         }
 
@@ -269,6 +443,8 @@ impl Load {
             y_same_as: y_same_as_idx,
             z_same_as: z_same_as_idx,
             y_if: y_if_idx,
+            estimate_loaded: estimate_loaded_idx,
+            actual_loaded: actual_loaded_idx,
         })
     }
 }

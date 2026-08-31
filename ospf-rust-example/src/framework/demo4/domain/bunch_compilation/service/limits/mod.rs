@@ -1,48 +1,40 @@
 use std::error::Error;
-use std::collections::HashMap;
+use std::sync::Arc;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 
 /// 机队平衡限制 / Fleet balance limit
 /// 对齐 Kotlin FleetBalanceLimit
 ///
-/// 在每个机场，到达航班数 - 出发航班数 = 期望平衡值
+/// 对每个机队平衡约束：
+/// 1. 添加约束: slack >= min_balance
+/// 2. 添加 minimize 目标: sum(coefficient * slack)
 pub fn apply_fleet_balance_limit(
     model: &mut MetaModel<f64>,
-    compilations: &[super::super::model::Compilation],
+    _compilations: &[super::super::model::Compilation],
     fleet_balances: &[super::super::model::FleetBalance],
 ) -> Result<(), Box<dyn Error>> {
-    // 按飞机类型分组统计每个机场的到达/出发航班
-    let mut arrivals: HashMap<String, HashMap<String, u64>> = HashMap::new();
-    let mut departures: HashMap<String, HashMap<String, u64>> = HashMap::new();
-
-    for compilation in compilations {
-        for flight_id in &compilation.flights {
-            // 简化: 从 flight_id 推断 dep/arr
-            // 完整实现需要从 task model 获取
-            let dep = "DEP".to_string();
-            let arr = "ARR".to_string();
-
-            departures
-                .entry(compilation.aircraft_type.clone())
-                .or_default()
-                .entry(dep)
-                .and_modify(|e| *e += 1)
-                .or_insert(1);
-
-            arrivals
-                .entry(compilation.aircraft_type.clone())
-                .or_default()
-                .entry(arr)
-                .and_modify(|e| *e += 1)
-                .or_insert(1);
-        }
-    }
-
-    // 对每个机队平衡约束，检查是否满足
     for balance in fleet_balances {
-        // 简化: 检查到达-出发 = balance
-        // 完整实现需要注册变量并添加约束
-        let _ = balance;
+        // 获取松弛变量索引
+        let slack_indices = balance.slack_indices();
+
+        // 对每个 limit 添加约束: slack >= min_balance
+        for (l, limit) in balance.limits.iter().enumerate() {
+            let slack_idx = slack_indices[l];
+            model.add_linear_constraint(
+                &[(slack_idx, 1.0)],
+                ConstraintRelation::GreaterEqual,
+                limit.min_balance as f64,
+                &format!("fleet_balance_{}_{}", balance.aircraft_type, l),
+            )?;
+        }
+
+        // 添加 minimize 目标: sum(slack)
+        let objective_terms: Vec<(usize, f64)> = slack_indices.iter()
+            .map(|&idx| (idx, 1.0))
+            .collect();
+        if !objective_terms.is_empty() {
+            model.add_linear_objective(&objective_terms, &format!("fleet_balance_{}", balance.aircraft_type));
+        }
     }
 
     Ok(())
@@ -51,25 +43,43 @@ pub fn apply_fleet_balance_limit(
 /// 航班链接限制 / Flight link limit
 /// 对齐 Kotlin FlightLinkLimit
 ///
-/// 连续航班之间的连接时间 >= 最小连接时间
+/// 对每个航班链接：
+/// 1. 添加约束: slack >= 1
+/// 2. 添加 minimize 目标: sum(slack)
 pub fn apply_flight_link_limit(
     model: &mut MetaModel<f64>,
-    compilations: &[super::super::model::Compilation],
+    _compilations: &[super::super::model::Compilation],
     flight_links: &[super::super::model::FlightLink],
 ) -> Result<(), Box<dyn Error>> {
-    // 对每个航班链接，确保连接时间 >= 最小连接时间
-    for link in flight_links {
-        // 查找包含这两个航班的编译
-        for compilation in compilations {
-            let has_from = compilation.flights.contains(&link.from_flight);
-            let has_to = compilation.flights.contains(&link.to_flight);
+    let mut next_id = 50000u64;
+    let mut objective_terms = Vec::new();
 
-            if has_from && has_to {
-                // 两个航班在同一编译中，需要连接时间约束
-                // 简化: 不添加硬约束（连接时间由路线图生成器保证）
-                // 完整实现需要: 注册连接时间变量并添加约束
-            }
-        }
+    for link in flight_links {
+        // 注册松弛变量
+        let slack_symbol = ospf_rust_core::symbol::LinearExpressionSymbol::new(
+            next_id,
+            &format!("flight_link_slack_{}_{}", link.from_flight, link.to_flight),
+            Vec::new(),
+            0.0,
+        );
+        let slack_idx = next_id as usize;
+        model.add_symbol(Arc::new(slack_symbol))?;
+        next_id += 1;
+
+        // 添加约束: slack >= 1
+        model.add_linear_constraint(
+            &[(slack_idx, 1.0)],
+            ConstraintRelation::GreaterEqual,
+            1.0,
+            &format!("flight_link_{}_{}", link.from_flight, link.to_flight),
+        )?;
+
+        objective_terms.push((slack_idx, 1.0));
+    }
+
+    // 添加 minimize 目标
+    if !objective_terms.is_empty() {
+        model.add_linear_objective(&objective_terms, "flight_link");
     }
 
     Ok(())

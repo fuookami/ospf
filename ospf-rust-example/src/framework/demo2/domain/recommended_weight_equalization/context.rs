@@ -1,4 +1,5 @@
 use super::aggregation::Aggregation;
+use crate::framework::demo2::domain::stowage::model::{LoadVariables, Position};
 
 /// 推荐重量均衡上下文 / Recommended weight equalization context
 /// 对齐 Kotlin RecommendedWeightEqualizationContext
@@ -32,7 +33,9 @@ impl RecommendedWeightEqualizationContext {
         cargo_weights: &[f64],
         cargo_priorities: &[u8],
         position_count: usize,
+        load_vars: &LoadVariables,
+        positions: &[Position],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        super::service::generate_pipelines(model, x_idx, cargo_weights, cargo_priorities, position_count)
+        super::service::generate_pipelines(model, x_idx, cargo_weights, cargo_priorities, position_count, load_vars, positions)
     }
 }

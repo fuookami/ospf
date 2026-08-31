@@ -16,9 +16,15 @@ pub fn apply_domain_pipeline(
     request: &Demo2Request,
     x_idx: &[Vec<usize>],
     z: Option<usize>,
+    estimate_load_weight_idx: &[usize],
+    estimate_loaded_idx: &[usize],
+    loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
-    apply_stowage_pipeline(model, request, x_idx, mode)?;
-    apply_airworthiness_security_pipeline(model, request, x_idx, mode)?;
+    apply_stowage_pipeline(model, request, x_idx, mode, loaded_idx, estimate_loaded_idx)?;
+    apply_airworthiness_security_pipeline(
+        model, request, x_idx, mode,
+        estimate_load_weight_idx, estimate_loaded_idx,
+    )?;
     apply_mac_optimization_pipeline(model, request, x_idx, z, mode)?;
     apply_loading_effectiveness_pipeline(model, request, x_idx, mode)?;
     apply_express_effectiveness_pipeline(model, request, x_idx, mode)?;

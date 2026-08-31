@@ -5,7 +5,7 @@ use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAgg
 use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
 use crate::framework::demo2::infrastructure::dto::Demo2Request;
 
-mod limits;
+pub mod limits;
 pub(crate) mod pipeline_list_generator;
 mod policy;
 
@@ -20,9 +20,9 @@ pub fn apply_soft_security_pipeline(
         x_idx,
         mode,
     };
-    let aggregation = SoftSecurityAggregation::from_context(&context);
+    let mut aggregation = SoftSecurityAggregation::from_context(&context);
     for step in pipeline_list_generator::pipeline_steps(context.mode) {
-        step(model, &context, &aggregation)?;
+        step(model, &context, &mut aggregation)?;
     }
     Ok(())
 }

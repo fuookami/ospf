@@ -20,5 +20,10 @@ pub fn pipeline_specs() -> Vec<PipelineSpec<StowagePipelineStep>> {
             mode_selector: ModeSelector::WeightRecommendationOnly,
             apply: limits::apply_assignment_limits,
         },
+        PipelineSpec {
+            priority: 20,
+            mode_selector: ModeSelector::FullLoadOnly,
+            apply: limits::apply_empty_forbidden_limits,
+        },
     ]
 }

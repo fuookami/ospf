@@ -42,9 +42,15 @@ pub struct ConnectionResourceUsage {
     pub over_enabled: bool,
     /// 是否允许不足 / Whether less slack is enabled
     pub less_enabled: bool,
-    /// 待注册的连接贡献：每个时隙的 LinearMonomial 列表
-    /// Pending connection contributions: LinearMonomial list per slot
-    pending_contributions: Vec<Vec<LinearMonomial<f64>>>,
+    /// 注册期构建缓冲区：每个时隙的 LinearMonomial 列表
+    ///
+    /// 在 `add_connection()` 期间累积，在 `register()` 期间消费以构建模型符号。
+    /// `register()` 完成后此缓冲区不再有意义。
+    ///
+    /// Register-time builder buffer: LinearMonomial list per slot.
+    /// Accumulated during `add_connection()`, consumed during `register()` to build model symbols.
+    /// This buffer is stale after `register()` completes.
+    builder_buffer: Vec<Vec<LinearMonomial<f64>>>,
 }
 
 impl std::fmt::Debug for ConnectionResourceUsage {
@@ -70,7 +76,7 @@ impl ConnectionResourceUsage {
             less_quantity_indices: vec![None; slot_count],
             over_enabled,
             less_enabled,
-            pending_contributions: vec![Vec::new(); slot_count],
+            builder_buffer: vec![Vec::new(); slot_count],
         }
     }
 
@@ -81,7 +87,7 @@ impl ConnectionResourceUsage {
     pub fn add_connection(&mut self, slot: usize, x_model_index: usize, coefficient: f64) {
         assert!(slot < self.slot_count, "slot index {} out of range", slot);
         if coefficient != 0.0 {
-            self.pending_contributions[slot].push(LinearMonomial::new(coefficient, x_model_index));
+            self.builder_buffer[slot].push(LinearMonomial::new(coefficient, x_model_index));
         }
     }
 
@@ -108,7 +114,7 @@ impl ConnectionResourceUsage {
         self.quantity_symbols.clear();
 
         for (slot_idx, capacity) in capacities.iter().enumerate() {
-            let monomials = self.pending_contributions[slot_idx].clone();
+            let monomials = self.builder_buffer[slot_idx].clone();
 
             // 1. 注册 quantity[slot] 中间表达式
             let quantity_id = next_gantt_symbol_id();

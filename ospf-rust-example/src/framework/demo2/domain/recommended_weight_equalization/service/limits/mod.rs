@@ -1,5 +1,6 @@
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use crate::framework::demo2::domain::stowage::model::{LoadVariables, Position};
 
 /// 物品顺序限制 / Item order limit
 /// 对齐 Kotlin ItemOrderLimit
@@ -49,36 +50,65 @@ pub fn apply_priority_appointment_limit(
 
 /// 推荐重量均衡限制 / Recommended weight equalization limit
 /// 对齐 Kotlin RecommendedWeightEqualizationLimit
+///
+/// Kotlin 语义: 对于每对位置 (j1, j2)，当两者都需要推荐重量时:
+///   z[j1] <= z[j2] + mlw[j1] * actualLoaded[j2]  (硬约束)
+///   z[j2] <= z[j1] + mlw[j2] * actualLoaded[j1]  (硬约束)
+/// 其中 z[j] 是位置 j 的推荐重量变量，mlw[j] 是最大装载重量，
+/// actualLoaded[j] 是位置 j 的实际装载指示变量（0 或 1）。
+///
+/// 线性约束形式:
+///   z[j1] - z[j2] - mlw[j1] * actualLoaded[j2] <= 0
+///   z[j2] - z[j1] - mlw[j2] * actualLoaded[j1] <= 0
 pub fn apply_recommended_weight_equalization_limit(
     model: &mut MetaModel<f64>,
-    x_idx: &[Vec<usize>],
-    cargo_weights: &[f64],
-    position_count: usize,
+    load_vars: &LoadVariables,
+    positions: &[Position],
 ) -> Result<(), Box<dyn Error>> {
-    // 各舱位装载重量应均衡
-    let total_weight: f64 = cargo_weights.iter().sum();
-    if position_count > 0 {
-        let avg_weight = total_weight / position_count as f64;
-        let max_weight = avg_weight * 1.5;
-        for p in 0..position_count {
-            let coefficients: Vec<(usize, f64)> = (0..cargo_weights.len())
-                .filter_map(|c| {
-                    if c < x_idx.len() && p < x_idx[c].len() {
-                        Some((x_idx[c][p], cargo_weights[c]))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            if !coefficients.is_empty() {
-                model.add_linear_constraint(
-                    &coefficients,
-                    ConstraintRelation::LessEqual,
-                    max_weight,
-                    &format!("rwe_weight_equalization_{}", p),
-                )?;
+    let position_count = positions.len();
+    if position_count < 2 {
+        return Ok(());
+    }
+
+    for j1 in 0..position_count {
+        if !positions[j1].status.recommended_weight_needed {
+            continue;
+        }
+        for j2 in (j1 + 1)..position_count {
+            if !positions[j2].status.recommended_weight_needed {
+                continue;
             }
+
+            let mlw1 = positions[j1].max_load_weight;
+            let mlw2 = positions[j2].max_load_weight;
+
+            // z[j1] - z[j2] - mlw1 * actualLoaded[j2] <= 0
+            let coefficients1: Vec<(usize, f64)> = vec![
+                (load_vars.z[j1], 1.0),
+                (load_vars.z[j2], -1.0),
+                (load_vars.actual_loaded[j2], -mlw1),
+            ];
+            model.add_linear_constraint(
+                &coefficients1,
+                ConstraintRelation::LessEqual,
+                0.0,
+                &format!("rwe_weight_equalization_{}_{}", j1, j2),
+            )?;
+
+            // z[j2] - z[j1] - mlw2 * actualLoaded[j1] <= 0
+            let coefficients2: Vec<(usize, f64)> = vec![
+                (load_vars.z[j2], 1.0),
+                (load_vars.z[j1], -1.0),
+                (load_vars.actual_loaded[j1], -mlw2),
+            ];
+            model.add_linear_constraint(
+                &coefficients2,
+                ConstraintRelation::LessEqual,
+                0.0,
+                &format!("rwe_weight_equalization_{}_{}", j2, j1),
+            )?;
         }
     }
+
     Ok(())
 }

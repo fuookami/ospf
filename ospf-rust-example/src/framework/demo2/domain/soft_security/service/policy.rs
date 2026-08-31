@@ -15,5 +15,10 @@ pub fn pipeline_specs() -> Vec<PipelineSpec<SoftSecurityPipelineStep>> {
             mode_selector: ModeSelector::NotPredistribution,
             apply: limits::apply_adjacent_separation_limits,
         },
+        PipelineSpec {
+            priority: 30,
+            mode_selector: ModeSelector::All,
+            apply: limits::apply_divide_empty_loading_limits,
+        },
     ]
 }

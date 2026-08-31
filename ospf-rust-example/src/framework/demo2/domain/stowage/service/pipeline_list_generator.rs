@@ -10,6 +10,8 @@ pub type StowagePipelineStep = fn(
     model: &mut MetaModel<f64>,
     context: &StowageContext<'_>,
     aggregation: &StowageAggregation,
+    loaded_idx: &[usize],
+    estimate_loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>>;
 
 pub fn pipeline_steps(mode: Demo2PipelineMode) -> Vec<StowagePipelineStep> {
@@ -22,7 +24,7 @@ mod tests {
 
     #[test]
     fn stowage_pipeline_applies_in_all_modes() {
-        assert_eq!(pipeline_steps(Demo2PipelineMode::FullLoad).len(), 1);
+        assert_eq!(pipeline_steps(Demo2PipelineMode::FullLoad).len(), 2);
         assert_eq!(pipeline_steps(Demo2PipelineMode::Predistribution).len(), 1);
         assert_eq!(
             pipeline_steps(Demo2PipelineMode::WeightRecommendation).len(),

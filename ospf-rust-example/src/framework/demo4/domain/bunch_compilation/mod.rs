@@ -16,7 +16,7 @@ impl Aggregation {
     /// 注册所有符号到模型
     /// 对齐 Kotlin BunchCompilationAggregation.register
     pub fn register(
-        &self,
+        &mut self,
         model: &mut ospf_rust_core::model::MetaModel<f64>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut next_id = 70000u64;
@@ -24,7 +24,7 @@ impl Aggregation {
         for capacity in &self.flight_capacities {
             capacity.register(model, &mut next_id)?;
         }
-        for balance in &self.fleet_balances {
+        for balance in &mut self.fleet_balances {
             balance.register(model, &mut next_id)?;
         }
         for link in &self.flight_links {

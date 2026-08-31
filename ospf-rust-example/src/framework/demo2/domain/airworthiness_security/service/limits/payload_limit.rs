@@ -8,6 +8,8 @@ pub fn apply_payload_limits(
     model: &mut MetaModel<f64>,
     context: &AirworthinessContext<'_>,
     aggregation: &AirworthinessAggregation,
+    _estimate_load_weight_idx: &[usize],
+    _estimate_loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
     let total_cargo_weight: f64 = context
         .request

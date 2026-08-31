@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use super::super::super::aircraft::model::{AircraftModel, FlightPhase, FuelConstant, Fuselage};
-use super::super::shared::units::{quantity_value_in_unit, quantity_value_in_unit_or_default, weight_unit};
+use super::super::super::shared::units::{quantity_value_in_unit, quantity_value_in_unit_or_default, weight_unit};
 use super::payload::Payload;
 use std::error::Error;
 use std::sync::Arc;

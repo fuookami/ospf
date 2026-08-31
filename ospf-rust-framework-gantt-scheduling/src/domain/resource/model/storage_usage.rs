@@ -42,12 +42,24 @@ pub struct StorageResourceUsage {
     pub over_enabled: bool,
     /// 是否允许不足 / Whether less slack is enabled
     pub less_enabled: bool,
-    /// 待注册的流入贡献：每个时隙的 LinearMonomial 列表
-    /// Pending inflow contributions: LinearMonomial list per slot
-    pending_inflows: Vec<Vec<LinearMonomial<f64>>>,
-    /// 待注册的流出贡献：每个时隙的 LinearMonomial 列表
-    /// Pending outflow contributions: LinearMonomial list per slot
-    pending_outflows: Vec<Vec<LinearMonomial<f64>>>,
+    /// 注册期流入构建缓冲区：每个时隙的 LinearMonomial 列表
+    ///
+    /// 在 `add_inflow()` 期间累积，在 `register()` 期间消费以构建模型符号。
+    /// `register()` 完成后此缓冲区不再有意义。
+    ///
+    /// Register-time inflow builder buffer: LinearMonomial list per slot.
+    /// Accumulated during `add_inflow()`, consumed during `register()` to build model symbols.
+    /// This buffer is stale after `register()` completes.
+    inflow_buffer: Vec<Vec<LinearMonomial<f64>>>,
+    /// 注册期流出构建缓冲区：每个时隙的 LinearMonomial 列表
+    ///
+    /// 在 `add_outflow()` 期间累积，在 `register()` 期间消费以构建模型符号。
+    /// `register()` 完成后此缓冲区不再有意义。
+    ///
+    /// Register-time outflow builder buffer: LinearMonomial list per slot.
+    /// Accumulated during `add_outflow()`, consumed during `register()` to build model symbols.
+    /// This buffer is stale after `register()` completes.
+    outflow_buffer: Vec<Vec<LinearMonomial<f64>>>,
 }
 
 impl std::fmt::Debug for StorageResourceUsage {
@@ -73,8 +85,8 @@ impl StorageResourceUsage {
             less_quantity_indices: vec![None; slot_count],
             over_enabled,
             less_enabled,
-            pending_inflows: vec![Vec::new(); slot_count],
-            pending_outflows: vec![Vec::new(); slot_count],
+            inflow_buffer: vec![Vec::new(); slot_count],
+            outflow_buffer: vec![Vec::new(); slot_count],
         }
     }
 
@@ -85,7 +97,7 @@ impl StorageResourceUsage {
     pub fn add_inflow(&mut self, slot: usize, x_model_index: usize, coefficient: f64) {
         assert!(slot < self.slot_count, "slot index {} out of range", slot);
         if coefficient != 0.0 {
-            self.pending_inflows[slot].push(LinearMonomial::new(coefficient, x_model_index));
+            self.inflow_buffer[slot].push(LinearMonomial::new(coefficient, x_model_index));
         }
     }
 
@@ -96,7 +108,7 @@ impl StorageResourceUsage {
     pub fn add_outflow(&mut self, slot: usize, x_model_index: usize, coefficient: f64) {
         assert!(slot < self.slot_count, "slot index {} out of range", slot);
         if coefficient != 0.0 {
-            self.pending_outflows[slot].push(LinearMonomial::new(coefficient, x_model_index));
+            self.outflow_buffer[slot].push(LinearMonomial::new(coefficient, x_model_index));
         }
     }
 
@@ -124,8 +136,8 @@ impl StorageResourceUsage {
 
         for (slot_idx, capacity) in capacities.iter().enumerate() {
             // 构建单项式：流入为正系数，流出为负系数
-            let mut monomials: Vec<LinearMonomial<f64>> = self.pending_inflows[slot_idx].clone();
-            for mono in &self.pending_outflows[slot_idx] {
+            let mut monomials: Vec<LinearMonomial<f64>> = self.inflow_buffer[slot_idx].clone();
+            for mono in &self.outflow_buffer[slot_idx] {
                 monomials.push(LinearMonomial::new(-mono.coefficient(), mono.var_index()));
             }
 

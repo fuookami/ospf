@@ -7,7 +7,7 @@ use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext
 pub fn apply_adjacent_separation_limits(
     model: &mut MetaModel<f64>,
     context: &SoftSecurityContext<'_>,
-    aggregation: &SoftSecurityAggregation,
+    aggregation: &mut SoftSecurityAggregation,
 ) -> Result<(), Box<dyn Error>> {
     if context.request.positions.len() <= 1 {
         return Ok(());

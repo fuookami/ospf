@@ -3,7 +3,7 @@ use std::error::Error;
 use ospf_rust_multiarray::{MultiArray, Shape};
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
 use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1_indexed,
+    SymbolCombination, LinearExpressionSymbol, flat_map1, flat_map1_indexed,
 };
 use ospf_rust_core::variable::{UInteger, VariableCombination1D};
 

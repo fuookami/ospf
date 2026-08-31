@@ -29,11 +29,21 @@ pub mod limits {
     ///
     /// Ensures each task is assigned to exactly one bunch or canceled:
     /// `taskCompilation[task] == 1` i.e. `sum(x[bunch] for bunch containing task) + y[task] == 1`
+    /// 任务编译约束（束模式）
+    ///
+    /// `task_polynomials` 是注册期构建缓冲区：在 `from_compilation()` 中从 BunchCompilation 状态
+    /// 预计算，在 `Pipeline::register()` 期间消费以注册约束。创建后不再修改。
+    ///
+    /// Task compilation constraint (bunch mode).
+    /// `task_polynomials` is a register-time builder buffer: pre-computed from BunchCompilation
+    /// state in `from_compilation()`, consumed during `Pipeline::register()` to register constraints.
+    /// Not modified after creation.
     #[derive(Debug)]
     pub struct BunchTaskCompilationConstraint {
         name: String,
         group: Option<ConstraintGroup>,
         /// 每个任务的编译多项式项：task_idx -> [(var_index, coefficient)]
+        /// Register-time buffer: pre-computed in `from_compilation()`, consumed in `register()`.
         pub task_polynomials: Vec<Vec<(usize, f64)>>,
     }
 
@@ -99,11 +109,20 @@ pub mod limits {
     ///
     /// Ensures each executor is covered by bunch selection or leisure variable:
     /// `executorCompilation[executor] == 1`
+    /// 执行器编译约束（束模式）
+    ///
+    /// `executor_polynomials` 是注册期构建缓冲区：在 `from_compilation()` 中预计算，
+    /// 在 `Pipeline::register()` 期间消费以注册约束。
+    ///
+    /// Executor compilation constraint (bunch mode).
+    /// `executor_polynomials` is a register-time builder buffer: pre-computed in `from_compilation()`,
+    /// consumed during `Pipeline::register()` to register constraints.
     #[derive(Debug)]
     pub struct BunchExecutorCompilationConstraint {
         name: String,
         group: Option<ConstraintGroup>,
         /// 每个执行器的编译多项式项 / Executor compilation polynomial terms
+        /// Register-time buffer: pre-computed in `from_compilation()`, consumed in `register()`.
         pub executor_polynomials: Vec<Vec<(usize, f64)>>,
     }
 
@@ -172,10 +191,19 @@ pub mod limits {
     ///
     /// 最小化 `sum(bunch.cost * x[bunch])`。
     /// Minimizes total bunch cost.
+    /// 束成本最小化
+    ///
+    /// `cost_terms` 是注册期构建缓冲区：在 `from_compilation()` 中预计算，
+    /// 在 `Pipeline::register()` 期间消费以注册目标函数。
+    ///
+    /// Bunch cost minimization.
+    /// `cost_terms` is a register-time builder buffer: pre-computed in `from_compilation()`,
+    /// consumed during `Pipeline::register()` to register the objective.
     #[derive(Debug)]
     pub struct BunchCostMinimization {
         name: String,
         /// 成本项：x 变量索引和系数 / Cost terms: x variable indices and coefficients
+        /// Register-time buffer: pre-computed in `from_compilation()`, consumed in `register()`.
         pub cost_terms: Vec<(usize, f64)>,
     }
 

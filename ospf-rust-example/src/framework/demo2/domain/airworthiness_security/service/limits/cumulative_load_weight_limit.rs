@@ -4,20 +4,27 @@ use crate::framework::demo2::domain::airworthiness_security::aggregation::Airwor
 use crate::framework::demo2::domain::airworthiness_security::context::AirworthinessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
+/// 累积载荷重量限制
+/// 对齐 Kotlin CumulativeLoadWeightLimit
+///
+/// Kotlin: `sum(estimateLoadWeight[j] for j in checkPoint.parts) leq maxSum`
+/// Rust: 使用已注册的 estimate_load_weight 符号索引构建前缀/后缀累积约束。
 pub fn apply_cumulative_load_weight_limits(
     model: &mut MetaModel<f64>,
     context: &AirworthinessContext<'_>,
     _aggregation: &AirworthinessAggregation,
+    estimate_load_weight_idx: &[usize],
+    _estimate_loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
-    for p in 0..context.request.positions.len() {
-        let mut prefix_coefficients: Vec<(usize, f64)> = Vec::new();
-        for pos in 0..=p {
-            for c in 0..context.request.cargos.len() {
-                prefix_coefficients.push((context.x_idx[c][pos], context.request.cargos[c].weight));
-            }
-        }
+    let pos_count = context.request.positions.len();
+
+    // 前缀累积: sum(estimateLoadWeight[0..=p]) <= maxCumulativeForwardLoad
+    for p in 0..pos_count {
+        let prefix_terms: Vec<(usize, f64)> = (0..=p)
+            .map(|pos| (estimate_load_weight_idx[pos], 1.0))
+            .collect();
         model.add_linear_constraint(
-            &prefix_coefficients,
+            &prefix_terms,
             ConstraintRelation::LessEqual,
             context.request.max_cumulative_forward_load,
             &format!(
@@ -28,15 +35,13 @@ pub fn apply_cumulative_load_weight_limits(
         )?;
     }
 
-    for p in 0..context.request.positions.len() {
-        let mut suffix_coefficients: Vec<(usize, f64)> = Vec::new();
-        for pos in p..context.request.positions.len() {
-            for c in 0..context.request.cargos.len() {
-                suffix_coefficients.push((context.x_idx[c][pos], context.request.cargos[c].weight));
-            }
-        }
+    // 后缀累积: sum(estimateLoadWeight[p..end]) <= maxCumulativeBackwardLoad
+    for p in 0..pos_count {
+        let suffix_terms: Vec<(usize, f64)> = (p..pos_count)
+            .map(|pos| (estimate_load_weight_idx[pos], 1.0))
+            .collect();
         model.add_linear_constraint(
-            &suffix_coefficients,
+            &suffix_terms,
             ConstraintRelation::LessEqual,
             context.request.max_cumulative_backward_load,
             &format!(

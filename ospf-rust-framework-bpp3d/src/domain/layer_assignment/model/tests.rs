@@ -21,6 +21,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn expression_array1_insert_and_get() {
         let mut exprs: ExpressionArray1<String> = ExpressionArray1::new("load");
         exprs.insert("demand_1".to_string(), vec![(0, 1.0), (1, 2.0)]);

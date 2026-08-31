@@ -6,6 +6,10 @@
 ///
 /// 存储中间线性表达式，用于约束和目标注册。
 /// Stores intermediate linear expressions for constraint and objective registration.
+///
+/// **Deprecated**: Use `LinearExpressionSymbol` via `build_linear_expression_symbol` instead.
+/// This type is retained only for backward compatibility with legacy test code.
+#[deprecated(note = "Use LinearExpressionSymbol via build_linear_expression_symbol instead")]
 #[derive(Debug, Clone)]
 pub struct ExpressionArray1<K>
 where
@@ -17,6 +21,7 @@ where
     pub expressions: HashMap<K, Vec<(usize, f64)>>,
 }
 
+#[allow(deprecated)]
 impl<K> ExpressionArray1<K>
 where
     K: Debug + Clone + Eq + Hash,

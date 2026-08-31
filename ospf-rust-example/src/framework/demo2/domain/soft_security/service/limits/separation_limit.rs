@@ -7,7 +7,7 @@ use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext
 pub fn apply_separation_limits(
     model: &mut MetaModel<f64>,
     context: &SoftSecurityContext<'_>,
-    aggregation: &SoftSecurityAggregation,
+    aggregation: &mut SoftSecurityAggregation,
 ) -> Result<(), Box<dyn Error>> {
     for p in 0..context.request.positions.len() {
         for i in 0..aggregation.separated.len() {

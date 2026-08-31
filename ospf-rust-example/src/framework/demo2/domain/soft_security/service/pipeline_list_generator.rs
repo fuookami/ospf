@@ -9,7 +9,7 @@ use crate::framework::demo2::domain::soft_security::service::policy;
 pub type SoftSecurityPipelineStep = fn(
     model: &mut MetaModel<f64>,
     context: &SoftSecurityContext<'_>,
-    aggregation: &SoftSecurityAggregation,
+    aggregation: &mut SoftSecurityAggregation,
 ) -> Result<(), Box<dyn Error>>;
 
 pub fn pipeline_steps(mode: Demo2PipelineMode) -> Vec<SoftSecurityPipelineStep> {
@@ -22,11 +22,11 @@ mod tests {
 
     #[test]
     fn soft_security_pipeline_applies_in_all_modes() {
-        assert_eq!(pipeline_steps(Demo2PipelineMode::FullLoad).len(), 2);
-        assert_eq!(pipeline_steps(Demo2PipelineMode::Predistribution).len(), 1);
+        assert_eq!(pipeline_steps(Demo2PipelineMode::FullLoad).len(), 3);
+        assert_eq!(pipeline_steps(Demo2PipelineMode::Predistribution).len(), 2);
         assert_eq!(
             pipeline_steps(Demo2PipelineMode::WeightRecommendation).len(),
-            2
+            3
         );
     }
 }

@@ -7,7 +7,7 @@ pub mod model;
 pub mod service;
 
 pub use model::{
-    Bpp3dModelComponent, ExpressionArray1, SolutionExtractor, VariableArray1, VariableArray2,
+    Bpp3dModelComponent, SolutionExtractor, VariableArray1, VariableArray2,
 };
 
 pub use service::{

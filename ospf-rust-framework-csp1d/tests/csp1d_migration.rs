@@ -3110,3 +3110,280 @@ fn extraction_policy_panic_does_not_escape_enrichment() {
         Some(&"render-value".to_string())
     );
 }
+
+#[test]
+fn aggregation_batch_symbols_consistent_after_column_changes() {
+    let mut aggregation = ProduceAggregation::new(
+        vec![cutting_plan("plan-1")],
+        vec![demand()],
+        vec![material()],
+        vec![machine()],
+        Vec::new(),
+    );
+    let mut model = MetaModel::<f64>::new("csp1d_agg_symbols");
+    aggregation.register(&mut model, false).unwrap();
+
+    // Initial symbols should reflect plan-1
+    let symbols = aggregation
+        .batch_symbols()
+        .expect("batch_symbols should exist after register");
+    let plan_0_var = aggregation
+        .plan_variable_index(0)
+        .expect("plan-0 variable index");
+    let demand_terms = symbols.demand_terms("p1", "m");
+    assert!(
+        demand_terms
+            .iter()
+            .any(|(idx, coeff)| *idx == plan_0_var && (*coeff - 2.0).abs() < 1e-9),
+        "initial demand terms should reference plan-0 with coefficient 2.0"
+    );
+    let material_terms = symbols.material_terms("m1");
+    assert!(
+        material_terms
+            .iter()
+            .any(|(idx, coeff)| *idx == plan_0_var && (*coeff - 1.0).abs() < 1e-9),
+        "initial material terms should reference plan-0 with coefficient 1.0"
+    );
+    let machine_batch_terms = symbols.machine_batch_terms("mc1");
+    assert!(
+        machine_batch_terms
+            .iter()
+            .any(|(idx, coeff)| *idx == plan_0_var && (*coeff - 1.0).abs() < 1e-9),
+        "initial machine batch terms should reference plan-0 with coefficient 1.0"
+    );
+    let machine_capacity_terms = symbols.machine_capacity_terms("mc1");
+    assert!(
+        machine_capacity_terms
+            .iter()
+            .any(|(idx, coeff)| *idx == plan_0_var && (*coeff - 1.0).abs() < 1e-9),
+        "initial machine capacity terms should reference plan-0 with coefficient 1.0"
+    );
+
+    // Add new columns and rebuild symbols
+    let mut new_plan = cutting_plan("plan-2");
+    new_plan.slices[0].width = quantity(20.0);
+    new_plan.demand_contributions[0].quantity = quantity(1.0);
+    aggregation
+        .add_columns_to_model(1, vec![new_plan], &mut model)
+        .unwrap();
+    aggregation.rebuild_batch_symbols();
+
+    let symbols = aggregation
+        .batch_symbols()
+        .expect("batch_symbols should exist after add_columns");
+    let plan_1_var = aggregation
+        .plan_variable_index(1)
+        .expect("plan-1 variable index");
+    let demand_terms = symbols.demand_terms("p1", "m");
+    assert!(
+        demand_terms.iter().any(|(idx, _)| *idx == plan_0_var),
+        "demand terms should still include plan-0 after add"
+    );
+    assert!(
+        demand_terms
+            .iter()
+            .any(|(idx, coeff)| *idx == plan_1_var && (*coeff - 1.0).abs() < 1e-9),
+        "demand terms should include plan-2 with coefficient 1.0 after add"
+    );
+    let material_terms = symbols.material_terms("m1");
+    assert!(
+        material_terms.iter().any(|(idx, _)| *idx == plan_0_var),
+        "material terms should still include plan-0"
+    );
+    assert!(
+        material_terms.iter().any(|(idx, _)| *idx == plan_1_var),
+        "material terms should include plan-1 after add"
+    );
+
+    // Remove columns and rebuild symbols
+    aggregation
+        .remove_columns_from_model(&[1], &mut model)
+        .unwrap();
+    aggregation.rebuild_batch_symbols();
+
+    let symbols = aggregation
+        .batch_symbols()
+        .expect("batch_symbols should exist after remove_columns");
+    let demand_terms = symbols.demand_terms("p1", "m");
+    assert!(
+        demand_terms.iter().any(|(idx, _)| *idx == plan_0_var),
+        "demand terms should still include plan-0 after remove"
+    );
+    assert!(
+        !demand_terms.iter().any(|(idx, _)| *idx == plan_1_var),
+        "demand terms should not include retired plan-1 after remove"
+    );
+    let material_terms = symbols.material_terms("m1");
+    assert!(
+        material_terms.iter().any(|(idx, _)| *idx == plan_0_var),
+        "material terms should still include plan-0 after remove"
+    );
+    assert!(
+        !material_terms.iter().any(|(idx, _)| *idx == plan_1_var),
+        "material terms should not include retired plan-1 after remove"
+    );
+}
+
+#[test]
+fn lifecycle_symbols_and_shadow_prices_consistent_after_column_changes() {
+    let input = ProduceInput {
+        cutting_plans: vec![cutting_plan("plan-1")],
+        demands: vec![demand()],
+        materials: vec![material()],
+        machines: vec![machine()],
+        warm_start_plan_usages: Vec::new(),
+    };
+    let mut context = Csp1dProduceContextBuilder::new(input)
+        .mode(Csp1dModelingMode::LP)
+        .build()
+        .unwrap();
+    let mut model = MetaModel::<f64>::new("csp1d_lifecycle");
+
+    // 1. Initial register creates correct symbols
+    context.register(&mut model).unwrap();
+    let symbols = context
+        .produce
+        .batch_symbols()
+        .expect("symbols should exist after register");
+    let plan_0_var = context
+        .produce
+        .plan_variable_index(0)
+        .expect("plan-0 variable index");
+    let demand_terms = symbols.demand_terms("p1", "m");
+    assert!(
+        demand_terms.iter().any(|(idx, _)| *idx == plan_0_var),
+        "initial demand terms should reference plan-0"
+    );
+    let material_terms = symbols.material_terms("m1");
+    assert!(
+        material_terms.iter().any(|(idx, _)| *idx == plan_0_var),
+        "initial material terms should reference plan-0"
+    );
+    let machine_batch_terms = symbols.machine_batch_terms("mc1");
+    assert!(
+        machine_batch_terms.iter().any(|(idx, _)| *idx == plan_0_var),
+        "initial machine batch terms should reference plan-0"
+    );
+
+    // 2. addColumns updates symbols and constraint terms match
+    let mut new_plan = cutting_plan("plan-2");
+    new_plan.slices[0].width = quantity(20.0);
+    new_plan.demand_contributions[0].quantity = quantity(1.0);
+    let added = context
+        .add_columns(1, vec![new_plan], &mut model)
+        .unwrap();
+    assert_eq!(added.len(), 1);
+
+    let symbols = context
+        .produce
+        .batch_symbols()
+        .expect("symbols should exist after add_columns");
+    let plan_1_var = context
+        .produce
+        .plan_variable_index(1)
+        .expect("plan-1 variable index");
+    let demand_terms = symbols.demand_terms("p1", "m");
+    assert!(
+        demand_terms.iter().any(|(idx, _)| *idx == plan_0_var),
+        "demand terms should include plan-0 after add"
+    );
+    assert!(
+        demand_terms.iter().any(|(idx, _)| *idx == plan_1_var),
+        "demand terms should include plan-1 after add"
+    );
+
+    // Verify pipeline-registered constraint terms match symbol terms
+    let demand_constraint = model
+        .constraints()
+        .iter()
+        .find(|c| c.name == "demand_0")
+        .expect("demand constraint should exist");
+    let constraint_var_indices: Vec<usize> = demand_constraint
+        .inequality
+        .polynomial
+        .monomials()
+        .iter()
+        .map(|m| m.var_index())
+        .collect();
+    for (idx, _) in &demand_terms {
+        assert!(
+            constraint_var_indices.contains(idx),
+            "symbol term variable {idx} should appear in demand constraint"
+        );
+    }
+
+    // 3. removeColumns updates symbols
+    let removed = context.remove_columns(&[1], &mut model).unwrap();
+    assert_eq!(removed.len(), 1);
+
+    let symbols = context
+        .produce
+        .batch_symbols()
+        .expect("symbols should exist after remove_columns");
+    let demand_terms = symbols.demand_terms("p1", "m");
+    assert!(
+        demand_terms.iter().any(|(idx, _)| *idx == plan_0_var),
+        "demand terms should include plan-0 after remove"
+    );
+    assert!(
+        !demand_terms.iter().any(|(idx, _)| *idx == plan_1_var),
+        "demand terms should not include retired plan-1 after remove"
+    );
+
+    // Verify constraint terms also exclude retired plan
+    let demand_constraint = model
+        .constraints()
+        .iter()
+        .find(|c| c.name == "demand_0")
+        .expect("demand constraint should still exist");
+    let constraint_var_indices: Vec<usize> = demand_constraint
+        .inequality
+        .polynomial
+        .monomials()
+        .iter()
+        .map(|m| m.var_index())
+        .collect();
+    assert!(
+        !constraint_var_indices.contains(&plan_1_var),
+        "demand constraint should not reference retired plan-1 variable"
+    );
+
+    // 4. Shadow prices are consistent after column changes
+    let duals = model
+        .constraints()
+        .iter()
+        .map(|constraint| match constraint.args.as_deref() {
+            Some(value) if value.starts_with("product-demand:") => 3.0,
+            Some(value) if value.starts_with("material-usage:") => 0.5,
+            Some(value) if value.starts_with("machine-batch:") => 0.25,
+            Some(value) if value.starts_with("machine-capacity:") => 0.75,
+            _ => 0.0,
+        })
+        .collect::<Vec<_>>();
+    let shadow_prices = context
+        .extract_shadow_price(&model, &duals)
+        .unwrap();
+    assert_eq!(
+        shadow_prices
+            .get(&Csp1dShadowPriceKey::ProductDemand(
+                ProductDemandShadowPriceKey {
+                    product_id: "p1".into(),
+                    unit_symbol: "m".into(),
+                }
+            ))
+            .copied(),
+        Some(3.0),
+        "demand shadow price should be 3.0 after column changes"
+    );
+    assert_eq!(
+        shadow_prices
+            .get(&Csp1dShadowPriceKey::MaterialUsage(
+                MaterialUsageShadowPriceKey {
+                    material_id: "m1".into(),
+                }
+            ))
+            .copied(),
+        Some(0.5),
+        "material shadow price should be 0.5 after column changes"
+    );
+}

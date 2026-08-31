@@ -4,23 +4,26 @@ use crate::framework::demo2::domain::airworthiness_security::aggregation::Airwor
 use crate::framework::demo2::domain::airworthiness_security::context::AirworthinessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
+/// 相邻位置载荷间隙限制
+/// 对齐 Kotlin AdjacentGapLimit
+///
+/// Kotlin: `(load.estimateLoadWeight[p] - load.estimateLoadWeight[p+1]) leq maxGap`
+/// Rust: 使用已注册的 estimate_load_weight 符号索引。
 pub fn apply_adjacent_gap_limits(
     model: &mut MetaModel<f64>,
     context: &AirworthinessContext<'_>,
     _aggregation: &AirworthinessAggregation,
+    estimate_load_weight_idx: &[usize],
+    _estimate_loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
-    for p in 0..context.request.positions.len().saturating_sub(1) {
-        let mut current_minus_next: Vec<(usize, f64)> = Vec::new();
-        let mut next_minus_current: Vec<(usize, f64)> = Vec::new();
-        for c in 0..context.request.cargos.len() {
-            let weight = context.request.cargos[c].weight;
-            current_minus_next.push((context.x_idx[c][p], weight));
-            current_minus_next.push((context.x_idx[c][p + 1], -weight));
-            next_minus_current.push((context.x_idx[c][p], -weight));
-            next_minus_current.push((context.x_idx[c][p + 1], weight));
-        }
+    let pos_count = context.request.positions.len();
+    for p in 0..pos_count.saturating_sub(1) {
+        // estimateLoadWeight[p] - estimateLoadWeight[p+1] <= maxGap
         model.add_linear_constraint(
-            &current_minus_next,
+            &[
+                (estimate_load_weight_idx[p], 1.0),
+                (estimate_load_weight_idx[p + 1], -1.0),
+            ],
             ConstraintRelation::LessEqual,
             context.request.max_adjacent_load_gap,
             &format!(
@@ -29,8 +32,12 @@ pub fn apply_adjacent_gap_limits(
                 p
             ),
         )?;
+        // estimateLoadWeight[p+1] - estimateLoadWeight[p] <= maxGap
         model.add_linear_constraint(
-            &next_minus_current,
+            &[
+                (estimate_load_weight_idx[p + 1], 1.0),
+                (estimate_load_weight_idx[p], -1.0),
+            ],
             ConstraintRelation::LessEqual,
             context.request.max_adjacent_load_gap,
             &format!(

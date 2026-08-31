@@ -123,30 +123,12 @@ where
                     }
                 }
             } else {
-                // Fallback: compute raw terms from variable indices
-                let Some(ref x) = assignment.x else { return; };
-                for bin_idx in 0..assignment.bins.len() {
-                    let depth_cap = self.depth_capacities.get(bin_idx).copied().unwrap_or(0.0);
-
-                    // Depth constraint: sum(x[bin, layer] * depth[layer]) <= depth_capacity
-                    let depth_terms: Vec<(usize, f64)> = (0..assignment.layers.len())
-                        .filter_map(|layer_idx| {
-                            let model_idx = x.model_index(&bin_idx, &layer_idx)?;
-                            let d = self.layer_depths.get(layer_idx).copied()?;
-                            (d != 0.0).then_some((model_idx, d))
-                        })
-                        .collect();
-
-                    if !depth_terms.is_empty() {
-                        if let Err(e) = model.add_le_constraint(
-                            &depth_terms,
-                            depth_cap,
-                            &format!("{}_depth_{}", self.name, bin_idx),
-                        ) {
-                            log::warn!("Failed to register {}_depth_{}: {:?}", self.name, bin_idx, e);
-                        }
-                    }
-                }
+                // Symbols not available: skip constraint registration and warn
+                log::warn!(
+                    "{}: load_depth_symbols not populated; \
+                     call build_symbols() before registering constraints",
+                    self.name
+                );
             }
         } else {
             // Pre-computed x_indices path

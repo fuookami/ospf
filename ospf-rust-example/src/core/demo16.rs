@@ -5,7 +5,7 @@ use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
 use ospf_rust_core::symbol::{
     LinearExpressionSymbol, flat_map1_indexed,
 };
-use ospf_rust_core::variable::{UContinuous, VariableCombination2D};
+use ospf_rust_core::variable::{UInteger, VariableCombination2D};
 
 use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
@@ -43,7 +43,7 @@ fn build_month_plans() -> Vec<MonthPlan> {
 /// All variables and intermediate symbols are explicit fields.
 struct ProductionModel {
     /// 生产量决策变量 / Production decision variables
-    x_vars: VariableCombination2D<UContinuous>,
+    x_vars: VariableCombination2D<UInteger>,
     /// 生产量模型索引数组 / Production model index array
     x_idx: ospf_rust_multiarray::MultiArray<usize, Shape<2>>,
     /// 生产成本符号 / Production cost symbol
@@ -71,7 +71,7 @@ impl ProductionModel {
 
         // Register 2D variable combination x[i][j]: produce in month i for demand in month j
         let x_shape = Shape::new([n, n]);
-        let x_vars: VariableCombination2D<UContinuous> =
+        let x_vars: VariableCombination2D<UInteger> =
             VariableCombination2D::with_name_generator(x_shape, "x", |_index, vector| {
                 format!("{}_{}", vector[0], vector[1])
             });

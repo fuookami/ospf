@@ -13,8 +13,12 @@ pub fn apply_domain_pipeline(
     request: &Demo2Request,
     x_idx: &[Vec<usize>],
     z: Option<usize>,
+    estimate_load_weight_idx: &[usize],
+    estimate_loaded_idx: &[usize],
+    loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
     crate::framework::demo2::domain::service::domain_pipeline::apply_domain_pipeline(
         mode, model, request, x_idx, z,
+        estimate_load_weight_idx, estimate_loaded_idx, loaded_idx,
     )
 }

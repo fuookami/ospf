@@ -48,7 +48,9 @@ pub fn quantity_value_in_unit(
     quantity: &Quantity<f64, Unit>,
     unit: &Unit,
 ) -> Result<f64, Box<dyn Error>> {
-    let converted = quantity.to_unit(unit)?;
+    let converted = quantity.to_unit(unit).map_err(|e| {
+        Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e))) as Box<dyn std::error::Error>
+    })?;
     Ok(converted.value)
 }
 

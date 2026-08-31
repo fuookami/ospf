@@ -1,4 +1,21 @@
 //! Quadratic-input function symbol wrappers.
+//!
+//! # Rust Extension Note
+//!
+//! This file contains Quadratic*Function wrappers that provide quadratic polynomial
+//! views of base function symbols. These are Rust-specific extensions that don't have
+//! direct 1:1 Kotlin file counterparts.
+//!
+//! Kotlin has 4 independent QuadraticXxx.kt files:
+//! - QuadraticLinear.kt → `quadratic_linear.rs`
+//! - QuadraticMin.kt → `quadratic_min.rs`
+//! - QuadraticMaskingRange.kt → `quadratic_masking_range.rs`
+//! - QuadraticInStepRange.kt → `quadratic_in_step_range.rs`
+//!
+//! The remaining 14 Quadratic* types in this file are Rust extensions that combine
+//! quadratic polynomial views with base function symbols. They are kept here for
+//! convenience and backward compatibility, rather than being split into individual files
+//! that would each contain only a single struct.
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};

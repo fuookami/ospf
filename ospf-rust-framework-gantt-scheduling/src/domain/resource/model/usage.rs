@@ -44,9 +44,15 @@ pub struct ResourceUsage {
     pub over_enabled: bool,
     /// 是否允许不足 / Whether less slack is enabled
     pub less_enabled: bool,
-    /// 待注册的任务贡献：每个时隙的 LinearMonomial 列表
-    /// Pending task contributions: LinearMonomial list per slot
-    pending_contributions: Vec<Vec<LinearMonomial<f64>>>,
+    /// 注册期构建缓冲区：每个时隙的 LinearMonomial 列表
+    ///
+    /// 在 `add_task_contribution()` 期间累积，在 `register()` 期间消费以构建模型符号。
+    /// `register()` 完成后此缓冲区不再有意义。
+    ///
+    /// Register-time builder buffer: LinearMonomial list per slot.
+    /// Accumulated during `add_task_contribution()`, consumed during `register()` to build model symbols.
+    /// This buffer is stale after `register()` completes.
+    builder_buffer: Vec<Vec<LinearMonomial<f64>>>,
 }
 
 impl std::fmt::Debug for ResourceUsage {
@@ -72,7 +78,7 @@ impl ResourceUsage {
             less_quantity_indices: vec![None; slot_count],
             over_enabled,
             less_enabled,
-            pending_contributions: vec![Vec::new(); slot_count],
+            builder_buffer: vec![Vec::new(); slot_count],
         }
     }
 
@@ -91,7 +97,7 @@ impl ResourceUsage {
     pub fn add_task_contribution(&mut self, slot: usize, x_model_index: usize, contribution: f64) {
         assert!(slot < self.slot_count, "slot index {} out of range (max {})", slot, self.slot_count);
         if contribution != 0.0 {
-            self.pending_contributions[slot].push(LinearMonomial::new(contribution, x_model_index));
+            self.builder_buffer[slot].push(LinearMonomial::new(contribution, x_model_index));
         }
     }
 
@@ -120,7 +126,7 @@ impl ResourceUsage {
         for (slot_idx, capacity) in capacities.iter().enumerate() {
             // 1. 注册 quantity[slot] 中间表达式
             // 初始量作为常数项，任务贡献作为单项式
-            let monomials = self.pending_contributions[slot_idx].clone();
+            let monomials = self.builder_buffer[slot_idx].clone();
 
             let quantity_id = next_gantt_symbol_id();
             let quantity_symbol = Arc::new(LinearExpressionSymbol::new(
@@ -140,7 +146,7 @@ impl ResourceUsage {
             // 即 sum(contribution * x[idx]) + initial <= upper_bound + over_slack
             if self.over_enabled && capacity.over_enabled() {
                 let quantity_poly = Linear::new(
-                    self.pending_contributions[slot_idx].clone(),
+                    self.builder_buffer[slot_idx].clone(),
                     capacity.lower_bound,
                 );
                 let ub_poly = Linear::new(
@@ -174,7 +180,7 @@ impl ResourceUsage {
                     capacity.lower_bound,
                 );
                 let quantity_poly = Linear::new(
-                    self.pending_contributions[slot_idx].clone(),
+                    self.builder_buffer[slot_idx].clone(),
                     capacity.lower_bound,
                 );
                 let less_slack = Arc::new(SlackFunction::named(

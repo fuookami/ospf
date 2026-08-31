@@ -10,6 +10,8 @@ pub type AirworthinessPipelineStep = fn(
     model: &mut MetaModel<f64>,
     context: &AirworthinessContext<'_>,
     aggregation: &AirworthinessAggregation,
+    estimate_load_weight_idx: &[usize],
+    estimate_loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>>;
 
 pub fn pipeline_steps(mode: Demo2PipelineMode) -> Vec<AirworthinessPipelineStep> {

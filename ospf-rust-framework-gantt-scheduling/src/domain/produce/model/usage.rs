@@ -42,9 +42,15 @@ pub struct ProduceUsage {
     pub over_enabled: bool,
     /// 是否允许不足 / Whether less slack is enabled
     pub less_enabled: bool,
-    /// 待注册的任务贡献：每个产品的 LinearMonomial 列表
-    /// Pending task contributions: LinearMonomial list per product
-    pending_contributions: Vec<Vec<ospf_rust_core::symbol::flatten::LinearMonomial<f64>>>,
+    /// 注册期构建缓冲区：每个产品的 LinearMonomial 列表
+    ///
+    /// 在 `add_task_contribution()` 期间累积，在 `register()` 期间消费以构建模型符号。
+    /// `register()` 完成后此缓冲区不再有意义。
+    ///
+    /// Register-time builder buffer: LinearMonomial list per product.
+    /// Accumulated during `add_task_contribution()`, consumed during `register()` to build model symbols.
+    /// This buffer is stale after `register()` completes.
+    builder_buffer: Vec<Vec<ospf_rust_core::symbol::flatten::LinearMonomial<f64>>>,
 }
 
 impl std::fmt::Debug for ProduceUsage {
@@ -70,7 +76,7 @@ impl ProduceUsage {
             less_quantity_indices: vec![None; product_count],
             over_enabled,
             less_enabled,
-            pending_contributions: vec![Vec::new(); product_count],
+            builder_buffer: vec![Vec::new(); product_count],
         }
     }
 
@@ -81,7 +87,7 @@ impl ProduceUsage {
     pub fn add_task_contribution(&mut self, product_idx: usize, x_model_index: usize, coefficient: f64) {
         assert!(product_idx < self.product_count, "product_idx {} out of range", product_idx);
         if coefficient != 0.0 {
-            self.pending_contributions[product_idx].push(
+            self.builder_buffer[product_idx].push(
                 ospf_rust_core::symbol::flatten::LinearMonomial::new(coefficient, x_model_index)
             );
         }
@@ -100,7 +106,7 @@ impl ProduceUsage {
         self.quantity_symbols.clear();
 
         for (product_idx, demand) in demands.iter().enumerate() {
-            let monomials: Vec<LinearMonomial<f64>> = self.pending_contributions[product_idx]
+            let monomials: Vec<LinearMonomial<f64>> = self.builder_buffer[product_idx]
                 .iter()
                 .cloned()
                 .collect();
@@ -195,9 +201,15 @@ pub struct ConsumptionUsage {
     pub over_enabled: bool,
     /// 是否允许不足 / Whether less slack is enabled
     pub less_enabled: bool,
-    /// 待注册的任务贡献：每个物料的 LinearMonomial 列表
-    /// Pending task contributions: LinearMonomial list per material
-    pending_contributions: Vec<Vec<ospf_rust_core::symbol::flatten::LinearMonomial<f64>>>,
+    /// 注册期构建缓冲区：每个物料的 LinearMonomial 列表
+    ///
+    /// 在 `add_task_contribution()` 期间累积，在 `register()` 期间消费以构建模型符号。
+    /// `register()` 完成后此缓冲区不再有意义。
+    ///
+    /// Register-time builder buffer: LinearMonomial list per material.
+    /// Accumulated during `add_task_contribution()`, consumed during `register()` to build model symbols.
+    /// This buffer is stale after `register()` completes.
+    builder_buffer: Vec<Vec<ospf_rust_core::symbol::flatten::LinearMonomial<f64>>>,
 }
 
 impl std::fmt::Debug for ConsumptionUsage {
@@ -223,7 +235,7 @@ impl ConsumptionUsage {
             less_quantity_indices: vec![None; material_count],
             over_enabled,
             less_enabled,
-            pending_contributions: vec![Vec::new(); material_count],
+            builder_buffer: vec![Vec::new(); material_count],
         }
     }
 
@@ -234,7 +246,7 @@ impl ConsumptionUsage {
     pub fn add_task_contribution(&mut self, material_idx: usize, x_model_index: usize, coefficient: f64) {
         assert!(material_idx < self.material_count, "material_idx {} out of range", material_idx);
         if coefficient != 0.0 {
-            self.pending_contributions[material_idx].push(
+            self.builder_buffer[material_idx].push(
                 ospf_rust_core::symbol::flatten::LinearMonomial::new(coefficient, x_model_index)
             );
         }
@@ -253,7 +265,7 @@ impl ConsumptionUsage {
         self.quantity_symbols.clear();
 
         for (material_idx, reserve) in reserves.iter().enumerate() {
-            let monomials: Vec<LinearMonomial<f64>> = self.pending_contributions[material_idx]
+            let monomials: Vec<LinearMonomial<f64>> = self.builder_buffer[material_idx]
                 .iter()
                 .cloned()
                 .collect();

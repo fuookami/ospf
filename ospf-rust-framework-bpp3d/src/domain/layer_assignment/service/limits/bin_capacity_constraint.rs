@@ -165,50 +165,12 @@ where
                     }
                 }
             } else {
-                // Fallback: compute raw terms from variable indices
-                let Some(ref x) = assignment.x else { return; };
-                for bin_idx in 0..assignment.bins.len() {
-                    let weight_cap = self.weight_capacities.get(bin_idx).copied().unwrap_or(0.0);
-                    let volume_cap = self.volume_capacities.get(bin_idx).copied().unwrap_or(0.0);
-
-                    // Weight constraint: sum(x[bin, layer] * weight[layer]) <= weight_capacity
-                    let weight_terms: Vec<(usize, f64)> = (0..assignment.layers.len())
-                        .filter_map(|layer_idx| {
-                            let model_idx = x.model_index(&bin_idx, &layer_idx)?;
-                            let w = self.layer_weights.get(layer_idx).copied()?;
-                            (w != 0.0).then_some((model_idx, w))
-                        })
-                        .collect();
-
-                    if !weight_terms.is_empty() {
-                        if let Err(e) = model.add_le_constraint(
-                            &weight_terms,
-                            weight_cap,
-                            &format!("{}_weight_{}", self.name, bin_idx),
-                        ) {
-                            log::warn!("Failed to register {}_weight_{}: {:?}", self.name, bin_idx, e);
-                        }
-                    }
-
-                    // Volume constraint: sum(x[bin, layer] * volume[layer]) <= volume_capacity
-                    let volume_terms: Vec<(usize, f64)> = (0..assignment.layers.len())
-                        .filter_map(|layer_idx| {
-                            let model_idx = x.model_index(&bin_idx, &layer_idx)?;
-                            let v = self.layer_volumes.get(layer_idx).copied()?;
-                            (v != 0.0).then_some((model_idx, v))
-                        })
-                        .collect();
-
-                    if !volume_terms.is_empty() {
-                        if let Err(e) = model.add_le_constraint(
-                            &volume_terms,
-                            volume_cap,
-                            &format!("{}_volume_{}", self.name, bin_idx),
-                        ) {
-                            log::warn!("Failed to register {}_volume_{}: {:?}", self.name, bin_idx, e);
-                        }
-                    }
-                }
+                // Symbols not available: skip constraint registration and warn
+                log::warn!(
+                    "{}: load_weight_symbols/load_volume_symbols not populated; \
+                     call build_symbols() before registering constraints",
+                    self.name
+                );
             }
         } else {
             // Pre-computed x_indices path

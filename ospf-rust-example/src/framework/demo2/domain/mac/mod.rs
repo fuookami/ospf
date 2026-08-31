@@ -19,8 +19,10 @@ impl Aggregation {
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.torque.register(model, &[], &[], &[], &[])?;
         self.mac.register(model, 0.0, 0.0, 0.0, 1.0)?;
+        let mut next_id = 60000u64;
         for hs in &self.horizontal_stabilizers {
-            hs.register(_stowage_mode, model)?;
+            hs.register(_stowage_mode, model, next_id, 0, 0, 0)?;
+            next_id += 10;
         }
         Ok(())
     }

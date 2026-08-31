@@ -978,3 +978,455 @@ mod tests {
         assert!((*mask_term.coefficient() - DEFAULT_BIG_M).abs() <= 1e-9);
     }
 }
+
+// ============================================================================
+// MaskingWithPolyMaskFunction
+// ============================================================================
+
+/// Masking with polynomial mask function symbol.
+///
+/// Represents masked expression with a polynomial mask:
+/// `y = x * mask_poly`, where `mask_poly` is a linear expression.
+///
+/// This is more general than `MaskingFunction` which only accepts a single binary variable.
+/// `MaskingWithPolyMaskFunction` accepts a polynomial mask expression, allowing
+/// complex masking patterns (e.g., sum of multiple binary variables).
+///
+/// The implementation uses a bridge variable approach:
+/// 1. Create mask_bridge = mask_polynomial (equality constraint)
+/// 2. Apply standard 4 big-M masking constraints with mask_bridge
+///
+/// Note: mask_bridge_var uses BinaryVariableItem to ensure mask is 0/1,
+/// matching Kotlin's binary mask semantics.
+#[derive(Debug, Clone)]
+pub struct MaskingWithPolyMaskFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    id: IntermediateSymbolId,
+    input: Linear<V>,
+    mask: Linear<V>,
+    mask_bridge_var: BinaryVariableItem,
+    result_var: ContinuousVariableItem,
+    big_m: V,
+    declared_dependency_ids: Vec<u64>,
+}
+
+impl<V> MaskingWithPolyMaskFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
+{
+    pub fn new(id: u64, name: &str, input: Linear<V>, mask: Linear<V>) -> Self {
+        Self::with_big_m(
+            id,
+            name,
+            input,
+            mask,
+            from_f64(DEFAULT_BIG_M).expect("convert default big-M"),
+        )
+    }
+
+    pub fn with_big_m(
+        id: u64,
+        name: &str,
+        input: Linear<V>,
+        mask: Linear<V>,
+        big_m: V,
+    ) -> Self {
+        let mask_bridge_var =
+            BinaryVariableItem::create(new_standalone_id(), &format!("{}_mask_bridge", name));
+        let result_var =
+            ContinuousVariableItem::create(new_standalone_id(), &format!("{}_mask_poly", name));
+        Self {
+            id: IntermediateSymbolId::new(id, name),
+            input,
+            mask,
+            mask_bridge_var,
+            result_var,
+            big_m,
+            declared_dependency_ids: Vec::new(),
+        }
+    }
+
+    pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
+        self.declared_dependency_ids = dependency_ids;
+        self
+    }
+
+    pub fn input_polynomial(&self) -> &Linear<V> {
+        &self.input
+    }
+
+    pub fn mask_polynomial(&self) -> &Linear<V> {
+        &self.mask
+    }
+
+    pub fn mask_bridge_variable(&self) -> &BinaryVariableItem {
+        &self.mask_bridge_var
+    }
+
+    pub fn result_variable(&self) -> &ContinuousVariableItem {
+        &self.result_var
+    }
+
+    pub fn big_m(&self) -> &V {
+        &self.big_m
+    }
+}
+
+impl<V> MaskingWithPolyMaskFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn configured_big_m(&self) -> Result<f64> {
+        let big_m = to_f64(&self.big_m).ok_or_else(|| {
+            ModelError::InvalidConstraint(format!(
+                "masking_poly `{}` big-M cannot be converted to f64",
+                self.id.name
+            ))
+        })?;
+        if !big_m.is_finite() || big_m <= 0.0 {
+            return Err(ModelError::InvalidConstraint(format!(
+                "masking_poly `{}` requires positive finite big-M",
+                self.id.name
+            ))
+            .into());
+        }
+        Ok(big_m)
+    }
+
+    fn build_mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        big_m: f64,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let result_index = symbol_to_index
+            .get(&(self.result_var.id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "masking_poly result variable id {}",
+                    self.result_var.id().unique_id()
+                ))
+            })?;
+        let bridge_index = symbol_to_index
+            .get(&(self.mask_bridge_var.id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "masking_poly bridge variable id {}",
+                    self.mask_bridge_var.id().unique_id()
+                ))
+            })?;
+
+        let input_constant = to_f64(self.input.constant_term()).ok_or_else(|| {
+            ModelError::InvalidConstraint(format!(
+                "masking_poly `{}` input constant cannot be converted to f64",
+                self.id.name
+            ))
+        })?;
+
+        // Constraint 0: mask_bridge = mask_polynomial
+        let mut bridge_monomials = self.mask.monomials().to_vec();
+        bridge_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(-1.0, "mask bridge coefficient")?,
+            bridge_index,
+        ));
+        let bridge_constant = self.mask.constant_term().clone();
+        let c0 = LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(bridge_monomials, bridge_constant),
+                ConstraintRelation::Equal,
+                convert_f64_to_v::<V>(0.0, "mask bridge rhs")?,
+            ),
+            &format!("{}_mask_bridge_eq", self.id.name),
+            Arc::new(self.clone()),
+        );
+
+        // Build y - x terms
+        let mut y_minus_x_monomials = Vec::with_capacity(self.input.monomials().len() + 2);
+        y_minus_x_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(1.0, "masking_poly y coefficient")?,
+            result_index,
+        ));
+        for monomial in self.input.monomials() {
+            let coefficient = to_f64(monomial.coefficient()).ok_or_else(|| {
+                ModelError::InvalidConstraint(format!(
+                    "masking_poly `{}` input coefficient cannot be converted to f64",
+                    self.id.name
+                ))
+            })?;
+            let input_index = monomial.var_index();
+            y_minus_x_monomials.push(LinearMonomial::new(
+                convert_f64_to_v::<V>(-coefficient, "masking_poly input coefficient")?,
+                input_index,
+            ));
+        }
+
+        // Constraint 1: y - x + big_M * bridge <= big_M
+        let mut c1_monomials = y_minus_x_monomials.clone();
+        c1_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(big_m, "masking_poly c1 bridge coefficient")?,
+            bridge_index,
+        ));
+        let c1 = LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(
+                    c1_monomials,
+                    convert_f64_to_v::<V>(-input_constant, "masking_poly c1 constant")?,
+                ),
+                ConstraintRelation::LessEqual,
+                convert_f64_to_v::<V>(big_m, "masking_poly c1 rhs")?,
+            ),
+            &format!("{}_masking_eq_ub", self.id.name),
+            Arc::new(self.clone()),
+        );
+
+        // Constraint 2: y - x - big_M * bridge >= -big_M
+        let mut c2_monomials = y_minus_x_monomials;
+        c2_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(-big_m, "masking_poly c2 bridge coefficient")?,
+            bridge_index,
+        ));
+        let c2 = LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(
+                    c2_monomials,
+                    convert_f64_to_v::<V>(-input_constant, "masking_poly c2 constant")?,
+                ),
+                ConstraintRelation::GreaterEqual,
+                convert_f64_to_v::<V>(-big_m, "masking_poly c2 rhs")?,
+            ),
+            &format!("{}_masking_eq_lb", self.id.name),
+            Arc::new(self.clone()),
+        );
+
+        // Constraint 3: y <= big_M * bridge
+        let mut c3_monomials = Vec::with_capacity(2);
+        c3_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(1.0, "masking_poly c3 y coefficient")?,
+            result_index,
+        ));
+        c3_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(-big_m, "masking_poly c3 bridge coefficient")?,
+            bridge_index,
+        ));
+        let c3 = LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(
+                    c3_monomials,
+                    convert_f64_to_v::<V>(0.0, "masking_poly c3 constant")?,
+                ),
+                ConstraintRelation::LessEqual,
+                convert_f64_to_v::<V>(0.0, "masking_poly c3 rhs")?,
+            ),
+            &format!("{}_masking_ub", self.id.name),
+            Arc::new(self.clone()),
+        );
+
+        // Constraint 4: y >= -big_M * bridge
+        let mut c4_monomials = Vec::with_capacity(2);
+        c4_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(1.0, "masking_poly c4 y coefficient")?,
+            result_index,
+        ));
+        c4_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(big_m, "masking_poly c4 bridge coefficient")?,
+            bridge_index,
+        ));
+        let c4 = LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(
+                    c4_monomials,
+                    convert_f64_to_v::<V>(0.0, "masking_poly c4 constant")?,
+                ),
+                ConstraintRelation::GreaterEqual,
+                convert_f64_to_v::<V>(0.0, "masking_poly c4 rhs")?,
+            ),
+            &format!("{}_masking_lb", self.id.name),
+            Arc::new(self.clone()),
+        );
+
+        Ok(vec![c0, c1, c2, c3, c4])
+    }
+}
+
+impl<V> Display for MaskingWithPolyMaskFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MaskingWithPolyMask({})", self.id.name)
+    }
+}
+
+impl<V> DynSymbol for MaskingWithPolyMaskFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn name(&self) -> &str {
+        &self.id.name
+    }
+    fn display_name(&self) -> &str {
+        &self.id.name
+    }
+    fn dyn_id(&self) -> SymbolDynId<'_> {
+        SymbolDynId::standalone(self.id.id as usize)
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl<V> Symbol for MaskingWithPolyMaskFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    type Id = IntermediateSymbolId;
+
+    fn id(&self) -> Self::Id {
+        self.id.clone()
+    }
+}
+
+impl<V> IntermediateSymbol<V> for MaskingWithPolyMaskFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn category(&self) -> Category {
+        Category::Linear
+    }
+
+    fn cached(&self) -> bool {
+        false
+    }
+
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
+        HashSet::new()
+    }
+
+    fn declared_dependency_ids(&self) -> Vec<u64> {
+        self.declared_dependency_ids.clone()
+    }
+
+    fn flush(&self, _force: bool) {}
+
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
+    }
+
+    fn mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        self.build_mechanism_constraints(symbol_to_index, self.configured_big_m()?)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        _tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        self.build_mechanism_constraints(symbol_to_index, self.configured_big_m()?)
+    }
+
+    fn evaluate_from_tokens(
+        &self,
+        token_table: &dyn TokenList<V>,
+        zero_if_none: bool,
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
+    }
+
+    fn prepare(&self, values: &std::collections::HashMap<usize, V>) -> Option<V> {
+        values.get(&self.result_var.index()).cloned()
+    }
+
+    fn to_raw_string(&self, _unfold: u64) -> String {
+        format!("masking_poly({})", self.id.name)
+    }
+}
+
+impl<V> FunctionSymbol<V> for MaskingWithPolyMaskFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        tokens.push(Token::from_generic(
+            self.mask_bridge_var.clone(),
+            self.id.id as usize + 1,
+        ));
+        tokens.push(Token::from_generic(
+            self.result_var.clone(),
+            self.id.id as usize + 2,
+        ));
+        Ok(())
+    }
+
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
+        let mask_value = evaluate_linear(&self.mask, token_table, zero_if_none)?;
+        let input_value = evaluate_linear(&self.input, token_table, zero_if_none)?;
+        Some(input_value * mask_value)
+    }
+}
+
+impl<V> LinearIntermediateSymbol<V> for MaskingWithPolyMaskFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        Linear::new(
+            vec![LinearMonomial::new(
+                convert_f64_to_v::<V>(1.0, "masking_poly result coefficient")
+                    .unwrap_or_else(|_| V::zero()),
+                self.result_var.index(),
+            )],
+            convert_f64_to_v::<V>(0.0, "masking_poly constant")
+                .unwrap_or_else(|_| V::zero()),
+        )
+    }
+
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
+        Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}

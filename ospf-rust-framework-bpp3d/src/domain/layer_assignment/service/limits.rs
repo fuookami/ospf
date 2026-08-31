@@ -5,11 +5,13 @@
 //! RMP and Final MILP phases.
 
 use std::fmt::Debug;
+use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::object::SubObjective;
 use ospf_rust_core::model::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::model::mechanism::constraint_group::ConstraintGroup;
 use ospf_rust_core::symbol::LinearIntermediateSymbol;
+use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_framework::model::pipeline::Pipeline;
 use ospf_rust_framework::model::shadow_price::{ShadowPrice, ShadowPriceKey, BasicShadowPriceMap, ShadowPriceMap};
 use ospf_rust_framework::model::pipeline::CGPipeline;

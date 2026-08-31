@@ -63,6 +63,12 @@ pub struct TaskCompilationConstraint {
     group: Option<ConstraintGroup>,
     /// 每个任务的编译多项式项列表 / Polynomial terms for each task's compilation
     /// task_compilation_polynomials[task] = [(var_idx, coefficient), ...]
+    ///
+    /// 注意：这是从已注册 `LinearExpressionSymbol` 展开的系数，不是独立的裸系数。
+    /// 注册到模型的符号是源，这里只是 `add_linear_constraint` API 的适配层。
+    /// Note: These are coefficients expanded from registered `LinearExpressionSymbol`s,
+    /// not independent raw coefficients. The registered symbols are the source of truth;
+    /// this is the adapter layer for `add_linear_constraint` API.
     pub task_compilation_polynomials: Vec<Vec<(usize, f64)>>,
 }
 
@@ -133,6 +139,9 @@ pub struct ExecutorCompilationConstraint {
     group: Option<ConstraintGroup>,
     /// 每个执行器的编译多项式项列表 / Polynomial terms for each executor's compilation
     /// executor_compilation_polynomials[executor] = [(var_idx, coefficient), ...]
+    ///
+    /// 从已注册 `LinearExpressionSymbol` 展开，是 `add_linear_constraint` API 适配层。
+    /// Expanded from registered `LinearExpressionSymbol`s; adapter layer for `add_linear_constraint`.
     pub executor_compilation_polynomials: Vec<Vec<(usize, f64)>>,
 }
 

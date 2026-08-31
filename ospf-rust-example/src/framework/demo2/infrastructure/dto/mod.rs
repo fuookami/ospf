@@ -19,6 +19,8 @@ pub struct CargoInput {
     pub source: String,
     pub destination: String,
     pub requires_separation: bool,
+    /// 货物代码 / Cargo code (对齐 Kotlin CargoCode)
+    pub code: Option<crate::framework::demo2::domain::stowage::model::cargo::CargoCode>,
 }
 
 /// 货舱位置输入数据 / Cargo position input data
@@ -32,6 +34,8 @@ pub struct PositionInput {
     pub length: f64,
     pub max_load_count: u64,
     pub loaded_items: Vec<String>,
+    /// 最小预测装载重量 / Minimum predicate load weight (对齐 Kotlin plw.min)
+    pub predicate_load_weight_min: Option<f64>,
 }
 
 /// 飞机类型输入 / Aircraft type input
@@ -95,6 +99,18 @@ pub struct DiagnosticNote {
     pub message: String,
 }
 
+/// 相邻位置对 / Adjacent position pair
+///
+/// 对齐 Kotlin PositionPair，表示两个相邻的舱位。
+/// Matches Kotlin PositionPair, represents two adjacent positions.
+#[derive(Debug, Clone)]
+pub struct PositionPair {
+    /// 第一个位置索引 / First position index
+    pub first: usize,
+    /// 第二个位置索引 / Second position index
+    pub second: usize,
+}
+
 /// Demo2 请求数据 / Demo2 request data
 #[derive(Clone)]
 pub struct Demo2Request {
@@ -115,6 +131,10 @@ pub struct Demo2Request {
     pub target_longitudinal_moment: f64,
     pub max_longitudinal_moment_deviation: f64,
     pub max_lateral_imbalance: f64,
+    /// 相邻位置对列表 / Adjacent position pairs
+    /// 对齐 Kotlin adjacentPositions，用于 DivideEmptyLoading 等约束。
+    /// Matches Kotlin adjacentPositions, used for DivideEmptyLoading constraints.
+    pub adjacent_positions: Vec<PositionPair>,
 }
 
 impl Demo2Request {
@@ -128,6 +148,7 @@ impl Demo2Request {
                     source: String::from("S1"),
                     destination: String::from("D1"),
                     requires_separation: true,
+                    code: None,
                 },
                 CargoInput {
                     name: String::from("C2"),
@@ -136,6 +157,7 @@ impl Demo2Request {
                     source: String::from("S2"),
                     destination: String::from("D1"),
                     requires_separation: false,
+                    code: None,
                 },
                 CargoInput {
                     name: String::from("C3"),
@@ -144,6 +166,7 @@ impl Demo2Request {
                     source: String::from("S1"),
                     destination: String::from("D2"),
                     requires_separation: true,
+                    code: None,
                 },
             ],
             positions: vec![
@@ -156,6 +179,7 @@ impl Demo2Request {
                     length: 2.0,
                     max_load_count: 3,
                     loaded_items: Vec::new(),
+                    predicate_load_weight_min: Some(1.0),
                 },
                 PositionInput {
                     name: String::from("P2"),
@@ -166,6 +190,7 @@ impl Demo2Request {
                     length: 2.0,
                     max_load_count: 3,
                     loaded_items: Vec::new(),
+                    predicate_load_weight_min: Some(1.0),
                 },
             ],
             aircraft_type: AircraftTypeInput::B737,
@@ -193,6 +218,12 @@ impl Demo2Request {
             target_longitudinal_moment: 0.0,
             max_longitudinal_moment_deviation: 20.0,
             max_lateral_imbalance: 12.0,
+            adjacent_positions: vec![
+                PositionPair { first: 0, second: 1 },
+                PositionPair { first: 1, second: 2 },
+                PositionPair { first: 2, second: 3 },
+                PositionPair { first: 3, second: 4 },
+            ],
         }
     }
 }

@@ -1,34 +1,43 @@
 use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
-use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
+use ospf_rust_core::model::{MetaModel, LinearObjectiveInput};
+use crate::framework::demo2::domain::loading_effectiveness::model::TrailerChangeVariables;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
 /// 拖车更换限制: 最小化拖车更换次数
 /// 对齐 Kotlin TrailerChangeLimit
 ///
-/// 简化实现: 同一来源的货物应装载在同一舱位，减少拖车更换
+/// Kotlin 语义:
+///   model.minimize(sum(orderedTrailers.flatMapIndexed { p1, (trailer1, trailer2) ->
+///       adjacentPositions.mapIndexed { p2, (position1, position2) ->
+///           coefficient(position2 to trailer1, position1 to trailer2) * loading.trailerChange[p1, p2]
+///       }
+///   }))
+///
+/// 其中 trailerChange[p1, p2] 是 IfFunction 符号:
+///   condition = loadAmountOf(position1){trailer2.items} + loadAmountOf(position2){trailer1.items} - 2
+///   当两个拖车的物品在相邻位置发生交叉装载时值为 1。
+///
+/// Rust 实现: 使用已注册的 trailerChange IfFunction 符号，最小化其总和。
 pub fn apply_trailer_change_limits(
-    _model: &mut MetaModel<f64>,
-    _context: &LoadingEffectivenessContext<'_>,
-    aggregation: &LoadingEffectivenessAggregation,
+    model: &mut MetaModel<f64>,
+    trailer_change_vars: &TrailerChangeVariables,
+    mode_name_str: &str,
 ) -> Result<(), Box<dyn Error>> {
-    // 对于同一来源的货物，如果它们在不同舱位，则需要拖车更换
-    // 简化实现: 鼓励同一来源的货物在同一舱位
-    for (_source, cargos) in &aggregation.cargos_by_source {
-        if cargos.len() <= 1 {
-            continue;
-        }
-        // 对于同一来源的货物对，如果都装载了，应该在同一舱位
-        for i in 0..cargos.len() {
-            for j in (i + 1)..cargos.len() {
-                let c1 = cargos[i];
-                let c2 = cargos[j];
-                // 如果 c1 和 c2 都装载了，它们应该在同一舱位
-                // 简化: 不添加硬约束，仅通过目标函数鼓励
-                let _ = (c1, c2);
-            }
+    let mut objective_terms: Vec<(usize, f64)> = Vec::new();
+
+    for change_row in &trailer_change_vars.trailer_change {
+        for &var_idx in change_row {
+            objective_terms.push((var_idx, 1.0));
         }
     }
+
+    if !objective_terms.is_empty() {
+        let obj_input = LinearObjectiveInput::minimize(
+            &format!("loading_trailer_change_{}", mode_name_str),
+        )
+        .terms(objective_terms.iter().copied());
+        model.add_linear_objective_input(obj_input);
+    }
+
     Ok(())
 }
