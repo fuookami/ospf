@@ -28,7 +28,7 @@ use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::{Add, Mul, Neg, Sub};
 use std::sync::Arc;
-use typenum::{Integer, N2, N3, N4, N5, P1, P2, P3, P4, P5, Z0};
+use typenum::{Integer, N2, P1, P2, P3, Z0};
 
 // ============================================================================
 // 基本量特征 / Fundamental dimension trait
@@ -39,7 +39,7 @@ use typenum::{Integer, N2, N3, N4, N5, P1, P2, P3, P4, P5, Z0};
 pub trait FundamentalDimension: fmt::Debug + Send + Sync + 'static {
     /// 量纲符号 (如 L, M, T)
     /// Dimension symbol (e.g., L, M, T)
-    fn symbol(&self) -> &'static str;
+    fn symbol(&self) -> &str;
 
     /// 转换为基础量纲枚举
     /// Convert to fundamental quantity enum
@@ -594,7 +594,7 @@ impl Hash for FundamentalQuantityEnum {
 }
 
 impl FundamentalDimension for FundamentalQuantityEnum {
-    fn symbol(&self) -> &'static str {
+    fn symbol(&self) -> &str {
         match self {
             FundamentalQuantityEnum::Length => L::SYMBOL,
             FundamentalQuantityEnum::Mass => M::SYMBOL,
@@ -615,6 +615,54 @@ impl FundamentalDimension for FundamentalQuantityEnum {
     }
 }
 
+// ============================================================================
+// 自定义基础量纲 / Custom fundamental dimension
+// ============================================================================
+
+/// CustomFundamentalDimension - 自定义基础量纲
+/// CustomFundamentalDimension - Custom fundamental dimension
+///
+/// 用于运行时动态创建自定义量纲，无需预定义类型。
+/// Used for runtime dynamic creation of custom dimensions without predefined types.
+///
+/// # Example / 示例
+/// ```
+/// use ospf_rust_quantities::dimension::fundamental_quantity::{CustomFundamentalDimension, FundamentalDimension};
+///
+/// let tome = CustomFundamentalDimension::new("T");
+/// assert_eq!(tome.symbol(), "T");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CustomFundamentalDimension {
+    symbol: String,
+}
+
+impl CustomFundamentalDimension {
+    /// 创建新的自定义量纲
+    /// Create new custom dimension
+    pub fn new(symbol: impl Into<String>) -> Self {
+        Self {
+            symbol: symbol.into(),
+        }
+    }
+
+    /// 转换为 FundamentalQuantityEnum
+    /// Convert to FundamentalQuantityEnum
+    pub fn to_enum(&self) -> FundamentalQuantityEnum {
+        FundamentalQuantityEnum::Custom(Arc::new(self.clone()))
+    }
+}
+
+impl FundamentalDimension for CustomFundamentalDimension {
+    fn symbol(&self) -> &str {
+        &self.symbol
+    }
+
+    fn runtime_value(&self) -> FundamentalQuantityEnum {
+        self.to_enum()
+    }
+}
+
 impl fmt::Display for FundamentalQuantityEnum {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.symbol())
@@ -628,6 +676,7 @@ impl fmt::Display for FundamentalQuantityEnum {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use typenum::{N3, N4, N5, P4, P5};
 
     // ========================================================================
     // 基础量纲符号测试 / Base dimension symbol tests

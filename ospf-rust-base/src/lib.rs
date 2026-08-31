@@ -12,11 +12,12 @@
 #[macro_use]
 extern crate strum;
 
-pub use collection::*;
 pub use cloneable_function::*;
+pub use collection::*;
+pub use container::*;
 pub use error::*;
 pub use generator_iterator::*;
-pub use indexed_type::{ Indexed, ManualIndexed };
+pub use indexed_type::{Indexed, ManualIndexed};
 pub use iter::*;
 
 #[macro_use]
@@ -27,7 +28,8 @@ pub mod indexed_type;
 pub mod iter;
 #[macro_use]
 pub mod cloneable_function;
-pub mod collection;
 pub mod chunked_collection;
+pub mod collection;
+pub mod container;
 
 pub use chunked_collection::{ChunkedVec, ChunkedVecIter, ChunkedVecIterMut, DEFAULT_CHUNK_SIZE};

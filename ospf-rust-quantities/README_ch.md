@@ -6,18 +6,21 @@
 
 ## 概述 / Overview
 
-`ospf-rust-quantities` 是一个 Rust 库，提供物理量、量纲和单位的完整实现，支持运行时和编译时两种模式。
+`ospf-rust-quantities` 是一个 Rust 库，提供物理量、量纲和单位的完整实现，通过统一的类型系统支持运行时和编译时两种模式。
 
-`ospf-rust-quantities` is a Rust library providing a complete implementation of physical quantities, dimensions, and units, supporting both runtime and compile-time modes.
+`ospf-rust-quantities` is a Rust library providing a complete implementation of physical quantities, dimensions, and units, supporting both runtime and compile-time modes through a unified type system.
 
 ### 核心特性 / Key Features
 
-- **零成本抽象 / Zero-cost Abstraction**: 编译时单位类型在编译期完成所有计算，无运行时开销
-- **编译时量纲检查 / Compile-time Dimension Checking**: 不匹配的量纲操作会导致编译错误
+- **统一类型系统 / Unified Type System**: 单一 `Quantity<V, U>` 类型同时支持编译时和运行时模式
+- **零成本抽象 / Zero-cost Abstraction**: 编译时单位类型（`Quantity<V, U: CTUnit>`）在编译期完成所有计算，无运行时开销
+- **编译时量纲检查 / Compile-time Dimension Checking**: 编译时物理量的不匹配量纲操作会导致编译错误
 - **灵活的单位转换 / Flexible Unit Conversion**: 支持相同量纲单位之间的自动转换
 - **预定义单位制 / Predefined Unit Systems**: 内置 SI、MKS、CGS 等单位制
 - **泛型值类型 / Generic Value Types**: 支持 `BigDecimal`、`f64` 等多种数值类型
 - **完整的中英双语文档 / Complete Bilingual Documentation**
+
+[English Documentation / 英文文档](./README.md)
 
 ## 安装 / Installation
 
@@ -37,22 +40,22 @@ ospf-rust-quantities = "0.1.0"
 Compile-time quantities have their unit types determined at compile time, providing zero-cost abstraction and compile-time dimension checking.
 
 ```rust
-use ospf_rust_quantities::quantity::CTQuantity;
+use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::derived::{Meter, Kilometer, Second};
 use ospf_rust_quantities::unit::CTUnit;
 use bigdecimal::BigDecimal;
 
-// 创建编译时物理量 / Create compile-time quantity
-let length: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(1000));
+// 创建编译时物理量（使用 new_ct 方法）/ Create compile-time quantity (using new_ct method)
+let length: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(1000));
 
 // 编译时单位转换 / Compile-time unit conversion
-let length_km: CTQuantity<BigDecimal, Kilometer> = length.to();
+let length_km: Quantity<BigDecimal, Kilometer> = length.to();
 assert_eq!(length_km.value, BigDecimal::from(1));
 
 // 物理量运算产生新单位类型 / Quantity operations produce new unit types
-let time: CTQuantity<BigDecimal, Second> = CTQuantity::new(BigDecimal::from(10));
-let velocity = length_km / time; // 类型: CTQuantity<BigDecimal, CTUnitDiv<Kilometer, Second>>
-                                  // Type: CTQuantity<BigDecimal, CTUnitDiv<Kilometer, Second>>
+let time: Quantity<BigDecimal, Second> = Quantity::new_ct(BigDecimal::from(10));
+let velocity = length_km / time; // 类型: Quantity<BigDecimal, CTUnitDiv<Kilometer, Second>>
+                                  // Type: Quantity<BigDecimal, CTUnitDiv<Kilometer, Second>>
 ```
 
 ### 运行时物理量 / Runtime Quantities
@@ -64,11 +67,11 @@ Runtime quantities have their units determined at runtime, supporting dynamic un
 ```rust
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::derived::{Meter, Kilometer, Kilogram};
-use ospf_rust_quantities::unit::CTUnit;
+use ospf_rust_quantities::unit::{CTUnit, Unit};
 use bigdecimal::BigDecimal;
 
-// 创建运行时物理量 / Create runtime quantity
-let length = Quantity::new(BigDecimal::from(1000), Meter::INSTANT.clone());
+// 创建运行时物理量（使用 Unit 类型）/ Create runtime quantity (using Unit type)
+let length: Quantity<BigDecimal, Unit> = Quantity::new(BigDecimal::from(1000), Meter::INSTANT.clone());
 
 // 运行时单位转换 / Runtime unit conversion
 let length_km = length.to_unit(&Kilometer::INSTANT.clone()).unwrap();
@@ -77,6 +80,22 @@ assert_eq!(length_km.value, BigDecimal::from(1));
 // 物理量运算 / Quantity operations
 let mass = Quantity::new(BigDecimal::from(5), Kilogram::INSTANT.clone());
 let momentum = &length * &mass; // 产生新量纲 / Produces new dimension
+```
+
+### 模式转换 / Converting Between Modes
+
+```rust
+use ospf_rust_quantities::quantity::Quantity;
+use ospf_rust_quantities::unit::derived::Meter;
+use ospf_rust_quantities::unit::{CTUnit, Unit};
+use bigdecimal::BigDecimal;
+
+// 创建编译时物理量 / Create compile-time quantity
+let ct_length: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
+
+// 转换为运行时物理量 / Convert to runtime quantity
+let rt_length: Quantity<BigDecimal, Unit> = ct_length.to_runtime();
+assert_eq!(rt_length.unit.symbol(), "m");
 ```
 
 ### 单位制 / Unit Systems
@@ -102,13 +121,15 @@ assert_eq!(standard.unit.symbol(), "m"); // SI 中长度的标准单位是米
 
 | 类型 / Type | 说明 / Description |
 |------------|-------------------|
-| `CTQuantity<V, U>` | 编译时物理量，单位类型 `U` 在编译时确定 / Compile-time quantity with unit type `U` determined at compile time |
-| `Quantity<V>` | 运行时物理量，单位在运行时确定 / Runtime quantity with unit determined at runtime |
+| `Quantity<V, U>` | 统一物理量类型，`U` 可以是 `Unit`（运行时）或 `CTUnit` 类型（编译时）/ Unified quantity type, `U` can be `Unit` (runtime) or a `CTUnit` type (compile-time) |
+| `Quantity<V, Unit>` | 运行时物理量，单位在运行时确定 / Runtime quantity with unit determined at runtime |
+| `Quantity<V, U: CTUnit>` | 编译时物理量，单位类型在编译时确定 / Compile-time quantity with unit type determined at compile time |
 | `Unit` | 运行时单位 / Runtime unit |
 | `CTUnit` | 编译时单位 trait / Compile-time unit trait |
 | `DerivedQuantity` | 导出量纲 / Derived dimension |
 | `CTDerivedQuantity` | 编译时导出量纲 trait / Compile-time derived dimension trait |
 | `Scale` | 单位比例尺 / Unit scale |
+| `QuantityTrait` | 所有物理量类型的统一接口 / Unified interface for all quantity types |
 
 ### 模块结构 / Module Structure
 
@@ -121,9 +142,7 @@ ospf_rust_quantities
 │   ├── physical_unit  # 核心单位类型 / Core unit types
 │   ├── system         # 单位制（SI、MKS、CGS）/ Unit systems
 │   └── derived        # 预定义导出单位 / Predefined derived units
-├── quantity           # 物理量 / Quantities
-│   ├── ct_quantity    # 编译时物理量 / Compile-time quantities
-│   └── quantity       # 运行时物理量 / Runtime quantities
+├── quantity           # 物理量（统一类型）/ Quantities (unified type)
 ├── scale              # 比例尺 / Scales
 └── error              # 错误类型 / Error types
 ```
@@ -144,6 +163,73 @@ ospf_rust_quantities
 | 频率 / Frequency | Hertz, Kilohertz, Megahertz |
 | 信息 / Information | Bit, Byte, Kilobyte, Megabyte |
 
+## 物理量符号运算 / Physical Quantity Symbolic Computation
+
+`ospf-rust-quantities` 与 `ospf-rust-math` 集成，支持物理量的符号运算。这允许您创建带有物理单位的多项式，结合类型安全的量纲分析和符号数学的优势。
+
+`ospf-rust-quantities` integrates with `ospf-rust-math` to support symbolic computation with physical quantities. This allows you to create polynomials with physical units, combining the benefits of type-safe dimensional analysis with symbolic mathematics.
+
+### 支持的值类型 / Supported Value Types
+
+| 值类型 / Value Type | Crate | 用途 / Use Case |
+|--------------------|-------|----------------|
+| `f64` | `std` | 快速数值计算 / Fast numerical computation |
+| `BigDecimal` | `bigdecimal` | 高精度十进制，金融计算 / High-precision decimal for financial calculations |
+| `BigRational` | `num-rational` | 精确有理数，符号计算 / Exact rational numbers for symbolic computation |
+
+### 使用示例 / Usage Examples
+
+```rust
+use ospf_rust_quantities::quantity::Quantity;
+use ospf_rust_quantities::unit::derived::Meter;
+use ospf_rust_quantities::unit::CTUnit;
+use ospf_rust_math::symbol::polynomial::Linear;
+use ospf_rust_math::symbol::symbol::OwnedSymbol;
+use bigdecimal::BigDecimal;
+use num_rational::BigRational;
+
+// 物理量符号 / Physical quantity symbol
+let x: Quantity<OwnedSymbol, Meter> = Quantity::new_ct(OwnedSymbol::new("x"));
+let y: Quantity<OwnedSymbol, Meter> = Quantity::new_ct(OwnedSymbol::new("y"));
+
+// 物理量多项式（f64 值类型）/ Physical quantity polynomial with f64
+let distance: Quantity<Linear<f64>, Meter> = Quantity::new_ct(2.0 * x.clone() + 3.0 * y.clone());
+
+// 使用 BigDecimal / With BigDecimal
+let coef_bd = BigDecimal::from(2);
+let distance_bd: Quantity<Linear<BigDecimal>, Meter> = Quantity::new_ct(coef_bd * x.clone());
+
+// 使用 BigRational / With BigRational
+let coef_br = BigRational::new(3.into(), 2.into()); // 3/2
+let distance_br: Quantity<Linear<BigRational>, Meter> = Quantity::new_ct(coef_br * x);
+```
+
+### 类型定义 / Type Definitions
+
+| 类型 / Type | 说明 / Description |
+|------------|-------------------|
+| `Quantity<OwnedSymbol, U>` | 物理量符号 / Physical quantity symbol |
+| `Quantity<LinearMonomial<T>, U>` | 物理量线性单项式 / Physical quantity linear monomial |
+| `Quantity<Linear<T>, U>` | 物理量线性多项式 / Physical quantity linear polynomial |
+| `Quantity<QuadraticMonomial<T>, U>` | 物理量二次单项式 / Physical quantity quadratic monomial |
+| `Quantity<Quadratic<T>, U>` | 物理量二次多项式 / Physical quantity quadratic polynomial |
+| `Quantity<Canonical<T, E>, U>` | 物理量标准多项式 / Physical quantity canonical polynomial |
+
+### 编译时与运行时单位 / Compile-time vs Runtime Units
+
+符号运算同时支持编译时和运行时单位：
+
+Symbolic computation works with both compile-time and runtime units:
+
+```rust
+// 编译时（零成本）/ Compile-time (zero-cost)
+let ct_symbol: Quantity<OwnedSymbol, Meter> = Quantity::new_ct(OwnedSymbol::new("x"));
+
+// 运行时（灵活）/ Runtime (flexible)
+let rt_symbol: Quantity<OwnedSymbol, Unit> = 
+    Quantity::new(OwnedSymbol::new("x"), Meter::INSTANT.clone());
+```
+
 ## 编译时量纲检查 / Compile-time Dimension Checking
 
 编译时物理量会在编译时检查量纲匹配。以下代码会导致编译错误：
@@ -151,12 +237,12 @@ ospf_rust_quantities
 Compile-time quantities check dimension matching at compile time. The following code will cause a compile error:
 
 ```rust,compile_fail
-use ospf_rust_quantities::quantity::CTQuantity;
+use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::derived::{Meter, Second};
 use bigdecimal::BigDecimal;
 
-let length: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(10));
-let time: CTQuantity<BigDecimal, Second> = CTQuantity::new(BigDecimal::from(5));
+let length: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
+let time: Quantity<BigDecimal, Second> = Quantity::new_ct(BigDecimal::from(5));
 
 // 编译错误：不同量纲的物理量不能相加
 // Compile error: quantities with different dimensions cannot be added
@@ -207,10 +293,10 @@ let custom_unit = UnitBuilder::new(
 ```rust
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::derived::{Meter, Kilogram};
-use ospf_rust_quantities::unit::CTUnit;
+use ospf_rust_quantities::unit::{CTUnit, Unit};
 use bigdecimal::BigDecimal;
 
-let length = Quantity::new(BigDecimal::from(10), Meter::INSTANT.clone());
+let length: Quantity<BigDecimal, Unit> = Quantity::new(BigDecimal::from(10), Meter::INSTANT.clone());
 let mass_unit = Kilogram::INSTANT.clone();
 
 // 尝试转换到不同量纲的单位 / Try to convert to unit with different dimension
@@ -223,63 +309,33 @@ match length.to_unit(&mass_unit) {
 
 ## 性能基准测试 / Performance Benchmarks
 
-以下基准测试比较了编译时物理量（`CTQuantity`）和运行时物理量（`Quantity`）的性能。运行命令：
+以下基准测试比较了编译时物理量（`Quantity<V, CTUnit>`）和运行时物理量（`Quantity<V, Unit>`）的性能。运行命令：
 
-The following benchmarks compare the performance of compile-time (`CTQuantity`) and runtime (`Quantity`) physical quantities. Run with:
+The following benchmarks compare the performance of compile-time (`Quantity<V, CTUnit>`) and runtime (`Quantity<V, Unit>`) physical quantities. Run with:
 
 ```bash
 cargo bench --package ospf-rust-quantities --bench quantity_bench
 ```
 
-### 基本操作 / Basic Operations
+### 主要结论 / Key Findings
 
-| 操作 / Operation | CTQuantity | Quantity | 比率 / Ratio |
-|-----------------|------------|----------|--------------|
-| 创建 / Creation | 35.6 ns | 704.8 ns | CTQuantity **快 20 倍 / 20x faster** |
-| 加法（引用）/ Addition (reference) | 70.5 ns | 85.0 ns | CTQuantity **快 1.2 倍 / 1.2x faster** |
-| 加法（不同单位）/ Addition (different units) | - | 242.9 ns | - |
-| 减法（引用）/ Subtraction (reference) | 71.7 ns | 86.4 ns | CTQuantity **快 1.2 倍 / 1.2x faster** |
-| 标量乘法 / Scalar Multiplication | 70.3 ns | 81.2 ns | CTQuantity **快 1.2 倍 / 1.2x faster** |
-| 标量除法 / Scalar Division | 107.2 ns | 98.1 ns | Quantity **快 1.1 倍 / 1.1x faster** |
-| 取负 / Negation | 27.1 ns | 26.5 ns | 相当 / Comparable |
+1. **编译时物理量创建更快** - 无需克隆 `Unit` 对象，创建速度约快 20 倍
+2. **编译时物理量算术运算更快** - 无运行时量纲检查开销
+3. **运行时物理量单位转换更快** - 运行时实现优化更好
+4. **编译时物理量批量操作优势明显** - 特别是产生新量纲的操作
 
-### 物理量运算（产生新量纲）/ Quantity Operations (producing new dimensions)
+### 何时使用哪种模式 / When to Use Which Mode
 
-| 操作 / Operation | CTQuantity | Quantity | 比率 / Ratio |
-|-----------------|------------|----------|--------------|
-| 乘法 / Multiplication | 69.8 ns | 343.3 ns | CTQuantity **快 4.9 倍 / 4.9x faster** |
-| 除法 / Division | 104.7 ns | 403.5 ns | CTQuantity **快 3.9 倍 / 3.9x faster** |
-
-### 单位转换 / Unit Conversion
-
-| 操作 / Operation | CTQuantity | Quantity | 比率 / Ratio |
-|-----------------|------------|----------|--------------|
-| 米 → 千米 / Meter → Kilometer | 515.2 ns | 171.3 ns | Quantity **快 3 倍 / 3x faster** |
-| 千米 → 米 / Kilometer → Meter | 500.4 ns | 116.6 ns | Quantity **快 4.3 倍 / 4.3x faster** |
-
-### 批量操作（10,000 次迭代）/ Batch Operations (10,000 iterations)
-
-| 操作 / Operation | CTQuantity | Quantity | 比率 / Ratio |
-|-----------------|------------|----------|--------------|
-| 加法 / Addition | 683.9 µs | 955.3 µs | CTQuantity **快 1.4 倍 / 1.4x faster** |
-| 乘法 / Multiplication | 690.7 µs | 8.4 ms | CTQuantity **快 12 倍 / 12x faster** |
-| 单位转换 / Unit Conversion | 5.57 ms | 1.91 ms | Quantity **快 2.9 倍 / 2.9x faster** |
-
-### 复合运算 / Compound Operations
-
-| 操作 / Operation | CTQuantity | Quantity | 比率 / Ratio |
-|-----------------|------------|----------|--------------|
-| (a + b) * c / d | 343.3 ns | 916.7 ns | CTQuantity **快 2.7 倍 / 2.7x faster** |
-
-### 主要结论
-
-1. **CTQuantity 创建更快** - 无需克隆 `Unit` 对象，创建速度约快 20 倍
-2. **CTQuantity 算术运算更快** - 无运行时量纲检查开销
-3. **Quantity 单位转换更快** - 运行时实现优化更好
-4. **CTQuantity 批量操作优势明显** - 特别是产生新量纲的操作
+| 场景 / Scenario | 推荐模式 / Recommended Mode |
+|----------------|---------------------------|
+| 已知单位的性能关键代码 / Performance-critical code with known units | 编译时 / Compile-time (`Quantity<V, U: CTUnit>`) |
+| 运行时动态选择单位 / Dynamic unit selection at runtime | 运行时 / Runtime (`Quantity<V, Unit>`) |
+| 需要编译时量纲安全 / Need compile-time dimension safety | 编译时 / Compile-time |
+| 与用户提供的单位互操作 / Interoperability with user-provided units | 运行时 / Runtime |
+| 混合场景 / Mixed scenarios | 使用编译时，需要时转换为运行时 / Use compile-time and convert to runtime when needed |
 
 ## 许可证 / License
 
-根据 Apache License, Version 2.0 许可。有关详细信息，请参阅 [LICENSE](./../LICENSE)。
+基于 MIT 许可证发布。详情请参阅 [LICENSE](../LICENSE)。
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](./../LICENSE) for details.
+Licensed under the MIT License. See [LICENSE](../LICENSE) for details.

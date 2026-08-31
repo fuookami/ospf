@@ -7,9 +7,8 @@
 use super::energy::Joule;
 use super::time::Second;
 use crate::dimension::derived::Power;
-use crate::scale::{Scale, KILO, MEGA, MILLI};
+use crate::scale::{KILO, MEGA, MILLI};
 use crate::unit::{CTUnit, CTUnitDiv};
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 功率单位 / Power units

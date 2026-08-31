@@ -6,9 +6,7 @@
 
 use super::time::{Minute, Second};
 use super::volume::{CubicMeter, Liter};
-use crate::scale::Scale;
 use crate::unit::{CTUnit, CTUnitDiv};
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 流量单位 / Flow rate units

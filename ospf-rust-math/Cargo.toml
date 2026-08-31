@@ -2,12 +2,26 @@
 name = "ospf-rust-math"
 version = "0.1.0"
 edition = "2024"
+authors = ["fuookami <wfuookami@gmail.com>"]
+description = "Math utils for ospf-rust."
+license = "MIT"
+
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "../README.md"
 
 [dependencies]
-bigdecimal = "0.4"
-num-bigint = "0.4"
-num-rational = "0.4"
+bigdecimal = { version = "0.4", features = ["serde"] }
+dyn-clone = "1.0"
+num-bigint = { version = "0.4", features = ["serde"] }
+num-rational = { version = "0.4", features = ["serde"] }
 num-traits = "0.2"
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
+parser = []
 
 [dev-dependencies]
 criterion = "0.5"

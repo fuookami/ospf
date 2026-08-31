@@ -17,6 +17,8 @@ pub mod derived;
 pub use fundamental_quantity::{
     // 运行时类型 / Runtime types
     CTFundamentalDimension, CTFundamentalDiv, CTFundamentalMul,
+    // 自定义量纲类型 / Custom dimension types
+    CustomFundamentalDimension,
     // 基础量纲类型 / Base dimension types
     CTFundamentalPow, CTFundamentalQuantity, CTFundamentalQuantityTrait, CTFundamentalReciprocal, FundamentalDimension, FundamentalQuantity, FundamentalQuantityEnum, Info, Info0, Info1,
     // 编译时类型 / Compile-time types

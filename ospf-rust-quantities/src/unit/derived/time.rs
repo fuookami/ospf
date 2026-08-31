@@ -7,7 +7,6 @@
 use crate::dimension::derived::Time;
 use crate::scale::{Scale, MICRO, MILLI, NANO, SEXAGESIMAL};
 use crate::unit::CTUnit;
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 时间单位 / Time units
@@ -21,3 +20,6 @@ define_unit!(Minute, "minute", "min", Time, SEXAGESIMAL.clone());
 define_unit!(Hour, "hour", "h", Time, &*Minute::SCALE * &*SEXAGESIMAL);
 define_unit!(Day, "day", "d", Time, &*Hour::SCALE * &Scale::from_int(24));
 define_unit!(Week, "week", "w", Time, &*Day::SCALE * &Scale::from_int(7));
+
+// 年 / Year (365.25 days)
+define_unit!(Year, "year", "yr", Time, &*Day::SCALE * &Scale::from_f64(365.25));

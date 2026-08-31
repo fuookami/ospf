@@ -6,9 +6,7 @@
 
 use super::area::SquareMeter;
 use super::mass::{Gram, Kilogram};
-use crate::scale::Scale;
 use crate::unit::{CTUnit, CTUnitDiv};
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 表面密度单位 / Surface density units

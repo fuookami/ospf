@@ -230,12 +230,15 @@ impl CTDerivedQuantity for SolidAngle {
 /// - `$ct_expr`: 编译时量纲表达式 / Compile-time dimension expression
 ///
 /// # 示例 / Example
-/// ```ignore
+/// ```
+/// use ospf_rust_quantities::dimension::derived::{Length, Area, Volume};
+/// use ospf_rust_quantities::dimension::CTDerivedQuantity;
+///
 /// // 面积量纲: L²
-/// define_derived_dimension!(Area, "Area", CTDerivedMul<Length, Length>);
+/// assert_eq!(*Area::SYMBOL, "L^2");
 ///
 /// // 体积量纲: L³
-/// define_derived_dimension!(Volume, "Volume", CTDerivedPow<Length, P3>);
+/// assert_eq!(*Volume::SYMBOL, "L^3");
 /// ```
 macro_rules! define_derived_dimension {
     ($name:ident, $display_name:literal, $ct_expr:ty) => {

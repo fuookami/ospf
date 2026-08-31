@@ -6,9 +6,8 @@
 
 use super::electrical::{Ampere, Volt};
 use crate::dimension::derived::Resistance;
-use crate::scale::{Scale, KILO, MEGA};
+use crate::scale::{KILO, MEGA};
 use crate::unit::{CTUnit, CTUnitDiv};
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 电阻单位 / Resistance units

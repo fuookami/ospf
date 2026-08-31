@@ -1,0 +1,12 @@
+[package]
+name = "ospf-rust-example"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+
+[dependencies]
+ospf-rust-core = { path = "../ospf-rust-core", features = ["gurobi10"] }
+ospf-rust-framework = { path = "../ospf-rust-framework", features = ["gurobi10"] }
+ospf-rust-base = { path = "../ospf-rust-base" }
+ospf-rust-math = { path = "../ospf-rust-math" }
+ospf-rust-multiarray = { path = "../ospf-rust-multiarray" }

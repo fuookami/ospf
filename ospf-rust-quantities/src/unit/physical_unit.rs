@@ -21,6 +21,7 @@ use crate::dimension::derived_quantity::{
     DerivedQuantity, DerivedQuantityBuilder, SameDerivedDimension,
 };
 use crate::scale::Scale;
+use crate::unit::concept::UnitTrait;
 use bigdecimal::BigDecimal;
 use once_cell::sync::Lazy;
 use ospf_rust_math::operator::reciprocal::Reciprocal;
@@ -359,6 +360,32 @@ impl Reciprocal for &Unit {
 }
 
 // ============================================================================
+// UnitTrait 实现 / UnitTrait implementations
+// ============================================================================
+
+/// 为 Unit 实现 UnitTrait
+/// Implement UnitTrait for Unit
+impl UnitTrait for Unit {
+    type Dimension = DerivedQuantity;
+
+    fn symbol(&self) -> &str {
+        &self.inner.symbol
+    }
+
+    fn name(&self) -> &str {
+        &self.inner.name
+    }
+
+    fn dimension_symbol(&self) -> String {
+        self.inner.dimension.symbol().to_string()
+    }
+
+    fn scale_value(&self) -> BigDecimal {
+        self.inner.scale.value().clone()
+    }
+}
+
+// ============================================================================
 // 编译时单位 trait / Compile-time unit trait
 // ============================================================================
 
@@ -368,12 +395,19 @@ impl Reciprocal for &Unit {
 /// 所有编译时单位类型必须实现此 trait
 /// All compile-time unit types must implement this trait
 ///
+/// # 注意 / Note
+/// 实现 `CTUnit` 的类型必须同时实现 `UnitTrait`
+/// Types implementing `CTUnit` must also implement `UnitTrait`
+///
 /// # Example / 示例
 /// ```
 /// use ospf_rust_quantities::unit::physical_unit::CTUnit;
+/// use ospf_rust_quantities::unit::concept::UnitTrait;
 /// use ospf_rust_quantities::dimension::derived::Length;
+/// use ospf_rust_quantities::dimension::CTDerivedQuantity;
 /// use ospf_rust_quantities::scale::Scale;
 /// use once_cell::sync::Lazy;
+/// use bigdecimal::BigDecimal;
 ///
 /// struct Meter;
 ///
@@ -382,8 +416,16 @@ impl Reciprocal for &Unit {
 ///     const SYMBOL: &'static str = "m";
 ///     type Dimension = Length;
 /// }
+///
+/// impl UnitTrait for Meter {
+///     type Dimension = Length;
+///     fn symbol(&self) -> &str { "m" }
+///     fn name(&self) -> &str { "meter" }
+///     fn dimension_symbol(&self) -> String { Length::INSTANT.symbol().to_string() }
+///     fn scale_value(&self) -> BigDecimal { BigDecimal::from(1) }
+/// }
 /// ```
-pub trait CTUnit {
+pub trait CTUnit: UnitTrait {
     /// 单位名称 / Unit name
     const NAME: &'static str = "";
 
@@ -401,7 +443,7 @@ pub trait CTUnit {
         Unit::new(
             Self::NAME.to_string(),
             Self::SYMBOL.to_string(),
-            Self::Dimension::INSTANT.clone(),
+            <Self as CTUnit>::Dimension::INSTANT.clone(),
             Self::SCALE.clone(),
         )
     });
@@ -409,7 +451,7 @@ pub trait CTUnit {
     /// 检查是否与另一个单位类型量纲相等（运行时比较）
     /// Check if dimension equal to another unit type (runtime comparison)
     fn dim_eq<U: CTUnit>() -> bool {
-        Self::Dimension::INSTANT.symbol() == U::Dimension::INSTANT.symbol()
+        <Self as CTUnit>::Dimension::INSTANT.symbol() == <U as CTUnit>::Dimension::INSTANT.symbol()
     }
 
     /// 检查是否与另一个单位类型完全相等（量纲和比例尺，运行时比较）
@@ -453,7 +495,7 @@ pub trait CTUnit {
 /// ```
 pub fn ct_conversion_factor<From: CTUnit, To: CTUnit>() -> BigDecimal
 where
-    From::Dimension: SameDerivedDimension<To::Dimension>,
+    <From as CTUnit>::Dimension: SameDerivedDimension<<To as CTUnit>::Dimension>,
 {
     let from_binding = &From::SCALE;
     let from_scale = from_binding.value();
@@ -480,48 +522,164 @@ pub struct CTUnitMul<U1: CTUnit, U2: CTUnit> {
     _marker: PhantomData<(U1, U2)>,
 }
 
+impl<U1: CTUnit, U2: CTUnit> Default for CTUnitMul<U1, U2> {
+    fn default() -> Self {
+        Self { _marker: PhantomData }
+    }
+}
+
+impl<U1: CTUnit, U2: CTUnit> UnitTrait for CTUnitMul<U1, U2>
+where
+    CTDerivedMul<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension>: CTDerivedQuantity,
+{
+    type Dimension = CTDerivedMul<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension>;
+
+    fn symbol(&self) -> &'static str {
+        "" // 复合单位无简短符号 / Compound unit has no short symbol
+    }
+
+    fn name(&self) -> &'static str {
+        "" // 复合单位无简短名称 / Compound unit has no short name
+    }
+
+    fn dimension_symbol(&self) -> String {
+        <CTDerivedMul<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension> as CTDerivedQuantity>::INSTANT.symbol().to_string()
+    }
+
+    fn scale_value(&self) -> BigDecimal {
+        Self::SCALE.value().clone()
+    }
+}
+
 impl<U1: CTUnit, U2: CTUnit> CTUnit for CTUnitMul<U1, U2>
 where
-    CTDerivedMul<U1::Dimension, U2::Dimension>: CTDerivedQuantity,
+    CTDerivedMul<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension>: CTDerivedQuantity,
 {
     const SCALE: Lazy<Scale> = Lazy::new(|| &*U1::SCALE * &*U2::SCALE);
-    type Dimension = CTDerivedMul<U1::Dimension, U2::Dimension>;
+    type Dimension = CTDerivedMul<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension>;
 }
 
 pub struct CTUnitDiv<U1: CTUnit, U2: CTUnit> {
     _marker: PhantomData<(U1, U2)>,
 }
 
+impl<U1: CTUnit, U2: CTUnit> Default for CTUnitDiv<U1, U2> {
+    fn default() -> Self {
+        Self { _marker: PhantomData }
+    }
+}
+
+impl<U1: CTUnit, U2: CTUnit> UnitTrait for CTUnitDiv<U1, U2>
+where
+    CTDerivedDiv<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension>: CTDerivedQuantity,
+{
+    type Dimension = CTDerivedDiv<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension>;
+
+    fn symbol(&self) -> &'static str {
+        ""
+    }
+
+    fn name(&self) -> &'static str {
+        ""
+    }
+
+    fn dimension_symbol(&self) -> String {
+        <CTDerivedDiv<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension> as CTDerivedQuantity>::INSTANT.symbol().to_string()
+    }
+
+    fn scale_value(&self) -> BigDecimal {
+        Self::SCALE.value().clone()
+    }
+}
+
 impl<U1: CTUnit, U2: CTUnit> CTUnit for CTUnitDiv<U1, U2>
 where
-    CTDerivedDiv<U1::Dimension, U2::Dimension>: CTDerivedQuantity,
+    CTDerivedDiv<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension>: CTDerivedQuantity,
 {
     const SCALE: Lazy<Scale> = Lazy::new(|| &*U1::SCALE / &*U2::SCALE);
-    type Dimension = CTDerivedDiv<U1::Dimension, U2::Dimension>;
+    type Dimension = CTDerivedDiv<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension>;
 }
 
 pub struct CTUnitPow<U: CTUnit, N: Integer> {
     _marker: PhantomData<(U, N)>,
 }
 
+impl<U: CTUnit, N: Integer> Default for CTUnitPow<U, N> {
+    fn default() -> Self {
+        Self { _marker: PhantomData }
+    }
+}
+
+impl<U: CTUnit, N: Integer> UnitTrait for CTUnitPow<U, N>
+where
+    CTDerivedPow<<U as CTUnit>::Dimension, N>: CTDerivedQuantity,
+{
+    type Dimension = CTDerivedPow<<U as CTUnit>::Dimension, N>;
+
+    fn symbol(&self) -> &'static str {
+        ""
+    }
+
+    fn name(&self) -> &'static str {
+        ""
+    }
+
+    fn dimension_symbol(&self) -> String {
+        <CTDerivedPow<<U as CTUnit>::Dimension, N> as CTDerivedQuantity>::INSTANT.symbol().to_string()
+    }
+
+    fn scale_value(&self) -> BigDecimal {
+        Self::SCALE.value().clone()
+    }
+}
+
 impl<U: CTUnit, N: Integer> CTUnit for CTUnitPow<U, N>
 where
-    CTDerivedPow<U::Dimension, N>: CTDerivedQuantity,
+    CTDerivedPow<<U as CTUnit>::Dimension, N>: CTDerivedQuantity,
 {
     const SCALE: Lazy<Scale> = Lazy::new(|| U::SCALE.clone().pow(&BigDecimal::from(N::I64)));
-    type Dimension = CTDerivedPow<U::Dimension, N>;
+    type Dimension = CTDerivedPow<<U as CTUnit>::Dimension, N>;
 }
 
 pub struct CTUnitReciprocal<U: CTUnit> {
     _marker: PhantomData<U>,
 }
 
+impl<U: CTUnit> Default for CTUnitReciprocal<U> {
+    fn default() -> Self {
+        Self { _marker: PhantomData }
+    }
+}
+
+impl<U: CTUnit> UnitTrait for CTUnitReciprocal<U>
+where
+    CTDerivedReciprocal<<U as CTUnit>::Dimension>: CTDerivedQuantity,
+{
+    type Dimension = CTDerivedReciprocal<<U as CTUnit>::Dimension>;
+
+    fn symbol(&self) -> &'static str {
+        ""
+    }
+
+    fn name(&self) -> &'static str {
+        ""
+    }
+
+    fn dimension_symbol(&self) -> String {
+        <CTDerivedReciprocal<<U as CTUnit>::Dimension> as CTDerivedQuantity>::INSTANT.symbol().to_string()
+    }
+
+    fn scale_value(&self) -> BigDecimal {
+        Self::SCALE.value().clone()
+    }
+}
+
 impl<U: CTUnit> CTUnit for CTUnitReciprocal<U>
 where
-    CTDerivedReciprocal<U::Dimension>: CTDerivedQuantity,
+    CTDerivedReciprocal<<U as CTUnit>::Dimension>: CTDerivedQuantity,
 {
     const SCALE: Lazy<Scale> = Lazy::new(|| U::SCALE.clone().reciprocal());
-    type Dimension = CTDerivedReciprocal<U::Dimension>;
+    type Dimension = CTDerivedReciprocal<<U as CTUnit>::Dimension>;
 }
 
 // ============================================================================
@@ -538,6 +696,15 @@ mod tests {
     /// 测试用长度单位 / Test length unit
     struct TestMeter;
 
+    impl UnitTrait for TestMeter {
+        type Dimension = Length;
+
+        fn symbol(&self) -> &'static str { "m" }
+        fn name(&self) -> &'static str { "meter" }
+        fn dimension_symbol(&self) -> String { Length::INSTANT.symbol().to_string() }
+        fn scale_value(&self) -> BigDecimal { BigDecimal::from(1) }
+    }
+
     impl CTUnit for TestMeter {
         const NAME: &'static str = "meter";
         const SYMBOL: &'static str = "m";
@@ -548,6 +715,15 @@ mod tests {
     /// 测试用千米单位 / Test kilometer unit
     struct TestKilometer;
 
+    impl UnitTrait for TestKilometer {
+        type Dimension = Length;
+
+        fn symbol(&self) -> &'static str { "km" }
+        fn name(&self) -> &'static str { "kilometer" }
+        fn dimension_symbol(&self) -> String { Length::INSTANT.symbol().to_string() }
+        fn scale_value(&self) -> BigDecimal { BigDecimal::from(1000) }
+    }
+
     impl CTUnit for TestKilometer {
         const NAME: &'static str = "kilometer";
         const SYMBOL: &'static str = "km";
@@ -557,6 +733,15 @@ mod tests {
 
     /// 测试用秒单位 / Test second unit
     struct TestSecond;
+
+    impl UnitTrait for TestSecond {
+        type Dimension = Time;
+
+        fn symbol(&self) -> &'static str { "s" }
+        fn name(&self) -> &'static str { "second" }
+        fn dimension_symbol(&self) -> String { Time::INSTANT.symbol().to_string() }
+        fn scale_value(&self) -> BigDecimal { BigDecimal::from(1) }
+    }
 
     impl CTUnit for TestSecond {
         const NAME: &'static str = "second";

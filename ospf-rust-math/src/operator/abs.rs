@@ -11,6 +11,13 @@ use num_traits::Signed;
 ///
 /// 定义了取绝对值的操作。
 /// Defines the absolute value operation.
+///
+/// # 代数结构约束 / Algebraic Structure Constraints
+/// 对于实现 `Group` + `TotallyOrdered` 的类型，自动获得 `Abs` 实现。
+/// For types implementing `Group` + `TotallyOrdered`, `Abs` is automatically implemented.
+///
+/// 绝对值定义为：`|x| = x if x >= 0, else -x`
+/// Absolute value is defined as: `|x| = x if x >= 0, else -x`
 pub trait Abs {
     /// 绝对值运算的输出类型
     /// Output type of the absolute value operation
@@ -19,6 +26,43 @@ pub trait Abs {
     /// 计算绝对值
     /// Calculate absolute value
     fn abs(self) -> Self::Output;
+}
+
+// ============================================================================
+// AbsRef - 引用绝对值 / Reference Absolute Value
+// ============================================================================
+
+/// AbsRef - 支持引用绝对值的类型
+/// AbsRef - Types that support reference absolute value
+///
+/// 表示 `&T -> T` 绝对值操作。
+/// Represents the `&T -> T` absolute value operation.
+///
+/// # 示例 / Examples
+/// ```
+/// use ospf_rust_math::operator::AbsRef;
+///
+/// fn abs_ref<T: AbsRef>(a: &T) -> T {
+///     T::abs_ref(a)
+/// }
+///
+/// let result = abs_ref(&-3i32);
+/// assert_eq!(result, 3);
+/// ```
+pub trait AbsRef: Sized {
+    /// 引用绝对值 / Absolute value by reference
+    fn abs_ref(a: &Self) -> Self;
+}
+
+/// 为满足约束的类型自动实现 AbsRef
+/// Auto-implement AbsRef for types satisfying constraints
+impl<T> AbsRef for T
+where
+    for<'a> &'a T: Abs<Output = T>,
+{
+    fn abs_ref(a: &Self) -> Self {
+        Abs::abs(a)
+    }
 }
 
 // ============================================================================

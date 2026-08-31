@@ -1,27 +1,36 @@
-//! # MapIndex - 映射索引实现
+//! 映射索引模块
+//! Map index module
 //!
-//! ## Overview / 概述
+//! 本模块提供了多维数组的映射索引机制，支持：
+//! This module provides map indexing mechanism for multi-dimensional arrays, supporting:
 //!
-//! This module provides the `MapIndex` type for array dimension mapping and reordering.
-//! Map indices allow for:
-//! - Dimension reordering (transposing) / 维度重排（转置）
-//! - Dimension projection (selecting specific dimensions) / 维度投影（选择特定维度）
-//! - Combined slicing and reordering / 组合切片和重排
+//! - 虚拟索引：与 `DummyIndex` 相同的索引功能
+//!   Dummy index: same indexing functionality as `DummyIndex`
+//! - 映射索引：使用占位符表示映射维度
+//!   Map index: using placeholders to represent mapping dimensions
 //!
-//! 本模块提供 `MapIndex` 类型用于数组维度映射和重排。
-//! 映射索引允许：
-//! - 维度重排（转置）
-//! - 维度投影（选择特定维度）
-//! - 组合切片和重排
+//! ## 主要类型 / Main Types
 //!
-//! ## Key Types / 主要类型
+//! - `PlaceHolder`: 占位符结构体，表示映射维度的位置
+//!   Placeholder struct, representing the position of mapping dimensions
+//! - `MapIndex`: 映射索引枚举，表示虚拟索引或映射
+//!   Map index enum, representing dummy index or map
 //!
-//! - `PlaceHolder` - Placeholder for dimension mapping / 维度映射的占位符
-//! - `MapIndex` - The main map index type / 主要映射索引类型
+//! ## 占位符常量 / Placeholder Constants
 //!
-//! ## Constants / 常量
+//! 模块提供了 `_0` 到 `_20` 共 21 个预定义占位符常量。
+//! The module provides 21 predefined placeholder constants from `_0` to `_20`.
 //!
-//! - `_0` to `_20` - Predefined placeholders for dimensions 0-20 / 预定义的 0-20 维度占位符
+//! ## 示例 / Examples
+//!
+//! ```rust
+//! use ospf_rust_multiarray::map_index::{MapIndex, _0, _1};
+//!
+//! // 使用占位符创建映射索引
+//! // Create map index using placeholders
+//! let idx = MapIndex::Map(_0);  // 第一个映射维度
+//! let idx2 = MapIndex::Map(_1);  // 第二个映射维度
+//! ```
 
 use std::alloc::Allocator;
 use std::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
@@ -29,120 +38,213 @@ use std::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToIncl
 use super::dummy_index::DummyIndex;
 use super::index_value::TryIntoIndexValue;
 
-/// # PlaceHolder
+/// 占位符结构体
+/// Placeholder struct
 ///
-/// A placeholder representing a dimension index in mapping operations.
-/// Placeholders are used to specify which dimensions to keep and their order.
+/// 表示映射维度的位置索引。在多维数组的映射操作中，
+/// 占位符用于标记哪些维度需要被映射。
+/// Represents the position index of a mapping dimension. In multi-dimensional
+/// array mapping operations, placeholders mark which dimensions need to be mapped.
 ///
-/// 在映射操作中表示维度索引的占位符。
-/// 占位符用于指定要保留的维度及其顺序。
-///
-/// ## Fields / 字段
-///
-/// - `index` - The dimension index / 维度索引
-///
-/// ## Example / 示例
+/// ## 示例 / Examples
 ///
 /// ```rust
-/// use ospf_rust_multiarray::*;
+/// use ospf_rust_multiarray::map_index::{PlaceHolder, _0, _1};
 ///
-/// // Using predefined constants / 使用预定义常量
-/// let map = [_0, _2, _1]; // Reorder dimensions: 0, 2, 1
+/// // _0 表示第一个映射维度
+/// // _0 represents the first mapping dimension
+/// let placeholder = _0;
+/// assert_eq!(placeholder.index, 0);
 ///
-/// // Creating custom placeholder / 创建自定义占位符
-/// let custom = PlaceHolder { index: 3 };
+/// // _1 表示第二个映射维度
+/// // _1 represents the second mapping dimension
+/// let placeholder2 = _1;
+/// assert_eq!(placeholder2.index, 1);
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlaceHolder {
-    /// The dimension index / 维度索引
+    /// 映射维度的位置索引（从 0 开始）
+    /// Position index of the mapping dimension (0-based)
     pub index: usize,
 }
 
-/// Predefined placeholders for dimensions 0-20.
-/// 预定义的 0-20 维度占位符。
+/// 占位符常量：第 0 个映射维度
+/// Placeholder constant: 0th mapping dimension
 pub const _0: PlaceHolder = PlaceHolder { index: 0 };
+
+/// 占位符常量：第 1 个映射维度
+/// Placeholder constant: 1st mapping dimension
 pub const _1: PlaceHolder = PlaceHolder { index: 1 };
+
+/// 占位符常量：第 2 个映射维度
+/// Placeholder constant: 2nd mapping dimension
 pub const _2: PlaceHolder = PlaceHolder { index: 2 };
+
+/// 占位符常量：第 3 个映射维度
+/// Placeholder constant: 3rd mapping dimension
 pub const _3: PlaceHolder = PlaceHolder { index: 3 };
+
+/// 占位符常量：第 4 个映射维度
+/// Placeholder constant: 4th mapping dimension
 pub const _4: PlaceHolder = PlaceHolder { index: 4 };
+
+/// 占位符常量：第 5 个映射维度
+/// Placeholder constant: 5th mapping dimension
 pub const _5: PlaceHolder = PlaceHolder { index: 5 };
+
+/// 占位符常量：第 6 个映射维度
+/// Placeholder constant: 6th mapping dimension
 pub const _6: PlaceHolder = PlaceHolder { index: 6 };
+
+/// 占位符常量：第 7 个映射维度
+/// Placeholder constant: 7th mapping dimension
 pub const _7: PlaceHolder = PlaceHolder { index: 7 };
+
+/// 占位符常量：第 8 个映射维度
+/// Placeholder constant: 8th mapping dimension
 pub const _8: PlaceHolder = PlaceHolder { index: 8 };
+
+/// 占位符常量：第 9 个映射维度
+/// Placeholder constant: 9th mapping dimension
 pub const _9: PlaceHolder = PlaceHolder { index: 9 };
+
+/// 占位符常量：第 10 个映射维度
+/// Placeholder constant: 10th mapping dimension
 pub const _10: PlaceHolder = PlaceHolder { index: 10 };
+
+/// 占位符常量：第 11 个映射维度
+/// Placeholder constant: 11th mapping dimension
 pub const _11: PlaceHolder = PlaceHolder { index: 11 };
+
+/// 占位符常量：第 12 个映射维度
+/// Placeholder constant: 12th mapping dimension
 pub const _12: PlaceHolder = PlaceHolder { index: 12 };
+
+/// 占位符常量：第 13 个映射维度
+/// Placeholder constant: 13th mapping dimension
 pub const _13: PlaceHolder = PlaceHolder { index: 13 };
+
+/// 占位符常量：第 14 个映射维度
+/// Placeholder constant: 14th mapping dimension
 pub const _14: PlaceHolder = PlaceHolder { index: 14 };
+
+/// 占位符常量：第 15 个映射维度
+/// Placeholder constant: 15th mapping dimension
 pub const _15: PlaceHolder = PlaceHolder { index: 15 };
+
+/// 占位符常量：第 16 个映射维度
+/// Placeholder constant: 16th mapping dimension
 pub const _16: PlaceHolder = PlaceHolder { index: 16 };
+
+/// 占位符常量：第 17 个映射维度
+/// Placeholder constant: 17th mapping dimension
 pub const _17: PlaceHolder = PlaceHolder { index: 17 };
+
+/// 占位符常量：第 18 个映射维度
+/// Placeholder constant: 18th mapping dimension
 pub const _18: PlaceHolder = PlaceHolder { index: 18 };
+
+/// 占位符常量：第 19 个映射维度
+/// Placeholder constant: 19th mapping dimension
 pub const _19: PlaceHolder = PlaceHolder { index: 19 };
+
+/// 占位符常量：第 20 个映射维度
+/// Placeholder constant: 20th mapping dimension
 pub const _20: PlaceHolder = PlaceHolder { index: 20 };
 
-/// # MapIndex
+/// 映射索引
+/// Map index
 ///
-/// A type representing a single dimension's mapping specification.
-/// It can be either:
-/// - `Dummy(DummyIndex)` - A slicing operation (range, index, or index array) / 切片操作（范围、索引或索引数组）
-/// - `Map(PlaceHolder)` - A dimension mapping (keep and possibly reorder) / 维度映射（保留并可能重排）
+/// 表示多维数组的映射索引，支持两种形式：
+/// Represents map index for multi-dimensional arrays, supporting two forms:
 ///
-/// 表示单个维度映射规范的类型。
-/// 它可以是：
-/// - `Dummy(DummyIndex)` - 切片操作（范围、索引或索引数组）
-/// - `Map(PlaceHolder)` - 维度映射（保留并可能重排）
+/// - `Dummy`: 虚拟索引，与 `DummyIndex` 相同
+///   Dummy index, same as `DummyIndex`
+/// - `Map`: 映射索引，使用占位符表示映射维度
+///   Map index, using placeholder to represent mapping dimension
 ///
-/// ## Example / 示例
+/// ## 示例 / Examples
 ///
 /// ```rust
-/// use ospf_rust_multiarray::*;
+/// use ospf_rust_multiarray::map_index::{MapIndex, _0, _1};
+/// use ospf_rust_multiarray::dummy_index::DummyIndex;
 ///
-/// // Keep dimension 0 / 保留维度 0
-/// let map = MapIndex::Map(_0);
+/// // 虚拟索引
+/// // Dummy index
+/// let idx = MapIndex::Dummy(DummyIndex::Index(5));
 ///
-/// // Slice dimension with range / 使用范围切片维度
-/// let slice = MapIndex::Dummy(DummyIndex::Range(Box::new(1..5)));
+/// // 映射索引
+/// // Map index
+/// let map = MapIndex::Map(_0);  // 第一个映射维度
 /// ```
 #[derive(Debug, Clone)]
 pub enum MapIndex {
-    /// Slicing operation (range, index, or index array) / 切片操作（范围、索引或索引数组）
+    /// 虚拟索引
+    /// Dummy index
     Dummy(DummyIndex),
-    /// Dimension mapping (keep and possibly reorder) / 维度映射（保留并可能重排）
+
+    /// 映射索引
+    /// Map index
     Map(PlaceHolder),
 }
 
+/// MapIndex 的相等性比较实现
+/// Equality comparison implementation for MapIndex
+///
+/// 只有相同类型的索引才能比较相等。
+/// Only indices of the same type can be compared for equality.
+impl PartialEq for MapIndex {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (MapIndex::Dummy(a), MapIndex::Dummy(b)) => a == b,
+            (MapIndex::Map(a), MapIndex::Map(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+/// 从 `isize` 创建 `MapIndex`
+/// Create `MapIndex` from `isize`
 impl From<isize> for MapIndex {
     fn from(value: isize) -> Self {
         Self::Dummy(DummyIndex::from(value))
     }
 }
 
+/// 从 `&isize` 创建 `MapIndex`
+/// Create `MapIndex` from `&isize`
 impl From<&'_ isize> for MapIndex {
     fn from(value: &'_ isize) -> Self {
         Self::Dummy(DummyIndex::from(value))
     }
 }
 
+/// 从 `usize` 创建 `MapIndex`
+/// Create `MapIndex` from `usize`
 impl From<usize> for MapIndex {
     fn from(value: usize) -> Self {
         Self::Dummy(DummyIndex::from(value))
     }
 }
 
+/// 从 `&usize` 创建 `MapIndex`
+/// Create `MapIndex` from `&usize`
 impl From<&'_ usize> for MapIndex {
     fn from(value: &'_ usize) -> Self {
         Self::Dummy(DummyIndex::from(value))
     }
 }
 
+/// 从 `DummyIndex` 创建 `MapIndex`
+/// Create `MapIndex` from `DummyIndex`
 impl From<DummyIndex> for MapIndex {
     fn from(value: DummyIndex) -> Self {
         Self::Dummy(value)
     }
 }
 
+/// 尝试从 `Range<T>` 创建 `MapIndex`
+/// Try to create `MapIndex` from `Range<T>`
 impl<T> TryFrom<Range<T>> for MapIndex
 where
     T: TryIntoIndexValue,
@@ -154,6 +256,8 @@ where
     }
 }
 
+/// 尝试从 `&Range<T>` 创建 `MapIndex`
+/// Try to create `MapIndex` from `&Range<T>`
 impl<'a, T> TryFrom<&'a Range<T>> for MapIndex
 where
     &'a T: TryIntoIndexValue,
@@ -165,6 +269,8 @@ where
     }
 }
 
+/// 尝试从 `RangeFrom<T>` 创建 `MapIndex`
+/// Try to create `MapIndex` from `RangeFrom<T>`
 impl<T> TryFrom<RangeFrom<T>> for MapIndex
 where
     T: TryIntoIndexValue,
@@ -176,6 +282,8 @@ where
     }
 }
 
+/// 尝试从 `&RangeFrom<T>` 创建 `MapIndex`
+/// Try to create `MapIndex` from `&RangeFrom<T>`
 impl<'a, T> TryFrom<&'a RangeFrom<T>> for MapIndex
 where
     &'a T: TryIntoIndexValue,
@@ -187,6 +295,8 @@ where
     }
 }
 
+/// 尝试从 `RangeInclusive<T>` 创建 `MapIndex`
+/// Try to create `MapIndex` from `RangeInclusive<T>`
 impl<T> TryFrom<RangeInclusive<T>> for MapIndex
 where
     T: TryIntoIndexValue,
@@ -198,6 +308,8 @@ where
     }
 }
 
+/// 尝试从 `&RangeInclusive<T>` 创建 `MapIndex`
+/// Try to create `MapIndex` from `&RangeInclusive<T>`
 impl<'a, T> TryFrom<&'a RangeInclusive<T>> for MapIndex
 where
     &'a T: TryIntoIndexValue,
@@ -209,6 +321,8 @@ where
     }
 }
 
+/// 尝试从 `RangeTo<T>` 创建 `MapIndex`
+/// Try to create `MapIndex` from `RangeTo<T>`
 impl<T> TryFrom<RangeTo<T>> for MapIndex
 where
     T: TryIntoIndexValue,
@@ -220,6 +334,8 @@ where
     }
 }
 
+/// 尝试从 `&RangeTo<T>` 创建 `MapIndex`
+/// Try to create `MapIndex` from `&RangeTo<T>`
 impl<'a, T> TryFrom<&'a RangeTo<T>> for MapIndex
 where
     &'a T: TryIntoIndexValue,
@@ -231,6 +347,8 @@ where
     }
 }
 
+/// 尝试从 `RangeToInclusive<T>` 创建 `MapIndex`
+/// Try to create `MapIndex` from `RangeToInclusive<T>`
 impl<T> TryFrom<RangeToInclusive<T>> for MapIndex
 where
     T: TryIntoIndexValue,
@@ -242,6 +360,8 @@ where
     }
 }
 
+/// 尝试从 `&RangeToInclusive<T>` 创建 `MapIndex`
+/// Try to create `MapIndex` from `&RangeToInclusive<T>`
 impl<'a, T> TryFrom<&'a RangeToInclusive<T>> for MapIndex
 where
     &'a T: TryIntoIndexValue,
@@ -253,18 +373,24 @@ where
     }
 }
 
+/// 从 `RangeFull` 创建 `MapIndex`
+/// Create `MapIndex` from `RangeFull`
 impl From<RangeFull> for MapIndex {
     fn from(value: RangeFull) -> Self {
         Self::Dummy(DummyIndex::from(value))
     }
 }
 
+/// 从 `&RangeFull` 创建 `MapIndex`
+/// Create `MapIndex` from `&RangeFull`
 impl<'a> From<&'a RangeFull> for MapIndex {
     fn from(value: &'a RangeFull) -> Self {
         Self::Dummy(DummyIndex::from(value))
     }
 }
 
+/// 尝试从切片创建 `MapIndex`
+/// Try to create `MapIndex` from a slice
 impl<'a, T> TryFrom<&'a [T]> for MapIndex
 where
     &'a T: TryIntoIndexValue,
@@ -276,6 +402,8 @@ where
     }
 }
 
+/// 尝试从 `Vec<T>` 创建 `MapIndex`
+/// Try to create `MapIndex` from `Vec<T>`
 impl<'a, T, A: Allocator> TryFrom<&'a Vec<T, A>> for MapIndex
 where
     &'a T: TryIntoIndexValue,
@@ -287,89 +415,143 @@ where
     }
 }
 
+/// 从 `PlaceHolder` 创建 `MapIndex`
+/// Create `MapIndex` from `PlaceHolder`
 impl From<PlaceHolder> for MapIndex {
     fn from(holder: PlaceHolder) -> Self {
         Self::Map(holder)
     }
 }
 
+/// 从 `&PlaceHolder` 创建 `MapIndex`
+/// Create `MapIndex` from `&PlaceHolder`
 impl<'a> From<&'a PlaceHolder> for MapIndex {
     fn from(holder: &'a PlaceHolder) -> Self {
         Self::Map(*holder)
     }
 }
 
-/// # map_index! Macro
+/// 映射索引创建宏
+/// Map index creation macro
 ///
-/// A macro for creating MapIndex from various expressions.
+/// 用于便捷地创建 `MapIndex` 实例。
+/// Used to conveniently create `MapIndex` instances.
 ///
-/// 用于从各种表达式创建 MapIndex 的宏。
+/// ## 支持的语法 / Supported Syntax
+///
+/// - 单个索引：`map_index!(5)`, `map_index!(-1)`
+///   Single index: `map_index!(5)`, `map_index!(-1)`
+/// - 范围索引：`map_index!(0..5)`, `map_index!(1..=3)`, `map_index!(..)`
+///   Range index: `map_index!(0..5)`, `map_index!(1..=3)`, `map_index!(..)`
+/// - 索引数组：`map_index!([0, 2, 4])`
+///   Index array: `map_index!([0, 2, 4])`
+/// - 表达式：`map_index!(expr)`
+///   Expression: `map_index!(expr)`
+///
+/// ## 返回值 / Returns
+///
+/// 返回 `Result<MapIndex, _>`，需要处理可能的错误。
+/// Returns `Result<MapIndex, _>`, requires handling potential errors.
 #[macro_export]
 macro_rules! map_index {
+    // 负数单个索引
+    // Negative single index
     (-$x:literal) => {
         MapIndex::try_from(dummy_index_value!{ -$x })
     };
+    // 正数单个索引
+    // Positive single index
     ($x:literal) => {
         MapIndex::try_from(dummy_index_value!{ $x })
     };
+    // 范围：start..-end
     ($start:literal..-$end:literal) => {
         MapIndex::try_from(dummy_index_value!{ $start }..dummy_index_value!{ -$end })
     };
+    // 范围：start..end
     ($start:literal..$end:literal) => {
         MapIndex::try_from(dummy_index_value!{ $start }..dummy_index_value!{ $end })
     };
+    // 范围：start..
     ($start:literal..) => {
         MapIndex::try_from(dummy_index_value!{ $start }..)
     };
+    // 范围：..end
     (..$end:literal) => {
         MapIndex::try_from(..dummy_index_value!{ $end })
     };
+    // 范围：..-end
     (..-$end:literal) => {
         MapIndex::try_from(..dummy_index_value!{ -$end })
     };
+    // 范围：start..=-end
     ($start:literal..=-$end:literal) => {
         MapIndex::try_from(dummy_index_value!{ $start }..=dummy_index_value!{ -$end })
     };
+    // 范围：start..=end
     ($start:literal..=$end:literal) => {
         MapIndex::try_from(dummy_index_value!{ $start }..=dummy_index_value!{ $end })
     };
+    // 范围：..=-end
     (..=-$end:literal) => {
         MapIndex::try_from(..=dummy_index_value!{ -$end })
     };
+    // 范围：..=end
     (..=$end:literal) => {
         MapIndex::try_from(..=dummy_index_value!{ $end })
     };
+    // 全范围
+    // Full range
     (..) => {
         MapIndex::try_from(..)
     };
+    // 索引数组
+    // Index array
     [$($x:literal),*] => {
         MapIndex::try_from(&[$(dummy_index_value!{ $x }),*])
     };
+    // 表达式
+    // Expression
     ($x:expr) => {
         MapIndex::try_from(&$x)
     };
 }
 
-/// # map! Macro
+/// 映射索引数组创建宏
+/// Map index array creation macro
 ///
-/// A macro for creating fixed-size map index arrays.
+/// 创建映射索引数组，错误转换为 `InvalidDummyIndexError`。
+/// Creates map index array, errors converted to `InvalidDummyIndexError`.
 ///
-/// 用于创建固定大小映射索引数组的宏。
+/// ## 示例 / Examples
+///
+/// ```ignore
+/// use ospf_rust_multiarray::map_index::{map, _0, _1};
+/// use ospf_rust_multiarray::map_index::MapIndex;
+///
+/// // 创建索引数组 / Create index array
+/// let indices: [MapIndex; 3] = map![_0, 1..5, _1];
+/// assert_eq!(indices.len(), 3);
+/// ```
 #[macro_export]
 macro_rules! map {
+    // 创建索引数组
+    // Create index array
     [$($x:expr),*] => {
         [$(map_index!{ $x }.map_err(|e| error! { InvalidDummyIndexError {} })?),*]
     };
+    // 创建映射视图
+    // Create map view
     ($a:ident[$($x:expr),*]) => {
         $a.map_view(map![$($x),*])
     };
 }
 
-/// # map_with_err! Macro
+/// 带详细错误的映射索引数组创建宏
+/// Map index array creation macro with detailed error
 ///
-/// A macro for creating fixed-size map index arrays with custom error handling.
-///
-/// 用于创建具有自定义错误处理的固定大小映射索引数组的宏。
+/// 与 `map!` 类似，但保留原始错误信息。
+/// Similar to `map!`, but preserves original error information.
 #[macro_export]
 macro_rules! map_with_err {
     [$($x:expr),*] => {
@@ -380,11 +562,22 @@ macro_rules! map_with_err {
     }
 }
 
-/// # map_expect! Macro
+/// 期望成功的映射索引数组创建宏
+/// Expect-success map index array creation macro
 ///
-/// A macro for creating fixed-size map index arrays, panicking on error.
+/// 创建映射索引数组，如果失败则 panic。
+/// Creates map index array, panics on failure.
 ///
-/// 用于创建固定大小映射索引数组的宏，出错时 panic。
+/// ## 示例 / Examples
+///
+/// ```ignore
+/// use ospf_rust_multiarray::map_index::{map_expect, _0, _1};
+/// use ospf_rust_multiarray::map_index::MapIndex;
+///
+/// // 创建索引数组 / Create index array
+/// let indices: [MapIndex; 3] = map_expect![_0, 1..5, _1];
+/// assert_eq!(indices.len(), 3);
+/// ```
 #[macro_export]
 macro_rules! map_expect {
     ([$($x:expr),*], $msg:expr) => {
@@ -401,11 +594,11 @@ macro_rules! map_expect {
     }
 }
 
-/// # dyn_map! Macro
+/// 动态映射索引数组创建宏
+/// Dynamic map index array creation macro
 ///
-/// A macro for creating dynamic (Vec-based) map index arrays.
-///
-/// 用于创建动态（基于 Vec）映射索引数组的宏。
+/// 创建 `Vec<MapIndex>` 而非数组。
+/// Creates `Vec<MapIndex>` instead of an array.
 #[macro_export]
 macro_rules! dyn_map {
     [$($x:expr),*] => {
@@ -416,11 +609,8 @@ macro_rules! dyn_map {
     };
 }
 
-/// # dyn_map_with_err! Macro
-///
-/// A macro for creating dynamic map index arrays with custom error handling.
-///
-/// 用于创建具有自定义错误处理的动态映射索引数组的宏。
+/// 带详细错误的动态映射索引数组创建宏
+/// Dynamic map index array creation macro with detailed error
 #[macro_export]
 macro_rules! dyn_map_with_err {
     [$($x:expr),*] => {
@@ -431,11 +621,8 @@ macro_rules! dyn_map_with_err {
     };
 }
 
-/// # dyn_map_expect! Macro
-///
-/// A macro for creating dynamic map index arrays, panicking on error.
-///
-/// 用于创建动态映射索引数组的宏，出错时 panic。
+/// 期望成功的动态映射索引数组创建宏
+/// Expect-success dynamic map index array creation macro
 #[macro_export]
 macro_rules! dyn_map_expect {
     ([$($x:expr),*], $msg:expr) => {

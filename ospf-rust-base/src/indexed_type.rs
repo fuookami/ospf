@@ -147,7 +147,7 @@ impl IndexGenerator {
     pub fn instance<T: 'static>() -> Arc<Mutex<IndexGeneratorImpl>> {
         let generator = Self::get_or_init();
         let mut guard = generator.lock().unwrap();
-        
+
         guard
             .inner
             .entry(TypeId::of::<T>())
@@ -250,8 +250,14 @@ mod tests {
 
     #[test]
     fn test_auto_indexed_type() {
-        let instance1 = indexed!(TestAutoIndexed { name: "test1", value: 1 });
-        let instance2 = indexed!(TestAutoIndexed { name: "test2", value: 2 });
+        let instance1 = indexed!(TestAutoIndexed {
+            name: "test1",
+            value: 1
+        });
+        let instance2 = indexed!(TestAutoIndexed {
+            name: "test2",
+            value: 2
+        });
 
         assert_eq!(instance1.index(), 0);
         assert_eq!(instance2.index(), 1);
@@ -271,8 +277,14 @@ mod tests {
 
     #[test]
     fn test_manual_indexed_type() {
-        let instance1 = indexed!(TestManualIndexed { name: "test1", value: 1 });
-        let instance2 = indexed!(TestManualIndexed { name: "test2", value: 2 });
+        let instance1 = indexed!(TestManualIndexed {
+            name: "test1",
+            value: 1
+        });
+        let instance2 = indexed!(TestManualIndexed {
+            name: "test2",
+            value: 2
+        });
 
         assert!(!instance1.indexed());
         assert!(!instance2.indexed());
@@ -300,15 +312,21 @@ mod tests {
 
     #[test]
     fn test_flush() {
-        let instance1 = indexed!(TestIndexFlush { name: "test1", value: 1 });
+        let instance1 = indexed!(TestIndexFlush {
+            name: "test1",
+            value: 1
+        });
         assert_eq!(instance1.index(), 0);
 
         TestIndexFlush::flush();
-        let instance2 = indexed!(TestIndexFlush { name: "test2", value: 2 });
+        let instance2 = indexed!(TestIndexFlush {
+            name: "test2",
+            value: 2
+        });
         assert_eq!(instance2.index(), 0);
     }
 }
 
 pub use crate::auto_indexed_type;
-pub use crate::manual_indexed_type;
 pub use crate::indexed;
+pub use crate::manual_indexed_type;

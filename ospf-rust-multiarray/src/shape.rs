@@ -1,30 +1,23 @@
-//! # Shape - 运行时形状类型定义
+//! 形状定义模块
+//! Shape definition module
 //!
-//! ## Overview / 概述
+//! 本模块提供多维数组的形状抽象：
+//! This module provides shape abstractions for multi-dimensional arrays:
 //!
-//! This module provides the `Shape` and `DynShape` types for representing
-//! multi-dimensional array shapes at runtime. It defines the `AbstractShape`
-//! and `AbstractRTShape` traits that abstract over shape operations.
-//!
-//! 本模块提供 `Shape` 和 `DynShape` 类型，用于表示运行时多维数组形状。
-//! 它定义了 `AbstractShape` 和 `AbstractRTShape` 特征，抽象形状操作。
-//!
-//! ## Key Types / 主要类型
-//!
-//! - `Shape<const D: usize>` - Compile-time fixed dimension shape / 编译时固定维度形状
-//! - `DynShape` - Runtime dynamic dimension shape / 运行时动态维度形状
-//!
-//! ## Key Traits / 主要特征
-//!
-//! - `AbstractShape` - Abstract shape operations / 抽象形状操作
-//! - `AbstractRTShape` - Runtime shape operations with storage order / 带存储顺序的运行时形状操作
+//! - `AbstractShape`: 形状 trait，定义维度、索引计算等核心操作
+//!   Shape trait defining core operations like dimension, index calculation
+//! - `Shape<N, SO>`: 编译期形状，维度 N 在编译时确定
+//!   Compile-time shape with dimension N determined at compile time
+//! - `DynShape<C, SO>`: 运行期形状，维度在运行时确定
+//!   Runtime shape with dimension determined at runtime
 
 use super::concept::*;
 use super::dummy_index::{DummyIndex, DummyIndexIterator, IteratorVector};
 use super::error::{DimensionMismatchingError, IndexCalculationError, OutOfShapeError};
 use super::map_index::MapIndex;
-use ospf_rust_base::Indices;
+use cc_traits::Len;
 use ospf_rust_base::error::*;
+use ospf_rust_base::Indices;
 use std::fmt::{Debug, Display, Formatter};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
@@ -33,159 +26,107 @@ use std::ops::{Index, IndexMut, RangeFull};
 use std::result::Result;
 use std::sync::OnceLock;
 
-/// # AbstractShape Trait
+/// 抽象形状 trait
+/// Abstract shape trait
 ///
-/// A trait that defines the abstract interface for multi-dimensional array shapes.
-/// It provides methods for converting between multi-dimensional indices (vectors)
-/// and linear indices, as well as accessing shape properties.
-///
-/// 定义多维数组形状抽象接口的特征。
-/// 它提供了在多维索引（向量）和线性索引之间转换的方法，以及访问形状属性的方法。
-///
-/// ## Associated Types / 关联类型
-///
-/// - `VectorType` - The type used for multi-dimensional indices / 用于多维索引的类型
-/// - `DummyVectorType` - The type used for dummy (slicing) indices / 用于虚拟（切片）索引的类型
-/// - `MapVectorType` - The type used for map (reordering) indices / 用于映射（重排）索引的类型
-/// - `ShapeVectorType` - The type used for shape vectors / 用于形状向量的类型
-///
-/// ## Implementors / 实现者
-///
-/// - `Shape<const D: usize>` - Fixed dimension shape / 固定维度形状
-/// - `DynShape` - Dynamic dimension shape / 动态维度形状
+/// 定义多维数组形状的核心接口。
+/// Defines the core interface for multi-dimensional array shapes.
 pub trait AbstractShape {
-    /// The compile-time dimension of this shape.
-    /// For dynamic shapes, this is `DYN_DIMENSION`.
-    ///
-    /// 此形状的编译时维度。
-    /// 对于动态形状，这是 `DYN_DIMENSION`。
+    /// 维度常量
+    /// Dimension constant
     const DIMENSION: usize;
 
-    /// The type used for multi-dimensional indices.
-    ///
-    /// 用于多维索引的类型。
+    /// 存储顺序类型
+    /// Storage order type
+    type StorageOrder: StorageOrderTrait;
+
+    /// 向量类型
+    /// Vector type
     type VectorType: Vector + Clone;
 
-    /// The type used for dummy (slicing) indices.
-    ///
-    /// 用于虚拟（切片）索引的类型。
+    /// 虚拟向量类型
+    /// Dummy vector type
     type DummyVectorType: DummyVector + Clone;
 
-    /// The type used for map (reordering) indices.
-    ///
-    /// 用于映射（重排）索引的类型。
+    /// 映射向量类型
+    /// Map vector type
     type MapVectorType: MapVector + Clone;
 
-    /// The type used for shape vectors.
-    ///
-    /// 用于形状向量的类型。
+    /// 形状向量类型
+    /// Shape vector type
     type ShapeVectorType: ShapeVector;
 
-    /// The type used for iterator vectors.
-    /// Used for storing DummyIndexIterator for each dimension.
-    ///
-    /// 用于迭代器向量的类型。
-    /// 用于存储每个维度的 DummyIndexIterator。
+    /// 迭代器向量类型
+    /// Iterator vector type
     type IteratorVectorType: IteratorVector + Clone;
 
-    /// Create a zero-initialized vector.
-    ///
-    /// 创建零初始化的向量。
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A vector with all elements set to zero / 所有元素设置为零的向量
+    /// 带存储顺序的形状类型
+    /// Shape type with storage order
+    type ShapeWithStorageOrder<NewSO: StorageOrderTrait>: AbstractShape<
+            StorageOrder = NewSO,
+            VectorType = Self::VectorType,
+            DummyVectorType = Self::DummyVectorType,
+            MapVectorType = Self::MapVectorType,
+            ShapeVectorType = Self::ShapeVectorType,
+            IteratorVectorType = Self::IteratorVectorType,
+        >;
+
+    /// 创建零向量
+    /// Create a zero vector
     fn zero(&self) -> Self::VectorType;
 
-    /// Get the total number of elements in this shape.
-    ///
-    /// 获取此形状中的元素总数。
-    ///
-    /// # Returns / 返回值
-    ///
-    /// The product of all dimension sizes / 所有维度大小的乘积
+    /// 获取总元素数量
+    /// Get total element count
     fn len(&self) -> usize;
 
-    /// Get the number of dimensions.
-    ///
-    /// 获取维度数量。
-    ///
-    /// # Returns / 返回值
-    ///
-    /// The dimension count / 维度数量
+    /// 获取维度数量
+    /// Get dimension count
     fn dimension(&self) -> usize {
         Self::DIMENSION
     }
 
-    /// Get the dimension of a vector.
-    ///
-    /// 获取向量的维度。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `_` - The vector to check / 要检查的向量
-    ///
-    /// # Returns / 返回值
-    ///
-    /// The dimension of the vector / 向量的维度
+    /// 获取向量的维度
+    /// Get dimension of a vector
     fn dimension_of(_: &Self::VectorType) -> usize {
         Self::DIMENSION
     }
 
-    /// Get the shape vector (dimension sizes).
-    ///
-    /// 获取形状向量（维度大小）。
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A reference to the shape vector / 形状向量的引用
+    /// 获取形状
+    /// Get the shape
     fn shape(&self) -> &impl Vector;
 
-    /// Get the offsets vector (strides for each dimension).
-    ///
-    /// 获取偏移向量（每个维度的步幅）。
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A reference to the offsets vector / 偏移向量的引用
+    /// 获取偏移量
+    /// Get the offsets
     fn offsets(&self) -> &impl Vector;
 
-    /// Get the storage order of this shape.
-    ///
-    /// 获取此形状的存储顺序。
-    ///
-    /// # Returns / 返回值
-    ///
-    /// The storage order (RowMajor or ColumnMajor) / 存储顺序（行优先或列优先）
+    /// 获取存储顺序
+    /// Get the storage order
     fn storage_order(&self) -> StorageOrder;
 
-    /// Create a shape from a shape vector.
-    ///
-    /// 从形状向量创建形状。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `shape` - The shape vector / 形状向量
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A new shape instance / 新的形状实例
+    /// 从形状向量创建形状
+    /// Create shape from shape vector
     fn from_shape_vector(shape: &Self::ShapeVectorType) -> Self
     where
         Self: Sized;
 
-    /// Get the size of a specific dimension.
-    ///
-    /// 获取特定维度的大小。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `dimension` - The dimension index / 维度索引
-    ///
-    /// # Returns / 返回值
-    ///
-    /// - `Ok(usize)` - The size of the dimension / 维度的大小
-    /// - `Err(DimensionMismatchingError)` - If the dimension is out of bounds / 如果维度越界
+    /// 从形状向量和存储顺序创建形状
+    /// Create shape from shape vector and storage order
+    fn from_shape_vector_with_order<NewSO: StorageOrderTrait>(
+        shape: &Self::ShapeVectorType,
+        order: NewSO,
+    ) -> Self::ShapeWithStorageOrder<NewSO>
+    where
+        Self: Sized;
+
+    /// 转换为指定存储顺序的形状
+    /// Convert to shape with specified storage order
+    fn with_storage_order<NewSO: StorageOrderTrait>(
+        &self,
+        order: NewSO,
+    ) -> Self::ShapeWithStorageOrder<NewSO>;
+
+    /// 获取指定维度的长度
+    /// Get length of specified dimension
     fn len_of_dimension(&self, dimension: usize) -> Result<usize, DimensionMismatchingError> {
         if dimension >= self.dimension() {
             Err(error! {
@@ -199,18 +140,8 @@ pub trait AbstractShape {
         }
     }
 
-    /// Get the offset (stride) of a specific dimension.
-    ///
-    /// 获取特定维度的偏移量（步幅）。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `dimension` - The dimension index / 维度索引
-    ///
-    /// # Returns / 返回值
-    ///
-    /// - `Ok(usize)` - The offset of the dimension / 维度的偏移量
-    /// - `Err(DimensionMismatchingError)` - If the dimension is out of bounds / 如果维度越界
+    /// 获取指定维度的偏移量
+    /// Get offset of specified dimension
     fn offset_of_dimension(&self, dimension: usize) -> Result<usize, DimensionMismatchingError> {
         if dimension >= self.dimension() {
             Err(error! {
@@ -224,23 +155,8 @@ pub trait AbstractShape {
         }
     }
 
-    /// Convert a multi-dimensional vector to a linear index.
-    ///
-    /// 将多维向量转换为线性索引。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `vector` - The multi-dimensional index / 多维索引
-    ///
-    /// # Returns / 返回值
-    ///
-    /// - `Ok(usize)` - The linear index / 线性索引
-    /// - `Err(IndexCalculationError)` - If the conversion fails / 如果转换失败
-    ///
-    /// # Errors / 错误
-    ///
-    /// - `DimensionMismatching` - If the vector dimension doesn't match / 如果向量维度不匹配
-    /// - `OutOfShape` - If any index is out of bounds / 如果任何索引越界
+    /// 将向量转换为线性索引
+    /// Convert vector to linear index
     fn index_of(&self, vector: &Self::VectorType) -> Result<usize, IndexCalculationError> {
         let vector_dimension = Self::dimension_of(vector);
         if vector_dimension != self.dimension() {
@@ -268,40 +184,36 @@ pub trait AbstractShape {
         }
     }
 
-    /// Convert a linear index to a multi-dimensional vector.
-    ///
-    /// 将线性索引转换为多维向量。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `index` - The linear index / 线性索引
-    ///
-    /// # Returns / 返回值
-    ///
-    /// - `Ok(VectorType)` - The multi-dimensional vector / 多维向量
-    /// - `Err(IndexCalculationError)` - If the conversion fails / 如果转换失败
+    /// 将线性索引转换为向量
+    /// Convert linear index to vector
     fn vector_of(&self, mut index: usize) -> Result<Self::VectorType, IndexCalculationError> {
         let mut vector = self.zero();
-        for i in 0..self.dimension() {
-            let offset = self.offset_of_dimension(i)?;
-            vector[i] = index / offset;
-            index = index % offset;
+        
+        // 根据存储顺序决定遍历方向
+        // Determine traversal direction based on storage order
+        // RowMajor: 从高维到低维计算 (Calculate from high to low dimension)
+        // ColumnMajor: 从低维到高维计算 (Calculate from low to high dimension)
+        match self.storage_order() {
+            crate::concept::StorageOrder::RowMajor => {
+                for i in 0..self.dimension() {
+                    let offset = self.offset_of_dimension(i)?;
+                    vector[i] = index / offset;
+                    index = index % offset;
+                }
+            }
+            crate::concept::StorageOrder::ColumnMajor => {
+                for i in (0..self.dimension()).rev() {
+                    let offset = self.offset_of_dimension(i)?;
+                    vector[i] = index / offset;
+                    index = index % offset;
+                }
+            }
         }
         Ok(vector)
     }
 
-    /// Advance a vector to the next position in lexicographic order.
-    ///
-    /// 将向量推进到字典序的下一个位置。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `vector` - The vector to advance (modified in place) / 要推进的向量（原地修改）
-    ///
-    /// # Returns / 返回值
-    ///
-    /// - `true` - If the vector was successfully advanced / 如果向量成功推进
-    /// - `false` - If the vector has wrapped around to zero / 如果向量已回绕到零
+    /// 生成下一个向量（按字典序）
+    /// Generate next vector (lexicographic order)
     fn next_vector(&self, vector: &mut Self::VectorType) -> bool {
         let mut carry = false;
         vector[self.dimension() - 1] += 1;
@@ -319,24 +231,8 @@ pub trait AbstractShape {
         !carry
     }
 
-    /// Convert a possibly negative index to an actual positive index.
-    ///
-    /// 将可能为负的索引转换为实际的正索引。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `dimension` - The dimension to check / 要检查的维度
-    /// - `index` - The possibly negative index / 可能为负的索引
-    ///
-    /// # Returns / 返回值
-    ///
-    /// - `Some(usize)` - The actual positive index / 实际的正索引
-    /// - `None` - If the index is out of bounds / 如果索引越界
-    ///
-    /// # Note / 注意
-    ///
-    /// Negative indices count from the end: -1 is the last element.
-    /// 负索引从末尾计数：-1 是最后一个元素。
+    /// 将负索引转换为实际索引
+    /// Convert negative index to actual index
     fn actual_index(&self, dimension: usize, index: isize) -> Option<usize> {
         let len = self.len_of_dimension(dimension).unwrap();
         let len_isize = len.cast_signed();
@@ -349,165 +245,70 @@ pub trait AbstractShape {
         }
     }
 
-    /// Convert a dummy vector to a map vector.
-    /// Each dummy index is wrapped in `MapIndex::Dummy`.
-    ///
-    /// 将虚拟向量转换为映射向量。
-    /// 每个虚拟索引被包装为 `MapIndex::Dummy`。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `dummy` - The dummy vector to convert / 要转换的虚拟向量
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A map vector with each element wrapped in `MapIndex::Dummy` / 每个元素包装为 `MapIndex::Dummy` 的映射向量
+    /// 将虚拟向量转换为映射向量
+    /// Convert dummy vector to map vector
     fn dummy_to_map_vector(dummy: &Self::DummyVectorType) -> Self::MapVectorType;
 
+    /// 将映射向量转换为虚拟向量
+    /// Convert map vector to dummy vector
     fn map_to_dummy_vector(map_vector: &Self::MapVectorType) -> Self::DummyVectorType;
 
-    /// Convert a dummy vector to an iterator vector.
-    /// Each dummy index is converted to its corresponding iterator.
-    ///
-    /// 将虚拟向量转换为迭代器向量。
-    /// 每个虚拟索引被转换为其对应的迭代器。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `dummy` - The dummy vector to convert / 要转换的虚拟向量
-    ///
-    /// # Returns / 返回值
-    ///
-    /// An iterator vector with each element converted to DummyIndexIterator / 每个元素转换为 DummyIndexIterator 的迭代器向量
+    /// 将虚拟向量转换为迭代器向量
+    /// Convert dummy vector to iterator vector
     fn dummy_to_iterator_vector(&self, dummy: &Self::DummyVectorType) -> Self::IteratorVectorType;
 
-    /// Convert a map vector to an iterator vector.
-    /// Each MapIndex::Dummy is converted to its corresponding iterator.
-    /// MapIndex::Map is treated as a full range.
-    ///
-    /// 将映射向量转换为迭代器向量。
-    /// 每个 MapIndex::Dummy 被转换为其对应的迭代器。
-    /// MapIndex::Map 被视为完整范围。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `map_vector` - The map vector to convert / 要转换的映射向量
-    ///
-    /// # Returns / 返回值
-    ///
-    /// An iterator vector / 迭代器向量
+    /// 将映射向量转换为迭代器向量
+    /// Convert map vector to iterator vector
     fn map_to_iterator_vector(&self, map_vector: &Self::MapVectorType) -> Self::IteratorVectorType;
 }
 
-/// # AbstractRTShape Trait
+/// 编译期形状结构体
+/// Compile-time shape struct
 ///
-/// A trait that extends `AbstractShape` with runtime-specific operations,
-/// particularly for handling storage order conversions.
-///
-/// 扩展 `AbstractShape` 的特征，添加运行时特定操作，
-/// 特别是处理存储顺序转换。
-///
-/// ## Supertrait / 父特征
-///
-/// - `AbstractShape` - Base shape operations / 基础形状操作
-pub trait AbstractRTShape: AbstractShape {
-    /// Create a shape from a shape vector with a specific storage order.
-    ///
-    /// 从形状向量和特定存储顺序创建形状。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `shape` - The shape vector / 形状向量
-    /// - `order` - The storage order / 存储顺序
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A new shape instance with the specified storage order / 具有指定存储顺序的新形状实例
-    fn from_shape_vector_with_order(shape: &Self::ShapeVectorType, order: StorageOrder) -> Self
-    where
-        Self: Sized;
-
-    /// Create a new shape with a different storage order.
-    ///
-    /// 创建具有不同存储顺序的新形状。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `order` - The new storage order / 新的存储顺序
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A new shape with the specified storage order / 具有指定存储顺序的新形状
-    fn with_storage_order(&self, order: StorageOrder) -> Self
-    where
-        Self: Sized;
-}
-
-/// # Shape - Fixed-Dimension Runtime Shape
-///
-/// A shape type with a compile-time fixed dimension. The dimension `D` is
-/// specified as a const generic parameter.
-///
-/// 具有编译时固定维度的形状类型。维度 `D` 作为 const 泛型参数指定。
-///
-/// ## Type Parameters / 类型参数
-///
-/// - `const D: usize` - The fixed dimension / 固定维度
-///
-/// ## Fields / 字段
-///
-/// - `shape` - The size of each dimension / 每个维度的大小
-/// - `offsets_and_len` - The strides and total count (lazy initialized) / 步幅和总数（惰性初始化）
-/// - `storage_order` - The storage order / 存储顺序
-///
-/// ## Example / 示例
-///
-/// ```rust
-/// use ospf_rust_multiarray::*;
-///
-/// // Create a 2D shape (3x4) / 创建一个 2D 形状 (3x4)
-/// let shape = Shape::new([3, 4]);
-///
-/// // Create with specific storage order / 使用特定存储顺序创建
-/// let shape_col = Shape::new_with_order([3, 4], StorageOrder::ColumnMajor);
-/// ```
-pub struct Shape<const D: usize> {
-    /// Dimension sizes / 维度大小
+/// 维度在编译期确定的形状。
+/// Shape with dimension determined at compile time.
+pub struct Shape<const D: usize, SO: StorageOrderTrait = StorageOrder> {
+    /// 形状数组
+    /// Shape array
     pub(crate) shape: [usize; D],
-    /// Dimension strides (offsets) and total element count - lazy initialized / 维度步幅（偏移量）和元素总数 - 惰性初始化
+
+    /// 偏移量和长度的延迟初始化缓存
+    /// Lazy-initialized cache for offsets and length
     pub(crate) offsets_and_len: OnceLock<([usize; D], usize)>,
-    /// Storage order / 存储顺序
-    pub(crate) storage_order: StorageOrder,
+
+    /// 存储顺序
+    /// Storage order
+    pub(crate) storage_order: SO,
 }
 
-impl<const D: usize> Debug for Shape<D> {
+impl<const D: usize, SO: StorageOrderTrait> Debug for Shape<D, SO> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("Shape")
             .field("shape", &self.shape)
             .field("offsets", self.offsets())
             .field("len", &self.len())
-            .field("storage_order", &self.storage_order)
+            .field("storage_order", &self.storage_order().runtime_value())
             .finish()
     }
 }
 
-impl<const D: usize> Display for Shape<D> {
+impl<const D: usize, SO: StorageOrderTrait> Display for Shape<D, SO> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{:?}", self.shape)
     }
 }
 
-impl<const D: usize> Clone for Shape<D> {
+impl<const D: usize, SO: StorageOrderTrait + Clone> Clone for Shape<D, SO> {
     fn clone(&self) -> Self {
         Self {
             shape: self.shape,
             offsets_and_len: OnceLock::new(),
-            storage_order: self.storage_order,
+            storage_order: self.storage_order.clone(),
         }
     }
 }
 
-impl<const D: usize> Index<usize> for Shape<D> {
+impl<const D: usize, SO: StorageOrderTrait> Index<usize> for Shape<D, SO> {
     type Output = usize;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -515,52 +316,27 @@ impl<const D: usize> Index<usize> for Shape<D> {
     }
 }
 
-impl Shape<1> {
-    /// Create a 1-dimensional shape.
-    ///
-    /// 创建一维形状。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `shape` - The size of the dimension / 维度的大小
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A new Shape<1> / 新的 Shape<1>
+impl<SO: StorageOrderTrait + Default> Shape<1, SO> {
+    /// 创建一维形状
+    /// Create a 1D shape
     pub fn new_with(shape: usize) -> Self {
         Self::new([shape])
     }
 }
 
-impl<const D: usize> Shape<D> {
-    /// Create a new shape with default (RowMajor) storage order.
-    ///
-    /// 使用默认（行优先）存储顺序创建新形状。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `shape` - The size of each dimension / 每个维度的大小
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A new Shape / 新的 Shape
-    pub fn new(shape: [usize; D]) -> Self {
-        Self::new_with_order(shape, StorageOrder::RowMajor)
+impl<const D: usize, SO: StorageOrderTrait> Shape<D, SO> {
+    /// 创建新形状
+    /// Create a new shape
+    pub fn new(shape: [usize; D]) -> Self
+    where
+        SO: Default,
+    {
+        Self::new_with_order(shape, SO::default())
     }
 
-    /// Create a new shape with a specific storage order.
-    ///
-    /// 使用特定存储顺序创建新形状。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `shape` - The size of each dimension / 每个维度的大小
-    /// - `storage_order` - The storage order / 存储顺序
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A new Shape / 新的 Shape
-    pub fn new_with_order(shape: [usize; D], storage_order: StorageOrder) -> Self {
+    /// 使用指定存储顺序创建形状
+    /// Create shape with specified storage order
+    pub fn new_with_order(shape: [usize; D], storage_order: SO) -> Self {
         Self {
             shape,
             offsets_and_len: OnceLock::new(),
@@ -568,22 +344,23 @@ impl<const D: usize> Shape<D> {
         }
     }
 
-    /// Get or compute the offsets and len.
-    ///
-    /// 获取或计算偏移量和长度。
+    /// 获取或初始化偏移量和长度
+    /// Get or initialize offsets and length
     fn get_or_init_offsets_and_len(&self) -> &([usize; D], usize) {
         self.offsets_and_len
             .get_or_init(|| self.storage_order.offsets(&self.shape))
     }
 }
 
-impl<const D: usize> AbstractShape for Shape<D> {
+impl<const D: usize, SO: StorageOrderTrait> AbstractShape for Shape<D, SO> {
     const DIMENSION: usize = D;
+    type StorageOrder = SO;
     type VectorType = [usize; D];
     type DummyVectorType = [DummyIndex; D];
     type MapVectorType = [MapIndex; D];
     type ShapeVectorType = [usize; D];
     type IteratorVectorType = [DummyIndexIterator; D];
+    type ShapeWithStorageOrder<NewSO: StorageOrderTrait> = Shape<D, NewSO>;
 
     #[inline]
     fn zero(&self) -> Self::VectorType {
@@ -607,12 +384,29 @@ impl<const D: usize> AbstractShape for Shape<D> {
 
     #[inline]
     fn storage_order(&self) -> StorageOrder {
-        self.storage_order
+        self.storage_order.runtime_value()
     }
 
     #[inline]
     fn from_shape_vector(shape: &Self::ShapeVectorType) -> Self {
         Self::new(*shape)
+    }
+
+    #[inline]
+    fn from_shape_vector_with_order<NewSO: StorageOrderTrait>(
+        shape: &Self::ShapeVectorType,
+        order: NewSO,
+    ) -> Shape<D, NewSO> {
+        Shape::new_with_order(*shape, order)
+    }
+
+    #[inline]
+    fn with_storage_order<NewSO: StorageOrderTrait>(&self, order: NewSO) -> Shape<D, NewSO> {
+        Shape {
+            shape: self.shape,
+            offsets_and_len: OnceLock::new(),
+            storage_order: order,
+        }
     }
 
     #[inline]
@@ -643,147 +437,138 @@ impl<const D: usize> AbstractShape for Shape<D> {
     }
 }
 
-impl<const D: usize> AbstractRTShape for Shape<D> {
-    fn from_shape_vector_with_order(shape: &Self::ShapeVectorType, order: StorageOrder) -> Self {
-        Self::new_with_order(*shape, order)
-    }
+// ============================================================================
+// 编译期形状类型别名
+// Compile-time shape type aliases
+// ============================================================================
 
-    fn with_storage_order(&self, order: StorageOrder) -> Self {
-        if self.storage_order == order {
-            return self.clone();
-        }
+/// 0 维形状
+/// 0-dimensional shape
+pub type Shape0<SO = StorageOrder> = Shape<0, SO>;
+/// 1 维形状
+/// 1-dimensional shape
+pub type Shape1<SO = StorageOrder> = Shape<1, SO>;
+/// 2 维形状
+/// 2-dimensional shape
+pub type Shape2<SO = StorageOrder> = Shape<2, SO>;
+/// 3 维形状
+/// 3-dimensional shape
+pub type Shape3<SO = StorageOrder> = Shape<3, SO>;
+/// 4 维形状
+/// 4-dimensional shape
+pub type Shape4<SO = StorageOrder> = Shape<4, SO>;
+/// 5 维形状
+/// 5-dimensional shape
+pub type Shape5<SO = StorageOrder> = Shape<5, SO>;
+/// 6 维形状
+/// 6-dimensional shape
+pub type Shape6<SO = StorageOrder> = Shape<6, SO>;
+/// 7 维形状
+/// 7-dimensional shape
+pub type Shape7<SO = StorageOrder> = Shape<7, SO>;
+/// 8 维形状
+/// 8-dimensional shape
+pub type Shape8<SO = StorageOrder> = Shape<8, SO>;
+/// 9 维形状
+/// 9-dimensional shape
+pub type Shape9<SO = StorageOrder> = Shape<9, SO>;
+/// 10 维形状
+/// 10-dimensional shape
+pub type Shape10<SO = StorageOrder> = Shape<10, SO>;
+/// 11 维形状
+/// 11-dimensional shape
+pub type Shape11<SO = StorageOrder> = Shape<11, SO>;
+/// 12 维形状
+/// 12-dimensional shape
+pub type Shape12<SO = StorageOrder> = Shape<12, SO>;
+/// 13 维形状
+/// 13-dimensional shape
+pub type Shape13<SO = StorageOrder> = Shape<13, SO>;
+/// 14 维形状
+/// 14-dimensional shape
+pub type Shape14<SO = StorageOrder> = Shape<14, SO>;
+/// 15 维形状
+/// 15-dimensional shape
+pub type Shape15<SO = StorageOrder> = Shape<15, SO>;
+/// 16 维形状
+/// 16-dimensional shape
+pub type Shape16<SO = StorageOrder> = Shape<16, SO>;
+/// 17 维形状
+/// 17-dimensional shape
+pub type Shape17<SO = StorageOrder> = Shape<17, SO>;
+/// 18 维形状
+/// 18-dimensional shape
+pub type Shape18<SO = StorageOrder> = Shape<18, SO>;
+/// 19 维形状
+/// 19-dimensional shape
+pub type Shape19<SO = StorageOrder> = Shape<19, SO>;
+/// 20 维形状
+/// 20-dimensional shape
+pub type Shape20<SO = StorageOrder> = Shape<20, SO>;
 
-        // 创建新形状，偏移量和长度将惰性计算 / Create new shape, offsets and len will be lazily computed
-        Self {
-            shape: self.shape,
-            offsets_and_len: OnceLock::new(),
-            storage_order: order,
-        }
-    }
+/// 动态形状结构体
+/// Dynamic shape struct
+///
+/// 维度在运行时确定的形状。
+/// Shape with dimension determined at runtime.
+pub struct DynShape<C: DynShapeContainer = Vec, SO: StorageOrderTrait = StorageOrder> {
+    /// 形状向量
+    /// Shape vector
+    pub(crate) shape: <C as DynShapeContainer>::Type<usize>,
+
+    /// 偏移量和长度的延迟初始化缓存
+    /// Lazy-initialized cache for offsets and length
+    pub(crate) offsets_and_len: OnceLock<(<C as DynShapeContainer>::Type<usize>, usize)>,
+
+    /// 存储顺序
+    /// Storage order
+    pub(crate) storage_order: SO,
 }
 
-/// Type aliases for common fixed dimensions.
-/// 常见固定维度的类型别名。
-pub type Shape0 = Shape<0>;
-pub type Shape1 = Shape<1>;
-pub type Shape2 = Shape<2>;
-pub type Shape3 = Shape<3>;
-pub type Shape4 = Shape<4>;
-pub type Shape5 = Shape<5>;
-pub type Shape6 = Shape<6>;
-pub type Shape7 = Shape<7>;
-pub type Shape8 = Shape<8>;
-pub type Shape9 = Shape<9>;
-pub type Shape10 = Shape<10>;
-pub type Shape11 = Shape<11>;
-pub type Shape12 = Shape<12>;
-pub type Shape13 = Shape<13>;
-pub type Shape14 = Shape<14>;
-pub type Shape15 = Shape<15>;
-pub type Shape16 = Shape<16>;
-pub type Shape17 = Shape<17>;
-pub type Shape18 = Shape<18>;
-pub type Shape19 = Shape<19>;
-pub type Shape20 = Shape<20>;
-
-/// # DynShape - Dynamic-Dimension Runtime Shape
-///
-/// A shape type with runtime-determined dimension. The dimension can vary
-/// and is not known at compile time.
-///
-/// 具有运行时确定维度的形状类型。维度可以变化，在编译时未知。
-///
-/// ## Type Parameters / 类型参数
-///
-/// - `V: DynShapeVector` - The vector type for shape and offsets (default: `Vec<usize>`) / 形状和偏移的向量类型（默认：`Vec<usize>`）
-/// - `DV: DummyVector` - The dummy vector type (default: `Vec<DummyIndex>`) / 虚拟向量类型（默认：`Vec<DummyIndex>`）
-///
-/// ## Fields / 字段
-///
-/// - `shape` - The size of each dimension / 每个维度的大小
-/// - `offsets_and_len` - The strides and total count (lazy initialized) / 步幅和总数（惰性初始化）
-/// - `storage_order` - The storage order / 存储顺序
-/// - `_marker` - Phantom marker for type safety / 类型安全的虚拟特征
-///
-/// ## Example / 示例
-///
-/// ```rust
-/// use ospf_rust_multiarray::*;
-///
-/// // Create using constructor / 使用构造函数创建
-/// let shape = DynShape::<Vec<usize>, Vec<DummyIndex>>::new(vec![2, 3, 4]);
-///
-/// // Create using macro / 使用宏创建
-/// let shape = dyn_shape![2, 3, 4];
-/// ```
-pub struct DynShape<V: DynShapeVector = Vec<usize>, DV: DummyVector = Vec<DummyIndex>> {
-    /// Dimension sizes / 维度大小
-    pub(crate) shape: V,
-    /// Dimension strides (offsets) and total element count - lazy initialized / 维度步幅（偏移量）和元素总数 - 惰性初始化
-    pub(crate) offsets_and_len: OnceLock<(V, usize)>,
-    /// Storage order / 存储顺序
-    pub(crate) storage_order: StorageOrder,
-    /// Phantom marker for type parameter DV / 类型参数 DV 的虚拟特征
-    pub(crate) _marker: PhantomData<DV>,
-}
-
-/// # dyn_shape! Macro
-///
-/// A convenience macro for creating `DynShape` instances.
-///
-/// 用于创建 `DynShape` 实例的便捷宏。
-///
-/// ## Usage / 用法
-///
-/// ```rust
-/// use ospf_rust_multiarray::*;
-///
-/// // Create a 2D shape / 创建一个 2D 形状
-/// let shape = dyn_shape![3, 4];
-///
-/// // Create a 3D shape / 创建一个 3D 形状
-/// let shape = dyn_shape![2, 3, 4];
-/// ```
+/// 创建动态形状的宏
+/// Macro for creating dynamic shapes
 #[macro_export]
 macro_rules! dyn_shape {
     [$($shape:expr),*] => {
-        DynShape::<Vec<usize>, Vec<DummyIndex>>::new(vec![$($shape),*])
+        DynShape::<Vec, StorageOrder>::new(vec![$($shape),*])
     };
 
     (vec![$($shape:expr),*]) => {
-        DynShape::<Vec<usize>, Vec<DummyIndex>>::new(vec![$($shape),*])
+        DynShape::<Vec, StorageOrder>::new(vec![$($shape),*])
     }
 }
 
-impl<V: DynShapeVector + Display, DV: DummyVector> Display for DynShape<V, DV> {
+impl<C: DynShapeContainer, SO: StorageOrderTrait> Display for DynShape<C, SO>
+where
+    <C as DynShapeContainer>::Type<usize>: Display,
+{
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{:?}", self.shape)
     }
 }
 
-impl<V: DynShapeVector, DV: DummyVector> Debug for DynShape<V, DV> {
+impl<C: DynShapeContainer, SO: StorageOrderTrait> Debug for DynShape<C, SO> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         f.debug_struct("DynShape")
             .field("shape", &self.shape)
             .field("offsets", self.offsets())
             .field("len", &self.len())
-            .field("storage_order", &self.storage_order)
+            .field("storage_order", &self.storage_order().runtime_value())
             .finish()
     }
 }
 
-impl<V: DynShapeVector, DV: DummyVector> Clone for DynShape<V, DV> {
+impl<C: DynShapeContainer, SO: StorageOrderTrait + Clone> Clone for DynShape<C, SO> {
     fn clone(&self) -> Self {
         Self {
             shape: self.shape.indices().map(|i| self.shape[i]).collect(),
             offsets_and_len: OnceLock::new(),
-            storage_order: self.storage_order,
-            _marker: PhantomData,
+            storage_order: self.storage_order.clone(),
         }
     }
 }
 
-impl<V: DynShapeVector, DV: DummyVector> Index<usize> for DynShape<V, DV> {
+impl<C: DynShapeContainer, SO: StorageOrderTrait> Index<usize> for DynShape<C, SO> {
     type Output = usize;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -791,59 +576,43 @@ impl<V: DynShapeVector, DV: DummyVector> Index<usize> for DynShape<V, DV> {
     }
 }
 
-impl<V: DynShapeVector, DV: DummyVector> DynShape<V, DV> {
-    /// Create a new DynShape with default (RowMajor) storage order.
-    ///
-    /// 使用默认（行优先）存储顺序创建新的 DynShape。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `shape` - The size of each dimension / 每个维度的大小
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A new DynShape / 新的 DynShape
-    pub fn new(shape: V) -> Self {
-        Self::new_with_order(shape, StorageOrder::RowMajor)
+impl<C: DynShapeContainer, SO: StorageOrderTrait> DynShape<C, SO> {
+    /// 创建新动态形状
+    /// Create a new dynamic shape
+    pub fn new(shape: <C as DynShapeContainer>::Type<usize>) -> Self
+    where
+        SO: Default,
+    {
+        Self::new_with_order(shape, SO::default())
     }
 
-    /// Create a new DynShape with a specific storage order.
-    ///
-    /// 使用特定存储顺序创建新的 DynShape。
-    ///
-    /// # Parameters / 参数
-    ///
-    /// - `shape` - The size of each dimension / 每个维度的大小
-    /// - `storage_order` - The storage order / 存储顺序
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A new DynShape / 新的 DynShape
-    pub fn new_with_order(shape: V, storage_order: StorageOrder) -> Self {
+    /// 使用指定存储顺序创建动态形状
+    /// Create dynamic shape with specified storage order
+    pub fn new_with_order(shape: <C as DynShapeContainer>::Type<usize>, storage_order: SO) -> Self {
         Self {
             shape,
             offsets_and_len: OnceLock::new(),
             storage_order,
-            _marker: PhantomData,
         }
     }
 
-    /// Get or compute the offsets and len.
-    ///
-    /// 获取或计算偏移量和长度。
-    fn get_or_init_offsets_and_len(&self) -> &(V, usize) {
+    /// 获取或初始化偏移量和长度
+    /// Get or initialize offsets and length
+    fn get_or_init_offsets_and_len(&self) -> &(<C as DynShapeContainer>::Type<usize>, usize) {
         self.offsets_and_len
             .get_or_init(|| self.storage_order.dyn_offsets(&self.shape))
     }
 }
 
-impl<V: DynShapeVector, DV: DummyVector> AbstractShape for DynShape<V, DV> {
+impl<C: DynShapeContainer, SO: StorageOrderTrait> AbstractShape for DynShape<C, SO> {
     const DIMENSION: usize = DYN_DIMENSION;
-    type VectorType = Vec<usize>;
-    type DummyVectorType = Vec<DummyIndex>;
-    type MapVectorType = Vec<MapIndex>;
-    type ShapeVectorType = Vec<usize>;
-    type IteratorVectorType = Vec<DummyIndexIterator>;
+    type StorageOrder = SO;
+    type VectorType = <C as DynShapeContainer>::Type<usize>;
+    type DummyVectorType = <C as DynShapeContainer>::Type<DummyIndex>;
+    type MapVectorType = <C as DynShapeContainer>::Type<MapIndex>;
+    type ShapeVectorType = <C as DynShapeContainer>::Type<usize>;
+    type IteratorVectorType = <C as DynShapeContainer>::Type<DummyIndexIterator>;
+    type ShapeWithStorageOrder<NewSO: StorageOrderTrait> = DynShape<C, NewSO>;
 
     #[inline]
     fn zero(&self) -> Self::VectorType {
@@ -877,13 +646,33 @@ impl<V: DynShapeVector, DV: DummyVector> AbstractShape for DynShape<V, DV> {
 
     #[inline]
     fn storage_order(&self) -> StorageOrder {
-        self.storage_order
+        self.storage_order.runtime_value()
     }
 
     #[inline]
     fn from_shape_vector(shape: &Self::ShapeVectorType) -> Self {
-        let shape_vec: V = shape.iter().cloned().collect();
+        let shape_vec: <C as DynShapeContainer>::Type<usize> =
+            shape.indices().map(|i| shape[i]).collect();
         Self::new(shape_vec)
+    }
+
+    #[inline]
+    fn from_shape_vector_with_order<NewSO: StorageOrderTrait>(
+        shape: &Self::ShapeVectorType,
+        order: NewSO,
+    ) -> DynShape<C, NewSO> {
+        let shape_vec: <C as DynShapeContainer>::Type<usize> =
+            shape.indices().map(|i| shape[i]).collect();
+        DynShape::<C, NewSO>::new_with_order(shape_vec, order)
+    }
+
+    #[inline]
+    fn with_storage_order<NewSO: StorageOrderTrait>(&self, order: NewSO) -> DynShape<C, NewSO> {
+        DynShape {
+            shape: self.shape.indices().map(|i| self.shape[i]).collect(),
+            offsets_and_len: OnceLock::new(),
+            storage_order: order,
+        }
     }
 
     #[inline]
@@ -902,7 +691,7 @@ impl<V: DynShapeVector, DV: DummyVector> AbstractShape for DynShape<V, DV> {
 
     #[inline]
     fn offset_of_dimension(&self, dimension: usize) -> Result<usize, DimensionMismatchingError> {
-        let offsets = &self.get_or_init_offsets_and_len().0;
+        let offsets: &_ = &self.get_or_init_offsets_and_len().0;
         if dimension >= offsets.len() {
             Err(error! {
                 DimensionMismatchingError {
@@ -917,14 +706,17 @@ impl<V: DynShapeVector, DV: DummyVector> AbstractShape for DynShape<V, DV> {
 
     #[inline]
     fn dummy_to_map_vector(dummy: &Self::DummyVectorType) -> Self::MapVectorType {
-        dummy.iter().map(|d| MapIndex::Dummy(d.clone())).collect()
+        dummy
+            .indices()
+            .map(|i| MapIndex::Dummy(dummy[i].clone()))
+            .collect()
     }
 
     #[inline]
     fn map_to_dummy_vector(map_vector: &Self::MapVectorType) -> Self::DummyVectorType {
         map_vector
-            .iter()
-            .map(|d| match d {
+            .indices()
+            .map(|i| match &map_vector[i] {
                 MapIndex::Dummy(dummy) => dummy.clone(),
                 MapIndex::Map(_) => DummyIndex::Range(Box::new(RangeFull)),
             })
@@ -934,9 +726,8 @@ impl<V: DynShapeVector, DV: DummyVector> AbstractShape for DynShape<V, DV> {
     #[inline]
     fn dummy_to_iterator_vector(&self, dummy: &Self::DummyVectorType) -> Self::IteratorVectorType {
         dummy
-            .iter()
-            .enumerate()
-            .map(|(i, d)| d.iterator_of(self, i))
+            .indices()
+            .map(|i| dummy[i].iterator_of(self, i))
             .collect()
     }
 
@@ -944,36 +735,12 @@ impl<V: DynShapeVector, DV: DummyVector> AbstractShape for DynShape<V, DV> {
     fn map_to_iterator_vector(&self, map_vector: &Self::MapVectorType) -> Self::IteratorVectorType {
         use std::ops::RangeFull;
         map_vector
-            .iter()
-            .enumerate()
-            .map(|(i, m)| match m {
+            .indices()
+            .map(|i| match &map_vector[i] {
                 MapIndex::Dummy(dummy) => dummy.iterator_of(self, i),
                 MapIndex::Map(_) => DummyIndex::Range(Box::new(RangeFull)).iterator_of(self, i),
             })
             .collect()
-    }
-}
-
-impl<V: DynShapeVector, DV: DummyVector> AbstractRTShape for DynShape<V, DV> {
-    fn from_shape_vector_with_order(shape: &Self::ShapeVectorType, order: StorageOrder) -> Self {
-        let shape_vec: V = shape.indices().map(|i| shape[i]).collect();
-        Self::new_with_order(shape_vec, order)
-    }
-
-    fn with_storage_order(&self, order: StorageOrder) -> Self
-    where
-        Self: Sized,
-    {
-        if self.storage_order == order {
-            return self.clone();
-        }
-
-        Self {
-            shape: self.shape.indices().map(|i| self.shape[i]).collect(),
-            offsets_and_len: OnceLock::new(),
-            storage_order: order,
-            _marker: PhantomData,
-        }
     }
 }
 
@@ -983,20 +750,19 @@ mod tests {
 
     #[test]
     fn test_shape_creation() {
-        let shape1 = Shape::new([5]);
-        assert_array_eq!(shape1.shape(), [5]);
+        let shape1: Shape<1> = Shape::new([5]);
         assert_array_eq!(shape1.shape(), [5]);
         assert_array_eq!(shape1.offsets(), [1]);
         assert_eq!(shape1.len(), 5);
         assert_eq!(shape1.dimension(), 1);
 
-        let shape2 = Shape::new([3, 4]);
+        let shape2: Shape<2> = Shape::new([3, 4]);
         assert_array_eq!(shape2.shape(), [3, 4]);
         assert_array_eq!(shape2.offsets(), [4, 1]);
         assert_eq!(shape2.len(), 12);
         assert_eq!(shape2.dimension(), 2);
 
-        let shape3 = Shape::new([2, 3, 4]);
+        let shape3: Shape<3> = Shape::new([2, 3, 4]);
         assert_array_eq!(shape3.shape(), [2, 3, 4]);
         assert_array_eq!(shape3.offsets(), [12, 4, 1]);
         assert_eq!(shape3.len(), 24);
@@ -1005,9 +771,27 @@ mod tests {
 
     #[test]
     fn test_shape1_new_with() {
-        let shape = Shape1::new_with(10);
+        let shape: Shape1 = Shape1::new_with(10);
         assert_array_eq!(shape.shape(), [10]);
         assert_eq!(shape.len(), 10);
+    }
+
+    #[test]
+    fn test_compile_time_shape_row_major() {
+        let shape: Shape2<RowMajor> = Shape2::new([3, 4]);
+        assert_array_eq!(shape.shape(), [3, 4]);
+        assert_array_eq!(shape.offsets(), [4, 1]);
+        assert_eq!(shape.len(), 12);
+        assert_eq!(shape.storage_order(), StorageOrder::RowMajor);
+    }
+
+    #[test]
+    fn test_compile_time_shape_column_major() {
+        let shape: Shape2<ColumnMajor> = Shape2::new([3, 4]);
+        assert_array_eq!(shape.shape(), [3, 4]);
+        assert_array_eq!(shape.offsets(), [1, 3]);
+        assert_eq!(shape.len(), 12);
+        assert_eq!(shape.storage_order(), StorageOrder::ColumnMajor);
     }
 
     #[test]
@@ -1032,8 +816,26 @@ mod tests {
     }
 
     #[test]
+    fn test_dyn_shape_row_major() {
+        let shape: DynShape<Vec, RowMajor> = DynShape::new(vec![3, 4]);
+        assert_array_eq!(shape.shape(), [3, 4]);
+        assert_array_eq!(shape.offsets(), [4, 1]);
+        assert_eq!(shape.len(), 12);
+        assert_eq!(shape.storage_order(), StorageOrder::RowMajor);
+    }
+
+    #[test]
+    fn test_dyn_shape_column_major() {
+        let shape: DynShape<Vec, ColumnMajor> = DynShape::new(vec![3, 4]);
+        assert_array_eq!(shape.shape(), [3, 4]);
+        assert_array_eq!(shape.offsets(), [1, 3]);
+        assert_eq!(shape.len(), 12);
+        assert_eq!(shape.storage_order(), StorageOrder::ColumnMajor);
+    }
+
+    #[test]
     fn test_index_calculation() {
-        let shape = Shape::new([3, 4]);
+        let shape: Shape<2> = Shape::new([3, 4]);
 
         assert_eq!(shape.index_of(&[0, 0]).unwrap(), 0);
         assert_eq!(shape.index_of(&[0, 1]).unwrap(), 1);
@@ -1043,7 +845,7 @@ mod tests {
         assert_eq!(shape.index_of(&[1, 1]).unwrap(), 5);
         assert_eq!(shape.index_of(&[2, 3]).unwrap(), 11);
 
-        let shape3d = Shape::new([2, 3, 4]);
+        let shape3d: Shape<3> = Shape::new([2, 3, 4]);
         assert_eq!(shape3d.index_of(&[0, 0, 0]).unwrap(), 0);
         assert_eq!(shape3d.index_of(&[0, 0, 1]).unwrap(), 1);
         assert_eq!(shape3d.index_of(&[0, 1, 0]).unwrap(), 4);
@@ -1052,7 +854,7 @@ mod tests {
 
     #[test]
     fn test_vector_calculation() {
-        let shape = Shape::new([3, 4]);
+        let shape: Shape<2> = Shape::new([3, 4]);
 
         assert_eq!(shape.vector_of(0).unwrap(), [0, 0]);
         assert_eq!(shape.vector_of(1).unwrap(), [0, 1]);
@@ -1062,7 +864,7 @@ mod tests {
         assert_eq!(shape.vector_of(5).unwrap(), [1, 1]);
         assert_eq!(shape.vector_of(11).unwrap(), [2, 3]);
 
-        let shape3d = Shape::new([2, 3, 4]);
+        let shape3d: Shape<3> = Shape::new([2, 3, 4]);
         assert_eq!(shape3d.vector_of(0).unwrap(), [0, 0, 0]);
         assert_eq!(shape3d.vector_of(1).unwrap(), [0, 0, 1]);
         assert_eq!(shape3d.vector_of(4).unwrap(), [0, 1, 0]);
@@ -1071,7 +873,7 @@ mod tests {
 
     #[test]
     fn test_index_vector_inverse() {
-        let shape = Shape::new([3, 4, 5]);
+        let shape: Shape<3> = Shape::new([3, 4, 5]);
 
         for i in 0..shape.len() {
             let vector = shape.vector_of(i).unwrap();
@@ -1083,11 +885,11 @@ mod tests {
             );
         }
 
-        let dyn_shape = dyn_shape![3, 4, 5];
+        let dyn_shape2 = dyn_shape![3, 4, 5];
 
-        for i in 0..dyn_shape.len() {
-            let vector = dyn_shape.vector_of(i).unwrap();
-            let calculated_index = dyn_shape.index_of(&vector).unwrap();
+        for i in 0..dyn_shape2.len() {
+            let vector = dyn_shape2.vector_of(i).unwrap();
+            let calculated_index = dyn_shape2.index_of(&vector).unwrap();
             assert_eq!(
                 i, calculated_index,
                 "Failed at i={}, vector={:?}",
@@ -1098,9 +900,9 @@ mod tests {
 
     #[test]
     fn test_next_vector() {
-        let shape = Shape::new([2, 3]);
+        let shape: Shape<2> = Shape::new([2, 3]);
 
-        let mut all_vectors = Vec::new();
+        let mut all_vectors: std::vec::Vec<[usize; 2]> = std::vec::Vec::new();
         let mut v = shape.zero();
 
         all_vectors.push(v.clone());
@@ -1117,11 +919,11 @@ mod tests {
         assert_eq!(all_vectors[4], [1, 1]);
         assert_eq!(all_vectors[5], [1, 2]);
 
-        let dyn_shape = dyn_shape![2, 3];
-        let mut dyn_v = dyn_shape.zero();
+        let dyn_shape2 = dyn_shape![2, 3];
+        let mut dyn_v = dyn_shape2.zero();
         let mut dyn_count = 1;
 
-        while dyn_shape.next_vector(&mut dyn_v) {
+        while dyn_shape2.next_vector(&mut dyn_v) {
             dyn_count += 1;
         }
 
@@ -1137,7 +939,6 @@ mod tests {
         assert!(result.is_err());
 
         if let Err(IndexCalculationError::DimensionMismatching(_)) = result {
-            // correct
         } else {
             panic!("Expected DimensionMismatching error for small vector");
         }
@@ -1147,7 +948,6 @@ mod tests {
         assert!(result.is_err());
 
         if let Err(IndexCalculationError::DimensionMismatching(_)) = result {
-            // correct
         } else {
             panic!("Expected DimensionMismatching error for large vector");
         }
@@ -1155,14 +955,13 @@ mod tests {
 
     #[test]
     fn test_out_of_shape_error() {
-        let shape = Shape::new([3, 4]);
+        let shape: Shape<2> = Shape::new([3, 4]);
 
         let out_of_bounds_vector = [3, 0];
         let result = shape.index_of(&out_of_bounds_vector);
         assert!(result.is_err());
 
         if let Err(IndexCalculationError::OutOfShape(_)) = result {
-            // correct
         } else {
             panic!("Expected OutOfShape error");
         }
@@ -1185,15 +984,15 @@ mod tests {
         let result = shape.len_of_dimension(3);
         assert!(result.is_err());
 
-        let dyn_shape = dyn_shape![2, 3, 4];
-        assert_eq!(dyn_shape.len_of_dimension(0).unwrap(), 2);
-        assert_eq!(dyn_shape.len_of_dimension(1).unwrap(), 3);
-        assert_eq!(dyn_shape.len_of_dimension(2).unwrap(), 4);
+        let dyn_shape2 = dyn_shape![2, 3, 4];
+        assert_eq!(dyn_shape2.len_of_dimension(0).unwrap(), 2);
+        assert_eq!(dyn_shape2.len_of_dimension(1).unwrap(), 3);
+        assert_eq!(dyn_shape2.len_of_dimension(2).unwrap(), 4);
     }
 
     #[test]
     fn test_offset_of_dimension() {
-        let shape = Shape::new([2, 3, 4]);
+        let shape: Shape<3> = Shape::new([2, 3, 4]);
 
         assert_eq!(shape.offset_of_dimension(0).unwrap(), 12);
         assert_eq!(shape.offset_of_dimension(1).unwrap(), 4);
@@ -1207,30 +1006,38 @@ mod tests {
 
     #[test]
     fn test_type_aliases() {
-        let shape1: Shape1 = Shape::new([5]);
+        let shape1: Shape<1> = Shape::new([5]);
         assert_eq!(shape1.dimension(), 1);
 
-        let shape2: Shape2 = Shape::new([3, 4]);
+        let shape2: Shape<2> = Shape::new([3, 4]);
         assert_eq!(shape2.dimension(), 2);
 
-        let shape3: Shape3 = Shape::new([2, 3, 4]);
+        let shape3: Shape<3> = Shape::new([2, 3, 4]);
         assert_eq!(shape3.dimension(), 3);
+
+        let shape_rm2: Shape<2, RowMajor> = Shape::new([3, 4]);
+        assert_eq!(shape_rm2.dimension(), 2);
+        assert_eq!(shape_rm2.storage_order(), StorageOrder::RowMajor);
+
+        let shape_cm2: Shape<2, ColumnMajor> = Shape::new([3, 4]);
+        assert_eq!(shape_cm2.dimension(), 2);
+        assert_eq!(shape_cm2.storage_order(), StorageOrder::ColumnMajor);
     }
 
     #[test]
     fn test_zero_vector() {
-        let shape = Shape::new([2, 3, 4]);
+        let shape: Shape<3> = Shape::new([2, 3, 4]);
         let zero = shape.zero();
         assert_eq!(zero, [0, 0, 0]);
 
-        let dyn_shape = dyn_shape![2, 3, 4];
-        let dyn_zero = dyn_shape.zero();
+        let dyn_shape2 = dyn_shape![2, 3, 4];
+        let dyn_zero = dyn_shape2.zero();
         assert_eq!(dyn_zero, vec![0, 0, 0]);
     }
 
     #[test]
     fn test_actual_index_calculation() {
-        let shape = Shape::new([5]);
+        let shape: Shape<1> = Shape::new([5]);
 
         assert_eq!(shape.actual_index(0, 0), Some(0));
         assert_eq!(shape.actual_index(0, 2), Some(2));
@@ -1329,10 +1136,7 @@ mod tests {
 
     #[test]
     fn test_dyn_storage_order_row_major() {
-        let dyn_shape = DynShape::<Vec<usize>, Vec<DummyIndex>>::new_with_order(
-            vec![2, 3],
-            StorageOrder::RowMajor,
-        );
+        let dyn_shape = DynShape::<Vec, RowMajor>::new(vec![2, 3]);
 
         assert_eq!(dyn_shape.storage_order(), StorageOrder::RowMajor);
         assert_eq!(dyn_shape.len(), 6);
@@ -1342,10 +1146,7 @@ mod tests {
 
     #[test]
     fn test_dyn_storage_order_column_major() {
-        let dyn_shape = DynShape::<Vec<usize>, Vec<DummyIndex>>::new_with_order(
-            vec![2, 3],
-            StorageOrder::ColumnMajor,
-        );
+        let dyn_shape = DynShape::<Vec, ColumnMajor>::new(vec![2, 3]);
 
         assert_eq!(dyn_shape.storage_order(), StorageOrder::ColumnMajor);
         assert_eq!(dyn_shape.len(), 6);
@@ -1355,15 +1156,107 @@ mod tests {
 
     #[test]
     fn test_dyn_with_storage_order() {
-        let dyn_shape_row = DynShape::<Vec<usize>, Vec<DummyIndex>>::new_with_order(
-            vec![2, 3],
-            StorageOrder::RowMajor,
-        );
-        let dyn_shape_col = dyn_shape_row.with_storage_order(StorageOrder::ColumnMajor);
+        let dyn_shape_row = DynShape::<Vec, RowMajor>::new(vec![2, 3]);
+        let dyn_shape_col = dyn_shape_row.with_storage_order(ColumnMajor);
 
         assert_eq!(dyn_shape_col.storage_order(), StorageOrder::ColumnMajor);
         assert_eq!(dyn_shape_col.len(), 6);
         assert_eq!(dyn_shape_col.offset_of_dimension(0).unwrap(), 1);
         assert_eq!(dyn_shape_col.offset_of_dimension(1).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_shape_zero_dimension() {
+        let shape: Shape<0> = Shape::new([]);
+        assert_eq!(shape.dimension(), 0);
+        assert_eq!(shape.len(), 1);
+        assert_eq!(shape.shape().len(), 0);
+    }
+
+    #[test]
+    fn test_shape_large_size() {
+        let shape: Shape<2> = Shape::new([1000, 1000]);
+        assert_eq!(shape.len(), 1_000_000);
+        assert_eq!(shape.dimension(), 2);
+        assert_eq!(shape.shape()[0], 1000);
+        assert_eq!(shape.shape()[1], 1000);
+    }
+
+    #[test]
+    fn test_dyn_shape_modify() {
+        let mut dyn_shape = DynShape::<Vec, StorageOrder>::new(vec![2, 3, 4]);
+        assert_eq!(dyn_shape.len(), 24);
+        assert_eq!(dyn_shape.dimension(), 3);
+
+        dyn_shape.shape[0] = 5;
+        assert_eq!(dyn_shape.shape()[0], 5);
+    }
+
+    #[test]
+    fn test_next_vector_complete_traversal() {
+        let shape: Shape<3> = Shape::new([2, 3, 2]);
+        let mut v = shape.zero();
+        let mut count = 0;
+
+        loop {
+            count += 1;
+            if !shape.next_vector(&mut v) {
+                break;
+            }
+        }
+
+        assert_eq!(count, 12);
+    }
+
+    #[test]
+    fn test_offset_of_dimension_error() {
+        let shape: Shape<2> = Shape::new([3, 4]);
+        let result = shape.offset_of_dimension(5);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_actual_index_edge_cases() {
+        let shape: Shape<2> = Shape::new([3, 4]);
+
+        assert_eq!(shape.actual_index(0, 0), Some(0));
+        assert_eq!(shape.actual_index(0, -1), Some(2));
+        assert_eq!(shape.actual_index(0, -3), Some(0));
+        assert_eq!(shape.actual_index(0, -4), None);
+        assert_eq!(shape.actual_index(1, -5), None);
+
+        assert_eq!(shape.actual_index(1, 0), Some(0));
+        assert_eq!(shape.actual_index(1, 3), Some(3));
+        assert_eq!(shape.actual_index(1, 4), None);
+    }
+
+    #[test]
+    fn test_shape_clone() {
+        let shape1: Shape<2, RowMajor> = Shape::new([3, 4]);
+        let shape2 = shape1.clone();
+
+        assert_eq!(shape1.shape()[0], shape2.shape()[0]);
+        assert_eq!(shape1.shape()[1], shape2.shape()[1]);
+        assert_eq!(shape1.len(), shape2.len());
+    }
+
+    #[test]
+    fn test_dyn_shape_clone() {
+        let dyn_shape1 = dyn_shape![2, 3, 4];
+        let dyn_shape2 = dyn_shape1.clone();
+
+        assert_eq!(dyn_shape1.shape()[0], dyn_shape2.shape()[0]);
+        assert_eq!(dyn_shape1.len(), dyn_shape2.len());
+    }
+
+    #[test]
+    fn test_shape_debug_display() {
+        let shape: Shape<2> = Shape::new([3, 4]);
+        let debug_str = format!("{:?}", shape);
+        assert!(debug_str.contains("Shape"));
+        assert!(debug_str.contains("[3, 4]"));
+
+        let display_str = format!("{}", shape);
+        assert!(display_str.contains("[3, 4]"));
     }
 }

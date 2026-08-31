@@ -1,0 +1,30 @@
+use std::error::Error;
+
+use ospf_rust_core::model::MetaModel;
+
+use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAggregation;
+use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
+use crate::framework::demo2::infrastructure::dto::Demo2Request;
+
+mod limits;
+mod policy;
+pub(crate) mod pipeline_list_generator;
+
+pub fn apply_soft_security_pipeline(
+    model: &mut MetaModel<f64>,
+    request: &Demo2Request,
+    x_idx: &[Vec<usize>],
+    mode: Demo2PipelineMode,
+) -> Result<(), Box<dyn Error>> {
+    let context = SoftSecurityContext {
+        request,
+        x_idx,
+        mode,
+    };
+    let aggregation = SoftSecurityAggregation::from_context(&context);
+    for step in pipeline_list_generator::pipeline_steps(context.mode) {
+        step(model, &context, &aggregation)?;
+    }
+    Ok(())
+}

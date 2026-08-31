@@ -1,0 +1,152 @@
+#![cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
+
+use ospf_rust_core::model::ObjectiveCategory;
+use ospf_rust_core::model::intermediate::{BasicLinearTriadModel, LinearTriadModel, SparseVector};
+use ospf_rust_core::solver::solvers::GurobiSolver;
+use ospf_rust_core::token::Token;
+use ospf_rust_core::variable::{
+    ContinuousVariableItem, UContinuousVariableItem, VariableId, VariableType,
+};
+
+fn assert_close(actual: f64, expected: f64) {
+    assert!(
+        (actual - expected).abs() <= 1e-6,
+        "expected {}, got {}",
+        expected,
+        actual
+    );
+}
+
+fn sparse_row(entries: &[(usize, f64)]) -> SparseVector<f64> {
+    let mut row = SparseVector::new();
+    for (index, value) in entries {
+        row.add(*index, *value);
+    }
+    row
+}
+
+#[test]
+fn gurobi_solves_primal_and_dual_with_equal_objectives() {
+    let mut basic = BasicLinearTriadModel::new("lp_primal");
+    let x1 = UContinuousVariableItem::create(VariableId::standalone(3001), "x1");
+    let x2 = UContinuousVariableItem::create(VariableId::standalone(3002), "x2");
+    basic.add_variable(Token::from_generic(x1, 0));
+    basic.add_variable(Token::from_generic(x2, 1));
+
+    // x1 + x2 <= 4
+    // x1 <= 2
+    // x2 <= 3
+    basic.add_constraint(sparse_row(&[(0, 1.0), (1, 1.0)]), 4.0);
+    basic.add_constraint(sparse_row(&[(0, 1.0)]), 2.0);
+    basic.add_constraint(sparse_row(&[(1, 1.0)]), 3.0);
+
+    // max 3x1 + 2x2
+    let mut primal = LinearTriadModel::from_basic(basic);
+    primal.set_objective(vec![3.0, 2.0], ObjectiveCategory::Maximum);
+
+    let dual = primal.to_dual();
+    assert_eq!(dual.objective_category, ObjectiveCategory::Minimum);
+
+    let solver = GurobiSolver::new();
+    let primal_output = solver.solve_linear(&primal).unwrap();
+    let dual_output = solver.solve_linear(&dual).unwrap();
+
+    assert!(
+        primal_output.status.is_feasible(),
+        "primal status: {:?}",
+        primal_output.status
+    );
+    assert!(
+        dual_output.status.is_feasible(),
+        "dual status: {:?}",
+        dual_output.status
+    );
+
+    let primal_obj = primal_output.objective_value.unwrap();
+    let dual_obj = dual_output.objective_value.unwrap();
+    assert_close(primal_obj, 10.0);
+    assert_close(dual_obj, 10.0);
+    assert_close(primal_obj, dual_obj);
+}
+
+#[test]
+fn gurobi_solves_bounded_primal_and_dual_with_equal_objectives() {
+    let mut basic = BasicLinearTriadModel::new("lp_primal_bounded");
+    let x = ContinuousVariableItem::create(VariableId::standalone(3101), "x");
+    basic.add_variable_with_bounds(
+        Token::from_generic(x, 0),
+        1.0,
+        3.0,
+        VariableType::Continuous,
+    );
+
+    // max 2x, 1 <= x <= 3
+    let mut primal = LinearTriadModel::from_basic(basic);
+    primal.set_objective(vec![2.0], ObjectiveCategory::Maximum);
+
+    let dual = primal.to_dual();
+    assert_eq!(dual.objective_category, ObjectiveCategory::Minimum);
+
+    let solver = GurobiSolver::new();
+    let primal_output = solver.solve_linear(&primal).unwrap();
+    let dual_output = solver.solve_linear(&dual).unwrap();
+
+    assert!(
+        primal_output.status.is_feasible(),
+        "primal status: {:?}",
+        primal_output.status
+    );
+    assert!(
+        dual_output.status.is_feasible(),
+        "dual status: {:?}",
+        dual_output.status
+    );
+
+    let primal_obj = primal_output.objective_value.unwrap();
+    let dual_obj = dual_output.objective_value.unwrap();
+    assert_close(primal_obj, 6.0);
+    assert_close(dual_obj, 6.0);
+    assert_close(primal_obj, dual_obj);
+}
+
+#[test]
+fn gurobi_solves_min_with_lower_bound_primal_and_dual_with_equal_objectives() {
+    let mut basic = BasicLinearTriadModel::new("lp_primal_min_lb");
+    let x = ContinuousVariableItem::create(VariableId::standalone(3201), "x");
+    basic.add_variable_with_bounds(
+        Token::from_generic(x, 0),
+        1.0,
+        f64::INFINITY,
+        VariableType::Continuous,
+    );
+    // x <= 4
+    basic.add_constraint(sparse_row(&[(0, 1.0)]), 4.0);
+
+    // min x, with x >= 1 and x <= 4
+    let mut primal = LinearTriadModel::from_basic(basic);
+    primal.set_objective(vec![1.0], ObjectiveCategory::Minimum);
+
+    let dual = primal.to_dual();
+    assert_eq!(dual.objective_category, ObjectiveCategory::Maximum);
+
+    let solver = GurobiSolver::new();
+    let primal_output = solver.solve_linear(&primal).unwrap();
+    let dual_output = solver.solve_linear(&dual).unwrap();
+
+    assert!(
+        primal_output.status.is_feasible(),
+        "primal status: {:?}",
+        primal_output.status
+    );
+    assert!(
+        dual_output.status.is_feasible(),
+        "dual status: {:?}",
+        dual_output.status
+    );
+
+    let primal_obj = primal_output.objective_value.unwrap();
+    let dual_obj = dual_output.objective_value.unwrap();
+    assert_close(primal_obj, 1.0);
+    assert_close(dual_obj, 1.0);
+    assert_close(primal_obj, dual_obj);
+}

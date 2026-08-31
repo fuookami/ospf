@@ -331,25 +331,6 @@ macro_rules! impl_toleranced_eq_exact {
     };
 }
 
-/// 为类型实现 TolerancedOrd
-/// Implement TolerancedOrd for types
-macro_rules! impl_toleranced_ord {
-    ($type:ty) => {
-        impl TolerancedOrd for $type {
-            fn cmp_within(&self, other: &Self, tolerance: &Tolerance<Self::Value>) -> Ordering {
-                let diff = self - other;
-                if diff.abs() <= *tolerance.epsilon() {
-                    Ordering::Equal
-                } else if diff < <$type as Default>::default() {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
-                }
-            }
-        }
-    };
-}
-
 /// 为整数类型实现 TolerancedOrd（精确比较）
 /// Implement TolerancedOrd for integer types (exact comparison)
 macro_rules! impl_toleranced_ord_exact {
@@ -557,6 +538,43 @@ impl TolerancedOrd for Rational32 {
 impl TolerancedOrd for BigRational {
     fn cmp_within(&self, other: &Self, _tolerance: &Tolerance<Self::Value>) -> Ordering {
         self.cmp(other)
+    }
+}
+
+// ============================================================================
+// ValueWrapper TolerancedEq 实现 / ValueWrapper TolerancedEq implementation
+// ============================================================================
+
+impl<T: TolerancedEq> TolerancedEq for crate::algebra::value_range::ValueWrapper<T> {
+    type Value = T::Value;
+
+    fn eq_within(&self, other: &Self, tolerance: &Tolerance<Self::Value>) -> bool {
+        use crate::algebra::value_range::ValueWrapper;
+        match (self, other) {
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => a.eq_within(b, tolerance),
+            (ValueWrapper::PositiveInfinity, ValueWrapper::PositiveInfinity) => true,
+            (ValueWrapper::NegativeInfinity, ValueWrapper::NegativeInfinity) => true,
+            _ => false,
+        }
+    }
+}
+
+// ============================================================================
+// ValueWrapper TolerancedOrd 实现 / ValueWrapper TolerancedOrd implementation
+// ============================================================================
+
+impl<T: TolerancedOrd> TolerancedOrd for crate::algebra::value_range::ValueWrapper<T> {
+    fn cmp_within(&self, other: &Self, tolerance: &Tolerance<Self::Value>) -> Ordering {
+        use crate::algebra::value_range::ValueWrapper;
+        match (self, other) {
+            (ValueWrapper::NegativeInfinity, ValueWrapper::NegativeInfinity) => Ordering::Equal,
+            (ValueWrapper::NegativeInfinity, _) => Ordering::Less,
+            (_, ValueWrapper::NegativeInfinity) => Ordering::Greater,
+            (ValueWrapper::PositiveInfinity, ValueWrapper::PositiveInfinity) => Ordering::Equal,
+            (ValueWrapper::PositiveInfinity, _) => Ordering::Greater,
+            (_, ValueWrapper::PositiveInfinity) => Ordering::Less,
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => a.cmp_within(b, tolerance),
+        }
     }
 }
 

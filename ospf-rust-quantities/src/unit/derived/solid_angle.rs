@@ -7,10 +7,13 @@
 use crate::dimension::derived::SolidAngle;
 use crate::scale::Scale;
 use crate::unit::CTUnit;
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 立体角单位 / Solid angle units
 // ============================================================================
 
+// 球面度 / Steradian
 define_unit!(Steradian, "steradian", "sr", SolidAngle);
+
+// 平方度 / Square degree (1 sr = (180/π)² square degrees)
+define_unit!(SquareDegree, "square degree", "deg²", SolidAngle, Scale::from_f64(0.00030461741978670857));

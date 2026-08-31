@@ -36,20 +36,20 @@
 //! ```
 //! use ospf_rust_math::algebra::value_range::{ValueRange, Bound, ValueWrapper, Closed, Open};
 //!
-//! // 闭区间 [1, 10]
-//! let range: ValueRange<i64, Closed, Closed> = ValueRange::new(
+//! // 闭区间 [1, 10] - 使用 from_bounds
+//! let range: ValueRange<i64, Closed, Closed> = ValueRange::from_bounds(
 //!     Bound::new(ValueWrapper::finite(1), Closed),
 //!     Bound::new(ValueWrapper::finite(10), Closed),
 //! );
 //!
-//! // 左闭右开区间 [1, 10)
-//! let range: ValueRange<i64, Closed, Open> = ValueRange::new(
+//! // 左闭右开区间 [1, 10) - 使用 from_bounds
+//! let range: ValueRange<i64, Closed, Open> = ValueRange::from_bounds(
 //!     Bound::new(ValueWrapper::finite(1), Closed),
 //!     Bound::new(ValueWrapper::finite(10), Open),
 //! );
 //!
-//! // 左开右闭区间 (1, 10]
-//! let range: ValueRange<i64, Open, Closed> = ValueRange::new(
+//! // 左开右闭区间 (1, 10] - 使用 from_bounds
+//! let range: ValueRange<i64, Open, Closed> = ValueRange::from_bounds(
 //!     Bound::new(ValueWrapper::finite(1), Open),
 //!     Bound::new(ValueWrapper::finite(10), Closed),
 //! );
@@ -65,7 +65,7 @@
 //! use ospf_rust_math::algebra::value_range::{ValueRange, Bound, ValueWrapper, Interval};
 //!
 //! // [0, +∞) - 半无限区间
-//! let range: ValueRange<i64> = ValueRange::new(
+//! let range: ValueRange<i64> = ValueRange::from_bounds(
 //!     Bound::new(ValueWrapper::finite(0), Interval::Closed),
 //!     Bound::new(ValueWrapper::positive_infinity(), Interval::Open),
 //! );
@@ -73,7 +73,7 @@
 //! // 根据条件动态决定开闭性质
 //! let lower_is_closed = true;
 //! let lower_interval = if lower_is_closed { Interval::Closed } else { Interval::Open };
-//! let range: ValueRange<i64> = ValueRange::new(
+//! let range: ValueRange<i64> = ValueRange::from_bounds(
 //!     Bound::new(ValueWrapper::finite(1), lower_interval),
 //!     Bound::new(ValueWrapper::finite(10), Interval::Closed),
 //! );
@@ -89,3 +89,39 @@ pub use bound::Bound;
 pub use interval::{Closed, Interval, IntervalTrait, Open};
 pub use value_range::ValueRange;
 pub use value_wrapper::ValueWrapper;
+
+// ============================================================================
+// 区间多项式类型别名 / Interval Polynomial Type Aliases
+// ============================================================================
+
+/// 区间类型别名 / Interval type alias
+///
+/// 表示一个闭区间 `[lower, upper]`。
+/// Represents a closed interval `[lower, upper]`.
+///
+/// # 示例 / Example
+/// ```
+/// use ospf_rust_math::algebra::value_range::IntervalValue;
+///
+/// let interval = IntervalValue::new(1.0, 10.0);
+/// assert!(interval.contains_value(&5.0.into()));
+/// ```
+pub type IntervalValue<T> = ValueRange<T, Closed, Closed>;
+
+/// 半开区间类型别名 / Half-open interval type alias
+///
+/// 表示左闭右开区间 `[lower, upper)`。
+/// Represents a half-open interval `[lower, upper)`.
+pub type HalfOpenInterval<T> = ValueRange<T, Closed, Open>;
+
+/// 开区间类型别名 / Open interval type alias
+///
+/// 表示开区间 `(lower, upper)`。
+/// Represents an open interval `(lower, upper)`.
+pub type OpenInterval<T> = ValueRange<T, Open, Open>;
+
+/// 动态区间类型别名 / Dynamic interval type alias
+///
+/// 表示运行时确定开闭性质的区间。
+/// Represents an interval with runtime-determined openness.
+pub type DynamicInterval<T> = ValueRange<T, Interval, Interval>;

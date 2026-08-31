@@ -10,7 +10,6 @@ use crate::dimension::derived::Pressure;
 // Stress has same dimension as pressure
 use crate::scale::{Scale, KILO, MEGA};
 use crate::unit::{CTUnit, CTUnitDiv};
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 应力单位 / Stress units

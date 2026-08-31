@@ -1,8 +1,9 @@
 //! Bound - 边界
 //! Bound - Boundary
 
-use super::interval::IntervalTrait;
+use super::interval::{Interval, IntervalTrait};
 use super::value_wrapper::ValueWrapper;
+use crate::operator::tolerance::{Tolerance, TolerancedEq, TolerancedOrd};
 use std::fmt;
 
 // ============================================================================
@@ -37,7 +38,7 @@ use std::fmt;
 /// assert!(open_bound.is_open());
 /// ```
 #[derive(Clone, Debug)]
-pub struct Bound<T, I: IntervalTrait = super::interval::Interval> {
+pub struct Bound<T, I: IntervalTrait = Interval> {
     /// 边界值
     /// Boundary value
     value: ValueWrapper<T>,
@@ -88,6 +89,12 @@ impl<T, I: IntervalTrait> Bound<T, I> {
     /// Reference to the boundary value
     pub fn value(&self) -> &ValueWrapper<T> {
         &self.value
+    }
+
+    /// 获取边界值（按值移动）
+    /// Take ownership of the boundary value
+    pub fn into_value(self) -> ValueWrapper<T> {
+        self.value
     }
 
     /// 获取开闭性质
@@ -227,6 +234,20 @@ impl<T: Default, I: IntervalTrait + Default> Default for Bound<T, I> {
 }
 
 // ============================================================================
+// TolerancedEq 实现 / TolerancedEq implementation
+// ============================================================================
+
+impl<T: TolerancedEq, I: IntervalTrait + PartialEq> TolerancedEq for Bound<T, I> {
+    type Value = T::Value;
+
+    fn eq_within(&self, other: &Self, tolerance: &Tolerance<Self::Value>) -> bool {
+        // 值相等（使用 tolerance）且开闭性质相同
+        // Values are equal (using tolerance) and openness is the same
+        self.value.eq_within(&other.value, tolerance) && self.interval == other.interval
+    }
+}
+
+// ============================================================================
 // 辅助方法 / Helper methods
 // ============================================================================
 
@@ -246,11 +267,14 @@ impl<T: PartialOrd, I: IntervalTrait> Bound<T, I> {
     /// Returns `true` if value is on correct side, `false` otherwise
     pub fn is_above(&self, value: &ValueWrapper<T>) -> bool {
         match (&self.value, value) {
-            // 负无穷下界：任何值都在正确的一侧
-            // Negative infinity lower bound: any value is on correct side
+            // 负无穷下界：有限值和正无穷在正确的一侧，负无穷取决于开闭性质
+            // Negative infinity lower bound: finite values and positive infinity are on correct side
+            // Negative infinity depends on openness
+            (ValueWrapper::NegativeInfinity, ValueWrapper::NegativeInfinity) => self.is_closed(),
             (ValueWrapper::NegativeInfinity, _) => true,
-            // 正无穷下界：没有值在正确的一侧
-            // Positive infinity lower bound: no value is on correct side
+            // 正无穷下界：没有值在正确的一侧（闭区间时只有正无穷自身）
+            // Positive infinity lower bound: no value is on correct side (only +∞ itself when closed)
+            (ValueWrapper::PositiveInfinity, ValueWrapper::PositiveInfinity) => self.is_closed(),
             (ValueWrapper::PositiveInfinity, _) => false,
             // 有限值下界
             // Finite lower bound
@@ -283,11 +307,14 @@ impl<T: PartialOrd, I: IntervalTrait> Bound<T, I> {
     /// Returns `true` if value is on correct side, `false` otherwise
     pub fn is_below(&self, value: &ValueWrapper<T>) -> bool {
         match (&self.value, value) {
-            // 正无穷上界：任何值都在正确的一侧
-            // Positive infinity upper bound: any value is on correct side
+            // 正无穷上界：有限值和负无穷在正确的一侧，正无穷取决于开闭性质
+            // Positive infinity upper bound: finite values and negative infinity are on correct side
+            // Positive infinity depends on openness
+            (ValueWrapper::PositiveInfinity, ValueWrapper::PositiveInfinity) => self.is_closed(),
             (ValueWrapper::PositiveInfinity, _) => true,
-            // 负无穷上界：没有值在正确的一侧
-            // Negative infinity upper bound: no value is on correct side
+            // 负无穷上界：没有值在正确的一侧（闭区间时只有负无穷自身）
+            // Negative infinity upper bound: no value is on correct side (only -∞ itself when closed)
+            (ValueWrapper::NegativeInfinity, ValueWrapper::NegativeInfinity) => self.is_closed(),
             (ValueWrapper::NegativeInfinity, _) => false,
             // 有限值上界
             // Finite upper bound
@@ -307,13 +334,95 @@ impl<T: PartialOrd, I: IntervalTrait> Bound<T, I> {
 }
 
 // ============================================================================
+// Tolerance 版本辅助方法 / Tolerance version helper methods
+// ============================================================================
+
+impl<T: TolerancedOrd, I: IntervalTrait> Bound<T, I> {
+    /// 判断值是否在边界正确的一侧（用于下界，带精度容差）
+    /// Check if value is on the correct side of boundary (for lower bound, with tolerance)
+    ///
+    /// 对于下界，值应该 >= 边界值（闭区间）或 > 边界值（开区间）
+    /// For lower bound, value should be >= boundary (closed) or > boundary (open)
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 要检查的值
+    /// - `value`: The value to check
+    /// - `tolerance`: 精度容差
+    ///
+    /// # 返回 / Returns
+    /// 如果值在下界正确的一侧返回 `true`，否则返回 `false`
+    /// Returns `true` if value is on correct side, `false` otherwise
+    pub fn is_above_within(
+        &self,
+        value: &ValueWrapper<T>,
+        tolerance: &Tolerance<T::Value>,
+    ) -> bool {
+        match (&self.value, value) {
+            // 负无穷下界：任何值都在正确的一侧
+            // Negative infinity lower bound: any value is on correct side
+            (ValueWrapper::NegativeInfinity, _) => true,
+            // 正无穷下界：没有值在正确的一侧
+            // Positive infinity lower bound: no value is on correct side
+            (ValueWrapper::PositiveInfinity, _) => false,
+            // 有限值下界
+            // Finite lower bound
+            (ValueWrapper::Finite(bound), ValueWrapper::Finite(v)) => {
+                self.interval.is_above_boundary_within(v, bound, tolerance)
+            }
+            // 有限值下界 vs 无穷大值
+            // Finite lower bound vs infinity value
+            (ValueWrapper::Finite(_), ValueWrapper::PositiveInfinity) => true,
+            (ValueWrapper::Finite(_), ValueWrapper::NegativeInfinity) => false,
+        }
+    }
+
+    /// 判断值是否在边界正确的一侧（用于上界，带精度容差）
+    /// Check if value is on the correct side of boundary (for upper bound, with tolerance)
+    ///
+    /// 对于上界，值应该 <= 边界值（闭区间）或 < 边界值（开区间）
+    /// For upper bound, value should be <= boundary (closed) or < boundary (open)
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 要检查的值
+    /// - `value`: The value to check
+    /// - `tolerance`: 精度容差
+    ///
+    /// # 返回 / Returns
+    /// 如果值在上界正确的一侧返回 `true`，否则返回 `false`
+    /// Returns `true` if value is on correct side, `false` otherwise
+    pub fn is_below_within(
+        &self,
+        value: &ValueWrapper<T>,
+        tolerance: &Tolerance<T::Value>,
+    ) -> bool {
+        match (&self.value, value) {
+            // 正无穷上界：任何值都在正确的一侧
+            // Positive infinity upper bound: any value is on correct side
+            (ValueWrapper::PositiveInfinity, _) => true,
+            // 负无穷上界：没有值在正确的一侧
+            // Negative infinity upper bound: no value is on correct side
+            (ValueWrapper::NegativeInfinity, _) => false,
+            // 有限值上界
+            // Finite upper bound
+            (ValueWrapper::Finite(bound), ValueWrapper::Finite(v)) => {
+                self.interval.is_below_boundary_within(v, bound, tolerance)
+            }
+            // 有限值上界 vs 无穷大值
+            // Finite upper bound vs infinity value
+            (ValueWrapper::Finite(_), ValueWrapper::PositiveInfinity) => false,
+            (ValueWrapper::Finite(_), ValueWrapper::NegativeInfinity) => true,
+        }
+    }
+}
+
+// ============================================================================
 // 测试 / Tests
 // ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::algebra::value_range::{Closed, Open, Interval};
+    use crate::algebra::value_range::{Closed, Interval, Open};
 
     // ========================================================================
     // 基本功能测试 / Basic functionality tests
@@ -367,12 +476,17 @@ mod tests {
     fn test_bound_eq() {
         let a = Bound::new(ValueWrapper::finite(10_i64), Closed);
         let b = Bound::new(ValueWrapper::finite(10_i64), Closed);
-        let c = Bound::new(ValueWrapper::finite(10_i64), Open);
         let d = Bound::new(ValueWrapper::finite(20_i64), Closed);
 
         assert_eq!(a, b);
-        assert_ne!(a, c); // 不同开闭性质
         assert_ne!(a, d); // 不同值
+
+        // 测试不同开闭性质（使用运行时 Interval）
+        let closed_bound: Bound<i64, Interval> =
+            Bound::new(ValueWrapper::finite(10_i64), Interval::Closed);
+        let open_bound: Bound<i64, Interval> =
+            Bound::new(ValueWrapper::finite(10_i64), Interval::Open);
+        assert_ne!(closed_bound, open_bound);
     }
 
     // ========================================================================

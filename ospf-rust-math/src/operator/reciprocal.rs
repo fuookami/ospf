@@ -25,6 +25,43 @@ pub trait Reciprocal {
 }
 
 // ============================================================================
+// ReciprocalRef - 引用倒数 / Reference Reciprocal
+// ============================================================================
+
+/// ReciprocalRef - 支持引用倒数的类型
+/// ReciprocalRef - Types that support reference reciprocal
+///
+/// 表示 `&T -> T` 倒数操作。
+/// Represents the `&T -> T` reciprocal operation.
+///
+/// # 示例 / Examples
+/// ```
+/// use ospf_rust_math::operator::ReciprocalRef;
+///
+/// fn reciprocal_ref<T: ReciprocalRef>(a: &T) -> T {
+///     T::reciprocal_ref(a)
+/// }
+///
+/// let result = reciprocal_ref(&2.0f64);
+/// assert!((result - 0.5).abs() < 1e-10);
+/// ```
+pub trait ReciprocalRef: Sized {
+    /// 引用倒数 / Reciprocal by reference
+    fn reciprocal_ref(a: &Self) -> Self;
+}
+
+/// 为满足约束的类型自动实现 ReciprocalRef
+/// Auto-implement ReciprocalRef for types satisfying constraints
+impl<T> ReciprocalRef for T
+where
+    for<'a> &'a T: Reciprocal<Output = T>,
+{
+    fn reciprocal_ref(a: &Self) -> Self {
+        Reciprocal::reciprocal(a)
+    }
+}
+
+// ============================================================================
 // 宏：为类型实现 Reciprocal
 // Macro: Implement Reciprocal for types
 // ============================================================================
@@ -104,7 +141,9 @@ impl_reciprocal_for_float_types!(f64, f32);
 // 整数的倒数返回 f64
 // ============================================================================
 
-impl_reciprocal_for_int_types!(i64, i32, i128, i16, i8, isize, u64, u32, u128, u16, u8, usize);
+impl_reciprocal_for_int_types!(
+    i64, i32, i128, i16, i8, isize, u64, u32, u128, u16, u8, usize
+);
 
 // ============================================================================
 // BigDecimal Reciprocal 实现 / BigDecimal Reciprocal implementation

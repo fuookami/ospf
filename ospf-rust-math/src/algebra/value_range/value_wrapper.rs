@@ -2,8 +2,10 @@
 //! ValueWrapper - Value wrapper
 
 use crate::algebra::concept::Infinite;
+use num_traits::{One, Zero};
 use std::cmp::Ordering;
 use std::fmt;
+use std::ops::{Add, Div, Mul, Neg, Sub};
 
 // ============================================================================
 // ValueWrapper<T> - 值包装器
@@ -262,6 +264,174 @@ impl<T: Infinite> Infinite for ValueWrapper<T> {
 }
 
 // ============================================================================
+// 算术运算实现 / Arithmetic Operations Implementation
+// ============================================================================
+
+impl<T: Add<Output = T>> Add for ValueWrapper<T> {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => ValueWrapper::Finite(a + b),
+            (ValueWrapper::PositiveInfinity, ValueWrapper::NegativeInfinity)
+            | (ValueWrapper::NegativeInfinity, ValueWrapper::PositiveInfinity) => {
+                // ∞ + (-∞) 未定义，返回正无穷作为默认行为
+                // ∞ + (-∞) is undefined, return positive infinity as default
+                ValueWrapper::PositiveInfinity
+            }
+            (ValueWrapper::PositiveInfinity, _) | (_, ValueWrapper::PositiveInfinity) => {
+                ValueWrapper::PositiveInfinity
+            }
+            (ValueWrapper::NegativeInfinity, _) | (_, ValueWrapper::NegativeInfinity) => {
+                ValueWrapper::NegativeInfinity
+            }
+        }
+    }
+}
+
+impl<T: Sub<Output = T>> Sub for ValueWrapper<T> {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => ValueWrapper::Finite(a - b),
+            (ValueWrapper::PositiveInfinity, ValueWrapper::PositiveInfinity)
+            | (ValueWrapper::NegativeInfinity, ValueWrapper::NegativeInfinity) => {
+                // ∞ - ∞ 未定义，返回正无穷作为默认行为
+                // ∞ - ∞ is undefined, return positive infinity as default
+                ValueWrapper::PositiveInfinity
+            }
+            (ValueWrapper::PositiveInfinity, _) => ValueWrapper::PositiveInfinity,
+            (ValueWrapper::NegativeInfinity, _) => ValueWrapper::NegativeInfinity,
+            (_, ValueWrapper::PositiveInfinity) => ValueWrapper::NegativeInfinity,
+            (_, ValueWrapper::NegativeInfinity) => ValueWrapper::PositiveInfinity,
+        }
+    }
+}
+
+impl<T: Mul<Output = T> + Clone + Zero + PartialOrd> Mul for ValueWrapper<T> {
+    type Output = Self;
+
+    fn mul(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => ValueWrapper::Finite(a * b),
+            (ValueWrapper::PositiveInfinity, ValueWrapper::Finite(b))
+            | (ValueWrapper::Finite(b), ValueWrapper::PositiveInfinity) => {
+                if b > T::zero() {
+                    ValueWrapper::PositiveInfinity
+                } else if b < T::zero() {
+                    ValueWrapper::NegativeInfinity
+                } else {
+                    // 0 * ∞ = 0
+                    ValueWrapper::Finite(T::zero())
+                }
+            }
+            (ValueWrapper::NegativeInfinity, ValueWrapper::Finite(b))
+            | (ValueWrapper::Finite(b), ValueWrapper::NegativeInfinity) => {
+                if b > T::zero() {
+                    ValueWrapper::NegativeInfinity
+                } else if b < T::zero() {
+                    ValueWrapper::PositiveInfinity
+                } else {
+                    // 0 * (-∞) = 0
+                    ValueWrapper::Finite(T::zero())
+                }
+            }
+            (ValueWrapper::PositiveInfinity, ValueWrapper::PositiveInfinity)
+            | (ValueWrapper::NegativeInfinity, ValueWrapper::NegativeInfinity) => {
+                ValueWrapper::PositiveInfinity
+            }
+            (ValueWrapper::PositiveInfinity, ValueWrapper::NegativeInfinity)
+            | (ValueWrapper::NegativeInfinity, ValueWrapper::PositiveInfinity) => {
+                ValueWrapper::NegativeInfinity
+            }
+        }
+    }
+}
+
+impl<T: Div<Output = T> + Zero + PartialOrd> Div for ValueWrapper<T> {
+    type Output = Self;
+
+    fn div(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => ValueWrapper::Finite(a / b),
+            (ValueWrapper::Finite(_), ValueWrapper::PositiveInfinity)
+            | (ValueWrapper::Finite(_), ValueWrapper::NegativeInfinity) => {
+                // 有限值除以无穷大等于 0
+                // Finite divided by infinity equals zero
+                ValueWrapper::Finite(T::zero())
+            }
+            (ValueWrapper::PositiveInfinity, ValueWrapper::Finite(b)) => {
+                if b > T::zero() {
+                    ValueWrapper::PositiveInfinity
+                } else if b < T::zero() {
+                    // 除以负数反转无穷符号
+                    // Dividing by negative flips infinity sign
+                    ValueWrapper::NegativeInfinity
+                } else {
+                    // 除以零，返回正无穷
+                    // Division by zero, return positive infinity
+                    ValueWrapper::PositiveInfinity
+                }
+            }
+            (ValueWrapper::NegativeInfinity, ValueWrapper::Finite(b)) => {
+                if b > T::zero() {
+                    ValueWrapper::NegativeInfinity
+                } else if b < T::zero() {
+                    // 除以负数反转无穷符号
+                    // Dividing by negative flips infinity sign
+                    ValueWrapper::PositiveInfinity
+                } else {
+                    // 除以零，返回正无穷
+                    // Division by zero, return positive infinity
+                    ValueWrapper::PositiveInfinity
+                }
+            }
+            _ => {
+                // ∞/∞ 或其他情况未定义，返回正无穷
+                // ∞/∞ or other cases undefined, return positive infinity
+                ValueWrapper::PositiveInfinity
+            }
+        }
+    }
+}
+
+impl<T: Neg<Output = T>> Neg for ValueWrapper<T> {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            ValueWrapper::Finite(a) => ValueWrapper::Finite(-a),
+            ValueWrapper::PositiveInfinity => ValueWrapper::NegativeInfinity,
+            ValueWrapper::NegativeInfinity => ValueWrapper::PositiveInfinity,
+        }
+    }
+}
+
+// ============================================================================
+// Zero 和 One trait 实现 / Zero and One trait implementations
+// ============================================================================
+
+impl<T: Zero> Zero for ValueWrapper<T> {
+    fn zero() -> Self {
+        ValueWrapper::Finite(T::zero())
+    }
+
+    fn is_zero(&self) -> bool {
+        match self {
+            ValueWrapper::Finite(v) => v.is_zero(),
+            _ => false,
+        }
+    }
+}
+
+impl<T: One + Clone + Zero + PartialOrd + Mul<Output = T>> One for ValueWrapper<T> {
+    fn one() -> Self {
+        ValueWrapper::Finite(T::one())
+    }
+}
+
+// ============================================================================
 // 测试 / Tests
 // ============================================================================
 
@@ -313,10 +483,7 @@ mod tests {
         assert_ne!(a, c);
         assert_ne!(a, pos_inf);
         assert_ne!(pos_inf, neg_inf);
-        assert_eq!(
-            pos_inf,
-            ValueWrapper::<i64>::positive_infinity()
-        );
+        assert_eq!(pos_inf, ValueWrapper::<i64>::positive_infinity());
     }
 
     #[test]
@@ -363,11 +530,18 @@ mod tests {
 
     #[test]
     fn test_value_wrapper_infinite_trait() {
-        assert!(ValueWrapper::<i64>::infinity().is_some());
-        assert!(ValueWrapper::<i64>::negative_infinity().is_some());
+        // 测试 Infinite trait 实现
+        // Test Infinite trait implementation
+        // 注意：需要通过 trait 限定语法调用，因为 ValueWrapper 有自己的 negative_infinity() 方法
+        // Note: Need to use trait-qualified syntax because ValueWrapper has its own negative_infinity() method
+        let pos_inf_opt = <ValueWrapper<i64> as Infinite>::infinity();
+        let neg_inf_opt = <ValueWrapper<i64> as Infinite>::negative_infinity();
 
-        let pos_inf = ValueWrapper::<i64>::infinity().unwrap();
-        let neg_inf = ValueWrapper::<i64>::negative_infinity().unwrap();
+        assert!(pos_inf_opt.is_some());
+        assert!(neg_inf_opt.is_some());
+
+        let pos_inf = pos_inf_opt.unwrap();
+        let neg_inf = neg_inf_opt.unwrap();
 
         assert!(pos_inf.is_positive_infinity());
         assert!(neg_inf.is_negative_infinity());

@@ -1,53 +1,70 @@
-//! # IndexValue - 索引值转换
+
+//! 索引值转换模块
+//! Index value conversion module
 //!
-//! ## Overview / 概述
+//! 本模块提供了将各种整数类型转换为索引值（`isize`）的 trait。
+//! This module provides traits for converting various integer types to index values (`isize`).
 //!
-//! This module provides the `TryIntoIndexValue` trait for converting various
-//! integer types to `isize` for use in array indexing operations.
+//! ## 主要 trait / Main Trait
 //!
-//! 本模块提供 `TryIntoIndexValue` 特征，用于将各种整数类型转换为 `isize` 以用于数组索引操作。
+//! - `TryIntoIndexValue`: 尝试将值转换为索引值的 trait
+//!   Trait for trying to convert values to index values
 //!
-//! ## Key Traits / 主要特征
+//! ## 支持的类型 / Supported Types
 //!
-//! - `TryIntoIndexValue` - Trait for converting to index values / 转换为索引值的特征
+//! - `isize`, `&isize`: 直接转换
+//!   Direct conversion
+//! - `usize`, `&usize`: 直接转换（有符号转换）
+//!   Direct conversion (signed conversion)
+//! - `u8`, `u16`, `u32`, `u64`, `u128`: 尝试转换（可能溢出）
+//!   Try conversion (may overflow)
+//! - `i8`, `i16`, `i32`, `i64`, `i128`: 尝试转换
+//!   Try conversion
 
 use std::convert::Infallible;
 
-/// # TryIntoIndexValue Trait
+/// 尝试转换为索引值 trait
+/// Try into index value trait
 ///
-/// A trait for types that can be converted to an index value (`isize`).
-/// This is used primarily for dummy index conversions where various
-/// integer types need to be normalized to a common index type.
+/// 定义将值转换为 `isize` 索引值的能力。
+/// Defines the ability to convert values to `isize` index values.
 ///
-/// 可转换为索引值（`isize`）的类型的特征。
-/// 这主要用于虚拟索引转换，其中各种整数类型需要规范化为通用索引类型。
+/// ## 类型参数 / Type Parameters
 ///
-/// ## Associated Types / 关联类型
+/// - `Error`: 转换失败时的错误类型
+///   Error type when conversion fails
 ///
-/// - `Error` - The error type for failed conversions / 转换失败时的错误类型
+/// ## 返回值 / Returns
 ///
-/// ## Implementors / 实现者
+/// 成功时返回 `Ok(isize)`，失败时返回 `Err(Self::Error)`。
+/// Returns `Ok(isize)` on success, `Err(Self::Error)` on failure.
 ///
-/// - `isize`, `usize` - Direct conversion / 直接转换
-/// - `u8`, `u16`, `u32`, `u64`, `u128` - Unsigned integers / 无符号整数
-/// - `i8`, `i16`, `i32`, `i64`, `i128` - Signed integers / 有符号整数
+/// ## 示例 / Examples
+///
+/// ```rust
+/// use ospf_rust_multiarray::index_value::TryIntoIndexValue;
+///
+/// let idx: Result<isize, _> = TryIntoIndexValue::try_into(5isize);
+/// assert!(idx.is_ok());
+///
+/// let idx: Result<isize, _> = TryIntoIndexValue::try_into(10usize);
+/// assert!(idx.is_ok());
+/// ```
 pub trait TryIntoIndexValue {
-    /// The error type returned when conversion fails.
-    ///
-    /// 转换失败时返回的错误类型。
+    /// 转换失败时的错误类型
+    /// Error type when conversion fails
     type Error;
 
-    /// Convert the value to an `isize`.
-    ///
-    /// 将值转换为 `isize`。
-    ///
-    /// # Returns / 返回值
-    ///
-    /// - `Ok(isize)` - The converted index value / 转换后的索引值
-    /// - `Err(Self::Error)` - If the conversion fails / 如果转换失败
+    /// 尝试将值转换为索引值
+    /// Try to convert the value to an index value
     fn try_into(self) -> Result<isize, Self::Error>;
 }
 
+/// `isize` 的 `TryIntoIndexValue` 实现
+/// `TryIntoIndexValue` implementation for `isize`
+///
+/// 直接返回值本身，不会失败。
+/// Returns the value directly, never fails.
 impl TryIntoIndexValue for isize {
     type Error = Infallible;
 
@@ -56,6 +73,11 @@ impl TryIntoIndexValue for isize {
     }
 }
 
+/// `&isize` 的 `TryIntoIndexValue` 实现
+/// `TryIntoIndexValue` implementation for `&isize`
+///
+/// 解引用后返回值本身，不会失败。
+/// Returns the dereferenced value, never fails.
 impl TryIntoIndexValue for &'_ isize {
     type Error = Infallible;
 
@@ -64,6 +86,11 @@ impl TryIntoIndexValue for &'_ isize {
     }
 }
 
+/// `usize` 的 `TryIntoIndexValue` 实现
+/// `TryIntoIndexValue` implementation for `usize`
+///
+/// 转换为有符号整数，在大多数平台上不会失败。
+/// Converts to signed integer, never fails on most platforms.
 impl TryIntoIndexValue for usize {
     type Error = Infallible;
 
@@ -72,6 +99,11 @@ impl TryIntoIndexValue for usize {
     }
 }
 
+/// `&usize` 的 `TryIntoIndexValue` 实现
+/// `TryIntoIndexValue` implementation for `&usize`
+///
+/// 解引用后转换为有符号整数，在大多数平台上不会失败。
+/// Converts dereferenced value to signed integer, never fails on most platforms.
 impl TryIntoIndexValue for &'_ usize {
     type Error = Infallible;
 
@@ -80,12 +112,32 @@ impl TryIntoIndexValue for &'_ usize {
     }
 }
 
-/// Macro for implementing TryIntoIndexValue for various integer types.
+/// 为整数类型实现 `TryIntoIndexValue` 的宏
+/// Macro for implementing `TryIntoIndexValue` for integer types
 ///
-/// 为各种整数类型实现 TryIntoIndexValue 的宏。
+/// 为指定的整数类型及其引用生成 `TryIntoIndexValue` 实现。
+/// Generates `TryIntoIndexValue` implementations for specified integer types and their references.
+///
+/// ## 示例 / Examples
+///
+/// ```
+/// use ospf_rust_multiarray::index_value::TryIntoIndexValue;
+///
+/// // 测试 u8 转换 / Test u8 conversion
+/// let idx: Result<isize, _> = TryIntoIndexValue::try_into(5u8);
+/// assert!(idx.is_ok());
+/// assert_eq!(idx.unwrap(), 5);
+///
+/// // 测试 i32 转换 / Test i32 conversion
+/// let idx: Result<isize, _> = TryIntoIndexValue::try_into(-10i32);
+/// assert!(idx.is_ok());
+/// assert_eq!(idx.unwrap(), -10);
+/// ```
 macro_rules! impl_index_value_for_int {
     ($($t:ty)*) => {
         $(
+            /// 整数类型的 `TryIntoIndexValue` 实现
+            /// `TryIntoIndexValue` implementation for integer type
             impl TryIntoIndexValue for $t {
                 type Error = <$t as TryInto<isize>>::Error;
 
@@ -94,6 +146,8 @@ macro_rules! impl_index_value_for_int {
                 }
             }
 
+            /// 整数类型引用的 `TryIntoIndexValue` 实现
+            /// `TryIntoIndexValue` implementation for integer type reference
             impl TryIntoIndexValue for &'_ $t {
                 type Error = <$t as TryInto<isize>>::Error;
 
@@ -105,6 +159,6 @@ macro_rules! impl_index_value_for_int {
     };
 }
 
-// Implement for all standard integer types.
-// 为标准整数类型实现。
+// 为所有标准整数类型实现 `TryIntoIndexValue`
+// Implement `TryIntoIndexValue` for all standard integer types
 impl_index_value_for_int! { u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 }

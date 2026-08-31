@@ -6,16 +6,19 @@ Physical quantities, dimensions and units system
 
 ## Overview
 
-`ospf-rust-quantities` is a Rust library providing a complete implementation of physical quantities, dimensions, and units, supporting both runtime and compile-time modes.
+`ospf-rust-quantities` is a Rust library providing a complete implementation of physical quantities, dimensions, and units, supporting both runtime and compile-time modes through a unified type system.
 
 ### Key Features
 
-- **Zero-cost Abstraction**: Compile-time unit types complete all calculations at compile time with no runtime overhead
-- **Compile-time Dimension Checking**: Mismatched dimension operations cause compile errors
+- **Unified Type System**: Single `Quantity<V, U>` type works for both compile-time and runtime modes
+- **Zero-cost Abstraction**: Compile-time unit types (`Quantity<V, U: CTUnit>`) complete all calculations at compile time with no runtime overhead
+- **Compile-time Dimension Checking**: Mismatched dimension operations cause compile errors for compile-time quantities
 - **Flexible Unit Conversion**: Supports automatic conversion between units of the same dimension
 - **Predefined Unit Systems**: Built-in SI, MKS, CGS and other unit systems
 - **Generic Value Types**: Supports `BigDecimal`, `f64`, and other numeric types
 - **Complete Bilingual Documentation**: Available in both Chinese and English
+
+[中文文档 / Chinese Documentation](./README_ch.md)
 
 ## Installation
 
@@ -33,21 +36,21 @@ ospf-rust-quantities = "0.1.0"
 Compile-time quantities have their unit types determined at compile time, providing zero-cost abstraction and compile-time dimension checking.
 
 ```rust
-use ospf_rust_quantities::quantity::CTQuantity;
+use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::derived::{Meter, Kilometer, Second};
 use ospf_rust_quantities::unit::CTUnit;
 use bigdecimal::BigDecimal;
 
-// Create compile-time quantity
-let length: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(1000));
+// Create compile-time quantity (using new_ct for CTUnit types)
+let length: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(1000));
 
 // Compile-time unit conversion
-let length_km: CTQuantity<BigDecimal, Kilometer> = length.to();
+let length_km: Quantity<BigDecimal, Kilometer> = length.to();
 assert_eq!(length_km.value, BigDecimal::from(1));
 
 // Quantity operations produce new unit types
-let time: CTQuantity<BigDecimal, Second> = CTQuantity::new(BigDecimal::from(10));
-let velocity = length_km / time; // Type: CTQuantity<BigDecimal, CTUnitDiv<Kilometer, Second>>
+let time: Quantity<BigDecimal, Second> = Quantity::new_ct(BigDecimal::from(10));
+let velocity = length_km / time; // Type: Quantity<BigDecimal, CTUnitDiv<Kilometer, Second>>
 ```
 
 ### Runtime Quantities
@@ -57,11 +60,11 @@ Runtime quantities have their units determined at runtime, supporting dynamic un
 ```rust
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::derived::{Meter, Kilometer, Kilogram};
-use ospf_rust_quantities::unit::CTUnit;
+use ospf_rust_quantities::unit::{CTUnit, Unit};
 use bigdecimal::BigDecimal;
 
-// Create runtime quantity
-let length = Quantity::new(BigDecimal::from(1000), Meter::INSTANT.clone());
+// Create runtime quantity (using Unit type)
+let length: Quantity<BigDecimal, Unit> = Quantity::new(BigDecimal::from(1000), Meter::INSTANT.clone());
 
 // Runtime unit conversion
 let length_km = length.to_unit(&Kilometer::INSTANT.clone()).unwrap();
@@ -70,6 +73,22 @@ assert_eq!(length_km.value, BigDecimal::from(1));
 // Quantity operations
 let mass = Quantity::new(BigDecimal::from(5), Kilogram::INSTANT.clone());
 let momentum = &length * &mass; // Produces new dimension
+```
+
+### Converting Between Modes
+
+```rust
+use ospf_rust_quantities::quantity::Quantity;
+use ospf_rust_quantities::unit::derived::Meter;
+use ospf_rust_quantities::unit::{CTUnit, Unit};
+use bigdecimal::BigDecimal;
+
+// Create compile-time quantity
+let ct_length: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
+
+// Convert to runtime quantity
+let rt_length: Quantity<BigDecimal, Unit> = ct_length.to_runtime();
+assert_eq!(rt_length.unit.symbol(), "m");
 ```
 
 ### Unit Systems
@@ -94,13 +113,15 @@ assert_eq!(standard.unit.symbol(), "m"); // Standard unit for length in SI is me
 
 | Type | Description |
 |------|-------------|
-| `CTQuantity<V, U>` | Compile-time quantity with unit type `U` determined at compile time |
-| `Quantity<V>` | Runtime quantity with unit determined at runtime |
+| `Quantity<V, U>` | Unified quantity type, `U` can be `Unit` (runtime) or a `CTUnit` type (compile-time) |
+| `Quantity<V, Unit>` | Runtime quantity with unit determined at runtime |
+| `Quantity<V, U: CTUnit>` | Compile-time quantity with unit type determined at compile time |
 | `Unit` | Runtime unit |
 | `CTUnit` | Compile-time unit trait |
 | `DerivedQuantity` | Derived dimension |
 | `CTDerivedQuantity` | Compile-time derived dimension trait |
 | `Scale` | Unit scale |
+| `QuantityTrait` | Unified interface for all quantity types |
 
 ### Module Structure
 
@@ -113,9 +134,7 @@ ospf_rust_quantities
 │   ├── physical_unit  # Core unit types
 │   ├── system         # Unit systems (SI, MKS, CGS)
 │   └── derived        # Predefined derived units
-├── quantity           # Quantities
-│   ├── ct_quantity    # Compile-time quantities
-│   └── quantity       # Runtime quantities
+├── quantity           # Quantities (unified type)
 ├── scale              # Scales
 └── error              # Error types
 ```
@@ -136,17 +155,80 @@ ospf_rust_quantities
 | Frequency | Hertz, Kilohertz, Megahertz |
 | Information | Bit, Byte, Kilobyte, Megabyte |
 
+## Physical Quantity Symbolic Computation
+
+`ospf-rust-quantities` integrates with `ospf-rust-math` to support symbolic computation with physical quantities. This allows you to create polynomials with physical units, combining the benefits of type-safe dimensional analysis with symbolic mathematics.
+
+### Supported Value Types
+
+| Value Type | Crate | Use Case |
+|------------|-------|----------|
+| `f64` | `std` | Fast numerical computation |
+| `BigDecimal` | `bigdecimal` | High-precision decimal for financial calculations |
+| `BigRational` | `num-rational` | Exact rational numbers for symbolic computation |
+
+### Usage Examples
+
+```rust
+use ospf_rust_quantities::quantity::Quantity;
+use ospf_rust_quantities::unit::derived::Meter;
+use ospf_rust_quantities::unit::CTUnit;
+use ospf_rust_math::symbol::polynomial::Linear;
+use ospf_rust_math::symbol::symbol::OwnedSymbol;
+use bigdecimal::BigDecimal;
+use num_rational::BigRational;
+
+// Physical quantity symbol
+let x: Quantity<OwnedSymbol, Meter> = Quantity::new_ct(OwnedSymbol::new("x"));
+let y: Quantity<OwnedSymbol, Meter> = Quantity::new_ct(OwnedSymbol::new("y"));
+
+// Physical quantity polynomial with f64
+let distance: Quantity<Linear<f64>, Meter> = Quantity::new_ct(2.0 * x.clone() + 3.0 * y.clone());
+
+// With BigDecimal
+let coef_bd = BigDecimal::from(2);
+let distance_bd: Quantity<Linear<BigDecimal>, Meter> = Quantity::new_ct(coef_bd * x.clone());
+
+// With BigRational
+let coef_br = BigRational::new(3.into(), 2.into()); // 3/2
+let distance_br: Quantity<Linear<BigRational>, Meter> = Quantity::new_ct(coef_br * x);
+```
+
+### Type Definitions
+
+| Type | Description |
+|------|-------------|
+| `Quantity<OwnedSymbol, U>` | Physical quantity symbol |
+| `Quantity<LinearMonomial<T>, U>` | Physical quantity linear monomial |
+| `Quantity<Linear<T>, U>` | Physical quantity linear polynomial |
+| `Quantity<QuadraticMonomial<T>, U>` | Physical quantity quadratic monomial |
+| `Quantity<Quadratic<T>, U>` | Physical quantity quadratic polynomial |
+| `Quantity<Canonical<T, E>, U>` | Physical quantity canonical polynomial |
+
+### Compile-time vs Runtime Units
+
+Symbolic computation works with both compile-time and runtime units:
+
+```rust
+// Compile-time (zero-cost)
+let ct_symbol: Quantity<OwnedSymbol, Meter> = Quantity::new_ct(OwnedSymbol::new("x"));
+
+// Runtime (flexible)
+let rt_symbol: Quantity<OwnedSymbol, Unit> = 
+    Quantity::new(OwnedSymbol::new("x"), Meter::INSTANT.clone());
+```
+
 ## Compile-time Dimension Checking
 
 Compile-time quantities check dimension matching at compile time. The following code will cause a compile error:
 
 ```rust,compile_fail
-use ospf_rust_quantities::quantity::CTQuantity;
+use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::derived::{Meter, Second};
 use bigdecimal::BigDecimal;
 
-let length: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(10));
-let time: CTQuantity<BigDecimal, Second> = CTQuantity::new(BigDecimal::from(5));
+let length: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
+let time: Quantity<BigDecimal, Second> = Quantity::new_ct(BigDecimal::from(5));
 
 // Compile error: quantities with different dimensions cannot be added
 let result = length + time; // Error!
@@ -195,10 +277,10 @@ let custom_unit = UnitBuilder::new(
 ```rust
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::derived::{Meter, Kilogram};
-use ospf_rust_quantities::unit::CTUnit;
+use ospf_rust_quantities::unit::{CTUnit, Unit};
 use bigdecimal::BigDecimal;
 
-let length = Quantity::new(BigDecimal::from(10), Meter::INSTANT.clone());
+let length: Quantity<BigDecimal, Unit> = Quantity::new(BigDecimal::from(10), Meter::INSTANT.clone());
 let mass_unit = Kilogram::INSTANT.clone();
 
 // Try to convert to unit with different dimension
@@ -210,59 +292,29 @@ match length.to_unit(&mass_unit) {
 
 ## Performance Benchmarks
 
-The following benchmarks compare the performance of compile-time (`CTQuantity`) and runtime (`Quantity`) physical quantities. Run with:
+The following benchmarks compare the performance of compile-time (`Quantity<V, CTUnit>`) and runtime (`Quantity<V, Unit>`) physical quantities. Run with:
 
 ```bash
 cargo bench --package ospf-rust-quantities --bench quantity_bench
 ```
 
-### Basic Operations
-
-| Operation | CTQuantity | Quantity | Ratio |
-|-----------|------------|----------|-------|
-| Creation | 35.6 ns | 704.8 ns | CTQuantity **20x faster** |
-| Addition (reference) | 70.5 ns | 85.0 ns | CTQuantity **1.2x faster** |
-| Addition (different units) | - | 242.9 ns | - |
-| Subtraction (reference) | 71.7 ns | 86.4 ns | CTQuantity **1.2x faster** |
-| Scalar Multiplication | 70.3 ns | 81.2 ns | CTQuantity **1.2x faster** |
-| Scalar Division | 107.2 ns | 98.1 ns | Quantity **1.1x faster** |
-| Negation | 27.1 ns | 26.5 ns | Comparable |
-
-### Quantity Operations (producing new dimensions)
-
-| Operation | CTQuantity | Quantity | Ratio |
-|-----------|------------|----------|-------|
-| Multiplication | 69.8 ns | 343.3 ns | CTQuantity **4.9x faster** |
-| Division | 104.7 ns | 403.5 ns | CTQuantity **3.9x faster** |
-
-### Unit Conversion
-
-| Operation | CTQuantity | Quantity | Ratio |
-|-----------|------------|----------|-------|
-| Meter → Kilometer | 515.2 ns | 171.3 ns | Quantity **3x faster** |
-| Kilometer → Meter | 500.4 ns | 116.6 ns | Quantity **4.3x faster** |
-
-### Batch Operations (10,000 iterations)
-
-| Operation | CTQuantity | Quantity | Ratio |
-|-----------|------------|----------|-------|
-| Addition | 683.9 µs | 955.3 µs | CTQuantity **1.4x faster** |
-| Multiplication | 690.7 µs | 8.4 ms | CTQuantity **12x faster** |
-| Unit Conversion | 5.57 ms | 1.91 ms | Quantity **2.9x faster** |
-
-### Compound Operations
-
-| Operation | CTQuantity | Quantity | Ratio |
-|-----------|------------|----------|-------|
-| (a + b) * c / d | 343.3 ns | 916.7 ns | CTQuantity **2.7x faster** |
-
 ### Key Findings
 
-1. **CTQuantity excels at creation** - No need to clone `Unit` objects, resulting in ~20x faster creation
-2. **CTQuantity is faster for arithmetic** - No runtime dimension checking overhead
-3. **Quantity is faster for unit conversion** - Runtime implementation is better optimized
-4. **CTQuantity shows significant advantage in batch operations** - Especially for operations producing new dimensions
+1. **Compile-time quantities excel at creation** - No need to clone `Unit` objects, resulting in ~20x faster creation
+2. **Compile-time quantities are faster for arithmetic** - No runtime dimension checking overhead
+3. **Runtime quantities are faster for unit conversion** - Runtime implementation is better optimized
+4. **Compile-time quantities show significant advantage in batch operations** - Especially for operations producing new dimensions
+
+### When to Use Which Mode
+
+| Scenario | Recommended Mode |
+|----------|------------------|
+| Performance-critical code with known units | Compile-time (`Quantity<V, U: CTUnit>`) |
+| Dynamic unit selection at runtime | Runtime (`Quantity<V, Unit>`) |
+| Need compile-time dimension safety | Compile-time |
+| Interoperability with user-provided units | Runtime |
+| Mixed scenarios | Use compile-time and convert to runtime when needed |
 
 ## License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](./../LICENSE) for details.
+Licensed under the MIT License. See [LICENSE](../LICENSE) for details.

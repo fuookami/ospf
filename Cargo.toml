@@ -1,7 +1,20 @@
 [workspace]
+resolver = "3"
 members = [
     "ospf-rust-base",
     "ospf-rust-multiarray",
     "ospf-rust-math",
-    "ospf-rust-quantities"
+    "ospf-rust-quantities",
+    "ospf-rust-core",
+    "ospf-rust-framework",
+    "ospf-rust-example"
 ]
+
+[workspace.package]
+license = "MIT"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3

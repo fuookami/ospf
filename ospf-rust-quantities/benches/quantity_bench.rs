@@ -1,13 +1,13 @@
 //! 性能基准测试 - 物理量
 //! Performance Benchmark - Physical Quantities
 //!
-//! 比较编译时物理量（CTQuantity）与运行时物理量（Quantity）的性能差异
-//! Comparing performance between compile-time (CTQuantity) and runtime (Quantity) physical quantities
+//! 比较编译时物理量（Quantity<V, U: CTUnit>）与运行时物理量（Quantity<V, Unit>）的性能差异
+//! Comparing performance between compile-time (Quantity<V, U: CTUnit>) and runtime (Quantity<V, Unit>) physical quantities
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use ospf_rust_quantities::quantity::{CTQuantity, Quantity};
+use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::derived::{Meter, Kilometer, Second, Kilogram};
-use ospf_rust_quantities::unit::CTUnit;
+use ospf_rust_quantities::unit::{CTUnit, Unit};
 use bigdecimal::BigDecimal;
 
 // ============================================================================
@@ -17,14 +17,14 @@ use bigdecimal::BigDecimal;
 fn bench_creation(c: &mut Criterion) {
     let mut group = c.benchmark_group("creation");
 
-    // CTQuantity 创建 / CTQuantity creation
+    // 编译时物理量创建 / Compile-time quantity creation
     group.bench_function("ct_quantity", |b| {
         b.iter(|| {
-            let _q: CTQuantity<BigDecimal, Meter> = CTQuantity::new(black_box(BigDecimal::from(10)));
+            let _q: Quantity<BigDecimal, Meter> = Quantity::new_ct(black_box(BigDecimal::from(10)));
         });
     });
 
-    // Quantity 创建 / Quantity creation
+    // 运行时物理量创建 / Runtime quantity creation
     group.bench_function("quantity", |b| {
         b.iter(|| {
             let _q = Quantity::new(black_box(BigDecimal::from(10)), Meter::INSTANT.clone());
@@ -41,17 +41,17 @@ fn bench_creation(c: &mut Criterion) {
 fn bench_addition(c: &mut Criterion) {
     let mut group = c.benchmark_group("addition");
 
-    // CTQuantity 加法（引用版本）/ CTQuantity addition (reference version)
+    // 编译时物理量加法（引用版本）/ Compile-time quantity addition (reference version)
     group.bench_function("ct_quantity_ref", |b| {
-        let ct_q1: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(10));
-        let ct_q2: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(5));
+        let ct_q1: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
+        let ct_q2: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(5));
 
         b.iter(|| {
             let _sum = black_box(&ct_q1) + black_box(&ct_q2);
         });
     });
 
-    // Quantity 加法（相同单位，引用版本）/ Quantity addition (same unit, reference version)
+    // 运行时物理量加法（相同单位，引用版本）/ Runtime quantity addition (same unit, reference version)
     group.bench_function("quantity_ref_same_unit", |b| {
         let q1 = Quantity::new(BigDecimal::from(10), Meter::INSTANT.clone());
         let q2 = Quantity::new(BigDecimal::from(5), Meter::INSTANT.clone());
@@ -61,7 +61,7 @@ fn bench_addition(c: &mut Criterion) {
         });
     });
 
-    // Quantity 加法（不同单位，引用版本）/ Quantity addition (different units, reference version)
+    // 运行时物理量加法（不同单位，引用版本）/ Runtime quantity addition (different units, reference version)
     group.bench_function("quantity_ref_different_units", |b| {
         let q3 = Quantity::new(BigDecimal::from(1), Kilometer::INSTANT.clone());
         let q4 = Quantity::new(BigDecimal::from(500), Meter::INSTANT.clone());
@@ -81,17 +81,17 @@ fn bench_addition(c: &mut Criterion) {
 fn bench_subtraction(c: &mut Criterion) {
     let mut group = c.benchmark_group("subtraction");
 
-    // CTQuantity 减法（引用版本）/ CTQuantity subtraction (reference version)
+    // 编译时物理量减法（引用版本）/ Compile-time quantity subtraction (reference version)
     group.bench_function("ct_quantity_ref", |b| {
-        let ct_q1: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(10));
-        let ct_q2: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(3));
+        let ct_q1: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
+        let ct_q2: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(3));
 
         b.iter(|| {
             let _diff = black_box(&ct_q1) - black_box(&ct_q2);
         });
     });
 
-    // Quantity 减法（引用版本）/ Quantity subtraction (reference version)
+    // 运行时物理量减法（引用版本）/ Runtime quantity subtraction (reference version)
     group.bench_function("quantity_ref", |b| {
         let q1 = Quantity::new(BigDecimal::from(10), Meter::INSTANT.clone());
         let q2 = Quantity::new(BigDecimal::from(3), Meter::INSTANT.clone());
@@ -111,9 +111,9 @@ fn bench_subtraction(c: &mut Criterion) {
 fn bench_scalar_multiplication(c: &mut Criterion) {
     let mut group = c.benchmark_group("scalar_multiplication");
 
-    // CTQuantity 标量乘法（引用版本）/ CTQuantity scalar multiplication (reference version)
+    // 编译时物理量标量乘法（引用版本）/ Compile-time quantity scalar multiplication (reference version)
     group.bench_function("ct_quantity_ref", |b| {
-        let ct_q: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(10));
+        let ct_q: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
         let scalar = BigDecimal::from(2);
 
         b.iter(|| {
@@ -121,7 +121,7 @@ fn bench_scalar_multiplication(c: &mut Criterion) {
         });
     });
 
-    // Quantity 标量乘法（引用版本）/ Quantity scalar multiplication (reference version)
+    // 运行时物理量标量乘法（引用版本）/ Runtime quantity scalar multiplication (reference version)
     group.bench_function("quantity_ref", |b| {
         let q = Quantity::new(BigDecimal::from(10), Meter::INSTANT.clone());
         let scalar = BigDecimal::from(2);
@@ -141,9 +141,9 @@ fn bench_scalar_multiplication(c: &mut Criterion) {
 fn bench_scalar_division(c: &mut Criterion) {
     let mut group = c.benchmark_group("scalar_division");
 
-    // CTQuantity 标量除法（引用版本）/ CTQuantity scalar division (reference version)
+    // 编译时物理量标量除法（引用版本）/ Compile-time quantity scalar division (reference version)
     group.bench_function("ct_quantity_ref", |b| {
-        let ct_q: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(10));
+        let ct_q: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
         let scalar = BigDecimal::from(2);
 
         b.iter(|| {
@@ -151,7 +151,7 @@ fn bench_scalar_division(c: &mut Criterion) {
         });
     });
 
-    // Quantity 标量除法（引用版本）/ Quantity scalar division (reference version)
+    // 运行时物理量标量除法（引用版本）/ Runtime quantity scalar division (reference version)
     group.bench_function("quantity_ref", |b| {
         let q = Quantity::new(BigDecimal::from(10), Meter::INSTANT.clone());
         let scalar = BigDecimal::from(2);
@@ -171,17 +171,17 @@ fn bench_scalar_division(c: &mut Criterion) {
 fn bench_quantity_multiplication(c: &mut Criterion) {
     let mut group = c.benchmark_group("quantity_multiplication");
 
-    // CTQuantity 物理量乘法（引用版本）/ CTQuantity quantity multiplication (reference version)
+    // 编译时物理量乘法（引用版本）/ Compile-time quantity multiplication (reference version)
     group.bench_function("ct_quantity_ref", |b| {
-        let ct_length: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(10));
-        let ct_mass: CTQuantity<BigDecimal, Kilogram> = CTQuantity::new(BigDecimal::from(5));
+        let ct_length: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
+        let ct_mass: Quantity<BigDecimal, Kilogram> = Quantity::new_ct(BigDecimal::from(5));
 
         b.iter(|| {
             let _product = black_box(&ct_length) * black_box(&ct_mass);
         });
     });
 
-    // Quantity 物理量乘法（引用版本）/ Quantity quantity multiplication (reference version)
+    // 运行时物理量乘法（引用版本）/ Runtime quantity multiplication (reference version)
     group.bench_function("quantity_ref", |b| {
         let length = Quantity::new(BigDecimal::from(10), Meter::INSTANT.clone());
         let mass = Quantity::new(BigDecimal::from(5), Kilogram::INSTANT.clone());
@@ -201,17 +201,17 @@ fn bench_quantity_multiplication(c: &mut Criterion) {
 fn bench_quantity_division(c: &mut Criterion) {
     let mut group = c.benchmark_group("quantity_division");
 
-    // CTQuantity 物理量除法（引用版本）/ CTQuantity quantity division (reference version)
+    // 编译时物理量除法（引用版本）/ Compile-time quantity division (reference version)
     group.bench_function("ct_quantity_ref", |b| {
-        let ct_length: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(100));
-        let ct_time: CTQuantity<BigDecimal, Second> = CTQuantity::new(BigDecimal::from(10));
+        let ct_length: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(100));
+        let ct_time: Quantity<BigDecimal, Second> = Quantity::new_ct(BigDecimal::from(10));
 
         b.iter(|| {
             let _velocity = black_box(&ct_length) / black_box(&ct_time);
         });
     });
 
-    // Quantity 物理量除法（引用版本）/ Quantity quantity division (reference version)
+    // 运行时物理量除法（引用版本）/ Runtime quantity division (reference version)
     group.bench_function("quantity_ref", |b| {
         let length = Quantity::new(BigDecimal::from(100), Meter::INSTANT.clone());
         let time = Quantity::new(BigDecimal::from(10), Second::INSTANT.clone());
@@ -231,23 +231,23 @@ fn bench_quantity_division(c: &mut Criterion) {
 fn bench_unit_conversion(c: &mut Criterion) {
     let mut group = c.benchmark_group("unit_conversion");
 
-    // CTQuantity 单位转换（编译时检查）/ CTQuantity unit conversion (compile-time check)
+    // 编译时物理量单位转换（编译时检查）/ Compile-time quantity unit conversion (compile-time check)
     group.bench_function("ct_quantity_meter_to_kilometer", |b| {
         b.iter(|| {
-            let ct_length_m: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(1000));
-            let _km: CTQuantity<BigDecimal, Kilometer> = ct_length_m.to();
+            let ct_length_m: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(1000));
+            let _km: Quantity<BigDecimal, Kilometer> = ct_length_m.to();
         });
     });
 
-    // CTQuantity 反向单位转换 / CTQuantity reverse unit conversion
+    // 编译时物理量反向单位转换 / Compile-time quantity reverse unit conversion
     group.bench_function("ct_quantity_kilometer_to_meter", |b| {
         b.iter(|| {
-            let ct_length_km: CTQuantity<BigDecimal, Kilometer> = CTQuantity::new(BigDecimal::from(1));
-            let _m: CTQuantity<BigDecimal, Meter> = ct_length_km.to();
+            let ct_length_km: Quantity<BigDecimal, Kilometer> = Quantity::new_ct(BigDecimal::from(1));
+            let _m: Quantity<BigDecimal, Meter> = ct_length_km.to();
         });
     });
 
-    // Quantity 单位转换（运行时检查）/ Quantity unit conversion (runtime check)
+    // 运行时物理量单位转换（运行时检查）/ Runtime quantity unit conversion (runtime check)
     group.bench_function("quantity_meter_to_kilometer", |b| {
         let length_m = Quantity::new(BigDecimal::from(1000), Meter::INSTANT.clone());
         let km_unit = Kilometer::INSTANT.clone();
@@ -257,13 +257,32 @@ fn bench_unit_conversion(c: &mut Criterion) {
         });
     });
 
-    // Quantity 反向单位转换 / Quantity reverse unit conversion
+    // 运行时物理量反向单位转换 / Runtime quantity reverse unit conversion
     group.bench_function("quantity_kilometer_to_meter", |b| {
         let length_km = Quantity::new(BigDecimal::from(1), Kilometer::INSTANT.clone());
         let m_unit = Meter::INSTANT.clone();
 
         b.iter(|| {
             let _m = black_box(&length_km).to_unit(black_box(&m_unit)).unwrap();
+        });
+    });
+
+    group.finish();
+}
+
+// ============================================================================
+// 编译时转运行时性能测试 / Compile-time to runtime conversion tests
+// ============================================================================
+
+fn bench_ct_to_runtime(c: &mut Criterion) {
+    let mut group = c.benchmark_group("ct_to_runtime");
+
+    // 编译时转运行时 / Compile-time to runtime conversion
+    group.bench_function("ct_to_runtime", |b| {
+        let ct_q: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
+
+        b.iter(|| {
+            let _rt = black_box(&ct_q).to_runtime();
         });
     });
 
@@ -279,14 +298,14 @@ fn bench_batch_operations(c: &mut Criterion) {
 
     // 测试不同规模的批量操作 / Test batch operations with different sizes
     for size in [100, 1000, 10000].iter() {
-        // CTQuantity 批量加法（引用版本）/ CTQuantity batch addition (reference version)
+        // 编译时物理量批量加法（引用版本）/ Compile-time quantity batch addition (reference version)
         group.bench_with_input(BenchmarkId::new("ct_quantity_add_ref", size), size, |b, &size| {
-            let ct_values: Vec<CTQuantity<BigDecimal, Meter>> = (0..size)
-                .map(|i| CTQuantity::new(BigDecimal::from(i as i64)))
+            let ct_values: Vec<Quantity<BigDecimal, Meter>> = (0..size)
+                .map(|i| Quantity::new_ct(BigDecimal::from(i as i64)))
                 .collect();
 
             b.iter(|| {
-                let mut sum: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(0));
+                let mut sum: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(0));
                 for q in &ct_values {
                     sum = &sum + q;
                 }
@@ -294,9 +313,9 @@ fn bench_batch_operations(c: &mut Criterion) {
             });
         });
 
-        // Quantity 批量加法（引用版本）/ Quantity batch addition (reference version)
+        // 运行时物理量批量加法（引用版本）/ Runtime quantity batch addition (reference version)
         group.bench_with_input(BenchmarkId::new("quantity_add_ref", size), size, |b, &size| {
-            let values: Vec<Quantity<BigDecimal>> = (0..size)
+            let values: Vec<Quantity<BigDecimal, Unit>> = (0..size)
                 .map(|i| Quantity::new(BigDecimal::from(i as i64), Meter::INSTANT.clone()))
                 .collect();
 
@@ -309,13 +328,13 @@ fn bench_batch_operations(c: &mut Criterion) {
             });
         });
 
-        // CTQuantity 批量乘法（引用版本）/ CTQuantity batch multiplication (reference version)
+        // 编译时物理量批量乘法（引用版本）/ Compile-time quantity batch multiplication (reference version)
         group.bench_with_input(BenchmarkId::new("ct_quantity_mul_ref", size), size, |b, &size| {
-            let ct_lengths: Vec<CTQuantity<BigDecimal, Meter>> = (0..size)
-                .map(|i| CTQuantity::new(BigDecimal::from(i as i64 + 1)))
+            let ct_lengths: Vec<Quantity<BigDecimal, Meter>> = (0..size)
+                .map(|i| Quantity::new_ct(BigDecimal::from(i as i64 + 1)))
                 .collect();
-            let ct_masses: Vec<CTQuantity<BigDecimal, Kilogram>> = (0..size)
-                .map(|i| CTQuantity::new(BigDecimal::from(i as i64 + 1)))
+            let ct_masses: Vec<Quantity<BigDecimal, Kilogram>> = (0..size)
+                .map(|i| Quantity::new_ct(BigDecimal::from(i as i64 + 1)))
                 .collect();
 
             b.iter(|| {
@@ -327,12 +346,12 @@ fn bench_batch_operations(c: &mut Criterion) {
             });
         });
 
-        // Quantity 批量乘法（引用版本）/ Quantity batch multiplication (reference version)
+        // 运行时物理量批量乘法（引用版本）/ Runtime quantity batch multiplication (reference version)
         group.bench_with_input(BenchmarkId::new("quantity_mul_ref", size), size, |b, &size| {
-            let lengths: Vec<Quantity<BigDecimal>> = (0..size)
+            let lengths: Vec<Quantity<BigDecimal, Unit>> = (0..size)
                 .map(|i| Quantity::new(BigDecimal::from(i as i64 + 1), Meter::INSTANT.clone()))
                 .collect();
-            let masses: Vec<Quantity<BigDecimal>> = (0..size)
+            let masses: Vec<Quantity<BigDecimal, Unit>> = (0..size)
                 .map(|i| Quantity::new(BigDecimal::from(i as i64 + 1), Kilogram::INSTANT.clone()))
                 .collect();
 
@@ -345,11 +364,11 @@ fn bench_batch_operations(c: &mut Criterion) {
             });
         });
 
-        // CTQuantity 批量单位转换 / CTQuantity batch unit conversion
+        // 编译时物理量批量单位转换 / Compile-time quantity batch unit conversion
         group.bench_with_input(BenchmarkId::new("ct_quantity_convert", size), size, |b, &size| {
             b.iter(|| {
-                let ct_lengths_m: Vec<CTQuantity<BigDecimal, Meter>> = (0..size)
-                    .map(|i| CTQuantity::new(BigDecimal::from(i as i64 * 1000)))
+                let ct_lengths_m: Vec<Quantity<BigDecimal, Meter>> = (0..size)
+                    .map(|i| Quantity::new_ct(BigDecimal::from(i as i64 * 1000)))
                     .collect();
 
                 let mut lengths_km = Vec::with_capacity(size);
@@ -360,9 +379,9 @@ fn bench_batch_operations(c: &mut Criterion) {
             });
         });
 
-        // Quantity 批量单位转换 / Quantity batch unit conversion
+        // 运行时物理量批量单位转换 / Runtime quantity batch unit conversion
         group.bench_with_input(BenchmarkId::new("quantity_convert", size), size, |b, &size| {
-            let lengths_m: Vec<Quantity<BigDecimal>> = (0..size)
+            let lengths_m: Vec<Quantity<BigDecimal, Unit>> = (0..size)
                 .map(|i| Quantity::new(BigDecimal::from(i as i64 * 1000), Meter::INSTANT.clone()))
                 .collect();
             let km_unit = Kilometer::INSTANT.clone();
@@ -387,16 +406,16 @@ fn bench_batch_operations(c: &mut Criterion) {
 fn bench_negation(c: &mut Criterion) {
     let mut group = c.benchmark_group("negation");
 
-    // CTQuantity 取负（引用版本）/ CTQuantity negation (reference version)
+    // 编译时物理量取负（引用版本）/ Compile-time quantity negation (reference version)
     group.bench_function("ct_quantity_ref", |b| {
-        let ct_q: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(10));
+        let ct_q: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
 
         b.iter(|| {
             let _neg = -black_box(&ct_q);
         });
     });
 
-    // Quantity 取负（引用版本）/ Quantity negation (reference version)
+    // 运行时物理量取负（引用版本）/ Runtime quantity negation (reference version)
     group.bench_function("quantity_ref", |b| {
         let q = Quantity::new(BigDecimal::from(10), Meter::INSTANT.clone());
 
@@ -415,13 +434,13 @@ fn bench_negation(c: &mut Criterion) {
 fn bench_compound_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("compound_operations");
 
-    // CTQuantity 复合运算（引用版本）: (&a + &b) * &c / &d
-    // CTQuantity compound operation (reference version): (&a + &b) * &c / &d
+    // 编译时物理量复合运算（引用版本）: (&a + &b) * &c / &d
+    // Compile-time quantity compound operation (reference version): (&a + &b) * &c / &d
     group.bench_function("ct_quantity_ref", |b| {
-        let ct_a: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(10));
-        let ct_b: CTQuantity<BigDecimal, Meter> = CTQuantity::new(BigDecimal::from(5));
-        let ct_c: CTQuantity<BigDecimal, Kilogram> = CTQuantity::new(BigDecimal::from(2));
-        let ct_d: CTQuantity<BigDecimal, Second> = CTQuantity::new(BigDecimal::from(4));
+        let ct_a: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
+        let ct_b: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(5));
+        let ct_c: Quantity<BigDecimal, Kilogram> = Quantity::new_ct(BigDecimal::from(2));
+        let ct_d: Quantity<BigDecimal, Second> = Quantity::new_ct(BigDecimal::from(4));
 
         b.iter(|| {
             let sum = &ct_a + &ct_b;
@@ -430,8 +449,8 @@ fn bench_compound_operations(c: &mut Criterion) {
         });
     });
 
-    // Quantity 复合运算（引用版本）: (&a + &b) * &c / &d
-    // Quantity compound operation (reference version): (&a + &b) * &c / &d
+    // 运行时物理量复合运算（引用版本）: (&a + &b) * &c / &d
+    // Runtime quantity compound operation (reference version): (&a + &b) * &c / &d
     group.bench_function("quantity_ref", |bencher| {
         let a = Quantity::new(BigDecimal::from(10), Meter::INSTANT.clone());
         let b = Quantity::new(BigDecimal::from(5), Meter::INSTANT.clone());
@@ -458,6 +477,7 @@ criterion_group!(
     bench_quantity_multiplication,
     bench_quantity_division,
     bench_unit_conversion,
+    bench_ct_to_runtime,
     bench_batch_operations,
     bench_negation,
     bench_compound_operations,

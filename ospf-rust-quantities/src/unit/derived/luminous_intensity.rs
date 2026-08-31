@@ -5,9 +5,7 @@
 //! Provides SI unit definitions for luminous intensity dimension, including candela, etc.
 
 use crate::dimension::derived::LuminousIntensity;
-use crate::scale::Scale;
 use crate::unit::CTUnit;
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 发光强度单位 / Luminous intensity units

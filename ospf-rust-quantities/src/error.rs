@@ -8,8 +8,8 @@ use ospf_rust_base::{Error, ErrorCode, ErrorPosition, WithErrorPosition, error_t
 // DimensionMismatchError - 量纲不匹配错误 / Dimension mismatch error
 // ============================================================================
 
-/// 量纲不匹配错误
-/// Dimension mismatch error
+// 量纲不匹配错误
+// Dimension mismatch error
 error_type!(
     #[derive(Clone)]
     pub struct DimensionMismatchError {
@@ -56,8 +56,8 @@ impl Error for DimensionMismatchError {
 // UnitConversionError - 单位转换错误 / Unit conversion error
 // ============================================================================
 
-/// 单位转换错误
-/// Unit conversion error
+// 单位转换错误
+// Unit conversion error
 error_type!(
     #[derive(Clone)]
     pub struct UnitConversionError {

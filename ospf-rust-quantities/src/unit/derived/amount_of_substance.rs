@@ -5,9 +5,7 @@
 //! Provides SI unit definitions for amount of substance dimension, including mole, etc.
 
 use crate::dimension::derived::AmountOfSubstance;
-use crate::scale::Scale;
 use crate::unit::physical_unit::CTUnit;
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 物质的量单位 / Amount of substance units

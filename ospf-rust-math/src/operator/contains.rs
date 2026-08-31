@@ -90,8 +90,6 @@ impl<T: PartialOrd> Contains<T> for std::ops::RangeToInclusive<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_range_inclusive_contains() {
         let range = 1..=10;

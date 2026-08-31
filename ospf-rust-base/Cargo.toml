@@ -11,12 +11,10 @@ repository = "https://github.com/fuookami/ospf-rust"
 readme = "../README.md"
 
 [dependencies]
-strum = { version = "0.27.2", features = ["derive"] }
+strum = { version = "0.28.0", features = ["derive"] }
 paste = "1.0.15"
 cc-traits = { git = "https://github.com/fuookami/cc-traits" }
+arrayvec = { version = "0.7.6", optional = true }
 
-[profile.dev]
-opt-level = 0
-
-[profile.release]
-opt-level = 3
+[features]
+arrayvec = ["dep:arrayvec"]

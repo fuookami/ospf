@@ -9,7 +9,6 @@ use super::time::Second;
 use crate::dimension::derived::CatalyticActivity;
 use crate::scale::{Scale, MICRO, MILLI};
 use crate::unit::{CTUnit, CTUnitDiv};
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 催化活度单位 / Catalytic activity units

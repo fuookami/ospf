@@ -14,6 +14,7 @@ readme = "../README.md"
 paste = "1.0.15"
 cc-traits = { git = "https://github.com/fuookami/cc-traits" }
 dyn-clone = "1.0.20"
+num-traits = "0.2"
 
 [dependencies.ospf-rust-base]
 path = "../ospf-rust-base"
@@ -25,9 +26,3 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bench]]
 name = "multiarray_bench"
 harness = false
-
-[profile.dev]
-opt-level = 0
-
-[profile.release]
-opt-level = 3

@@ -5,9 +5,7 @@
 //! Provides SI unit definitions for thermodynamic temperature dimension, including kelvin, etc.
 
 use crate::dimension::derived::ThermodynamicTemperature;
-use crate::scale::Scale;
 use crate::unit::CTUnit;
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 热力学温度单位 / Thermodynamic temperature units

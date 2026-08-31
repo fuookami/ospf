@@ -17,7 +17,7 @@
 
 use super::fundamental_quantity::{
     CTFundamentalQuantityTrait, FundamentalDimension, FundamentalQuantity, FundamentalQuantityEnum,
-    Info, Omega, Phi, Theta, I, J, L, L0, M, M0, N, T, T0,
+    Info, Omega, Phi, Theta, I, J, L, M, N, T,
 };
 use crate::dimension::{
     CTFundamentalDimension, CTFundamentalDiv, CTFundamentalMul, CTFundamentalPow,
@@ -1028,7 +1028,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dimension::{Info0, Omega0, Phi0, Theta0, I0, I1, J0, L1, L2, M1, N0, T1};
+    use crate::dimension::{Info0, Omega0, Phi0, Theta0, I0, I1, J0, L0, L1, L2, M0, M1, N0, T0, T1};
 
     // ========================================================================
     // 运行时量纲测试 / Runtime dimension tests

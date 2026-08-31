@@ -124,7 +124,7 @@ impl From<ErrorCode> for usize {
 #[derive(Clone, Copy)]
 pub struct ErrorPosition {
     pub file: &'static str,
-    pub line: u32
+    pub line: u32,
 }
 
 impl Display for ErrorPosition {
@@ -197,10 +197,12 @@ macro_rules! error_enum {
             }
         })*
 
-        impl $name {
-            $(pub fn $variant(err: $errorType) -> Self {
-                Self::$variant(err)
-            })*
+        ::paste::paste! {
+            impl $name {
+                $(pub fn [<$variant:snake>](err: $errorType) -> Self {
+                    Self::$variant(err)
+                })*
+            }
         }
 
         impl WithErrorPosition for $name {
@@ -328,24 +330,30 @@ mod tests {
 
     #[test]
     fn test_file_line() {
-        let error = error!(TestError { message: "test error" });
+        let error = error!(TestError {
+            message: "test error"
+        });
         assert_eq!(error.position().file, file!());
-        assert_eq!(error.position().line, line!() - 2);
+        assert_eq!(error.position().line, line!() - 4);
     }
 
     #[test]
     fn test_error_enum() {
-        let test_error = error!(TestError { message: "test error" });
+        let test_error = error!(TestError {
+            message: "test error"
+        });
         let another_error = error!(AnotherError { code: 404 });
 
         let enum1: TestErrorEnum = test_error.into();
         let enum2: TestErrorEnum = another_error.into();
 
-        let enum3 = TestErrorEnum::Test(error!(TestError { message: "another test" }));
+        let enum3 = TestErrorEnum::Test(error!(TestError {
+            message: "another test"
+        }));
         let enum4 = TestErrorEnum::Another(error!(AnotherError { code: 500 }));
     }
 }
 
-pub use crate::error_type;
 pub use crate::error;
 pub use crate::error_enum;
+pub use crate::error_type;

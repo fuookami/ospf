@@ -7,9 +7,7 @@
 use super::length::Meter;
 use super::mass::Kilogram;
 use super::time::Second;
-use crate::scale::Scale;
 use crate::unit::{CTUnit, CTUnitDiv, CTUnitMul};
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 动量单位 / Momentum units

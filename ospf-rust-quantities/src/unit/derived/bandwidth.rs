@@ -6,9 +6,7 @@
 
 use super::information::{Bit, Byte, Gigabit, Kilobit, Kilobyte, Megabit, Megabyte, Terabit};
 use super::time::Second;
-use crate::scale::Scale;
 use crate::unit::{CTUnit, CTUnitDiv};
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 带宽单位 / Bandwidth units

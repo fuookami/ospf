@@ -9,7 +9,6 @@ use super::force::Newton;
 use crate::dimension::derived::Pressure;
 use crate::scale::{Scale, KILO, MEGA};
 use crate::unit::{CTUnit, CTUnitDiv};
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 压力单位 / Pressure units

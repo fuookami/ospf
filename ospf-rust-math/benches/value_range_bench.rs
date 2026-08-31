@@ -1,7 +1,7 @@
 //! Value Range 性能测试
 //! Value Range Performance Benchmarks
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use ospf_rust_math::algebra::value_range::{
     Bound, Closed, Interval, IntervalTrait, Open, ValueRange, ValueWrapper,
 };
@@ -48,17 +48,11 @@ fn bench_value_wrapper_comparison(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_interval_kind_compile_time(c: &mut Criterion) {
-    c.bench_function("closed_is_closed", |b| {
-        b.iter(|| Closed.is_closed())
-    });
+    c.bench_function("closed_is_closed", |b| b.iter(|| Closed.is_closed()));
 
-    c.bench_function("open_is_open", |b| {
-        b.iter(|| Open.is_open())
-    });
+    c.bench_function("open_is_open", |b| b.iter(|| Open.is_open()));
 
-    c.bench_function("closed_lower_sign", |b| {
-        b.iter(|| Closed.lower_sign())
-    });
+    c.bench_function("closed_lower_sign", |b| b.iter(|| Closed.lower_sign()));
 }
 
 fn bench_interval_kind_runtime(c: &mut Criterion) {
@@ -69,17 +63,11 @@ fn bench_interval_kind_runtime(c: &mut Criterion) {
         b.iter(|| closed.is_closed())
     });
 
-    c.bench_function("interval_open_is_open", |b| {
-        b.iter(|| open.is_open())
-    });
+    c.bench_function("interval_open_is_open", |b| b.iter(|| open.is_open()));
 
-    c.bench_function("interval_union", |b| {
-        b.iter(|| closed.union(&open))
-    });
+    c.bench_function("interval_union", |b| b.iter(|| closed.union(&open)));
 
-    c.bench_function("interval_intersect", |b| {
-        b.iter(|| closed.intersect(&open))
-    });
+    c.bench_function("interval_intersect", |b| b.iter(|| closed.intersect(&open)));
 }
 
 // ============================================================================
@@ -135,7 +123,7 @@ fn bench_bound_is_below(c: &mut Criterion) {
 fn bench_value_range_creation(c: &mut Criterion) {
     c.bench_function("value_range_compile_time_creation", |b| {
         b.iter(|| {
-            ValueRange::new(
+            ValueRange::from_bounds(
                 Bound::new(ValueWrapper::finite(black_box(1_i64)), Closed),
                 Bound::new(ValueWrapper::finite(black_box(10_i64)), Closed),
             )
@@ -144,7 +132,7 @@ fn bench_value_range_creation(c: &mut Criterion) {
 
     c.bench_function("value_range_runtime_creation", |b| {
         b.iter(|| {
-            ValueRange::new(
+            ValueRange::from_bounds(
                 Bound::new(ValueWrapper::finite(black_box(1_i64)), Interval::Closed),
                 Bound::new(ValueWrapper::finite(black_box(10_i64)), Interval::Open),
             )
@@ -154,17 +142,11 @@ fn bench_value_range_creation(c: &mut Criterion) {
 
 fn bench_value_range_contains(c: &mut Criterion) {
     // 编译时版本
-    let range_closed: ValueRange<i64, Closed, Closed> = ValueRange::new(
-        Bound::new(ValueWrapper::finite(1), Closed),
-        Bound::new(ValueWrapper::finite(100), Closed),
-    );
-    let range_mixed: ValueRange<i64, Closed, Open> = ValueRange::new(
-        Bound::new(ValueWrapper::finite(1), Closed),
-        Bound::new(ValueWrapper::finite(100), Open),
-    );
+    let range_closed: ValueRange<i64, Closed, Closed> = ValueRange::new(1, 100);
+    let range_mixed: ValueRange<i64, Closed, Open> = ValueRange::new_half_open(1, 100);
 
     // 运行时版本
-    let range_runtime: ValueRange<i64> = ValueRange::new(
+    let range_runtime: ValueRange<i64> = ValueRange::from_bounds(
         Bound::new(ValueWrapper::finite(1), Interval::Closed),
         Bound::new(ValueWrapper::finite(100), Interval::Open),
     );
@@ -186,12 +168,12 @@ fn bench_value_range_contains(c: &mut Criterion) {
 
 fn bench_value_range_with_infinity(c: &mut Criterion) {
     // 半无限区间 [0, +∞)
-    let range_compile: ValueRange<i64, Closed, Open> = ValueRange::new(
+    let range_compile: ValueRange<i64, Closed, Open> = ValueRange::from_bounds(
         Bound::new(ValueWrapper::finite(0), Closed),
         Bound::new(ValueWrapper::positive_infinity(), Open),
     );
 
-    let range_runtime: ValueRange<i64> = ValueRange::new(
+    let range_runtime: ValueRange<i64> = ValueRange::from_bounds(
         Bound::new(ValueWrapper::finite(0), Interval::Closed),
         Bound::new(ValueWrapper::positive_infinity(), Interval::Open),
     );
@@ -212,10 +194,7 @@ fn bench_value_range_with_infinity(c: &mut Criterion) {
 // ============================================================================
 
 fn bench_value_range_bulk_contains(c: &mut Criterion) {
-    let range: ValueRange<i64, Closed, Closed> = ValueRange::new(
-        Bound::new(ValueWrapper::finite(0), Closed),
-        Bound::new(ValueWrapper::finite(1000), Closed),
-    );
+    let range: ValueRange<i64, Closed, Closed> = ValueRange::new(0, 1000);
 
     let values: Vec<ValueWrapper<i64>> = (0..1000).map(|v| ValueWrapper::finite(v)).collect();
 

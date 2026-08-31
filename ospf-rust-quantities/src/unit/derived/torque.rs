@@ -6,9 +6,7 @@
 
 use super::force::{KilogramForce, Newton};
 use super::length::Meter;
-use crate::scale::Scale;
 use crate::unit::{CTUnit, CTUnitMul};
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 扭矩单位 / Torque units

@@ -1,68 +1,80 @@
-//! # DummyIndex - 虚拟索引实现
+//! 虚拟索引模块
+//! Dummy index module
 //!
-//! ## Overview / 概述
+//! 本模块提供了多维数组的灵活索引机制，支持：
+//! This module provides flexible indexing mechanism for multi-dimensional arrays, supporting:
 //!
-//! This module provides the `DummyIndex` type for array slicing operations.
-//! Dummy indices allow for flexible indexing including:
-//! - Single index selection / 单索引选择
-//! - Range-based slicing / 基于范围的切片
-//! - Index array selection / 索引数组选择
+//! - 单个索引：`0`, `-1`（负数表示从末尾开始）
+//!   Single index: `0`, `-1` (negative means counting from the end)
+//! - 范围索引：`0..5`, `1..=3`, `..`, `2..`
+//!   Range index: `0..5`, `1..=3`, `..`, `2..`
+//! - 索引数组：`[0, 2, 4]`
+//!   Index array: `[0, 2, 4]`
 //!
-//! 本模块提供 `DummyIndex` 类型用于数组切片操作。
-//! 虚拟索引允许灵活的索引，包括：
-//! - 单索引选择
-//! - 基于范围的切片
-//! - 索引数组选择
+//! ## 主要类型 / Main Types
 //!
-//! ## Key Types / 主要类型
+//! - `DummyIndex`: 虚拟索引枚举，表示单个索引、范围或索引数组
+//!   Dummy index enum, representing single index, range, or index array
+//! - `DummyIndexIterator`: 虚拟索引迭代器，用于遍历索引
+//!   Dummy index iterator, used to iterate over indices
+//! - `DummyAccessIterator`: 虚拟访问迭代器，用于遍历多维数组的元素
+//!   Dummy access iterator, used to iterate over elements of multi-dimensional arrays
 //!
-//! - `DummyIndex` - The main dummy index type / 主要虚拟索引类型
-//! - `DummyIndexIterator` - Iterator for dummy indices / 虚拟索引迭代器
-//! - `DummyAccessIterator` - Iterator that uses dummy access policy / 使用虚拟访问策略的迭代器
+//! ## 示例 / Examples
+//!
+//! ```rust
+//! use ospf_rust_multiarray::dummy_index::DummyIndex;
+//!
+//! // 使用 TryFrom 创建虚拟索引
+//! // Create dummy indices using TryFrom
+//! let idx: DummyIndex = DummyIndex::try_from(5isize).unwrap();  // 单个索引 / Single index
+//! let range: DummyIndex = DummyIndex::try_from(1..5).unwrap();  // 范围 / Range
+//! let arr: DummyIndex = DummyIndex::try_from(&[1isize, 3, 5][..]).unwrap();  // 索引数组 / Index array
+//! ```
 
 use super::concept::{AccessOrder, AccessOrderTrait, ColumnMajor, RowMajor, StorageOrderTrait};
 use super::index_value::TryIntoIndexValue;
 use super::shape::AbstractShape;
 use cc_traits::{Collection, Len};
-use dyn_clone::{DynClone, clone_trait_object};
+use dyn_clone::{clone_trait_object, DynClone};
 use ospf_rust_base::collection::Indices;
 use ospf_rust_base::error::*;
 use std::alloc::Allocator;
 use std::convert::Into;
 use std::fmt::{Debug, Display};
-use std::marker::PhantomData;
-use std::mem;
 use std::ops::{
     Bound, Index, IndexMut, Range, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo,
     RangeToInclusive,
 };
 
-/// # DummyIndexRange Trait
+/// 虚拟索引范围 trait
+/// Dummy index range trait
 ///
-/// A trait for types that can be used as a range in dummy indexing.
-/// It extends `RangeBounds<isize>` with dynamic cloning capability.
+/// 定义虚拟索引范围的行为，支持动态克隆。
+/// Defines behavior for dummy index ranges, supporting dynamic cloning.
 ///
-/// 用于可用作虚拟索引中范围的类型的特征。
-/// 它将 `RangeBounds<isize>` 扩展为支持动态克隆。
+/// 该 trait 是对标准库 `RangeBounds` trait 的封装，
+/// 允许在运行时处理不同类型的范围。
+/// This trait wraps the standard library's `RangeBounds` trait,
+/// allowing different range types to be handled at runtime.
 pub trait DummyIndexRange: Debug + DynClone {
-    /// Get the start bound of the range.
-    ///
-    /// 获取范围的起始边界。
+    /// 获取范围的起始边界
+    /// Get the start bound of the range
     fn start(&self) -> Bound<&isize>;
 
-    /// Get the end bound of the range.
-    ///
-    /// 获取范围的结束边界。
+    /// 获取范围的结束边界
+    /// Get the end bound of the range
     fn end(&self) -> Bound<&isize>;
 
-    /// Check if a value is contained in the range.
-    ///
-    /// 检查值是否包含在范围内。
+    /// 检查值是否在范围内
+    /// Check if a value is contained in the range
     fn contains(&self, v: isize) -> bool;
 }
 
 clone_trait_object!(DummyIndexRange);
 
+/// 为所有实现 `RangeBounds<isize>` 的类型提供 `DummyIndexRange` 实现
+/// Provides `DummyIndexRange` implementation for all types implementing `RangeBounds<isize>`
 impl<T> DummyIndexRange for T
 where
     T: RangeBounds<isize> + Clone + Debug,
@@ -80,35 +92,46 @@ where
     }
 }
 
-/// # DummyIndexIterator
+/// 虚拟索引迭代器
+/// Dummy index iterator
 ///
-/// An iterator type for dummy indices. It can be either continuous (for ranges)
-/// or discrete (for index arrays).
+/// 表示虚拟索引的迭代结果，支持三种模式：
+/// Represents the iteration result of dummy indices, supporting three modes:
 ///
-/// 虚拟索引的迭代器类型。它可以是连续的（用于范围）或离散的（用于索引数组）。
-#[derive(Clone, Debug)]
+/// - `Single`: 单个索引
+///   Single index
+/// - `Continuous`: 连续范围索引
+///   Continuous range indices
+/// - `Discrete`: 离散索引集合
+///   Discrete index collection
+#[derive(Clone, Debug, PartialEq)]
 pub enum DummyIndexIterator {
-    /// Single index iterator / 单索引迭代器
+    /// 单个索引
+    /// Single index
     Single(usize),
-    /// Continuous range iterator / 连续范围迭代器
+
+    /// 连续范围索引
+    /// Continuous range indices
     Continuous(Range<usize>),
-    /// Discrete index array iterator / 离散索引数组迭代器
+
+    /// 离散索引集合
+    /// Discrete index collection
     Discrete(Vec<usize>),
 }
 
 impl DummyIndexIterator {
-    /// Get the value at a specific position.
+    /// 获取指定位置的索引值
+    /// Get the index value at the specified position
     ///
-    /// 获取指定位置的值。
+    /// ## 参数 / Parameters
     ///
-    /// # Parameters / 参数
+    /// - `i`: 位置索引
+    ///   Position index
     ///
-    /// - `i` - The position to get / 要获取的位置
+    /// ## 返回值 / Returns
     ///
-    /// # Returns / 返回值
-    ///
-    /// - `Some(usize)` - The value at the position / 该位置的值
-    /// - `None` - If the position is out of bounds / 如果位置越界
+    /// 返回该位置的索引值，如果超出范围则返回 `None`
+    /// Returns the index value at that position, or `None` if out of range
     #[inline]
     pub fn get(&self, i: usize) -> Option<usize> {
         match self {
@@ -136,13 +159,8 @@ impl DummyIndexIterator {
         }
     }
 
-    /// Get the length of the iterator.
-    ///
-    /// 获取迭代器的长度。
-    ///
-    /// # Returns / 返回值
-    ///
-    /// The number of indices / 索引数量
+    /// 获取迭代器的长度
+    /// Get the length of the iterator
     #[inline]
     pub fn len(&self) -> usize {
         match self {
@@ -152,31 +170,19 @@ impl DummyIndexIterator {
         }
     }
 
-    /// Check if the iterator is empty.
-    ///
-    /// 检查迭代器是否为空。
-    ///
-    /// # Returns / 返回值
-    ///
-    /// `true` if the iterator is empty / 如果迭代器为空则返回 `true`
+    /// 检查迭代器是否为空
+    /// Check if the iterator is empty
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 }
 
-/// # IteratorVector Trait
+/// 迭代器向量 trait 别名
+/// Iterator vector trait alias
 ///
-/// A trait for vectors of dummy index iterators.
-/// Used for abstracting over fixed-size arrays and dynamic vectors.
-///
-/// 虚拟索引迭代器向量的特征。
-/// 用于抽象固定大小数组和动态向量。
-///
-/// ## Implementors / 实现者
-///
-/// - `[DummyIndexIterator; D]` - Fixed-size arrays / 固定大小数组
-/// - `Vec<DummyIndexIterator>` - Dynamic vectors / 动态向量
+/// 定义用于存储虚拟索引迭代器的向量类型。
+/// Defines the vector type used to store dummy index iterators.
 pub trait IteratorVector = Collection<Item = DummyIndexIterator>
     + Len
     + Indices
@@ -184,61 +190,85 @@ pub trait IteratorVector = Collection<Item = DummyIndexIterator>
     + IndexMut<usize, Output = DummyIndexIterator>
     + Debug;
 
-/// # DummyIndex
+/// 虚拟索引
+/// Dummy index
 ///
-/// A type representing a single dimension's index specification in array slicing.
-/// It supports three forms:
-/// - `Index(isize)` - A single index (supports negative indexing) / 单个索引（支持负索引）
-/// - `Range(Box<dyn DummyIndexRange>)` - A range of indices / 索引范围
-/// - `IndexArray(Vec<isize>)` - An array of specific indices / 特定索引数组
+/// 表示多维数组的索引，支持三种形式：
+/// Represents indices for multi-dimensional arrays, supporting three forms:
 ///
-/// 表示数组切片中单个维度索引规范的类型。
-/// 它支持三种形式：
-/// - `Index(isize)` - 单个索引（支持负索引）
-/// - `Range(Box<dyn DummyIndexRange>)` - 索引范围
-/// - `IndexArray(Vec<isize>)` - 特定索引数组
+/// - `Index`: 单个索引，支持负数（从末尾计数）
+///   Single index, supports negative numbers (counting from the end)
+/// - `Range`: 范围索引，如 `0..5`, `1..=3`, `..`, `2..`
+///   Range index, e.g., `0..5`, `1..=3`, `..`, `2..`
+/// - `IndexArray`: 离散索引数组，如 `[0, 2, 4]`
+///   Discrete index array, e.g., `[0, 2, 4]`
 ///
-/// ## Example / 示例
+/// ## 示例 / Examples
 ///
 /// ```rust
-/// use ospf_rust_multiarray::*;
+/// use ospf_rust_multiarray::dummy_index::DummyIndex;
 ///
-/// // Single index / 单个索引
+/// // 单个索引
+/// // Single index
 /// let idx = DummyIndex::Index(5);
+/// let neg_idx = DummyIndex::Index(-1);  // 最后一个元素 / Last element
 ///
-/// // Range / 范围
-/// let range = DummyIndex::Range(Box::new(2..5));
+/// // 范围索引
+/// // Range index
+/// let range = DummyIndex::Range(Box::new(0..5));
 ///
-/// // Index array / 索引数组
-/// let array = DummyIndex::IndexArray(vec![0, 2, 4]);
+/// // 索引数组
+/// // Index array
+/// let arr = DummyIndex::IndexArray(vec![0, 2, 4]);
 /// ```
 #[derive(Debug, Clone)]
 pub enum DummyIndex {
-    /// Single index (supports negative indexing) / 单个索引（支持负索引）
+    /// 单个索引
+    /// Single index
     Index(isize),
-    /// Range of indices / 索引范围
+
+    /// 范围索引
+    /// Range index
     Range(Box<dyn DummyIndexRange>),
-    /// Array of specific indices / 特定索引数组
+
+    /// 索引数组
+    /// Index array
     IndexArray(Vec<isize>),
 }
 
+/// DummyIndex 的相等性比较实现
+/// Equality comparison implementation for DummyIndex
+///
+/// 注意：范围索引之间的比较始终返回 `false`，
+/// 因为动态范围无法直接比较。
+/// Note: Comparison between range indices always returns `false`,
+/// because dynamic ranges cannot be directly compared.
+impl PartialEq for DummyIndex {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (DummyIndex::Index(a), DummyIndex::Index(b)) => a == b,
+            (DummyIndex::IndexArray(a), DummyIndex::IndexArray(b)) => a == b,
+
+            _ => false,
+        }
+    }
+}
+
 impl DummyIndex {
-    /// Get the number of indices this DummyIndex represents for a given dimension.
+    /// 计算虚拟索引在给定维度上的长度
+    /// Calculate the length of dummy index in a given dimension
     ///
-    /// 获取此 DummyIndex 为给定维度表示的索引数量。
+    /// ## 参数 / Parameters
     ///
-    /// # Type Parameters / 类型参数
+    /// - `shape`: 形状引用
+    ///   Reference to shape
+    /// - `dimension`: 维度索引
+    ///   Dimension index
     ///
-    /// - `S: AbstractShape` - The shape type / 形状类型
+    /// ## 返回值 / Returns
     ///
-    /// # Parameters / 参数
-    ///
-    /// - `shape` - The shape of the array / 数组的形状
-    /// - `dimension` - The dimension index / 维度索引
-    ///
-    /// # Returns / 返回值
-    ///
-    /// The number of indices / 索引数量
+    /// 返回该维度上的索引数量
+    /// Returns the number of indices in that dimension
     pub fn len_of<S: AbstractShape>(&self, shape: &S, dimension: usize) -> usize {
         match self {
             DummyIndex::Index(_) => 1,
@@ -254,22 +284,20 @@ impl DummyIndex {
         }
     }
 
-    /// Get an iterator over the actual indices for a given dimension.
+    /// 将虚拟索引转换为迭代器
+    /// Convert dummy index to an iterator
     ///
-    /// 获取给定维度的实际索引上的迭代器。
+    /// ## 参数 / Parameters
     ///
-    /// # Type Parameters / 类型参数
+    /// - `shape`: 形状引用
+    ///   Reference to shape
+    /// - `dimension`: 维度索引
+    ///   Dimension index
     ///
-    /// - `S: AbstractShape` - The shape type / 形状类型
+    /// ## 返回值 / Returns
     ///
-    /// # Parameters / 参数
-    ///
-    /// - `shape` - The shape of the array / 数组的形状
-    /// - `dimension` - The dimension index / 维度索引
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A DummyIndexIterator yielding the actual indices / 生成实际索引的 DummyIndexIterator
+    /// 返回该维度上的索引迭代器
+    /// Returns the index iterator for that dimension
     pub fn iterator_of<S: AbstractShape>(&self, shape: &S, dimension: usize) -> DummyIndexIterator {
         match self {
             DummyIndex::Index(index) => match shape.actual_index(dimension, *index) {
@@ -286,7 +314,7 @@ impl DummyIndex {
                 } else {
                     DummyIndexIterator::Continuous(Range { start: 0, end: 0 })
                 }
-            }
+            },
             DummyIndex::IndexArray(indexes) => DummyIndexIterator::Discrete(
                 indexes
                     .iter()
@@ -296,23 +324,22 @@ impl DummyIndex {
         }
     }
 
-    /// Calculate the actual bounds of a range for a given dimension.
+    /// 计算范围索引的边界
+    /// Calculate bounds for range index
     ///
-    /// 计算给定维度范围的实际边界。
+    /// ## 参数 / Parameters
     ///
-    /// # Type Parameters / 类型参数
+    /// - `range`: 范围引用
+    ///   Reference to range
+    /// - `shape`: 形状引用
+    ///   Reference to shape
+    /// - `dimension`: 维度索引
+    ///   Dimension index
     ///
-    /// - `S: AbstractShape` - The shape type / 形状类型
+    /// ## 返回值 / Returns
     ///
-    /// # Parameters / 参数
-    ///
-    /// - `range` - The range to calculate bounds for / 要计算边界的范围
-    /// - `shape` - The shape of the array / 数组的形状
-    /// - `dimension` - The dimension index / 维度索引
-    ///
-    /// # Returns / 返回值
-    ///
-    /// A tuple of (lower_bound, upper_bound), where None means unbounded / 边界元组 (lower_bound, upper_bound)，None 表示无边界
+    /// 返回下界和上界的元组
+    /// Returns a tuple of lower bound and upper bound
     fn bound_of<S: AbstractShape>(
         range: &Box<dyn DummyIndexRange>,
         shape: &S,
@@ -543,60 +570,84 @@ where
     }
 }
 
-/// # AdvancePolicy Trait
+/// 迭代推进策略 trait
+/// Advance policy trait
 ///
-/// A trait for policies that control how to advance through dummy indices.
-/// This is used for implementing different access orders (RowMajor/ColumnMajor).
+/// 定义多维数组迭代时的推进策略，根据访问顺序决定维度遍历顺序。
+/// Defines the advance policy for multi-dimensional array iteration,
+/// determining the dimension traversal order based on access order.
 ///
-/// 控制如何通过虚拟索引推进的策略特征。
-/// 这用于实现不同的访问顺序（行优先/列优先）。
+/// ## 类型参数 / Type Parameters
 ///
-/// ## Type Parameters / 类型参数
-///
-/// - `S: AbstractShape` - The shape type / 形状类型
+/// - `S`: 形状类型，必须实现 `AbstractShape`
+///   Shape type, must implement `AbstractShape`
 pub trait AdvancePolicy<S: AbstractShape>: AccessOrderTrait {
-    /// Initialize the iterator to the first element.
+    /// 初始化迭代器
+    /// Initialize the iterator
     ///
-    /// 将迭代器初始化到第一个元素。
+    /// 设置当前向量中每个维度的初始值。
+    /// Sets the initial value for each dimension in the current vector.
     ///
-    /// # Parameters / 参数
+    /// ## 参数 / Parameters
     ///
-    /// - `iterators` - The iterator vector / 迭代器向量
-    /// - `current_vector` - The current vector to initialize / 要初始化的当前向量
+    /// - `iterators`: 各维度的索引迭代器
+    ///   Index iterators for each dimension
+    /// - `current_vector`: 当前索引向量（输出参数）
+    ///   Current index vector (output parameter)
     ///
-    /// # Returns / 返回值
+    /// ## 返回值 / Returns
     ///
-    /// `true` if initialization succeeded / 如果初始化成功则返回 `true`
+    /// 如果初始化成功返回 `true`，否则返回 `false`
+    /// Returns `true` if initialization succeeded, `false` otherwise
     fn init_iterator<IV: IteratorVector>(
+        &self,
         iterators: &IV,
         current_vector: &mut S::VectorType,
     ) -> bool;
 
-    /// Advance to the next element.
+    /// 推进迭代器
+    /// Advance the iterator
     ///
-    /// 推进到下一个元素。
+    /// 将迭代器推进到下一个位置。
+    /// Advances the iterator to the next position.
     ///
-    /// # Parameters / 参数
+    /// ## 参数 / Parameters
     ///
-    /// - `iterators` - The iterator vector / 迭代器向量
-    /// - `current_positions` - Current positions in each iterator / 每个迭代器的当前位置
-    /// - `current_vector` - The current vector to update / 要更新的当前向量
+    /// - `iterators`: 各维度的索引迭代器
+    ///   Index iterators for each dimension
+    /// - `current_positions`: 当前位置向量
+    ///   Current position vector
+    /// - `current_vector`: 当前索引向量（输出参数）
+    ///   Current index vector (output parameter)
     ///
-    /// # Returns / 返回值
+    /// ## 返回值 / Returns
     ///
-    /// `true` if successfully advanced to next element / 如果成功推进到下一个元素
+    /// 如果推进成功返回 `true`，如果已遍历完毕返回 `false`
+    /// Returns `true` if advance succeeded, `false` if iteration is complete
     fn advance<IV: IteratorVector>(
+        &self,
         iterators: &IV,
         current_positions: &mut S::VectorType,
         current_vector: &mut S::VectorType,
     ) -> bool;
 }
 
+/// 行优先迭代推进策略
+/// Row-major iteration advance policy
+///
+/// 从最后一个维度开始遍历，依次向前推进。
+/// Starts traversing from the last dimension, advancing forward.
+///
+/// 例如对于 2x3 数组，遍历顺序为：(0,0), (0,1), (0,2), (1,0), (1,1), (1,2)
+/// E.g., for a 2x3 array, traversal order is: (0,0), (0,1), (0,2), (1,0), (1,1), (1,2)
 impl<S: AbstractShape> AdvancePolicy<S> for RowMajor {
     fn init_iterator<IV: IteratorVector>(
+        &self,
         iterators: &IV,
         current_vector: &mut S::VectorType,
     ) -> bool {
+        // 行优先：从后向前初始化
+        // Row-major: initialize from back to front
         for i in (0..iterators.len()).rev() {
             match iterators[i].get(0) {
                 Some(val) => current_vector[i] = val,
@@ -607,18 +658,22 @@ impl<S: AbstractShape> AdvancePolicy<S> for RowMajor {
     }
 
     fn advance<IV: IteratorVector>(
+        &self,
         iterators: &IV,
         current_positions: &mut S::VectorType,
         current_vector: &mut S::VectorType,
     ) -> bool {
+        // 行优先：从后向前推进
+        // Row-major: advance from back to front
         for i in (0..iterators.len()).rev() {
             current_positions[i] += 1;
             if let Some(val) = iterators[i].get(current_positions[i]) {
                 current_vector[i] = val;
                 return true;
             }
-            // Reset this dimension and carry to the next
-            // 重置此维度并进位到下一个
+
+            // 当前维度已遍历完毕，重置并继续推进前一维度
+            // Current dimension exhausted, reset and continue with previous dimension
             current_positions[i] = 0;
             if let Some(val) = iterators[i].get(0) {
                 current_vector[i] = val;
@@ -628,11 +683,22 @@ impl<S: AbstractShape> AdvancePolicy<S> for RowMajor {
     }
 }
 
+/// 列优先迭代推进策略
+/// Column-major iteration advance policy
+///
+/// 从第一个维度开始遍历，依次向后推进。
+/// Starts traversing from the first dimension, advancing backward.
+///
+/// 例如对于 2x3 数组，遍历顺序为：(0,0), (1,0), (0,1), (1,1), (0,2), (1,2)
+/// E.g., for a 2x3 array, traversal order is: (0,0), (1,0), (0,1), (1,1), (0,2), (1,2)
 impl<S: AbstractShape> AdvancePolicy<S> for ColumnMajor {
     fn init_iterator<IV: IteratorVector>(
+        &self,
         iterators: &IV,
         current_vector: &mut S::VectorType,
     ) -> bool {
+        // 列优先：从前向后初始化
+        // Column-major: initialize from front to back
         for i in 0..iterators.len() {
             match iterators[i].get(0) {
                 Some(val) => current_vector[i] = val,
@@ -643,18 +709,22 @@ impl<S: AbstractShape> AdvancePolicy<S> for ColumnMajor {
     }
 
     fn advance<IV: IteratorVector>(
+        &self,
         iterators: &IV,
         current_positions: &mut S::VectorType,
         current_vector: &mut S::VectorType,
     ) -> bool {
+        // 列优先：从前向后推进
+        // Column-major: advance from front to back
         for i in 0..iterators.len() {
             current_positions[i] += 1;
             if let Some(val) = iterators[i].get(current_positions[i]) {
                 current_vector[i] = val;
                 return true;
             }
-            // Reset this dimension and carry to the next
-            // 重置此维度并进位到下一个
+
+            // 当前维度已遍历完毕，重置并继续推进下一维度
+            // Current dimension exhausted, reset and continue with next dimension
             current_positions[i] = 0;
             if let Some(val) = iterators[i].get(0) {
                 current_vector[i] = val;
@@ -664,48 +734,116 @@ impl<S: AbstractShape> AdvancePolicy<S> for ColumnMajor {
     }
 }
 
-/// # DummyAccessIterator
+/// 访问顺序枚举的迭代推进策略实现
+/// Advance policy implementation for access order enum
 ///
-/// An iterator that yields vectors by iterating through dummy indices.
-/// Uses S::IteratorVectorType for iterators and S::VectorType for positions.
+/// 根据运行时访问顺序委托给具体实现。
+/// Delegates to specific implementation based on runtime access order.
+impl<S: AbstractShape> AdvancePolicy<S> for AccessOrder {
+    fn init_iterator<IV: IteratorVector>(
+        &self,
+        iterators: &IV,
+        current_vector: &mut S::VectorType,
+    ) -> bool {
+        match self {
+            AccessOrder::RowMajor => {
+                <RowMajor as AdvancePolicy<S>>::init_iterator(&RowMajor, iterators, current_vector)
+            }
+            AccessOrder::ColumnMajor => <ColumnMajor as AdvancePolicy<S>>::init_iterator(
+                &ColumnMajor,
+                iterators,
+                current_vector,
+            ),
+        }
+    }
+
+    fn advance<IV: IteratorVector>(
+        &self,
+        iterators: &IV,
+        current_positions: &mut S::VectorType,
+        current_vector: &mut S::VectorType,
+    ) -> bool {
+        match self {
+            AccessOrder::RowMajor => <RowMajor as AdvancePolicy<S>>::advance(
+                &RowMajor,
+                iterators,
+                current_positions,
+                current_vector,
+            ),
+            AccessOrder::ColumnMajor => <ColumnMajor as AdvancePolicy<S>>::advance(
+                &ColumnMajor,
+                iterators,
+                current_positions,
+                current_vector,
+            ),
+        }
+    }
+}
+
+/// 虚拟访问迭代器
+/// Dummy access iterator
 ///
-/// 通过迭代虚拟索引生成向量的迭代器。
-/// 使用 S::IteratorVectorType 存储迭代器，使用 S::VectorType 存储位置。
-pub(crate) struct DummyAccessIterator<'a, S: AbstractShape>
+/// 用于遍历多维数组中由虚拟索引指定的元素子集。
+/// Used to iterate over a subset of elements in a multi-dimensional array
+/// specified by dummy indices.
+///
+/// ## 类型参数 / Type Parameters
+///
+/// - `'a`: 形状的生命周期
+///   Lifetime of the shape
+/// - `S`: 形状类型，必须实现 `AbstractShape`
+///   Shape type, must implement `AbstractShape`
+/// - `AO`: 访问顺序类型，默认为 `AccessOrder`
+///   Access order type, defaults to `AccessOrder`
+///
+/// **注意**: 此结构体是内部实现细节，不对外公开。
+/// **Note**: This struct is an internal implementation detail and is not public.
+pub(crate) struct DummyAccessIterator<'a, S: AbstractShape, AO: AccessOrderTrait = AccessOrder>
 where
     S: 'a,
 {
-    /// Reference to the shape / 形状的引用
+    /// 形状引用
+    /// Reference to shape
     shape: &'a S,
-    /// Iterators for each dimension / 每个维度的迭代器
+
+    /// 各维度的索引迭代器
+    /// Index iterators for each dimension
     iterators: S::IteratorVectorType,
-    /// Current positions in each iterator / 每个迭代器的当前位置
+
+    /// 当前位置向量（记录每个维度已迭代的次数）
+    /// Current position vector (records iteration count for each dimension)
     current_positions: S::VectorType,
-    /// Current vector / 当前向量
+
+    /// 当前索引向量（当前迭代位置的实际索引值）
+    /// Current index vector (actual index values at current iteration position)
     current_vector: S::VectorType,
-    /// Whether iteration is finished / 迭代是否完成
+
+    /// 是否已完成迭代
+    /// Whether iteration is complete
     finished: bool,
-    /// Whether this is the first call / 是否是第一次调用
+
+    /// 是否是第一次调用 next()
+    /// Whether this is the first call to next()
     first_call: bool,
-    /// Access order / 访问顺序
-    access_order: AccessOrder,
+
+    /// 访问顺序
+    /// Access order
+    access_order: AO,
 }
 
-impl<'a, S: AbstractShape> DummyAccessIterator<'a, S> {
-    /// Create a new DummyAccessIterator.
+impl<'a, S: AbstractShape, AO: AccessOrderTrait + AdvancePolicy<S>> DummyAccessIterator<'a, S, AO> {
+    /// 创建新的虚拟访问迭代器
+    /// Create a new dummy access iterator
     ///
-    /// 创建新的 DummyAccessIterator。
+    /// ## 参数 / Parameters
     ///
-    /// # Parameters / 参数
-    ///
-    /// - `shape` - Reference to the shape / 形状的引用
-    /// - `iterators` - Iterator vector / 迭代器向量
-    /// - `access_order` - Access order / 访问顺序
-    pub(crate) fn new(
-        shape: &'a S,
-        iterators: S::IteratorVectorType,
-        access_order: AccessOrder,
-    ) -> Self {
+    /// - `shape`: 形状引用
+    ///   Reference to shape
+    /// - `iterators`: 各维度的索引迭代器
+    ///   Index iterators for each dimension
+    /// - `access_order`: 访问顺序
+    ///   Access order
+    pub(crate) fn new(shape: &'a S, iterators: S::IteratorVectorType, access_order: AO) -> Self {
         let current_positions = shape.zero();
         let current_vector = shape.zero();
         Self {
@@ -719,146 +857,32 @@ impl<'a, S: AbstractShape> DummyAccessIterator<'a, S> {
         }
     }
 
-    /// Initialize the iterator to the first element.
-    ///
-    /// 将迭代器初始化到第一个元素。
+    /// 初始化迭代器
+    /// Initialize the iterator
     fn init_iterator(&mut self) -> bool {
         self.current_vector = self.shape.zero();
-
-        match self.access_order {
-            AccessOrder::RowMajor => {
-                <RowMajor as AdvancePolicy<S>>::init_iterator(
-                    &self.iterators,
-                    &mut self.current_vector,
-                )
-            }
-            AccessOrder::ColumnMajor => {
-                <ColumnMajor as AdvancePolicy<S>>::init_iterator(
-                    &self.iterators,
-                    &mut self.current_vector,
-                )
-            }
-        }
-    }
-
-    /// Advance to the next vector.
-    ///
-    /// 推进到下一个向量。
-    ///
-    /// # Returns / 返回值
-    ///
-    /// - `Some(&VectorType)` - The next vector / 下一个向量
-    /// - `None` - If all vectors have been iterated / 如果所有向量已迭代完成
-    pub(crate) fn next(&mut self) -> Option<&S::VectorType> {
-        if self.finished {
-            return None;
-        }
-
-        if self.first_call {
-            // First call, initialize
-            // 第一次调用，初始化
-            self.first_call = false;
-            if !self.init_iterator() {
-                self.finished = true;
-                return None;
-            }
-            return Some(&self.current_vector);
-        }
-
-        // Advance to next element based on access order
-        // 根据访问顺序推进到下一个元素
-        let advanced = match self.access_order {
-            AccessOrder::RowMajor => <RowMajor as AdvancePolicy<S>>::advance(
-                &self.iterators,
-                &mut self.current_positions,
-                &mut self.current_vector,
-            ),
-            AccessOrder::ColumnMajor => <ColumnMajor as AdvancePolicy<S>>::advance(
-                &self.iterators,
-                &mut self.current_positions,
-                &mut self.current_vector,
-            ),
-        };
-
-        if advanced {
-            Some(&self.current_vector)
-        } else {
-            self.finished = true;
-            None
-        }
-    }
-}
-
-/// # CTDummyAccessIterator
-///
-/// A compile-time version of DummyAccessIterator with a fixed access order.
-///
-/// 具有固定访问顺序的 DummyAccessIterator 的编译时版本。
-pub(crate) struct CTDummyAccessIterator<'a, S: AbstractShape, AO: AccessOrderTrait + AdvancePolicy<S>> {
-    /// Reference to the shape / 形状的引用
-    shape: &'a S,
-    /// Iterators for each dimension (owned) / 每个维度的迭代器（拥有）
-    iterators: S::IteratorVectorType,
-    /// Current positions in each iterator / 每个迭代器的当前位置
-    current_positions: S::VectorType,
-    /// Current vector / 当前向量
-    current_vector: S::VectorType,
-    /// Whether iteration is finished / 迭代是否完成
-    finished: bool,
-    /// Whether this is the first call / 是否是第一次调用
-    first_call: bool,
-    /// Phantom marker for access order type / 访问顺序类型的虚拟特征
-    _marker: PhantomData<AO>,
-}
-
-impl<'a, S: AbstractShape, AO: AccessOrderTrait + AdvancePolicy<S>> CTDummyAccessIterator<'a, S, AO> {
-    /// Create a new CTDummyAccessIterator from iterators.
-    ///
-    /// 从迭代器创建新的 CTDummyAccessIterator。
-    pub(crate) fn new(shape: &'a S, iterators: S::IteratorVectorType) -> Self {
-        let current_positions = shape.zero();
-        let current_vector = shape.zero();
-        Self {
-            shape,
-            iterators,
-            current_positions,
-            current_vector,
-            finished: false,
-            first_call: true,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Initialize the iterator to the first element.
-    ///
-    /// 将迭代器初始化到第一个元素。
-    fn init_iterator(&mut self) -> bool {
-        self.current_vector = self.shape.zero();
-
-        // Initialize based on access order
-        // 根据访问顺序初始化
         <AO as AdvancePolicy<S>>::init_iterator(
+            &self.access_order,
             &self.iterators,
             &mut self.current_vector,
         )
     }
 
-    /// Advance to the next vector.
+    /// 获取下一个索引向量
+    /// Get the next index vector
     ///
-    /// 推进到下一个向量。
+    /// ## 返回值 / Returns
     ///
-    /// # Returns / 返回值
-    ///
-    /// - `Some(&VectorType)` - The next vector / 下一个向量
-    /// - `None` - If all vectors have been iterated / 如果所有向量已迭代完成
+    /// 返回下一个索引向量的引用，如果迭代完成则返回 `None`
+    /// Returns a reference to the next index vector, or `None` if iteration is complete
     pub(crate) fn next(&mut self) -> Option<&S::VectorType> {
         if self.finished {
             return None;
         }
 
+        // 第一次调用时初始化迭代器
+        // Initialize iterator on first call
         if self.first_call {
-            // First call, initialize
-            // 第一次调用，初始化
             self.first_call = false;
             if !self.init_iterator() {
                 self.finished = true;
@@ -867,9 +891,10 @@ impl<'a, S: AbstractShape, AO: AccessOrderTrait + AdvancePolicy<S>> CTDummyAcces
             return Some(&self.current_vector);
         }
 
-        // Advance to next element based on access order
-        // 根据访问顺序推进到下一个元素
+        // 推进到下一个位置
+        // Advance to next position
         let advanced = <AO as AdvancePolicy<S>>::advance(
+            &self.access_order,
             &self.iterators,
             &mut self.current_positions,
             &mut self.current_vector,
@@ -882,150 +907,155 @@ impl<'a, S: AbstractShape, AO: AccessOrderTrait + AdvancePolicy<S>> CTDummyAcces
             None
         }
     }
-
-    fn advance_row_major(&mut self) -> bool {
-        for i in (0..self.iterators.len()).rev() {
-            self.current_positions[i] += 1;
-            if let Some(val) = self.iterators[i].get(self.current_positions[i]) {
-                self.current_vector[i] = val;
-                return true;
-            }
-            // Reset this dimension and carry to the next
-            // 重置此维度并进位到下一个
-            self.current_positions[i] = 0;
-            if let Some(val) = self.iterators[i].get(0) {
-                self.current_vector[i] = val;
-            }
-        }
-        false
-    }
-
-    fn advance_column_major(&mut self) -> bool {
-        for i in 0..self.iterators.len() {
-            self.current_positions[i] += 1;
-            if let Some(val) = self.iterators[i].get(self.current_positions[i]) {
-                self.current_vector[i] = val;
-                return true;
-            }
-            // Reset this dimension and carry to the next
-            // 重置此维度并进位到下一个
-            self.current_positions[i] = 0;
-            if let Some(val) = self.iterators[i].get(0) {
-                self.current_vector[i] = val;
-            }
-        }
-        false
-    }
 }
 
-/// # dummy_index_value! Macro
+/// 虚拟索引值宏
+/// Dummy index value macro
 ///
-/// A helper macro for converting literals to isize values.
+/// 用于将字面量转换为 `isize` 类型，支持负数。
+/// Used to convert literals to `isize` type, supporting negative numbers.
 ///
-/// 用于将字面量转换为 isize 值的辅助宏。
+/// ## 示例 / Examples
+///
+/// ```ignore
+/// dummy_index_value!(5)    // 5isize
+/// dummy_index_value!(-5)   // -5isize
+/// dummy_index_value!(x)    // x (表达式不变)
+/// ```
 #[macro_export]
 macro_rules! dummy_index_value {
+    // 负数字面量：转换为负 isize
+    // Negative literal: convert to negative isize
     (-$x:literal) => {
         -paste! { [<$x isize>] }
     };
+    // 正数字面量：转换为 isize
+    // Positive literal: convert to isize
     ($x:literal) => {
         paste! { [<$x isize>] }
     };
+    // 表达式：保持不变
+    // Expression: keep as is
     ($x:expr) => {
         $x
     };
 }
 
-/// # dummy_index! Macro
+/// 虚拟索引创建宏
+/// Dummy index creation macro
 ///
-/// A macro for creating DummyIndex from various range expressions.
+/// 用于便捷地创建 `DummyIndex` 实例。
+/// Used to conveniently create `DummyIndex` instances.
 ///
-/// 用于从各种范围表达式创建 DummyIndex 的宏。
+/// ## 支持的语法 / Supported Syntax
 ///
-/// ## Usage / 用法
+/// - 单个索引：`dummy_index!(5)`, `dummy_index!(-1)`
+///   Single index: `dummy_index!(5)`, `dummy_index!(-1)`
+/// - 范围索引：`dummy_index!(0..5)`, `dummy_index!(1..=3)`, `dummy_index!(..)`
+///   Range index: `dummy_index!(0..5)`, `dummy_index!(1..=3)`, `dummy_index!(..)`
+/// - 索引数组：`dummy_index!([0, 2, 4])`
+///   Index array: `dummy_index!([0, 2, 4])`
 ///
-/// ```rust
-/// use paste::paste;
-/// use ospf_rust_multiarray::*;
+/// ## 返回值 / Returns
 ///
-/// // Single index / 单个索引
-/// let idx = dummy_index!(5).unwrap();
-///
-/// // Range / 范围
-/// let range = dummy_index!(2..5).unwrap();
-///
-/// // Inclusive range / 包含结束的范围
-/// let inclusive = dummy_index!(1..=4).unwrap();
-///
-/// // Open-ended range / 开放范围
-/// let open = dummy_index!(3..).unwrap();
-/// ```
+/// 返回 `Result<DummyIndex, _>`，需要处理可能的错误。
+/// Returns `Result<DummyIndex, _>`, requires handling potential errors.
 #[macro_export]
 macro_rules! dummy_index {
+    // 负数单个索引
+    // Negative single index
     (-$x:literal) => {
         DummyIndex::try_from(dummy_index_value!{ -$x })
     };
+    // 正数单个索引
+    // Positive single index
     ($x:literal) => {
         DummyIndex::try_from(dummy_index_value!{ $x })
     };
+    // 范围：start..-end
     ($start:literal..-$end:literal) => {
         DummyIndex::try_from(dummy_index_value!{ $start }..dummy_index_value!{ -$end })
     };
+    // 范围：start..end
     ($start:literal..$end:literal) => {
         DummyIndex::try_from(dummy_index_value!{ $start }..dummy_index_value!{ $end })
     };
+    // 范围：start..
     ($start:literal..) => {
         DummyIndex::try_from(dummy_index_value!{ $start }..)
     };
+    // 范围：..end
     (..$end:literal) => {
         DummyIndex::try_from(..dummy_index_value!{ $end })
     };
+    // 范围：..-end
     (..-$end:literal) => {
         DummyIndex::try_from(..dummy_index_value!{ -$end })
     };
+    // 范围：start..=-end
     ($start:literal..=-$end:literal) => {
         DummyIndex::try_from(dummy_index_value!{ $start }..=dummy_index_value!{ -$end })
     };
+    // 范围：start..=end
     ($start:literal..=$end:literal) => {
         DummyIndex::try_from(dummy_index_value!{ $start }..=dummy_index_value!{ $end })
     };
+    // 范围：..=-end
     (..=-$end:literal) => {
         DummyIndex::try_from(..=dummy_index_value!{ -$end })
     };
+    // 范围：..=end
     (..=$end:literal) => {
         DummyIndex::try_from(..=dummy_index_value!{ $end })
     };
+    // 全范围
+    // Full range
     (..) => {
         DummyIndex::try_from(..)
     };
+    // 索引数组
+    // Index array
     [$($x:literal),*] => {
         DummyIndex::try_from(&[$(dummy_index_value!{ $x }),*])
     };
+    // 表达式
+    // Expression
     ($x:expr) => {{
         DummyIndex::try_from(&$x)
     }};
 }
 
-/// # dummy! Macro
+/// 虚拟索引数组创建宏
+/// Dummy index array creation macro
 ///
-/// A macro for creating fixed-size dummy index arrays.
+/// 创建虚拟索引数组，错误转换为 `InvalidDummyIndexError`。
+/// Creates dummy index array, errors converted to `InvalidDummyIndexError`.
 ///
-/// 用于创建固定大小虚拟索引数组的宏。
+/// ## 示例 / Examples
+///
+/// ```ignore
+/// let indices = dummy![0, 1..5, [2, 4]];  // 创建索引数组
+/// let view = dummy!(array[0..2, 3..5]);  // 创建数组视图
+/// ```
 #[macro_export]
 macro_rules! dummy {
+    // 创建索引数组
+    // Create index array
     [$($x:expr),*] => {
         [$(dummy_index!{ $x }.map_err(|e| error! { InvalidDummyIndexError {} })?),*]
     };
+    // 创建数组视图
+    // Create array view
     ($a:ident[$($x:expr),*]) => {
         $a.view(dummy![$($x),*])
     };
 }
 
-/// # dummy_with_err! Macro
+/// 带详细错误的虚拟索引数组创建宏
+/// Dummy index array creation macro with detailed error
 ///
-/// A macro for creating fixed-size dummy index arrays with custom error handling.
-///
-/// 用于创建具有自定义错误处理的固定大小虚拟索引数组的宏。
+/// 与 `dummy!` 类似，但保留原始错误信息。
+/// Similar to `dummy!`, but preserves original error information.
 #[macro_export]
 macro_rules! dummy_with_err {
     [$($x:expr),*] => {
@@ -1036,11 +1066,19 @@ macro_rules! dummy_with_err {
     };
 }
 
-/// # dummy_expect! Macro
+/// 期望成功的虚拟索引数组创建宏
+/// Expect-success dummy index array creation macro
 ///
-/// A macro for creating fixed-size dummy index arrays, panicking on error.
+/// 创建虚拟索引数组，如果失败则 panic。
+/// Creates dummy index array, panics on failure.
 ///
-/// 用于创建固定大小虚拟索引数组的宏，出错时 panic。
+/// ## 示例 / Examples
+///
+/// ```ignore
+/// let indices = dummy_expect![0, 1..5];           // 失败时 unwrap
+/// let indices = dummy_expect!([0, 1..5], "msg");  // 失败时 expect
+/// let view = dummy_expect!(array[0..2, 3..5]);   // 创建视图
+/// ```
 #[macro_export]
 macro_rules! dummy_expect {
     ([$($x:expr),*], $msg:expr) => {
@@ -1057,11 +1095,11 @@ macro_rules! dummy_expect {
     };
 }
 
-/// # dyn_dummy! Macro
+/// 动态虚拟索引数组创建宏
+/// Dynamic dummy index array creation macro
 ///
-/// A macro for creating dynamic (Vec-based) dummy index arrays.
-///
-/// 用于创建动态（基于 Vec）虚拟索引数组的宏。
+/// 创建 `Vec<DummyIndex>` 而非数组。
+/// Creates `Vec<DummyIndex>` instead of an array.
 #[macro_export]
 macro_rules! dyn_dummy {
     [$($x:expr),*] => {
@@ -1072,26 +1110,20 @@ macro_rules! dyn_dummy {
     };
 }
 
-/// # dyn_dummy_with_err! Macro
-///
-/// A macro for creating dynamic dummy index arrays with custom error handling.
-///
-/// 用于创建具有自定义错误处理的动态虚拟索引数组的宏。
+/// 带详细错误的动态虚拟索引数组创建宏
+/// Dynamic dummy index array creation macro with detailed error
 #[macro_export]
 macro_rules! dyn_dummy_with_err {
     [$($x:expr),*] => {
-        vec![$(dummy_index!{ $x }.map_err(|e| error! { ExInvalidDummyIndexError { origin: e } })?),*]
+        [$(dummy_index!{ $x }.map_err(|e| error! { ExInvalidDummyIndexError { origin: e } })?),*]
     };
     ($a:ident[$($x:expr),*]) => {
         $a.view(dyn_dummy_with_err![$($x),*])
     };
 }
 
-/// # dyn_dummy_expect! Macro
-///
-/// A macro for creating dynamic dummy index arrays, panicking on error.
-///
-/// 用于创建动态虚拟索引数组的宏，出错时 panic。
+/// 期望成功的动态虚拟索引数组创建宏
+/// Expect-success dynamic dummy index array creation macro
 #[macro_export]
 macro_rules! dyn_dummy_expect {
     ([$($x:expr),*], $msg:expr) => {
@@ -1112,6 +1144,7 @@ macro_rules! dyn_dummy_expect {
 mod tests {
     use super::*;
     use crate::shape::Shape;
+    use paste::paste;
 
     #[test]
     fn test_dummy_index_from_primitives() {
@@ -1243,7 +1276,7 @@ mod tests {
 
     #[test]
     fn test_iterator_of_for_index() {
-        let shape = Shape::new([5, 3]);
+        let shape: Shape<2> = Shape::new([5, 3]);
 
         let idx = DummyIndex::Index(2);
         let iter = idx.iterator_of(&shape, 0);
@@ -1255,33 +1288,171 @@ mod tests {
     }
 
     #[test]
-    fn test_iterator_of_for_range() {
-        let shape = Shape::new([5, 3]);
+    fn test_dummy_access_iterator_column_major() {
+        let shape: Shape<2> = Shape::new([2, 3]);
+        let dummy_vec: [DummyIndex; 2] = dummy_expect![0..2, 1..3];
+        let iterators = shape.dummy_to_iterator_vector(&dummy_vec);
 
-        let idx: DummyIndex = dummy_index!(1..=3).expect("invalid dummy index");
-        let iter = idx.iterator_of(&shape, 0);
-        match iter {
-            DummyIndexIterator::Continuous(range) => {
-                assert_eq!(range.start, 1);
-                assert_eq!(range.end, 4);
-            }
-            _ => panic!("Expected Continuous iterator for range"),
+        let mut iter = DummyAccessIterator::new(&shape, iterators, AccessOrder::ColumnMajor);
+
+        let mut vectors = Vec::new();
+        while let Some(vec) = iter.next() {
+            vectors.push(vec.clone());
         }
 
-        let idx: DummyIndex = dummy_index!(..).expect("invalid dummy index");
-        let iter = idx.iterator_of(&shape, 0);
-        match iter {
-            DummyIndexIterator::Continuous(range) => {
-                assert_eq!(range.start, 0);
-                assert_eq!(range.end, 5);
-            }
-            _ => panic!("Expected Continuous iterator"),
+        assert_eq!(vectors.len(), 4);
+
+        assert_eq!(vectors[0], [0, 1]);
+        assert_eq!(vectors[1], [1, 1]);
+        assert_eq!(vectors[2], [0, 2]);
+        assert_eq!(vectors[3], [1, 2]);
+    }
+
+    #[test]
+    fn test_dummy_index_from_isize() {
+        let idx: DummyIndex = DummyIndex::try_from(5isize).expect("invalid dummy index");
+        assert!(matches!(idx, DummyIndex::Index(5)));
+    }
+
+    #[test]
+    fn test_dummy_index_from_usize() {
+        let idx: DummyIndex = DummyIndex::try_from(10usize).expect("invalid dummy index");
+        assert!(matches!(idx, DummyIndex::Index(10)));
+    }
+
+    #[test]
+    fn test_dummy_index_range_full() {
+        let idx: DummyIndex = DummyIndex::try_from(..).expect("invalid dummy index");
+        assert!(matches!(idx, DummyIndex::Range(_)));
+    }
+
+    #[test]
+    fn test_dummy_index_range_to() {
+        let idx: DummyIndex = DummyIndex::try_from(..5).expect("invalid dummy index");
+        assert!(matches!(idx, DummyIndex::Range(_)));
+    }
+
+    #[test]
+    fn test_dummy_index_range_from() {
+        let idx: DummyIndex = DummyIndex::try_from(3..).expect("invalid dummy index");
+        assert!(matches!(idx, DummyIndex::Range(_)));
+    }
+
+    #[test]
+    fn test_dummy_index_range_inclusive() {
+        let idx: DummyIndex = DummyIndex::try_from(1..=4).expect("invalid dummy index");
+        assert!(matches!(idx, DummyIndex::Range(_)));
+    }
+
+    #[test]
+    fn test_dummy_index_range_to_inclusive() {
+        let idx: DummyIndex = DummyIndex::try_from(..=5).expect("invalid dummy index");
+        assert!(matches!(idx, DummyIndex::Range(_)));
+    }
+
+    #[test]
+    fn test_dummy_index_array() {
+        let arr: &[isize] = &[1, 2, 3];
+        let idx: DummyIndex = arr.try_into().expect("invalid dummy index");
+        assert!(matches!(idx, DummyIndex::IndexArray(_)));
+    }
+
+    #[test]
+    fn test_dummy_index_iterator_single() {
+        let iter = DummyIndexIterator::Single(5);
+        assert_eq!(iter.get(0), Some(5));
+        assert_eq!(iter.get(1), None);
+        assert_eq!(iter.len(), 1);
+    }
+
+    #[test]
+    fn test_dummy_index_iterator_continuous() {
+        let iter = DummyIndexIterator::Continuous(2..5);
+        assert_eq!(iter.get(0), Some(2));
+        assert_eq!(iter.get(1), Some(3));
+        assert_eq!(iter.get(2), Some(4));
+        assert_eq!(iter.get(3), None);
+        assert_eq!(iter.len(), 3);
+    }
+
+    #[test]
+    fn test_dummy_index_iterator_discrete() {
+        let iter = DummyIndexIterator::Discrete(vec![0, 2, 4]);
+        assert_eq!(iter.get(0), Some(0));
+        assert_eq!(iter.get(1), Some(2));
+        assert_eq!(iter.get(2), Some(4));
+        assert_eq!(iter.get(3), None);
+        assert_eq!(iter.len(), 3);
+    }
+
+    #[test]
+    fn test_dummy_index_iterator_empty() {
+        let iter = DummyIndexIterator::Continuous(2..2);
+        assert!(iter.is_empty());
+        assert_eq!(iter.len(), 0);
+    }
+
+    #[test]
+    fn test_advance_policy_row_major() {
+        let shape: Shape<2> = Shape::new([2, 3]);
+        let policy = RowMajor;
+
+        let mut current_positions = [0, 0];
+        let mut current_vector = [0, 0];
+        let dummy_vec: [DummyIndex; 2] = dummy_expect![0..2, 0..3];
+        let iterators = shape.dummy_to_iterator_vector(&dummy_vec);
+
+        assert!(<RowMajor as AdvancePolicy<Shape<2>>>::init_iterator::<[DummyIndexIterator; 2]>(&policy, &iterators, &mut current_vector));
+
+        let mut count = 0;
+        while <RowMajor as AdvancePolicy<Shape<2>>>::advance::<[DummyIndexIterator; 2]>(&policy, &iterators, &mut current_positions, &mut current_vector) {
+            count += 1;
         }
+        assert_eq!(count, 5);
+    }
+
+    #[test]
+    fn test_advance_policy_column_major() {
+        let shape: Shape<2> = Shape::new([2, 3]);
+        let policy = ColumnMajor;
+
+        let mut current_positions = [0, 0];
+        let mut current_vector = [0, 0];
+        let dummy_vec: [DummyIndex; 2] = dummy_expect![0..2, 0..3];
+        let iterators = shape.dummy_to_iterator_vector(&dummy_vec);
+
+        assert!(<ColumnMajor as AdvancePolicy<Shape<2>>>::init_iterator::<[DummyIndexIterator; 2]>(&policy, &iterators, &mut current_vector));
+
+        let mut count = 0;
+        while <ColumnMajor as AdvancePolicy<Shape<2>>>::advance::<[DummyIndexIterator; 2]>(&policy, &iterators, &mut current_positions, &mut current_vector) {
+            count += 1;
+        }
+        assert_eq!(count, 5);
+    }
+
+    #[test]
+    fn test_dummy_index_negative() {
+        let shape: Shape<2> = Shape::new([3, 4]);
+        let idx = DummyIndex::Index(-1);
+        let result = idx.iterator_of(&shape, 0);
+        assert_eq!(result.get(0), Some(2));
+    }
+
+    #[test]
+    fn test_dummy_index_len_of() {
+        let shape: Shape<2> = Shape::new([3, 4]);
+
+        let idx_full = DummyIndex::Range(Box::new(..));
+        assert_eq!(idx_full.len_of(&shape, 0), 3);
+        assert_eq!(idx_full.len_of(&shape, 1), 4);
+
+        let idx_single = DummyIndex::Index(1);
+        assert_eq!(idx_single.len_of(&shape, 0), 1);
     }
 
     #[test]
     fn test_iterator_of_for_index_array() {
-        let shape = Shape::new([5, 3]);
+        let shape: Shape<2> = Shape::new([5, 3]);
 
         let idx: DummyIndex = dummy_index! { vec![0, 2, 4] }.expect("invalid dummy index");
         let iter = idx.iterator_of(&shape, 0);
@@ -1295,7 +1466,7 @@ mod tests {
 
     #[test]
     fn test_dummy_access_iterator() {
-        let shape = Shape::new([2, 3]);
+        let shape: Shape<2> = Shape::new([2, 3]);
         let dummy_vec: [DummyIndex; 2] = dummy_expect![0..2, 1..3];
         let iterators = shape.dummy_to_iterator_vector(&dummy_vec);
 
@@ -1311,28 +1482,6 @@ mod tests {
         assert!(vectors.contains(&[0, 2]));
         assert!(vectors.contains(&[1, 1]));
         assert!(vectors.contains(&[1, 2]));
-    }
-
-    #[test]
-    fn test_dummy_access_iterator_column_major() {
-        let shape = Shape::new([2, 3]);
-        let dummy_vec: [DummyIndex; 2] = dummy_expect![0..2, 1..3];
-        let iterators = shape.dummy_to_iterator_vector(&dummy_vec);
-
-        let mut iter = DummyAccessIterator::new(&shape, iterators, AccessOrder::ColumnMajor);
-
-        let mut vectors = Vec::new();
-        while let Some(vec) = iter.next() {
-            vectors.push(vec.clone());
-        }
-
-        assert_eq!(vectors.len(), 4);
-        // Column major: first dimension changes fastest
-        // 列优先：第一维度变化最快
-        assert_eq!(vectors[0], [0, 1]);
-        assert_eq!(vectors[1], [1, 1]);
-        assert_eq!(vectors[2], [0, 2]);
-        assert_eq!(vectors[3], [1, 2]);
     }
 
     #[test]

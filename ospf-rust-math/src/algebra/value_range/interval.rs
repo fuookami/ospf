@@ -1,6 +1,7 @@
 //! Interval - 开闭性质抽象
 //! Interval - Openness abstraction
 
+use crate::operator::tolerance::{Tolerance, TolerancedEq, TolerancedOrd};
 use std::fmt;
 
 // ============================================================================
@@ -85,6 +86,146 @@ pub trait IntervalTrait: Copy + Clone + PartialEq {
     /// 交集后的开闭性质
     /// The openness after intersection
     fn intersect(&self, other: &Self) -> Self;
+
+    // ========================================================================
+    // 辅助方法 / Helper methods
+    // ========================================================================
+
+    /// 判断值是否在边界上（考虑开闭性质）
+    /// Check if value is on boundary (considering openness)
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 要检查的值
+    /// - `boundary`: 边界值
+    ///
+    /// # 返回 / Returns
+    /// 如果值在边界上且为闭区间返回 `true`，否则返回 `false`
+    /// Returns `true` if value is on boundary and interval is closed, `false` otherwise
+    #[inline]
+    fn is_on_boundary<T: PartialEq>(&self, value: &T, boundary: &T) -> bool {
+        value == boundary && self.is_closed()
+    }
+
+    /// 判断值是否严格小于边界（考虑开闭性质）
+    /// Check if value is strictly less than boundary (considering openness)
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 要检查的值
+    /// - `boundary`: 边界值
+    ///
+    /// # 返回 / Returns
+    /// 返回比较结果
+    /// Returns comparison result
+    #[inline]
+    fn is_below_boundary<T: PartialOrd>(&self, value: &T, boundary: &T) -> bool {
+        if value < boundary {
+            true
+        } else if value == boundary {
+            !self.is_closed()
+        } else {
+            false
+        }
+    }
+
+    /// 判断值是否严格大于边界（考虑开闭性质）
+    /// Check if value is strictly greater than boundary (considering openness)
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 要检查的值
+    /// - `boundary`: 边界值
+    ///
+    /// # 返回 / Returns
+    /// 返回比较结果
+    /// Returns comparison result
+    #[inline]
+    fn is_above_boundary<T: PartialOrd>(&self, value: &T, boundary: &T) -> bool {
+        if value > boundary {
+            true
+        } else if value == boundary {
+            !self.is_closed()
+        } else {
+            false
+        }
+    }
+
+    // ========================================================================
+    // Tolerance 版本辅助方法 / Tolerance version helper methods
+    // ========================================================================
+
+    /// 判断值是否在边界上（考虑开闭性质和精度容差）
+    /// Check if value is on boundary (considering openness and tolerance)
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 要检查的值
+    /// - `boundary`: 边界值
+    /// - `tolerance`: 精度容差
+    ///
+    /// # 返回 / Returns
+    /// 如果值在边界上（在精度范围内）且为闭区间返回 `true`，否则返回 `false`
+    /// Returns `true` if value is on boundary (within tolerance) and interval is closed, `false` otherwise
+    #[inline]
+    fn is_on_boundary_within<T: TolerancedEq>(
+        &self,
+        value: &T,
+        boundary: &T,
+        tolerance: &Tolerance<T::Value>,
+    ) -> bool {
+        value.eq_within(boundary, tolerance) && self.is_closed()
+    }
+
+    /// 判断值是否严格小于边界（考虑开闭性质和精度容差）
+    /// Check if value is strictly less than boundary (considering openness and tolerance)
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 要检查的值
+    /// - `boundary`: 边界值
+    /// - `tolerance`: 精度容差
+    ///
+    /// # 返回 / Returns
+    /// 返回比较结果
+    /// Returns comparison result
+    #[inline]
+    fn is_below_boundary_within<T: TolerancedOrd>(
+        &self,
+        value: &T,
+        boundary: &T,
+        tolerance: &Tolerance<T::Value>,
+    ) -> bool {
+        use std::cmp::Ordering;
+        match value.cmp_within(boundary, tolerance) {
+            Ordering::Less => true,
+            Ordering::Equal => !self.is_closed(),
+            Ordering::Greater => false,
+        }
+    }
+
+    /// 判断值是否严格大于边界（考虑开闭性质和精度容差）
+    /// Check if value is strictly greater than boundary (considering openness and tolerance)
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 要检查的值
+    /// - `boundary`: 边界值
+    /// - `tolerance`: 精度容差
+    ///
+    /// # 返回 / Returns
+    /// 返回比较结果
+    /// Returns comparison result
+    #[inline]
+    fn is_above_boundary_within<T: TolerancedOrd>(
+        &self,
+        value: &T,
+        boundary: &T,
+        tolerance: &Tolerance<T::Value>,
+    ) -> bool {
+        use std::cmp::Ordering;
+        match value.cmp_within(boundary, tolerance) {
+            Ordering::Less => false,
+            Ordering::Equal => !self.is_closed(),
+            Ordering::Greater => true,
+        }
+    }
+
+    fn runtime_value(&self) -> Interval;
 }
 
 // ============================================================================
@@ -128,6 +269,10 @@ impl IntervalTrait for Closed {
 
     fn intersect(&self, other: &Self) -> Self {
         *other
+    }
+
+    fn runtime_value(&self) -> Interval {
+        Interval::Closed
     }
 }
 
@@ -184,6 +329,10 @@ impl IntervalTrait for Open {
 
     fn intersect(&self, _other: &Self) -> Self {
         Open
+    }
+
+    fn runtime_value(&self) -> Interval {
+        Interval::Open
     }
 }
 
@@ -263,6 +412,10 @@ impl IntervalTrait for Interval {
             (Interval::Open, _) | (_, Interval::Open) => Interval::Open,
             _ => Interval::Closed,
         }
+    }
+
+    fn runtime_value(&self) -> Interval {
+        *self
     }
 }
 

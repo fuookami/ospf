@@ -5,11 +5,10 @@
 //! Provides SI unit definitions for electrical dimensions, including ampere, volt, ohm, coulomb, farad, henry, etc.
 
 use super::power::Watt;
-use super::time::Second;
+use super::time::{Hour, Second};
 use crate::dimension::derived::{ElectricCharge, ElectricCurrent, ElectricPotential};
-use crate::scale::{Scale, KILO, MICRO, MILLI};
+use crate::scale::{KILO, MICRO, MILLI};
 use crate::unit::{CTUnit, CTUnitDiv, CTUnitMul};
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 电流单位 / Electric current units
@@ -42,6 +41,18 @@ define_unit!(
     "mC",
     ElectricCharge,
     &*Coulomb::SCALE * &*MILLI
+);
+define_unit_by!(
+    MilliampereHour,
+    "milliampere-hour",
+    "mAh",
+    CTUnitMul<Milliampere, Hour>
+);
+define_unit_by!(
+    AmpereHour,
+    "ampere-hour",
+    "Ah",
+    CTUnitMul<Ampere, Hour>
 );
 
 // ============================================================================

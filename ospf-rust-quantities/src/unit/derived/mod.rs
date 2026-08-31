@@ -12,9 +12,12 @@
 //! - 电磁学量：电荷、电压、电阻、电容、电感
 //! - 光学量：光通量、照度、亮度
 
+use super::concept::UnitTrait;
 use super::physical_unit::CTUnit;
 use crate::dimension::derived::DimLess;
+use crate::dimension::derived_quantity::CTDerivedQuantity;
 use crate::scale::Scale;
+use bigdecimal::BigDecimal;
 use once_cell::sync::Lazy;
 
 #[macro_use]
@@ -127,6 +130,26 @@ pub use catalytic_activity::*;
 /// 无量纲单位 / Dimensionless unit
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct None;
+
+impl UnitTrait for None {
+    type Dimension = DimLess;
+
+    fn symbol(&self) -> &'static str {
+        "1"
+    }
+
+    fn name(&self) -> &'static str {
+        "None"
+    }
+
+    fn dimension_symbol(&self) -> String {
+        DimLess::INSTANT.symbol().to_string()
+    }
+
+    fn scale_value(&self) -> BigDecimal {
+        BigDecimal::from(1)
+    }
+}
 
 impl CTUnit for None {
     const NAME: &'static str = "None";
