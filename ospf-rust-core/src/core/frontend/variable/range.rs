@@ -1,22 +1,26 @@
-use super::variable_type::VariableType;
-use crate::math::value_range::*;
 use std::convert::Into;
 use std::fmt;
 use std::fmt::Display;
 
+use ospf_rust_math::value_range::*;
+
+use super::variable_type::VariableType;
+
 #[derive(Clone)]
 pub struct VariableRange<Type: VariableType> {
-    _range: Type::ValueRangeType,
+    _range: ValueRange<Type::VariableValueType>,
 }
 
 impl<Type: VariableType> VariableRange<Type> {
-    pub fn new() -> Self {
-        Self {
-            _range: Type::ValueRangeType::new_range(
-                &Type::default_minimum().into(),
-                &Type::default_maximum().into(),
-            ),
-        }
+    pub fn new() -> Result<Self, IllegalArgumentError> {
+        Ok(Self {
+            _range: ValueRange::<Type::VariableValueType>::new_with(
+                Type::VariableValueType::MINIMUM,
+                Type::VariableValueType::MAXIMUM,
+                Interval::Closed,
+                Interval::Closed
+            )?
+        })
     }
 }
 

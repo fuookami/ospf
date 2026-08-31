@@ -1,6 +1,7 @@
-use crate::dummy_vector::*;
-use crate::*;
 use std::ops::{Index, IndexMut};
+
+use crate::*;
+use crate::dummy_vector::*;
 
 pub struct MultiArray<T: Sized, S: Shape> {
     pub(self) list: Vec<Option<T>>,
@@ -10,8 +11,8 @@ pub struct MultiArray<T: Sized, S: Shape> {
 impl<T: Sized, S: Shape> MultiArray<T, S> {
     pub fn new(shape: S) -> Self {
         Self {
-            list: (0..shape.len()).map(|_| Option::None).collect(),
-            shape: shape,
+            list: (0..shape.len()).map(|_| None).collect(),
+            shape,
         }
     }
 
@@ -20,9 +21,7 @@ impl<T: Sized, S: Shape> MultiArray<T, S> {
         T: Clone,
     {
         Self {
-            list: (0..shape.len())
-                .map(|_| Option::Some(value.clone()))
-                .collect(),
+            list: (0..shape.len()).map(|_| Some(value.clone())).collect(),
             shape: shape,
         }
     }
@@ -33,7 +32,7 @@ impl<T: Sized, S: Shape> MultiArray<T, S> {
     {
         Self {
             list: (0..shape.len())
-                .map(|index| Option::Some(generator(index)))
+                .map(|index| Some(generator(index)))
                 .collect(),
             shape: shape,
         }
@@ -63,7 +62,7 @@ impl<T: Sized, S: Shape> MultiArray<T, S> {
 impl<T: Sized, S: Shape> Index<usize> for MultiArray<T, S> {
     type Output = T;
 
-    fn index(&self, index: usize) -> &Self::Output {
+    fn index(&self, index: usize) -> &T {
         match &self.list[index] {
             Some(value) => value,
             None => {
@@ -77,7 +76,7 @@ impl<T: Sized, S: Shape> Index<usize> for MultiArray<T, S> {
 }
 
 impl<T: Sized, S: Shape> IndexMut<usize> for MultiArray<T, S> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+    fn index_mut(&mut self, index: usize) -> &mut T {
         match &mut self.list[index] {
             Some(value) => value,
             None => {
@@ -93,7 +92,7 @@ impl<T: Sized, S: Shape> IndexMut<usize> for MultiArray<T, S> {
 impl<T: Sized, S: Shape> Index<&S::VectorType> for MultiArray<T, S> {
     type Output = T;
 
-    fn index(&self, vector: &S::VectorType) -> &Self::Output {
+    fn index(&self, vector: &S::VectorType) -> &T {
         match self.shape.index(vector) {
             Ok(index) => match &self.list[index] {
                 Some(value) => value,
@@ -110,7 +109,7 @@ impl<T: Sized, S: Shape> Index<&S::VectorType> for MultiArray<T, S> {
 }
 
 impl<T: Sized, S: Shape> IndexMut<&S::VectorType> for MultiArray<T, S> {
-    fn index_mut(&mut self, vector: &S::VectorType) -> &mut Self::Output {
+    fn index_mut(&mut self, vector: &S::VectorType) -> &mut T {
         match self.shape.index(vector) {
             Ok(index) => match &mut self.list[index] {
                 Some(value) => value,

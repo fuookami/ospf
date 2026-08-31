@@ -1,7 +1,6 @@
-use std::ops::Deref;
+use crate::ordinary;
 
 use super::*;
-use crate::ordinary;
 
 pub trait Ratio {
     const NUM: i128;

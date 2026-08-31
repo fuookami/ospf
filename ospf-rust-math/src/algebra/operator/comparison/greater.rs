@@ -1,81 +1,229 @@
-use crate::algebra::{Arithmetic, Precision};
-use crate::operator::{Abs, Neg};
-use std::ops::Sub;
+use std::ops::{Add, Sub};
 
-pub struct Greater<T: Arithmetic + Abs<Output = T> + Neg<Output = T>> {
+use crate::algebra::concept::*;
+use crate::algebra::operator::Abs;
+
+use super::ComparisonOperator;
+
+pub trait GreaterOpr<T, Rhs = T>: ComparisonOperator<T, Rhs> {
+    fn precision(&self) -> Option<&T> {
+        None
+    }
+}
+
+impl<T, Rhs> FnOnce<(&T, &Rhs)> for &dyn GreaterOpr<T, Rhs> {
+    type Output = bool;
+
+    extern "rust-call" fn call_once(self, (x, y): (&T, &Rhs)) -> Self::Output {
+        self.cmp(x, y)
+    }
+}
+
+impl<T, Rhs> FnMut<(&T, &Rhs)> for &dyn GreaterOpr<T, Rhs> {
+    extern "rust-call" fn call_mut(&mut self, (x, y): (&T, &Rhs)) -> Self::Output {
+        self.cmp(x, y)
+    }
+}
+
+impl<T, Rhs> Fn<(&T, &Rhs)> for &dyn GreaterOpr<T, Rhs> {
+    extern "rust-call" fn call(&self, (x, y): (&T, &Rhs)) -> Self::Output {
+        self.cmp(x, y)
+    }
+}
+
+impl<T, Rhs> FnOnce<(&T, &Rhs)> for Box<dyn GreaterOpr<T, Rhs>> {
+    type Output = bool;
+
+    extern "rust-call" fn call_once(self, (x, y): (&T, &Rhs)) -> Self::Output {
+        self.cmp(x, y)
+    }
+}
+
+impl<T, Rhs> FnMut<(&T, &Rhs)> for Box<dyn GreaterOpr<T, Rhs>> {
+    extern "rust-call" fn call_mut(&mut self, (x, y): (&T, &Rhs)) -> Self::Output {
+        self.cmp(x, y)
+    }
+}
+
+impl<T, Rhs> Fn<(&T, &Rhs)> for Box<dyn GreaterOpr<T, Rhs>> {
+    extern "rust-call" fn call(&self, (x, y): (&T, &Rhs)) -> Self::Output {
+        self.cmp(x, y)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct GreaterInt {}
+
+impl GreaterInt {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl<T: PartialOrd<Rhs>, Rhs> ComparisonOperator<T, Rhs> for GreaterInt {
+    fn cmp(&self, lhs: &T, rhs: &Rhs) -> bool {
+        lhs > rhs
+    }
+}
+
+impl<T: PartialOrd<Rhs>, Rhs> GreaterOpr<T, Rhs> for GreaterInt {
+    default fn precision(&self) -> Option<&T> {
+        None
+    }
+}
+
+impl<T: SemiArithmetic + PartialOrd<Rhs>, Rhs> GreaterOpr<T, Rhs> for GreaterInt {
+    fn precision(&self) -> Option<&T> {
+        Some(T::ZERO)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct GreaterFlt<T> {
     pub(self) precision: T,
 }
 
-impl<T: Arithmetic + Abs<Output = T> + Neg<Output = T>> Greater<T> {
-    pub fn new() -> Self
-    where
-        T: Precision,
-    {
-        Self::new_with(<Self as Precision>::DECIMAL_PRECISION)
+impl<T> From<T> for GreaterFlt<T> {
+    default fn from(precision: T) -> Self {
+        Self { precision }
     }
+}
 
-    pub fn new_with(precision: T) -> Self {
+impl<T: Signed> From<&T> for GreaterFlt<T>
+where
+    for<'a> &'a T: Abs<Output = T>,
+{
+    fn from(precision: &T) -> Self {
         Self {
             precision: precision.abs(),
         }
     }
+}
 
-    pub fn precision(&self) -> &T {
-        &self.precision
+impl<T: Signed + Copy + Abs<Output = T>> From<T> for GreaterFlt<T> {
+    fn from(precision: T) -> Self {
+        Self {
+            precision: precision.abs(),
+        }
     }
 }
 
-impl<T: Arithmetic + Sub<Output = T> + Abs<Output = T> + Neg<Output = T>> FnOnce<(T, T)>
-    for Greater<T>
-{
-    type Output = bool;
+impl<T> GreaterFlt<T> {
+    pub fn new() -> Self
+    where
+        T: Precision + Clone,
+    {
+        Self {
+            precision: <T as Precision>::DECIMAL_PRECISION.clone(),
+        }
+    }
 
-    extern "rust-call" fn call_once(self, args: (T, T)) -> Self::Output {
-        (args.0 - args.1) > self.precision
+    pub fn new_with(precision: T) -> Self
+    where
+        Self: From<T>,
+    {
+        Self::from(precision)
     }
 }
 
-impl<T: Arithmetic + Sub<Output = T> + Abs<Output = T> + Neg<Output = T>> FnMut<(T, T)>
-    for Greater<T>
-{
-    extern "rust-call" fn call_mut(&mut self, args: (T, T)) -> Self::Output {
-        return self.call_once(args);
-    }
-}
-
-impl<T: Arithmetic + Sub<Output = T> + Abs<Output = T> + Neg<Output = T>> Fn<(T, T)>
-    for Greater<T>
-{
-    extern "rust-call" fn call(&mut self, args: (T, T)) -> Self::Output {
-        return self.call_once(args);
-    }
-}
-
-impl<'a, T: Arithmetic + Abs<Output = T> + Neg<Output = T>> FnOnce<(&'a T, &'a T)> for Greater<T>
+impl<T: PartialOrd<Rhs>, Rhs> ComparisonOperator<T, Rhs> for GreaterFlt<T>
 where
-    &'a T: Sub<&'a T, Output = T>,
+    for<'a> &'a T: Sub,
+    for<'a> <&'a T as Sub>::Output: PartialOrd<Rhs>,
 {
-    type Output = bool;
-
-    extern "rust-call" fn call_once(self, args: (&'a T, &'a T)) -> Self::Output {
-        (args.0 - args.1) > self.precision
+    fn cmp(&self, x: &T, y: &Rhs) -> bool {
+        if x < y {
+            false
+        } else {
+            &(x - &self.precision) > y
+        }
     }
 }
 
-impl<'a, T: Arithmetic + Abs<Output = T> + Neg<Output = T>> FnMut<(&'a T, &'a T)> for Greater<T>
+impl<T: PartialOrd<Rhs>, Rhs> GreaterOpr<T, Rhs> for GreaterFlt<T>
 where
-    &'a T: Sub<&'a T, Output = T>,
+    for<'a> &'a T: Sub,
+    for<'a> <&'a T as Sub>::Output: PartialOrd<Rhs>,
 {
-    extern "rust-call" fn call_mut(&mut self, args: (&'a T, &'a T)) -> Self::Output {
-        return self.call_once(args);
+    fn precision(&self) -> Option<&T> {
+        Some(&self.precision)
     }
 }
 
-impl<'a, T: Arithmetic + Abs<Output = T> + Neg<Output = T>> Fn<(&'a T, &'a T)> for Greater<T>
+pub trait GreaterOprBuilder<T, Rhs = T> {
+    fn new() -> Box<dyn GreaterOpr<T, Rhs>>;
+    fn new_with(precision: T) -> Box<dyn GreaterOpr<T, Rhs>>;
+}
+
+pub struct Greater {}
+
+impl<T: PartialOrd<Rhs>, Rhs> GreaterOprBuilder<T, Rhs> for Greater {
+    default fn new() -> Box<dyn GreaterOpr<T, Rhs>> {
+        Box::new(GreaterInt::new())
+    }
+
+    default fn new_with(precision: T) -> Box<dyn GreaterOpr<T, Rhs>> {
+        Box::new(GreaterInt::new())
+    }
+}
+
+impl<T: 'static + PartialOrd<Rhs>, Rhs> GreaterOprBuilder<T, Rhs> for Greater
 where
-    &'a T: Sub<&'a T, Output = T>,
+    for<'a> &'a T: Sub,
+    for<'a> <&'a T as Sub>::Output: PartialOrd<Rhs>,
 {
-    extern "rust-call" fn call(&mut self, args: (&'a T, &'a T)) -> Self::Output {
-        return self.call_once(args);
+    default fn new() -> Box<dyn GreaterOpr<T, Rhs>> {
+        Box::new(GreaterInt::new())
+    }
+
+    default fn new_with(precision: T) -> Box<dyn GreaterOpr<T, Rhs>> {
+        Box::new(GreaterFlt::new_with(precision))
+    }
+}
+
+impl<T: FloatingNumber + Clone + PartialOrd<Rhs>, Rhs> GreaterOprBuilder<T, Rhs> for Greater
+where
+    for<'a> &'a T: Sub,
+    for<'a> <&'a T as Sub>::Output: PartialOrd<Rhs>,
+{
+    fn new() -> Box<dyn GreaterOpr<T, Rhs>> {
+        Box::new(GreaterFlt::new())
+    }
+
+    fn new_with(precision: T) -> Box<dyn GreaterOpr<T, Rhs>>
+    where
+        GreaterFlt<T>: From<T>,
+    {
+        Box::new(GreaterFlt::new_with(precision))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gr_int() {
+        let gr = Greater::new();
+        assert_eq!(gr(&1, &2), false);
+        assert_eq!(gr(&2, &1), true);
+        assert_eq!(gr(&1, &1), false);
+    }
+
+    #[test]
+    fn test_gr_flt() {
+        let gr = Greater::new();
+        assert_eq!(gr(&0.0, &0.0), false);
+        assert_eq!(gr(&0.0, &1e-6), false);
+        assert_eq!(gr(&1e-6, &0.0), true);
+        assert_eq!(gr(&0.0, &1e-4), false);
+        assert_eq!(gr(&1e-4, &0.0), true);
+
+        let gr = Greater::new_with(1e-5);
+        assert_eq!(gr(&0.0, &0.0), false);
+        assert_eq!(gr(&0.0, &1e-6), false);
+        assert_eq!(gr(&1e-6, &0.0), false);
+        assert_eq!(gr(&0.0, &1e-4), false);
+        assert_eq!(gr(&1e-4, &0.0), true);
     }
 }

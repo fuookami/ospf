@@ -11,7 +11,13 @@ pub trait Indexed: Sized {
 
 pub trait ManualIndexed: Indexed {
     fn indexed(&self) -> bool;
-    fn set_indexed(&mut self);
+    fn set_indexed(&mut self)
+    where
+        Self: 'static,
+    {
+        self.set_indexed_with::<Self>()
+    }
+    fn set_indexed_with<T: 'static>(&mut self);
 }
 
 pub struct IndexGeneratorImpl {
@@ -65,33 +71,33 @@ impl IndexGenerator {
 }
 
 #[macro_export]
-macro_rules! next_index {
-    () => {
-        (*IndexGenerator::instance::<Self>().lock().unwrap()).next()
-    };
-}
-
-#[macro_export]
-macro_rules! flush {
-    () => {
-        (*IndexGenerator::instance::<Self>().lock().unwrap()).flush()
-    };
-}
-
-#[macro_export]
 macro_rules! auto_indexed {
-    ($($type:ty)*) => {$(
-        impl Indexed for $type {
+    (#[derive($($derive:meta),*)] $pub:vis struct $name:ident { $($fpub:vis $field:ident : $type:ty,)* }) => {
+        #[derive($($derive),*)]
+        $pub struct $name {
+            index: usize,
+            $($fpub $field : $type,)*
+        }
+        impl $name {
+            $pub fn new<T: 'STATIC = Self>($($field:$type,)*) -> Self{
+                Self {
+                    index: (*IndexGenerator::instance::<T>().lock().unwrap()).next(),
+                    $($field,)*
+                }
+            }
+        }
+
+        impl Indexed for $name {
             fn index(&self) -> usize {
                 self.index
             }
 
-            fn flush() {
-                flush!();
+            fn flush<T: 'STATIC = Self>() {
+                (*IndexGenerator::instance::<T>().lock().unwrap()).flush();
             }
         }
 
-        impl Deref for $type {
+        impl Deref for &$name {
             type Target = isize;
 
             fn deref(&self) -> &Self::Target {
@@ -99,39 +105,53 @@ macro_rules! auto_indexed {
                 unsafe { &*(ptr as *const isize) }
             }
         }
-    )*};
+    }
 }
 
 #[macro_export]
 macro_rules! manual_indexed {
-    ($($type:ty)*) => {$(
-        impl Indexed for $type {
+    (#[derive($($derive:meta),*)] $pub:vis struct $name:ident { $($fpub:vis $field:ident : $type:ty,)* }) => {
+        #[derive($($derive),*)]
+        $pub struct $name {
+            index: Option<usize>,
+            $($fpub $field : $type,)*
+        }
+        impl $name {
+            $pub fn new($($field:$type,)*) -> Self{
+                Self {
+                    index: None,
+                    $($field,)*
+                }
+            }
+        }
+
+        impl Indexed for $name {
             fn index(&self) -> usize {
                 self.index.unwrap()
             }
 
-            fn flush() {
-                flush!();
+            fn flush<T: 'STATIC = Self>() {
+                (*IndexGenerator::instance::<T>().lock().unwrap()).flush();
             }
         }
 
-        impl ManualIndexed for $type {
+        impl ManualIndexed for $name {
             fn indexed(&self) -> bool {
-                self.index.isSome()
+                self.index.is_some()
             }
 
-            fn set_indexed(&mut self) {
-                self.index = Option::Some(next_index!());
+            fn set_indexed_with<T: 'static>(&mut self) {
+                self.index = Some((*IndexGenerator::instance::<T>().lock().unwrap()).next());
             }
         }
 
-        impl Deref for $type {
+        impl Deref for &$name {
             type Target = isize;
 
             fn deref(&self) -> &Self::Target {
-                let ptr = &self.index as *const usize;
+                let ptr = self.index.as_ref().unwrap() as *const usize;
                 unsafe { &*(ptr as *const isize) }
             }
         }
-    )*};
+    }
 }

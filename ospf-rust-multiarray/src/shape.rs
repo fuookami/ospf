@@ -1,7 +1,8 @@
-use super::dummy_vector::DummyIndex;
 use std::fmt;
 use std::mem;
 use std::ops::IndexMut;
+
+use super::dummy_vector::DummyIndex;
 
 const DYN_DIMENSION: usize = usize::MAX;
 

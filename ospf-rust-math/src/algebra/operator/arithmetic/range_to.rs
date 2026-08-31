@@ -1,21 +1,20 @@
-pub use std::cmp::Ord;
-pub use std::ops::Range;
+use std::ops::Range;
 
-pub trait RangeTo
-where
-    Self: Ord + Sized + Clone,
-{
-    fn until(self, rhs: Self) -> Range<Self> {
-        Range {
-            start: self.clone,
-            end: rhs.clone,
-        }
-    }
+use crate::algebra::*;
+
+pub trait RangeTo: Sized {
+    fn until(self, rhs: Self) -> Range<Self>;
 }
 
 macro_rules! int_range_to_template {
-    ($($type:ty)*) => ($(
+    ($($type:ident)*) => ($(
         impl RangeTo for $type {
+            fn until(self, rhs: Self) -> Range<$type> {
+                self..rhs
+            }
+        }
+
+        impl RangeTo for &$type {
             fn until(self, rhs: Self) -> Range<Self> {
                 self..rhs
             }

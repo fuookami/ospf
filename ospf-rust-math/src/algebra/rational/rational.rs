@@ -1,44 +1,39 @@
-use crate::algebra::*;
 use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
+
+use crate::algebra::*;
 
 pub(self) trait RationalConstructor<I: Integer> {
     fn new(num: I, den: I) -> Self;
-    fn assign(&mut self, rhs: Self);
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct Rational<I: Integer> {
+pub struct Rational<I: Integer + NumberField + Pow> {
     num: I,
     den: I,
 }
 
-default impl<I: Integer> RationalConstructor<I> for Rational<I> {
+default impl<I: Integer + NumberField + Pow> RationalConstructor<I> for Rational<I> {
     fn new(num: I, den: I) -> Self {
-        let divisor = ordinary::gcd(num, den);
+        let divisor = ordinary::gcd(num.clone(), den.clone());
         Self {
-            num: num / divisor,
+            num: num / divisor.clone(),
             den: den / divisor,
         }
     }
-
-    fn assign(&mut self, rhs: Self) {
-        self.num = rhs.num;
-        self.den = rhs.den;
-    }
 }
 
-impl<I: Integer + Signed> RationalConstructor<I> for Rational<I> {
+impl<I: Integer + Signed + NumberField + Pow> RationalConstructor<I> for Rational<I> {
     fn new(num: I, den: I) -> Self {
-        let divisor = ordinary::gcd(num, den);
+        let divisor = ordinary::gcd(num.clone(), den.clone());
         let negative = (num < I::ZERO) ^ (den < I::ZERO);
         if negative {
             Self {
-                num: num.abs().neg() / divisor,
+                num: num.abs().neg() / divisor.clone(),
                 den: den.abs() / divisor,
             }
         } else {
             Self {
-                num: num.abs() / divisor,
+                num: num.abs() / divisor.clone(),
                 den: den.abs() / divisor,
             }
         }
@@ -59,23 +54,33 @@ where
 impl<I: Integer> Add<Rational<I>> for Rational<I> {
     type Output = Rational<I>;
 
-    fn add(self, rhs: Self) -> Self::Output {
-        Self::new(self.num * rhs.den + rhs.num * self.den, self.den * rhs.den)
+    fn add(self, rhs: Self) -> Rational<I> {
+        Self::new(
+            self.num.clone() * rhs.den.clone() + rhs.num.clone() * self.den.clone(),
+            self.den.clone() * rhs.den.clone(),
+        )
     }
 }
 
-impl<'a, I: Integer> Add<Rational<I>> for &'a Rational<I> {
+impl<'a, I: Integer> Add<Rational<I>> for &'a Rational<I>
+where
+    &I: Add<Output = I>,
+    &I: Mul<Output = I>,
+{
     type Output = Rational<I>;
 
-    fn add(self, rhs: Rational<I>) -> Self::Output {
-        Self::new(self.num * rhs.den + rhs.num * self.den, self.den * rhs.den)
+    fn add(self, rhs: Rational<I>) -> Rational<I> {
+        Self::new(
+            &self.num * &rhs.den + &rhs.num * &self.den,
+            &self.den * &rhs.den,
+        )
     }
 }
 
 impl<I: Integer> Add<&Rational<I>> for Rational<I> {
     type Output = Rational<I>;
 
-    fn add(self, rhs: &Rational<I>) -> Self::Output {
+    fn add(self, rhs: &Rational<I>) -> Rational<I> {
         Self::new(self.num * rhs.den + rhs.num * self.den, self.den * rhs.den)
     }
 }
@@ -83,7 +88,7 @@ impl<I: Integer> Add<&Rational<I>> for Rational<I> {
 impl<I: Integer> Add<&Rational<I>> for &Rational<I> {
     type Output = Rational<I>;
 
-    fn add(self, rhs: &Rational<I>) -> Self::Output {
+    fn add(self, rhs: &Rational<I>) -> Rational<I> {
         Self::new(self.num * rhs.den + rhs.num * self.den, self.den * rhs.den)
     }
 }
@@ -103,7 +108,7 @@ impl<I: Integer> AddAssign<&Self> for Rational<I> {
 impl<I: Integer> Sub<Rational<I>> for Rational<I> {
     type Output = Rational<I>;
 
-    fn sub(self, rhs: Rational<I>) -> Self::Output {
+    fn sub(self, rhs: Rational<I>) -> Rational<I> {
         Self::new(self.num * rhs.den - rhs.num * self.den, self.den * rhs.den)
     }
 }
@@ -111,7 +116,7 @@ impl<I: Integer> Sub<Rational<I>> for Rational<I> {
 impl<'a, I: Integer> Sub<Rational<I>> for &'a Rational<I> {
     type Output = Rational<I>;
 
-    fn sub(self, rhs: Rational<I>) -> Self::Output {
+    fn sub(self, rhs: Rational<I>) -> Rational<I> {
         Self::new(self.num * rhs.den - rhs.num * self.den, self.den * rhs.den)
     }
 }
@@ -119,7 +124,7 @@ impl<'a, I: Integer> Sub<Rational<I>> for &'a Rational<I> {
 impl<I: Integer> Sub<&Rational<I>> for Rational<I> {
     type Output = Rational<I>;
 
-    fn sub(self, rhs: &Rational<I>) -> Self::Output {
+    fn sub(self, rhs: &Rational<I>) -> Rational<I> {
         Self::new(self.num * rhs.den - rhs.num * self.den, self.den * rhs.den)
     }
 }
@@ -127,7 +132,7 @@ impl<I: Integer> Sub<&Rational<I>> for Rational<I> {
 impl<I: Integer> Sub<&Rational<I>> for &Rational<I> {
     type Output = Rational<I>;
 
-    fn sub(self, rhs: &Rational<I>) -> Self::Output {
+    fn sub(self, rhs: &Rational<I>) -> Rational<I> {
         Self::new(self.num * rhs.den - rhs.num * self.den, self.den * rhs.den)
     }
 }
@@ -147,7 +152,7 @@ impl<I: Integer> SubAssign<&Rational<I>> for Rational<I> {
 impl<I: Integer> Mul<Rational<I>> for Rational<I> {
     type Output = Rational<I>;
 
-    fn mul(self, rhs: Rational<I>) -> Self::Output {
+    fn mul(self, rhs: Rational<I>) -> Rational<I> {
         Self::new(self.num * rhs.num, self.den * rhs.den)
     }
 }
@@ -155,7 +160,7 @@ impl<I: Integer> Mul<Rational<I>> for Rational<I> {
 impl<'a, I: Integer> Mul<Rational<I>> for &'a Rational<I> {
     type Output = Rational<I>;
 
-    fn mul(self, rhs: Rational<I>) -> Self::Output {
+    fn mul(self, rhs: Rational<I>) -> Rational<I> {
         Self::new(self.num * rhs.num, self.den * rhs.den)
     }
 }
@@ -163,39 +168,39 @@ impl<'a, I: Integer> Mul<Rational<I>> for &'a Rational<I> {
 impl<I: Integer> Mul<&Rational<I>> for Rational<I> {
     type Output = Rational<I>;
 
-    fn mul(self, rhs: &Rational<I>) -> Self::Output {
+    fn mul(self, rhs: &Rational<I>) -> Rational<I> {
         Self::new(self.num * rhs.num, self.den * rhs.den)
     }
 }
 
 impl<I: Integer> Div for Rational<I> {
-    type Output = Self;
+    type Output = Rational<I>;
 
-    fn div(self, rhs: Self) -> Self::Output {
+    fn div(self, rhs: Self) -> Rational<I> {
         Self::new(self.num * rhs.den, rhs.num * rhs.den)
     }
 }
 
 impl<I: Integer> Abs for Rational<I> {
-    type Output = Self;
+    type Output = Rational<I>;
 
-    fn abs(&self) -> Self::Output {
+    fn abs(&self) -> Rational<I> {
         Self::new(self.num.abs(), self.den)
     }
 }
 
 impl<I: Integer> Cross for Rational<I> {
-    type Output = Self;
+    type Output = Rational<I>;
 
-    fn cross(self, rhs: Self) -> Self::Output {
+    fn cross(self, rhs: Self) -> Rational<I> {
         self.mul(rhs)
     }
 }
 
 impl<I: Integer> IntDiv for Rational<I> {
-    type Output = Self;
+    type Output = Rational<I>;
 
-    fn int_div(self, rhs: Self) -> Self::Output {
+    fn int_div(self, rhs: Self) -> Rational<I> {
         self.div(rhs)
     }
 }
@@ -203,17 +208,17 @@ impl<I: Integer> IntDiv for Rational<I> {
 impl<I: Integer> Log<f64> for Rational<I> {}
 
 impl<I: Integer> Neg for Rational<I> {
-    type Output = Self;
+    type Output = Rational<I>;
 
-    fn neg(&self) -> Self::Output {
+    fn neg(&self) -> Rational<I> {
         Self::new(self.num.neg(), self.den)
     }
 }
 
 impl<I: Integer> Reciprocal for Rational<I> {
-    type Output = Self;
+    type Output = Rational<I>;
 
-    fn reciprocal(&self) -> Self::Output {
+    fn reciprocal(&self) -> Rational<I> {
         Self {
             num: self.den,
             den: self.num,
@@ -222,6 +227,7 @@ impl<I: Integer> Reciprocal for Rational<I> {
 }
 
 impl<I: Integer + Signed> Signed for Rational<I> {}
+
 impl<I: Integer + Unsigned> Unsigned for Rational<I> {}
 
 impl<I: Integer> Invariant for Rational<I>
@@ -260,14 +266,14 @@ pub type Rtn16 = Rational<i16>;
 pub type Rtn32 = Rational<i32>;
 pub type Rtn64 = Rational<i64>;
 pub type Rtn128 = Rational<i128>;
-pub type RtnX = Rational<IntX>;
+pub type RtnX = Rational<ix>;
 
 pub type URtn8 = Rational<u8>;
 pub type URtn16 = Rational<u16>;
 pub type URtn32 = Rational<u32>;
 pub type URtn64 = Rational<u64>;
 pub type URtn128 = Rational<u128>;
-pub type URtnX = Rational<UIntX>;
+pub type URtnX = Rational<uix>;
 
 impl PartialOrd for Rtn8 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -327,8 +333,8 @@ impl From<&Rtn64> for f64 {
 
 impl PartialOrd for Rtn128 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        let lhs = IntX::from(self.num) * IntX::from(other.den);
-        let rhs = IntX::from(other.num) * IntX::from(self.den);
+        let lhs = ix::from(self.num) * ix::from(other.den);
+        let rhs = ix::from(other.num) * ix::from(self.den);
         Some(lhs.cmp(&rhs))
     }
 }
@@ -347,7 +353,7 @@ impl PartialOrd for RtnX {
     }
 }
 
-impl From<&RtnX> for Decimal {
+impl From<&RtnX> for dec {
     fn from(value: &RtnX) -> Self {
         (value.num.into()) / (value.den.into())
     }
@@ -411,8 +417,8 @@ impl From<&URtn64> for f64 {
 
 impl PartialOrd for URtn128 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        let lhs = UIntX::from(self.num) * UIntX::from(other.den);
-        let rhs = UIntX::from(other.num) * UIntX::from(self.den);
+        let lhs = uix::from(self.num) * uix::from(other.den);
+        let rhs = uix::from(other.num) * uix::from(self.den);
         Some(lhs.cmp(&rhs))
     }
 }
@@ -431,7 +437,7 @@ impl PartialOrd for URtnX {
     }
 }
 
-impl From<&URtnX> for Decimal {
+impl From<&URtnX> for dec {
     fn from(value: &URtnX) -> Self {
         (value.num.into()) / (value.den.into())
     }

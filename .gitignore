@@ -5,3 +5,4 @@ Cargo.lock
 .vs/
 .idea/
 .vscode/
+/.VSCodeCounter

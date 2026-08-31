@@ -1,7 +1,8 @@
-use crate::Shape;
 use std::ops::{
     Bound, Range, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
 };
+
+use crate::Shape;
 
 pub trait DummyIndexRange {
     fn start_bound(&self) -> Bound<isize>;
@@ -206,7 +207,7 @@ impl<'a, 'b, S: Shape> DummyAccessIterator<'a, 'b, S> {
                 },
             }
         }
-        return None;
+        None
     }
 }
 

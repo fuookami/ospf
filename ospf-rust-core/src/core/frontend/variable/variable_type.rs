@@ -1,210 +1,61 @@
-use crate::math::concept::*;
-use crate::math::value_range::*;
-use std::convert::Into;
 use std::{f64, i128, i8, u128, u8};
+use std::convert::Into;
 
-pub struct Binary;
-pub struct Ternary;
-pub struct BalancedTernary;
-pub struct Percentage;
-pub struct Integer;
-pub struct UInteger;
-pub struct Continuous;
-pub struct UContinuous;
+use ospf_rust_math::algebra::concept::*;
+use ospf_rust_math::algebra::value_range::*;
 
-pub trait VariableType {
-    type ValueRangeType: ValueRange;
-    type ValueType: Arithmetic + Constant + Into<<Self::ValueRangeType as ValueRange>::ValueType>;
+pub trait VariableType: Copy + Eq {
+    type VariableValueType;
+
+    const MINIMUM: &'static Self::VariableValueType;
+    const MAXIMUM: &'static Self::VariableValueType;
+
+    const NAME: &'static str;
+    const SHORT_NAME: &'static str;
 
     fn new() -> Self;
 
-    fn default_minimum() -> Self::ValueType;
-    fn default_maximum() -> Self::ValueType;
-
-    fn name() -> &'static str;
-    fn short_name() -> &'static str;
-}
-
-impl VariableType for Binary {
-    type ValueType = u8;
-    type ValueRangeType = ValueRangeType<u8>;
-
-    fn new() -> Self {
-        Self {}
+    fn is_binary() -> bool {
+        false
     }
 
-    fn default_minimum() -> u8 {
-        0
-    }
-    fn default_maximum() -> u8 {
-        1
+    fn is_integer() -> bool {
+        false
     }
 
-    fn name() -> &'static str {
-        "Binary"
+    fn is_unsigned_integer() -> bool {
+        false
     }
-    fn short_name() -> &'static str {
-        "Bin"
+
+    fn is_continuous() -> bool {
+        !Self::is_integer()
+    }
+
+    fn is_not_binary_integer() -> bool {
+        !Self::is_binary() && Self::is_integer()
     }
 }
 
-impl VariableType for Ternary {
-    type ValueType = u8;
-    type ValueRangeType = ValueRangeType<u8>;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Binary;
 
-    fn new() -> Self {
-        Self {}
-    }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Ternary;
 
-    fn default_minimum() -> u8 {
-        0
-    }
-    fn default_maximum() -> u8 {
-        2
-    }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BalancedTernary;
 
-    fn name() -> &'static str {
-        "Ternary"
-    }
-    fn short_name() -> &'static str {
-        "Ter"
-    }
-}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Percentage;
 
-impl VariableType for BalancedTernary {
-    type ValueType = i8;
-    type ValueRangeType = ValueRangeType<i8>;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Integer;
 
-    fn new() -> Self {
-        Self {}
-    }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct UInteger;
 
-    fn default_minimum() -> i8 {
-        -1
-    }
-    fn default_maximum() -> i8 {
-        1
-    }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Continuous;
 
-    fn name() -> &'static str {
-        "BalancedTernary"
-    }
-    fn short_name() -> &'static str {
-        "BTer"
-    }
-}
-
-impl VariableType for Percentage {
-    type ValueType = f64;
-    type ValueRangeType = ValueRangeType<f64>;
-
-    fn new() -> Self {
-        Self {}
-    }
-
-    fn default_minimum() -> f64 {
-        0.
-    }
-    fn default_maximum() -> f64 {
-        1.
-    }
-
-    fn name() -> &'static str {
-        "Percentage"
-    }
-    fn short_name() -> &'static str {
-        "Pct"
-    }
-}
-
-impl VariableType for Integer {
-    type ValueType = i128;
-    type ValueRangeType = ValueRangeType<i128>;
-
-    fn new() -> Self {
-        Self {}
-    }
-
-    fn default_minimum() -> i128 {
-        i128::MIN
-    }
-    fn default_maximum() -> i128 {
-        i128::MAX
-    }
-
-    fn name() -> &'static str {
-        "Integer"
-    }
-    fn short_name() -> &'static str {
-        "Int"
-    }
-}
-
-impl VariableType for UInteger {
-    type ValueType = u128;
-    type ValueRangeType = ValueRangeType<u128>;
-
-    fn new() -> Self {
-        Self {}
-    }
-
-    fn default_minimum() -> u128 {
-        u128::MIN
-    }
-    fn default_maximum() -> u128 {
-        u128::MAX
-    }
-
-    fn name() -> &'static str {
-        "UInteger"
-    }
-    fn short_name() -> &'static str {
-        "UInt"
-    }
-}
-
-impl VariableType for Continuous {
-    type ValueType = f64;
-    type ValueRangeType = ValueRangeType<f64>;
-
-    fn new() -> Self {
-        Self {}
-    }
-
-    fn default_minimum() -> f64 {
-        f64::NEG_INFINITY
-    }
-    fn default_maximum() -> f64 {
-        f64::INFINITY
-    }
-
-    fn name() -> &'static str {
-        "Continuous"
-    }
-    fn short_name() -> &'static str {
-        "Real"
-    }
-}
-
-impl VariableType for UContinuous {
-    type ValueType = f64;
-    type ValueRangeType = ValueRangeType<f64>;
-
-    fn new() -> Self {
-        Self {}
-    }
-
-    fn default_minimum() -> f64 {
-        0.
-    }
-    fn default_maximum() -> f64 {
-        f64::INFINITY
-    }
-
-    fn name() -> &'static str {
-        "UContinuous"
-    }
-    fn short_name() -> &'static str {
-        "UReal"
-    }
-}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct UContinuous;

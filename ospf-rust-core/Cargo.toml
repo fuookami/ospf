@@ -3,9 +3,11 @@ name = "ospf-rust-core"
 version = "0.1.0"
 authors = ["fuookami <fuookami@163.com>"]
 edition = "2021"
+license = "Apache-2.0"
 
 [dependencies]
 libc = "*"
+paste = "*"
 
 [dependencies.ospf-rust-base]
 path = "../ospf-rust-base"

@@ -1,36 +1,36 @@
-use super::*;
-use crate::algebra::*;
+use super::{Arithmetic, SemiArithmetic};
 
-pub trait Precision: Arithmetic {
-    const EPSILON: Self;
+pub trait Precision: 'static {
+    const EPSILON: &'static Self;
     const DECIMAL_DIGITS: Option<usize>;
-    const DECIMAL_PRECISION: Self;
+    const DECIMAL_PRECISION: &'static Self;
 }
 
 default impl<T: Arithmetic> Precision for T {
-    const EPSILON: Self = Self::ZERO;
+    const EPSILON: &'static Self = Self::ZERO;
     const DECIMAL_DIGITS: Option<usize> = None;
-    const DECIMAL_PRECISION: Self = Self::EPSILON;
+    const DECIMAL_PRECISION: &'static Self = Self::EPSILON;
 }
 
 macro_rules! int_precision_template {
-    ($($type:ty)*) => ($(
-        impl Precision for $type { }
+    ($($type:ident)*) => ($(
+        impl Precision for $type {
+            const EPSILON: &'static Self = Self::ZERO;
+            const DECIMAL_DIGITS: Option<usize> = None;
+            const DECIMAL_PRECISION: &'static Self = Self::EPSILON;
+         }
     )*)
 }
-int_precision_template! { i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 IntX UIntX }
+int_precision_template! { bool i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize }
 
 impl Precision for f32 {
-    const EPSILON: Self = <f32>::EPSILON;
+    const EPSILON: &'static Self = &<f32>::MIN_POSITIVE;
     const DECIMAL_DIGITS: Option<usize> = Some(<f32>::DIGITS as usize);
+    const DECIMAL_PRECISION: &'static Self = &Self::EPSILON;
 }
 
 impl Precision for f64 {
-    const EPSILON: Self = <f64>::EPSILON;
+    const EPSILON: &'static Self = &<f64>::MIN_POSITIVE;
     const DECIMAL_DIGITS: Option<usize> = Some(<f64>::DIGITS as usize);
-}
-
-impl Precision for Decimal {
-    const EPSILON: Self = Decimal::from_f64(1e-28).unwrap();
-    const DECIMAL_DIGITS: Option<usize> = Some(28);
+    const DECIMAL_PRECISION: &'static Self = &Self::EPSILON;
 }

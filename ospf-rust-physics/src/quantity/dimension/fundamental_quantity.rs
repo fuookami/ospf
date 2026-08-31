@@ -1,5 +1,4 @@
-use concat_idents::concat_idents;
-use ospf_rust_meta_programming::*;
+use paste::paste;
 
 pub trait FundamentalDimension {}
 
@@ -8,35 +7,37 @@ pub trait FundamentalQuantity {
     const INDEX: i32;
 }
 
-pub trait DimensionSame<Quantity: FundamentalQuantity> {}
-impl<Lhs: FundamentalQuantity, Rhs: FundamentalQuantity> DimensionSame<Rhs> for Lhs where
-    IsSameType<Lhs::Dimension, Rhs::Dimension>: SameType
-{
+struct Multiply<
+    Dimension: FundamentalDimension,
+    Lhs: FundamentalQuantity<Dimension = Dimension>,
+    Rhs: FundamentalQuantity<Dimension = Dimension>,
+> {
+    _marker: std::marker::PhantomData<(Dimension, Lhs, Rhs)>,
 }
 
-struct Multiply<Lhs: FundamentalQuantity, Rhs: FundamentalQuantity>
-where
-    Lhs: DimensionSame<Rhs>,
+impl<
+        Dimension: FundamentalDimension,
+        Lhs: FundamentalQuantity<Dimension = Dimension>,
+        Rhs: FundamentalQuantity<Dimension = Dimension>,
+    > FundamentalQuantity for Multiply<Dimension, Lhs, Rhs>
 {
-    _marker: std::marker::PhantomData<(Lhs, Rhs)>,
-}
-impl<Lhs: FundamentalQuantity, Rhs: FundamentalQuantity> FundamentalQuantity for Multiply<Lhs, Rhs>
-where
-    Lhs: DimensionSame<Rhs>,
-{
-    type Dimension = Lhs::Dimension;
+    type Dimension = Dimension;
     const INDEX: i32 = Lhs::INDEX + Rhs::INDEX;
 }
 
-struct Divide<Lhs: FundamentalQuantity, Rhs: FundamentalQuantity>
-where
-    Lhs: DimensionSame<Rhs>,
-{
-    _marker: std::marker::PhantomData<(Lhs, Rhs)>,
+struct Divide<
+    Dimension: FundamentalDimension,
+    Lhs: FundamentalQuantity<Dimension = Dimension>,
+    Rhs: FundamentalQuantity<Dimension = Dimension>,
+> {
+    _marker: std::marker::PhantomData<(Dimension, Lhs, Rhs)>,
 }
-impl<Lhs: FundamentalQuantity, Rhs: FundamentalQuantity> FundamentalQuantity for Divide<Lhs, Rhs>
-where
-    Lhs: DimensionSame<Rhs>,
+
+impl<
+        Dimension: FundamentalDimension,
+        Lhs: FundamentalQuantity<Dimension = Dimension>,
+        Rhs: FundamentalQuantity<Dimension = Dimension>,
+    > FundamentalQuantity for Divide<Dimension, Lhs, Rhs>
 {
     type Dimension = Lhs::Dimension;
     const INDEX: i32 = Lhs::INDEX - Rhs::INDEX;
@@ -45,6 +46,7 @@ where
 struct Neg<Quantity: FundamentalQuantity> {
     _marker: std::marker::PhantomData<Quantity>,
 }
+
 impl<Quantity: FundamentalQuantity> FundamentalQuantity for Neg<Quantity> {
     type Dimension = Quantity::Dimension;
     const INDEX: i32 = -Quantity::INDEX;
@@ -53,9 +55,30 @@ impl<Quantity: FundamentalQuantity> FundamentalQuantity for Neg<Quantity> {
 struct Pow<Quantity: FundamentalQuantity, const INDEX: i32> {
     _marker: std::marker::PhantomData<Quantity>,
 }
+
 impl<Quantity: FundamentalQuantity, const INDEX: i32> FundamentalQuantity for Pow<Quantity, INDEX> {
     type Dimension = Quantity::Dimension;
     const INDEX: i32 = Quantity::INDEX * INDEX;
+}
+
+macro_rules! fundamental_quantity_template {
+    ($type:ident, $dimension:literal) => {
+        paste! {
+            pub struct [<$type $dimension>] {}
+
+            impl FundamentalQuantity for [<$type $dimension>] {
+                type Dimension = $type;
+                const INDEX: i32 = $dimension;
+            }
+
+            pub struct [<$type N $dimension>] {}
+
+            impl FundamentalQuantity for [<$type N $dimension>] {
+                type Dimension = $type;
+                const INDEX: i32 = -$dimension;
+            }
+        }
+    };
 }
 
 macro_rules! fundamental_dimension_template {
@@ -64,195 +87,25 @@ macro_rules! fundamental_dimension_template {
 
         impl FundamentalDimension for $type {}
 
-        concat_idents!(quantity_name = $type, 0 {
-            pub struct quantity_name {}
+        paste! {
+            pub struct [<$type 0>] {}
 
-            impl FundamentalQuantity for quantity_name {
+            impl FundamentalQuantity for [<$type 0>] {
                 type Dimension = $type;
                 const INDEX: i32 = 0;
             }
-        });
+        }
 
-        concat_idents!(quantity_name = $type, 1 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = 1;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, N1 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = -1;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, 2 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = 2;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, N2 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = -2;
-            }
-        });
-
-
-        concat_idents!(quantity_name = $type, 3 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = 3;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, N3 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = -3;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, 4 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = 4;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, N4 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = -4;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, 5 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = 5;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, N5 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = -5;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, 6 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = 6;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, N6 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = -6;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, 7 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = 7;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, N7 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = -7;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, 8 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = 8;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, N8 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = -8;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, 9 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = 9;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, N9 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = -9;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, 10 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = 10;
-            }
-        });
-
-        concat_idents!(quantity_name = $type, N10 {
-            pub struct quantity_name {}
-
-            impl FundamentalQuantity for quantity_name {
-                type Dimension = $type;
-                const INDEX: i32 = -10;
-            }
-        });
+        fundamental_quantity_template!($type, 1);
+        fundamental_quantity_template!($type, 2);
+        fundamental_quantity_template!($type, 3);
+        fundamental_quantity_template!($type, 4);
+        fundamental_quantity_template!($type, 5);
+        fundamental_quantity_template!($type, 6);
+        fundamental_quantity_template!($type, 7);
+        fundamental_quantity_template!($type, 8);
+        fundamental_quantity_template!($type, 9);
+        fundamental_quantity_template!($type, 10);
     )*)
 }
 // L: Length, M: Mass, T: Time, I: Current Intensity, O: Temperature, N: Substance Amount, J: Luminous Intensity, R: Rad, S: Sr, B: Information
