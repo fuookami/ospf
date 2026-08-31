@@ -1,17 +1,22 @@
 [package]
 name = "ospf-rust-math"
 version = "0.1.0"
-authors = ["fuookami <fuookami@163.com>"]
+authors = ["fuookami <wfuookami@gmail.com>"]
 edition = "2021"
 description = "A math utils for ospf-rust."
 license = "Apache-2.0"
 
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "../README.md"
+
 [dependencies]
-paste = "*"
-num = "*"
-bigdecimal = "*"
-chrono = "*"
-strum = { version = "*", features = ["derive"] }
+paste = "1.0.15"
+num = "0.4.3"
+bigdecimal = "0.4.7"
+chrono = "0.4.39"
+strum = { version = "0.26.3", features = ["derive"] }
+dyn-clone = "1.0.17"
 
 [dependencies.ospf-rust-base]
 path = "../ospf-rust-base"

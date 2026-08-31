@@ -1,0 +1,31 @@
+[package]
+name = "ospf-rust-example"
+version = "0.1.0"
+authors = ["fuookami <wfuookami@gmail.com>"]
+edition = "2021"
+license = "Apache-2.0"
+
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "../README.md"
+
+[dependencies.ospf-rust-base]
+path = "../ospf-rust-base"
+
+[dependencies.ospf-rust-derive]
+path = "../ospf-rust-derive"
+
+[dependencies.ospf-rust-math]
+path = "../ospf-rust-math"
+
+[dependencies.ospf-rust-multiarray]
+path = "../ospf-rust-multiarray"
+
+[dependencies.ospf-rust-core]
+path = "../ospf-rust-core"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3

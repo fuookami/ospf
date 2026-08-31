@@ -1,19 +1,29 @@
-use std::cmp::Ordering;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::time::{Duration, Instant};
 
 use chrono::NaiveDateTime;
 
-use crate::SemiArithmetic;
-
-use super::interval::{Closed, Interval, IntervalType};
+use super::interval::Interval;
 use super::value_wrapper::ValueWrapper;
-use super::IllegalArgumentError;
+use super::error::IllegalArgumentError;
 
+#[non_exhaustive]
 #[derive(Clone, Copy)]
 pub struct Bound<T> {
     pub value: ValueWrapper<T>,
     pub interval: Interval,
+}
+
+impl<T> Bound<T> {
+    pub fn new(value: ValueWrapper<T>, interval: Interval) -> Self {
+        match value {
+            ValueWrapper::Value(_) => Self { value, interval },
+            _ => Self {
+                value,
+                interval: Interval::Open,
+            },
+        }
+    }
 }
 
 impl<T, U> From<&Bound<U>> for Bound<T>
@@ -33,7 +43,7 @@ where
     ValueWrapper<T>: PartialEq<U>,
 {
     fn eq(&self, other: &U) -> bool {
-        self.value == *other && self.interval == Interval::Closed
+        self.value.eq(other) && self.interval == Interval::Closed
     }
 }
 
@@ -42,7 +52,7 @@ where
     ValueWrapper<T>: PartialEq<ValueWrapper<U>>,
 {
     fn eq(&self, other: &Bound<U>) -> bool {
-        self.value == other.value && self.interval == other.interval
+        self.value.eq(&other.value) && self.interval == other.interval
     }
 }
 
@@ -53,10 +63,7 @@ macro_rules! bound_template {
 
             fn add(self, rhs: $rhs) -> Self::Output {
                 let value = (self.value + rhs)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -64,11 +71,8 @@ macro_rules! bound_template {
             type Output = Result<Bound<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
 
             fn add(self, rhs: &'a $rhs) -> Self::Output {
-                let value = self.value.add(rhs.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                let value = self.value.add(rhs)?;
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -77,10 +81,7 @@ macro_rules! bound_template {
 
             fn add(self, rhs: $rhs) -> Self::Output {
                 let value = self.value.add(rhs)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -88,11 +89,8 @@ macro_rules! bound_template {
             type Output = Result<Bound<<$type as Add<$rhs>>::Output>, IllegalArgumentError>;
 
             fn add(self, rhs: &'a $rhs) -> Self::Output {
-                let value = self.value.add(rhs.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                let value = self.value.add(rhs)?;
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -101,10 +99,7 @@ macro_rules! bound_template {
 
             fn sub(self, rhs: $rhs) -> Self::Output {
                 let value = self.value.sub(rhs)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -112,11 +107,8 @@ macro_rules! bound_template {
             type Output = Result<Bound<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
 
             fn sub(self, rhs: &'a $rhs) -> Self::Output {
-                let value = self.value.sub(rhs.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                let value = self.value.sub(rhs)?;
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -125,10 +117,7 @@ macro_rules! bound_template {
 
             fn sub(self, rhs: $rhs) -> Self::Output {
                 let value = self.value.sub(rhs)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -136,17 +125,15 @@ macro_rules! bound_template {
             type Output = Result<Bound<<$type as Sub<$rhs>>::Output>, IllegalArgumentError>;
 
             fn sub(self, rhs: &'a $rhs) -> Self::Output {
-                let value = self.value.sub(rhs.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                let value = self.value.sub(rhs)?;
+                Ok(Bound::new(value, self.interval))
             }
         }
     };
 }
 bound_template!(Instant, Duration);
 bound_template!(NaiveDateTime, Duration);
+bound_template!(Duration, Duration);
 
 macro_rules! signed_bound_template {
     ($($type:ident)*) => ($(
@@ -155,10 +142,7 @@ macro_rules! signed_bound_template {
 
             fn neg(self) -> Self::Output {
                 let value = self.value.neg()?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -167,10 +151,7 @@ macro_rules! signed_bound_template {
 
             fn neg(self) -> Self::Output {
                 let value = self.value.neg()?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
     )*)
@@ -184,10 +165,7 @@ macro_rules! real_number_bound_template {
 
             fn add(self, rhs: $type) -> Self::Output {
                 let value = self.value.add(rhs)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -195,11 +173,8 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
 
             fn add(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.add(rhs.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                let value = self.value.add(rhs)?;
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -208,10 +183,7 @@ macro_rules! real_number_bound_template {
 
             fn add(self, rhs: $type) -> Self::Output {
                 let value = self.value.add(rhs)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -219,11 +191,44 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
 
             fn add(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.add(rhs.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                let value = self.value.add(rhs)?;
+                Ok(Bound::new(value, self.interval))
+            }
+        }
+
+        impl Add<Bound<$type>> for $type {
+            type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
+
+            fn add(self, rhs: Bound<$type>) -> Self::Output {
+                let value = self.add(rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
+            }
+        }
+
+        impl<'a> Add<Bound<$type>> for &'a $type {
+            type Output = Result<Bound<<&'a $type as Add<$type>>::Output>, IllegalArgumentError>;
+
+            fn add(self, rhs: Bound<$type>) -> Self::Output {
+                let value = self.add(rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
+            }
+        }
+
+        impl<'a> Add<&'a Bound<$type>> for $type {
+            type Output = Result<Bound<<$type as Add<&'a $type>>::Output>, IllegalArgumentError>;
+
+            fn add(self, rhs: &'a Bound<$type>) -> Self::Output {
+                let value = self.add(rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
+            }
+        }
+
+        impl<'a, 'b> Add<&'b Bound<$type>> for &'a $type {
+            type Output = Result<Bound<<&'a $type as Add<&'b $type>>::Output>, IllegalArgumentError>;
+
+            fn add(self, rhs: &'b Bound<$type>) -> Self::Output {
+                let value = self.add(rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
             }
         }
 
@@ -232,10 +237,7 @@ macro_rules! real_number_bound_template {
 
             fn add(self, rhs: Bound<$type>) -> Self::Output {
                 let value = self.value.add(rhs.value)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -243,11 +245,8 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
 
             fn add(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.value.add(rhs.value.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                let value = self.value.add(rhs.value)?;
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -256,10 +255,7 @@ macro_rules! real_number_bound_template {
 
             fn add(self, rhs: Bound<$type>) -> Self::Output {
                 let value = self.value.add(rhs.value)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -267,11 +263,8 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Add<$type>>::Output>, IllegalArgumentError>;
 
             fn add(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.value.add(rhs.value.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                let value = self.value.add(rhs.value)?;
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -280,10 +273,7 @@ macro_rules! real_number_bound_template {
 
             fn sub(self, rhs: $type) -> Self::Output {
                 let value = self.value.sub(rhs)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -291,11 +281,8 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
 
             fn sub(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.sub(rhs.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                let value = self.value.sub(rhs)?;
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -304,10 +291,7 @@ macro_rules! real_number_bound_template {
 
             fn sub(self, rhs: $type) -> Self::Output {
                 let value = self.value.sub(rhs)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -315,11 +299,44 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
 
             fn sub(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.sub(rhs.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                let value = self.value.sub(rhs)?;
+                Ok(Bound::new(value, self.interval))
+            }
+        }
+
+        impl Sub<Bound<$type>> for $type {
+            type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
+
+            fn sub(self, rhs: Bound<$type>) -> Self::Output {
+                let value = self.sub(rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
+            }
+        }
+
+        impl<'a> Sub<Bound<$type>> for &'a $type {
+            type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
+
+            fn sub(self, rhs: Bound<$type>) -> Self::Output {
+                let value = self.sub(rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
+            }
+        }
+
+        impl<'a> Sub<&'a Bound<$type>> for $type {
+            type Output = Result<Bound<<$type as Sub<&'a $type>>::Output>, IllegalArgumentError>;
+
+            fn sub(self, rhs: &'a Bound<$type>) -> Self::Output {
+                let value = self.sub(rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
+            }
+        }
+
+        impl<'a, 'b> Sub<&'b Bound<$type>> for &'a $type {
+            type Output = Result<Bound<<$type as Sub<&'b $type>>::Output>, IllegalArgumentError>;
+
+            fn sub(self, rhs: &'b Bound<$type>) -> Self::Output {
+                let value = self.sub(rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
             }
         }
 
@@ -328,10 +345,7 @@ macro_rules! real_number_bound_template {
 
             fn sub(self, rhs: Bound<$type>) -> Self::Output {
                 let value = self.value.sub(rhs.value)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -339,11 +353,8 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
 
             fn sub(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.value.sub(rhs.value.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                let value = self.value.sub(rhs.value)?;
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -352,10 +363,7 @@ macro_rules! real_number_bound_template {
 
             fn sub(self, rhs: Bound<$type>) -> Self::Output {
                 let value = self.value.sub(rhs.value)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -363,11 +371,8 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Sub<$type>>::Output>, IllegalArgumentError>;
 
             fn sub(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.value.sub(rhs.value.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                let value = self.value.sub(rhs.value)?;
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -376,10 +381,7 @@ macro_rules! real_number_bound_template {
 
             fn mul(self, rhs: $type) -> Self::Output {
                 let value = self.value.mul(rhs)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -387,11 +389,8 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
 
             fn mul(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.mul(rhs.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                let value = self.value.mul(rhs)?;
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -400,10 +399,7 @@ macro_rules! real_number_bound_template {
 
             fn mul(self, rhs: $type) -> Self::Output {
                 let value = self.value.mul(rhs)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -411,11 +407,44 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
 
             fn mul(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.mul(rhs.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                let value = self.value.mul(rhs)?;
+                Ok(Bound::new(value, self.interval))
+            }
+        }
+
+        impl Mul<Bound<$type>> for $type {
+            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
+
+            fn mul(self, rhs: Bound<$type>) -> Self::Output {
+                let value = self.mul(rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
+            }
+        }
+
+        impl<'a> Mul<Bound<$type>> for &'a $type {
+            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
+
+            fn mul(self, rhs: Bound<$type>) -> Self::Output {
+                let value = self.mul(rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
+            }
+        }
+
+        impl<'a> Mul<&'a Bound<$type>> for $type {
+            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
+
+            fn mul(self, rhs: &'a Bound<$type>) -> Self::Output {
+                let value = self.mul(rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
+            }
+        }
+
+        impl<'a, 'b> Mul<&'b Bound<$type>> for &'a $type {
+            type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
+
+            fn mul(self, rhs: &'b Bound<$type>) -> Self::Output {
+                let value = self.mul(rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
             }
         }
 
@@ -424,10 +453,7 @@ macro_rules! real_number_bound_template {
 
             fn mul(self, rhs: Bound<$type>) -> Self::Output {
                 let value = self.value.mul(rhs.value)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -435,11 +461,8 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
 
             fn mul(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.value.mul(rhs.value.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                let value = self.value.mul(rhs.value)?;
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -448,10 +471,7 @@ macro_rules! real_number_bound_template {
 
             fn mul(self, rhs: Bound<$type>) -> Self::Output {
                 let value = self.value.mul(rhs.value)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -459,11 +479,8 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Mul<$type>>::Output>, IllegalArgumentError>;
 
             fn mul(self, rhs: &'a Bound<$type>) -> Self::Output {
-                let value = self.value.mul(rhs.value.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                let value = self.value.mul(rhs.value)?;
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -472,10 +489,7 @@ macro_rules! real_number_bound_template {
 
             fn div(self, rhs: $type) -> Self::Output {
                 let value = self.value.div(rhs)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -483,11 +497,8 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
 
             fn div(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.div(rhs.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                let value = self.value.div(rhs)?;
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -496,10 +507,7 @@ macro_rules! real_number_bound_template {
 
             fn div(self, rhs: $type) -> Self::Output {
                 let value = self.value.div(rhs)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                Ok(Bound::new(value, self.interval))
             }
         }
 
@@ -507,11 +515,44 @@ macro_rules! real_number_bound_template {
             type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
 
             fn div(self, rhs: &'a $type) -> Self::Output {
-                let value = self.value.div(rhs.clone())?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval,
-                })
+                let value = self.value.div(rhs)?;
+                Ok(Bound::new(value, self.interval))
+            }
+        }
+
+        impl Div<Bound<$type>> for $type {
+            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
+
+            fn div(self, rhs: Bound<$type>) -> Self::Output {
+                let value = (self / rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
+            }
+        }
+
+        impl<'a> Div<Bound<$type>> for &'a $type {
+            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
+
+            fn div(self, rhs: Bound<$type>) -> Self::Output {
+                let value = (self / rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
+            }
+        }
+
+        impl<'a> Div<&'a Bound<$type>> for $type {
+            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
+
+            fn div(self, rhs: &'a Bound<$type>) -> Self::Output {
+                let value = (self / rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
+            }
+        }
+
+        impl<'a, 'b> Div<&'b Bound<$type>> for &'a $type {
+            type Output = Result<Bound<<$type as Div<$type>>::Output>, IllegalArgumentError>;
+
+            fn div(self, rhs: &'b Bound<$type>) -> Self::Output {
+                let value = (self / rhs.value)?;
+                Ok(Bound::new(value, rhs.interval))
             }
         }
 
@@ -520,10 +561,7 @@ macro_rules! real_number_bound_template {
 
             fn div(self, rhs: Bound<$type>) -> Self::Output {
                 let value = (self.value / rhs.value)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -532,10 +570,7 @@ macro_rules! real_number_bound_template {
 
             fn div(self, rhs: &'a Bound<$type>) -> Self::Output {
                 let value = (self.value / rhs.value)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -544,10 +579,7 @@ macro_rules! real_number_bound_template {
 
             fn div(self, rhs: Bound<$type>) -> Self::Output {
                 let value = (self.value / rhs.value)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
 
@@ -556,10 +588,7 @@ macro_rules! real_number_bound_template {
 
             fn div(self, rhs: &'a Bound<$type>) -> Self::Output {
                 let value = (self.value / rhs.value)?;
-                Ok(Bound {
-                    value,
-                    interval: self.interval.intersect(&rhs.interval),
-                })
+                Ok(Bound::new(value, self.interval.intersect(&rhs.interval)))
             }
         }
     )*)

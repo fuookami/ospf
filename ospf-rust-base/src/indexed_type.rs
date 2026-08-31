@@ -1,23 +1,104 @@
 use std::any::TypeId;
+use std::cell::{Cell, SyncUnsafeCell};
 use std::collections::HashMap;
+use std::fmt::Display;
+use std::marker::PhantomData;
+use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub trait Indexed: Sized {
-    fn index(&self) -> usize;
-
-    fn flush();
+#[derive(Debug, Clone)]
+pub struct Index<T: 'static> {
+    index: usize,
+    _marker: PhantomData<T>,
 }
 
-pub trait ManualIndexed: Indexed {
-    fn indexed(&self) -> bool;
-    fn set_indexed(&mut self)
-    where
-        Self: 'static,
-    {
-        self.set_indexed_with::<Self>()
+impl<T: 'static> Deref for Index<T> {
+    type Target = usize;
+
+    fn deref(&self) -> &usize {
+        &self.index
     }
-    fn set_indexed_with<T: 'static>(&mut self);
+}
+
+impl<T: 'static> Default for Index<T> {
+    fn default() -> Self {
+        Self {
+            index: (*IndexGenerator::instance::<T>().lock().unwrap()).next(),
+            _marker: PhantomData::default()
+        }
+    }
+}
+
+impl<T: 'static> Display for Index<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.index)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ManualIndex<T: 'static> {
+    index: Cell<Option<usize>>,
+    _marker: PhantomData<T>
+}
+
+impl <T: 'static> ManualIndex<T> {
+    pub fn indexed(&self) -> bool {
+        self.index.get().is_some()
+    }
+
+    pub fn set_index(&self, index: usize) {
+        self.index.set(Some(index))
+    }
+}
+
+impl<T: 'static> Deref for ManualIndex<T> {
+    type Target = usize;
+
+    fn deref(&self) -> &usize {
+        unsafe { self.index.as_ptr().as_ref_unchecked().as_ref().unwrap() }
+    }
+}
+
+impl<T: 'static> Default for ManualIndex<T> {
+    fn default() -> Self {
+        Self {
+            index: Cell::new(None),
+            _marker: PhantomData::default()
+        }
+    }
+}
+
+impl<T: 'static> Display for ManualIndex<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self.index)
+    }
+}
+
+pub trait Indexed<T: 'static = Self>: Sized {
+    fn index(&self) -> usize;
+
+    fn flush() {
+        Self::flush_with::<T>()
+    }
+
+    fn flush_with<U: 'static>() {
+        (*IndexGenerator::instance::<U>().lock().unwrap()).flush();
+    }
+}
+
+pub trait ManualIndexed<T: 'static = Self>: Indexed<T> {
+    fn indexed(&self) -> bool;
+
+    fn set_index(&self, index: usize);
+
+    fn set_indexed(&self) {
+        self.set_indexed_with::<T>()
+    }
+
+    fn set_indexed_with<U: 'static>(&self) {
+        self.set_index((*IndexGenerator::instance::<T>().lock().unwrap()).next())
+    }
 }
 
 pub struct IndexGeneratorImpl {
@@ -32,7 +113,7 @@ impl IndexGeneratorImpl {
     pub fn next(&mut self) -> usize {
         let ret = self.next_index;
         self.next_index += 1;
-        return ret;
+        ret
     }
 
     pub fn flush(&mut self) {
@@ -40,118 +121,31 @@ impl IndexGeneratorImpl {
     }
 }
 
-pub struct IndexGenerator {
-    impls: HashMap<TypeId, Arc<Mutex<IndexGeneratorImpl>>>,
+struct IndexGenerator {
+    inner: Option<HashMap<TypeId, Arc<Mutex<IndexGeneratorImpl>>>>,
 }
 
-impl IndexGenerator {
-    pub(self) fn self_instance() -> Arc<Mutex<IndexGenerator>> {
-        static mut GENERATOR: Option<Arc<Mutex<IndexGenerator>>> = None;
+static mut INDEX_GENERATOR: SyncUnsafeCell<IndexGenerator> = SyncUnsafeCell::new(IndexGenerator {
+    inner: None
+});
 
-        unsafe {
-            GENERATOR
-                .get_or_insert_with(|| {
-                    Arc::new(Mutex::new(IndexGenerator {
-                        impls: HashMap::new(),
-                    }))
-                })
-                .clone()
+impl IndexGenerator {
+    pub fn self_instance() -> &'static mut IndexGenerator {
+        let mut instance = unsafe {
+            INDEX_GENERATOR.get().as_mut_unchecked()
+        };
+        if instance.inner.is_none() {
+            instance.inner = Some(HashMap::new());
         }
+        instance
     }
 
-    pub(crate) fn instance<T: 'static>() -> Arc<Mutex<IndexGeneratorImpl>> {
+    pub fn instance<T: 'static>() -> Arc<Mutex<IndexGeneratorImpl>> {
         let instance = Self::self_instance();
-        let impls = &mut instance.lock().unwrap().impls;
-        impls
+        instance.inner.as_mut().unwrap()
             .entry(TypeId::of::<T>())
             .insert_entry(Arc::new(Mutex::new(IndexGeneratorImpl::new())))
             .get()
             .clone()
-    }
-}
-
-#[macro_export]
-macro_rules! auto_indexed {
-    (#[derive($($derive:meta),*)] $pub:vis struct $name:ident { $($fpub:vis $field:ident : $type:ty,)* }) => {
-        #[derive($($derive),*)]
-        $pub struct $name {
-            index: usize,
-            $($fpub $field : $type,)*
-        }
-        impl $name {
-            $pub fn new<T: 'STATIC = Self>($($field:$type,)*) -> Self{
-                Self {
-                    index: (*IndexGenerator::instance::<T>().lock().unwrap()).next(),
-                    $($field,)*
-                }
-            }
-        }
-
-        impl Indexed for $name {
-            fn index(&self) -> usize {
-                self.index
-            }
-
-            fn flush<T: 'STATIC = Self>() {
-                (*IndexGenerator::instance::<T>().lock().unwrap()).flush();
-            }
-        }
-
-        impl Deref for &$name {
-            type Target = isize;
-
-            fn deref(&self) -> &Self::Target {
-                let ptr = &self.index as *const usize;
-                unsafe { &*(ptr as *const isize) }
-            }
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! manual_indexed {
-    (#[derive($($derive:meta),*)] $pub:vis struct $name:ident { $($fpub:vis $field:ident : $type:ty,)* }) => {
-        #[derive($($derive),*)]
-        $pub struct $name {
-            index: Option<usize>,
-            $($fpub $field : $type,)*
-        }
-        impl $name {
-            $pub fn new($($field:$type,)*) -> Self{
-                Self {
-                    index: None,
-                    $($field,)*
-                }
-            }
-        }
-
-        impl Indexed for $name {
-            fn index(&self) -> usize {
-                self.index.unwrap()
-            }
-
-            fn flush<T: 'STATIC = Self>() {
-                (*IndexGenerator::instance::<T>().lock().unwrap()).flush();
-            }
-        }
-
-        impl ManualIndexed for $name {
-            fn indexed(&self) -> bool {
-                self.index.is_some()
-            }
-
-            fn set_indexed_with<T: 'static>(&mut self) {
-                self.index = Some((*IndexGenerator::instance::<T>().lock().unwrap()).next());
-            }
-        }
-
-        impl Deref for &$name {
-            type Target = isize;
-
-            fn deref(&self) -> &Self::Target {
-                let ptr = self.index.as_ref().unwrap() as *const usize;
-                unsafe { &*(ptr as *const isize) }
-            }
-        }
     }
 }

@@ -1,6 +1,6 @@
 use std::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
 
-use crate::dummy_vector::DummyIndexRange;
+use crate::dummy_index::DummyIndexRange;
 
 pub struct PlaceHolder {
     index: usize,

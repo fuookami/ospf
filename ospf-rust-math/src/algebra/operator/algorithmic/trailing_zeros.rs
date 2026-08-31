@@ -13,7 +13,7 @@ where
 {
     fn trailing_zeros(mut self) -> usize {
         if &self == T::ZERO {
-            return std::mem::size_of::<T>();
+            return size_of::<T>();
         }
 
         let mut counter = 0;
@@ -57,7 +57,7 @@ mod tests {
     {
         assert_eq!(
             T::ZERO.clone().trailing_zeros(),
-            std::mem::size_of::<T>() * 8
+            size_of::<T>() * 8
         );
         assert_eq!(T::ONE.clone().trailing_zeros(), 0);
         assert_eq!(T::TWO.clone().trailing_zeros(), 1);

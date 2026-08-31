@@ -147,3 +147,43 @@ macro_rules! big_gcd_template {
     )*)
 }
 big_gcd_template! { i64 i128 isize u64 u128 usize }
+
+#[cfg(test)]
+mod tests {
+    use std::fmt::Debug;
+
+    use crate::algebra::concept::RealNumber;
+
+    use super::*;
+
+    fn test_real<T: RealNumber + GcdLcm<Output=T> + Debug>()
+    where
+            for<'a> &'a T: Mul<&'a T, Output = T> + GcdLcm<Output=T>,
+    {
+        assert_eq!(&(T::TWO.gcd(T::FIVE)), T::ONE);
+        assert_eq!(&(T::TEN.gcd(&(T::TWO * T::TWO))), T::TWO);
+        assert_eq!(&(T::TEN.gcd(&(T::FIVE * T::FIVE))), T::FIVE);
+
+        assert_eq!(&(T::TWO.lcm(T::FIVE)), T::TEN);
+        assert_eq!(&(T::TEN.lcm(&T::TWO)), T::TEN);
+        assert_eq!(&(T::TEN.lcm(&(T::TWO * T::TWO))), &(T::TEN * T::TWO));
+        assert_eq!(&(T::TEN.lcm(&T::FIVE)), T::TEN);
+        assert_eq!(&(T::TWO.lcm(&(T::FIVE * T::FIVE))), &(T::TEN * T::FIVE));
+    }
+
+    #[test]
+    fn test() {
+        test_real::<i8>();
+        test_real::<i16>();
+        test_real::<i32>();
+        test_real::<i64>();
+        test_real::<i128>();
+        test_real::<u8>();
+        test_real::<u16>();
+        test_real::<u32>();
+        test_real::<u64>();
+        test_real::<u128>();
+        test_real::<f32>();
+        test_real::<f64>();
+    }
+}

@@ -1,4 +1,4 @@
-use concat_idents::concat_idents;
+use paste::paste;
 use strum::{ EnumString, Display };
 
 #[repr(u8)]
@@ -65,6 +65,8 @@ pub enum ErrorCode {
     ApplicationException = 0x32u8,
     #[strum(serialize = "application stopped")]
     ApplicationStopped = 0x33u8,
+    #[strum(serialize = "illegal argument")]
+    IllegalArgument = 0x34u8,
 
     #[strum(serialize = "other")]
     Other = u8::MAX - 1,
@@ -73,34 +75,64 @@ pub enum ErrorCode {
 }
 
 impl From<u8> for ErrorCode {
-    fn from(value: u8) -> Self {
+    fn from(value: u8) -> ErrorCode {
         unsafe { std::mem::transmute(value) }
     }
 }
 
-impl Into<u8> for ErrorCode {
-    fn into(self) -> u8 {
-        self as u8
+impl From<ErrorCode> for u8 {
+    fn from(value: ErrorCode) -> u8 {
+        value as u8
     }
 }
 
-trait Error {
-    fn what(&self) -> &str;
+impl From<ErrorCode> for u16 {
+    fn from(value: ErrorCode) -> u16 {
+        (value as u8).into()
+    }
 }
 
-trait ExError<T: Sized>: Error {
+impl From<ErrorCode> for u32 {
+    fn from(value: ErrorCode) -> u32 {
+        (value as u8).into()
+    }
+}
+
+impl From<ErrorCode> for u64 {
+    fn from(value: ErrorCode) -> u64 {
+        (value as u8).into()
+    }
+}
+
+impl From<ErrorCode> for u128 {
+    fn from(value: ErrorCode) -> u128 {
+        (value as u8).into()
+    }
+}
+
+impl From<ErrorCode> for usize {
+    fn from(value: ErrorCode) -> usize {
+        (value as u8).into()
+    }
+}
+
+pub trait Error {
+    fn msg(&self) -> &str;
+}
+
+pub trait ExError<T: Sized>: Error {
     fn arg(&self) -> &Option<T>;
 }
 
-trait LogicError: Error {}
+pub trait LogicError: Error {}
 
-trait RuntimeError: Error {
+pub trait RuntimeError: Error {
     fn code(&self) -> ErrorCode;
 }
 
-trait ExLogicError<T: Sized>: LogicError + ExError<T> {}
+pub trait ExLogicError<T: Sized>: LogicError + ExError<T> {}
 
-trait ExRuntimeError<T: Sized>: RuntimeError + ExError<T> {}
+pub trait ExRuntimeError<T: Sized>: RuntimeError + ExError<T> {}
 
 macro_rules! logic_error_template {
     ($($type:ident)*) => ($(
@@ -109,28 +141,28 @@ macro_rules! logic_error_template {
         }
 
         impl Error for $type {
-            fn what(&self) -> &str { &self.msg }
+            fn msg(&self) -> &str { &self.msg }
         }
 
         impl LogicError for $type {}
 
-        concat_idents!(ex_error_name = Ex, $type {
-            pub struct ex_error_name<T: Sized> {
+        paste! {
+            pub struct [<Ex $type>]<T: Sized> {
                 msg: String,
                 arg: Option<T>
             }
 
-            impl<T: Sized> Error for ex_error_name<T> {
-                fn what(&self) -> &str { &self.msg }
+            impl<T: Sized> Error for [<Ex $type>]<T> {
+                fn msg(&self) -> &str { &self.msg }
             }
 
-            impl<T: Sized> ExError<T> for ex_error_name<T> {
+            impl<T: Sized> ExError<T> for [<Ex $type>]<T> {
                 fn arg(&self) -> &Option<T> { &self.arg }
             }
 
-            impl<T: Sized> LogicError for ex_error_name<T> {}
-            impl<T: Sized> ExLogicError<T> for ex_error_name<T> {}
-        });
+            impl<T: Sized> LogicError for [<Ex $type>]<T> {}
+            impl<T: Sized> ExLogicError<T> for [<Ex $type>]<T> {}
+        }
     )*)
 }
 logic_error_template! { InvalidArgument DomainError LengthError OutOfRange }
@@ -143,34 +175,44 @@ macro_rules! runtime_error_template {
         }
 
         impl Error for $type {
-            fn what(&self) -> &str { &self.msg }
+            fn msg(&self) -> &str { &self.msg }
         }
 
         impl RuntimeError for $type {
             fn code(&self) -> ErrorCode { self.code }
         }
 
-        concat_idents!(ex_error_name = Ex, $type {
-            pub struct ex_error_name<T: Sized> {
+        paste! {
+            pub struct [<Ex $type>]<T: Sized> {
                 code: ErrorCode,
                 msg: String,
                 arg: Option<T>
             }
 
-            impl<T: Sized> Error for ex_error_name<T> {
-                fn what(&self) -> &str { &self.msg }
+            impl<T: Sized> Error for [<Ex $type>]<T> {
+                fn msg(&self) -> &str { &self.msg }
             }
 
-            impl<T: Sized> ExError<T> for ex_error_name<T> {
+            impl<T: Sized> ExError<T> for [<Ex $type>]<T> {
                 fn arg(&self) -> &Option<T> { &self.arg }
             }
 
-            impl<T: Sized> RuntimeError for ex_error_name<T> {
+            impl<T: Sized> RuntimeError for [<Ex $type>]<T> {
                 fn code(&self) -> ErrorCode { self.code }
             }
 
-            impl<T: Sized> ExRuntimeError<T> for ex_error_name<T> {}
-        });
+            impl<T: Sized> ExRuntimeError<T> for [<Ex $type>]<T> {}
+        }
     )*)
 }
 runtime_error_template! { ApplicationError RangeError OverflowError UnderflowError SystemError FilesystemError }
+
+pub struct Ok {}
+pub const OK: Ok = Ok {};
+
+impl<E> From<Ok> for Result<(), E> {
+    fn from(_: Ok) -> Self { Ok(()) }
+}
+
+pub type RuntimeResult<T> = Result<T, Box<dyn RuntimeError>>;
+pub type Try = Result<(), Box<dyn RuntimeError>>;

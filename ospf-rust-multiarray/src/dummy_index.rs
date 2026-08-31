@@ -1,18 +1,19 @@
+use crate::AbstractShape;
+use dyn_clone::{clone_trait_object, DynClone};
 use std::ops::{
     Bound, Range, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
 };
 
-use crate::Shape;
-
-pub trait DummyIndexRange {
+pub trait DummyIndexRange: DynClone {
     fn start_bound(&self) -> Bound<isize>;
     fn end_bound(&self) -> Bound<isize>;
     fn contains(&self, v: isize) -> bool;
 }
+clone_trait_object!(DummyIndexRange);
 
 impl<T> DummyIndexRange for T
 where
-    T: RangeBounds<isize>,
+    T: RangeBounds<isize> + Clone,
 {
     fn start_bound(&self) -> Bound<isize> {
         match RangeBounds::start_bound(self) {
@@ -49,6 +50,7 @@ impl DummyIndexIterator {
     }
 }
 
+#[derive(Clone)]
 pub enum DummyIndex {
     Index(isize),
     Range(Box<dyn DummyIndexRange>),
@@ -56,7 +58,7 @@ pub enum DummyIndex {
 }
 
 impl DummyIndex {
-    fn iterator_of<S: Shape>(&self, shape: &S, dimension: usize) -> DummyIndexIterator {
+    fn iterator_of<S: AbstractShape>(&self, shape: &S, dimension: usize) -> DummyIndexIterator {
         match self {
             DummyIndex::Index(index) => match shape.actual_index(dimension, *index) {
                 Some(value) => DummyIndexIterator::Continuous(Range {
@@ -155,15 +157,15 @@ impl From<Vec<isize>> for DummyIndex {
     }
 }
 
-pub(crate) struct DummyAccessPolicy<'a, S: Shape> {
+pub(crate) struct DummyAccessPolicy<'a, S: AbstractShape> {
     pub(self) shape: &'a S,
     pub(self) iterators: Vec<DummyIndexIterator>,
 }
 
-impl<'a, 'b, S: Shape> DummyAccessPolicy<'a, S> {
+impl<'a, 'b, S: AbstractShape> DummyAccessPolicy<'a, S> {
     pub(crate) fn new(vector: &'a S::DummyVectorType, shape: &'a S) -> Self {
         Self {
-            shape: shape,
+            shape,
             iterators: (0..shape.dimension())
                 .map(|i| vector[i].iterator_of(shape, i))
                 .collect(),
@@ -175,16 +177,16 @@ impl<'a, 'b, S: Shape> DummyAccessPolicy<'a, S> {
     }
 }
 
-pub(crate) struct DummyAccessIterator<'a, 'b, S: Shape> {
+pub(crate) struct DummyAccessIterator<'a, 'b, S: AbstractShape> {
     pub(self) policy: *const DummyAccessPolicy<'a, S>,
     pub(self) iterators: Vec<Box<dyn Iterator<Item = usize> + 'b>>,
     pub(crate) now: S::VectorType,
 }
 
-impl<'a, 'b, S: Shape> DummyAccessIterator<'a, 'b, S> {
+impl<'a, 'b, S: AbstractShape> DummyAccessIterator<'a, 'b, S> {
     pub(crate) fn new(policy: &'b DummyAccessPolicy<'a, S>) -> Self {
         let mut ret = Self {
-            policy: policy,
+            policy,
             iterators: policy.iterators.iter().map(|iter| iter.iter()).collect(),
             now: policy.shape.zero(),
         };

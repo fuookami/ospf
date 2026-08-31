@@ -1,2 +1,8 @@
 [workspace]
-members = ["ospf-rust-base", "ospf-rust-math", "ospf-rust-physics", "ospf-rust-multiarray", "ospf-rust-core"]
+members = [
+    "ospf-rust-base", "ospf-rust-derive", "ospf-rust-math", "ospf-rust-physics", "ospf-rust-multiarray", "ospf-rust-example",
+    "ospf-rust-core", # "ospf-rust-core-plugin-gurobi", "ospf-rust-core-plugin-scip",
+#    "ospf-rust-framework", "ospf-rust-framework-plugin-sqlite",
+#    "ospf-rust-framework-bpp1d", "ospf-rust-framework-bpp2d", "ospf-rust-framework-bpp3d", "ospf-rust-framework-csp1d", "ospf-rust-framework-csp2d", "ospf-rust-framework-gantt-scheduling",
+    "ospf-rust-example"
+]

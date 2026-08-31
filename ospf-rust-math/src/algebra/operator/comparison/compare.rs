@@ -3,8 +3,8 @@ use std::ops::{Add, Sub};
 
 use crate::algebra::concept::*;
 
-use super::{ComparisonOperator, ThreeWayComparisonOperator};
 use super::equal::*;
+use super::{ComparisonOperator, ThreeWayComparisonOperator};
 
 pub trait CompareOpr<T, Rhs = T>: ThreeWayComparisonOperator<T, Rhs> {
     fn precision(&self) -> Option<&T> {

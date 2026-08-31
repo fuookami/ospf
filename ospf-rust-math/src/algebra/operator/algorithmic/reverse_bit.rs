@@ -1,7 +1,4 @@
-use std::ops::{BitOr, ShrAssign};
-use std::intrinsics::bitreverse;
-
-use crate::Arithmetic;
+use std::ops::BitOr;
 
 pub trait ReverseBit {
     type Output;

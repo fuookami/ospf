@@ -1,87 +1,15 @@
-use std::fmt;
 use std::mem;
-use std::ops::IndexMut;
 
-use super::dummy_vector::DummyIndex;
+use super::dummy_index::DummyIndex;
+use super::error::{DimensionMismatchingError, IndexCalculationError, OutOfShapeError};
+use super::index_vector::IndexVector;
 
 const DYN_DIMENSION: usize = usize::MAX;
 
-#[derive(Clone, Copy)]
-pub struct DimensionMismatchingError {
-    pub dimension: usize,
-    pub vector_dimension: usize,
-}
-
-impl fmt::Display for DimensionMismatchingError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Dimension should be {}, not {}.",
-            self.dimension, self.vector_dimension
-        )
-    }
-}
-
-impl fmt::Debug for DimensionMismatchingError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Dimension should be {}, not {}.",
-            self.dimension, self.vector_dimension
-        )
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct OutOfShapeError {
-    pub dimension: usize,
-    pub len: usize,
-    pub vector_index: isize,
-}
-
-impl fmt::Display for OutOfShapeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Length of dimension {} is {}, but it get {}.",
-            self.dimension, self.len, self.vector_index
-        )
-    }
-}
-
-impl fmt::Debug for OutOfShapeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Length of dimension {} is {}, but it get {}.",
-            self.dimension, self.len, self.vector_index
-        )
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum IndexCalculationError {
-    DimensionMismatching(DimensionMismatchingError),
-    OutOfShape(OutOfShapeError),
-}
-
-impl fmt::Display for IndexCalculationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IndexCalculationError::DimensionMismatching(err) => {
-                write!(f, "{}", err)
-            }
-            IndexCalculationError::OutOfShape(err) => {
-                write!(f, "{}", err)
-            }
-        }
-    }
-}
-
-pub trait Shape {
+pub trait AbstractShape {
     const DIMENSION: usize;
-    type VectorType: IndexMut<usize, Output = usize>;
-    type DummyVectorType: IndexMut<usize, Output = DummyIndex>;
+    type VectorType: IndexVector<usize> + Clone;
+    type DummyVectorType: IndexVector<DummyIndex> + Clone;
 
     fn zero(&self) -> Self::VectorType;
 
@@ -195,27 +123,30 @@ pub(self) fn offset<const DIMENSION: usize>(
 }
 
 #[derive(Clone, Copy)]
-pub struct Shape1 {
-    pub(self) shape: [usize; 1],
+pub struct Shape<const d: usize> {
+    pub(self) shape: [usize; d],
+    pub(self) offset: [usize; d],
+    pub(self) len: usize,
 }
 
-impl Shape1 {
-    pub fn new(shape: [usize; 1]) -> Self {
-        Self { shape: shape }
+impl<const d: usize> Shape<d> {
+    pub fn new(shape: [usize; d]) -> Self {
+        let (offset, len) = offset(&shape);
+        Self { shape, offset, len }
     }
 }
 
-impl Shape for Shape1 {
-    const DIMENSION: usize = 1;
-    type VectorType = [usize; 1];
-    type DummyVectorType = [DummyIndex; 1];
+impl<const d: usize> AbstractShape for Shape<d> {
+    const DIMENSION: usize = d;
+    type VectorType = [usize; d];
+    type DummyVectorType = [DummyIndex; d];
 
     fn zero(&self) -> Self::VectorType {
-        [0]
+        unsafe { mem::zeroed() }
     }
 
     fn len(&self) -> usize {
-        self.shape[0]
+        self.len
     }
 
     fn shape(&self) -> &[usize] {
@@ -223,73 +154,38 @@ impl Shape for Shape1 {
     }
 
     fn offset(&self) -> &[usize] {
-        &self.shape
+        &self.offset
     }
 }
 
 macro_rules! shape {
     ($type:ident, $dim:expr) => {
-        #[derive(Clone, Copy)]
-        pub struct $type {
-            pub(self) shape: [usize; $dim],
-            pub(self) offset: [usize; $dim],
-            pub(self) len: usize,
-        }
-
-        impl $type {
-            pub fn new(shape: [usize; $dim]) -> Self {
-                let (offset, len) = offset(&shape);
-                Self {
-                    shape: shape,
-                    offset: offset,
-                    len: len,
-                }
-            }
-        }
-
-        impl Shape for $type {
-            const DIMENSION: usize = $dim;
-            type VectorType = [usize; $dim];
-            type DummyVectorType = [DummyIndex; $dim];
-
-            fn zero(&self) -> Self::VectorType {
-                unsafe { mem::zeroed() }
-            }
-
-            fn len(&self) -> usize {
-                self.len
-            }
-
-            fn shape(&self) -> &[usize] {
-                &self.shape
-            }
-
-            fn offset(&self) -> &[usize] {
-                &self.offset
-            }
+        paste! {
+            pub type [<Shape $dim>] = Shape<$dim>;
         }
     };
 }
 
-shape!(Shape2, 2);
-shape!(Shape3, 3);
-shape!(Shape4, 4);
-shape!(Shape5, 5);
-shape!(Shape6, 6);
-shape!(Shape7, 7);
-shape!(Shape8, 8);
-shape!(Shape9, 9);
-shape!(Shape10, 10);
-shape!(Shape11, 11);
-shape!(Shape12, 12);
-shape!(Shape13, 13);
-shape!(Shape14, 14);
-shape!(Shape15, 15);
-shape!(Shape16, 16);
-shape!(Shape17, 17);
-shape!(Shape18, 18);
-shape!(Shape19, 19);
-shape!(Shape20, 20);
+pub type Shape1 = Shape<1>;
+pub type Shape2 = Shape<2>;
+pub type Shape3 = Shape<3>;
+pub type Shape4 = Shape<4>;
+pub type Shape5 = Shape<5>;
+pub type Shape6 = Shape<6>;
+pub type Shape7 = Shape<7>;
+pub type Shape8 = Shape<8>;
+pub type Shape9 = Shape<9>;
+pub type Shape10 = Shape<10>;
+pub type Shape11 = Shape<11>;
+pub type Shape12 = Shape<12>;
+pub type Shape13 = Shape<13>;
+pub type Shape14 = Shape<14>;
+pub type Shape15 = Shape<15>;
+pub type Shape16 = Shape<16>;
+pub type Shape17 = Shape<17>;
+pub type Shape18 = Shape<18>;
+pub type Shape19 = Shape<19>;
+pub type Shape20 = Shape<20>;
 
 pub struct DynShape {
     pub(self) shape: Vec<usize>,
@@ -300,11 +196,7 @@ pub struct DynShape {
 impl DynShape {
     pub fn new(shape: Vec<usize>) -> Self {
         let (offset, len) = Self::offset(&shape);
-        Self {
-            shape: shape,
-            offset: offset,
-            len: len,
-        }
+        Self { shape, offset, len }
     }
 
     pub(self) fn offset(shape: &Vec<usize>) -> (Vec<usize>, usize) {
@@ -320,7 +212,7 @@ impl DynShape {
     }
 }
 
-impl Shape for DynShape {
+impl AbstractShape for DynShape {
     const DIMENSION: usize = DYN_DIMENSION;
     type VectorType = Vec<usize>;
     type DummyVectorType = Vec<DummyIndex>;

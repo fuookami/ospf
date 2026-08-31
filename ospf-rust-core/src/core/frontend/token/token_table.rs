@@ -1,3 +1,1 @@
-pub trait TokenTable {
-        
-}
+pub trait TokenTable {}

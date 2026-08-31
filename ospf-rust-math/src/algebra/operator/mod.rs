@@ -1,5 +1,5 @@
-pub use arithmetic::*;
+pub use algorithmic::*;
 pub use comparison::*;
 
-pub mod arithmetic;
+pub mod algorithmic;
 pub mod comparison;

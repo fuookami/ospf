@@ -1,6 +1,7 @@
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, Formatter};
+use chrono::Duration;
 
-pub trait SemiArithmetic: 'static + Sized + Clone + PartialEq + PartialOrd {
+pub trait SemiArithmetic: 'static + Debug + Display + Sized + Clone + PartialEq + PartialOrd {
     const ZERO: &'static Self;
 }
 
@@ -47,13 +48,13 @@ pub struct Infinity {}
 pub const INF: Infinity = Infinity {};
 
 impl Display for Infinity {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         write!(f, "inf")
     }
 }
 
 impl Debug for Infinity {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "inf")
     }
 }
@@ -63,13 +64,13 @@ pub struct NegativeInfinity {}
 pub const NEG_INF: NegativeInfinity = NegativeInfinity {};
 
 impl Display for NegativeInfinity {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         write!(f, "-inf")
     }
 }
 
 impl Debug for NegativeInfinity {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "-inf")
     }
 }
@@ -79,13 +80,13 @@ pub struct NaN {}
 pub const NAN: NaN = NaN {};
 
 impl Display for NaN {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         write!(f, "nan")
     }
 }
 
 impl Debug for NaN {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "nan")
     }
 }

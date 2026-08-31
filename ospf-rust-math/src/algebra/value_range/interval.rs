@@ -1,5 +1,7 @@
 use crate::algebra::operator::comparison::*;
 
+// for static
+
 pub trait IntervalType: Clone + Copy + PartialEq + Eq {
     const LB_SIGN: &'static str;
     const UB_SIGN: &'static str;
@@ -149,7 +151,9 @@ impl Intersect<Closed> for Closed {
     type Result = Closed;
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+// for dynamic
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Interval {
     Open,
     Closed,
@@ -159,7 +163,7 @@ impl Interval {
     pub fn outer(&self, rhs: &Self) -> bool {
         match (self, rhs) {
             (&Self::Closed, &Self::Open) => true,
-            _ => false
+            _ => false,
         }
     }
 

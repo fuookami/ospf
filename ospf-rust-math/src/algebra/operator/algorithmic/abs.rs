@@ -59,8 +59,6 @@ mod tests {
     use std::fmt::Debug;
     use std::ops::Add;
 
-    use num::traits::real::Real;
-
     use crate::algebra::concept::{Bounded, FloatingNumber, IntegerNumber, UIntegerNumber};
 
     use super::*;

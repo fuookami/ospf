@@ -6,7 +6,7 @@ use paste::paste;
 use crate::algebra::concept::{Arithmetic, Bits, SemiArithmetic};
 use crate::algebra::operator::TrailingZeros;
 
-pub fn gcd_stein<T: SemiArithmetic + Bits + TrailingZeros + for<'a> SubAssign<&'a T>>(
+pub fn gcd_stein<T: SemiArithmetic + Bits + TrailingZeros + for<'a> SubAssign<&'a T> + >(
     mut x: T,
     mut y: T,
 ) -> T

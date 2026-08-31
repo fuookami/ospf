@@ -2,16 +2,16 @@
 name = "ospf-rust-physics"
 version = "0.1.0"
 edition = "2021"
-authors = ["fuookami <fuookami@163.com>"]
+authors = ["fuookami <wfuookami@gmail.com>"]
 description = "A physics utils for ospf-rust."
 license = "Apache-2.0"
 
-[dependencies]
-paste = "*"
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "../README.md"
 
-[dependencies.ospf-rust-base]
-path = "../ospf-rust-base"
-version = "0.1.0"
+[dependencies]
+paste = "1.0.15"
 
 [profile.dev]
 opt-level = 0

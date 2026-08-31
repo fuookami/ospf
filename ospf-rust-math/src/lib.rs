@@ -6,16 +6,20 @@
 #![feature(coroutines, coroutine_trait)]
 #![feature(tuple_trait)]
 #![feature(trait_upcasting)]
-#![cfg_attr(debug_assertions, allow(dead_code, unused, internal_features, incomplete_features))]
+#![feature(adt_const_params)]
+#![cfg_attr(
+    debug_assertions,
+    allow(dead_code, unused, internal_features, incomplete_features)
+)]
 
 pub use algebra::*;
 pub use combinatorics::*;
 pub use functional::*;
-// pub use geometry::*;
+pub use geometry::*;
 pub use symbol::*;
 
 pub mod algebra;
 pub mod combinatorics;
 pub mod functional;
-// pub mod geometry;
+pub mod geometry;
 pub mod symbol;

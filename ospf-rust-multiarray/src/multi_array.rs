@@ -1,17 +1,21 @@
 use std::ops::{Index, IndexMut};
 
-use crate::*;
-use crate::dummy_vector::*;
+use super::dummy_index::*;
+use super::error::OutOfShapeError;
+use super::shape::*;
 
-pub struct MultiArray<T: Sized, S: Shape> {
-    pub(self) list: Vec<Option<T>>,
-    pub(self) shape: S,
+pub struct MultiArray<T: Sized, S: AbstractShape> {
+    list: Vec<T>,
+    pub shape: S,
 }
 
-impl<T: Sized, S: Shape> MultiArray<T, S> {
-    pub fn new(shape: S) -> Self {
+impl<T: Sized, S: AbstractShape> MultiArray<T, S> {
+    pub fn new(shape: S) -> Self
+    where
+        T: Default,
+    {
         Self {
-            list: (0..shape.len()).map(|_| None).collect(),
+            list: (0..shape.len()).map(|_| T::default()).collect(),
             shape,
         }
     }
@@ -21,24 +25,24 @@ impl<T: Sized, S: Shape> MultiArray<T, S> {
         T: Clone,
     {
         Self {
-            list: (0..shape.len()).map(|_| Some(value.clone())).collect(),
-            shape: shape,
+            list: (0..shape.len()).map(|_| value.clone()).collect(),
+            shape,
         }
     }
 
     pub fn new_by<G>(shape: S, generator: G) -> Self
     where
-        G: Fn(usize) -> T,
+        G: Fn(usize, &<S as AbstractShape>::VectorType) -> T,
     {
         Self {
             list: (0..shape.len())
-                .map(|index| Some(generator(index)))
+                .map(|index| generator(index, &shape.vector(index)))
                 .collect(),
-            shape: shape,
+            shape,
         }
     }
 
-    pub fn get(&self, vector: S::DummyVectorType) -> Result<Vec<&Option<T>>, OutOfShapeError> {
+    pub fn get(&self, vector: S::DummyVectorType) -> Result<Vec<&T>, OutOfShapeError> {
         let mut ret = Vec::new();
         let policy = DummyAccessPolicy::new(&vector, &self.shape);
         let mut iter = policy.iter();
@@ -56,70 +60,46 @@ impl<T: Sized, S: Shape> MultiArray<T, S> {
         Ok(ret)
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.list.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.list.iter_mut()
+    }
+
     // fn map<'a>(&'a self, vector: &S::MapVectorType) -> MultiArrayView<'a, T, DynShape> {}
 }
 
-impl<T: Sized, S: Shape> Index<usize> for MultiArray<T, S> {
+impl<T: Sized, S: AbstractShape> Index<usize> for MultiArray<T, S> {
     type Output = T;
 
     fn index(&self, index: usize) -> &T {
-        match &self.list[index] {
-            Some(value) => value,
-            None => {
-                panic!(
-                    "Element with index {} in the multi-array is not initialized",
-                    index
-                )
-            }
-        }
+        &self.list[index]
     }
 }
 
-impl<T: Sized, S: Shape> IndexMut<usize> for MultiArray<T, S> {
+impl<T: Sized, S: AbstractShape> IndexMut<usize> for MultiArray<T, S> {
     fn index_mut(&mut self, index: usize) -> &mut T {
-        match &mut self.list[index] {
-            Some(value) => value,
-            None => {
-                panic!(
-                    "Element with index {} in the multi-array is not initialized",
-                    index
-                )
-            }
-        }
+        &mut self.list[index]
     }
 }
 
-impl<T: Sized, S: Shape> Index<&S::VectorType> for MultiArray<T, S> {
+impl<T: Sized, S: AbstractShape> Index<&S::VectorType> for MultiArray<T, S> {
     type Output = T;
 
     fn index(&self, vector: &S::VectorType) -> &T {
         match self.shape.index(vector) {
-            Ok(index) => match &self.list[index] {
-                Some(value) => value,
-                None => {
-                    panic!(
-                        "Element with index {} in the multi-array is not initialized",
-                        index
-                    )
-                }
-            },
+            Ok(index) => &self.list[index],
             Err(err) => panic!("{}", err),
         }
     }
 }
 
-impl<T: Sized, S: Shape> IndexMut<&S::VectorType> for MultiArray<T, S> {
+impl<T: Sized, S: AbstractShape> IndexMut<&S::VectorType> for MultiArray<T, S> {
     fn index_mut(&mut self, vector: &S::VectorType) -> &mut T {
         match self.shape.index(vector) {
-            Ok(index) => match &mut self.list[index] {
-                Some(value) => value,
-                None => {
-                    panic!(
-                        "Element with index {} in the multi-array is not initialized",
-                        index
-                    )
-                }
-            },
+            Ok(index) => &mut self.list[index],
             Err(err) => panic!("{}", err),
         }
     }

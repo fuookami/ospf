@@ -49,7 +49,7 @@ pub trait RealNumber: Scalar + Precision + Invariant {
     }
 
     fn is_finite(&self) -> bool {
-        return !self.is_inf() && !self.is_inf() && !self.is_neg_inf();
+        !self.is_inf() && !self.is_inf() && !self.is_neg_inf()
     }
 }
 

@@ -5,15 +5,19 @@ pub trait PlusSemiGroup:
     + Add<Output = Self>
     + for<'a> Add<&'a Self, Output = Self>
     + AddAssign
-    + for<'a> AddAssign<&'a Self> {}
+    + for<'a> AddAssign<&'a Self>
+{
+}
 
-impl<T:
-    Sized
-    + Add<Output = Self>
-    + for<'a> Add<&'a Self, Output = Self>
-    + AddAssign
-    + for<'a> AddAssign<&'a Self>,
-> PlusSemiGroup for T {}
+impl<
+        T: Sized
+            + Add<Output = Self>
+            + for<'a> Add<&'a Self, Output = Self>
+            + AddAssign
+            + for<'a> AddAssign<&'a Self>,
+    > PlusSemiGroup for T
+{
+}
 
 pub trait PlusGroup:
     PlusSemiGroup
@@ -21,31 +25,39 @@ pub trait PlusGroup:
     + Sub<Output = Self>
     + for<'a> Sub<&'a Self, Output = Self>
     + SubAssign
-    + for<'a> SubAssign<&'a Self> {}
+    + for<'a> SubAssign<&'a Self>
+{
+}
 
-impl<T:
-    PlusSemiGroup
-    + Neg<Output = T>
-    + Sub<Output = T>
-    + for<'a> Sub<&'a T, Output = T>
-    + SubAssign
-    + for<'a> SubAssign<&'a Self>,
-> PlusGroup for T {}
+impl<
+        T: PlusSemiGroup
+            + Neg<Output = T>
+            + Sub<Output = T>
+            + for<'a> Sub<&'a T, Output = T>
+            + SubAssign
+            + for<'a> SubAssign<&'a Self>,
+    > PlusGroup for T
+{
+}
 
 pub trait TimesSemiGroup:
     Sized
     + Mul<Output = Self>
     + for<'a> Mul<&'a Self, Output = Self>
     + MulAssign
-    + for<'a> MulAssign<&'a Self> {}
+    + for<'a> MulAssign<&'a Self>
+{
+}
 
 impl<
-    T: Sized
-    + Mul<Output = T>
-    + for<'a> Mul<&'a T, Output = T>
-    + MulAssign
-    + for<'a> MulAssign<&'a T>,
-> TimesSemiGroup for T {}
+        T: Sized
+            + Mul<Output = T>
+            + for<'a> Mul<&'a T, Output = T>
+            + MulAssign
+            + for<'a> MulAssign<&'a T>,
+    > TimesSemiGroup for T
+{
+}
 
 pub trait TimesGroup:
     TimesSemiGroup
@@ -56,19 +68,23 @@ pub trait TimesGroup:
     + Rem<Output = Self>
     + for<'a> Rem<&'a Self, Output = Self>
     + RemAssign
-    + for<'a> RemAssign<&'a Self> {}
+    + for<'a> RemAssign<&'a Self>
+{
+}
 
-impl<T:
-    TimesSemiGroup
-    + Div<Output = T>
-    + for<'a> Div<&'a T, Output = T>
-    + DivAssign
-    + for<'a> DivAssign<&'a T>
-    + Rem<Output = T>
-    + for<'a> Rem<&'a T, Output = T>
-    + RemAssign
-    + for<'a> RemAssign<&'a T>,
-> TimesGroup for T {}
+impl<
+        T: TimesSemiGroup
+            + Div<Output = T>
+            + for<'a> Div<&'a T, Output = T>
+            + DivAssign
+            + for<'a> DivAssign<&'a T>
+            + Rem<Output = T>
+            + for<'a> Rem<&'a T, Output = T>
+            + RemAssign
+            + for<'a> RemAssign<&'a T>,
+    > TimesGroup for T
+{
+}
 
 pub trait NumberRing: PlusGroup + TimesSemiGroup {}
 
