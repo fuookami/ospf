@@ -10,7 +10,7 @@ use ospf_rust_core::variable::{
     UContinuous, VariableCombination1D, VariableCombination2D, VariableRange,
 };
 
-use super::common::{read_solution_value, solve_typed};
+use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
 /// Node data structure
 #[derive(Debug, Clone)]
@@ -73,14 +73,6 @@ impl MaxFlowData {
     }
 }
 
-/// Helper: extract (var_index, coefficient) pairs from a symbol
-fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
-    let poly = sym.to_linear_polynomial();
-    poly.monomials().iter()
-        .map(|m| (m.var_index(), *m.coefficient()))
-        .collect()
-}
-
 /// Demo11 main function: Maximum flow problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let data = MaxFlowData::sample();
@@ -116,7 +108,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }, |i, _| format!("{}", i));
     model.add_symbol_combination(&flow_obj)?;
 
-    let obj_poly = flow_obj[0].to_linear_polynomial();
+    let obj_poly = flow_obj.symbol_polynomial(0);
     let obj_coeffs: Vec<_> = obj_poly.monomials().iter()
         .map(|m| (m.var_index(), *m.coefficient())).collect();
     model.add_linear_objective(&obj_coeffs, "flow");

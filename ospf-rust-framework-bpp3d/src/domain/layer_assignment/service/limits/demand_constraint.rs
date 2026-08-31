@@ -143,17 +143,16 @@ where
     V: Debug + Clone + Send + Sync,
     U: ospf_rust_quantities::unit::concept::UnitTrait + Debug + Clone + Send + Sync,
 {
+    let x = match assignment.x.as_ref() {
+        Some(x) => x,
+        None => return Vec::new(),
+    };
     (0..assignment.layers.len())
         .filter_map(|layer_idx| {
-            assignment
-                .x
-                .index(&layer_idx)
-                .or(Some(layer_idx))
-                .and_then(|model_idx| {
-                    let coefficient = assignment.layers[layer_idx]
-                        .demand_coverage_coefficient(entry.mode, &entry.key);
-                    (coefficient != 0.0).then_some((model_idx, coefficient))
-                })
+            let model_idx = x.model_index(&layer_idx)?;
+            let coefficient = assignment.layers[layer_idx]
+                .demand_coverage_coefficient(entry.mode, &entry.key);
+            (coefficient != 0.0).then_some((model_idx, coefficient))
         })
         .collect()
 }
@@ -166,20 +165,19 @@ where
     V: Debug + Clone + Send + Sync,
     U: ospf_rust_quantities::unit::concept::UnitTrait + Debug + Clone + Send + Sync,
 {
+    let x = match assignment.x.as_ref() {
+        Some(x) => x,
+        None => return Vec::new(),
+    };
     assignment.bins
         .iter()
         .enumerate()
         .flat_map(|(bin_idx, _)| {
             assignment.layers.iter().enumerate().filter_map(move |(layer_idx, _)| {
-                assignment
-                    .x
-                    .index(&bin_idx, &layer_idx)
-                    .or(Some(bin_idx * assignment.layers.len() + layer_idx))
-                    .and_then(|model_idx| {
-                        let coefficient = assignment.layers[layer_idx]
-                            .demand_coverage_coefficient(entry.mode, &entry.key);
-                        (coefficient != 0.0).then_some((model_idx, coefficient))
-                    })
+                let model_idx = x.model_index(&bin_idx, &layer_idx)?;
+                let coefficient = assignment.layers[layer_idx]
+                    .demand_coverage_coefficient(entry.mode, &entry.key);
+                (coefficient != 0.0).then_some((model_idx, coefficient))
             })
         })
         .collect()
@@ -195,8 +193,8 @@ where
 {
     assignment
         .v
-        .index(&bin_idx)
-        .or(Some(assignment.bins.len() * assignment.layers.len() + bin_idx))
+        .as_ref()
+        .and_then(|v| v.model_index(&bin_idx))
 }
 
 fn precise_assignment_index<V, U>(
@@ -210,7 +208,7 @@ where
 {
     assignment
         .x
-        .index(&bin_idx, &layer_idx)
-        .or(Some(bin_idx * assignment.layers.len() + layer_idx))
+        .as_ref()
+        .and_then(|x| x.model_index(&bin_idx, &layer_idx))
 }
 

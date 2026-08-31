@@ -1,7 +1,7 @@
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
 use ospf_rust_core::variable::{VariableCombination, Binary};
-use ospf_rust_multiarray::{MultiArray, Shape};
+use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder, Shape};
 
 /// 二维二值变量组合类型别名 / 2D binary variable combination type alias
 type XCombination = VariableCombination<Binary, Shape<2>>;
@@ -22,7 +22,7 @@ pub struct Assignment {
 impl Assignment {
     pub fn new(normal_node_indices: Vec<usize>) -> Self {
         let x = VariableCombination::new(Shape::new([0, 0]), "x");
-        let x_idx = MultiArray::from_list(Shape::new([0, 0]), vec![]);
+        let x_idx = MultiArrayBuilder::from_list(Shape::new([0, 0]), vec![]);
         let dummy = SymbolCombination::new(Shape::new([0]), "dummy", |_, _| {
             LinearExpressionSymbol::new(0, "dummy", vec![], 0.0)
         });
@@ -54,7 +54,7 @@ impl Assignment {
         let x_idx = model.register_combination(&x)?;
 
         // 2. node_assignment: 对每个 node，sum across services (dim 1)
-        use ospf_rust_core::symbol::intermediate_symbol::next_auto_intermediate_symbol_id;
+        use ospf_rust_core::symbol::next_auto_intermediate_symbol_id;
         let node_assignment = SymbolCombination::new(
             Shape::new([normal_count]),
             "node_assignment",

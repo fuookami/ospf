@@ -10,7 +10,10 @@ use ospf_rust_core::model::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::functions::slack::SlackFunction;
 
-use crate::domain::task_compilation::adapter::next_gantt_symbol_id;
+use crate::domain::task_compilation::adapter::{
+    next_gantt_symbol_id, symbols_to_indexed_1d,
+    IndexedLinearExpressionSymbols1,
+};
 use crate::domain::resource::model::capacity::ResourceCapacity;
 use crate::GanttResult;
 use crate::GanttError;
@@ -29,6 +32,8 @@ pub struct ConnectionResourceUsage {
     pub slot_count: usize,
     /// 每个时隙的使用量中间符号 / Usage intermediate symbols per slot
     pub quantity_symbols: Vec<Arc<LinearExpressionSymbol<f64>>>,
+    /// 索引使用量中间符号 / Indexed usage intermediate symbols
+    pub quantity_indexed: Option<IndexedLinearExpressionSymbols1<usize>>,
     /// 每个时隙的过量 slack 变量 solver_index / Over quantity slack solver_index per slot
     pub over_quantity_indices: Vec<Option<usize>>,
     /// 每个时隙的不足 slack 变量 solver_index / Less quantity slack solver_index per slot
@@ -60,6 +65,7 @@ impl ConnectionResourceUsage {
             name: name.to_string(),
             slot_count,
             quantity_symbols: Vec::with_capacity(slot_count),
+            quantity_indexed: None,
             over_quantity_indices: vec![None; slot_count],
             less_quantity_indices: vec![None; slot_count],
             over_enabled,
@@ -165,6 +171,12 @@ impl ConnectionResourceUsage {
                 self.less_quantity_indices[slot_idx] = Some(solver_idx);
             }
         }
+
+        // 构建索引符号组合 / Build indexed symbol combinations
+        let slot_keys: Vec<usize> = (0..self.slot_count).collect();
+        self.quantity_indexed = Some(symbols_to_indexed_1d(
+            &format!("{}_quantity", self.name), &slot_keys, &self.quantity_symbols,
+        ));
 
         Ok(())
     }

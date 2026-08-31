@@ -109,7 +109,7 @@ impl PortfolioModel {
             let i = products.iter().position(|p| p.name == product.name).unwrap();
             ospf_rust_core::symbol::flatten::Linear::new(
                 vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                    product.risk_rate / funds, x_idx[i],
+                    if funds.abs() < 1e-10 { 0.0 } else { product.risk_rate / funds }, x_idx[i],
                 )],
                 0.0,
             )
@@ -171,7 +171,7 @@ impl PortfolioModel {
         max_risk: f64,
     ) -> Result<(), Box<dyn Error>> {
         // Objective: maximize yield
-        let yield_poly = self.yield_expr[0].to_linear_polynomial();
+        let yield_poly = self.yield_expr.symbol_polynomial(0);
         let yield_coeffs: Vec<_> = yield_poly.monomials().iter()
             .map(|m| (m.var_index(), *m.coefficient())).collect();
         model.add_linear_objective(&yield_coeffs, "yield");
@@ -180,7 +180,7 @@ impl PortfolioModel {
         // Aggregate funds constraint: sum(x_i + premium_i) = funds
         let mut funds_coeffs = Vec::new();
         for i in 0..products.len() {
-            let poly = self.funds_expr[i].to_linear_polynomial();
+            let poly = self.funds_expr.symbol_polynomial(i);
             for m in poly.monomials() {
                 funds_coeffs.push((m.var_index(), *m.coefficient()));
             }
@@ -190,7 +190,7 @@ impl PortfolioModel {
         // Aggregate risk constraint: sum(risk_rate_i/funds * x_i) <= max_risk
         let mut risk_coeffs = Vec::new();
         for i in 0..products.len() {
-            let poly = self.risk_expr[i].to_linear_polynomial();
+            let poly = self.risk_expr.symbol_polynomial(i);
             for m in poly.monomials() {
                 risk_coeffs.push((m.var_index(), *m.coefficient()));
             }
@@ -200,7 +200,7 @@ impl PortfolioModel {
         // Per-product constraints
         for i in 0..products.len() {
             // x_i - funds * a_i <= 0
-            let act_poly = self.activation_expr[i].to_linear_polynomial();
+            let act_poly = self.activation_expr.symbol_polynomial(i);
             let act_coeffs: Vec<_> = act_poly.monomials().iter()
                 .map(|m| (m.var_index(), *m.coefficient())).collect();
             model.add_linear_constraint(
@@ -209,7 +209,7 @@ impl PortfolioModel {
             )?;
 
             // premium_i - premium_rate_i * x_i >= 0
-            let pr_poly = self.premium_rate_expr[i].to_linear_polynomial();
+            let pr_poly = self.premium_rate_expr.symbol_polynomial(i);
             let pr_coeffs: Vec<_> = pr_poly.monomials().iter()
                 .map(|m| (m.var_index(), *m.coefficient())).collect();
             model.add_linear_constraint(
@@ -218,7 +218,7 @@ impl PortfolioModel {
             )?;
 
             // premium_i - min_premium_i * a_i >= 0
-            let pm_poly = self.premium_min_expr[i].to_linear_polynomial();
+            let pm_poly = self.premium_min_expr.symbol_polynomial(i);
             let pm_coeffs: Vec<_> = pm_poly.monomials().iter()
                 .map(|m| (m.var_index(), *m.coefficient())).collect();
             model.add_linear_constraint(

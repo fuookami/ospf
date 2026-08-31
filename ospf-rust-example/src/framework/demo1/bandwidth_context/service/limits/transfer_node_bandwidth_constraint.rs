@@ -60,7 +60,7 @@ pub fn apply_transfer_node_bandwidth_constraints(
             }
 
             // -maxOut * x[node][s] — 从 node_assignment[node] 的多项式提取
-            let na_poly = node_assignment[row].to_linear_polynomial();
+            let na_poly = node_assignment.symbol_polynomial(row);
             for mono in na_poly.monomials() {
                 coefficients.push((mono.var_index(), -max_out));
             }
@@ -84,7 +84,7 @@ fn extract_service_coeff(
     y_idx: &MultiArray<usize, Shape<2>>,
 ) -> Option<f64> {
     let target_var = y_idx[&[edge_index, service_index]];
-    let poly = bandwidth[edge_index].to_linear_polynomial();
+    let poly = bandwidth.symbol_polynomial(edge_index);
     poly.monomials()
         .iter()
         .find(|m| m.var_index() == target_var)

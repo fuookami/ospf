@@ -63,7 +63,7 @@ mod tests {
                 )]),
                 make_layer(2.0),
             ],
-            x: VariableArray1::new("x"),
+            x: None,
             upper_bounds: vec![None, None],
         };
         let mut model = MetaModel::<f64>::new("demand_cover");
@@ -88,8 +88,8 @@ mod tests {
         let mut assignment = PreciseAssignment {
             bins: vec![bin],
             layers: vec![make_layer(1.0), make_layer(2.0)],
-            x: VariableArray2::new("x"),
-            v: VariableArray1::new("v"),
+            x: None,
+            v: None,
         };
         let mut model = MetaModel::<f64>::new("activation");
         assignment.register(&mut model).unwrap();
@@ -104,7 +104,7 @@ mod tests {
     fn demand_constraint_cgpipeline_refresh() {
         let assignment = ImpreciseAssignment {
             layers: vec![make_layer(1.0)],
-            x: VariableArray1::new("x"),
+            x: None,
             upper_bounds: vec![None],
         };
         let entries = vec![
@@ -137,7 +137,7 @@ mod tests {
     fn demand_constraint_cgpipeline_extractor() {
         let assignment = ImpreciseAssignment {
             layers: vec![make_layer(1.0)],
-            x: VariableArray1::new("x"),
+            x: None,
             upper_bounds: vec![None],
         };
         let entries = vec![
@@ -182,7 +182,7 @@ mod tests {
             ],
         ];
 
-        let constraint = BinCapacityConstraint::from_bins(
+        let constraint = BinCapacityConstraint::<f64, Meter>::from_bins(
             &[make_bin_type()],
             x_indices,
             vec![5.0, 3.0],    // layer weights
@@ -210,7 +210,7 @@ mod tests {
             ],
         ];
 
-        let constraint = BinDepthConstraint::from_bins(
+        let constraint = BinDepthConstraint::<f64, Meter>::from_bins(
             &[make_bin_type()],
             x_indices,
             vec![2.0, 3.0],    // layer depths
@@ -374,7 +374,7 @@ mod tests {
             vec![(0, x.index(&0, &0).unwrap())],
         ];
 
-        let constraint = BinCapacityConstraint::from_bins(
+        let constraint = BinCapacityConstraint::<f64, Meter>::from_bins(
             &[make_bin_type()],
             x_indices,
             vec![5.0],
@@ -399,7 +399,7 @@ mod tests {
             vec![(0, x.index(&0, &0).unwrap())],
         ];
 
-        let constraint = BinCapacityConstraint::new(
+        let constraint = BinCapacityConstraint::<f64, Meter>::new(
             vec![100.0],    // weight capacity
             vec![500.0],    // volume capacity
             x_indices,
@@ -424,7 +424,7 @@ mod tests {
             vec![(0, x.index(&0, &0).unwrap())],
         ];
 
-        let constraint = BinDepthConstraint::new(
+        let constraint = BinDepthConstraint::<f64, Meter>::new(
             vec![10.0],      // depth capacity
             x_indices,
             vec![2.0],       // layer depths

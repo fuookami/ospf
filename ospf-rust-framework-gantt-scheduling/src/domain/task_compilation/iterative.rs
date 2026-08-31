@@ -14,7 +14,11 @@ use ospf_rust_core::model::flatten::LinearMonomial;
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 
 use crate::domain::task::Cost;
-use crate::domain::task_compilation::adapter::{extract_value, next_gantt_symbol_id};
+use crate::domain::task_compilation::adapter::{
+    extract_value, next_gantt_symbol_id,
+    symbols_to_indexed_1d,
+    IndexedLinearExpressionSymbols1,
+};
 use crate::GanttResult;
 use crate::GanttError;
 
@@ -325,6 +329,116 @@ impl IterativeTaskCompilation {
         }
 
         Ok(())
+    }
+
+    /// 刷新符号池 / Refresh symbol pool
+    ///
+    /// 重建中间表达式并返回最新的索引符号组合。
+    /// Rebuilds intermediate expressions and returns the latest indexed symbol combinations.
+    ///
+    /// 用于约束层在列操作后获取最新的符号引用。
+    /// Used by constraint layer to get latest symbol references after column operations.
+    pub fn refresh_symbols(
+        &mut self,
+        model: &mut MetaModel<f64>,
+    ) -> GanttResult<(
+        Option<IndexedLinearExpressionSymbols1<usize>>,
+        Option<IndexedLinearExpressionSymbols1<usize>>,
+        Option<IndexedLinearExpressionSymbols1<usize>>,
+    )> {
+        self.rebuild_intermediate_symbols(model)?;
+        Ok(self.active_symbols())
+    }
+
+    /// 替换符号池 / Replace symbol pool
+    ///
+    /// 强制重建所有中间表达式符号，替换现有符号池。
+    /// Forces rebuild of all intermediate expression symbols, replacing the existing symbol pool.
+    ///
+    /// 用于完全重建场景（如 warm start 后）。
+    /// Used for full rebuild scenarios (e.g., after warm start).
+    pub fn replace_symbol_pool(
+        &mut self,
+        model: &mut MetaModel<f64>,
+    ) -> GanttResult<()> {
+        self.rebuild_intermediate_symbols(model)
+    }
+
+    /// 获取活跃符号 / Get active symbols
+    ///
+    /// 返回当前最新的索引符号组合（不触发重建）。
+    /// Returns the latest indexed symbol combinations without triggering rebuild.
+    ///
+    /// 返回值为 (task_assignment, task_compilation, executor_compilation)。
+    /// Return value is (task_assignment, task_compilation, executor_compilation).
+    pub fn active_symbols(
+        &self,
+    ) -> (
+        Option<IndexedLinearExpressionSymbols1<usize>>,
+        Option<IndexedLinearExpressionSymbols1<usize>>,
+        Option<IndexedLinearExpressionSymbols1<usize>>,
+    ) {
+        let task_keys: Vec<usize> = (0..self.n_tasks).collect();
+        let executor_keys: Vec<usize> = (0..self.n_executors).collect();
+
+        // 重建临时 Vec 用于构建索引（rebuild_intermediate_symbols 不保存符号到 self）
+        // 从 term 累积器重建符号以构建索引
+        let task_assignment_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> =
+            self.task_assignment_terms.iter().enumerate().map(|(ti, terms)| {
+                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms.iter()
+                    .map(|&(idx, coeff)| ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx))
+                    .collect();
+                Arc::new(LinearExpressionSymbol::new(
+                    0, // placeholder ID
+                    &format!("task_assignment_{}", ti),
+                    monomials,
+                    0.0,
+                ))
+            }).collect();
+
+        let task_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> =
+            self.task_compilation_terms.iter().enumerate().map(|(ti, terms)| {
+                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms.iter()
+                    .map(|&(idx, coeff)| ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx))
+                    .collect();
+                Arc::new(LinearExpressionSymbol::new(
+                    0,
+                    &format!("task_compilation_{}", ti),
+                    monomials,
+                    0.0,
+                ))
+            }).collect();
+
+        let executor_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> =
+            self.executor_compilation_terms.iter().enumerate().map(|(ei, terms)| {
+                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms.iter()
+                    .map(|&(idx, coeff)| ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx))
+                    .collect();
+                Arc::new(LinearExpressionSymbol::new(
+                    0,
+                    &format!("executor_compilation_{}", ei),
+                    monomials,
+                    0.0,
+                ))
+            }).collect();
+
+        let task_assignment_indexed = if !task_assignment_symbols.is_empty() {
+            Some(symbols_to_indexed_1d("task_assignment", &task_keys, &task_assignment_symbols))
+        } else {
+            None
+        };
+        let task_compilation_indexed = if !task_compilation_symbols.is_empty() {
+            Some(symbols_to_indexed_1d("task_compilation", &task_keys, &task_compilation_symbols))
+        } else {
+            None
+        };
+        let executor_compilation_indexed = if !executor_compilation_symbols.is_empty() {
+            Some(symbols_to_indexed_1d("executor_compilation", &executor_keys, &executor_compilation_symbols))
+        } else {
+            None
+        };
+
+        (task_assignment_indexed, task_compilation_indexed, executor_compilation_indexed)
     }
 
     /// 全局固定 / Globally fix

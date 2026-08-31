@@ -19,11 +19,21 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::SymbolCombination;
 use ospf_rust_core::variable::{
     VariableCombination, VariableItem, VariableTypeTrait,
     Binary,
 };
 use ospf_rust_multiarray::shape::Shape;
+
+// Re-export framework indexed types for use within gantt-scheduling
+pub use ospf_rust_framework::model::{
+    IndexedVariableCombination1,
+    IndexedVariableCombination2,
+    IndexedLinearExpressionSymbols1,
+    IndexedLinearExpressionSymbols2,
+    OptionalIndexedLinearExpressionSymbols,
+};
 
 use crate::GanttResult;
 use crate::GanttError;
@@ -54,6 +64,11 @@ pub fn next_gantt_symbol_id() -> u64 {
 // ============================================================================
 // 一维索引变量集合 / 1D Indexed Variable Array
 // ============================================================================
+//
+// TODO: Phase 9.1 - 将 IndexedVariableArray1/2/3 迁移为 IndexedVariableCombination1/2 的薄封装
+// Migrate IndexedVariableArray1/2/3 to be thin wrappers around IndexedVariableCombination1/2
+// 挑战：IndexedVariableCombination1 需要 name_gen 和 range_gen 回调，而当前 API 更简单
+// Challenge: IndexedVariableCombination1 requires name_gen and range_gen callbacks, while current API is simpler
 
 /// 一维索引变量集合 / 1D indexed variable array
 ///
@@ -488,6 +503,78 @@ pub fn build_linear_expression_symbol(
         .map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx))
         .collect();
     Arc::new(LinearExpressionSymbol::new(id, name, monomials, constant))
+}
+
+// ============================================================================
+// 索引符号组合辅助 / Indexed Symbol Combination Helpers
+// ============================================================================
+
+/// 将已有的 Vec<Arc<LinearExpressionSymbol>> 转换为 IndexedLinearExpressionSymbols1
+///
+/// 克隆内部符号以创建 SymbolCombination，提供按领域键的索引访问。
+/// Clones inner symbols to create a SymbolCombination, providing key-based indexed access.
+///
+/// 注意：此函数不向模型注册符号（符号已在 Vec 中逐个注册过）。
+/// Note: This function does NOT register symbols to the model (they are already registered individually in the Vec).
+pub fn symbols_to_indexed_1d<K>(
+    prefix: &str,
+    keys: &[K],
+    symbols: &[Arc<LinearExpressionSymbol<f64>>],
+) -> IndexedLinearExpressionSymbols1<K>
+where
+    K: std::hash::Hash + Eq + Clone + std::fmt::Debug,
+{
+    let combo: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>> =
+        SymbolCombination::new(
+            Shape::new([symbols.len()]),
+            prefix,
+            |index, _vec| symbols[index].as_ref().clone(),
+        );
+    IndexedLinearExpressionSymbols1::new(prefix, keys, combo)
+}
+
+/// 将已有的 Vec<Arc<LinearExpressionSymbol>> 按二维键结构转换为 IndexedLinearExpressionSymbols2
+///
+/// 克隆内部符号以创建二维 SymbolCombination，提供按领域键对的索引访问。
+/// Clones inner symbols to create a 2D SymbolCombination, providing key-pair indexed access.
+pub fn symbols_to_indexed_2d<K1, K2>(
+    prefix: &str,
+    keys1: &[K1],
+    keys2: &[K2],
+    symbols: &[Arc<LinearExpressionSymbol<f64>>],
+) -> IndexedLinearExpressionSymbols2<K1, K2>
+where
+    K1: std::hash::Hash + Eq + Clone + std::fmt::Debug,
+    K2: std::hash::Hash + Eq + Clone + std::fmt::Debug,
+{
+    let combo: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<2>> =
+        SymbolCombination::new(
+            Shape::new([keys1.len(), keys2.len()]),
+            prefix,
+            |index, _vec| symbols[index].as_ref().clone(),
+        );
+    IndexedLinearExpressionSymbols2::new(prefix, keys1, keys2, combo)
+}
+
+/// 将已有的 Vec<Option<Arc<LinearExpressionSymbol>>> 转换为 OptionalIndexedLinearExpressionSymbols
+///
+/// 只为有符号的键创建索引条目。
+/// Only creates index entries for keys that have symbols.
+pub fn optional_symbols_to_indexed<K>(
+    prefix: &str,
+    keys: &[K],
+    symbols: &[Option<Arc<LinearExpressionSymbol<f64>>>],
+) -> OptionalIndexedLinearExpressionSymbols<K>
+where
+    K: std::hash::Hash + Eq + Clone + std::fmt::Debug,
+{
+    let mut indexed = OptionalIndexedLinearExpressionSymbols::new(prefix);
+    for (i, key) in keys.iter().enumerate() {
+        if i < symbols.len() && symbols[i].is_some() {
+            indexed.insert(key.clone(), i);
+        }
+    }
+    indexed
 }
 
 // ============================================================================

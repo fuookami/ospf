@@ -26,7 +26,7 @@ use ospf_rust_core::symbol::{
     SymbolCombination, LinearExpressionSymbol, flat_map1,
 };
 use ospf_rust_core::variable::{Binary, VariableCombination1D};
-use super::common::solve_typed;
+use super::common::{solve_typed, extract_coeffs};
 
 /// 公司数据结构 / Company data structure
 #[derive(Debug, Clone)]
@@ -152,17 +152,8 @@ impl PortfolioModel {
         min_capital: f64,
         max_liability: f64,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // 从显式符号提取多项式
-        let total_capital = self.metrics[0].to_linear_polynomial();
-        let total_liability = self.metrics[1].to_linear_polynomial();
-        let total_profit = self.metrics[2].to_linear_polynomial();
-
         // 约束1: 总资本 >= min_capital
-        let cap_coeffs: Vec<(usize, f64)> = total_capital
-            .monomials()
-            .iter()
-            .map(|m| (m.var_index(), *m.coefficient()))
-            .collect();
+        let cap_coeffs = extract_coeffs(&self.metrics[0]);
         model.add_linear_constraint(
             &cap_coeffs,
             ospf_rust_core::model::ConstraintRelation::GreaterEqual,
@@ -171,11 +162,7 @@ impl PortfolioModel {
         )?;
 
         // 约束2: 总负债 <= max_liability
-        let lia_coeffs: Vec<(usize, f64)> = total_liability
-            .monomials()
-            .iter()
-            .map(|m| (m.var_index(), *m.coefficient()))
-            .collect();
+        let lia_coeffs = extract_coeffs(&self.metrics[1]);
         model.add_linear_constraint(
             &lia_coeffs,
             ospf_rust_core::model::ConstraintRelation::LessEqual,
@@ -184,11 +171,7 @@ impl PortfolioModel {
         )?;
 
         // 目标: 最大化总利润
-        let obj_coeffs: Vec<(usize, f64)> = total_profit
-            .monomials()
-            .iter()
-            .map(|m| (m.var_index(), *m.coefficient()))
-            .collect();
+        let obj_coeffs = extract_coeffs(&self.metrics[2]);
         model.add_linear_objective(&obj_coeffs, "total_profit");
         model.set_objective_category(ObjectiveCategory::Maximum);
 
@@ -212,8 +195,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Step 1: Registered variable combination: select ({} vars)", portfolio.select.len());
     println!("Step 2: Registered symbol combination: metrics ({} symbols)", portfolio.metrics.len());
-    for (i, sym) in portfolio.metrics.iter().enumerate() {
-        println!("  metrics[{}] = {} (ID: {})", i, sym.name(), sym.id().id);
+    for i in 0..portfolio.metrics.len() {
+        println!("  metrics[{}] = {} (ID: {})", i, portfolio.metrics.symbol_name(i), portfolio.metrics.symbol_id(i));
     }
     println!();
 

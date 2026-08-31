@@ -204,14 +204,15 @@ fn rmp_layer_volume_terms(
         .layers
         .iter()
         .enumerate()
-        .map(|(layer_idx, layer)| {
-            let model_idx = assignment.x.index(&layer_idx).unwrap_or(layer_idx);
+        .filter_map(|(layer_idx, layer)| {
+            let model_idx = assignment.x.as_ref()
+                .and_then(|x| x.model_index(&layer_idx))?;
             let volume = layer
                 .bin
                 .as_ref()
                 .map(|bin| bin.width.value * bin.height.value * layer.depth.value)
                 .unwrap_or(layer.depth.value);
-            (model_idx, volume)
+            Some((model_idx, volume))
         })
         .collect()
 }
@@ -227,11 +228,9 @@ fn final_assignment_indices_by_bin(
                 .iter()
                 .enumerate()
                 .filter_map(|(layer_idx, _)| {
-                    assignment
-                        .x
-                        .index(&bin_idx, &layer_idx)
-                        .or(Some(bin_idx * assignment.layers.len() + layer_idx))
-                        .map(|model_idx| (layer_idx, model_idx))
+                    let model_idx = assignment.x.as_ref()
+                        .and_then(|x| x.model_index(&bin_idx, &layer_idx))?;
+                    Some((layer_idx, model_idx))
                 })
                 .collect()
         })
@@ -243,10 +242,8 @@ fn final_bin_marker_indices(
 ) -> Vec<usize> {
     (0..assignment.bins.len())
         .filter_map(|bin_idx| {
-            assignment
-                .v
-                .index(&bin_idx)
-                .or(Some(assignment.bins.len() * assignment.layers.len() + bin_idx))
+            assignment.v.as_ref()
+                .and_then(|v| v.model_index(&bin_idx))
         })
         .collect()
 }

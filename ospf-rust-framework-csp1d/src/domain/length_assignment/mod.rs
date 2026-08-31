@@ -74,10 +74,8 @@ pub struct LengthSlackAggregation<V: SolveValue> {
     pub config: LengthAssignmentModelingConfig<V>,
     /// 需求列表 / Demand list
     pub demands: Vec<crate::domain::material::ProductDemand<V>>,
-    /// 分配长度变量索引 / Assigned length variable indices
-    pub assigned_length: Vec<Option<usize>>,
-    /// 超长变量索引 / Over-length variable indices
-    pub over_length: Vec<Option<usize>>,
+    /// 松弛变量 / Slack variables backed by OptionalIndexedVariableArray
+    pub variables: LengthSlackVariables,
 }
 
 impl<V: SolveValue> LengthSlackAggregation<V> {
@@ -89,8 +87,7 @@ impl<V: SolveValue> LengthSlackAggregation<V> {
         Self {
             config,
             demands,
-            assigned_length: Vec::new(),
-            over_length: Vec::new(),
+            variables: LengthSlackVariables::new(),
         }
     }
 
@@ -121,8 +118,7 @@ impl<V: SolveValue> LengthSlackAggregation<V> {
 
     /// 是否存在变量 / Whether any variables exist
     pub fn has_any(&self) -> bool {
-        self.assigned_length.iter().any(Option::is_some)
-            || self.over_length.iter().any(Option::is_some)
+        self.variables.has_any()
     }
 }
 

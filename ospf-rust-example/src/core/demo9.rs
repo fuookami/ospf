@@ -102,7 +102,7 @@ impl LocationModel {
         // Aggregate objective: sum of all distance contributions
         let mut obj_monomials = Vec::new();
         for i in 0..settlements.len() {
-            let poly = self.distance_expr[i].to_linear_polynomial();
+            let poly = self.distance_expr.symbol_polynomial(i);
             for m in poly.monomials() {
                 obj_monomials.push((m.var_index(), *m.coefficient()));
             }

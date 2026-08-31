@@ -1,13 +1,13 @@
 use std::error::Error;
 
 use ospf_rust_multiarray::Shape;
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::model::{ConstraintRelation, LinearObjectiveInput, MetaModel};
 use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1,
+    LinearExpressionSymbol, flat_map1, flat_map2,
 };
 use ospf_rust_core::variable::{Binary, Integer, VariableCombination1D, VariableCombination2D, VariableRange};
 
-use super::common::{read_solution_value, solve_typed};
+use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
 /// 城市数据结构 / City data structure
 #[derive(Debug, Clone)]
@@ -82,14 +82,6 @@ impl TspData {
     }
 }
 
-/// Helper: extract (var_index, coefficient) pairs from a symbol
-fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
-    let poly = sym.to_linear_polynomial();
-    poly.monomials().iter()
-        .map(|m| (m.var_index(), *m.coefficient()))
-        .collect()
-}
-
 /// Demo10 主函数：旅行商问题（TSP） / Demo10 main function: Traveling Salesman Problem (TSP)
 pub fn run() -> Result<(), Box<dyn Error>> {
     let data = TspData::sample();
@@ -131,7 +123,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     // 距离目标符号 / Distance objective symbol
     let distance = flat_map1("distance", &data.cities, |city| {
-        let i = data.cities.iter().position(|cc| cc.name == city.name).unwrap();
+        let i = data.cities.iter().position(|cc| cc.name == city.name).expect("city must exist");
         let monomials: Vec<_> = (0..city_count)
             .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(
                 data.distances.get(i, j), x_idx[&[i, j]],
@@ -143,7 +135,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     // 出发约束符号 / Depart constraint symbol
     let depart = flat_map1("depart", &data.cities, |city| {
-        let i = data.cities.iter().position(|cc| cc.name == city.name).unwrap();
+        let i = data.cities.iter().position(|cc| cc.name == city.name).expect("city must exist");
         let monomials: Vec<_> = (0..city_count)
             .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[i, j]]))
             .collect();
@@ -153,7 +145,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     // 到达约束符号 / Arrive constraint symbol
     let reached = flat_map1("reached", &data.cities, |city| {
-        let j = data.cities.iter().position(|cc| cc.name == city.name).unwrap();
+        let j = data.cities.iter().position(|cc| cc.name == city.name).expect("city must exist");
         let monomials: Vec<_> = (0..city_count)
             .map(|i| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[i, j]]))
             .collect();
@@ -161,16 +153,30 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }, |_, city| city.name.clone());
     model.add_symbol_combination(&reached)?;
 
+    // MTZ 子回路消除符号 / MTZ subtour elimination symbol
+    let mtz = flat_map2("mtz", &data.cities, &data.cities, |city_i, city_j| {
+        let i = data.cities.iter().position(|cc| cc.name == city_i.name).expect("city must exist");
+        let j = data.cities.iter().position(|cc| cc.name == city_j.name).expect("city must exist");
+        let monomials: Vec<_> = vec![
+            ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, u_idx[&[i]]),
+            ospf_rust_core::symbol::flatten::LinearMonomial::new(-1.0, u_idx[&[j]]),
+            ospf_rust_core::symbol::flatten::LinearMonomial::new(n, x_idx[&[i, j]]),
+        ];
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |_, city_i, _, city_j| format!("{}_{}", city_i.name, city_j.name));
+    model.add_symbol_combination(&mtz)?;
+
     // 目标: 最小化距离 / Objective: minimize distance
     let mut dist_coeffs = Vec::new();
     for i in 0..city_count {
-        let poly = distance[i].to_linear_polynomial();
+        let poly = distance.symbol_polynomial(i);
         for m in poly.monomials() {
             dist_coeffs.push((m.var_index(), *m.coefficient()));
         }
     }
-    model.add_linear_objective(&dist_coeffs, "distance");
-    model.set_objective_category(ObjectiveCategory::Minimum);
+    let distance_input = LinearObjectiveInput::minimize("distance")
+        .terms(dist_coeffs.into_iter());
+    model.set_linear_objective_input(distance_input);
 
     // 每城市出发约束 / Depart constraint per city
     for i in 0..city_count {
@@ -193,13 +199,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             if j == data.begin_idx || i == j {
                 continue;
             }
-            let coefficients = vec![
-                (u_idx[i], 1.0),
-                (u_idx[j], -1.0),
-                (x_idx[&[i, j]], n),
-            ];
+            let coeffs = extract_coeffs(&mtz[&[i, j]]);
             model.add_linear_constraint(
-                &coefficients,
+                &coeffs,
                 ConstraintRelation::LessEqual,
                 n - 1.0,
                 &format!("mtz_{}_{}", i, j),

@@ -14,7 +14,7 @@ pub fn apply_service_assignment_constraints(
 ) -> Result<(), Box<dyn Error>> {
     for s in 0..service_count {
         // service_assignment[s] 的多项式 = sum(x[node, s])
-        let poly = assignment.service_assignment[s].to_linear_polynomial();
+        let poly = assignment.service_assignment.symbol_polynomial(s);
         let coefficients: Vec<(usize, f64)> = poly
             .monomials()
             .iter()

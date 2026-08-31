@@ -32,6 +32,14 @@ pub use adapter::{
     extract_values_2,
     sum_to_linear,
     build_linear_expression_symbol,
+    symbols_to_indexed_1d,
+    symbols_to_indexed_2d,
+    optional_symbols_to_indexed,
+    IndexedVariableCombination1,
+    IndexedVariableCombination2,
+    IndexedLinearExpressionSymbols1,
+    IndexedLinearExpressionSymbols2,
+    OptionalIndexedLinearExpressionSymbols,
 };
 
 pub use model::{

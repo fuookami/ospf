@@ -81,14 +81,14 @@ fn build_low_level_model(
             objective_terms.push((idx[w][t], data.costs[w][t]));
         }
     }
-    set_linear_objective_from_sparse_terms(model, &objective_terms, ObjectiveCategory::Minimum);
+    set_linear_objective_from_sparse_terms(&mut model, &objective_terms, ObjectiveCategory::Minimum);
 
     // 工人容量约束
     for (w, worker) in data.workers.iter().enumerate() {
         let indices: Vec<usize> = (0..data.tasks.len()).map(|t| idx[w][t]).collect();
         let coefficients = linear_expr_from_indices(&indices, 1.0);
         add_constraint_with_metadata(
-            model, &coefficients, ConstraintRelation::LessEqual, 1.0,
+            &mut model, &coefficients, ConstraintRelation::LessEqual, 1.0,
             &format!("worker_capacity_{}", worker.name), None, false, 0, None,
         )?;
     }
@@ -98,14 +98,14 @@ fn build_low_level_model(
         let indices: Vec<usize> = (0..data.workers.len()).map(|w| idx[w][t]).collect();
         let coefficients = linear_expr_from_indices(&indices, 1.0);
         add_constraint_with_metadata(
-            model, &coefficients, ConstraintRelation::Equal, 1.0,
+            &mut model, &coefficients, ConstraintRelation::Equal, 1.0,
             &format!("task_partition_{}", task.name), None, false, 0, None,
         )?;
     }
 
     // 偏好约束
     add_constraint_with_metadata(
-        model, &[(idx[0][0], 1.0), (idx[1][1], 1.0)],
+        &mut model, &[(idx[0][0], 1.0), (idx[1][1], 1.0)],
         ConstraintRelation::GreaterEqual, 1.0,
         "prefer_diagonal_low_level", None, false, 0, None,
     )?;
@@ -164,14 +164,14 @@ fn build_shortcut_model(
     model.add_symbol_combination(&task_part)?;
 
     // 5. 目标: 最小化总成本
-    let cost_poly = cost[0].to_linear_polynomial();
+    let cost_poly = cost.symbol_polynomial(0);
     let cost_coeffs: Vec<_> = cost_poly.monomials().iter().map(|m| (m.var_index(), *m.coefficient())).collect();
     model.add_linear_objective(&cost_coeffs, "cost");
     model.set_objective_category(ObjectiveCategory::Minimum);
 
     // 6. 工人容量约束
     for (w, worker) in data.workers.iter().enumerate() {
-        let poly = worker_cap[w].to_linear_polynomial();
+        let poly = worker_cap.symbol_polynomial(w);
         let coeffs: Vec<_> = poly.monomials().iter().map(|m| (m.var_index(), *m.coefficient())).collect();
         model.add_le_constraint_with_metadata(
             &coeffs, 1.0, &format!("worker_capacity_{}", worker.name),
@@ -181,7 +181,7 @@ fn build_shortcut_model(
 
     // 7. 任务分配约束
     for (t, task) in data.tasks.iter().enumerate() {
-        let poly = task_part[t].to_linear_polynomial();
+        let poly = task_part.symbol_polynomial(t);
         let coeffs: Vec<_> = poly.monomials().iter().map(|m| (m.var_index(), *m.coefficient())).collect();
         model.partition_linear_coefficients_with_metadata(
             &coeffs, &format!("task_partition_{}", task.name),

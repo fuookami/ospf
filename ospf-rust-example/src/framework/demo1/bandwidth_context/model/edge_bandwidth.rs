@@ -2,7 +2,7 @@ use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol, flat_map1};
 use ospf_rust_core::variable::{VariableCombination, UContinuous};
-use ospf_rust_multiarray::{MultiArray, Shape};
+use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder, Shape};
 use crate::framework::demo1::route_context::model::{Edge, Node, NodeKind, Service};
 
 /// 二维连续变量组合类型别名 / 2D continuous variable combination type alias
@@ -19,7 +19,7 @@ pub struct EdgeBandwidth {
 impl EdgeBandwidth {
     pub fn new() -> Self {
         let y = VariableCombination::new(Shape::new([0, 0]), "y");
-        let y_idx = MultiArray::from_list(Shape::new([0, 0]), vec![]);
+        let y_idx = MultiArrayBuilder::from_list(Shape::new([0, 0]), vec![]);
         let bandwidth = SymbolCombination::new(Shape::new([0]), "bandwidth", |_, _| {
             LinearExpressionSymbol::new(0, "dummy", vec![], 0.0)
         });
@@ -45,7 +45,7 @@ impl EdgeBandwidth {
 
         // 2. 构建符号组合：对每条边，对第二维（services）求和
         let bandwidth = {
-            use ospf_rust_core::symbol::intermediate_symbol::next_auto_intermediate_symbol_id;
+            use ospf_rust_core::symbol::next_auto_intermediate_symbol_id;
             let shape = Shape::new([edges.len()]);
             SymbolCombination::new(shape, "bandwidth", |index, _vec| {
                 let poly = y.sum_along_dimension(&[index], 1, &y_idx, 1.0_f64, 0.0_f64);

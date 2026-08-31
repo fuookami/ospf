@@ -5,24 +5,37 @@
 ///
 /// 管理载重、体积、深度和装载率表达式。
 /// Manages load weight, volume, depth, and loading rate expressions.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Capacity {
     /// 载重表达式 / Load weight expressions
-    pub load_weight: ExpressionArray1<usize>,
+    pub load_weight: IndexedLinearExpressionSymbols1<usize>,
     /// 载体积表达式 / Load volume expressions
-    pub load_volume: ExpressionArray1<usize>,
+    pub load_volume: IndexedLinearExpressionSymbols1<usize>,
     /// 载深表达式 / Load depth expressions
-    pub load_depth: ExpressionArray1<usize>,
+    pub load_depth: IndexedLinearExpressionSymbols1<usize>,
 }
 
 impl Capacity {
     /// 创建容量模型 / Create a capacity model
     pub fn new() -> Self {
         Self {
-            load_weight: ExpressionArray1::new("loadWeight"),
-            load_volume: ExpressionArray1::new("loadVolume"),
-            load_depth: ExpressionArray1::new("loadDepth"),
+            load_weight: IndexedLinearExpressionSymbols1::new("loadWeight", &[], Self::empty_combination("loadWeight")),
+            load_volume: IndexedLinearExpressionSymbols1::new("loadVolume", &[], Self::empty_combination("loadVolume")),
+            load_depth: IndexedLinearExpressionSymbols1::new("loadDepth", &[], Self::empty_combination("loadDepth")),
         }
+    }
+
+    fn empty_combination(prefix: &str) -> ospf_rust_core::symbol::SymbolCombination<f64, ospf_rust_core::symbol::LinearExpressionSymbol<f64>, ospf_rust_multiarray::Shape<1>> {
+        use ospf_rust_core::symbol::SymbolCombination;
+        use ospf_rust_core::symbol::LinearExpressionSymbol;
+        use ospf_rust_multiarray::Shape;
+        SymbolCombination::new(
+            Shape::new([0]),
+            prefix,
+            |_index, _vector| {
+                LinearExpressionSymbol::new(0, prefix, Vec::new(), 0.0)
+            },
+        )
     }
 }
 

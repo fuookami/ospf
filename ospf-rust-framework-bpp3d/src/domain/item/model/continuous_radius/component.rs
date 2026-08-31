@@ -87,6 +87,10 @@ impl ContinuousRadiusModelComponent {
                 upper_bound,
                 &mut registration.constraint_count,
             )?;
+            let (radius_vars, piecewise_vars, symbols) = variable_registration.to_explicit_fields();
+            registration.radius_variables.push(radius_vars);
+            registration.piecewise_variables.push(piecewise_vars);
+            registration.symbols.push(symbols);
             registration.variables.push(variable_registration);
         }
         self.register_solver_objective(model, &mut registration);

@@ -84,10 +84,8 @@ pub struct YieldSlackAggregation<V: SolveValue> {
     pub config: YieldModelingConfig<V>,
     /// 需求列表 / Demand list
     pub demands: Vec<ProductDemand<V>>,
-    /// 欠产变量索引 / Under-production variable indices
-    pub under_production: Vec<Option<usize>>,
-    /// 超产变量索引 / Over-production variable indices
-    pub over_production: Vec<Option<usize>>,
+    /// 松弛变量 / Slack variables backed by OptionalIndexedVariableArray
+    pub variables: YieldSlackVariables,
     /// 超产面积是否需要超产变量 / Whether over-area objective needs over slack
     pub needs_over_slack_for_over_area: bool,
 }
@@ -102,8 +100,7 @@ impl<V: SolveValue> YieldSlackAggregation<V> {
         Self {
             config,
             demands,
-            under_production: Vec::new(),
-            over_production: Vec::new(),
+            variables: YieldSlackVariables::new(),
             needs_over_slack_for_over_area,
         }
     }
@@ -125,8 +122,7 @@ impl<V: SolveValue> YieldSlackAggregation<V> {
 
     /// 是否存在变量 / Whether any variables exist
     pub fn has_any(&self) -> bool {
-        self.under_production.iter().any(Option::is_some)
-            || self.over_production.iter().any(Option::is_some)
+        self.variables.has_any()
     }
 
     /// 需求 key / Demand key

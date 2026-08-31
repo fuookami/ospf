@@ -55,6 +55,30 @@ where
         Ok(())
     }
 
+    /// 注册限制和目标到模型（不注册变量） / Register limits and objectives to model (without registering variables)
+    ///
+    /// 用于在变量已注册后，再添加限制和目标。
+    /// Used to add limits and objectives after variables have been registered.
+    pub fn register_limits(&mut self, model: &mut MetaModel<f64>) -> Result<(), String> {
+        for limit in &self.limits {
+            limit.register(model);
+        }
+        for obj in &self.objectives {
+            obj.register(model);
+        }
+        Ok(())
+    }
+
+    /// 获取聚合引用 / Get aggregation reference
+    pub fn aggregation(&self) -> &LayerAssignmentAggregation<V, U> {
+        &self.aggregation
+    }
+
+    /// 获取可变聚合引用 / Get mutable aggregation reference
+    pub fn aggregation_mut(&mut self) -> &mut LayerAssignmentAggregation<V, U> {
+        &mut self.aggregation
+    }
+
     /// 调用验证 / Invoke validation
     pub fn invoke(&self, model: &MetaModel<f64>) -> Result<(), String> {
         for limit in &self.limits {

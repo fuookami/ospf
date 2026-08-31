@@ -31,7 +31,7 @@ impl<'a> SolutionAnalyzer<'a> {
         // 1. 找到每个服务的分配节点（从 node_assignment 多项式）
         let mut node_solution: HashMap<usize, usize> = HashMap::new();
         for (row, &node_idx) in self.assignment.normal_node_indices.iter().enumerate() {
-            let poly = self.assignment.node_assignment[row].to_linear_polynomial();
+            let poly = self.assignment.node_assignment.symbol_polynomial(row);
             for mono in poly.monomials() {
                 let var_idx = mono.var_index();
                 let value = solution.get(var_idx).copied().unwrap_or(0.0);
@@ -52,7 +52,7 @@ impl<'a> SolutionAnalyzer<'a> {
         let y_idx = &self.aggregation.edge_bandwidth.y_idx;
         let mut edge_solution: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
         for (e, _edge) in self.graph.edges.iter().enumerate() {
-            let poly = bandwidth[e].to_linear_polynomial();
+            let poly = bandwidth.symbol_polynomial(e);
             for mono in poly.monomials() {
                 let var_idx = mono.var_index();
                 let value = solution.get(var_idx).copied().unwrap_or(0.0);

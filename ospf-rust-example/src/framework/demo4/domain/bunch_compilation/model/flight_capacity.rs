@@ -2,7 +2,6 @@ use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
-use ospf_rust_core::symbol::flatten::LinearMonomial;
 
 /// 航班容量 / Flight capacity
 /// 对齐 Kotlin FlightCapacity
@@ -44,17 +43,3 @@ impl FlightCapacity {
         Ok(())
     }
 }
-
-/// 机队平衡检查点 / Fleet balance checkpoint
-#[derive(Debug, Clone)]
-pub struct FleetBalanceCheckpoint {
-    pub airport: String,
-    pub time: time::OffsetDateTime,
-    pub expected_balance: i64,
-}
-
-/// 机队平衡限制 / Fleet balance limit
-#[derive(Debug, Clone)]
-pub struct FleetBalanceLimit {
-    pub aircraft_type: String,
-    pub min_balance: i64,

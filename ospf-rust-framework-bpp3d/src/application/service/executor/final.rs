@@ -25,39 +25,16 @@ impl MetaModelFinalExecutor {
         let assignment = PreciseAssignment {
             bins,
             layers: state.layers.clone(),
-            x: VariableArray2::new("x"),
-            v: VariableArray1::new("v"),
+            x: None,
+            v: None,
         };
         let aggregation = LayerAssignmentAggregation::final_milp(
             assignment.clone(),
             Load::new(demand_entries.clone()),
             Capacity::new(),
         );
-        let mut context = LayerAssignmentContext::new(aggregation);
-        context.add_limit(Box::new(DemandConstraint::precise(
-            demand_entries.clone(),
-            assignment.clone(),
-        )));
-        context.add_limit(Box::new(PreciseAssignmentActivationConstraint::new(
-            assignment.clone(),
-        )));
-        context.add_limit(Box::new(BinCapacityConstraint::from_bins(
-            &assignment.bins,
-            final_assignment_indices_by_bin(&assignment),
-            final_layer_weights(&assignment.layers, &state.items),
-            final_layer_volumes(&assignment.layers),
-            &Default::default(),
-        )));
-        context.add_limit(Box::new(BinDepthConstraint::from_bins(
-            &assignment.bins,
-            final_assignment_indices_by_bin(&assignment),
-            layer_depths(&assignment.layers),
-            &Default::default(),
-        )));
-        context.add_objective(Box::new(BinAmountMinimization::new(
-            final_bin_marker_indices(&assignment),
-            1.0,
-        )));
+        let context = LayerAssignmentContext::new(aggregation);
+        // Limits are added after registration in execute_with_backend
         (context, assignment, demand_entries)
     }
 }
@@ -107,9 +84,55 @@ impl MetaModelFinalExecutor {
         state: &ColumnGenerationApplicationState,
         backend: &dyn MetaModelSolverBackend,
     ) -> ColumnGenerationFinalExecution {
-        let (mut context, _assignment, demand_entries) = self.build_context(state);
+        let (mut context, assignment, demand_entries) = self.build_context(state);
         let mut model = MetaModel::<f64>::new(&self.config.model_name);
-        if let Err(error) = context.register(&mut model).and_then(|_| context.invoke(&model)) {
+
+        // Step 1: Register variables
+        if let Err(error) = context.aggregation_mut().register(&mut model) {
+            return ColumnGenerationFinalExecution {
+                layers: Vec::new(),
+                packed_bins: Vec::new(),
+                objective: None,
+                diagnostics: None,
+                info: HashMap::from([
+                    ("executor".to_string(), "meta_model_final".to_string()),
+                    ("status".to_string(), "registration_failed".to_string()),
+                    ("error".to_string(), error),
+                ]),
+            };
+        }
+
+        // Step 2: Get registered assignment with x/v indices
+        let registered = context.aggregation().precise_assignment.clone().unwrap_or(assignment);
+
+        // Step 3: Add limits using registered assignment
+        context.add_limit(Box::new(DemandConstraint::precise(
+            demand_entries.clone(),
+            registered.clone(),
+        )));
+        context.add_limit(Box::new(PreciseAssignmentActivationConstraint::new(
+            registered.clone(),
+        )));
+        context.add_limit(Box::new(BinCapacityConstraint::<f64, Meter>::from_bins(
+            &registered.bins,
+            final_assignment_indices_by_bin(&registered),
+            final_layer_weights(&registered.layers, &state.items),
+            final_layer_volumes(&registered.layers),
+            &Default::default(),
+        )));
+        context.add_limit(Box::new(BinDepthConstraint::<f64, Meter>::from_bins(
+            &registered.bins,
+            final_assignment_indices_by_bin(&registered),
+            layer_depths(&registered.layers),
+            &Default::default(),
+        )));
+        context.add_objective(Box::new(BinAmountMinimization::new(
+            final_bin_marker_indices(&registered),
+            1.0,
+        )));
+
+        // Step 4: Register limits and invoke
+        if let Err(error) = context.register_limits(&mut model).and_then(|_| context.invoke(&model)) {
             return ColumnGenerationFinalExecution {
                 layers: Vec::new(),
                 packed_bins: Vec::new(),
@@ -200,10 +223,9 @@ impl MetaModelFinalExecutor {
                 ]),
             };
         };
-        let selected_assignments = SolutionExtractor::extract_binary_2(
-            &solve.primal_solution,
-            &assignment.x,
-        );
+        let selected_assignments = assignment.x.as_ref().map(|x| {
+            SolutionExtractor::extract_indexed_binary_2(&solve.primal_solution, x)
+        }).unwrap_or_default();
         let selected_layer_indices = state.layers
             .iter()
             .enumerate()

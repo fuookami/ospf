@@ -16,7 +16,7 @@ where
     /// 层列表 / Layers
     pub layers: Vec<BinLayer<V, U>>,
     /// 列变量 x[layer] / Column variables x[layer]
-    pub x: VariableArray1<usize, UContinuousVariableItem>,
+    pub x: Option<IndexedVariableCombination1<usize, UContinuous>>,
     /// 列变量上界 / Column variable upper bounds
     pub upper_bounds: Vec<Option<f64>>,
 }
@@ -27,15 +27,24 @@ impl<V: Debug + Clone + Send + Sync, U: ospf_rust_quantities::unit::concept::Uni
     }
 
     fn register(&mut self, model: &mut MetaModel<f64>) -> Result<(), String> {
-        for layer_index in 0..self.layers.len() {
-            if self.x.index(&layer_index).is_none() {
-                self.x.register_unsigned_continuous_with_upper_bound(
-                    layer_index,
-                    model,
-                    self.upper_bounds.get(layer_index).copied().flatten(),
-                )?;
-            }
+        if self.x.is_some() {
+            return Ok(());
         }
+        let keys: Vec<usize> = (0..self.layers.len()).collect();
+        let upper_bounds = &self.upper_bounds;
+        self.x = Some(
+            IndexedVariableCombination1::new(
+                "x",
+                &keys,
+                model,
+                |key| format!("x_{:?}", key),
+                |key| {
+                    let ub = upper_bounds.get(*key).copied().flatten();
+                    VariableRange::new(Some(0.0), ub)
+                },
+            )
+            .map_err(|e| format!("Failed to register ImpreciseAssignment variables: {:?}", e))?,
+        );
         Ok(())
     }
 }
@@ -60,9 +69,9 @@ where
     /// 层列表 / Layers
     pub layers: Vec<BinLayer<V, U>>,
     /// 赋值变量 x[bin, layer] / Assignment variables x[bin, layer]
-    pub x: VariableArray2<usize, usize, ospf_rust_core::variable::variable_item::BinaryVariableItem>,
+    pub x: Option<IndexedVariableCombination2<usize, usize, Binary>>,
     /// 箱使用标记 v[bin] / Bin usage markers v[bin]
-    pub v: VariableArray1<usize, ospf_rust_core::variable::variable_item::BinaryVariableItem>,
+    pub v: Option<IndexedVariableCombination1<usize, Binary>>,
 }
 
 impl<V: Debug + Clone + Send + Sync, U: ospf_rust_quantities::unit::concept::UnitTrait + Debug + Clone + Send + Sync> Bpp3dModelComponent for PreciseAssignment<V, U> {
@@ -71,11 +80,37 @@ impl<V: Debug + Clone + Send + Sync, U: ospf_rust_quantities::unit::concept::Uni
     }
 
     fn register(&mut self, model: &mut MetaModel<f64>) -> Result<(), String> {
+        if self.x.is_some() && self.v.is_some() {
+            return Ok(());
+        }
         let bin_keys: Vec<usize> = (0..self.bins.len()).collect();
         let layer_keys: Vec<usize> = (0..self.layers.len()).collect();
 
-        self.x.register_binary(&bin_keys, &layer_keys, model)?;
-        self.v.register_binary(&bin_keys, model)?;
+        if self.x.is_none() {
+            self.x = Some(
+                IndexedVariableCombination2::new(
+                    "x",
+                    &bin_keys,
+                    &layer_keys,
+                    model,
+                    |k1, k2| format!("x_{:?}_{:?}", k1, k2),
+                    |_k1, _k2| VariableRange::new(Some(0.0), Some(1.0)),
+                )
+                .map_err(|e| format!("Failed to register PreciseAssignment x variables: {:?}", e))?,
+            );
+        }
+        if self.v.is_none() {
+            self.v = Some(
+                IndexedVariableCombination1::new(
+                    "v",
+                    &bin_keys,
+                    model,
+                    |key| format!("v_{:?}", key),
+                    |_key| VariableRange::new(Some(0.0), Some(1.0)),
+                )
+                .map_err(|e| format!("Failed to register PreciseAssignment v variables: {:?}", e))?,
+            );
+        }
         Ok(())
     }
 }

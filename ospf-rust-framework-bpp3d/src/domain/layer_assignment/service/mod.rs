@@ -8,10 +8,14 @@ pub mod limits;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use ospf_rust_core::model::meta_model::MetaModel;
-use ospf_rust_core::variable::variable_item::UContinuousVariableItem;
-use ospf_rust_framework::model::{DynamicColumnContext, DynamicModelLifecycle, Pipeline};
+use ospf_rust_core::variable::{Binary, UContinuous, VariableRange};
+use ospf_rust_framework::model::{
+    DynamicColumnContext, DynamicModelLifecycle, Pipeline,
+    IndexedVariableCombination1, IndexedVariableCombination2,
+    IndexedLinearExpressionSymbols1,
+};
 
-use super::model::{Bpp3dModelComponent, ExpressionArray1, VariableArray1, VariableArray2};
+use super::model::Bpp3dModelComponent;
 use crate::domain::item::{Bpp3dDemandKey, Bpp3dDemandMode, BinLayer, BinType};
 
 

@@ -14,7 +14,7 @@ pub fn apply_node_assignment_constraints(
 ) -> Result<(), Box<dyn Error>> {
     for (row, _) in assignment.normal_node_indices.iter().enumerate() {
         // node_assignment[node] 的多项式 = sum(x[node, s])
-        let poly = assignment.node_assignment[row].to_linear_polynomial();
+        let poly = assignment.node_assignment.symbol_polynomial(row);
         let coefficients: Vec<(usize, f64)> = poly
             .monomials()
             .iter()

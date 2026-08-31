@@ -118,6 +118,53 @@ impl ContinuousRadiusObjectivePolicy {
     }
 }
 
+/// 连续半径变量 / Continuous radius variables
+///
+/// 持有每个原型的半径和半径平方变量索引，作为显式模型字段。
+/// Holds radius and radius-squared variable indices per prototype
+/// as explicit model fields.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContinuousRadiusVariables {
+    /// 变量名 / Variable name
+    pub variable_name: String,
+    /// 半径变量索引 / Radius variable index
+    pub radius_index: usize,
+    /// 半径平方变量索引 / Radius-squared variable index
+    pub radius_squared_index: usize,
+}
+
+/// 连续半径分段变量 / Continuous radius piecewise variables
+///
+/// 持有每个原型的 PWL 分段变量索引，作为显式模型字段。
+/// Holds PWL segment variable indices per prototype as explicit model fields.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContinuousRadiusPiecewiseVariables {
+    /// 变量名 / Variable name
+    pub variable_name: String,
+    /// 分段二值变量索引 / Segment binary variable indices
+    pub segment_indices: Vec<usize>,
+    /// 分段左端点 lambda 变量索引 / Segment left-end lambda variable indices
+    pub left_lambda_indices: Vec<usize>,
+    /// 分段右端点 lambda 变量索引 / Segment right-end lambda variable indices
+    pub right_lambda_indices: Vec<usize>,
+    /// 半径断点 / Radius breakpoints
+    pub breakpoints: Vec<f64>,
+}
+
+/// 连续半径符号 / Continuous radius symbols
+///
+/// 持有每个原型的派生符号索引，用于约束和目标注册。
+/// Holds derived symbol indices per prototype for constraint and objective registration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContinuousRadiusSymbols {
+    /// 变量名 / Variable name
+    pub variable_name: String,
+    /// 半径符号索引（对应 radius 变量） / Radius symbol index (corresponds to radius variable)
+    pub radius_symbol_index: usize,
+    /// 半径平方符号索引（对应 radius_squared 变量） / Radius-squared symbol index (corresponds to radius_squared variable)
+    pub radius_squared_symbol_index: usize,
+}
+
 /// 连续半径变量建模注册 / Continuous radius variable model registration
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContinuousRadiusVariableRegistration {
@@ -135,6 +182,30 @@ pub struct ContinuousRadiusVariableRegistration {
     pub right_lambda_indices: Vec<usize>,
     /// 半径断点 / Radius breakpoints
     pub breakpoints: Vec<f64>,
+}
+
+impl ContinuousRadiusVariableRegistration {
+    /// 转换为显式字段结构体 / Convert to explicit field structs
+    pub fn to_explicit_fields(&self) -> (ContinuousRadiusVariables, ContinuousRadiusPiecewiseVariables, ContinuousRadiusSymbols) {
+        let variables = ContinuousRadiusVariables {
+            variable_name: self.variable_name.clone(),
+            radius_index: self.radius_index,
+            radius_squared_index: self.radius_squared_index,
+        };
+        let piecewise = ContinuousRadiusPiecewiseVariables {
+            variable_name: self.variable_name.clone(),
+            segment_indices: self.segment_indices.clone(),
+            left_lambda_indices: self.left_lambda_indices.clone(),
+            right_lambda_indices: self.right_lambda_indices.clone(),
+            breakpoints: self.breakpoints.clone(),
+        };
+        let symbols = ContinuousRadiusSymbols {
+            variable_name: self.variable_name.clone(),
+            radius_symbol_index: self.radius_index,
+            radius_squared_symbol_index: self.radius_squared_index,
+        };
+        (variables, piecewise, symbols)
+    }
 }
 
 impl ContinuousRadiusVariableRegistration {
@@ -186,6 +257,12 @@ impl ContinuousRadiusVariableRegistration {
 pub struct ContinuousRadiusModelRegistration {
     /// 变量注册列表 / Variable registrations
     pub variables: Vec<ContinuousRadiusVariableRegistration>,
+    /// 显式半径变量字段 / Explicit radius variable fields
+    pub radius_variables: Vec<ContinuousRadiusVariables>,
+    /// 显式分段变量字段 / Explicit piecewise variable fields
+    pub piecewise_variables: Vec<ContinuousRadiusPiecewiseVariables>,
+    /// 显式符号字段 / Explicit symbol fields
+    pub symbols: Vec<ContinuousRadiusSymbols>,
     /// 注册约束数量 / Registered constraint count
     pub constraint_count: usize,
     /// 注册目标项数量 / Registered objective term count

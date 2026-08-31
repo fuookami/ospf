@@ -36,7 +36,7 @@ pub fn apply_edge_bandwidth_constraints(
         }
 
         // bandwidth[e] 的多项式：sum(y[e, s] for all s)
-        let bw_poly = bandwidth[e].to_linear_polynomial();
+        let bw_poly = bandwidth.symbol_polynomial(e);
 
         // 遍历 bandwidth[e] 的每个单项式，每个对应一个 service s
         for mono in bw_poly.monomials() {
@@ -53,7 +53,7 @@ pub fn apply_edge_bandwidth_constraints(
             let mut coefficients: Vec<(usize, f64)> = vec![(y_var_index, 1.0)];
 
             // 从 service_assignment[s] 的多项式提取 x[n,s] 的单项式
-            let sa_poly = service_assignment[s].to_linear_polynomial();
+            let sa_poly = service_assignment.symbol_polynomial(s);
             for sa_mono in sa_poly.monomials() {
                 coefficients.push((sa_mono.var_index(), -edge.max_bandwidth));
             }

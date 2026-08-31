@@ -2,7 +2,7 @@ use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
 use ospf_rust_core::symbol::flatten::{Linear as ModelLinear, LinearMonomial as ModelLinearMonomial};
-use ospf_rust_core::symbol::intermediate_symbol::next_auto_intermediate_symbol_id;
+use ospf_rust_core::symbol::next_auto_intermediate_symbol_id;
 use ospf_rust_multiarray::Shape;
 use crate::framework::demo1::route_context::RouteContext;
 use super::aggregation::Aggregation;
@@ -180,8 +180,8 @@ fn build_service_bandwidth(
         let row = vec[0];
         let s = vec[1];
         let node_idx = normal_node_indices[row];
-        let out_poly = out_degree[index].to_linear_polynomial();
-        let in_poly = in_degree[index].to_linear_polynomial();
+        let out_poly = out_degree.symbol_polynomial(index);
+        let in_poly = in_degree.symbol_polynomial(index);
         let mut monomials: Vec<ModelLinearMonomial<f64>> = out_poly.monomials().to_vec();
         // 减去 in_degree 的单项式（系数取反）
         for m in in_poly.monomials() {
@@ -221,7 +221,7 @@ fn build_node_bandwidth(
         let node_idx = normal_node_indices[row];
         let mut monomials = Vec::new();
         for s in 0..service_count {
-            let poly = svc_bw.in_degree[&[row, s]].to_linear_polynomial();
+            let poly = svc_bw.in_degree.symbol_polynomial_at(&[row, s]);
             monomials.extend_from_slice(poly.monomials());
         }
         let id = next_auto_intermediate_symbol_id();
@@ -239,7 +239,7 @@ fn build_node_bandwidth(
         let node_idx = normal_node_indices[row];
         let mut monomials = Vec::new();
         for s in 0..service_count {
-            let poly = svc_bw.out_degree[&[row, s]].to_linear_polynomial();
+            let poly = svc_bw.out_degree.symbol_polynomial_at(&[row, s]);
             monomials.extend_from_slice(poly.monomials());
         }
         let id = next_auto_intermediate_symbol_id();
@@ -257,7 +257,7 @@ fn build_node_bandwidth(
         let node_idx = normal_node_indices[row];
         let mut monomials = Vec::new();
         for s in 0..service_count {
-            let poly = svc_bw.out_flow[&[row, s]].to_linear_polynomial();
+            let poly = svc_bw.out_flow.symbol_polynomial_at(&[row, s]);
             monomials.extend_from_slice(poly.monomials());
         }
         let id = next_auto_intermediate_symbol_id();
@@ -281,7 +281,7 @@ fn extract_service_coeff_from_bw(
     y_idx: &ospf_rust_multiarray::MultiArray<usize, Shape<2>>,
 ) -> Option<f64> {
     let target_var = y_idx[&[edge_index, service_index]];
-    let poly = bandwidth[edge_index].to_linear_polynomial();
+    let poly = bandwidth.symbol_polynomial(edge_index);
     poly.monomials()
         .iter()
         .find(|m| m.var_index() == target_var)

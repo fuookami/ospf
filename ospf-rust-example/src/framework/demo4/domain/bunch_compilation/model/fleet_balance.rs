@@ -1,3 +1,21 @@
+use std::error::Error;
+use std::sync::Arc;
+use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::symbol::LinearExpressionSymbol;
+
+/// 机队平衡检查点 / Fleet balance checkpoint
+#[derive(Debug, Clone)]
+pub struct FleetBalanceCheckpoint {
+    pub airport: String,
+    pub time: time::OffsetDateTime,
+    pub expected_balance: i64,
+}
+
+/// 机队平衡限制 / Fleet balance limit
+#[derive(Debug, Clone)]
+pub struct FleetBalanceLimit {
+    pub aircraft_type: String,
+    pub min_balance: i64,
     pub max_balance: i64,
 }
 
@@ -53,8 +71,3 @@ impl FleetBalance {
         Ok(())
     }
 }
-
-/// 航班链接 / Flight link
-/// 对齐 Kotlin FlightLink
-#[derive(Debug, Clone)]
-pub struct FlightLink {

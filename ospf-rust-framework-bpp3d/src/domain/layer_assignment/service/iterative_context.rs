@@ -107,13 +107,16 @@ where
     }
 
     /// 添加列并注册到现有模型 / Add columns and register them to an existing model
+    ///
+    /// Note: Variable registration is deferred to `ImpreciseAssignment::register()`.
+    /// This method only tracks layers and upper bounds.
     pub fn add_columns_to_model(
         &mut self,
         iteration: usize,
         new_layers: Vec<BinLayer<V, U>>,
         upper_bounds: Vec<Option<f64>>,
         assignment: &mut ImpreciseAssignment<V, U>,
-        model: &mut MetaModel<f64>,
+        _model: &mut MetaModel<f64>,
     ) -> Result<Vec<IterativeLayerColumn<V, U>>, String> {
         let mut added = self.add_columns(iteration, new_layers, upper_bounds);
         for column in &mut added {
@@ -127,16 +130,6 @@ where
 
             assignment.layers.push(column.layer.clone());
             assignment.upper_bounds.push(column.upper_bound);
-            let model_index = assignment.x.register_unsigned_continuous_with_upper_bound(
-                column.index,
-                model,
-                column.upper_bound,
-            )?;
-            column.x_model_index = Some(model_index);
-            self.column_to_model_index.insert(column.index, model_index);
-            if let Some(stored_column) = self.columns.get_mut(column.index) {
-                stored_column.x_model_index = Some(model_index);
-            }
         }
         Ok(added)
     }
@@ -144,12 +137,14 @@ where
     /// 绑定 RMP 赋值变量索引 / Bind RMP assignment variable indices
     pub fn bind_assignment(&mut self, assignment: &ImpreciseAssignment<V, U>) {
         self.column_to_model_index.clear();
-        for layer_index in 0..assignment.layers.len() {
-            if let Some(model_index) = assignment.x.index(&layer_index) {
-                self.column_to_model_index.insert(layer_index, model_index);
-                if let Some(column) = self.columns.get_mut(layer_index) {
-                    column.x_model_index = Some(model_index);
-                    column.upper_bound = assignment.upper_bounds.get(layer_index).copied().flatten();
+        if let Some(ref x) = assignment.x {
+            for layer_index in 0..assignment.layers.len() {
+                if let Some(model_index) = x.model_index(&layer_index) {
+                    self.column_to_model_index.insert(layer_index, model_index);
+                    if let Some(column) = self.columns.get_mut(layer_index) {
+                        column.x_model_index = Some(model_index);
+                        column.upper_bound = assignment.upper_bounds.get(layer_index).copied().flatten();
+                    }
                 }
             }
         }

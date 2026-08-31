@@ -17,6 +17,8 @@ use ospf_rust_core::variable::{Binary, UInteger, VariableRange};
 
 use crate::domain::task_compilation::adapter::{
     IndexedVariableArray2, IndexedVariableArray3, next_gantt_symbol_id,
+    symbols_to_indexed_1d,
+    IndexedLinearExpressionSymbols1,
 };
 use crate::GanttResult;
 use crate::GanttError;
@@ -145,6 +147,10 @@ pub struct CapacityCompilation<A: ProductionActionTrait> {
     pub capacity_symbols: Vec<Arc<LinearExpressionSymbol<f64>>>,
     /// 成本变量 solver_index / Cost variable solver_index
     pub cost_index: Option<usize>,
+    /// 索引 operation_time 中间表达式 / Indexed operation time intermediate expressions
+    pub operation_time_indexed: Option<IndexedLinearExpressionSymbols1<usize>>,
+    /// 索引 capacity 中间表达式 / Indexed capacity intermediate expressions
+    pub capacity_indexed: Option<IndexedLinearExpressionSymbols1<usize>>,
 }
 
 impl<A: ProductionActionTrait> CapacityCompilation<A> {
@@ -158,6 +164,8 @@ impl<A: ProductionActionTrait> CapacityCompilation<A> {
             operation_time_symbols: Vec::new(),
             capacity_symbols: Vec::new(),
             cost_index: None,
+            operation_time_indexed: None,
+            capacity_indexed: None,
         }
     }
 
@@ -284,6 +292,16 @@ impl<A: ProductionActionTrait> CapacityCompilation<A> {
             self.cost_index = None;
         }
 
+        // 构建索引符号组合 / Build indexed symbol combinations
+        let op_time_keys: Vec<usize> = (0..self.operation_time_symbols.len()).collect();
+        self.operation_time_indexed = Some(symbols_to_indexed_1d(
+            "operation_time", &op_time_keys, &self.operation_time_symbols,
+        ));
+        let cap_keys: Vec<usize> = (0..self.capacity_symbols.len()).collect();
+        self.capacity_indexed = Some(symbols_to_indexed_1d(
+            "capacity", &cap_keys, &self.capacity_symbols,
+        ));
+
         Ok(())
     }
 
@@ -381,6 +399,10 @@ pub struct CapacityOrderCompilation<A: ProductionActionTrait> {
     pub capacity_symbols: Vec<Arc<LinearExpressionSymbol<f64>>>,
     /// 成本变量 solver_index / Cost variable solver_index
     pub cost_index: Option<usize>,
+    /// 索引 operation_time 中间表达式 / Indexed operation time intermediate expressions
+    pub operation_time_indexed: Option<IndexedLinearExpressionSymbols1<usize>>,
+    /// 索引 capacity 中间表达式 / Indexed capacity intermediate expressions
+    pub capacity_indexed: Option<IndexedLinearExpressionSymbols1<usize>>,
 }
 
 impl<A: ProductionActionTrait> std::fmt::Debug for CapacityOrderCompilation<A> {
@@ -407,6 +429,8 @@ impl<A: ProductionActionTrait> CapacityOrderCompilation<A> {
             operation_time_symbols: Vec::new(),
             capacity_symbols: Vec::new(),
             cost_index: None,
+            operation_time_indexed: None,
+            capacity_indexed: None,
         }
     }
 
@@ -533,6 +557,16 @@ impl<A: ProductionActionTrait> CapacityOrderCompilation<A> {
                 })?;
             self.cost_index = None;
         }
+
+        // 构建索引符号组合 / Build indexed symbol combinations
+        let op_time_keys: Vec<usize> = (0..self.operation_time_symbols.len()).collect();
+        self.operation_time_indexed = Some(symbols_to_indexed_1d(
+            "operation_time", &op_time_keys, &self.operation_time_symbols,
+        ));
+        let cap_keys: Vec<usize> = (0..self.capacity_symbols.len()).collect();
+        self.capacity_indexed = Some(symbols_to_indexed_1d(
+            "capacity", &cap_keys, &self.capacity_symbols,
+        ));
 
         Ok(())
     }

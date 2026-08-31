@@ -215,7 +215,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // 3. 构建成本符号
     let mfrs = &manufacturers;
     let x_idx_ref = &x_idx;
-    let cost = SymbolCombination::new(Shape::new([1]), "cost", |_idx, _vec| {
+    let cost: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>> = SymbolCombination::new(Shape::new([1]), "cost", |_idx, _vec| {
         let mut terms = Vec::new();
         for m in 0..mfrs.len() {
             for d in 0..centers.len() {
@@ -228,13 +228,13 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             }
         }
         let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
-        let id = ospf_rust_core::symbol::intermediate_symbol::next_auto_intermediate_symbol_id();
+        let id = ospf_rust_core::symbol::next_auto_intermediate_symbol_id();
         LinearExpressionSymbol::new(id, "total_cost", poly.monomials().to_vec(), *poly.constant_term())
     });
     model.add_symbol_combination(&cost)?;
 
     // 4. 构建运输量符号 (manufacturer x car_model)
-    let trans = SymbolCombination::new(
+    let trans: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<2>> = SymbolCombination::new(
         Shape::new([manufacturers.len(), car_models.len()]),
         "trans",
         |_idx, vec| {
@@ -244,14 +244,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                 .map(|d| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[m, d, c]]))
                 .collect();
             let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
-            let id = ospf_rust_core::symbol::intermediate_symbol::next_auto_intermediate_symbol_id();
+            let id = ospf_rust_core::symbol::next_auto_intermediate_symbol_id();
             LinearExpressionSymbol::new(id, &format!("trans_{}_{}", m, c), poly.monomials().to_vec(), *poly.constant_term())
         },
     );
     model.add_symbol_combination(&trans)?;
 
     // 5. 构建接收量符号 (center x car_model)
-    let receive = SymbolCombination::new(
+    let receive: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<2>> = SymbolCombination::new(
         Shape::new([centers.len(), car_models.len()]),
         "receive",
         |_idx, vec| {
@@ -261,7 +261,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                 .map(|m| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[m, d, c]]))
                 .collect();
             let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
-            let id = ospf_rust_core::symbol::intermediate_symbol::next_auto_intermediate_symbol_id();
+            let id = ospf_rust_core::symbol::next_auto_intermediate_symbol_id();
             LinearExpressionSymbol::new(id, &format!("recv_{}_{}", d, c), poly.monomials().to_vec(), *poly.constant_term())
         },
     );
@@ -269,7 +269,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     // 6. 构建需求替换符号 (center x car_model)
     let y_idx_ref = &y_idx;
-    let demand = SymbolCombination::new(
+    let demand: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<2>> = SymbolCombination::new(
         Shape::new([centers.len(), car_models.len()]),
         "demand",
         |_idx, vec| {
@@ -291,14 +291,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                 }
             }
             let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
-            let id = ospf_rust_core::symbol::intermediate_symbol::next_auto_intermediate_symbol_id();
+            let id = ospf_rust_core::symbol::next_auto_intermediate_symbol_id();
             LinearExpressionSymbol::new(id, &format!("demand_{}_{}", d, c), poly.monomials().to_vec(), *poly.constant_term())
         },
     );
     model.add_symbol_combination(&demand)?;
 
     // 7. 目标: 最小化成本
-    let cost_poly = cost[0].to_linear_polynomial();
+    let cost_poly = cost.symbol_polynomial(0);
     let cost_coeffs: Vec<_> = cost_poly.monomials().iter().map(|m| (m.var_index(), *m.coefficient())).collect();
     model.add_linear_objective(&cost_coeffs, "cost");
     model.set_objective_category(ObjectiveCategory::Minimum);
@@ -306,8 +306,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // 8. 需求约束: receive[d][c] + demand[d][c] >= centers[d].demands[c]
     for d in 0..centers.len() {
         for c in 0..car_models.len() {
-            let recv_poly = receive[&[d, c]].to_linear_polynomial();
-            let dem_poly = demand[&[d, c]].to_linear_polynomial();
+            let recv_poly = receive.symbol_polynomial_at(&[d, c]);
+            let dem_poly = demand.symbol_polynomial_at(&[d, c]);
             let mut coeffs: Vec<(usize, f64)> = recv_poly.monomials().iter()
                 .map(|m| (m.var_index(), *m.coefficient())).collect();
             for m in dem_poly.monomials() {
@@ -321,7 +321,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     for m in 0..manufacturers.len() {
         for c in 0..car_models.len() {
             if let Some(cap) = manufacturers[m].productivity_by_model[c] {
-                let poly = trans[&[m, c]].to_linear_polynomial();
+                let poly = trans.symbol_polynomial_at(&[m, c]);
                 let coeffs: Vec<_> = poly.monomials().iter().map(|m| (m.var_index(), *m.coefficient())).collect();
                 model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, cap, &format!("capacity_{}_{}", m, c))?;
             }

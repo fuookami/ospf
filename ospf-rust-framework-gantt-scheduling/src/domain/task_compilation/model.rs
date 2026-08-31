@@ -21,6 +21,8 @@ use crate::domain::task::{AssignmentPolicyTrait, ExecutorTrait, TaskTrait};
 use crate::domain::task_compilation::adapter::{
     build_linear_expression_symbol, next_gantt_symbol_id,
     IndexedVariableArray1, IndexedVariableArray2,
+    symbols_to_indexed_1d,
+    IndexedLinearExpressionSymbols1,
 };
 use crate::GanttError;
 use crate::GanttResult;
@@ -67,6 +69,14 @@ where
     /// 执行者编译中间符号 / Executor compilation intermediate symbols
     /// executor_compilation[executor] = sum(x[task, executor] for task) + z[executor] (if leisure)
     pub executor_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>>,
+
+    /// 索引任务分配中间符号 / Indexed task assignment intermediate symbols
+    pub task_assignment_indexed: Option<IndexedLinearExpressionSymbols1<usize>>,
+    /// 索引任务编译中间符号 / Indexed task compilation intermediate symbols
+    pub task_compilation_indexed: Option<IndexedLinearExpressionSymbols1<usize>>,
+    /// 索引执行者编译中间符号 / Indexed executor compilation intermediate symbols
+    pub executor_compilation_indexed: Option<IndexedLinearExpressionSymbols1<usize>>,
+
     /// 类型标记 / Type marker
     _marker: PhantomData<A>,
 }
@@ -111,6 +121,9 @@ where
             task_assignment_symbols: Vec::new(),
             task_compilation_symbols: Vec::new(),
             executor_compilation_symbols: Vec::new(),
+            task_assignment_indexed: None,
+            task_compilation_indexed: None,
+            executor_compilation_indexed: None,
             _marker: PhantomData,
         }
     }
@@ -207,6 +220,20 @@ where
             self.executor_compilation_symbols.push(symbol);
         }
 
+        // 构建索引符号组合 / Build indexed symbol combinations
+        let task_keys: Vec<usize> = (0..n_tasks).collect();
+        let executor_keys: Vec<usize> = (0..n_executors).collect();
+
+        self.task_assignment_indexed = Some(symbols_to_indexed_1d(
+            "task_assignment", &task_keys, &self.task_assignment_symbols,
+        ));
+        self.task_compilation_indexed = Some(symbols_to_indexed_1d(
+            "task_compilation", &task_keys, &self.task_compilation_symbols,
+        ));
+        self.executor_compilation_indexed = Some(symbols_to_indexed_1d(
+            "executor_compilation", &executor_keys, &self.executor_compilation_symbols,
+        ));
+
         Ok(())
     }
 
@@ -282,6 +309,11 @@ pub struct TaskTime {
     /// estimate_end_time[task] = est[task] + duration[task]
     pub estimate_end_time_symbols: Vec<Arc<LinearExpressionSymbol<f64>>>,
 
+    /// 索引预估开始时间中间符号 / Indexed estimate start time intermediate symbols
+    pub estimate_start_time_indexed: Option<IndexedLinearExpressionSymbols1<usize>>,
+    /// 索引预估结束时间中间符号 / Indexed estimate end time intermediate symbols
+    pub estimate_end_time_indexed: Option<IndexedLinearExpressionSymbols1<usize>>,
+
     /// 延迟时间 slack 函数 / Delay time slack functions
     /// delay_time[task] = max(0, est[task] - scheduled_start[task])
     pub delay_time_slacks: Vec<Option<Arc<SlackFunction<f64>>>>,
@@ -330,6 +362,8 @@ impl TaskTime {
             est: None,
             estimate_start_time_symbols: Vec::new(),
             estimate_end_time_symbols: Vec::new(),
+            estimate_start_time_indexed: None,
+            estimate_end_time_indexed: None,
             delay_time_slacks: Vec::new(),
             advance_time_slacks: Vec::new(),
             delay_time_model_indices: Vec::new(),
@@ -478,6 +512,15 @@ impl TaskTime {
                 self.advance_time_model_indices.push(None);
             }
         }
+
+        // 构建索引符号组合 / Build indexed symbol combinations
+        let task_keys: Vec<usize> = (0..n_tasks).collect();
+        self.estimate_start_time_indexed = Some(symbols_to_indexed_1d(
+            "estimate_start_time", &task_keys, &self.estimate_start_time_symbols,
+        ));
+        self.estimate_end_time_indexed = Some(symbols_to_indexed_1d(
+            "estimate_end_time", &task_keys, &self.estimate_end_time_symbols,
+        ));
 
         Ok(())
     }

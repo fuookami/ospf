@@ -1749,13 +1749,15 @@ fn yield_and_length_results_prefer_solver_slack_values() {
         .r#yield
         .as_ref()
         .expect("yield aggregation")
-        .under_production[0]
+        .variables
+        .under_index(0)
         .expect("under slack");
     let over_variable = context
         .r#yield
         .as_ref()
         .expect("yield aggregation")
-        .over_production[0]
+        .variables
+        .over_index(0)
         .expect("over slack");
     solution.insert(model.tokens()[under_variable].id(), 4.0);
     solution.insert(model.tokens()[over_variable].id(), 6.0);
@@ -1763,13 +1765,15 @@ fn yield_and_length_results_prefer_solver_slack_values() {
         .length
         .as_ref()
         .expect("length aggregation")
-        .assigned_length[1]
+        .variables
+        .assigned_index(1)
         .expect("assigned length");
     let over_length_variable = context
         .length
         .as_ref()
         .expect("length aggregation")
-        .over_length[1]
+        .variables
+        .over_index(1)
         .expect("over length");
     solution.insert(model.tokens()[assigned_variable].id(), 8.0);
     solution.insert(model.tokens()[over_length_variable].id(), 3.0);

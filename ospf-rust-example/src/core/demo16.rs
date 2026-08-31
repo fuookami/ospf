@@ -7,7 +7,7 @@ use ospf_rust_core::symbol::{
 };
 use ospf_rust_core::variable::{UContinuous, VariableCombination2D};
 
-use super::common::{read_solution_value, solve_typed};
+use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
 /// Monthly plan data structure
 #[derive(Debug, Clone)]
@@ -35,14 +35,6 @@ fn build_month_plans() -> Vec<MonthPlan> {
         MonthPlan::new(5, 280.0, 180.0),
         MonthPlan::new(6, 270.0, 300.0),
     ]
-}
-
-/// Helper: extract (var_index, coefficient) pairs from a symbol
-fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
-    let poly = sym.to_linear_polynomial();
-    poly.monomials().iter()
-        .map(|m| (m.var_index(), *m.coefficient()))
-        .collect()
 }
 
 /// Demo16 main function: Production planning problem
@@ -110,7 +102,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let mut total_cost_coeffs = Vec::new();
     for i in 0..n {
         for expr in [&produce_cost_expr, &storage_cost_expr, &delay_cost_expr] {
-            let poly = expr[i].to_linear_polynomial();
+            let poly = expr.symbol_polynomial(i);
             for m in poly.monomials() {
                 total_cost_coeffs.push((m.var_index(), *m.coefficient()));
             }

@@ -7,7 +7,7 @@ use ospf_rust_core::symbol::{
 };
 use ospf_rust_core::variable::{UInteger, VariableCombination1D};
 
-use super::common::{read_solution_value, solve_typed};
+use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
 /// Product data structure
 #[derive(Debug, Clone)]
@@ -106,17 +106,13 @@ impl EquipmentModel {
         max_man_hours: f64,
     ) -> Result<(), Box<dyn Error>> {
         // Objective: maximize profit
-        let profit_poly = self.profit_expr[0].to_linear_polynomial();
-        let profit_coeffs: Vec<_> = profit_poly.monomials().iter()
-            .map(|m| (m.var_index(), *m.coefficient())).collect();
+        let profit_coeffs = extract_coeffs(&self.profit_expr[0]);
         model.add_linear_objective(&profit_coeffs, "profit");
         model.set_objective_category(ObjectiveCategory::Maximum);
 
         // Constraints: man_hours_i <= amount_i * max_man_hours
         for (e, equipment) in equipments.iter().enumerate() {
-            let poly = self.man_hours_exprs[e].to_linear_polynomial();
-            let coeffs: Vec<_> = poly.monomials().iter()
-                .map(|m| (m.var_index(), *m.coefficient())).collect();
+            let coeffs = extract_coeffs(&self.man_hours_exprs[e]);
             model.add_linear_constraint(
                 &coeffs,
                 ConstraintRelation::LessEqual,

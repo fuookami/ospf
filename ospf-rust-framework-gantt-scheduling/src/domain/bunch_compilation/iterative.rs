@@ -17,7 +17,11 @@ use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::variable::VariableRange;
 
 use crate::domain::bunch_compilation::model::{BunchCompilation, BunchEntry, BunchSolution};
-use crate::domain::task_compilation::adapter::{extract_value, next_gantt_symbol_id};
+use crate::domain::task_compilation::adapter::{
+    extract_value, next_gantt_symbol_id,
+    symbols_to_indexed_1d,
+    IndexedLinearExpressionSymbols1,
+};
 use crate::GanttResult;
 use crate::GanttError;
 
@@ -257,6 +261,103 @@ impl IterativeBunchCompilation {
         }
 
         Ok(())
+    }
+
+    /// 刷新符号池 / Refresh symbol pool
+    ///
+    /// 重建中间表达式并返回最新的索引符号组合。
+    /// Rebuilds intermediate expressions and returns the latest indexed symbol combinations.
+    pub fn refresh_symbols(
+        &mut self,
+        model: &mut MetaModel<f64>,
+    ) -> GanttResult<(
+        Option<IndexedLinearExpressionSymbols1<usize>>,
+        Option<IndexedLinearExpressionSymbols1<usize>>,
+        Option<IndexedLinearExpressionSymbols1<usize>>,
+    )> {
+        self.rebuild_intermediate_symbols(model)?;
+        Ok(self.active_symbols())
+    }
+
+    /// 替换符号池 / Replace symbol pool
+    ///
+    /// 强制重建所有中间表达式符号，替换现有符号池。
+    /// Forces rebuild of all intermediate expression symbols, replacing the existing symbol pool.
+    pub fn replace_symbol_pool(
+        &mut self,
+        model: &mut MetaModel<f64>,
+    ) -> GanttResult<()> {
+        self.rebuild_intermediate_symbols(model)
+    }
+
+    /// 获取活跃符号 / Get active symbols
+    ///
+    /// 返回当前最新的索引符号组合（不触发重建）。
+    /// Returns the latest indexed symbol combinations without triggering rebuild.
+    pub fn active_symbols(
+        &self,
+    ) -> (
+        Option<IndexedLinearExpressionSymbols1<usize>>,
+        Option<IndexedLinearExpressionSymbols1<usize>>,
+        Option<IndexedLinearExpressionSymbols1<usize>>,
+    ) {
+        let task_keys: Vec<usize> = (0..self.base.n_tasks).collect();
+        let executor_keys: Vec<usize> = (0..self.base.executor_ids.len()).collect();
+
+        // 从 term 累积器构建临时符号以创建索引
+        let task_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> =
+            self.task_compilation_terms.iter().enumerate().map(|(ti, terms)| {
+                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms.iter()
+                    .map(|&(idx, coeff)| ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx))
+                    .collect();
+                Arc::new(LinearExpressionSymbol::new(
+                    0,
+                    &format!("task_compilation_{}", ti),
+                    monomials,
+                    0.0,
+                ))
+            }).collect();
+
+        let executor_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> =
+            self.executor_compilation_terms.iter().enumerate().map(|(ei, terms)| {
+                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms.iter()
+                    .map(|&(idx, coeff)| ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx))
+                    .collect();
+                Arc::new(LinearExpressionSymbol::new(
+                    0,
+                    &format!("executor_compilation_{}", ei),
+                    monomials,
+                    0.0,
+                ))
+            }).collect();
+
+        // bunch cost 作为一维索引
+        let cost_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> = if !self.cost_terms.is_empty() {
+            let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = self.cost_terms.iter()
+                .map(|&(idx, coeff)| ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx))
+                .collect();
+            vec![Arc::new(LinearExpressionSymbol::new(0, "bunch_cost", monomials, 0.0))]
+        } else {
+            vec![]
+        };
+
+        let cost_indexed = if !cost_symbols.is_empty() {
+            Some(symbols_to_indexed_1d("bunch_cost", &[0usize], &cost_symbols))
+        } else {
+            None
+        };
+        let task_compilation_indexed = if !task_compilation_symbols.is_empty() {
+            Some(symbols_to_indexed_1d("task_compilation", &task_keys, &task_compilation_symbols))
+        } else {
+            None
+        };
+        let executor_compilation_indexed = if !executor_compilation_symbols.is_empty() {
+            Some(symbols_to_indexed_1d("executor_compilation", &executor_keys, &executor_compilation_symbols))
+        } else {
+            None
+        };
+
+        (cost_indexed, task_compilation_indexed, executor_compilation_indexed)
     }
 
     /// 全局固定 / Globally fix

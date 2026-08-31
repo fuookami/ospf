@@ -1,13 +1,13 @@
 use std::error::Error;
 
 use ospf_rust_multiarray::Shape;
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::model::{ConstraintRelation, LinearObjectiveInput, MetaModel};
 use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1,
+    LinearExpressionSymbol, flat_map1,
 };
 use ospf_rust_core::variable::{UInteger, VariableCombination2D};
 
-use super::common::{read_solution_value, solve_typed};
+use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
 /// 仓库数据结构 / Warehouse data structure
 #[derive(Debug, Clone)]
@@ -72,14 +72,6 @@ fn build_stores() -> Vec<Store> {
     ]
 }
 
-/// Helper: extract (var_index, coefficient) pairs from a symbol
-fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
-    let poly = sym.to_linear_polynomial();
-    poly.monomials().iter()
-        .map(|m| (m.var_index(), *m.coefficient()))
-        .collect()
-}
-
 /// Demo7 主函数：运输问题 / Demo7 main function: Transportation problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let warehouses = build_warehouses();
@@ -128,32 +120,33 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // 目标: 最小化成本 / Objective: minimize cost
     let mut cost_coeffs = Vec::new();
     for w in 0..warehouses.len() {
-        let poly = cost[w].to_linear_polynomial();
+        let poly = cost.symbol_polynomial(w);
         for m in poly.monomials() {
             cost_coeffs.push((m.var_index(), *m.coefficient()));
         }
     }
-    model.add_linear_objective(&cost_coeffs, "cost");
-    model.set_objective_category(ObjectiveCategory::Minimum);
+    let cost_input = LinearObjectiveInput::minimize("cost")
+        .terms(cost_coeffs.into_iter());
+    model.set_linear_objective_input(cost_input);
 
     // 仓库容量约束 / Warehouse capacity constraints
-    for (w, warehouse) in warehouses.iter().enumerate() {
+    for w in 0..warehouses.len() {
         let coeffs = extract_coeffs(&shipment[w]);
         model.add_linear_constraint(
             &coeffs,
             ConstraintRelation::LessEqual,
-            warehouse.stowage,
+            warehouses[w].stowage,
             &format!("stowage_{}", w),
         )?;
     }
 
     // 商店需求约束 / Store demand constraints
-    for (s, store) in stores.iter().enumerate() {
+    for s in 0..stores.len() {
         let coeffs = extract_coeffs(&purchase[s]);
         model.add_linear_constraint(
             &coeffs,
             ConstraintRelation::GreaterEqual,
-            store.demand,
+            stores[s].demand,
             &format!("demand_{}", s),
         )?;
     }

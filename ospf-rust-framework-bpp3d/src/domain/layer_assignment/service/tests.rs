@@ -100,8 +100,8 @@ mod tests {
     #[test]
     fn capacity_model_construction() {
         let capacity = Capacity::new();
-        assert!(capacity.load_weight.is_empty());
-        assert!(capacity.load_volume.is_empty());
+        assert_eq!(capacity.load_weight.len(), 0);
+        assert_eq!(capacity.load_volume.len(), 0);
     }
 
     #[test]
@@ -135,7 +135,7 @@ mod tests {
                 depth: meters(1.0),
                 demand_coverage: Vec::new(),
             }],
-            x: VariableArray1::new("x"),
+            x: None,
             upper_bounds: vec![None],
         };
         let load = Load::new(vec![]);
@@ -157,7 +157,7 @@ mod tests {
                 depth: meters(1.0),
                 demand_coverage: Vec::new(),
             }],
-            x: VariableArray1::new("x"),
+            x: None,
             upper_bounds: vec![None],
         };
         let load = Load::new(vec![]);
@@ -193,15 +193,15 @@ mod tests {
 
         let mut assignment = ImpreciseAssignment {
             layers,
-            x: VariableArray1::new("x"),
+            x: None,
             upper_bounds: vec![Some(2.0), Some(3.0)],
         };
         let mut model = MetaModel::<f64>::new("test_bpp3d_iterative_lifecycle");
         assignment.register(&mut model).unwrap();
         iterative.bind_assignment(&assignment);
 
-        let first_model_index = assignment.x.index(&0).unwrap();
-        let second_model_index = assignment.x.index(&1).unwrap();
+        let first_model_index = assignment.x.as_ref().unwrap().model_index(&0).unwrap();
+        let second_model_index = assignment.x.as_ref().unwrap().model_index(&1).unwrap();
         let mut lifecycle = DynamicModelLifecycle::new();
 
         iterative
@@ -253,7 +253,7 @@ mod tests {
         let mut iterative = IterativeLayerAssignmentContext::new();
         let mut assignment = ImpreciseAssignment {
             layers: Vec::new(),
-            x: VariableArray1::new("x"),
+            x: None,
             upper_bounds: Vec::new(),
         };
         let mut model = MetaModel::<f64>::new("test_bpp3d_incremental_columns");
@@ -286,8 +286,11 @@ mod tests {
         assert_eq!(added.len(), 2);
         assert_eq!(assignment.layers.len(), 2);
         assert_eq!(assignment.upper_bounds, vec![Some(2.0), Some(3.0)]);
-        assert_eq!(assignment.x.index(&0), Some(0));
-        assert_eq!(assignment.x.index(&1), Some(1));
+
+        assignment.register(&mut model).unwrap();
+        iterative.bind_assignment(&assignment);
+        assert_eq!(assignment.x.as_ref().unwrap().model_index(&0), Some(0));
+        assert_eq!(assignment.x.as_ref().unwrap().model_index(&1), Some(1));
         assert_eq!(
             model.variable_range_by_index(0),
             Some(VariableRange::new(Some(0.0), Some(2.0)))

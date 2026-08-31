@@ -25,7 +25,7 @@ static NEXT_AUTO_INTERMEDIATE_SYMBOL_ID: AtomicU64 =
 
 /// 生成自动中间符号 ID，使用较高命名空间以降低与显式 ID 冲突的概率。
 /// Generate an auto intermediate symbol id from a high namespace to reduce collision risk with explicit ids.
-pub(crate) fn next_auto_intermediate_symbol_id() -> u64 {
+pub fn next_auto_intermediate_symbol_id() -> u64 {
     NEXT_AUTO_INTERMEDIATE_SYMBOL_ID.fetch_add(1, Ordering::Relaxed)
 }
 

@@ -7,7 +7,7 @@ use ospf_rust_core::symbol::{
 };
 use ospf_rust_core::variable::{UContinuous, VariableCombination2D, VariableRange};
 
-use super::common::{read_solution_value, solve_typed};
+use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
 /// Node type enum
 #[derive(Clone, Copy)]
@@ -84,14 +84,6 @@ fn build_arcs() -> Vec<ArcData> {
     ]
 }
 
-/// Helper: extract (var_index, coefficient) pairs from a symbol
-fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
-    let poly = sym.to_linear_polynomial();
-    poly.monomials().iter()
-        .map(|m| (m.var_index(), *m.coefficient()))
-        .collect()
-}
-
 /// Demo14 main function: Transshipment problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let nodes = build_nodes();
@@ -130,7 +122,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     let mut cost_coeffs = Vec::new();
     for i in 0..arcs.len() {
-        let poly = cost_expr[i].to_linear_polynomial();
+        let poly = cost_expr.symbol_polynomial(i);
         for m in poly.monomials() {
             cost_coeffs.push((m.var_index(), *m.coefficient()));
         }

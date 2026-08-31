@@ -7,7 +7,7 @@ use ospf_rust_core::symbol::{
 };
 use ospf_rust_core::variable::{UContinuous, UInteger, VariableCombination2D};
 
-use super::common::{read_solution_value, solve_typed};
+use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
 /// Dealer data structure
 #[derive(Debug, Clone)]
@@ -67,14 +67,6 @@ fn build_centers() -> Vec<Center> {
     ]
 }
 
-/// Helper: extract (var_index, coefficient) pairs from a symbol
-fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
-    let poly = sym.to_linear_polynomial();
-    poly.monomials().iter()
-        .map(|m| (m.var_index(), *m.coefficient()))
-        .collect()
-}
-
 /// Demo13 main function: Vehicle delivery problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let dealers = build_dealers();
@@ -114,7 +106,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // Aggregate cost objective
     let mut cost_coeffs = Vec::new();
     for d in 0..dealers.len() {
-        let poly = cost_expr[d].to_linear_polynomial();
+        let poly = cost_expr.symbol_polynomial(d);
         for m in poly.monomials() {
             cost_coeffs.push((m.var_index(), *m.coefficient()));
         }

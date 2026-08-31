@@ -74,5 +74,48 @@ impl SolutionExtractor {
     pub fn extract_binary(solution: &[f64], model_index: usize) -> Option<bool> {
         Self::extract_value(solution, model_index).map(|v| v > 0.5)
     }
+
+    /// 从解向量中提取一维索引变量组合的值 / Extract 1D indexed variable combination values
+    pub fn extract_indexed_values_1<K, VT>(
+        solution: &[f64],
+        combination: &ospf_rust_framework::model::IndexedVariableCombination1<K, VT>,
+    ) -> HashMap<K, f64>
+    where
+        K: Debug + Clone + Eq + Hash,
+        VT: ospf_rust_core::variable::VariableTypeTrait + Clone,
+        VT::Value: ospf_rust_core::token::IntoValue<f64>,
+    {
+        let mut result = HashMap::new();
+        for (key, _) in combination.key_map() {
+            if let Some(model_idx) = combination.model_index(key) {
+                if model_idx < solution.len() {
+                    result.insert(key.clone(), solution[model_idx]);
+                }
+            }
+        }
+        result
+    }
+
+    /// 从解向量中提取二维索引二值变量组合 / Extract 2D indexed binary variable combination
+    pub fn extract_indexed_binary_2<K1, K2, VT>(
+        solution: &[f64],
+        combination: &ospf_rust_framework::model::IndexedVariableCombination2<K1, K2, VT>,
+    ) -> HashMap<(K1, K2), bool>
+    where
+        K1: Debug + Clone + Eq + Hash,
+        K2: Debug + Clone + Eq + Hash,
+        VT: ospf_rust_core::variable::VariableTypeTrait + Clone,
+        VT::Value: ospf_rust_core::token::IntoValue<f64>,
+    {
+        let mut result = HashMap::new();
+        for ((k1, k2), _) in combination.key_map() {
+            if let Some(model_idx) = combination.model_index(k1, k2) {
+                if model_idx < solution.len() {
+                    result.insert((k1.clone(), k2.clone()), solution[model_idx] > 0.5);
+                }
+            }
+        }
+        result
+    }
 }
 

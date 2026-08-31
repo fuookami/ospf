@@ -162,6 +162,45 @@ where
             .map(|arc| arc as Arc<dyn IntermediateSymbol<V>>)
     }
 
+    /// 按索引获取符号的多项式表示。
+    /// Get the polynomial representation of the symbol at the given index.
+    ///
+    /// 自动解引用 `Arc<Sym>` 并调用 `to_linear_polynomial()`。
+    /// Automatically dereferences `Arc<Sym>` and calls `to_linear_polynomial()`.
+    pub fn symbol_polynomial(&self, index: usize) -> crate::symbol::flatten::Linear<V>
+    where
+        Sym: crate::symbol::LinearIntermediateSymbol<V>,
+    {
+        self.symbols[index].to_linear_polynomial()
+    }
+
+    /// 按向量坐标获取符号的多项式表示。
+    /// Get the polynomial representation of the symbol at the given vector coordinates.
+    pub fn symbol_polynomial_at(&self, vector: &S::VectorType) -> crate::symbol::flatten::Linear<V>
+    where
+        Sym: crate::symbol::LinearIntermediateSymbol<V>,
+    {
+        self.symbols[vector].to_linear_polynomial()
+    }
+
+    /// 按索引获取符号名称。
+    /// Get the symbol name at the given index.
+    pub fn symbol_name(&self, index: usize) -> &str
+    where
+        Sym: ospf_rust_math::symbol::DynSymbol,
+    {
+        self.symbols[index].name()
+    }
+
+    /// 按索引获取符号 ID。
+    /// Get the symbol ID at the given index.
+    pub fn symbol_id(&self, index: usize) -> u64
+    where
+        Sym: crate::symbol::IntermediateSymbol<V>,
+    {
+        self.symbols[index].id().id
+    }
+
     /// 对固定前缀索引的某维度求和，返回 `Linear<V>` 多项式。
     /// Sum across a dimension with fixed prefix indices, returning `Linear<V>` polynomial.
     ///

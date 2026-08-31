@@ -26,7 +26,7 @@ impl MetaModelRmpExecutor {
         let upper_bounds = rmp_column_upper_bounds(&state.layers, &demand_entries);
         let mut assignment = ImpreciseAssignment {
             layers: Vec::new(),
-            x: VariableArray1::new("x"),
+            x: None,
             upper_bounds: Vec::new(),
         };
         let mut iterative_context = IterativeLayerAssignmentContext::new();
@@ -37,6 +37,7 @@ impl MetaModelRmpExecutor {
             &mut assignment,
             model,
         )?;
+        assignment.register(model)?;
         let aggregation = LayerAssignmentAggregation::rmp(
             assignment.clone(),
             Load::new(demand_entries.clone()),

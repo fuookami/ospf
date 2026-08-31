@@ -27,10 +27,11 @@ use crate::domain::item::{
 };
 use crate::domain::layer_assignment::{
     BinAmountMinimization, BinCapacityConstraint, BinDepthConstraint, Bpp3dDemandEntry,
-    Capacity, DemandConstraint, DemandShadowPriceKey, ImpreciseAssignment, LayerAggregation,
+    Bpp3dModelComponent, Capacity, DemandConstraint, DemandShadowPriceKey,
+    ImpreciseAssignment, LayerAggregation,
     IterativeLayerAssignmentContext, LayerAssignmentAggregation, LayerAssignmentContext,
     Load, PreciseAssignment,
-    PreciseAssignmentActivationConstraint, SolutionExtractor, VariableArray1, VariableArray2,
+    PreciseAssignmentActivationConstraint, SolutionExtractor,
     VolumeMinimization,
 };
 use crate::domain::layer_generation::{

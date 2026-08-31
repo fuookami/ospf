@@ -7,7 +7,7 @@ use ospf_rust_core::symbol::{
 };
 use ospf_rust_core::variable::{Binary, VariableCombination1D};
 
-use super::common::{read_solution_value, solve_typed};
+use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
 /// 货物数据结构 / Cargo data structure
 #[derive(Debug, Clone)]
@@ -76,16 +76,12 @@ impl KnapsackModel {
         max_weight: f64,
     ) -> Result<(), Box<dyn Error>> {
         // 目标: 最大化总价值
-        let val_poly = self.total_value[0].to_linear_polynomial();
-        let val_coeffs: Vec<_> = val_poly.monomials().iter()
-            .map(|m| (m.var_index(), *m.coefficient())).collect();
+        let val_coeffs = extract_coeffs(&self.total_value[0]);
         model.add_linear_objective(&val_coeffs, "value");
         model.set_objective_category(ObjectiveCategory::Maximum);
 
         // 约束: 总重量 <= max_weight
-        let wt_poly = self.total_weight[0].to_linear_polynomial();
-        let wt_coeffs: Vec<_> = wt_poly.monomials().iter()
-            .map(|m| (m.var_index(), *m.coefficient())).collect();
+        let wt_coeffs = extract_coeffs(&self.total_weight[0]);
         model.add_linear_constraint(&wt_coeffs, ConstraintRelation::LessEqual, max_weight, "weight")?;
 
         Ok(())

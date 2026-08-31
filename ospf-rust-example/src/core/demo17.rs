@@ -7,10 +7,10 @@ use ospf_rust_core::symbol::{
 };
 use ospf_rust_core::variable::{Binary, UContinuous, VariableCombination2D, VariableCombination3D, VariableRange};
 
-use super::common::{read_solution_value, solve_typed};
+use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
 /// 节点类型枚举 / Node kind enum
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NodeKind {
     /// 起点 / Origin
     Origin,
@@ -118,14 +118,6 @@ fn dist(a: &Node, b: &Node) -> f64 {
     (dx * dx + dy * dy).sqrt()
 }
 
-/// Helper: extract (var_index, coefficient) pairs from a symbol
-fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
-    let poly = sym.to_linear_polynomial();
-    poly.monomials().iter()
-        .map(|m| (m.var_index(), *m.coefficient()))
-        .collect()
-}
-
 /// Demo17 主函数：带时间窗的车辆路径问题（VRPTW）
 /// Demo17 main function: Vehicle Routing Problem with Time Windows (VRPTW)
 pub fn run() -> Result<(), Box<dyn Error>> {
@@ -179,12 +171,13 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     model.add_symbol_combination(&vehicle_usage_cost)?;
 
     // 4. 构建运输成本符号 / Transportation cost symbol
+    let x_idx_ref = &x_idx;
     let transportation_cost = flat_map1("transportation_cost", &(0..vc).collect::<Vec<_>>(), |&v| {
         let monomials: Vec<_> = (0..node_count)
             .flat_map(|n1| {
                 (0..node_count).map(move |n2| {
                     ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                        dist(&nodes[n1], &nodes[n2]), x_idx[&[n1, n2, v]],
+                        dist(&nodes[n1], &nodes[n2]), x_idx_ref[&[n1, n2, v]],
                     )
                 })
             })
@@ -238,7 +231,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         let monomials: Vec<_> = (0..node_count)
             .flat_map(|n2| {
                 (0..vc).map(move |v| {
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[n, n2, v]])
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[n, n2, v]])
                 })
             })
             .collect();
@@ -255,7 +248,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             }
             for n1 in 0..node_count {
                 monomials.push(ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                    nodes[n2].demand, x_idx[&[n1, n2, v]],
+                    nodes[n2].demand, x_idx_ref[&[n1, n2, v]],
                 ));
             }
         }
@@ -266,11 +259,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // 9. 目标: 最小化车辆使用成本 + 运输成本
     let mut obj_coeffs: Vec<(usize, f64)> = Vec::new();
     for v in 0..vc {
-        let vuc_poly = vehicle_usage_cost[v].to_linear_polynomial();
+        let vuc_poly = vehicle_usage_cost.symbol_polynomial(v);
         for m in vuc_poly.monomials() {
             obj_coeffs.push((m.var_index(), *m.coefficient()));
         }
-        let tc_poly = transportation_cost[v].to_linear_polynomial();
+        let tc_poly = transportation_cost.symbol_polynomial(v);
         for m in tc_poly.monomials() {
             obj_coeffs.push((m.var_index(), *m.coefficient()));
         }

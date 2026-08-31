@@ -2166,19 +2166,15 @@ fn insert_domain_slack_solution<V: SolveValue>(
             let under_value = (required - supplied).max(0.0);
             let over_value = (supplied - required).max(0.0);
             if let Some(token) = r#yield
-                .under_production
-                .get(demand_index)
-                .copied()
-                .flatten()
+                .variables
+                .under_index(demand_index)
                 .and_then(|variable| model.tokens().get(variable))
             {
                 solution_by_id.insert(token.id(), under_value);
             }
             if let Some(token) = r#yield
-                .over_production
-                .get(demand_index)
-                .copied()
-                .flatten()
+                .variables
+                .over_index(demand_index)
                 .and_then(|variable| model.tokens().get(variable))
             {
                 solution_by_id.insert(token.id(), over_value);
@@ -2201,10 +2197,8 @@ fn insert_domain_slack_solution<V: SolveValue>(
                 continue;
             };
             if let Some(token) = length
-                .assigned_length
-                .get(demand_index)
-                .copied()
-                .flatten()
+                .variables
+                .assigned_index(demand_index)
                 .and_then(|variable| model.tokens().get(variable))
             {
                 solution_by_id.insert(token.id(), assigned_value);
@@ -2222,10 +2216,8 @@ fn insert_domain_slack_solution<V: SolveValue>(
                 })
                 .unwrap_or(0.0);
             if let Some(token) = length
-                .over_length
-                .get(demand_index)
-                .copied()
-                .flatten()
+                .variables
+                .over_index(demand_index)
                 .and_then(|variable| model.tokens().get(variable))
             {
                 solution_by_id.insert(token.id(), over_value);

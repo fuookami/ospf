@@ -26,7 +26,7 @@ pub fn apply_bandwidth_cost_objective(
         }
 
         // bandwidth[e] 的多项式：sum(y[e, s] for all s)
-        let poly = bandwidth[e].to_linear_polynomial();
+        let poly = bandwidth.symbol_polynomial(e);
         for mono in poly.monomials() {
             objective.push((mono.var_index(), edge.cost_per_bandwidth));
         }

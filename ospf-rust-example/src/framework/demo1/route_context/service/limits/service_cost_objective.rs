@@ -16,7 +16,7 @@ pub fn apply_service_cost_objective(
 
     for (row, _) in assignment.normal_node_indices.iter().enumerate() {
         // node_assignment[node] 的多项式 = sum(x[node, s])
-        let poly = assignment.node_assignment[row].to_linear_polynomial();
+        let poly = assignment.node_assignment.symbol_polynomial(row);
         for mono in poly.monomials() {
             // 通过 var_index 在 x_idx 中反查 service 索引
             let s = find_service_for_x_var(mono.var_index(), row, assignment);

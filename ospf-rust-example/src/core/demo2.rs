@@ -1,13 +1,13 @@
 use std::error::Error;
 
 use ospf_rust_multiarray::Shape;
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::model::{ConstraintRelation, LinearObjectiveInput, MetaModel};
 use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1,
+    LinearExpressionSymbol, flat_map1,
 };
 use ospf_rust_core::variable::{Binary, VariableCombination2D};
 
-use super::common::{read_solution_value, solve_typed};
+use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
 /// 产品数据结构 / Product data structure
 #[derive(Debug, Clone)]
@@ -115,16 +115,17 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // 目标: 最小化成本 / Objective: minimize cost
     let mut cost_coeffs = Vec::new();
     for c in 0..companies.len() {
-        let poly = cost[c].to_linear_polynomial();
+        let poly = cost.symbol_polynomial(c);
         for m in poly.monomials() {
             cost_coeffs.push((m.var_index(), *m.coefficient()));
         }
     }
-    model.add_linear_objective(&cost_coeffs, "cost");
-    model.set_objective_category(ObjectiveCategory::Minimum);
+    let cost_input = LinearObjectiveInput::minimize("cost")
+        .terms(cost_coeffs.into_iter());
+    model.set_linear_objective_input(cost_input);
 
     // 每公司最多分配1个产品 / Each company assigned at most 1 product
-    for (c, _) in companies.iter().enumerate() {
+    for c in 0..companies.len() {
         let coeffs = extract_coeffs(&assignment_company[c]);
         model.add_linear_constraint(
             &coeffs,
@@ -135,7 +136,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
 
     // 每产品恰好分配1个公司 / Each product assigned exactly 1 company
-    for (p, _) in products.iter().enumerate() {
+    for p in 0..products.len() {
         let coeffs = extract_coeffs(&assignment_product[p]);
         model.add_linear_constraint(
             &coeffs,
@@ -161,14 +162,6 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         }
     }
     Ok(())
-}
-
-/// Helper: extract (var_index, coefficient) pairs from a symbol
-fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
-    let poly = sym.to_linear_polynomial();
-    poly.monomials().iter()
-        .map(|m| (m.var_index(), *m.coefficient()))
-        .collect()
 }
 
 #[cfg(test)]

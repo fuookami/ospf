@@ -7,7 +7,7 @@ use ospf_rust_core::symbol::{
 };
 use ospf_rust_core::variable::{UContinuous, VariableCombination1D, VariableRange};
 
-use super::common::{read_solution_value, solve_typed};
+use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
 /// 材料数据结构 / Material data structure
 #[derive(Debug, Clone)]
@@ -100,17 +100,13 @@ impl ProductionModel {
         materials: &[Material],
     ) -> Result<(), Box<dyn Error>> {
         // 目标: 最大化利润
-        let profit_poly = self.profit[0].to_linear_polynomial();
-        let profit_coeffs: Vec<_> = profit_poly.monomials().iter()
-            .map(|m| (m.var_index(), *m.coefficient())).collect();
+        let profit_coeffs = extract_coeffs(&self.profit[0]);
         model.add_linear_objective(&profit_coeffs, "profit");
         model.set_objective_category(ObjectiveCategory::Maximum);
 
         // 材料约束
         for (m, mat) in materials.iter().enumerate() {
-            let poly = self.usage[m].to_linear_polynomial();
-            let coeffs: Vec<_> = poly.monomials().iter()
-                .map(|m| (m.var_index(), *m.coefficient())).collect();
+            let coeffs = extract_coeffs(&self.usage[m]);
             model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, mat.available, &format!("material_{}_{}", m, mat.name))?;
         }
 

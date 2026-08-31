@@ -1,3 +1,12 @@
+use std::error::Error;
+use std::sync::Arc;
+use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::symbol::LinearExpressionSymbol;
+
+/// 航班链接 / Flight link
+/// 对齐 Kotlin FlightLink
+#[derive(Debug, Clone)]
+pub struct FlightLink {
     pub from_flight: String,
     pub to_flight: String,
     pub connection_time: time::Duration,
@@ -43,3 +52,5 @@ impl FlightLink {
     ) -> Result<(), Box<dyn Error>> {
         // 完整实现需要: 更新链接约束
         Ok(())
+    }
+}

@@ -29,7 +29,7 @@ pub fn apply_demand_constraints(
         for (e, edge) in edges.iter().enumerate() {
             if edge.to == node_idx {
                 // bandwidth[e] 的多项式：sum(y[e, s] for all s)
-                let poly = bandwidth[e].to_linear_polynomial();
+                let poly = bandwidth.symbol_polynomial(e);
                 for mono in poly.monomials() {
                     coefficients.push((mono.var_index(), 1.0));
                 }

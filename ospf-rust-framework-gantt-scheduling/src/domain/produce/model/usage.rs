@@ -10,7 +10,10 @@ use ospf_rust_core::model::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::functions::slack::SlackFunction;
 
-use crate::domain::task_compilation::adapter::next_gantt_symbol_id;
+use crate::domain::task_compilation::adapter::{
+    next_gantt_symbol_id, symbols_to_indexed_1d,
+    IndexedLinearExpressionSymbols1,
+};
 use crate::domain::produce::model::demand::{MaterialDemand, MaterialReserves};
 use crate::GanttResult;
 use crate::GanttError;
@@ -29,6 +32,8 @@ pub struct ProduceUsage {
     pub product_count: usize,
     /// 每个产品的产出量中间符号 / Quantity intermediate symbols per product
     pub quantity_symbols: Vec<Arc<LinearExpressionSymbol<f64>>>,
+    /// 索引产出量中间符号 / Indexed quantity intermediate symbols
+    pub quantity_indexed: Option<IndexedLinearExpressionSymbols1<usize>>,
     /// 每个产品的过量 slack 变量 solver_index / Over quantity slack solver_index per product
     pub over_quantity_indices: Vec<Option<usize>>,
     /// 每个产品的不足 slack 变量 solver_index / Less quantity slack solver_index per product
@@ -60,6 +65,7 @@ impl ProduceUsage {
             name: name.to_string(),
             product_count,
             quantity_symbols: Vec::with_capacity(product_count),
+            quantity_indexed: None,
             over_quantity_indices: vec![None; product_count],
             less_quantity_indices: vec![None; product_count],
             over_enabled,
@@ -156,6 +162,12 @@ impl ProduceUsage {
             }
         }
 
+        // 构建索引符号组合 / Build indexed symbol combinations
+        let product_keys: Vec<usize> = (0..self.product_count).collect();
+        self.quantity_indexed = Some(symbols_to_indexed_1d(
+            &format!("{}_quantity", self.name), &product_keys, &self.quantity_symbols,
+        ));
+
         Ok(())
     }
 }
@@ -171,6 +183,8 @@ pub struct ConsumptionUsage {
     pub material_count: usize,
     /// 每个物料的消耗量中间符号 / Quantity intermediate symbols per material
     pub quantity_symbols: Vec<Arc<LinearExpressionSymbol<f64>>>,
+    /// 索引消耗量中间符号 / Indexed quantity intermediate symbols
+    pub quantity_indexed: Option<IndexedLinearExpressionSymbols1<usize>>,
     /// 每个物料的过量 slack 变量 solver_index / Over quantity slack solver_index per material
     pub over_quantity_indices: Vec<Option<usize>>,
     /// 每个物料的不足 slack 变量 solver_index / Less quantity slack solver_index per material
@@ -202,6 +216,7 @@ impl ConsumptionUsage {
             name: name.to_string(),
             material_count,
             quantity_symbols: Vec::with_capacity(material_count),
+            quantity_indexed: None,
             over_quantity_indices: vec![None; material_count],
             less_quantity_indices: vec![None; material_count],
             over_enabled,
@@ -297,6 +312,12 @@ impl ConsumptionUsage {
                 self.less_quantity_indices[material_idx] = Some(solver_idx);
             }
         }
+
+        // 构建索引符号组合 / Build indexed symbol combinations
+        let material_keys: Vec<usize> = (0..self.material_count).collect();
+        self.quantity_indexed = Some(symbols_to_indexed_1d(
+            &format!("{}_quantity", self.name), &material_keys, &self.quantity_symbols,
+        ));
 
         Ok(())
     }

@@ -7,7 +7,7 @@ use ospf_rust_core::symbol::{
 };
 use ospf_rust_core::variable::{UContinuous, VariableCombination1D};
 
-use super::common::{read_solution_value, solve_typed};
+use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
 /// 材料数据结构 / Material data structure
 #[derive(Debug, Clone)]
@@ -105,17 +105,13 @@ impl BlendingModel {
         targets: &[ProductTarget],
     ) -> Result<(), Box<dyn Error>> {
         // 目标: 最小化成本
-        let cost_poly = self.cost[0].to_linear_polynomial();
-        let cost_coeffs: Vec<_> = cost_poly.monomials().iter()
-            .map(|m| (m.var_index(), *m.coefficient())).collect();
+        let cost_coeffs = extract_coeffs(&self.cost[0]);
         model.add_linear_objective(&cost_coeffs, "cost");
         model.set_objective_category(ObjectiveCategory::Minimum);
 
         // 产量约束
         for (p, target) in targets.iter().enumerate() {
-            let poly = self.yields[p].to_linear_polynomial();
-            let coeffs: Vec<_> = poly.monomials().iter()
-                .map(|m| (m.var_index(), *m.coefficient())).collect();
+            let coeffs = extract_coeffs(&self.yields[p]);
             model.add_linear_constraint(&coeffs, ConstraintRelation::GreaterEqual, target.min_yield, &format!("yield_{}_lb", target.name))?;
             model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, target.min_yield, &format!("yield_{}_ub", target.name))?;
         }
