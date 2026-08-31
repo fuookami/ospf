@@ -1,9 +1,9 @@
 //! 圆映射。
 //! Circle map.
 
-use super::helpers::{default_float, mod_one};
-use crate::algebra::Field;
 use num_traits::Float;
+use crate::algebra::Field;
+use super::helpers::{default_float, mod_one};
 
 scalar_map!(
     /// 圆映射的一阶欧拉步进模型。

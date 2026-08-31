@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::{Arc, OnceLock};
-
 use super::{
+
     Canonical, CanonicalFlattenContext, CanonicalMonomial, FlattenContextTrait, FlattenedMonomial,
     FlattenedPolynomial, FlattenedSymbol, Linear, LinearFlattenContext, LinearMonomial, Quadratic,
     QuadraticFlattenContext, QuadraticMonomial,

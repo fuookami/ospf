@@ -1,5 +1,5 @@
-use super::length::Meter;
 use crate::unit::{CTUnit, CTUnitReciprocal};
+use super::length::Meter;
 
 define_unit_by!(
     ReciprocalMeter,

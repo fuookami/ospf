@@ -2,11 +2,10 @@
 //! Generic Heuristic Algorithm Interface
 
 use std::cmp::Ordering;
-
 use async_trait::async_trait;
-
 use crate::error::Result;
 use crate::model::callback::{
+
     AbstractCallBackModel, AbstractCallBackModelInterface, CallBackModelInterface,
     MultiObjectiveCallBackModel, Solution, SolutionStatus,
 };

@@ -4,7 +4,6 @@
 //! Intermediate representation during parsing, supports recursive nesting.
 
 use std::collections::HashMap;
-
 use crate::symbol::inequality::Comparison;
 
 /// 表达式节点 / Expression node

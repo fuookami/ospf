@@ -4,17 +4,15 @@ use std::any::Any;
 use std::collections::HashSet;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
-
 use num_traits::{FromPrimitive, ToPrimitive};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, new_standalone_id};
-
 use super::super::{
+
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };

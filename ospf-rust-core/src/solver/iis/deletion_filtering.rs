@@ -3,16 +3,13 @@
 
 use std::collections::BTreeSet;
 use std::time::Instant;
-
 use crate::error::Result;
 #[cfg(not(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12")))]
 use crate::error::{CoreError, SolverError};
 use crate::model::intermediate::{BasicLinearTriadModel, LinearTriadModel};
 use crate::solver::SolverOutput;
-
 #[cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
 use crate::solver::solvers::{GurobiSolver, gurobi::GurobiConfig};
-
 use super::{ConstraintSource, IISConfig, LinearIISModel, LinearTriadModelIISSource};
 
 #[derive(Debug, Clone, Default)]

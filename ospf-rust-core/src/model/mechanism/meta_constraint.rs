@@ -2,9 +2,7 @@
 //! Meta Constraint Definition
 
 use std::sync::Arc;
-
 use crate::model::basic::ConstraintPriority;
-
 use super::{ConstraintGroup, LinearInequality, QuadraticInequality};
 
 /// 不等式 trait / Inequality Trait

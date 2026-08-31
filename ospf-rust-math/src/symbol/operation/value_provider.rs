@@ -1,8 +1,8 @@
 //! 符号值提供者适配
 //! Symbol value provider adapters
 
-use crate::symbol::{Linear, LinearMonomial, OwnedSymbol, Quadratic, QuadraticMonomial};
 use std::collections::HashMap;
+use crate::symbol::{Linear, LinearMonomial, OwnedSymbol, Quadratic, QuadraticMonomial};
 
 /// 缺失值处理策略 / Missing value handling policy
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

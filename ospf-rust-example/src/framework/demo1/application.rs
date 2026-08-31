@@ -1,13 +1,12 @@
 use std::error::Error;
-
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::object::ObjectiveCategory;
-
 use crate::core::common::solve_typed as solve_meta_typed;
 use crate::framework::demo1::bandwidth_context::BandwidthContext;
 use crate::framework::demo1::infrastructure::dto::{Input, Output};
 use crate::framework::demo1::route_context::RouteContext;
 
+/// SSP 求解器 / SSP solver
 pub struct Ssp {
     route_context: RouteContext,
     bandwidth_context: BandwidthContext,

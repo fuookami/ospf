@@ -10,10 +10,10 @@
 //! - This directly forwards core `GurobiConfig` semantics.
 //! - 如需多个 handler，请在单个 native callback 内部分发。
 use std::sync::Arc;
-
 use ospf_rust_core::model::mechanism::MechanismModel;
 use ospf_rust_core::solver::solvers::GurobiSolver as CoreGurobiSolver;
 use ospf_rust_core::solver::solvers::gurobi::{
+
     GurobiConfig, GurobiEnvCallback, GurobiNativeCallback, GurobiNativeControl,
     GurobiNativeObserver, GurobiNumericDiagnosticsCallback, GurobiStage, GurobiStageCallback,
     GurobiTelemetryCallback,

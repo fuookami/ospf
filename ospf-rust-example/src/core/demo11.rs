@@ -1,7 +1,7 @@
 use std::error::Error;
-
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
 use ospf_rust_core::variable::{
+
     UContinuous, UContinuousVariableItem, VariableCombination2D, VariableRange,
 };
 use ospf_rust_math::symbol::{Linear, LinearMonomial};

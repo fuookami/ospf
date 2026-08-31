@@ -2,17 +2,14 @@
 //! Gurobi linear solve pipeline
 
 use std::time::Instant;
-
+#[cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
+use grb::expr::LinExpr;
 use crate::error::{CoreError, Result, SolverError};
 use crate::model::intermediate::LinearTriadModel;
 use crate::solver::SolverOutput;
 use crate::variable::VariableType;
-
 use super::config::GurobiStage;
 use super::solver::GurobiSolver;
-
-#[cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
-use grb::expr::LinExpr;
 
 pub(super) fn solve_linear(
     solver: &GurobiSolver,

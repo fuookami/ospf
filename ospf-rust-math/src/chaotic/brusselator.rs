@@ -1,10 +1,10 @@
 //! Brusselator 反应模型的一阶欧拉步进模型。
 //! First-order Euler step model for the Brusselator reaction model.
 
-use super::helpers::{default_float, one_point2};
+use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use num_traits::Float;
+use super::helpers::{default_float, one_point2};
 
 /// Brusselator 反应模型的一阶欧拉步进模型。
 /// First-order Euler step model for the Brusselator reaction model.

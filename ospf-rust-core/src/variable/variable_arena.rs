@@ -5,13 +5,12 @@ use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use typed_arena::Arena;
-
 use super::{
-    GenericVariableData, GenericVariableItem, VariableRange, VariableTypeTrait, new_standalone_id,
+    VariableData, VariableItem, VariableRange, VariableTypeTrait, new_standalone_id,
 };
 
 // ============================================================================
-// VariableArena - 变量 Arena
+// Flt64VariableArena - 变量 Arena
 // ============================================================================
 
 /// 变量 Arena / Variable Arena
@@ -25,13 +24,13 @@ use super::{
 /// # 示例 / Examples
 ///
 /// ```rust
-/// use ospf_rust_core::variable::{VariableArena, VariableData, VariableType, VariableRange};
+/// use ospf_rust_core::variable::{Flt64VariableArena, Flt64VariableData, VariableType, VariableRange};
 ///
-/// let arena = VariableArena::new();
+/// let arena = Flt64VariableArena::new();
 ///
 /// // 批量创建变量 / Batch create variables
 /// let vars: Vec<_> = (0..1000)
-///     .map(|i| arena.alloc(VariableData {
+///     .map(|i| arena.alloc(Flt64VariableData {
 ///         id: i as u64,
 ///         index: i,
 ///         name: format!("x_{}", i),
@@ -41,14 +40,14 @@ use super::{
 ///     }))
 ///     .collect();
 /// ```
-pub struct VariableArena {
+pub struct Flt64VariableArena {
     /// 类型化 Arena 分配器 / Typed arena allocator
-    arena: Arena<VariableData>,
+    arena: Arena<Flt64VariableData>,
 }
 
-/// 变量数据（非泛型版本）/ Variable Data (non-generic version)
+/// 变量数据（Flt64 专用版本）/ Variable Data (Flt64-specific version)
 #[derive(Debug, Clone)]
-pub struct VariableData {
+pub struct Flt64VariableData {
     /// 唯一标识符 / Unique identifier
     pub id: u64,
     /// 索引 / Index
@@ -63,7 +62,7 @@ pub struct VariableData {
     pub range: super::VariableRange<f64>,
 }
 
-impl VariableArena {
+impl Flt64VariableArena {
     /// 创建新的 Arena / Create new arena
     pub fn new() -> Self {
         Self {
@@ -80,10 +79,10 @@ impl VariableArena {
 
     /// 在 Arena 中分配变量数据 / Allocate variable data in arena
     ///
-    /// 返回的 `VariableItem` 持有 Arena 中数据的引用。
-    /// The returned `VariableItem` holds a reference to data in the arena.
-    pub fn alloc(&self, data: VariableData) -> VariableItem {
-        VariableItem {
+    /// 返回的 `Flt64VariableItem` 持有 Arena 中数据的引用。
+    /// The returned `Flt64VariableItem` holds a reference to data in the arena.
+    pub fn alloc(&self, data: Flt64VariableData) -> Flt64VariableItem {
+        Flt64VariableItem {
             data: Arc::new(self.arena.alloc(data).clone()),
         }
     }
@@ -94,9 +93,9 @@ impl VariableArena {
         name: &str,
         var_type: super::VariableType,
         range: VariableRange<f64>,
-    ) -> VariableItem {
+    ) -> Flt64VariableItem {
         let id = new_standalone_id();
-        self.alloc(VariableData {
+        self.alloc(Flt64VariableData {
             id: id.unique_id(),
             index: id.index_in_group,
             name: name.to_string(),
@@ -113,9 +112,9 @@ impl VariableArena {
         display_name: &str,
         var_type: super::VariableType,
         range: VariableRange<f64>,
-    ) -> VariableItem {
+    ) -> Flt64VariableItem {
         let id = new_standalone_id();
-        self.alloc(VariableData {
+        self.alloc(Flt64VariableData {
             id: id.unique_id(),
             index: id.index_in_group,
             name: name.to_string(),
@@ -129,7 +128,7 @@ impl VariableArena {
     ///
     /// 使用 Arena 分配器批量创建变量，性能更优。
     /// Batch create variables using arena allocator for better performance.
-    pub fn alloc_iter<I: IntoIterator<Item = VariableData>>(&self, iter: I) -> Vec<VariableItem> {
+    pub fn alloc_iter<I: IntoIterator<Item = Flt64VariableData>>(&self, iter: I) -> Vec<Flt64VariableItem> {
         iter.into_iter().map(|data| self.alloc(data)).collect()
     }
 
@@ -152,7 +151,7 @@ impl VariableArena {
     }
 }
 
-impl Default for VariableArena {
+impl Default for Flt64VariableArena {
     fn default() -> Self {
         Self::new()
     }
@@ -160,12 +159,12 @@ impl Default for VariableArena {
 
 /// 变量项（非泛型版本）/ Variable Item (non-generic version)
 #[derive(Debug, Clone)]
-pub struct VariableItem {
+pub struct Flt64VariableItem {
     /// 指向实际数据的 Arc 指针 / Arc pointer to actual data
-    data: Arc<VariableData>,
+    data: Arc<Flt64VariableData>,
 }
 
-impl VariableItem {
+impl Flt64VariableItem {
     /// 获取唯一标识符 / Get unique identifier
     pub fn id(&self) -> u64 {
         self.data.id
@@ -198,7 +197,7 @@ impl VariableItem {
 }
 
 // ============================================================================
-// GenericVariableArena - 泛型变量 Arena
+// Flt64VariableArena - 泛型变量 Arena
 // ============================================================================
 
 /// 泛型变量 Arena / Generic Variable Arena
@@ -213,22 +212,22 @@ impl VariableItem {
 /// # 示例 / Examples
 ///
 /// ```rust
-/// use ospf_rust_core::variable::{GenericVariableArena, Binary, GenericVariableData, new_standalone_id};
+/// use ospf_rust_core::variable::{VariableArena, Binary, VariableData, new_standalone_id};
 ///
-/// let arena: GenericVariableArena<Binary> = GenericVariableArena::new();
+/// let arena: VariableArena<Binary> = VariableArena::new();
 ///
 /// // 创建二进制变量 / Create binary variable
-/// let binary_var = arena.alloc(GenericVariableData::<Binary>::new(
+/// let binary_var = arena.alloc(VariableData::<Binary>::new(
 ///     new_standalone_id(),
 ///     "x",
 /// ));
 /// ```
-pub struct GenericVariableArena<VT: VariableTypeTrait> {
-    arena: Arena<GenericVariableData<VT>>,
+pub struct VariableArena<VT: VariableTypeTrait> {
+    arena: Arena<VariableData<VT>>,
     _marker: PhantomData<VT>,
 }
 
-impl<VT: VariableTypeTrait> GenericVariableArena<VT> {
+impl<VT: VariableTypeTrait> VariableArena<VT> {
     /// 创建新的 Arena / Create new arena
     pub fn new() -> Self {
         Self {
@@ -246,13 +245,13 @@ impl<VT: VariableTypeTrait> GenericVariableArena<VT> {
     }
 
     /// 在 Arena 中分配变量数据 / Allocate variable data in arena
-    pub fn alloc(&self, data: GenericVariableData<VT>) -> GenericVariableItem<VT> {
-        GenericVariableItem::new(self.arena.alloc(data).clone())
+    pub fn alloc(&self, data: VariableData<VT>) -> VariableItem<VT> {
+        VariableItem::new(self.arena.alloc(data).clone())
     }
 
     /// 自动分配独立变量（使用全局递增 ID）/ Auto-allocate standalone variable with global incremental ID
-    pub fn alloc_auto(&self, name: &str) -> GenericVariableItem<VT> {
-        self.alloc(GenericVariableData::new(new_standalone_id(), name))
+    pub fn alloc_auto(&self, name: &str) -> VariableItem<VT> {
+        self.alloc(VariableData::new(new_standalone_id(), name))
     }
 
     /// 自动分配带范围的独立变量（使用全局递增 ID）/ Auto-allocate ranged standalone variable with global incremental ID
@@ -260,8 +259,8 @@ impl<VT: VariableTypeTrait> GenericVariableArena<VT> {
         &self,
         name: &str,
         range: VariableRange<VT::Value>,
-    ) -> GenericVariableItem<VT> {
-        self.alloc(GenericVariableData::with_range(
+    ) -> VariableItem<VT> {
+        self.alloc(VariableData::with_range(
             new_standalone_id(),
             name,
             range,
@@ -273,8 +272,8 @@ impl<VT: VariableTypeTrait> GenericVariableArena<VT> {
         &self,
         name: &str,
         display_name: &str,
-    ) -> GenericVariableItem<VT> {
-        self.alloc(GenericVariableData::with_display_name(
+    ) -> VariableItem<VT> {
+        self.alloc(VariableData::with_display_name(
             new_standalone_id(),
             name,
             display_name,
@@ -282,10 +281,10 @@ impl<VT: VariableTypeTrait> GenericVariableArena<VT> {
     }
 
     /// 批量分配变量 / Batch allocate variables
-    pub fn alloc_iter<I: IntoIterator<Item = GenericVariableData<VT>>>(
+    pub fn alloc_iter<I: IntoIterator<Item = VariableData<VT>>>(
         &self,
         iter: I,
-    ) -> Vec<GenericVariableItem<VT>> {
+    ) -> Vec<VariableItem<VT>> {
         iter.into_iter().map(|data| self.alloc(data)).collect()
     }
 
@@ -305,7 +304,7 @@ impl<VT: VariableTypeTrait> GenericVariableArena<VT> {
     }
 }
 
-impl<VT: VariableTypeTrait> Default for GenericVariableArena<VT> {
+impl<VT: VariableTypeTrait> Default for VariableArena<VT> {
     fn default() -> Self {
         Self::new()
     }
@@ -328,7 +327,7 @@ impl<VT: VariableTypeTrait> Default for GenericVariableArena<VT> {
 /// This type is not thread-safe and should not be shared across threads.
 /// If cross-thread usage is needed, use external synchronization.
 pub struct ConcurrentVariableArena {
-    arena: RefCell<Arena<VariableData>>,
+    arena: RefCell<Arena<Flt64VariableData>>,
 }
 
 impl ConcurrentVariableArena {
@@ -347,14 +346,14 @@ impl ConcurrentVariableArena {
     }
 
     /// 在 Arena 中分配变量数据 / Allocate variable data in arena
-    pub fn alloc(&self, data: VariableData) -> VariableItem {
-        VariableItem {
+    pub fn alloc(&self, data: Flt64VariableData) -> Flt64VariableItem {
+        Flt64VariableItem {
             data: Arc::new(self.arena.borrow_mut().alloc(data).clone()),
         }
     }
 
     /// 批量分配变量 / Batch allocate variables
-    pub fn alloc_iter<I: IntoIterator<Item = VariableData>>(&self, iter: I) -> Vec<VariableItem> {
+    pub fn alloc_iter<I: IntoIterator<Item = Flt64VariableData>>(&self, iter: I) -> Vec<Flt64VariableItem> {
         iter.into_iter().map(|data| self.alloc(data)).collect()
     }
 }
@@ -370,13 +369,13 @@ impl Default for ConcurrentVariableArena {
 // ============================================================================
 
 /// 二进制变量 Arena / Binary variable arena
-pub type BinaryArena = GenericVariableArena<super::Binary>;
+pub type BinaryArena = VariableArena<super::Binary>;
 
 /// 连续变量 Arena / Continuous variable arena
-pub type ContinuousArena = GenericVariableArena<super::Continuous>;
+pub type ContinuousArena = VariableArena<super::Continuous>;
 
 /// 整数变量 Arena / Integer variable arena
-pub type IntegerArena = GenericVariableArena<super::Integer>;
+pub type IntegerArena = VariableArena<super::Integer>;
 
 // ============================================================================
 // 测试 / Tests
@@ -393,8 +392,8 @@ mod tests {
 
     #[test]
     fn test_variable_arena() {
-        let arena = VariableArena::new();
-        let data = VariableData {
+        let arena = Flt64VariableArena::new();
+        let data = Flt64VariableData {
             id: 0,
             index: 0,
             name: "x".to_string(),
@@ -410,7 +409,7 @@ mod tests {
     #[test]
     fn test_generic_variable_arena() {
         let arena = BinaryArena::new();
-        let data = GenericVariableData::<Binary>::new(VariableId::standalone(0), "x");
+        let data = VariableData::<Binary>::new(VariableId::standalone(0), "x");
         let item = arena.alloc(data);
         assert_eq!(item.name(), "x");
         assert_eq!(item.var_type(), VariableType::Binary);
@@ -418,8 +417,8 @@ mod tests {
 
     #[test]
     fn test_batch_allocation() {
-        let arena = VariableArena::with_capacity(100);
-        let items: Vec<_> = arena.alloc_iter((0..10).map(|i| VariableData {
+        let arena = Flt64VariableArena::with_capacity(100);
+        let items: Vec<_> = arena.alloc_iter((0..10).map(|i| Flt64VariableData {
             id: i as u64,
             index: i,
             name: format!("x_{}", i),
@@ -433,7 +432,7 @@ mod tests {
 
     #[test]
     fn test_variable_arena_auto_allocates_unique_ids() {
-        let arena = VariableArena::new();
+        let arena = Flt64VariableArena::new();
         let x = arena.alloc_auto(
             "x_auto",
             VariableType::Continuous,
@@ -461,7 +460,7 @@ mod tests {
 
     #[test]
     fn test_generic_variable_arena_auto_with_range_preserves_bounds() {
-        let arena: GenericVariableArena<Continuous> = GenericVariableArena::new();
+        let arena: VariableArena<Continuous> = VariableArena::new();
         let z = arena.alloc_auto_with_range("z_auto", VariableRange::bounded(-2.0, 3.0));
         assert_eq!(z.range().lower_bound, Some(-2.0));
         assert_eq!(z.range().upper_bound, Some(3.0));

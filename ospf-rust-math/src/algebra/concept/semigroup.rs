@@ -1,9 +1,9 @@
 //! 半群 trait
 //! Semigroup trait
 
-use crate::operator::AddRef;
 use std::fmt::Debug;
 use std::ops::Add;
+use crate::operator::AddRef;
 
 // ============================================================================
 // Semigroup Trait - 半群

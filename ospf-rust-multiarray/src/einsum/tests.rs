@@ -1,9 +1,9 @@
 //! 爱因斯坦表示法测试
 //! Einstein notation tests
 
-use super::*;
-use crate::{AbstractShape, MultiArray, MultiArrayBuilder, Shape, StorageOrder};
 use num_traits::Zero;
+use crate::{AbstractShape, MultiArray, MultiArrayBuilder, Shape, StorageOrder};
+use super::*;
 
 #[test]
 fn test_index_labels() {

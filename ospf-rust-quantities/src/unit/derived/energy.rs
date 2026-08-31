@@ -1,10 +1,10 @@
+use crate::dimension::derived::Energy;
+use crate::scale::{GIGA, KILO, MEGA, Scale};
+use crate::unit::{CTUnit, CTUnitMul};
 use super::force::Newton;
 use super::length::Meter;
 use super::power::Kilowatt;
 use super::time::Hour;
-use crate::dimension::derived::Energy;
-use crate::scale::{GIGA, KILO, MEGA, Scale};
-use crate::unit::{CTUnit, CTUnitMul};
 
 define_unit_by!(Joule, "joule", "J", CTUnitMul<Newton, Meter>);
 define_unit!(

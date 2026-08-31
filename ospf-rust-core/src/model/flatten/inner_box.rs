@@ -2,7 +2,6 @@
 //! Inner Box Design - Polynomial Internal Types
 
 use std::collections::HashMap;
-
 use super::{CacheKey, Cacheable};
 
 // ============================================================================

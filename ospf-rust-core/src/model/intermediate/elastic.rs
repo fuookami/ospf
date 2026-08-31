@@ -4,7 +4,6 @@
 use crate::model::ObjectiveCategory;
 use crate::token::Token;
 use crate::variable::{ContinuousVariableItem, VariableId, VariableType};
-
 use super::{LinearTriadModel, QuadraticTetradModel};
 
 /// 线性弹性模型构建器。

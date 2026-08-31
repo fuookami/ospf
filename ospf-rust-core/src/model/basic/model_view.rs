@@ -1,8 +1,8 @@
 //! 模型视图 trait（Kotlin 对齐）
 //! Model view traits (Kotlin-aligned)
 
-use crate::model::{BasicModel, MechanismModel};
 use std::fmt::Debug;
+use crate::model::{BasicModel, MechanismModel};
 
 /// 基础模型视图 / Basic model view
 pub trait BasicModelView<V>

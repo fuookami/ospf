@@ -1,19 +1,19 @@
+use std::collections::HashMap;
+use std::ops::{Add, Mul, Sub};
+use std::sync::RwLock;
+use std::time::Duration;
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use ospf_rust_base::{ErrorPosition, Ret, error, read_unwrap, write_unwrap};
+use ospf_rust_math::algebra::value_range::{Bound, IntervalTrait, ValueRange, ValueWrapper};
+use ospf_rust_math::operator::Exponent;
+use ospf_rust_math::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
+use ospf_rust_math::symbol::{Canonical, Linear, OwnedSymbol, Quadratic};
 use crate::dimension::DerivedQuantity;
 use crate::error::{DimensionMismatchError, SymbolRegistryError, UnitConversionError};
 use crate::quantity::Quantity;
 use crate::unit::concept::UnitTrait;
 use crate::unit::derived::{Day, Hour, Microsecond, Millisecond, Minute, Nanosecond, Second, Year};
 use crate::unit::{CTUnit, Unit};
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
-use ospf_rust_base::{ErrorPosition, Ret, error};
-use ospf_rust_math::algebra::value_range::{Bound, IntervalTrait, ValueRange, ValueWrapper};
-use ospf_rust_math::operator::Exponent;
-use ospf_rust_math::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
-use ospf_rust_math::symbol::{Canonical, Linear, OwnedSymbol, Quadratic};
-use std::collections::HashMap;
-use std::ops::{Add, Mul, Sub};
-use std::sync::RwLock;
-use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operation {
@@ -67,12 +67,12 @@ impl SymbolDimensionRegistry {
     }
 
     pub fn register(&self, symbol: DimensionedSymbol) {
-        let mut guard = self.symbol_dimensions.write().unwrap();
+        let mut guard = write_unwrap!(self.symbol_dimensions);
         guard.insert(symbol.symbol.clone(), symbol);
     }
 
     pub fn get_dimension(&self, symbol: &OwnedSymbol) -> Option<DimensionedSymbol> {
-        let guard = self.symbol_dimensions.read().unwrap();
+        let guard = read_unwrap!(self.symbol_dimensions);
         guard.get(symbol).cloned()
     }
 
@@ -81,7 +81,7 @@ impl SymbolDimensionRegistry {
             return Ok(());
         }
 
-        let guard = self.symbol_dimensions.read().unwrap();
+        let guard = read_unwrap!(self.symbol_dimensions);
         let first = guard.get(&symbols[0]).ok_or_else(|| {
             Box::new(error!(SymbolRegistryError {
                 symbol: symbols[0].name().to_string(),
@@ -114,7 +114,7 @@ impl SymbolDimensionRegistry {
         symbol2: &OwnedSymbol,
         operation: Operation,
     ) -> Ret<DerivedQuantity> {
-        let guard = self.symbol_dimensions.read().unwrap();
+        let guard = read_unwrap!(self.symbol_dimensions);
         let dim1 = guard.get(symbol1).ok_or_else(|| {
             Box::new(error!(SymbolRegistryError {
                 symbol: symbol1.name().to_string(),
@@ -149,17 +149,17 @@ impl SymbolDimensionRegistry {
     }
 
     pub fn is_registered(&self, symbol: &OwnedSymbol) -> bool {
-        let guard = self.symbol_dimensions.read().unwrap();
+        let guard = read_unwrap!(self.symbol_dimensions);
         guard.contains_key(symbol)
     }
 
     pub fn unregister(&self, symbol: &OwnedSymbol) -> bool {
-        let mut guard = self.symbol_dimensions.write().unwrap();
+        let mut guard = write_unwrap!(self.symbol_dimensions);
         guard.remove(symbol).is_some()
     }
 
     pub fn clear(&self) {
-        let mut guard = self.symbol_dimensions.write().unwrap();
+        let mut guard = write_unwrap!(self.symbol_dimensions);
         guard.clear();
     }
 }

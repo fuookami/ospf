@@ -1,10 +1,10 @@
 use std::error::Error;
-
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::solver::{FeasibleSolverOutput, solvers::GurobiSolver};
 use ospf_rust_core::variable::{UContinuousVariableItem, VariableId};
 use ospf_rust_framework::solver::{
+
     BendersIterationSnapshot, BendersRuntimeMetrics, FeasibleSolutionV, FrameworkSolveOptions,
     GurobiLinearBendersDecompositionSolver, LinearBendersDecompositionSolver,
 };
@@ -1278,27 +1278,15 @@ impl FullLoadApplication {
         request: &Demo2Request,
         model: &mut MetaModel<f64>,
     ) -> Result<Vec<Vec<usize>>, Box<dyn Error>> {
-        let mut x_idx = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
+        let registration = shared::model_registration::register_variables(
+            request, model, "x", Demo2PipelineMode::FullLoad,
+        )?;
+        shared::model_registration::construct_objective(
+            request, model, &registration, Demo2PipelineMode::FullLoad,
+        )?;
+        apply_domain_pipeline(Demo2PipelineMode::FullLoad, model, request, &registration.x_idx, registration.z)?;
 
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                let var_name = format!("x_{}_{}", c, p);
-                x_idx[c][p] = model.register_variable(
-                    ospf_rust_core::variable::BinaryVariableItem::auto(&var_name),
-                )?;
-            }
-        }
-
-        let mut objective = vec![0.0; model.num_tokens()];
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                objective[x_idx[c][p]] = request.cargos[c].weight;
-            }
-        }
-        model.set_linear_objective(objective, ObjectiveCategory::Maximum);
-        apply_domain_pipeline(Demo2PipelineMode::FullLoad, model, request, &x_idx, None)?;
-
-        Ok(x_idx)
+        Ok(registration.x_idx)
     }
 
     fn build_benders_models(
@@ -1315,35 +1303,19 @@ impl FullLoadApplication {
     > {
         let mut master_model = MetaModel::<f64>::new("framework_demo2_full_load_master");
         let mut sub_model = MetaModel::<f64>::new("framework_demo2_full_load_sub");
-        let mut x_idx_master = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
-        let mut x_idx_sub = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
-        let mut fixed_variable_ids =
-            Vec::with_capacity(request.cargos.len() * request.positions.len());
 
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                let master_var = ospf_rust_core::variable::BinaryVariableItem::auto(&format!(
-                    "x_bm_{}_{}",
-                    c, p
-                ));
-                let shared_id = master_var.id();
-                let sub_var = ospf_rust_core::variable::BinaryVariableItem::create(
-                    shared_id,
-                    &format!("x_bs_{}_{}", c, p),
-                );
-                x_idx_master[c][p] = master_model.register_variable(master_var)?;
-                x_idx_sub[c][p] = sub_model.register_variable(sub_var)?;
-                fixed_variable_ids.push(shared_id);
-            }
-        }
+        let (x_idx_master, x_idx_sub, fixed_variable_ids) =
+            shared::model_registration::register_benders_variables(
+                request, &mut master_model, &mut sub_model, "x",
+            )?;
 
-        let mut objective = vec![0.0; master_model.num_tokens()];
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                objective[x_idx_master[c][p]] = request.cargos[c].weight;
-            }
-        }
-        master_model.set_linear_objective(objective, ObjectiveCategory::Maximum);
+        let registration = shared::model_registration::RegistrationResult {
+            x_idx: x_idx_master.clone(),
+            z: None,
+        };
+        shared::model_registration::construct_objective(
+            request, &mut master_model, &registration, Demo2PipelineMode::FullLoad,
+        )?;
 
         stowage::service::apply_stowage_pipeline(
             &mut master_model,
@@ -1654,29 +1626,21 @@ impl PredistributionApplication {
         request: &Demo2Request,
         model: &mut MetaModel<f64>,
     ) -> Result<Vec<Vec<usize>>, Box<dyn Error>> {
-        let mut x_idx = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                let var_name = format!("x_pre_{}_{}", c, p);
-                x_idx[c][p] = model.register_variable(
-                    ospf_rust_core::variable::BinaryVariableItem::auto(&var_name),
-                )?;
-            }
-        }
-
-        let z = model.register_variable(UContinuousVariableItem::auto("max_deviation"))?;
-        let mut objective = vec![0.0; model.num_tokens()];
-        objective[z] = 1.0;
-        model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+        let registration = shared::model_registration::register_variables(
+            request, model, "x_pre", Demo2PipelineMode::Predistribution,
+        )?;
+        shared::model_registration::construct_objective(
+            request, model, &registration, Demo2PipelineMode::Predistribution,
+        )?;
         apply_domain_pipeline(
             Demo2PipelineMode::Predistribution,
             model,
             request,
-            &x_idx,
-            Some(z),
+            &registration.x_idx,
+            registration.z,
         )?;
 
-        Ok(x_idx)
+        Ok(registration.x_idx)
     }
 
     fn solve(
@@ -1700,33 +1664,21 @@ impl PredistributionApplication {
     > {
         let mut master_model = MetaModel::<f64>::new("framework_demo2_predistribution_master");
         let mut sub_model = MetaModel::<f64>::new("framework_demo2_predistribution_sub");
-        let mut x_idx_master = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
-        let mut x_idx_sub = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
-        let mut fixed_variable_ids =
-            Vec::with_capacity(request.cargos.len() * request.positions.len());
 
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                let master_var = ospf_rust_core::variable::BinaryVariableItem::auto(&format!(
-                    "x_pre_bm_{}_{}",
-                    c, p
-                ));
-                let shared_id = master_var.id();
-                let sub_var = ospf_rust_core::variable::BinaryVariableItem::create(
-                    shared_id,
-                    &format!("x_pre_bs_{}_{}", c, p),
-                );
-                x_idx_master[c][p] = master_model.register_variable(master_var)?;
-                x_idx_sub[c][p] = sub_model.register_variable(sub_var)?;
-                fixed_variable_ids.push(shared_id);
-            }
-        }
+        let (x_idx_master, x_idx_sub, fixed_variable_ids) =
+            shared::model_registration::register_benders_variables(
+                request, &mut master_model, &mut sub_model, "x_pre",
+            )?;
 
         let z = master_model
             .register_variable(UContinuousVariableItem::auto("pre_benders_max_deviation"))?;
-        let mut objective = vec![0.0; master_model.num_tokens()];
-        objective[z] = 1.0;
-        master_model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+        let registration = shared::model_registration::RegistrationResult {
+            x_idx: x_idx_master.clone(),
+            z: Some(z),
+        };
+        shared::model_registration::construct_objective(
+            request, &mut master_model, &registration, Demo2PipelineMode::Predistribution,
+        )?;
 
         stowage::service::apply_stowage_pipeline(
             &mut master_model,
@@ -2030,35 +1982,21 @@ impl WeightRecommendationApplication {
         request: &Demo2Request,
         model: &mut MetaModel<f64>,
     ) -> Result<Vec<Vec<usize>>, Box<dyn Error>> {
-        let mut x_idx = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                let var_name = format!("x_wr_{}_{}", c, p);
-                x_idx[c][p] = model.register_variable(
-                    ospf_rust_core::variable::BinaryVariableItem::auto(&var_name),
-                )?;
-            }
-        }
-
-        let z = model.register_variable(UContinuousVariableItem::auto("wr_max_deviation"))?;
-        let mut objective = vec![0.0; model.num_tokens()];
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                objective[x_idx[c][p]] += request.cargos[c].weight
-                    * request.weight_recommendation_objective.payload_priority;
-            }
-        }
-        objective[z] -= request.weight_recommendation_objective.balance_priority;
-        model.set_linear_objective(objective, ObjectiveCategory::Maximum);
+        let registration = shared::model_registration::register_variables(
+            request, model, "x_wr", Demo2PipelineMode::WeightRecommendation,
+        )?;
+        shared::model_registration::construct_objective(
+            request, model, &registration, Demo2PipelineMode::WeightRecommendation,
+        )?;
         apply_domain_pipeline(
             Demo2PipelineMode::WeightRecommendation,
             model,
             request,
-            &x_idx,
-            Some(z),
+            &registration.x_idx,
+            registration.z,
         )?;
 
-        Ok(x_idx)
+        Ok(registration.x_idx)
     }
 
     fn build_benders_models(
@@ -2076,39 +2014,21 @@ impl WeightRecommendationApplication {
         let mut master_model =
             MetaModel::<f64>::new("framework_demo2_weight_recommendation_master");
         let mut sub_model = MetaModel::<f64>::new("framework_demo2_weight_recommendation_sub");
-        let mut x_idx_master = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
-        let mut x_idx_sub = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
-        let mut fixed_variable_ids =
-            Vec::with_capacity(request.cargos.len() * request.positions.len());
 
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                let master_var = ospf_rust_core::variable::BinaryVariableItem::auto(&format!(
-                    "x_wr_bm_{}_{}",
-                    c, p
-                ));
-                let shared_id = master_var.id();
-                let sub_var = ospf_rust_core::variable::BinaryVariableItem::create(
-                    shared_id,
-                    &format!("x_wr_bs_{}_{}", c, p),
-                );
-                x_idx_master[c][p] = master_model.register_variable(master_var)?;
-                x_idx_sub[c][p] = sub_model.register_variable(sub_var)?;
-                fixed_variable_ids.push(shared_id);
-            }
-        }
+        let (x_idx_master, x_idx_sub, fixed_variable_ids) =
+            shared::model_registration::register_benders_variables(
+                request, &mut master_model, &mut sub_model, "x_wr",
+            )?;
 
         let z = master_model
             .register_variable(UContinuousVariableItem::auto("wr_benders_max_deviation"))?;
-        let mut objective = vec![0.0; master_model.num_tokens()];
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                objective[x_idx_master[c][p]] += request.cargos[c].weight
-                    * request.weight_recommendation_objective.payload_priority;
-            }
-        }
-        objective[z] -= request.weight_recommendation_objective.balance_priority;
-        master_model.set_linear_objective(objective, ObjectiveCategory::Maximum);
+        let registration = shared::model_registration::RegistrationResult {
+            x_idx: x_idx_master.clone(),
+            z: Some(z),
+        };
+        shared::model_registration::construct_objective(
+            request, &mut master_model, &registration, Demo2PipelineMode::WeightRecommendation,
+        )?;
 
         stowage::service::apply_stowage_pipeline(
             &mut master_model,

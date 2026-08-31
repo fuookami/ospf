@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 use std::time::Duration;
-
 use crate::error::Result;
 use crate::error::{CoreError, SolverError};
 use crate::solver::iis::LinearIISModel;

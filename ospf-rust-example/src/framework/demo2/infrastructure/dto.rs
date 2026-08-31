@@ -1,3 +1,4 @@
+/// 货物输入数据 / Cargo input data
 #[derive(Clone)]
 pub struct CargoInput {
     pub name: String,
@@ -8,6 +9,7 @@ pub struct CargoInput {
     pub requires_separation: bool,
 }
 
+/// 货舱位置输入数据 / Cargo position input data
 #[derive(Clone)]
 pub struct PositionInput {
     pub name: String,
@@ -16,6 +18,7 @@ pub struct PositionInput {
     pub lateral_arm: f64,
 }
 
+/// 飞机类型输入 / Aircraft type input
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
 pub enum AircraftTypeInput {
@@ -26,12 +29,14 @@ pub enum AircraftTypeInput {
     Unknown,
 }
 
+/// 求解策略配置 / Solve policy configuration
 #[derive(Clone, Copy, Debug)]
 pub struct SolvePolicy {
     pub prefer_benders: bool,
     pub benders_fallback_to_milp: bool,
 }
 
+/// Benders 自适应配置 / Benders adaptive configuration
 #[derive(Clone, Copy, Debug)]
 pub struct BendersAdaptiveConfig {
     pub min_binary_variables: usize,
@@ -39,6 +44,7 @@ pub struct BendersAdaptiveConfig {
     pub tolerance: f64,
 }
 
+/// Benders 质量覆盖配置 / Benders quality override configuration
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BendersQualityOverrideConfig {
     pub weak_gap_multiplier: Option<f64>,
@@ -57,12 +63,14 @@ pub struct BendersQualityOverrideConfig {
     pub score_trajectory_weight: Option<f64>,
 }
 
+/// 重量推荐目标配置 / Weight recommendation objective configuration
 #[derive(Clone, Copy, Debug)]
 pub struct WeightRecommendationObjectiveConfig {
     pub balance_priority: f64,
     pub payload_priority: f64,
 }
 
+/// 诊断信息 / Diagnostic note
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiagnosticNote {
     pub level: String,
@@ -71,6 +79,7 @@ pub struct DiagnosticNote {
     pub message: String,
 }
 
+/// Demo2 请求数据 / Demo2 request data
 #[derive(Clone)]
 pub struct Demo2Request {
     pub cargos: Vec<CargoInput>,
@@ -164,6 +173,7 @@ impl Demo2Request {
     }
 }
 
+/// Demo2 响应数据 / Demo2 response data
 pub struct Demo2Response {
     pub status: String,
     pub objective: Option<f64>,
@@ -173,6 +183,7 @@ pub struct Demo2Response {
     pub diagnostics: Vec<DiagnosticNote>,
 }
 
+/// 装载顺序响应数据 / Loading order response data
 pub struct LoadingOrderResponse {
     pub status: String,
     pub orders: Vec<String>,

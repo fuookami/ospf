@@ -1,18 +1,20 @@
 use std::error::Error;
-
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::variable::{UContinuousVariableItem, UIntegerVariableItem};
 use ospf_rust_framework::solver::{
+
     ColumnGenerationSolver, FrameworkSolveOptions, GurobiColumnGenerationSolver,
 };
 
 use crate::framework::demo3::domain::{CuttingPlan, Product};
 
+/// LP 结果数据 / LP result data
 pub struct LpResultData {
     pub objective: f64,
     pub shadow_prices: Vec<f64>,
 }
 
+/// 限制性主问题 / Restricted master problem
 pub struct Rmp {
     products: Vec<Product>,
     plans: Vec<CuttingPlan>,

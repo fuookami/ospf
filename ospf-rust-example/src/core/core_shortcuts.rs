@@ -1,11 +1,10 @@
 use std::error::Error;
-
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
 use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel, SymbolicLinearInequality};
 use ospf_rust_core::variable::BinaryVariableItem;
-use ospf_rust_math::symbol::{Linear, LinearMonomial};
-
 use super::common::{
+
     add_constraint_with_metadata, linear_expr_from_indices, read_solution_value,
     register_binary_matrix, set_linear_objective_from_sparse_terms, solve_typed,
 };

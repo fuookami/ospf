@@ -1,6 +1,6 @@
 use std::error::Error;
-
 use ospf_rust_core::solver::{
+
     LinearSolver, SolverCapability, SolverInfo, SolverOutput, SolverStatus,
 };
 use ospf_rust_core::symbol::BinaryzationMethod;

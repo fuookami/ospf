@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::{Arc, OnceLock};
-
 use crate::symbol::flatten::Cacheable;
 use crate::token::{Token, TokenList};
 use crate::variable::VariableId;

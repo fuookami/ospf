@@ -1,6 +1,6 @@
 #![cfg_attr(feature = "nightly", feature(unboxed_closures, fn_traits))]
 
-//! OSPF Rust Framework
+//! 运筹学建模框架 / OSPF Rust Framework
 //!
 //! 运筹学建模框架的高级封装和工具。
 //! High-level abstractions and utilities for operations research modeling.

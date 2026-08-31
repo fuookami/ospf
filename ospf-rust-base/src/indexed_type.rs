@@ -28,7 +28,7 @@ impl<T: 'static> Deref for Index<T> {
 impl<T: 'static> Default for Index<T> {
     fn default() -> Self {
         Self {
-            index: (*IndexGenerator::instance::<T>().lock().unwrap()).next(),
+            index: (*lock_unwrap!(IndexGenerator::instance::<T>())).next(),
             _marker: PhantomData::default(),
         }
     }
@@ -109,7 +109,7 @@ pub trait Indexed<T: 'static = Self>: Sized {
     /// 重置指定类型的索引生成器。
     /// Resets the index generator for the specified type.
     fn flush_with<U: 'static>() {
-        (*IndexGenerator::instance::<U>().lock().unwrap()).flush();
+        (*lock_unwrap!(IndexGenerator::instance::<U>())).flush();
     }
 }
 
@@ -133,7 +133,7 @@ pub trait ManualIndexed<T: 'static = Self>: Indexed<T> {
     /// 使用自动生成的索引设置当前对象（指定类型）。
     /// Sets the current object with an auto-generated index (specified type).
     fn set_indexed_with<U: 'static>(&self) {
-        self.set_index((*IndexGenerator::instance::<U>().lock().unwrap()).next())
+        self.set_index((*lock_unwrap!(IndexGenerator::instance::<U>())).next())
     }
 
     /// 刷新索引为新值。
@@ -145,7 +145,7 @@ pub trait ManualIndexed<T: 'static = Self>: Indexed<T> {
     /// 刷新索引为新值（指定类型）。
     /// Refreshes the index to a new value (specified type).
     fn refresh_index_with<U: 'static>(&self) {
-        self.set_index((*IndexGenerator::instance::<U>().lock().unwrap()).next())
+        self.set_index((*lock_unwrap!(IndexGenerator::instance::<U>())).next())
     }
 }
 
@@ -217,7 +217,7 @@ impl IndexGenerator {
 
     pub fn instance<T: 'static>() -> Arc<Mutex<IndexGeneratorImpl>> {
         let generator = Self::get_or_init();
-        let mut guard = generator.lock().unwrap();
+        let mut guard = lock_unwrap!(generator);
 
         guard
             .inner

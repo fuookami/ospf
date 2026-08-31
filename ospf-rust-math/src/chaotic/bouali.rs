@@ -1,10 +1,10 @@
 //! Bouali attractor system.
 //! Bouali 吸引子系统。
 
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 
 point3_system!(
     /// Bouali 吸引子的一阶欧拉步进模型。

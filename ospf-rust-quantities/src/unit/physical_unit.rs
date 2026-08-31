@@ -124,9 +124,13 @@ pub struct Unit {
 }
 
 impl Unit {
-    /// 创建单位
-    /// Create unit
-    pub fn new(name: String, symbol: String, dimension: DerivedQuantity, scale: Scale) -> Self {
+    /// 创建单位 / Create unit
+    pub fn new(
+        name: String,
+        symbol: String,
+        dimension: DerivedQuantity,
+        scale: Scale,
+    ) -> Self {
         let domain = dimension.domain();
         Self::new_with_conversion_and_domain(
             name,
@@ -137,8 +141,7 @@ impl Unit {
         )
     }
 
-    /// 使用指定取值域创建单位
-    /// Create unit with a specified value domain
+    /// 使用指定取值域创建单位 / Create unit with a specified value domain
     pub fn new_with_domain(
         name: String,
         symbol: String,
@@ -155,8 +158,7 @@ impl Unit {
         )
     }
 
-    /// 使用转换规则创建单位
-    /// Create unit with conversion rule
+    /// 使用转换规则创建单位 / Create unit with conversion rule
     pub fn new_with_conversion(
         name: String,
         symbol: String,
@@ -167,8 +169,7 @@ impl Unit {
         Self::new_with_conversion_and_domain(name, symbol, dimension, conversion, domain)
     }
 
-    /// 使用转换规则和指定取值域创建单位
-    /// Create unit with conversion rule and a specified value domain
+    /// 使用转换规则和指定取值域创建单位 / Create unit with conversion rule and a specified value domain
     pub fn new_with_conversion_and_domain(
         name: String,
         symbol: String,

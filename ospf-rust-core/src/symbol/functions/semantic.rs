@@ -2,13 +2,10 @@
 //! Semantic function-symbol convenience entry points.
 
 use std::fmt::Debug;
-
 use num_traits::FromPrimitive;
-
 use crate::model::LinearInequality;
 use crate::symbol::flatten::Linear;
 use crate::variable::BinaryVariableItem;
-
 use super::{BinaryzationFunction, IfElseFunction, IfThenFunction};
 
 /// Kotlin 概念对齐的条件函数：当 `condition >= 0` 时结果为 1，否则为 0。

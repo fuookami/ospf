@@ -1,8 +1,8 @@
 //! Solution 类型定义
 //! Solution Type Definition
 
-use crate::variable::VariableId;
 use std::collections::HashMap;
+use crate::variable::VariableId;
 
 /// 解向量 / Solution Vector
 ///

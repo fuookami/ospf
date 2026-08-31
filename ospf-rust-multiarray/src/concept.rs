@@ -13,15 +13,15 @@
 //! - `DynShapeContainer`: 动态形状容器 trait
 //!   Dynamic shape container trait
 
-use super::dummy_index::DummyIndex;
-use super::map_index::MapIndex;
-use cc_traits::{Collection, Len};
-use ospf_rust_base::Indices;
 use std::alloc::Allocator;
 use std::fmt::Debug;
 use std::iter::FromIterator;
 use std::mem;
 use std::ops::{Index, IndexMut};
+use cc_traits::{Collection, Len};
+use ospf_rust_base::Indices;
+use super::dummy_index::DummyIndex;
+use super::map_index::MapIndex;
 
 /// 使用 ospf_rust_base 中的 Vec 作为默认容器类型
 /// Use Vec from ospf_rust_base as the default container type

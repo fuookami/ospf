@@ -1,8 +1,8 @@
 //! Chebyshev 映射。
 //! Chebyshev map.
 
-use crate::algebra::Field;
 use num_traits::Float;
+use crate::algebra::Field;
 
 scalar_map!(
     /// Chebyshev 映射。

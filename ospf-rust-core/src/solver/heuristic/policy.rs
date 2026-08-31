@@ -2,7 +2,6 @@
 //! Heuristic Policy Interface
 
 use std::time::Duration;
-
 use super::Iteration;
 
 /// 启发式策略抽象 / Abstract heuristic policy

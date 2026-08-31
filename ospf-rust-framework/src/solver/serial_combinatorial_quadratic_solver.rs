@@ -4,11 +4,11 @@
 //! 本模块提供串行执行的组合二次求解器。
 //! This module provides serial-executing combinatorial quadratic solvers.
 
-use super::parallel_combinatorial_quadratic_solver::QuadraticSolver;
-use super::{FeasibleSolution, FrameworkSolveOptions};
+use std::sync::Arc;
 use ospf_rust_core::error::{CoreError, Result, SolverError};
 use ospf_rust_core::model::intermediate::QuadraticTetradModel;
-use std::sync::Arc;
+use super::parallel_combinatorial_quadratic_solver::QuadraticSolver;
+use super::{FeasibleSolution, FrameworkSolveOptions};
 
 /// 串行组合二次求解器 / Serial Combinatorial Quadratic Solver
 ///

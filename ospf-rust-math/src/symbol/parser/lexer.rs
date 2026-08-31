@@ -154,10 +154,10 @@ impl<'a> Lexer<'a> {
 
         // 读取指数部分 / Read exponent part
         if self.current == Some('e') || self.current == Some('E') {
-            s.push(self.current.unwrap());
+            s.push(self.current.expect("current is e or E / current 是 e 或 E"));
             self.advance();
             if self.current == Some('+') || self.current == Some('-') {
-                s.push(self.current.unwrap());
+                s.push(self.current.expect("current is + or - / current 是 + 或 -"));
                 self.advance();
             }
             while let Some(c) = self.current {

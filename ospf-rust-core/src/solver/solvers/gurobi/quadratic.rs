@@ -2,17 +2,14 @@
 //! Gurobi quadratic solve pipeline
 
 use std::time::Instant;
-
+#[cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
+use grb::expr::{LinExpr, QuadExpr};
 use crate::error::{CoreError, Result, SolverError};
 use crate::model::intermediate::QuadraticTetradModel;
 use crate::solver::SolverOutput;
 use crate::variable::VariableType;
-
 use super::config::GurobiStage;
 use super::solver::GurobiSolver;
-
-#[cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
-use grb::expr::{LinExpr, QuadExpr};
 
 pub(super) fn solve_quadratic(
     solver: &GurobiSolver,

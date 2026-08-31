@@ -4,11 +4,12 @@
 //! 本模块提供列生成求解器的 trait 定义。
 //! This module provides trait definitions for column generation solvers.
 
-use super::FrameworkSolveOptions;
 use ospf_rust_core::error::{CoreError, Result, SolverError};
 #[cfg(all(feature = "nightly", not(feature = "async")))]
 use ospf_rust_core::model::MetaModel;
+use super::FrameworkSolveOptions;
 use ospf_rust_core::solver::{
+
     FeasibleSolverOutput, SolveValue, SolveValueConversionPolicy, SolverOutput,
 };
 use std::sync::Arc;

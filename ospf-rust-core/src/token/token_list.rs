@@ -3,9 +3,9 @@
 
 use std::collections::HashMap;
 use std::sync::RwLock;
-
-use super::{AnyVariable, Token};
+use ospf_rust_base::{read_unwrap, write_unwrap};
 use crate::variable::VariableId;
+use super::{AnyVariable, Token};
 
 // ============================================================================
 // TokenList - Token 列表 Trait
@@ -264,12 +264,12 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> ConcurrentTokenList<V> 
 
     /// 添加 Token / Add token
     pub fn add_token(&self, token: Token<V>) {
-        self.inner.write().unwrap().add_token(token);
+        write_unwrap!(self.inner).add_token(token);
     }
 
     /// 批量添加 Token / Add tokens
     pub fn add_tokens<I: IntoIterator<Item = Token<V>>>(&self, tokens: I) {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = write_unwrap!(self.inner);
         for token in tokens {
             inner.add_token(token);
         }
@@ -277,22 +277,22 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> ConcurrentTokenList<V> 
 
     /// 获取 Token 数量 / Get token count
     pub fn len(&self) -> usize {
-        self.inner.read().unwrap().len()
+        read_unwrap!(self.inner).len()
     }
 
     /// 检查是否为空 / Check if empty
     pub fn is_empty(&self) -> bool {
-        self.inner.read().unwrap().is_empty()
+        read_unwrap!(self.inner).is_empty()
     }
 
     /// 获取 Token 快照 / Get token snapshot
     pub fn tokens_snapshot(&self) -> Vec<Token<V>> {
-        self.inner.read().unwrap().tokens().clone()
+        read_unwrap!(self.inner).tokens().clone()
     }
 
     /// 克隆方式按 ID 查找 / Find token by id (cloned)
     pub fn find_by_id_cloned(&self, id: VariableId) -> Option<Token<V>> {
-        self.inner.read().unwrap().find_by_id(id).cloned()
+        read_unwrap!(self.inner).find_by_id(id).cloned()
     }
 }
 
@@ -318,7 +318,7 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> TokenList<V> for Concur
     where
         V: Clone,
     {
-        let inner = self.inner.read().unwrap();
+        let inner = read_unwrap!(self.inner);
         for token in inner.tokens() {
             if token.solver_index < solution.len() {
                 token.set_result(solution[token.solver_index].clone());
@@ -327,30 +327,30 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> TokenList<V> for Concur
     }
 
     fn clear_solution(&self) {
-        let inner = self.inner.read().unwrap();
+        let inner = read_unwrap!(self.inner);
         for token in inner.tokens() {
             token.clear_result();
         }
     }
 
     fn len(&self) -> usize {
-        self.inner.read().unwrap().len()
+        read_unwrap!(self.inner).len()
     }
 
     fn is_empty(&self) -> bool {
-        self.inner.read().unwrap().is_empty()
+        read_unwrap!(self.inner).is_empty()
     }
 }
 
 impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> ConcurrentTokenList<V> {
     /// 获取读锁 / Get read lock
     pub fn read(&self) -> std::sync::RwLockReadGuard<'_, VecTokenList<V>> {
-        self.inner.read().unwrap()
+        read_unwrap!(self.inner)
     }
 
     /// 获取写锁 / Get write lock
     pub fn write(&self) -> std::sync::RwLockWriteGuard<'_, VecTokenList<V>> {
-        self.inner.write().unwrap()
+        write_unwrap!(self.inner)
     }
 }
 
@@ -371,14 +371,14 @@ pub type ConcurrentTokenListF64 = ConcurrentTokenList<f64>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::variable::{Binary, Continuous, GenericVariableItem, VariableId};
+    use crate::variable::{Binary, Continuous, VariableItem, VariableId};
 
     #[test]
     fn test_vec_token_list() {
         let mut list = VecTokenListF64::new();
 
-        let var1 = GenericVariableItem::<Binary>::auto("x");
-        let var2 = GenericVariableItem::<Continuous>::auto("y");
+        let var1 = VariableItem::<Binary>::auto("x");
+        let var2 = VariableItem::<Continuous>::auto("y");
 
         list.add_token(Token::from_generic(var1, 0));
         list.add_token(Token::from_generic(var2, 1));
@@ -392,7 +392,7 @@ mod tests {
     fn test_token_list_find() {
         let mut list = VecTokenListF64::new();
 
-        let var = GenericVariableItem::<Binary>::auto("z");
+        let var = VariableItem::<Binary>::auto("z");
         let var_id = var.id();
         list.add_token(Token::from_generic(var, 10));
 
@@ -409,8 +409,8 @@ mod tests {
     fn test_token_list_solution() {
         let mut list = VecTokenListF64::new();
 
-        let var1 = GenericVariableItem::<Binary>::auto("x");
-        let var2 = GenericVariableItem::<Binary>::auto("y");
+        let var1 = VariableItem::<Binary>::auto("x");
+        let var2 = VariableItem::<Binary>::auto("y");
 
         list.add_token(Token::from_generic(var1, 0));
         list.add_token(Token::from_generic(var2, 1));
@@ -432,7 +432,7 @@ mod tests {
     fn test_mutable_token_list() {
         let mut list = VecTokenListF64::with_capacity(10);
 
-        let var = GenericVariableItem::<Binary>::auto("x");
+        let var = VariableItem::<Binary>::auto("x");
         let var_id = var.id();
         list.add_token(Token::from_generic(var, 0));
 
@@ -450,7 +450,7 @@ mod tests {
     fn test_concurrent_token_list() {
         let list = ConcurrentTokenListF64::new();
 
-        let var = GenericVariableItem::<Binary>::auto("x");
+        let var = VariableItem::<Binary>::auto("x");
         list.add_token(Token::from_generic(var, 0));
 
         assert_eq!(list.len(), 1);

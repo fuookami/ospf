@@ -1,8 +1,8 @@
 //! 赋范空间 trait
 //! Normed space trait
 
-use super::VectorSpace;
 use num_traits::{One, Zero};
+use super::VectorSpace;
 
 // ============================================================================
 // NormedSpace Trait - 赋范空间

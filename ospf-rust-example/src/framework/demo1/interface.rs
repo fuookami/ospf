@@ -1,5 +1,4 @@
 use std::error::Error;
-
 use crate::framework::demo1::application::Ssp;
 use crate::framework::demo1::infrastructure::dto::{ClientNodeDTO, EdgeDTO, Input};
 

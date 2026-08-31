@@ -8,11 +8,11 @@
 //! - [`CGPipeline`] - 列生成管道，支持 Shadow Price 管理
 //! - [`HAPipeline`] - 启发式算法管道，用于解的评估
 
-use ospf_rust_core::error::{CoreError, ModelError, Result, SolverError};
-use ospf_rust_core::model::mechanism::ConstraintGroup;
 use std::any::Any;
 use std::fmt::Debug;
 use std::sync::Arc;
+use ospf_rust_core::error::{CoreError, ModelError, Result, SolverError};
+use ospf_rust_core::model::mechanism::ConstraintGroup;
 
 /// 基础管道 trait / Basic Pipeline Trait
 ///

@@ -1,11 +1,11 @@
 //! 复平方映射。
 //! Complex squaring map.
 
-use super::helpers::one_point2;
+use std::marker::PhantomData;
+use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use num_traits::Float;
-use std::marker::PhantomData;
+use super::helpers::one_point2;
 
 /// 复平方映射的一阶欧拉步进模型。
 /// First-order Euler step model for the complex squaring map.

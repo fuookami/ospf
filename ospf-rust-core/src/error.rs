@@ -2,7 +2,6 @@
 //! Error Type Definitions
 
 use thiserror::Error;
-
 use crate::variable::VariableId;
 
 /// 核心模块错误类型 / Core module error type

@@ -1,10 +1,10 @@
 //! Bogdanov 映射的一阶欧拉步进模型。
 //! First-order Euler step model for the Bogdanov map.
 
-use super::helpers::one_point2;
+use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use num_traits::Float;
+use super::helpers::one_point2;
 
 /// Bogdanov 映射的一阶欧拉步进模型。
 /// First-order Euler step model for the Bogdanov map.

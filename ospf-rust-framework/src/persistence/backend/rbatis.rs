@@ -2,10 +2,9 @@
 //! Rbatis persistence backend
 
 use ospf_rust_math::symbol::{BooleanExpression, ExpressionValue};
-
 use crate::persistence::{PersistenceFieldResolver, RepositoryQuery, UpdateAssignments};
-
 use super::sqlx::{
+
     SqlxDialect, SqlxRepositoryStatementBuilder, SqlxSql, SqlxTranslationError,
     SqlxTranslatorConfig,
 };

@@ -2,11 +2,11 @@
 //! Gurobi solver core
 
 use std::time::{Duration, Instant};
-
 use crate::error::Result;
 use crate::model::intermediate::{LinearTriadModel, QuadraticTetradModel};
 use crate::model::object::ObjectiveCategory;
 use crate::solver::{
+
     LinearSolver, QuadraticSolver, SolverCapability, SolverInfo, SolverOutput, SolverStatus,
 };
 

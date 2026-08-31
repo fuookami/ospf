@@ -3,9 +3,9 @@
 
 use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
-
 use ospf_rust_math::Trivalent;
 use ospf_rust_math::symbol::{
+
     BinaryOperator, BooleanExpression, ComparisonOperator, ExpressionValue, NullCheckType,
     PatternMatchMode, ScalarExpression, ScalarFunctionNames, UnaryOperator,
     property_path_from_owned_symbol,

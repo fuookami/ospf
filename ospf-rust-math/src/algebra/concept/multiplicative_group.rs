@@ -1,10 +1,10 @@
 //! 乘法群 trait
 //! Multiplicative group trait
 
+use std::ops::Div;
+use crate::operator::{DivRef, NegOneRef};
 use super::MultiplicativeMonoid;
 use super::MultiplicativeMonoidRef;
-use crate::operator::{DivRef, NegOneRef};
-use std::ops::Div;
 
 // ============================================================================
 // MultiplicativeGroup Trait - 乘法群

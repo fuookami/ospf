@@ -1,9 +1,9 @@
 //! 混沌系统共享辅助函数。
 //! Shared helper functions for chaotic systems.
 
+use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::{Point2, Point3};
-use num_traits::Float;
 
 /// 将 f64 值转换为泛型浮点类型，失败时 panic。
 /// Convert an f64 value to a generic float type, panicking on failure.

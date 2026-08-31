@@ -16,12 +16,14 @@
 //! - `with_base_unit()`: 添加基本单位
 //! - `with_derived_unit()`: 添加导出单位
 
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use ospf_rust_base::read_unwrap;
+use ospf_rust_base::write_unwrap;
 use crate::dimension::derived_quantity::DerivedQuantity;
 use crate::dimension::fundamental_quantity::FundamentalQuantityEnum;
 use crate::scale::Scale;
 use crate::unit::physical_unit::Unit;
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 
 // ============================================================================
 // UnitSystem trait - 单位制 trait
@@ -51,7 +53,7 @@ pub trait UnitSystem: std::fmt::Debug + Send + Sync + 'static {
         // 1. 首先检查用户是否指定了标准单位
         // First check if user has specified a standard unit
         {
-            let cache = self.standard_units().read().unwrap();
+            let cache = read_unwrap!(self.standard_units());
             if let Some(unit) = cache.get(dimension) {
                 return Some(unit.clone());
             }
@@ -68,14 +70,14 @@ pub trait UnitSystem: std::fmt::Debug + Send + Sync + 'static {
     /// 允许在单位制创建后动态修改标准单位
     /// Allows dynamic modification of standard units after unit system creation
     fn set_standard_unit(&self, dimension: DerivedQuantity, unit: Unit) {
-        let mut cache = self.standard_units().write().unwrap();
+        let mut cache = write_unwrap!(self.standard_units());
         cache.insert(dimension, unit);
     }
 
     /// 移除指定量纲的标准单位（恢复使用默认推导单位）
     /// Remove standard unit for dimension (revert to default derived unit)
     fn remove_standard_unit(&self, dimension: &DerivedQuantity) -> bool {
-        let mut cache = self.standard_units().write().unwrap();
+        let mut cache = write_unwrap!(self.standard_units());
         cache.remove(dimension).is_some()
     }
 
@@ -99,7 +101,7 @@ pub trait UnitSystem: std::fmt::Debug + Send + Sync + 'static {
         // 2. 检查缓存
         // Check cache
         {
-            let cache = self.derived_cache().read().unwrap();
+            let cache = read_unwrap!(self.derived_cache());
             if let Some(unit) = cache.get(dimension) {
                 return Some(unit.clone());
             }
@@ -112,7 +114,7 @@ pub trait UnitSystem: std::fmt::Debug + Send + Sync + 'static {
         // 4. 存入缓存
         // Store in cache
         {
-            let mut cache = self.derived_cache().write().unwrap();
+            let mut cache = write_unwrap!(self.derived_cache());
             cache.insert(dimension.clone(), unit.clone());
         }
 
@@ -292,7 +294,7 @@ impl UnitSystemBuilder {
             base_units: prototype.base_units().clone(),
             derived_units: HashMap::new(),
             standard_units: {
-                let cache = prototype.standard_units().read().unwrap();
+                let cache = read_unwrap!(prototype.standard_units());
                 cache.clone()
             },
         }
@@ -334,7 +336,7 @@ impl UnitSystemBuilder {
         // 预存导出单位到缓存
         // Pre-store derived units to cache
         {
-            let mut cache = system.derived_cache().write().unwrap();
+            let mut cache = write_unwrap!(system.derived_cache());
             for (dim, unit) in self.derived_units {
                 cache.insert(dim, unit);
             }

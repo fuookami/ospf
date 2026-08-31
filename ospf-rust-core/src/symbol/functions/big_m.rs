@@ -1,7 +1,5 @@
 use std::fmt::Debug;
-
 use num_traits::ToPrimitive;
-
 use crate::symbol::flatten::{Linear, Quadratic};
 use crate::token::Token;
 

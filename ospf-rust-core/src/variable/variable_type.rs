@@ -2,7 +2,6 @@
 //! Variable Type Definitions
 
 use std::fmt::Debug;
-
 use super::VariableRange;
 
 // ============================================================================

@@ -9,8 +9,8 @@
 //! - [`Chebyshev`] - 切比雪夫距离（L∞ 范数）/ Chebyshev distance (L∞ norm)
 //! - [`Minkowski`] - 闵可夫斯基距离 / Minkowski distance
 
-use crate::algebra::Field;
 use num_traits::Float;
+use crate::algebra::Field;
 
 // ============================================================================
 // Distance Trait - 距离度量 trait

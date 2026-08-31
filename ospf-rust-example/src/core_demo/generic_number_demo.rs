@@ -3,7 +3,6 @@
 
 use std::error::Error;
 use std::fmt::Debug;
-
 use ospf_rust_core::model::MetaModel;
 
 fn build_generic_model<V>(name: &str) -> MetaModel<V>

@@ -1,24 +1,3 @@
-// MIT License
-//
-// Copyright (c) 2024 fuookami
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
 
 //! Scale - 比例尺
 //! Scale - Unit scale for physical quantities
@@ -26,15 +5,15 @@
 //! 保持 base^exponent 形式的符号运算，避免精度损失
 //! Maintains base^exponent form for symbolic computation, avoiding precision loss
 
+use std::cmp::Ordering;
+use std::ops::{Div, Mul};
+use std::sync::OnceLock;
 use bigdecimal::{BigDecimal, FromPrimitive};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use once_cell::sync::Lazy;
 use ospf_rust_math::operator::reciprocal::Reciprocal;
 use ospf_rust_math::ordinary;
-use std::cmp::Ordering;
-use std::ops::{Div, Mul};
-use std::sync::OnceLock;
 
 /// ScaleBase - 高精度数值基
 /// ScaleBase - High-precision numeric base
@@ -201,7 +180,7 @@ impl Scale {
             Self::new()
         } else {
             Self::from_base_exponent(
-                ScaleBase::float(BigDecimal::from_f64(base).unwrap_or_else(|| BigDecimal::from(1))),
+                ScaleBase::float(BigDecimal::from_f64(base).expect("无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64")),
                 BigDecimal::from(1),
             )
         }
@@ -579,7 +558,7 @@ impl Mul<f64> for Scale {
 
     fn mul(mut self, rhs: f64) -> Self::Output {
         for factor in self.scales.iter_mut() {
-            factor.exponent += BigDecimal::from_f64(rhs).unwrap()
+            factor.exponent += BigDecimal::from_f64(rhs).expect("无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64")
         }
         Scale {
             scales: self.scales,
@@ -598,7 +577,7 @@ impl Mul<f64> for &Scale {
                 .iter()
                 .map(|f| ScaleFactor {
                     base: f.base.clone(),
-                    exponent: &f.exponent + BigDecimal::from_f64(rhs).unwrap(),
+                    exponent: &f.exponent + BigDecimal::from_f64(rhs).expect("无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64"),
                 })
                 .collect(),
             value: OnceLock::new(),
@@ -611,7 +590,7 @@ impl Div<f64> for Scale {
 
     fn div(mut self, rhs: f64) -> Self::Output {
         for factor in self.scales.iter_mut() {
-            factor.exponent -= BigDecimal::from_f64(rhs).unwrap();
+            factor.exponent -= BigDecimal::from_f64(rhs).expect("无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64");
         }
         Scale {
             scales: self.scales,
@@ -630,7 +609,7 @@ impl Div<f64> for &Scale {
                 .iter()
                 .map(|f| ScaleFactor {
                     base: f.base.clone(),
-                    exponent: &f.exponent - BigDecimal::from_f64(rhs).unwrap(),
+                    exponent: &f.exponent - BigDecimal::from_f64(rhs).expect("无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64"),
                 })
                 .collect(),
             value: OnceLock::new(),

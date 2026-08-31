@@ -2,9 +2,9 @@
 //! MongoDB persistence backend
 
 use std::fmt::{Display, Formatter};
-
 use ospf_rust_math::Trivalent;
 use ospf_rust_math::symbol::{
+
     BooleanExpression, ComparisonOperator, ExpressionValue, NullCheckType, PatternMatchMode,
     ScalarExpression,
 };

@@ -1,9 +1,7 @@
 use std::error::Error;
-
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
 use ospf_rust_core::variable::{ContinuousVariableItem, VariableRange};
-use ospf_rust_math::symbol::{Linear, LinearMonomial};
-
 use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]

@@ -1,6 +1,5 @@
 use std::f64::consts::PI;
 use std::sync::Arc;
-
 use crate::model::BasicModel;
 use crate::symbol::flatten::{Linear, LinearMonomial};
 use crate::symbol::function::*;

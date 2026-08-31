@@ -1,8 +1,8 @@
 //! 错误处理模块。
 //! Error handling module.
 
-use paste::paste;
 use std::fmt::{Debug, Display, Formatter};
+use paste::paste;
 use strum::{Display, EnumString};
 
 /// 错误码枚举。

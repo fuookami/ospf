@@ -1,11 +1,11 @@
 //! ValueWrapper - 值包装器
 //! ValueWrapper - Value wrapper
 
-use crate::algebra::concept::Infinite;
-use num_traits::{One, Zero};
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, Div, Mul, Neg, Sub};
+use num_traits::{One, Zero};
+use crate::algebra::concept::Infinite;
 
 // ============================================================================
 // ValueWrapper<T> - 值包装器

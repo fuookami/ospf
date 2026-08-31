@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-
 use crate::framework_demo::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 
 pub struct LoadingEffectivenessAggregation {

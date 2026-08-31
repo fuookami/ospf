@@ -1,9 +1,9 @@
 //! 几何便捷构造函数
 //! Geometry convenience factory functions
 
-use super::{Point2, Point3, Vector2, Vector3};
-use crate::algebra::Field;
 use num_traits::Float;
+use crate::algebra::Field;
+use super::{Point2, Point3, Vector2, Vector3};
 
 /// 创建 2D 点。
 /// Create a 2D point.

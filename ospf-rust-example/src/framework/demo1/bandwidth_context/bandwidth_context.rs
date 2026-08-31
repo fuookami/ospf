@@ -1,8 +1,6 @@
 use std::error::Error;
-
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::variable::UContinuousVariableItem;
-
 use crate::framework::demo1::route_context::RouteContext;
 
 pub struct BandwidthContext {

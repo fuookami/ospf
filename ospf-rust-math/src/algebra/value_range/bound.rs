@@ -1,10 +1,10 @@
 //! Bound - 边界
 //! Bound - Boundary
 
+use std::fmt;
+use crate::operator::tolerance::{Tolerance, TolerancedEq, TolerancedOrd};
 use super::interval::{Interval, IntervalTrait};
 use super::value_wrapper::ValueWrapper;
-use crate::operator::tolerance::{Tolerance, TolerancedEq, TolerancedOrd};
-use std::fmt;
 
 // ============================================================================
 // Bound<T, I> - 边界

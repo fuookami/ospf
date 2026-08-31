@@ -25,13 +25,13 @@
 //! let perimeter = triangle.perimeter();
 //! ```
 
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use num_traits::Float;
+use crate::algebra::{Epsilon, Field, InnerProductSpace, NormedSpace};
 use super::circle::Circle;
 use super::edge::Edge;
 use super::point::{Point, Point2};
 use super::vector::Vector;
-use crate::algebra::{Epsilon, Field, InnerProductSpace, NormedSpace};
-use num_traits::Float;
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 // ============================================================================
 // Triangle - 泛型三角形

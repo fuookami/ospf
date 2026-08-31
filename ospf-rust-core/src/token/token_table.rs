@@ -3,10 +3,10 @@
 
 use std::collections::HashMap;
 use std::sync::RwLock;
-
-use super::{MutableTokenList, Token, TokenList, VecTokenList};
+use ospf_rust_base::{read_unwrap, write_unwrap};
 use crate::error::{Result, VariableError};
 use crate::variable::{VariableId, VariableType};
+use super::{MutableTokenList, Token, TokenList, VecTokenList};
 
 // ============================================================================
 // TokenTable - Token 表 Trait
@@ -238,49 +238,47 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> ConcurrentTokenTable<V>
 
     /// 注册变量 / Register variable
     pub fn register(&self, token: Token<V>) -> Result<usize> {
-        self.inner.write().unwrap().register(token)
+        write_unwrap!(self.inner).register(token)
     }
 
     /// 批量注册变量 / Register variables in batch
     pub fn register_batch(&self, tokens: Vec<Token<V>>) -> Result<Vec<usize>> {
-        self.inner.write().unwrap().register_batch(tokens)
+        write_unwrap!(self.inner).register_batch(tokens)
     }
 
     /// 获取 Token 数量 / Get token count
     pub fn len(&self) -> usize {
-        self.inner.read().unwrap().len()
+        read_unwrap!(self.inner).len()
     }
 
     /// 检查是否为空 / Check if empty
     pub fn is_empty(&self) -> bool {
-        self.inner.read().unwrap().is_empty()
+        read_unwrap!(self.inner).is_empty()
     }
 
     /// 获取读锁 / Get read lock
     pub fn read(&self) -> std::sync::RwLockReadGuard<'_, VecTokenTable<V>> {
-        self.inner.read().unwrap()
+        read_unwrap!(self.inner)
     }
 
     /// 获取写锁 / Get write lock
     pub fn write(&self) -> std::sync::RwLockWriteGuard<'_, VecTokenTable<V>> {
-        self.inner.write().unwrap()
+        write_unwrap!(self.inner)
     }
 
     /// 获取 Token 快照 / Get token snapshot
     pub fn tokens_snapshot(&self) -> Vec<Token<V>> {
-        self.inner.read().unwrap().tokens().clone()
+        read_unwrap!(self.inner).tokens().clone()
     }
 
     /// 克隆方式按 ID 查找 / Find token by id (cloned)
     pub fn find_by_id_cloned(&self, id: VariableId) -> Option<Token<V>> {
-        self.inner.read().unwrap().find_by_id(id).cloned()
+        read_unwrap!(self.inner).find_by_id(id).cloned()
     }
 
     /// 克隆方式按类型查询 / Query by type (cloned)
     pub fn tokens_by_type_cloned(&self, var_type: VariableType) -> Vec<Token<V>> {
-        self.inner
-            .read()
-            .unwrap()
+        read_unwrap!(self.inner)
             .tokens_by_type(var_type)
             .into_iter()
             .cloned()
@@ -305,7 +303,7 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> TokenList<V> for Concur
     where
         V: Clone,
     {
-        let inner = self.inner.read().unwrap();
+        let inner = read_unwrap!(self.inner);
         for token in inner.tokens() {
             if token.solver_index < solution.len() {
                 token.set_result(solution[token.solver_index].clone());
@@ -314,18 +312,18 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> TokenList<V> for Concur
     }
 
     fn clear_solution(&self) {
-        let inner = self.inner.read().unwrap();
+        let inner = read_unwrap!(self.inner);
         for token in inner.tokens() {
             token.clear_result();
         }
     }
 
     fn len(&self) -> usize {
-        self.inner.read().unwrap().len()
+        read_unwrap!(self.inner).len()
     }
 
     fn is_empty(&self) -> bool {
-        self.inner.read().unwrap().is_empty()
+        read_unwrap!(self.inner).is_empty()
     }
 }
 
@@ -354,15 +352,15 @@ pub type ConcurrentTokenTableF64 = ConcurrentTokenTable<f64>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::variable::{Binary, Continuous, GenericVariableItem, Integer};
+    use crate::variable::{Binary, Continuous, VariableItem, Integer};
 
     #[test]
     fn test_vec_token_table() {
         let mut table = VecTokenTableF64::new();
 
-        let var1 = GenericVariableItem::<Binary>::auto("x");
-        let var2 = GenericVariableItem::<Continuous>::auto("y");
-        let var3 = GenericVariableItem::<Integer>::auto("z");
+        let var1 = VariableItem::<Binary>::auto("x");
+        let var2 = VariableItem::<Continuous>::auto("y");
+        let var3 = VariableItem::<Integer>::auto("z");
 
         let idx1 = table.register(Token::from_generic(var1, 0)).unwrap();
         let idx2 = table.register(Token::from_generic(var2, 0)).unwrap();
@@ -379,7 +377,7 @@ mod tests {
     fn test_token_table_duplicate() {
         let mut table = VecTokenTableF64::new();
 
-        let var = GenericVariableItem::<Binary>::auto("x");
+        let var = VariableItem::<Binary>::auto("x");
         table.register(Token::from_generic(var.clone(), 0)).unwrap();
 
         // 重复注册应该失败 / Duplicate registration should fail
@@ -391,9 +389,9 @@ mod tests {
     fn test_token_table_by_type() {
         let mut table = VecTokenTableF64::new();
 
-        let var1 = GenericVariableItem::<Binary>::auto("x1");
-        let var2 = GenericVariableItem::<Binary>::auto("x2");
-        let var3 = GenericVariableItem::<Continuous>::auto("y");
+        let var1 = VariableItem::<Binary>::auto("x1");
+        let var2 = VariableItem::<Binary>::auto("x2");
+        let var3 = VariableItem::<Continuous>::auto("y");
 
         table.register(Token::from_generic(var1, 0)).unwrap();
         table.register(Token::from_generic(var2, 0)).unwrap();
@@ -410,9 +408,9 @@ mod tests {
     fn test_token_table_statistics() {
         let mut table = VecTokenTableF64::new();
 
-        let var1 = GenericVariableItem::<Binary>::auto("x");
-        let var2 = GenericVariableItem::<Continuous>::auto("y");
-        let var3 = GenericVariableItem::<Integer>::auto("z");
+        let var1 = VariableItem::<Binary>::auto("x");
+        let var2 = VariableItem::<Continuous>::auto("y");
+        let var3 = VariableItem::<Integer>::auto("z");
 
         table.register(Token::from_generic(var1, 0)).unwrap();
         table.register(Token::from_generic(var2, 0)).unwrap();
@@ -430,7 +428,7 @@ mod tests {
     fn test_concurrent_token_table() {
         let table = ConcurrentTokenTableF64::new();
 
-        let var = GenericVariableItem::<Binary>::auto("x");
+        let var = VariableItem::<Binary>::auto("x");
         let idx = table.register(Token::from_generic(var, 0)).unwrap();
 
         assert_eq!(idx, 0);

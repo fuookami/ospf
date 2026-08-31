@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-
 use crate::framework_demo::demo2::domain::redundancy::context::RedundancyContext;
 
 pub struct RedundancyAggregation {

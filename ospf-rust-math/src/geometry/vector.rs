@@ -30,11 +30,11 @@
 //! assert!(unit_norm_diff.abs() < 1e-10);
 //! ```
 
-use super::point::Point;
-use crate::algebra::{Epsilon, Field, InnerProductSpace, NormedSpace, VectorSpace};
-use num_traits::{Float, One, Zero};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
+use num_traits::{Float, One, Zero};
+use crate::algebra::{Epsilon, Field, InnerProductSpace, NormedSpace, VectorSpace};
+use super::point::Point;
 
 // ============================================================================
 // Vector - 泛型向量

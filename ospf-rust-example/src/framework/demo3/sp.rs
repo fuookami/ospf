@@ -1,13 +1,14 @@
 use std::error::Error;
-
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::variable::UIntegerVariableItem;
 use ospf_rust_framework::solver::{
+
     ColumnGenerationSolver, FrameworkSolveOptions, GurobiColumnGenerationSolver,
 };
 
 use crate::framework::demo3::domain::{CuttingPlan, Product};
 
+/// 子问题 / Subproblem
 pub struct Sp;
 
 impl Sp {

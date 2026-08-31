@@ -25,11 +25,11 @@
 //!    Transform: MetaModel -> MechanismModel -> LinearTriadModel
 //! 5. 求解 / Solve
 
-use super::common::solve_typed;
+use ospf_rust_multiarray::Shape;
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
 use ospf_rust_core::variable::{Binary, VariableCombination1D};
-use ospf_rust_math::symbol::{Linear, LinearMonomial};
-use ospf_rust_multiarray::Shape;
+use super::common::solve_typed;
 
 /// 公司数据结构 / Company data structure
 #[derive(Debug, Clone)]

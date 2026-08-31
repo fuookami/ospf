@@ -1,9 +1,9 @@
 //! 乘法半群 trait
 //! Multiplicative semigroup trait
 
-use crate::operator::MulRef;
 use std::fmt::Debug;
 use std::ops::Mul;
+use crate::operator::MulRef;
 
 // ============================================================================
 // MultiplicativeSemigroup Trait - 乘法半群

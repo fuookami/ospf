@@ -4,10 +4,10 @@
 //! 本模块提供多项式矩阵形式的 trait 和结构体定义。
 //! This module provides trait and struct definitions for polynomial matrix forms.
 
+use std::ops::{Add, AddAssign, Div, Mul};
+use num_traits::Zero;
 use crate::symbol::OwnedSymbol;
 use crate::symbol::{Linear, Quadratic};
-use num_traits::Zero;
-use std::ops::{Add, AddAssign, Div, Mul};
 
 // ============================================================================
 // 矩阵形式结构体 / Matrix Form Structures

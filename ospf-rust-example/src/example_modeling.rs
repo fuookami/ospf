@@ -4,10 +4,10 @@
 //! Example modeling helpers (Kotlin-aligned entry)
 
 use std::error::Error;
-
 use ospf_rust_core::error::{CoreError, SolverError};
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::solver::{
+
     FeasibleSolverOutput, SolveValueConversionPolicy, Solver, SolverExt, SolverOutput,
 };
 

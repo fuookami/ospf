@@ -13,8 +13,8 @@
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-
 use crate::symbol::inequality::{
+
     CanonicalInequality, Comparison, LinearInequality, QuadraticInequality,
 };
 use crate::symbol::{

@@ -1,10 +1,10 @@
 //! 生物混沌模型。
 //! Biology chaotic model.
 
-use super::helpers::{one_point3};
+use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use num_traits::Float;
+use super::helpers::{one_point3};
 
 point3_system!(
     /// 生物混沌模型的一阶欧拉步进模型。

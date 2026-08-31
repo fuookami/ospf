@@ -251,7 +251,7 @@ where
     {
         Self {
             list: (0..shape.len())
-                .map(|index| generator(index, &shape.vector_of(index).unwrap()))
+                .map(|index| generator(index, &shape.vector_of(index).expect("linear index should be valid in new_by")))
                 .collect(),
             shape,
             _marker: PhantomData,
@@ -307,8 +307,8 @@ where
         let mut reordered: Vec<T> = vec![self.list[0].clone(); self.len()];
 
         for i in 0..self.len() {
-            let vector = self.shape.vector_of(i).unwrap();
-            let new_index = new_shape.index_of(&vector).unwrap();
+            let vector = self.shape.vector_of(i).expect("linear index should be valid in to_storage_order");
+            let new_index = new_shape.index_of(&vector).expect("vector should be valid in to_storage_order");
             reordered[new_index] = self.list[i].clone();
         }
 
@@ -455,7 +455,7 @@ where
         }
 
         for i in self.len()..new_shape.len() {
-            let vector = new_shape.vector_of(i).unwrap();
+            let vector = new_shape.vector_of(i).expect("linear index should be valid in reshape_by");
             new_list.push(generator(i, &vector));
         }
 
@@ -1010,7 +1010,7 @@ where
         let index = self
             .shape
             .index_of(vector)
-            .expect("Vector index out of bounds");
+            .expect("Vector index out of bounds / 向量索引越界");
         &self.list[index]
     }
 }
@@ -1024,7 +1024,7 @@ where
         let index = self
             .shape
             .index_of(vector)
-            .expect("Vector index out of bounds");
+            .expect("Vector index out of bounds / 向量索引越界");
         &mut self.list[index]
     }
 }
@@ -1178,7 +1178,7 @@ where
         }
 
         let index = self.current_index;
-        let vector = self.array.shape.vector_of(index).unwrap();
+        let vector = self.array.shape.vector_of(index).expect("linear index should be valid in MultiArrayEnumerateIter::next");
         let element = &self.array[index];
         self.current_index += 1;
 

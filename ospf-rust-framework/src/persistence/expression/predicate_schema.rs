@@ -3,8 +3,8 @@
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
-
 use ospf_rust_math::symbol::{
+
     BooleanExpression, ComparisonOperator, ExpressionValue, PathBuilder, PatternMatchMode,
     PropertyPath, ScalarExpression,
 };

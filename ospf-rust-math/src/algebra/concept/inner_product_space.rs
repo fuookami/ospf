@@ -1,8 +1,8 @@
 //! 内积空间 trait
 //! Inner product space trait
 
-use super::NormedSpace;
 use num_traits::{Float, One, Zero};
+use super::NormedSpace;
 
 // ============================================================================
 // InnerProductSpace Trait - 内积空间

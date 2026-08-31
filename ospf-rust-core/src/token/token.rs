@@ -7,7 +7,7 @@ use std::sync::RwLock;
 use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::variable::{
-    GenericVariableItem, VariableId, VariableRange, VariableType, VariableTypeTrait,
+    VariableItem, VariableId, VariableRange, VariableType, VariableTypeTrait,
 };
 
 // ============================================================================
@@ -126,7 +126,7 @@ where
     V: Clone + Debug + Send + Sync + 'static,
 {
     /// 从泛型变量项创建 / Create from generic variable item
-    pub fn from_generic<VT: VariableTypeTrait>(item: &GenericVariableItem<VT>) -> Self
+    pub fn from_generic<VT: VariableTypeTrait>(item: &VariableItem<VT>) -> Self
     where
         VT::Value: IntoValue<V>,
     {
@@ -222,8 +222,8 @@ impl<V: Clone + Debug + Send + Sync + 'static> AnyVariable<V> {
         Self { data }
     }
 
-    /// 从 GenericVariableItem 创建 / Create from GenericVariableItem
-    pub fn from_generic<VT>(item: GenericVariableItem<VT>) -> Self
+    /// 从 VariableItem 创建 / Create from VariableItem
+    pub fn from_generic<VT>(item: VariableItem<VT>) -> Self
     where
         VT: VariableTypeTrait,
         VT::Value: IntoValue<V>,
@@ -305,10 +305,10 @@ impl<V: Clone + Debug + Send + Sync + 'static> AnyVariable<V> {
 ///
 /// ```rust
 /// use ospf_rust_core::token::{Token, AnyVariable};
-/// use ospf_rust_core::variable::{Binary, GenericVariableItem};
+/// use ospf_rust_core::variable::{Binary, VariableItem};
 ///
 /// // 创建二进制变量的 Token
-/// let var = GenericVariableItem::<Binary>::auto("x");
+/// let var = VariableItem::<Binary>::auto("x");
 /// let token = Token::from_generic(var, 0);
 ///
 /// // 设置求解结果
@@ -339,7 +339,7 @@ impl<V: Clone + Debug + Send + Sync + 'static> Token<V> {
     }
 
     /// 从泛型变量创建 Token / Create token from generic variable
-    pub fn from_generic<VT>(variable: GenericVariableItem<VT>, solver_index: usize) -> Self
+    pub fn from_generic<VT>(variable: VariableItem<VT>, solver_index: usize) -> Self
     where
         VT: VariableTypeTrait,
         VT::Value: IntoValue<V>,
@@ -349,17 +349,17 @@ impl<V: Clone + Debug + Send + Sync + 'static> Token<V> {
 
     /// 设置求解结果 / Set solution result
     pub fn set_result(&self, value: V) {
-        *self.result.write().unwrap() = Some(value);
+        *ospf_rust_base::write_unwrap!(&self.result) = Some(value);
     }
 
     /// 获取求解结果 / Get solution result
     pub fn get_result(&self) -> Option<V> {
-        self.result.read().unwrap().clone()
+        ospf_rust_base::read_unwrap!(&self.result).clone()
     }
 
     /// 清除求解结果 / Clear solution result
     pub fn clear_result(&self) {
-        *self.result.write().unwrap() = None;
+        *ospf_rust_base::write_unwrap!(&self.result) = None;
     }
 
     /// 获取变量类型 / Get variable type
@@ -379,7 +379,7 @@ impl<V: Clone + Debug + Send + Sync + 'static> Token<V> {
 
     /// 检查是否有结果 / Check if has result
     pub fn has_result(&self) -> bool {
-        self.result.read().unwrap().is_some()
+        ospf_rust_base::read_unwrap!(&self.result).is_some()
     }
 }
 
@@ -460,7 +460,7 @@ mod tests {
 
     #[test]
     fn test_any_variable() {
-        let var = GenericVariableItem::<Binary>::auto("x");
+        let var = VariableItem::<Binary>::auto("x");
         let any_var: AnyVariableF64 = AnyVariable::from_generic(var);
 
         assert_eq!(any_var.name(), "x");
@@ -469,7 +469,7 @@ mod tests {
 
     #[test]
     fn test_token_creation() {
-        let var = GenericVariableItem::<Continuous>::auto("y");
+        let var = VariableItem::<Continuous>::auto("y");
         let token = TokenF64::from_generic(var, 0);
 
         assert_eq!(token.name(), "y");
@@ -480,7 +480,7 @@ mod tests {
 
     #[test]
     fn test_token_result() {
-        let var = GenericVariableItem::<Binary>::auto("x");
+        let var = VariableItem::<Binary>::auto("x");
         let token = TokenF64::from_generic(var, 0);
 
         token.set_result(1.0);
@@ -494,7 +494,7 @@ mod tests {
 
     #[test]
     fn test_token_clone() {
-        let var = GenericVariableItem::<Binary>::auto("x");
+        let var = VariableItem::<Binary>::auto("x");
         let token1 = TokenF64::from_generic(var, 0);
         token1.set_result(1.0);
 

@@ -1,5 +1,4 @@
 use std::error::Error;
-
 use crate::framework::demo3::domain::{Product, initial_plans};
 use crate::framework::demo3::rmp::Rmp;
 use crate::framework::demo3::sp::Sp;

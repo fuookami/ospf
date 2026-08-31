@@ -14,10 +14,10 @@
 //! - **符号运算兼容 / Symbolic operation compatible**: 支持 `Linear<f64>`、`Quadratic<f64>` 等符号类型
 //!   Compatible with symbolic types like `Linear<f64>`, `Quadratic<f64>`
 
-use crate::{AbstractShape, DynShape, MultiArray, MultiArrayCollection, Shape};
+use std::ops::AddAssign;
 use cc_traits::CollectionRef;
 use num_traits::Zero;
-use std::ops::AddAssign;
+use crate::{AbstractShape, DynShape, MultiArray, MultiArrayCollection, Shape};
 
 /// 求和错误类型
 /// Summation error type
@@ -114,7 +114,7 @@ where
         // 获取当前形状
         // Get current shape
         let current_shape: Vec<usize> = (0..self.shape.dimension())
-            .map(|i| self.shape.len_of_dimension(i).unwrap())
+            .map(|i| self.shape.len_of_dimension(i).expect("dimension should be valid in sum_axis/sum_axes/cumsum_axis"))
             .collect();
 
         // 计算新形状（移除求和轴）
@@ -135,7 +135,7 @@ where
         for linear_idx in 0..self.len() {
             // 计算向量坐标
             // Calculate vector coordinates
-            let vector = self.shape.vector_of(linear_idx).unwrap();
+            let vector = self.shape.vector_of(linear_idx).expect("linear index should be valid in sum_axis");
 
             // 计算结果坐标（移除求和轴）
             // Calculate result coordinates (remove summed axis)
@@ -149,7 +149,7 @@ where
 
             // 计算结果的线性索引并累加
             // Calculate linear index of result and accumulate
-            let result_linear_idx = result.shape.index_of(&result_vector).unwrap();
+            let result_linear_idx = result.shape.index_of(&result_vector).expect("result vector should be valid in sum_axis");
             result[result_linear_idx] += element;
         }
 
@@ -164,7 +164,7 @@ where
             // 没有指定轴，返回原数组的克隆（转换为 DynShape）
             // No axes specified, return clone of original array (converted to DynShape)
             let new_shape: Vec<usize> = (0..self.shape.dimension())
-                .map(|i| self.shape.len_of_dimension(i).unwrap())
+                .map(|i| self.shape.len_of_dimension(i).expect("dimension should be valid in sum_axes"))
                 .collect();
             let new_dyn_shape = DynShape::new(new_shape);
             let mut result = MultiArray::<T, DynShape>::new_with(new_dyn_shape, T::zero());
@@ -187,7 +187,7 @@ where
         // 获取当前形状
         // Get current shape
         let current_shape: Vec<usize> = (0..self.shape.dimension())
-            .map(|i| self.shape.len_of_dimension(i).unwrap())
+            .map(|i| self.shape.len_of_dimension(i).expect("dimension should be valid in sum_axis/sum_axes/cumsum_axis"))
             .collect();
 
         // 计算新形状（移除所有求和轴）
@@ -215,7 +215,7 @@ where
         for linear_idx in 0..self.len() {
             // 计算向量坐标
             // Calculate vector coordinates
-            let vector = self.shape.vector_of(linear_idx).unwrap();
+            let vector = self.shape.vector_of(linear_idx).expect("linear index should be valid in sum_axes");
 
             // 计算结果坐标（移除求和轴）
             // Calculate result coordinates (remove summed axes)
@@ -235,7 +235,7 @@ where
 
             // 计算结果的线性索引并累加
             // Calculate linear index of result and accumulate
-            let result_linear_idx = result.shape.index_of(&result_vector).unwrap();
+            let result_linear_idx = result.shape.index_of(&result_vector).expect("result vector should be valid in sum_axes");
             result[result_linear_idx] += element;
         }
 
@@ -276,7 +276,7 @@ where
         // 获取当前形状
         // Get current shape
         let current_shape: Vec<usize> = (0..self.shape.dimension())
-            .map(|i| self.shape.len_of_dimension(i).unwrap())
+            .map(|i| self.shape.len_of_dimension(i).expect("dimension should be valid in sum_axis/sum_axes/cumsum_axis"))
             .collect();
 
         // 创建结果数组（形状相同）
@@ -286,7 +286,7 @@ where
 
         // 计算沿该轴的步长和相邻元素距离
         // Calculate stride and adjacent element distance along the axis
-        let axis_stride = self.shape.offset_of_dimension(axis).unwrap();
+        let axis_stride = self.shape.offset_of_dimension(axis).expect("axis should be valid in cumsum_axis");
         let axis_size = current_shape[axis];
 
         // 计算每个"行"的大小（沿轴方向的一组元素）

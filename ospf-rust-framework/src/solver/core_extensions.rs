@@ -8,10 +8,10 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-
 use ospf_rust_core::error::{CoreError, Result, SolverError};
 use ospf_rust_core::model::flatten::{Quadratic, QuadraticMonomial};
 use ospf_rust_core::model::intermediate::{
+
     LPExportableModel, LinearTriadModel, QuadraticTetradModel, SparseVector,
 };
 use ospf_rust_core::model::mechanism::{ConstraintRelation, LinearInequality, MechanismModel};

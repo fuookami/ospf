@@ -1,15 +1,15 @@
 //! 抽象回调模型基类
 //! Abstract Callback Model Base Class
 
-use super::callback_model_trait::{AbstractCallBackModelInterface, CallBackModelInterface};
-use super::solution::{Solution, SolutionStatus};
-use crate::error::CoreError;
-use crate::solver::{SolverOutput, SolverStatus};
-use crate::variable::VariableId;
-use async_trait::async_trait;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use async_trait::async_trait;
+use crate::error::CoreError;
+use crate::solver::{SolverOutput, SolverStatus};
+use crate::variable::VariableId;
+use super::callback_model_trait::{AbstractCallBackModelInterface, CallBackModelInterface};
+use super::solution::{Solution, SolutionStatus};
 
 /// 回调模型求解执行器 / Callback model solve executor
 pub type SolveExecutor<V> =

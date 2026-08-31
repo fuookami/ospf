@@ -4,11 +4,11 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
-
 use super::basic::ConstraintPriority;
 use super::flatten::{Linear, LinearMonomial};
 use super::intermediate::{LinearTriadModel, QuadraticTetradModel};
 use super::mechanism::{
+
     BasicMechanismModel, Constraint, ConstraintGroup, ConstraintRelation, LinearInequality,
     MechanismModel, MetaConstraint, SymbolicLinearConstraint, SymbolicLinearInequality,
     SymbolicQuadraticConstraint, SymbolicQuadraticInequality,

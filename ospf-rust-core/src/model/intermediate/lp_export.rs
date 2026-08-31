@@ -5,12 +5,11 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::thread;
-
 use crate::model::ConstraintRelation;
 use crate::model::ObjectiveCategory;
 use crate::variable::VariableType;
-
 use super::{
+
     BasicLinearTriadModel, BasicQuadraticTetradModel, LinearTriadModel, QuadraticTetradModel,
     SparseMatrix, SparseVector,
 };

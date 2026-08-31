@@ -1,14 +1,14 @@
 //! 运行时表达式系统
 //! Runtime expression system
 
-use crate::Trivalent;
-use crate::symbol::{DynSymbol, OwnedSymbol, Symbol, SymbolDynId};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
 use std::ops::{BitAnd, BitOr, Not as StdNot};
 use std::str::FromStr;
+use crate::Trivalent;
+use crate::symbol::{DynSymbol, OwnedSymbol, Symbol, SymbolDynId};
 
 /// 属性路径解析错误。
 /// Property path parse error.
@@ -2568,7 +2568,7 @@ where
                 .collect::<Vec<_>>();
             match filtered.len() {
                 0 => BooleanExpression::Constant(Trivalent::True),
-                1 => filtered.into_iter().next().unwrap(),
+                1 => filtered.into_iter().next().expect("filtered has exactly one element / filtered 恰好有一个元素"),
                 _ => BooleanExpression::And(filtered),
             }
         }
@@ -2589,7 +2589,7 @@ where
                 .collect::<Vec<_>>();
             match filtered.len() {
                 0 => BooleanExpression::Constant(Trivalent::False),
-                1 => filtered.into_iter().next().unwrap(),
+                1 => filtered.into_iter().next().expect("filtered has exactly one element / filtered 恰好有一个元素"),
                 _ => BooleanExpression::Or(filtered),
             }
         }
@@ -3426,7 +3426,7 @@ mod parser_support {
                             .current_token()
                             .token_type
                             .pattern_match_mode()
-                            .unwrap();
+                            .expect("token is pattern operator / token 是模式操作符");
                         self.advance();
                         self.parse_pattern_match(path, mode, true)
                     } else {
@@ -3441,7 +3441,7 @@ mod parser_support {
                     self.parse_in_expression(path, false)
                 }
                 token_type if token_type.is_pattern_operator() => {
-                    let mode = token_type.pattern_match_mode().unwrap();
+                    let mode = token_type.pattern_match_mode().expect("token is pattern operator / token 是模式操作符");
                     self.advance();
                     self.parse_pattern_match(path, mode, false)
                 }

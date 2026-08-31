@@ -1,7 +1,7 @@
 //! Error types for quantities.
 
-use ospf_rust_base::{Error, ErrorCode, ErrorPosition, WithErrorPosition, error_type};
 use std::fmt::{Debug, Display, Formatter};
+use ospf_rust_base::{Error, ErrorCode, ErrorPosition, WithErrorPosition, error_type};
 
 error_type!(
     #[derive(Clone)]

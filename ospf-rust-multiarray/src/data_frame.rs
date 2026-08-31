@@ -1,11 +1,11 @@
+use std::any::Any;
+use std::collections::HashMap;
+use std::ops::{Bound, Deref, DerefMut, Index, IndexMut, Range, RangeBounds};
 use super::concept::AccessOrder;
 use super::dummy_index::DummyIndex;
 use super::multi_array::{MultiArray, MultiArrayBuilder, MultiArrayCollection};
 use super::multi_array_view::MultiArrayView;
 use super::shape::{AbstractShape, Shape};
-use std::any::Any;
-use std::collections::HashMap;
-use std::ops::{Bound, Deref, DerefMut, Index, IndexMut, Range, RangeBounds};
 
 pub struct DataFrame<T = Box<dyn Any>, C = Vec<Option<T>>>
 where
@@ -24,12 +24,12 @@ where
 {
     #[inline]
     pub fn nrows(&self) -> usize {
-        self.array.shape.len_of_dimension(0).unwrap_or(0)
+        self.array.shape.len_of_dimension(0).expect("shape dimension 0 should be valid in nrows")
     }
 
     #[inline]
     pub fn ncols(&self) -> usize {
-        self.array.shape.len_of_dimension(1).unwrap_or(0)
+        self.array.shape.len_of_dimension(1).expect("shape dimension 1 should be valid in ncols")
     }
 
     #[inline]
@@ -256,9 +256,7 @@ where
         let col_indices: Vec<usize> = selected
             .iter()
             .map(|name| {
-                self.get_column_index(name).unwrap_or_else(|| {
-                    panic!("Column name not found: {} / 列名不存在: {}", name, name)
-                })
+                self.get_column_index(name).expect(&format!("Column name not found: {} / 列名不存在: {}", name, name))
             })
             .collect();
 

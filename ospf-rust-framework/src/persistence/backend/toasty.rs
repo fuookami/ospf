@@ -2,7 +2,6 @@
 //! Toasty persistence backend
 
 use ospf_rust_math::symbol::{BooleanExpression, ExpressionValue};
-
 use crate::persistence::{RepositoryQuery, UpdateAssignments};
 
 /// Toasty 后端标记类型。

@@ -4,7 +4,6 @@
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// 远程求解结果。

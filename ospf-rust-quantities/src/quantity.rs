@@ -13,6 +13,13 @@
 //! - 运行时单位转换（Unit）
 //! - 类型安全的算术运算
 
+use std::cmp::Ordering;
+use std::ops::{Add, Div, Mul, Neg, Sub};
+use bigdecimal::BigDecimal;
+use ospf_rust_base::{ErrorPosition, Ret, error};
+use ospf_rust_math::operator::abs::Abs;
+use ospf_rust_math::operator::reciprocal::Reciprocal;
+use ospf_rust_math::operator::tolerance::{Tolerance, TolerancedEq, TolerancedOrd};
 use crate::dimension::DerivedQuantity;
 use crate::dimension::derived_quantity::{CTDerivedQuantity, SameDerivedDimension};
 use crate::error::{DimensionMismatchError, UnitConversionError};
@@ -20,13 +27,6 @@ use crate::unit::concept::UnitTrait;
 use crate::unit::{
     CTUnit, CTUnitDiv, CTUnitMul, CTUnitReciprocal, Unit, UnitConversionRule, UnitSystem,
 };
-use bigdecimal::BigDecimal;
-use ospf_rust_base::{ErrorPosition, Ret, error};
-use ospf_rust_math::operator::abs::Abs;
-use ospf_rust_math::operator::reciprocal::Reciprocal;
-use ospf_rust_math::operator::tolerance::{Tolerance, TolerancedEq, TolerancedOrd};
-use std::cmp::Ordering;
-use std::ops::{Add, Div, Mul, Neg, Sub};
 
 // ============================================================================
 // Quantity - 统一的物理量结构体 / Unified quantity struct
@@ -263,7 +263,7 @@ where
         <U as CTUnit>::Dimension: SameDerivedDimension<<Target as CTUnit>::Dimension>,
     {
         let value = U::convert_value_to::<V, Target>(self.value)
-            .expect("Cannot convert quantities with different dimensions");
+            .expect("无法转换不同量纲的物理量 / Cannot convert quantities with different dimensions");
         Quantity::new_ct(value)
     }
 }
@@ -545,7 +545,7 @@ where
 
     fn add(self, other: Self) -> Self::Output {
         self.checked_add(&other)
-            .expect("Cannot add quantities with different dimensions")
+            .expect("无法对不同量纲的物理量进行加法运算 / Cannot add quantities with different dimensions")
     }
 }
 
@@ -558,7 +558,7 @@ where
 
     fn sub(self, other: Self) -> Self::Output {
         self.checked_sub(&other)
-            .expect("Cannot subtract quantities with different dimensions")
+            .expect("无法对不同量纲的物理量进行减法运算 / Cannot subtract quantities with different dimensions")
     }
 }
 
@@ -789,7 +789,7 @@ where
 
     fn add(self, other: &Quantity<V, Unit>) -> Self::Output {
         self.checked_add(other)
-            .expect("Cannot add quantities with different dimensions")
+            .expect("无法对不同量纲的物理量进行加法运算 / Cannot add quantities with different dimensions")
     }
 }
 
@@ -802,7 +802,7 @@ where
 
     fn sub(self, other: &Quantity<V, Unit>) -> Self::Output {
         self.checked_sub(other)
-            .expect("Cannot subtract quantities with different dimensions")
+            .expect("无法对不同量纲的物理量进行减法运算 / Cannot subtract quantities with different dimensions")
     }
 }
 

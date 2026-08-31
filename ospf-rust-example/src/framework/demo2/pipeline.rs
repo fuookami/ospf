@@ -1,7 +1,5 @@
 use std::error::Error;
-
 use ospf_rust_core::model::MetaModel;
-
 use crate::framework_demo::demo2::infrastructure::dto::Demo2Request;
 
 #[allow(dead_code)]

@@ -4,12 +4,12 @@
 //! 提供矩阵乘法、点积、迹等常见运算的便捷函数。
 //! Provides convenience functions for common operations like matrix multiplication, dot product, and trace.
 
+use std::ops::{Add, AddAssign, Mul};
+use num_traits::Zero;
+use crate::{AbstractShape, DynShape, MultiArray};
 use super::einsum_trait::EinsumError;
 use super::indices::{I, IL, IL2, IndexLabel, IndexList, J, K};
 use super::tensor_expr::TensorExpr;
-use crate::{AbstractShape, DynShape, MultiArray};
-use num_traits::Zero;
-use std::ops::{Add, AddAssign, Mul};
 
 // ============================================================================
 // 矩阵乘法 / Matrix Multiplication

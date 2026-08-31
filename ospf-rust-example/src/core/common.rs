@@ -1,14 +1,14 @@
 use std::error::Error;
 use std::sync::Arc;
-
-use crate::example_modeling::solve_linear_meta_model_typed;
 use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::model::{ConstraintGroup, ConstraintRelation, MetaModel};
 use ospf_rust_core::solver::{
+
     FeasibleSolverOutput, SolverCapability, SolverInfo, solvers::GurobiSolver,
 };
 use ospf_rust_core::symbol::BinaryzationMethod;
 use ospf_rust_core::variable::BinaryVariableItem;
+use crate::example_modeling::solve_linear_meta_model_typed;
 
 /// 推荐 typed 入口：求解 MetaModel / Recommended typed entry: solve MetaModel
 pub fn solve_typed(

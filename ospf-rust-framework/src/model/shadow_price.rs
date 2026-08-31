@@ -10,12 +10,12 @@
 //! - [`ShadowPrice`] - Shadow Price 数据结构
 //! - [`ShadowPriceMap`] - Shadow Price 映射表 trait
 
-use super::CGPipeline;
-use ospf_rust_core::error::Result;
-use parking_lot::RwLock;
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::sync::Arc;
+use parking_lot::RwLock;
+use ospf_rust_core::error::Result;
+use super::CGPipeline;
 
 /// Shadow Price 键 / Shadow Price Key
 ///

@@ -1,9 +1,9 @@
 //! IIS 模型定义
 //! IIS Model Definition
 
-use super::ConstraintSource;
-use crate::model::intermediate::{BasicLinearTriadModel, LinearTriadModel, LinearTriadModelView};
 use std::collections::HashSet;
+use crate::model::intermediate::{BasicLinearTriadModel, LinearTriadModel, LinearTriadModelView};
+use super::ConstraintSource;
 
 /// 线性 IIS 模型 / Linear IIS Model
 ///

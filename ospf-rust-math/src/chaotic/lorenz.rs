@@ -1,9 +1,9 @@
 //! 洛伦兹系统。
 //! Lorenz system.
 
+use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use num_traits::Float;
 
 /// 洛伦兹系统的一阶欧拉步进模型。
 /// First-order Euler step model for the Lorenz system.

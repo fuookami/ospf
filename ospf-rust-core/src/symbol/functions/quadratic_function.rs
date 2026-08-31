@@ -5,12 +5,11 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, Mul};
 use std::sync::Arc;
-
 use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-
 use crate::error::{ModelError, Result};
 use crate::model::{
+
     ConstraintRelation, LinearConstraint, LinearInequality, QuadraticConstraint,
     QuadraticInequality,
 };

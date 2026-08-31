@@ -4,11 +4,11 @@
 //! 本模块提供串行执行的组合线性求解器。
 //! This module provides serial-executing combinatorial linear solvers.
 
-use super::parallel_combinatorial_linear_solver::LinearSolver;
-use super::{FeasibleSolution, FrameworkSolveOptions};
+use std::sync::Arc;
 use ospf_rust_core::error::{CoreError, Result, SolverError};
 use ospf_rust_core::model::intermediate::LinearTriadModel;
-use std::sync::Arc;
+use super::parallel_combinatorial_linear_solver::LinearSolver;
+use super::{FeasibleSolution, FrameworkSolveOptions};
 
 /// 串行组合线性求解器 / Serial Combinatorial Linear Solver
 ///

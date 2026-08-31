@@ -1,7 +1,6 @@
 //! 模型构建状态 / Model building status
 
 use std::sync::Arc;
-
 use crate::error::Result;
 
 /// 模型阶段 / Model stage

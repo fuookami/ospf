@@ -208,7 +208,7 @@ pub fn format_symbol_name(name: &str) -> String {
     } else if name.len() > 1 {
         // 多字符变量名，使用下标
         // Multi-character variable name, use subscript
-        format!("{}_{}", name.chars().next().unwrap(), &name[1..])
+        format!("{}_{}", name.chars().next().expect("name has at least 1 char / name 至少有 1 个字符"), &name[1..])
     } else {
         name.to_string()
     }

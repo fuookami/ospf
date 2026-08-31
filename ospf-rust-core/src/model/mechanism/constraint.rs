@@ -2,13 +2,11 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-
+use ospf_rust_math::symbol::{Linear as SymbolicLinear, Quadratic as SymbolicQuadratic};
 use crate::error::{ModelError, Result};
 use crate::model::basic::ConstraintPriority;
 use crate::symbol::IntermediateSymbol;
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
-use ospf_rust_math::symbol::{Linear as SymbolicLinear, Quadratic as SymbolicQuadratic};
-
 use super::ConstraintGroup;
 
 /// Constraint relation.

@@ -1,9 +1,9 @@
 //! Mandelbrot 集。
 //! Mandelbrot set.
 
+use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use num_traits::Float;
 
 /// Mandelbrot 集迭代函数 `z -> z^2 + c`。
 /// Mandelbrot set iteration function `z -> z^2 + c`.

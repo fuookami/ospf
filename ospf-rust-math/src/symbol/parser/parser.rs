@@ -3,16 +3,16 @@
 //! 将 token 序列转换为表达式树。
 //! Converts token sequence to expression tree.
 
-use num_traits::{One, Zero};
 use std::any::Any;
 use std::fmt::{Debug, Display, Formatter, Result};
 use std::ops::{Add, Mul, Neg, Sub};
-
+use num_traits::{One, Zero};
+use crate::operator::{Exponent, MulRef};
 use super::error::{ParseError, ParseResult};
 use super::expr::{Expr, ExprKind};
 use super::lexer::{Lexer, Token, TokenKind};
-use crate::operator::{Exponent, MulRef};
 use crate::symbol::inequality::{
+
     CanonicalInequality, Comparison, LinearInequality, QuadraticInequality,
 };
 use crate::symbol::{

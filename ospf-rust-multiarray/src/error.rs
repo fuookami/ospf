@@ -19,8 +19,8 @@
 //! - `MappingIndexError`: 映射索引错误枚举
 //!   Mapping index error enum
 
-use ospf_rust_base::error::*;
 use std::fmt::{Debug, Display, Formatter};
+use ospf_rust_base::error::*;
 
 /// 无效虚拟索引错误
 /// Invalid dummy index error

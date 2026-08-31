@@ -11,7 +11,7 @@
 //! - 每个组合内的变量共享相同的组 ID，通过索引区分
 //!   Variables within a combination share the same group ID, distinguished by index
 
-use super::{GenericVariableItem, VariableId, VariableRange, VariableTypeTrait, new_group_id};
+use super::{VariableItem, VariableId, VariableRange, VariableTypeTrait, new_group_id};
 use ospf_rust_multiarray::{
     MultiArray, MultiArrayBuilder,
     shape::{AbstractShape, Shape},
@@ -60,7 +60,7 @@ use ospf_rust_multiarray::{
 /// ```
 pub struct VariableCombination<VT: VariableTypeTrait, S: AbstractShape> {
     /// 变量数组 / Variable array
-    variables: MultiArray<GenericVariableItem<VT>, S>,
+    variables: MultiArray<VariableItem<VT>, S>,
     /// 组 ID / Group ID
     group_id: usize,
     /// 变量名称前缀 / Variable name prefix
@@ -92,7 +92,7 @@ impl<VT: VariableTypeTrait, S: AbstractShape> VariableCombination<VT, S> {
         let variables = MultiArrayBuilder::new_by(shape, |index, _vector| {
             let id = VariableId::new(group_id, index);
             let name = format!("{}_{}", name_prefix, index);
-            GenericVariableItem::create(id, &name)
+            VariableItem::create(id, &name)
         });
 
         Self {
@@ -121,7 +121,7 @@ impl<VT: VariableTypeTrait, S: AbstractShape> VariableCombination<VT, S> {
             let id = VariableId::new(group_id, index);
             let suffix = name_gen(index, vector);
             let name = format!("{}_{}", name_prefix, suffix);
-            GenericVariableItem::create(id, &name)
+            VariableItem::create(id, &name)
         });
 
         Self {
@@ -159,7 +159,7 @@ impl<VT: VariableTypeTrait, S: AbstractShape> VariableCombination<VT, S> {
             let id = VariableId::new(group_id, index);
             let suffix = name_gen(index, vector);
             let name = format!("{}_{}", name_prefix, suffix);
-            GenericVariableItem::with_range(id, &name, range_gen(index, vector))
+            VariableItem::with_range(id, &name, range_gen(index, vector))
         });
 
         Self {
@@ -198,7 +198,7 @@ impl<VT: VariableTypeTrait, S: AbstractShape> VariableCombination<VT, S> {
         let variables = MultiArrayBuilder::new_by(shape, |index, _vector| {
             let id = VariableId::new(group_id, index);
             let name = format!("{}_{}", name_prefix, index);
-            GenericVariableItem::create(id, &name)
+            VariableItem::create(id, &name)
         });
 
         Self {
@@ -239,17 +239,17 @@ impl<VT: VariableTypeTrait, S: AbstractShape> VariableCombination<VT, S> {
     }
 
     /// 获取变量数组引用 / Get variable array reference
-    pub fn as_array(&self) -> &MultiArray<GenericVariableItem<VT>, S> {
+    pub fn as_array(&self) -> &MultiArray<VariableItem<VT>, S> {
         &self.variables
     }
 
     /// 消耗 self，返回变量数组 / Consume self, return variable array
-    pub fn into_array(self) -> MultiArray<GenericVariableItem<VT>, S> {
+    pub fn into_array(self) -> MultiArray<VariableItem<VT>, S> {
         self.variables
     }
 
     /// 获取变量迭代器 / Get variable iterator
-    pub fn iter(&self) -> impl Iterator<Item = &GenericVariableItem<VT>> {
+    pub fn iter(&self) -> impl Iterator<Item = &VariableItem<VT>> {
         self.variables.iter()
     }
 }
@@ -278,7 +278,7 @@ impl<VT: VariableTypeTrait, S: AbstractShape> std::fmt::Debug for VariableCombin
 }
 
 impl<VT: VariableTypeTrait, S: AbstractShape> std::ops::Deref for VariableCombination<VT, S> {
-    type Target = MultiArray<GenericVariableItem<VT>, S>;
+    type Target = MultiArray<VariableItem<VT>, S>;
 
     fn deref(&self) -> &Self::Target {
         &self.variables

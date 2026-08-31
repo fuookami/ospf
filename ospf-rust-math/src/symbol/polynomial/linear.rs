@@ -1899,13 +1899,13 @@ where
                 let lower = interval.lower_bound().value();
                 let upper = interval.upper_bound().value();
 
-                // 鏍规嵁绯绘暟绗﹀彿閫夋嫨鏋佸€肩偣
+                // 根据系数符号选择极值点
                 // Select extremum points based on coefficient sign
                 if coef >= T::zero_ref() {
-                    // 绯绘暟闈炶礋锛氭渶灏忓€肩敤涓嬬晫锛屾渶澶у€肩敤涓婄晫
+                    // 系数非负：最小值用下界，最大值用上界
                     // Coefficient non-negative: min uses lower, max uses upper
                     if let (Some(lo), Some(hi)) = (lower.unwrap(), upper.unwrap()) {
-                        // 浣跨敤 MulRef 鍜?AddRef 閬垮厤涓嶅繀瑕佺殑 clone
+                        // 使用 MulRef 和 AddRef 避免不必要的 clone
                         // Use MulRef and AddRef to avoid unnecessary clone
                         let min_term = T::mul_ref(coef, lo);
                         let max_term = T::mul_ref(coef, hi);
@@ -1913,10 +1913,10 @@ where
                         max_val = T::add_ref(&max_val, &max_term);
                     }
                 } else {
-                    // 绯绘暟涓鸿礋锛氭渶灏忓€肩敤涓婄晫锛屾渶澶у€肩敤涓嬬晫
+                    // 系数为负：最小值用上界，最大值用下界
                     // Coefficient negative: min uses upper, max uses lower
                     if let (Some(lo), Some(hi)) = (lower.unwrap(), upper.unwrap()) {
-                        // 浣跨敤 MulRef 鍜?AddRef 閬垮厤涓嶅繀瑕佺殑 clone
+                        // 使用 MulRef 和 AddRef 避免不必要的 clone
                         // Use MulRef and AddRef to avoid unnecessary clone
                         let min_term = T::mul_ref(coef, hi);
                         let max_term = T::mul_ref(coef, lo);

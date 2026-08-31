@@ -1,8 +1,7 @@
 use std::sync::Arc;
-
 use crate::solver::SolverConfig;
-
 use super::{
+
     SCIPNativeCallback, SCIPNativeObserver, SCIPSnapshotObserver, SCIPStage, SCIPStageCallback,
     SCIPTelemetryCallback,
 };

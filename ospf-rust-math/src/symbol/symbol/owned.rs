@@ -1,11 +1,11 @@
 //! 拥有权符号包装
 //! Owned symbol wrapper
 
-use super::{DynSymbol, SymbolDynId};
-use dyn_clone;
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
+use dyn_clone;
+use super::{DynSymbol, SymbolDynId};
 
 // ============================================================================
 // OwnedSymbol - 拥有权符号包装

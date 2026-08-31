@@ -2,7 +2,6 @@
 //! Repository API
 
 use ospf_rust_math::symbol::{BooleanExpression, ExpressionValue};
-
 use super::{SortBy, UpdateAssignments};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

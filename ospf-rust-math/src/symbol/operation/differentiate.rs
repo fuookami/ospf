@@ -10,8 +10,8 @@
 //! - `Quadratic`: `polynomial/quadratic.rs`
 //! - `Canonical`: `polynomial/canonical.rs`
 
-use crate::symbol::OwnedSymbol;
 use num_traits::Zero;
+use crate::symbol::OwnedSymbol;
 
 /// 微分 trait / Differentiation trait
 ///

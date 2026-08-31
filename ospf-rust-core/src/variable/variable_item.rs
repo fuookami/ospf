@@ -5,16 +5,15 @@ use std::any::Any;
 use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
-
 use ospf_rust_math::symbol::{DynSymbol, SymbolDynId};
-
 use super::variable_type::{
+
     BalancedTernary, Binary, Continuous, Integer, Percentage, Ternary, UContinuous, UInteger,
 };
 use super::{VariableId, VariableRange, VariableType, VariableTypeTrait, new_standalone_id};
 
 // ============================================================================
-// GenericVariableData - 泛型变量数据
+// VariableData - 泛型变量数据
 // ============================================================================
 
 /// 泛型变量数据 / Generic Variable Data
@@ -30,21 +29,21 @@ use super::{VariableId, VariableRange, VariableType, VariableTypeTrait, new_stan
 ///
 /// ```rust
 /// use ospf_rust_core::variable::{
-///     GenericVariableData, Binary, Continuous, VariableRange
+///     VariableData, Binary, Continuous, VariableRange
 /// };
 ///
 /// // 创建二进制变量 / Create binary variable
-/// let binary_var = GenericVariableData::<Binary>::new(ospf_rust_core::variable::new_standalone_id(), "x");
+/// let binary_var = VariableData::<Binary>::new(ospf_rust_core::variable::new_standalone_id(), "x");
 ///
 /// // 创建连续变量（带自定义范围）/ Create continuous variable with custom range
-/// let continuous_var = GenericVariableData::<Continuous>::with_range(
+/// let continuous_var = VariableData::<Continuous>::with_range(
 ///     ospf_rust_core::variable::new_standalone_id(),
 ///     "y",
 ///     VariableRange::bounded(-10.0, 10.0),
 /// );
 /// ```
 #[derive(Debug)]
-pub struct GenericVariableData<VT: VariableTypeTrait> {
+pub struct VariableData<VT: VariableTypeTrait> {
     /// 变量 ID / Variable ID
     pub id: VariableId,
     /// 索引 / Index
@@ -59,7 +58,7 @@ pub struct GenericVariableData<VT: VariableTypeTrait> {
     _marker: PhantomData<VT>,
 }
 
-impl<VT: VariableTypeTrait> GenericVariableData<VT> {
+impl<VT: VariableTypeTrait> VariableData<VT> {
     /// 创建新变量 / Create new variable
     pub fn new(id: VariableId, name: &str) -> Self {
         Self {
@@ -134,7 +133,7 @@ impl<VT: VariableTypeTrait> GenericVariableData<VT> {
     }
 }
 
-impl<VT: VariableTypeTrait> Clone for GenericVariableData<VT> {
+impl<VT: VariableTypeTrait> Clone for VariableData<VT> {
     fn clone(&self) -> Self {
         Self {
             id: self.id,
@@ -147,7 +146,7 @@ impl<VT: VariableTypeTrait> Clone for GenericVariableData<VT> {
     }
 }
 
-impl<VT: VariableTypeTrait> fmt::Display for GenericVariableData<VT> {
+impl<VT: VariableTypeTrait> fmt::Display for VariableData<VT> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.display_name {
             Some(dn) => write!(f, "{} ({})", dn, self.name),
@@ -157,7 +156,7 @@ impl<VT: VariableTypeTrait> fmt::Display for GenericVariableData<VT> {
 }
 
 // ============================================================================
-// GenericVariableItem - 泛型变量项
+// VariableItem - 泛型变量项
 // ============================================================================
 
 /// 泛型变量项 / Generic Variable Item
@@ -173,13 +172,13 @@ impl<VT: VariableTypeTrait> fmt::Display for GenericVariableData<VT> {
 /// Uses `Arc` to wrap internal data, making clone operation cheap,
 /// while maintaining variable uniqueness (identified by `id`).
 #[derive(Debug)]
-pub struct GenericVariableItem<VT: VariableTypeTrait> {
-    data: Arc<GenericVariableData<VT>>,
+pub struct VariableItem<VT: VariableTypeTrait> {
+    data: Arc<VariableData<VT>>,
 }
 
-impl<VT: VariableTypeTrait> GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> VariableItem<VT> {
     /// 从数据创建变量项 / Create variable item from data
-    pub fn new(data: GenericVariableData<VT>) -> Self {
+    pub fn new(data: VariableData<VT>) -> Self {
         Self {
             data: Arc::new(data),
         }
@@ -187,7 +186,7 @@ impl<VT: VariableTypeTrait> GenericVariableItem<VT> {
 
     /// 创建新变量项 / Create new variable item
     pub fn create(id: VariableId, name: &str) -> Self {
-        Self::new(GenericVariableData::new(id, name))
+        Self::new(VariableData::new(id, name))
     }
 
     /// 自动创建新变量项（使用全局递增 ID）/ Auto-create variable item with global incremental ID
@@ -196,17 +195,17 @@ impl<VT: VariableTypeTrait> GenericVariableItem<VT> {
     /// This method allocates a standalone variable ID from the global generator,
     /// avoiding manual `VariableId` assignment.
     pub fn auto(name: &str) -> Self {
-        Self::new(GenericVariableData::new(new_standalone_id(), name))
+        Self::new(VariableData::new(new_standalone_id(), name))
     }
 
     /// 创建带范围的变量项 / Create variable item with range
     pub fn with_range(id: VariableId, name: &str, range: VariableRange<VT::Value>) -> Self {
-        Self::new(GenericVariableData::with_range(id, name, range))
+        Self::new(VariableData::with_range(id, name, range))
     }
 
     /// 自动创建带范围的变量项（使用全局递增 ID）/ Auto-create ranged variable item with global incremental ID
     pub fn auto_with_range(name: &str, range: VariableRange<VT::Value>) -> Self {
-        Self::new(GenericVariableData::with_range(
+        Self::new(VariableData::with_range(
             new_standalone_id(),
             name,
             range,
@@ -249,12 +248,12 @@ impl<VT: VariableTypeTrait> GenericVariableItem<VT> {
     }
 
     /// 获取内部数据引用 / Get inner data reference
-    pub fn data(&self) -> &GenericVariableData<VT> {
+    pub fn data(&self) -> &VariableData<VT> {
         &self.data
     }
 }
 
-impl<VT: VariableTypeTrait> Clone for GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> Clone for VariableItem<VT> {
     fn clone(&self) -> Self {
         Self {
             data: Arc::clone(&self.data),
@@ -262,21 +261,21 @@ impl<VT: VariableTypeTrait> Clone for GenericVariableItem<VT> {
     }
 }
 
-impl<VT: VariableTypeTrait> PartialEq for GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> PartialEq for VariableItem<VT> {
     fn eq(&self, other: &Self) -> bool {
         self.data.id == other.data.id
     }
 }
 
-impl<VT: VariableTypeTrait> Eq for GenericVariableItem<VT> {}
+impl<VT: VariableTypeTrait> Eq for VariableItem<VT> {}
 
-impl<VT: VariableTypeTrait> std::hash::Hash for GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> std::hash::Hash for VariableItem<VT> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.data.id.hash(state);
     }
 }
 
-impl<VT: VariableTypeTrait> fmt::Display for GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> fmt::Display for VariableItem<VT> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.data.fmt(f)
     }
@@ -286,12 +285,12 @@ impl<VT: VariableTypeTrait> fmt::Display for GenericVariableItem<VT> {
 // DynSymbol 实现 / DynSymbol Implementation
 // ============================================================================
 
-/// 为 GenericVariableItem 实现 DynSymbol trait
-/// Implement DynSymbol trait for GenericVariableItem
+/// 为 VariableItem 实现 DynSymbol trait
+/// Implement DynSymbol trait for VariableItem
 ///
 /// 这允许变量项作为符号使用，参与多项式运算。
 /// This allows variable items to be used as symbols in polynomial operations.
-impl<VT: VariableTypeTrait> DynSymbol for GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> DynSymbol for VariableItem<VT> {
     /// 内部标识名 / Internal identifier name
     fn name(&self) -> &str {
         &self.data.name
@@ -322,7 +321,7 @@ impl<VT: VariableTypeTrait> DynSymbol for GenericVariableItem<VT> {
 
 use ospf_rust_math::symbol::OwnedSymbol;
 
-impl<VT: VariableTypeTrait> GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> VariableItem<VT> {
     /// 转换为 OwnedSymbol / Convert to OwnedSymbol
     ///
     /// 用于参与多项式运算。
@@ -352,10 +351,10 @@ impl<VT: VariableTypeTrait> GenericVariableItem<VT> {
 use ospf_rust_math::symbol::{Linear, LinearMonomial, QuadraticMonomial};
 use std::ops::{Add, Mul, Sub};
 
-// O1: GenericVariableItem * GenericVariableItem → QuadraticMonomial<f64>
+// O1: VariableItem * VariableItem → QuadraticMonomial<f64>
 // 变量 × 变量 = 二次单项式
 // Variable × Variable = Quadratic monomial
-impl<VT: VariableTypeTrait> Mul for GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> Mul for VariableItem<VT> {
     type Output = QuadraticMonomial<f64>;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -363,10 +362,10 @@ impl<VT: VariableTypeTrait> Mul for GenericVariableItem<VT> {
     }
 }
 
-// O2: GenericVariableItem * f64 → LinearMonomial<f64>
+// O2: VariableItem * f64 → LinearMonomial<f64>
 // 变量 × 标量 = 线性单项式
 // Variable × Scalar = Linear monomial
-impl<VT: VariableTypeTrait> Mul<f64> for GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> Mul<f64> for VariableItem<VT> {
     type Output = LinearMonomial<f64>;
 
     fn mul(self, rhs: f64) -> Self::Output {
@@ -374,21 +373,21 @@ impl<VT: VariableTypeTrait> Mul<f64> for GenericVariableItem<VT> {
     }
 }
 
-// O3: f64 * GenericVariableItem → LinearMonomial<f64>
+// O3: f64 * VariableItem → LinearMonomial<f64>
 // 标量 × 变量 = 线性单项式
 // Scalar × Variable = Linear monomial
-impl<VT: VariableTypeTrait> Mul<GenericVariableItem<VT>> for f64 {
+impl<VT: VariableTypeTrait> Mul<VariableItem<VT>> for f64 {
     type Output = LinearMonomial<f64>;
 
-    fn mul(self, rhs: GenericVariableItem<VT>) -> Self::Output {
+    fn mul(self, rhs: VariableItem<VT>) -> Self::Output {
         LinearMonomial::new(self, rhs.to_owned_symbol())
     }
 }
 
-// O4: GenericVariableItem + GenericVariableItem → Linear<f64>
+// O4: VariableItem + VariableItem → Linear<f64>
 // 变量 + 变量 = 线性多项式
 // Variable + Variable = Linear polynomial
-impl<VT: VariableTypeTrait> Add for GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> Add for VariableItem<VT> {
     type Output = Linear<f64>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -402,10 +401,10 @@ impl<VT: VariableTypeTrait> Add for GenericVariableItem<VT> {
     }
 }
 
-// O5: GenericVariableItem + f64 → Linear<f64>
+// O5: VariableItem + f64 → Linear<f64>
 // 变量 + 标量 = 线性多项式
 // Variable + Scalar = Linear polynomial
-impl<VT: VariableTypeTrait> Add<f64> for GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> Add<f64> for VariableItem<VT> {
     type Output = Linear<f64>;
 
     fn add(self, rhs: f64) -> Self::Output {
@@ -413,21 +412,21 @@ impl<VT: VariableTypeTrait> Add<f64> for GenericVariableItem<VT> {
     }
 }
 
-// O6: f64 + GenericVariableItem → Linear<f64>
+// O6: f64 + VariableItem → Linear<f64>
 // 标量 + 变量 = 线性多项式
 // Scalar + Variable = Linear polynomial
-impl<VT: VariableTypeTrait> Add<GenericVariableItem<VT>> for f64 {
+impl<VT: VariableTypeTrait> Add<VariableItem<VT>> for f64 {
     type Output = Linear<f64>;
 
-    fn add(self, rhs: GenericVariableItem<VT>) -> Self::Output {
+    fn add(self, rhs: VariableItem<VT>) -> Self::Output {
         Linear::new(vec![LinearMonomial::new(1.0, rhs.to_owned_symbol())], self)
     }
 }
 
-// O7: GenericVariableItem - GenericVariableItem → Linear<f64>
+// O7: VariableItem - VariableItem → Linear<f64>
 // 变量 - 变量 = 线性多项式
 // Variable - Variable = Linear polynomial
-impl<VT: VariableTypeTrait> Sub for GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> Sub for VariableItem<VT> {
     type Output = Linear<f64>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -441,10 +440,10 @@ impl<VT: VariableTypeTrait> Sub for GenericVariableItem<VT> {
     }
 }
 
-// O8: GenericVariableItem - f64 → Linear<f64>
+// O8: VariableItem - f64 → Linear<f64>
 // 变量 - 标量 = 线性多项式
 // Variable - Scalar = Linear polynomial
-impl<VT: VariableTypeTrait> Sub<f64> for GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> Sub<f64> for VariableItem<VT> {
     type Output = Linear<f64>;
 
     fn sub(self, rhs: f64) -> Self::Output {
@@ -452,21 +451,21 @@ impl<VT: VariableTypeTrait> Sub<f64> for GenericVariableItem<VT> {
     }
 }
 
-// O9: f64 - GenericVariableItem → Linear<f64>
+// O9: f64 - VariableItem → Linear<f64>
 // 标量 - 变量 = 线性多项式
 // Scalar - Variable = Linear polynomial
-impl<VT: VariableTypeTrait> Sub<GenericVariableItem<VT>> for f64 {
+impl<VT: VariableTypeTrait> Sub<VariableItem<VT>> for f64 {
     type Output = Linear<f64>;
 
-    fn sub(self, rhs: GenericVariableItem<VT>) -> Self::Output {
+    fn sub(self, rhs: VariableItem<VT>) -> Self::Output {
         Linear::new(vec![LinearMonomial::new(-1.0, rhs.to_owned_symbol())], self)
     }
 }
 
-// O10: &GenericVariableItem * f64 → LinearMonomial<f64>
+// O10: &VariableItem * f64 → LinearMonomial<f64>
 // 变量引用 × 标量 = 线性单项式
 // Variable reference × Scalar = Linear monomial
-impl<VT: VariableTypeTrait> Mul<f64> for &GenericVariableItem<VT> {
+impl<VT: VariableTypeTrait> Mul<f64> for &VariableItem<VT> {
     type Output = LinearMonomial<f64>;
 
     fn mul(self, rhs: f64) -> Self::Output {
@@ -474,13 +473,13 @@ impl<VT: VariableTypeTrait> Mul<f64> for &GenericVariableItem<VT> {
     }
 }
 
-// O11: f64 * &GenericVariableItem → LinearMonomial<f64>
+// O11: f64 * &VariableItem → LinearMonomial<f64>
 // 标量 × 变量引用 = 线性单项式
 // Scalar × Variable reference = Linear monomial
-impl<VT: VariableTypeTrait> Mul<&GenericVariableItem<VT>> for f64 {
+impl<VT: VariableTypeTrait> Mul<&VariableItem<VT>> for f64 {
     type Output = LinearMonomial<f64>;
 
-    fn mul(self, rhs: &GenericVariableItem<VT>) -> Self::Output {
+    fn mul(self, rhs: &VariableItem<VT>) -> Self::Output {
         LinearMonomial::new(self, rhs.to_owned_symbol())
     }
 }
@@ -490,54 +489,54 @@ impl<VT: VariableTypeTrait> Mul<&GenericVariableItem<VT>> for f64 {
 // ============================================================================
 
 /// 二进制变量数据 / Binary variable data
-pub type BinaryVariableData = GenericVariableData<Binary>;
+pub type BinaryVariableData = VariableData<Binary>;
 
 /// 三元变量数据 / Ternary variable data
-pub type TernaryVariableData = GenericVariableData<Ternary>;
+pub type TernaryVariableData = VariableData<Ternary>;
 
 /// 平衡三元变量数据 / Balanced ternary variable data
-pub type BalancedTernaryVariableData = GenericVariableData<BalancedTernary>;
+pub type BalancedTernaryVariableData = VariableData<BalancedTernary>;
 
 /// 百分比变量数据 / Percentage variable data
-pub type PercentageVariableData = GenericVariableData<Percentage>;
+pub type PercentageVariableData = VariableData<Percentage>;
 
 /// 整数变量数据 / Integer variable data
-pub type IntegerVariableData = GenericVariableData<Integer>;
+pub type IntegerVariableData = VariableData<Integer>;
 
 /// 无符号整数变量数据 / Unsigned integer variable data
-pub type UIntegerVariableData = GenericVariableData<UInteger>;
+pub type UIntegerVariableData = VariableData<UInteger>;
 
 /// 连续变量数据 / Continuous variable data
-pub type ContinuousVariableData = GenericVariableData<Continuous>;
+pub type ContinuousVariableData = VariableData<Continuous>;
 
 /// 无符号连续变量数据 / Unsigned continuous variable data
-pub type UContinuousVariableData = GenericVariableData<UContinuous>;
+pub type UContinuousVariableData = VariableData<UContinuous>;
 
 // ---------------------------------------------------------------------------
 
 /// 二进制变量项 / Binary variable item
-pub type BinaryVariableItem = GenericVariableItem<Binary>;
+pub type BinaryVariableItem = VariableItem<Binary>;
 
 /// 三元变量项 / Ternary variable item
-pub type TernaryVariableItem = GenericVariableItem<Ternary>;
+pub type TernaryVariableItem = VariableItem<Ternary>;
 
 /// 平衡三元变量项 / Balanced ternary variable item
-pub type BalancedTernaryVariableItem = GenericVariableItem<BalancedTernary>;
+pub type BalancedTernaryVariableItem = VariableItem<BalancedTernary>;
 
 /// 百分比变量项 / Percentage variable item
-pub type PercentageVariableItem = GenericVariableItem<Percentage>;
+pub type PercentageVariableItem = VariableItem<Percentage>;
 
 /// 整数变量项 / Integer variable item
-pub type IntegerVariableItem = GenericVariableItem<Integer>;
+pub type IntegerVariableItem = VariableItem<Integer>;
 
 /// 无符号整数变量项 / Unsigned integer variable item
-pub type UIntegerVariableItem = GenericVariableItem<UInteger>;
+pub type UIntegerVariableItem = VariableItem<UInteger>;
 
 /// 连续变量项 / Continuous variable item
-pub type ContinuousVariableItem = GenericVariableItem<Continuous>;
+pub type ContinuousVariableItem = VariableItem<Continuous>;
 
 /// 无符号连续变量项 / Unsigned continuous variable item
-pub type UContinuousVariableItem = GenericVariableItem<UContinuous>;
+pub type UContinuousVariableItem = VariableItem<UContinuous>;
 
 // ============================================================================
 // 测试 / Tests

@@ -4,12 +4,12 @@
 //! 提供加速度量纲的 SI 单位定义，包括米每二次方秒、标准重力加速度等。
 //! Provides SI unit definitions for acceleration dimension, including meter per second squared, standard gravity, etc.
 
-use super::length::{Cetimeter, Foot, Inch, Kilometer, Meter};
-use super::time::Second;
 use crate::dimension::derived::Acceleration;
 use crate::scale::Scale;
 use crate::unit::physical_unit::CTUnit;
 use crate::unit::{CTUnitDiv, CTUnitMul};
+use super::length::{Cetimeter, Foot, Inch, Kilometer, Meter};
+use super::time::Second;
 
 // ============================================================================
 // SI 加速度单位 / SI acceleration units

@@ -9,10 +9,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, Mul};
 use std::sync::Arc;
-
 use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
@@ -20,8 +18,8 @@ use crate::token::{IntoValue, Token, TokenList};
 #[cfg(test)]
 use crate::variable::VariableId;
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, new_standalone_id};
-
 use super::super::{
+
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
 };
 use super::big_m::infer_linear_abs_bound_from_tokens;

@@ -1,9 +1,9 @@
 //! Chen-Celikovsky 吸引子的一阶欧拉步进模型。
 //! First-order Euler step model for the Chen-Celikovsky attractor.
 
+use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use num_traits::Float;
 
 /// Chen-Celikovsky 吸引子的一阶欧拉步进模型。
 /// First-order Euler step model for the Chen-Celikovsky attractor.

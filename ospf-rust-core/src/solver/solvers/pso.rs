@@ -13,13 +13,12 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
-
 use async_trait::async_trait;
 use num_traits::{Float, FromPrimitive};
-
 use crate::error::Result;
 use crate::model::callback::{Solution, SolutionStatus};
 use crate::solver::heuristic::{
+
     AbstractHeuristicPolicy, HeuristicAlgorithm, HeuristicCallBackModelInterface,
     HeuristicIndividual, HeuristicResult, HeuristicRuntimePolicy, Iteration,
     refresh_good_individuals,

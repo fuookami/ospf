@@ -1,10 +1,10 @@
 //! 二次四角模型
 //! Quadratic Tetrad Model
 
-use super::super::mechanism::QuadraticInequality;
-use super::{BasicQuadraticTetradModel, QuadraticElasticBuilder, SparseMatrix};
 use crate::model::object::ObjectiveCategory;
 use crate::variable::VariableType;
+use super::super::mechanism::QuadraticInequality;
+use super::{BasicQuadraticTetradModel, QuadraticElasticBuilder, SparseMatrix};
 
 /// 二次四角模型 / Quadratic Tetrad Model
 ///

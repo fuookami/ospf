@@ -1,6 +1,6 @@
 use std::error::Error;
-
 use super::domain::{
+
     FullLoadApplication, LoadingOrderApplication, PredistributionApplication,
     WeightRecommendationApplication,
 };

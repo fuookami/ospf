@@ -1,10 +1,10 @@
 //! 线性三角模型
 //! Linear Triad Model
 
-use super::super::object::ObjectiveCategory;
-use super::{BasicLinearTriadModel, LinearElasticBuilder, SparseVector};
 use crate::token::Token;
 use crate::variable::{ContinuousVariableItem, VariableId, VariableType};
+use super::super::object::ObjectiveCategory;
+use super::{BasicLinearTriadModel, LinearElasticBuilder, SparseVector};
 
 /// 线性三角模型 / Linear Triad Model
 ///

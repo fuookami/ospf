@@ -1,8 +1,8 @@
 //! 指数与对数运算 traits
 //! Exponential and logarithm operation traits
 
-use crate::ordinary::big_decimal_pow;
 use bigdecimal::{BigDecimal, FromPrimitive};
+use crate::ordinary::big_decimal_pow;
 
 /// 自然指数运算。
 /// Natural exponential operation.
@@ -372,8 +372,8 @@ fn valid_log<T>(value: T, base: T) -> bool
 where
     T: PartialOrd + FromPrimitive + Copy,
 {
-    let zero = T::from_u8(0).unwrap();
-    let one = T::from_u8(1).unwrap();
+    let zero = T::from_u8(0).expect("zero should be representable / 零应该可表示");
+    let one = T::from_u8(1).expect("one should be representable / 一应该可表示");
     value > zero && base > zero && base != one
 }
 

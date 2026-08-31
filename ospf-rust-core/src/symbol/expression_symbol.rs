@@ -5,10 +5,9 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::{Add, Mul};
 use std::sync::Arc;
-
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-
 use super::{
+
     Category, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     QuadraticIntermediateSymbol,
 };

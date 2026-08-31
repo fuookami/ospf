@@ -1,9 +1,9 @@
-﻿use crate::multi_array::{MultiArray, MultiArrayBuilder, MultiArrayCollection};
-use crate::multi_array_view::MultiArrayView;
-use crate::shape::{AbstractShape, DynShape, Shape1, Shape2, Shape3, Shape4};
-use std::collections::HashMap;
+﻿use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
+use crate::multi_array::{MultiArray, MultiArrayBuilder, MultiArrayCollection};
+use crate::multi_array_view::MultiArrayView;
+use crate::shape::{AbstractShape, DynShape, Shape1, Shape2, Shape3, Shape4};
 
 /// 稀疏分块多维数组 / Sparse block multi-dimensional array.
 ///
@@ -146,7 +146,7 @@ where
             if filter(value) {
                 // index 来自 shape 范围内，unwrap 是安全的。
                 // index is always in shape range, so unwrap is safe.
-                let indices = array.shape.vector_of(linear).unwrap();
+                let indices = array.shape.vector_of(linear).expect("linear index should be valid in from_multi_array");
                 blocks.insert(indices, value.clone());
             }
         }

@@ -1,10 +1,10 @@
 //! 符号 trait 定义
 //! Symbol trait definitions
 
-use super::{SymbolDynId, SymbolId};
-use dyn_clone::DynClone;
 use std::any::Any;
 use std::fmt::{Debug, Display};
+use dyn_clone::DynClone;
+use super::{SymbolDynId, SymbolId};
 
 // ============================================================================
 // DynSymbol Trait - 动态符号（dyn compatible）

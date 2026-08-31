@@ -1,10 +1,8 @@
 //! Function symbol trait.
 
 use std::fmt::Debug;
-
 use crate::error::Result;
 use crate::token::{Token, TokenList};
-
 use super::{IntermediateSymbol, LinearIntermediateSymbol};
 
 /// Function symbol abstraction (min/max/abs/etc.).

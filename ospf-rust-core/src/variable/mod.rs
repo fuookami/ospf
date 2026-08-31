@@ -9,7 +9,7 @@
 //! - [`VariableTypeTrait`] - 变量类型标记 trait / Variable type marker trait
 //! - [`VariableId`] - 变量唯一标识符 / Variable unique identifier
 //! - [`VariableRange`] - 变量取值范围 / Variable value range
-//! - [`GenericVariableItem`] - 泛型变量项 / Generic variable item
+//! - [`VariableItem`] - 泛型变量项 / Generic variable item
 //! - [`VariableArena`] - 变量内存池 / Variable arena
 
 pub mod variable_arena;

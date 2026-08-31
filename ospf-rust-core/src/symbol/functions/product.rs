@@ -10,16 +10,14 @@ use std::collections::HashSet;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, Mul};
 use std::sync::Arc;
-
 use num_traits::Zero;
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-
 use crate::error::Result;
 use crate::model::LinearConstraint;
 use crate::symbol::flatten::{Linear, Quadratic, QuadraticMonomial};
 use crate::token::{Token, TokenList};
-
 use super::super::{
+
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, QuadraticIntermediateSymbol,
 };
 

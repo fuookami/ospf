@@ -2,10 +2,9 @@
 //! Flatten Context Trait
 
 use std::collections::HashMap;
-
-use super::{Canonical, CanonicalMonomial, Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 use crate::token::TokenList;
 use crate::variable::VariableId;
+use super::{Canonical, CanonicalMonomial, Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 
 // ============================================================================
 // 平展结果类型

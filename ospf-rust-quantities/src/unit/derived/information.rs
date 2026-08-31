@@ -4,12 +4,12 @@
 //! 提供信息量量纲的单位定义，包括比特、字节、千比特、兆比特等。
 //! Provides unit definitions for information dimension, including bit, byte, kilobit, megabit, etc.
 
+use bigdecimal::BigDecimal;
+use once_cell::sync::Lazy;
 use crate::dimension::derived::Information;
 use crate::dimension::derived_quantity::QuantityDomain;
 use crate::scale::{EXA, GIGA, KILO, MEGA, OCTAL, PETA, Scale, TERA};
 use crate::unit::CTUnit;
-use bigdecimal::BigDecimal;
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 信息量单位 / Information units

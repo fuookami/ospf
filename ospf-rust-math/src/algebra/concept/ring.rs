@@ -1,9 +1,9 @@
 //! 环 trait
 //! Ring trait
 
+use num_traits::One;
 use super::{AbelianGroup, MultiplicativeSemigroup};
 use super::{AbelianGroupRef, MultiplicativeSemigroupRef};
-use num_traits::One;
 
 // ============================================================================
 // Ring Trait - 环

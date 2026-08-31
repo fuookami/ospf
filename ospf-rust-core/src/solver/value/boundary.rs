@@ -1,10 +1,10 @@
 //! 求解边界转换入口
 //! Solver boundary conversion entry
 
+use crate::error::Result;
 use super::conversion_context::SolveValueConversionContext;
 use super::validation::ensure_finite;
 use super::{SolveValue, SolveValueConversionPolicy};
-use crate::error::Result;
 
 pub fn value_to_backend_f64<V: SolveValue>(
     value: &V,

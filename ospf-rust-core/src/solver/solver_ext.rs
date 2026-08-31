@@ -3,10 +3,10 @@
 
 #[cfg(feature = "async")]
 use std::sync::Arc;
-
 use super::value::boundary::{value_from_backend_f64, value_to_backend_f64};
 use super::value::conversion_context::SolveValueConversionContext;
 use super::{
+
     FeasibleSolverOutput, SolveValue, SolveValueConversionPolicy, Solver, SolverOutput,
     SolverOutputWithIIS, SolvingStatusCallback,
 };
@@ -578,18 +578,18 @@ where
     }
 }
 
-/// 多解输出（兼容接口）/ Multi-solution output (compatibility interface)
+/// Flt64 多解输出（兼容接口）/ Flt64 multi-solution output (compatibility interface)
 #[derive(Debug, Clone)]
-pub struct MultiSolutionOutput {
+pub struct Flt64MultiSolutionOutput {
     /// 主求解输出 / Primary solver output
     pub output: SolverOutput,
     /// 解池 / Solution pool
     pub solutions: Vec<Vec<f64>>,
 }
 
-/// typed 多解输出 / Typed multi-solution output
+/// 多解输出 / Multi-solution output
 #[derive(Debug, Clone)]
-pub struct TypedMultiSolutionOutput<V>
+pub struct MultiSolutionOutput<V>
 where
     V: SolveValue,
 {
@@ -682,7 +682,7 @@ pub trait SolverExt: Solver {
         &self,
         model: &MetaModel<V>,
         solution_amount: usize,
-    ) -> Result<MultiSolutionOutput>
+    ) -> Result<Flt64MultiSolutionOutput>
     where
         V: SolveValue,
     {
@@ -695,7 +695,7 @@ pub trait SolverExt: Solver {
         &self,
         model: &MetaModel<V>,
         options: &SolveOptions<'_>,
-    ) -> Result<MultiSolutionOutput>
+    ) -> Result<Flt64MultiSolutionOutput>
     where
         V: SolveValue,
     {
@@ -722,7 +722,7 @@ pub trait SolverExt: Solver {
         &self,
         model: &MetaModel<V>,
         solution_amount: usize,
-    ) -> Result<TypedMultiSolutionOutput<V>>
+    ) -> Result<MultiSolutionOutput<V>>
     where
         V: SolveValue,
     {
@@ -736,7 +736,7 @@ pub trait SolverExt: Solver {
         &self,
         model: &MetaModel<V>,
         options: &SolveOptions<'_>,
-    ) -> Result<TypedMultiSolutionOutput<V>>
+    ) -> Result<MultiSolutionOutput<V>>
     where
         V: SolveValue,
     {
@@ -748,7 +748,7 @@ pub trait SolverExt: Solver {
             multi_output.solutions,
             options.value_conversion_policy,
         )?;
-        Ok(TypedMultiSolutionOutput { output, solutions })
+        Ok(MultiSolutionOutput { output, solutions })
     }
 
     /// 统一 MetaModel 求解 + IIS fallback / Unified MetaModel solve with IIS fallback
@@ -839,12 +839,12 @@ pub trait SolverExt: Solver {
         &self,
         model: &LinearTriadModel,
         options: &SolveOptions<'_>,
-    ) -> Result<MultiSolutionOutput> {
+    ) -> Result<Flt64MultiSolutionOutput> {
         if options.solution_amount > 1 {
             if let Some((output, solutions)) =
                 self.solve_linear_with_solution_pool(model, options.solution_amount)?
             {
-                return Ok(MultiSolutionOutput { output, solutions });
+                return Ok(Flt64MultiSolutionOutput { output, solutions });
             }
         }
 
@@ -855,7 +855,7 @@ pub trait SolverExt: Solver {
                 solutions.push(solution);
             }
         }
-        Ok(MultiSolutionOutput { output, solutions })
+        Ok(Flt64MultiSolutionOutput { output, solutions })
     }
 
     /// 二次模型多解接口（默认返回主解）/ Multi-solution API for quadratic model (returns primary solution by default)
@@ -863,12 +863,12 @@ pub trait SolverExt: Solver {
         &self,
         model: &QuadraticTetradModel,
         options: &SolveOptions<'_>,
-    ) -> Result<MultiSolutionOutput> {
+    ) -> Result<Flt64MultiSolutionOutput> {
         if options.solution_amount > 1 {
             if let Some((output, solutions)) =
                 self.solve_quadratic_with_solution_pool(model, options.solution_amount)?
             {
-                return Ok(MultiSolutionOutput { output, solutions });
+                return Ok(Flt64MultiSolutionOutput { output, solutions });
             }
         }
 
@@ -879,7 +879,7 @@ pub trait SolverExt: Solver {
                 solutions.push(solution);
             }
         }
-        Ok(MultiSolutionOutput { output, solutions })
+        Ok(Flt64MultiSolutionOutput { output, solutions })
     }
 
     /// 统一异步入口（线性）/ Unified async entry (linear)

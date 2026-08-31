@@ -4,11 +4,11 @@
 //! 本模块提供串行执行的组合列生成求解器。
 //! This module provides serial-executing combinatorial column generation solvers.
 
-use super::column_generation_solver::{RegistrationStatusCallback, SolvingStatusCallback};
-use super::{ColumnGenerationSolver, FeasibleSolution, FrameworkSolveOptions, LPResult};
+use std::sync::Arc;
 use ospf_rust_core::error::{CoreError, Result, SolverError};
 use ospf_rust_core::model::intermediate::LinearTriadModel;
-use std::sync::Arc;
+use super::column_generation_solver::{RegistrationStatusCallback, SolvingStatusCallback};
+use super::{ColumnGenerationSolver, FeasibleSolution, FrameworkSolveOptions, LPResult};
 
 /// 串行组合列生成求解器 / Serial Combinatorial Column Generation Solver
 ///

@@ -25,7 +25,7 @@ pub use crate::solver::{
     ConfigurableSolver, FeasibleSolverOutput, LinearSolver, MultiSolutionOutput, QuadraticSolver,
     SolveOptions, SolveOptionsBuilder, SolveValue, SolveValueConversionPolicy, Solver,
     SolverConfig, SolverExt, SolverInfo, SolverOutput, SolverOutputWithIIS, SolverStatus,
-    SolvingStatus, SolvingStatusCallback, TypedMultiSolutionOutput,
+    SolvingStatus, SolvingStatusCallback, Flt64MultiSolutionOutput,
 };
 pub use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 pub use crate::symbol::function::*;

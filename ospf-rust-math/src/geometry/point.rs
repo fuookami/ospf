@@ -25,11 +25,11 @@
 //! assert!(x_diff.abs() < 1e-10);
 //! ```
 
-use super::distance::{Distance, Euclidean};
-use crate::algebra::{Epsilon, Field, InnerProductSpace, NormedSpace, VectorSpace};
-use num_traits::{Float, One, Zero};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::{Add, Index, IndexMut, Neg, Sub};
+use num_traits::{Float, One, Zero};
+use crate::algebra::{Epsilon, Field, InnerProductSpace, NormedSpace, VectorSpace};
+use super::distance::{Distance, Euclidean};
 
 // ============================================================================
 // Point - 泛型点

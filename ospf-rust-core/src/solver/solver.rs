@@ -1,9 +1,9 @@
 //! 求解器 Trait 定义
 //! Solver Trait Definitions
 
-use super::{SolverOutput, SolvingStatus};
 use crate::error::Result;
 use crate::model::intermediate::{LinearTriadModel, QuadraticTetradModel};
+use super::{SolverOutput, SolvingStatus};
 
 /// 求解器能力 / Solver Capabilities
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

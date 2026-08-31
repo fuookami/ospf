@@ -5,12 +5,12 @@
 //! This module is only available when the `scip` feature is enabled.
 
 use std::time::{Duration, Instant};
-
 use crate::error::{CoreError, Result, SolverError};
 use crate::model::ConstraintRelation;
 use crate::model::ObjectiveCategory;
 use crate::model::intermediate::{LinearTriadModel, QuadraticTetradModel};
 use crate::solver::{
+
     LinearSolver, QuadraticSolver, SolverCapability, SolverInfo, SolverOutput, SolverStatus,
 };
 use crate::variable::VariableType;

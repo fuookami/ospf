@@ -227,7 +227,7 @@ fn get_cache() -> &'static Mutex<PrimeCache> {
 /// assert!(!is_prime(4));
 /// ```
 pub fn is_prime(num: usize) -> bool {
-    get_cache().lock().unwrap().is_prime(num)
+    get_cache().lock().expect("prime cache mutex poisoned / 素数缓存互斥锁已中毒").is_prime(num)
 }
 
 /// 获取小于等于 limit 的所有素数
@@ -250,7 +250,7 @@ pub fn is_prime(num: usize) -> bool {
 /// assert_eq!(primes, vec![2, 3, 5, 7]);
 /// ```
 pub fn get_primes(limit: usize) -> Vec<usize> {
-    get_cache().lock().unwrap().get_primes(limit)
+    get_cache().lock().expect("prime cache mutex poisoned / 素数缓存互斥锁已中毒").get_primes(limit)
 }
 
 /// 判断一个 u64 数是否为素数

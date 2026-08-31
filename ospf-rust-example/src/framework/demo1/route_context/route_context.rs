@@ -1,10 +1,7 @@
 use std::error::Error;
-
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::variable::BinaryVariableItem;
-
 use crate::framework::demo1::infrastructure::dto::Input;
-
 use super::model::{Assignment, Edge, Node, Service};
 
 pub struct RouteContext {

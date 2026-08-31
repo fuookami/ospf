@@ -2,7 +2,6 @@
 //! Basic Linear Triad Model
 
 use std::collections::HashMap;
-
 use crate::token::Token;
 use crate::variable::{VariableId, VariableType};
 

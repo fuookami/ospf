@@ -4,10 +4,10 @@
 //! 提供平面角量纲的 SI 单位定义，包括弧度、度、角分、角秒等。
 //! Provides SI unit definitions for plane angle dimension, including radian, degree, arc minute, arc second, etc.
 
+use once_cell::sync::Lazy;
 use crate::dimension::derived::PlaneAngle;
 use crate::scale::{SEXAGESIMAL, Scale};
 use crate::unit::CTUnit;
-use once_cell::sync::Lazy;
 
 // ============================================================================
 // 平面角单位 / Plane angle units

@@ -1,9 +1,9 @@
 //! 坐标轴和轴置换。
 //! Coordinate axes and axis permutations.
 
+use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::{Cuboid3, Cylinder3, Point2, Point3, Rectangle2, Vector2, Vector3};
-use num_traits::Float;
 
 /// 二维坐标轴。
 /// Two-dimensional coordinate axis.

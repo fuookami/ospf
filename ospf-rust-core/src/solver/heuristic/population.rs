@@ -1,8 +1,8 @@
 //! 种群结构
 //! Population Structure
 
-use super::{FitnessComparator, Individual, SolutionWithFitness};
 use std::fmt::Debug;
+use super::{FitnessComparator, Individual, SolutionWithFitness};
 
 /// 种群 / Population
 ///

@@ -1,9 +1,10 @@
 //! 统一求解参数对象
 //! Unified solve options object
 
-use super::column_generation_solver::{RegistrationStatusCallback, SolvingStatusCallback};
 use ospf_rust_core::model::ModelBuildingStatusCallback;
+use super::column_generation_solver::{RegistrationStatusCallback, SolvingStatusCallback};
 use ospf_rust_core::solver::{
+
     SolveOptions as CoreSolveOptions, SolveValueConversionPolicy,
     SolvingStatusCallback as CoreSolvingStatusCallback,
 };

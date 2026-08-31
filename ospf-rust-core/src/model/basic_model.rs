@@ -4,11 +4,11 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::Arc;
-
 use super::configuration::BasicModelConfiguration;
 use super::flatten::{FlattenContextTrait, LazyLinearFlattenContext};
 use super::mechanism::{ConstraintGroup, LinearInequality, MetaConstraint};
 use super::{
+
     LazyRangeCacheContext, LazyValueCacheContext, RangeCacheContextTrait, ValueCacheContextTrait,
 };
 use crate::error::{ModelError, Result, VariableError};
@@ -19,7 +19,7 @@ use crate::token::{
     AnyVariable, IntoValue, MutableTokenList, Token, TokenList, TokenVariableData, VecTokenList,
 };
 use crate::variable::{
-    GenericVariableItem, VariableId, VariableItem, VariableRange, VariableTypeTrait,
+    VariableItem, VariableId, VariableRange, VariableTypeTrait,
 };
 
 /// 基本模型 / Basic Model
@@ -201,21 +201,22 @@ where
     }
 
     /// 添加变量 / Add variable
-    pub fn add_variable(&mut self, variable: VariableItem) -> Result<usize>
+    pub fn add_variable<VT: VariableTypeTrait>(&mut self, variable: VariableItem<VT>) -> Result<usize>
     where
         V: IntoValue<f64>,
+        VT::Value: IntoValue<V>,
     {
-        let var_id = VariableId::from_unique_id(variable.id());
+        let var_id = variable.id();
         let range = variable.range();
-        let lower_bound = match range.lower_bound {
+        let lower_bound = match &range.lower_bound {
             Some(v) => {
-                Some(V::from_value(v).ok_or(VariableError::InvalidValue { var_id, value: v })?)
+                Some(v.clone().into_value())
             }
             None => None,
         };
-        let upper_bound = match range.upper_bound {
+        let upper_bound = match &range.upper_bound {
             Some(v) => {
-                Some(V::from_value(v).ok_or(VariableError::InvalidValue { var_id, value: v })?)
+                Some(v.clone().into_value())
             }
             None => None,
         };
@@ -235,12 +236,13 @@ where
     }
 
     /// 批量添加变量 / Add variables
-    pub fn add_variables<I: IntoIterator<Item = VariableItem>>(
+    pub fn add_variables<VT: VariableTypeTrait, I: IntoIterator<Item = VariableItem<VT>>>(
         &mut self,
         variables: I,
     ) -> Result<Vec<usize>>
     where
         V: IntoValue<f64>,
+        VT::Value: IntoValue<V>,
     {
         let mut indices = Vec::new();
         for var in variables {
@@ -272,7 +274,7 @@ where
     /// ```
     pub fn register_variable<VT: VariableTypeTrait>(
         &mut self,
-        variable: GenericVariableItem<VT>,
+        variable: VariableItem<VT>,
     ) -> Result<usize>
     where
         VT::Value: IntoValue<V>,
@@ -291,7 +293,7 @@ where
     where
         VT::Value: IntoValue<V>,
     {
-        self.register_variable(GenericVariableItem::<VT>::auto(name))
+        self.register_variable(VariableItem::<VT>::auto(name))
     }
 
     /// 自动注册带范围的泛型变量 / Register ranged generic variable with auto-generated ID
@@ -306,7 +308,7 @@ where
     where
         VT::Value: IntoValue<V>,
     {
-        self.register_variable(GenericVariableItem::<VT>::auto_with_range(name, range))
+        self.register_variable(VariableItem::<VT>::auto_with_range(name, range))
     }
 
     /// 批量注册泛型变量 / Register generic variables
@@ -314,7 +316,7 @@ where
     where
         VT: VariableTypeTrait,
         VT::Value: IntoValue<V>,
-        I: IntoIterator<Item = GenericVariableItem<VT>>,
+        I: IntoIterator<Item = VariableItem<VT>>,
     {
         let mut indices = Vec::new();
         for var in variables {

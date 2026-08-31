@@ -3,11 +3,9 @@
 
 use std::fmt::Debug;
 use std::str::FromStr;
-
 use bigdecimal::BigDecimal;
 use num_rational::BigRational;
 use num_traits::{FromPrimitive, ToPrimitive};
-
 use crate::error::{CoreError, Result, SolverError};
 
 /// 求解值转换策略 / Solve value conversion policy
