@@ -1,10 +1,15 @@
 use std::error::Error;
-use ospf_rust_multiarray::{MultiArrayBuilder, Shape};
-use ospf_rust_math::symbol::{Linear, LinearMonomial};
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
+
+use ospf_rust_multiarray::Shape;
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::symbol::{
+    LinearExpressionSymbol, LinearIntermediateSymbol, flat_map1,
+};
 use ospf_rust_core::variable::{UContinuous, UInteger, VariableCombination2D};
+
 use super::common::{read_solution_value, solve_typed};
 
+/// Dealer data structure
 #[derive(Debug, Clone)]
 struct Dealer {
     name: String,
@@ -26,6 +31,7 @@ impl Dealer {
     }
 }
 
+/// Distribution center data structure
 #[derive(Debug, Clone)]
 struct Center {
     name: String,
@@ -41,6 +47,7 @@ impl Center {
     }
 }
 
+/// Build dealer list
 fn build_dealers() -> Vec<Dealer> {
     vec![
         Dealer::new("D0", 100.0, vec![100.0, 50.0, 40.0]),
@@ -51,6 +58,7 @@ fn build_dealers() -> Vec<Dealer> {
     ]
 }
 
+/// Build distribution center list
 fn build_centers() -> Vec<Center> {
     vec![
         Center::new("C0", 400.0),
@@ -59,12 +67,23 @@ fn build_centers() -> Vec<Center> {
     ]
 }
 
+/// Helper: extract (var_index, coefficient) pairs from a symbol
+fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
+    let poly = sym.to_linear_polynomial();
+    poly.monomials().iter()
+        .map(|m| (m.var_index(), *m.coefficient()))
+        .collect()
+}
+
+/// Demo13 main function: Vehicle delivery problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let dealers = build_dealers();
     let centers = build_centers();
     let car_capacity = 18.0;
 
     let mut model = MetaModel::<f64>::new("demo13");
+
+    // Register 2D variable combinations
     let variable_shape = Shape::new([dealers.len(), centers.len()]);
     let x_vars: VariableCombination2D<UContinuous> = VariableCombination2D::with_name_generator(
         variable_shape.clone(),
@@ -76,74 +95,91 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         "y",
         |_index, vector| format!("{}_{}", vector[0], vector[1]),
     );
-    let x_idx = MultiArrayBuilder::from_list(
-        variable_shape.clone(),
-        model.register_variables::<UContinuous, _>(x_vars.iter().cloned())?,
-    );
-    let y_idx = MultiArrayBuilder::from_list(
-        variable_shape,
-        model.register_variables::<UInteger, _>(y_vars.iter().cloned())?,
-    );
+    let x_idx = model.register_combination(&x_vars)?;
+    let y_idx = model.register_combination(&y_vars)?;
 
-    let mut cost_terms = Vec::with_capacity(dealers.len() * centers.len());
+    // Objective: minimize cost = sum(distance[d][c] * y[d][c])
+    let cost_expr = flat_map1("cost", &dealers, |dealer| {
+        let d = dealers.iter().position(|dd| dd.name == dealer.name).unwrap();
+        let monomials: Vec<_> = (0..centers.len())
+            .map(|c| ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                dealer.distance_to(c),
+                y_idx[&[d, c]],
+            ))
+            .collect();
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |_, dealer| dealer.name.clone());
+    model.add_symbol_combination(&cost_expr)?;
+
+    // Aggregate cost objective
+    let mut cost_coeffs = Vec::new();
     for d in 0..dealers.len() {
-        for c in 0..centers.len() {
-            cost_terms.push(LinearMonomial::new(
-                dealers[d].distance_to(c),
-                y_vars[&[d, c]].to_owned_symbol(),
-            ));
+        let poly = cost_expr[d].to_linear_polynomial();
+        for m in poly.monomials() {
+            cost_coeffs.push((m.var_index(), *m.coefficient()));
         }
     }
-    let cost = Linear::new(cost_terms, 0.0);
-    let trans = MultiArrayBuilder::new_by(Shape::<1>::new([centers.len()]), |_idx, vec| {
-        let c = vec[0];
-        Linear::new(
-            dealers
-                .iter()
-                .enumerate()
-                .map(|(d, _)| LinearMonomial::new(1.0, x_vars[&[d, c]].to_owned_symbol()))
-                .collect(),
-            0.0,
-        )
-    });
-    let receive = MultiArrayBuilder::new_by(Shape::<1>::new([dealers.len()]), |_idx, vec| {
-        let d = vec[0];
-        Linear::new(
-            centers
-                .iter()
-                .enumerate()
-                .map(|(c, _)| LinearMonomial::new(1.0, x_vars[&[d, c]].to_owned_symbol()))
-                .collect(),
-            0.0,
-        )
-    });
+    model.add_linear_objective(&cost_coeffs, "cost");
+    model.set_objective_category(ObjectiveCategory::Minimum);
 
-    model.set_math_linear_objective(cost, ObjectiveCategory::Minimum, "cost")?;
+    // Supply constraints per center: sum_d x[d][c] <= supply[c]
+    let trans_expr = flat_map1("trans", &centers, |center| {
+        let c = centers.iter().position(|cc| cc.name == center.name).unwrap();
+        let monomials: Vec<_> = (0..dealers.len())
+            .map(|d| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[d, c]]))
+            .collect();
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |_, center| center.name.clone());
+    model.add_symbol_combination(&trans_expr)?;
 
     for c in 0..centers.len() {
-        model.add_math_inequality(
-            trans[c].clone().le(centers[c].supply),
+        let coeffs = extract_coeffs(&trans_expr[c]);
+        model.add_linear_constraint(
+            &coeffs,
+            ConstraintRelation::LessEqual,
+            centers[c].supply,
             &format!("supply_{}", c),
-        );
+        )?;
     }
+
+    // Demand constraints per dealer: sum_c x[d][c] >= demand[d]
+    let receive_expr = flat_map1("receive", &dealers, |dealer| {
+        let d = dealers.iter().position(|dd| dd.name == dealer.name).unwrap();
+        let monomials: Vec<_> = (0..centers.len())
+            .map(|c| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[d, c]]))
+            .collect();
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |_, dealer| dealer.name.clone());
+    model.add_symbol_combination(&receive_expr)?;
 
     for d in 0..dealers.len() {
-        model.add_math_inequality(
-            receive[d].clone().ge(dealers[d].demand),
+        let coeffs = extract_coeffs(&receive_expr[d]);
+        model.add_linear_constraint(
+            &coeffs,
+            ConstraintRelation::GreaterEqual,
+            dealers[d].demand,
             &format!("demand_{}", d),
-        );
+        )?;
     }
 
+    // Truck capacity constraints: x[d][c] - capacity * y[d][c] <= 0
     for d in 0..dealers.len() {
         for c in 0..centers.len() {
-            let truck = Linear::new(
+            let truck = ospf_rust_core::symbol::flatten::Linear::new(
                 vec![
-                    LinearMonomial::new(1.0, x_vars[&[d, c]].to_owned_symbol()),
-                    LinearMonomial::new(-car_capacity, y_vars[&[d, c]].to_owned_symbol()),
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[d, c]]),
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(-car_capacity, y_idx[&[d, c]]),
                 ],
                 0.0,
             );
-            model.add_math_inequality(truck.le(0.0), &format!("truck_{}_{}", d, c));
+            let coeffs: Vec<_> = truck.monomials().iter()
+                .map(|m| (m.var_index(), *m.coefficient())).collect();
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::LessEqual,
+                0.0,
+                &format!("truck_{}_{}", d, c),
+            )?;
         }
     }
 

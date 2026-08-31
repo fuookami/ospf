@@ -1,10 +1,15 @@
 use std::error::Error;
-use ospf_rust_multiarray::{MultiArrayBuilder, Shape};
-use ospf_rust_math::symbol::{Linear, LinearMonomial};
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
+
+use ospf_rust_multiarray::Shape;
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::symbol::{
+    LinearExpressionSymbol, LinearIntermediateSymbol, flat_map1,
+};
 use ospf_rust_core::variable::{UContinuous, VariableCombination2D};
+
 use super::common::{read_solution_value, solve_typed};
 
+/// Monthly plan data structure
 #[derive(Debug, Clone)]
 struct MonthPlan {
     month: i32,
@@ -22,6 +27,7 @@ impl MonthPlan {
     }
 }
 
+/// Build monthly plan list
 fn build_month_plans() -> Vec<MonthPlan> {
     vec![
         MonthPlan::new(3, 50.0, 100.0),
@@ -31,6 +37,15 @@ fn build_month_plans() -> Vec<MonthPlan> {
     ]
 }
 
+/// Helper: extract (var_index, coefficient) pairs from a symbol
+fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
+    let poly = sym.to_linear_polynomial();
+    poly.monomials().iter()
+        .map(|m| (m.var_index(), *m.coefficient()))
+        .collect()
+}
+
+/// Demo16 main function: Production planning problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let plans = build_month_plans();
     let product_price = 40.0;
@@ -39,74 +54,109 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     let n = plans.len();
     let mut model = MetaModel::<f64>::new("demo16");
+
+    // Register 2D variable combination x[i][j]: produce in month i for demand in month j
     let x_shape = Shape::new([n, n]);
     let x_vars: VariableCombination2D<UContinuous> =
-        VariableCombination2D::with_name_generator(x_shape.clone(), "x", |_index, vector| {
+        VariableCombination2D::with_name_generator(x_shape, "x", |_index, vector| {
             format!("{}_{}", vector[0], vector[1])
         });
-    let x_idx = MultiArrayBuilder::from_list(
-        x_shape,
-        model.register_variables::<UContinuous, _>(x_vars.iter().cloned())?,
-    );
+    let x_idx = model.register_combination(&x_vars)?;
 
-    let mut delay_delivery_cost_terms = Vec::new();
-    let mut storage_cost_terms = Vec::new();
-    let mut produce_cost_terms = Vec::with_capacity(n * n);
-    for i in 0..n {
-        for j in 0..n {
-            if i < j {
-                storage_cost_terms.push(LinearMonomial::new(
-                    (j - i) as f64 * storage_price,
-                    x_vars[&[i, j]].to_owned_symbol(),
-                ));
-                delay_delivery_cost_terms.push(LinearMonomial::new(
-                    ((j - i) * (j - i)) as f64 * delay_price,
-                    x_vars[&[j, i]].to_owned_symbol(),
-                ));
-            }
-            produce_cost_terms.push(LinearMonomial::new(
+    // Objective components: produce cost, storage cost, delay delivery cost
+    // produce cost = product_price * sum(x[i][j])
+    let produce_cost_expr = flat_map1("produce_cost", &plans, |plan| {
+        let i = plans.iter().position(|p| p.month == plan.month).unwrap();
+        let monomials: Vec<_> = (0..n)
+            .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(
                 product_price,
-                x_vars[&[i, j]].to_owned_symbol(),
-            ));
+                x_idx[&[i, j]],
+            ))
+            .collect();
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |_, plan| format!("{}", plan.month));
+    model.add_symbol_combination(&produce_cost_expr)?;
+
+    // storage cost = sum((j-i) * storage_price * x[i][j]) for i < j
+    let storage_cost_expr = flat_map1("storage_cost", &plans, |plan| {
+        let i = plans.iter().position(|p| p.month == plan.month).unwrap();
+        let monomials: Vec<_> = (0..n)
+            .filter(|&j| i < j)
+            .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                (j - i) as f64 * storage_price,
+                x_idx[&[i, j]],
+            ))
+            .collect();
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |_, plan| format!("{}", plan.month));
+    model.add_symbol_combination(&storage_cost_expr)?;
+
+    // delay delivery cost = sum((j-i)^2 * delay_price * x[j][i]) for i < j
+    // Note: x[j][i] means produce in month j (later) for demand in month i (earlier)
+    let delay_cost_expr = flat_map1("delay_cost", &plans, |plan| {
+        let i = plans.iter().position(|p| p.month == plan.month).unwrap();
+        let monomials: Vec<_> = (0..n)
+            .filter(|&j| i < j)
+            .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                ((j - i) * (j - i)) as f64 * delay_price,
+                x_idx[&[j, i]],
+            ))
+            .collect();
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |_, plan| format!("{}", plan.month));
+    model.add_symbol_combination(&delay_cost_expr)?;
+
+    // Aggregate total cost objective
+    let mut total_cost_coeffs = Vec::new();
+    for i in 0..n {
+        for expr in [&produce_cost_expr, &storage_cost_expr, &delay_cost_expr] {
+            let poly = expr[i].to_linear_polynomial();
+            for m in poly.monomials() {
+                total_cost_coeffs.push((m.var_index(), *m.coefficient()));
+            }
         }
     }
-    let delay_delivery_cost = Linear::new(delay_delivery_cost_terms, 0.0);
-    let storage_cost = Linear::new(storage_cost_terms, 0.0);
-    let produce_cost = Linear::new(produce_cost_terms, 0.0);
-    let total_cost = delay_delivery_cost + storage_cost + produce_cost;
-    let produce = MultiArrayBuilder::new_by(Shape::<1>::new([n]), |_idx, vec| {
-        let i = vec[0];
-        Linear::new(
-            (0..n)
-                .map(|j| LinearMonomial::new(1.0, x_vars[&[i, j]].to_owned_symbol()))
-                .collect(),
-            0.0,
-        )
-    });
-    let supply = MultiArrayBuilder::new_by(Shape::<1>::new([n]), |_idx, vec| {
-        let j = vec[0];
-        Linear::new(
-            (0..n)
-                .map(|i| LinearMonomial::new(1.0, x_vars[&[i, j]].to_owned_symbol()))
-                .collect(),
-            0.0,
-        )
-    });
+    model.add_linear_objective(&total_cost_coeffs, "cost");
+    model.set_objective_category(ObjectiveCategory::Minimum);
 
-    model.set_math_linear_objective(total_cost, ObjectiveCategory::Minimum, "cost")?;
+    // Supply constraints per demand month: sum_i x[i][j] >= demand[j]
+    let supply_expr = flat_map1("supply", &plans, |plan| {
+        let j = plans.iter().position(|p| p.month == plan.month).unwrap();
+        let monomials: Vec<_> = (0..n)
+            .map(|i| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[i, j]]))
+            .collect();
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |_, plan| format!("{}", plan.month));
+    model.add_symbol_combination(&supply_expr)?;
 
     for j in 0..n {
-        model.add_math_inequality(
-            supply[j].clone().ge(plans[j].demand),
+        let coeffs = extract_coeffs(&supply_expr[j]);
+        model.add_linear_constraint(
+            &coeffs,
+            ConstraintRelation::GreaterEqual,
+            plans[j].demand,
             &format!("demand_{}", plans[j].month),
-        );
+        )?;
     }
 
+    // Productivity constraints per produce month: sum_j x[i][j] <= productivity[i]
+    let produce_expr = flat_map1("produce", &plans, |plan| {
+        let i = plans.iter().position(|p| p.month == plan.month).unwrap();
+        let monomials: Vec<_> = (0..n)
+            .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[i, j]]))
+            .collect();
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |_, plan| format!("{}", plan.month));
+    model.add_symbol_combination(&produce_expr)?;
+
     for i in 0..n {
-        model.add_math_inequality(
-            produce[i].clone().le(plans[i].productivity),
+        let coeffs = extract_coeffs(&produce_expr[i]);
+        model.add_linear_constraint(
+            &coeffs,
+            ConstraintRelation::LessEqual,
+            plans[i].productivity,
             &format!("productivity_{}", plans[i].month),
-        );
+        )?;
     }
 
     let output = solve_typed(model)?;

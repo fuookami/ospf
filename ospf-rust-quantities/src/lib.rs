@@ -21,6 +21,7 @@ pub mod unit;
 
 // 重导出常用类型 / Re-export common types
 pub use error::{DimensionMismatchError, SymbolRegistryError, UnitConversionError};
+pub use unit::conversion_value::{UnitConversionCalculation, UnitConversionValue};
 
 // 从 quantity 模块重导出 / Re-export from quantity module
 pub use functional::*;

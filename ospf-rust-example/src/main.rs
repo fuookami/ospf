@@ -1,36 +1,30 @@
 #[cfg(feature = "backend-gurobi")]
 mod core;
 #[cfg(feature = "backend-gurobi")]
-mod core_demo;
-#[cfg(feature = "backend-gurobi")]
 mod example_modeling;
 #[cfg(feature = "backend-gurobi")]
 mod framework;
-#[cfg(feature = "backend-gurobi")]
-mod framework_demo;
-#[cfg(feature = "backend-gurobi")]
-mod heuristic_demo;
 
 #[cfg(feature = "backend-gurobi")]
 fn run_core(id: usize) -> Result<(), Box<dyn std::error::Error>> {
     match id {
-        1 => core_demo::run_demo1(),
-        2 => core_demo::run_demo2(),
-        3 => core_demo::run_demo3(),
-        4 => core_demo::run_demo4(),
-        5 => core_demo::run_demo5(),
-        6 => core_demo::run_demo6(),
-        7 => core_demo::run_demo7(),
-        8 => core_demo::run_demo8(),
-        9 => core_demo::run_demo9(),
-        10 => core_demo::run_demo10(),
-        11 => core_demo::run_demo11(),
-        12 => core_demo::run_demo12(),
-        13 => core_demo::run_demo13(),
-        14 => core_demo::run_demo14(),
-        15 => core_demo::run_demo15(),
-        16 => core_demo::run_demo16(),
-        17 => core_demo::run_demo17(),
+        1 => core::run_demo1(),
+        2 => core::run_demo2(),
+        3 => core::run_demo3(),
+        4 => core::run_demo4(),
+        5 => core::run_demo5(),
+        6 => core::run_demo6(),
+        7 => core::run_demo7(),
+        8 => core::run_demo8(),
+        9 => core::run_demo9(),
+        10 => core::run_demo10(),
+        11 => core::run_demo11(),
+        12 => core::run_demo12(),
+        13 => core::run_demo13(),
+        14 => core::run_demo14(),
+        15 => core::run_demo15(),
+        16 => core::run_demo16(),
+        17 => core::run_demo17(),
         _ => Err(format!("unknown core demo id: {}", id).into()),
     }
 }
@@ -46,15 +40,12 @@ fn run_all_core() -> Result<(), Box<dyn std::error::Error>> {
 
 fn print_usage() {
     println!("usage:");
-    println!("  cargo run -p ospf-rust-example --features backend-gurobi -- <command>");
+    println!("  cargo run -p ospf-rust-example --features backend-gurobi -- command");
     println!("  ospf-rust-example core:demo1");
-    println!("  ospf-rust-example core:1 (legacy alias)");
+    println!("  ospf-rust-example core:1");
     println!("  ospf-rust-example core:all");
-    println!("  ospf-rust-example core:generic-number");
     println!("  ospf-rust-example core:shortcuts");
     println!("  ospf-rust-example core:capability-gate");
-    println!("  ospf-rust-example heuristic:demo1");
-    println!("  ospf-rust-example heuristic:demo2");
     println!("  ospf-rust-example framework:demo1");
     println!("  ospf-rust-example framework:demo2");
     println!("  ospf-rust-example framework:demo3");
@@ -65,15 +56,12 @@ fn print_usage() {
 fn run_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
     match command {
         "core:all" => run_all_core(),
-        "core:generic-number" => core_demo::run_generic_number_demo(),
-        "core:shortcuts" => core_demo::run_core_shortcuts(),
-        "core:capability-gate" => core_demo::run_capability_gate(),
-        "heuristic:demo1" => heuristic_demo::run_demo1(),
-        "heuristic:demo2" => heuristic_demo::run_demo2(),
-        "framework:demo1" => framework_demo::run_demo1(),
-        "framework:demo2" => framework_demo::run_demo2(),
-        "framework:demo3" => framework_demo::run_demo3(),
-        "framework:demo4" => framework_demo::run_demo4(),
+        "core:shortcuts" => core::run_core_shortcuts(),
+        "core:capability-gate" => core::run_capability_gate(),
+        "framework:demo1" => framework::run_demo1(),
+        "framework:demo2" => framework::run_demo2(),
+        "framework:demo3" => framework::run_demo3(),
+        "framework:demo4" => framework::run_demo4(),
         _ if command.starts_with("core:demo") => {
             let id = command.trim_start_matches("core:demo").parse::<usize>();
             match id {
@@ -100,7 +88,7 @@ fn run_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
     let _ = command;
     print_usage();
     Err(
-        "backend is not enabled, rerun with `--features backend-gurobi` to execute demos/tests"
+        "backend is not enabled, rerun with --features backend-gurobi to execute demos/tests"
             .into(),
     )
 }

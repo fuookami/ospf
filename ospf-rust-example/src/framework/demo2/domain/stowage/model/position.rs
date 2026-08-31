@@ -1,4 +1,5 @@
 use super::item::{Item, ItemLocationTag, ItemStatus};
+use super::super::super::shared::units;
 
 /// 舱位状态代码 / Position status code (对齐 Kotlin PositionStatusCode)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -26,7 +27,7 @@ pub struct Position {
     pub id: String,
     pub space_name: String,
     pub max_load_amount: u64,
-    pub max_load_weight: f64,
+    pub max_load_weight: f64, // 保留 f64 用于约束注册边界
     pub status: PositionStatus,
     pub loaded_items: Vec<String>,
     pub is_main_deck: bool,

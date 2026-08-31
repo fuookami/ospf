@@ -1,12 +1,11 @@
 use std::error::Error;
-use ospf_rust_core::solver::{
 
-    LinearSolver, SolverCapability, SolverInfo, SolverOutput, SolverStatus,
-};
+use ospf_rust_core::solver::{LinearSolver, SolverCapability, SolverInfo, SolverOutput, SolverStatus};
 use ospf_rust_core::symbol::BinaryzationMethod;
 
 use super::common::resolve_binaryzation_method;
 
+/// 回退演示求解器 / Fallback demo solver
 struct FallbackDemoSolver;
 
 impl SolverInfo for FallbackDemoSolver {
@@ -28,6 +27,7 @@ impl LinearSolver for FallbackDemoSolver {
     }
 }
 
+/// 打印能力门控结果 / Print capability gate result
 fn print_gate_result(solver: &dyn SolverInfo, requested: BinaryzationMethod) {
     let (resolved, fallback) = resolve_binaryzation_method(solver, requested);
     println!(
@@ -41,6 +41,7 @@ fn print_gate_result(solver: &dyn SolverInfo, requested: BinaryzationMethod) {
     }
 }
 
+/// Capability gate 主函数 / Capability gate main function
 pub fn run() -> Result<(), Box<dyn Error>> {
     let native_solver = ospf_rust_core::solver::solvers::GurobiSolver::new();
     let fallback_solver = FallbackDemoSolver;

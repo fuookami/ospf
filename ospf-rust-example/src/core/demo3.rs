@@ -1,9 +1,15 @@
 use std::error::Error;
-use ospf_rust_math::symbol::{Linear, LinearMonomial};
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
-use ospf_rust_core::variable::UIntegerVariableItem;
+
+use ospf_rust_multiarray::{MultiArray, Shape};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::symbol::{
+    SymbolCombination, LinearExpressionSymbol, flat_map1,
+};
+use ospf_rust_core::variable::{UContinuous, VariableCombination1D};
+
 use super::common::{read_solution_value, solve_typed};
 
+/// 材料数据结构 / Material data structure
 #[derive(Debug, Clone)]
 struct Material {
     name: String,
@@ -13,18 +19,11 @@ struct Material {
 
 impl Material {
     fn new(name: &str, unit_cost: f64, yields: Vec<f64>) -> Self {
-        Self {
-            name: name.to_string(),
-            unit_cost,
-            yields,
-        }
-    }
-
-    fn yield_of(&self, product_idx: usize) -> f64 {
-        self.yields[product_idx]
+        Self { name: name.to_string(), unit_cost, yields }
     }
 }
 
+/// 产品目标数据结构 / Product target data structure
 #[derive(Debug, Clone)]
 struct ProductTarget {
     name: String,
@@ -33,10 +32,7 @@ struct ProductTarget {
 
 impl ProductTarget {
     fn new(name: &str, min_yield: f64) -> Self {
-        Self {
-            name: name.to_string(),
-            min_yield,
-        }
+        Self { name: name.to_string(), min_yield }
     }
 }
 
@@ -57,59 +53,83 @@ fn build_product_targets() -> Vec<ProductTarget> {
     ]
 }
 
+/// 配料问题模型 / Blending problem model
+struct BlendingModel {
+    x: VariableCombination1D<UContinuous>,
+    x_idx: MultiArray<usize, Shape<1>>,
+    cost: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    yields: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+}
+
+impl BlendingModel {
+    fn register(
+        model: &mut MetaModel<f64>,
+        materials: &[Material],
+        targets: &[ProductTarget],
+    ) -> Result<Self, Box<dyn Error>> {
+        // 1. 注册变量组合
+        let x = VariableCombination1D::new(Shape::new([materials.len()]), "x");
+        let x_idx = model.register_combination(&x)?;
+
+        // 2. 成本符号
+        let cost = flat_map1("cost", materials, |m| {
+            let var_index = x_idx[materials.iter().position(|mm| mm.name == m.name).unwrap()];
+            ospf_rust_core::symbol::flatten::Linear::new(
+                vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(m.unit_cost, var_index)],
+                0.0,
+            )
+        }, |_, m| m.name.clone());
+        model.add_symbol_combination(&cost)?;
+
+        // 3. 产量符号
+        let yields = flat_map1("yield", targets, |t| {
+            let p = targets.iter().position(|tt| tt.name == t.name).unwrap();
+            let monomials: Vec<_> = materials.iter().enumerate().filter_map(|(m_idx, m)| {
+                let coeff = m.yields[p];
+                if coeff != 0.0 {
+                    Some(ospf_rust_core::symbol::flatten::LinearMonomial::new(coeff, x_idx[m_idx]))
+                } else {
+                    None
+                }
+            }).collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        }, |_, t| t.name.clone());
+        model.add_symbol_combination(&yields)?;
+
+        Ok(BlendingModel { x, x_idx, cost, yields })
+    }
+
+    fn add_constraints(
+        &self,
+        model: &mut MetaModel<f64>,
+        targets: &[ProductTarget],
+    ) -> Result<(), Box<dyn Error>> {
+        // 目标: 最小化成本
+        let cost_poly = self.cost[0].to_linear_polynomial();
+        let cost_coeffs: Vec<_> = cost_poly.monomials().iter()
+            .map(|m| (m.var_index(), *m.coefficient())).collect();
+        model.add_linear_objective(&cost_coeffs, "cost");
+        model.set_objective_category(ObjectiveCategory::Minimum);
+
+        // 产量约束
+        for (p, target) in targets.iter().enumerate() {
+            let poly = self.yields[p].to_linear_polynomial();
+            let coeffs: Vec<_> = poly.monomials().iter()
+                .map(|m| (m.var_index(), *m.coefficient())).collect();
+            model.add_linear_constraint(&coeffs, ConstraintRelation::GreaterEqual, target.min_yield, &format!("yield_{}_lb", target.name))?;
+            model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, target.min_yield, &format!("yield_{}_ub", target.name))?;
+        }
+        Ok(())
+    }
+}
+
 pub fn run() -> Result<(), Box<dyn Error>> {
     let materials = build_materials();
     let targets = build_product_targets();
 
     let mut model = MetaModel::<f64>::new("demo3");
-    let mut x_vars = Vec::with_capacity(materials.len());
-    let mut x_idx = vec![0usize; materials.len()];
-
-    for (m, _) in materials.iter().enumerate() {
-        let variable = UIntegerVariableItem::auto(&format!("x_{}", m));
-        x_idx[m] = model.register_variable(variable.clone())?;
-        x_vars.push(variable);
-    }
-
-    let cost = Linear::new(
-        x_vars
-            .iter()
-            .zip(materials.iter())
-            .map(|(var, material)| LinearMonomial::new(material.unit_cost, var.to_owned_symbol()))
-            .collect(),
-        0.0,
-    );
-    let yields: Vec<Linear<f64>> = targets
-        .iter()
-        .enumerate()
-        .map(|(p, _)| {
-            Linear::new(
-                x_vars
-                    .iter()
-                    .zip(materials.iter())
-                    .filter_map(|(var, material)| {
-                        let coefficient = material.yield_of(p);
-                        (coefficient != 0.0)
-                            .then(|| LinearMonomial::new(coefficient, var.to_owned_symbol()))
-                    })
-                    .collect(),
-                0.0,
-            )
-        })
-        .collect();
-
-    model.set_math_linear_objective(cost, ObjectiveCategory::Minimum, "cost")?;
-
-    for (p, target) in targets.iter().enumerate() {
-        model.add_math_inequality(
-            yields[p].clone().ge(target.min_yield),
-            &format!("yield_{}_lb", target.name),
-        );
-        model.add_math_inequality(
-            yields[p].clone().le(target.min_yield),
-            &format!("yield_{}_ub", target.name),
-        );
-    }
+    let blending = BlendingModel::register(&mut model, &materials, &targets)?;
+    blending.add_constraints(&mut model, &targets)?;
 
     let output = solve_typed(model)?;
     let solution = output.solution;
@@ -119,12 +139,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     if let Some(obj) = output.objective_value {
         println!("total cost: {:.2}", obj);
     }
-    for (m, material) in materials.iter().enumerate() {
-        println!(
-            "{}: {:.2}",
-            material.name,
-            read_solution_value(&solution, x_idx[m])
-        );
+    for (m, _) in materials.iter().enumerate() {
+        println!("{}: {:.2}", materials[m].name, read_solution_value(&solution, blending.x_idx[m]));
     }
     Ok(())
 }
@@ -132,9 +148,6 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn test_demo3() {
-        assert!(run().is_ok());
-    }
+    fn test_demo3() { assert!(run().is_ok()); }
 }

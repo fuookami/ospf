@@ -252,6 +252,95 @@ impl<VT: VariableTypeTrait, S: AbstractShape> VariableCombination<VT, S> {
     pub fn iter(&self) -> impl Iterator<Item = &VariableItem<VT>> {
         self.variables.iter()
     }
+
+    /// 对固定前缀索引的某维度求和，返回模型级 `Linear<V>` 多项式。
+    /// Sum across a dimension, returning model-level `Linear<V>` polynomial.
+    ///
+    /// 使用 `index_array`（由 `register_combination` 返回）将每个变量映射到模型 token 索引，
+    /// 构造 `LinearMonomial<V>` 的 `var_index`。
+    ///
+    /// Uses `index_array` (returned by `register_combination`) to map each variable
+    /// to its model token index for `LinearMonomial<V>::var_index`.
+    ///
+    /// # 参数 / Parameters
+    ///
+    /// - `fixed_indices`: 固定维度的索引值，长度必须等于 `S::DIMENSION - 1`
+    ///   Fixed dimension index values, length must equal `S::DIMENSION - 1`
+    /// - `dim`: 要求和的维度（0-based）
+    ///   Dimension to sum across (0-based)
+    /// - `index_array`: 模型索引数组，由 `register_combination` 返回
+    ///   Model index array, returned by `register_combination`
+    /// - `coefficient`: 每个单项式的系数，通常为 `1.0`
+    ///   Coefficient for each monomial, typically `1.0`
+    /// - `zero`: 常数项，通常为 `0.0`
+    ///   Constant term, typically `0.0`
+    ///
+    /// # 示例 / Examples
+    ///
+    /// ```rust
+    /// use ospf_rust_core::variable::{VariableCombination, UContinuous};
+    /// use ospf_rust_core::model::MetaModel;
+    /// use ospf_rust_multiarray::Shape;
+    ///
+    /// let mut model = MetaModel::<f64>::new("test");
+    /// let vars: VariableCombination<UContinuous, _> =
+    ///     VariableCombination::new(Shape::<2>::new([3, 4]), "y");
+    /// let y_idx = model.register_combination(&vars).unwrap();
+    /// // 对第 1 行（固定 dim 0 = 1）的 dim 1 求和
+    /// let poly = vars.sum_along_dimension(&[1], 1, &y_idx, 1.0_f64, 0.0_f64);
+    /// assert_eq!(poly.monomials().len(), 4);
+    /// ```
+    pub fn sum_along_dimension<V>(
+        &self,
+        fixed_indices: &[usize],
+        dim: usize,
+        index_array: &MultiArray<usize, S>,
+        coefficient: V,
+        zero: V,
+    ) -> crate::symbol::flatten::Linear<V>
+    where
+        V: Clone + std::fmt::Debug + Send + Sync + 'static,
+        VT: Clone,
+    {
+        let ndim = self.variables.shape.dimension();
+        assert_eq!(
+            fixed_indices.len(),
+            ndim - 1,
+            "fixed_indices length must be S::DIMENSION - 1 (expected {}, got {})",
+            ndim - 1,
+            fixed_indices.len()
+        );
+        assert!(
+            dim < ndim,
+            "dim {} out of range (ndim = {})",
+            dim,
+            ndim
+        );
+
+        use crate::symbol::flatten::{Linear as ModelLinear, LinearMonomial as ModelLinearMonomial};
+
+        let mut monomials = Vec::new();
+        for (linear, vector, _item) in self.variables.enumerate() {
+            // 检查除 dim 维度外的所有坐标是否与 fixed_indices 匹配
+            let mut fixed_idx = 0;
+            let matches = (0..ndim).all(|d| {
+                if d == dim {
+                    true
+                } else {
+                    let expected = fixed_indices[fixed_idx];
+                    fixed_idx += 1;
+                    vector[d] == expected
+                }
+            });
+
+            if matches {
+                let model_index = index_array[linear];
+                monomials.push(ModelLinearMonomial::new(coefficient.clone(), model_index));
+            }
+        }
+
+        ModelLinear::new(monomials, zero)
+    }
 }
 
 impl<VT: VariableTypeTrait, S: AbstractShape + Clone> Clone for VariableCombination<VT, S>

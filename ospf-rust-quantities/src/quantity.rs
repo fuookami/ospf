@@ -27,6 +27,7 @@ use crate::unit::concept::UnitTrait;
 use crate::unit::{
     CTUnit, CTUnitDiv, CTUnitMul, CTUnitReciprocal, Unit, UnitConversionRule, UnitSystem,
 };
+use crate::unit::conversion_value::{UnitConversionCalculation, UnitConversionValue};
 
 // ============================================================================
 // Quantity - 统一的物理量结构体 / Unified quantity struct
@@ -187,8 +188,7 @@ impl<V, U: UnitTrait> AsRef<Quantity<V, U>> for Quantity<V, U> {
 
 impl<V> Quantity<V, Unit>
 where
-    V: Clone + Mul<V, Output = V> + Add<V, Output = V> + Sub<V, Output = V> + Div<V, Output = V>,
-    BigDecimal: Into<V>,
+    V: Clone + UnitConversionValue,
 {
     /// 获取量纲
     /// Get dimension
@@ -244,8 +244,7 @@ where
 
 impl<V, U: CTUnit> Quantity<V, U>
 where
-    V: Clone + Mul<V, Output = V> + Add<V, Output = V> + Sub<V, Output = V> + Div<V, Output = V>,
-    BigDecimal: Into<V> + From<V>,
+    V: Clone + UnitConversionValue,
 {
     /// 转换到另一个单位类型（编译时量纲检查）
     /// Convert to another unit type (compile-time dimension check)
@@ -321,13 +320,7 @@ impl<V> Eq for Quantity<V, Unit> where V: Eq {}
 
 impl<V> PartialOrd for Quantity<V, Unit>
 where
-    V: PartialOrd
-        + Clone
-        + Mul<V, Output = V>
-        + Add<V, Output = V>
-        + Sub<V, Output = V>
-        + Div<V, Output = V>,
-    BigDecimal: Into<V>,
+    V: PartialOrd + Clone + UnitConversionValue,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if !self.unit.same_dimension(&other.unit) {
@@ -373,8 +366,7 @@ impl<V: Ord, U: CTUnit> Ord for Quantity<V, U> {
 
 impl<V> Quantity<V, Unit>
 where
-    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V> + Div<V, Output = V>,
-    BigDecimal: Into<V>,
+    V: UnitConversionValue,
 {
     fn linear_difference_unit(unit: &Unit) -> Unit {
         if unit.is_linear() {
@@ -393,8 +385,8 @@ where
         if !from.same_dimension(to) {
             return None;
         }
-        let factor: V = (from.scale().value() / to.scale().value()).into();
-        Some(value * factor)
+        let factor = from.scale().value() / to.scale().value();
+        V::from_decimal(&factor).map(|f| value * f)
     }
 
     /// 加法（返回 Result）
@@ -480,13 +472,45 @@ where
             })));
         }
         if !self.unit.is_linear() && !other.unit.is_linear() {
-            let self_standard = self.unit.conversion().to_standard_value(self.value.clone());
-            let other_standard = other
+            let self_standard = match self
                 .unit
                 .conversion()
-                .to_standard_value(other.value.clone());
+                .to_standard_value_checked(self.value.clone())
+            {
+                Some(v) => v,
+                None => {
+                    return Err(Box::new(error!(UnitConversionError {
+                        from_unit: self.unit.symbol().to_string(),
+                        to_unit: "standard".to_string(),
+                        reason: "numeric conversion failed for affine subtraction"
+                    })));
+                }
+            };
+            let other_standard = match other
+                .unit
+                .conversion()
+                .to_standard_value_checked(other.value.clone())
+            {
+                Some(v) => v,
+                None => {
+                    return Err(Box::new(error!(UnitConversionError {
+                        from_unit: other.unit.symbol().to_string(),
+                        to_unit: "standard".to_string(),
+                        reason: "numeric conversion failed for affine subtraction"
+                    })));
+                }
+            };
             let difference_unit = Self::linear_difference_unit(&self.unit);
-            let scale: V = difference_unit.scale().value().clone().into();
+            let scale = match V::from_decimal(difference_unit.scale().value()) {
+                Some(v) => v,
+                None => {
+                    return Err(Box::new(error!(UnitConversionError {
+                        from_unit: self.unit.symbol().to_string(),
+                        to_unit: "standard".to_string(),
+                        reason: "scale numeric conversion failed"
+                    })));
+                }
+            };
             return Ok(Quantity::new(
                 (self_standard - other_standard) / scale,
                 difference_unit,
@@ -538,8 +562,7 @@ where
 
 impl<V> Add for Quantity<V, Unit>
 where
-    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V> + Div<V, Output = V>,
-    BigDecimal: Into<V>,
+    V: UnitConversionValue,
 {
     type Output = Quantity<V, Unit>;
 
@@ -551,8 +574,7 @@ where
 
 impl<V> Sub for Quantity<V, Unit>
 where
-    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V> + Div<V, Output = V>,
-    BigDecimal: Into<V>,
+    V: UnitConversionValue,
 {
     type Output = Quantity<V, Unit>;
 
@@ -782,8 +804,7 @@ where
 
 impl<V> Add<&Quantity<V, Unit>> for &Quantity<V, Unit>
 where
-    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V> + Div<V, Output = V>,
-    BigDecimal: Into<V>,
+    V: UnitConversionValue,
 {
     type Output = Quantity<V, Unit>;
 
@@ -795,8 +816,7 @@ where
 
 impl<V> Sub<&Quantity<V, Unit>> for &Quantity<V, Unit>
 where
-    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V> + Div<V, Output = V>,
-    BigDecimal: Into<V>,
+    V: UnitConversionValue,
 {
     type Output = Quantity<V, Unit>;
 
@@ -1139,9 +1159,8 @@ where
 
 impl<V> TolerancedEq for Quantity<V, Unit>
 where
-    V: TolerancedEq<Value = V>,
+    V: TolerancedEq<Value = V> + UnitConversionValue,
     for<'a> &'a V: Mul<V, Output = V>,
-    BigDecimal: Into<V>,
 {
     type Value = V;
 
@@ -1157,7 +1176,11 @@ where
                 Some(f) => f,
                 None => return false,
             };
-            let converted_value = &other.value * factor.into();
+            let factor_v = match V::from_decimal(&factor) {
+                Some(v) => v,
+                None => return false,
+            };
+            let converted_value = &other.value * factor_v;
             self.value.eq_within(&converted_value, &tolerance)
         }
     }
@@ -1184,9 +1207,8 @@ where
 
 impl<V> TolerancedOrd for Quantity<V, Unit>
 where
-    V: TolerancedOrd<Value = V>,
+    V: TolerancedOrd<Value = V> + UnitConversionValue,
     for<'a> &'a V: Mul<V, Output = V>,
-    BigDecimal: Into<V>,
 {
     fn cmp_within(&self, other: &Self, tolerance: &Tolerance<V>) -> Ordering {
         if !self.unit.same_dimension(&other.unit) {
@@ -1204,7 +1226,11 @@ where
                 Some(f) => f,
                 None => return Ordering::Equal,
             };
-            let converted_value = &other.value * factor.into();
+            let factor_v = match V::from_decimal(&factor) {
+                Some(v) => v,
+                None => return Ordering::Equal,
+            };
+            let converted_value = &other.value * factor_v;
             self.value.cmp_within(&converted_value, &tolerance)
         }
     }
@@ -1739,5 +1765,122 @@ mod tests {
         // 注意：Linear 的加法可能保留所有项，具体行为取决于 Linear 的实现
         // Note: Linear addition may retain all terms, behavior depends on Linear implementation
         assert!(sum.value.len() >= 2);
+    }
+
+    // ========================================================================
+    // f64 运行时单位转换测试 / f64 runtime unit conversion tests
+    // ========================================================================
+
+    #[test]
+    fn test_f64_runtime_unit_conversion_m_to_km() {
+        // 1000 m -> 1 km
+        let q = Quantity::new(1000.0_f64, Meter::INSTANT.clone());
+        let converted = q.to_unit(&Kilometer::INSTANT.clone()).unwrap();
+        assert!((converted.value - 1.0).abs() < 1e-10);
+        assert_eq!(converted.unit.symbol(), "km");
+    }
+
+    #[test]
+    fn test_f64_runtime_unit_conversion_km_to_m() {
+        // 1 km -> 1000 m
+        let q = Quantity::new(1.0_f64, Kilometer::INSTANT.clone());
+        let converted = q.to_unit(&Meter::INSTANT.clone()).unwrap();
+        assert!((converted.value - 1000.0).abs() < 1e-10);
+        assert_eq!(converted.unit.symbol(), "m");
+    }
+
+    #[test]
+    fn test_f64_runtime_add_different_units() {
+        // 1 km + 500 m = 1.5 km
+        let q1 = Quantity::new(1.0_f64, Kilometer::INSTANT.clone());
+        let q2 = Quantity::new(500.0_f64, Meter::INSTANT.clone());
+        let sum = q1.checked_add(&q2).unwrap();
+        assert!((sum.value - 1.5).abs() < 1e-10);
+        assert_eq!(sum.unit.symbol(), "km");
+    }
+
+    #[test]
+    fn test_f64_runtime_sub_different_units() {
+        // 1500 m - 1 km = 500 m
+        let q1 = Quantity::new(1500.0_f64, Meter::INSTANT.clone());
+        let q2 = Quantity::new(1.0_f64, Kilometer::INSTANT.clone());
+        let diff = q1.checked_sub(&q2).unwrap();
+        assert!((diff.value - 500.0).abs() < 1e-10);
+        assert_eq!(diff.unit.symbol(), "m");
+    }
+
+    #[test]
+    fn test_f64_runtime_add_operators() {
+        // 验证 + 和 - 操作符可用于 f64
+        // Verify + and - operators work for f64
+        let q1 = Quantity::new(1.0_f64, Kilometer::INSTANT.clone());
+        let q2 = Quantity::new(500.0_f64, Meter::INSTANT.clone());
+        let sum = q1 + q2;
+        assert!((sum.value - 1.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_f64_runtime_partial_ord() {
+        // 验证 f64 Quantity 可比较
+        // Verify f64 quantities can be compared
+        let q1 = Quantity::new(1.0_f64, Kilometer::INSTANT.clone());
+        let q2 = Quantity::new(500.0_f64, Meter::INSTANT.clone());
+        assert!(q1 > q2);
+    }
+
+    // ========================================================================
+    // BigRational 运行时单位转换测试 / BigRational runtime unit conversion tests
+    // ========================================================================
+
+    #[test]
+    fn test_bigrational_runtime_unit_conversion() {
+        // 1500 m -> 3/2 km
+        let q = Quantity::new(
+            BigRational::from_integer(BigInt::from(1500)),
+            Meter::INSTANT.clone(),
+        );
+        let converted = q.to_unit(&Kilometer::INSTANT.clone()).unwrap();
+        let expected = BigRational::new(BigInt::from(3), BigInt::from(2));
+        assert_eq!(converted.value, expected);
+        assert_eq!(converted.unit.symbol(), "km");
+    }
+
+    #[test]
+    fn test_bigrational_runtime_exact_conversion() {
+        // 验证 BigRational 精确性：1/3 km -> 1000/3 m
+        let q = Quantity::new(
+            BigRational::new(BigInt::from(1), BigInt::from(3)),
+            Kilometer::INSTANT.clone(),
+        );
+        let converted = q.to_unit(&Meter::INSTANT.clone()).unwrap();
+        let expected = BigRational::new(BigInt::from(1000), BigInt::from(3));
+        assert_eq!(converted.value, expected);
+    }
+
+    // ========================================================================
+    // f64 仿射单位测试 / f64 affine unit tests
+    // ========================================================================
+
+    #[test]
+    fn test_f64_affine_temperature_conversion() {
+        // 0°C -> 273.15 K (f64 近似)
+        let zero_c = Quantity::new(0.0_f64, Celsius::INSTANT.clone());
+        let kelvin = zero_c.to_unit(&Kelvin::INSTANT.clone()).unwrap();
+        assert!((kelvin.value - 273.15).abs() < 1e-6);
+
+        // 32°F -> 273.15 K (f64 近似)
+        let thirty_two_f = Quantity::new(32.0_f64, Fahrenheit::INSTANT.clone());
+        let kelvin = thirty_two_f.to_unit(&Kelvin::INSTANT.clone()).unwrap();
+        assert!((kelvin.value - 273.15).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_f64_affine_sub_returns_linear_difference() {
+        // 100°C - 0°C = 100 delta(°C) (f64 近似)
+        let boiling = Quantity::new(100.0_f64, Celsius::INSTANT.clone());
+        let freezing = Quantity::new(0.0_f64, Celsius::INSTANT.clone());
+        let diff = boiling.checked_sub(&freezing).unwrap();
+        assert!((diff.value - 100.0).abs() < 1e-6);
+        assert!(diff.unit.is_linear());
     }
 }

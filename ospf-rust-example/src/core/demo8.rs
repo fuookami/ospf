@@ -1,9 +1,15 @@
 use std::error::Error;
-use ospf_rust_math::symbol::{Linear, LinearMonomial};
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
-use ospf_rust_core::variable::UIntegerVariableItem;
+
+use ospf_rust_multiarray::{MultiArray, Shape};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::symbol::{
+    SymbolCombination, LinearExpressionSymbol, flat_map1,
+};
+use ospf_rust_core::variable::{UInteger, VariableCombination1D};
+
 use super::common::{read_solution_value, solve_typed};
 
+/// Product data structure
 #[derive(Debug, Clone)]
 struct Product {
     name: String,
@@ -12,13 +18,11 @@ struct Product {
 
 impl Product {
     fn new(name: &str, profit: f64) -> Self {
-        Self {
-            name: name.to_string(),
-            profit,
-        }
+        Self { name: name.to_string(), profit }
     }
 }
 
+/// Equipment data structure
 #[derive(Debug, Clone)]
 struct Equipment {
     name: String,
@@ -28,15 +32,7 @@ struct Equipment {
 
 impl Equipment {
     fn new(name: &str, amount: f64, man_hours_by_product: Vec<f64>) -> Self {
-        Self {
-            name: name.to_string(),
-            amount,
-            man_hours_by_product,
-        }
-    }
-
-    fn man_hours_for(&self, product_idx: usize) -> f64 {
-        self.man_hours_by_product[product_idx]
+        Self { name: name.to_string(), amount, man_hours_by_product }
     }
 }
 
@@ -59,54 +55,89 @@ fn build_equipments() -> Vec<Equipment> {
     ]
 }
 
+/// Equipment allocation model using VariableCombination + SymbolCombination
+struct EquipmentModel {
+    x: VariableCombination1D<UInteger>,
+    x_idx: MultiArray<usize, Shape<1>>,
+    profit_expr: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    man_hours_exprs: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+}
+
+impl EquipmentModel {
+    fn register(
+        model: &mut MetaModel<f64>,
+        products: &[Product],
+        equipments: &[Equipment],
+    ) -> Result<Self, Box<dyn Error>> {
+        let x = VariableCombination1D::new(Shape::new([products.len()]), "x");
+        let x_idx = model.register_combination(&x)?;
+
+        // Objective: profit = sum(profit_i * x_i)
+        let profit_expr = flat_map1("profit", products, |product| {
+            let i = products.iter().position(|p| p.name == product.name).unwrap();
+            ospf_rust_core::symbol::flatten::Linear::new(
+                vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(product.profit, x_idx[i])],
+                0.0,
+            )
+        }, |_, product| product.name.clone());
+        model.add_symbol_combination(&profit_expr)?;
+
+        // Constraints: man_hours per equipment
+        let man_hours_exprs = flat_map1("man_hours", equipments, |equipment| {
+            let monomials: Vec<_> = products.iter().enumerate()
+                .filter_map(|(p, product)| {
+                    let value = equipment.man_hours_by_product[p];
+                    (value != 0.0).then(|| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(value, x_idx[p])
+                    })
+                })
+                .collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        }, |_, equipment| equipment.name.clone());
+        model.add_symbol_combination(&man_hours_exprs)?;
+
+        Ok(EquipmentModel { x, x_idx, profit_expr, man_hours_exprs })
+    }
+
+    fn add_constraints(
+        &self,
+        model: &mut MetaModel<f64>,
+        equipments: &[Equipment],
+        max_man_hours: f64,
+    ) -> Result<(), Box<dyn Error>> {
+        // Objective: maximize profit
+        let profit_poly = self.profit_expr[0].to_linear_polynomial();
+        let profit_coeffs: Vec<_> = profit_poly.monomials().iter()
+            .map(|m| (m.var_index(), *m.coefficient())).collect();
+        model.add_linear_objective(&profit_coeffs, "profit");
+        model.set_objective_category(ObjectiveCategory::Maximum);
+
+        // Constraints: man_hours_i <= amount_i * max_man_hours
+        for (e, equipment) in equipments.iter().enumerate() {
+            let poly = self.man_hours_exprs[e].to_linear_polynomial();
+            let coeffs: Vec<_> = poly.monomials().iter()
+                .map(|m| (m.var_index(), *m.coefficient())).collect();
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::LessEqual,
+                equipment.amount * max_man_hours,
+                &format!("equipment_{}_{}", e, equipment.name),
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Demo8 main function: Equipment allocation problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let products = build_products();
     let equipments = build_equipments();
     let max_man_hours = 2000.0;
 
     let mut model = MetaModel::<f64>::new("demo8");
-    let mut x_vars = Vec::with_capacity(products.len());
-    let mut x_idx = vec![0usize; products.len()];
-
-    for (p, _) in products.iter().enumerate() {
-        let variable = UIntegerVariableItem::auto(&format!("x_{}", p));
-        x_idx[p] = model.register_variable(variable.clone())?;
-        x_vars.push(variable);
-    }
-
-    let profit = Linear::new(
-        x_vars
-            .iter()
-            .zip(products.iter())
-            .map(|(var, product)| LinearMonomial::new(product.profit, var.to_owned_symbol()))
-            .collect(),
-        0.0,
-    );
-    let man_hours: Vec<Linear<f64>> = equipments
-        .iter()
-        .map(|equipment| {
-            Linear::new(
-                x_vars
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(p, var)| {
-                        let value = equipment.man_hours_for(p);
-                        (value != 0.0).then(|| LinearMonomial::new(value, var.to_owned_symbol()))
-                    })
-                    .collect(),
-                0.0,
-            )
-        })
-        .collect();
-
-    model.set_math_linear_objective(profit, ObjectiveCategory::Maximum, "profit")?;
-
-    for (e, equipment) in equipments.iter().enumerate() {
-        model.add_math_inequality(
-            man_hours[e].clone().le(equipment.amount * max_man_hours),
-            &format!("equipment_{}_{}", e, equipment.name),
-        );
-    }
+    let em = EquipmentModel::register(&mut model, &products, &equipments)?;
+    em.add_constraints(&mut model, &equipments, max_man_hours)?;
 
     let output = solve_typed(model)?;
     let solution = output.solution;
@@ -120,7 +151,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         println!(
             "{}: {:.2}",
             product.name,
-            read_solution_value(&solution, x_idx[p])
+            read_solution_value(&solution, em.x_idx[p])
         );
     }
     Ok(())

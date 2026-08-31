@@ -12,6 +12,7 @@ use crate::dimension::DerivedQuantity;
 use crate::error::{DimensionMismatchError, SymbolRegistryError, UnitConversionError};
 use crate::quantity::Quantity;
 use crate::unit::concept::UnitTrait;
+use crate::unit::conversion_value::UnitConversionValue;
 use crate::unit::derived::{Day, Hour, Microsecond, Millisecond, Minute, Nanosecond, Second, Year};
 use crate::unit::{CTUnit, Unit};
 
@@ -177,10 +178,9 @@ pub trait RuntimeLinearQuantityExt<V> {
 
 impl<V> RuntimeLinearQuantityExt<V> for QuantityLinear<V>
 where
-    V: Clone,
+    V: Clone + UnitConversionValue,
     Linear<V>:
         Clone + Add<Output = Linear<V>> + Sub<Output = Linear<V>> + Mul<V, Output = Linear<V>>,
-    BigDecimal: Into<V>,
 {
     fn to_unit(&self, target: &Unit) -> Ret<QuantityLinear<V>> {
         let factor = self.unit.conversion_factor_to(target).ok_or_else(|| {
@@ -195,8 +195,16 @@ where
             return Ok(self.clone());
         }
 
+        let factor_v = V::from_decimal(&factor).ok_or_else(|| {
+            Box::new(error!(UnitConversionError {
+                from_unit: self.unit.symbol().to_string(),
+                to_unit: target.symbol().to_string(),
+                reason: "numeric conversion failed"
+            })) as Box<dyn ospf_rust_base::Error>
+        })?;
+
         Ok(Quantity::new(
-            self.value.clone() * factor.into(),
+            self.value.clone() * factor_v,
             target.clone(),
         ))
     }
@@ -257,12 +265,11 @@ pub trait RuntimeQuadraticQuantityExt<V> {
 
 impl<V> RuntimeQuadraticQuantityExt<V> for QuantityQuadratic<V>
 where
-    V: Clone,
+    V: Clone + UnitConversionValue,
     Quadratic<V>: Clone
         + Add<Output = Quadratic<V>>
         + Sub<Output = Quadratic<V>>
         + Mul<V, Output = Quadratic<V>>,
-    BigDecimal: Into<V>,
 {
     fn to_unit(&self, target: &Unit) -> Ret<QuantityQuadratic<V>> {
         let factor = self.unit.conversion_factor_to(target).ok_or_else(|| {
@@ -277,8 +284,16 @@ where
             return Ok(self.clone());
         }
 
+        let factor_v = V::from_decimal(&factor).ok_or_else(|| {
+            Box::new(error!(UnitConversionError {
+                from_unit: self.unit.symbol().to_string(),
+                to_unit: target.symbol().to_string(),
+                reason: "numeric conversion failed"
+            })) as Box<dyn ospf_rust_base::Error>
+        })?;
+
         Ok(Quantity::new(
-            self.value.clone() * factor.into(),
+            self.value.clone() * factor_v,
             target.clone(),
         ))
     }
@@ -345,13 +360,12 @@ pub trait RuntimeCanonicalQuantityExt<V, E: Exponent> {
 
 impl<V, E> RuntimeCanonicalQuantityExt<V, E> for Quantity<Canonical<V, E>, Unit>
 where
-    V: Clone,
+    V: Clone + UnitConversionValue,
     E: Exponent,
     Canonical<V, E>: Clone
         + Add<Output = Canonical<V, E>>
         + Sub<Output = Canonical<V, E>>
         + Mul<V, Output = Canonical<V, E>>,
-    BigDecimal: Into<V>,
 {
     fn to_unit(&self, target: &Unit) -> Ret<Quantity<Canonical<V, E>, Unit>> {
         let factor = self.unit.conversion_factor_to(target).ok_or_else(|| {
@@ -366,8 +380,16 @@ where
             return Ok(self.clone());
         }
 
+        let factor_v = V::from_decimal(&factor).ok_or_else(|| {
+            Box::new(error!(UnitConversionError {
+                from_unit: self.unit.symbol().to_string(),
+                to_unit: target.symbol().to_string(),
+                reason: "numeric conversion failed"
+            })) as Box<dyn ospf_rust_base::Error>
+        })?;
+
         Ok(Quantity::new(
-            self.value.clone() * factor.into(),
+            self.value.clone() * factor_v,
             target.clone(),
         ))
     }
@@ -947,6 +969,24 @@ mod tests {
             converted.value.monomials[0].coefficient,
             BigDecimal::from_str("0.002").unwrap()
         );
+    }
+
+    #[test]
+    fn test_runtime_linear_f64_quantity_conversion() {
+        // 验证 Linear<f64> 运行时单位转换：m -> km，系数和常数都乘以 0.001
+        // Verify Linear<f64> runtime unit conversion: m -> km, coefficients and constant multiplied by 0.001
+        let x = make_symbol("x", 1);
+        let poly = Linear::new(
+            vec![LinearMonomial::new(2.0_f64, x)],
+            1.0_f64,
+        );
+
+        let distance: QuantityLinear<f64> = Quantity::new(poly, Meter::INSTANT.clone());
+        let converted: QuantityLinear<f64> =
+            RuntimeLinearQuantityExt::to_unit(&distance, &Kilometer::INSTANT.clone()).unwrap();
+
+        assert!((converted.value.constant - 0.001).abs() < 1e-10);
+        assert!((converted.value.monomials[0].coefficient - 0.002).abs() < 1e-10);
     }
 
     #[test]

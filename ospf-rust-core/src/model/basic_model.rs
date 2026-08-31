@@ -403,6 +403,30 @@ where
         Ok(())
     }
 
+    /// 批量注册符号组合。
+    /// Batch register symbol combination.
+    ///
+    /// 遍历符号组合中的每个符号，逐个注册到模型中。
+    ///
+    /// Iterates over each symbol in the combination and registers them one by one.
+    ///
+    /// # 参数 / Parameters
+    ///
+    /// - `combination`: 符号组合 / Symbol combination
+    pub fn add_symbol_combination<Sym, S>(
+        &mut self,
+        combination: &crate::symbol::SymbolCombination<V, Sym, S>,
+    ) -> Result<()>
+    where
+        Sym: crate::symbol::IntermediateSymbol<V> + 'static,
+        S: ospf_rust_multiarray::shape::AbstractShape,
+    {
+        for symbol in combination.iter_arc() {
+            self.add_symbol(symbol)?;
+        }
+        Ok(())
+    }
+
     /// Add a symbol and declare its dependencies in one call.
     pub fn add_symbol_with_dependencies<I>(
         &mut self,

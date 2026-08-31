@@ -1,9 +1,17 @@
 use std::error::Error;
-use ospf_rust_math::symbol::{Linear, LinearMonomial};
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
-use ospf_rust_core::variable::{IntegerVariableItem, UContinuousVariableItem, VariableRange};
+
+use ospf_rust_multiarray::{MultiArray, Shape};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::symbol::{
+    SymbolCombination, LinearExpressionSymbol, flat_map1,
+};
+use ospf_rust_core::variable::{
+    Integer, UContinuous, VariableCombination1D, VariableRange,
+};
+
 use super::common::{read_solution_value, solve_typed};
 
+/// Settlement data structure
 #[derive(Debug, Clone)]
 struct Settlement {
     name: String,
@@ -13,11 +21,7 @@ struct Settlement {
 
 impl Settlement {
     fn new(name: &str, x: f64, y: f64) -> Self {
-        Self {
-            name: name.to_string(),
-            x,
-            y,
-        }
+        Self { name: name.to_string(), x, y }
     }
 }
 
@@ -32,71 +36,154 @@ fn build_settlements() -> Vec<Settlement> {
     ]
 }
 
+/// Facility location model using VariableCombination + SymbolCombination
+struct LocationModel {
+    x: VariableCombination1D<Integer>,
+    y: VariableCombination1D<Integer>,
+    x_idx: MultiArray<usize, Shape<1>>,
+    y_idx: MultiArray<usize, Shape<1>>,
+    dx: VariableCombination1D<UContinuous>,
+    dy: VariableCombination1D<UContinuous>,
+    dx_idx: MultiArray<usize, Shape<1>>,
+    dy_idx: MultiArray<usize, Shape<1>>,
+    distance_expr: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+}
+
+impl LocationModel {
+    fn register(
+        model: &mut MetaModel<f64>,
+        settlements: &[Settlement],
+    ) -> Result<Self, Box<dyn Error>> {
+        let n = settlements.len();
+
+        // Scalar decision variables with bounded range
+        let x = VariableCombination1D::with_range_generator(
+            Shape::new([1]), "x",
+            |_, _| VariableRange::bounded(-100.0, 100.0),
+        );
+        let y = VariableCombination1D::with_range_generator(
+            Shape::new([1]), "y",
+            |_, _| VariableRange::bounded(-100.0, 100.0),
+        );
+        let x_idx = model.register_combination(&x)?;
+        let y_idx = model.register_combination(&y)?;
+
+        // Per-settlement distance component variables
+        let dx = VariableCombination1D::new(Shape::new([n]), "dx");
+        let dy = VariableCombination1D::new(Shape::new([n]), "dy");
+        let dx_idx = model.register_combination(&dx)?;
+        let dy_idx = model.register_combination(&dy)?;
+
+        // Objective symbol: each settlement contributes dx_i + dy_i
+        let distance_expr = flat_map1("distance", settlements, |settlement| {
+            let i = settlements.iter().position(|s| s.name == settlement.name).unwrap();
+            ospf_rust_core::symbol::flatten::Linear::new(
+                vec![
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, dx_idx[i]),
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, dy_idx[i]),
+                ],
+                0.0,
+            )
+        }, |_, settlement| settlement.name.clone());
+        model.add_symbol_combination(&distance_expr)?;
+
+        Ok(LocationModel {
+            x, y, x_idx, y_idx,
+            dx, dy, dx_idx, dy_idx,
+            distance_expr,
+        })
+    }
+
+    fn add_constraints(
+        &self,
+        model: &mut MetaModel<f64>,
+        settlements: &[Settlement],
+    ) -> Result<(), Box<dyn Error>> {
+        // Aggregate objective: sum of all distance contributions
+        let mut obj_monomials = Vec::new();
+        for i in 0..settlements.len() {
+            let poly = self.distance_expr[i].to_linear_polynomial();
+            for m in poly.monomials() {
+                obj_monomials.push((m.var_index(), *m.coefficient()));
+            }
+        }
+        model.add_linear_objective(&obj_monomials, "distance");
+        model.set_objective_category(ObjectiveCategory::Minimum);
+
+        // Manhattan distance constraints for each settlement
+        for (i, settlement) in settlements.iter().enumerate() {
+            // dx_i >= -x + settlement.x  =>  -x + dx_i >= -settlement.x
+            let dx_lower = ospf_rust_core::symbol::flatten::Linear::new(
+                vec![
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(-1.0, self.x_idx[0]),
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, self.dx_idx[i]),
+                ],
+                0.0,
+            );
+            let coeffs: Vec<_> = dx_lower.monomials().iter()
+                .map(|m| (m.var_index(), *m.coefficient())).collect();
+            model.add_linear_constraint(
+                &coeffs, ConstraintRelation::GreaterEqual, -settlement.x,
+                &format!("dx_lb1_{}", i),
+            )?;
+
+            // dx_i >= x - settlement.x  =>  x + dx_i >= settlement.x
+            let dx_upper = ospf_rust_core::symbol::flatten::Linear::new(
+                vec![
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, self.x_idx[0]),
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, self.dx_idx[i]),
+                ],
+                0.0,
+            );
+            let coeffs: Vec<_> = dx_upper.monomials().iter()
+                .map(|m| (m.var_index(), *m.coefficient())).collect();
+            model.add_linear_constraint(
+                &coeffs, ConstraintRelation::GreaterEqual, settlement.x,
+                &format!("dx_lb2_{}", i),
+            )?;
+
+            // dy_i >= -y + settlement.y  =>  -y + dy_i >= -settlement.y
+            let dy_lower = ospf_rust_core::symbol::flatten::Linear::new(
+                vec![
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(-1.0, self.y_idx[0]),
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, self.dy_idx[i]),
+                ],
+                0.0,
+            );
+            let coeffs: Vec<_> = dy_lower.monomials().iter()
+                .map(|m| (m.var_index(), *m.coefficient())).collect();
+            model.add_linear_constraint(
+                &coeffs, ConstraintRelation::GreaterEqual, -settlement.y,
+                &format!("dy_lb1_{}", i),
+            )?;
+
+            // dy_i >= y - settlement.y  =>  y + dy_i >= settlement.y
+            let dy_upper = ospf_rust_core::symbol::flatten::Linear::new(
+                vec![
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, self.y_idx[0]),
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, self.dy_idx[i]),
+                ],
+                0.0,
+            );
+            let coeffs: Vec<_> = dy_upper.monomials().iter()
+                .map(|m| (m.var_index(), *m.coefficient())).collect();
+            model.add_linear_constraint(
+                &coeffs, ConstraintRelation::GreaterEqual, settlement.y,
+                &format!("dy_lb2_{}", i),
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Demo9 main function: Facility location problem (Manhattan distance)
 pub fn run() -> Result<(), Box<dyn Error>> {
     let settlements = build_settlements();
 
     let mut model = MetaModel::<f64>::new("demo9");
-
-    let x_var = IntegerVariableItem::auto_with_range("x", VariableRange::bounded(-100.0, 100.0));
-    let y_var = IntegerVariableItem::auto_with_range("y", VariableRange::bounded(-100.0, 100.0));
-    let x_idx = model.register_variable(x_var.clone())?;
-    let y_idx = model.register_variable(y_var.clone())?;
-
-    let mut dx_vars = Vec::with_capacity(settlements.len());
-    let mut dy_vars = Vec::with_capacity(settlements.len());
-    let mut dx_idx = vec![0usize; settlements.len()];
-    let mut dy_idx = vec![0usize; settlements.len()];
-    for i in 0..settlements.len() {
-        let dx_var = UContinuousVariableItem::auto(&format!("dx_{}", i));
-        let dy_var = UContinuousVariableItem::auto(&format!("dy_{}", i));
-        dx_idx[i] = model.register_variable(dx_var.clone())?;
-        dy_idx[i] = model.register_variable(dy_var.clone())?;
-        dx_vars.push(dx_var);
-        dy_vars.push(dy_var);
-    }
-
-    let mut distance_terms = Vec::with_capacity(settlements.len() * 2);
-    for i in 0..settlements.len() {
-        distance_terms.push(LinearMonomial::new(1.0, dx_vars[i].to_owned_symbol()));
-        distance_terms.push(LinearMonomial::new(1.0, dy_vars[i].to_owned_symbol()));
-    }
-    let distance = Linear::new(distance_terms, 0.0);
-    model.set_math_linear_objective(distance, ObjectiveCategory::Minimum, "distance")?;
-
-    for (i, settlement) in settlements.iter().enumerate() {
-        let dx_lower = Linear::new(
-            vec![
-                LinearMonomial::new(-1.0, x_var.to_owned_symbol()),
-                LinearMonomial::new(1.0, dx_vars[i].to_owned_symbol()),
-            ],
-            0.0,
-        );
-        let dx_upper = Linear::new(
-            vec![
-                LinearMonomial::new(1.0, x_var.to_owned_symbol()),
-                LinearMonomial::new(1.0, dx_vars[i].to_owned_symbol()),
-            ],
-            0.0,
-        );
-        let dy_lower = Linear::new(
-            vec![
-                LinearMonomial::new(-1.0, y_var.to_owned_symbol()),
-                LinearMonomial::new(1.0, dy_vars[i].to_owned_symbol()),
-            ],
-            0.0,
-        );
-        let dy_upper = Linear::new(
-            vec![
-                LinearMonomial::new(1.0, y_var.to_owned_symbol()),
-                LinearMonomial::new(1.0, dy_vars[i].to_owned_symbol()),
-            ],
-            0.0,
-        );
-        model.add_math_inequality(dx_lower.ge(-settlement.x), &format!("dx_lb1_{}", i));
-        model.add_math_inequality(dx_upper.ge(settlement.x), &format!("dx_lb2_{}", i));
-        model.add_math_inequality(dy_lower.ge(-settlement.y), &format!("dy_lb1_{}", i));
-        model.add_math_inequality(dy_upper.ge(settlement.y), &format!("dy_lb2_{}", i));
-    }
+    let loc = LocationModel::register(&mut model, &settlements)?;
+    loc.add_constraints(&mut model, &settlements)?;
 
     let output = solve_typed(model)?;
     let solution = output.solution;
@@ -108,8 +195,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
     println!(
         "position: ({:.2}, {:.2})",
-        read_solution_value(&solution, x_idx),
-        read_solution_value(&solution, y_idx)
+        read_solution_value(&solution, loc.x_idx[0]),
+        read_solution_value(&solution, loc.y_idx[0])
     );
     for (i, settlement) in settlements.iter().enumerate() {
         println!(
@@ -117,8 +204,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             settlement.name,
             settlement.x,
             settlement.y,
-            read_solution_value(&solution, dx_idx[i]),
-            read_solution_value(&solution, dy_idx[i])
+            read_solution_value(&solution, loc.dx_idx[i]),
+            read_solution_value(&solution, loc.dy_idx[i])
         );
     }
     Ok(())

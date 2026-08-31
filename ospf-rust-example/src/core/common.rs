@@ -1,13 +1,12 @@
 use std::error::Error;
 use std::sync::Arc;
+
 use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::model::{ConstraintGroup, ConstraintRelation, MetaModel};
-use ospf_rust_core::solver::{
-
-    FeasibleSolverOutput, SolverCapability, SolverInfo, solvers::GurobiSolver,
-};
+use ospf_rust_core::solver::{FeasibleSolverOutput, SolverCapability, SolverInfo, solvers::GurobiSolver};
 use ospf_rust_core::symbol::BinaryzationMethod;
 use ospf_rust_core::variable::BinaryVariableItem;
+
 use crate::example_modeling::solve_linear_meta_model_typed;
 
 /// 推荐 typed 入口：求解 MetaModel / Recommended typed entry: solve MetaModel
@@ -18,10 +17,12 @@ pub fn solve_typed(
     solve_linear_meta_model_typed(meta_model, &solver)
 }
 
+/// 读取解向量中的值，越界时返回 0.0 / Read solution value, returns 0.0 if out of bounds
 pub fn read_solution_value(solution: &[f64], idx: usize) -> f64 {
     solution.get(idx).copied().unwrap_or(0.0)
 }
 
+/// 注册二进制变量矩阵到模型 / Register binary variable matrix to model
 pub fn register_binary_matrix(
     model: &mut MetaModel<f64>,
     rows: usize,
@@ -38,6 +39,7 @@ pub fn register_binary_matrix(
     Ok(matrix)
 }
 
+/// 从索引列表构建线性表达式项 / Build linear expression terms from index list
 pub fn linear_expr_from_indices(indices: &[usize], coefficient: f64) -> Vec<(usize, f64)> {
     indices
         .iter()
@@ -46,6 +48,7 @@ pub fn linear_expr_from_indices(indices: &[usize], coefficient: f64) -> Vec<(usi
         .collect()
 }
 
+/// 从稀疏项设置线性目标函数 / Set linear objective from sparse terms
 pub fn set_linear_objective_from_sparse_terms(
     model: &mut MetaModel<f64>,
     terms: &[(usize, f64)],
@@ -58,6 +61,7 @@ pub fn set_linear_objective_from_sparse_terms(
     model.set_linear_objective(objective, category);
 }
 
+/// 添加带元数据的约束 / Add constraint with metadata
 pub fn add_constraint_with_metadata(
     model: &mut MetaModel<f64>,
     coefficients: &[(usize, f64)],
@@ -82,6 +86,8 @@ pub fn add_constraint_with_metadata(
     Ok(())
 }
 
+/// 解析二值化方法，根据求解器能力决定回退策略
+/// Resolve binaryzation method, decide fallback strategy based on solver capabilities
 pub fn resolve_binaryzation_method(
     solver: &dyn SolverInfo,
     requested: BinaryzationMethod,

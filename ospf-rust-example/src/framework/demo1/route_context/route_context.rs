@@ -1,6 +1,5 @@
 use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::variable::BinaryVariableItem;
+use ospf_rust_core::model::MetaModel;
 use crate::framework::demo1::infrastructure::dto::Input;
 use super::aggregation::Aggregation;
 use super::model::{Assignment, Edge, Graph, Node, NodeKind, Service};
@@ -76,10 +75,7 @@ impl RouteContext {
             .collect();
 
         let graph = Graph { nodes, edges };
-        let assignment = Assignment {
-            normal_node_indices,
-            x_idx: Vec::new(),
-        };
+        let assignment = Assignment::new(normal_node_indices);
 
         self.aggregation = Some(Aggregation::new(graph, services, assignment));
         Ok(())
@@ -91,18 +87,8 @@ impl RouteContext {
             .as_mut()
             .ok_or("route context not initialized")?;
 
-        let normal_count = agg.assignment.normal_node_indices.len();
         let service_count = agg.services.len();
-
-        let mut x_idx = vec![vec![0usize; service_count]; normal_count];
-        for (row, node_idx) in agg.assignment.normal_node_indices.iter().enumerate() {
-            for s in 0..service_count {
-                let variable = BinaryVariableItem::auto(&format!("x_{}_{}", node_idx, s));
-                x_idx[row][s] = model.register_variable(variable)?;
-            }
-        }
-
-        agg.assignment.x_idx = x_idx;
+        agg.assignment.register(model, service_count)?;
         Ok(())
     }
 
@@ -122,6 +108,6 @@ impl RouteContext {
             .normal_node_indices
             .iter()
             .position(|idx| *idx == normal_node_idx)?;
-        Some(agg.assignment.x_idx[row][service_idx])
+        Some(agg.assignment.x_idx[&[row, service_idx]])
     }
 }

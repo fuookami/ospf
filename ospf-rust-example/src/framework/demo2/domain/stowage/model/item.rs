@@ -1,4 +1,7 @@
 use super::cargo::Cargo;
+use super::super::super::shared::units;
+use ospf_rust_quantities::quantity::Quantity;
+use ospf_rust_quantities::unit::Unit;
 
 /// 物品位置标签 / Item location tag (对齐 Kotlin ItemLocationTag)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -71,7 +74,7 @@ pub struct Uld {
 pub struct Item {
     pub id: String,
     pub name: String,
-    pub weight: f64,
+    pub weight: Quantity<f64, Unit>,
     pub cargo: Cargo,
     pub location: ItemLocation,
     pub status: ItemStatus,

@@ -2,17 +2,23 @@ use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo1::route_context::model::Assignment;
 
+/// 服务分配约束：每个 service 最多被一个 normal node 使用
+/// sum(x[node, s] for all nodes) <= 1
+///
+/// 从 service_assignment[s] 符号组合取多项式：
+/// service_assignment[s] = sum(x[node, s] for all normal nodes)
 pub fn apply_service_assignment_constraints(
     model: &mut MetaModel<f64>,
     assignment: &Assignment,
     service_count: usize,
 ) -> Result<(), Box<dyn Error>> {
     for s in 0..service_count {
-        let coefficients: Vec<(usize, f64)> = assignment
-            .normal_node_indices
+        // service_assignment[s] 的多项式 = sum(x[node, s])
+        let poly = assignment.service_assignment[s].to_linear_polynomial();
+        let coefficients: Vec<(usize, f64)> = poly
+            .monomials()
             .iter()
-            .enumerate()
-            .map(|(row, _)| (assignment.x_idx[row][s], 1.0))
+            .map(|m| (m.var_index(), *m.coefficient()))
             .collect();
         model.add_linear_constraint(
             &coefficients,

@@ -7,6 +7,8 @@ use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::LinearMonomial;
+use ospf_rust_quantities::quantity::Quantity;
+use ospf_rust_quantities::unit::Unit;
 
 /// 业载变量索引 / Payload variable indices
 #[derive(Debug, Clone)]
@@ -28,9 +30,9 @@ pub struct PayloadVariables {
 /// 业载 / Payload (对齐 Kotlin Payload)
 #[derive(Debug)]
 pub struct Payload {
-    pub planned_payload: f64,
-    pub max_payload: f64,
-    pub computed_payload: Option<f64>,
+    pub planned_payload: Quantity<f64, Unit>,
+    pub max_payload: Quantity<f64, Unit>,
+    pub computed_payload: Option<Quantity<f64, Unit>>,
     pub items: Vec<Item>,
     pub positions: Vec<Position>,
 }
@@ -53,7 +55,7 @@ impl Payload {
         let position_count = self.positions.len();
         let mut next_id = 40000u64;
 
-        // 估算业载 = sum(item.weight * stowage[i][j]) + sum(y[j]) + sum(z[j])
+        // 估算业载 = sum(item.weight.value * stowage[i][j]) + sum(y[j]) + sum(z[j])
         // 简化实现: 使用 actualLoadWeight 的总和
         let mut estimate_monomials: Vec<LinearMonomial<f64>> = Vec::new();
         for j in 0..position_count {
@@ -69,7 +71,7 @@ impl Payload {
         let estimate_payload = next_id as usize;
         next_id += 1;
 
-        // 实际业载 = sum(item.weight * stowage[i][j])
+        // 实际业载 = sum(item.weight.value * stowage[i][j])
         let mut actual_monomials: Vec<LinearMonomial<f64>> = Vec::new();
         for j in 0..position_count {
             actual_monomials.push(LinearMonomial::new(1.0, load_vars.actual_load_weight[j]));

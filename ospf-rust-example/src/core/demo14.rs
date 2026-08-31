@@ -1,10 +1,15 @@
 use std::error::Error;
-use ospf_rust_multiarray::{MultiArrayBuilder, Shape};
-use ospf_rust_math::symbol::{Linear, LinearMonomial};
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
+
+use ospf_rust_multiarray::Shape;
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::symbol::{
+    LinearExpressionSymbol, LinearIntermediateSymbol, flat_map1,
+};
 use ospf_rust_core::variable::{UContinuous, VariableCombination2D, VariableRange};
+
 use super::common::{read_solution_value, solve_typed};
 
+/// Node type enum
 #[derive(Clone, Copy)]
 enum NodeType {
     Product(f64),
@@ -12,6 +17,7 @@ enum NodeType {
     Distribution,
 }
 
+/// Node data structure
 #[derive(Clone)]
 struct Node {
     name: String,
@@ -27,6 +33,7 @@ impl Node {
     }
 }
 
+/// Arc data structure
 #[derive(Clone)]
 struct ArcData {
     from: usize,
@@ -44,6 +51,7 @@ impl ArcData {
     }
 }
 
+/// Build node list
 fn build_nodes() -> Vec<Node> {
     vec![
         Node::new("Guangzhou", NodeType::Product(600.0)),
@@ -57,6 +65,7 @@ fn build_nodes() -> Vec<Node> {
     ]
 }
 
+/// Build arc list
 fn build_arcs() -> Vec<ArcData> {
     vec![
         ArcData::new(0, 6, 2.0),
@@ -75,81 +84,115 @@ fn build_arcs() -> Vec<ArcData> {
     ]
 }
 
+/// Helper: extract (var_index, coefficient) pairs from a symbol
+fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
+    let poly = sym.to_linear_polynomial();
+    poly.monomials().iter()
+        .map(|m| (m.var_index(), *m.coefficient()))
+        .collect()
+}
+
+/// Demo14 main function: Transshipment problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let nodes = build_nodes();
     let arcs = build_arcs();
 
     let mut model = MetaModel::<f64>::new("demo14");
+
+    // Register 2D arc variables with bounds
     let x_shape = Shape::new([nodes.len(), nodes.len()]);
     let x_vars: VariableCombination2D<UContinuous> =
         VariableCombination2D::with_name_and_range_generator(
-            x_shape.clone(),
+            x_shape,
             "x",
             |_index, vector| format!("{}_{}", vector[0], vector[1]),
             |_index, vector| {
-                if arcs
-                    .iter()
-                    .any(|arc| arc.from == vector[0] && arc.to == vector[1])
-                {
+                if arcs.iter().any(|arc| arc.from == vector[0] && arc.to == vector[1]) {
                     VariableRange::with_lower(0.0)
                 } else {
                     VariableRange::fixed(0.0)
                 }
             },
         );
-    let x_idx = MultiArrayBuilder::from_list(
-        x_shape,
-        model.register_variables::<UContinuous, _>(x_vars.iter().cloned())?,
-    );
+    let x_idx = model.register_combination(&x_vars)?;
 
-    let mut cost_terms = Vec::with_capacity(arcs.len());
-    for arc in &arcs {
-        cost_terms.push(LinearMonomial::new(
-            arc.unit_cost,
-            x_vars[&[arc.from, arc.to]].to_owned_symbol(),
-        ));
+    // Objective: minimize cost = sum(unit_cost * x[from][to]) over arcs
+    let cost_expr = flat_map1("cost", &arcs, |arc| {
+        ospf_rust_core::symbol::flatten::Linear::new(
+            vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                arc.unit_cost,
+                x_idx[&[arc.from, arc.to]],
+            )],
+            0.0,
+        )
+    }, |_, arc| format!("{}_{}", arc.from, arc.to));
+    model.add_symbol_combination(&cost_expr)?;
+
+    let mut cost_coeffs = Vec::new();
+    for i in 0..arcs.len() {
+        let poly = cost_expr[i].to_linear_polynomial();
+        for m in poly.monomials() {
+            cost_coeffs.push((m.var_index(), *m.coefficient()));
+        }
     }
-    let cost = Linear::new(cost_terms, 0.0);
-    let trans_out = MultiArrayBuilder::new_by(Shape::<1>::new([nodes.len()]), |_idx, vector| {
-        let node = vector[0];
-        Linear::new(
-            (0..nodes.len())
-                .map(|to| LinearMonomial::new(1.0, x_vars[&[node, to]].to_owned_symbol()))
-                .collect(),
-            0.0,
-        )
-    });
-    let trans_in = MultiArrayBuilder::new_by(Shape::<1>::new([nodes.len()]), |_idx, vector| {
-        let node = vector[0];
-        Linear::new(
-            (0..nodes.len())
-                .map(|from| LinearMonomial::new(1.0, x_vars[&[from, node]].to_owned_symbol()))
-                .collect(),
-            0.0,
-        )
-    });
+    model.add_linear_objective(&cost_coeffs, "cost");
+    model.set_objective_category(ObjectiveCategory::Minimum);
 
-    model.set_math_linear_objective(cost, ObjectiveCategory::Minimum, "cost")?;
+    // Flow out from each node: sum_to x[node][to]
+    let node_indices: Vec<usize> = (0..nodes.len()).collect();
+    let trans_out_expr = flat_map1("trans_out", &node_indices, |&node| {
+        let monomials: Vec<_> = (0..nodes.len())
+            .map(|to| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[node, to]]))
+            .collect();
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |_, &node| format!("{}", node));
+    model.add_symbol_combination(&trans_out_expr)?;
 
+    // Flow in to each node: sum_from x[from][node]
+    let trans_in_expr = flat_map1("trans_in", &node_indices, |&node| {
+        let monomials: Vec<_> = (0..nodes.len())
+            .map(|from| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[from, node]]))
+            .collect();
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |_, &node| format!("{}", node));
+    model.add_symbol_combination(&trans_in_expr)?;
+
+    // Node balance constraints
     for (node_idx, node) in nodes.iter().enumerate() {
+        let out_coeffs = extract_coeffs(&trans_out_expr[node_idx]);
+        let in_coeffs = extract_coeffs(&trans_in_expr[node_idx]);
+
         match node.kind {
             NodeType::Product(storage) => {
-                model.add_math_inequality(
-                    trans_out[node_idx].clone().le(storage),
+                // flow_out <= storage
+                model.add_linear_constraint(
+                    &out_coeffs,
+                    ConstraintRelation::LessEqual,
+                    storage,
                     &format!("product_out_{}", node_idx),
-                );
+                )?;
             }
             NodeType::Sale(demand) => {
-                model.add_math_inequality(
-                    trans_in[node_idx].clone().ge(demand),
+                // flow_in >= demand
+                model.add_linear_constraint(
+                    &in_coeffs,
+                    ConstraintRelation::GreaterEqual,
+                    demand,
                     &format!("sale_in_{}", node_idx),
-                );
+                )?;
             }
             NodeType::Distribution => {
-                model.add_math_inequality(
-                    (trans_out[node_idx].clone() - trans_in[node_idx].clone()).eq_to(0.0),
+                // flow_out - flow_in = 0
+                let mut coeffs = out_coeffs;
+                for (idx, coeff) in in_coeffs {
+                    coeffs.push((idx, -coeff));
+                }
+                model.add_linear_constraint(
+                    &coeffs,
+                    ConstraintRelation::Equal,
+                    0.0,
                     &format!("balance_{}", node_idx),
-                );
+                )?;
             }
         }
     }

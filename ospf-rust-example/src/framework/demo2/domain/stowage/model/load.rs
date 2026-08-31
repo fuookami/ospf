@@ -1,6 +1,7 @@
 use super::item::Item;
 use super::position::Position;
 use super::stowage::{Stowage, StowageVariables};
+use super::super::shared::units::{quantity_value_in_unit, weight_unit};
 use std::error::Error;
 use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
@@ -102,12 +103,14 @@ impl Load {
         }
 
         // 5. 创建 estimateLoadWeight[j] 中间符号
-        // estimateLoadWeight[j] = sum(item.weight * stowage[i][j]) + y[j] + z[j]
+        // estimateLoadWeight[j] = sum(item.weight.value * stowage[i][j]) + y[j] + z[j]
+        let wu = weight_unit();
         let mut estimate_load_weight_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
             let mut monomials: Vec<LinearMonomial<f64>> = Vec::new();
             for (i, item) in self.items.iter().enumerate() {
-                monomials.push(LinearMonomial::new(item.weight, stowage_vars.stowage[i][j]));
+                let w = quantity_value_in_unit(&item.weight, &wu)?;
+                monomials.push(LinearMonomial::new(w, stowage_vars.stowage[i][j]));
             }
             monomials.push(LinearMonomial::new(1.0, y_idx[j]));
             monomials.push(LinearMonomial::new(1.0, z_idx[j]));
@@ -123,12 +126,14 @@ impl Load {
         }
 
         // 6. 创建 actualLoadWeight[j] 中间符号
-        // actualLoadWeight[j] = sum(item.weight * stowage[i][j])
+        // actualLoadWeight[j] = sum(item.weight.value * stowage[i][j])
         let mut actual_load_weight_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
-            let monomials: Vec<LinearMonomial<f64>> = (0..item_count)
-                .map(|i| LinearMonomial::new(self.items[i].weight, stowage_vars.stowage[i][j]))
-                .collect();
+            let mut monomials: Vec<LinearMonomial<f64>> = Vec::with_capacity(item_count);
+            for (i, item) in self.items.iter().enumerate() {
+                let w = quantity_value_in_unit(&item.weight, &wu)?;
+                monomials.push(LinearMonomial::new(w, stowage_vars.stowage[i][j]));
+            }
             let symbol = LinearExpressionSymbol::new(
                 next_id,
                 &format!("actual_load_weight_{}", position.id),

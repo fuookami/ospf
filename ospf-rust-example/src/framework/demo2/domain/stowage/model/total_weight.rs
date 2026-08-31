@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use super::super::super::aircraft::model::{AircraftModel, FlightPhase, FuelConstant, Fuselage};
+use super::super::shared::units::{quantity_value_in_unit, quantity_value_in_unit_or_default, weight_unit};
 use super::payload::Payload;
 use std::error::Error;
 use std::sync::Arc;
@@ -40,10 +41,15 @@ impl TotalWeight {
         let mut next_id = 50000u64;
         let mut estimate_map = HashMap::new();
         let mut actual_map = HashMap::new();
+        let wu = weight_unit();
 
         for phase in [FlightPhase::ZeroFuel, FlightPhase::TakeOff, FlightPhase::Landing] {
-            let fuel_weight = fuel.get(&phase).map(|f| f.weight).unwrap_or(0.0);
-            let dow = fuselage.dow;
+            let fuel_weight = quantity_value_in_unit_or_default(
+                fuel.get(&phase).map(|f| &f.weight),
+                &wu,
+                0.0,
+            )?;
+            let dow = quantity_value_in_unit(&fuselage.dow, &wu)?;
 
             // estimateTotalWeight = dow + fuel + estimatePayload
             let est_symbol = LinearExpressionSymbol::new(

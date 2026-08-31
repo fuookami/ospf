@@ -1,14 +1,18 @@
+use std::cell::Cell;
 use std::error::Error;
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
-use ospf_rust_core::variable::{
 
-    UContinuous, UContinuousVariableItem, VariableCombination2D, VariableRange,
+use ospf_rust_multiarray::Shape;
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::symbol::{
+    LinearExpressionSymbol, LinearIntermediateSymbol, flat_map1,
 };
-use ospf_rust_math::symbol::{Linear, LinearMonomial};
-use ospf_rust_multiarray::{MultiArrayBuilder, Shape};
+use ospf_rust_core::variable::{
+    UContinuous, VariableCombination1D, VariableCombination2D, VariableRange,
+};
 
 use super::common::{read_solution_value, solve_typed};
 
+/// Node data structure
 #[derive(Debug, Clone)]
 struct Node {
     name: String,
@@ -22,6 +26,7 @@ impl Node {
     }
 }
 
+/// Arc capacity data structure
 #[derive(Debug, Clone)]
 struct ArcCapacity {
     from: usize,
@@ -35,6 +40,7 @@ impl ArcCapacity {
     }
 }
 
+/// Max flow data structure
 #[derive(Debug, Clone)]
 struct MaxFlowData {
     nodes: Vec<Node>,
@@ -67,65 +73,98 @@ impl MaxFlowData {
     }
 }
 
+/// Helper: extract (var_index, coefficient) pairs from a symbol
+fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
+    let poly = sym.to_linear_polynomial();
+    poly.monomials().iter()
+        .map(|m| (m.var_index(), *m.coefficient()))
+        .collect()
+}
+
+/// Demo11 main function: Maximum flow problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let data = MaxFlowData::sample();
     let node_count = data.nodes.len();
 
     let mut model = MetaModel::<f64>::new("demo11");
-    let arc_shape = Shape::new([node_count, node_count]);
-    let arc_vars: VariableCombination2D<UContinuous> =
-        VariableCombination2D::with_name_and_range_generator(
-            arc_shape.clone(),
-            "x",
-            |_index, vector| format!("{}_{}", vector[0], vector[1]),
-            |_index, vector| {
-                data.capacities
-                    .iter()
-                    .find(|arc| arc.from == vector[0] && arc.to == vector[1])
-                    .map(|arc| VariableRange::bounded(0.0, arc.capacity))
-                    .unwrap_or_else(|| VariableRange::fixed(0.0))
-            },
-        );
-    let arc_idx = MultiArrayBuilder::from_list(
-        arc_shape,
-        model.register_variables::<UContinuous, _>(arc_vars.iter().cloned())?,
-    );
-    let flow_var = UContinuousVariableItem::auto("flow");
-    let flow_idx = model.register_variable(flow_var.clone())?;
 
-    let flow = Linear::new(
-        vec![LinearMonomial::new(1.0, flow_var.to_owned_symbol())],
-        0.0,
+    // Register 2D arc variables with capacity bounds
+    let arc_vars = VariableCombination2D::<UContinuous>::with_name_and_range_generator(
+        Shape::new([node_count, node_count]),
+        "x",
+        |_index, vector| format!("{}_{}", vector[0], vector[1]),
+        |_index, vector| {
+            data.capacities
+                .iter()
+                .find(|arc| arc.from == vector[0] && arc.to == vector[1])
+                .map(|arc| VariableRange::bounded(0.0, arc.capacity))
+                .unwrap_or_else(|| VariableRange::fixed(0.0))
+        },
     );
-    let flow_out = MultiArrayBuilder::new_by(Shape::<1>::new([node_count]), |_idx, vector| {
-        let node = vector[0];
-        Linear::new(
-            (0..node_count)
-                .map(|j| LinearMonomial::new(1.0, arc_vars[&[node, j]].to_owned_symbol()))
-                .collect(),
+    let arc_idx = model.register_combination(&arc_vars)?;
+
+    // Register 1D flow variable
+    let flow_vars = VariableCombination1D::<UContinuous>::new(Shape::new([1]), "flow");
+    let flow_idx = model.register_combination(&flow_vars)?;
+
+    // Objective: maximize flow
+    let flow_obj = flat_map1("flow_obj", &data.nodes, |_node| {
+        ospf_rust_core::symbol::flatten::Linear::new(
+            vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, flow_idx[0])],
             0.0,
         )
-    });
-    let flow_in = MultiArrayBuilder::new_by(Shape::<1>::new([node_count]), |_idx, vector| {
-        let node = vector[0];
-        Linear::new(
-            (0..node_count)
-                .map(|i| LinearMonomial::new(1.0, arc_vars[&[i, node]].to_owned_symbol()))
-                .collect(),
-            0.0,
-        )
-    });
+    }, |i, _| format!("{}", i));
+    model.add_symbol_combination(&flow_obj)?;
 
-    model.set_math_linear_objective(flow.clone(), ObjectiveCategory::Maximum, "flow")?;
+    let obj_poly = flow_obj[0].to_linear_polynomial();
+    let obj_coeffs: Vec<_> = obj_poly.monomials().iter()
+        .map(|m| (m.var_index(), *m.coefficient())).collect();
+    model.add_linear_objective(&obj_coeffs, "flow");
+    model.set_objective_category(ObjectiveCategory::Maximum);
 
+    // Flow out from each node: sum_j x[node][j]
+    let counter = Cell::new(0usize);
+    let flow_out_expr = flat_map1("flow_out", &data.nodes, |_node| {
+        let node = counter.get();
+        counter.set(node + 1);
+        let monomials: Vec<_> = (0..node_count)
+            .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, arc_idx[&[node, j]]))
+            .collect();
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |i, _| format!("{}", i));
+    model.add_symbol_combination(&flow_out_expr)?;
+
+    // Flow in to each node: sum_i x[i][node]
+    let counter = Cell::new(0usize);
+    let flow_in_expr = flat_map1("flow_in", &data.nodes, |_node| {
+        let node = counter.get();
+        counter.set(node + 1);
+        let monomials: Vec<_> = (0..node_count)
+            .map(|i| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, arc_idx[&[i, node]]))
+            .collect();
+        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+    }, |i, _| format!("{}", i));
+    model.add_symbol_combination(&flow_in_expr)?;
+
+    // Flow balance constraints per node
     for node in 0..node_count {
-        let balance = flow_out[node].clone() - flow_in[node].clone();
+        let out_coeffs = extract_coeffs(&flow_out_expr[node]);
+        let in_coeffs = extract_coeffs(&flow_in_expr[node]);
+
+        // Combine: flow_out - flow_in [+/- flow] = 0
+        let mut coeffs = out_coeffs;
+        for (idx, coeff) in in_coeffs {
+            coeffs.push((idx, -coeff));
+        }
+
         if node == data.root {
-            model.add_math_inequality((balance - flow.clone()).eq_to(0.0), "root_balance");
+            coeffs.push((flow_idx[0], -1.0));
+            model.add_linear_constraint(&coeffs, ConstraintRelation::Equal, 0.0, "root_balance")?;
         } else if node == data.end {
-            model.add_math_inequality((balance + flow.clone()).eq_to(0.0), "end_balance");
+            coeffs.push((flow_idx[0], 1.0));
+            model.add_linear_constraint(&coeffs, ConstraintRelation::Equal, 0.0, "end_balance")?;
         } else {
-            model.add_math_inequality(balance.eq_to(0.0), &format!("balance_{}", node));
+            model.add_linear_constraint(&coeffs, ConstraintRelation::Equal, 0.0, &format!("balance_{}", node))?;
         }
     }
 
@@ -134,7 +173,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     println!("=== Demo11 ===");
     println!("status: {:?}", output.status);
-    println!("max flow: {:.2}", read_solution_value(&solution, flow_idx));
+    println!("max flow: {:.2}", read_solution_value(&solution, flow_idx[0]));
     for arc in &data.capacities {
         let value = read_solution_value(&solution, arc_idx[&[arc.from, arc.to]]);
         if value > 0.0 {

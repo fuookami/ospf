@@ -20,7 +20,10 @@ use super::{
 use crate::error::{ModelError, Result};
 use crate::symbol::IntermediateSymbol;
 use crate::token::Token;
-use crate::variable::{VariableId, VariableRange};
+use crate::variable::{VariableCombination, VariableId, VariableRange, VariableTypeTrait};
+use crate::token::IntoValue;
+use crate::symbol::SymbolCombination;
+use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder};
 use num_traits::{One, Zero};
 use ospf_rust_math::symbol::{
     Comparison, Linear as MathLinear, LinearInequality as MathLinearInequality,
@@ -726,6 +729,90 @@ where
             self.basic.add_symbol(symbol)?;
         }
         Ok(())
+    }
+
+    /// 批量注册变量组合，返回索引数组。
+    /// Batch register variable combination, returning index array.
+    ///
+    /// 遍历变量组合中的每个变量，逐个注册到模型中，
+    /// 返回与组合同形状的 `MultiArray<usize, S>` 索引数组。
+    ///
+    /// Iterates over each variable in the combination, registers them one by one,
+    /// and returns an index array `MultiArray<usize, S>` with the same shape.
+    ///
+    /// # 参数 / Parameters
+    ///
+    /// - `combination`: 变量组合 / Variable combination
+    ///
+    /// # 返回 / Returns
+    ///
+    /// 与组合同形状的变量索引数组 / Variable index array with same shape as combination
+    ///
+    /// # 示例 / Examples
+    ///
+    /// ```rust
+    /// use ospf_rust_core::model::MetaModel;
+    /// use ospf_rust_core::variable::{VariableCombination, Binary};
+    /// use ospf_rust_multiarray::Shape;
+    ///
+    /// let mut model = MetaModel::<f64>::new("test");
+    /// let vars: VariableCombination<Binary, _> =
+    ///     VariableCombination::new(Shape::<1>::new([3]), "x");
+    /// let indices = model.register_combination(&vars).unwrap();
+    /// assert_eq!(indices.len(), 3);
+    /// ```
+    pub fn register_combination<VT, S>(
+        &mut self,
+        combination: &VariableCombination<VT, S>,
+    ) -> Result<MultiArray<usize, S>>
+    where
+        VT: VariableTypeTrait,
+        VT::Value: IntoValue<V>,
+        S: ospf_rust_multiarray::shape::AbstractShape + Clone,
+    {
+        let shape = combination.shape().clone();
+        let indices: Vec<usize> = combination
+            .iter()
+            .map(|var| self.basic.register_variable(var.clone()))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(MultiArrayBuilder::from_list(shape, indices))
+    }
+
+    /// 批量注册符号组合。
+    /// Batch register symbol combination.
+    ///
+    /// 遍历符号组合中的每个符号，逐个注册到模型中。
+    ///
+    /// Iterates over each symbol in the combination and registers them one by one.
+    ///
+    /// # 参数 / Parameters
+    ///
+    /// - `combination`: 符号组合 / Symbol combination
+    ///
+    /// # 示例 / Examples
+    ///
+    /// ```rust,no_run
+    /// use ospf_rust_core::model::MetaModel;
+    /// use ospf_rust_core::symbol::SymbolCombination;
+    /// use ospf_rust_core::symbol::LinearExpressionSymbol;
+    /// use ospf_rust_multiarray::Shape;
+    ///
+    /// let mut model = MetaModel::<f64>::new("test");
+    /// let combo: SymbolCombination<f64, LinearExpressionSymbol<f64>, _> =
+    ///     SymbolCombination::new(Shape::<1>::new([3]), "bw", |i, _| {
+    ///         LinearExpressionSymbol::new(i as u64 + 1, &format!("bw_{}", i), vec![], 0.0)
+    ///     });
+    /// model.add_symbol_combination(&combo).unwrap();
+    /// ```
+    pub fn add_symbol_combination<Sym, S>(
+        &mut self,
+        combination: &SymbolCombination<V, Sym, S>,
+    ) -> Result<()>
+    where
+        Sym: IntermediateSymbol<V> + 'static,
+        S: ospf_rust_multiarray::shape::AbstractShape,
+    {
+        self.add_symbols(combination.iter_arc())
     }
 
     /// 尝试转换为机制模型。

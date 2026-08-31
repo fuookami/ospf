@@ -23,31 +23,49 @@ impl<'a> SolutionAnalyzer<'a> {
 
     /// 分析求解结果，返回服务路径列表
     /// 每条路径是从 assigned node 到 client node 的节点序列
+    ///
+    /// 使用符号组合的多项式提取变量索引：
+    /// - node_assignment[node] 的多项式包含 x[node, s] 的单项式
+    /// - bandwidth[edge] 的多项式包含 y[edge, s] 的单项式
     pub fn analyze(&self, solution: &[f64]) -> Vec<Vec<u64>> {
-        // 1. 找到每个服务的分配节点
-        let mut node_solution: HashMap<usize, usize> = HashMap::new(); // service_idx -> node_idx
+        // 1. 找到每个服务的分配节点（从 node_assignment 多项式）
+        let mut node_solution: HashMap<usize, usize> = HashMap::new();
         for (row, &node_idx) in self.assignment.normal_node_indices.iter().enumerate() {
-            for s in 0..self.services.len() {
-                let var_idx = self.assignment.x_idx[row][s];
+            let poly = self.assignment.node_assignment[row].to_linear_polynomial();
+            for mono in poly.monomials() {
+                let var_idx = mono.var_index();
                 let value = solution.get(var_idx).copied().unwrap_or(0.0);
                 if (value - 1.0).abs() < 1e-6 {
-                    node_solution.insert(s, node_idx);
+                    // 通过 x_idx 反查 service 索引
+                    let service_count = self.assignment.x_idx.shape[1];
+                    for s in 0..service_count {
+                        if self.assignment.x_idx[&[row, s]] == var_idx {
+                            node_solution.insert(s, node_idx);
+                        }
+                    }
                 }
             }
         }
 
-        // 2. 找到每条使用的边
+        // 2. 找到每条使用的边（从 bandwidth 多项式）
+        let bandwidth = &self.aggregation.edge_bandwidth.bandwidth;
         let y_idx = &self.aggregation.edge_bandwidth.y_idx;
-        let mut edge_solution: HashMap<usize, Vec<(usize, usize)>> = HashMap::new(); // service_idx -> [(from, to)]
+        let mut edge_solution: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
         for (e, _edge) in self.graph.edges.iter().enumerate() {
-            for s in 0..self.services.len() {
-                let var_idx = y_idx[e][s];
+            let poly = bandwidth[e].to_linear_polynomial();
+            for mono in poly.monomials() {
+                let var_idx = mono.var_index();
                 let value = solution.get(var_idx).copied().unwrap_or(0.0);
                 if value > 1e-6 {
-                    edge_solution
-                        .entry(s)
-                        .or_insert_with(Vec::new)
-                        .push((self.graph.edges[e].from, self.graph.edges[e].to));
+                    // 通过 y_idx 反查 service 索引
+                    for s in 0..self.services.len() {
+                        if y_idx[&[e, s]] == var_idx {
+                            edge_solution
+                                .entry(s)
+                                .or_insert_with(Vec::new)
+                                .push((self.graph.edges[e].from, self.graph.edges[e].to));
+                        }
+                    }
                 }
             }
         }

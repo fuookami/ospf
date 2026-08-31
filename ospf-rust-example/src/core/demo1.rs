@@ -13,34 +13,27 @@
 //! - 总资本 >= 10.0 / Total capital >= 10.0
 //! - 总负债 <= 5.0 / Total liability <= 5.0
 //!
-//! 本示例展示使用 MetaModel 进行高层建模的完整流程：
-//! This example demonstrates the complete workflow of high-level modeling using MetaModel:
-//! 1. 在 MetaModel 中注册决策变量
-//!    Register decision variables in MetaModel
-//! 2. 使用 math.symbol 构建中间表达式
-//!    Build intermediate expressions with math.symbol
-//! 3. 将中间表达式注册为约束和目标
-//!    Register intermediate expressions as constraints and objective
-//! 4. 转换: MetaModel -> MechanismModel -> LinearTriadModel
-//!    Transform: MetaModel -> MechanismModel -> LinearTriadModel
-//! 5. 求解 / Solve
+//! 本示例展示 core 层 SymbolCombination 新 API 的完整建模链路：
+//! This example demonstrates the complete modeling workflow with SymbolCombination:
+//! 1. `register_combination` 批量注册变量组合
+//! 2. `flat_map1` 从变量组合派生符号组合
+//! 3. `add_symbol_combination` 批量注册中间符号
+//! 4. 约束和目标从显式 `LinearExpressionSymbol` 提取多项式
 
-use ospf_rust_multiarray::Shape;
-use ospf_rust_math::symbol::{Linear, LinearMonomial};
+use ospf_rust_multiarray::{MultiArray, Shape};
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
+use ospf_rust_core::symbol::{
+    SymbolCombination, LinearExpressionSymbol, flat_map1,
+};
 use ospf_rust_core::variable::{Binary, VariableCombination1D};
 use super::common::solve_typed;
 
 /// 公司数据结构 / Company data structure
 #[derive(Debug, Clone)]
 struct Company {
-    /// 名称 / Name
     name: String,
-    /// 资本 / Capital
     capital: f64,
-    /// 负债 / Liability
     liability: f64,
-    /// 利润 / Profit
     profit: f64,
 }
 
@@ -66,165 +59,201 @@ fn get_companies() -> Vec<Company> {
     ]
 }
 
-/// 构建公司指标表达式 / Build company metric expression
-fn company_metric_expression<F>(
-    decision_vars: &VariableCombination1D<Binary>,
-    companies: &[Company],
-    metric: F,
-) -> Linear<f64>
-where
-    F: Fn(&Company) -> f64,
-{
-    Linear::new(
-        decision_vars
+/// 指标类型 / Metric type
+#[derive(Debug, Clone, Copy)]
+enum Metric {
+    Capital,
+    Liability,
+    Profit,
+}
+
+impl Metric {
+    fn name(&self) -> &str {
+        match self {
+            Metric::Capital => "total_capital",
+            Metric::Liability => "total_liability",
+            Metric::Profit => "total_profit",
+        }
+    }
+
+    fn value(&self, company: &Company) -> f64 {
+        match self {
+            Metric::Capital => company.capital,
+            Metric::Liability => company.liability,
+            Metric::Profit => company.profit,
+        }
+    }
+}
+
+/// 投资组合选择模型 / Portfolio selection model
+///
+/// 所有变量和中间符号都是显式字段。
+/// All variables and intermediate symbols are explicit fields.
+struct PortfolioModel {
+    /// 决策变量：是否选择该公司
+    select: VariableCombination1D<Binary>,
+    /// 模型索引数组
+    select_idx: MultiArray<usize, Shape<1>>,
+    /// 派生指标符号组合：capital, liability, profit
+    metrics: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+}
+
+impl PortfolioModel {
+    /// 注册模型 / Register model
+    fn register(
+        model: &mut MetaModel<f64>,
+        companies: &[Company],
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        // 1. 创建并注册变量组合
+        let select = VariableCombination1D::new(
+            Shape::new([companies.len()]),
+            "select",
+        );
+        let select_idx = model.register_combination(&select)?;
+
+        // 2. 从变量组合派生符号组合
+        //    metrics[0] = total_capital, metrics[1] = total_liability, metrics[2] = total_profit
+        let metrics_list = vec![Metric::Capital, Metric::Liability, Metric::Profit];
+        let select_ref = &select;
+        let select_idx_ref = &select_idx;
+        let metrics = flat_map1(
+            "portfolio_metric",
+            &metrics_list,
+            |metric| {
+                // 构建 Linear<f64>：sum(metric_value[i] * select[i])
+                let monomials: Vec<_> = companies
+                    .iter()
+                    .enumerate()
+                    .map(|(i, company)| {
+                        let var_index = select_idx_ref[i];
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            metric.value(company),
+                            var_index,
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, metric| metric.name().to_string(),
+        );
+        model.add_symbol_combination(&metrics)?;
+
+        Ok(PortfolioModel {
+            select,
+            select_idx,
+            metrics,
+        })
+    }
+
+    /// 添加约束和目标 / Add constraints and objective
+    fn add_constraints(
+        &self,
+        model: &mut MetaModel<f64>,
+        min_capital: f64,
+        max_liability: f64,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // 从显式符号提取多项式
+        let total_capital = self.metrics[0].to_linear_polynomial();
+        let total_liability = self.metrics[1].to_linear_polynomial();
+        let total_profit = self.metrics[2].to_linear_polynomial();
+
+        // 约束1: 总资本 >= min_capital
+        let cap_coeffs: Vec<(usize, f64)> = total_capital
+            .monomials()
             .iter()
-            .zip(companies.iter())
-            .map(|(var, company)| LinearMonomial::new(metric(company), var.to_owned_symbol()))
-            .collect(),
-        0.0,
-    )
+            .map(|m| (m.var_index(), *m.coefficient()))
+            .collect();
+        model.add_linear_constraint(
+            &cap_coeffs,
+            ospf_rust_core::model::ConstraintRelation::GreaterEqual,
+            min_capital,
+            "capital_constraint",
+        )?;
+
+        // 约束2: 总负债 <= max_liability
+        let lia_coeffs: Vec<(usize, f64)> = total_liability
+            .monomials()
+            .iter()
+            .map(|m| (m.var_index(), *m.coefficient()))
+            .collect();
+        model.add_linear_constraint(
+            &lia_coeffs,
+            ospf_rust_core::model::ConstraintRelation::LessEqual,
+            max_liability,
+            "liability_constraint",
+        )?;
+
+        // 目标: 最大化总利润
+        let obj_coeffs: Vec<(usize, f64)> = total_profit
+            .monomials()
+            .iter()
+            .map(|m| (m.var_index(), *m.coefficient()))
+            .collect();
+        model.add_linear_objective(&obj_coeffs, "total_profit");
+        model.set_objective_category(ObjectiveCategory::Maximum);
+
+        Ok(())
+    }
 }
 
 /// Demo1 主函数 / Demo1 main function
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Demo1: Portfolio Selection Problem ===\n");
 
-    // ========================================================================
-    // 步骤 1: 使用 MetaModel 进行高层建模
-    // Step 1: High-level modeling using MetaModel
-    // ========================================================================
-
-    // 公司数据 / Company data
     let companies = get_companies();
-
-    // 参数 / Parameters
     let min_capital = 10.0;
     let max_liability = 5.0;
 
     // 创建元模型 / Create meta model
     let mut meta_model = MetaModel::new("portfolio_selection");
 
-    // 使用 VariableCombination 创建决策变量
-    // Use VariableCombination to create decision variables
-    let decision_vars: VariableCombination1D<Binary> =
-        VariableCombination1D::new(Shape::new([companies.len()]), "select");
+    // 注册模型：变量组合 + 符号组合
+    let portfolio = PortfolioModel::register(&mut meta_model, &companies)?;
 
-    // 注册变量到模型 / Register variables into model
-    for var in decision_vars.iter() {
-        meta_model.register_variable(var.clone())?;
-    }
-
-    println!("Step 1: Created {} decision variables", decision_vars.len());
-    for (i, var) in decision_vars.iter().enumerate() {
-        println!("  {} = x_{} (ID: {})", var.name(), i, var.id());
+    println!("Step 1: Registered variable combination: select ({} vars)", portfolio.select.len());
+    println!("Step 2: Registered symbol combination: metrics ({} symbols)", portfolio.metrics.len());
+    for (i, sym) in portfolio.metrics.iter().enumerate() {
+        println!("  metrics[{}] = {} (ID: {})", i, sym.name(), sym.id().id);
     }
     println!();
 
-    // ========================================================================
-    // 步骤 2: 使用 math.symbol 构建中间表达式
-    // Step 2: Build intermediate expressions with math.symbol
-    // ========================================================================
-
-    let total_capital_expr =
-        company_metric_expression(&decision_vars, &companies, |company| company.capital);
-    let total_liability_expr =
-        company_metric_expression(&decision_vars, &companies, |company| company.liability);
-    let total_profit_expr =
-        company_metric_expression(&decision_vars, &companies, |company| company.profit);
-
-    println!("Step 2: Built intermediate expressions with math.symbol");
-    println!("  Expression: total_capital");
-    println!("  Expression: total_liability");
-    println!("  Expression: total_profit");
+    // 添加约束和目标
+    portfolio.add_constraints(&mut meta_model, min_capital, max_liability)?;
+    println!("Step 3: Added constraints and objective from symbol polynomials");
+    println!("  capital >= {}", min_capital);
+    println!("  liability <= {}", max_liability);
+    println!("  maximize total_profit");
     println!();
 
-    // ========================================================================
-    // 步骤 3: 将中间表达式注册为约束和目标
-    // Step 3: Register intermediate expressions as constraints and objective
-    // ========================================================================
-
-    // 约束1: 总资本 >= min_capital
-    // Constraint 1: total capital >= min_capital
-    meta_model.add_math_inequality(total_capital_expr.ge(min_capital), "capital_constraint");
-    println!(
-        "Step 3: Added constraint: total capital >= {} (using math.symbol)",
-        min_capital
-    );
-
-    // 约束2: 总负债 <= max_liability
-    // Constraint 2: total liability <= max_liability
-    meta_model.add_math_inequality(
-        total_liability_expr.le(max_liability),
-        "liability_constraint",
-    );
-    println!(
-        "  Added constraint: total liability <= {} (using math.symbol)",
-        max_liability
-    );
-
-    // 最大化总利润 / Maximize total profit
-    meta_model.set_math_linear_objective(
-        total_profit_expr,
-        ObjectiveCategory::Maximum,
-        "total_profit",
-    )?;
-
-    println!("Step 3: Set objective: maximize total profit");
-    println!("  Objective input name: total_profit");
-    println!();
-
-    // ========================================================================
-    // 步骤 4: 模型转换 MetaModel -> MechanismModel -> LinearTriadModel
-    // Step 4: Model transformation MetaModel -> MechanismModel -> LinearTriadModel
-    // ========================================================================
-
+    // 模型转换
     println!("Step 4: Model transformation chain");
-
-    // 4.1: MetaModel -> MechanismModel
-    // 符号约束在转换时自动映射到整数索引
-    // Symbolic constraints are automatically mapped to integer indices during transformation
     let mechanism_model = meta_model.try_to_mechanism_model()?;
-    println!("  4.1: MetaModel -> MechanismModel");
-    println!("       Variables: {}", mechanism_model.num_variables());
-    println!("       Constraints: {}", mechanism_model.num_constraints());
+    println!("  MechanismModel: {} variables, {} constraints",
+        mechanism_model.num_variables(), mechanism_model.num_constraints());
 
-    // 4.2: MechanismModel -> LinearTriadModel
     let linear_model = mechanism_model.into_linear_triad_model();
-    println!("  4.2: MechanismModel -> LinearTriadModel");
-    println!("       Variables: {}", linear_model.num_variables());
-    println!("       Constraints: {}", linear_model.num_constraints());
+    println!("  LinearTriadModel: {} variables, {} constraints",
+        linear_model.num_variables(), linear_model.num_constraints());
     println!();
 
-    // 打印模型摘要 / Print model summary
-    println!("=== Model Summary ===");
-    println!("Model: {}", linear_model.name);
-    println!("Variables: {} (binary)", linear_model.num_variables());
-    println!("Constraints: {}", linear_model.num_constraints());
-    println!("Objective: Maximize total profit");
-    println!();
-
-    // ========================================================================
-    // 步骤 5: 求解 / Step 5: Solve
-    // ========================================================================
-
-    println!("Step 5: Solving with typed MetaModel entry...");
+    // 求解
+    println!("Step 5: Solving...");
     let output = solve_typed(meta_model)?;
-    println!("\n=== Solver Output ===");
     println!("Status: {:?}", output.status);
     if let Some(obj) = output.objective_value {
         println!("Objective value (total profit): {:.0}", obj);
     }
 
+    // 提取结果
     let solution = output.solution;
     println!("\n=== Solution ===");
     let mut selected: Vec<String> = Vec::new();
     let mut total_capital = 0.0;
     let mut total_liability = 0.0;
 
-    for (i, var) in decision_vars.iter().enumerate() {
+    for (i, var) in portfolio.select.iter().enumerate() {
         let val = solution.get(i).copied().unwrap_or(0.0);
         println!("  {} = {:.6}", var.name(), val);
-
         if val > 0.5 {
             selected.push(companies[i].name.clone());
             total_capital += companies[i].capital;
@@ -234,26 +263,20 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n=== Results ===");
     println!("Selected companies: {:?}", selected);
-    println!(
-        "Total capital: {:.2} (required >= {:.2})",
-        total_capital, min_capital
-    );
-    println!(
-        "Total liability: {:.2} (required <= {:.2})",
-        total_liability, max_liability
-    );
+    println!("Total capital: {:.2} (required >= {:.2})", total_capital, min_capital);
+    println!("Total liability: {:.2} (required <= {:.2})", total_liability, max_liability);
 
-    // 验证约束 / Verify constraints
+    // 验证
     println!("\n=== Constraint Verification ===");
     if total_capital >= min_capital {
-        println!("✓ Capital constraint satisfied");
+        println!("  Capital constraint satisfied");
     } else {
-        println!("✗ Capital constraint violated!");
+        println!("  Capital constraint VIOLATED!");
     }
     if total_liability <= max_liability {
-        println!("✓ Liability constraint satisfied");
+        println!("  Liability constraint satisfied");
     } else {
-        println!("✗ Liability constraint violated!");
+        println!("  Liability constraint VIOLATED!");
     }
 
     Ok(())

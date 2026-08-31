@@ -22,12 +22,13 @@ use crate::dimension::derived_quantity::{
 };
 use crate::scale::Scale;
 use crate::unit::concept::UnitTrait;
+use crate::unit::conversion_value::{UnitConversionCalculation, UnitConversionValue};
 use bigdecimal::BigDecimal;
 use once_cell::sync::Lazy;
 use ospf_rust_math::operator::reciprocal::Reciprocal;
 use std::fmt;
 use std::marker::PhantomData;
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Div, Mul};
 use std::sync::Arc;
 use typenum::Integer;
 // ============================================================================
@@ -76,24 +77,6 @@ impl UnitConversionRule {
     /// 是否为线性转换 / Whether the rule is linear
     pub fn is_linear(&self) -> bool {
         matches!(self, Self::Linear { .. })
-    }
-
-    /// 转换为标准值 / Convert to standard value
-    pub fn to_standard_value<V>(&self, value: V) -> V
-    where
-        V: Mul<V, Output = V> + Add<V, Output = V>,
-        BigDecimal: Into<V>,
-    {
-        value * self.scale().value().clone().into() + self.offset().into()
-    }
-
-    /// 从标准值转换 / Convert from standard value
-    pub fn value_from_standard<V>(&self, value: V) -> V
-    where
-        V: Sub<V, Output = V> + Div<V, Output = V>,
-        BigDecimal: Into<V>,
-    {
-        (value - self.offset().into()) / self.scale().value().clone().into()
     }
 }
 
@@ -248,14 +231,13 @@ impl Unit {
     /// Convert a value to another unit with the same dimension
     pub fn convert_value_to<V>(&self, value: V, other: &Unit) -> Option<V>
     where
-        V: Mul<V, Output = V> + Add<V, Output = V> + Sub<V, Output = V> + Div<V, Output = V>,
-        BigDecimal: Into<V>,
+        V: UnitConversionValue,
     {
         if !self.same_dimension(other) {
             return None;
         }
-        let standard = self.inner.conversion.to_standard_value(value);
-        Some(other.inner.conversion.value_from_standard(standard))
+        let standard = self.inner.conversion.to_standard_value_checked(value)?;
+        other.inner.conversion.value_from_standard_checked(standard)
     }
 }
 
@@ -724,14 +706,17 @@ pub trait CTUnit: UnitTrait {
     /// Convert a value to another compile-time unit
     fn convert_value_to<V, U: CTUnit>(value: V) -> Option<V>
     where
-        V: Mul<V, Output = V> + Add<V, Output = V> + Sub<V, Output = V> + Div<V, Output = V>,
-        BigDecimal: Into<V>,
+        V: UnitConversionValue,
     {
         if !Self::dim_eq::<U>() {
             return None;
         }
-        let standard = value * Self::SCALE.value().clone().into() + Self::OFFSET.clone().into();
-        Some((standard - U::OFFSET.clone().into()) / U::SCALE.value().clone().into())
+        // 通过 UnitConversionRule 执行 checked 转换
+        // Perform checked conversion via UnitConversionRule
+        let from_rule = &*Self::INSTANT;
+        let to_rule = &*U::INSTANT;
+        let standard = from_rule.conversion().to_standard_value_checked(value)?;
+        to_rule.conversion().value_from_standard_checked(standard)
     }
 }
 
@@ -1109,5 +1094,108 @@ mod tests {
 
         // TestMeter 和 TestMeter 相同
         assert_same_unit::<TestMeter, TestMeter>();
+    }
+
+    // ========================================================================
+    // Phase 1.3: 纯单位运算测试 / Pure unit arithmetic tests
+    // ========================================================================
+
+    #[test]
+    fn test_unit_mul_km_times_h() {
+        // km * h -> UnitBuilder -> Unit (量纲: L*T)
+        let km = TestKilometer::INSTANT.clone();
+        let h = crate::unit::derived::Hour::INSTANT.clone();
+        let composite = (&km * &h).build();
+        // 量纲应包含 L 和 T
+        let dim_symbol = composite.dimension().symbol();
+        assert!(
+            dim_symbol.contains("L") && dim_symbol.contains("T"),
+            "Expected L*T dimension, got: {}",
+            dim_symbol
+        );
+    }
+
+    #[test]
+    fn test_unit_div_mb_per_s() {
+        // MB / s -> UnitBuilder -> Unit (量纲: ℐ/T)
+        let mb = crate::unit::derived::Megabyte::INSTANT.clone();
+        let s = TestSecond::INSTANT.clone();
+        let composite = (&mb / &s).build();
+        let dim_symbol = composite.dimension().symbol();
+        assert!(
+            dim_symbol.contains('T'),
+            "Expected ℐ/T dimension, got: {}",
+            dim_symbol
+        );
+    }
+
+    #[test]
+    fn test_unit_mul_div_chain() {
+        // km * h / s -> 量纲: L*T/T = L
+        let km = TestKilometer::INSTANT.clone();
+        let h = crate::unit::derived::Hour::INSTANT.clone();
+        let s = TestSecond::INSTANT.clone();
+        let composite = ((&km * &h) / &s).build();
+        let dim_symbol = composite.dimension().symbol();
+        // km*h/s 的量纲是 L*T/T = L
+        assert!(
+            dim_symbol.contains("L"),
+            "Expected L dimension (km*h/s), got: {}",
+            dim_symbol
+        );
+    }
+
+    #[test]
+    fn test_quantity_with_composite_unit() {
+        // Quantity<f64, Unit> = 100.0 km/h
+        use crate::quantity::Quantity;
+        let km = TestKilometer::INSTANT.clone();
+        let h = crate::unit::derived::Hour::INSTANT.clone();
+        let km_per_h = (&km / &h).build();
+        let speed = Quantity::new(100.0_f64, km_per_h);
+        assert_eq!(speed.value, 100.0);
+        // 量纲应为速度量纲 (L/T)
+        let dim_symbol = speed.unit.dimension().symbol();
+        assert!(
+            dim_symbol.contains("L") && dim_symbol.contains("T"),
+            "Expected velocity dimension, got: {}",
+            dim_symbol
+        );
+    }
+
+    #[test]
+    fn test_quantity_mul_produces_composite_unit() {
+        // 10 km * 5 h = 50 km*h
+        use crate::quantity::Quantity;
+        let km = TestKilometer::INSTANT.clone();
+        let h = crate::unit::derived::Hour::INSTANT.clone();
+        let q_km = Quantity::new(10.0_f64, km);
+        let q_h = Quantity::new(5.0_f64, h);
+        let product = &q_km * &q_h;
+        assert_eq!(product.value, 50.0);
+        let dim_symbol = product.unit.dimension().symbol();
+        assert!(
+            dim_symbol.contains("L") && dim_symbol.contains("T"),
+            "Expected L*T dimension, got: {}",
+            dim_symbol
+        );
+    }
+
+    #[test]
+    fn test_quantity_div_produces_composite_unit() {
+        // 100 MB / 2 s = 50 MB/s
+        use crate::quantity::Quantity;
+        let mb = crate::unit::derived::Megabyte::INSTANT.clone();
+        let s = TestSecond::INSTANT.clone();
+        let q_mb = Quantity::new(100.0_f64, mb);
+        let q_s = Quantity::new(2.0_f64, s);
+        let quotient = &q_mb / &q_s;
+        assert_eq!(quotient.value, 50.0);
+        let dim_symbol = quotient.unit.dimension().symbol();
+        assert!(
+            dim_symbol.contains('T'),
+            "Expected ℐ/T dimension, got: {}",
+            dim_symbol
+        );
     }
 }

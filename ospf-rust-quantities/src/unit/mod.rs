@@ -17,6 +17,7 @@
 //! - 统一接口：`UnitTrait` 统一编译时和运行时单位
 
 pub mod concept;
+pub mod conversion_value;
 pub mod derived;
 pub mod physical_unit;
 pub mod system;
@@ -27,6 +28,9 @@ pub mod system;
 
 // 从 concept 模块重导出
 pub use concept::UnitTrait;
+
+// 从 conversion_value 模块重导出
+pub use conversion_value::{UnitConversionCalculation, UnitConversionValue};
 
 // 从 physical_unit 模块重导出
 pub use physical_unit::{

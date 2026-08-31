@@ -1,23 +1,27 @@
 use std::error::Error;
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
-use ospf_rust_core::variable::{
 
-    UContinuous, VariableCombination1D, VariableCombination3D, VariableRange,
-};
-use ospf_rust_math::symbol::{Linear, LinearMonomial};
-use ospf_rust_multiarray::{MultiArrayBuilder, Shape};
+use ospf_rust_multiarray::{MultiArray, Shape};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
+use ospf_rust_core::variable::{UContinuous, VariableCombination1D, VariableCombination3D, VariableRange};
 
 use super::common::{read_solution_value, solve_typed};
 
+/// 替换规则数据结构 / Replacement rule data structure
 #[derive(Clone, Copy)]
 struct Replacement {
+    /// 源车型索引 / Source car model index
     from: usize,
+    /// 目标车型索引 / Target car model index
     to: usize,
+    /// 最大替换比例 / Maximum replacement ratio
     max_ratio: f64,
 }
 
+/// 车型数据结构 / Car model data structure
 #[derive(Clone)]
 struct CarModel {
+    /// 车型名称 / Car model name
     name: String,
 }
 
@@ -29,10 +33,14 @@ impl CarModel {
     }
 }
 
+/// 配送中心数据结构 / Distribution center data structure
 #[derive(Clone)]
 struct Center {
+    /// 中心名称 / Center name
     name: String,
+    /// 各车型需求量 / Demands for each car model
     demands: Vec<f64>,
+    /// 替换规则列表 / Replacement rules
     replacements: Vec<Replacement>,
 }
 
@@ -46,10 +54,14 @@ impl Center {
     }
 }
 
+/// 制造商数据结构 / Manufacturer data structure
 #[derive(Clone)]
 struct Manufacturer {
+    /// 制造商名称 / Manufacturer name
     name: String,
+    /// 各车型产能 / Productivity for each car model
     productivity_by_model: Vec<Option<f64>>,
+    /// 到各配送中心的物流成本 / Logistics cost to each center
     logistics_cost_to_centers: Vec<f64>,
 }
 
@@ -67,6 +79,7 @@ impl Manufacturer {
     }
 }
 
+/// 构建车型列表 / Build car model list
 fn build_car_models() -> Vec<CarModel> {
     vec![
         CarModel::new("M1"),
@@ -76,6 +89,7 @@ fn build_car_models() -> Vec<CarModel> {
     ]
 }
 
+/// 构建配送中心列表 / Build distribution center list
 fn build_centers() -> Vec<Center> {
     vec![
         Center::new(
@@ -133,6 +147,7 @@ fn build_centers() -> Vec<Center> {
     ]
 }
 
+/// 构建制造商列表 / Build manufacturer list
 fn build_manufacturers() -> Vec<Manufacturer> {
     vec![
         Manufacturer::new(
@@ -153,12 +168,15 @@ fn build_manufacturers() -> Vec<Manufacturer> {
     ]
 }
 
+/// Demo15 主函数：多车型配送问题 / Demo15 main function: Multi-model vehicle distribution problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let car_models = build_car_models();
     let centers = build_centers();
     let manufacturers = build_manufacturers();
 
     let mut model = MetaModel::<f64>::new("demo15");
+
+    // 1. 注册 x 变量组合 (manufacturer x center x car_model)
     let x_shape = Shape::new([manufacturers.len(), centers.len(), car_models.len()]);
     let x_vars: VariableCombination3D<UContinuous> =
         VariableCombination3D::with_name_and_range_generator(
@@ -173,112 +191,139 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                 }
             },
         );
-    let x_idx = MultiArrayBuilder::from_list(
-        x_shape,
-        model.register_variables::<UContinuous, _>(x_vars.iter().cloned())?,
-    );
+    let x_idx = model.register_combination(&x_vars)?;
 
+    // 2. 注册 y 变量组合 (per center replacement ratios)
     let mut y_vars: Vec<VariableCombination1D<UContinuous>> = Vec::with_capacity(centers.len());
-    let mut y_idx = Vec::with_capacity(centers.len());
+    let mut y_idx: Vec<MultiArray<usize, Shape<1>>> = Vec::with_capacity(centers.len());
     for d in 0..centers.len() {
         let y_shape = Shape::new([centers[d].replacements.len()]);
         let y_for_center: VariableCombination1D<UContinuous> =
             VariableCombination1D::with_name_and_range_generator(
-                y_shape.clone(),
+                y_shape,
                 &format!("y_{}", d),
                 |_index, vector| vector[0].to_string(),
                 |_index, vector| {
                     VariableRange::bounded(0.0, centers[d].replacements[vector[0]].max_ratio)
                 },
             );
-        let y_indices = MultiArrayBuilder::from_list(
-            y_shape,
-            model.register_variables::<UContinuous, _>(y_for_center.iter().cloned())?,
-        );
+        let y_indices = model.register_combination(&y_for_center)?;
         y_vars.push(y_for_center);
         y_idx.push(y_indices);
     }
 
-    let mut cost_terms = Vec::new();
-    for m in 0..manufacturers.len() {
-        for d in 0..centers.len() {
-            for c in 0..car_models.len() {
-                cost_terms.push(LinearMonomial::new(
-                    manufacturers[m].logistics_cost_to_centers[d],
-                    x_vars[&[m, d, c]].to_owned_symbol(),
-                ));
+    // 3. 构建成本符号
+    let mfrs = &manufacturers;
+    let x_idx_ref = &x_idx;
+    let cost = SymbolCombination::new(Shape::new([1]), "cost", |_idx, _vec| {
+        let mut terms = Vec::new();
+        for m in 0..mfrs.len() {
+            for d in 0..centers.len() {
+                for c in 0..car_models.len() {
+                    terms.push(ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        mfrs[m].logistics_cost_to_centers[d],
+                        x_idx_ref[&[m, d, c]],
+                    ));
+                }
             }
         }
-    }
-    let cost = Linear::new(cost_terms, 0.0);
-    let trans = MultiArrayBuilder::new_by(
-        Shape::<2>::new([manufacturers.len(), car_models.len()]),
+        let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
+        let id = ospf_rust_core::symbol::intermediate_symbol::next_auto_intermediate_symbol_id();
+        LinearExpressionSymbol::new(id, "total_cost", poly.monomials().to_vec(), *poly.constant_term())
+    });
+    model.add_symbol_combination(&cost)?;
+
+    // 4. 构建运输量符号 (manufacturer x car_model)
+    let trans = SymbolCombination::new(
+        Shape::new([manufacturers.len(), car_models.len()]),
+        "trans",
         |_idx, vec| {
             let m = vec[0];
             let c = vec[1];
-            Linear::new(
-                (0..centers.len())
-                    .map(|d| LinearMonomial::new(1.0, x_vars[&[m, d, c]].to_owned_symbol()))
-                    .collect(),
-                0.0,
-            )
+            let terms: Vec<_> = (0..centers.len())
+                .map(|d| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[m, d, c]]))
+                .collect();
+            let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
+            let id = ospf_rust_core::symbol::intermediate_symbol::next_auto_intermediate_symbol_id();
+            LinearExpressionSymbol::new(id, &format!("trans_{}_{}", m, c), poly.monomials().to_vec(), *poly.constant_term())
         },
     );
-    let receive = MultiArrayBuilder::new_by(
-        Shape::<2>::new([centers.len(), car_models.len()]),
+    model.add_symbol_combination(&trans)?;
+
+    // 5. 构建接收量符号 (center x car_model)
+    let receive = SymbolCombination::new(
+        Shape::new([centers.len(), car_models.len()]),
+        "receive",
         |_idx, vec| {
             let d = vec[0];
             let c = vec[1];
-            Linear::new(
-                (0..manufacturers.len())
-                    .map(|m| LinearMonomial::new(1.0, x_vars[&[m, d, c]].to_owned_symbol()))
-                    .collect(),
-                0.0,
-            )
+            let terms: Vec<_> = (0..manufacturers.len())
+                .map(|m| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[m, d, c]]))
+                .collect();
+            let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
+            let id = ospf_rust_core::symbol::intermediate_symbol::next_auto_intermediate_symbol_id();
+            LinearExpressionSymbol::new(id, &format!("recv_{}_{}", d, c), poly.monomials().to_vec(), *poly.constant_term())
         },
     );
-    let demand = MultiArrayBuilder::new_by(
-        Shape::<2>::new([centers.len(), car_models.len()]),
+    model.add_symbol_combination(&receive)?;
+
+    // 6. 构建需求替换符号 (center x car_model)
+    let y_idx_ref = &y_idx;
+    let demand = SymbolCombination::new(
+        Shape::new([centers.len(), car_models.len()]),
+        "demand",
         |_idx, vec| {
             let d = vec[0];
             let c = vec[1];
             let mut terms = Vec::new();
             for (r_idx, replacement) in centers[d].replacements.iter().enumerate() {
                 if replacement.from == c {
-                    terms.push(LinearMonomial::new(
+                    terms.push(ospf_rust_core::symbol::flatten::LinearMonomial::new(
                         centers[d].demands[replacement.from],
-                        y_vars[d][r_idx].to_owned_symbol(),
+                        y_idx_ref[d][r_idx],
                     ));
                 }
                 if replacement.to == c {
-                    terms.push(LinearMonomial::new(
+                    terms.push(ospf_rust_core::symbol::flatten::LinearMonomial::new(
                         -centers[d].demands[replacement.from],
-                        y_vars[d][r_idx].to_owned_symbol(),
+                        y_idx_ref[d][r_idx],
                     ));
                 }
             }
-            Linear::new(terms, 0.0)
+            let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
+            let id = ospf_rust_core::symbol::intermediate_symbol::next_auto_intermediate_symbol_id();
+            LinearExpressionSymbol::new(id, &format!("demand_{}_{}", d, c), poly.monomials().to_vec(), *poly.constant_term())
         },
     );
+    model.add_symbol_combination(&demand)?;
 
-    model.set_math_linear_objective(cost, ObjectiveCategory::Minimum, "cost")?;
+    // 7. 目标: 最小化成本
+    let cost_poly = cost[0].to_linear_polynomial();
+    let cost_coeffs: Vec<_> = cost_poly.monomials().iter().map(|m| (m.var_index(), *m.coefficient())).collect();
+    model.add_linear_objective(&cost_coeffs, "cost");
+    model.set_objective_category(ObjectiveCategory::Minimum);
 
+    // 8. 需求约束: receive[d][c] + demand[d][c] >= centers[d].demands[c]
     for d in 0..centers.len() {
         for c in 0..car_models.len() {
-            model.add_math_inequality(
-                (receive[&[d, c]].clone() + demand[&[d, c]].clone()).ge(centers[d].demands[c]),
-                &format!("demand_{}_{}", d, c),
-            );
+            let recv_poly = receive[&[d, c]].to_linear_polynomial();
+            let dem_poly = demand[&[d, c]].to_linear_polynomial();
+            let mut coeffs: Vec<(usize, f64)> = recv_poly.monomials().iter()
+                .map(|m| (m.var_index(), *m.coefficient())).collect();
+            for m in dem_poly.monomials() {
+                coeffs.push((m.var_index(), *m.coefficient()));
+            }
+            model.add_linear_constraint(&coeffs, ConstraintRelation::GreaterEqual, centers[d].demands[c], &format!("demand_{}_{}", d, c))?;
         }
     }
 
+    // 9. 产能约束: trans[m][c] <= productivity
     for m in 0..manufacturers.len() {
         for c in 0..car_models.len() {
             if let Some(cap) = manufacturers[m].productivity_by_model[c] {
-                model.add_math_inequality(
-                    trans[&[m, c]].clone().le(cap),
-                    &format!("capacity_{}_{}", m, c),
-                );
+                let poly = trans[&[m, c]].to_linear_polynomial();
+                let coeffs: Vec<_> = poly.monomials().iter().map(|m| (m.var_index(), *m.coefficient())).collect();
+                model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, cap, &format!("capacity_{}_{}", m, c))?;
             }
         }
     }
