@@ -13,6 +13,16 @@ pub mod application;
 pub mod domain;
 pub mod infrastructure;
 
+// 领域错误 re-export（避免与 crate 级 Csp1dError 冲突）
+// Domain error re-exports (avoids conflict with crate-level Csp1dError)
+pub use domain::error::{
+    Csp1dCapabilityError as Csp1dDomainCapabilityError,
+    Csp1dError as Csp1dDomainError,
+    Csp1dLifecycleError as Csp1dDomainLifecycleError,
+    Csp1dSolvingError as Csp1dDomainSolvingError,
+    Csp1dTypeError as Csp1dDomainTypeError,
+};
+
 pub use application::model::{
     csp1d_problem, csp1d_solve_config, Csp1dAssignment, Csp1dConfiguration, Csp1dKpi,
     Csp1dKpiKeys, Csp1dProblem, Csp1dProblemBuilder, Csp1dSolveConfig,

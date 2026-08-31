@@ -26,6 +26,8 @@ pub use basic_quadratic_tetrad_model::{BasicQuadraticTetradModel, BasicQuadratic
 pub use elastic::{LinearElasticBuilder, QuadraticElasticBuilder};
 pub use linear_triad_model::{LinearTriadModel, LinearTriadModelF64};
 pub use linear_triad_model_view::LinearTriadModelView;
-pub use lp_export::{DumpOptions, LPExportableModel, ModelFileFormat, dump_batch, dump_lp_batch};
+pub use lp_export::{
+    DumpOptions, LPExportableModel, ModelFileFormat, dump_batch, dump_lp_batch, dump_opm_batch,
+};
 pub use quadratic_tetrad_model::{QuadraticTetradModel, QuadraticTetradModelF64};
 pub use quadratic_tetrad_model_view::QuadraticTetradModelView;

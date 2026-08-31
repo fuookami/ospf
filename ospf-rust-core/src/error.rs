@@ -1,7 +1,10 @@
 //! 错误类型定义
 //! Error Type Definitions
 
+use std::fmt::{Display, Formatter};
 use thiserror::Error;
+use ospf_rust_base::error::{ErrorCode, ErrorPosition, WithErrorPosition};
+use ospf_rust_base::error_type;
 use crate::variable::VariableId;
 
 /// 核心模块错误类型 / Core module error type
@@ -18,6 +21,26 @@ pub enum CoreError {
     /// 求解器错误 / Solver error
     #[error("Solver error: {0}")]
     Solver(#[from] SolverError),
+
+    /// 求解器未找到错误 / Solver not found error
+    #[error("{0}")]
+    SolverNotFound(#[from] SolverNotFoundError),
+
+    /// 求解器环境丢失错误 / Solver environment lost error
+    #[error("{0}")]
+    SolverEnvironmentLost(#[from] SolverEnvironmentLostError),
+
+    /// 求解器求解异常错误 / Solver solving exception error
+    #[error("{0}")]
+    SolverSolving(#[from] SolverSolvingError),
+
+    /// 求解器建模异常错误 / Solver modeling exception error
+    #[error("{0}")]
+    SolverModeling(#[from] SolverModelingError),
+
+    /// 求解器终止错误 / Solver terminated error
+    #[error("{0}")]
+    SolverTerminated(#[from] SolverTerminatedError),
 
     /// 未实现错误 / Not implemented error
     #[error("Not implemented: {0}")]
@@ -138,6 +161,197 @@ pub enum SolverError {
 /// 结果类型别名 / Result type alias
 pub type Result<T> = std::result::Result<T, CoreError>;
 
+// ============================================================================
+// StructuredError 转换 / StructuredError conversion
+// ============================================================================
+
+impl CoreError {
+    /// 转换为 Box<dyn Error> / Convert to Box<dyn Error>
+    ///
+    /// 对应 Kotlin `toError()`。/ Corresponds to Kotlin `toError()`.
+    pub fn to_boxed_error(self) -> Box<dyn std::error::Error> {
+        Box::new(self)
+    }
+
+    /// 转换为失败的 Result / Convert to failed Result
+    ///
+    /// 对应 Kotlin `toFailed()`。/ Corresponds to Kotlin `toFailed()`.
+    pub fn to_failed<T>(self) -> std::result::Result<T, Box<dyn std::error::Error>> {
+        Err(self.to_boxed_error())
+    }
+}
+
+// ============================================================================
+// 命名错误子类型：用于重复构造点去重
+// Named error subtypes: deduplicate repeated construction points
+// ============================================================================
+
+// 求解器未找到错误 / Solver not found error
+// 替代重复的 `CoreError::Solver(SolverError::NotAvailable(...))` 构造。
+error_type!(
+    #[derive(Clone, Debug)]
+    pub struct SolverNotFoundError {
+        /// 求解器名称 / Solver name
+        pub solver: Option<String>
+    }
+);
+
+impl SolverNotFoundError {
+    /// 创建无具体求解器名称的未找到错误 / Create not-found error without solver name
+    #[track_caller]
+    pub fn none() -> Self {
+        let caller = std::panic::Location::caller();
+        Self {
+            solver: None,
+            position: ErrorPosition { file: caller.file(), line: caller.line() },
+        }
+    }
+
+    /// 创建带求解器名称的未找到错误 / Create not-found error with solver name
+    #[track_caller]
+    pub fn new(solver: impl Into<String>) -> Self {
+        let caller = std::panic::Location::caller();
+        Self {
+            solver: Some(solver.into()),
+            position: ErrorPosition { file: caller.file(), line: caller.line() },
+        }
+    }
+}
+
+impl Display for SolverNotFoundError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self.solver {
+            Some(s) => write!(f, "No solver valid: {}", s),
+            None => write!(f, "No solver valid."),
+        }
+    }
+}
+
+impl ospf_rust_base::error::Error for SolverNotFoundError {
+    fn code(&self) -> ErrorCode { ErrorCode::SolverNotFound }
+    fn msg(&self) -> String { format!("{}", self) }
+}
+
+impl std::error::Error for SolverNotFoundError {}
+
+// 求解器环境丢失错误 / Solver environment lost error
+error_type!(
+    #[derive(Clone, Debug)]
+    pub struct SolverEnvironmentLostError {
+        /// 错误详情 / Error detail
+        pub detail: Option<String>
+    }
+);
+
+impl SolverEnvironmentLostError {
+    /// 创建求解器环境丢失错误 / Create solver environment lost error
+    #[track_caller]
+    pub fn new(detail: impl Into<String>) -> Self {
+        let caller = std::panic::Location::caller();
+        Self {
+            detail: Some(detail.into()),
+            position: ErrorPosition { file: caller.file(), line: caller.line() },
+        }
+    }
+}
+
+impl Display for SolverEnvironmentLostError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self.detail {
+            Some(d) => write!(f, "Solver environment lost: {}", d),
+            None => write!(f, "Solver environment lost."),
+        }
+    }
+}
+
+impl ospf_rust_base::error::Error for SolverEnvironmentLostError {
+    fn code(&self) -> ErrorCode { ErrorCode::OREngineEnvironmentLost }
+    fn msg(&self) -> String { format!("{}", self) }
+}
+
+impl std::error::Error for SolverEnvironmentLostError {}
+
+// 求解器求解异常错误 / Solver solving exception error
+error_type!(
+    #[derive(Clone, Debug)]
+    pub struct SolverSolvingError {
+        /// 错误详情 / Error detail
+        pub detail: Option<String>
+    }
+);
+
+impl Display for SolverSolvingError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self.detail {
+            Some(d) => write!(f, "Solver solving exception: {}", d),
+            None => write!(f, "Solver solving exception."),
+        }
+    }
+}
+
+impl ospf_rust_base::error::Error for SolverSolvingError {
+    fn code(&self) -> ErrorCode { ErrorCode::OREngineSolvingException }
+    fn msg(&self) -> String { format!("{}", self) }
+}
+
+impl std::error::Error for SolverSolvingError {}
+
+// 求解器建模异常错误 / Solver modeling exception error
+error_type!(
+    #[derive(Clone, Debug)]
+    pub struct SolverModelingError {
+        /// 错误详情 / Error detail
+        pub detail: Option<String>
+    }
+);
+
+impl SolverModelingError {
+    /// 创建求解器建模异常错误 / Create solver modeling error
+    #[track_caller]
+    pub fn new(detail: impl Into<String>) -> Self {
+        let caller = std::panic::Location::caller();
+        Self {
+            detail: Some(detail.into()),
+            position: ErrorPosition { file: caller.file(), line: caller.line() },
+        }
+    }
+}
+
+impl Display for SolverModelingError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self.detail {
+            Some(d) => write!(f, "Solver modeling exception: {}", d),
+            None => write!(f, "Solver modeling exception."),
+        }
+    }
+}
+
+impl ospf_rust_base::error::Error for SolverModelingError {
+    fn code(&self) -> ErrorCode { ErrorCode::OREngineModelingException }
+    fn msg(&self) -> String { format!("{}", self) }
+}
+
+impl std::error::Error for SolverModelingError {}
+
+// 求解器终止错误 / Solver terminated error
+error_type!(
+    #[derive(Clone, Copy, Debug)]
+    pub struct SolverTerminatedError {}
+);
+
+impl Display for SolverTerminatedError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Solver terminated.")
+    }
+}
+
+impl ospf_rust_base::error::Error for SolverTerminatedError {
+    fn code(&self) -> ErrorCode { ErrorCode::OREngineTerminated }
+    fn msg(&self) -> String { "Solver terminated.".to_string() }
+}
+
+impl std::error::Error for SolverTerminatedError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,5 +363,23 @@ mod tests {
 
         let err = CoreError::Variable(err);
         assert!(err.to_string().contains("Variable error"));
+    }
+
+    #[test]
+    fn test_named_error_subtypes() {
+        use ospf_rust_base::error::Error as BaseError;
+
+        let err = SolverNotFoundError {
+            solver: Some("SCIP".to_string()),
+            position: ErrorPosition { file: file!(), line: line!() },
+        };
+        assert_eq!(err.code(), ErrorCode::SolverNotFound);
+        assert!(err.msg().contains("SCIP"));
+
+        let err = SolverTerminatedError {
+            position: ErrorPosition { file: file!(), line: line!() },
+        };
+        assert_eq!(err.code(), ErrorCode::OREngineTerminated);
+        assert!(err.msg().contains("terminated"));
     }
 }

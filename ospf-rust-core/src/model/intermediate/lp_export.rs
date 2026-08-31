@@ -5,14 +5,18 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::thread;
-use crate::model::ConstraintRelation;
-use crate::model::ObjectiveCategory;
-use crate::variable::VariableType;
 use super::{
 
     BasicLinearTriadModel, BasicQuadraticTetradModel, LinearTriadModel, QuadraticTetradModel,
     SparseMatrix, SparseVector,
 };
+use crate::model::{
+    ConstraintRelation, LinearInequality, MetaModel, ObjectiveCategory, QuadraticInequality,
+};
+use crate::symbol::IntermediateSymbol;
+use crate::symbol::flatten::{Linear, Quadratic};
+use crate::token::Token;
+use crate::variable::{VariableRange, VariableType};
 
 /// Unified LP export interface for intermediate models.
 /// 模型文件格式 / Model file format
@@ -20,6 +24,8 @@ use super::{
 pub enum ModelFileFormat {
     /// LP 格式 / LP format
     Lp,
+    /// OPM 诊断格式 / OPM diagnostic format
+    Opm,
 }
 
 impl ModelFileFormat {
@@ -27,6 +33,7 @@ impl ModelFileFormat {
     pub fn extension(self) -> &'static str {
         match self {
             Self::Lp => "lp",
+            Self::Opm => "opm",
         }
     }
 }
@@ -152,6 +159,49 @@ where
     })
 }
 
+/// 批量导出 OPM 文件；当 `options.concurrent = true` 时并发写入。
+/// Batch-export OPM files; writes concurrently when `options.concurrent = true`.
+pub fn dump_opm_batch<'a, M, I, P>(items: I, options: &DumpOptions) -> io::Result<()>
+where
+    M: LPExportableModel + Sync + 'a,
+    I: IntoIterator<Item = (&'a M, P)>,
+    P: AsRef<Path>,
+{
+    let jobs: Vec<(&'a M, PathBuf)> = items
+        .into_iter()
+        .map(|(model, path)| (model, path.as_ref().to_path_buf()))
+        .collect();
+
+    if !options.concurrent || jobs.len() <= 1 {
+        for (model, path) in jobs {
+            model
+                .write_opm(&path)
+                .map_err(|err| path_io_error(&path, err))?;
+        }
+        return Ok(());
+    }
+
+    thread::scope(|scope| {
+        let handles: Vec<_> = jobs
+            .into_iter()
+            .map(|(model, path)| {
+                scope.spawn(move || {
+                    model
+                        .write_opm(&path)
+                        .map_err(|err| path_io_error(&path, err))
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle
+                .join()
+                .map_err(|_| io::Error::new(io::ErrorKind::Other, "dump thread panicked"))??;
+        }
+        Ok(())
+    })
+}
+
 /// 批量导出模型文件；当 `options.concurrent = true` 时并发写入。
 /// Batch-export model files; writes concurrently when `options.concurrent = true`.
 pub fn dump_batch<'a, M, I, P>(
@@ -166,6 +216,7 @@ where
 {
     match format {
         ModelFileFormat::Lp => dump_lp_batch(items, options),
+        ModelFileFormat::Opm => dump_opm_batch(items, options),
     }
 }
 
@@ -234,6 +285,7 @@ pub trait LPExportableModel {
     fn export<P: AsRef<Path>>(&self, path: P, format: ModelFileFormat) -> io::Result<()> {
         match format {
             ModelFileFormat::Lp => self.export_lp(path),
+            ModelFileFormat::Opm => self.write_opm(path),
         }
     }
 
@@ -247,6 +299,7 @@ pub trait LPExportableModel {
     ) -> io::Result<()> {
         match format {
             ModelFileFormat::Lp => self.export_lp_with_options(path, options),
+            ModelFileFormat::Opm => self.write_opm(path),
         }
     }
 
@@ -265,6 +318,24 @@ pub trait LPExportableModel {
         options: &DumpOptions,
     ) -> io::Result<()> {
         self.export_with_options(path, format, options)
+    }
+
+    /// 序列化为 OPM 诊断文本。
+    /// Serialize model into OPM diagnostic text.
+    fn to_opm_string(&self) -> String {
+        self.to_lp_string()
+    }
+
+    /// 将 OPM 诊断文本写入 writer。
+    /// Write OPM diagnostic text to writer.
+    fn write_opm_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        writer.write_all(self.to_opm_string().as_bytes())
+    }
+
+    /// 将 OPM 诊断文本写入文件。
+    /// Write OPM diagnostic text to file.
+    fn write_opm<P: AsRef<Path>>(&self, path: P) -> io::Result<()> {
+        fs::write(path, self.to_opm_string())
     }
 }
 
@@ -302,6 +373,151 @@ fn format_number(value: f64) -> String {
         } else {
             text
         }
+    }
+}
+
+fn token_display_name(token: &Token<f64>) -> String {
+    token
+        .variable
+        .display_name()
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| token.name())
+        .to_string()
+}
+
+fn format_range(range: VariableRange<f64>) -> String {
+    match (range.lower_bound, range.upper_bound) {
+        (Some(lower), Some(upper)) => {
+            format!("[{}, {}]", format_number(lower), format_number(upper))
+        }
+        (Some(lower), None) => format!("[{}, +inf)", format_number(lower)),
+        (None, Some(upper)) => format!("(-inf, {}]", format_number(upper)),
+        (None, None) => "empty".to_string(),
+    }
+}
+
+fn format_opm_linear_term(coefficient: f64, symbol: &str) -> Option<String> {
+    if coefficient.abs() <= f64::EPSILON {
+        None
+    } else if (coefficient - 1.0).abs() <= f64::EPSILON {
+        Some(symbol.to_string())
+    } else if (coefficient + 1.0).abs() <= f64::EPSILON {
+        Some(format!("-{symbol}"))
+    } else {
+        Some(format!("{} * {symbol}", format_number(coefficient)))
+    }
+}
+
+fn format_opm_linear(poly: &Linear<f64>, var_names: &[String]) -> String {
+    let mut terms: Vec<String> = poly
+        .monomials()
+        .iter()
+        .filter_map(|monomial| {
+            format_opm_linear_term(*monomial.coefficient(), &var_names[monomial.var_index()])
+        })
+        .collect();
+    if poly.constant_term().abs() > f64::EPSILON {
+        terms.push(format_number(*poly.constant_term()));
+    }
+    if terms.is_empty() {
+        "0".to_string()
+    } else {
+        terms.join(" + ")
+    }
+}
+
+fn format_opm_quadratic_term(
+    coefficient: f64,
+    var_index1: usize,
+    var_index2: Option<usize>,
+    var_names: &[String],
+) -> Option<String> {
+    if coefficient.abs() <= f64::EPSILON {
+        return None;
+    }
+    let term = if let Some(var_index2) = var_index2 {
+        if var_index1 == var_index2 {
+            format!("{}^2", var_names[var_index1])
+        } else {
+            format!("{} * {}", var_names[var_index1], var_names[var_index2])
+        }
+    } else {
+        var_names[var_index1].clone()
+    };
+
+    if (coefficient - 1.0).abs() <= f64::EPSILON {
+        Some(term)
+    } else if (coefficient + 1.0).abs() <= f64::EPSILON {
+        Some(format!("-{term}"))
+    } else {
+        Some(format!("{} * {term}", format_number(coefficient)))
+    }
+}
+
+fn format_opm_quadratic(poly: &Quadratic<f64>, var_names: &[String]) -> String {
+    let mut terms: Vec<String> = poly
+        .monomials()
+        .iter()
+        .filter_map(|monomial| {
+            format_opm_quadratic_term(
+                *monomial.coefficient(),
+                monomial.var_index1(),
+                monomial.var_index2(),
+                var_names,
+            )
+        })
+        .collect();
+    if poly.constant().abs() > f64::EPSILON {
+        terms.push(format_number(*poly.constant()));
+    }
+    if terms.is_empty() {
+        "0".to_string()
+    } else {
+        terms.join(" + ")
+    }
+}
+
+fn format_constraint_name_prefix(name: &str) -> String {
+    if name.is_empty() {
+        String::new()
+    } else {
+        format!("{name}: ")
+    }
+}
+
+fn format_opm_linear_constraint(
+    inequality: &LinearInequality<f64>,
+    name: &str,
+    var_names: &[String],
+) -> String {
+    format!(
+        "{}{} {} {}",
+        format_constraint_name_prefix(name),
+        format_opm_linear(&inequality.polynomial, var_names),
+        relation_to_str(inequality.relation),
+        format_number(inequality.rhs)
+    )
+}
+
+fn format_opm_quadratic_constraint(
+    inequality: &QuadraticInequality<f64>,
+    name: &str,
+    var_names: &[String],
+) -> String {
+    format!(
+        "{}{} {} {}",
+        format_constraint_name_prefix(name),
+        format_opm_quadratic(&inequality.polynomial, var_names),
+        relation_to_str(inequality.relation),
+        format_number(inequality.rhs)
+    )
+}
+
+fn symbol_to_opm_string(symbol: &dyn IntermediateSymbol<f64>, unfold: u64) -> String {
+    if unfold == 0 {
+        symbol.display_name().to_string()
+    } else {
+        symbol.to_raw_string(unfold - 1)
     }
 }
 
@@ -745,14 +961,114 @@ impl LPExportableModel for BasicQuadraticTetradModel {
     }
 }
 
+impl LPExportableModel for MetaModel<f64> {
+    fn to_lp_string_with_options(&self, options: &DumpOptions) -> String {
+        if let Ok(mechanism) = self.try_to_mechanism_model() {
+            if mechanism.as_basic().quadratic_constraints().is_empty() {
+                if let Ok(linear) = mechanism.try_into_linear_triad_model_with_status_callback(None)
+                {
+                    return linear.to_lp_string_with_options(options);
+                }
+            } else if let Ok(quadratic) =
+                mechanism.try_into_quadratic_tetrad_model_with_status_callback(None)
+            {
+                return quadratic.to_lp_string_with_options(options);
+            }
+        }
+        String::new()
+    }
+
+    fn to_opm_string(&self) -> String {
+        let mechanism = match self.try_to_mechanism_model() {
+            Ok(mechanism) => mechanism,
+            Err(err) => {
+                return format!(
+                    "Model Name: {}\n\nExport Error: {}\n",
+                    self.as_basic().name, err
+                );
+            }
+        };
+        let tokens = mechanism.as_basic().tokens();
+        let var_names: Vec<String> = tokens.iter().map(token_display_name).collect();
+        let mut output = String::new();
+
+        output.push_str(&format!("Model Name: {}\n\n", mechanism.as_basic().name));
+
+        output.push_str("Variables:\n");
+        let mut ordered_tokens: Vec<&Token<f64>> = tokens.iter().collect();
+        ordered_tokens.sort_by_key(|token| token.solver_index);
+        for token in ordered_tokens {
+            output.push_str(&format!(
+                "{}, {}, {}\n",
+                token.name(),
+                token.var_type().type_name(),
+                format_range(token.range())
+            ));
+        }
+        output.push('\n');
+
+        output.push_str("Symbols:\n");
+        let mut symbols: Vec<&dyn IntermediateSymbol<f64>> =
+            self.symbols().iter().map(|symbol| symbol.as_ref()).collect();
+        symbols.sort_by(|lhs, rhs| lhs.id().name.cmp(&rhs.id().name));
+        for symbol in symbols {
+            let range = symbol
+                .range()
+                .map(format_range)
+                .unwrap_or_else(|| "empty".to_string());
+            output.push_str(&format!(
+                "{} = {}, {}\n",
+                symbol.display_name(),
+                symbol_to_opm_string(symbol, 1),
+                range
+            ));
+        }
+        output.push('\n');
+
+        output.push_str("Objectives:\n");
+        for objective in &mechanism.objective().sub_objectives {
+            output.push_str(&format!(
+                "{:?} {}: {} \n",
+                objective.category,
+                objective.name,
+                format_opm_linear(&objective.polynomial, &var_names)
+            ));
+        }
+        output.push('\n');
+
+        output.push_str("Subject to:\n");
+        for constraint in mechanism.as_basic().constraints() {
+            output.push_str(&format!(
+                "{}\n",
+                format_opm_linear_constraint(&constraint.inequality, &constraint.name, &var_names)
+            ));
+        }
+        for constraint in mechanism.as_basic().quadratic_constraints() {
+            output.push_str(&format!(
+                "{}\n",
+                format_opm_quadratic_constraint(
+                    &constraint.inequality,
+                    &constraint.name,
+                    &var_names
+                )
+            ));
+        }
+        output.push('\n');
+
+        output
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::LPExportableModel;
     use super::*;
-    use crate::model::QuadraticInequality;
-    use crate::model::{ConstraintRelation, ObjectiveCategory};
+    use crate::model::{ConstraintRelation, MetaModel, ObjectiveCategory, QuadraticInequality};
     use crate::token::Token;
-    use crate::variable::{BinaryVariableItem, UContinuousVariableItem, VariableType};
+    use crate::variable::{
+        BinaryVariableItem, ContinuousVariableItem, UContinuousVariableItem, VariableId,
+        VariableRange, VariableType,
+    };
 
     #[test]
     fn linear_model_lp_export_contains_expected_sections() {
@@ -815,6 +1131,28 @@ mod tests {
         let exported = std::fs::read_to_string(&path).expect("read exported LP");
         let _ = std::fs::remove_file(&path);
         assert!(exported.contains("Bounds"));
+    }
+
+    #[test]
+    fn meta_model_opm_export_formats_constraints_as_user_text() {
+        let mut model = MetaModel::<f64>::new("opm_purchase");
+        let purchase = ContinuousVariableItem::with_range(
+            VariableId::standalone(9001),
+            "purchase_1",
+            VariableRange::bounded(0.0, 1000.0),
+        );
+        let purchase_index = model.register_variable(purchase).unwrap();
+        model
+            .add_ge_constraint(&[(purchase_index, 1.0)], 400.0, "")
+            .unwrap();
+
+        let opm = model.to_opm_string();
+
+        assert!(opm.contains("Model Name: opm_purchase"));
+        assert!(opm.contains("purchase_1, Continuous"));
+        assert!(opm.contains("purchase_1 >= 400"));
+        assert!(!opm.contains("LinearInequality(lhs="));
+        assert!(!opm.contains("LinearPolynomial("));
     }
 
     #[test]

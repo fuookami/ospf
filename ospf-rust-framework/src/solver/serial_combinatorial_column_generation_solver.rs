@@ -5,7 +5,7 @@
 //! This module provides serial-executing combinatorial column generation solvers.
 
 use std::sync::Arc;
-use ospf_rust_core::error::{CoreError, Result, SolverError};
+use ospf_rust_core::error::{CoreError, Result, SolverError, SolverNotFoundError};
 use ospf_rust_core::model::intermediate::LinearTriadModel;
 use super::column_generation_solver::{RegistrationStatusCallback, SolvingStatusCallback};
 use super::{ColumnGenerationSolver, FeasibleSolution, FrameworkSolveOptions, LPResult};
@@ -121,8 +121,8 @@ impl ColumnGenerationSolver for SerialCombinatorialColumnGenerationSolver {
                 }
             }
         }
-        Err(CoreError::Solver(SolverError::NotAvailable(
-            "No solver valid.".into(),
+        Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+            "No solver valid.",
         )))
     }
 
@@ -161,8 +161,8 @@ impl ColumnGenerationSolver for SerialCombinatorialColumnGenerationSolver {
                 }
             }
         }
-        Err(CoreError::Solver(SolverError::NotAvailable(
-            "No solver valid.".into(),
+        Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+            "No solver valid.",
         )))
     }
 }
@@ -208,8 +208,8 @@ impl ColumnGenerationSolver for SerialCombinatorialColumnGenerationSolver {
                 }
             }
         }
-        Err(CoreError::Solver(SolverError::NotAvailable(
-            "No solver valid.".into(),
+        Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+            "No solver valid.",
         )))
     }
 
@@ -248,8 +248,8 @@ impl ColumnGenerationSolver for SerialCombinatorialColumnGenerationSolver {
                 }
             }
         }
-        Err(CoreError::Solver(SolverError::NotAvailable(
-            "No solver valid.".into(),
+        Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+            "No solver valid.",
         )))
     }
 }

@@ -10,3 +10,8 @@
 pub mod application;
 pub mod domain;
 pub mod infrastructure;
+
+// 领域错误 re-export / Domain error re-exports
+pub use domain::error::{
+    Bpp3dCapabilityError, Bpp3dError, Bpp3dInternalError, Bpp3dSolvingError, Bpp3dValidationError,
+};

@@ -4,7 +4,7 @@
 use std::time::Instant;
 #[cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
 use grb::expr::LinExpr;
-use crate::error::{CoreError, Result, SolverError};
+use crate::error::{CoreError, Result, SolverError, SolverModelingError};
 use crate::model::intermediate::LinearTriadModel;
 use crate::solver::SolverOutput;
 use crate::variable::VariableType;
@@ -51,7 +51,7 @@ fn solve_linear_internal(
 
     // 创建模型
     let mut grb_model = Model::with_env("model", &env).map_err(|e| {
-        CoreError::Solver(SolverError::NotAvailable(format!(
+        CoreError::SolverModeling(SolverModelingError::new(format!(
             "Gurobi model error: {}",
             e
         )))

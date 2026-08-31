@@ -9,3 +9,4 @@ Cargo.lock
 htmlReport
 ./target-temp
 /.codegraph
+.supergoal/

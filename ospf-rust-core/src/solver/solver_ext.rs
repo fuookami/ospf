@@ -1,6 +1,7 @@
 //! 求解器扩展入口
 //! Solver Extension Entry Points
 
+use std::ops::Add;
 #[cfg(feature = "async")]
 use std::sync::Arc;
 use super::value::boundary::{value_from_backend_f64, value_to_backend_f64};
@@ -202,7 +203,7 @@ fn prepare_solve_model<V>(
     options: &AsyncSolveOptions,
 ) -> Result<PreparedSolveModel>
 where
-    V: SolveValue,
+    V: SolveValue + Add<Output = V>,
 {
     let solve_options = options.as_solve_options();
     let mechanism_model = model.try_to_mechanism_model_with_status_callback(
@@ -233,7 +234,7 @@ pub type SolveJoinHandle = tokio::task::JoinHandle<Result<SolverOutput>>;
 pub fn spawn_solve<S, V>(solver: Arc<S>, model: MetaModel<V>) -> SolveJoinHandle
 where
     S: SolverExt + Send + Sync + 'static,
-    V: SolveValue,
+    V: SolveValue + Add<Output = V>,
 {
     spawn_solve_with_options(solver, model, AsyncSolveOptions::default())
 }
@@ -247,7 +248,7 @@ pub fn spawn_solve_with_options<S, V>(
 ) -> SolveJoinHandle
 where
     S: SolverExt + Send + Sync + 'static,
-    V: SolveValue,
+    V: SolveValue + Add<Output = V>,
 {
     let prepared_model = prepare_solve_model(&model, &options);
     tokio::task::spawn_blocking(move || match prepared_model {
@@ -272,7 +273,7 @@ pub fn spawn_solve_with_callback<S, V>(
 ) -> SolveJoinHandle
 where
     S: SolverExt + Send + Sync + 'static,
-    V: SolveValue,
+    V: SolveValue + Add<Output = V>,
 {
     spawn_solve_with_options(
         solver,
@@ -290,7 +291,7 @@ pub async fn solve_async_with_callback<S, V>(
 ) -> Result<SolverOutput>
 where
     S: SolverExt + Send + Sync + 'static,
-    V: SolveValue,
+    V: SolveValue + Add<Output = V>,
 {
     solve_async_with_options(
         solver,
@@ -309,7 +310,7 @@ pub async fn solve_async_with_options<S, V>(
 ) -> Result<SolverOutput>
 where
     S: SolverExt + Send + Sync + 'static,
-    V: SolveValue,
+    V: SolveValue + Add<Output = V>,
 {
     spawn_solve_with_options(solver, model, options)
         .await
@@ -623,7 +624,7 @@ pub trait SolverExt: Solver {
     /// 统一 MetaModel 入口 / Unified MetaModel entry
     fn solve<V>(&self, model: &MetaModel<V>) -> Result<SolverOutput>
     where
-        V: SolveValue,
+        V: SolveValue + Add<Output = V>,
     {
         self.solve_with_options(model, &SolveOptions::default())
     }
@@ -635,7 +636,7 @@ pub trait SolverExt: Solver {
         options: &SolveOptions<'_>,
     ) -> Result<SolverOutput>
     where
-        V: SolveValue,
+        V: SolveValue + Add<Output = V>,
     {
         let mechanism_model = model
             .try_to_mechanism_model_with_status_callback(options.model_building_status_callback)?;
@@ -658,7 +659,7 @@ pub trait SolverExt: Solver {
     /// 统一 typed 可行输出入口 / Unified typed feasible output entry
     fn solve_typed<V>(&self, model: &MetaModel<V>) -> Result<FeasibleSolverOutput<V>>
     where
-        V: SolveValue,
+        V: SolveValue + Add<Output = V>,
     {
         self.solve_typed_with_options(model, &SolveOptions::default())
     }
@@ -671,7 +672,7 @@ pub trait SolverExt: Solver {
         options: &SolveOptions<'_>,
     ) -> Result<FeasibleSolverOutput<V>>
     where
-        V: SolveValue,
+        V: SolveValue + Add<Output = V>,
     {
         self.solve_with_options(model, options)?
             .try_into_feasible_typed(options.value_conversion_policy)
@@ -684,7 +685,7 @@ pub trait SolverExt: Solver {
         solution_amount: usize,
     ) -> Result<Flt64MultiSolutionOutput>
     where
-        V: SolveValue,
+        V: SolveValue + Add<Output = V>,
     {
         let options = SolveOptions::new().with_solution_amount(solution_amount);
         self.solve_multi_with_options(model, &options)
@@ -697,7 +698,7 @@ pub trait SolverExt: Solver {
         options: &SolveOptions<'_>,
     ) -> Result<Flt64MultiSolutionOutput>
     where
-        V: SolveValue,
+        V: SolveValue + Add<Output = V>,
     {
         let mechanism_model = model
             .try_to_mechanism_model_with_status_callback(options.model_building_status_callback)?;
@@ -724,7 +725,7 @@ pub trait SolverExt: Solver {
         solution_amount: usize,
     ) -> Result<MultiSolutionOutput<V>>
     where
-        V: SolveValue,
+        V: SolveValue + Add<Output = V>,
     {
         let options = SolveOptions::new().with_solution_amount(solution_amount);
         self.solve_typed_multi_with_options(model, &options)
@@ -738,7 +739,7 @@ pub trait SolverExt: Solver {
         options: &SolveOptions<'_>,
     ) -> Result<MultiSolutionOutput<V>>
     where
-        V: SolveValue,
+        V: SolveValue + Add<Output = V>,
     {
         let multi_output = self.solve_multi_with_options(model, options)?;
         let output = multi_output
@@ -758,7 +759,7 @@ pub trait SolverExt: Solver {
         iis_config: &IISConfig,
     ) -> Result<SolverOutputWithIIS>
     where
-        V: SolveValue,
+        V: SolveValue + Add<Output = V>,
     {
         self.solve_with_options_and_iis(model, &SolveOptions::default(), iis_config)
     }
@@ -772,7 +773,7 @@ pub trait SolverExt: Solver {
         iis_config: &IISConfig,
     ) -> Result<SolverOutputWithIIS>
     where
-        V: SolveValue,
+        V: SolveValue + Add<Output = V>,
     {
         let mechanism_model = model
             .try_to_mechanism_model_with_status_callback(options.model_building_status_callback)?;
@@ -905,7 +906,7 @@ pub trait SolverExt: Solver {
     async fn solve_async<V>(&self, model: &MetaModel<V>) -> Result<SolverOutput>
     where
         Self: Sync,
-        V: SolveValue,
+        V: SolveValue + Add<Output = V>,
     {
         self.solve(model)
     }

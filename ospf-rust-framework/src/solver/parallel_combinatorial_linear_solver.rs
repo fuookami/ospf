@@ -7,7 +7,7 @@
 use super::{
     FeasibleSolution, FrameworkSolveOptions, ObjectiveCategory, ParallelCombinatorialMode,
 };
-use ospf_rust_core::error::{CoreError, Result, SolverError};
+use ospf_rust_core::error::{CoreError, Result, SolverError, SolverNotFoundError};
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::intermediate::LinearTriadModel;
 use std::sync::Arc;
@@ -281,8 +281,8 @@ impl LinearSolver for ParallelCombinatorialLinearSolver {
                     }
                 }
 
-                Err(CoreError::Solver(SolverError::NotAvailable(
-                    "No solver valid".into(),
+                Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+                    "No solver valid",
                 )))
             }
 
@@ -312,7 +312,7 @@ impl LinearSolver for ParallelCombinatorialLinearSolver {
                 }
 
                 Self::select_best(solutions, Self::objective_category(model)).ok_or_else(|| {
-                    CoreError::Solver(SolverError::NotAvailable("No solver valid".into()))
+                    CoreError::SolverNotFound(SolverNotFoundError::none())
                 })
             }
         }
@@ -363,8 +363,8 @@ impl LinearSolver for ParallelCombinatorialLinearSolver {
                     }
                 }
 
-                Err(CoreError::Solver(SolverError::NotAvailable(
-                    "No solver valid".into(),
+                Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+                    "No solver valid",
                 )))
             }
 
@@ -392,7 +392,7 @@ impl LinearSolver for ParallelCombinatorialLinearSolver {
                 }
 
                 Self::select_best(solutions, Self::objective_category(model)).ok_or_else(|| {
-                    CoreError::Solver(SolverError::NotAvailable("No solver valid".into()))
+                    CoreError::SolverNotFound(SolverNotFoundError::none())
                 })
             }
         }

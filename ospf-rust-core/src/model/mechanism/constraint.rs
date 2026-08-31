@@ -1,6 +1,7 @@
 //! Constraint definitions.
 
 use std::collections::HashMap;
+use std::ops::Add;
 use std::sync::Arc;
 use ospf_rust_math::symbol::{Linear as SymbolicLinear, Quadratic as SymbolicQuadratic};
 use crate::error::{ModelError, Result};
@@ -172,9 +173,12 @@ impl<V> SymbolicLinearInequality<V> {
     pub fn try_into_linear_inequality(
         self,
         symbol_to_index: &HashMap<usize, usize>,
-    ) -> Result<LinearInequality<V>> {
-        let mut monomials: Vec<LinearMonomial<V>> =
-            Vec::with_capacity(self.polynomial.monomials.len());
+    ) -> Result<LinearInequality<V>>
+    where
+        V: Clone + Add<Output = V>,
+    {
+        let mut monomial_positions: HashMap<usize, usize> = HashMap::new();
+        let mut monomials: Vec<LinearMonomial<V>> = Vec::new();
         for m in self.polynomial.monomials {
             let dyn_id = m.symbol.dyn_id();
             if !dyn_id.is_standalone() {
@@ -191,7 +195,13 @@ impl<V> SymbolicLinearInequality<V> {
                     symbol_id
                 ))
             })?;
-            monomials.push(LinearMonomial::new(m.coefficient, var_index));
+            if let Some(position) = monomial_positions.get(&var_index) {
+                let coefficient = monomials[*position].coefficient().clone() + m.coefficient;
+                monomials[*position].set_coefficient(coefficient);
+            } else {
+                monomial_positions.insert(var_index, monomials.len());
+                monomials.push(LinearMonomial::new(m.coefficient, var_index));
+            }
         }
 
         let polynomial = Linear::new(monomials, self.polynomial.constant);
@@ -201,7 +211,10 @@ impl<V> SymbolicLinearInequality<V> {
     pub fn into_linear_inequality(
         self,
         symbol_to_index: &HashMap<usize, usize>,
-    ) -> LinearInequality<V> {
+    ) -> LinearInequality<V>
+    where
+        V: Clone + Add<Output = V>,
+    {
         self.try_into_linear_inequality(symbol_to_index)
             .unwrap_or_else(|err| {
                 panic!(
@@ -232,9 +245,12 @@ impl<V> SymbolicQuadraticInequality<V> {
     pub fn try_into_quadratic_inequality(
         self,
         symbol_to_index: &HashMap<usize, usize>,
-    ) -> Result<QuadraticInequality<V>> {
-        let mut monomials: Vec<QuadraticMonomial<V>> =
-            Vec::with_capacity(self.polynomial.monomials.len());
+    ) -> Result<QuadraticInequality<V>>
+    where
+        V: Clone + Add<Output = V>,
+    {
+        let mut monomial_positions: HashMap<(usize, Option<usize>), usize> = HashMap::new();
+        let mut monomials: Vec<((usize, Option<usize>), V)> = Vec::new();
         for m in self.polynomial.monomials {
             let dyn_id1 = m.symbol1.dyn_id();
             if !dyn_id1.is_standalone() {
@@ -272,16 +288,40 @@ impl<V> SymbolicQuadraticInequality<V> {
                             dyn_id2.parent_id
                         ))
                     })?;
-                monomials.push(QuadraticMonomial::new_quadratic(
-                    m.coefficient,
-                    var_index1,
-                    var_index2,
-                ));
+                let key = if var_index1 <= var_index2 {
+                    (var_index1, Some(var_index2))
+                } else {
+                    (var_index2, Some(var_index1))
+                };
+                if let Some(position) = monomial_positions.get(&key) {
+                    let coefficient = monomials[*position].1.clone() + m.coefficient;
+                    monomials[*position].1 = coefficient;
+                } else {
+                    monomial_positions.insert(key, monomials.len());
+                    monomials.push((key, m.coefficient));
+                }
             } else {
-                monomials.push(QuadraticMonomial::new_linear(m.coefficient, var_index1));
+                let key = (var_index1, None);
+                if let Some(position) = monomial_positions.get(&key) {
+                    let coefficient = monomials[*position].1.clone() + m.coefficient;
+                    monomials[*position].1 = coefficient;
+                } else {
+                    monomial_positions.insert(key, monomials.len());
+                    monomials.push((key, m.coefficient));
+                }
             }
         }
 
+        let monomials = monomials
+            .into_iter()
+            .map(|((var_index1, var_index2), coefficient)| {
+                if let Some(var_index2) = var_index2 {
+                    QuadraticMonomial::new_quadratic(coefficient, var_index1, var_index2)
+                } else {
+                    QuadraticMonomial::new_linear(coefficient, var_index1)
+                }
+            })
+            .collect();
         let polynomial = Quadratic::new(monomials, self.polynomial.constant);
         Ok(QuadraticInequality::new(
             polynomial,
@@ -293,7 +333,10 @@ impl<V> SymbolicQuadraticInequality<V> {
     pub fn into_quadratic_inequality(
         self,
         symbol_to_index: &HashMap<usize, usize>,
-    ) -> QuadraticInequality<V> {
+    ) -> QuadraticInequality<V>
+    where
+        V: Clone + Add<Output = V>,
+    {
         self.try_into_quadratic_inequality(symbol_to_index)
             .unwrap_or_else(|err| {
                 panic!(

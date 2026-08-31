@@ -7,7 +7,7 @@ pub use crate::model::intermediate::{
     BasicLinearTriadModel, BasicQuadraticTetradModel, DumpOptions, LPExportableModel,
     LinearElasticBuilder, LinearTriadModel, LinearTriadModelView, ModelFileFormat,
     QuadraticElasticBuilder, QuadraticTetradModel, QuadraticTetradModelView, SparseMatrix,
-    SparseVector, dump_batch, dump_lp_batch,
+    SparseVector, dump_batch, dump_lp_batch, dump_opm_batch,
 };
 pub use crate::model::{
     ConstraintGroup, ConstraintRelation, LinearConstraint, LinearConstraintInput,

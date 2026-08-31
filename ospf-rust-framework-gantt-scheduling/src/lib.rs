@@ -13,6 +13,12 @@ pub mod application;
 pub mod domain;
 pub mod infrastructure;
 
+// 领域错误 re-export / Domain error re-exports
+pub use domain::error::{
+    GanttSchedulingCapabilityError, GanttSchedulingError, GanttSchedulingLifecycleError,
+    GanttSchedulingSolvingError, GanttSchedulingValidationError,
+};
+
 /// 甘特排程错误类型 / Gantt scheduling error type
 #[derive(Debug, thiserror::Error)]
 pub enum GanttError {

@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 use crate::error::Result;
 #[cfg(not(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12")))]
-use crate::error::{CoreError, SolverError};
+use crate::error::{CoreError, SolverNotFoundError};
 use crate::model::intermediate::{BasicLinearTriadModel, LinearTriadModel};
 use crate::solver::SolverOutput;
 #[cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
@@ -132,8 +132,8 @@ pub(crate) fn solve_linear_model(model: &LinearTriadModel) -> Result<SolverOutpu
     #[cfg(not(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12")))]
     {
         let _ = model;
-        Err(CoreError::Solver(SolverError::NotAvailable(
-            "IIS computation requires one of features: gurobi10, gurobi11, gurobi12".to_string(),
+        Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+            "IIS computation requires one of features: gurobi10, gurobi11, gurobi12",
         )))
     }
 }

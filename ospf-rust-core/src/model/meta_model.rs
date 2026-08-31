@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::ops::Add;
 use std::sync::Arc;
 use super::basic::ConstraintPriority;
 use super::flatten::{Linear, LinearMonomial};
@@ -684,7 +685,10 @@ where
         self.symbolic_constraints.push(constraint);
     }
 
-    fn math_linear_to_registered_linear(&self, expression: MathLinear<V>) -> Result<Linear<V>> {
+    fn math_linear_to_registered_linear(&self, expression: MathLinear<V>) -> Result<Linear<V>>
+    where
+        V: Add<Output = V>,
+    {
         let symbol_to_index: HashMap<usize, usize> = self
             .basic
             .tokens()
@@ -693,7 +697,8 @@ where
             .map(|(idx, token)| (token.id().unique_id() as usize, idx))
             .collect();
 
-        let mut monomials = Vec::with_capacity(expression.monomials.len());
+        let mut monomial_positions: HashMap<usize, usize> = HashMap::new();
+        let mut monomials: Vec<LinearMonomial<V>> = Vec::new();
         for monomial in expression.monomials {
             let dyn_id = monomial.symbol.dyn_id();
             if !dyn_id.is_standalone() {
@@ -713,7 +718,14 @@ where
                         dyn_id.parent_id
                     ))
                 })?;
-            monomials.push(LinearMonomial::new(monomial.coefficient, var_index));
+            if let Some(position) = monomial_positions.get(&var_index) {
+                let coefficient =
+                    monomials[*position].coefficient().clone() + monomial.coefficient;
+                monomials[*position].set_coefficient(coefficient);
+            } else {
+                monomial_positions.insert(var_index, monomials.len());
+                monomials.push(LinearMonomial::new(monomial.coefficient, var_index));
+            }
         }
 
         Ok(Linear::new(monomials, expression.constant))
@@ -817,7 +829,10 @@ where
 
     /// 尝试转换为机制模型。
     /// Try to convert into mechanism model.
-    pub fn try_to_mechanism_model(&self) -> Result<MechanismModel<V>> {
+    pub fn try_to_mechanism_model(&self) -> Result<MechanismModel<V>>
+    where
+        V: Add<Output = V>,
+    {
         self.try_to_mechanism_model_with_status_callback(None)
     }
 
@@ -826,7 +841,10 @@ where
     pub fn try_to_mechanism_model_with_status_callback(
         &self,
         callback: Option<&ModelBuildingStatusCallback>,
-    ) -> Result<MechanismModel<V>> {
+    ) -> Result<MechanismModel<V>>
+    where
+        V: Add<Output = V>,
+    {
         let mut basic_mechanism = BasicMechanismModel::new(&self.basic.name);
         let model_name = self.basic.name.clone();
 
@@ -1024,7 +1042,10 @@ where
 
     /// 尝试转换为机制模型（消费 self）。
     /// Try to convert into mechanism model (consuming self).
-    pub fn try_into_mechanism_model(self) -> Result<MechanismModel<V>> {
+    pub fn try_into_mechanism_model(self) -> Result<MechanismModel<V>>
+    where
+        V: Add<Output = V>,
+    {
         self.try_to_mechanism_model()
     }
 
@@ -1033,13 +1054,19 @@ where
     pub fn try_into_mechanism_model_with_status_callback(
         self,
         callback: Option<&ModelBuildingStatusCallback>,
-    ) -> Result<MechanismModel<V>> {
+    ) -> Result<MechanismModel<V>>
+    where
+        V: Add<Output = V>,
+    {
         self.try_to_mechanism_model_with_status_callback(callback)
     }
 
     /// 转换为机制模型（失败即 panic）。
     /// Convert into mechanism model (panic on failure).
-    pub fn into_mechanism_model(self) -> MechanismModel<V> {
+    pub fn into_mechanism_model(self) -> MechanismModel<V>
+    where
+        V: Add<Output = V>,
+    {
         self.try_into_mechanism_model().unwrap_or_else(|err| {
             panic!("failed to convert MetaModel into MechanismModel: {}", err)
         })
@@ -1126,7 +1153,7 @@ where
 
 impl<V> MetaModel<V>
 where
-    V: Clone + Debug + Send + Sync + One + 'static,
+    V: Clone + Debug + Send + Sync + One + Add<Output = V> + 'static,
 {
     /// 添加数学线性目标。
     /// Add a math linear objective.
@@ -1648,7 +1675,8 @@ mod tests {
     };
     use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, VariableRange};
     use ospf_rust_math::symbol::{
-        Linear as MathLinear, LinearMonomial as MathLinearMonomial, Symbol,
+        Linear as MathLinear, LinearMonomial as MathLinearMonomial,
+        Quadratic as MathQuadratic, QuadraticMonomial as MathQuadraticMonomial, Symbol,
     };
 
     use super::{LinearConstraintInput, LinearExpressionBuilder, LinearObjectiveInput, MetaModel};
@@ -3142,6 +3170,170 @@ mod tests {
             .collect::<HashMap<_, _>>();
         assert_eq!(terms.get(&x_index), Some(&2.0));
         assert_eq!(terms.get(&y_index), Some(&-3.0));
+    }
+
+    #[test]
+    fn math_linear_constraint_merges_repeated_registered_symbols() {
+        let mut model = MetaModel::<f64>::new("meta_math_linear_repeat_constraint");
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(610),
+            "x_math_repeat_constraint",
+            VariableRange::bounded(-10.0, 10.0),
+        );
+        let y = ContinuousVariableItem::with_range(
+            VariableId::standalone(611),
+            "y_math_repeat_constraint",
+            VariableRange::bounded(-10.0, 10.0),
+        );
+        let x_index = model.register_variable(x.clone()).unwrap();
+        let y_index = model.register_variable(y.clone()).unwrap();
+
+        let lhs = MathLinear::new(
+            vec![
+                MathLinearMonomial::new(1.0, x.to_owned_symbol()),
+                MathLinearMonomial::new(2.0, x.to_owned_symbol()),
+                MathLinearMonomial::new(-1.0, y.to_owned_symbol()),
+            ],
+            0.0,
+        );
+        model.add_math_inequality(
+            ospf_rust_math::symbol::LinearInequality::new(
+                lhs,
+                ospf_rust_math::symbol::Comparison::LessEqual,
+                0.0,
+            ),
+            "math_repeat_constraint",
+        );
+
+        let mechanism = model.try_into_mechanism_model().unwrap();
+        let constraint = mechanism
+            .constraints()
+            .iter()
+            .find(|item| item.name == "math_repeat_constraint")
+            .unwrap();
+        let terms = constraint
+            .inequality
+            .polynomial
+            .monomials()
+            .iter()
+            .map(|monomial| (monomial.var_index(), *monomial.coefficient()))
+            .collect::<HashMap<_, _>>();
+
+        assert_eq!(constraint.inequality.polynomial.monomials().len(), 2);
+        assert_eq!(terms.get(&x_index), Some(&3.0));
+        assert_eq!(terms.get(&y_index), Some(&-1.0));
+    }
+
+    #[test]
+    fn math_linear_objective_merges_repeated_registered_symbols() {
+        let mut model = MetaModel::<f64>::new("meta_math_linear_repeat_objective");
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(612),
+            "x_math_repeat_objective",
+            VariableRange::bounded(-10.0, 10.0),
+        );
+        let y = ContinuousVariableItem::with_range(
+            VariableId::standalone(613),
+            "y_math_repeat_objective",
+            VariableRange::bounded(-10.0, 10.0),
+        );
+        let x_index = model.register_variable(x.clone()).unwrap();
+        let y_index = model.register_variable(y.clone()).unwrap();
+
+        let expression = MathLinear::new(
+            vec![
+                MathLinearMonomial::new(1.0, x.to_owned_symbol()),
+                MathLinearMonomial::new(2.0, x.to_owned_symbol()),
+                MathLinearMonomial::new(-1.0, y.to_owned_symbol()),
+            ],
+            0.0,
+        );
+        model
+            .set_math_linear_objective(expression, ObjectiveCategory::Minimum, "math_repeat_obj")
+            .unwrap();
+
+        let mechanism = model.try_into_mechanism_model().unwrap();
+        let objective = mechanism.objective();
+        let terms = objective.sub_objectives[0]
+            .polynomial
+            .monomials()
+            .iter()
+            .map(|monomial| (monomial.var_index(), *monomial.coefficient()))
+            .collect::<HashMap<_, _>>();
+
+        assert_eq!(objective.sub_objectives[0].polynomial.monomials().len(), 2);
+        assert_eq!(terms.get(&x_index), Some(&3.0));
+        assert_eq!(terms.get(&y_index), Some(&-1.0));
+    }
+
+    #[test]
+    fn symbolic_quadratic_constraint_merges_repeated_terms() {
+        let mut model = MetaModel::<f64>::new("meta_symbolic_quadratic_repeat");
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(614),
+            "x_quad_repeat",
+            VariableRange::bounded(-10.0, 10.0),
+        );
+        let y = ContinuousVariableItem::with_range(
+            VariableId::standalone(615),
+            "y_quad_repeat",
+            VariableRange::bounded(-10.0, 10.0),
+        );
+        let x_index = model.register_variable(x.clone()).unwrap();
+        model.register_variable(y.clone()).unwrap();
+
+        let polynomial = MathQuadratic::new(
+            vec![
+                MathQuadraticMonomial::quadratic(
+                    1.0,
+                    x.to_owned_symbol(),
+                    y.to_owned_symbol(),
+                ),
+                MathQuadraticMonomial::quadratic(
+                    2.0,
+                    y.to_owned_symbol(),
+                    x.to_owned_symbol(),
+                ),
+                MathQuadraticMonomial::linear(5.0, x.to_owned_symbol()),
+                MathQuadraticMonomial::linear(-1.0, x.to_owned_symbol()),
+            ],
+            0.0,
+        );
+        model.add_symbolic_quadratic_inequality(
+            crate::model::SymbolicQuadraticInequality::new(
+                polynomial,
+                ConstraintRelation::LessEqual,
+                0.0,
+            ),
+            "symbolic_quad_repeat",
+        );
+
+        let mechanism = model.try_into_mechanism_model().unwrap();
+        let constraint = mechanism
+            .quadratic_constraints()
+            .iter()
+            .find(|item| item.name == "symbolic_quad_repeat")
+            .unwrap();
+
+        assert_eq!(constraint.inequality.polynomial.monomials().len(), 2);
+        let xy = constraint
+            .inequality
+            .polynomial
+            .monomials()
+            .iter()
+            .find(|monomial| monomial.var_index2().is_some())
+            .unwrap();
+        let x_linear = constraint
+            .inequality
+            .polynomial
+            .monomials()
+            .iter()
+            .find(|monomial| monomial.var_index2().is_none())
+            .unwrap();
+
+        assert_eq!(*xy.coefficient(), 3.0);
+        assert_eq!(x_linear.var_index1(), x_index);
+        assert_eq!(*x_linear.coefficient(), 4.0);
     }
 
     #[test]

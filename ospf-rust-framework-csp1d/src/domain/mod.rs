@@ -4,6 +4,7 @@
 //! Maps Kotlin CSP1D submodules into Rust modules.
 
 pub mod cutting_plan_generation;
+pub mod error;
 pub mod length_assignment;
 pub mod material;
 pub mod produce;

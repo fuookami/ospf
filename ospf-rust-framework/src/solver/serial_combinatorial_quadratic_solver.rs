@@ -5,7 +5,7 @@
 //! This module provides serial-executing combinatorial quadratic solvers.
 
 use std::sync::Arc;
-use ospf_rust_core::error::{CoreError, Result, SolverError};
+use ospf_rust_core::error::{CoreError, Result, SolverError, SolverNotFoundError};
 use ospf_rust_core::model::intermediate::QuadraticTetradModel;
 use super::parallel_combinatorial_quadratic_solver::QuadraticSolver;
 use super::{FeasibleSolution, FrameworkSolveOptions};
@@ -64,8 +64,8 @@ impl QuadraticSolver for SerialCombinatorialQuadraticSolver {
                 }
             }
         }
-        Err(CoreError::Solver(SolverError::NotAvailable(
-            "No solver valid.".into(),
+        Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+            "No solver valid.",
         )))
     }
 
@@ -96,8 +96,8 @@ impl QuadraticSolver for SerialCombinatorialQuadraticSolver {
                     }
                 }
             }
-            Err(CoreError::Solver(SolverError::NotAvailable(
-                "No solver valid.".into(),
+            Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+                "No solver valid.",
             )))
         })
     }
@@ -124,8 +124,8 @@ impl QuadraticSolver for SerialCombinatorialQuadraticSolver {
                 }
             }
         }
-        Err(CoreError::Solver(SolverError::NotAvailable(
-            "No solver valid.".into(),
+        Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+            "No solver valid.",
         )))
     }
 
@@ -148,8 +148,8 @@ impl QuadraticSolver for SerialCombinatorialQuadraticSolver {
                 }
             }
         }
-        Err(CoreError::Solver(SolverError::NotAvailable(
-            "No solver valid.".into(),
+        Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+            "No solver valid.",
         )))
     }
 }

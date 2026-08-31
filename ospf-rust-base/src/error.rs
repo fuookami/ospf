@@ -343,10 +343,12 @@ impl<T, E> ExResult<T, E> {
         Self::Fatal(errors)
     }
 
+    #[deprecated(note = "Use fatal_error instead")]
     pub fn fetal_error(error: E) -> Self {
         Self::Fatal(vec![error])
     }
 
+    #[deprecated(note = "Use fatal instead")]
     pub fn fetal(errors: Vec<E>) -> Self {
         Self::Fatal(errors)
     }
@@ -367,6 +369,7 @@ impl<T, E> ExResult<T, E> {
         matches!(self, Self::Fatal(_))
     }
 
+    #[deprecated(note = "Use is_fatal instead")]
     pub fn is_fetal(&self) -> bool {
         self.is_fatal()
     }
@@ -408,6 +411,7 @@ impl<T, E> ExResult<T, E> {
         }
     }
 
+    #[deprecated(note = "Use fatal_errors instead")]
     pub fn fetal_errors(&self) -> Option<&[E]> {
         self.fatal_errors()
     }
@@ -443,6 +447,118 @@ impl From<Ok> for ExTry {
     }
 }
 
+// ============================================================================
+// 惰性错误消息支持 / Lazy error message support
+// ============================================================================
+
+/// 惰性消息错误 / Lazy message error
+///
+/// 延迟消息构造到首次访问时，使用 `OnceLock` 和闭包。
+/// Defers message construction until first access using `OnceLock` and closures.
+pub struct LazyErr {
+    code: ErrorCode,
+    message: std::sync::OnceLock<String>,
+    message_fn: Box<dyn Fn() -> String + Send + Sync>,
+}
+
+impl LazyErr {
+    /// 创建新的惰性错误 / Create a new lazy error
+    pub fn new(code: ErrorCode, message_fn: impl Fn() -> String + Send + Sync + 'static) -> Self {
+        Self {
+            code,
+            message: std::sync::OnceLock::new(),
+            message_fn: Box::new(message_fn),
+        }
+    }
+
+    /// 获取惰性构造的消息 / Get the lazily constructed message
+    pub fn message(&self) -> &str {
+        self.message.get_or_init(|| (self.message_fn)())
+    }
+}
+
+impl Display for LazyErr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message())
+    }
+}
+
+impl Debug for LazyErr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LazyErr({:?}, {})", self.code, self.message())
+    }
+}
+
+impl Error for LazyErr {
+    fn code(&self) -> ErrorCode {
+        self.code
+    }
+
+    fn msg(&self) -> String {
+        self.message().to_string()
+    }
+}
+
+/// 带附加参数的惰性消息错误 / Lazy message error with additional context
+///
+/// 对应 Kotlin `LazyExErr<C, T>`，延迟消息构造并携带额外上下文。
+/// Corresponds to Kotlin `LazyExErr<C, T>`, defers message construction and carries context.
+pub struct LazyExErr<C> {
+    code: ErrorCode,
+    arg: C,
+    message: std::sync::OnceLock<String>,
+    message_fn: Box<dyn Fn(&C) -> String + Send + Sync>,
+}
+
+impl<C: Send + Sync> LazyExErr<C> {
+    /// 创建带上下文的惰性错误 / Create a lazy error with context
+    pub fn new(
+        code: ErrorCode,
+        arg: C,
+        message_fn: impl Fn(&C) -> String + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            code,
+            arg,
+            message: std::sync::OnceLock::new(),
+            message_fn: Box::new(message_fn),
+        }
+    }
+
+    /// 获取附加参数引用 / Get reference to the additional argument
+    pub fn arg(&self) -> &C {
+        &self.arg
+    }
+
+    /// 获取惰性构造的消息 / Get the lazily constructed message
+    pub fn message(&self) -> &str {
+        let arg = &self.arg;
+        self.message.get_or_init(|| (self.message_fn)(arg))
+    }
+}
+
+impl<C: Send + Sync> Display for LazyExErr<C> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message())
+    }
+}
+
+impl<C: Send + Sync> Debug for LazyExErr<C> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LazyExErr({:?}, {})", self.code, self.message())
+    }
+}
+
+impl<C: Send + Sync> Error for LazyExErr<C> {
+    fn code(&self) -> ErrorCode {
+        self.code
+    }
+
+    fn msg(&self) -> String {
+        self.message().to_string()
+    }
+}
+
 /// 定义错误结构体类型的宏。
 /// Macro for defining error struct types.
 ///
@@ -450,10 +566,10 @@ impl From<Ok> for ExTry {
 /// Automatically adds a `position` field and implements the `WithErrorPosition` trait.
 #[macro_export]
 macro_rules! error_type {
-    ($(#[$derive:meta])* $vis:vis struct $name:ident $(< $( $param:tt ),* >)? { $($fieldVis:vis $field:ident: $type:ty),* $(,)? }) => {
+    ($(#[$derive:meta])* $vis:vis struct $name:ident $(< $( $param:tt ),* >)? { $( $(#[$fieldMeta:meta])* $fieldVis:vis $field:ident: $type:ty ),* $(,)? }) => {
         $(#[$derive])*
         $vis struct $name $(< $( $param ),* >)? {
-            $($fieldVis $field: $type,)*
+            $( $(#[$fieldMeta])* $fieldVis $field: $type, )*
             pub position: ErrorPosition
         }
 
@@ -662,8 +778,8 @@ mod tests {
     }
 
     #[test]
-    fn test_ex_result_fetal_alias() {
-        let result: ExResult<u32, TestError> = ExResult::fetal(vec![
+    fn test_ex_result_fatal_primary() {
+        let result: ExResult<u32, TestError> = ExResult::fatal(vec![
             error!(TestError { message: "fatal-1" }),
             error!(TestError { message: "fatal-2" }),
         ]);
@@ -671,12 +787,24 @@ mod tests {
         assert!(!result.is_ok());
         assert!(result.is_failed());
         assert!(result.is_fatal());
-        assert!(result.is_fetal());
 
-        let errors = result.fetal_errors().unwrap();
+        let errors = result.fatal_errors().unwrap();
         assert_eq!(errors.len(), 2);
         assert_eq!(errors[0].msg(), "fatal-1".to_string());
         assert_eq!(errors[1].msg(), "fatal-2".to_string());
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn test_ex_result_fetal_alias_compat() {
+        let result: ExResult<u32, TestError> = ExResult::fetal(vec![
+            error!(TestError { message: "fatal-1" }),
+        ]);
+
+        assert!(result.is_fetal());
+
+        let errors = result.fetal_errors().unwrap();
+        assert_eq!(errors.len(), 1);
     }
 
     #[test]

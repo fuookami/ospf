@@ -7,6 +7,7 @@ pub mod bunch_compilation;
 pub mod bunch_generation;
 pub mod capacity_scheduling;
 pub mod common;
+pub mod error;
 pub mod produce;
 pub mod resource;
 pub mod task;

@@ -9,7 +9,7 @@ use super::{
     ColumnGenerationSolver, FeasibleSolution, FrameworkSolveOptions, LPResult, ObjectiveCategory,
     ParallelCombinatorialMode,
 };
-use ospf_rust_core::error::{CoreError, Result, SolverError};
+use ospf_rust_core::error::{CoreError, Result, SolverError, SolverNotFoundError};
 use ospf_rust_core::model::intermediate::LinearTriadModel;
 use std::sync::Arc;
 
@@ -202,8 +202,8 @@ impl ColumnGenerationSolver for ParallelCombinatorialColumnGenerationSolver {
                     }
                 }
 
-                Err(CoreError::Solver(SolverError::NotAvailable(
-                    "No solver valid".into(),
+                Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+                    "No solver valid",
                 )))
             }
 
@@ -251,7 +251,7 @@ impl ColumnGenerationSolver for ParallelCombinatorialColumnGenerationSolver {
                 }
 
                 Self::select_best(solutions, Self::objective_category(model)).ok_or_else(|| {
-                    CoreError::Solver(SolverError::NotAvailable("No solver valid".into()))
+                    CoreError::SolverNotFound(SolverNotFoundError::none())
                 })
             }
         }
@@ -306,8 +306,8 @@ impl ColumnGenerationSolver for ParallelCombinatorialColumnGenerationSolver {
                     }
                 }
 
-                Err(CoreError::Solver(SolverError::NotAvailable(
-                    "No solver valid".into(),
+                Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+                    "No solver valid",
                 )))
             }
 
@@ -353,7 +353,7 @@ impl ColumnGenerationSolver for ParallelCombinatorialColumnGenerationSolver {
                 }
 
                 Self::select_best_lp(results, Self::objective_category(model)).ok_or_else(|| {
-                    CoreError::Solver(SolverError::NotAvailable("No solver valid".into()))
+                    CoreError::SolverNotFound(SolverNotFoundError::none())
                 })
             }
         }
@@ -411,8 +411,8 @@ impl ColumnGenerationSolver for ParallelCombinatorialColumnGenerationSolver {
                     }
                 }
 
-                Err(CoreError::Solver(SolverError::NotAvailable(
-                    "No solver valid".into(),
+                Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+                    "No solver valid",
                 )))
             }
 
@@ -457,7 +457,7 @@ impl ColumnGenerationSolver for ParallelCombinatorialColumnGenerationSolver {
                 }
 
                 Self::select_best(solutions, Self::objective_category(model)).ok_or_else(|| {
-                    CoreError::Solver(SolverError::NotAvailable("No solver valid".into()))
+                    CoreError::SolverNotFound(SolverNotFoundError::none())
                 })
             }
         }
@@ -508,8 +508,8 @@ impl ColumnGenerationSolver for ParallelCombinatorialColumnGenerationSolver {
                     }
                 }
 
-                Err(CoreError::Solver(SolverError::NotAvailable(
-                    "No solver valid".into(),
+                Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+                    "No solver valid",
                 )))
             }
 
@@ -554,7 +554,7 @@ impl ColumnGenerationSolver for ParallelCombinatorialColumnGenerationSolver {
                 }
 
                 Self::select_best_lp(results, Self::objective_category(model)).ok_or_else(|| {
-                    CoreError::Solver(SolverError::NotAvailable("No solver valid".into()))
+                    CoreError::SolverNotFound(SolverNotFoundError::none())
                 })
             }
         }

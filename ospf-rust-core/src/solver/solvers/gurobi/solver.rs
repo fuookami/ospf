@@ -247,14 +247,14 @@ impl GurobiSolver {
 
         if has_compute_server {
             let mut env = Env::empty().map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::NotAvailable(format!(
+                crate::error::CoreError::SolverEnvironmentLost(crate::error::SolverEnvironmentLostError::new(format!(
                     "Gurobi empty env error: {}",
                     e
                 )))
             })?;
             self.apply_env_params_empty(&mut env)?;
             let mut started_env = env.start().map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::NotAvailable(format!(
+                crate::error::CoreError::SolverEnvironmentLost(crate::error::SolverEnvironmentLostError::new(format!(
                     "Gurobi env start error: {}",
                     e
                 )))
@@ -264,7 +264,7 @@ impl GurobiSolver {
         }
 
         let mut env = Env::new("").map_err(|e| {
-            crate::error::CoreError::Solver(crate::error::SolverError::NotAvailable(format!(
+            crate::error::CoreError::SolverEnvironmentLost(crate::error::SolverEnvironmentLostError::new(format!(
                 "Gurobi env error: {}",
                 e
             )))
