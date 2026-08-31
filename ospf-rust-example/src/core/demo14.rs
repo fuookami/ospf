@@ -3,9 +3,9 @@ use std::error::Error;
 use ospf_rust_multiarray::Shape;
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
 use ospf_rust_core::symbol::{
-    LinearExpressionSymbol, LinearIntermediateSymbol, flat_map1,
+    LinearExpressionSymbol, flat_map1,
 };
-use ospf_rust_core::variable::{UContinuous, VariableCombination2D, VariableRange};
+use ospf_rust_core::variable::{UInteger, VariableCombination2D, VariableRange};
 
 use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
@@ -84,110 +84,158 @@ fn build_arcs() -> Vec<ArcData> {
     ]
 }
 
+/// 转运问题模型 / Transshipment problem model
+///
+/// 所有变量和中间符号都是显式字段。
+/// All variables and intermediate symbols are explicit fields.
+struct TransportModel {
+    /// 弧流量决策变量 / Arc flow decision variables
+    x_vars: VariableCombination2D<UInteger>,
+    /// 弧流量模型索引数组 / Arc flow model index array
+    x_idx: ospf_rust_multiarray::MultiArray<usize, Shape<2>>,
+    /// 成本符号 / Cost symbol
+    cost: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    /// 流出符号 / Flow out symbol
+    trans_out: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    /// 流入符号 / Flow in symbol
+    trans_in: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+}
+
+impl TransportModel {
+    /// 注册模型 / Register model
+    fn register(
+        model: &mut MetaModel<f64>,
+        nodes: &[Node],
+        arcs: &[ArcData],
+    ) -> Result<Self, Box<dyn Error>> {
+        // Register 2D arc variables with bounds
+        let x_shape = Shape::new([nodes.len(), nodes.len()]);
+        let x_vars: VariableCombination2D<UInteger> =
+            VariableCombination2D::with_name_and_range_generator(
+                x_shape,
+                "x",
+                |_index, vector| format!("{}_{}", vector[0], vector[1]),
+                |_index, vector| {
+                    if arcs.iter().any(|arc| arc.from == vector[0] && arc.to == vector[1]) {
+                        VariableRange::with_lower(0.0)
+                    } else {
+                        VariableRange::fixed(0.0)
+                    }
+                },
+            );
+        let x_idx = model.register_combination(&x_vars)?;
+
+        // Objective: minimize cost = sum(unit_cost * x[from][to]) over arcs
+        let cost = flat_map1("cost", arcs, |arc| {
+            ospf_rust_core::symbol::flatten::Linear::new(
+                vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                    arc.unit_cost,
+                    x_idx[&[arc.from, arc.to]],
+                )],
+                0.0,
+            )
+        }, |_, arc| format!("{}_{}", arc.from, arc.to));
+        model.add_symbol_combination(&cost)?;
+
+        // Flow out from each node: sum_to x[node][to]
+        let node_indices: Vec<usize> = (0..nodes.len()).collect();
+        let trans_out = flat_map1("trans_out", &node_indices, |&node| {
+            let monomials: Vec<_> = (0..nodes.len())
+                .map(|to| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[node, to]]))
+                .collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        }, |_, &node| format!("{}", node));
+        model.add_symbol_combination(&trans_out)?;
+
+        // Flow in to each node: sum_from x[from][node]
+        let trans_in = flat_map1("trans_in", &node_indices, |&node| {
+            let monomials: Vec<_> = (0..nodes.len())
+                .map(|from| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[from, node]]))
+                .collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        }, |_, &node| format!("{}", node));
+        model.add_symbol_combination(&trans_in)?;
+
+        Ok(TransportModel {
+            x_vars,
+            x_idx,
+            cost,
+            trans_out,
+            trans_in,
+        })
+    }
+
+    /// 添加约束和目标 / Add constraints and objective
+    fn add_constraints(
+        &self,
+        model: &mut MetaModel<f64>,
+        nodes: &[Node],
+        arcs: &[ArcData],
+    ) -> Result<(), Box<dyn Error>> {
+        // Objective: minimize cost
+        let mut cost_coeffs = Vec::new();
+        for i in 0..arcs.len() {
+            let poly = self.cost.symbol_polynomial(i);
+            for m in poly.monomials() {
+                cost_coeffs.push((m.var_index(), *m.coefficient()));
+            }
+        }
+        model.add_linear_objective(&cost_coeffs, "cost");
+        model.set_objective_category(ObjectiveCategory::Minimum);
+
+        // Node balance constraints
+        for (node_idx, node) in nodes.iter().enumerate() {
+            let out_coeffs = extract_coeffs(&self.trans_out[node_idx]);
+            let in_coeffs = extract_coeffs(&self.trans_in[node_idx]);
+
+            match node.kind {
+                NodeType::Product(storage) => {
+                    // flow_out <= storage
+                    model.add_linear_constraint(
+                        &out_coeffs,
+                        ConstraintRelation::LessEqual,
+                        storage,
+                        &format!("product_out_{}", node_idx),
+                    )?;
+                }
+                NodeType::Sale(demand) => {
+                    // flow_in >= demand
+                    model.add_linear_constraint(
+                        &in_coeffs,
+                        ConstraintRelation::GreaterEqual,
+                        demand,
+                        &format!("sale_in_{}", node_idx),
+                    )?;
+                }
+                NodeType::Distribution => {
+                    // flow_out - flow_in = 0
+                    let mut coeffs = out_coeffs;
+                    for (idx, coeff) in in_coeffs {
+                        coeffs.push((idx, -coeff));
+                    }
+                    model.add_linear_constraint(
+                        &coeffs,
+                        ConstraintRelation::Equal,
+                        0.0,
+                        &format!("balance_{}", node_idx),
+                    )?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Demo14 main function: Transshipment problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let nodes = build_nodes();
     let arcs = build_arcs();
 
     let mut model = MetaModel::<f64>::new("demo14");
+    let transport = TransportModel::register(&mut model, &nodes, &arcs)?;
 
-    // Register 2D arc variables with bounds
-    let x_shape = Shape::new([nodes.len(), nodes.len()]);
-    let x_vars: VariableCombination2D<UContinuous> =
-        VariableCombination2D::with_name_and_range_generator(
-            x_shape,
-            "x",
-            |_index, vector| format!("{}_{}", vector[0], vector[1]),
-            |_index, vector| {
-                if arcs.iter().any(|arc| arc.from == vector[0] && arc.to == vector[1]) {
-                    VariableRange::with_lower(0.0)
-                } else {
-                    VariableRange::fixed(0.0)
-                }
-            },
-        );
-    let x_idx = model.register_combination(&x_vars)?;
-
-    // Objective: minimize cost = sum(unit_cost * x[from][to]) over arcs
-    let cost_expr = flat_map1("cost", &arcs, |arc| {
-        ospf_rust_core::symbol::flatten::Linear::new(
-            vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                arc.unit_cost,
-                x_idx[&[arc.from, arc.to]],
-            )],
-            0.0,
-        )
-    }, |_, arc| format!("{}_{}", arc.from, arc.to));
-    model.add_symbol_combination(&cost_expr)?;
-
-    let mut cost_coeffs = Vec::new();
-    for i in 0..arcs.len() {
-        let poly = cost_expr.symbol_polynomial(i);
-        for m in poly.monomials() {
-            cost_coeffs.push((m.var_index(), *m.coefficient()));
-        }
-    }
-    model.add_linear_objective(&cost_coeffs, "cost");
-    model.set_objective_category(ObjectiveCategory::Minimum);
-
-    // Flow out from each node: sum_to x[node][to]
-    let node_indices: Vec<usize> = (0..nodes.len()).collect();
-    let trans_out_expr = flat_map1("trans_out", &node_indices, |&node| {
-        let monomials: Vec<_> = (0..nodes.len())
-            .map(|to| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[node, to]]))
-            .collect();
-        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-    }, |_, &node| format!("{}", node));
-    model.add_symbol_combination(&trans_out_expr)?;
-
-    // Flow in to each node: sum_from x[from][node]
-    let trans_in_expr = flat_map1("trans_in", &node_indices, |&node| {
-        let monomials: Vec<_> = (0..nodes.len())
-            .map(|from| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[from, node]]))
-            .collect();
-        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-    }, |_, &node| format!("{}", node));
-    model.add_symbol_combination(&trans_in_expr)?;
-
-    // Node balance constraints
-    for (node_idx, node) in nodes.iter().enumerate() {
-        let out_coeffs = extract_coeffs(&trans_out_expr[node_idx]);
-        let in_coeffs = extract_coeffs(&trans_in_expr[node_idx]);
-
-        match node.kind {
-            NodeType::Product(storage) => {
-                // flow_out <= storage
-                model.add_linear_constraint(
-                    &out_coeffs,
-                    ConstraintRelation::LessEqual,
-                    storage,
-                    &format!("product_out_{}", node_idx),
-                )?;
-            }
-            NodeType::Sale(demand) => {
-                // flow_in >= demand
-                model.add_linear_constraint(
-                    &in_coeffs,
-                    ConstraintRelation::GreaterEqual,
-                    demand,
-                    &format!("sale_in_{}", node_idx),
-                )?;
-            }
-            NodeType::Distribution => {
-                // flow_out - flow_in = 0
-                let mut coeffs = out_coeffs;
-                for (idx, coeff) in in_coeffs {
-                    coeffs.push((idx, -coeff));
-                }
-                model.add_linear_constraint(
-                    &coeffs,
-                    ConstraintRelation::Equal,
-                    0.0,
-                    &format!("balance_{}", node_idx),
-                )?;
-            }
-        }
-    }
+    transport.add_constraints(&mut model, &nodes, &arcs)?;
 
     let output = solve_typed(model)?;
     let solution = output.solution;
@@ -198,7 +246,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         println!("cost: {:.2}", obj);
     }
     for arc in arcs {
-        let value = read_solution_value(&solution, x_idx[&[arc.from, arc.to]]);
+        let value = read_solution_value(&solution, transport.x_idx[&[arc.from, arc.to]]);
         if value > 0.0 {
             println!(
                 "{} -> {} = {:.2}",

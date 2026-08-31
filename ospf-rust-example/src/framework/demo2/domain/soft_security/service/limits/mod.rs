@@ -7,7 +7,7 @@ pub mod separation_limit;
 
 pub use adjacent_separation_limit::apply_adjacent_separation_limits;
 pub use advice_ballast_weight_limit::apply_advice_ballast_weight_limits;
-pub use divide_empty_loading_limit::apply_divide_empty_loading_limits;
+pub use divide_empty_loading_limit::{apply_divide_empty_loading_limits, EmptyFlagVariables};
 pub use empty_hated_limit::apply_empty_hated_limits;
 pub use main_deck_door_empty_limit::apply_main_deck_door_empty_limits;
 pub use separation_limit::apply_separation_limits;

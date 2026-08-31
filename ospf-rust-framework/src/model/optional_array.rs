@@ -13,10 +13,8 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
-use ospf_rust_core::variable::{VariableCombination, VariableTypeTrait, VariableRange};
+use ospf_rust_core::variable::{VariableTypeTrait, VariableRange};
 use ospf_rust_core::token::IntoValue;
-use ospf_rust_multiarray::{MultiArray, Shape};
 
 // ============================================================================
 // OptionalIndexedVariableArray - 稀疏索引变量数组
@@ -135,9 +133,6 @@ where
     /// 已注册符号的键到 (线性索引, 符号组合) 的映射
     /// Mapping from registered symbol keys to (linear index, symbol combination)
     symbols: HashMap<K, usize>,
-    /// 底层符号组合
-    /// Underlying symbol combination
-    combination: Option<SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>>,
     /// 符号名前缀
     /// Symbol name prefix
     name_prefix: String,
@@ -152,7 +147,6 @@ where
     pub fn new(prefix: &str) -> Self {
         Self {
             symbols: HashMap::new(),
-            combination: None,
             name_prefix: prefix.to_string(),
         }
     }

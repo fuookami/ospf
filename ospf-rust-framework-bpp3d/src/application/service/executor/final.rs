@@ -27,6 +27,9 @@ impl MetaModelFinalExecutor {
             layers: state.layers.clone(),
             x: None,
             v: None,
+            load_weight_symbols: Vec::new(),
+            load_volume_symbols: Vec::new(),
+            load_depth_symbols: Vec::new(),
         };
         let aggregation = LayerAssignmentAggregation::final_milp(
             assignment.clone(),

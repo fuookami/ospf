@@ -42,12 +42,12 @@ pub struct StorageResourceUsage {
     pub over_enabled: bool,
     /// 是否允许不足 / Whether less slack is enabled
     pub less_enabled: bool,
-    /// 待注册的流入贡献：每个时隙的 (x_model_index, coefficient) 列表
-    /// Pending inflow contributions: (x_model_index, coefficient) list per slot
-    pending_inflows: Vec<Vec<(usize, f64)>>,
-    /// 待注册的流出贡献：每个时隙的 (x_model_index, coefficient) 列表
-    /// Pending outflow contributions: (x_model_index, coefficient) list per slot
-    pending_outflows: Vec<Vec<(usize, f64)>>,
+    /// 待注册的流入贡献：每个时隙的 LinearMonomial 列表
+    /// Pending inflow contributions: LinearMonomial list per slot
+    pending_inflows: Vec<Vec<LinearMonomial<f64>>>,
+    /// 待注册的流出贡献：每个时隙的 LinearMonomial 列表
+    /// Pending outflow contributions: LinearMonomial list per slot
+    pending_outflows: Vec<Vec<LinearMonomial<f64>>>,
 }
 
 impl std::fmt::Debug for StorageResourceUsage {
@@ -80,23 +80,23 @@ impl StorageResourceUsage {
 
     /// 添加流入贡献（注册前调用）/ Add inflow contribution (call before register)
     ///
-    /// 将任务的供给量关联到分配变量。
-    /// At `register()` time, `coefficient * x[model_index]` is added to inventory.
+    /// 将任务的供给量关联到分配变量，直接构造 LinearMonomial。
+    /// At `register()` time, the LinearMonomial is added to inventory.
     pub fn add_inflow(&mut self, slot: usize, x_model_index: usize, coefficient: f64) {
         assert!(slot < self.slot_count, "slot index {} out of range", slot);
         if coefficient != 0.0 {
-            self.pending_inflows[slot].push((x_model_index, coefficient));
+            self.pending_inflows[slot].push(LinearMonomial::new(coefficient, x_model_index));
         }
     }
 
     /// 添加流出贡献（注册前调用）/ Add outflow contribution (call before register)
     ///
-    /// 将任务的消耗量关联到分配变量。
-    /// At `register()` time, `coefficient * x[model_index]` is subtracted from inventory.
+    /// 将任务的消耗量关联到分配变量，直接构造 LinearMonomial。
+    /// At `register()` time, the LinearMonomial (negated) is subtracted from inventory.
     pub fn add_outflow(&mut self, slot: usize, x_model_index: usize, coefficient: f64) {
         assert!(slot < self.slot_count, "slot index {} out of range", slot);
         if coefficient != 0.0 {
-            self.pending_outflows[slot].push((x_model_index, coefficient));
+            self.pending_outflows[slot].push(LinearMonomial::new(coefficient, x_model_index));
         }
     }
 
@@ -124,12 +124,9 @@ impl StorageResourceUsage {
 
         for (slot_idx, capacity) in capacities.iter().enumerate() {
             // 构建单项式：流入为正系数，流出为负系数
-            let mut monomials: Vec<LinearMonomial<f64>> = Vec::new();
-            for &(idx, coeff) in &self.pending_inflows[slot_idx] {
-                monomials.push(LinearMonomial::new(coeff, idx));
-            }
-            for &(idx, coeff) in &self.pending_outflows[slot_idx] {
-                monomials.push(LinearMonomial::new(-coeff, idx));
+            let mut monomials: Vec<LinearMonomial<f64>> = self.pending_inflows[slot_idx].clone();
+            for mono in &self.pending_outflows[slot_idx] {
+                monomials.push(LinearMonomial::new(-mono.coefficient(), mono.var_index()));
             }
 
             // 1. 注册 quantity[slot] 中间表达式

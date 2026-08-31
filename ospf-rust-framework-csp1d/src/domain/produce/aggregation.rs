@@ -8,7 +8,7 @@ use ospf_rust_core::variable::{Continuous, UInteger, VariableRange};
 
 use crate::domain::material::{CuttingPlan, Material, Machine, ProductDemand};
 
-use super::model::PlanUsageVariablePool;
+use super::model::{DerivedPlanExpressionSymbols, PlanUsageVariablePool};
 use super::CuttingPlanUsage;
 
 /// 产出聚合 / Produce aggregation
@@ -24,6 +24,8 @@ pub struct ProduceAggregation<V: SolveValue> {
     pub machines: Vec<Machine<V>>,
     /// warm start 方案使用量 / Warm-start plan usages
     pub warm_start_plan_usages: Vec<CuttingPlanUsage<V>>,
+    /// 已注册的批量表达式符号 / Registered batch expression symbols
+    batch_symbols: Option<DerivedPlanExpressionSymbols>,
     plans_iteration: Vec<Vec<CuttingPlan<V>>>,
     registered_ids: HashSet<String>,
     registered_keys: HashSet<String>,
@@ -40,6 +42,7 @@ impl<V: SolveValue> Default for ProduceAggregation<V> {
             materials: Vec::new(),
             machines: Vec::new(),
             warm_start_plan_usages: Vec::new(),
+            batch_symbols: None,
             plans_iteration: Vec::new(),
             registered_ids: HashSet::new(),
             registered_keys: HashSet::new(),
@@ -65,6 +68,7 @@ impl<V: SolveValue> ProduceAggregation<V> {
             materials,
             machines,
             warm_start_plan_usages,
+            batch_symbols: None,
             plans_iteration: Vec::new(),
             registered_ids: HashSet::new(),
             registered_keys: HashSet::new(),
@@ -111,6 +115,28 @@ impl<V: SolveValue> ProduceAggregation<V> {
         &self.variable_pool
     }
 
+    /// 已注册的批量表达式符号 / Registered batch expression symbols
+    pub fn batch_symbols(&self) -> Option<&DerivedPlanExpressionSymbols> {
+        self.batch_symbols.as_ref()
+    }
+
+    /// 重建批量表达式符号 / Rebuild batch expression symbols
+    ///
+    /// Rebuilds the expression symbols to reflect the current plan state
+    /// (new plans added, plans retired, etc.). Does NOT re-register to the
+    /// model since symbols are tracked by group ID.
+    pub fn rebuild_batch_symbols(&mut self) {
+        let symbols = DerivedPlanExpressionSymbols::build(
+            &self.cutting_plans,
+            &self.variable_pool,
+            &self.demands,
+            &self.materials,
+            &self.machines,
+            |plan_index| self.is_plan_active(plan_index),
+        );
+        self.batch_symbols = Some(symbols);
+    }
+
     /// 有效方案判断 / Active plan check
     pub fn is_plan_active(&self, index: usize) -> bool {
         index < self.cutting_plans.len() && !self.retired_plan_indices.contains(&index)
@@ -133,7 +159,25 @@ impl<V: SolveValue> ProduceAggregation<V> {
         self.register_plan_variables(model, &plans)
             .map(|indices| {
                 self.variable_pool.set_initial_indices(indices);
-            })
+            })?;
+
+        // Build and register expression symbols to the model
+        let symbols = DerivedPlanExpressionSymbols::build(
+            &self.cutting_plans,
+            &self.variable_pool,
+            &self.demands,
+            &self.materials,
+            &self.machines,
+            |plan_index| self.is_plan_active(plan_index),
+        );
+        symbols.register_symbols(model).map_err(|error| {
+            crate::Csp1dError::Calculation {
+                message: format!("register expression symbols failed: {error}"),
+            }
+        })?;
+        self.batch_symbols = Some(symbols);
+
+        Ok(())
     }
 
     /// 添加初始方案 / Add initial plans

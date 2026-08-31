@@ -12,7 +12,6 @@ use crate::domain::material::{
 };
 
 use super::super::aggregation::ProduceAggregation;
-use super::super::model::DerivedPlanExpressionSymbols;
 use super::{Csp1dCGPipeline, Csp1dShadowPriceExtractor};
 
 /// 默认需求约束管线 / Default demand constraint pipeline
@@ -47,15 +46,10 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for DemandConstraintPipeline<V> {
     }
 
     fn register(&self, model: &mut MetaModel<f64>) {
-        let produce = &self.produce;
-        let symbols = DerivedPlanExpressionSymbols::build(
-            &produce.cutting_plans,
-            produce.variable_pool(),
-            &produce.demands,
-            &produce.materials,
-            &produce.machines,
-            |plan_index| produce.is_plan_active(plan_index),
-        );
+        let Some(symbols) = self.produce.batch_symbols() else {
+            log::warn!("Skip demand constraints: batch symbols not registered");
+            return;
+        };
         for (demand_index, demand) in self.produce.demands.iter().enumerate() {
             let terms = symbols.demand_terms(&demand.product.id, &demand.quantity.unit.symbol());
             let Some(rhs) = to_f64(&demand.quantity.value) else {

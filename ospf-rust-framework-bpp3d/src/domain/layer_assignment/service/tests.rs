@@ -137,6 +137,10 @@ mod tests {
             }],
             x: None,
             upper_bounds: vec![None],
+            load_weight_symbols: Vec::new(),
+            load_volume_symbols: Vec::new(),
+            load_depth_symbols: Vec::new(),
+            load_symbols: Vec::new(),
         };
         let load = Load::new(vec![]);
         let capacity = Capacity::new();
@@ -159,6 +163,10 @@ mod tests {
             }],
             x: None,
             upper_bounds: vec![None],
+            load_weight_symbols: Vec::new(),
+            load_volume_symbols: Vec::new(),
+            load_depth_symbols: Vec::new(),
+            load_symbols: Vec::new(),
         };
         let load = Load::new(vec![]);
         let capacity = Capacity::new();
@@ -195,6 +203,10 @@ mod tests {
             layers,
             x: None,
             upper_bounds: vec![Some(2.0), Some(3.0)],
+            load_weight_symbols: Vec::new(),
+            load_volume_symbols: Vec::new(),
+            load_depth_symbols: Vec::new(),
+            load_symbols: Vec::new(),
         };
         let mut model = MetaModel::<f64>::new("test_bpp3d_iterative_lifecycle");
         assignment.register(&mut model).unwrap();
@@ -255,6 +267,10 @@ mod tests {
             layers: Vec::new(),
             x: None,
             upper_bounds: Vec::new(),
+            load_weight_symbols: Vec::new(),
+            load_volume_symbols: Vec::new(),
+            load_depth_symbols: Vec::new(),
+            load_symbols: Vec::new(),
         };
         let mut model = MetaModel::<f64>::new("test_bpp3d_incremental_columns");
 

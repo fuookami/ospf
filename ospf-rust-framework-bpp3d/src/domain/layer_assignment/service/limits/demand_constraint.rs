@@ -143,6 +143,24 @@ where
     V: Debug + Clone + Send + Sync,
     U: ospf_rust_quantities::unit::concept::UnitTrait + Debug + Clone + Send + Sync,
 {
+    // Use registered load symbols when available (Phase J)
+    if !assignment.load_symbols.is_empty() {
+        let mut terms = Vec::new();
+        for (layer_idx, symbol) in assignment.load_symbols.iter().enumerate() {
+            let coefficient = assignment.layers[layer_idx]
+                .demand_coverage_coefficient(entry.mode, &entry.key);
+            if coefficient != 0.0 {
+                // Extract the symbol's polynomial terms and scale by coefficient
+                let poly = symbol.to_linear_polynomial();
+                for monomial in poly.monomials() {
+                    terms.push((monomial.var_index(), coefficient * *monomial.coefficient()));
+                }
+            }
+        }
+        return terms;
+    }
+
+    // Fallback: compute raw terms from variable indices
     let x = match assignment.x.as_ref() {
         Some(x) => x,
         None => return Vec::new(),

@@ -273,6 +273,23 @@ impl<S: Copy> Point<3, S> {
 }
 
 // ============================================================================
+// 4D 便捷方法 / 4D convenience methods
+// ============================================================================
+
+impl<S> Point<4, S> {
+    pub fn new(x: S, y: S, z: S, w: S) -> Self {
+        Self::from_coords([x, y, z, w])
+    }
+}
+
+impl<S: Copy> Point<4, S> {
+    pub fn x(&self) -> S { self.coords[0] }
+    pub fn y(&self) -> S { self.coords[1] }
+    pub fn z(&self) -> S { self.coords[2] }
+    pub fn w(&self) -> S { self.coords[3] }
+}
+
+// ============================================================================
 // 距离和几何操作 / Distance and geometric operations
 // ============================================================================
 

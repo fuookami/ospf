@@ -3,9 +3,9 @@ use std::error::Error;
 use ospf_rust_multiarray::{MultiArray, Shape};
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
 use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1,
+    SymbolCombination, LinearExpressionSymbol, flat_map1_indexed,
 };
-use ospf_rust_core::variable::{UContinuous, VariableCombination1D};
+use ospf_rust_core::variable::{UInteger, VariableCombination1D};
 
 use super::common::{read_solution_value, solve_typed, extract_coeffs};
 
@@ -55,7 +55,7 @@ fn build_product_targets() -> Vec<ProductTarget> {
 
 /// 配料问题模型 / Blending problem model
 struct BlendingModel {
-    x: VariableCombination1D<UContinuous>,
+    x: VariableCombination1D<UInteger>,
     x_idx: MultiArray<usize, Shape<1>>,
     cost: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
     yields: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
@@ -72,8 +72,8 @@ impl BlendingModel {
         let x_idx = model.register_combination(&x)?;
 
         // 2. 成本符号
-        let cost = flat_map1("cost", materials, |m| {
-            let var_index = x_idx[materials.iter().position(|mm| mm.name == m.name).unwrap()];
+        let cost = flat_map1_indexed("cost", materials, |m_idx, m| {
+            let var_index = x_idx[m_idx];
             ospf_rust_core::symbol::flatten::Linear::new(
                 vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(m.unit_cost, var_index)],
                 0.0,
@@ -82,8 +82,7 @@ impl BlendingModel {
         model.add_symbol_combination(&cost)?;
 
         // 3. 产量符号
-        let yields = flat_map1("yield", targets, |t| {
-            let p = targets.iter().position(|tt| tt.name == t.name).unwrap();
+        let yields = flat_map1_indexed("yield", targets, |p, _t| {
             let monomials: Vec<_> = materials.iter().enumerate().filter_map(|(m_idx, m)| {
                 let coeff = m.yields[p];
                 if coeff != 0.0 {

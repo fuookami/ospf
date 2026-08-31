@@ -65,6 +65,10 @@ mod tests {
             ],
             x: None,
             upper_bounds: vec![None, None],
+            load_weight_symbols: Vec::new(),
+            load_volume_symbols: Vec::new(),
+            load_depth_symbols: Vec::new(),
+            load_symbols: Vec::new(),
         };
         let mut model = MetaModel::<f64>::new("demand_cover");
         assignment.register(&mut model).unwrap();
@@ -90,6 +94,9 @@ mod tests {
             layers: vec![make_layer(1.0), make_layer(2.0)],
             x: None,
             v: None,
+            load_weight_symbols: Vec::new(),
+            load_volume_symbols: Vec::new(),
+            load_depth_symbols: Vec::new(),
         };
         let mut model = MetaModel::<f64>::new("activation");
         assignment.register(&mut model).unwrap();
@@ -106,6 +113,10 @@ mod tests {
             layers: vec![make_layer(1.0)],
             x: None,
             upper_bounds: vec![None],
+            load_weight_symbols: Vec::new(),
+            load_volume_symbols: Vec::new(),
+            load_depth_symbols: Vec::new(),
+            load_symbols: Vec::new(),
         };
         let entries = vec![
             Bpp3dDemandEntry {
@@ -139,6 +150,10 @@ mod tests {
             layers: vec![make_layer(1.0)],
             x: None,
             upper_bounds: vec![None],
+            load_weight_symbols: Vec::new(),
+            load_volume_symbols: Vec::new(),
+            load_depth_symbols: Vec::new(),
+            load_symbols: Vec::new(),
         };
         let entries = vec![
             Bpp3dDemandEntry {

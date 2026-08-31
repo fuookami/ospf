@@ -3,7 +3,7 @@ use std::error::Error;
 use ospf_rust_multiarray::Shape;
 use ospf_rust_core::model::{ConstraintRelation, LinearObjectiveInput, MetaModel};
 use ospf_rust_core::symbol::{
-    LinearExpressionSymbol, flat_map1,
+    LinearExpressionSymbol, flat_map1_indexed,
 };
 use ospf_rust_core::variable::{UInteger, VariableCombination2D};
 
@@ -72,84 +72,129 @@ fn build_stores() -> Vec<Store> {
     ]
 }
 
+/// 运输问题模型 / Transportation problem model
+///
+/// 所有变量和中间符号都是显式字段。
+/// All variables and intermediate symbols are explicit fields.
+struct InventoryModel {
+    /// 决策变量 / Decision variables
+    x_vars: VariableCombination2D<UInteger>,
+    /// 模型索引数组 / Model index array
+    x_idx: ospf_rust_multiarray::MultiArray<usize, Shape<2>>,
+    /// 成本符号 / Cost symbol
+    cost: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    /// 每仓库发货符号 / Per-warehouse shipment symbol
+    shipment: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    /// 每商店采购符号 / Per-store purchase symbol
+    purchase: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+}
+
+impl InventoryModel {
+    /// 注册模型 / Register model
+    fn register(
+        model: &mut MetaModel<f64>,
+        warehouses: &[Warehouse],
+        stores: &[Store],
+    ) -> Result<Self, Box<dyn Error>> {
+        let x_shape = Shape::new([warehouses.len(), stores.len()]);
+        let x_vars: VariableCombination2D<UInteger> =
+            VariableCombination2D::with_name_generator(x_shape.clone(), "x", |_index, vector| {
+                format!("{}_{}", vector[0], vector[1])
+            });
+        let x_idx = model.register_combination(&x_vars)?;
+
+        // 成本符号 / Cost symbol
+        let cost = flat_map1_indexed("cost", warehouses, |w, warehouse| {
+            let monomials: Vec<_> = stores.iter().enumerate()
+                .map(|(s, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                    warehouse.cost_to(s), x_idx[&[w, s]],
+                ))
+                .collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        }, |_, warehouse| warehouse.name.clone());
+        model.add_symbol_combination(&cost)?;
+
+        // 每仓库发货符号 / Per-warehouse shipment symbol
+        let shipment = flat_map1_indexed("shipment", warehouses, |w, _warehouse| {
+            let monomials: Vec<_> = stores.iter().enumerate()
+                .map(|(s, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[w, s]]))
+                .collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        }, |_, warehouse| warehouse.name.clone());
+        model.add_symbol_combination(&shipment)?;
+
+        // 每商店采购符号 / Per-store purchase symbol
+        let purchase = flat_map1_indexed("purchase", stores, |s, _store| {
+            let monomials: Vec<_> = warehouses.iter().enumerate()
+                .map(|(w, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[w, s]]))
+                .collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        }, |_, store| store.name.clone());
+        model.add_symbol_combination(&purchase)?;
+
+        Ok(InventoryModel {
+            x_vars,
+            x_idx,
+            cost,
+            shipment,
+            purchase,
+        })
+    }
+
+    /// 添加约束和目标 / Add constraints and objective
+    fn add_constraints(
+        &self,
+        model: &mut MetaModel<f64>,
+        warehouses: &[Warehouse],
+        stores: &[Store],
+    ) -> Result<(), Box<dyn Error>> {
+        // 目标: 最小化成本 / Objective: minimize cost
+        let mut cost_coeffs = Vec::new();
+        for w in 0..warehouses.len() {
+            let poly = self.cost.symbol_polynomial(w);
+            for m in poly.monomials() {
+                cost_coeffs.push((m.var_index(), *m.coefficient()));
+            }
+        }
+        let cost_input = LinearObjectiveInput::minimize("cost")
+            .terms(cost_coeffs.into_iter());
+        model.set_linear_objective_input(cost_input);
+
+        // 仓库容量约束 / Warehouse capacity constraints
+        for w in 0..warehouses.len() {
+            let coeffs = extract_coeffs(&self.shipment[w]);
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::LessEqual,
+                warehouses[w].stowage,
+                &format!("stowage_{}", w),
+            )?;
+        }
+
+        // 商店需求约束 / Store demand constraints
+        for s in 0..stores.len() {
+            let coeffs = extract_coeffs(&self.purchase[s]);
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::GreaterEqual,
+                stores[s].demand,
+                &format!("demand_{}", s),
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
 /// Demo7 主函数：运输问题 / Demo7 main function: Transportation problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let warehouses = build_warehouses();
     let stores = build_stores();
 
     let mut model = MetaModel::<f64>::new("demo7");
-    let x_shape = Shape::new([warehouses.len(), stores.len()]);
-    let x_vars: VariableCombination2D<UInteger> =
-        VariableCombination2D::with_name_generator(x_shape.clone(), "x", |_index, vector| {
-            format!("{}_{}", vector[0], vector[1])
-        });
-    let x_idx = model.register_combination(&x_vars)?;
+    let inventory = InventoryModel::register(&mut model, &warehouses, &stores)?;
 
-    // 成本符号 / Cost symbol
-    let cost = flat_map1("cost", &warehouses, |warehouse| {
-        let w = warehouses.iter().position(|ww| ww.name == warehouse.name).unwrap();
-        let monomials: Vec<_> = stores.iter().enumerate()
-            .map(|(s, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                warehouse.cost_to(s), x_idx[&[w, s]],
-            ))
-            .collect();
-        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-    }, |_, warehouse| warehouse.name.clone());
-    model.add_symbol_combination(&cost)?;
-
-    // 每仓库发货符号 / Per-warehouse shipment symbol
-    let shipment = flat_map1("shipment", &warehouses, |warehouse| {
-        let w = warehouses.iter().position(|ww| ww.name == warehouse.name).unwrap();
-        let monomials: Vec<_> = stores.iter().enumerate()
-            .map(|(s, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[w, s]]))
-            .collect();
-        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-    }, |_, warehouse| warehouse.name.clone());
-    model.add_symbol_combination(&shipment)?;
-
-    // 每商店采购符号 / Per-store purchase symbol
-    let purchase = flat_map1("purchase", &stores, |store| {
-        let s = stores.iter().position(|ss| ss.name == store.name).unwrap();
-        let monomials: Vec<_> = warehouses.iter().enumerate()
-            .map(|(w, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[w, s]]))
-            .collect();
-        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-    }, |_, store| store.name.clone());
-    model.add_symbol_combination(&purchase)?;
-
-    // 目标: 最小化成本 / Objective: minimize cost
-    let mut cost_coeffs = Vec::new();
-    for w in 0..warehouses.len() {
-        let poly = cost.symbol_polynomial(w);
-        for m in poly.monomials() {
-            cost_coeffs.push((m.var_index(), *m.coefficient()));
-        }
-    }
-    let cost_input = LinearObjectiveInput::minimize("cost")
-        .terms(cost_coeffs.into_iter());
-    model.set_linear_objective_input(cost_input);
-
-    // 仓库容量约束 / Warehouse capacity constraints
-    for w in 0..warehouses.len() {
-        let coeffs = extract_coeffs(&shipment[w]);
-        model.add_linear_constraint(
-            &coeffs,
-            ConstraintRelation::LessEqual,
-            warehouses[w].stowage,
-            &format!("stowage_{}", w),
-        )?;
-    }
-
-    // 商店需求约束 / Store demand constraints
-    for s in 0..stores.len() {
-        let coeffs = extract_coeffs(&purchase[s]);
-        model.add_linear_constraint(
-            &coeffs,
-            ConstraintRelation::GreaterEqual,
-            stores[s].demand,
-            &format!("demand_{}", s),
-        )?;
-    }
+    inventory.add_constraints(&mut model, &warehouses, &stores)?;
 
     let output = solve_typed(model)?;
     let solution = output.solution;
@@ -161,7 +206,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
     for (w, warehouse) in warehouses.iter().enumerate() {
         for (s, store) in stores.iter().enumerate() {
-            let value = read_solution_value(&solution, x_idx[&[w, s]]);
+            let value = read_solution_value(&solution, inventory.x_idx[&[w, s]]);
             if value >= 1.0 {
                 println!("{} -> {} = {:.2}", warehouse.name, store.name, value);
             }

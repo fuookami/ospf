@@ -1,5 +1,11 @@
 use super::item::{Item, ItemLocationTag, ItemStatus};
 use super::super::super::shared::units;
+use std::error::Error;
+use std::sync::Arc;
+use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::symbol::flatten::Linear;
+use ospf_rust_core::symbol::function::{Point2, UnivariateLinearPiecewiseFunction};
+use ospf_rust_core::symbol::flatten::LinearMonomial;
 
 /// 舱位状态代码 / Position status code (对齐 Kotlin PositionStatusCode)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -72,5 +78,38 @@ impl Position {
         // 完整实现需要 PositionType 和 PositionStowageTaboo 数据
 
         true
+    }
+
+    /// 注册 capacityUsage 中间符号到模型
+    ///
+    /// 对齐 Kotlin Position.capacityUsage:
+    /// 使用 UnivariateLinearPiecewiseFunction 将装载重量映射到容量使用率。
+    ///
+    /// Kotlin-Rust 映射 / Kotlin-Rust Mapping:
+    /// - `capacityUsage[j]` -> `UnivariateLinearPiecewiseFunction(loadWeight)`
+    ///
+    /// 默认断点 / Default breakpoints:
+    /// - (0, 0.0)                 — 空载时 0% 使用率
+    /// - (max_load_weight, 1.0)   — 满载时 100% 使用率
+    pub fn register_capacity_usage(
+        &self,
+        id: u64,
+        model: &mut MetaModel<f64>,
+        load_weight_idx: usize,
+    ) -> Result<usize, Box<dyn Error>> {
+        let points = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(self.max_load_weight, 1.0),
+        ];
+        let input = Linear::new(vec![LinearMonomial::new(1.0, load_weight_idx)], 0.0);
+        let ulp_fn = UnivariateLinearPiecewiseFunction::new(
+            id,
+            &format!("capacity_usage_{}", self.id),
+            input,
+            points,
+        );
+        let result_idx = ulp_fn.result_variable().index();
+        model.add_symbol(Arc::new(ulp_fn))?;
+        Ok(result_idx)
     }
 }

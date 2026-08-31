@@ -1,12 +1,12 @@
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol, flat_map1};
-use ospf_rust_core::variable::{VariableCombination, UContinuous};
+use ospf_rust_core::variable::{VariableCombination, UInteger};
 use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder, Shape};
 use crate::framework::demo1::route_context::model::{Edge, Node, NodeKind, Service};
 
 /// 二维连续变量组合类型别名 / 2D continuous variable combination type alias
-type YCombination = VariableCombination<UContinuous, Shape<2>>;
+type YCombination = VariableCombination<UInteger, Shape<2>>;
 /// 一维线性表达式符号组合类型别名 / 1D linear expression symbol combination type alias
 type BandwidthSymbols = SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>;
 

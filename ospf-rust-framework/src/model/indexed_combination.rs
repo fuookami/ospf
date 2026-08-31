@@ -66,7 +66,7 @@ where
             .collect();
 
         let keys_ref = keys;
-        let key_map_ref = &key_map;
+        let _key_map_ref = &key_map;
         let combination = VariableCombination::with_name_and_range_generator(
             Shape::new([keys.len()]),
             prefix,

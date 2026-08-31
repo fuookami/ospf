@@ -44,9 +44,9 @@ pub struct ResourceUsage {
     pub over_enabled: bool,
     /// 是否允许不足 / Whether less slack is enabled
     pub less_enabled: bool,
-    /// 待注册的任务贡献：每个时隙的 (x_model_index, coefficient) 列表
-    /// Pending task contributions: (x_model_index, coefficient) list per slot
-    pending_contributions: Vec<Vec<(usize, f64)>>,
+    /// 待注册的任务贡献：每个时隙的 LinearMonomial 列表
+    /// Pending task contributions: LinearMonomial list per slot
+    pending_contributions: Vec<Vec<LinearMonomial<f64>>>,
 }
 
 impl std::fmt::Debug for ResourceUsage {
@@ -78,11 +78,11 @@ impl ResourceUsage {
 
     /// 添加任务贡献（注册前调用）/ Add task contribution (call before register)
     ///
-    /// 将任务的资源消耗关联到分配变量。
-    /// 在 `register()` 时，`contribution * x[model_index]` 会累加到 `quantity[slot]` 中间表达式。
+    /// 将任务的资源消耗关联到分配变量，直接构造 LinearMonomial。
+    /// 在 `register()` 时，LinearMonomial 会包含在 `quantity[slot]` 中间表达式中。
     ///
-    /// Associates task resource consumption with the assignment variable.
-    /// At `register()` time, `contribution * x[model_index]` is accumulated into `quantity[slot]` intermediate expression.
+    /// Associates task resource consumption with the assignment variable by constructing LinearMonomial directly.
+    /// At `register()` time, the LinearMonomial is included in `quantity[slot]` intermediate expression.
     ///
     /// # 参数 / Parameters
     /// - `slot` — 时隙索引 / Slot index
@@ -91,7 +91,7 @@ impl ResourceUsage {
     pub fn add_task_contribution(&mut self, slot: usize, x_model_index: usize, contribution: f64) {
         assert!(slot < self.slot_count, "slot index {} out of range (max {})", slot, self.slot_count);
         if contribution != 0.0 {
-            self.pending_contributions[slot].push((x_model_index, contribution));
+            self.pending_contributions[slot].push(LinearMonomial::new(contribution, x_model_index));
         }
     }
 
@@ -120,10 +120,7 @@ impl ResourceUsage {
         for (slot_idx, capacity) in capacities.iter().enumerate() {
             // 1. 注册 quantity[slot] 中间表达式
             // 初始量作为常数项，任务贡献作为单项式
-            let monomials: Vec<LinearMonomial<f64>> = self.pending_contributions[slot_idx]
-                .iter()
-                .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
-                .collect();
+            let monomials = self.pending_contributions[slot_idx].clone();
 
             let quantity_id = next_gantt_symbol_id();
             let quantity_symbol = Arc::new(LinearExpressionSymbol::new(
@@ -142,12 +139,8 @@ impl ResourceUsage {
             // SlackFunction: quantity_poly <= ub_poly + slack
             // 即 sum(contribution * x[idx]) + initial <= upper_bound + over_slack
             if self.over_enabled && capacity.over_enabled() {
-                let contribution_monomials: Vec<LinearMonomial<f64>> = self.pending_contributions[slot_idx]
-                    .iter()
-                    .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
-                    .collect();
                 let quantity_poly = Linear::new(
-                    contribution_monomials,
+                    self.pending_contributions[slot_idx].clone(),
                     capacity.lower_bound,
                 );
                 let ub_poly = Linear::new(
@@ -176,16 +169,12 @@ impl ResourceUsage {
             // SlackFunction: lb_poly <= quantity_poly + slack
             // 即 lower_bound - less_slack <= sum(contribution * x[idx]) + initial
             if self.less_enabled && capacity.less_enabled() {
-                let contribution_monomials: Vec<LinearMonomial<f64>> = self.pending_contributions[slot_idx]
-                    .iter()
-                    .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
-                    .collect();
                 let lb_poly = Linear::new(
                     vec![],
                     capacity.lower_bound,
                 );
                 let quantity_poly = Linear::new(
-                    contribution_monomials,
+                    self.pending_contributions[slot_idx].clone(),
                     capacity.lower_bound,
                 );
                 let less_slack = Arc::new(SlackFunction::named(

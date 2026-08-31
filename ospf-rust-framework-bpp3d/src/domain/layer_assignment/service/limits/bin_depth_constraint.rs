@@ -99,27 +99,52 @@ where
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if let Some(ref assignment) = self.assignment {
-            // Direct field access via assignment.x.model_index()
-            let Some(ref x) = assignment.x else { return; };
-            for bin_idx in 0..assignment.bins.len() {
-                let depth_cap = self.depth_capacities.get(bin_idx).copied().unwrap_or(0.0);
+            // Use registered symbols when available (Phase J)
+            if !assignment.load_depth_symbols.is_empty() {
+                // Build constraints from registered symbols
+                for bin_idx in 0..assignment.bins.len() {
+                    let depth_cap = self.depth_capacities.get(bin_idx).copied().unwrap_or(0.0);
 
-                // 深度约束: sum(x[bin, layer] * depth[layer]) <= depth_capacity
-                let depth_terms: Vec<(usize, f64)> = (0..assignment.layers.len())
-                    .filter_map(|layer_idx| {
-                        let model_idx = x.model_index(&bin_idx, &layer_idx)?;
-                        let d = self.layer_depths.get(layer_idx).copied()?;
-                        (d != 0.0).then_some((model_idx, d))
-                    })
-                    .collect();
+                    // Depth constraint from registered load_depth symbol
+                    if let Some(symbol) = assignment.load_depth_symbols.get(bin_idx) {
+                        let poly = symbol.to_linear_polynomial();
+                        let depth_terms: Vec<(usize, f64)> = poly.monomials().iter()
+                            .map(|m| (m.var_index(), *m.coefficient()))
+                            .collect();
+                        if !depth_terms.is_empty() {
+                            if let Err(e) = model.add_le_constraint(
+                                &depth_terms,
+                                depth_cap,
+                                &format!("{}_depth_{}", self.name, bin_idx),
+                            ) {
+                                log::warn!("Failed to register {}_depth_{}: {:?}", self.name, bin_idx, e);
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Fallback: compute raw terms from variable indices
+                let Some(ref x) = assignment.x else { return; };
+                for bin_idx in 0..assignment.bins.len() {
+                    let depth_cap = self.depth_capacities.get(bin_idx).copied().unwrap_or(0.0);
 
-                if !depth_terms.is_empty() {
-                    if let Err(e) = model.add_le_constraint(
-                        &depth_terms,
-                        depth_cap,
-                        &format!("{}_depth_{}", self.name, bin_idx),
-                    ) {
-                        log::warn!("Failed to register {}_depth_{}: {:?}", self.name, bin_idx, e);
+                    // Depth constraint: sum(x[bin, layer] * depth[layer]) <= depth_capacity
+                    let depth_terms: Vec<(usize, f64)> = (0..assignment.layers.len())
+                        .filter_map(|layer_idx| {
+                            let model_idx = x.model_index(&bin_idx, &layer_idx)?;
+                            let d = self.layer_depths.get(layer_idx).copied()?;
+                            (d != 0.0).then_some((model_idx, d))
+                        })
+                        .collect();
+
+                    if !depth_terms.is_empty() {
+                        if let Err(e) = model.add_le_constraint(
+                            &depth_terms,
+                            depth_cap,
+                            &format!("{}_depth_{}", self.name, bin_idx),
+                        ) {
+                            log::warn!("Failed to register {}_depth_{}: {:?}", self.name, bin_idx, e);
+                        }
                     }
                 }
             }
@@ -128,7 +153,7 @@ where
             for (bin_idx, layer_indices) in self.x_indices.iter().enumerate() {
                 let depth_cap = self.depth_capacities.get(bin_idx).copied().unwrap_or(0.0);
 
-                // 深度约束: sum(x[bin, layer] * depth[layer]) <= depth_capacity
+                // Depth constraint: sum(x[bin, layer] * depth[layer]) <= depth_capacity
                 let depth_terms: Vec<(usize, f64)> = layer_indices.iter()
                     .filter_map(|&(layer_idx, model_idx)| {
                         self.layer_depths.get(layer_idx).map(|&d| (model_idx, d))

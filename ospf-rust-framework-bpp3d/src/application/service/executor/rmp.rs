@@ -28,6 +28,10 @@ impl MetaModelRmpExecutor {
             layers: Vec::new(),
             x: None,
             upper_bounds: Vec::new(),
+            load_weight_symbols: Vec::new(),
+            load_volume_symbols: Vec::new(),
+            load_depth_symbols: Vec::new(),
+            load_symbols: Vec::new(),
         };
         let mut iterative_context = IterativeLayerAssignmentContext::new();
         iterative_context.add_columns_to_model(

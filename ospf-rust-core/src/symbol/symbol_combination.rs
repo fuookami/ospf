@@ -471,4 +471,63 @@ mod tests {
         assert_eq!(arc_syms[0].id().id, 1);
         assert_eq!(arc_syms[2].id().id, 3);
     }
+
+    #[test]
+    fn test_binaryzation_function_in_symbol_combination() {
+        use crate::symbol::functions::BinaryzationFunction;
+        use crate::symbol::flatten::LinearMonomial;
+
+        // Verify BinaryzationFunction can be used in SymbolCombination
+        let combo: SymbolCombination<f64, BinaryzationFunction<f64>, Shape<1>> =
+            SymbolCombination::new(Shape::new([2]), "bin", |index, _vec| {
+                let input = crate::symbol::flatten::Linear::new(
+                    vec![LinearMonomial::new(1.0, index)],
+                    0.0,
+                );
+                BinaryzationFunction::with_big_m(
+                    index as u64 + 1000,
+                    &format!("bin_{}", index),
+                    input,
+                    10.0,
+                )
+            });
+
+        assert_eq!(combo.len(), 2);
+        assert_eq!(combo[0].id().id, 1000);
+        assert_eq!(combo[1].id().id, 1001);
+    }
+
+    #[test]
+    fn test_add_symbol_combination_with_binaryzation_function() {
+        use crate::symbol::functions::BinaryzationFunction;
+        use crate::symbol::flatten::LinearMonomial;
+        use crate::model::MetaModel;
+
+        let mut model = MetaModel::<f64>::new("test_binaryzation_combo");
+
+        // Register input variables
+        let x0 = crate::variable::UContinuousVariableItem::auto("x0");
+        let x1 = crate::variable::UContinuousVariableItem::auto("x1");
+        let _ = model.register_variable(x0);
+        let _ = model.register_variable(x1);
+
+        // Create SymbolCombination with BinaryzationFunction
+        let combo: SymbolCombination<f64, BinaryzationFunction<f64>, Shape<1>> =
+            SymbolCombination::new(Shape::new([2]), "bin", |index, _vec| {
+                let input = crate::symbol::flatten::Linear::new(
+                    vec![LinearMonomial::new(1.0, index)],
+                    0.0,
+                );
+                BinaryzationFunction::with_big_m(
+                    index as u64 + 2000,
+                    &format!("bin_{}", index),
+                    input,
+                    10.0,
+                )
+            });
+
+        // Register symbol combination
+        let result = model.add_symbol_combination(&combo);
+        assert!(result.is_ok());
+    }
 }

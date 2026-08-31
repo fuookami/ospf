@@ -3,7 +3,7 @@ use std::error::Error;
 use ospf_rust_multiarray::{MultiArray, Shape};
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
 use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1,
+    SymbolCombination, LinearExpressionSymbol, flat_map1_indexed,
 };
 use ospf_rust_core::variable::{UInteger, VariableCombination1D};
 
@@ -34,8 +34,8 @@ fn build_cargos() -> Vec<Cargo> {
 struct IntegerKnapsackModel {
     x: VariableCombination1D<UInteger>,
     x_idx: MultiArray<usize, Shape<1>>,
-    total_value: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
-    total_weight: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    cargo_value: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    cargo_weight: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
 }
 
 impl IntegerKnapsackModel {
@@ -43,31 +43,29 @@ impl IntegerKnapsackModel {
         let x = VariableCombination1D::new(Shape::new([cargos.len()]), "x");
         let x_idx = model.register_combination(&x)?;
 
-        let total_value = flat_map1("total_value", cargos, |c| {
-            let i = cargos.iter().position(|cc| cc.name == c.name).unwrap();
+        let cargo_value = flat_map1_indexed("cargo_value", cargos, |i, c| {
             ospf_rust_core::symbol::flatten::Linear::new(
                 vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(c.value, x_idx[i])], 0.0)
         }, |_, c| c.name.clone());
-        model.add_symbol_combination(&total_value)?;
+        model.add_symbol_combination(&cargo_value)?;
 
-        let total_weight = flat_map1("total_weight", cargos, |c| {
-            let i = cargos.iter().position(|cc| cc.name == c.name).unwrap();
+        let cargo_weight = flat_map1_indexed("cargo_weight", cargos, |i, c| {
             ospf_rust_core::symbol::flatten::Linear::new(
                 vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(c.weight, x_idx[i])], 0.0)
         }, |_, c| c.name.clone());
-        model.add_symbol_combination(&total_weight)?;
+        model.add_symbol_combination(&cargo_weight)?;
 
-        Ok(IntegerKnapsackModel { x, x_idx, total_value, total_weight })
+        Ok(IntegerKnapsackModel { x, x_idx, cargo_value, cargo_weight })
     }
 
     fn add_constraints(&self, model: &mut MetaModel<f64>, cargos: &[Cargo], max_weight: f64) -> Result<(), Box<dyn Error>> {
         // 目标: 最大化价值
-        let val_coeffs = extract_coeffs(&self.total_value[0]);
+        let val_coeffs = extract_coeffs(&self.cargo_value[0]);
         model.add_linear_objective(&val_coeffs, "value");
         model.set_objective_category(ObjectiveCategory::Maximum);
 
         // 重量约束
-        let wt_coeffs = extract_coeffs(&self.total_weight[0]);
+        let wt_coeffs = extract_coeffs(&self.cargo_weight[0]);
         model.add_linear_constraint(&wt_coeffs, ConstraintRelation::LessEqual, max_weight, "weight")?;
 
         // 上界约束

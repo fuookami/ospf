@@ -353,6 +353,7 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
         for group_id in BUILTIN_CONSTRAINT_GROUP_IDS {
             model.remove_constraints_by_group_id(group_id);
         }
+        self.produce.rebuild_batch_symbols();
         self.rebuild_builtin_constraint_pipelines();
         Self::register_constraint_pipelines(model, &self.constraint_pipelines)
     }

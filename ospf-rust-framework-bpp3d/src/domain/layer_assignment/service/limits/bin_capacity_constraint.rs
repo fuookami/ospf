@@ -120,47 +120,93 @@ where
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if let Some(ref assignment) = self.assignment {
-            // Direct field access via assignment.x.model_index()
-            let Some(ref x) = assignment.x else { return; };
-            for bin_idx in 0..assignment.bins.len() {
-                let weight_cap = self.weight_capacities.get(bin_idx).copied().unwrap_or(0.0);
-                let volume_cap = self.volume_capacities.get(bin_idx).copied().unwrap_or(0.0);
+            // Use registered symbols when available (Phase J)
+            let has_symbols = !assignment.load_weight_symbols.is_empty()
+                && !assignment.load_volume_symbols.is_empty();
 
-                // 载重约束: sum(x[bin, layer] * weight[layer]) <= weight_capacity
-                let weight_terms: Vec<(usize, f64)> = (0..assignment.layers.len())
-                    .filter_map(|layer_idx| {
-                        let model_idx = x.model_index(&bin_idx, &layer_idx)?;
-                        let w = self.layer_weights.get(layer_idx).copied()?;
-                        (w != 0.0).then_some((model_idx, w))
-                    })
-                    .collect();
+            if has_symbols {
+                // Build constraints from registered symbols
+                for bin_idx in 0..assignment.bins.len() {
+                    let weight_cap = self.weight_capacities.get(bin_idx).copied().unwrap_or(0.0);
+                    let volume_cap = self.volume_capacities.get(bin_idx).copied().unwrap_or(0.0);
 
-                if !weight_terms.is_empty() {
-                    if let Err(e) = model.add_le_constraint(
-                        &weight_terms,
-                        weight_cap,
-                        &format!("{}_weight_{}", self.name, bin_idx),
-                    ) {
-                        log::warn!("Failed to register {}_weight_{}: {:?}", self.name, bin_idx, e);
+                    // Weight constraint from registered load_weight symbol
+                    if let Some(symbol) = assignment.load_weight_symbols.get(bin_idx) {
+                        let poly = symbol.to_linear_polynomial();
+                        let weight_terms: Vec<(usize, f64)> = poly.monomials().iter()
+                            .map(|m| (m.var_index(), *m.coefficient()))
+                            .collect();
+                        if !weight_terms.is_empty() {
+                            if let Err(e) = model.add_le_constraint(
+                                &weight_terms,
+                                weight_cap,
+                                &format!("{}_weight_{}", self.name, bin_idx),
+                            ) {
+                                log::warn!("Failed to register {}_weight_{}: {:?}", self.name, bin_idx, e);
+                            }
+                        }
+                    }
+
+                    // Volume constraint from registered load_volume symbol
+                    if let Some(symbol) = assignment.load_volume_symbols.get(bin_idx) {
+                        let poly = symbol.to_linear_polynomial();
+                        let volume_terms: Vec<(usize, f64)> = poly.monomials().iter()
+                            .map(|m| (m.var_index(), *m.coefficient()))
+                            .collect();
+                        if !volume_terms.is_empty() {
+                            if let Err(e) = model.add_le_constraint(
+                                &volume_terms,
+                                volume_cap,
+                                &format!("{}_volume_{}", self.name, bin_idx),
+                            ) {
+                                log::warn!("Failed to register {}_volume_{}: {:?}", self.name, bin_idx, e);
+                            }
+                        }
                     }
                 }
+            } else {
+                // Fallback: compute raw terms from variable indices
+                let Some(ref x) = assignment.x else { return; };
+                for bin_idx in 0..assignment.bins.len() {
+                    let weight_cap = self.weight_capacities.get(bin_idx).copied().unwrap_or(0.0);
+                    let volume_cap = self.volume_capacities.get(bin_idx).copied().unwrap_or(0.0);
 
-                // 体积约束: sum(x[bin, layer] * volume[layer]) <= volume_capacity
-                let volume_terms: Vec<(usize, f64)> = (0..assignment.layers.len())
-                    .filter_map(|layer_idx| {
-                        let model_idx = x.model_index(&bin_idx, &layer_idx)?;
-                        let v = self.layer_volumes.get(layer_idx).copied()?;
-                        (v != 0.0).then_some((model_idx, v))
-                    })
-                    .collect();
+                    // Weight constraint: sum(x[bin, layer] * weight[layer]) <= weight_capacity
+                    let weight_terms: Vec<(usize, f64)> = (0..assignment.layers.len())
+                        .filter_map(|layer_idx| {
+                            let model_idx = x.model_index(&bin_idx, &layer_idx)?;
+                            let w = self.layer_weights.get(layer_idx).copied()?;
+                            (w != 0.0).then_some((model_idx, w))
+                        })
+                        .collect();
 
-                if !volume_terms.is_empty() {
-                    if let Err(e) = model.add_le_constraint(
-                        &volume_terms,
-                        volume_cap,
-                        &format!("{}_volume_{}", self.name, bin_idx),
-                    ) {
-                        log::warn!("Failed to register {}_volume_{}: {:?}", self.name, bin_idx, e);
+                    if !weight_terms.is_empty() {
+                        if let Err(e) = model.add_le_constraint(
+                            &weight_terms,
+                            weight_cap,
+                            &format!("{}_weight_{}", self.name, bin_idx),
+                        ) {
+                            log::warn!("Failed to register {}_weight_{}: {:?}", self.name, bin_idx, e);
+                        }
+                    }
+
+                    // Volume constraint: sum(x[bin, layer] * volume[layer]) <= volume_capacity
+                    let volume_terms: Vec<(usize, f64)> = (0..assignment.layers.len())
+                        .filter_map(|layer_idx| {
+                            let model_idx = x.model_index(&bin_idx, &layer_idx)?;
+                            let v = self.layer_volumes.get(layer_idx).copied()?;
+                            (v != 0.0).then_some((model_idx, v))
+                        })
+                        .collect();
+
+                    if !volume_terms.is_empty() {
+                        if let Err(e) = model.add_le_constraint(
+                            &volume_terms,
+                            volume_cap,
+                            &format!("{}_volume_{}", self.name, bin_idx),
+                        ) {
+                            log::warn!("Failed to register {}_volume_{}: {:?}", self.name, bin_idx, e);
+                        }
                     }
                 }
             }
@@ -170,7 +216,7 @@ where
                 let weight_cap = self.weight_capacities.get(bin_idx).copied().unwrap_or(0.0);
                 let volume_cap = self.volume_capacities.get(bin_idx).copied().unwrap_or(0.0);
 
-                // 载重约束: sum(x[bin, layer] * weight[layer]) <= weight_capacity
+                // Weight constraint: sum(x[bin, layer] * weight[layer]) <= weight_capacity
                 let weight_terms: Vec<(usize, f64)> = layer_indices.iter()
                     .filter_map(|&(layer_idx, model_idx)| {
                         self.layer_weights.get(layer_idx).map(|&w| (model_idx, w))
@@ -187,7 +233,7 @@ where
                     }
                 }
 
-                // 体积约束: sum(x[bin, layer] * volume[layer]) <= volume_capacity
+                // Volume constraint: sum(x[bin, layer] * volume[layer]) <= volume_capacity
                 let volume_terms: Vec<(usize, f64)> = layer_indices.iter()
                     .filter_map(|&(layer_idx, model_idx)| {
                         self.layer_volumes.get(layer_idx).map(|&v| (model_idx, v))

@@ -42,9 +42,9 @@ pub struct ProduceUsage {
     pub over_enabled: bool,
     /// 是否允许不足 / Whether less slack is enabled
     pub less_enabled: bool,
-    /// 待注册的任务贡献：每个产品的 (x_model_index, coefficient) 列表
-    /// Pending task contributions: (x_model_index, coefficient) list per product
-    pending_contributions: Vec<Vec<(usize, f64)>>,
+    /// 待注册的任务贡献：每个产品的 LinearMonomial 列表
+    /// Pending task contributions: LinearMonomial list per product
+    pending_contributions: Vec<Vec<ospf_rust_core::symbol::flatten::LinearMonomial<f64>>>,
 }
 
 impl std::fmt::Debug for ProduceUsage {
@@ -81,7 +81,9 @@ impl ProduceUsage {
     pub fn add_task_contribution(&mut self, product_idx: usize, x_model_index: usize, coefficient: f64) {
         assert!(product_idx < self.product_count, "product_idx {} out of range", product_idx);
         if coefficient != 0.0 {
-            self.pending_contributions[product_idx].push((x_model_index, coefficient));
+            self.pending_contributions[product_idx].push(
+                ospf_rust_core::symbol::flatten::LinearMonomial::new(coefficient, x_model_index)
+            );
         }
     }
 
@@ -100,7 +102,7 @@ impl ProduceUsage {
         for (product_idx, demand) in demands.iter().enumerate() {
             let monomials: Vec<LinearMonomial<f64>> = self.pending_contributions[product_idx]
                 .iter()
-                .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
+                .cloned()
                 .collect();
 
             // 注册 quantity[product] 中间表达式
@@ -193,9 +195,9 @@ pub struct ConsumptionUsage {
     pub over_enabled: bool,
     /// 是否允许不足 / Whether less slack is enabled
     pub less_enabled: bool,
-    /// 待注册的任务贡献：每个物料的 (x_model_index, coefficient) 列表
-    /// Pending task contributions: (x_model_index, coefficient) list per material
-    pending_contributions: Vec<Vec<(usize, f64)>>,
+    /// 待注册的任务贡献：每个物料的 LinearMonomial 列表
+    /// Pending task contributions: LinearMonomial list per material
+    pending_contributions: Vec<Vec<ospf_rust_core::symbol::flatten::LinearMonomial<f64>>>,
 }
 
 impl std::fmt::Debug for ConsumptionUsage {
@@ -232,7 +234,9 @@ impl ConsumptionUsage {
     pub fn add_task_contribution(&mut self, material_idx: usize, x_model_index: usize, coefficient: f64) {
         assert!(material_idx < self.material_count, "material_idx {} out of range", material_idx);
         if coefficient != 0.0 {
-            self.pending_contributions[material_idx].push((x_model_index, coefficient));
+            self.pending_contributions[material_idx].push(
+                ospf_rust_core::symbol::flatten::LinearMonomial::new(coefficient, x_model_index)
+            );
         }
     }
 
@@ -251,7 +255,7 @@ impl ConsumptionUsage {
         for (material_idx, reserve) in reserves.iter().enumerate() {
             let monomials: Vec<LinearMonomial<f64>> = self.pending_contributions[material_idx]
                 .iter()
-                .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
+                .cloned()
                 .collect();
 
             // 注册 quantity[material] 中间表达式

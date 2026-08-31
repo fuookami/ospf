@@ -208,6 +208,186 @@ where
 }
 
 // ============================================================================
+// 索引版一维工厂 / Indexed 1D Factories
+// ============================================================================
+
+/// 一维工厂（索引版）：构造函数接收 `(index, &T)` 而非 `&T`。
+/// 1D factory (indexed): ctor receives `(index, &T)` instead of `&T`.
+///
+/// 消除 `flat_map1` 中常见的 `iter().position()` 反模式。
+/// Eliminates the common `iter().position()` anti-pattern inside `flat_map1`.
+pub fn flat_map1_indexed<T, V>(
+    name: &str,
+    objs: &[T],
+    ctor: impl Fn(usize, &T) -> Linear<V>,
+    suffix: impl Fn(usize, &T) -> String,
+) -> SymbolCombination<V, LinearExpressionSymbol<V>, Shape<1>>
+where
+    V: Clone + Debug + Send + Sync + 'static + Add<Output = V> + Mul<Output = V>,
+{
+    SymbolCombination::new(Shape::new([objs.len()]), name, |index, _vec| {
+        let obj = &objs[index];
+        let linear = ctor(index, obj);
+        let id = next_auto_intermediate_symbol_id();
+        let sym_name = format!("{}_{}", name, suffix(index, obj));
+        LinearExpressionSymbol::new(
+            id,
+            &sym_name,
+            linear.monomials().to_vec(),
+            linear.constant_term().clone(),
+        )
+    })
+}
+
+/// 一维工厂（索引版，标量）：构造函数接收 `(index, &T)` 而非 `&T`。
+/// 1D factory (indexed, scalar): ctor receives `(index, &T)` instead of `&T`.
+pub fn map1_indexed<T, V>(
+    name: &str,
+    objs: &[T],
+    ctor: impl Fn(usize, &T) -> V,
+    suffix: impl Fn(usize, &T) -> String,
+) -> SymbolCombination<V, LinearExpressionSymbol<V>, Shape<1>>
+where
+    V: Clone + Debug + Send + Sync + 'static + Add<Output = V> + Mul<Output = V>,
+{
+    SymbolCombination::new(Shape::new([objs.len()]), name, |index, _vec| {
+        let obj = &objs[index];
+        let value = ctor(index, obj);
+        let id = next_auto_intermediate_symbol_id();
+        let sym_name = format!("{}_{}", name, suffix(index, obj));
+        LinearExpressionSymbol::new(id, &sym_name, vec![], value)
+    })
+}
+
+// ============================================================================
+// 索引版二维工厂 / Indexed 2D Factories
+// ============================================================================
+
+/// 二维工厂（索引版）：构造函数接收 `(i, &T1, j, &T2)` 而非 `(&T1, &T2)`。
+/// 2D factory (indexed): ctor receives `(i, &T1, j, &T2)` instead of `(&T1, &T2)`.
+pub fn flat_map2_indexed<T1, T2, V>(
+    name: &str,
+    objs1: &[T1],
+    objs2: &[T2],
+    ctor: impl Fn(usize, &T1, usize, &T2) -> Linear<V>,
+    suffix: impl Fn(usize, &T1, usize, &T2) -> String,
+) -> SymbolCombination<V, LinearExpressionSymbol<V>, Shape<2>>
+where
+    V: Clone + Debug + Send + Sync + 'static + Add<Output = V> + Mul<Output = V>,
+{
+    let d1 = objs1.len();
+    let d2 = objs2.len();
+    SymbolCombination::new(Shape::new([d1, d2]), name, |_index, vec| {
+        let i = vec[0];
+        let j = vec[1];
+        let linear = ctor(i, &objs1[i], j, &objs2[j]);
+        let id = next_auto_intermediate_symbol_id();
+        let sym_name = format!("{}_{}", name, suffix(i, &objs1[i], j, &objs2[j]));
+        LinearExpressionSymbol::new(
+            id,
+            &sym_name,
+            linear.monomials().to_vec(),
+            linear.constant_term().clone(),
+        )
+    })
+}
+
+/// 二维工厂（索引版，标量）：构造函数接收 `(i, &T1, j, &T2)` 而非 `(&T1, &T2)`。
+/// 2D factory (indexed, scalar): ctor receives `(i, &T1, j, &T2)` instead of `(&T1, &T2)`.
+pub fn map2_indexed<T1, T2, V>(
+    name: &str,
+    objs1: &[T1],
+    objs2: &[T2],
+    ctor: impl Fn(usize, &T1, usize, &T2) -> V,
+    suffix: impl Fn(usize, &T1, usize, &T2) -> String,
+) -> SymbolCombination<V, LinearExpressionSymbol<V>, Shape<2>>
+where
+    V: Clone + Debug + Send + Sync + 'static + Add<Output = V> + Mul<Output = V>,
+{
+    let d1 = objs1.len();
+    let d2 = objs2.len();
+    SymbolCombination::new(Shape::new([d1, d2]), name, |_index, vec| {
+        let i = vec[0];
+        let j = vec[1];
+        let value = ctor(i, &objs1[i], j, &objs2[j]);
+        let id = next_auto_intermediate_symbol_id();
+        let sym_name = format!("{}_{}", name, suffix(i, &objs1[i], j, &objs2[j]));
+        LinearExpressionSymbol::new(id, &sym_name, vec![], value)
+    })
+}
+
+// ============================================================================
+// 索引版三维工厂 / Indexed 3D Factories
+// ============================================================================
+
+/// 三维工厂（索引版）：构造函数接收 `(i, &T1, j, &T2, k, &T3)` 而非 `(&T1, &T2, &T3)`。
+/// 3D factory (indexed): ctor receives `(i, &T1, j, &T2, k, &T3)` instead of `(&T1, &T2, &T3)`.
+pub fn flat_map3_indexed<T1, T2, T3, V>(
+    name: &str,
+    objs1: &[T1],
+    objs2: &[T2],
+    objs3: &[T3],
+    ctor: impl Fn(usize, &T1, usize, &T2, usize, &T3) -> Linear<V>,
+    suffix: impl Fn(usize, &T1, usize, &T2, usize, &T3) -> String,
+) -> SymbolCombination<V, LinearExpressionSymbol<V>, Shape<3>>
+where
+    V: Clone + Debug + Send + Sync + 'static + Add<Output = V> + Mul<Output = V>,
+{
+    let d1 = objs1.len();
+    let d2 = objs2.len();
+    let d3 = objs3.len();
+    SymbolCombination::new(Shape::new([d1, d2, d3]), name, |_index, vec| {
+        let i = vec[0];
+        let j = vec[1];
+        let k = vec[2];
+        let linear = ctor(i, &objs1[i], j, &objs2[j], k, &objs3[k]);
+        let id = next_auto_intermediate_symbol_id();
+        let sym_name = format!(
+            "{}_{}",
+            name,
+            suffix(i, &objs1[i], j, &objs2[j], k, &objs3[k])
+        );
+        LinearExpressionSymbol::new(
+            id,
+            &sym_name,
+            linear.monomials().to_vec(),
+            linear.constant_term().clone(),
+        )
+    })
+}
+
+/// 三维工厂（索引版，标量）：构造函数接收 `(i, &T1, j, &T2, k, &T3)` 而非 `(&T1, &T2, &T3)`。
+/// 3D factory (indexed, scalar): ctor receives `(i, &T1, j, &T2, k, &T3)` instead of `(&T1, &T2, &T3)`.
+pub fn map3_indexed<T1, T2, T3, V>(
+    name: &str,
+    objs1: &[T1],
+    objs2: &[T2],
+    objs3: &[T3],
+    ctor: impl Fn(usize, &T1, usize, &T2, usize, &T3) -> V,
+    suffix: impl Fn(usize, &T1, usize, &T2, usize, &T3) -> String,
+) -> SymbolCombination<V, LinearExpressionSymbol<V>, Shape<3>>
+where
+    V: Clone + Debug + Send + Sync + 'static + Add<Output = V> + Mul<Output = V>,
+{
+    let d1 = objs1.len();
+    let d2 = objs2.len();
+    let d3 = objs3.len();
+    SymbolCombination::new(Shape::new([d1, d2, d3]), name, |_index, vec| {
+        let i = vec[0];
+        let j = vec[1];
+        let k = vec[2];
+        let value = ctor(i, &objs1[i], j, &objs2[j], k, &objs3[k]);
+        let id = next_auto_intermediate_symbol_id();
+        let sym_name = format!(
+            "{}_{}",
+            name,
+            suffix(i, &objs1[i], j, &objs2[j], k, &objs3[k])
+        );
+        LinearExpressionSymbol::new(id, &sym_name, vec![], value)
+    })
+}
+
+// ============================================================================
 // 测试 / Tests
 // ============================================================================
 
@@ -295,6 +475,44 @@ mod tests {
         for i in 0..3 {
             assert!(combo[i].id().id >= 1_000_000_000);
         }
+    }
+
+    #[test]
+    fn test_flat_map1_indexed() {
+        let edges = vec!["e0", "e1", "e2"];
+        let combo: LinearExpressionSymbols1<f64> = flat_map1_indexed(
+            "bw_idx",
+            &edges,
+            |i, _e| Linear::new(vec![LinearMonomial::new(1.0, i + 42)], 0.0),
+            |i, e| format!("{}_{}", e, i),
+        );
+
+        assert_eq!(combo.len(), 3);
+        assert_eq!(combo[0].id().name, "bw_idx_e0_0");
+        assert_eq!(combo[1].id().name, "bw_idx_e1_1");
+        assert_eq!(combo[2].id().name, "bw_idx_e2_2");
+
+        // Verify index flows through correctly: monomial var_index = i + 42
+        let poly = combo[1].to_linear_polynomial();
+        assert_eq!(poly.monomials().len(), 1);
+        assert_eq!(poly.monomials()[0].var_index(), 43); // index 1 + 42
+    }
+
+    #[test]
+    fn test_flat_map2_indexed() {
+        let nodes = vec!["n0", "n1"];
+        let services = vec!["s0", "s1", "s2"];
+        let combo = flat_map2_indexed(
+            "flow_idx",
+            &nodes,
+            &services,
+            |i, _n, j, _s| Linear::new(vec![LinearMonomial::new((i + j) as f64, 7)], 0.0),
+            |i, n, j, s| format!("{}_{}_{}_{}", n, i, s, j),
+        );
+
+        assert_eq!(combo.len(), 6);
+        assert_eq!(combo[&[0, 0]].id().name, "flow_idx_n0_0_s0_0");
+        assert_eq!(combo[&[1, 2]].id().name, "flow_idx_n1_1_s2_2");
     }
 
     use crate::symbol::LinearIntermediateSymbol;

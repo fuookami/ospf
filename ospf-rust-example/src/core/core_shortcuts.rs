@@ -3,7 +3,7 @@ use std::error::Error;
 use ospf_rust_multiarray::{MultiArray, Shape};
 use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol, flat_map1};
+use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol, flat_map1_indexed};
 use ospf_rust_core::variable::{Binary, VariableCombination2D};
 
 use super::common::{
@@ -134,8 +134,7 @@ fn build_shortcut_model(
     // 2. 成本符号组合
     let costs_ref = &data.costs;
     let x_idx_ref = &x_idx;
-    let cost = flat_map1("cost", &data.workers, |w| {
-        let w_idx = data.workers.iter().position(|ww| ww.name == w.name).unwrap();
+    let cost = flat_map1_indexed("cost", &data.workers, |w_idx, _w| {
         let monomials: Vec<_> = (0..data.tasks.len()).map(|t| {
             ospf_rust_core::symbol::flatten::LinearMonomial::new(costs_ref[w_idx][t], x_idx_ref[&[w_idx, t]])
         }).collect();
@@ -144,8 +143,7 @@ fn build_shortcut_model(
     model.add_symbol_combination(&cost)?;
 
     // 3. 工人容量符号组合（每工人 sum(x[w,*]) <= 1）
-    let worker_cap = flat_map1("worker_cap", &data.workers, |w| {
-        let w_idx = data.workers.iter().position(|ww| ww.name == w.name).unwrap();
+    let worker_cap = flat_map1_indexed("worker_cap", &data.workers, |w_idx, _w| {
         let monomials: Vec<_> = (0..data.tasks.len()).map(|t| {
             ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[w_idx, t]])
         }).collect();
@@ -154,8 +152,7 @@ fn build_shortcut_model(
     model.add_symbol_combination(&worker_cap)?;
 
     // 4. 任务分配符号组合（每任务 sum(x[*][t]) = 1）
-    let task_part = flat_map1("task_part", &data.tasks, |t| {
-        let t_idx = data.tasks.iter().position(|tt| tt.name == t.name).unwrap();
+    let task_part = flat_map1_indexed("task_part", &data.tasks, |t_idx, _t| {
         let monomials: Vec<_> = (0..data.workers.len()).map(|w| {
             ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[w, t_idx]])
         }).collect();

@@ -300,6 +300,22 @@ impl DerivedPlanExpressionSymbols {
         }
     }
 
+    /// Register all expression symbols to the model.
+    ///
+    /// Registers each `LinearExpressionSymbols1` combination so the symbols
+    /// are tracked as intermediate symbols in the model rather than being
+    /// discarded after term extraction.
+    pub fn register_symbols(
+        &self,
+        model: &mut ospf_rust_core::model::MetaModel<f64>,
+    ) -> ospf_rust_core::error::Result<()> {
+        model.add_symbol_combination(&self.demand_fulfillment)?;
+        model.add_symbol_combination(&self.material_usage)?;
+        model.add_symbol_combination(&self.machine_batch_usage)?;
+        model.add_symbol_combination(&self.machine_capacity_usage)?;
+        Ok(())
+    }
+
     /// Extract polynomial terms for a specific demand.
     ///
     /// Returns `Vec<(variable_index, coefficient)>` suitable for constraint registration.

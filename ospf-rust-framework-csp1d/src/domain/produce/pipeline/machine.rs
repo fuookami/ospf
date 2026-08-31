@@ -12,7 +12,6 @@ use crate::domain::material::{
 };
 
 use super::super::aggregation::ProduceAggregation;
-use super::super::model::DerivedPlanExpressionSymbols;
 use super::{Csp1dCGPipeline, Csp1dShadowPriceExtractor};
 
 /// 默认设备约束管线 / Default machine constraint pipeline
@@ -47,15 +46,10 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for MachineConstraintPipeline<V> {
     }
 
     fn register(&self, model: &mut MetaModel<f64>) {
-        let produce = &self.produce;
-        let symbols = DerivedPlanExpressionSymbols::build(
-            &produce.cutting_plans,
-            produce.variable_pool(),
-            &produce.demands,
-            &produce.materials,
-            &produce.machines,
-            |plan_index| produce.is_plan_active(plan_index),
-        );
+        let Some(symbols) = self.produce.batch_symbols() else {
+            log::warn!("Skip machine constraints: batch symbols not registered");
+            return;
+        };
         for (machine_index, machine) in self.produce.machines.iter().enumerate() {
             if let Some(max_batch_count) = machine.max_batch_count {
                 let terms = symbols.machine_batch_terms(&machine.id);

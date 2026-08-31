@@ -3,7 +3,7 @@ use std::error::Error;
 use ospf_rust_multiarray::Shape;
 use ospf_rust_core::model::{ConstraintRelation, LinearObjectiveInput, MetaModel};
 use ospf_rust_core::symbol::{
-    LinearExpressionSymbol, flat_map1,
+    LinearExpressionSymbol, flat_map1_indexed,
 };
 use ospf_rust_core::variable::{Binary, VariableCombination2D};
 
@@ -67,84 +67,129 @@ fn build_companies() -> Vec<Company> {
     ]
 }
 
+/// 任务分配模型 / Assignment model
+///
+/// 所有变量和中间符号都是显式字段。
+/// All variables and intermediate symbols are explicit fields.
+struct TransportModel {
+    /// 决策变量 / Decision variables
+    x_vars: VariableCombination2D<Binary>,
+    /// 模型索引数组 / Model index array
+    x_idx: ospf_rust_multiarray::MultiArray<usize, Shape<2>>,
+    /// 成本符号 / Cost symbol
+    cost: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    /// 每公司分配符号 / Per-company assignment symbol
+    assignment_company: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    /// 每产品分配符号 / Per-product assignment symbol
+    assignment_product: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+}
+
+impl TransportModel {
+    /// 注册模型 / Register model
+    fn register(
+        model: &mut MetaModel<f64>,
+        companies: &[Company],
+        products: &[Product],
+    ) -> Result<Self, Box<dyn Error>> {
+        let x_shape = Shape::new([companies.len(), products.len()]);
+        let x_vars: VariableCombination2D<Binary> =
+            VariableCombination2D::with_name_generator(x_shape.clone(), "x", |_index, vector| {
+                format!("{}_{}", vector[0], vector[1])
+            });
+        let x_idx = model.register_combination(&x_vars)?;
+
+        // 成本符号 / Cost symbol
+        let cost = flat_map1_indexed("cost", companies, |c, company| {
+            let monomials: Vec<_> = products.iter().enumerate()
+                .map(|(p, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                    company.cost_of(p), x_idx[&[c, p]],
+                ))
+                .collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        }, |_, company| company.name.clone());
+        model.add_symbol_combination(&cost)?;
+
+        // 每公司分配符号 / Per-company assignment symbol
+        let assignment_company = flat_map1_indexed("assign_company", companies, |c, _company| {
+            let monomials: Vec<_> = products.iter().enumerate()
+                .map(|(p, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[c, p]]))
+                .collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        }, |_, company| company.name.clone());
+        model.add_symbol_combination(&assignment_company)?;
+
+        // 每产品分配符号 / Per-product assignment symbol
+        let assignment_product = flat_map1_indexed("assign_product", products, |p, _product| {
+            let monomials: Vec<_> = companies.iter().enumerate()
+                .map(|(c, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[c, p]]))
+                .collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        }, |_, product| product.name.clone());
+        model.add_symbol_combination(&assignment_product)?;
+
+        Ok(TransportModel {
+            x_vars,
+            x_idx,
+            cost,
+            assignment_company,
+            assignment_product,
+        })
+    }
+
+    /// 添加约束和目标 / Add constraints and objective
+    fn add_constraints(
+        &self,
+        model: &mut MetaModel<f64>,
+        companies: &[Company],
+        products: &[Product],
+    ) -> Result<(), Box<dyn Error>> {
+        // 目标: 最小化成本 / Objective: minimize cost
+        let mut cost_coeffs = Vec::new();
+        for c in 0..companies.len() {
+            let poly = self.cost.symbol_polynomial(c);
+            for m in poly.monomials() {
+                cost_coeffs.push((m.var_index(), *m.coefficient()));
+            }
+        }
+        let cost_input = LinearObjectiveInput::minimize("cost")
+            .terms(cost_coeffs.into_iter());
+        model.set_linear_objective_input(cost_input);
+
+        // 每公司最多分配1个产品 / Each company assigned at most 1 product
+        for c in 0..companies.len() {
+            let coeffs = extract_coeffs(&self.assignment_company[c]);
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::LessEqual,
+                1.0,
+                &format!("company_{}", c),
+            )?;
+        }
+
+        // 每产品恰好分配1个公司 / Each product assigned exactly 1 company
+        for p in 0..products.len() {
+            let coeffs = extract_coeffs(&self.assignment_product[p]);
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::Equal,
+                1.0,
+                &format!("product_{}", p),
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
 /// Demo2 主函数：任务分配问题 / Demo2 main function: Assignment problem
 pub fn run() -> Result<(), Box<dyn Error>> {
     let companies = build_companies();
     let products = build_products();
 
     let mut model = MetaModel::<f64>::new("demo2");
-    let x_shape = Shape::new([companies.len(), products.len()]);
-    let x_vars: VariableCombination2D<Binary> =
-        VariableCombination2D::with_name_generator(x_shape.clone(), "x", |_index, vector| {
-            format!("{}_{}", vector[0], vector[1])
-        });
-    let x_idx = model.register_combination(&x_vars)?;
+    let transport = TransportModel::register(&mut model, &companies, &products)?;
 
-    // 成本符号 / Cost symbol
-    let cost = flat_map1("cost", &companies, |company| {
-        let c = companies.iter().position(|cc| cc.name == company.name).unwrap();
-        let monomials: Vec<_> = products.iter().enumerate()
-            .map(|(p, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                company.cost_of(p), x_idx[&[c, p]],
-            ))
-            .collect();
-        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-    }, |_, company| company.name.clone());
-    model.add_symbol_combination(&cost)?;
-
-    // 每公司分配符号 / Per-company assignment symbol
-    let assignment_company = flat_map1("assign_company", &companies, |company| {
-        let c = companies.iter().position(|cc| cc.name == company.name).unwrap();
-        let monomials: Vec<_> = products.iter().enumerate()
-            .map(|(p, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[c, p]]))
-            .collect();
-        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-    }, |_, company| company.name.clone());
-    model.add_symbol_combination(&assignment_company)?;
-
-    // 每产品分配符号 / Per-product assignment symbol
-    let assignment_product = flat_map1("assign_product", &products, |product| {
-        let p = products.iter().position(|pp| pp.name == product.name).unwrap();
-        let monomials: Vec<_> = companies.iter().enumerate()
-            .map(|(c, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[c, p]]))
-            .collect();
-        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-    }, |_, product| product.name.clone());
-    model.add_symbol_combination(&assignment_product)?;
-
-    // 目标: 最小化成本 / Objective: minimize cost
-    let mut cost_coeffs = Vec::new();
-    for c in 0..companies.len() {
-        let poly = cost.symbol_polynomial(c);
-        for m in poly.monomials() {
-            cost_coeffs.push((m.var_index(), *m.coefficient()));
-        }
-    }
-    let cost_input = LinearObjectiveInput::minimize("cost")
-        .terms(cost_coeffs.into_iter());
-    model.set_linear_objective_input(cost_input);
-
-    // 每公司最多分配1个产品 / Each company assigned at most 1 product
-    for c in 0..companies.len() {
-        let coeffs = extract_coeffs(&assignment_company[c]);
-        model.add_linear_constraint(
-            &coeffs,
-            ConstraintRelation::LessEqual,
-            1.0,
-            &format!("company_{}", c),
-        )?;
-    }
-
-    // 每产品恰好分配1个公司 / Each product assigned exactly 1 company
-    for p in 0..products.len() {
-        let coeffs = extract_coeffs(&assignment_product[p]);
-        model.add_linear_constraint(
-            &coeffs,
-            ConstraintRelation::Equal,
-            1.0,
-            &format!("product_{}", p),
-        )?;
-    }
+    transport.add_constraints(&mut model, &companies, &products)?;
 
     let output = solve_typed(model)?;
     let solution = output.solution;
@@ -156,7 +201,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
     for (c, company) in companies.iter().enumerate() {
         for (p, product) in products.iter().enumerate() {
-            if read_solution_value(&solution, x_idx[&[c, p]]) > 0.5 {
+            if read_solution_value(&solution, transport.x_idx[&[c, p]]) > 0.5 {
                 println!("assign {} -> {}", product.name, company.name);
             }
         }

@@ -3,7 +3,7 @@
 
 use num_traits::Float;
 use crate::algebra::Field;
-use super::{Point2, Point3, Vector2, Vector3};
+use super::{Point2, Point3, Point4, Vector2, Vector3};
 
 /// 创建 2D 点。
 /// Create a 2D point.
@@ -21,6 +21,11 @@ pub fn point3<S: Field + Float>(x: S, y: S, z: S) -> Point3<S> {
 /// Create a 2D vector.
 pub fn vector2<S: Field + Float>(x: S, y: S) -> Vector2<S> {
     Vector2::new(x, y)
+}
+
+/// 创建 4D 点。
+pub fn point4<S: Field + Float>(x: S, y: S, z: S, w: S) -> Point4<S> {
+    Point4::new(x, y, z, w)
 }
 
 /// 创建 3D 向量。

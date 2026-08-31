@@ -42,9 +42,9 @@ pub struct ConnectionResourceUsage {
     pub over_enabled: bool,
     /// 是否允许不足 / Whether less slack is enabled
     pub less_enabled: bool,
-    /// 待注册的连接贡献：每个时隙的 (x_model_index, coefficient) 列表
-    /// Pending connection contributions: (x_model_index, coefficient) list per slot
-    pending_contributions: Vec<Vec<(usize, f64)>>,
+    /// 待注册的连接贡献：每个时隙的 LinearMonomial 列表
+    /// Pending connection contributions: LinearMonomial list per slot
+    pending_contributions: Vec<Vec<LinearMonomial<f64>>>,
 }
 
 impl std::fmt::Debug for ConnectionResourceUsage {
@@ -76,12 +76,12 @@ impl ConnectionResourceUsage {
 
     /// 添加连接贡献（注册前调用）/ Add connection contribution (call before register)
     ///
-    /// 将任务的连接消耗关联到分配变量。
-    /// At `register()` time, `coefficient * x[model_index]` is accumulated into `quantity[slot]`.
+    /// 将任务的连接消耗关联到分配变量，直接构造 LinearMonomial。
+    /// At `register()` time, the LinearMonomial is included in `quantity[slot]`.
     pub fn add_connection(&mut self, slot: usize, x_model_index: usize, coefficient: f64) {
         assert!(slot < self.slot_count, "slot index {} out of range", slot);
         if coefficient != 0.0 {
-            self.pending_contributions[slot].push((x_model_index, coefficient));
+            self.pending_contributions[slot].push(LinearMonomial::new(coefficient, x_model_index));
         }
     }
 
@@ -108,10 +108,7 @@ impl ConnectionResourceUsage {
         self.quantity_symbols.clear();
 
         for (slot_idx, capacity) in capacities.iter().enumerate() {
-            let monomials: Vec<LinearMonomial<f64>> = self.pending_contributions[slot_idx]
-                .iter()
-                .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
-                .collect();
+            let monomials = self.pending_contributions[slot_idx].clone();
 
             // 1. 注册 quantity[slot] 中间表达式
             let quantity_id = next_gantt_symbol_id();

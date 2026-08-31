@@ -19,6 +19,7 @@ pub use service::{
     IterativeLayerAssignmentContext, IterativeLayerColumn,
     LayerAggregation, LayerAssignmentAggregation, LayerAssignmentContext,
     SolutionAnalyzer,
+    build_linear_expression_symbol, next_bpp3d_symbol_id,
 };
 
 pub use service::limits::{

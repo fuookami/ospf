@@ -28,7 +28,7 @@ impl Aggregation {
             cancel.register(model, &mut next_id)?;
         }
         for change in &self.changes {
-            change.register(model, &mut next_id)?;
+            let _change_vars = change.register(model, &mut next_id)?;
         }
 
         Ok(())

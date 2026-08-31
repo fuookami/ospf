@@ -3,7 +3,7 @@ use std::error::Error;
 use ospf_rust_multiarray::{MultiArray, Shape};
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
 use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1,
+    SymbolCombination, LinearExpressionSymbol, flat_map1_indexed,
 };
 use ospf_rust_core::variable::{UInteger, VariableCombination1D};
 
@@ -59,8 +59,8 @@ fn build_equipments() -> Vec<Equipment> {
 struct EquipmentModel {
     x: VariableCombination1D<UInteger>,
     x_idx: MultiArray<usize, Shape<1>>,
-    profit_expr: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
-    man_hours_exprs: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    profit: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    man_hours: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
 }
 
 impl EquipmentModel {
@@ -73,17 +73,16 @@ impl EquipmentModel {
         let x_idx = model.register_combination(&x)?;
 
         // Objective: profit = sum(profit_i * x_i)
-        let profit_expr = flat_map1("profit", products, |product| {
-            let i = products.iter().position(|p| p.name == product.name).unwrap();
+        let profit = flat_map1_indexed("profit", products, |i, product| {
             ospf_rust_core::symbol::flatten::Linear::new(
                 vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(product.profit, x_idx[i])],
                 0.0,
             )
         }, |_, product| product.name.clone());
-        model.add_symbol_combination(&profit_expr)?;
+        model.add_symbol_combination(&profit)?;
 
         // Constraints: man_hours per equipment
-        let man_hours_exprs = flat_map1("man_hours", equipments, |equipment| {
+        let man_hours = flat_map1("man_hours", equipments, |equipment| {
             let monomials: Vec<_> = products.iter().enumerate()
                 .filter_map(|(p, product)| {
                     let value = equipment.man_hours_by_product[p];
@@ -94,9 +93,9 @@ impl EquipmentModel {
                 .collect();
             ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
         }, |_, equipment| equipment.name.clone());
-        model.add_symbol_combination(&man_hours_exprs)?;
+        model.add_symbol_combination(&man_hours)?;
 
-        Ok(EquipmentModel { x, x_idx, profit_expr, man_hours_exprs })
+        Ok(EquipmentModel { x, x_idx, profit, man_hours })
     }
 
     fn add_constraints(
@@ -106,13 +105,13 @@ impl EquipmentModel {
         max_man_hours: f64,
     ) -> Result<(), Box<dyn Error>> {
         // Objective: maximize profit
-        let profit_coeffs = extract_coeffs(&self.profit_expr[0]);
+        let profit_coeffs = extract_coeffs(&self.profit[0]);
         model.add_linear_objective(&profit_coeffs, "profit");
         model.set_objective_category(ObjectiveCategory::Maximum);
 
         // Constraints: man_hours_i <= amount_i * max_man_hours
         for (e, equipment) in equipments.iter().enumerate() {
-            let coeffs = extract_coeffs(&self.man_hours_exprs[e]);
+            let coeffs = extract_coeffs(&self.man_hours[e]);
             model.add_linear_constraint(
                 &coeffs,
                 ConstraintRelation::LessEqual,

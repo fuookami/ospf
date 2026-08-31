@@ -3,7 +3,7 @@ use std::error::Error;
 use ospf_rust_multiarray::{MultiArray, Shape};
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
 use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1,
+    SymbolCombination, LinearExpressionSymbol, flat_map1_indexed,
 };
 use ospf_rust_core::variable::{UContinuous, VariableCombination1D, VariableRange};
 
@@ -53,7 +53,7 @@ struct ProductionModel {
     x: VariableCombination1D<UContinuous>,
     x_idx: MultiArray<usize, Shape<1>>,
     profit: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
-    usage: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    r#use: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
 }
 
 impl ProductionModel {
@@ -71,8 +71,7 @@ impl ProductionModel {
         let x_idx = model.register_combination(&x)?;
 
         // 2. 利润符号
-        let profit = flat_map1("profit", products, |p| {
-            let i = products.iter().position(|pp| pp.name == p.name).unwrap();
+        let profit = flat_map1_indexed("profit", products, |i, p| {
             ospf_rust_core::symbol::flatten::Linear::new(
                 vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(p.profit, x_idx[i])],
                 0.0,
@@ -81,16 +80,15 @@ impl ProductionModel {
         model.add_symbol_combination(&profit)?;
 
         // 3. 材料用量符号
-        let usage = flat_map1("usage", materials, |mat| {
-            let m = materials.iter().position(|mm| mm.name == mat.name).unwrap();
+        let r#use = flat_map1_indexed("usage", materials, |m, mat| {
             let monomials: Vec<_> = products.iter().enumerate().map(|(p_idx, p)| {
                 ospf_rust_core::symbol::flatten::LinearMonomial::new(p.usage_by_material[m], x_idx[p_idx])
             }).collect();
             ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
         }, |_, m| m.name.clone());
-        model.add_symbol_combination(&usage)?;
+        model.add_symbol_combination(&r#use)?;
 
-        Ok(ProductionModel { x, x_idx, profit, usage })
+        Ok(ProductionModel { x, x_idx, profit, r#use })
     }
 
     fn add_constraints(
@@ -106,7 +104,7 @@ impl ProductionModel {
 
         // 材料约束
         for (m, mat) in materials.iter().enumerate() {
-            let coeffs = extract_coeffs(&self.usage[m]);
+            let coeffs = extract_coeffs(&self.r#use[m]);
             model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, mat.available, &format!("material_{}_{}", m, mat.name))?;
         }
 

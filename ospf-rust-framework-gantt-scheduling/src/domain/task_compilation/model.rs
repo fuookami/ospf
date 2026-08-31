@@ -12,7 +12,7 @@ use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::function::{
     AndFunction, InequalityFunction, InequalityKind, MaskingFunction,
 };
-use ospf_rust_core::symbol::functions::max_min::MinMaxFunction;
+use ospf_rust_core::symbol::functions::min_max::MinMaxFunction;
 use ospf_rust_core::symbol::functions::slack::SlackFunction;
 use ospf_rust_core::symbol::LinearIntermediateSymbol;
 use ospf_rust_core::variable::{Binary, UContinuous};

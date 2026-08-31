@@ -3,9 +3,10 @@ use std::error::Error;
 use ospf_rust_multiarray::{MultiArray, Shape};
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
 use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1,
+    SymbolCombination, LinearExpressionSymbol,
+    BinaryzationFunction, MaxFunction, flat_map1_indexed,
 };
-use ospf_rust_core::variable::{Binary, UContinuous, VariableCombination1D};
+use ospf_rust_core::variable::{UInteger, VariableCombination1D};
 
 use super::common::{read_solution_value, solve_typed};
 
@@ -47,20 +48,32 @@ fn build_products() -> Vec<InvestmentProduct> {
     ]
 }
 
-/// Portfolio optimization model using VariableCombination + SymbolCombination
+/// Portfolio optimization model matching Kotlin's 4-symbol structure.
+///
+/// Kotlin symbols (4): `assignment`, `premium`, `risk`, `yield`
+///   - `assignment[i] = Binaryzation(x[i])`          -- binary indicator via Big-M
+///   - `premium[i]   = max(rate*x[i], minPrem*a[i])` -- max of two expressions
+///   - `risk  = sum(risk_rate_i / funds * x_i)`
+///   - `yield = sum(yield_rate_i * x_i - premium_i)`
+///
+/// Rust symbols (4): assignment / premium via FunctionSymbol, risk / yield via LinearExpressionSymbol
+///   - `assignment_fn`  : BinaryzationFunction (Big-M mechanism constraints auto-generated)
+///   - `premium_fn`     : MaxFunction (max lower-bound mechanism constraints auto-generated)
+///   - `risk_expr`      : LinearExpressionSymbol (same as Kotlin)
+///   - `yield_expr`     : LinearExpressionSymbol (same as Kotlin)
 struct PortfolioModel {
-    x: VariableCombination1D<UContinuous>,
-    assign: VariableCombination1D<Binary>,
-    premium: VariableCombination1D<UContinuous>,
+    x: VariableCombination1D<UInteger>,
     x_idx: MultiArray<usize, Shape<1>>,
-    premium_idx: MultiArray<usize, Shape<1>>,
-    assign_idx: MultiArray<usize, Shape<1>>,
+    /// `assignment[i] = Binaryzation(x[i])` via Big-M
+    assignment_fn: SymbolCombination<f64, BinaryzationFunction<f64>, Shape<1>>,
+    /// `premium[i] = max(rate*x[i], minPrem*a[i])`
+    premium_fn: SymbolCombination<f64, MaxFunction<f64>, Shape<1>>,
+    /// sum(yield_rate_i * x_i - premium_i)
     yield_expr: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    /// sum(x_i + premium_i) = funds (budget constraint)
     funds_expr: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    /// sum(risk_rate_i / funds * x_i) <= max_risk
     risk_expr: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
-    activation_expr: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
-    premium_rate_expr: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
-    premium_min_expr: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
 }
 
 impl PortfolioModel {
@@ -71,20 +84,69 @@ impl PortfolioModel {
     ) -> Result<Self, Box<dyn Error>> {
         let n = products.len();
 
+        // Decision variables: x[i] = allocation amount for product i
         let x = VariableCombination1D::new(Shape::new([n]), "x");
-        let assign = VariableCombination1D::new(Shape::new([n]), "a");
-        let premium = VariableCombination1D::new(Shape::new([n]), "premium");
         let x_idx = model.register_combination(&x)?;
-        let assign_idx = model.register_combination(&assign)?;
-        let premium_idx = model.register_combination(&premium)?;
+
+        // Function symbol: assignment[i] = Binaryzation(x[i]) via Big-M
+        // Mechanism constraints (x_i - M*a_i <= 0, x_i >= eps*a_i) are auto-generated.
+        let assignment_fn = SymbolCombination::new(
+            Shape::new([n]), "assignment",
+            |i, _| {
+                BinaryzationFunction::with_big_m(
+                    i as u64 + 100,
+                    &products[i].name,
+                    ospf_rust_core::symbol::flatten::Linear::new(
+                        vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[i])],
+                        0.0,
+                    ),
+                    funds,
+                )
+            },
+        );
+        model.add_symbol_combination(&assignment_fn)?;
+
+        // Function symbol: premium[i] = max(premium_rate_i * x_i, min_premium_i * a_i)
+        // a_i is the binary result variable from assignment_fn[i].
+        // MaxFunction lower-bound constraints are auto-generated.
+        let premium_fn = SymbolCombination::new(
+            Shape::new([n]), "premium",
+            |i, _| {
+                let assign_result_idx = assignment_fn.symbol_polynomial(i).monomials()[0].var_index();
+                MaxFunction::new(
+                    i as u64 + 200,
+                    &products[i].name,
+                    vec![
+                        ospf_rust_core::symbol::flatten::Linear::new(
+                            vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                                products[i].premium_rate, x_idx[i],
+                            )],
+                            0.0,
+                        ),
+                        ospf_rust_core::symbol::flatten::Linear::new(
+                            vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                                products[i].min_premium, assign_result_idx,
+                            )],
+                            0.0,
+                        ),
+                    ],
+                    false,
+                )
+            },
+        );
+        model.add_symbol_combination(&premium_fn)?;
+
+        // Compute result variable indices from function symbols
+        let premium_fn_idx: Vec<usize> = (0..n)
+            .map(|i| premium_fn.symbol_polynomial(i).monomials()[0].var_index())
+            .collect();
 
         // Objective: yield = sum(yield_rate_i * x_i - premium_i)
-        let yield_expr = flat_map1("yield", products, |product| {
-            let i = products.iter().position(|p| p.name == product.name).unwrap();
+        let yield_expr = flat_map1_indexed("yield", products, |i, product| {
             ospf_rust_core::symbol::flatten::Linear::new(
                 vec![
                     ospf_rust_core::symbol::flatten::LinearMonomial::new(product.yield_rate, x_idx[i]),
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(-1.0, premium_idx[i]),
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(-1.0, premium_fn_idx[i]),
                 ],
                 0.0,
             )
@@ -92,12 +154,11 @@ impl PortfolioModel {
         model.add_symbol_combination(&yield_expr)?;
 
         // Constraint: funds = sum(x_i + premium_i)
-        let funds_expr = flat_map1("funds", products, |product| {
-            let i = products.iter().position(|p| p.name == product.name).unwrap();
+        let funds_expr = flat_map1_indexed("funds", products, |i, _product| {
             ospf_rust_core::symbol::flatten::Linear::new(
                 vec![
                     ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[i]),
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, premium_idx[i]),
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, premium_fn_idx[i]),
                 ],
                 0.0,
             )
@@ -105,8 +166,7 @@ impl PortfolioModel {
         model.add_symbol_combination(&funds_expr)?;
 
         // Constraint: risk = sum(risk_rate_i / funds * x_i) <= max_risk
-        let risk_expr = flat_map1("risk", products, |product| {
-            let i = products.iter().position(|p| p.name == product.name).unwrap();
+        let risk_expr = flat_map1_indexed("risk", products, |i, product| {
             ospf_rust_core::symbol::flatten::Linear::new(
                 vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
                     if funds.abs() < 1e-10 { 0.0 } else { product.risk_rate / funds }, x_idx[i],
@@ -116,50 +176,10 @@ impl PortfolioModel {
         }, |_, product| product.name.clone());
         model.add_symbol_combination(&risk_expr)?;
 
-        // Per-product: activation constraint  x_i - funds * a_i <= 0
-        let activation_expr = flat_map1("activate", products, |product| {
-            let i = products.iter().position(|p| p.name == product.name).unwrap();
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[i]),
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(-funds, assign_idx[i]),
-                ],
-                0.0,
-            )
-        }, |_, product| product.name.clone());
-        model.add_symbol_combination(&activation_expr)?;
-
-        // Per-product: premium rate  premium_i - premium_rate_i * x_i >= 0
-        let premium_rate_expr = flat_map1("premium_rate", products, |product| {
-            let i = products.iter().position(|p| p.name == product.name).unwrap();
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, premium_idx[i]),
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(-product.premium_rate, x_idx[i]),
-                ],
-                0.0,
-            )
-        }, |_, product| product.name.clone());
-        model.add_symbol_combination(&premium_rate_expr)?;
-
-        // Per-product: premium minimum  premium_i - min_premium_i * a_i >= 0
-        let premium_min_expr = flat_map1("premium_min", products, |product| {
-            let i = products.iter().position(|p| p.name == product.name).unwrap();
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, premium_idx[i]),
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(-product.min_premium, assign_idx[i]),
-                ],
-                0.0,
-            )
-        }, |_, product| product.name.clone());
-        model.add_symbol_combination(&premium_min_expr)?;
-
         Ok(PortfolioModel {
-            x, assign, premium,
-            x_idx, premium_idx, assign_idx,
+            x, x_idx,
+            assignment_fn, premium_fn,
             yield_expr, funds_expr, risk_expr,
-            activation_expr, premium_rate_expr, premium_min_expr,
         })
     }
 
@@ -170,10 +190,14 @@ impl PortfolioModel {
         funds: f64,
         max_risk: f64,
     ) -> Result<(), Box<dyn Error>> {
-        // Objective: maximize yield
-        let yield_poly = self.yield_expr.symbol_polynomial(0);
-        let yield_coeffs: Vec<_> = yield_poly.monomials().iter()
-            .map(|m| (m.var_index(), *m.coefficient())).collect();
+        // Objective: maximize yield = sum(yield_rate_i * x_i - premium_i)
+        let mut yield_coeffs = Vec::new();
+        for i in 0..products.len() {
+            let poly = self.yield_expr.symbol_polynomial(i);
+            for m in poly.monomials() {
+                yield_coeffs.push((m.var_index(), *m.coefficient()));
+            }
+        }
         model.add_linear_objective(&yield_coeffs, "yield");
         model.set_objective_category(ObjectiveCategory::Maximum);
 
@@ -197,35 +221,9 @@ impl PortfolioModel {
         }
         model.add_linear_constraint(&risk_coeffs, ConstraintRelation::LessEqual, max_risk, "risk")?;
 
-        // Per-product constraints
-        for i in 0..products.len() {
-            // x_i - funds * a_i <= 0
-            let act_poly = self.activation_expr.symbol_polynomial(i);
-            let act_coeffs: Vec<_> = act_poly.monomials().iter()
-                .map(|m| (m.var_index(), *m.coefficient())).collect();
-            model.add_linear_constraint(
-                &act_coeffs, ConstraintRelation::LessEqual, 0.0,
-                &format!("activate_{}", i),
-            )?;
-
-            // premium_i - premium_rate_i * x_i >= 0
-            let pr_poly = self.premium_rate_expr.symbol_polynomial(i);
-            let pr_coeffs: Vec<_> = pr_poly.monomials().iter()
-                .map(|m| (m.var_index(), *m.coefficient())).collect();
-            model.add_linear_constraint(
-                &pr_coeffs, ConstraintRelation::GreaterEqual, 0.0,
-                &format!("premium_rate_{}", i),
-            )?;
-
-            // premium_i - min_premium_i * a_i >= 0
-            let pm_poly = self.premium_min_expr.symbol_polynomial(i);
-            let pm_coeffs: Vec<_> = pm_poly.monomials().iter()
-                .map(|m| (m.var_index(), *m.coefficient())).collect();
-            model.add_linear_constraint(
-                &pm_coeffs, ConstraintRelation::GreaterEqual, 0.0,
-                &format!("premium_min_{}", i),
-            )?;
-        }
+        // Binaryzation and Max mechanism constraints are auto-generated by
+        // BinaryzationFunction and MaxFunction during model conversion.
+        // No per-product hand-written constraints needed.
 
         Ok(())
     }
@@ -253,7 +251,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     for i in 0..product_count {
         let amount = read_solution_value(&solution, portfolio.x_idx[i]);
         if amount > 0.0 {
-            let premium = read_solution_value(&solution, portfolio.premium_idx[i]);
+            let premium_result_idx = portfolio.premium_fn.symbol_polynomial(i).monomials()[0].var_index();
+            let premium = read_solution_value(&solution, premium_result_idx);
             println!(
                 "product {} amount {:.2}, premium {:.2}",
                 products[i].name, amount, premium

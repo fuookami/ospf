@@ -3,7 +3,7 @@
 
 use num_traits::Float;
 use crate::algebra::Field;
-use crate::geometry::{Point2, Point3};
+use crate::geometry::{Point2, Point3, Point4};
 
 /// 将 f64 值转换为泛型浮点类型，失败时 panic。
 /// Convert an f64 value to a generic float type, panicking on failure.
@@ -23,6 +23,11 @@ pub(crate) fn one_point2<S: Field + Float>() -> Point2<S> {
 pub(crate) fn one_point3<S: Field + Float>() -> Point3<S> {
     let one = S::one();
     Point3::new(one, one, one)
+}
+
+pub(crate) fn one_point4<S: Field + Float>() -> Point4<S> {
+    let one = S::one();
+    Point4::new(one, one, one, one)
 }
 
 /// 取小数部分（x - floor(x)）。

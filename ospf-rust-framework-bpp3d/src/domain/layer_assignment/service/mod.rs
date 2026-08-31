@@ -19,6 +19,7 @@ use super::model::Bpp3dModelComponent;
 use crate::domain::item::{Bpp3dDemandKey, Bpp3dDemandMode, BinLayer, BinType};
 
 
+include!("symbol_builder.rs");
 include!("value_adapter.rs");
 include!("assignment.rs");
 include!("load.rs");

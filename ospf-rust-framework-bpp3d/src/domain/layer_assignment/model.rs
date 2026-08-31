@@ -7,8 +7,17 @@
 //!
 //! - `VariableArray1`: 一维变量集合 / 1D variable array
 //! - `VariableArray2`: 二维变量集合 / 2D variable array
-//! - `ExpressionArray1`: 一维线性表达式集合 / 1D linear expression array
+//! - `ExpressionArray1`: 一维线性表达式集合（已弃用，保留向后兼容） / 1D linear expression array (deprecated, kept for backward compatibility)
 //! - `SolutionExtractor`: 结果提取辅助 / Solution extraction helper
+//!
+//! # Phase J: 线性表达式符号 / Linear Expression Symbols
+//!
+//! 中间表达式现在通过 `LinearExpressionSymbol` 注册到模型，而非使用 `ExpressionArray1`。
+//! 参见 `build_linear_expression_symbol` 和 `ImpreciseAssignment::build_symbols`。
+//!
+//! Intermediate expressions are now registered to the model via `LinearExpressionSymbol`,
+//! replacing `ExpressionArray1`. See `build_linear_expression_symbol` and
+//! `ImpreciseAssignment::build_symbols`.
 
 use std::collections::HashMap;
 use std::fmt::Debug;
