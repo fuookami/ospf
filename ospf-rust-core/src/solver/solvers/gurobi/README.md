@@ -49,4 +49,4 @@ to Gurobi 11/12, replace `gurobi10` with `gurobi11`/`gurobi12`.
 The shared native contract also checks report identity, best bound, gap, solution
 values, and constraint residuals. A missing license is a `LICENSE` error (including
 native code `10009`); it must not be reported as a successful environment skip.
-See [`docs/solver-native-matrix.md`](../../../../docs/solver-native-matrix.md).
+See the [native validation matrix](../../../../README.md#native-validation-matrix) in the core README.

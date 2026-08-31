@@ -15,7 +15,7 @@ use super::concept::*;
 use super::dummy_index::{DummyIndex, DummyIndexIterator, IteratorVector};
 use super::error::{DimensionMismatchingError, IndexCalculationError, OutOfShapeError};
 use super::map_index::MapIndex;
-use cc_traits::Len;
+use ospf_rust_base::collection_traits::Len;
 use ospf_rust_base::Indices;
 use ospf_rust_base::error::*;
 use std::fmt::{Debug, Display, Formatter};

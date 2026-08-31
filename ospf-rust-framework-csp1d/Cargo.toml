@@ -1,10 +1,13 @@
 [package]
 name = "ospf-rust-framework-csp1d"
-version = "0.1.0"
+version = "1.1.0"
 edition = "2024"
 description = "Operations research modeling framework - CSP1D domain module"
 authors = ["fuookami <wfuookami@gmail.com>"]
 license.workspace = true
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "README.md"
 
 [features]
 default = []
@@ -22,17 +25,17 @@ scip-from-source = ["ospf-rust-framework/scip-from-source"]
 scip-quadratic = ["ospf-rust-framework/scip-quadratic"]
 
 [dependencies]
-ospf-rust-base = { path = "../ospf-rust-base" }
-ospf-rust-core = { path = "../ospf-rust-core" }
-ospf-rust-framework = { path = "../ospf-rust-framework" }
-ospf-rust-quantities = { path = "../ospf-rust-quantities" }
+ospf-rust-base = { path = "../ospf-rust-base", version = "1.1.0" }
+ospf-rust-core = { path = "../ospf-rust-core", version = "1.1.0" }
+ospf-rust-framework = { path = "../ospf-rust-framework", version = "1.1.0" }
+ospf-rust-quantities = { path = "../ospf-rust-quantities", version = "1.1.0" }
 
-serde = { version = "1", features = ["derive"], optional = true }
-thiserror = "1"
-paste = "1"
-log = "0.4"
+serde = { version = "1.0.229", features = ["derive"], optional = true }
+thiserror = "2.0.20"
+paste = "1.0.15"
+log = "0.4.34"
 num-traits = "0.2.19"
 
 [dev-dependencies]
-ospf-rust-framework = { path = "../ospf-rust-framework" }
-serde_json = "1"
+ospf-rust-framework = { path = "../ospf-rust-framework", version = "1.1.0" }
+serde_json = "1.0.151"

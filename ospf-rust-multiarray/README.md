@@ -236,7 +236,7 @@ let value = array[&vec![1, 2]];
 ### Iteration
 
 ```rust
-use cc_traits::Iter;
+use ospf_rust_base::collection_traits::Iter;
 
 // Iterate over elements
 for &value in array.iter() {

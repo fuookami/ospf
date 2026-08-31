@@ -384,7 +384,6 @@ cargo check -p ospf-rust-base --features arrayvec
 |------|------|------|
 | `strum` | 0.28.0 | `ErrorCode` 的枚举派生宏 |
 | `paste` | 1.0.15 | `error_enum!` 的宏辅助工具 |
-| `cc-traits` | git | `ChunkedVec` 的集合 trait |
 | `arrayvec` | 0.7.6 | 固定容量向量（可选） |
 
 ## 许可证

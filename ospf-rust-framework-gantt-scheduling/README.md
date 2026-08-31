@@ -168,8 +168,8 @@ The migration target, checklist, and acceptance criteria should stay aligned wit
 
 Branch-and-price exact gates consume the shared `SolveReport` and certificate
 helpers. An incumbent from a limit is retained as a candidate only; it does not
-close the node bound. See the [unified solve contract](../../docs/solve-contract.md)
-and [native matrix](../../docs/solver-native-matrix.md).
+close the node bound. See the [unified solve contract](../../ospf-rust-core/README.md#unified-solve-contract)
+and [native matrix](../../ospf-rust-core/README.md#native-validation-matrix).
 
 ## Related Modules
 

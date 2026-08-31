@@ -1,6 +1,6 @@
 [package]
 name = "ospf-rust-base"
-version = "0.1.0"
+version = "1.1.0"
 edition = "2024"
 authors = ["fuookami <wfuookami@gmail.com>"]
 description = "Base definition for ospf-rust."
@@ -8,13 +8,12 @@ license = "MIT"
 
 homepage = "https://github.com/fuookami/ospf-rust"
 repository = "https://github.com/fuookami/ospf-rust"
-readme = "../README.md"
+readme = "README.md"
 
 [dependencies]
 strum = { version = "0.28.0", features = ["derive"] }
 paste = "1.0.15"
-cc-traits = { git = "https://github.com/fuookami/cc-traits" }
-arrayvec = { version = "0.7.6", optional = true }
+arrayvec = { version = "0.7.8", optional = true }
 
 [features]
 arrayvec = ["dep:arrayvec"]

@@ -30,7 +30,7 @@ use super::multi_array_view::MultiArrayView;
 use super::shape::{
     AbstractShape, DynShape, Shape1, Shape2, Shape3, Shape4, ShapeAccessOrderExt, ShapeIndicesIter,
 };
-use cc_traits::{Collection, CollectionMut, CollectionRef, Iter, IterMut, Len};
+use ospf_rust_base::collection_traits::{Collection, CollectionMut, CollectionRef, Iter, IterMut, Len};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
@@ -959,7 +959,12 @@ where
         S: 'a,
         C: 'a;
 
-    cc_traits::covariant_item_ref!();
+    fn upcast_item_ref<'short, 'long: 'short>(r: Self::ItemRef<'long>) -> Self::ItemRef<'short>
+    where
+        Self: 'long,
+    {
+        r
+    }
 }
 
 impl<T, S, C> CollectionMut for MultiArray<T, S, C>
@@ -974,7 +979,12 @@ where
         S: 'a,
         C: 'a;
 
-    cc_traits::covariant_item_mut!();
+    fn upcast_item_mut<'short, 'long: 'short>(r: Self::ItemMut<'long>) -> Self::ItemMut<'short>
+    where
+        Self: 'long,
+    {
+        r
+    }
 }
 
 impl<T, S, C> Len for MultiArray<T, S, C>

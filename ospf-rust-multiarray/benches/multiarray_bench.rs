@@ -9,7 +9,7 @@
 //! 1. 编译时维度 vs 运行时维度
 //! 2. 行优先 vs 列优先存储顺序
 
-use cc_traits::Iter;
+use ospf_rust_base::collection_traits::Iter;
 use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use ospf_rust_multiarray::*;
 

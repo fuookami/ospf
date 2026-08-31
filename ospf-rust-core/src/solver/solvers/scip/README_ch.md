@@ -6,6 +6,8 @@
 
 `ospf-rust-core` 在 `scip` feature 下通过 `russcip/scip-sys` 绑定 SCIP。  
 运行测试前，必须让构建系统能找到 SCIP 头文件与库文件。
+当前 workspace 将 `russcip` 固定为 `0.9.1`，用于兼容 SCIP 9.x。只有在所选
+`russcip` feature 提供匹配 SCIP 构建时，才应使用 `scip-bundled` 或 `scip-from-source`。
 
 ## CP 边界
 
@@ -102,43 +104,3 @@ let solver = SCIPSolver::with_config(
 ```
 
 说明：在 framework 的 `ColumnGenerationSolver` 接口中，`UserInterrupt` 会以上层错误结果返回。
-
-## CI 首轮排查清单
-
-若 `.github/workflows/scip-bundled.yml` 首轮失败，按以下顺序排查：
-
-1. `Install system deps` 步骤是否成功。
-2. `Resolve LIBCLANG_PATH` 是否输出 `Resolved LIBCLANG_SO=...`。
-3. `scip-sys` 日志是否显示 bundled SCIP 下载完成。
-4. native callback 测试中包含 `UserInterrupt` 的错误文本在部分路径是预期行为；仅异常 panic/assert 才视为回归。
-5. 若仍提示找不到 libclang，补充输出：
-
-```bash
-ldconfig -p | grep clang || true
-find /usr/lib -type f -name 'libclang.so*' | head -n 20
-```
-
-## CI 工作流
-
-1. `.github/workflows/scip-bundled.yml`  
-   - 在 `ubuntu-latest` 上执行，验证 bundled SCIP 路径。
-2. `.github/workflows/scip-non-bundled-self-hosted.yml`  
-   - 手动触发（`workflow_dispatch`），并通过 `target_os` 选择 `linux`/`windows` 的 `self-hosted` runner。  
-   - 要求 runner 预先配置 `SCIPOPTDIR`（可选配置 `LIBCLANG_PATH`）。  
-   - `linux` 路径：先执行 `check_non_bundled_env.sh`，再执行 `run_non_bundled_regression.sh`。  
-   - `windows` 路径：先执行 `check_non_bundled_env.ps1`，再执行 `run_non_bundled_regression.ps1`。
-
-### 终端触发（GitHub API）
-
-可通过 PowerShell 脚本 + Token 直接触发：
-
-```powershell
-$env:GITHUB_TOKEN = "<具备 actions write 权限的 token>"
-.\ospf-rust-core\src\solver\solvers\scip\dispatch_non_bundled_ci.ps1 -TargetOS windows -Ref master -Wait
-```
-
-若存在 Linux self-hosted runner，可改为 `-TargetOS linux`。
-
-共享 native contract 会区分真实 SCIP 执行与仅 feature 编译，并比较 report identity、bound、solution
-和 residual。未请求原生执行时，缺少或无法加载 SCIP 安装只能标记为 `unsupported`；请求的 native gate
-失败时必须显式失败。详见 [`docs/solver-native-matrix_ch.md`](../../../../docs/solver-native-matrix_ch.md)。

@@ -2,7 +2,7 @@
 
 :us: English | :cn: [简体中文](README_ch.md)
 
-`ospf-rust-framework-network-scheduling` provides generic directed network/flow primitives and a VRPTW branch-and-price pipeline. This README is the long-lived delivery and validation contract for the crate. The implementation uses `ospf-kotlin/ospf-kotlin-framework-network-scheduling` as its mathematical reference and consumes the workspace [unified solve contract](../docs/solve-contract.md).
+`ospf-rust-framework-network-scheduling` provides generic directed network/flow primitives and a VRPTW branch-and-price pipeline. This README is the long-lived delivery and validation contract for the crate. The implementation uses `ospf-kotlin/ospf-kotlin-framework-network-scheduling` as its mathematical reference and consumes the workspace [unified solve contract](../ospf-rust-core/README.md#unified-solve-contract).
 
 ## Delivery status
 
@@ -106,7 +106,7 @@ The ordinary route-generation and solver-facing model still use `f64` because th
 ## Related documentation
 
 - [Chinese README](README_ch.md)
-- [Unified solve contract](../docs/solve-contract.md)
-- [Solver native validation matrix](../docs/solver-native-matrix.md)
-- [Solver source traceability](../docs/solver-traceability.md)
+- [Unified solve contract](../ospf-rust-core/README.md#unified-solve-contract)
+- [Solver native validation matrix](../ospf-rust-core/README.md#native-validation-matrix)
+- [Solver source traceability](../ospf-rust-core/README.md#source-traceability)
 - [Workspace README](../README.md)

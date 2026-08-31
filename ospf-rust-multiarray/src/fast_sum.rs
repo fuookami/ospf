@@ -15,7 +15,7 @@
 //!   Compatible with symbolic types like `Linear<f64>`, `Quadratic<f64>`
 
 use crate::{AbstractShape, DynShape, MultiArray, MultiArrayCollection, Shape};
-use cc_traits::CollectionRef;
+use ospf_rust_base::collection_traits::CollectionRef;
 use num_traits::Zero;
 use std::ops::AddAssign;
 

@@ -26,10 +26,7 @@
 //! assert_eq!(vec[1], 2);
 //! ```
 
-use cc_traits::{
-    Collection, CollectionMut, CollectionRef, Iter, IterMut, Len, covariant_item_mut,
-    covariant_item_ref,
-};
+use crate::collection_traits::{Collection, CollectionMut, CollectionRef, Iter, IterMut, Len};
 use std::ops::{Index, IndexMut};
 
 /// 默认块大小（元素数量），对于典型类型约为 4KB / sizeof(T) / Default chunk size in elements (4KB / sizeof(T) for typical types)
@@ -451,7 +448,7 @@ impl<'a, T> Iterator for ChunkedVecIterMut<'a, T> {
 
 impl<'a, T> ExactSizeIterator for ChunkedVecIterMut<'a, T> {}
 
-// Implement cc_traits for ChunkedVec
+// Implement collection traits for ChunkedVec / 为 ChunkedVec 实现集合 trait
 
 impl<T> Collection for ChunkedVec<T> {
     type Item = T;
@@ -474,7 +471,12 @@ impl<T> CollectionRef for ChunkedVec<T> {
         T: 'a,
         Self: 'a;
 
-    covariant_item_ref!();
+    fn upcast_item_ref<'short, 'long: 'short>(r: Self::ItemRef<'long>) -> Self::ItemRef<'short>
+    where
+        Self: 'long,
+    {
+        r
+    }
 }
 
 impl<T> CollectionMut for ChunkedVec<T> {
@@ -484,7 +486,12 @@ impl<T> CollectionMut for ChunkedVec<T> {
         T: 'a,
         Self: 'a;
 
-    covariant_item_mut!();
+    fn upcast_item_mut<'short, 'long: 'short>(r: Self::ItemMut<'long>) -> Self::ItemMut<'short>
+    where
+        Self: 'long,
+    {
+        r
+    }
 }
 
 impl<T> Iter for ChunkedVec<T> {

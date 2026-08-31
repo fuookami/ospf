@@ -47,4 +47,4 @@ cargo test -p ospf-rust-core gurobi_stage_callback_integration --features gurobi
 
 共享 native contract 还会比较 report identity、best bound、gap、solution value 和 constraint residual。
 缺少许可证属于 `LICENSE` 错误（包括原生错误码 `10009`），不得当作环境跳过后成功。详见
-[`docs/solver-native-matrix_ch.md`](../../../../docs/solver-native-matrix_ch.md)。
+core README 中的 [Solver 原生验收矩阵](../../../../README_ch.md#solver-原生验收矩阵)。

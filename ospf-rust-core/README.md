@@ -93,11 +93,11 @@ ospf-rust-core = { path = "path/to/ospf-rust-core" }
 ### Unified Solve API
 
 The full report, proof, cancellation, identity, and legacy-migration contract is documented in
-[`docs/solve-contract.md`](../docs/solve-contract.md).
+the [Unified Solve Contract](#unified-solve-contract) below.
 
 Native feature and license evidence follows the
-[`solver-native-matrix.md`](../docs/solver-native-matrix.md) procedure. Source
-commit coverage is recorded in [`solver-traceability.md`](../docs/solver-traceability.md);
+[Native Validation Matrix](#native-validation-matrix) below. Source
+commit coverage is recorded in [Source Traceability](#source-traceability);
 feature compilation alone is not native solver evidence.
 
 For the most common path, call `MetaModel` directly:
@@ -168,9 +168,139 @@ async fn solve_in_background<S: Solver + 'static>(
 
 ### Conditional Function Contract
 
-The conditional-function names, three-valued relation semantics, explicit-bound requirement,
-and legacy compatibility boundary are documented in
-[`docs/conditional-function-contract.md`](../docs/conditional-function-contract.md).
+Conditional functions use the following stable names: `IfFunction` is the legacy ternary
+expression, `IfElseFunction` is the preferred explicit-binary ternary form,
+`ConditionalIndicatorFunction` is the registerable relation indicator, and
+`ConditionalIfFunction` is the non-registering classifier. `semantic::if_` and
+`semantic::if_named` construct range-driven indicators; `if_legacy` preserves the old
+threshold behavior. `IfInFunction` remains discrete-set membership, while
+`IfInRangeFunction` and `RegisterableIfInRangeFunction` describe and register a closed
+range. `ConditionalThenFunction` and `ConditionalImplyFunction` are the range-driven
+registerable forms; `IfThenConstraintFunction` and `imply_constraint` remain legacy
+Big-M compatibility entries. `SigmoidStepFunction` is the registerable relation-step
+form and `SigmoidFunction` remains the continuous PWL form.
+
+For `d = lhs - rhs`, relation indicators are defined only outside the undefined gap:
+
+| Relation | True | False |
+| --- | --- | --- |
+| `Greater` | `d >= g` | `d <= 0` |
+| `GreaterEqual` | `d >= 0` | `d <= -g` |
+| `Less` | `d <= -g` | `d >= 0` |
+| `LessEqual` | `d <= 0` | `d >= g` |
+
+`g` is the positive business `strict_boundary`, not a solver tolerance. Registerable
+indicators never infer Big-M: callers provide finite ordered bounds covering the
+condition polynomial, and ranges wholly inside the undefined gap are rejected. A
+`None` result from `evaluate` may mean either undefined input or unavailable input;
+use `classify` when that distinction matters. Non-constant conditional branches also
+require explicit finite bounds.
+
+Discrete conditions derive and validate their lattice proof from linear coefficients
+and registered token metadata: participating variables are integer, coefficients are
+finite integers, `delta` is their gcd, and the constant is normalized modulo `delta`.
+`MetaModel::add_symbols` and `register_combination` are atomic transactions; failed
+registration restores tokens, symbols, constraints, and cache bindings. Third-party
+`MutableTokenList`/`MutableTokenTable` implementations must provide an explicit atomic
+batch implementation and should use `try_add_tokens` to observe validation failures.
+Concurrent token collections expose borrowed trait views through a held `read()` guard.
+Legacy Big-M helpers reject non-finite, zero, and negative values. `IfInRangeFunction`
+accepts one shared variable with finite, ordered side bounds.
+
+## Unified Solve Contract
+
+New solver-facing code consumes `solver::SolveReport<V>`. `SolverOutput`,
+`FeasibleSolution`, `SolveResult`, and `SerializedSolution` are compatibility projections
+and must not be used to infer proof or cancellation semantics. A report keeps
+`problem_status`, `termination_reason`, validated incumbent, proof, statistics,
+diagnostics, provenance, fingerprints, and trace separate. A feasible report requires
+an incumbent; infeasible/unbounded reports cannot carry one; an optimality proof requires
+completed termination and a reliable complete certificate. An incumbent at a limit or
+interruption is a candidate only and never closes an exact bound.
+
+`SolverErrorClass` is the stable error boundary: `INPUT`, `MODELING`, `ENVIRONMENT`,
+`LICENSE`, `CALLBACK`, `BACKEND`, `PARSING`, `NUMERICAL`, `INTERNAL_CONTRACT`,
+`TERMINAL_PROJECTION`, and `UNSUPPORTED`. Cancellation is a normal report terminal;
+legacy methods may project it to `SolverError::Cancelled`. Each solve owns an idempotent
+`SolveHandle`; async wrappers use Tokio's blocking pool, and `cancel_and_wait` is the
+resource-release boundary. Reports carry deterministic model, configuration, and
+solver-environment fingerprints. Callback registration is provenance and is marked
+non-replayable. Remote reports/checkpoints preserve schema, run/attempt identity,
+parent links, artifact digest, provenance, fingerprints, proof, incumbent, and the
+cancellation chain; unknown schemas or mismatches are rejected before resume.
+
+The exact native backend scope is Gurobi and SCIP. Feature compilation proves wiring
+only; native capability requires a matching library, runtime, and license probe. Gurobi
+license failures (including code `10009`) are `LICENSE`; missing libraries are
+`ENVIRONMENT`.
+
+### Native Validation Matrix
+
+`cargo check` is compile evidence only. Native tests that cannot load their backend are
+`unsupported` (or `failed` when requested), and ignored tests require
+`-- --include-ignored`. Golden/replay comparisons include status, termination,
+incumbent objective, best bound, gap, solution values, residuals, fingerprints, and
+provenance. The executable gates are:
+
+| Scope | Command shape |
+| --- | --- |
+| Core contract | `cargo test -p ospf-rust-core --test native_contract_suite` |
+| Gurobi | same target with `--features gurobi10`/`gurobi11`/`gurobi12` |
+| SCIP | same target with `--features scip` (or explicitly bundled/from-source) |
+| Release terminals | `native_release_matrix` with a native backend and `-- --include-ignored` |
+| Framework reports | `cargo test -p ospf-rust-framework --no-default-features` and `--features async`/`remote-solver` |
+| Network and Demo5 | crate README validation commands plus the selected native feature |
+
+### CP Capability Boundary
+
+The CP AST uses exact `i64` values and immutable snapshots. Gurobi and SCIP expose an
+exact finite MIP-backed `ExactLowering` facade, not native CP search. Safe linear
+integer/binary variables, positive-literal indicators, SOS1, status metadata,
+cancellation, event handlers, and scoped probing are native only when their explicit
+probe succeeds. Reified Boolean forms, sparse domains, AllDifferent, Element, tables,
+and finite NoOverlap are `ExactLowering`; Circuit, Automaton, Reservoir, incremental
+sessions, optional/variable-duration native intervals, and native CP conflict graphs
+are `Unsupported`. Raw Cumulative probing is `Conditional` and is not production
+capability evidence. Missing libraries, licenses, bundled downloads, or source builds
+remain `not executed/unsupported`, never a compile-only pass.
+
+### Terminal-Loss Inventory
+
+The report layer replaces the former loss of terminal information at every boundary:
+
+| Boundary | Current owner |
+| --- | --- |
+| Core status/value projection | `ProblemStatus`, `TerminationReason`, `SolveReport`, validated builders, and explicit legacy projections |
+| Column generation/Benders | report aggregation and optimal-LP/dual/Farkas certificate gates |
+| Branch-and-Price | node conclusion, pricing-complete flag, inherited/certified bound, and certificate gates |
+| Combinatorial wrappers | parent/child attempt identity, completion linearization, loser traces, and cancellation snapshots |
+| Remote/checkpoint | versioned DTOs, artifact/fingerprint validation, provenance, parent attempt, and cancellation origin |
+
+### Source Traceability
+
+The unified migration tracks these eleven immutable Kotlin source commits and their Rust
+owners: `b8d67c96` (report/progress), `5f616747` (termination propagation), `25bcb176`
+(Benders/branch-and-price proof gates), `32f7d5aa` (LP infeasibility), `e0bca1eb`
+(identity/fingerprint/remote/checkpoint), `4efac629` (capability/provenance),
+`58930764` (aggregate provenance), `e5089f18` (aggregate identity), `b9db32a8`
+(in-flight cancellation), `ae0b01fb` (completion freeze), and `b5b83d7d`
+(parallel cancellation tests). Core report, proof, diagnostics, identity, fingerprint,
+progress, cancellation, and checkpoint are implemented here; Gurobi/SCIP are feature
+gated; framework combinatorial/Benders/remote paths are implemented in
+`ospf-rust-framework`; CPLEX, COPT, Hexaly, MindOPT, MOSEK, and native CP search are
+explicitly excluded. Full manifests remain reproducible with `git show --no-renames`
+against the immutable hashes; generated command output is not versioned. The complete
+hashes, in order, are `b8d67c96be2d29e6477838adbbb3ee6fec27ddf5`,
+`5f61674788ae9543c4769b1eacbc74d24296012b`,
+`25bcb176ebe3c4380f84eac6c3777f930f9ba47e`,
+`32f7d5aa76fb9f7f5982d856497b480bbf7f3b3f`,
+`e0bca1eb4d04e99fa8048deb9b2bb1731a1ac6b4`,
+`4efac629a57571497695352cf8448980be4e418b`,
+`589307646757d7f43afda299b866b2cfcf874ac2`,
+`e5089f1886b0fb924b8f721966cf1bb511be7395`,
+`b9db32a86af51e8ea976b81c2c15cbc3126dd006`,
+`ae0b01fbb516a4fbd834adda5643b9a16d4b8041`, and
+`b5b83d7d6f470c363e1044cd6b0266604ad5aaa1`.
 
 ### MetaModel Shortcut APIs
 
@@ -299,8 +429,6 @@ use ospf_rust_core::solver::backend::{GurobiSolver, ScipSolver};
 cargo check -p ospf-rust-core
 cargo test -p ospf-rust-core --no-run
 cargo test -p ospf-rust-core --lib
-bash scripts/phase5_gate.sh
-powershell -File scripts/phase5_gate.ps1
 ```
 
 ## Dependencies

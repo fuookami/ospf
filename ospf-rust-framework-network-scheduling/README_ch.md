@@ -2,7 +2,7 @@
 
 :us: [English](README.md) | :cn: 简体中文
 
-`ospf-rust-framework-network-scheduling` 提供通用有向网络/流原语和 VRPTW 分支定价主链。本 README 是该 crate 长期维护的交付与验收合同。实现以 `ospf-kotlin/ospf-kotlin-framework-network-scheduling` 作为数学参考，并消费 workspace 的[统一求解合同](../docs/solve-contract_ch.md)。
+`ospf-rust-framework-network-scheduling` 提供通用有向网络/流原语和 VRPTW 分支定价主链。本 README 是该 crate 长期维护的交付与验收合同。实现以 `ospf-kotlin/ospf-kotlin-framework-network-scheduling` 作为数学参考，并消费 workspace 的[统一求解合同](../ospf-rust-core/README_ch.md#统一求解合同)。
 
 ## 交付状态
 
@@ -104,7 +104,7 @@ pwsh -NoProfile -Command "cargo test -p ospf-rust-example --features demo5-scip-
 ## 相关文档
 
 - [English README](README.md)
-- [统一求解合同](../docs/solve-contract_ch.md)
-- [Solver 原生验收矩阵](../docs/solver-native-matrix_ch.md)
-- [Solver source traceability](../docs/solver-traceability_ch.md)
+- [统一求解合同](../ospf-rust-core/README_ch.md#统一求解合同)
+- [Solver 原生验收矩阵](../ospf-rust-core/README_ch.md#solver-原生验收矩阵)
+- [Solver source traceability](../ospf-rust-core/README_ch.md#source-追踪)
 - [Workspace README](../README_ch.md)

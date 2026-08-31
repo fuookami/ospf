@@ -236,7 +236,7 @@ let value = array[&vec![1, 2]];
 ### 迭代
 
 ```rust
-use cc_traits::Iter;
+use ospf_rust_base::collection_traits::Iter;
 
 // 遍历元素
 for &value in array.iter() {

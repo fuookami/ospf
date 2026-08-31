@@ -1,10 +1,13 @@
 [package]
 name = "ospf-rust-framework-network-scheduling"
-version = "0.1.0"
+version = "1.1.0"
 edition = "2024"
 description = "Generic network flow and VRPTW branch-and-price scheduling framework"
 authors = ["fuookami <wfuookami@gmail.com>"]
 license.workspace = true
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "README.md"
 
 [features]
 default = []
@@ -21,17 +24,17 @@ scip-from-source = ["scip", "ospf-rust-core/scip-from-source", "ospf-rust-framew
 scip-quadratic = ["scip", "ospf-rust-core/scip-quadratic", "ospf-rust-framework/scip-quadratic"]
 
 [dependencies]
-ospf-rust-base = { path = "../ospf-rust-base" }
-ospf-rust-math = { path = "../ospf-rust-math" }
-ospf-rust-quantities = { path = "../ospf-rust-quantities" }
-ospf-rust-core = { path = "../ospf-rust-core" }
-ospf-rust-framework = { path = "../ospf-rust-framework" }
-ospf-rust-framework-gantt-scheduling = { path = "../ospf-rust-framework-gantt-scheduling" }
+ospf-rust-base = { path = "../ospf-rust-base", version = "1.1.0" }
+ospf-rust-math = { path = "../ospf-rust-math", version = "1.1.0" }
+ospf-rust-quantities = { path = "../ospf-rust-quantities", version = "1.1.0" }
+ospf-rust-core = { path = "../ospf-rust-core", version = "1.1.0" }
+ospf-rust-framework = { path = "../ospf-rust-framework", version = "1.1.0" }
+ospf-rust-framework-gantt-scheduling = { path = "../ospf-rust-framework-gantt-scheduling", version = "1.1.0" }
 
-serde = { version = "1", features = ["derive"], optional = true }
-bigdecimal = { version = "0.4", optional = true }
-thiserror = "1"
-time = { version = "0.3", features = ["std", "macros"] }
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"], optional = true }
+serde = { version = "1.0.229", features = ["derive"], optional = true }
+bigdecimal = { version = "0.4.10", optional = true }
+thiserror = "2.0.20"
+time = { version = "0.3.55", features = ["std", "macros"] }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "sync", "time"], optional = true }
 
 [dev-dependencies]

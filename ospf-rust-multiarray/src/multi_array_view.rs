@@ -31,7 +31,7 @@ use super::error::{DimensionMismatchingError, MappingIndexError, RepeatMappingIn
 use super::map_index::MapIndex;
 use super::multi_array::{MultiArray, MultiArrayCollection, MultiArrayToView};
 use super::shape::{AbstractShape, DynShape};
-use cc_traits::{Collection, CollectionMut, CollectionRef, Iter, IterMut, Len};
+use ospf_rust_base::collection_traits::{Collection, CollectionMut, CollectionRef, Iter, IterMut, Len};
 use ospf_rust_base::collection::Indices;
 use ospf_rust_base::container::Vec;
 use ospf_rust_base::error::*;
@@ -582,7 +582,12 @@ where
         Self: 'b,
         T: 'b;
 
-    cc_traits::covariant_item_ref!();
+    fn upcast_item_ref<'short, 'long: 'short>(r: Self::ItemRef<'long>) -> Self::ItemRef<'short>
+    where
+        Self: 'long,
+    {
+        r
+    }
 }
 
 impl<'a, T, S, AO, C> Len for MultiArrayView<'a, T, S, AO, C>

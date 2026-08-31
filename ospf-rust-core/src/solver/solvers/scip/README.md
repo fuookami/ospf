@@ -6,6 +6,9 @@
 
 `ospf-rust-core` uses `russcip/scip-sys` under the `scip` feature.  
 You must make SCIP headers and libraries discoverable before running tests.
+This workspace pins `russcip` to `0.9.1`, which is the compatibility path for SCIP 9.x.
+Use `scip-bundled` or `scip-from-source` only when the selected `russcip` feature provides
+the matching SCIP build.
 
 ## CP Boundary
 
@@ -102,45 +105,3 @@ let solver = SCIPSolver::with_config(
 ```
 
 Note: in framework `ColumnGenerationSolver`, `UserInterrupt` is surfaced as an error result.
-
-## CI First-Run Checklist
-
-If `.github/workflows/scip-bundled.yml` fails on first run, check in this order:
-
-1. `Install system deps` completed successfully.
-2. `Resolve LIBCLANG_PATH` prints `Resolved LIBCLANG_SO=...`.
-3. `scip-sys` logs show bundled SCIP download completed.
-4. Failures containing `UserInterrupt` in native-callback tests can be expected in error text checks; only unexpected panic/assert indicates regression.
-5. If libclang is still not found, print:
-
-```bash
-ldconfig -p | grep clang || true
-find /usr/lib -type f -name 'libclang.so*' | head -n 20
-```
-
-## CI Workflows
-
-1. `.github/workflows/scip-bundled.yml`  
-   - Runs on `ubuntu-latest` and validates bundled SCIP path.
-2. `.github/workflows/scip-non-bundled-self-hosted.yml`  
-   - Manual trigger (`workflow_dispatch`) on `self-hosted` runner with `target_os` input (`linux`/`windows`).  
-   - Requires runner-level `SCIPOPTDIR` (and optionally `LIBCLANG_PATH`).  
-   - `linux` path executes `check_non_bundled_env.sh` then `run_non_bundled_regression.sh`.  
-   - `windows` path executes `check_non_bundled_env.ps1` then `run_non_bundled_regression.ps1`.
-
-### Trigger From Terminal (GitHub API)
-
-Use PowerShell script with token:
-
-```powershell
-$env:GITHUB_TOKEN = "<token-with-actions-write>"
-.\ospf-rust-core\src\solver\solvers\scip\dispatch_non_bundled_ci.ps1 -TargetOS windows -Ref master -Wait
-```
-
-Optional: use `-TargetOS linux` when Linux self-hosted runner is available.
-
-The shared native contract distinguishes real SCIP execution from feature-only
-compilation and compares report identity, bounds, solutions, and residuals. A
-missing or unloadable SCIP installation is `unsupported` only when the matrix does
-not request native execution; a requested native gate fails explicitly.
-See [`docs/solver-native-matrix.md`](../../../../docs/solver-native-matrix.md).

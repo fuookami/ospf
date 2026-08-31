@@ -136,15 +136,15 @@ fn run_column_generation<S: ColumnGenerationSolver>(
 
 ## Remote Solver 边界
 
-共享的 report、proof、取消合同见 [`../docs/solve-contract_ch.md`](../docs/solve-contract_ch.md)。
+共享的 report、proof、取消合同见 [core 统一求解合同](../ospf-rust-core/README_ch.md#统一求解合同)。
 
 Remote checkpoint recovery 保留旧的 `CheckpointResumeExpectation` 和 `validate_resume` 兼容投影。
 精确恢复必须使用 `CheckpointResumeExpectationWithAttempt`、`load_checkpoint_artifact_from` 和
 `validate_resume_from`，这些入口会校验源 attempt、调用方期望的 parent、solver provenance
 与取消链。携带 checkpoint 的版本化报告还必须匹配 model/configuration/solver fingerprint
 和 provenance，不能只匹配 run 与 attempt。Backend 证据遵循
-[native 矩阵](../docs/solver-native-matrix_ch.md)，Kotlin source 覆盖见
-[traceability 表](../docs/solver-traceability_ch.md)。
+[native 矩阵](../ospf-rust-core/README_ch.md#solver-原生验收矩阵)，Kotlin source 覆盖见
+[traceability 表](../ospf-rust-core/README_ch.md#source-追踪)。
 
 remote solver 支持遵循 Cargo feature，不按 Maven-style backend module 拆分。公共 feature 提供 `RemoteSolverClient`、`RemoteLinearSolver`、`RemoteQuadraticSolver`、async `SolverExecutionPort` 与 `ObjectStoragePort`、`RemoteSolverHttpClient`、`LocalFileObjectStoragePort` 和 `OspfRemoteModelSerializer`。
 

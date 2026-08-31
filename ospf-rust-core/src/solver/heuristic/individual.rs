@@ -93,10 +93,10 @@ impl FloatIndividual {
     /// - `upper_bound`: 基因上界 / Upper bound for genes
     #[cfg(feature = "rand")]
     pub fn random(len: usize, lower_bound: f64, upper_bound: f64) -> Self {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
+        use rand::RngExt;
+        let mut rng = rand::rng();
         let genes = (0..len)
-            .map(|_| rng.gen_range(lower_bound..=upper_bound))
+            .map(|_| rng.random_range(lower_bound..=upper_bound))
             .collect();
         Self::new(genes)
     }
@@ -153,9 +153,9 @@ impl BinaryIndividual {
     /// 创建随机个体 / Create random individual
     #[cfg(feature = "rand")]
     pub fn random(len: usize) -> Self {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        let genes = (0..len).map(|_| rng.gen_bool(0.5)).collect();
+        use rand::RngExt;
+        let mut rng = rand::rng();
+        let genes = (0..len).map(|_| rng.random_bool(0.5)).collect();
         Self::new(genes)
     }
 
@@ -216,10 +216,10 @@ impl IntegerIndividual {
     /// 创建随机个体 / Create random individual
     #[cfg(feature = "rand")]
     pub fn random(len: usize, lower_bound: i64, upper_bound: i64) -> Self {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
+        use rand::RngExt;
+        let mut rng = rand::rng();
         let genes = (0..len)
-            .map(|_| rng.gen_range(lower_bound..=upper_bound))
+            .map(|_| rng.random_range(lower_bound..=upper_bound))
             .collect();
         Self::new(genes)
     }

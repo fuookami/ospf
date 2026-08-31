@@ -80,6 +80,7 @@ macro_rules! write_unwrap {
 
 pub use cloneable_function::*;
 pub use collection::*;
+pub use collection_traits::{Collection, CollectionMut, CollectionRef, Iter, IterMut, Len};
 pub use container::*;
 pub use error::*;
 pub use generator_iterator::*;
@@ -96,6 +97,7 @@ pub mod iter;
 pub mod cloneable_function;
 pub mod chunked_collection;
 pub mod collection;
+pub mod collection_traits;
 pub mod container;
 
 pub use chunked_collection::{ChunkedVec, ChunkedVecIter, ChunkedVecIterMut, DEFAULT_CHUNK_SIZE};

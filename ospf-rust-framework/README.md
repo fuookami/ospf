@@ -137,7 +137,7 @@ The same pattern is available for linear/quadratic MetaModel solver extensions a
 ## Remote Solver Boundary
 
 The shared report/proof/cancellation contract is documented in
-[`../docs/solve-contract.md`](../docs/solve-contract.md).
+the [Unified Solve Contract](../ospf-rust-core/README.md#unified-solve-contract).
 
 Remote checkpoint recovery keeps the legacy `CheckpointResumeExpectation` and
 `validate_resume` compatibility projections. Exact resume must use
@@ -146,8 +146,8 @@ Remote checkpoint recovery keeps the legacy `CheckpointResumeExpectation` and
 solver provenance, and cancellation chain. A versioned report carrying a
 checkpoint must also match its model/configuration/solver fingerprints and
 provenance; matching only run and attempt IDs is insufficient.
-Use the [native matrix](../docs/solver-native-matrix.md) for backend evidence and
-the [traceability table](../docs/solver-traceability.md) for Kotlin source coverage.
+Use the [native matrix](../ospf-rust-core/README.md#native-validation-matrix) for backend evidence and
+the [traceability table](../ospf-rust-core/README.md#source-traceability) for Kotlin source coverage.
 
 Remote solver support follows Cargo features instead of Maven-style backend modules. The common feature provides `RemoteSolverClient`, `RemoteLinearSolver`, `RemoteQuadraticSolver`, async `SolverExecutionPort` and `ObjectStoragePort`, `RemoteSolverHttpClient`, `LocalFileObjectStoragePort`, and `OspfRemoteModelSerializer`.
 

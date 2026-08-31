@@ -94,7 +94,7 @@ mod tests {
     use crate::multi_array::MultiArrayToView;
     use crate::shape::AbstractShape;
     use crate::{DummyIndex, DynShape, MultiArray, MultiArrayBuilder, Shape};
-    use cc_traits::Iter;
+    use ospf_rust_base::collection_traits::Iter;
 
     #[test]
     fn test() {

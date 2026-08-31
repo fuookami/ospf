@@ -92,12 +92,12 @@ ospf-rust-core = { path = "path/to/ospf-rust-core" }
 
 ### 统一求解入口
 
-完整的 report、proof、取消、身份和 legacy 迁移合同见
-[`docs/solve-contract_ch.md`](../docs/solve-contract_ch.md)。
+完整的 report、proof、取消、身份和 legacy 迁移合同见下文的
+[统一求解合同](#统一求解合同)。
 
-原生 feature 和许可证证据遵循
-[`solver-native-matrix_ch.md`](../docs/solver-native-matrix_ch.md)；source commit
-覆盖见 [`solver-traceability_ch.md`](../docs/solver-traceability_ch.md)。只编译 feature
+原生 feature 和许可证证据遵循下文的
+[Solver 原生验收矩阵](#solver-原生验收矩阵)；source commit
+覆盖见 [Source 追踪](#source-追踪)。只编译 feature
 不构成原生 solver 证据。
 
 高频路径建议直接从 `MetaModel` 调用：
@@ -165,8 +165,122 @@ async fn solve_in_background<S: Solver + 'static>(
 
 ### 条件函数契约
 
-条件函数的命名、三值关系语义、显式范围要求和旧 API 兼容边界见
-[`docs/conditional-function-contract_ch.md`](../docs/conditional-function-contract_ch.md)。
+条件函数使用以下稳定命名：`IfFunction` 是旧三元表达式，`IfElseFunction` 是首选的
+显式二值条件三元形式，`ConditionalIndicatorFunction` 是可注册关系指示器，
+`ConditionalIfFunction` 是不注册模型的分类器。`semantic::if_` 与 `semantic::if_named`
+构造范围驱动指示器，`if_legacy` 保留旧阈值行为。`IfInFunction` 仍表示离散集合成员，
+`IfInRangeFunction` 与 `RegisterableIfInRangeFunction` 表示并注册闭区间。
+`ConditionalThenFunction`、`ConditionalImplyFunction` 是范围驱动的可注册形式，
+`IfThenConstraintFunction`、`imply_constraint` 保留为旧 Big-M 兼容入口。
+`SigmoidStepFunction` 是可注册关系阶跃形式，`SigmoidFunction` 仍是连续 PWL 形式。
+
+令 `d = lhs - rhs`，关系指示器只在未定义间隔之外判定：
+
+| 关系 | 真 | 假 |
+| --- | --- | --- |
+| `Greater` | `d >= g` | `d <= 0` |
+| `GreaterEqual` | `d >= 0` | `d <= -g` |
+| `Less` | `d <= -g` | `d >= 0` |
+| `LessEqual` | `d <= 0` | `d >= g` |
+
+`g` 是业务 `strict_boundary`，不是 solver 容差。可注册指示器不会推断 Big-M；调用方
+必须提供覆盖条件多项式的有限有序范围，完全落在未定义间隔中的范围会被拒绝。
+`evaluate` 返回 `None` 可能表示未定义或输入不可用，需要区分时使用 `classify`。
+非恒定条件分支同样必须提供显式有限范围。
+
+离散条件会根据线性系数和已注册 token 元数据推导格点证明：参与变量必须是整数，系数
+必须是有限整数，`delta` 是绝对系数 gcd，常数按 `delta` 取模归一化。
+`MetaModel::add_symbols` 与 `register_combination` 是原子事务；失败会恢复 token、符号、
+约束和缓存绑定。第三方 `MutableTokenList`/`MutableTokenTable` 实现必须显式提供批量
+原子实现，并使用 `try_add_tokens` 观察校验失败。并发 token 集合通过持有 `read()` guard
+暴露借用的 trait 视图。旧 Big-M 工具拒绝非有限、零和负值；`IfInRangeFunction` 只接受
+一个共享变量及有限有序的两侧边界。
+
+## 统一求解合同
+
+新的 solver 代码消费 `solver::SolveReport<V>`。`SolverOutput`、`FeasibleSolution`、
+`SolveResult` 和 `SerializedSolution` 仅是兼容投影，不能用于推断证明或取消语义。
+report 将 `problem_status`、`termination_reason`、已校验 incumbent、proof、统计、
+diagnostics、provenance、fingerprint 和 trace 分开保存。可行 report 必须有 incumbent；
+不可行/无界 report 不能携带 incumbent；最优证明必须有完成的终止状态和可靠完整证书。
+limit 或 interruption 返回的 incumbent 只能作为候选解，不能关闭精确 bound。
+
+`SolverErrorClass` 是稳定错误边界：`INPUT`、`MODELING`、`ENVIRONMENT`、`LICENSE`、
+`CALLBACK`、`BACKEND`、`PARSING`、`NUMERICAL`、`INTERNAL_CONTRACT`、
+`TERMINAL_PROJECTION` 和 `UNSUPPORTED`。取消是正常 report 终态，旧入口可将其投影为
+`SolverError::Cancelled`。每次求解拥有幂等 `SolveHandle`；异步包装使用 Tokio blocking
+线程池，资源释放需要 `cancel_and_wait`。report 使用确定性的模型、配置和 solver 环境
+fingerprint；callback 属于 provenance 并标记为不可 replay。远程 report/checkpoint
+保留 schema、run/attempt identity、父链、artifact digest、provenance、fingerprint、
+proof、incumbent 和取消链；未知 schema 或身份不匹配会在恢复前拒绝。
+
+声明的原生 backend 只有 Gurobi 和 SCIP。feature 编译只能证明 wiring；原生能力必须有
+匹配的库、运行时和许可证探针。Gurobi 许可证错误（含代码 `10009`）归类为 `LICENSE`，
+缺少动态库归类为 `ENVIRONMENT`。
+
+### Solver 原生验收矩阵
+
+`cargo check` 只是编译证据。无法加载 backend 的原生测试应记为 `unsupported`（主动要求
+时记为 `failed`），被忽略测试必须使用 `-- --include-ignored`。golden/replay 比较必须
+包含状态、终止原因、incumbent objective、best bound、gap、解向量、残差、fingerprint
+和 provenance。主要 gate 如下：
+
+| 范围 | 命令形态 |
+| --- | --- |
+| Core 合同 | `cargo test -p ospf-rust-core --test native_contract_suite` |
+| Gurobi | 同一 target 加 `--features gurobi10`/`gurobi11`/`gurobi12` |
+| SCIP | 同一 target 加 `--features scip`，bundled/from-source 必须明确指定 |
+| 终态矩阵 | 原生 backend 下运行 `native_release_matrix` 并加 `-- --include-ignored` |
+| Framework report | `cargo test -p ospf-rust-framework --no-default-features` 及 `async`/`remote-solver` |
+| Network 与 Demo5 | 对应 crate README 的验证命令及选定 native feature |
+
+### CP 能力边界
+
+CP AST 使用精确 `i64` 值和不可变 snapshot。Gurobi、SCIP 仅通过精确有限
+MIP-backed `ExactLowering` facade 暴露 CP，不宣称 native CP search。安全线性整数/布尔
+变量、正 literal indicator、SOS1、状态元数据、取消、event handler 和作用域 probing，
+只有显式探针成功时才是 Native。布尔重化、稀疏域、AllDifferent、Element、table 和有限
+NoOverlap 属于 `ExactLowering`；Circuit、Automaton、Reservoir、增量 session、可选/变长
+原生 interval 以及 CP 原生 conflict graph 属于 `Unsupported`。raw Cumulative 仅为
+`Conditional` 研究路径，不构成生产能力。缺少库、许可证、bundled 下载或源码构建时，
+必须记为 `not executed/unsupported`，不能把编译结果当作 Native。
+
+### Solver 终态信息丢失清单
+
+report 层在所有边界补回了原先丢失的终态信息：
+
+| 边界 | 当前归属 |
+| --- | --- |
+| Core 状态/值投影 | `ProblemStatus`、`TerminationReason`、`SolveReport`、校验 builder 与显式旧投影 |
+| Column Generation/Benders | report 聚合及 LP/dual/Farkas 证明 gate |
+| Branch-and-Price | node conclusion、pricing 完成标记、继承/认证 bound 与证书 gate |
+| 组合求解包装器 | 父子 attempt identity、完成线性化、loser trace 和取消快照 |
+| 远程/checkpoint | 版本化 DTO、artifact/fingerprint 校验、provenance、父 attempt 和取消来源 |
+
+### Source 追踪
+
+统一迁移追踪以下 11 个不可变 Kotlin source commit 及其 Rust 归属：`b8d67c96`（report/progress）、
+`5f616747`（终止传播）、`25bcb176`（Benders/branch-and-price 证明 gate）、`32f7d5aa`
+（LP 不可行）、`e0bca1eb`（identity/fingerprint/remote/checkpoint）、`4efac629`
+（capability/provenance）、`58930764`（聚合 provenance）、`e5089f18`（聚合 identity）、
+`b9db32a8`（进行中取消）、`ae0b01fb`（完成点冻结）和 `b5b83d7d`（并行取消测试）。
+Core report、proof、diagnostics、identity、fingerprint、progress、cancellation 和
+checkpoint 在本 crate 实现；Gurobi/SCIP 通过 feature gate；framework 的组合、Benders
+和 remote 路径在 `ospf-rust-framework` 实现；CPLEX、COPT、Hexaly、MindOPT、MOSEK 及
+native CP search 明确排除。完整 manifest 可针对这些不可变 hash 使用
+`git show --no-renames` 重现，命令输出不纳入版本控制。
+
+完整 hash 依次为：`b8d67c96be2d29e6477838adbbb3ee6fec27ddf5`、
+`5f61674788ae9543c4769b1eacbc74d24296012b`、
+`25bcb176ebe3c4380f84eac6c3777f930f9ba47e`、
+`32f7d5aa76fb9f7f5982d856497b480bbf7f3b3f`、
+`e0bca1eb4d04e99fa8048deb9b2bb1731a1ac6b4`、
+`4efac629a57571497695352cf8448980be4e418b`、
+`589307646757d7f43afda299b866b2cfcf874ac2`、
+`e5089f1886b0fb924b8f721966cf1bb511be7395`、
+`b9db32a86af51e8ea976b81c2c15cbc3126dd006`、
+`ae0b01fbb516a4fbd834adda5643b9a16d4b8041` 和
+`b5b83d7d6f470c363e1044cd6b0266604ad5aaa1`。
 
 ### MetaModel 快捷接口
 
@@ -295,8 +409,6 @@ use ospf_rust_core::solver::backend::{GurobiSolver, ScipSolver};
 cargo check -p ospf-rust-core
 cargo test -p ospf-rust-core --no-run
 cargo test -p ospf-rust-core --lib
-bash scripts/phase5_gate.sh
-powershell -File scripts/phase5_gate.ps1
 ```
 
 ## 依赖

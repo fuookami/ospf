@@ -15,7 +15,7 @@
 
 use super::dummy_index::DummyIndex;
 use super::map_index::MapIndex;
-use cc_traits::{Collection, Len};
+use ospf_rust_base::collection_traits::{Collection, Len};
 use ospf_rust_base::Indices;
 use std::alloc::Allocator;
 use std::fmt::Debug;

@@ -384,7 +384,6 @@ cargo check -p ospf-rust-base --features arrayvec
 |------------|---------|---------|
 | `strum` | 0.28.0 | Enum derive macros for `ErrorCode` |
 | `paste` | 1.0.15 | Macro helpers for `error_enum!` |
-| `cc-traits` | git | Collection traits for `ChunkedVec` |
 | `arrayvec` | 0.7.6 | Fixed-capacity vector (optional) |
 
 ## License

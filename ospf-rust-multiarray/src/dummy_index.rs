@@ -35,7 +35,7 @@
 use super::concept::{AccessOrder, AccessOrderTrait, ColumnMajor, RowMajor, StorageOrderTrait};
 use super::index_value::TryIntoIndexValue;
 use super::shape::AbstractShape;
-use cc_traits::{Collection, Len};
+use ospf_rust_base::collection_traits::{Collection, Len};
 use dyn_clone::{DynClone, clone_trait_object};
 use ospf_rust_base::collection::Indices;
 use ospf_rust_base::error::*;

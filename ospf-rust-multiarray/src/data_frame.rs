@@ -922,7 +922,7 @@ mod tests {
 
     #[test]
     fn test_data_frame_column_view() {
-        use cc_traits::Len;
+        use ospf_rust_base::collection_traits::Len;
 
         let column_names = vec!["A".to_string(), "B".to_string()];
         let mut df: DataFrame<i32> = DataFrame::new(3, 2, column_names);
@@ -959,7 +959,7 @@ mod tests {
 
     #[test]
     fn test_data_frame_get_row() {
-        use cc_traits::{Iter, Len};
+        use ospf_rust_base::collection_traits::{Iter, Len};
 
         let column_names = vec!["A".to_string(), "B".to_string()];
         let mut df: DataFrame<i32> = DataFrame::new(3, 2, column_names);
@@ -980,7 +980,7 @@ mod tests {
 
     #[test]
     fn test_data_frame_get_column() {
-        use cc_traits::{Iter, Len};
+        use ospf_rust_base::collection_traits::{Iter, Len};
 
         let column_names = vec!["A".to_string(), "B".to_string()];
         let mut df: DataFrame<i32> = DataFrame::new(3, 2, column_names);
@@ -1094,7 +1094,7 @@ mod tests {
 
     #[test]
     fn test_data_frame_deref() {
-        use cc_traits::Len;
+        use ospf_rust_base::collection_traits::Len;
 
         let column_names = vec!["A".to_string(), "B".to_string()];
         let df: DataFrame<i32> = DataFrame::new(2, 2, column_names);
@@ -1104,7 +1104,7 @@ mod tests {
 
     #[test]
     fn test_data_frame_row_col_views() {
-        use cc_traits::{Iter, Len};
+        use ospf_rust_base::collection_traits::{Iter, Len};
 
         let column_names = vec!["A".to_string(), "B".to_string(), "C".to_string()];
         let mut df: DataFrame<i32> = DataFrame::new(3, 3, column_names);

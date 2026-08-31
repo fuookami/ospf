@@ -163,8 +163,8 @@ cargo check -p ospf-rust-framework-gantt-scheduling --features serde
 详细迁移目标、清单和验收标准应与本节当前边界清单以及 Kotlin Gantt Scheduling README 保持一致。
 
 Branch-and-price 精确门禁消费共享 `SolveReport` 与 certificate helper。limit 返回的 incumbent 只能作为
-候选解保留，不能关闭 node bound。详见[统一求解合同](../../docs/solve-contract_ch.md)和
-[native 矩阵](../../docs/solver-native-matrix_ch.md)。
+候选解保留，不能关闭 node bound。详见[统一求解合同](../../ospf-rust-core/README_ch.md#统一求解合同)和
+[native 矩阵](../../ospf-rust-core/README_ch.md#solver-原生验收矩阵)。
 
 ## 相关模块
 
