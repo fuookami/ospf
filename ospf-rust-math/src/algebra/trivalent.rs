@@ -1,7 +1,7 @@
 pub enum Trivalent {
     True,
     False,
-    Unknown
+    Unknown,
 }
 
 pub type Triv = Trivalent;
@@ -49,7 +49,7 @@ impl Trivalent {
 pub enum BalancedTrivalent {
     True,
     False,
-    Unknown
+    Unknown,
 }
 
 pub type BTriv = BalancedTrivalent;

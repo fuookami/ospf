@@ -1,46 +1,58 @@
+use super::Category;
+use dyn_clone::{clone_trait_object, DynClone};
+use ospf_rust_multiarray::AbstractShape;
 use std::fmt::Display;
 use std::hash::Hash;
-use dyn_clone::{clone_trait_object, DynClone};
+use std::ops::{Index, IndexMut};
+use crate::Expression;
 
-use super::Category;
+pub trait SymbolIdentifier: PartialEq + Hash + Clone {}
 
-pub trait SymbolIdentifier: PartialEq + Clone {}
-
-pub trait SymbolTag {
+pub trait SymbolIdentify {
     type Identifier: SymbolIdentifier;
 
     fn identifier(&self) -> &Self::Identifier;
-    fn name(&self) -> &str;
-    fn display_name(&self) -> &str;
 }
 
-pub trait Symbol : Display + DynClone {
+pub trait Symbol: Display {
     fn name(&self) -> &str;
-    fn display_name(&self) -> &str;
-    fn category(&self) -> Category;
-    fn discrete(&self) -> bool;
+    fn set_name(&self, name: &str);
+    fn display_name(&self) -> Option<&str>;
 }
-clone_trait_object!(Symbol);
 
-pub trait SymbolBelongs<Rhs: SymbolTag> : SymbolTag {
+pub trait CompositeSymbol: Symbol + Expression {}
+
+pub trait SymbolBelongs<Rhs: SymbolIdentify>: SymbolIdentify {
     fn belongs_same_as(&self, other: &Rhs) -> bool
     where
-        Self::Identifier: PartialEq<Rhs::Identifier>
+        <Self as SymbolIdentify>::Identifier: PartialEq<<Rhs as SymbolIdentify>::Identifier>,
     {
         self.identifier() == other.identifier()
     }
 
     fn belongs_to<C: SymbolCombination<Item = Rhs>>(&self, other: &C) -> bool
     where
-        Self::Identifier: PartialEq<Rhs::Identifier>
+        <Self as SymbolIdentify>::Identifier: PartialEq<<Rhs as SymbolIdentify>::Identifier>,
     {
         self.identifier() == other.identifier()
     }
 }
 
-pub trait SymbolCombination {
-    type Item: SymbolTag;
+pub trait SymbolCombination:
+    Index<usize, Output = Self::Item>
+    + IndexMut<usize, Output = Self::Item>
+    + for<'a> Index<
+        &'a <<Self as SymbolCombination>::Shape as AbstractShape>::VectorType,
+        Output = Self::Item,
+    > + for<'a> IndexMut<
+        &'a <<Self as SymbolCombination>::Shape as AbstractShape>::VectorType,
+        Output = Self::Item,
+    >
+{
+    type Shape: AbstractShape;
+    type Item: SymbolIdentify + Symbol;
 
-    fn identifier(&self) -> &<Self::Item as SymbolTag>::Identifier;
+    fn identifier(&self) -> &<Self::Item as SymbolIdentify>::Identifier;
     fn iter(&self) -> impl Iterator<Item = &Self::Item>;
+    fn iter_mut(&mut self) -> impl Iterator<Item = &mut Self::Item>;
 }

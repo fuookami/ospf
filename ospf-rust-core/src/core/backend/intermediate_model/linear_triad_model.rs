@@ -4,8 +4,8 @@ use std::ops::Deref;
 
 use ospf_rust_math::RealNumber;
 
-use crate::core::frontend::variable::VariableType;
 use super::model::*;
+use crate::core::frontend::variable::VariableType;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct LinearConstraintCell<T> {
@@ -75,13 +75,14 @@ where
             (v.lower_bound.borrow().is_neg_inf()
                 || v.lower_bound.borrow().as_ref().unwrap() == T::ZERO)
                 && (v.upper_bound.borrow().is_inf()
-                || v.upper_bound.borrow().as_ref().unwrap() == T::ZERO)
+                    || v.upper_bound.borrow().as_ref().unwrap() == T::ZERO)
         })
     }
 
     fn linear_relax(&mut self) {
-        self.variables.iter().for_each(|v| {
-            match v.variable_type.get().as_ref().unwrap() {
+        self.variables
+            .iter()
+            .for_each(|v| match v.variable_type.get().as_ref().unwrap() {
                 VariableType::Binary => v.variable_type.set(VariableType::Percentage),
                 VariableType::Ternary | VariableType::UInteger => {
                     v.variable_type.set(VariableType::UContinuous)
@@ -90,8 +91,7 @@ where
                     v.variable_type.set(VariableType::Continuous)
                 }
                 _ => {}
-            }
-        })
+            })
     }
 
     fn normalize(&mut self) {

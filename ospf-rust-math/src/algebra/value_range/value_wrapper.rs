@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 
 use chrono::NaiveDateTime;
 
-use crate::algebra::concept::{Infinity, NegativeInfinity, RealNumber, SemiArithmetic};
 use super::error::IllegalArgumentError;
+use crate::algebra::concept::{Infinity, NegativeInfinity, RealNumber, SemiArithmetic};
 
 #[derive(Clone, Copy)]
 #[non_exhaustive]

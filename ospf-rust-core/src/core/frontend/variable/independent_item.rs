@@ -1,9 +1,12 @@
+use std::cell::{Cell, RefCell};
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 use std::rc::Rc;
 
-use ospf_rust_math::symbol::{Category, Symbol, SymbolBelongs, SymbolTag};
+use ospf_rust_math::symbol::{Category, Symbol, SymbolBelongs};
 use ospf_rust_math::value_range::Bound;
+use ospf_rust_math::SymbolIdentify;
 use ospf_rust_multiarray::IndexVectorView;
 
 use super::item::*;
@@ -12,18 +15,30 @@ use super::variable_type::*;
 
 pub(crate) struct IndependentVariableItemImpl<T: AbstractVariableType> {
     pub identifier: VariableItemIdentifier,
-    pub name: String,
+    pub name: Cell<String>,
     pub range: VariableRange<T>,
 }
 
 #[derive(Clone)]
 pub struct IndependentVariableItem<T: AbstractVariableType> {
-    pub(crate) inner: Rc<IndependentVariableItemImpl<T>>,
+    pub(crate) inner: Rc<RefCell<IndependentVariableItemImpl<T>>>,
+}
+
+impl<T: AbstractVariableType> Display for IndependentVariableItemImpl<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        unsafe { write!(f, "{}", self.name.as_ptr().as_ref().unwrap()) }
+    }
 }
 
 impl<T: AbstractVariableType> Display for IndependentVariableItem<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.inner.name)
+        write!(f, "{}", self.inner.borrow())
+    }
+}
+
+impl<T: AbstractVariableType> Hash for IndependentVariableItemImpl<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.hash_code().hash(state);
     }
 }
 
@@ -33,74 +48,71 @@ impl<T: AbstractVariableType> Hash for IndependentVariableItem<T> {
     }
 }
 
-impl<T: AbstractVariableType> SymbolTag for IndependentVariableItemImpl<T> {
+impl<T: AbstractVariableType> SymbolIdentify for IndependentVariableItemImpl<T> {
     type Identifier = VariableItemIdentifier;
 
     fn identifier(&self) -> &Self::Identifier {
         &self.identifier
     }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn display_name(&self) -> &str {
-        &self.name
-    }
 }
 
-impl<T: AbstractVariableType> SymbolTag for IndependentVariableItem<T> {
+impl<T: AbstractVariableType> SymbolIdentify for IndependentVariableItem<T> {
     type Identifier = VariableItemIdentifier;
 
     fn identifier(&self) -> &Self::Identifier {
-        &self.inner.identifier
+        unsafe { &self.inner.as_ptr().as_ref().unwrap().identifier }
     }
+}
 
+impl<T: AbstractVariableType> Symbol for IndependentVariableItemImpl<T> {
     fn name(&self) -> &str {
-        &self.inner.name
+        unsafe { self.name.as_ptr().as_ref().unwrap() }
     }
 
-    fn display_name(&self) -> &str {
-        &self.inner.name
+    fn set_name(&self, name: &str) {
+        self.name.set(name.to_string());
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some(self.name())
     }
 }
 
 impl<T: AbstractVariableType> Symbol for IndependentVariableItem<T> {
     fn name(&self) -> &str {
-        &self.inner.name
+        unsafe {
+            self.inner
+                .as_ptr()
+                .as_ref()
+                .unwrap()
+                .name
+                .as_ptr()
+                .as_ref()
+                .unwrap()
+        }
     }
 
-    fn display_name(&self) -> &str {
-        &self.inner.name
+    fn set_name(&self, name: &str) {
+        self.inner.borrow().set_name(name);
     }
 
-    fn category(&self) -> Category {
-        Category::Linear
-    }
-
-    fn discrete(&self) -> bool {
-        T::is_discrete()
+    fn display_name(&self) -> Option<&str> {
+        Some(self.name())
     }
 }
 
-impl<
-        T: AbstractVariableType,
-        U: VariableTypeTag + VariableTypeValueRange,
-        It: VariableItem<Type = U>,
-    > SymbolBelongs<It> for IndependentVariableItemImpl<T>
+impl<T: AbstractVariableType, U: AbstractVariableType, It: VariableItem<VariableType = U>>
+    SymbolBelongs<It> for IndependentVariableItemImpl<T>
 {
 }
 
-impl<
-        T: AbstractVariableType,
-        U: VariableTypeTag + VariableTypeValueRange,
-        It: VariableItem<Type = U>,
-    > SymbolBelongs<It> for IndependentVariableItem<T>
+impl<T: AbstractVariableType, U: AbstractVariableType, It: VariableItem<VariableType = U>>
+    SymbolBelongs<It> for IndependentVariableItem<T>
 {
 }
 
-impl<T: AbstractVariableType> VariableItemTag for IndependentVariableItemImpl<T> {
-    type Type = T;
+impl<T: AbstractVariableType> VariableItem for IndependentVariableItemImpl<T> {
+    type VariableType = T;
 
     fn dimension(&self) -> usize {
         0
@@ -115,21 +127,27 @@ impl<T: AbstractVariableType> VariableItemTag for IndependentVariableItemImpl<T>
         IndexVectorView::new(&EMPTY_VEC)
     }
 
-    fn range(&self) -> &VariableRange<Self::Type> {
+    fn range(&self) -> &VariableRange<<Self as VariableItem>::VariableType> {
         &self.range
     }
 
-    fn lb(&self) -> Option<&Bound<<Self::Type as VariableTypeValueRange>::ValueType>> {
+    fn lb(
+        &self,
+    ) -> Option<&Bound<<<Self as VariableItem>::VariableType as VariableTypeBound>::ValueType>>
+    {
         self.range.lb()
     }
 
-    fn ub(&self) -> Option<&Bound<<Self::Type as VariableTypeValueRange>::ValueType>> {
+    fn ub(
+        &self,
+    ) -> Option<&Bound<<<Self as VariableItem>::VariableType as VariableTypeBound>::ValueType>>
+    {
         self.range.ub()
     }
 }
 
-impl<T: AbstractVariableType> VariableItemTag for IndependentVariableItem<T> {
-    type Type = T;
+impl<T: AbstractVariableType> VariableItem for IndependentVariableItem<T> {
+    type VariableType = T;
 
     fn dimension(&self) -> usize {
         0
@@ -144,32 +162,36 @@ impl<T: AbstractVariableType> VariableItemTag for IndependentVariableItem<T> {
         IndexVectorView::new(&EMPTY_VEC)
     }
 
-    fn range(&self) -> &VariableRange<Self::Type> {
-        &self.inner.range
+    fn range(&self) -> &VariableRange<<Self as VariableItem>::VariableType> {
+        unsafe { &self.inner.as_ptr().as_ref_unchecked().range }
     }
 
-    fn lb(&self) -> Option<&Bound<<Self::Type as VariableTypeValueRange>::ValueType>> {
-        self.inner.range.lb()
+    fn lb(
+        &self,
+    ) -> Option<&Bound<<<Self as VariableItem>::VariableType as VariableTypeBound>::ValueType>>
+    {
+        unsafe { self.inner.as_ptr().as_ref_unchecked().range.lb() }
     }
 
-    fn ub(&self) -> Option<&Bound<<Self::Type as VariableTypeValueRange>::ValueType>> {
-        self.inner.range.ub()
+    fn ub(
+        &self,
+    ) -> Option<&Bound<<<Self as VariableItem>::VariableType as VariableTypeBound>::ValueType>>
+    {
+        unsafe { self.inner.as_ptr().as_ref_unchecked().range.ub() }
     }
 }
-
-impl<T: AbstractVariableType> VariableItem for IndependentVariableItem<T> {}
 
 impl<T: AbstractVariableType> IndependentVariableItem<T> {
     pub fn new(name: String) -> Self {
         unsafe {
             Self {
-                inner: Rc::new(IndependentVariableItemImpl {
+                inner: Rc::new(RefCell::new(IndependentVariableItemImpl {
                     identifier: VariableItemIdentifier {
                         identifier: unsafe { IDENTIFIER_GENERATOR.get().as_ref_unchecked() }.gen(),
                     },
-                    name,
+                    name: Cell::new(name),
                     range: VariableRange::new(),
-                }),
+                })),
             }
         }
     }

@@ -1,8 +1,8 @@
-use std::cell::{Cell, RefCell};
-use std::fmt::{Display, Formatter};
-
 use crate::algebra::concept::RealNumber;
 use crate::algebra::value_range::{Bound, Interval, ValueRange, ValueWrapper, ValueWrapperUnwrap};
+use num::traits::real::Real;
+use std::cell::{Cell, RefCell};
+use std::fmt::{Display, Formatter};
 
 pub trait ExpressionRangeOperator<T> {
     fn ls(&self, value: T) -> bool;
@@ -18,12 +18,12 @@ pub trait ExpressionRangeOperator<T> {
     fn eq(&self, value: T) -> bool;
 }
 
-pub struct ExpressionRange<V: Display + RealNumber> {
+pub struct ExpressionRange<V: RealNumber> {
     inner: Cell<Option<ValueRange<V>>>,
     set: Cell<bool>,
 }
 
-impl<V: Display + RealNumber> ExpressionRange<V> {
+impl<V: RealNumber> ExpressionRange<V> {
     pub fn new() -> Self {
         Self {
             inner: Cell::new(Some(
@@ -35,6 +35,13 @@ impl<V: Display + RealNumber> ExpressionRange<V> {
                 )
                 .unwrap(),
             )),
+            set: Cell::new(false),
+        }
+    }
+
+    pub fn new_empty() -> Self {
+        Self {
+            inner: Cell::new(None),
             set: Cell::new(false),
         }
     }
@@ -113,18 +120,29 @@ impl<V: Display + RealNumber> ExpressionRange<V> {
     pub fn intersect_with_range(&self, range: &ValueRange<V>) -> bool {
         self.set.set(true);
         unsafe {
-            self.inner.replace(
-                match self.inner.as_ptr().as_ref().unwrap().as_ref() {
+            self.inner
+                .replace(match self.inner.as_ptr().as_ref().unwrap().as_ref() {
                     Some(lhs) => lhs.intersect(range),
                     None => None,
-                }
-            );
+                });
         }
         !self.empty()
     }
+
+    pub fn to<T: RealNumber + for<'a> From<&'a V>>(&self) -> ExpressionRange<T> {
+        ExpressionRange::new_with(
+            ValueRange::new_with(
+                self.lb().unwrap().value.unwrap().into(),
+                self.ub().unwrap().value.unwrap().into(),
+                self.lb().unwrap().interval,
+                self.ub().unwrap().interval,
+            )
+            .unwrap(),
+        )
+    }
 }
 
-impl<V: Display + RealNumber> ExpressionRangeOperator<V> for ExpressionRange<V> {
+impl<V: RealNumber> ExpressionRangeOperator<V> for ExpressionRange<V> {
     fn ls(&self, value: V) -> bool {
         self.intersect_with_range(&ValueRange::new_with_ub(value, Interval::Closed).unwrap())
     }
@@ -138,7 +156,7 @@ impl<V: Display + RealNumber> ExpressionRangeOperator<V> for ExpressionRange<V> 
     }
 }
 
-impl<V: Display + RealNumber> Display for ExpressionRange<V> {
+impl<V: RealNumber> Display for ExpressionRange<V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         unsafe {
             match self.inner.as_ptr().as_ref().unwrap().as_ref() {
@@ -147,4 +165,13 @@ impl<V: Display + RealNumber> Display for ExpressionRange<V> {
             }
         }
     }
+}
+
+pub trait Expression: Display {
+    type ResultType;
+
+    fn to_raw_string(&self) -> String {
+        self.to_raw_string_with(true)
+    }
+    fn to_raw_string_with(&self, unfold: bool) -> String;
 }

@@ -156,9 +156,9 @@ mod tests {
 
     use super::*;
 
-    fn test_real<T: RealNumber + GcdLcm<Output=T> + Debug>()
+    fn test_real<T: RealNumber + GcdLcm<Output = T> + Debug>()
     where
-            for<'a> &'a T: Mul<&'a T, Output = T> + GcdLcm<Output=T>,
+        for<'a> &'a T: Mul<&'a T, Output = T> + GcdLcm<Output = T>,
     {
         assert_eq!(&(T::TWO.gcd(T::FIVE)), T::ONE);
         assert_eq!(&(T::TEN.gcd(&(T::TWO * T::TWO))), T::TWO);

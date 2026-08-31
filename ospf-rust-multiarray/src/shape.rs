@@ -129,6 +129,12 @@ pub struct Shape<const d: usize> {
     pub(self) len: usize,
 }
 
+impl Shape<1> {
+    pub fn new_with(shape: usize) -> Self {
+        Self::new([shape])
+    }
+}
+
 impl<const d: usize> Shape<d> {
     pub fn new(shape: [usize; d]) -> Self {
         let (offset, len) = offset(&shape);

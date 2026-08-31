@@ -1,3 +1,4 @@
+pub mod expression;
 pub mod inequality;
 pub mod model;
 pub mod monomial;

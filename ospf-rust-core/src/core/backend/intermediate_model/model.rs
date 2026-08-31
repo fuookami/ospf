@@ -102,7 +102,9 @@ pub(super) trait BasicModelView<'a> {
     }
 
     fn contains_binary(&self) -> bool {
-        self.variables().iter().any(|v| v.variable_type.get().is_binary())
+        self.variables()
+            .iter()
+            .any(|v| v.variable_type.get().is_binary())
     }
 
     fn contains_integer(&self) -> bool {

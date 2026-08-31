@@ -1,8 +1,8 @@
 use std::io::Write;
 use std::ops::Deref;
 
-use crate::core::frontend::variable::VariableType;
 use super::model::*;
+use crate::core::frontend::variable::VariableType;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct QuadraticConstraintCell<T> {

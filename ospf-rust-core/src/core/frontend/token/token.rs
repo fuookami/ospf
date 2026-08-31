@@ -1,26 +1,41 @@
 use crate::core::frontend::variable::combination_item::CombinationVariableItem;
 use crate::core::frontend::variable::independent_item::IndependentVariableItem;
-use crate::core::frontend::variable::item::{VariableItem, VariableItemTag, VariableKey};
+use crate::core::frontend::variable::item::{VariableItem, VariableKey};
 use crate::core::frontend::variable::variable_type::*;
-use ospf_rust_math::{SymbolBelongs, SymbolCombination, ValueWrapperUnwrap};
+use ospf_rust_math::{
+    Arithmetic, SymbolBelongs, SymbolCombination, ValueRange, ValueWrapperUnwrap,
+};
 use ospf_rust_multiarray::AbstractShape;
 use std::cell::Cell;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum VariableItemWrapper {
-    Binary(*const dyn VariableItemTag<Type = Binary>),
-    Ternary(*const dyn VariableItemTag<Type = Ternary>),
-    BalancedTernary(*const dyn VariableItemTag<Type = BalancedTernary>),
-    Percentage(*const dyn VariableItemTag<Type = Percentage>),
-    Integer(*const dyn VariableItemTag<Type = Integer>),
-    UInteger(*const dyn VariableItemTag<Type = UInteger>),
-    Real(*const dyn VariableItemTag<Type = Continuous>),
-    UReal(*const dyn VariableItemTag<Type = UContinuous>),
+    Binary(*const dyn VariableItem<VariableType = Binary>),
+    Ternary(*const dyn VariableItem<VariableType = Ternary>),
+    BalancedTernary(*const dyn VariableItem<VariableType = BalancedTernary>),
+    Percentage(*const dyn VariableItem<VariableType = Percentage>),
+    Integer(*const dyn VariableItem<VariableType = Integer>),
+    UInteger(*const dyn VariableItem<VariableType = UInteger>),
+    Real(*const dyn VariableItem<VariableType = Continuous>),
+    UReal(*const dyn VariableItem<VariableType = UContinuous>),
 }
 
 impl VariableItemWrapper {
+    pub fn variable_type(&self) -> VariableType {
+        match self {
+            VariableItemWrapper::Binary(_) => VariableType::Binary,
+            VariableItemWrapper::Ternary(_) => VariableType::Ternary,
+            VariableItemWrapper::BalancedTernary(_) => VariableType::BalancedTernary,
+            VariableItemWrapper::Percentage(_) => VariableType::Percentage,
+            VariableItemWrapper::Integer(_) => VariableType::Integer,
+            VariableItemWrapper::UInteger(_) => VariableType::UInteger,
+            VariableItemWrapper::Real(_) => VariableType::Continuous,
+            VariableItemWrapper::UReal(_) => VariableType::UContinuous,
+        }
+    }
+
     pub fn name(&self) -> &str {
         unsafe {
             match self {
@@ -50,19 +65,86 @@ impl VariableItemWrapper {
             }
         }
     }
+
+    pub fn range<T: TokenValueType>(&self) -> Option<ValueRange<T>> {
+        unsafe {
+            match self {
+                VariableItemWrapper::Binary(var) => (**var).range().value_range().map(|r| r.into()),
+                VariableItemWrapper::Ternary(var) => {
+                    (**var).range().value_range().map(|r| r.into())
+                }
+                VariableItemWrapper::BalancedTernary(var) => {
+                    (**var).range().value_range().map(|r| r.into())
+                }
+                VariableItemWrapper::Percentage(var) => {
+                    (**var).range().value_range().map(|r| r.into())
+                }
+                VariableItemWrapper::Integer(var) => {
+                    (**var).range().value_range().map(|r| r.into())
+                }
+                VariableItemWrapper::UInteger(var) => {
+                    (**var).range().value_range().map(|r| r.into())
+                }
+                VariableItemWrapper::Real(var) => (**var).range().value_range().map(|r| r.into()),
+                VariableItemWrapper::UReal(var) => (**var).range().value_range().map(|r| r.into()),
+            }
+        }
+    }
+
+    pub fn lb<T: TokenValueType>(&self) -> T {
+        unsafe {
+            match self {
+                VariableItemWrapper::Binary(var) => (*(**var).lb().unwrap().value.unwrap()).into(),
+                VariableItemWrapper::Ternary(var) => (*(**var).lb().unwrap().value.unwrap()).into(),
+                VariableItemWrapper::BalancedTernary(var) => {
+                    (*(**var).lb().unwrap().value.unwrap()).into()
+                }
+                VariableItemWrapper::Percentage(var) => {
+                    (*(**var).lb().unwrap().value.unwrap()).into()
+                }
+                VariableItemWrapper::Integer(var) => (*(**var).lb().unwrap().value.unwrap()).into(),
+                VariableItemWrapper::UInteger(var) => {
+                    (*(**var).lb().unwrap().value.unwrap()).into()
+                }
+                VariableItemWrapper::Real(var) => (*(**var).lb().unwrap().value.unwrap()).into(),
+                VariableItemWrapper::UReal(var) => (*(**var).lb().unwrap().value.unwrap()).into(),
+            }
+        }
+    }
+
+    pub fn ub<T: TokenValueType>(&self) -> T {
+        unsafe {
+            match self {
+                VariableItemWrapper::Binary(var) => (*(**var).ub().unwrap().value.unwrap()).into(),
+                VariableItemWrapper::Ternary(var) => (*(**var).ub().unwrap().value.unwrap()).into(),
+                VariableItemWrapper::BalancedTernary(var) => {
+                    (*(**var).ub().unwrap().value.unwrap()).into()
+                }
+                VariableItemWrapper::Percentage(var) => {
+                    (*(**var).ub().unwrap().value.unwrap()).into()
+                }
+                VariableItemWrapper::Integer(var) => (*(**var).ub().unwrap().value.unwrap()).into(),
+                VariableItemWrapper::UInteger(var) => {
+                    (*(**var).ub().unwrap().value.unwrap()).into()
+                }
+                VariableItemWrapper::Real(var) => (*(**var).ub().unwrap().value.unwrap()).into(),
+                VariableItemWrapper::UReal(var) => (*(**var).ub().unwrap().value.unwrap()).into(),
+            }
+        }
+    }
 }
 
 macro_rules! variable_item_wrapper_impl_template {
     ($type:ident, $name:ident) => {
         impl From<IndependentVariableItem<$type>> for VariableItemWrapper {
             fn from(item: IndependentVariableItem<$type>) -> Self {
-                VariableItemWrapper::$name(item.inner.as_ref() as *const _)
+                VariableItemWrapper::$name(item.inner.as_ptr())
             }
         }
 
         impl From<&IndependentVariableItem<$type>> for VariableItemWrapper {
             fn from(item: &IndependentVariableItem<$type>) -> Self {
-                VariableItemWrapper::$name(item.inner.as_ref() as *const _)
+                VariableItemWrapper::$name(item.inner.as_ptr())
             }
         }
 
@@ -93,14 +175,22 @@ variable_item_wrapper_impl_template!(Continuous, Real);
 variable_item_wrapper_impl_template!(UContinuous, UReal);
 
 pub trait TokenValueType:
-    From<<Binary as VariableTypeValueRange>::ValueType>
-    + From<<Ternary as VariableTypeValueRange>::ValueType>
-    + From<<BalancedTernary as VariableTypeValueRange>::ValueType>
-    + From<<Percentage as VariableTypeValueRange>::ValueType>
-    + From<<Integer as VariableTypeValueRange>::ValueType>
-    + From<<UInteger as VariableTypeValueRange>::ValueType>
-    + From<<Continuous as VariableTypeValueRange>::ValueType>
-    + From<<UContinuous as VariableTypeValueRange>::ValueType>
+    From<<Binary as VariableTypeBound>::ValueType>
+    + for<'a> From<&'a <Binary as VariableTypeBound>::ValueType>
+    // + From<<Ternary as VariableTypeBound>::ValueType>
+    // + for<'a> From<&'a <Ternary as VariableTypeBound>::ValueType>
+    + From<<BalancedTernary as VariableTypeBound>::ValueType>
+    + for<'a> From<&'a <BalancedTernary as VariableTypeBound>::ValueType>
+    + From<<Percentage as VariableTypeBound>::ValueType>
+    + for<'a> From<&'a <Percentage as VariableTypeBound>::ValueType>
+    + From<<Integer as VariableTypeBound>::ValueType>
+    + for<'a> From<&'a <Integer as VariableTypeBound>::ValueType>
+    + From<<UInteger as VariableTypeBound>::ValueType>
+    + for<'a> From<<UInteger as VariableTypeBound>::ValueType>
+    // + From<<Continuous as VariableTypeBound>::ValueType>
+    // + for<'a> From<&'a <Continuous as VariableTypeBound>::ValueType>
+    // + From<<UContinuous as VariableTypeBound>::ValueType>
+    // + for<'a> From<<Continuous as VariableTypeBound>::ValueType>
 {
 }
 
@@ -120,16 +210,7 @@ impl<T: TokenValueType> Token<T> {
     }
 
     pub fn variable_type(&self) -> VariableType {
-        match self.wrapper {
-            VariableItemWrapper::Binary(_) => VariableType::Binary,
-            VariableItemWrapper::Ternary(_) => VariableType::Ternary,
-            VariableItemWrapper::BalancedTernary(_) => VariableType::BalancedTernary,
-            VariableItemWrapper::Percentage(_) => VariableType::Percentage,
-            VariableItemWrapper::Integer(_) => VariableType::Integer,
-            VariableItemWrapper::UInteger(_) => VariableType::UInteger,
-            VariableItemWrapper::Real(_) => VariableType::Continuous,
-            VariableItemWrapper::UReal(_) => VariableType::UContinuous,
-        }
+        self.wrapper.variable_type()
     }
 
     pub fn name(&self) -> &str {
@@ -141,41 +222,11 @@ impl<T: TokenValueType> Token<T> {
     }
 
     pub fn lb(&self) -> T {
-        unsafe {
-            match self.wrapper {
-                VariableItemWrapper::Binary(var) => (*(*var).lb().unwrap().value.unwrap()).into(),
-                VariableItemWrapper::Ternary(var) => (*(*var).lb().unwrap().value.unwrap()).into(),
-                VariableItemWrapper::BalancedTernary(var) => {
-                    (*(*var).lb().unwrap().value.unwrap()).into()
-                }
-                VariableItemWrapper::Percentage(var) => {
-                    (*(*var).lb().unwrap().value.unwrap()).into()
-                }
-                VariableItemWrapper::Integer(var) => (*(*var).lb().unwrap().value.unwrap()).into(),
-                VariableItemWrapper::UInteger(var) => (*(*var).lb().unwrap().value.unwrap()).into(),
-                VariableItemWrapper::Real(var) => (*(*var).lb().unwrap().value.unwrap()).into(),
-                VariableItemWrapper::UReal(var) => (*(*var).lb().unwrap().value.unwrap()).into(),
-            }
-        }
+        self.wrapper.lb::<T>()
     }
 
     pub fn ub(&self) -> T {
-        unsafe {
-            match self.wrapper {
-                VariableItemWrapper::Binary(var) => (*(*var).ub().unwrap().value.unwrap()).into(),
-                VariableItemWrapper::Ternary(var) => (*(*var).ub().unwrap().value.unwrap()).into(),
-                VariableItemWrapper::BalancedTernary(var) => {
-                    (*(*var).ub().unwrap().value.unwrap()).into()
-                }
-                VariableItemWrapper::Percentage(var) => {
-                    (*(*var).ub().unwrap().value.unwrap()).into()
-                }
-                VariableItemWrapper::Integer(var) => (*(*var).ub().unwrap().value.unwrap()).into(),
-                VariableItemWrapper::UInteger(var) => (*(*var).ub().unwrap().value.unwrap()).into(),
-                VariableItemWrapper::Real(var) => (*(*var).ub().unwrap().value.unwrap()).into(),
-                VariableItemWrapper::UReal(var) => (*(*var).ub().unwrap().value.unwrap()).into(),
-            }
-        }
+        self.wrapper.ub::<T>()
     }
 
     pub fn solver_index(&self) -> usize {
@@ -186,19 +237,19 @@ impl<T: TokenValueType> Token<T> {
         unsafe { self.result.as_ptr().as_ref().unwrap().as_ref() }
     }
 
-    pub fn belongs_same_as<Ty: AbstractVariableType, It: VariableItemTag<Type = Ty>>(
+    pub fn belongs_same_as<Ty: AbstractVariableType, It: VariableItem<VariableType = Ty>>(
         &self,
         other: &It,
     ) -> bool
     where
-        dyn VariableItemTag<Type = Binary>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = Ternary>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = BalancedTernary>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = Percentage>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = Integer>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = UInteger>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = Continuous>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = UContinuous>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = Binary>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = Ternary>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = BalancedTernary>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = Percentage>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = Integer>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = UInteger>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = Continuous>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = UContinuous>: SymbolBelongs<It>,
     {
         unsafe {
             match self.wrapper {
@@ -216,21 +267,21 @@ impl<T: TokenValueType> Token<T> {
 
     pub fn belongs_to<
         Ty: AbstractVariableType,
-        It: VariableItem<Type = Ty>,
+        It: VariableItem<VariableType = Ty>,
         C: SymbolCombination<Item = It>,
     >(
         &self,
         other: &C,
     ) -> bool
     where
-        dyn VariableItemTag<Type = Binary>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = Ternary>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = BalancedTernary>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = Percentage>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = Integer>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = UInteger>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = Continuous>: SymbolBelongs<It>,
-        dyn VariableItemTag<Type = UContinuous>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = Binary>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = Ternary>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = BalancedTernary>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = Percentage>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = Integer>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = UInteger>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = Continuous>: SymbolBelongs<It>,
+        dyn VariableItem<VariableType = UContinuous>: SymbolBelongs<It>,
     {
         unsafe {
             match self.wrapper {

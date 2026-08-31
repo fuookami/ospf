@@ -114,17 +114,17 @@ impl<T: TokenValueType> From<&MutableTokenList<T>> for TokenList<T> {
     }
 }
 
-// impl<'a, T> From<&'a AutoTokenList<T>> for TokenList<'a, T> {
-//     fn from(list: &'a AutoTokenList<T>) -> Self {
-//         Self::from(&list.inner)
-//     }
-// }
-//
-// impl<'a, T> From<&'a ManualTokenList<T>> for TokenList<'a, T> {
-//     fn from(list: &'a ManualTokenList<T>) -> Self {
-//         Self::from(&list.inner)
-//     }
-// }
+impl<T: TokenValueType> From<&AutoTokenList<T>> for TokenList<T> {
+    fn from(list: &AutoTokenList<T>) -> Self {
+        Self::from(&list.inner)
+    }
+}
+
+impl<T: TokenValueType> From<&ManualTokenList<T>> for TokenList<T> {
+    fn from(list: &ManualTokenList<T>) -> Self {
+        Self::from(&list.inner)
+    }
+}
 
 impl<T: TokenValueType> AbstractTokenList<T> for TokenList<T> {
     fn tokens<'a>(&'a self) -> impl Iterator<Item = &'a Token<T>>

@@ -15,35 +15,51 @@ where
     BigDecimal: From<T>,
 {
     fn from(value: T) -> Self {
-        Dec { value: BigDecimal::from(value) }
+        Dec {
+            value: BigDecimal::from(value),
+        }
     }
 }
 
 impl From<f32> for Dec {
     fn from(value: f32) -> Self {
-        Dec { value: BigDecimal::from_f32(value).unwrap() }
+        Dec {
+            value: BigDecimal::from_f32(value).unwrap(),
+        }
     }
 }
 
 impl From<f64> for Dec {
     fn from(value: f64) -> Self {
-        Dec { value: BigDecimal::from_f64(value).unwrap() }
+        Dec {
+            value: BigDecimal::from_f64(value).unwrap(),
+        }
     }
 }
 
 impl From<ix> for Dec {
-    fn from(value: ix) -> Self { Dec { value: BigDecimal::from(value.value).unwrap() } }
+    fn from(value: ix) -> Self {
+        Dec {
+            value: BigDecimal::from(value.value).unwrap(),
+        }
+    }
 }
 
 impl From<uix> for Dec {
-    fn from(value: uix) -> Self { Dec { value: BigDecimal::from(value.value).unwrap() } })
+    fn from(value: uix) -> Self {
+        Dec {
+            value: BigDecimal::from(value.value).unwrap(),
+        }
+    }
 }
 
 impl Add for Dec {
     type Output = Dec;
 
     fn add(self, other: Self) -> Dec {
-        Dec { value: self.value + other.value }
+        Dec {
+            value: self.value + other.value,
+        }
     }
 }
 
@@ -51,7 +67,9 @@ impl Sub for Dec {
     type Output = Dec;
 
     fn sub(self, other: Self) -> Dec {
-        Dec { value: self.value - other.value }
+        Dec {
+            value: self.value - other.value,
+        }
     }
 }
 
@@ -59,7 +77,9 @@ impl Mul for Dec {
     type Output = Dec;
 
     fn mul(self, other: Self) -> Dec {
-        Dec { value: self.value * other.value }
+        Dec {
+            value: self.value * other.value,
+        }
     }
 }
 
@@ -67,7 +87,9 @@ impl Div for Dec {
     type Output = Dec;
 
     fn div(self, other: Self) -> Dec {
-        Dec { value: self.value / other.value }
+        Dec {
+            value: self.value / other.value,
+        }
     }
 }
 

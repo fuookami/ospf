@@ -5,11 +5,12 @@ use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 
 use super::range::VariableRange;
-use super::variable_type::VariableTypeValueRange;
+use super::variable_type::VariableTypeBound;
 use crate::core::frontend::AbstractVariableType;
 use ospf_rust_math::operator::ReverseBit;
-use ospf_rust_math::symbol::{Symbol, SymbolIdentifier, SymbolTag};
+use ospf_rust_math::symbol::{Symbol, SymbolIdentifier};
 use ospf_rust_math::value_range::Bound;
+use ospf_rust_math::SymbolIdentify;
 use ospf_rust_multiarray::IndexVectorView;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,16 +49,22 @@ impl Ord for VariableKey {
     }
 }
 
-pub trait VariableItemTag: SymbolTag<Identifier = VariableItemIdentifier> {
-    type Type: AbstractVariableType;
+pub trait VariableItem:
+    SymbolIdentify<Identifier = VariableItemIdentifier> + Symbol + Display
+{
+    type VariableType: AbstractVariableType;
 
     fn dimension(&self) -> usize;
     fn index(&self) -> usize;
     fn vector_view(&self) -> IndexVectorView<'_, usize>;
 
-    fn range(&self) -> &VariableRange<Self::Type>;
-    fn lb(&self) -> Option<&Bound<<Self::Type as VariableTypeValueRange>::ValueType>>;
-    fn ub(&self) -> Option<&Bound<<Self::Type as VariableTypeValueRange>::ValueType>>;
+    fn range(&self) -> &VariableRange<<Self as VariableItem>::VariableType>;
+    fn lb(
+        &self,
+    ) -> Option<&Bound<<<Self as VariableItem>::VariableType as VariableTypeBound>::ValueType>>;
+    fn ub(
+        &self,
+    ) -> Option<&Bound<<<Self as VariableItem>::VariableType as VariableTypeBound>::ValueType>>;
 
     fn key(&self) -> VariableKey {
         VariableKey {
@@ -69,11 +76,6 @@ pub trait VariableItemTag: SymbolTag<Identifier = VariableItemIdentifier> {
     fn hash_code(&self) -> usize {
         self.identifier().reverse_bit() | self.index()
     }
-}
-
-pub trait VariableItem:
-    VariableItemTag + Symbol + Display + Hash
-{
 }
 
 pub struct IdentifierGenerator {

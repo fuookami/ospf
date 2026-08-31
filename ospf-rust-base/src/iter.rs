@@ -8,7 +8,7 @@ pub trait None: Iterator {
 impl<T: Sized + Iterator> None for T {
     fn none<F>(&mut self, mut f: F) -> bool
     where
-        F: FnMut(<Self as Iterator>::Item) -> bool
+        F: FnMut(<Self as Iterator>::Item) -> bool,
     {
         self.all(|x| !f(x))
     }

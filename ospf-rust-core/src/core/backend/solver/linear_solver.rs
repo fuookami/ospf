@@ -2,15 +2,15 @@ use std::ops::Mul;
 
 use ospf_rust_base::RuntimeError;
 
-use crate::core::backend::intermediate_model::LinearTriadModelView;
 use super::config::SolverConfig;
 use super::output::{SolverOutput, SolvingStatusCallBack};
+use crate::core::backend::intermediate_model::LinearTriadModelView;
 
 pub trait AbstractLinearSolver {
     type SolutionValueType;
     type CoefficientValueType;
     type ObjectiveValueType: From<
-        <Self::SolutionValueType as Mul<Self::CoefficientValueType>>::Result
+        <Self::SolutionValueType as Mul<Self::CoefficientValueType>>::Result,
     >;
 
     fn name(&self) -> &str;

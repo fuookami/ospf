@@ -5,7 +5,14 @@ use ospf_rust_math::algebra::value_range::*;
 
 // for static
 
-pub trait VariableTypeTag: Copy + Eq {
+pub trait VariableTypeBound {
+    type ValueType: RealNumber;
+
+    const MINIMUM: &'static Self::ValueType;
+    const MAXIMUM: &'static Self::ValueType;
+}
+
+pub trait AbstractVariableType: VariableTypeBound + Copy + Eq {
     const NAME: &'static str;
     const SHORT_NAME: &'static str;
 
@@ -44,19 +51,17 @@ pub trait VariableTypeTag: Copy + Eq {
     }
 }
 
-pub trait VariableTypeValueRange {
-    type ValueType: RealNumber;
-
-    const MINIMUM: &'static Self::ValueType;
-    const MAXIMUM: &'static Self::ValueType;
-}
-
-pub trait AbstractVariableType: VariableTypeTag + VariableTypeValueRange {}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Binary;
 
-impl VariableTypeTag for Binary {
+impl VariableTypeBound for Binary {
+    type ValueType = u8;
+
+    const MINIMUM: &'static Self::ValueType = &0;
+    const MAXIMUM: &'static Self::ValueType = &1;
+}
+
+impl AbstractVariableType for Binary {
     const NAME: &'static str = "binary";
     const SHORT_NAME: &'static str = "bin";
 
@@ -73,19 +78,17 @@ impl VariableTypeTag for Binary {
     }
 }
 
-impl VariableTypeValueRange for Binary {
-    type ValueType = u8;
-
-    const MINIMUM: &'static Self::ValueType = &0;
-    const MAXIMUM: &'static Self::ValueType = &1;
-}
-
-impl AbstractVariableType for Binary {}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Ternary;
 
-impl VariableTypeTag for Ternary {
+impl VariableTypeBound for Ternary {
+    type ValueType = u8;
+
+    const MINIMUM: &'static Self::ValueType = &0;
+    const MAXIMUM: &'static Self::ValueType = &2;
+}
+
+impl AbstractVariableType for Ternary {
     const NAME: &'static str = "ternary";
     const SHORT_NAME: &'static str = "ter";
 
@@ -102,19 +105,17 @@ impl VariableTypeTag for Ternary {
     }
 }
 
-impl VariableTypeValueRange for Ternary {
-    type ValueType = u8;
-
-    const MINIMUM: &'static Self::ValueType = &0;
-    const MAXIMUM: &'static Self::ValueType = &2;
-}
-
-impl AbstractVariableType for Ternary {}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BalancedTernary;
 
-impl VariableTypeTag for BalancedTernary {
+impl VariableTypeBound for BalancedTernary {
+    type ValueType = i8;
+
+    const MINIMUM: &'static Self::ValueType = &-1;
+    const MAXIMUM: &'static Self::ValueType = &1;
+}
+
+impl AbstractVariableType for BalancedTernary {
     const NAME: &'static str = "balanced_ternary";
     const SHORT_NAME: &'static str = "bter";
 
@@ -127,19 +128,17 @@ impl VariableTypeTag for BalancedTernary {
     }
 }
 
-impl VariableTypeValueRange for BalancedTernary {
-    type ValueType = i8;
-
-    const MINIMUM: &'static Self::ValueType = &-1;
-    const MAXIMUM: &'static Self::ValueType = &1;
-}
-
-impl AbstractVariableType for BalancedTernary {}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Percentage;
 
-impl VariableTypeTag for Percentage {
+impl VariableTypeBound for Percentage {
+    type ValueType = f64;
+
+    const MINIMUM: &'static Self::ValueType = &0.0;
+    const MAXIMUM: &'static Self::ValueType = &1.0;
+}
+
+impl AbstractVariableType for Percentage {
     const NAME: &'static str = "percentage";
     const SHORT_NAME: &'static str = "pct";
 
@@ -152,19 +151,17 @@ impl VariableTypeTag for Percentage {
     }
 }
 
-impl VariableTypeValueRange for Percentage {
-    type ValueType = f64;
-
-    const MINIMUM: &'static Self::ValueType = &0.0;
-    const MAXIMUM: &'static Self::ValueType = &1.0;
-}
-
-impl AbstractVariableType for Percentage {}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Integer;
 
-impl VariableTypeTag for Integer {
+impl VariableTypeBound for Integer {
+    type ValueType = i64;
+
+    const MINIMUM: &'static Self::ValueType = i64::MINIMUM.as_ref().unwrap();
+    const MAXIMUM: &'static Self::ValueType = i64::MAXIMUM.as_ref().unwrap();
+}
+
+impl AbstractVariableType for Integer {
     const NAME: &'static str = "integer";
     const SHORT_NAME: &'static str = "int";
 
@@ -177,19 +174,17 @@ impl VariableTypeTag for Integer {
     }
 }
 
-impl VariableTypeValueRange for Integer {
-    type ValueType = i64;
-
-    const MINIMUM: &'static Self::ValueType = i64::MINIMUM.as_ref().unwrap();
-    const MAXIMUM: &'static Self::ValueType = i64::MAXIMUM.as_ref().unwrap();
-}
-
-impl AbstractVariableType for Integer {}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UInteger;
 
-impl VariableTypeTag for UInteger {
+impl VariableTypeBound for UInteger {
+    type ValueType = u64;
+
+    const MINIMUM: &'static Self::ValueType = u64::MINIMUM.as_ref().unwrap();
+    const MAXIMUM: &'static Self::ValueType = u64::MAXIMUM.as_ref().unwrap();
+}
+
+impl AbstractVariableType for UInteger {
     const NAME: &'static str = "uinteger";
     const SHORT_NAME: &'static str = "uint";
 
@@ -206,19 +201,17 @@ impl VariableTypeTag for UInteger {
     }
 }
 
-impl VariableTypeValueRange for UInteger {
-    type ValueType = u64;
-
-    const MINIMUM: &'static Self::ValueType = u64::MINIMUM.as_ref().unwrap();
-    const MAXIMUM: &'static Self::ValueType = u64::MAXIMUM.as_ref().unwrap();
-}
-
-impl AbstractVariableType for UInteger {}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Continuous;
 
-impl VariableTypeTag for Continuous {
+impl VariableTypeBound for Continuous {
+    type ValueType = f64;
+
+    const MINIMUM: &'static Self::ValueType = f64::MINIMUM.as_ref().unwrap();
+    const MAXIMUM: &'static Self::ValueType = f64::MAXIMUM.as_ref().unwrap();
+}
+
+impl AbstractVariableType for Continuous {
     const NAME: &'static str = "continuous";
     const SHORT_NAME: &'static str = "real";
 
@@ -227,19 +220,17 @@ impl VariableTypeTag for Continuous {
     }
 }
 
-impl VariableTypeValueRange for Continuous {
-    type ValueType = f64;
-
-    const MINIMUM: &'static Self::ValueType = f64::MINIMUM.as_ref().unwrap();
-    const MAXIMUM: &'static Self::ValueType = f64::MAXIMUM.as_ref().unwrap();
-}
-
-impl AbstractVariableType for Continuous {}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UContinuous;
 
-impl VariableTypeTag for UContinuous {
+impl VariableTypeBound for UContinuous {
+    type ValueType = f64;
+
+    const MINIMUM: &'static Self::ValueType = &0.0;
+    const MAXIMUM: &'static Self::ValueType = f64::MAXIMUM.as_ref().unwrap();
+}
+
+impl AbstractVariableType for UContinuous {
     const NAME: &'static str = "continuous";
     const SHORT_NAME: &'static str = "real";
 
@@ -251,15 +242,6 @@ impl VariableTypeTag for UContinuous {
         true
     }
 }
-
-impl VariableTypeValueRange for UContinuous {
-    type ValueType = f64;
-
-    const MINIMUM: &'static Self::ValueType = &0.0;
-    const MAXIMUM: &'static Self::ValueType = f64::MAXIMUM.as_ref().unwrap();
-}
-
-impl AbstractVariableType for UContinuous {}
 
 // for dynamic
 

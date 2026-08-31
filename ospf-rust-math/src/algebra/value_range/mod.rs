@@ -10,5 +10,5 @@ pub mod bound;
 pub mod interval;
 pub mod value_range;
 // pub mod value_range_stc;
+pub mod error;
 pub mod value_wrapper;
-mod error;

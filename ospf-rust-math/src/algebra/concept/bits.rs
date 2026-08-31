@@ -25,26 +25,26 @@ pub trait Bits:
 }
 
 impl<
-    T: Sized
-        + BitAnd<T, Output = T>
-        + for<'a> BitAnd<&'a T, Output = T>
-        + BitAndAssign<T>
-        + BitOr<T, Output = T>
-        + for<'a> BitOr<&'a T, Output = T>
-        + BitOrAssign<T>
-        + BitXor<T, Output = T>
-        + for<'a> BitXor<&'a T, Output = T>
-        + BitXorAssign<T>
-        + Shl<T, Output = T>
-        + for<'a> Shl<&'a T, Output = T>
-        + Shl<usize, Output = T>
-        + ShlAssign<T>
-        + ShlAssign<usize>
-        + Shr<T, Output = T>
-        + for<'a> Shr<&'a T, Output = T>
-        + Shr<usize, Output = T>
-        + ShrAssign<T>
-        + ShrAssign<usize>
-> Bits for T
+        T: Sized
+            + BitAnd<T, Output = T>
+            + for<'a> BitAnd<&'a T, Output = T>
+            + BitAndAssign<T>
+            + BitOr<T, Output = T>
+            + for<'a> BitOr<&'a T, Output = T>
+            + BitOrAssign<T>
+            + BitXor<T, Output = T>
+            + for<'a> BitXor<&'a T, Output = T>
+            + BitXorAssign<T>
+            + Shl<T, Output = T>
+            + for<'a> Shl<&'a T, Output = T>
+            + Shl<usize, Output = T>
+            + ShlAssign<T>
+            + ShlAssign<usize>
+            + Shr<T, Output = T>
+            + for<'a> Shr<&'a T, Output = T>
+            + Shr<usize, Output = T>
+            + ShrAssign<T>
+            + ShrAssign<usize>,
+    > Bits for T
 {
 }

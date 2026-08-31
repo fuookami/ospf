@@ -25,7 +25,7 @@ impl<T: 'static> Default for Index<T> {
     fn default() -> Self {
         Self {
             index: (*IndexGenerator::instance::<T>().lock().unwrap()).next(),
-            _marker: PhantomData::default()
+            _marker: PhantomData::default(),
         }
     }
 }
@@ -39,10 +39,10 @@ impl<T: 'static> Display for Index<T> {
 #[derive(Debug, Clone)]
 pub struct ManualIndex<T: 'static> {
     index: Cell<Option<usize>>,
-    _marker: PhantomData<T>
+    _marker: PhantomData<T>,
 }
 
-impl <T: 'static> ManualIndex<T> {
+impl<T: 'static> ManualIndex<T> {
     pub fn indexed(&self) -> bool {
         self.index.get().is_some()
     }
@@ -64,7 +64,7 @@ impl<T: 'static> Default for ManualIndex<T> {
     fn default() -> Self {
         Self {
             index: Cell::new(None),
-            _marker: PhantomData::default()
+            _marker: PhantomData::default(),
         }
     }
 }
@@ -125,15 +125,12 @@ struct IndexGenerator {
     inner: Option<HashMap<TypeId, Arc<Mutex<IndexGeneratorImpl>>>>,
 }
 
-static mut INDEX_GENERATOR: SyncUnsafeCell<IndexGenerator> = SyncUnsafeCell::new(IndexGenerator {
-    inner: None
-});
+static mut INDEX_GENERATOR: SyncUnsafeCell<IndexGenerator> =
+    SyncUnsafeCell::new(IndexGenerator { inner: None });
 
 impl IndexGenerator {
     pub fn self_instance() -> &'static mut IndexGenerator {
-        let mut instance = unsafe {
-            INDEX_GENERATOR.get().as_mut_unchecked()
-        };
+        let mut instance = unsafe { INDEX_GENERATOR.get().as_mut_unchecked() };
         if instance.inner.is_none() {
             instance.inner = Some(HashMap::new());
         }
@@ -142,7 +139,10 @@ impl IndexGenerator {
 
     pub fn instance<T: 'static>() -> Arc<Mutex<IndexGeneratorImpl>> {
         let instance = Self::self_instance();
-        instance.inner.as_mut().unwrap()
+        instance
+            .inner
+            .as_mut()
+            .unwrap()
             .entry(TypeId::of::<T>())
             .insert_entry(Arc::new(Mutex::new(IndexGeneratorImpl::new())))
             .get()

@@ -2,7 +2,7 @@ use paste::paste;
 
 use ospf_rust_multiarray::Shape;
 
-pub use item::{VariableItem, VariableItemTag};
+pub use item::VariableItem;
 pub use range::VariableRangeType;
 pub use variable_type::*;
 
@@ -11,6 +11,7 @@ pub(super) mod independent_item;
 pub mod item;
 pub mod range;
 pub mod variable_type;
+mod dynamic_combination_item;
 
 macro_rules! variable_type_exporter_template {
     ($id:ident, $type:ident) => {

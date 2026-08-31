@@ -1,5 +1,5 @@
 use paste::paste;
-use strum::{ EnumString, Display };
+use strum::{Display, EnumString};
 
 #[repr(u8)]
 #[derive(EnumString, Clone, Copy, Display, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -211,7 +211,9 @@ pub struct Ok {}
 pub const OK: Ok = Ok {};
 
 impl<E> From<Ok> for Result<(), E> {
-    fn from(_: Ok) -> Self { Ok(()) }
+    fn from(_: Ok) -> Self {
+        Ok(())
+    }
 }
 
 pub type RuntimeResult<T> = Result<T, Box<dyn RuntimeError>>;

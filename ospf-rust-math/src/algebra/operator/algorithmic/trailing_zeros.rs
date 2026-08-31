@@ -55,10 +55,7 @@ mod tests {
     where
         for<'a> &'a T: Mul<Output = T>,
     {
-        assert_eq!(
-            T::ZERO.clone().trailing_zeros(),
-            size_of::<T>() * 8
-        );
+        assert_eq!(T::ZERO.clone().trailing_zeros(), size_of::<T>() * 8);
         assert_eq!(T::ONE.clone().trailing_zeros(), 0);
         assert_eq!(T::TWO.clone().trailing_zeros(), 1);
         assert_eq!(T::THREE.clone().trailing_zeros(), 0);

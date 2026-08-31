@@ -7,19 +7,19 @@ use ospf_rust_math::symbol::{ExpressionRange, ExpressionRangeOperator};
 use ospf_rust_math::value_range::{Bound, Interval, ValueRange, ValueWrapper};
 use ospf_rust_math::RealNumber;
 
-pub struct VariableRange<T: VariableTypeTag + VariableTypeValueRange> {
-    inner: ExpressionRange<<T as VariableTypeValueRange>::ValueType>,
+pub struct VariableRange<T: VariableTypeBound> {
+    inner: ExpressionRange<<T as VariableTypeBound>::ValueType>,
 }
 
-impl<T: VariableTypeTag + VariableTypeValueRange> Deref for VariableRange<T> {
-    type Target = ExpressionRange<<T as VariableTypeValueRange>::ValueType>;
+impl<T: VariableTypeBound> Deref for VariableRange<T> {
+    type Target = ExpressionRange<<T as VariableTypeBound>::ValueType>;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
-impl<T: VariableTypeTag + VariableTypeValueRange> VariableRange<T> {
+impl<T: VariableTypeBound> VariableRange<T> {
     pub fn new() -> Self {
         Self {
             inner: ExpressionRange::new_with(
@@ -62,8 +62,8 @@ pub trait TrivalentVariableRangeType: BinaryVariableRangeType {
     fn set_unknown(&self) -> bool;
 }
 
-impl<T: VariableTypeTag + VariableTypeValueRange> VariableRangeType for VariableRange<T> {
-    type ValueType = <T as VariableTypeValueRange>::ValueType;
+impl<T: VariableTypeBound> VariableRangeType for VariableRange<T> {
+    type ValueType = <T as VariableTypeBound>::ValueType;
 
     fn value_range(&self) -> Option<&ValueRange<Self::ValueType>> {
         self.inner.value_range()
@@ -106,9 +106,7 @@ impl<T: VariableTypeTag + VariableTypeValueRange> VariableRangeType for Variable
     }
 }
 
-impl<T: VariableTypeTag + VariableTypeValueRange> ExpressionRangeOperator<T::ValueType>
-    for VariableRange<T>
-{
+impl<T: VariableTypeBound> ExpressionRangeOperator<T::ValueType> for VariableRange<T> {
     fn ls(&self, value: T::ValueType) -> bool {
         self.inner.ls(value)
     }

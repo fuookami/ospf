@@ -1,11 +1,12 @@
 use std::cell::Cell;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
+use std::ops::{Index, IndexMut};
 use typed_arena::Arena;
 
 use ospf_rust_math::symbol::{Category, Symbol, SymbolBelongs, SymbolCombination};
 use ospf_rust_math::value_range::Bound;
-use ospf_rust_math::SymbolTag;
+use ospf_rust_math::SymbolIdentify;
 use ospf_rust_multiarray::*;
 
 use super::item::*;
@@ -20,13 +21,26 @@ pub(crate) struct CombinationVariableItemImpl<T: AbstractVariableType, S: Abstra
     pub range: VariableRange<T>,
 }
 
+#[derive(Clone)]
 pub struct CombinationVariableItem<T: AbstractVariableType, S: AbstractShape> {
     pub(crate) inner: *mut CombinationVariableItemImpl<T, S>,
 }
 
+impl<T: AbstractVariableType, S: AbstractShape> Display for CombinationVariableItemImpl<T, S> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        unsafe { write!(f, "{}", self.name.as_ptr().as_ref().unwrap()) }
+    }
+}
+
 impl<T: AbstractVariableType, S: AbstractShape> Display for CombinationVariableItem<T, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        unsafe { write!(f, "{}", (*self.inner).name.get_mut()) }
+        unsafe { write!(f, "{}", self.inner.as_ref().unwrap()) }
+    }
+}
+
+impl<T: AbstractVariableType, S: AbstractShape> Hash for CombinationVariableItemImpl<T, S> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.hash_code().hash(state);
     }
 }
 
@@ -36,66 +50,66 @@ impl<T: AbstractVariableType, S: AbstractShape> Hash for CombinationVariableItem
     }
 }
 
-impl<T: AbstractVariableType, S: AbstractShape> Clone for CombinationVariableItem<T, S> {
-    fn clone(&self) -> Self {
-        unsafe { Self { inner: self.inner } }
-    }
-}
-
-impl<T: AbstractVariableType, S: AbstractShape> SymbolTag for CombinationVariableItemImpl<T, S> {
+impl<T: AbstractVariableType, S: AbstractShape> SymbolIdentify
+    for CombinationVariableItemImpl<T, S>
+{
     type Identifier = VariableItemIdentifier;
 
     fn identifier(&self) -> &Self::Identifier {
         unsafe { &self.parent.get().as_ref().unwrap().identifier }
     }
-
-    fn name(&self) -> &str {
-        unsafe { &self.name.as_ptr().as_ref().unwrap() }
-    }
-
-    fn display_name(&self) -> &str {
-        unsafe { &self.name.as_ptr().as_ref().unwrap() }
-    }
 }
 
-impl<T: AbstractVariableType, S: AbstractShape> SymbolTag for CombinationVariableItem<T, S> {
+impl<T: AbstractVariableType, S: AbstractShape> SymbolIdentify for CombinationVariableItem<T, S> {
     type Identifier = VariableItemIdentifier;
 
     fn identifier(&self) -> &Self::Identifier {
-        unsafe { &(*self.inner).parent.get().as_ref().unwrap().identifier }
+        unsafe {
+            &self
+                .inner
+                .as_ref()
+                .unwrap()
+                .parent
+                .get()
+                .as_ref()
+                .unwrap()
+                .identifier
+        }
     }
+}
 
+impl<T: AbstractVariableType, S: AbstractShape> Symbol for CombinationVariableItemImpl<T, S> {
     fn name(&self) -> &str {
-        unsafe { &(*self.inner).name.as_ptr().as_ref().unwrap() }
+        unsafe { &self.name.as_ptr().as_ref().unwrap() }
     }
 
-    fn display_name(&self) -> &str {
-        unsafe { &(*self.inner).name.as_ptr().as_ref().unwrap() }
+    fn set_name(&self, name: &str) {
+        self.name.set(name.to_string())
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some(self.name())
     }
 }
 
 impl<T: AbstractVariableType, S: AbstractShape> Symbol for CombinationVariableItem<T, S> {
     fn name(&self) -> &str {
-        unsafe { &(*self.inner).name.as_ptr().as_ref().unwrap() }
+        unsafe { self.inner.as_ref().unwrap().name.as_ptr().as_ref().unwrap() }
     }
 
-    fn display_name(&self) -> &str {
-        unsafe { &(*self.inner).name.as_ptr().as_ref().unwrap() }
+    fn set_name(&self, name: &str) {
+        unsafe { self.inner.as_ref().unwrap().name.set(name.to_string()) }
     }
 
-    fn category(&self) -> Category {
-        Category::Linear
-    }
-
-    fn discrete(&self) -> bool {
-        T::is_discrete()
+    fn display_name(&self) -> Option<&str> {
+        Some(self.name())
     }
 }
 
 impl<
         T: AbstractVariableType,
         U: AbstractVariableType,
-        It: VariableItem<Type = U>,
+        It: VariableItem<VariableType = U>,
         S: AbstractShape,
     > SymbolBelongs<It> for CombinationVariableItemImpl<T, S>
 {
@@ -104,19 +118,17 @@ impl<
 impl<
         T: AbstractVariableType,
         U: AbstractVariableType,
-        It: VariableItem<Type = U>,
+        It: VariableItem<VariableType = U>,
         S: AbstractShape,
     > SymbolBelongs<It> for CombinationVariableItem<T, S>
 {
 }
 
-impl<T: AbstractVariableType, S: AbstractShape> VariableItemTag
-    for CombinationVariableItemImpl<T, S>
-{
-    type Type = T;
+impl<T: AbstractVariableType, S: AbstractShape> VariableItem for CombinationVariableItemImpl<T, S> {
+    type VariableType = T;
 
     fn dimension(&self) -> usize {
-        unsafe { self.parent.get().as_ref().unwrap().items.shape.dimension() }
+        self.vector.len()
     }
 
     fn index(&self) -> usize {
@@ -127,21 +139,27 @@ impl<T: AbstractVariableType, S: AbstractShape> VariableItemTag
         IndexVectorView::new(&self.vector)
     }
 
-    fn range(&self) -> &VariableRange<Self::Type> {
+    fn range(&self) -> &VariableRange<<Self as VariableItem>::VariableType> {
         &self.range
     }
 
-    fn lb(&self) -> Option<&Bound<<Self::Type as VariableTypeValueRange>::ValueType>> {
+    fn lb(
+        &self,
+    ) -> Option<&Bound<<<Self as VariableItem>::VariableType as VariableTypeBound>::ValueType>>
+    {
         self.range.lb()
     }
 
-    fn ub(&self) -> Option<&Bound<<Self::Type as VariableTypeValueRange>::ValueType>> {
+    fn ub(
+        &self,
+    ) -> Option<&Bound<<<Self as VariableItem>::VariableType as VariableTypeBound>::ValueType>>
+    {
         self.range.ub()
     }
 }
 
-impl<T: AbstractVariableType, S: AbstractShape> VariableItemTag for CombinationVariableItem<T, S> {
-    type Type = T;
+impl<T: AbstractVariableType, S: AbstractShape> VariableItem for CombinationVariableItem<T, S> {
+    type VariableType = T;
 
     fn dimension(&self) -> usize {
         unsafe {
@@ -164,20 +182,24 @@ impl<T: AbstractVariableType, S: AbstractShape> VariableItemTag for CombinationV
         unsafe { IndexVectorView::new(&(*self.inner).vector) }
     }
 
-    fn range(&self) -> &VariableRange<Self::Type> {
+    fn range(&self) -> &VariableRange<<Self as VariableItem>::VariableType> {
         unsafe { &(*self.inner).range }
     }
 
-    fn lb(&self) -> Option<&Bound<<Self::Type as VariableTypeValueRange>::ValueType>> {
+    fn lb(
+        &self,
+    ) -> Option<&Bound<<<Self as VariableItem>::VariableType as VariableTypeBound>::ValueType>>
+    {
         unsafe { (*self.inner).range.lb() }
     }
 
-    fn ub(&self) -> Option<&Bound<<Self::Type as VariableTypeValueRange>::ValueType>> {
+    fn ub(
+        &self,
+    ) -> Option<&Bound<<<Self as VariableItem>::VariableType as VariableTypeBound>::ValueType>>
+    {
         unsafe { (*self.inner).range.ub() }
     }
 }
-
-impl<T: AbstractVariableType, S: AbstractShape> VariableItem for CombinationVariableItem<T, S> {}
 
 struct VariableCombinationImpl<T: AbstractVariableType, S: AbstractShape> {
     identifier: VariableItemIdentifier,
@@ -222,15 +244,52 @@ impl<T: AbstractVariableType, S: AbstractShape> VariableCombinationImpl<T, S> {
     }
 }
 
+impl<T: AbstractVariableType, S: AbstractShape> Index<usize> for VariableCombination<T, S> {
+    type Output = CombinationVariableItem<T, S>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.inner.items[index]
+    }
+}
+
+impl<T: AbstractVariableType, S: AbstractShape> IndexMut<usize> for VariableCombination<T, S> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.inner.items[index]
+    }
+}
+
+impl<T: AbstractVariableType, S: AbstractShape> Index<&S::VectorType>
+    for VariableCombination<T, S>
+{
+    type Output = CombinationVariableItem<T, S>;
+
+    fn index(&self, index: &S::VectorType) -> &Self::Output {
+        &self.inner.items[index]
+    }
+}
+
+impl<T: AbstractVariableType, S: AbstractShape> IndexMut<&S::VectorType>
+    for VariableCombination<T, S>
+{
+    fn index_mut(&mut self, index: &S::VectorType) -> &mut Self::Output {
+        &mut self.inner.items[index]
+    }
+}
+
 impl<T: AbstractVariableType, S: AbstractShape> SymbolCombination for VariableCombination<T, S> {
+    type Shape = S;
     type Item = CombinationVariableItem<T, S>;
 
-    fn identifier(&self) -> &<Self::Item as SymbolTag>::Identifier {
+    fn identifier(&self) -> &<Self::Item as SymbolIdentify>::Identifier {
         &self.inner.identifier
     }
 
     fn iter(&self) -> impl Iterator<Item = &Self::Item> {
         self.inner.items.iter()
+    }
+
+    fn iter_mut(&mut self) -> impl Iterator<Item = &mut Self::Item> {
+        self.inner.items.iter_mut()
     }
 }
 

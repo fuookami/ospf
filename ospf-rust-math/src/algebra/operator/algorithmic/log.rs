@@ -81,20 +81,19 @@ floating_log_template! { f32 f64 }
 mod tests {
     use std::fmt::Debug;
 
-    use crate::algebra::concept::{Integer, FloatingNumber};
+    use crate::algebra::concept::{FloatingNumber, Integer};
 
     use super::*;
 
     fn test_int<T: Integer + Log<f64, Output = f64> + Debug>()
     where
-            for<'a> &'a T: Log<f64, Output = f64>
+        for<'a> &'a T: Log<f64, Output = f64>,
     {
-
     }
 
     fn test_flt<T: FloatingNumber + Log<T, Output = T> + Debug>()
     where
-            for<'a> &'a T: Log<T, Output = T>
+        for<'a> &'a T: Log<T, Output = T>,
     {
         assert_eq!(&T::TWO.lg2().unwrap(), T::ONE);
     }

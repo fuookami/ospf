@@ -22,6 +22,10 @@ dyn-clone = "1.0.17"
 path = "../ospf-rust-base"
 version = "0.1.0"
 
+[dependencies.ospf-rust-multiarray]
+path = "../ospf-rust-multiarray"
+version = "0.1.0"
+
 [profile.dev]
 opt-level = 0
 

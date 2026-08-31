@@ -5,7 +5,6 @@
 #![feature(unboxed_closures, fn_traits)]
 #![feature(coroutines, coroutine_trait)]
 #![feature(tuple_trait)]
-#![feature(trait_upcasting)]
 #![feature(adt_const_params)]
 #![cfg_attr(
     debug_assertions,

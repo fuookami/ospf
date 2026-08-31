@@ -1,9 +1,9 @@
 use std::cell::Cell;
 use std::default::Default;
-use ospf_rust_base::{Index, Indexed, Try};
-use ospf_rust_core::core::frontend::symbol::expression_symbol::LinearExpressionSymbol;
+use ospf_rust_base::{Index, Indexed, Try, OK};
 use ospf_rust_core::core::frontend::variable::BinVariable1;
 use ospf_rust_derive::{AutoIndexed};
+use ospf_rust_math::Symbol;
 use ospf_rust_multiarray::Shape1;
 
 #[derive(Default, Debug, Clone, AutoIndexed)]
@@ -66,11 +66,12 @@ impl Demo1 {
     }
 
     fn init_variable(&self) -> Try {
-        let x = BinVariable1::new("x".to_string(), Shape1::new([self.companies.len()]));
-        for c in self.companies {
-            x[*c.index].name.set(format!("{}_{}", x.name(), *c.index));
+        let x = BinVariable1::new("x".to_string(), Shape1::new_with(self.companies.len()));
+        for c in &self.companies {
+            let base_name = x.name();
+            x[*c.index].set_name(&format!("{}_{}", base_name, *c.index));
         }
         self.x.set(Some(x));
-        Ok.into()
+        OK.into()
     }
 }

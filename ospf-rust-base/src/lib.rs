@@ -9,7 +9,7 @@ extern crate strum;
 
 pub use error::*;
 pub use generator_iterator::GeneratorIterator;
-pub use indexed_type::{Index, ManualIndex, Indexed, ManualIndexed};
+pub use indexed_type::{Index, Indexed, ManualIndex, ManualIndexed};
 pub use iter::*;
 
 pub mod error;

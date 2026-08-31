@@ -1,7 +1,9 @@
-use std::fmt::{Debug, Display, Formatter};
 use chrono::Duration;
+use std::fmt::{Debug, Display, Formatter};
 
-pub trait SemiArithmetic: 'static + Debug + Display + Sized + Clone + PartialEq + PartialOrd {
+pub trait SemiArithmetic:
+    'static + Debug + Display + Sized + Clone + PartialEq + PartialOrd
+{
     const ZERO: &'static Self;
 }
 

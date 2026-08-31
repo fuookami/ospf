@@ -1,5 +1,6 @@
+pub mod inequality;
+pub mod judgement;
 pub mod sign;
-mod judgement;
-mod inequality;
 
 pub use sign::*;
+pub use inequality::*;

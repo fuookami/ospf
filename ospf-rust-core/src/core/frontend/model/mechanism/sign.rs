@@ -55,7 +55,9 @@ impl TryFrom<inequality::SignType> for Sign {
         match sign {
             inequality::SignType::Less | inequality::SignType::LessEqual => Ok(Self::LessEqual),
             inequality::SignType::Equal => Ok(Self::Equal),
-            inequality::SignType::Greater | inequality::SignType::GreaterEqual => Ok(Self::GreaterEqual),
+            inequality::SignType::Greater | inequality::SignType::GreaterEqual => {
+                Ok(Self::GreaterEqual)
+            }
             _ => Err(IllegalConstraintSign { sign }),
         }
     }

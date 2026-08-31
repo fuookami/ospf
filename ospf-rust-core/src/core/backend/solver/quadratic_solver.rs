@@ -1,15 +1,15 @@
-use std::ops::Mul;
 use ospf_rust_base::RuntimeError;
+use std::ops::Mul;
 
-use crate::core::backend::intermediate_model::QuadraticTetradModelView;
 use super::config::SolverConfig;
 use super::output::{SolverOutput, SolvingStatusCallBack};
+use crate::core::backend::intermediate_model::QuadraticTetradModelView;
 
 pub trait AbstractQuadraticSolver {
     type SolutionValueType;
     type CoefficientValueType;
     type ObjectiveValueType: From<
-        <Self::SolutionValueType as Mul<Self::CoefficientValueType>>::Result
+        <Self::SolutionValueType as Mul<Self::CoefficientValueType>>::Result,
     >;
 
     fn name(&self) -> &str;

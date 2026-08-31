@@ -3,9 +3,9 @@ use std::time::{Duration, Instant};
 
 use chrono::NaiveDateTime;
 
+use super::error::IllegalArgumentError;
 use super::interval::Interval;
 use super::value_wrapper::ValueWrapper;
-use super::error::IllegalArgumentError;
 
 #[non_exhaustive]
 #[derive(Clone, Copy)]

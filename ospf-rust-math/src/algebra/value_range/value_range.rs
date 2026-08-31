@@ -2,7 +2,7 @@ use std::cmp::{max, Ordering};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Range, RangeBounds, RangeFrom, RangeFull,
-    RangeInclusive, RangeTo, RangeToInclusive, Sub, SubAssign
+    RangeInclusive, RangeTo, RangeToInclusive, Sub, SubAssign,
 };
 use std::time::{Duration, Instant};
 
@@ -12,9 +12,9 @@ use crate::algebra::concept::*;
 use crate::algebra::operator::*;
 
 use super::bound::*;
+use super::error::IllegalArgumentError;
 use super::interval::*;
 use super::value_wrapper::*;
-use super::error::IllegalArgumentError;
 
 pub(self) fn empty<T: 'static + PartialOrd>(
     lb: &ValueWrapper<T>,
@@ -81,7 +81,10 @@ impl<T> ValueRange<T> {
         }
     }
 
-    pub fn new_with_constant(value: T) -> Self where T: Clone {
+    pub fn new_with_constant(value: T) -> Self
+    where
+        T: Clone,
+    {
         Self {
             lb: Bound::new(ValueWrapper::Value(value.clone()), Interval::Closed),
             ub: Bound::new(ValueWrapper::Value(value), Interval::Closed),
@@ -162,7 +165,7 @@ impl<T> ValueRange<T> {
 
     pub fn fixed(&self) -> bool
     where
-        T: PartialEq
+        T: PartialEq,
     {
         self.lb.interval == Interval::Closed
             && self.ub.interval == Interval::Closed
@@ -178,7 +181,7 @@ impl<T> ValueRange<T> {
 
     pub fn fixed_value(&self) -> Option<&ValueWrapper<T>>
     where
-        T: PartialEq
+        T: PartialEq,
     {
         if self.fixed() {
             Some(&self.lb.value)
@@ -190,7 +193,8 @@ impl<T> ValueRange<T> {
     pub fn mean(&self) -> Result<ValueWrapper<T>, IllegalArgumentError>
     where
         T: RealNumber,
-        for<'a> &'a ValueWrapper<T>: Add<&'a ValueWrapper<T>, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
+        for<'a> &'a ValueWrapper<T>:
+            Add<&'a ValueWrapper<T>, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
         ValueWrapper<T>: for<'a> Div<&'a T, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
     {
         (&self.lb.value + &self.ub.value)? / T::TWO
@@ -198,7 +202,8 @@ impl<T> ValueRange<T> {
 
     pub fn diff(&self) -> Result<ValueWrapper<T>, IllegalArgumentError>
     where
-        for<'a> &'a ValueWrapper<T>: Sub<&'a ValueWrapper<T>, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
+        for<'a> &'a ValueWrapper<T>:
+            Sub<&'a ValueWrapper<T>, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
     {
         &self.ub.value - &self.lb.value
     }
@@ -207,8 +212,10 @@ impl<T> ValueRange<T> {
     where
         T: RealNumber + Ord,
         for<'a> &'a T: Abs<Output = T>,
-        for<'a> &'a ValueWrapper<T>: Add<&'a ValueWrapper<T>, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
-        for<'a> &'a ValueWrapper<T>: Sub<&'a ValueWrapper<T>, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
+        for<'a> &'a ValueWrapper<T>:
+            Add<&'a ValueWrapper<T>, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
+        for<'a> &'a ValueWrapper<T>:
+            Sub<&'a ValueWrapper<T>, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
         ValueWrapper<T>: for<'a> Div<&'a T, Output = Result<ValueWrapper<T>, IllegalArgumentError>>,
     {
         self.diff()? / max(T::DECIMAL_PRECISION, &self.mean()?.unwrap().abs())
