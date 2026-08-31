@@ -40,7 +40,7 @@ pub trait IndexLabel: Clone + Copy + Default + 'static {
     /// 索引名称（用于调试和显示）
     /// Index name (for debugging and display)
     const NAME: &'static str;
-    
+
     /// 索引的唯一标识符
     /// Unique identifier for the index
     ///
@@ -140,11 +140,11 @@ pub trait IndexList: Clone + Default + 'static {
     /// 列表长度
     /// List length
     const LEN: usize;
-    
+
     /// 将索引列表转换为索引 ID 切片
     /// Convert index list to slice of index IDs
     fn to_ids() -> Vec<usize>;
-    
+
     /// 将索引列表转换为名称字符串
     /// Convert index list to name string
     fn to_names() -> String;
@@ -163,11 +163,11 @@ pub struct Nil;
 
 impl IndexList for Nil {
     const LEN: usize = 0;
-    
+
     fn to_ids() -> Vec<usize> {
         Vec::new()
     }
-    
+
     fn to_names() -> String {
         String::new()
     }
@@ -190,13 +190,13 @@ pub struct Cons<H: IndexLabel, T: IndexList> {
 
 impl<H: IndexLabel, T: IndexList> IndexList for Cons<H, T> {
     const LEN: usize = 1 + T::LEN;
-    
+
     fn to_ids() -> Vec<usize> {
         let mut ids = vec![H::ID];
         ids.extend(T::to_ids());
         ids
     }
-    
+
     fn to_names() -> String {
         let mut names = H::NAME.to_string();
         let tail_names = T::to_names();
@@ -228,7 +228,8 @@ pub type IL4<I1, I2, I3, I4> = Cons<I1, Cons<I2, Cons<I3, Cons<I4, Nil>>>>;
 pub type IL5<I1, I2, I3, I4, I5> = Cons<I1, Cons<I2, Cons<I3, Cons<I4, Cons<I5, Nil>>>>>;
 
 /// 六索引列表类型别名 / Six index list type alias
-pub type IL6<I1, I2, I3, I4, I5, I6> = Cons<I1, Cons<I2, Cons<I3, Cons<I4, Cons<I5, Cons<I6, Nil>>>>>>;
+pub type IL6<I1, I2, I3, I4, I5, I6> =
+    Cons<I1, Cons<I2, Cons<I3, Cons<I4, Cons<I5, Cons<I6, Nil>>>>>>;
 
 // ============================================================================
 // 辅助函数 / Helper Functions
@@ -284,7 +285,7 @@ mod tests {
         assert_eq!(I::NAME, "i");
         assert_eq!(J::NAME, "j");
         assert_eq!(K::NAME, "k");
-        
+
         assert_eq!(I::ID, 0);
         assert_eq!(J::ID, 1);
         assert_eq!(K::ID, 2);
@@ -301,13 +302,13 @@ mod tests {
     #[test]
     fn test_index_list_to_ids() {
         assert!(Nil::to_ids().is_empty());
-        
+
         let single = IL::<I>::to_ids();
         assert_eq!(single, vec![0]);
-        
+
         let double = IL2::<I, J>::to_ids();
         assert_eq!(double, vec![0, 1]);
-        
+
         let triple = IL3::<I, J, K>::to_ids();
         assert_eq!(triple, vec![0, 1, 2]);
     }
@@ -315,29 +316,29 @@ mod tests {
     #[test]
     fn test_index_list_to_names() {
         assert!(Nil::to_names().is_empty());
-        
+
         let single = IL::<I>::to_names();
         assert_eq!(single, "i");
-        
+
         let double = IL2::<I, J>::to_names();
         assert_eq!(double, "i, j");
     }
 
     #[test]
     fn test_find_common_indices() {
-        let lhs = vec![0, 1, 2];  // i, j, k
-        let rhs = vec![1, 2, 3];  // j, k, l
-        
+        let lhs = vec![0, 1, 2]; // i, j, k
+        let rhs = vec![1, 2, 3]; // j, k, l
+
         let common = find_common_indices(&lhs, &rhs);
-        assert_eq!(common, vec![1, 2]);  // j, k
+        assert_eq!(common, vec![1, 2]); // j, k
     }
 
     #[test]
     fn test_remove_indices() {
-        let ids = vec![0, 1, 2, 3];  // i, j, k, l
-        let to_remove = vec![1, 3];  // j, l
-        
+        let ids = vec![0, 1, 2, 3]; // i, j, k, l
+        let to_remove = vec![1, 3]; // j, l
+
         let result = remove_indices(&ids, &to_remove);
-        assert_eq!(result, vec![0, 2]);  // i, k
+        assert_eq!(result, vec![0, 2]); // i, k
     }
 }

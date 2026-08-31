@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use crate::model::basic::ConstraintPriority;
+
 use super::{ConstraintGroup, LinearInequality, QuadraticInequality};
 
 /// 不等式 trait / Inequality Trait
@@ -64,6 +66,12 @@ impl<I: InequalityTrait> MetaConstraint<I> {
     /// 设置优先级 / Set priority
     pub fn with_priority(mut self, priority: u32) -> Self {
         self.priority = priority;
+        self
+    }
+
+    /// 设置语义优先级 / Set semantic priority
+    pub fn with_constraint_priority(mut self, priority: ConstraintPriority) -> Self {
+        self.priority = priority.into();
         self
     }
 

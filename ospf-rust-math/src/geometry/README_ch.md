@@ -1,8 +1,8 @@
 # 几何模块
 
-本模块提供几何实体和计算几何算法。
+:us: English | :cn: [简体中文](README_ch.md)
 
-[English Documentation](./README.md)
+本模块提供几何实体和计算几何算法。
 
 ## 特性
 

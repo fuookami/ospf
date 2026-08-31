@@ -18,6 +18,7 @@ pub mod object;
 pub mod range_cache;
 pub mod value_cache;
 
+pub mod basic;
 pub mod callback;
 pub mod flatten;
 pub mod intermediate;

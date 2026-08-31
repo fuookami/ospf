@@ -30,7 +30,9 @@
 //! assert_eq!(mono.coefficient, 2.0);
 //! ```
 
-use crate::operator::{Abs, AbsRef, DivRef, MulRef, NegOneRef, NegRef, OneRef, Reciprocal, ReciprocalRef};
+use crate::operator::{
+    Abs, AbsRef, DivRef, MulRef, NegOneRef, NegRef, OneRef, Reciprocal, ReciprocalRef,
+};
 use crate::symbol::{DynSymbol, OwnedSymbol, SymbolDynId};
 use std::fmt::Debug;
 
@@ -406,8 +408,8 @@ impl<T: ReciprocalRef> Reciprocal for &LinearMonomial<T> {
 
 use std::fmt;
 
-impl<T: Debug + fmt::Display + Zero + PartialEq + OneRef + NegOneRef + 'static>
-    fmt::Display for LinearMonomial<T>
+impl<T: Debug + fmt::Display + Zero + PartialEq + OneRef + NegOneRef + 'static> fmt::Display
+    for LinearMonomial<T>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.coefficient.is_zero() {
@@ -426,7 +428,7 @@ impl<T: Debug + fmt::Display + Zero + PartialEq + OneRef + NegOneRef + 'static>
 // 求值实现 / Evaluate Implementation
 // ============================================================================
 
-use crate::symbol::operation::{Evaluate, EvaluateOrdered, Evaluatable};
+use crate::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
 use std::collections::HashMap;
 
 impl<T: Clone> Evaluate<T> for LinearMonomial<T> {
@@ -485,8 +487,8 @@ impl<T> EvaluateOrdered<T> for LinearMonomial<T> {
 // ============================================================================
 
 use crate::operator::Exponent;
-use crate::symbol::{Canonical, CanonicalMonomial, Linear, Quadratic, QuadraticMonomial};
 use crate::symbol::operation::{ToCanonical, ToLinear, ToQuadratic};
+use crate::symbol::{Canonical, CanonicalMonomial, Linear, Quadratic, QuadraticMonomial};
 use num_traits::One;
 
 impl<T: Zero> ToLinear<T> for LinearMonomial<T> {
@@ -523,7 +525,10 @@ impl<T: Zero> ToQuadratic<T> for LinearMonomial<T> {
 impl<T: Zero + Clone> ToQuadratic<T> for &LinearMonomial<T> {
     fn to_quadratic(self) -> Quadratic<T> {
         Quadratic {
-            monomials: vec![QuadraticMonomial::linear(self.coefficient.clone(), self.symbol.clone())],
+            monomials: vec![QuadraticMonomial::linear(
+                self.coefficient.clone(),
+                self.symbol.clone(),
+            )],
             constant: T::zero(),
         }
     }

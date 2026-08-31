@@ -13,10 +13,12 @@ ospf-rust-multiarray = { path = "../ospf-rust-multiarray" }
 ospf-rust-core = { path = "../ospf-rust-core" }
 
 # 异步运行时 / Async runtime
-tokio = { version = "1", features = ["rt-multi-thread", "sync"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"], optional = true }
 
 # 序列化 / Serialization
 serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+sha2 = { version = "0.10", optional = true }
 
 # 错误处理 / Error handling
 thiserror = "1"
@@ -38,6 +40,12 @@ num-traits = "0.2"
 
 # 日志 / Logging
 log = "0.4"
+
+# SeaORM 持久化后端 / SeaORM persistence backend
+sea-orm = { version = "1.1", default-features = false, optional = true }
+
+# HTTP 客户端 / HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 
 [features]
 default = []
@@ -65,5 +73,37 @@ scip-from-source = ["scip", "ospf-rust-core/scip-from-source"]
 # SCIP 二次规划支持 / SCIP quadratic programming support
 scip-quadratic = ["scip", "ospf-rust-core/scip-quadratic"]
 
+# 持久化支持 / Persistence support
+persistence = []
+
+# SQLx 持久化后端 / SQLx persistence backend
+persistence-sqlx = ["persistence"]
+persistence-sqlx-postgres = ["persistence-sqlx"]
+persistence-sqlx-mysql = ["persistence-sqlx"]
+persistence-sqlx-sqlite = ["persistence-sqlx"]
+
+# Diesel 持久化后端 / Diesel persistence backend
+persistence-diesel = ["persistence"]
+persistence-diesel-postgres = ["persistence-diesel"]
+persistence-diesel-mysql = ["persistence-diesel"]
+persistence-diesel-sqlite = ["persistence-diesel"]
+
+# SeaORM 持久化后端 / SeaORM persistence backend
+persistence-sea-orm = ["persistence", "dep:sea-orm"]
+
+# 其他 Rust ORM/SQL 框架后端 / Other Rust ORM/SQL framework backends
+persistence-toasty = ["persistence"]
+persistence-rbatis = ["persistence-sqlx"]
+persistence-cornucopia = ["persistence"]
+
+# 非关系型持久化后端 / Non-relational persistence backends
+persistence-mongodb = ["persistence", "serde", "dep:serde_json"]
+persistence-redis = ["persistence", "serde", "dep:serde_json"]
+
+# 远程求解客户端 / Remote solver client
+remote-solver = ["async", "serde", "dep:serde_json", "dep:sha2"]
+remote-solver-http-reqwest = ["remote-solver", "dep:reqwest"]
+
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+sea-orm = { version = "1.1", default-features = false, features = ["macros", "mock"] }

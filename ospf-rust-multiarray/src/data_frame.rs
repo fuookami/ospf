@@ -5,7 +5,7 @@ use super::multi_array_view::MultiArrayView;
 use super::shape::{AbstractShape, Shape};
 use std::any::Any;
 use std::collections::HashMap;
-use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::ops::{Bound, Deref, DerefMut, Index, IndexMut, Range, RangeBounds};
 
 pub struct DataFrame<T = Box<dyn Any>, C = Vec<Option<T>>>
 where
@@ -134,9 +134,226 @@ where
         self.get_column(col_index)
     }
 
+    /// 获取指定行的值副本。
+    /// Get cloned values of a row.
+    pub fn row_values(&self, row: usize) -> Option<Vec<Option<T>>>
+    where
+        T: Clone,
+    {
+        if row >= self.nrows() {
+            return None;
+        }
+        Some(
+            (0..self.ncols())
+                .map(|col| self.get(row, col).cloned().unwrap_or(None))
+                .collect(),
+        )
+    }
+
+    /// 获取指定列的值副本。
+    /// Get cloned values of a column.
+    pub fn column_values(&self, col_index: usize) -> Option<Vec<Option<T>>>
+    where
+        T: Clone,
+    {
+        if col_index >= self.ncols() {
+            return None;
+        }
+        Some(
+            (0..self.nrows())
+                .map(|row| self.get(row, col_index).cloned().unwrap_or(None))
+                .collect(),
+        )
+    }
+
+    /// 按列名获取列值副本。
+    /// Get cloned column values by column name.
+    pub fn column_values_by_name(&self, col_name: &str) -> Option<Vec<Option<T>>>
+    where
+        T: Clone,
+    {
+        let col_index = self.column_index.get(col_name).copied()?;
+        self.column_values(col_index)
+    }
+
+    /// 转换为可空值多维数组。
+    /// Convert to a nullable-value multi-array.
+    pub fn to_nullable_multi_array(&self) -> MultiArray<Option<T>, Shape<2>>
+    where
+        T: Clone,
+    {
+        let shape = Shape::new([self.nrows(), self.ncols()]);
+        MultiArrayBuilder::new_by(shape, |flat_index, _| self.array[flat_index].clone())
+    }
+
     #[inline]
     pub fn shape(&self) -> &Shape<2> {
         &self.array.shape
+    }
+
+    fn normalize_range<R>(range: R, upper_bound: usize, label: &str) -> Range<usize>
+    where
+        R: RangeBounds<usize>,
+    {
+        let start = match range.start_bound() {
+            Bound::Included(&v) => v,
+            Bound::Excluded(&v) => v.saturating_add(1),
+            Bound::Unbounded => 0,
+        };
+
+        let end = match range.end_bound() {
+            Bound::Included(&v) => v.saturating_add(1),
+            Bound::Excluded(&v) => v,
+            Bound::Unbounded => upper_bound,
+        };
+
+        assert!(
+            start <= end && end <= upper_bound,
+            "{} range [{}, {}) out of bounds [0, {}) / {} 范围 [{}, {}) 超出边界 [0, {})",
+            label,
+            start,
+            end,
+            upper_bound,
+            label,
+            start,
+            end,
+            upper_bound
+        );
+
+        start..end
+    }
+
+    /// 获取指定行列范围的子 DataFrame / Get a sub DataFrame by row/column ranges.
+    pub fn sub_data_frame<RR, CR>(&self, rows: RR, cols: CR) -> DataFrame<T>
+    where
+        RR: RangeBounds<usize>,
+        CR: RangeBounds<usize>,
+        T: Clone,
+    {
+        let row_range = Self::normalize_range(rows, self.nrows(), "rows");
+        let col_range = Self::normalize_range(cols, self.ncols(), "cols");
+
+        let column_names = self.column_names[col_range.clone()].to_vec();
+        let mut data_frame = DataFrame::new(row_range.len(), col_range.len(), column_names);
+
+        for (new_row, row) in row_range.clone().enumerate() {
+            for (new_col, col) in col_range.clone().enumerate() {
+                let value = self.get(row, col).cloned().unwrap_or(None);
+                data_frame.set(new_row, new_col, value);
+            }
+        }
+
+        data_frame
+    }
+
+    /// 选择列构成新的 DataFrame / Select columns into a new DataFrame.
+    pub fn select<'a, I>(&self, column_names: I) -> DataFrame<T>
+    where
+        I: IntoIterator<Item = &'a str>,
+        T: Clone,
+    {
+        let selected: Vec<&str> = column_names.into_iter().collect();
+        let col_indices: Vec<usize> = selected
+            .iter()
+            .map(|name| {
+                self.get_column_index(name).unwrap_or_else(|| {
+                    panic!("Column name not found: {} / 列名不存在: {}", name, name)
+                })
+            })
+            .collect();
+
+        let mut data_frame = DataFrame::new(
+            self.nrows(),
+            selected.len(),
+            selected.iter().map(|name| name.to_string()).collect(),
+        );
+
+        for row in 0..self.nrows() {
+            for (new_col, old_col) in col_indices.iter().copied().enumerate() {
+                let value = self.get(row, old_col).cloned().unwrap_or(None);
+                data_frame.set(row, new_col, value);
+            }
+        }
+
+        data_frame
+    }
+
+    /// 按行过滤 DataFrame / Filter DataFrame rows.
+    pub fn filter<P>(&self, predicate: P) -> DataFrame<T>
+    where
+        P: Fn(&[Option<T>]) -> bool,
+        T: Clone,
+    {
+        let mut selected_rows = Vec::new();
+        for row in 0..self.nrows() {
+            let values: Vec<Option<T>> = (0..self.ncols())
+                .map(|col| self.get(row, col).cloned().unwrap_or(None))
+                .collect();
+            if predicate(&values) {
+                selected_rows.push(row);
+            }
+        }
+
+        let mut data_frame =
+            DataFrame::new(selected_rows.len(), self.ncols(), self.column_names.clone());
+
+        for (new_row, old_row) in selected_rows.into_iter().enumerate() {
+            for col in 0..self.ncols() {
+                let value = self.get(old_row, col).cloned().unwrap_or(None);
+                data_frame.set(new_row, col, value);
+            }
+        }
+
+        data_frame
+    }
+
+    /// 复制并在末尾添加一行 / Copy and append a row at the tail.
+    pub fn copy_with_added_row(&self, values: Vec<Option<T>>) -> DataFrame<T>
+    where
+        T: Clone,
+    {
+        assert_eq!(
+            values.len(),
+            self.ncols(),
+            "Value count ({}) must equal column count ({}) / 值数量 ({}) 必须等于列数 ({})",
+            values.len(),
+            self.ncols(),
+            values.len(),
+            self.ncols()
+        );
+
+        let mut data_frame =
+            DataFrame::new(self.nrows() + 1, self.ncols(), self.column_names.clone());
+
+        for row in 0..self.nrows() {
+            for col in 0..self.ncols() {
+                let value = self.get(row, col).cloned().unwrap_or(None);
+                data_frame.set(row, col, value);
+            }
+        }
+
+        for (col, value) in values.into_iter().enumerate() {
+            data_frame.set(self.nrows(), col, value);
+        }
+
+        data_frame
+    }
+
+    /// 转换为列映射 / Convert to column map.
+    pub fn to_map(&self) -> HashMap<String, Vec<Option<T>>>
+    where
+        T: Clone,
+    {
+        let mut map = HashMap::new();
+
+        for col_name in &self.column_names {
+            let values: Vec<Option<T>> = (0..self.nrows())
+                .map(|row| self.get_by_name(row, col_name).cloned().unwrap_or(None))
+                .collect();
+            map.insert(col_name.clone(), values);
+        }
+
+        map
     }
 }
 
@@ -218,6 +435,133 @@ impl<T> DataFrame<T, Vec<Option<T>>> {
             column_names,
             column_index,
         }
+    }
+
+    /// 从列映射构建 DataFrame / Create DataFrame from a column map.
+    pub fn from_map(data: HashMap<String, Vec<Option<T>>>) -> Self
+    where
+        T: Clone,
+    {
+        let mut column_names: Vec<String> = data.keys().cloned().collect();
+        column_names.sort();
+
+        let nrows = column_names
+            .first()
+            .and_then(|name| data.get(name))
+            .map(|column| column.len())
+            .unwrap_or(0);
+        let ncols = column_names.len();
+
+        for name in &column_names {
+            let len = data.get(name).map(|column| column.len()).unwrap_or(0);
+            assert_eq!(
+                len, nrows,
+                "Column '{}' length ({}) mismatch with nrows ({}) / 列 '{}' 长度 ({}) 与行数 ({}) 不匹配",
+                name, len, nrows, name, len, nrows
+            );
+        }
+
+        let mut data_frame = DataFrame::new(nrows, ncols, column_names.clone());
+        for (col, name) in column_names.iter().enumerate() {
+            if let Some(column) = data.get(name) {
+                for (row, value) in column.iter().cloned().enumerate() {
+                    data_frame.set(row, col, value);
+                }
+            }
+        }
+
+        data_frame
+    }
+
+    /// 从有序列数据构建 DataFrame，保留输入列顺序。
+    /// Create DataFrame from ordered column data, preserving input column order.
+    pub fn from_columns<I, N>(columns: I) -> Self
+    where
+        I: IntoIterator<Item = (N, Vec<Option<T>>)>,
+        N: Into<String>,
+        T: Clone,
+    {
+        let columns = columns
+            .into_iter()
+            .map(|(name, values)| (name.into(), values))
+            .collect::<Vec<_>>();
+        let nrows = columns.first().map(|(_, values)| values.len()).unwrap_or(0);
+        let ncols = columns.len();
+
+        for (name, values) in &columns {
+            assert_eq!(
+                values.len(),
+                nrows,
+                "Column '{}' length ({}) mismatch with nrows ({}) / 列 '{}' 长度 ({}) 与行数 ({}) 不匹配",
+                name,
+                values.len(),
+                nrows,
+                name,
+                values.len(),
+                nrows
+            );
+        }
+
+        let column_names = columns
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect::<Vec<_>>();
+        let mut data_frame = DataFrame::new(nrows, ncols, column_names);
+        for (col, (_, values)) in columns.into_iter().enumerate() {
+            for (row, value) in values.into_iter().enumerate() {
+                data_frame.set(row, col, value);
+            }
+        }
+        data_frame
+    }
+
+    /// 从行数据构建 DataFrame。
+    /// Create DataFrame from row data.
+    pub fn from_rows<I, N>(column_names: I, rows: Vec<Vec<Option<T>>>) -> Self
+    where
+        I: IntoIterator<Item = N>,
+        N: Into<String>,
+    {
+        let column_names = column_names.into_iter().map(Into::into).collect::<Vec<_>>();
+        let ncols = column_names.len();
+        let mut data_frame = DataFrame::new(rows.len(), ncols, column_names);
+
+        for (row_index, row) in rows.into_iter().enumerate() {
+            assert_eq!(
+                row.len(),
+                ncols,
+                "Row {} length ({}) mismatch with ncols ({}) / 行 {} 长度 ({}) 与列数 ({}) 不匹配",
+                row_index,
+                row.len(),
+                ncols,
+                row_index,
+                row.len(),
+                ncols
+            );
+            for (col_index, value) in row.into_iter().enumerate() {
+                data_frame.set(row_index, col_index, value);
+            }
+        }
+
+        data_frame
+    }
+
+    /// 使用行构建器创建 DataFrame。
+    /// Create DataFrame with a row builder.
+    pub fn build_rows<I, N, F>(column_names: I, block: F) -> Self
+    where
+        I: IntoIterator<Item = N>,
+        N: Into<String>,
+        F: FnOnce(&mut DataFrameRowsBuilder<T>),
+    {
+        let mut builder = DataFrameRowsBuilder::new(column_names);
+        block(&mut builder);
+        builder.build()
+    }
+
+    /// 创建空 DataFrame / Create an empty DataFrame.
+    pub fn empty(column_names: Vec<String>) -> Self {
+        DataFrame::new(0, column_names.len(), column_names)
     }
 }
 
@@ -316,6 +660,68 @@ where
 pub type DataFrameView<'a, T, C = Vec<Option<T>>> =
     MultiArrayView<'a, Option<T>, Shape<2>, AccessOrder, C>;
 
+/// DataFrame 类型别名。
+/// DataFrame type alias.
+pub type DataFrame2<T, C = Vec<Option<T>>> = DataFrame<T, C>;
+
+/// 行式 DataFrame 构建器。
+/// Row-oriented DataFrame builder.
+pub struct DataFrameRowsBuilder<T> {
+    column_names: Vec<String>,
+    rows: Vec<Vec<Option<T>>>,
+}
+
+impl<T> DataFrameRowsBuilder<T> {
+    /// 创建行式构建器。
+    /// Create a row-oriented builder.
+    pub fn new<I, N>(column_names: I) -> Self
+    where
+        I: IntoIterator<Item = N>,
+        N: Into<String>,
+    {
+        Self {
+            column_names: column_names.into_iter().map(Into::into).collect(),
+            rows: Vec::new(),
+        }
+    }
+
+    /// 添加一行。
+    /// Add one row.
+    pub fn row<I>(&mut self, values: I)
+    where
+        I: IntoIterator<Item = Option<T>>,
+    {
+        let row = values.into_iter().collect::<Vec<_>>();
+        assert_eq!(
+            row.len(),
+            self.column_names.len(),
+            "Value count ({}) must equal column count ({}) / 值数量 ({}) 必须等于列数 ({})",
+            row.len(),
+            self.column_names.len(),
+            row.len(),
+            self.column_names.len()
+        );
+        self.rows.push(row);
+    }
+
+    /// 添加多行。
+    /// Add multiple rows.
+    pub fn rows<I>(&mut self, rows: I)
+    where
+        I: IntoIterator<Item = Vec<Option<T>>>,
+    {
+        for row in rows {
+            self.row(row);
+        }
+    }
+
+    /// 构建 DataFrame。
+    /// Build DataFrame.
+    pub fn build(self) -> DataFrame<T> {
+        DataFrame::from_rows(self.column_names, self.rows)
+    }
+}
+
 pub struct DataFrameBuilder {}
 
 impl DataFrameBuilder {
@@ -343,6 +749,53 @@ impl DataFrameBuilder {
     {
         DataFrame::new_by(nrows, ncols, column_names, generator)
     }
+
+    pub fn from_columns<T, I, N>(columns: I) -> DataFrame<T>
+    where
+        I: IntoIterator<Item = (N, Vec<Option<T>>)>,
+        N: Into<String>,
+        T: Clone,
+    {
+        DataFrame::from_columns(columns)
+    }
+
+    pub fn from_rows<T, I, N>(column_names: I, rows: Vec<Vec<Option<T>>>) -> DataFrame<T>
+    where
+        I: IntoIterator<Item = N>,
+        N: Into<String>,
+    {
+        DataFrame::from_rows(column_names, rows)
+    }
+
+    pub fn build_rows<T, I, N, F>(column_names: I, block: F) -> DataFrame<T>
+    where
+        I: IntoIterator<Item = N>,
+        N: Into<String>,
+        F: FnOnce(&mut DataFrameRowsBuilder<T>),
+    {
+        DataFrame::build_rows(column_names, block)
+    }
+}
+
+/// 从有序列数据创建 DataFrame。
+/// Create a DataFrame from ordered column data.
+pub fn data_frame_of<T, I, N>(columns: I) -> DataFrame<T>
+where
+    I: IntoIterator<Item = (N, Vec<Option<T>>)>,
+    N: Into<String>,
+    T: Clone,
+{
+    DataFrame::from_columns(columns)
+}
+
+/// 从行数据创建 DataFrame。
+/// Create a DataFrame from row data.
+pub fn data_frame_from_rows<T, I, N>(column_names: I, rows: Vec<Vec<Option<T>>>) -> DataFrame<T>
+where
+    I: IntoIterator<Item = N>,
+    N: Into<String>,
+{
+    DataFrame::from_rows(column_names, rows)
 }
 
 #[cfg(test)]
@@ -724,5 +1177,170 @@ mod tests {
 
         let result = df.get_mut_by_name(0, "B");
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_data_frame_sub_data_frame() {
+        let column_names = vec!["A".to_string(), "B".to_string(), "C".to_string()];
+        let mut df: DataFrame<i32> = DataFrame::new(3, 3, column_names);
+
+        for row in 0..3 {
+            for col in 0..3 {
+                df.set(row, col, Some((row * 10 + col) as i32));
+            }
+        }
+
+        let sub = df.sub_data_frame(1..=2, 0..2);
+        assert_eq!(sub.nrows(), 2);
+        assert_eq!(sub.ncols(), 2);
+        assert_eq!(sub.column_names(), &vec!["A".to_string(), "B".to_string()]);
+        assert_eq!(sub[(0, 0)], Some(10));
+        assert_eq!(sub[(0, 1)], Some(11));
+        assert_eq!(sub[(1, 0)], Some(20));
+        assert_eq!(sub[(1, 1)], Some(21));
+    }
+
+    #[test]
+    fn test_data_frame_select_and_filter() {
+        let column_names = vec!["A".to_string(), "B".to_string(), "C".to_string()];
+        let mut df: DataFrame<i32> = DataFrame::new(3, 3, column_names);
+
+        df.set(0, 0, Some(1));
+        df.set(0, 1, Some(10));
+        df.set(0, 2, Some(100));
+        df.set(1, 0, Some(2));
+        df.set(1, 1, Some(20));
+        df.set(1, 2, Some(200));
+        df.set(2, 0, Some(3));
+        df.set(2, 1, Some(30));
+        df.set(2, 2, Some(300));
+
+        let selected = df.select(["C", "A"]);
+        assert_eq!(
+            selected.column_names(),
+            &vec!["C".to_string(), "A".to_string()]
+        );
+        assert_eq!(selected[(0, 0)], Some(100));
+        assert_eq!(selected[(0, 1)], Some(1));
+        assert_eq!(selected[(2, 0)], Some(300));
+        assert_eq!(selected[(2, 1)], Some(3));
+
+        let filtered = df.filter(|row| row[0].unwrap_or(0) >= 2);
+        assert_eq!(filtered.nrows(), 2);
+        assert_eq!(filtered[(0, 0)], Some(2));
+        assert_eq!(filtered[(1, 0)], Some(3));
+        assert_eq!(filtered[(0, 2)], Some(200));
+        assert_eq!(filtered[(1, 2)], Some(300));
+    }
+
+    #[test]
+    fn test_data_frame_copy_with_added_row() {
+        let column_names = vec!["A".to_string(), "B".to_string()];
+        let mut df: DataFrame<i32> = DataFrame::new(2, 2, column_names);
+        df.set(0, 0, Some(1));
+        df.set(0, 1, Some(2));
+        df.set(1, 0, Some(3));
+        df.set(1, 1, Some(4));
+
+        let copied = df.copy_with_added_row(vec![Some(5), None]);
+        assert_eq!(copied.nrows(), 3);
+        assert_eq!(copied.ncols(), 2);
+        assert_eq!(copied[(2, 0)], Some(5));
+        assert_eq!(copied[(2, 1)], None);
+    }
+
+    #[test]
+    fn test_data_frame_to_map_and_from_map() {
+        let mut map = HashMap::new();
+        map.insert("B".to_string(), vec![Some(2), Some(4)]);
+        map.insert("A".to_string(), vec![Some(1), Some(3)]);
+
+        let df = DataFrame::from_map(map);
+        assert_eq!(df.column_names(), &vec!["A".to_string(), "B".to_string()]);
+        assert_eq!(df[(0, 0)], Some(1));
+        assert_eq!(df[(1, 0)], Some(3));
+        assert_eq!(df[(0, 1)], Some(2));
+        assert_eq!(df[(1, 1)], Some(4));
+
+        let roundtrip = df.to_map();
+        assert_eq!(roundtrip.get("A"), Some(&vec![Some(1), Some(3)]));
+        assert_eq!(roundtrip.get("B"), Some(&vec![Some(2), Some(4)]));
+    }
+
+    #[test]
+    fn test_data_frame_empty_named_columns() {
+        let df: DataFrame<i32> = DataFrame::empty(vec!["X".to_string(), "Y".to_string()]);
+        assert_eq!(df.nrows(), 0);
+        assert_eq!(df.ncols(), 2);
+        assert_eq!(df.column_names(), &vec!["X".to_string(), "Y".to_string()]);
+    }
+
+    #[test]
+    fn test_data_frame_from_columns_preserves_order() {
+        let df =
+            DataFrame::from_columns([("B", vec![Some(2), Some(4)]), ("A", vec![Some(1), None])]);
+
+        assert_eq!(df.column_names(), &vec!["B".to_string(), "A".to_string()]);
+        assert_eq!(df.nrows(), 2);
+        assert_eq!(df.ncols(), 2);
+        assert_eq!(df[(0, "B")], Some(2));
+        assert_eq!(df[(1, "A")], None);
+
+        let from_free_fn =
+            data_frame_of([("Y", vec![Some(10), Some(20)]), ("X", vec![None, Some(30)])]);
+        assert_eq!(
+            from_free_fn.column_names(),
+            &vec!["Y".to_string(), "X".to_string()]
+        );
+        assert_eq!(from_free_fn[(1, "X")], Some(30));
+    }
+
+    #[test]
+    fn test_data_frame_from_rows_and_builder() {
+        let df = DataFrame::from_rows(
+            ["A", "B"],
+            vec![vec![Some(1), None], vec![Some(3), Some(4)]],
+        );
+
+        assert_eq!(df.column_names(), &vec!["A".to_string(), "B".to_string()]);
+        assert_eq!(df[(0, "A")], Some(1));
+        assert_eq!(df[(0, "B")], None);
+        assert_eq!(df[(1, "B")], Some(4));
+
+        let built = DataFrameBuilder::build_rows(["X", "Y"], |rows| {
+            rows.row([Some(5), Some(6)]);
+            rows.row([None, Some(8)]);
+        });
+        assert_eq!(built[(0, "X")], Some(5));
+        assert_eq!(built[(1, "X")], None);
+        assert_eq!(built[(1, "Y")], Some(8));
+
+        let from_free_fn = data_frame_from_rows(["M", "N"], vec![vec![Some(9), None]]);
+        assert_eq!(from_free_fn[(0, "M")], Some(9));
+        assert_eq!(from_free_fn[(0, "N")], None);
+    }
+
+    #[test]
+    fn test_data_frame_row_column_values_and_nullable_array() {
+        let df = data_frame_of([("A", vec![Some(1), None]), ("B", vec![Some(2), Some(4)])]);
+
+        assert_eq!(df.row_values(0), Some(vec![Some(1), Some(2)]));
+        assert_eq!(df.row_values(2), None);
+        assert_eq!(df.column_values(0), Some(vec![Some(1), None]));
+        assert_eq!(df.column_values_by_name("B"), Some(vec![Some(2), Some(4)]));
+        assert_eq!(df.column_values_by_name("C"), None);
+
+        let array = df.to_nullable_multi_array();
+        assert_eq!(array.shape.len_of_dimension(0).unwrap(), 2);
+        assert_eq!(array.shape.len_of_dimension(1).unwrap(), 2);
+        assert_eq!(array[&[0, 0]], Some(1));
+        assert_eq!(array[&[1, 0]], None);
+        assert_eq!(array[&[1, 1]], Some(4));
+    }
+
+    #[test]
+    fn test_data_frame_type_alias() {
+        let df: DataFrame2<i32> = data_frame_of([("A", vec![Some(1)])]);
+        assert_eq!(df[(0, "A")], Some(1));
     }
 }

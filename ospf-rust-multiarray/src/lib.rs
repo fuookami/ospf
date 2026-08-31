@@ -34,25 +34,40 @@ pub use dummy_index::DummyIndex;
 pub use error::*;
 pub use index_value::TryIntoIndexValue;
 pub use map_index::{
-    MapIndex, PlaceHolder, _0, _1, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _2, _20, _3, _4, _5, _6, _7,
-    _8, _9,
+    _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20,
+    MapIndex, PlaceHolder,
 };
-pub use multi_array::{MultiArray, MultiArrayBuilder, MultiArrayCollection, MultiArrayToView};
+pub use multi_array::{
+    DynMultiArray, MultiArray, MultiArray1, MultiArray2, MultiArray3, MultiArray4,
+    MultiArrayBuilder, MultiArrayCollection, MultiArrayEnumerateWithOrderIter, MultiArrayToView,
+    MultiArrayWithOrderIter, multi_array_1, multi_array_2, multi_array_3, multi_array_of_shape,
+};
 pub use multi_array_view::{MultiArrayView, MultiArrayViewBuilderCM, MultiArrayViewBuilderRM};
 
 pub use shape::{
-    AbstractShape, DynShape, Shape, Shape0, Shape1, Shape10, Shape11, Shape12, Shape13, Shape14, Shape15,
-    Shape16, Shape17, Shape18, Shape19, Shape2, Shape20, Shape3, Shape4, Shape5, Shape6,
-    Shape7, Shape8, Shape9,
+    AbstractShape, DynShape, Shape, Shape0, Shape1, Shape2, Shape3, Shape4, Shape5, Shape6, Shape7,
+    Shape8, Shape9, Shape10, Shape11, Shape12, Shape13, Shape14, Shape15, Shape16, Shape17,
+    Shape18, Shape19, Shape20, ShapeAccessOrderExt, ShapeIndicesIter,
 };
 
-pub use data_frame::{DataFrame, DataFrameBuilder, DataFrameView};
+pub use data_frame::{
+    DataFrame, DataFrame2, DataFrameBuilder, DataFrameRowsBuilder, DataFrameView,
+    data_frame_from_rows, data_frame_of,
+};
 
 pub use block_multi_array::{
-    BlockMultiArray, BlockMultiArrayBuilder, BlockMultiArrayView, CTBlockMultiArrayBuilder,
+    BlockDynMultiArray, BlockMultiArray, BlockMultiArray1, BlockMultiArray2, BlockMultiArray3,
+    BlockMultiArray4, BlockMultiArrayBuilder, BlockMultiArrayView, CTBlockMultiArrayBuilder,
 };
 
 pub use fast_sum::{FastCumSum, FastSum, SumError};
+pub use list_ext::{List2, List2Ext, List3, List3Ext};
+pub use map_ext::{
+    MapAllValuesExt, MapMultiArrayExt, MapMultiArrayMutExt, MultiMap2ArrayExt,
+    MultiMap2ArrayMutExt, MultiMap3ArrayExt, MultiMap3ArrayMutExt, MultiMap4ArrayExt,
+    MultiMap4ArrayMutExt,
+};
+pub use multimap::{MultiMap2, MultiMap3, MultiMap4};
 
 pub mod concept;
 #[macro_use]
@@ -69,6 +84,9 @@ pub mod block_multi_array;
 pub mod data_frame;
 pub mod einsum;
 pub mod fast_sum;
+pub mod list_ext;
+pub mod map_ext;
+pub mod multimap;
 
 #[cfg(test)]
 mod tests {

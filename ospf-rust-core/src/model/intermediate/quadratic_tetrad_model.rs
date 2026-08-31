@@ -2,7 +2,7 @@
 //! Quadratic Tetrad Model
 
 use super::super::mechanism::QuadraticInequality;
-use super::{BasicQuadraticTetradModel, SparseMatrix};
+use super::{BasicQuadraticTetradModel, QuadraticElasticBuilder, SparseMatrix};
 use crate::model::object::ObjectiveCategory;
 use crate::variable::VariableType;
 
@@ -166,6 +166,11 @@ impl QuadraticTetradModel {
 
     pub fn num_quadratic_constraints(&self) -> usize {
         self.quadratic_constraints.len()
+    }
+
+    /// 创建弹性模型构建器 / Create elastic-model builder
+    pub fn elastic_builder(&self) -> QuadraticElasticBuilder<'_> {
+        QuadraticElasticBuilder::new(self)
     }
 
     /// 获取基本模型引用 / Get basic model reference

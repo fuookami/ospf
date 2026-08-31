@@ -169,6 +169,7 @@ pub struct Demo2Response {
     pub objective: Option<f64>,
     pub assignments: Vec<String>,
     pub notes: Vec<String>,
+    #[allow(dead_code)]
     pub diagnostics: Vec<DiagnosticNote>,
 }
 
@@ -176,5 +177,6 @@ pub struct LoadingOrderResponse {
     pub status: String,
     pub orders: Vec<String>,
     pub notes: Vec<String>,
+    #[allow(dead_code)]
     pub diagnostics: Vec<DiagnosticNote>,
 }

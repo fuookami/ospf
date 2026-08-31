@@ -14,17 +14,5 @@ use crate::unit::{CTUnit, CTUnitDiv};
 // ============================================================================
 
 define_unit_by!(Ohm, "ohm", "Ω", CTUnitDiv<Volt, Ampere>);
-define_unit!(
-    Kiloohm,
-    "kiloohm",
-    "kΩ",
-    Resistance,
-    &*Ohm::SCALE * &*KILO
-);
-define_unit!(
-    Megaohm,
-    "megaohm",
-    "MΩ",
-    Resistance,
-    &*Ohm::SCALE * &*MEGA
-);
+define_unit!(Kiloohm, "kiloohm", "kΩ", Resistance, &*Ohm::SCALE * &*KILO);
+define_unit!(Megaohm, "megaohm", "MΩ", Resistance, &*Ohm::SCALE * &*MEGA);

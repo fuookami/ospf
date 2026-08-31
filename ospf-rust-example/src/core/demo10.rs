@@ -1,10 +1,13 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::variable::{BinaryVariableItem, IntegerVariableItem, VariableRange};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
+use ospf_rust_core::variable::{
+    Binary, Integer, VariableCombination1D, VariableCombination2D, VariableRange,
+};
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
+use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder, Shape};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct City {
@@ -19,22 +22,24 @@ impl City {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct DistanceMatrix {
-    values: Vec<Vec<f64>>,
+    values: MultiArray<f64, Shape<2>>,
 }
 
 impl DistanceMatrix {
-    fn new(values: Vec<Vec<f64>>) -> Self {
-        Self { values }
+    fn new(size: usize, values: Vec<f64>) -> Self {
+        Self {
+            values: MultiArrayBuilder::from_list(Shape::<2>::new([size, size]), values),
+        }
     }
 
     fn get(&self, from: usize, to: usize) -> f64 {
-        self.values[from][to]
+        self.values[&[from, to]]
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct TspData {
     cities: Vec<City>,
     begin_idx: usize,
@@ -52,13 +57,14 @@ impl TspData {
                 City::new("Beijing"),
             ],
             begin_idx: 4,
-            distances: DistanceMatrix::new(vec![
-                vec![0.0, 472.0, 1520.0, 2095.0, 1244.0],
-                vec![472.0, 0.0, 1257.0, 1615.0, 1044.0],
-                vec![1529.0, 1257.0, 0.0, 1954.0, 2174.0],
-                vec![2095.0, 1615.0, 1954.0, 0.0, 1854.0],
-                vec![1244.0, 1044.0, 2174.0, 1854.0, 0.0],
-            ]),
+            distances: DistanceMatrix::new(
+                5,
+                vec![
+                    0.0, 472.0, 1520.0, 2095.0, 1244.0, 472.0, 0.0, 1257.0, 1615.0, 1044.0, 1529.0,
+                    1257.0, 0.0, 1954.0, 2174.0, 2095.0, 1615.0, 1954.0, 0.0, 1854.0, 1244.0,
+                    1044.0, 2174.0, 1854.0, 0.0,
+                ],
+            ),
         }
     }
 }
@@ -68,101 +74,113 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let n = data.cities.len() as f64;
 
     let mut model = MetaModel::<f64>::new("demo10");
-    let mut x_idx = vec![vec![None; data.cities.len()]; data.cities.len()];
-    for i in 0..data.cities.len() {
-        for j in 0..data.cities.len() {
-            if i == j {
-                continue;
-            }
-            let var = BinaryVariableItem::auto(&format!("x_{}_{}", i, j));
-            x_idx[i][j] = Some(model.register_variable(var)?);
-        }
-    }
-
-    let mut u_idx = vec![0usize; data.cities.len()];
-    for i in 0..data.cities.len() {
-        let var = IntegerVariableItem::auto_with_range(
-            &format!("u_{}", i),
-            VariableRange::bounded(-(data.cities.len() as f64), data.cities.len() as f64),
+    let city_count = data.cities.len();
+    let x_shape = Shape::new([city_count, city_count]);
+    let x_vars: VariableCombination2D<Binary> =
+        VariableCombination2D::with_name_and_range_generator(
+            x_shape.clone(),
+            "x",
+            |_index, vector| format!("{}_{}", vector[0], vector[1]),
+            |_index, vector| {
+                if vector[0] == vector[1] {
+                    VariableRange::fixed(0.0)
+                } else {
+                    VariableRange::bounded(0.0, 1.0)
+                }
+            },
         );
-        u_idx[i] = model.register_variable(var)?;
-    }
-    model.add_linear_constraint(
-        &[(u_idx[data.begin_idx], 1.0)],
-        ConstraintRelation::Equal,
-        0.0,
-        "u_begin",
-    )?;
+    let x_idx = MultiArrayBuilder::from_list(
+        x_shape,
+        model.register_variables::<Binary, _>(x_vars.iter().cloned())?,
+    );
 
-    let mut objective = vec![0.0; model.num_tokens()];
-    for i in 0..data.cities.len() {
-        for j in 0..data.cities.len() {
-            if let Some(idx) = x_idx[i][j] {
-                objective[idx] = data.distances.get(i, j);
-            }
+    let u_shape = Shape::new([city_count]);
+    let u_vars: VariableCombination1D<Integer> =
+        VariableCombination1D::with_name_and_range_generator(
+            u_shape.clone(),
+            "u",
+            |_index, vector| vector[0].to_string(),
+            |_index, vector| {
+                if vector[0] == data.begin_idx {
+                    VariableRange::fixed(0.0)
+                } else {
+                    VariableRange::bounded(-(city_count as f64), city_count as f64)
+                }
+            },
+        );
+    model.register_variables::<Integer, _>(u_vars.iter().cloned())?;
+
+    let mut distance_terms = Vec::new();
+    for i in 0..city_count {
+        for j in 0..city_count {
+            distance_terms.push(LinearMonomial::new(
+                data.distances.get(i, j),
+                x_vars[&[i, j]].to_owned_symbol(),
+            ));
         }
     }
-    model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+    let distance = Linear::new(distance_terms, 0.0);
+    let depart = MultiArrayBuilder::new_by(Shape::<1>::new([city_count]), |_idx, vector| {
+        let i = vector[0];
+        Linear::new(
+            (0..city_count)
+                .map(|j| LinearMonomial::new(1.0, x_vars[&[i, j]].to_owned_symbol()))
+                .collect(),
+            0.0,
+        )
+    });
+    let reached = MultiArrayBuilder::new_by(Shape::<1>::new([city_count]), |_idx, vector| {
+        let j = vector[0];
+        Linear::new(
+            (0..city_count)
+                .map(|i| LinearMonomial::new(1.0, x_vars[&[i, j]].to_owned_symbol()))
+                .collect(),
+            0.0,
+        )
+    });
 
-    for i in 0..data.cities.len() {
-        let coefficients: Vec<(usize, f64)> = (0..data.cities.len())
-            .filter_map(|j| x_idx[i][j].map(|idx| (idx, 1.0)))
-            .collect();
-        model.add_linear_constraint(
-            &coefficients,
-            ConstraintRelation::Equal,
-            1.0,
-            &format!("depart_{}", i),
-        )?;
+    model.set_math_linear_objective(distance, ObjectiveCategory::Minimum, "distance")?;
+
+    for i in 0..city_count {
+        model.add_math_inequality(depart[i].clone().eq_to(1.0), &format!("depart_{}", i));
     }
 
-    for j in 0..data.cities.len() {
-        let coefficients: Vec<(usize, f64)> = (0..data.cities.len())
-            .filter_map(|i| x_idx[i][j].map(|idx| (idx, 1.0)))
-            .collect();
-        model.add_linear_constraint(
-            &coefficients,
-            ConstraintRelation::Equal,
-            1.0,
-            &format!("arrive_{}", j),
-        )?;
+    for j in 0..city_count {
+        model.add_math_inequality(reached[j].clone().eq_to(1.0), &format!("arrive_{}", j));
     }
 
-    for i in 0..data.cities.len() {
+    for i in 0..city_count {
         if i == data.begin_idx {
             continue;
         }
-        for j in 0..data.cities.len() {
+        for j in 0..city_count {
             if j == data.begin_idx || i == j {
                 continue;
             }
-            if let Some(xij) = x_idx[i][j] {
-                model.add_linear_constraint(
-                    &[(u_idx[i], 1.0), (u_idx[j], -1.0), (xij, n)],
-                    ConstraintRelation::LessEqual,
-                    n - 1.0,
-                    &format!("mtz_{}_{}", i, j),
-                )?;
-            }
+            let mtz = Linear::new(
+                vec![
+                    LinearMonomial::new(1.0, u_vars[i].to_owned_symbol()),
+                    LinearMonomial::new(-1.0, u_vars[j].to_owned_symbol()),
+                    LinearMonomial::new(n, x_vars[&[i, j]].to_owned_symbol()),
+                ],
+                0.0,
+            );
+            model.add_math_inequality(mtz.le(n - 1.0), &format!("mtz_{}_{}", i, j));
         }
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo10 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo10 ===");
     println!("status: {:?}", output.status);
     if let Some(obj) = output.objective_value {
         println!("distance: {:.2}", obj);
     }
-    for i in 0..data.cities.len() {
-        for j in 0..data.cities.len() {
-            if let Some(idx) = x_idx[i][j] {
-                if read_solution_value(&solution, idx) > 0.5 {
-                    println!("{} -> {}", data.cities[i].name, data.cities[j].name);
-                }
+    for i in 0..city_count {
+        for j in 0..city_count {
+            if read_solution_value(&solution, x_idx[&[i, j]]) > 0.5 {
+                println!("{} -> {}", data.cities[i].name, data.cities[j].name);
             }
         }
     }

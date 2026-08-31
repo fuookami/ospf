@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::{Arc, OnceLock};
 
-use crate::model::flatten::Cacheable;
+use crate::symbol::flatten::Cacheable;
 use crate::token::TokenList;
 use crate::variable::VariableRange;
 

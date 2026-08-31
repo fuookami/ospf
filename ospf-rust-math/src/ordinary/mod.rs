@@ -24,6 +24,7 @@
 //! Ordinary - Ordinary mathematical functions
 
 pub mod big_decimal_pow;
+pub mod common;
 pub mod factorization;
 pub mod gcd;
 pub mod lcm;
@@ -32,6 +33,8 @@ pub mod prime;
 pub use big_decimal_pow::{
     exp, exp_with_precision, ln, ln_with_precision, pow, pow_with_precision,
 };
+
+pub use common::{clamp, log, minmax, powi};
 
 pub use factorization::{
     defactorize, divisor_count, divisors, euler_totient, factorize, factorize_i64, factorize_u64,

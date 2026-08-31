@@ -4,9 +4,9 @@
 //! 提供带编译期索引标记的张量包装类型。
 //! Provides tensor wrapper types with compile-time index labels.
 
-use std::marker::PhantomData;
-use crate::{AbstractShape, DynShape, MultiArray};
 use super::indices::IndexList;
+use crate::{AbstractShape, DynShape, MultiArray};
+use std::marker::PhantomData;
 
 // ============================================================================
 // TensorExpr - 带索引的张量表达式
@@ -43,7 +43,7 @@ where
 {
     /// 数据引用 / Data reference
     data: &'a MultiArray<T, S>,
-    
+
     /// 索引标记 / Index marker
     _marker: PhantomData<Idx>,
 }
@@ -82,13 +82,15 @@ where
             _marker: PhantomData,
         }
     }
-    
+
     /// 使用显式索引类型创建张量表达式
     /// Create tensor expression with explicit index types
     ///
     /// 用于宏内部，允许类型推断。
     /// Used internally by macros, allows type inference.
-    pub fn new_with_indices<NewIdx: IndexList>(data: &'a MultiArray<T, S>) -> TensorExpr<'a, T, S, NewIdx> {
+    pub fn new_with_indices<NewIdx: IndexList>(
+        data: &'a MultiArray<T, S>,
+    ) -> TensorExpr<'a, T, S, NewIdx> {
         debug_assert_eq!(
             data.shape.dimension(),
             NewIdx::LEN,
@@ -101,37 +103,37 @@ where
             _marker: PhantomData,
         }
     }
-    
+
     /// 获取数据引用
     /// Get data reference
     pub fn data(&self) -> &'a MultiArray<T, S> {
         self.data
     }
-    
+
     /// 获取形状引用
     /// Get shape reference
     pub fn shape(&self) -> &S {
         &self.data.shape
     }
-    
+
     /// 获取索引列表名称
     /// Get index list names
     pub fn index_names(&self) -> String {
         Idx::to_names()
     }
-    
+
     /// 获取索引列表 ID
     /// Get index list IDs
     pub fn index_ids(&self) -> Vec<usize> {
         Idx::to_ids()
     }
-    
+
     /// 获取数组长度
     /// Get array length
     pub fn len(&self) -> usize {
         self.data.len()
     }
-    
+
     /// 检查是否为空
     /// Check if empty
     pub fn is_empty(&self) -> bool {
@@ -196,7 +198,7 @@ where
 {
     /// 数据 / Data
     data: MultiArray<T, S>,
-    
+
     /// 索引标记 / Index marker
     _marker: PhantomData<Idx>,
 }
@@ -221,25 +223,25 @@ where
             _marker: PhantomData,
         }
     }
-    
+
     /// 获取数据引用
     /// Get data reference
     pub fn data(&self) -> &MultiArray<T, S> {
         &self.data
     }
-    
+
     /// 获取可变数据引用
     /// Get mutable data reference
     pub fn data_mut(&mut self) -> &mut MultiArray<T, S> {
         &mut self.data
     }
-    
+
     /// 解构为原始数据
     /// Destruct into raw data
     pub fn into_inner(self) -> MultiArray<T, S> {
         self.data
     }
-    
+
     /// 转换为借用版本
     /// Convert to borrowed version
     pub fn as_ref(&self) -> TensorExpr<'_, T, S, Idx> {
@@ -249,17 +251,17 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::super::indices::{I, IL2, J};
     use super::*;
-    use crate::{Shape, MultiArrayBuilder};
-    use super::super::indices::{I, J, IL2};
+    use crate::{MultiArrayBuilder, Shape};
 
     #[test]
     fn test_tensor_expr_creation() {
         let shape: Shape<2> = Shape::new([2, 3]);
         let matrix: MultiArray<f64, _> = MultiArrayBuilder::new_with(shape, 1.0);
-        
+
         let expr: TensorExpr<'_, f64, Shape<2>, IL2<I, J>> = TensorExpr::new(&matrix);
-        
+
         assert_eq!(expr.index_names(), "i, j");
         assert_eq!(expr.index_ids(), vec![0, 1]);
         assert_eq!(expr.len(), 6);
@@ -269,9 +271,9 @@ mod tests {
     fn test_tensor_expr_debug() {
         let shape: Shape<2> = Shape::new([2, 3]);
         let matrix: MultiArray<f64, _> = MultiArrayBuilder::new_with(shape, 1.0);
-        
+
         let expr: TensorExpr<'_, f64, Shape<2>, IL2<I, J>> = TensorExpr::new(&matrix);
-        
+
         let debug_str = format!("{:?}", expr);
         assert!(debug_str.contains("i, j"));
     }

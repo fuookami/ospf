@@ -1,5 +1,5 @@
-use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
-use crate::framework::demo2::infrastructure::dto::Demo2Request;
+use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework_demo::demo2::infrastructure::dto::Demo2Request;
 
 pub struct MacOptimizationContext<'a> {
     pub request: &'a Demo2Request,
@@ -7,4 +7,3 @@ pub struct MacOptimizationContext<'a> {
     pub z: Option<usize>,
     pub mode: Demo2PipelineMode,
 }
-

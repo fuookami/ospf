@@ -4,7 +4,10 @@
 //! 提供速度量纲的 SI 单位定义，包括米每秒、千米每小时等。
 //! Provides SI unit definitions for velocity dimension, including meter per second, kilometer per hour, etc.
 
-use super::length::{Cetimeter, Foot, Inch, Kilometer, Meter, Mile, NauticalMile};
+use super::length::{
+    Cetimeter, FRNauticalMile, Foot, Inch, Kilometer, Meter, Mile, NauticalMile, RUNauticalMile,
+    UKNauticalMile, USNauticalMile,
+};
 use super::time::{Hour, Second};
 use crate::dimension::derived::Velocity;
 use crate::scale::Scale;
@@ -33,6 +36,12 @@ define_unit_by!(
     "kilometer per second",
     "km/s",
     CTUnitDiv<Kilometer, Second>
+);
+define_unit_by!(
+    KilometersPerSecond,
+    "kilometers per second",
+    "km/s",
+    KilometerPerSecond
 );
 
 define_unit_by!(
@@ -81,9 +90,39 @@ define_unit_by!(
     "kn",
     CTUnitDiv<NauticalMile, Hour>
 );
+define_unit_by!(
+    FRKnot,
+    "fr knot",
+    "fr.kn",
+    CTUnitDiv<FRNauticalMile, Hour>
+);
+define_unit_by!(
+    UKKnot,
+    "uk knot",
+    "uk.kn",
+    CTUnitDiv<UKNauticalMile, Hour>
+);
+define_unit_by!(
+    RUKnot,
+    "ru knot",
+    "ru.kn",
+    CTUnitDiv<RUNauticalMile, Hour>
+);
+define_unit_by!(
+    USKnot,
+    "us knot",
+    "us.kn",
+    CTUnitDiv<USNauticalMile, Hour>
+);
 
 // 马赫 / Mach (speed of sound, approximately 340.3 m/s)
 define_unit!(Mach, "mach", "ma", Velocity, Scale::from_f64(340.3));
 
 // 光速 / Light speed
-define_unit!(LightSpeed, "light speed", "c", Velocity, Scale::from_f64(299792458.0));
+define_unit!(
+    LightSpeed,
+    "light speed",
+    "c",
+    Velocity,
+    Scale::from_f64(299792458.0)
+);

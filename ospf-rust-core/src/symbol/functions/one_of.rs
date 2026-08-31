@@ -10,8 +10,8 @@ use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{
     BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id, new_standalone_id,
@@ -19,8 +19,9 @@ use crate::variable::{
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
-use super::big_m::{BigMPolicy, infer_big_m_for_polynomials, infer_linear_abs_bound_from_tokens};
+use super::big_m::{BigMPolicy, infer_big_m_for_polynomials};
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -116,6 +117,24 @@ where
             selection_vars,
             declared_dependency_ids: Vec::new(),
         }
+    }
+
+    /// 使用自动 ID 与调用方提供的名称创建 one-of 函数。
+    /// Create a one-of function with an auto id and caller-provided name.
+    pub fn named(name: impl AsRef<str>, polynomials: Vec<Linear<V>>) -> Self {
+        Self::new(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            polynomials,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建 one-of 函数。
+    /// Create a one-of function with an auto id and auto-generated name.
+    pub fn auto(polynomials: Vec<Linear<V>>) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("one_of", id);
+        Self::new(id, &name, polynomials)
     }
 
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
@@ -606,6 +625,31 @@ where
         }
     }
 
+    /// 使用自动 ID 与调用方提供的名称创建 if-else 函数。
+    /// Create an if-else function with an auto id and caller-provided name.
+    pub fn named(
+        name: impl AsRef<str>,
+        condition: BinaryVariableItem,
+        then_expr: Linear<V>,
+        else_expr: Linear<V>,
+    ) -> Self {
+        Self::new(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            condition,
+            then_expr,
+            else_expr,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建 if-else 函数。
+    /// Create an if-else function with an auto id and auto-generated name.
+    pub fn auto(condition: BinaryVariableItem, then_expr: Linear<V>, else_expr: Linear<V>) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("if_else", id);
+        Self::new(id, &name, condition, then_expr, else_expr)
+    }
+
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -643,9 +687,11 @@ where
     f64: IntoValue<V>,
 {
     fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
-        let then_bound = infer_linear_abs_bound_from_tokens(&self.then_expr, tokens)?;
-        let else_bound = infer_linear_abs_bound_from_tokens(&self.else_expr, tokens)?;
-        Some(then_bound.max(else_bound).max(BIG_M_POLICY.min()))
+        infer_big_m_for_polynomials(
+            &[self.then_expr.clone(), self.else_expr.clone()],
+            tokens,
+            BIG_M_POLICY.min(),
+        )
     }
 
     fn build_mechanism_constraints(

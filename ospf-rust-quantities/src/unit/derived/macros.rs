@@ -20,7 +20,13 @@
 macro_rules! define_unit {
     // 无缩放参数
     ($name:ident, $full_name:expr, $symbol:expr, $dim:ty) => {
-        define_unit!($name, $full_name, $symbol, $dim, $crate::scale::Scale::new());
+        define_unit!(
+            $name,
+            $full_name,
+            $symbol,
+            $dim,
+            $crate::scale::Scale::new()
+        );
     };
     // 带缩放参数
     ($name:ident, $full_name:expr, $symbol:expr, $dim:ty, $scale:expr) => {
@@ -31,7 +37,8 @@ macro_rules! define_unit {
         impl $crate::unit::physical_unit::CTUnit for $name {
             const NAME: &'static str = $full_name;
             const SYMBOL: &'static str = $symbol;
-            const SCALE: once_cell::sync::Lazy<$crate::scale::Scale> = once_cell::sync::Lazy::new(|| $scale);
+            const SCALE: once_cell::sync::Lazy<$crate::scale::Scale> =
+                once_cell::sync::Lazy::new(|| $scale);
             type Dimension = $dim;
         }
 
@@ -47,7 +54,84 @@ macro_rules! define_unit {
             }
 
             fn dimension_symbol(&self) -> String {
-                <$dim as $crate::dimension::derived_quantity::CTDerivedQuantity>::INSTANT.symbol().to_string()
+                <$dim as $crate::dimension::derived_quantity::CTDerivedQuantity>::INSTANT
+                    .symbol()
+                    .to_string()
+            }
+
+            fn scale_value(&self) -> bigdecimal::BigDecimal {
+                Self::SCALE.value().clone()
+            }
+        }
+    };
+    // 带缩放和 offset 参数 / With scale and offset parameters
+    ($name:ident, $full_name:expr, $symbol:expr, $dim:ty, $scale:expr, offset = $offset:expr) => {
+        /// 编译时单位 / Compile-time unit
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+        pub struct $name;
+
+        impl $crate::unit::physical_unit::CTUnit for $name {
+            const NAME: &'static str = $full_name;
+            const SYMBOL: &'static str = $symbol;
+            const SCALE: once_cell::sync::Lazy<$crate::scale::Scale> =
+                once_cell::sync::Lazy::new(|| $scale);
+            const OFFSET: once_cell::sync::Lazy<bigdecimal::BigDecimal> =
+                once_cell::sync::Lazy::new(|| $offset);
+            type Dimension = $dim;
+        }
+
+        impl $crate::unit::concept::UnitTrait for $name {
+            type Dimension = $dim;
+
+            fn symbol(&self) -> &'static str {
+                $symbol
+            }
+
+            fn name(&self) -> &'static str {
+                $full_name
+            }
+
+            fn dimension_symbol(&self) -> String {
+                <$dim as $crate::dimension::derived_quantity::CTDerivedQuantity>::INSTANT
+                    .symbol()
+                    .to_string()
+            }
+
+            fn scale_value(&self) -> bigdecimal::BigDecimal {
+                Self::SCALE.value().clone()
+            }
+        }
+    };
+    // 带缩放和 domain 参数 / With scale and domain parameters
+    ($name:ident, $full_name:expr, $symbol:expr, $dim:ty, $scale:expr, domain = $domain:expr) => {
+        /// 编译时单位 / Compile-time unit
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+        pub struct $name;
+
+        impl $crate::unit::physical_unit::CTUnit for $name {
+            const NAME: &'static str = $full_name;
+            const SYMBOL: &'static str = $symbol;
+            const SCALE: once_cell::sync::Lazy<$crate::scale::Scale> =
+                once_cell::sync::Lazy::new(|| $scale);
+            const DOMAIN: $crate::dimension::derived_quantity::QuantityDomain = $domain;
+            type Dimension = $dim;
+        }
+
+        impl $crate::unit::concept::UnitTrait for $name {
+            type Dimension = $dim;
+
+            fn symbol(&self) -> &'static str {
+                $symbol
+            }
+
+            fn name(&self) -> &'static str {
+                $full_name
+            }
+
+            fn dimension_symbol(&self) -> String {
+                <$dim as $crate::dimension::derived_quantity::CTDerivedQuantity>::INSTANT
+                    .symbol()
+                    .to_string()
             }
 
             fn scale_value(&self) -> bigdecimal::BigDecimal {
@@ -69,6 +153,8 @@ macro_rules! define_unit_by {
             const NAME: &'static str = $full_name;
             const SYMBOL: &'static str = $symbol;
             const SCALE: once_cell::sync::Lazy<$crate::scale::Scale> = once_cell::sync::Lazy::new(|| <$ct_expr as $crate::unit::physical_unit::CTUnit>::SCALE.clone());
+            const OFFSET: once_cell::sync::Lazy<bigdecimal::BigDecimal> = once_cell::sync::Lazy::new(|| <$ct_expr as $crate::unit::physical_unit::CTUnit>::OFFSET.clone());
+            const DOMAIN: $crate::dimension::derived_quantity::QuantityDomain = <$ct_expr as $crate::unit::physical_unit::CTUnit>::DOMAIN;
             type Dimension = <$ct_expr as $crate::unit::physical_unit::CTUnit>::Dimension;
         }
 

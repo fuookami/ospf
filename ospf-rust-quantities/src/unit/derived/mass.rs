@@ -5,7 +5,7 @@
 //! Provides SI unit definitions for mass dimension, including kilogram, gram, milligram, tonne, etc.
 
 use crate::dimension::derived::Mass;
-use crate::scale::{Scale, KILO, MILLI};
+use crate::scale::{KILO, MILLI, Scale};
 use crate::unit::CTUnit;
 
 // ============================================================================
@@ -22,7 +22,13 @@ define_unit!(
     Mass,
     Scale::from_int(1) / Scale::from_int(1000000)
 );
-define_unit!(Microgram, "microgram", "μg", Mass, Scale::from_f64(0.000000001));
+define_unit!(
+    Microgram,
+    "microgram",
+    "μg",
+    Mass,
+    Scale::from_f64(0.000000001)
+);
 define_unit!(Tonne, "tonne", "t", Mass, KILO.clone());
 
 // ============================================================================
@@ -49,10 +55,22 @@ define_unit!(Pound, "pound", "lb", Mass, Scale::from_f64(0.45359237));
 define_unit!(Gran, "grain", "gr", Mass, Scale::from_f64(0.00006479891));
 
 // 英吨 / Long ton (2240 pounds)
-define_unit!(LongTon, "long ton", "lt", Mass, Scale::from_f64(1016.0469088));
+define_unit!(
+    LongTon,
+    "long ton",
+    "lt",
+    Mass,
+    Scale::from_f64(1016.0469088)
+);
 
 // 美吨 / Short ton (2000 pounds)
-define_unit!(ShortTon, "short ton", "st", Mass, Scale::from_f64(907.18474));
+define_unit!(
+    ShortTon,
+    "short ton",
+    "st",
+    Mass,
+    Scale::from_f64(907.18474)
+);
 
 // 英石 / Stone (14 pounds)
 define_unit!(Stone, "stone", "st", Mass, Scale::from_f64(6.35029318));
@@ -61,7 +79,22 @@ define_unit!(Stone, "stone", "st", Mass, Scale::from_f64(6.35029318));
 define_unit!(Ounce, "ounce", "oz", Mass, Scale::from_f64(0.028349523125));
 
 // 金衡盎司 / Troy ounce
-define_unit!(TroyOunce, "troy ounce", "oz.tr", Mass, Scale::from_f64(0.0311034768));
+define_unit!(
+    TroyOunce,
+    "troy ounce",
+    "oz.tr",
+    Mass,
+    Scale::from_f64(0.0311034768)
+);
 
 // 打兰 / Dram
-define_unit!(Dram, "dram", "dr", Mass, Scale::from_f64(0.0017718451953125));
+define_unit!(
+    Dram,
+    "dram",
+    "dr",
+    Mass,
+    Scale::from_f64(0.0017718451953125)
+);
+
+// Kotlin 命名兼容别名 / Kotlin naming compatibility alias
+pub type Ton = Tonne;

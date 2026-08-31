@@ -29,17 +29,22 @@
 //! - [`heuristic::Individual`] - 个体 trait
 //! - [`heuristic::Population`] - 种群
 
+pub mod backend;
+pub mod config;
 pub mod heuristic;
 pub mod iis;
+pub mod output;
 pub mod solver;
+#[doc(hidden)]
 pub mod solver_config;
 pub mod solver_ext;
+#[doc(hidden)]
 pub mod solver_output;
 pub mod solvers;
 pub mod value;
 
+pub use config::*;
+pub use output::*;
 pub use solver::*;
-pub use solver_config::*;
 pub use solver_ext::*;
-pub use solver_output::*;
 pub use value::*;

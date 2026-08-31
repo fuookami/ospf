@@ -12,14 +12,20 @@
 
 pub mod basic_linear_triad_model;
 pub mod basic_quadratic_tetrad_model;
+pub mod elastic;
 pub mod linear_triad_model;
+pub mod linear_triad_model_view;
 pub mod lp_export;
 pub mod quadratic_tetrad_model;
+pub mod quadratic_tetrad_model_view;
 
 pub use basic_linear_triad_model::{
     BasicLinearTriadModel, BasicLinearTriadModelF64, SparseMatrix, SparseVector,
 };
 pub use basic_quadratic_tetrad_model::{BasicQuadraticTetradModel, BasicQuadraticTetradModelF64};
+pub use elastic::{LinearElasticBuilder, QuadraticElasticBuilder};
 pub use linear_triad_model::{LinearTriadModel, LinearTriadModelF64};
-pub use lp_export::LPExportableModel;
+pub use linear_triad_model_view::LinearTriadModelView;
+pub use lp_export::{DumpOptions, LPExportableModel, ModelFileFormat, dump_batch, dump_lp_batch};
 pub use quadratic_tetrad_model::{QuadraticTetradModel, QuadraticTetradModelF64};
+pub use quadratic_tetrad_model_view::QuadraticTetradModelView;

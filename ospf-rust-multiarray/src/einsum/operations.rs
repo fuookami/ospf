@@ -4,12 +4,12 @@
 //! 提供矩阵乘法、点积、迹等常见运算的便捷函数。
 //! Provides convenience functions for common operations like matrix multiplication, dot product, and trace.
 
-use num_traits::Zero;
-use std::ops::{Add, Mul, AddAssign};
-use crate::{AbstractShape, DynShape, MultiArray};
-use super::indices::{IndexLabel, IndexList, I, J, K, IL, IL2};
-use super::tensor_expr::TensorExpr;
 use super::einsum_trait::EinsumError;
+use super::indices::{I, IL, IL2, IndexLabel, IndexList, J, K};
+use super::tensor_expr::TensorExpr;
+use crate::{AbstractShape, DynShape, MultiArray};
+use num_traits::Zero;
+use std::ops::{Add, AddAssign, Mul};
 
 // ============================================================================
 // 矩阵乘法 / Matrix Multiplication
@@ -32,7 +32,10 @@ use super::einsum_trait::EinsumError;
 ///
 /// 结果矩阵，形状 `[m, n]`
 /// Result matrix with shape `[m, n]`
-pub fn matmul<T, S1, S2>(a: &MultiArray<T, S1>, b: &MultiArray<T, S2>) -> Result<MultiArray<T, DynShape>, EinsumError>
+pub fn matmul<T, S1, S2>(
+    a: &MultiArray<T, S1>,
+    b: &MultiArray<T, S2>,
+) -> Result<MultiArray<T, DynShape>, EinsumError>
 where
     S1: AbstractShape,
     S2: AbstractShape,
@@ -42,7 +45,7 @@ where
     // Validate dimensions
     let a_dim = a.shape.dimension();
     let b_dim = b.shape.dimension();
-    
+
     if a_dim != 2 || b_dim != 2 {
         return Err(EinsumError::DimensionMismatch {
             expected: 2,
@@ -50,43 +53,58 @@ where
             message: "Matrix multiplication requires 2D arrays".to_string(),
         });
     }
-    
+
     // 获取形状
     // Get shapes
-    let a_rows = a.shape.len_of_dimension(0).map_err(|e| EinsumError::DimensionMismatch {
-        expected: 0,
-        actual: 0,
-        message: format!("Failed to get row count of matrix A: {:?}", e),
-    })?;
-    let a_cols = a.shape.len_of_dimension(1).map_err(|e| EinsumError::DimensionMismatch {
-        expected: 1,
-        actual: 1,
-        message: format!("Failed to get column count of matrix A: {:?}", e),
-    })?;
-    let b_rows = b.shape.len_of_dimension(0).map_err(|e| EinsumError::DimensionMismatch {
-        expected: 0,
-        actual: 0,
-        message: format!("Failed to get row count of matrix B: {:?}", e),
-    })?;
-    let b_cols = b.shape.len_of_dimension(1).map_err(|e| EinsumError::DimensionMismatch {
-        expected: 1,
-        actual: 1,
-        message: format!("Failed to get column count of matrix B: {:?}", e),
-    })?;
-    
+    let a_rows = a
+        .shape
+        .len_of_dimension(0)
+        .map_err(|e| EinsumError::DimensionMismatch {
+            expected: 0,
+            actual: 0,
+            message: format!("Failed to get row count of matrix A: {:?}", e),
+        })?;
+    let a_cols = a
+        .shape
+        .len_of_dimension(1)
+        .map_err(|e| EinsumError::DimensionMismatch {
+            expected: 1,
+            actual: 1,
+            message: format!("Failed to get column count of matrix A: {:?}", e),
+        })?;
+    let b_rows = b
+        .shape
+        .len_of_dimension(0)
+        .map_err(|e| EinsumError::DimensionMismatch {
+            expected: 0,
+            actual: 0,
+            message: format!("Failed to get row count of matrix B: {:?}", e),
+        })?;
+    let b_cols = b
+        .shape
+        .len_of_dimension(1)
+        .map_err(|e| EinsumError::DimensionMismatch {
+            expected: 1,
+            actual: 1,
+            message: format!("Failed to get column count of matrix B: {:?}", e),
+        })?;
+
     if a_cols != b_rows {
         return Err(EinsumError::IncompatibleShapes {
             shape1: vec![a_rows, a_cols],
             shape2: vec![b_rows, b_cols],
-            message: format!("Matrix dimensions don't align: {}x{} and {}x{}", a_rows, a_cols, b_rows, b_cols),
+            message: format!(
+                "Matrix dimensions don't align: {}x{} and {}x{}",
+                a_rows, a_cols, b_rows, b_cols
+            ),
         });
     }
-    
+
     // 创建结果矩阵
     // Create result matrix
     let result_shape = DynShape::new(vec![a_rows, b_cols]);
     let mut result = MultiArray::<T, DynShape>::new_with(result_shape, T::zero());
-    
+
     // 执行矩阵乘法
     // Perform matrix multiplication
     for i in 0..a_rows {
@@ -105,7 +123,7 @@ where
             }
         }
     }
-    
+
     Ok(result)
 }
 
@@ -138,7 +156,7 @@ where
     // Validate dimensions
     let a_dim = a.shape.dimension();
     let b_dim = b.shape.dimension();
-    
+
     if a_dim != 1 || b_dim != 1 {
         return Err(EinsumError::DimensionMismatch {
             expected: 1,
@@ -146,7 +164,7 @@ where
             message: "Dot product requires 1D vectors".to_string(),
         });
     }
-    
+
     if a.len() != b.len() {
         return Err(EinsumError::IncompatibleShapes {
             shape1: vec![a.len()],
@@ -154,12 +172,12 @@ where
             message: "Vector lengths don't match".to_string(),
         });
     }
-    
+
     let mut result = T::zero();
     for i in 0..a.len() {
         result = result + a[i].clone() * b[i].clone();
     }
-    
+
     Ok(result)
 }
 
@@ -189,29 +207,29 @@ where
     let shape: Vec<usize> = (0..a.shape.dimension())
         .filter_map(|i| a.shape.len_of_dimension(i).ok())
         .collect();
-    
+
     if shape.len() != 2 {
         return Err(EinsumError::UnsupportedOperation {
             message: "Trace only defined for 2D matrices".to_string(),
         });
     }
-    
+
     if shape[0] != shape[1] {
         return Err(EinsumError::UnsupportedOperation {
             message: "Trace only defined for square matrices".to_string(),
         });
     }
-    
+
     let n = shape[0];
     let mut result = T::zero();
-    
+
     for i in 0..n {
         let idx = i * (n + 1);
         if idx < a.len() {
             result = result + a[idx].clone();
         }
     }
-    
+
     Ok(result)
 }
 
@@ -234,7 +252,10 @@ where
 ///
 /// 外积矩阵
 /// Outer product matrix
-pub fn outer<T, S1, S2>(a: &MultiArray<T, S1>, b: &MultiArray<T, S2>) -> Result<MultiArray<T, DynShape>, EinsumError>
+pub fn outer<T, S1, S2>(
+    a: &MultiArray<T, S1>,
+    b: &MultiArray<T, S2>,
+) -> Result<MultiArray<T, DynShape>, EinsumError>
 where
     S1: AbstractShape,
     S2: AbstractShape,
@@ -244,7 +265,7 @@ where
     // Validate dimensions
     let a_dim = a.shape.dimension();
     let b_dim = b.shape.dimension();
-    
+
     if a_dim != 1 || b_dim != 1 {
         return Err(EinsumError::DimensionMismatch {
             expected: 1,
@@ -252,15 +273,15 @@ where
             message: "Outer product requires 1D vectors".to_string(),
         });
     }
-    
+
     let a_len = a.len();
     let b_len = b.len();
-    
+
     // 创建结果矩阵
     // Create result matrix
     let result_shape = DynShape::new(vec![a_len, b_len]);
     let mut result = MultiArray::<T, DynShape>::new_with(result_shape, T::zero());
-    
+
     // 计算外积
     // Calculate outer product
     for i in 0..a_len {
@@ -271,7 +292,7 @@ where
             }
         }
     }
-    
+
     Ok(result)
 }
 
@@ -301,16 +322,16 @@ where
     let shape: Vec<usize> = (0..a.shape.dimension())
         .filter_map(|i| a.shape.len_of_dimension(i).ok())
         .collect();
-    
+
     if shape.len() != 2 {
         return Err(EinsumError::UnsupportedOperation {
             message: "Transpose only defined for 2D matrices".to_string(),
         });
     }
-    
+
     let transposed_shape = DynShape::new(vec![shape[1], shape[0]]);
     let mut result = MultiArray::<T, DynShape>::new_with(transposed_shape, a[0].clone());
-    
+
     for i in 0..shape[0] {
         for j in 0..shape[1] {
             let src_idx = i * shape[1] + j;
@@ -320,7 +341,7 @@ where
             }
         }
     }
-    
+
     Ok(result)
 }
 
@@ -359,7 +380,7 @@ where
     let b_shape: Vec<usize> = (0..b.shape.dimension())
         .filter_map(|i| b.shape.len_of_dimension(i).ok())
         .collect();
-    
+
     if axis_a >= a_shape.len() || axis_b >= b_shape.len() {
         return Err(EinsumError::DimensionMismatch {
             expected: axis_a.max(axis_b),
@@ -367,7 +388,7 @@ where
             message: "Axis index out of bounds".to_string(),
         });
     }
-    
+
     if a_shape[axis_a] != b_shape[axis_b] {
         return Err(EinsumError::IncompatibleShapes {
             shape1: a_shape,
@@ -375,7 +396,7 @@ where
             message: "Contraction axis dimensions don't match".to_string(),
         });
     }
-    
+
     // 计算输出形状
     // Calculate output shape
     let mut out_shape: Vec<usize> = Vec::new();
@@ -389,15 +410,15 @@ where
             out_shape.push(dim);
         }
     }
-    
+
     let out_dyn_shape = DynShape::new(out_shape.clone());
     let out_len: usize = out_shape.iter().copied().product::<usize>().max(1);
     let mut result = MultiArray::<T, DynShape>::new_with(out_dyn_shape, T::zero());
-    
+
     // 执行缩并
     // Perform contraction
     let contraction_size = a_shape[axis_a];
-    
+
     for i in 0..a.len() {
         for j in 0..b.len() {
             // 简化：累加所有可能的乘积
@@ -409,29 +430,31 @@ where
             }
         }
     }
-    
+
     Ok(result)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Shape, MultiArrayBuilder};
+    use crate::{MultiArrayBuilder, Shape};
 
     #[test]
     fn test_matmul() {
         // 创建 2x3 矩阵
         // Create 2x3 matrix
-        let a: MultiArray<f64, Shape<2>> = MultiArrayBuilder::new_by(Shape::new([2, 3]), |i, _| i as f64);
-        
+        let a: MultiArray<f64, Shape<2>> =
+            MultiArrayBuilder::new_by(Shape::new([2, 3]), |i, _| i as f64);
+
         // 创建 3x2 矩阵
         // Create 3x2 matrix
-        let b: MultiArray<f64, Shape<2>> = MultiArrayBuilder::new_by(Shape::new([3, 2]), |i, _| (i + 1) as f64);
-        
+        let b: MultiArray<f64, Shape<2>> =
+            MultiArrayBuilder::new_by(Shape::new([3, 2]), |i, _| (i + 1) as f64);
+
         // 矩阵乘法
         // Matrix multiplication
         let c = matmul(&a, &b).unwrap();
-        
+
         // 结果形状应为 2x2
         // Result shape should be 2x2
         assert_eq!(c.shape.dimension(), 2);
@@ -439,9 +462,11 @@ mod tests {
 
     #[test]
     fn test_dot() {
-        let a: MultiArray<f64, Shape<1>> = MultiArrayBuilder::new_by(Shape::new([3]), |i, _| (i + 1) as f64);
-        let b: MultiArray<f64, Shape<1>> = MultiArrayBuilder::new_by(Shape::new([3]), |i, _| (i + 1) as f64);
-        
+        let a: MultiArray<f64, Shape<1>> =
+            MultiArrayBuilder::new_by(Shape::new([3]), |i, _| (i + 1) as f64);
+        let b: MultiArray<f64, Shape<1>> =
+            MultiArrayBuilder::new_by(Shape::new([3]), |i, _| (i + 1) as f64);
+
         // 点积：1*1 + 2*2 + 3*3 = 14
         // Dot product: 1*1 + 2*2 + 3*3 = 14
         let result = dot(&a, &b).unwrap();
@@ -452,10 +477,14 @@ mod tests {
     fn test_trace() {
         // 创建 3x3 单位矩阵
         // Create 3x3 identity matrix
-        let a: MultiArray<f64, Shape<2>> = MultiArrayBuilder::new_by(Shape::new([3, 3]), |i, _| {
-            if i % 4 == 0 { 1.0 } else { 0.0 }
-        });
-        
+        let a: MultiArray<f64, Shape<2>> =
+            MultiArrayBuilder::new_by(
+                Shape::new([3, 3]),
+                |i, _| {
+                    if i % 4 == 0 { 1.0 } else { 0.0 }
+                },
+            );
+
         // 迹 = 3
         // Trace = 3
         let result = trace(&a).unwrap();
@@ -464,9 +493,11 @@ mod tests {
 
     #[test]
     fn test_outer() {
-        let a: MultiArray<f64, Shape<1>> = MultiArrayBuilder::new_by(Shape::new([2]), |i, _| (i + 1) as f64);
-        let b: MultiArray<f64, Shape<1>> = MultiArrayBuilder::new_by(Shape::new([3]), |i, _| (i + 1) as f64);
-        
+        let a: MultiArray<f64, Shape<1>> =
+            MultiArrayBuilder::new_by(Shape::new([2]), |i, _| (i + 1) as f64);
+        let b: MultiArray<f64, Shape<1>> =
+            MultiArrayBuilder::new_by(Shape::new([3]), |i, _| (i + 1) as f64);
+
         // 外积结果形状应为 2x3
         // Outer product result shape should be 2x3
         let result = outer(&a, &b).unwrap();
@@ -475,10 +506,11 @@ mod tests {
 
     #[test]
     fn test_transpose() {
-        let a: MultiArray<f64, Shape<2>> = MultiArrayBuilder::new_by(Shape::new([2, 3]), |i, _| i as f64);
-        
+        let a: MultiArray<f64, Shape<2>> =
+            MultiArrayBuilder::new_by(Shape::new([2, 3]), |i, _| i as f64);
+
         let result = transpose(&a).unwrap();
-        
+
         // 转置后形状应为 3x2
         // Shape after transpose should be 3x2
         assert_eq!(result.shape.len_of_dimension(0).unwrap(), 3);

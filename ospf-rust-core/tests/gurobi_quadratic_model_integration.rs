@@ -9,7 +9,7 @@ use ospf_rust_core::model::{
     QuadraticConstraint, QuadraticInequality, SubObjective,
 };
 use ospf_rust_core::solver::solvers::GurobiSolver;
-use ospf_rust_core::symbol::functions::{
+use ospf_rust_core::symbol::function::{
     BinaryzationMethod, InequalityKind, Point2, Point3, QuadraticBinaryzationFunction,
     QuadraticBivariateLinearPiecewiseFunction, QuadraticCosFunction, QuadraticInStepRangeFunction,
     QuadraticInequalityFunction, QuadraticMaskingFunction, QuadraticMaskingRangeFunction,

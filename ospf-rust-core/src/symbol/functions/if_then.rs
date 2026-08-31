@@ -11,13 +11,14 @@ use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::BinaryVariableItem;
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
 use super::{InequalityFunction, InequalityKind};
 
@@ -145,6 +146,31 @@ where
         Self::with_mode(id, name, premise, consequence, big_m, true)
     }
 
+    /// 使用自动 ID 与调用方提供的名称创建约束模式蕴含函数。
+    /// Create a constraint-mode implication function with an auto id and caller-provided name.
+    pub fn named(
+        name: impl AsRef<str>,
+        premise: LinearInequality<V>,
+        consequence: LinearInequality<V>,
+        big_m: V,
+    ) -> Self {
+        Self::new(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            premise,
+            consequence,
+            big_m,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建约束模式蕴含函数。
+    /// Create a constraint-mode implication function with an auto id and auto-generated name.
+    pub fn auto(premise: LinearInequality<V>, consequence: LinearInequality<V>, big_m: V) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("if_then", id);
+        Self::new(id, &name, premise, consequence, big_m)
+    }
+
     pub fn indicator(
         id: u64,
         name: &str,
@@ -153,6 +179,35 @@ where
         big_m: V,
     ) -> Self {
         Self::with_mode(id, name, premise, consequence, big_m, false)
+    }
+
+    /// 使用自动 ID 与调用方提供的名称创建指示模式蕴含函数。
+    /// Create an indicator-mode implication function with an auto id and caller-provided name.
+    pub fn named_indicator(
+        name: impl AsRef<str>,
+        premise: LinearInequality<V>,
+        consequence: LinearInequality<V>,
+        big_m: V,
+    ) -> Self {
+        Self::indicator(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            premise,
+            consequence,
+            big_m,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建指示模式蕴含函数。
+    /// Create an indicator-mode implication function with an auto id and auto-generated name.
+    pub fn auto_indicator(
+        premise: LinearInequality<V>,
+        consequence: LinearInequality<V>,
+        big_m: V,
+    ) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("if_then", id);
+        Self::indicator(id, &name, premise, consequence, big_m)
     }
 
     pub fn with_mode(
@@ -261,6 +316,188 @@ where
 
     fn id(&self) -> Self::Id {
         self.id.clone()
+    }
+}
+
+impl<V> IfThenFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn logical_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let premise_index = symbol_to_index
+            .get(&(self.premise_indicator.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "if_then premise indicator variable id {}",
+                    self.premise_indicator.result_variable().id().unique_id()
+                ))
+            })?;
+        let consequence_index = symbol_to_index
+            .get(
+                &(self
+                    .consequence_indicator
+                    .result_variable()
+                    .id()
+                    .unique_id() as usize),
+            )
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "if_then consequence indicator variable id {}",
+                    self.consequence_indicator
+                        .result_variable()
+                        .id()
+                        .unique_id()
+                ))
+            })?;
+        let result_index = symbol_to_index
+            .get(&(self.result_var.id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "if_then result variable id {}",
+                    self.result_var.id().unique_id()
+                ))
+            })?;
+
+        let mut constraints = Vec::new();
+        if self.constraint_mode {
+            constraints.push(LinearConstraint::from_symbol(
+                LinearInequality::new(
+                    Linear::new(
+                        vec![
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(1.0, "if_then premise coefficient")?,
+                                premise_index,
+                            ),
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(-1.0, "if_then consequence coefficient")?,
+                                consequence_index,
+                            ),
+                        ],
+                        convert_f64_to_v::<V>(0.0, "if_then premise implication constant")?,
+                    ),
+                    ConstraintRelation::LessEqual,
+                    convert_f64_to_v::<V>(0.0, "if_then premise implication rhs")?,
+                ),
+                &format!("{}_if_then", self.id.name),
+                Arc::new(self.clone()),
+            ));
+            constraints.push(LinearConstraint::from_symbol(
+                LinearInequality::new(
+                    Linear::new(
+                        vec![LinearMonomial::new(
+                            convert_f64_to_v::<V>(1.0, "if_then fixed result coefficient")?,
+                            result_index,
+                        )],
+                        convert_f64_to_v::<V>(0.0, "if_then fixed result constant")?,
+                    ),
+                    ConstraintRelation::Equal,
+                    convert_f64_to_v::<V>(1.0, "if_then fixed result rhs")?,
+                ),
+                &format!("{}_if_then_result", self.id.name),
+                Arc::new(self.clone()),
+            ));
+        } else {
+            constraints.push(LinearConstraint::from_symbol(
+                LinearInequality::new(
+                    Linear::new(
+                        vec![
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(1.0, "if_then value result coefficient")?,
+                                result_index,
+                            ),
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(1.0, "if_then value premise coefficient")?,
+                                premise_index,
+                            ),
+                        ],
+                        convert_f64_to_v::<V>(0.0, "if_then value lower one constant")?,
+                    ),
+                    ConstraintRelation::GreaterEqual,
+                    convert_f64_to_v::<V>(1.0, "if_then value lower one rhs")?,
+                ),
+                &format!("{}_if_then_value_lb1", self.id.name),
+                Arc::new(self.clone()),
+            ));
+            constraints.push(LinearConstraint::from_symbol(
+                LinearInequality::new(
+                    Linear::new(
+                        vec![
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(
+                                    1.0,
+                                    "if_then value consequence lower coefficient",
+                                )?,
+                                result_index,
+                            ),
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(
+                                    -1.0,
+                                    "if_then value consequence coefficient",
+                                )?,
+                                consequence_index,
+                            ),
+                        ],
+                        convert_f64_to_v::<V>(0.0, "if_then value lower two constant")?,
+                    ),
+                    ConstraintRelation::GreaterEqual,
+                    convert_f64_to_v::<V>(0.0, "if_then value lower two rhs")?,
+                ),
+                &format!("{}_if_then_value_lb2", self.id.name),
+                Arc::new(self.clone()),
+            ));
+            constraints.push(LinearConstraint::from_symbol(
+                LinearInequality::new(
+                    Linear::new(
+                        vec![
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(
+                                    1.0,
+                                    "if_then value upper result coefficient",
+                                )?,
+                                result_index,
+                            ),
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(
+                                    1.0,
+                                    "if_then value upper premise coefficient",
+                                )?,
+                                premise_index,
+                            ),
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(
+                                    -1.0,
+                                    "if_then value upper consequence coefficient",
+                                )?,
+                                consequence_index,
+                            ),
+                        ],
+                        convert_f64_to_v::<V>(0.0, "if_then value upper constant")?,
+                    ),
+                    ConstraintRelation::LessEqual,
+                    convert_f64_to_v::<V>(1.0, "if_then value upper rhs")?,
+                ),
+                &format!("{}_if_then_value_ub", self.id.name),
+                Arc::new(self.clone()),
+            ));
+        }
+
+        Ok(constraints)
     }
 }
 
@@ -474,6 +711,22 @@ where
         Ok(constraints)
     }
 
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = self
+            .premise_indicator
+            .mechanism_constraints_with_tokens(symbol_to_index, tokens)?;
+        constraints.extend(
+            self.consequence_indicator
+                .mechanism_constraints_with_tokens(symbol_to_index, tokens)?,
+        );
+        constraints.extend(self.logical_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
+
     fn evaluate_from_tokens(
         &self,
         token_table: &dyn TokenList<V>,
@@ -555,7 +808,29 @@ where
 mod tests {
     use super::*;
     use crate::token::{MutableTokenList, VecTokenList};
-    use crate::variable::{ContinuousVariableItem, VariableId};
+    use crate::variable::{ContinuousVariableItem, VariableId, VariableRange};
+
+    fn token_index_map<V>(tokens: &[Token<V>]) -> HashMap<usize, usize>
+    where
+        V: Clone + Debug + Send + Sync + 'static,
+    {
+        tokens
+            .iter()
+            .enumerate()
+            .map(|(index, token)| (token.id().unique_id() as usize, index + 1))
+            .collect()
+    }
+
+    fn coefficient_for_index(constraint: &LinearConstraint<f64>, index: usize) -> f64 {
+        *constraint
+            .inequality
+            .polynomial
+            .monomials()
+            .iter()
+            .find(|monomial| monomial.var_index() == index)
+            .expect("expected monomial should exist")
+            .coefficient()
+    }
 
     #[test]
     fn if_then_calculate_value() {
@@ -662,5 +937,48 @@ mod tests {
             .mechanism_constraints(&symbol_to_index_indicator)
             .unwrap();
         assert_eq!(constraints_indicator.len(), 7);
+    }
+
+    #[test]
+    fn if_then_infers_big_m_for_internal_inequality_indicators() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(0.0, 2.0),
+        );
+        let premise = LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
+            ConstraintRelation::LessEqual,
+            0.0,
+        );
+        let consequence = LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            ConstraintRelation::GreaterEqual,
+            1.0,
+        );
+        let if_then: IfThenFunction<f64> =
+            IfThenFunction::indicator(31013, "if_then_bound", premise, consequence, 100.0);
+
+        let mut aux_tokens = Vec::new();
+        if_then
+            .register_tokens(&mut aux_tokens)
+            .expect("if_then tokens should be registered");
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let premise_index = *symbol_to_index
+            .get(&(if_then.premise_indicator_variable().id().unique_id() as usize))
+            .expect("premise indicator index should exist");
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        tokens.extend(aux_tokens);
+
+        let constraints = if_then
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("if_then constraints should be generated");
+        let upper = constraints
+            .iter()
+            .find(|constraint| constraint.name == "if_then_bound_premise_ineq_ub")
+            .expect("premise upper inequality constraint should exist");
+
+        assert!((upper.inequality.rhs - 5.0).abs() <= 1e-9);
+        assert!((coefficient_for_index(upper, premise_index) - 5.0).abs() <= 1e-9);
     }
 }

@@ -5,6 +5,9 @@
 //! This module provides trait and struct definitions for polynomial matrix forms.
 
 use crate::symbol::OwnedSymbol;
+use crate::symbol::{Linear, Quadratic};
+use num_traits::Zero;
+use std::ops::{Add, AddAssign, Div, Mul};
 
 // ============================================================================
 // 矩阵形式结构体 / Matrix Form Structures
@@ -32,6 +35,42 @@ pub struct LinearMatrixForm<T> {
     pub coefficients: Vec<T>,
     /// 常数项 / Constant term
     pub constant: T,
+}
+
+impl<T> LinearMatrixForm<T> {
+    /// 创建线性矩阵形式 / Create a linear matrix form
+    pub fn new(coefficients: Vec<T>, constant: T, symbols: Vec<OwnedSymbol>) -> Self {
+        Self {
+            symbols,
+            coefficients,
+            constant,
+        }
+    }
+
+    /// Kotlin 命名兼容构造 / Kotlin naming compatible constructor
+    pub fn from_kotlin_parts(c: Vec<T>, d: T, order: Vec<OwnedSymbol>) -> Self {
+        Self::new(c, d, order)
+    }
+
+    /// 系数向量 c / Coefficient vector c
+    pub fn c(&self) -> &[T] {
+        &self.coefficients
+    }
+
+    /// 常数项 d / Constant term d
+    pub fn d(&self) -> &T {
+        &self.constant
+    }
+
+    /// 符号顺序 / Symbol order
+    pub fn order(&self) -> &[OwnedSymbol] {
+        &self.symbols
+    }
+
+    /// 拆解为 Kotlin 命名顺序 / Decompose in Kotlin naming order
+    pub fn into_kotlin_parts(self) -> (Vec<T>, T, Vec<OwnedSymbol>) {
+        (self.coefficients, self.constant, self.symbols)
+    }
 }
 
 /// 二次多项式的矩阵形式 / Matrix form of quadratic polynomial
@@ -65,6 +104,53 @@ pub struct QuadraticMatrixForm<T> {
     pub c_vector: Vec<T>,
     /// 常数项 / Constant term
     pub constant: T,
+}
+
+impl<T> QuadraticMatrixForm<T> {
+    /// 创建二次矩阵形式 / Create a quadratic matrix form
+    pub fn new(
+        q_matrix: Vec<Vec<T>>,
+        c_vector: Vec<T>,
+        constant: T,
+        symbols: Vec<OwnedSymbol>,
+    ) -> Self {
+        Self {
+            symbols,
+            q_matrix,
+            c_vector,
+            constant,
+        }
+    }
+
+    /// Kotlin 命名兼容构造 / Kotlin naming compatible constructor
+    pub fn from_kotlin_parts(q: Vec<Vec<T>>, c: Vec<T>, d: T, order: Vec<OwnedSymbol>) -> Self {
+        Self::new(q, c, d, order)
+    }
+
+    /// 二次项矩阵 q / Quadratic matrix q
+    pub fn q(&self) -> &[Vec<T>] {
+        &self.q_matrix
+    }
+
+    /// 线性项系数向量 c / Linear coefficient vector c
+    pub fn c(&self) -> &[T] {
+        &self.c_vector
+    }
+
+    /// 常数项 d / Constant term d
+    pub fn d(&self) -> &T {
+        &self.constant
+    }
+
+    /// 符号顺序 / Symbol order
+    pub fn order(&self) -> &[OwnedSymbol] {
+        &self.symbols
+    }
+
+    /// 拆解为 Kotlin 命名顺序 / Decompose in Kotlin naming order
+    pub fn into_kotlin_parts(self) -> (Vec<Vec<T>>, Vec<T>, T, Vec<OwnedSymbol>) {
+        (self.q_matrix, self.c_vector, self.constant, self.symbols)
+    }
 }
 
 // ============================================================================
@@ -107,4 +193,131 @@ pub trait ToMatrixForm<T>: Sized {
     /// - `form`: 矩阵形式
     /// - `form`: Matrix form
     fn from_matrix_form(form: &Self::MatrixForm) -> Self;
+}
+
+/// 从线性矩阵形式还原线性多项式 / Reconstruct linear polynomial from matrix form
+pub fn linear_polynomial_from_matrix_form<T>(c: Vec<T>, d: T, order: Vec<OwnedSymbol>) -> Linear<T>
+where
+    T: Clone + Zero + PartialEq + for<'a> AddAssign<&'a T>,
+{
+    let form = LinearMatrixForm::from_kotlin_parts(c, d, order);
+    <Linear<T> as ToMatrixForm<T>>::from_matrix_form(&form)
+}
+
+/// 从线性矩阵形式结构还原线性多项式
+/// Reconstruct linear polynomial from a linear matrix form struct
+pub fn linear_polynomial_from_linear_matrix_form<T>(form: &LinearMatrixForm<T>) -> Linear<T>
+where
+    T: Clone + Zero + PartialEq + for<'a> AddAssign<&'a T>,
+{
+    <Linear<T> as ToMatrixForm<T>>::from_matrix_form(form)
+}
+
+/// 从二次矩阵形式还原二次多项式 / Reconstruct quadratic polynomial from matrix form
+pub fn quadratic_polynomial_from_matrix_form<T>(
+    q: Vec<Vec<T>>,
+    c: Vec<T>,
+    d: T,
+    order: Vec<OwnedSymbol>,
+) -> Quadratic<T>
+where
+    T: Clone
+        + Zero
+        + PartialEq
+        + for<'a> AddAssign<&'a T>
+        + Add<Output = T>
+        + Mul<Output = T>
+        + Div<Output = T>,
+{
+    let form = QuadraticMatrixForm::from_kotlin_parts(q, c, d, order);
+    <Quadratic<T> as ToMatrixForm<T>>::from_matrix_form(&form)
+}
+
+/// 从二次矩阵形式结构还原二次多项式
+/// Reconstruct quadratic polynomial from a quadratic matrix form struct
+pub fn quadratic_polynomial_from_quadratic_matrix_form<T>(
+    form: &QuadraticMatrixForm<T>,
+) -> Quadratic<T>
+where
+    T: Clone
+        + Zero
+        + PartialEq
+        + for<'a> AddAssign<&'a T>
+        + Add<Output = T>
+        + Mul<Output = T>
+        + Div<Output = T>,
+{
+    <Quadratic<T> as ToMatrixForm<T>>::from_matrix_form(form)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::symbol::{LinearMonomial, QuadraticMonomial, test_utils::SimpleSymbol};
+
+    fn make_symbol(id: usize, name: &str) -> OwnedSymbol {
+        OwnedSymbol::new(SimpleSymbol::with_id(id, name))
+    }
+
+    #[test]
+    fn linear_matrix_form_exposes_kotlin_names() {
+        let x = make_symbol(1, "x");
+        let y = make_symbol(2, "y");
+        let form = LinearMatrixForm::from_kotlin_parts(vec![2.0, 3.0], 1.0, vec![x, y]);
+
+        assert_eq!(form.c(), &[2.0, 3.0]);
+        assert_eq!(*form.d(), 1.0);
+        assert_eq!(form.order().len(), 2);
+    }
+
+    #[test]
+    fn linear_polynomial_can_be_restored_from_kotlin_parts() {
+        let x = make_symbol(1, "x");
+        let y = make_symbol(2, "y");
+        let polynomial =
+            linear_polynomial_from_matrix_form(vec![2.0, 0.0], 1.0, vec![x.clone(), y]);
+
+        assert_eq!(polynomial.constant, 1.0);
+        assert_eq!(polynomial.monomials, vec![LinearMonomial::new(2.0, x)]);
+    }
+
+    #[test]
+    fn quadratic_matrix_form_exposes_kotlin_names() {
+        let x = make_symbol(1, "x");
+        let y = make_symbol(2, "y");
+        let form = QuadraticMatrixForm::from_kotlin_parts(
+            vec![vec![1.0, 2.0], vec![2.0, 3.0]],
+            vec![4.0, 5.0],
+            6.0,
+            vec![x, y],
+        );
+
+        assert_eq!(form.q()[0], vec![1.0, 2.0]);
+        assert_eq!(form.c(), &[4.0, 5.0]);
+        assert_eq!(*form.d(), 6.0);
+        assert_eq!(form.order().len(), 2);
+    }
+
+    #[test]
+    fn quadratic_polynomial_can_be_restored_from_kotlin_parts() {
+        let x = make_symbol(1, "x");
+        let y = make_symbol(2, "y");
+        let polynomial = quadratic_polynomial_from_matrix_form(
+            vec![vec![1.0, 2.0], vec![0.0, 3.0]],
+            vec![4.0, 0.0],
+            5.0,
+            vec![x.clone(), y.clone()],
+        );
+
+        assert_eq!(polynomial.constant, 5.0);
+        assert_eq!(
+            polynomial.monomials,
+            vec![
+                QuadraticMonomial::quadratic(1.0, x.clone(), x),
+                QuadraticMonomial::quadratic(2.0, make_symbol(1, "x"), y.clone()),
+                QuadraticMonomial::quadratic(3.0, y.clone(), y),
+                QuadraticMonomial::linear(4.0, make_symbol(1, "x")),
+            ]
+        );
+    }
 }

@@ -6,8 +6,8 @@
 
 use super::angular_velocity::{DegreePerSecond, RadianPerSecond};
 use super::time::Second;
-use crate::unit::physical_unit::CTUnit;
 use crate::unit::CTUnitDiv;
+use crate::unit::physical_unit::CTUnit;
 
 // ============================================================================
 // 角加速度单位 / Angular acceleration units

@@ -31,9 +31,10 @@
 From workspace root:
 
 ```bash
-cargo test -p ospf-rust-core gurobi_native_observer_integration --features gurobi12 -- --nocapture
-cargo test -p ospf-rust-core gurobi_telemetry_callback_integration --features gurobi12 -- --nocapture
-cargo test -p ospf-rust-core gurobi_stage_callback_integration --features gurobi12 -- --nocapture
+cargo test -p ospf-rust-core gurobi_native_observer_integration --features gurobi10 -- --nocapture
+cargo test -p ospf-rust-core gurobi_telemetry_callback_integration --features gurobi10 -- --nocapture
+cargo test -p ospf-rust-core gurobi_stage_callback_integration --features gurobi10 -- --nocapture
 ```
 
-If your environment is pinned to Gurobi 10/11, replace `gurobi12` with `gurobi10`/`gurobi11`.
+This workspace is validated against the local Gurobi 10 environment. If your environment is pinned
+to Gurobi 11/12, replace `gurobi10` with `gurobi11`/`gurobi12`.

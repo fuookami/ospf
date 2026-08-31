@@ -922,4 +922,3 @@ mod tests {
         assert_eq!(N5::I64, -5);
     }
 }
-

@@ -4,9 +4,52 @@
 
 `ospf-rust-example` contains runnable and testable examples built on top of `ospf-rust-core` and `ospf-rust-framework`.
 
+## Kotlin-Aligned Layout
+
+- `src/example_modeling.rs`: shared modeling/typed solve helpers
+- `src/core_demo`: preferred core demo entry
+- `src/heuristic_demo`: heuristic demo entry (scaffold stage)
+- `src/framework_demo`: preferred framework demo entry
+- `src/core` and `src/framework`: compatibility implementation modules kept for migration
+
+## Commands
+
+Default build/test path (no commercial backend):
+
+```bash
+cargo check -p ospf-rust-example
+cargo test -p ospf-rust-example --no-run
+cargo test -p ospf-rust-example
+```
+
+Runtime demos requiring backend:
+
+```bash
+cargo run -p ospf-rust-example --features backend-gurobi -- core:demo1
+cargo run -p ospf-rust-example --features backend-gurobi -- core:all
+cargo run -p ospf-rust-example --features backend-gurobi -- core:generic-number
+cargo run -p ospf-rust-example --features backend-gurobi -- core:shortcuts
+cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo1
+cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo2
+cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo3
+cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo4
+```
+
+Backend build-only verification:
+
+```bash
+cargo test -p ospf-rust-example --features backend-gurobi --no-run
+```
+
+When backend feature is not enabled, running demo commands will return a clear hint:
+`rerun with --features backend-gurobi`.
+
+`framework:demo4` currently stays as scaffold-only command entry. The gantt-scheduling parity
+is intentionally postponed and not marked as completed functionality.
+
 ## Demo2 Benders Behavior Contract
 
-`framework::demo2` supports adaptive Benders with optional MILP fallback.
+`framework_demo::demo2` supports adaptive Benders with optional MILP fallback.
 
 When `prefer_benders=true`, the application derives an effective adaptive profile from problem size
 (`cargo_count * position_count`) and emits both configured and effective settings in notes.
@@ -92,6 +135,8 @@ with the final effective values.
 
 ## API Pointers
 
+- Public demo entry: `src/framework_demo/demo2/mod.rs`
+- Public dispatch module: `src/framework_demo/mod.rs` (`framework_demo::run_demo2`)
+- Current implementation (compat layer target): `src/framework/demo2/domain.rs`
 - Request/response DTO: `src/framework/demo2/infrastructure/dto.rs`
-- Demo2 application orchestration: `src/framework/demo2/domain.rs`
 - Diagnostics parser and grouped-note contract: `src/framework/demo2/diagnostics.rs`

@@ -140,13 +140,7 @@ where
             // 计算结果坐标（移除求和轴）
             // Calculate result coordinates (remove summed axis)
             let result_vector: Vec<usize> = (0..self.shape.dimension())
-                .filter_map(|i| {
-                    if i != axis {
-                        Some(vector[i])
-                    } else {
-                        None
-                    }
-                })
+                .filter_map(|i| if i != axis { Some(vector[i]) } else { None })
                 .collect();
 
             // 获取元素引用
@@ -294,10 +288,14 @@ where
         // Calculate stride and adjacent element distance along the axis
         let axis_stride = self.shape.offset_of_dimension(axis).unwrap();
         let axis_size = current_shape[axis];
-        
+
         // 计算每个"行"的大小（沿轴方向的一组元素）
         // Calculate size of each "row" (group of elements along the axis)
-        let group_size = if axis_stride > 0 { axis_stride * axis_size } else { 1 };
+        let group_size = if axis_stride > 0 {
+            axis_stride * axis_size
+        } else {
+            1
+        };
         let num_groups = self.len() / group_size.max(1);
 
         // 遍历每个组，计算组内的累积和
@@ -305,7 +303,7 @@ where
         for group_idx in 0..num_groups {
             let group_start = group_idx * group_size.max(1);
             let mut running_sum = T::zero();
-            
+
             for k in 0..axis_size {
                 let elem_idx = group_start + k * axis_stride;
                 if elem_idx < self.len() {
@@ -317,17 +315,20 @@ where
 
         // 处理边界情况：axis_stride 为 0（如最后一个维度在 RowMajor 下）
         // Handle edge case: axis_stride is 0 (e.g., last dimension in RowMajor)
-        if axis_stride == 1 || (axis + 1 == ndim && self.shape.storage_order() == crate::concept::StorageOrder::RowMajor) {
+        if axis_stride == 1
+            || (axis + 1 == ndim
+                && self.shape.storage_order() == crate::concept::StorageOrder::RowMajor)
+        {
             // 直接使用线性遍历
             // Use linear traversal directly
             let stride = if axis_stride == 0 { 1 } else { axis_stride };
             let block_size = stride * axis_size;
             let num_blocks = self.len() / block_size.max(1);
-            
+
             for block_idx in 0..num_blocks {
                 let block_start = block_idx * block_size;
                 let mut running_sum = T::zero();
-                
+
                 for k in 0..axis_size {
                     let elem_idx = block_start + k * stride;
                     running_sum += &self[elem_idx];

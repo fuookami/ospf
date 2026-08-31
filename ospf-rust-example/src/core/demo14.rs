@@ -1,10 +1,11 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::variable::UContinuousVariableItem;
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
+use ospf_rust_core::variable::{UContinuous, VariableCombination2D, VariableRange};
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
+use ospf_rust_multiarray::{MultiArrayBuilder, Shape};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Clone, Copy)]
 enum NodeType {
@@ -81,66 +82,82 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let arcs = build_arcs();
 
     let mut model = MetaModel::<f64>::new("demo14");
-    let mut x_idx = vec![vec![None; nodes.len()]; nodes.len()];
-    for arc in &arcs {
-        let var = UContinuousVariableItem::auto(&format!("x_{}_{}", arc.from, arc.to));
-        x_idx[arc.from][arc.to] = Some(model.register_variable(var)?);
-    }
+    let x_shape = Shape::new([nodes.len(), nodes.len()]);
+    let x_vars: VariableCombination2D<UContinuous> =
+        VariableCombination2D::with_name_and_range_generator(
+            x_shape.clone(),
+            "x",
+            |_index, vector| format!("{}_{}", vector[0], vector[1]),
+            |_index, vector| {
+                if arcs
+                    .iter()
+                    .any(|arc| arc.from == vector[0] && arc.to == vector[1])
+                {
+                    VariableRange::with_lower(0.0)
+                } else {
+                    VariableRange::fixed(0.0)
+                }
+            },
+        );
+    let x_idx = MultiArrayBuilder::from_list(
+        x_shape,
+        model.register_variables::<UContinuous, _>(x_vars.iter().cloned())?,
+    );
 
-    let mut objective = vec![0.0; model.num_tokens()];
+    let mut cost_terms = Vec::with_capacity(arcs.len());
     for arc in &arcs {
-        if let Some(idx) = x_idx[arc.from][arc.to] {
-            objective[idx] = arc.unit_cost;
-        }
+        cost_terms.push(LinearMonomial::new(
+            arc.unit_cost,
+            x_vars[&[arc.from, arc.to]].to_owned_symbol(),
+        ));
     }
-    model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+    let cost = Linear::new(cost_terms, 0.0);
+    let trans_out = MultiArrayBuilder::new_by(Shape::<1>::new([nodes.len()]), |_idx, vector| {
+        let node = vector[0];
+        Linear::new(
+            (0..nodes.len())
+                .map(|to| LinearMonomial::new(1.0, x_vars[&[node, to]].to_owned_symbol()))
+                .collect(),
+            0.0,
+        )
+    });
+    let trans_in = MultiArrayBuilder::new_by(Shape::<1>::new([nodes.len()]), |_idx, vector| {
+        let node = vector[0];
+        Linear::new(
+            (0..nodes.len())
+                .map(|from| LinearMonomial::new(1.0, x_vars[&[from, node]].to_owned_symbol()))
+                .collect(),
+            0.0,
+        )
+    });
+
+    model.set_math_linear_objective(cost, ObjectiveCategory::Minimum, "cost")?;
 
     for (node_idx, node) in nodes.iter().enumerate() {
         match node.kind {
             NodeType::Product(storage) => {
-                let out_coeffs: Vec<(usize, f64)> = (0..nodes.len())
-                    .filter_map(|to| x_idx[node_idx][to].map(|idx| (idx, 1.0)))
-                    .collect();
-                model.add_linear_constraint(
-                    &out_coeffs,
-                    ConstraintRelation::LessEqual,
-                    storage,
+                model.add_math_inequality(
+                    trans_out[node_idx].clone().le(storage),
                     &format!("product_out_{}", node_idx),
-                )?;
+                );
             }
             NodeType::Sale(demand) => {
-                let in_coeffs: Vec<(usize, f64)> = (0..nodes.len())
-                    .filter_map(|from| x_idx[from][node_idx].map(|idx| (idx, 1.0)))
-                    .collect();
-                model.add_linear_constraint(
-                    &in_coeffs,
-                    ConstraintRelation::GreaterEqual,
-                    demand,
+                model.add_math_inequality(
+                    trans_in[node_idx].clone().ge(demand),
                     &format!("sale_in_{}", node_idx),
-                )?;
+                );
             }
             NodeType::Distribution => {
-                let mut coeffs: Vec<(usize, f64)> = (0..nodes.len())
-                    .filter_map(|to| x_idx[node_idx][to].map(|idx| (idx, 1.0)))
-                    .collect();
-                coeffs.extend(
-                    (0..nodes.len())
-                        .filter_map(|from| x_idx[from][node_idx].map(|idx| (idx, -1.0))),
-                );
-                model.add_linear_constraint(
-                    &coeffs,
-                    ConstraintRelation::Equal,
-                    0.0,
+                model.add_math_inequality(
+                    (trans_out[node_idx].clone() - trans_in[node_idx].clone()).eq_to(0.0),
                     &format!("balance_{}", node_idx),
-                )?;
+                );
             }
         }
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo14 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo14 ===");
     println!("status: {:?}", output.status);
@@ -148,11 +165,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         println!("cost: {:.2}", obj);
     }
     for arc in arcs {
-        if let Some(idx) = x_idx[arc.from][arc.to] {
-            let value = read_solution_value(&solution, idx);
-            if value > 0.0 {
-                println!("{} -> {} = {:.2}", nodes[arc.from].name, nodes[arc.to].name, value);
-            }
+        let value = read_solution_value(&solution, x_idx[&[arc.from, arc.to]]);
+        if value > 0.0 {
+            println!(
+                "{} -> {} = {:.2}",
+                nodes[arc.from].name, nodes[arc.to].name, value
+            );
         }
     }
     Ok(())

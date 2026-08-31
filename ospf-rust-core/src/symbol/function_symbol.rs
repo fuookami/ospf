@@ -47,8 +47,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
-    use crate::symbol::functions::{AndFunction, QuadraticSigmoidFunction, SigmoidFunction};
+    use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
+    use crate::symbol::function::{AndFunction, QuadraticSigmoidFunction, SigmoidFunction};
 
     fn assert_linear<T: LinearFunctionSymbol>() {}
     fn assert_logic<T: LogicFunctionSymbol>() {}

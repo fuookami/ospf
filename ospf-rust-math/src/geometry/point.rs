@@ -61,7 +61,7 @@ use std::ops::{Add, Index, IndexMut, Neg, Sub};
 /// let p = Point::<3, f64>::from_coords([1.0, 2.0, 3.0]);
 /// ```
 #[derive(Clone, PartialEq)]
-pub struct Point<const D: usize, S: Field + Float = f64> {
+pub struct Point<const D: usize, S = f64> {
     /// 坐标数组 / Coordinate array
     coords: [S; D],
 }
@@ -70,7 +70,7 @@ pub struct Point<const D: usize, S: Field + Float = f64> {
 // 构造方法 / Constructors
 // ============================================================================
 
-impl<const D: usize, S: Field + Float> Point<D, S> {
+impl<const D: usize, S> Point<D, S> {
     /// 从坐标数组创建点
     /// Create a point from coordinate array
     ///
@@ -82,6 +82,12 @@ impl<const D: usize, S: Field + Float> Point<D, S> {
     /// ```
     pub fn from_coords(coords: [S; D]) -> Self {
         Self { coords }
+    }
+
+    /// 消费点并返回坐标数组
+    /// Consume the point and return the coordinate array
+    pub fn into_coords(self) -> [S; D] {
+        self.coords
     }
 
     /// 创建原点（所有坐标为零）
@@ -122,10 +128,10 @@ impl<const D: usize, S: Field + Float> Point<D, S> {
         &mut self.coords
     }
 
-    /// 获取指定维度的坐标值
-    /// Get the coordinate value at the specified dimension
-    pub fn get(&self, i: usize) -> Option<S> {
-        self.coords.get(i).copied()
+    /// 获取指定维度的坐标引用
+    /// Get a reference to the coordinate at the specified dimension
+    pub fn get_ref(&self, i: usize) -> Option<&S> {
+        self.coords.get(i)
     }
 
     /// 设置指定维度的坐标值
@@ -140,27 +146,35 @@ impl<const D: usize, S: Field + Float> Point<D, S> {
     }
 }
 
+impl<const D: usize, S: Copy> Point<D, S> {
+    /// 获取指定维度的坐标值
+    /// Get the coordinate value at the specified dimension
+    pub fn get(&self, i: usize) -> Option<S> {
+        self.coords.get(i).copied()
+    }
+}
+
 // ============================================================================
 // 2D 便捷方法 / 2D convenience methods
 // ============================================================================
 
-impl<S: Field + Float> Point<2, S> {
+impl<S> Point<2, S> {
     /// 创建 2D 点
     /// Create a 2D point
     pub fn new(x: S, y: S) -> Self {
         Self::from_coords([x, y])
     }
 
-    /// 获取 x 坐标
-    /// Get x coordinate
-    pub fn x(&self) -> S {
-        self.coords[0]
+    /// 获取 x 坐标引用
+    /// Get x coordinate reference
+    pub fn x_ref(&self) -> &S {
+        &self.coords[0]
     }
 
-    /// 获取 y 坐标
-    /// Get y coordinate
-    pub fn y(&self) -> S {
-        self.coords[1]
+    /// 获取 y 坐标引用
+    /// Get y coordinate reference
+    pub fn y_ref(&self) -> &S {
+        &self.coords[1]
     }
 
     /// 设置 x 坐标
@@ -176,17 +190,7 @@ impl<S: Field + Float> Point<2, S> {
     }
 }
 
-// ============================================================================
-// 3D 便捷方法 / 3D convenience methods
-// ============================================================================
-
-impl<S: Field + Float> Point<3, S> {
-    /// 创建 3D 点
-    /// Create a 3D point
-    pub fn new(x: S, y: S, z: S) -> Self {
-        Self::from_coords([x, y, z])
-    }
-
+impl<S: Copy> Point<2, S> {
     /// 获取 x 坐标
     /// Get x coordinate
     pub fn x(&self) -> S {
@@ -198,11 +202,35 @@ impl<S: Field + Float> Point<3, S> {
     pub fn y(&self) -> S {
         self.coords[1]
     }
+}
 
-    /// 获取 z 坐标
-    /// Get z coordinate
-    pub fn z(&self) -> S {
-        self.coords[2]
+// ============================================================================
+// 3D 便捷方法 / 3D convenience methods
+// ============================================================================
+
+impl<S> Point<3, S> {
+    /// 创建 3D 点
+    /// Create a 3D point
+    pub fn new(x: S, y: S, z: S) -> Self {
+        Self::from_coords([x, y, z])
+    }
+
+    /// 获取 x 坐标引用
+    /// Get x coordinate reference
+    pub fn x_ref(&self) -> &S {
+        &self.coords[0]
+    }
+
+    /// 获取 y 坐标引用
+    /// Get y coordinate reference
+    pub fn y_ref(&self) -> &S {
+        &self.coords[1]
+    }
+
+    /// 获取 z 坐标引用
+    /// Get z coordinate reference
+    pub fn z_ref(&self) -> &S {
+        &self.coords[2]
     }
 
     /// 设置 x 坐标
@@ -221,6 +249,26 @@ impl<S: Field + Float> Point<3, S> {
     /// Set z coordinate
     pub fn set_z(&mut self, z: S) {
         self.coords[2] = z;
+    }
+}
+
+impl<S: Copy> Point<3, S> {
+    /// 获取 x 坐标
+    /// Get x coordinate
+    pub fn x(&self) -> S {
+        self.coords[0]
+    }
+
+    /// 获取 y 坐标
+    /// Get y coordinate
+    pub fn y(&self) -> S {
+        self.coords[1]
+    }
+
+    /// 获取 z 坐标
+    /// Get z coordinate
+    pub fn z(&self) -> S {
+        self.coords[2]
     }
 }
 
@@ -324,7 +372,7 @@ pub type Point4<S = f64> = Point<4, S>;
 // Trait 实现 / Trait implementations
 // ============================================================================
 
-impl<const D: usize, S: Field + Float> Index<usize> for Point<D, S> {
+impl<const D: usize, S> Index<usize> for Point<D, S> {
     type Output = S;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -332,37 +380,53 @@ impl<const D: usize, S: Field + Float> Index<usize> for Point<D, S> {
     }
 }
 
-impl<const D: usize, S: Field + Float> IndexMut<usize> for Point<D, S> {
+impl<const D: usize, S> IndexMut<usize> for Point<D, S> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.coords[index]
     }
 }
 
-impl<const D: usize, S: Field + Float> Add for Point<D, S> {
+impl<const D: usize, S> Add for Point<D, S>
+where
+    S: Clone + Add<Output = S>,
+{
     type Output = Self;
 
     fn add(self, other: Self) -> Self::Output {
-        Self::from_coords(std::array::from_fn(|i| self.coords[i] + other.coords[i]))
+        Self::from_coords(std::array::from_fn(|i| {
+            self.coords[i].clone() + other.coords[i].clone()
+        }))
     }
 }
 
-impl<const D: usize, S: Field + Float> Sub for Point<D, S> {
+impl<const D: usize, S> Sub for Point<D, S>
+where
+    S: Clone + Sub<Output = S>,
+{
     type Output = Self;
 
     fn sub(self, other: Self) -> Self::Output {
-        Self::from_coords(std::array::from_fn(|i| self.coords[i] - other.coords[i]))
+        Self::from_coords(std::array::from_fn(|i| {
+            self.coords[i].clone() - other.coords[i].clone()
+        }))
     }
 }
 
-impl<const D: usize, S: Field + Float> Neg for Point<D, S> {
+impl<const D: usize, S> Neg for Point<D, S>
+where
+    S: Clone + Neg<Output = S>,
+{
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Self::from_coords(std::array::from_fn(|i| -self.coords[i]))
+        Self::from_coords(std::array::from_fn(|i| -self.coords[i].clone()))
     }
 }
 
-impl<const D: usize, S: Field + Float> Zero for Point<D, S> {
+impl<const D: usize, S> Zero for Point<D, S>
+where
+    S: Zero + Clone,
+{
     fn zero() -> Self {
         Self::origin()
     }
@@ -398,7 +462,7 @@ impl<const D: usize, S: Field + Float> InnerProductSpace for Point<D, S> {
     }
 }
 
-impl<const D: usize, S: Field + Float> Debug for Point<D, S> {
+impl<const D: usize, S: Debug> Debug for Point<D, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "Point{}(", D)?;
         for (i, c) in self.coords.iter().enumerate() {
@@ -411,7 +475,7 @@ impl<const D: usize, S: Field + Float> Debug for Point<D, S> {
     }
 }
 
-impl<const D: usize, S: Field + Float + Display> Display for Point<D, S> {
+impl<const D: usize, S: Display> Display for Point<D, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "(")?;
         for (i, c) in self.coords.iter().enumerate() {
@@ -424,7 +488,7 @@ impl<const D: usize, S: Field + Float + Display> Display for Point<D, S> {
     }
 }
 
-impl<const D: usize, S: Field + Float> Default for Point<D, S> {
+impl<const D: usize, S: Zero> Default for Point<D, S> {
     fn default() -> Self {
         Self::origin()
     }

@@ -15,24 +15,27 @@ use crate::unit::{CTUnit, CTUnitDiv};
 // ============================================================================
 
 define_unit_by!(Watt, "watt", "W", CTUnitDiv<Joule, Second>);
-define_unit!(
-    Kilowatt,
-    "kilowatt",
-    "kW",
-    Power,
-    &*Watt::SCALE * &*KILO
+define_unit!(Kilowatt, "kilowatt", "kW", Power, &*Watt::SCALE * &*KILO);
+define_unit!(Megawatt, "megawatt", "MW", Power, &*Watt::SCALE * &*MEGA);
+define_unit!(Milliwatt, "milliwatt", "mW", Power, &*Watt::SCALE * &*MILLI);
+define_unit_by!(JoulePerSecond, "joule per second", "J/s", Watt);
+define_unit_by!(
+    NewtonMeterPerSecond,
+    "newton meter per second",
+    "N.m/s",
+    Watt
 );
 define_unit!(
-    Megawatt,
-    "megawatt",
-    "MW",
+    Horsepower,
+    "horsepower",
+    "ps",
     Power,
-    &*Watt::SCALE * &*MEGA
+    &*Watt::SCALE * &crate::scale::Scale::from_int(735)
 );
 define_unit!(
-    Milliwatt,
-    "milliwatt",
-    "mW",
+    UKHorsepower,
+    "uk horsepower",
+    "uk.ps",
     Power,
-    &*Watt::SCALE * &*MILLI
+    &*Watt::SCALE * &crate::scale::Scale::from_int(550)
 );

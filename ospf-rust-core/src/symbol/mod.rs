@@ -2,9 +2,12 @@
 //! Intermediate Symbol System
 
 pub mod expression_symbol;
+pub mod flatten;
+pub mod function;
 pub mod function_symbol;
+#[doc(hidden)]
 pub mod functions;
-pub mod intermediate_symbol;
+mod intermediate_symbol;
 pub mod monomial_cell;
 
 pub use expression_symbol::*;
@@ -12,5 +15,6 @@ pub use function_symbol::*;
 pub use intermediate_symbol::*;
 pub use monomial_cell::*;
 
-// 重新导出常用类型
-pub use functions::*;
+// 函数符号主导出走 `function`，`functions` 仅保留兼容模块路径
+// Function symbols are exported via `function`; `functions` stays as compatibility path only.
+pub use function::*;

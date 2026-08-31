@@ -1,10 +1,14 @@
-//! Gurobi 鎵╁睍姹傝В鍣ㄦ帴鍙ｅ疄鐜?
+//! Gurobi 扩展求解器接口实现
 //! Gurobi extension solver interfaces
 //!
-//! 鎻愪緵 framework 灞傚 Gurobi 鐨勫垪鐢熸垚涓?Benders 鍒嗚В閫傞厤鍣ㄣ€?//! Provides framework-level column-generation and Benders adapters for Gurobi.
+//! 提供 framework 层对 Gurobi 的列生成与 Benders 分解适配器。
+//! Provides framework-level column-generation and Benders adapters for Gurobi.
 //!
-//! 鍘熺敓鍥炶皟璇箟璇存槑 / Native callback semantics:
-//! - `with_native_callback` 涓?`add_native_callback` 鍧囦负瑕嗙洊璇箟銆?//! - 杩欐槸瀵?core `GurobiConfig` 璇箟鐨勭洿鎺ラ€忎紶銆?//! - 濡傞渶澶?handler锛岃鍦ㄥ崟涓?native callback 鍐呴儴鑷鍒嗗彂銆?
+//! 原生回调语义说明 / Native callback semantics:
+//! - `with_native_callback` 与 `add_native_callback` 均为覆盖语义。
+//! - 这是对 core `GurobiConfig` 语义的直接透传。
+//! - This directly forwards core `GurobiConfig` semantics.
+//! - 如需多个 handler，请在单个 native callback 内部分发。
 use std::sync::Arc;
 
 use ospf_rust_core::model::mechanism::MechanismModel;
@@ -16,18 +20,20 @@ use ospf_rust_core::solver::solvers::gurobi::{
 };
 use ospf_rust_core::variable::VariableId;
 
-use super::SolveOptions;
-use super::benders_decomposition::{
-    LinearBendersDecompositionSolver, LinearCut, LinearSubResult,
-    QuadraticBendersDecompositionSolver, QuadraticCut, QuadraticSubResult,
-};
-use super::column_generation::{ColumnGenerationSolver, FeasibleSolution, LPResult};
+use super::FrameworkSolveOptions;
+use super::column_generation_solver::{ColumnGenerationSolver, FeasibleSolution, LPResult};
 use super::core_extensions::{
     BendersCutContext, CoreColumnGenerationAdapter, CoreLinearBendersAdapter,
     CoreQuadraticBendersAdapter,
 };
+use super::linear_benders_decomposition_solver::{
+    LinearBendersDecompositionSolver, LinearCut, LinearSubResult,
+};
+use super::quadratic_benders_decomposition_solver::{
+    QuadraticBendersDecompositionSolver, QuadraticCut, QuadraticSubResult,
+};
 
-/// Gurobi 鍒楃敓鎴愭眰瑙ｅ櫒 / Gurobi column generation solver
+/// Gurobi 列生成求解器 / Gurobi column generation solver
 #[derive(Debug)]
 pub struct GurobiColumnGenerationSolver {
     inner: CoreColumnGenerationAdapter<CoreGurobiSolver>,
@@ -46,34 +52,54 @@ impl GurobiColumnGenerationSolver {
         self
     }
 
-    /// 鍒涘缓榛樿姹傝В鍣?/ Create default solver
+    /// 创建默认求解器 / Create default solver
     pub fn new() -> Self {
         Self::with_solver(CoreGurobiSolver::new())
     }
 
-    /// 浣跨敤閰嶇疆鍒涘缓姹傝В鍣?/ Create solver with configuration
+    /// 使用配置创建求解器 / Create solver with configuration
     pub fn with_config(config: GurobiConfig) -> Self {
         Self::with_solver(CoreGurobiSolver::with_config(config))
     }
 
-    /// 浣跨敤鎸囧畾 core 姹傝В鍣ㄥ垱寤?/ Create from explicit core solver
+    /// 使用指定 core 求解器创建 / Create from explicit core solver
     pub fn with_solver(solver: CoreGurobiSolver) -> Self {
         Self {
             inner: CoreColumnGenerationAdapter::new("gurobi", solver),
         }
     }
 
-    /// 鑾峰彇搴曞眰 core 姹傝В鍣?/ Get underlying core solver
+    /// 获取底层 core 求解器 / Get underlying core solver
     pub fn solver(&self) -> &CoreGurobiSolver {
         self.inner.solver()
     }
 
-    /// 璁剧疆閬ユ祴鍥炶皟 / Set telemetry callback
+    /// 设置求解 gap / Set solve gap
+    pub fn with_gap(self, gap: f64) -> Self {
+        self.map_config(|config| config.with_gap(gap))
+    }
+
+    /// 设置内存限制（MB）/ Set memory limit (MB)
+    pub fn with_memory_limit_mb(self, memory_limit_mb: f64) -> Self {
+        self.map_config(|config| config.with_memory_limit_mb(memory_limit_mb))
+    }
+
+    /// 设置内存限制（GB）/ Set memory limit (GB)
+    pub fn with_memory_limit_gb(self, memory_limit_gb: f64) -> Self {
+        self.map_config(|config| config.with_memory_limit_gb(memory_limit_gb))
+    }
+
+    /// 设置改进判定阈值 / Set improvement threshold
+    pub fn with_improve_threshold(self, threshold: f64) -> Self {
+        self.map_config(|config| config.with_improve_threshold(threshold))
+    }
+
+    /// 设置遥测回调 / Set telemetry callback
     pub fn with_telemetry_callback(self, callback: Option<GurobiTelemetryCallback>) -> Self {
         self.map_config(|config| config.with_telemetry_callback(callback))
     }
 
-    /// 杩藉姞閬ユ祴鍥炶皟 / Append telemetry callback
+    /// 追加遥测回调 / Append telemetry callback
     pub fn add_telemetry_callback(mut self, callback: GurobiTelemetryCallback) -> Self {
         let config = self.inner.solver_mut().config_mut();
         config.telemetry_callback = Some(match config.telemetry_callback.take() {
@@ -86,7 +112,7 @@ impl GurobiColumnGenerationSolver {
         self
     }
 
-    /// 璁剧疆閬ユ祴鏈€灏忎笂鎶ラ棿闅旓紙绉掞級/ Set minimum telemetry emit interval (seconds)
+    /// 设置遥测最小上报间隔（秒） / Set minimum telemetry emit interval (seconds)
     pub fn with_telemetry_min_interval(self, seconds: f64) -> Self {
         self.map_config(|config| config.with_telemetry_min_interval(seconds))
     }
@@ -122,37 +148,37 @@ impl GurobiColumnGenerationSolver {
         self
     }
 
-    /// 搴旂敤鏁板€肩ǔ鍋ヤ紭鍏堟ā鏉?/ Apply robustness-first profile
+    /// 应用数值稳健优先模板 / Apply robustness-first profile
     pub fn with_robust_defaults(self) -> Self {
         self.map_config(GurobiConfig::with_robust_defaults)
     }
 
-    /// 搴旂敤鎬ц兘浼樺厛妯℃澘 / Apply performance-first profile
+    /// 应用性能优先模板 / Apply performance-first profile
     pub fn with_performance_defaults(self) -> Self {
         self.map_config(GurobiConfig::with_performance_defaults)
     }
 
-    /// 搴旂敤鍧囪　妯℃澘 / Apply balanced profile
+    /// 应用均衡模板 / Apply balanced profile
     pub fn with_balanced_defaults(self) -> Self {
         self.map_config(GurobiConfig::with_balanced_defaults)
     }
 
-    /// 璁剧疆鏁板€肩ǔ瀹氭€у叧娉ㄧ骇鍒?/ Set numeric focus level
+    /// 设置数值稳定性关注级别 / Set numeric focus level
     pub fn with_numeric_focus(self, level: i32) -> Self {
         self.map_config(|config| config.with_numeric_focus(level))
     }
 
-    /// 璁剧疆缂╂斁绛栫暐 / Set scaling strategy
+    /// 设置缩放策略 / Set scaling strategy
     pub fn with_scale_flag(self, flag: i32) -> Self {
         self.map_config(|config| config.with_scale_flag(flag))
     }
 
-    /// 璁剧疆鍒嗛樁娈靛洖璋?/ Set staged callback
+    /// 设置分阶段回调 / Set staged callback
     pub fn with_stage_callback(self, callback: Option<GurobiStageCallback>) -> Self {
         self.map_config(|config| config.with_stage_callback(callback))
     }
 
-    /// 杩藉姞鍒嗛樁娈靛洖璋?/ Append staged callback
+    /// 追加分阶段回调 / Append staged callback
     pub fn add_stage_callback(mut self, callback: GurobiStageCallback) -> Self {
         let config = self.inner.solver_mut().config_mut();
         config.stage_callback = Some(match config.stage_callback.take() {
@@ -165,7 +191,7 @@ impl GurobiColumnGenerationSolver {
         self
     }
 
-    /// 杩藉姞鎸囧畾闃舵鍥炶皟 / Append staged callback for specific stage
+    /// 追加指定阶段回调 / Append staged callback for specific stage
     pub fn add_stage_callback_for(
         mut self,
         stage: GurobiStage,
@@ -190,32 +216,32 @@ impl GurobiColumnGenerationSolver {
         self
     }
 
-    /// 杩藉姞寤烘ā鍚庡洖璋?/ Append callback for `AfterModeling`
+    /// 追加建模后回调 / Append callback for `AfterModeling`
     pub fn add_after_modeling_callback(self, callback: GurobiStageCallback) -> Self {
         self.add_stage_callback_for(GurobiStage::AfterModeling, callback)
     }
 
-    /// 杩藉姞閰嶇疆鍚庡洖璋?/ Append callback for `Configuration`
+    /// 追加配置后回调 / Append callback for `Configuration`
     pub fn add_configuration_callback(self, callback: GurobiStageCallback) -> Self {
         self.add_stage_callback_for(GurobiStage::Configuration, callback)
     }
 
-    /// 杩藉姞瑙ｅ垎鏋愬洖璋?/ Append callback for `AnalyzingSolution`
+    /// 追加解分析回调 / Append callback for `AnalyzingSolution`
     pub fn add_analyzing_solution_callback(self, callback: GurobiStageCallback) -> Self {
         self.add_stage_callback_for(GurobiStage::AnalyzingSolution, callback)
     }
 
-    /// 杩藉姞澶辫触鍚庡洖璋?/ Append callback for `AfterFailure`
+    /// 追加失败后回调 / Append callback for `AfterFailure`
     pub fn add_after_failure_callback(self, callback: GurobiStageCallback) -> Self {
         self.add_stage_callback_for(GurobiStage::AfterFailure, callback)
     }
 
-    /// 璁剧疆鍘熺敓鍥炶皟 / Set native callback
+    /// 设置原生回调 / Set native callback
     pub fn with_native_callback(self, callback: Option<GurobiNativeCallback>) -> Self {
         self.map_config(|config| config.with_native_callback(callback))
     }
 
-    /// 杩藉姞鍘熺敓鍥炶皟锛堣鐩栬涔夛級/ Append native callback (override semantics)
+    /// 追加原生回调（覆盖语义） / Append native callback (override semantics)
     pub fn add_native_callback(mut self, callback: GurobiNativeCallback) -> Self {
         self.inner.solver_mut().config_mut().native_callback = Some(callback);
         self
@@ -234,12 +260,12 @@ impl GurobiColumnGenerationSolver {
         self
     }
 
-    /// 璁剧疆鐜鍒涘缓鍥炶皟 / Set environment creation callback
+    /// 设置环境创建回调 / Set environment creation callback
     pub fn with_env_callback(self, callback: Option<GurobiEnvCallback>) -> Self {
         self.map_config(|config| config.with_env_callback(callback))
     }
 
-    /// 杩藉姞鐜鍒涘缓鍥炶皟 / Append environment creation callback
+    /// 追加环境创建回调 / Append environment creation callback
     pub fn add_env_callback(mut self, callback: GurobiEnvCallback) -> Self {
         let config = self.inner.solver_mut().config_mut();
         config.env_callback = Some(match config.env_callback.take() {
@@ -263,7 +289,7 @@ impl ColumnGenerationSolver for GurobiColumnGenerationSolver {
     async fn solve_milp_with_options(
         &self,
         model: &ospf_rust_core::model::intermediate::LinearTriadModel,
-        options: SolveOptions,
+        options: FrameworkSolveOptions,
     ) -> ospf_rust_core::error::Result<FeasibleSolution> {
         self.inner.solve_milp_with_options(model, options).await
     }
@@ -271,7 +297,7 @@ impl ColumnGenerationSolver for GurobiColumnGenerationSolver {
     async fn solve_lp_with_options(
         &self,
         model: &ospf_rust_core::model::intermediate::LinearTriadModel,
-        options: SolveOptions,
+        options: FrameworkSolveOptions,
     ) -> ospf_rust_core::error::Result<LPResult> {
         self.inner.solve_lp_with_options(model, options).await
     }
@@ -286,7 +312,7 @@ impl ColumnGenerationSolver for GurobiColumnGenerationSolver {
     fn solve_milp_with_options(
         &self,
         model: &ospf_rust_core::model::intermediate::LinearTriadModel,
-        options: SolveOptions,
+        options: FrameworkSolveOptions,
     ) -> ospf_rust_core::error::Result<FeasibleSolution> {
         self.inner.solve_milp_with_options(model, options)
     }
@@ -294,13 +320,13 @@ impl ColumnGenerationSolver for GurobiColumnGenerationSolver {
     fn solve_lp_with_options(
         &self,
         model: &ospf_rust_core::model::intermediate::LinearTriadModel,
-        options: SolveOptions,
+        options: FrameworkSolveOptions,
     ) -> ospf_rust_core::error::Result<LPResult> {
         self.inner.solve_lp_with_options(model, options)
     }
 }
 
-/// Gurobi 绾挎€?Benders 鍒嗚В姹傝В鍣?/ Gurobi linear Benders decomposition solver
+/// Gurobi 线性 Benders 分解求解器 / Gurobi linear Benders decomposition solver
 #[derive(Debug)]
 pub struct GurobiLinearBendersDecompositionSolver {
     inner: CoreLinearBendersAdapter<CoreGurobiSolver>,
@@ -319,24 +345,24 @@ impl GurobiLinearBendersDecompositionSolver {
         self
     }
 
-    /// 鍒涘缓榛樿姹傝В鍣?/ Create default solver
+    /// 创建默认求解器 / Create default solver
     pub fn new() -> Self {
         Self::with_solver(CoreGurobiSolver::new())
     }
 
-    /// 浣跨敤閰嶇疆鍒涘缓姹傝В鍣?/ Create solver with configuration
+    /// 使用配置创建求解器 / Create solver with configuration
     pub fn with_config(config: GurobiConfig) -> Self {
         Self::with_solver(CoreGurobiSolver::with_config(config))
     }
 
-    /// 浣跨敤鎸囧畾 core 姹傝В鍣ㄥ垱寤?/ Create from explicit core solver
+    /// 使用指定 core 求解器创建 / Create from explicit core solver
     pub fn with_solver(solver: CoreGurobiSolver) -> Self {
         Self {
             inner: CoreLinearBendersAdapter::new("gurobi", solver),
         }
     }
 
-    /// 閰嶇疆鍓茬敓鎴愪笂涓嬫枃 / Configure cut-generation context
+    /// 配置割生成上下文 / Configure cut-generation context
     pub fn with_cut_context(
         self,
         mechanism_model: MechanismModel<f64>,
@@ -352,17 +378,37 @@ impl GurobiLinearBendersDecompositionSolver {
         }
     }
 
-    /// 鑾峰彇搴曞眰 core 姹傝В鍣?/ Get underlying core solver
+    /// 获取底层 core 求解器 / Get underlying core solver
     pub fn solver(&self) -> &CoreGurobiSolver {
         self.inner.solver()
     }
 
-    /// 璁剧疆閬ユ祴鍥炶皟 / Set telemetry callback
+    /// 设置求解 gap / Set solve gap
+    pub fn with_gap(self, gap: f64) -> Self {
+        self.map_config(|config| config.with_gap(gap))
+    }
+
+    /// 设置内存限制（MB）/ Set memory limit (MB)
+    pub fn with_memory_limit_mb(self, memory_limit_mb: f64) -> Self {
+        self.map_config(|config| config.with_memory_limit_mb(memory_limit_mb))
+    }
+
+    /// 设置内存限制（GB）/ Set memory limit (GB)
+    pub fn with_memory_limit_gb(self, memory_limit_gb: f64) -> Self {
+        self.map_config(|config| config.with_memory_limit_gb(memory_limit_gb))
+    }
+
+    /// 设置改进判定阈值 / Set improvement threshold
+    pub fn with_improve_threshold(self, threshold: f64) -> Self {
+        self.map_config(|config| config.with_improve_threshold(threshold))
+    }
+
+    /// 设置遥测回调 / Set telemetry callback
     pub fn with_telemetry_callback(self, callback: Option<GurobiTelemetryCallback>) -> Self {
         self.map_config(|config| config.with_telemetry_callback(callback))
     }
 
-    /// 杩藉姞閬ユ祴鍥炶皟 / Append telemetry callback
+    /// 追加遥测回调 / Append telemetry callback
     pub fn add_telemetry_callback(mut self, callback: GurobiTelemetryCallback) -> Self {
         let config = self.inner.solver_mut().config_mut();
         config.telemetry_callback = Some(match config.telemetry_callback.take() {
@@ -375,7 +421,7 @@ impl GurobiLinearBendersDecompositionSolver {
         self
     }
 
-    /// 璁剧疆閬ユ祴鏈€灏忎笂鎶ラ棿闅旓紙绉掞級/ Set minimum telemetry emit interval (seconds)
+    /// 设置遥测最小上报间隔（秒） / Set minimum telemetry emit interval (seconds)
     pub fn with_telemetry_min_interval(self, seconds: f64) -> Self {
         self.map_config(|config| config.with_telemetry_min_interval(seconds))
     }
@@ -411,37 +457,37 @@ impl GurobiLinearBendersDecompositionSolver {
         self
     }
 
-    /// 搴旂敤鏁板€肩ǔ鍋ヤ紭鍏堟ā鏉?/ Apply robustness-first profile
+    /// 应用数值稳健优先模板 / Apply robustness-first profile
     pub fn with_robust_defaults(self) -> Self {
         self.map_config(GurobiConfig::with_robust_defaults)
     }
 
-    /// 搴旂敤鎬ц兘浼樺厛妯℃澘 / Apply performance-first profile
+    /// 应用性能优先模板 / Apply performance-first profile
     pub fn with_performance_defaults(self) -> Self {
         self.map_config(GurobiConfig::with_performance_defaults)
     }
 
-    /// 搴旂敤鍧囪　妯℃澘 / Apply balanced profile
+    /// 应用均衡模板 / Apply balanced profile
     pub fn with_balanced_defaults(self) -> Self {
         self.map_config(GurobiConfig::with_balanced_defaults)
     }
 
-    /// 璁剧疆鏁板€肩ǔ瀹氭€у叧娉ㄧ骇鍒?/ Set numeric focus level
+    /// 设置数值稳定性关注级别 / Set numeric focus level
     pub fn with_numeric_focus(self, level: i32) -> Self {
         self.map_config(|config| config.with_numeric_focus(level))
     }
 
-    /// 璁剧疆缂╂斁绛栫暐 / Set scaling strategy
+    /// 设置缩放策略 / Set scaling strategy
     pub fn with_scale_flag(self, flag: i32) -> Self {
         self.map_config(|config| config.with_scale_flag(flag))
     }
 
-    /// 璁剧疆鍒嗛樁娈靛洖璋?/ Set staged callback
+    /// 设置分阶段回调 / Set staged callback
     pub fn with_stage_callback(self, callback: Option<GurobiStageCallback>) -> Self {
         self.map_config(|config| config.with_stage_callback(callback))
     }
 
-    /// 杩藉姞鍒嗛樁娈靛洖璋?/ Append staged callback
+    /// 追加分阶段回调 / Append staged callback
     pub fn add_stage_callback(mut self, callback: GurobiStageCallback) -> Self {
         let config = self.inner.solver_mut().config_mut();
         config.stage_callback = Some(match config.stage_callback.take() {
@@ -454,7 +500,7 @@ impl GurobiLinearBendersDecompositionSolver {
         self
     }
 
-    /// 杩藉姞鎸囧畾闃舵鍥炶皟 / Append staged callback for specific stage
+    /// 追加指定阶段回调 / Append staged callback for specific stage
     pub fn add_stage_callback_for(
         mut self,
         stage: GurobiStage,
@@ -479,32 +525,32 @@ impl GurobiLinearBendersDecompositionSolver {
         self
     }
 
-    /// 杩藉姞寤烘ā鍚庡洖璋?/ Append callback for `AfterModeling`
+    /// 追加建模后回调 / Append callback for `AfterModeling`
     pub fn add_after_modeling_callback(self, callback: GurobiStageCallback) -> Self {
         self.add_stage_callback_for(GurobiStage::AfterModeling, callback)
     }
 
-    /// 杩藉姞閰嶇疆鍚庡洖璋?/ Append callback for `Configuration`
+    /// 追加配置后回调 / Append callback for `Configuration`
     pub fn add_configuration_callback(self, callback: GurobiStageCallback) -> Self {
         self.add_stage_callback_for(GurobiStage::Configuration, callback)
     }
 
-    /// 杩藉姞瑙ｅ垎鏋愬洖璋?/ Append callback for `AnalyzingSolution`
+    /// 追加解分析回调 / Append callback for `AnalyzingSolution`
     pub fn add_analyzing_solution_callback(self, callback: GurobiStageCallback) -> Self {
         self.add_stage_callback_for(GurobiStage::AnalyzingSolution, callback)
     }
 
-    /// 杩藉姞澶辫触鍚庡洖璋?/ Append callback for `AfterFailure`
+    /// 追加失败后回调 / Append callback for `AfterFailure`
     pub fn add_after_failure_callback(self, callback: GurobiStageCallback) -> Self {
         self.add_stage_callback_for(GurobiStage::AfterFailure, callback)
     }
 
-    /// 璁剧疆鍘熺敓鍥炶皟 / Set native callback
+    /// 设置原生回调 / Set native callback
     pub fn with_native_callback(self, callback: Option<GurobiNativeCallback>) -> Self {
         self.map_config(|config| config.with_native_callback(callback))
     }
 
-    /// 杩藉姞鍘熺敓鍥炶皟锛堣鐩栬涔夛級/ Append native callback (override semantics)
+    /// 追加原生回调（覆盖语义） / Append native callback (override semantics)
     pub fn add_native_callback(mut self, callback: GurobiNativeCallback) -> Self {
         self.inner.solver_mut().config_mut().native_callback = Some(callback);
         self
@@ -523,12 +569,12 @@ impl GurobiLinearBendersDecompositionSolver {
         self
     }
 
-    /// 璁剧疆鐜鍒涘缓鍥炶皟 / Set environment creation callback
+    /// 设置环境创建回调 / Set environment creation callback
     pub fn with_env_callback(self, callback: Option<GurobiEnvCallback>) -> Self {
         self.map_config(|config| config.with_env_callback(callback))
     }
 
-    /// 杩藉姞鐜鍒涘缓鍥炶皟 / Append environment creation callback
+    /// 追加环境创建回调 / Append environment creation callback
     pub fn add_env_callback(mut self, callback: GurobiEnvCallback) -> Self {
         let config = self.inner.solver_mut().config_mut();
         config.env_callback = Some(match config.env_callback.take() {
@@ -589,7 +635,7 @@ impl LinearBendersDecompositionSolver for GurobiLinearBendersDecompositionSolver
     }
 }
 
-/// Gurobi Benders 鍒嗚В姹傝В鍣紙绾挎€?+ 浜屾锛?
+/// Gurobi Benders 分解求解器（线性 + 二次）
 /// Gurobi Benders decomposition solver (linear + quadratic)
 #[derive(Debug)]
 pub struct GurobiBendersDecompositionSolver {
@@ -612,7 +658,7 @@ impl GurobiBendersDecompositionSolver {
         self
     }
 
-    /// 鍒涘缓榛樿姹傝В鍣?/ Create default solver
+    /// 创建默认求解器 / Create default solver
     pub fn new() -> Self {
         Self {
             linear: GurobiLinearBendersDecompositionSolver::new(),
@@ -620,7 +666,7 @@ impl GurobiBendersDecompositionSolver {
         }
     }
 
-    /// 浣跨敤閰嶇疆鍒涘缓姹傝В鍣?/ Create solver with configuration
+    /// 使用配置创建求解器 / Create solver with configuration
     pub fn with_config(config: GurobiConfig) -> Self {
         Self {
             linear: GurobiLinearBendersDecompositionSolver::with_config(config.clone()),
@@ -631,7 +677,7 @@ impl GurobiBendersDecompositionSolver {
         }
     }
 
-    /// 閰嶇疆鍓茬敓鎴愪笂涓嬫枃 / Configure cut-generation context
+    /// 配置割生成上下文 / Configure cut-generation context
     pub fn with_cut_context(
         self,
         mechanism_model: MechanismModel<f64>,
@@ -653,12 +699,32 @@ impl GurobiBendersDecompositionSolver {
         }
     }
 
-    /// 璁剧疆閬ユ祴鍥炶皟 / Set telemetry callback
+    /// 设置求解 gap / Set solve gap
+    pub fn with_gap(self, gap: f64) -> Self {
+        self.map_configs(|config| config.with_gap(gap))
+    }
+
+    /// 设置内存限制（MB）/ Set memory limit (MB)
+    pub fn with_memory_limit_mb(self, memory_limit_mb: f64) -> Self {
+        self.map_configs(|config| config.with_memory_limit_mb(memory_limit_mb))
+    }
+
+    /// 设置内存限制（GB）/ Set memory limit (GB)
+    pub fn with_memory_limit_gb(self, memory_limit_gb: f64) -> Self {
+        self.map_configs(|config| config.with_memory_limit_gb(memory_limit_gb))
+    }
+
+    /// 设置改进判定阈值 / Set improvement threshold
+    pub fn with_improve_threshold(self, threshold: f64) -> Self {
+        self.map_configs(|config| config.with_improve_threshold(threshold))
+    }
+
+    /// 设置遥测回调 / Set telemetry callback
     pub fn with_telemetry_callback(self, callback: Option<GurobiTelemetryCallback>) -> Self {
         self.map_configs(|config| config.with_telemetry_callback(callback.clone()))
     }
 
-    /// 杩藉姞閬ユ祴鍥炶皟 / Append telemetry callback
+    /// 追加遥测回调 / Append telemetry callback
     pub fn add_telemetry_callback(mut self, callback: GurobiTelemetryCallback) -> Self {
         let linear = self.linear.inner.solver_mut().config_mut();
         linear.telemetry_callback = Some(match linear.telemetry_callback.take() {
@@ -682,7 +748,7 @@ impl GurobiBendersDecompositionSolver {
         self
     }
 
-    /// 璁剧疆閬ユ祴鏈€灏忎笂鎶ラ棿闅旓紙绉掞級/ Set minimum telemetry emit interval (seconds)
+    /// 设置遥测最小上报间隔（秒） / Set minimum telemetry emit interval (seconds)
     pub fn with_telemetry_min_interval(self, seconds: f64) -> Self {
         self.map_configs(|config| config.with_telemetry_min_interval(seconds))
     }
@@ -731,37 +797,37 @@ impl GurobiBendersDecompositionSolver {
         self
     }
 
-    /// 搴旂敤鏁板€肩ǔ鍋ヤ紭鍏堟ā鏉?/ Apply robustness-first profile
+    /// 应用数值稳健优先模板 / Apply robustness-first profile
     pub fn with_robust_defaults(self) -> Self {
         self.map_configs(GurobiConfig::with_robust_defaults)
     }
 
-    /// 搴旂敤鎬ц兘浼樺厛妯℃澘 / Apply performance-first profile
+    /// 应用性能优先模板 / Apply performance-first profile
     pub fn with_performance_defaults(self) -> Self {
         self.map_configs(GurobiConfig::with_performance_defaults)
     }
 
-    /// 搴旂敤鍧囪　妯℃澘 / Apply balanced profile
+    /// 应用均衡模板 / Apply balanced profile
     pub fn with_balanced_defaults(self) -> Self {
         self.map_configs(GurobiConfig::with_balanced_defaults)
     }
 
-    /// 璁剧疆鏁板€肩ǔ瀹氭€у叧娉ㄧ骇鍒?/ Set numeric focus level
+    /// 设置数值稳定性关注级别 / Set numeric focus level
     pub fn with_numeric_focus(self, level: i32) -> Self {
         self.map_configs(|config| config.with_numeric_focus(level))
     }
 
-    /// 璁剧疆缂╂斁绛栫暐 / Set scaling strategy
+    /// 设置缩放策略 / Set scaling strategy
     pub fn with_scale_flag(self, flag: i32) -> Self {
         self.map_configs(|config| config.with_scale_flag(flag))
     }
 
-    /// 璁剧疆鍒嗛樁娈靛洖璋?/ Set staged callback
+    /// 设置分阶段回调 / Set staged callback
     pub fn with_stage_callback(self, callback: Option<GurobiStageCallback>) -> Self {
         self.map_configs(|config| config.with_stage_callback(callback.clone()))
     }
 
-    /// 杩藉姞鍒嗛樁娈靛洖璋?/ Append staged callback
+    /// 追加分阶段回调 / Append staged callback
     pub fn add_stage_callback(mut self, callback: GurobiStageCallback) -> Self {
         let linear = self.linear.inner.solver_mut().config_mut();
         linear.stage_callback = Some(match linear.stage_callback.take() {
@@ -785,7 +851,7 @@ impl GurobiBendersDecompositionSolver {
         self
     }
 
-    /// 杩藉姞鎸囧畾闃舵鍥炶皟 / Append staged callback for specific stage
+    /// 追加指定阶段回调 / Append staged callback for specific stage
     pub fn add_stage_callback_for(
         mut self,
         stage: GurobiStage,
@@ -832,32 +898,32 @@ impl GurobiBendersDecompositionSolver {
         self
     }
 
-    /// 杩藉姞寤烘ā鍚庡洖璋?/ Append callback for `AfterModeling`
+    /// 追加建模后回调 / Append callback for `AfterModeling`
     pub fn add_after_modeling_callback(self, callback: GurobiStageCallback) -> Self {
         self.add_stage_callback_for(GurobiStage::AfterModeling, callback)
     }
 
-    /// 杩藉姞閰嶇疆鍚庡洖璋?/ Append callback for `Configuration`
+    /// 追加配置后回调 / Append callback for `Configuration`
     pub fn add_configuration_callback(self, callback: GurobiStageCallback) -> Self {
         self.add_stage_callback_for(GurobiStage::Configuration, callback)
     }
 
-    /// 杩藉姞瑙ｅ垎鏋愬洖璋?/ Append callback for `AnalyzingSolution`
+    /// 追加解分析回调 / Append callback for `AnalyzingSolution`
     pub fn add_analyzing_solution_callback(self, callback: GurobiStageCallback) -> Self {
         self.add_stage_callback_for(GurobiStage::AnalyzingSolution, callback)
     }
 
-    /// 杩藉姞澶辫触鍚庡洖璋?/ Append callback for `AfterFailure`
+    /// 追加失败后回调 / Append callback for `AfterFailure`
     pub fn add_after_failure_callback(self, callback: GurobiStageCallback) -> Self {
         self.add_stage_callback_for(GurobiStage::AfterFailure, callback)
     }
 
-    /// 璁剧疆鍘熺敓鍥炶皟 / Set native callback
+    /// 设置原生回调 / Set native callback
     pub fn with_native_callback(self, callback: Option<GurobiNativeCallback>) -> Self {
         self.map_configs(|config| config.with_native_callback(callback.clone()))
     }
 
-    /// 杩藉姞鍘熺敓鍥炶皟锛堣鐩栬涔夛級/ Append native callback (override semantics)
+    /// 追加原生回调（覆盖语义） / Append native callback (override semantics)
     pub fn add_native_callback(mut self, callback: GurobiNativeCallback) -> Self {
         self.linear.inner.solver_mut().config_mut().native_callback = Some(callback.clone());
         self.quadratic.solver_mut().config_mut().native_callback = Some(callback);
@@ -883,12 +949,12 @@ impl GurobiBendersDecompositionSolver {
         self
     }
 
-    /// 璁剧疆鐜鍒涘缓鍥炶皟 / Set environment creation callback
+    /// 设置环境创建回调 / Set environment creation callback
     pub fn with_env_callback(self, callback: Option<GurobiEnvCallback>) -> Self {
         self.map_configs(|config| config.with_env_callback(callback.clone()))
     }
 
-    /// 杩藉姞鐜鍒涘缓鍥炶皟 / Append environment creation callback
+    /// 追加环境创建回调 / Append environment creation callback
     pub fn add_env_callback(mut self, callback: GurobiEnvCallback) -> Self {
         let linear = self.linear.inner.solver_mut().config_mut();
         linear.env_callback = Some(match linear.env_callback.take() {

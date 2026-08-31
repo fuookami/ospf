@@ -1,7 +1,7 @@
 use ospf_rust_core::model::ConstraintRelation;
 
-use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
-use crate::framework::demo2::domain::stowage::context::StowageContext;
+use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework_demo::demo2::domain::stowage::context::StowageContext;
 
 pub struct StowageAggregation {
     pub assignment_relation: ConstraintRelation,
@@ -20,4 +20,3 @@ impl StowageAggregation {
         }
     }
 }
-

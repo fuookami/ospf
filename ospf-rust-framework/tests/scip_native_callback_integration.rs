@@ -202,14 +202,18 @@ fn scip_linear_benders_native_callback_interrupt_surfaces_user_interrupt_error()
         Ok(SCIPNativeControl::Continue)
     });
 
-    let solver = ScipLinearBendersDecompositionSolver::with_config(SCIPConfig::new().with_output(false))
-        .with_native_callback(Some(callback))
-        .with_telemetry_min_interval(0.1);
+    let solver =
+        ScipLinearBendersDecompositionSolver::with_config(SCIPConfig::new().with_output(false))
+            .with_native_callback(Some(callback))
+            .with_telemetry_min_interval(0.1);
     let result = solver.solve_master(&model, &[]);
     match result {
         Ok(output) => {
             assert!(
-                matches!(output.status, ospf_rust_core::solver::SolverStatus::UserInterrupt),
+                matches!(
+                    output.status,
+                    ospf_rust_core::solver::SolverStatus::UserInterrupt
+                ),
                 "expected UserInterrupt status, got {:?}",
                 output.status
             );
@@ -250,16 +254,18 @@ fn scip_quadratic_benders_native_callback_interrupt_surfaces_user_interrupt_erro
         Ok(SCIPNativeControl::Continue)
     });
 
-    let solver = ScipQuadraticBendersDecompositionSolver::with_config(
-        SCIPConfig::new().with_output(false),
-    )
-    .with_native_callback(Some(callback))
-    .with_telemetry_min_interval(0.1);
+    let solver =
+        ScipQuadraticBendersDecompositionSolver::with_config(SCIPConfig::new().with_output(false))
+            .with_native_callback(Some(callback))
+            .with_telemetry_min_interval(0.1);
     let result = solver.solve_master(&model, &[]);
     match result {
         Ok(output) => {
             assert!(
-                matches!(output.status, ospf_rust_core::solver::SolverStatus::UserInterrupt),
+                matches!(
+                    output.status,
+                    ospf_rust_core::solver::SolverStatus::UserInterrupt
+                ),
                 "expected UserInterrupt status, got {:?}",
                 output.status
             );

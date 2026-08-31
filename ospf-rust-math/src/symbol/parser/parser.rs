@@ -11,8 +11,10 @@ use std::ops::{Add, Mul, Neg, Sub};
 use super::error::{ParseError, ParseResult};
 use super::expr::{Expr, ExprKind};
 use super::lexer::{Lexer, Token, TokenKind};
-use crate::operator::Exponent;
-use crate::symbol::inequality::{Comparison, LinearInequality, QuadraticInequality};
+use crate::operator::{Exponent, MulRef};
+use crate::symbol::inequality::{
+    CanonicalInequality, Comparison, LinearInequality, QuadraticInequality,
+};
 use crate::symbol::{
     Canonical, CanonicalMonomial, DynSymbol, Linear, LinearMonomial, OwnedSymbol, Quadratic,
     QuadraticMonomial, SymbolDynId,
@@ -213,6 +215,7 @@ impl<'a> Parser<'a> {
             + Add<Output = T>
             + Sub<Output = T>
             + Mul<Output = T>
+            + MulRef
             + Debug
             + PartialEq,
         E: Exponent
@@ -221,10 +224,38 @@ impl<'a> Parser<'a> {
             + Zero
             + One
             + std::ops::Add<Output = E>
+            + for<'b> std::ops::AddAssign<&'b E>
             + PartialEq,
     {
         let expr = self.parse_expr::<T>()?;
         expr_to_canonical(&expr)
+    }
+
+    /// 解析标准不等式 / Parse canonical inequality
+    pub fn parse_canonical_inequality<T, E>(&mut self) -> ParseResult<CanonicalInequality<T, E>>
+    where
+        T: std::str::FromStr
+            + Clone
+            + Zero
+            + One
+            + Neg<Output = T>
+            + Add<Output = T>
+            + Sub<Output = T>
+            + Mul<Output = T>
+            + MulRef
+            + Debug
+            + PartialEq,
+        E: Exponent
+            + std::str::FromStr
+            + Clone
+            + Zero
+            + One
+            + std::ops::Add<Output = E>
+            + for<'b> std::ops::AddAssign<&'b E>
+            + PartialEq,
+    {
+        let expr = self.parse_inequality::<T>()?;
+        expr_to_canonical_inequality(&expr)
     }
 
     /// 解析表达式 / Parse expression
@@ -641,6 +672,45 @@ where
     }
 }
 
+/// 将表达式转换为标准不等式 / Convert expression to canonical inequality
+fn expr_to_canonical_inequality<T, E>(expr: &Expr<T>) -> ParseResult<CanonicalInequality<T, E>>
+where
+    T: Clone
+        + Zero
+        + One
+        + Neg<Output = T>
+        + Add<Output = T>
+        + Sub<Output = T>
+        + Mul<Output = T>
+        + MulRef
+        + Debug
+        + PartialEq,
+    E: Exponent
+        + std::str::FromStr
+        + Clone
+        + Zero
+        + One
+        + std::ops::Add<Output = E>
+        + for<'a> std::ops::AddAssign<&'a E>
+        + PartialEq,
+{
+    match &expr.kind {
+        ExprKind::LinearInequality {
+            lhs,
+            comparison,
+            rhs,
+        } => {
+            let lhs_canonical = expr_to_canonical(lhs)?;
+            Ok(CanonicalInequality::new(
+                lhs_canonical,
+                *comparison,
+                rhs.clone(),
+            ))
+        }
+        _ => Err(ParseError::new("Expected canonical inequality", expr.start)),
+    }
+}
+
 /// 将表达式转换为标准多项式 / Convert expression to canonical polynomial
 ///
 /// 支持幂运算和任意次多项式。
@@ -654,9 +724,17 @@ where
         + Add<Output = T>
         + Sub<Output = T>
         + Mul<Output = T>
+        + MulRef
         + Debug
         + PartialEq,
-    E: Exponent + std::str::FromStr + Clone + Zero + One + std::ops::Add<Output = E> + PartialEq,
+    E: Exponent
+        + std::str::FromStr
+        + Clone
+        + Zero
+        + One
+        + std::ops::Add<Output = E>
+        + for<'a> std::ops::AddAssign<&'a E>
+        + PartialEq,
 {
     match &expr.kind {
         ExprKind::Constant(c) => Ok(Canonical::new(vec![], c.clone())),
@@ -675,10 +753,10 @@ where
             powers,
         } => {
             let mut mono_powers = HashMap::new();
-            for (name, &power) in powers {
+            for (name, power) in powers {
                 // 尝试解析幂次
                 // Try to parse power
-                let exp = E::from_str(name).unwrap_or_else(|_| E::one());
+                let exp = E::from_str(&power.to_string()).unwrap_or_else(|_| E::one());
                 mono_powers.insert(create_symbol(name), exp);
             }
             Ok(Canonical::new(
@@ -751,7 +829,19 @@ where
     // 尝试通过 Debug 格式解析
     // Try to parse through Debug format
     let s = format!("{:?}", value);
-    E::from_str(&s).ok()
+    if let Ok(exponent) = E::from_str(&s) {
+        return Some(exponent);
+    }
+
+    // 浮点系数会把整数指数显示为 `2.0`，这里兼容这种解析结果。
+    // Floating coefficients display integer exponents as `2.0`; accept that form here.
+    if let Ok(float_value) = s.parse::<f64>() {
+        if float_value.is_finite() && float_value.fract().abs() < f64::EPSILON {
+            return E::from_str(&(float_value as i64).to_string()).ok();
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -851,5 +941,17 @@ mod tests {
         assert!(result.is_ok());
         let canonical = result.unwrap();
         assert_eq!(canonical.monomials.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_canonical_inequality() {
+        let mut parser = Parser::new("x ^ 3 + 2 * y <= 10");
+        let result: ParseResult<CanonicalInequality<f64, i32>> =
+            parser.parse_canonical_inequality();
+        assert!(result.is_ok());
+        let inequality = result.unwrap();
+        assert_eq!(inequality.comparison, Comparison::LessEqual);
+        assert_eq!(inequality.rhs, 10.0);
+        assert_eq!(inequality.lhs.monomials.len(), 2);
     }
 }

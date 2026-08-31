@@ -1,10 +1,11 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::variable::{UContinuousVariableItem, UIntegerVariableItem};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
+use ospf_rust_core::variable::{UContinuous, UInteger, VariableCombination2D};
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
+use ospf_rust_multiarray::{MultiArrayBuilder, Shape};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct Dealer {
@@ -66,63 +67,90 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let car_capacity = 18.0;
 
     let mut model = MetaModel::<f64>::new("demo13");
-    let mut x_idx = vec![vec![0usize; centers.len()]; dealers.len()];
-    let mut y_idx = vec![vec![0usize; centers.len()]; dealers.len()];
+    let variable_shape = Shape::new([dealers.len(), centers.len()]);
+    let x_vars: VariableCombination2D<UContinuous> = VariableCombination2D::with_name_generator(
+        variable_shape.clone(),
+        "x",
+        |_index, vector| format!("{}_{}", vector[0], vector[1]),
+    );
+    let y_vars: VariableCombination2D<UInteger> = VariableCombination2D::with_name_generator(
+        variable_shape.clone(),
+        "y",
+        |_index, vector| format!("{}_{}", vector[0], vector[1]),
+    );
+    let x_idx = MultiArrayBuilder::from_list(
+        variable_shape.clone(),
+        model.register_variables::<UContinuous, _>(x_vars.iter().cloned())?,
+    );
+    let y_idx = MultiArrayBuilder::from_list(
+        variable_shape,
+        model.register_variables::<UInteger, _>(y_vars.iter().cloned())?,
+    );
 
+    let mut cost_terms = Vec::with_capacity(dealers.len() * centers.len());
     for d in 0..dealers.len() {
         for c in 0..centers.len() {
-            x_idx[d][c] = model
-                .register_variable(UContinuousVariableItem::auto(&format!("x_{}_{}", d, c)))?;
-            y_idx[d][c] =
-                model.register_variable(UIntegerVariableItem::auto(&format!("y_{}_{}", d, c)))?;
+            cost_terms.push(LinearMonomial::new(
+                dealers[d].distance_to(c),
+                y_vars[&[d, c]].to_owned_symbol(),
+            ));
         }
     }
+    let cost = Linear::new(cost_terms, 0.0);
+    let trans = MultiArrayBuilder::new_by(Shape::<1>::new([centers.len()]), |_idx, vec| {
+        let c = vec[0];
+        Linear::new(
+            dealers
+                .iter()
+                .enumerate()
+                .map(|(d, _)| LinearMonomial::new(1.0, x_vars[&[d, c]].to_owned_symbol()))
+                .collect(),
+            0.0,
+        )
+    });
+    let receive = MultiArrayBuilder::new_by(Shape::<1>::new([dealers.len()]), |_idx, vec| {
+        let d = vec[0];
+        Linear::new(
+            centers
+                .iter()
+                .enumerate()
+                .map(|(c, _)| LinearMonomial::new(1.0, x_vars[&[d, c]].to_owned_symbol()))
+                .collect(),
+            0.0,
+        )
+    });
 
-    let mut objective = vec![0.0; model.num_tokens()];
-    for d in 0..dealers.len() {
-        for c in 0..centers.len() {
-            objective[y_idx[d][c]] = dealers[d].distance_to(c);
-        }
-    }
-    model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+    model.set_math_linear_objective(cost, ObjectiveCategory::Minimum, "cost")?;
 
     for c in 0..centers.len() {
-        let coefficients: Vec<(usize, f64)> =
-            (0..dealers.len()).map(|d| (x_idx[d][c], 1.0)).collect();
-        model.add_linear_constraint(
-            &coefficients,
-            ConstraintRelation::LessEqual,
-            centers[c].supply,
+        model.add_math_inequality(
+            trans[c].clone().le(centers[c].supply),
             &format!("supply_{}", c),
-        )?;
+        );
     }
 
     for d in 0..dealers.len() {
-        let coefficients: Vec<(usize, f64)> =
-            (0..centers.len()).map(|c| (x_idx[d][c], 1.0)).collect();
-        model.add_linear_constraint(
-            &coefficients,
-            ConstraintRelation::GreaterEqual,
-            dealers[d].demand,
+        model.add_math_inequality(
+            receive[d].clone().ge(dealers[d].demand),
             &format!("demand_{}", d),
-        )?;
+        );
     }
 
     for d in 0..dealers.len() {
         for c in 0..centers.len() {
-            model.add_linear_constraint(
-                &[(x_idx[d][c], 1.0), (y_idx[d][c], -car_capacity)],
-                ConstraintRelation::LessEqual,
+            let truck = Linear::new(
+                vec![
+                    LinearMonomial::new(1.0, x_vars[&[d, c]].to_owned_symbol()),
+                    LinearMonomial::new(-car_capacity, y_vars[&[d, c]].to_owned_symbol()),
+                ],
                 0.0,
-                &format!("truck_{}_{}", d, c),
-            )?;
+            );
+            model.add_math_inequality(truck.le(0.0), &format!("truck_{}_{}", d, c));
         }
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo13 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo13 ===");
     println!("status: {:?}", output.status);
@@ -131,9 +159,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
     for d in 0..dealers.len() {
         for c in 0..centers.len() {
-            let shipped = read_solution_value(&solution, x_idx[d][c]);
+            let shipped = read_solution_value(&solution, x_idx[&[d, c]]);
             if shipped > 0.0 {
-                let trucks = read_solution_value(&solution, y_idx[d][c]);
+                let trucks = read_solution_value(&solution, y_idx[&[d, c]]);
                 println!(
                     "{} <- {}: ship {:.2}, trucks {:.2}",
                     dealers[d].name, centers[c].name, shipped, trucks

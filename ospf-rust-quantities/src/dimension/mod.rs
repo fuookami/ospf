@@ -9,42 +9,74 @@
 //! - `derived_quantity`: 导出量纲的运行时和编译时表示
 //! - `derived`: 预定义的导出量纲类型（面积、速度、力等）
 
-pub mod fundamental_quantity;
-pub mod derived_quantity;
 pub mod derived;
+pub mod derived_quantity;
+pub mod fundamental_quantity;
 
 // 重导出基础量纲类型 / Re-export fundamental dimension types
 pub use fundamental_quantity::{
     // 运行时类型 / Runtime types
-    CTFundamentalDimension, CTFundamentalDiv, CTFundamentalMul,
+    CTFundamentalDimension,
+    CTFundamentalDiv,
+    CTFundamentalMul,
+    // 基础量纲类型 / Base dimension types
+    CTFundamentalPow,
+    CTFundamentalQuantity,
+    CTFundamentalQuantityTrait,
+    CTFundamentalReciprocal,
     // 自定义量纲类型 / Custom dimension types
     CustomFundamentalDimension,
-    // 基础量纲类型 / Base dimension types
-    CTFundamentalPow, CTFundamentalQuantity, CTFundamentalQuantityTrait, CTFundamentalReciprocal, FundamentalDimension, FundamentalQuantity, FundamentalQuantityEnum, Info, Info0, Info1,
-    // 编译时类型 / Compile-time types
-    Omega, Omega0,
-    Omega1, Phi, Phi0, Phi1, SameFundamentalDimension,
-    SameFundamentalPower, SameFundamentalQuantity, Theta,
-    // 长度 L / Length L
-    Theta0, Theta1, I, I0,
+    FundamentalDimension,
+    FundamentalQuantity,
+    FundamentalQuantityEnum,
+    I,
+    I0,
     // 质量 M / Mass M
-    I1, J,
+    I1,
+    Info,
+    Info0,
+    Info1,
+    J,
     // 时间 T / Time T
-    J0, J1, L, L0,
+    J0,
+    J1,
+    L,
+    L0,
     // 电流 I / Electric Current I
-    L1, L2,
+    L1,
+    L2,
     // 热力学温度 Θ / Thermodynamic Temperature Θ
-    L3, M,
+    L3,
+    M,
     // 物质的量 N / Amount of Substance N
-    M0, M1,
+    M0,
+    M1,
     // 发光强度 J / Luminous Intensity J
-    N, N0,
+    N,
+    N0,
     // 信息量 ℐ / Information ℐ
-    N1, T,
+    N1,
+    // 编译时类型 / Compile-time types
+    Omega,
+    Omega0,
+    Omega1,
+    Phi,
+    Phi0,
+    Phi1,
+    SameFundamentalDimension,
+    SameFundamentalPower,
+    SameFundamentalQuantity,
+    T,
     // 平面角 φ / Plane Angle φ
-    T0, T1,
+    T0,
+    T1,
     // 立体角 Ω / Solid Angle Ω
-    TN1, TN2,
+    TN1,
+    TN2,
+    Theta,
+    // 长度 L / Length L
+    Theta0,
+    Theta1,
 };
 
 // 重导出导出量纲类型 / Re-export derived dimension types
@@ -52,8 +84,13 @@ pub use derived_quantity::{
     // 运行时类型 / Runtime types
     CTDerivedDiv,
     // 编译时类型 / Compile-time types
-    CTDerivedMul, CTDerivedPow, CTDerivedQuantity, CTDerivedReciprocal, DerivedQuantity,
-    SameDerivedDimension
+    CTDerivedMul,
+    CTDerivedPow,
+    CTDerivedQuantity,
+    CTDerivedReciprocal,
+    DerivedQuantity,
+    QuantityDomain,
+    SameDerivedDimension,
 };
 
 // 重导出导出量纲实现 / Re-export derived dimension implementations

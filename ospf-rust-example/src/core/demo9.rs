@@ -1,10 +1,10 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
 use ospf_rust_core::variable::{IntegerVariableItem, UContinuousVariableItem, VariableRange};
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct Settlement {
@@ -39,61 +39,69 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     let mut model = MetaModel::<f64>::new("demo9");
 
-    let x_idx = model.register_variable(IntegerVariableItem::auto_with_range(
-        "x",
-        VariableRange::bounded(-100.0, 100.0),
-    ))?;
-    let y_idx = model.register_variable(IntegerVariableItem::auto_with_range(
-        "y",
-        VariableRange::bounded(-100.0, 100.0),
-    ))?;
+    let x_var = IntegerVariableItem::auto_with_range("x", VariableRange::bounded(-100.0, 100.0));
+    let y_var = IntegerVariableItem::auto_with_range("y", VariableRange::bounded(-100.0, 100.0));
+    let x_idx = model.register_variable(x_var.clone())?;
+    let y_idx = model.register_variable(y_var.clone())?;
 
+    let mut dx_vars = Vec::with_capacity(settlements.len());
+    let mut dy_vars = Vec::with_capacity(settlements.len());
     let mut dx_idx = vec![0usize; settlements.len()];
     let mut dy_idx = vec![0usize; settlements.len()];
     for i in 0..settlements.len() {
-        dx_idx[i] = model.register_variable(UContinuousVariableItem::auto(&format!("dx_{}", i)))?;
-        dy_idx[i] = model.register_variable(UContinuousVariableItem::auto(&format!("dy_{}", i)))?;
+        let dx_var = UContinuousVariableItem::auto(&format!("dx_{}", i));
+        let dy_var = UContinuousVariableItem::auto(&format!("dy_{}", i));
+        dx_idx[i] = model.register_variable(dx_var.clone())?;
+        dy_idx[i] = model.register_variable(dy_var.clone())?;
+        dx_vars.push(dx_var);
+        dy_vars.push(dy_var);
     }
 
-    let mut objective = vec![0.0; model.num_tokens()];
+    let mut distance_terms = Vec::with_capacity(settlements.len() * 2);
     for i in 0..settlements.len() {
-        objective[dx_idx[i]] = 1.0;
-        objective[dy_idx[i]] = 1.0;
+        distance_terms.push(LinearMonomial::new(1.0, dx_vars[i].to_owned_symbol()));
+        distance_terms.push(LinearMonomial::new(1.0, dy_vars[i].to_owned_symbol()));
     }
-    model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+    let distance = Linear::new(distance_terms, 0.0);
+    model.set_math_linear_objective(distance, ObjectiveCategory::Minimum, "distance")?;
 
     for (i, settlement) in settlements.iter().enumerate() {
-        model.add_linear_constraint(
-            &[(x_idx, -1.0), (dx_idx[i], 1.0)],
-            ConstraintRelation::GreaterEqual,
-            -settlement.x,
-            &format!("dx_lb1_{}", i),
-        )?;
-        model.add_linear_constraint(
-            &[(x_idx, 1.0), (dx_idx[i], 1.0)],
-            ConstraintRelation::GreaterEqual,
-            settlement.x,
-            &format!("dx_lb2_{}", i),
-        )?;
-
-        model.add_linear_constraint(
-            &[(y_idx, -1.0), (dy_idx[i], 1.0)],
-            ConstraintRelation::GreaterEqual,
-            -settlement.y,
-            &format!("dy_lb1_{}", i),
-        )?;
-        model.add_linear_constraint(
-            &[(y_idx, 1.0), (dy_idx[i], 1.0)],
-            ConstraintRelation::GreaterEqual,
-            settlement.y,
-            &format!("dy_lb2_{}", i),
-        )?;
+        let dx_lower = Linear::new(
+            vec![
+                LinearMonomial::new(-1.0, x_var.to_owned_symbol()),
+                LinearMonomial::new(1.0, dx_vars[i].to_owned_symbol()),
+            ],
+            0.0,
+        );
+        let dx_upper = Linear::new(
+            vec![
+                LinearMonomial::new(1.0, x_var.to_owned_symbol()),
+                LinearMonomial::new(1.0, dx_vars[i].to_owned_symbol()),
+            ],
+            0.0,
+        );
+        let dy_lower = Linear::new(
+            vec![
+                LinearMonomial::new(-1.0, y_var.to_owned_symbol()),
+                LinearMonomial::new(1.0, dy_vars[i].to_owned_symbol()),
+            ],
+            0.0,
+        );
+        let dy_upper = Linear::new(
+            vec![
+                LinearMonomial::new(1.0, y_var.to_owned_symbol()),
+                LinearMonomial::new(1.0, dy_vars[i].to_owned_symbol()),
+            ],
+            0.0,
+        );
+        model.add_math_inequality(dx_lower.ge(-settlement.x), &format!("dx_lb1_{}", i));
+        model.add_math_inequality(dx_upper.ge(settlement.x), &format!("dx_lb2_{}", i));
+        model.add_math_inequality(dy_lower.ge(-settlement.y), &format!("dy_lb1_{}", i));
+        model.add_math_inequality(dy_upper.ge(settlement.y), &format!("dy_lb2_{}", i));
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo9 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo9 ===");
     println!("status: {:?}", output.status);

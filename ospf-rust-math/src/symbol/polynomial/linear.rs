@@ -1,11 +1,13 @@
-﻿//! 绾挎€у椤瑰紡
+//! 绾挎€у椤瑰紡
 //! Linear polynomial
 //!
 //! 褰㈠紡锛毼?c岬岬?+ b
 //! Form: 危 c岬岬?+ b
 
 use crate::algebra::concept::{AbelianGroup, AbelianGroupRef, Scalar};
-use crate::operator::{AddRef, DivRef, Exponent, MulRef, NegOneRef, NegRef, OneRef, SubRef, ZeroRef};
+use crate::operator::{
+    AddRef, DivRef, Exponent, MulRef, NegOneRef, NegRef, OneRef, SubRef, ZeroRef,
+};
 use crate::symbol::{Canonical, LinearMonomial, OwnedSymbol, Quadratic, QuadraticMonomial};
 use num_traits::{One, Zero};
 use std::collections::HashMap;
@@ -148,7 +150,7 @@ impl<T: Zero + PartialEq + AddAssign> Linear<T> {
 
     /// 杩斿洖绠€鍖栧悗鐨勫椤瑰紡锛堝悎骞跺悓绫婚」锛岀Щ闄ら浂绯绘暟椤癸級
     /// Return simplified polynomial (combine like terms, remove zero coefficients)
-    /// 
+    ///
     /// 涓?`simplify` 涓嶅悓锛屾鏂规硶杩斿洖鏂扮殑澶氶」寮忥紝涓嶄慨鏀瑰師瀹炰緥銆?
     /// Unlike `simplify`, this method returns a new polynomial without modifying the original.
     pub fn simplified(self) -> Self {
@@ -295,7 +297,8 @@ impl<T: One> AddAssign<OwnedSymbol> for Linear<T> {
 // --- AddAssign: Linear<T> += &OwnedSymbol ---
 impl<T: One> AddAssign<&OwnedSymbol> for Linear<T> {
     fn add_assign(&mut self, rhs: &OwnedSymbol) {
-        self.monomials.push(LinearMonomial::new(T::one(), rhs.clone()));
+        self.monomials
+            .push(LinearMonomial::new(T::one(), rhs.clone()));
     }
 }
 
@@ -346,14 +349,16 @@ impl<T: NegRef> SubAssign<&LinearMonomial<T>> for Linear<T> {
 // --- SubAssign: Linear<T> -= OwnedSymbol ---
 impl<T: One + Neg<Output = T>> SubAssign<OwnedSymbol> for Linear<T> {
     fn sub_assign(&mut self, rhs: OwnedSymbol) {
-        self.monomials.push(LinearMonomial::new(T::one().neg(), rhs));
+        self.monomials
+            .push(LinearMonomial::new(T::one().neg(), rhs));
     }
 }
 
 // --- SubAssign: Linear<T> -= &OwnedSymbol ---
 impl<T: One + Neg<Output = T>> SubAssign<&OwnedSymbol> for Linear<T> {
     fn sub_assign(&mut self, rhs: &OwnedSymbol) {
-        self.monomials.push(LinearMonomial::new(T::one().neg(), rhs.clone()));
+        self.monomials
+            .push(LinearMonomial::new(T::one().neg(), rhs.clone()));
     }
 }
 
@@ -609,7 +614,9 @@ impl<T: MulRef> Mul<T> for &Linear<T> {
 
     fn mul(self, rhs: T) -> Self::Output {
         Linear {
-            monomials: self.monomials.iter()
+            monomials: self
+                .monomials
+                .iter()
                 .map(|m| LinearMonomial::new(T::mul_ref(&m.coefficient, &rhs), m.symbol.clone()))
                 .collect(),
             constant: T::mul_ref(&self.constant, &rhs),
@@ -623,7 +630,9 @@ impl<T: MulRef> Mul<&T> for &Linear<T> {
 
     fn mul(self, rhs: &T) -> Self::Output {
         Linear {
-            monomials: self.monomials.iter()
+            monomials: self
+                .monomials
+                .iter()
                 .map(|m| LinearMonomial::new(T::mul_ref(&m.coefficient, rhs), m.symbol.clone()))
                 .collect(),
             constant: T::mul_ref(&self.constant, rhs),
@@ -637,7 +646,9 @@ impl<T: DivRef> Div<T> for &Linear<T> {
 
     fn div(self, rhs: T) -> Self::Output {
         Linear {
-            monomials: self.monomials.iter()
+            monomials: self
+                .monomials
+                .iter()
                 .map(|m| LinearMonomial::new(T::div_ref(&m.coefficient, &rhs), m.symbol.clone()))
                 .collect(),
             constant: T::div_ref(&self.constant, &rhs),
@@ -651,7 +662,9 @@ impl<T: DivRef> Div<&T> for &Linear<T> {
 
     fn div(self, rhs: &T) -> Self::Output {
         Linear {
-            monomials: self.monomials.iter()
+            monomials: self
+                .monomials
+                .iter()
                 .map(|m| LinearMonomial::new(T::div_ref(&m.coefficient, rhs), m.symbol.clone()))
                 .collect(),
             constant: T::div_ref(&self.constant, rhs),
@@ -1130,17 +1143,19 @@ impl<T: AbelianGroup> Add<Quadratic<T>> for Linear<T> {
 }
 
 // --- Add: Linear<T> + &Quadratic<T> ---
-impl<T: AbelianGroup> Add<&Quadratic<T>> for Linear<T> {
+impl<T: AbelianGroupRef> Add<&Quadratic<T>> for Linear<T> {
     type Output = Quadratic<T>;
 
     fn add(self, rhs: &Quadratic<T>) -> Self::Output {
-        let mut monomials: Vec<QuadraticMonomial<T>> = self.monomials.into_iter()
+        let mut monomials: Vec<QuadraticMonomial<T>> = self
+            .monomials
+            .into_iter()
             .map(|m| QuadraticMonomial::linear(m.coefficient, m.symbol))
             .collect();
         monomials.extend(rhs.monomials.iter().cloned());
         Quadratic {
             monomials,
-            constant: self.constant + rhs.constant.clone(),
+            constant: T::add_ref(&self.constant, &rhs.constant),
         }
     }
 }
@@ -1461,7 +1476,10 @@ impl<T: Zero + One + MulRef + Clone> Mul<&OwnedSymbol> for &Linear<T> {
         }
 
         if !self.constant.is_zero() {
-            monomials.push(QuadraticMonomial::linear(self.constant.clone(), rhs.clone()));
+            monomials.push(QuadraticMonomial::linear(
+                self.constant.clone(),
+                rhs.clone(),
+            ));
         }
 
         Quadratic {
@@ -1561,14 +1579,7 @@ impl<T: Zero + MulRef + Clone> Linear<T> {
 
 impl<T> fmt::Display for Linear<T>
 where
-    T: fmt::Debug
-        + fmt::Display
-        + Zero
-        + PartialEq
-        + OneRef
-        + NegOneRef
-        + ZeroRef
-        + 'static,
+    T: fmt::Debug + fmt::Display + Zero + PartialEq + OneRef + NegOneRef + ZeroRef + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.monomials.is_empty() {
@@ -1643,7 +1654,7 @@ impl<T: Clone> SecondOrderDifferentiate<T> for Linear<T> {
 // 姹傚€煎疄鐜?/ Evaluate Implementation
 // ============================================================================
 
-use crate::symbol::operation::{Evaluate, EvaluateOrdered, Evaluatable};
+use crate::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
 
 impl<T: Clone> Evaluate<T> for Linear<T> {
     fn evaluate(&self, values: &HashMap<OwnedSymbol, T>) -> T
@@ -1706,7 +1717,9 @@ impl<T: Clone> EvaluateOrdered<T> for Linear<T> {
 // 绫诲瀷杞崲瀹炵幇 / Type Conversion Implementations
 // ============================================================================
 
-use crate::symbol::operation::{LinearMatrixForm, ToCanonical, ToLinear, ToMatrixForm, ToQuadratic};
+use crate::symbol::operation::{
+    LinearMatrixForm, ToCanonical, ToLinear, ToMatrixForm, ToQuadratic,
+};
 
 impl<T> ToLinear<T> for Linear<T> {
     fn to_linear(self) -> Linear<T> {
@@ -1846,13 +1859,7 @@ use crate::algebra::value_range::{Bound, Interval, ValueRange, ValueWrapper};
 
 impl<T> Linear<T>
 where
-    T: Clone
-        + PartialOrd
-        + Zero
-        + ZeroRef
-        + AddRef
-        + MulRef
-        + 'static,
+    T: Clone + PartialOrd + Zero + ZeroRef + AddRef + MulRef + 'static,
 {
     /// 璁＄畻绾挎€у椤瑰紡鍦ㄧ粰瀹氱鍙峰尯闂村€兼椂鐨勬瀬鍊艰寖鍥?
     /// Calculate the extremum range of linear polynomial given symbol interval values
@@ -2181,8 +2188,3 @@ mod tests {
         assert!((max_val - 22.0).abs() < 1e-10);
     }
 }
-
-
-
-
-

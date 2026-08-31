@@ -4,9 +4,52 @@
 
 `ospf-rust-example` 提供基于 `ospf-rust-core` 与 `ospf-rust-framework` 的可运行、可测试示例。
 
+## Kotlin 对齐目录
+
+- `src/example_modeling.rs`：统一建模与 typed 求解 helper
+- `src/core_demo`：core 示例主入口
+- `src/heuristic_demo`：启发式示例入口（当前骨架阶段）
+- `src/framework_demo`：framework 示例主入口
+- `src/core` 与 `src/framework`：迁移期兼容实现模块
+
+## 命令说明
+
+默认构建/测试路径（不依赖商业后端）：
+
+```bash
+cargo check -p ospf-rust-example
+cargo test -p ospf-rust-example --no-run
+cargo test -p ospf-rust-example
+```
+
+需要后端的运行命令：
+
+```bash
+cargo run -p ospf-rust-example --features backend-gurobi -- core:demo1
+cargo run -p ospf-rust-example --features backend-gurobi -- core:all
+cargo run -p ospf-rust-example --features backend-gurobi -- core:generic-number
+cargo run -p ospf-rust-example --features backend-gurobi -- core:shortcuts
+cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo1
+cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo2
+cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo3
+cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo4
+```
+
+后端 build-only 验证命令：
+
+```bash
+cargo test -p ospf-rust-example --features backend-gurobi --no-run
+```
+
+未启用后端 feature 时，直接运行 demo 命令会得到明确提示：
+`rerun with --features backend-gurobi`。
+
+`framework:demo4` 当前仅保持骨架与命令入口。由于 gantt-scheduling 对齐缺口仍在，
+该方向明确标注为“暂缓实现”，不作为已完成功能宣称。
+
 ## Demo2 的 Benders 行为契约
 
-`framework::demo2` 支持自适应 Benders，并可按策略回退 MILP。
+`framework_demo::demo2` 支持自适应 Benders，并可按策略回退 MILP。
 
 当 `prefer_benders=true` 时，应用层会基于问题规模（`cargo_count * position_count`）
 推导生效参数，并在 notes 中同时输出“配置参数”和“生效参数”。
@@ -92,6 +135,8 @@ request.benders_quality_overrides = Some(BendersQualityOverrideConfig {
 
 ## API 入口文件
 
+- 公共示例入口：`src/framework_demo/demo2/mod.rs`
+- 公共调度模块：`src/framework_demo/mod.rs`（`framework_demo::run_demo2`）
+- 当前实现位置（兼容转发目标）：`src/framework/demo2/domain.rs`
 - 请求/响应 DTO：`src/framework/demo2/infrastructure/dto.rs`
-- Demo2 应用层编排：`src/framework/demo2/domain.rs`
 - 诊断解析与 grouped-note 约定：`src/framework/demo2/diagnostics.rs`

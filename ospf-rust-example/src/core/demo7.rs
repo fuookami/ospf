@@ -1,10 +1,11 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::variable::UIntegerVariableItem;
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
+use ospf_rust_core::variable::{UInteger, VariableCombination2D};
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
+use ospf_rust_multiarray::{MultiArrayBuilder, Shape};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct Warehouse {
@@ -64,55 +65,67 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let stores = build_stores();
 
     let mut model = MetaModel::<f64>::new("demo7");
-    let mut x_idx = vec![vec![0usize; stores.len()]; warehouses.len()];
+    let x_shape = Shape::new([warehouses.len(), stores.len()]);
+    let x_vars: VariableCombination2D<UInteger> =
+        VariableCombination2D::with_name_generator(x_shape.clone(), "x", |_index, vector| {
+            format!("{}_{}", vector[0], vector[1])
+        });
+    let x_idx = MultiArrayBuilder::from_list(
+        x_shape,
+        model.register_variables::<UInteger, _>(x_vars.iter().cloned())?,
+    );
 
-    for (w, _) in warehouses.iter().enumerate() {
-        for (s, _) in stores.iter().enumerate() {
-            let variable = UIntegerVariableItem::auto(&format!("x_{}_{}", w, s));
-            x_idx[w][s] = model.register_variable(variable)?;
-        }
-    }
-
-    let mut objective = vec![0.0; model.num_tokens()];
+    let mut cost_terms = Vec::with_capacity(warehouses.len() * stores.len());
     for (w, warehouse) in warehouses.iter().enumerate() {
         for (s, _) in stores.iter().enumerate() {
-            objective[x_idx[w][s]] = warehouse.cost_to(s);
+            cost_terms.push(LinearMonomial::new(
+                warehouse.cost_to(s),
+                x_vars[&[w, s]].to_owned_symbol(),
+            ));
         }
     }
-    model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+    let cost = Linear::new(cost_terms, 0.0);
+    let shipment = MultiArrayBuilder::new_by(Shape::<1>::new([warehouses.len()]), |_idx, vec| {
+        let w = vec[0];
+        Linear::new(
+            stores
+                .iter()
+                .enumerate()
+                .map(|(s, _)| LinearMonomial::new(1.0, x_vars[&[w, s]].to_owned_symbol()))
+                .collect(),
+            0.0,
+        )
+    });
+    let purchase = MultiArrayBuilder::new_by(Shape::<1>::new([stores.len()]), |_idx, vec| {
+        let s = vec[0];
+        Linear::new(
+            warehouses
+                .iter()
+                .enumerate()
+                .map(|(w, _)| LinearMonomial::new(1.0, x_vars[&[w, s]].to_owned_symbol()))
+                .collect(),
+            0.0,
+        )
+    });
+
+    model.set_math_linear_objective(cost, ObjectiveCategory::Minimum, "cost")?;
 
     for (w, _) in warehouses.iter().enumerate() {
-        let coefficients: Vec<(usize, f64)> = stores
-            .iter()
-            .enumerate()
-            .map(|(s, _)| (x_idx[w][s], 1.0))
-            .collect();
-        model.add_linear_constraint(
-            &coefficients,
-            ConstraintRelation::LessEqual,
-            warehouses[w].stowage,
+        model.add_math_inequality(
+            shipment[w].clone().le(warehouses[w].stowage),
             &format!("stowage_{}", w),
-        )?;
+        );
     }
 
     for (s, _) in stores.iter().enumerate() {
-        let coefficients: Vec<(usize, f64)> = warehouses
-            .iter()
-            .enumerate()
-            .map(|(w, _)| (x_idx[w][s], 1.0))
-            .collect();
-        model.add_linear_constraint(
-            &coefficients,
-            ConstraintRelation::GreaterEqual,
-            stores[s].demand,
+        model.add_math_inequality(
+            purchase[s].clone().ge(stores[s].demand),
             &format!("demand_{}", s),
-        )?;
+        );
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo7 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo7 ===");
     println!("status: {:?}", output.status);
@@ -121,7 +134,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
     for (w, warehouse) in warehouses.iter().enumerate() {
         for (s, store) in stores.iter().enumerate() {
-            let value = read_solution_value(&solution, x_idx[w][s]);
+            let value = read_solution_value(&solution, x_idx[&[w, s]]);
             if value >= 1.0 {
                 println!("{} -> {} = {:.2}", warehouse.name, store.name, value);
             }

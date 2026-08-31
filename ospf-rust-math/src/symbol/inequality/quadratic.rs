@@ -128,7 +128,7 @@ impl<T: Clone> Quadratic<T> {
 
 use crate::operator::MulRef;
 use crate::symbol::OwnedSymbol;
-use crate::symbol::operation::{Evaluate, EvaluateOrdered, Evaluatable};
+use crate::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
 use std::collections::HashMap;
 
 impl<T: MulRef + Clone> Evaluate<T> for QuadraticInequality<T> {

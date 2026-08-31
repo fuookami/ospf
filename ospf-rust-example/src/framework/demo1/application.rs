@@ -3,7 +3,7 @@ use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::object::ObjectiveCategory;
 
-use crate::core::common::solve as solve_meta;
+use crate::core::common::solve_typed as solve_meta_typed;
 use crate::framework::demo1::bandwidth_context::BandwidthContext;
 use crate::framework::demo1::infrastructure::dto::{Input, Output};
 use crate::framework::demo1::route_context::RouteContext;
@@ -35,10 +35,8 @@ impl Ssp {
         self.bandwidth_context
             .construct(&mut model, &self.route_context)?;
 
-        let output = solve_meta(model)?;
-        let solution = output
-            .solution
-            .ok_or_else(|| String::from("framework demo1 has no feasible solution"))?;
+        let output = solve_meta_typed(model)?;
+        let solution = output.solution;
         let links = self
             .bandwidth_context
             .analyze(&self.route_context, &solution)?;

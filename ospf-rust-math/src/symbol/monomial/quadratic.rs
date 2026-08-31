@@ -293,8 +293,8 @@ impl<T: ReciprocalRef> Reciprocal for &QuadraticMonomial<T> {
 use num_traits::Zero;
 use std::fmt;
 
-impl<T: Debug + fmt::Display + Zero + PartialEq + OneRef + NegOneRef + 'static>
-    fmt::Display for QuadraticMonomial<T>
+impl<T: Debug + fmt::Display + Zero + PartialEq + OneRef + NegOneRef + 'static> fmt::Display
+    for QuadraticMonomial<T>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
         if self.coefficient.is_zero() {
@@ -335,7 +335,8 @@ use std::collections::HashMap;
 
 impl<T: Clone> Evaluate<T> for QuadraticMonomial<T> {
     fn evaluate(&self, values: &HashMap<OwnedSymbol, T>) -> T
-        where T: Evaluatable
+    where
+        T: Evaluatable,
     {
         match &self.symbol2 {
             Some(symbol2) => {
@@ -455,8 +456,8 @@ impl<T: MulRef> EvaluateOrdered<T> for QuadraticMonomial<T> {
 // ============================================================================
 
 use crate::operator::Exponent;
-use crate::symbol::{Canonical, CanonicalMonomial, Linear, LinearMonomial, Quadratic};
 use crate::symbol::operation::{ToCanonical, ToQuadratic, TryToLinear, TryToLinearError};
+use crate::symbol::{Canonical, CanonicalMonomial, Linear, LinearMonomial, Quadratic};
 use num_traits::One;
 
 impl<T: Zero> ToQuadratic<T> for QuadraticMonomial<T> {
@@ -581,7 +582,10 @@ impl<T: Zero + Clone> TryToLinear<T> for &QuadraticMonomial<T> {
                 // 线性项可以转换
                 // Linear term can be converted
                 Ok(Linear::new(
-                    vec![LinearMonomial::new(self.coefficient.clone(), self.symbol1.clone())],
+                    vec![LinearMonomial::new(
+                        self.coefficient.clone(),
+                        self.symbol1.clone(),
+                    )],
                     T::zero(),
                 ))
             }

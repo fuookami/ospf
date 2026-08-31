@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::solver::SolverConfig;
+
 use super::{
     SCIPNativeCallback, SCIPNativeObserver, SCIPSnapshotObserver, SCIPStage, SCIPStageCallback,
     SCIPTelemetryCallback,
@@ -85,7 +87,10 @@ impl std::fmt::Debug for SCIPConfig {
                 &self.telemetry_callback.is_some(),
             )
             .field("snapshot_observers_count", &self.snapshot_observers.len())
-            .field("native_callback_registered", &self.native_callback.is_some())
+            .field(
+                "native_callback_registered",
+                &self.native_callback.is_some(),
+            )
             .field("native_observers_count", &self.native_observers.len())
             .finish()
     }
@@ -117,9 +122,60 @@ impl Default for SCIPConfig {
     }
 }
 
+impl From<&SolverConfig> for SCIPConfig {
+    fn from(config: &SolverConfig) -> Self {
+        let mut scip_config = SCIPConfig::new();
+        scip_config.time_limit = config.time_limit.map(|duration| duration.as_secs_f64());
+        scip_config.mip_gap = config.mip_gap;
+        scip_config.max_iterations = config
+            .iteration_limit
+            .map(|limit| limit.min(i64::MAX as usize) as i64);
+        scip_config.output_flag = config.verbose;
+        scip_config.threads = config
+            .threads
+            .map(|threads| threads.min(i32::MAX as usize) as i32);
+        scip_config.node_limit = config
+            .node_limit
+            .map(|limit| limit.min(i64::MAX as usize) as i64);
+        scip_config.mem_limit = config.memory_limit.map(|limit_mb| limit_mb as f64);
+        scip_config.no_improvement_time_limit = config
+            .no_improvement_time_limit
+            .map(|duration| duration.as_secs_f64());
+        scip_config.improvement_tolerance = config.improve_threshold;
+        scip_config
+    }
+}
+
+impl From<SolverConfig> for SCIPConfig {
+    fn from(config: SolverConfig) -> Self {
+        Self::from(&config)
+    }
+}
+
 impl SCIPConfig {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 推荐 LP/子问题配置 / Recommended LP/subproblem configuration.
+    ///
+    /// 使用单线程、关闭 presolving、关闭 heuristics，便于列生成/Benders 子问题获取稳定对偶。
+    /// Uses one thread, disables presolving, and disables heuristics for stable duals in
+    /// column-generation/Benders subproblems.
+    pub fn recommended_lp_subproblem_defaults() -> Self {
+        Self::new().with_lp_subproblem_defaults()
+    }
+
+    /// 在当前配置上应用推荐 LP/子问题配置 / Apply recommended LP/subproblem settings.
+    ///
+    /// 保留未相关字段（例如 time limit、gap、callback），只覆盖线程、presolving 和 heuristics。
+    /// Keeps unrelated fields such as time limit, gap, and callbacks, and only overrides threads,
+    /// presolving, and heuristics.
+    pub fn with_lp_subproblem_defaults(mut self) -> Self {
+        self.threads = Some(1);
+        self.presolving = Some(PresolvingMode::Off);
+        self.heuristics_priority = Some(0);
+        self
     }
 
     pub fn with_time_limit(mut self, seconds: f64) -> Self {
@@ -130,6 +186,12 @@ impl SCIPConfig {
     pub fn with_mip_gap(mut self, gap: f64) -> Self {
         self.mip_gap = Some(gap);
         self
+    }
+
+    /// 设置求解 gap（`with_mip_gap` 的易用别名）/
+    /// Set solve gap (ergonomic alias for `with_mip_gap`).
+    pub fn with_gap(self, gap: f64) -> Self {
+        self.with_mip_gap(gap)
     }
 
     pub fn with_max_iterations(mut self, iterations: i64) -> Self {
@@ -167,6 +229,16 @@ impl SCIPConfig {
         self
     }
 
+    /// 设置内存限制（MB）/ Set memory limit (MB).
+    pub fn with_memory_limit_mb(self, memory_limit_mb: f64) -> Self {
+        self.with_mem_limit(memory_limit_mb)
+    }
+
+    /// 设置内存限制（GB）/ Set memory limit (GB).
+    pub fn with_memory_limit_gb(self, memory_limit_gb: f64) -> Self {
+        self.with_mem_limit(memory_limit_gb * 1024.0)
+    }
+
     pub fn with_display_freq(mut self, display_freq: i32) -> Self {
         self.display_freq = Some(display_freq);
         self
@@ -185,6 +257,12 @@ impl SCIPConfig {
     pub fn with_improvement_tolerance(mut self, tolerance: f64) -> Self {
         self.improvement_tolerance = (tolerance > 0.0).then_some(tolerance);
         self
+    }
+
+    /// 设置改进判定阈值（`with_improvement_tolerance` 的易用别名）/
+    /// Set improvement threshold (ergonomic alias for `with_improvement_tolerance`).
+    pub fn with_improve_threshold(self, threshold: f64) -> Self {
+        self.with_improvement_tolerance(threshold)
     }
 
     pub fn with_telemetry_min_interval(mut self, seconds: f64) -> Self {
@@ -284,3 +362,7 @@ impl SCIPConfig {
         self
     }
 }
+
+/// Rust-style alias for [`SCIPConfig`].
+/// [`SCIPConfig`] 的 Rust 风格别名。
+pub type ScipConfig = SCIPConfig;

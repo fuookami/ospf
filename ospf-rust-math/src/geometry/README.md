@@ -1,8 +1,8 @@
 # Geometry Module
 
-This module provides geometric entities and algorithms for computational geometry.
+🇺🇸 [English](README.md) | 🇨🇳 简体中文
 
-[中文文档](./README_ch.md)
+This module provides geometric entities and algorithms for computational geometry.
 
 ## Features
 

@@ -1,5 +1,5 @@
-pub mod common;
 pub mod capability_gate;
+pub mod common;
 pub mod core_shortcuts;
 pub mod demo1;
 pub mod demo10;
@@ -19,6 +19,8 @@ pub mod demo7;
 pub mod demo8;
 pub mod demo9;
 
+pub use capability_gate::run as run_capability_gate;
+pub use core_shortcuts::run as run_core_shortcuts;
 pub use demo1::run as run_demo1;
 pub use demo2::run as run_demo2;
 pub use demo3::run as run_demo3;
@@ -36,5 +38,3 @@ pub use demo14::run as run_demo14;
 pub use demo15::run as run_demo15;
 pub use demo16::run as run_demo16;
 pub use demo17::run as run_demo17;
-pub use capability_gate::run as run_capability_gate;
-pub use core_shortcuts::run as run_core_shortcuts;

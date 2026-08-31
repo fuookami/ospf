@@ -1,24 +1,14 @@
-//! Mass density units - 质量密度单位
-//! Mass density units - SI mass density units
-//!
-//! 提供质量密度量纲的 SI 单位定义，包括千克每立方米、千克每升、克每立方厘米等。
-//! Provides SI unit definitions for mass density dimension, including kilogram per cubic meter, kilogram per liter, gram per cubic centimeter, etc.
-
-use super::mass::Kilogram;
-use super::volume::CubicMeter;
+use super::mass::{Gram, Kilogram};
+use super::volume::{CubicCentimeter, CubicMeter};
 use crate::dimension::derived::MassDensity;
 use crate::scale::Scale;
-use crate::unit::physical_unit::CTUnitDiv;
 use crate::unit::CTUnit;
-
-// ============================================================================
-// 质量密度单位 / Mass density units
-// ============================================================================
+use crate::unit::physical_unit::CTUnitDiv;
 
 define_unit_by!(
     KilogramPerCubicMeter,
     "kilogram per cubic meter",
-    "kg/m³",
+    "kg/m^3",
     CTUnitDiv<Kilogram, CubicMeter>
 );
 define_unit!(
@@ -28,10 +18,15 @@ define_unit!(
     MassDensity,
     Scale::from_int(1000)
 );
-define_unit!(
+define_unit_by!(
+    KilogramPerCubicCentimeter,
+    "kilogram per cubic centimeter",
+    "kg/cm^3",
+    CTUnitDiv<Kilogram, CubicCentimeter>
+);
+define_unit_by!(
     GramPerCubicCentimeter,
     "gram per cubic centimeter",
-    "g/cm³",
-    MassDensity,
-    Scale::from_int(1000)
+    "g/cm^3",
+    CTUnitDiv<Gram, CubicCentimeter>
 );

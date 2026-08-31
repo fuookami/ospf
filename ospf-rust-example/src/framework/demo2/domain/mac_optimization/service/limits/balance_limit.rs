@@ -2,9 +2,9 @@ use std::error::Error;
 
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 
-use crate::framework::demo2::domain::mac_optimization::aggregation::MacOptimizationAggregation;
-use crate::framework::demo2::domain::mac_optimization::context::MacOptimizationContext;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use crate::framework_demo::demo2::domain::mac_optimization::aggregation::MacOptimizationAggregation;
+use crate::framework_demo::demo2::domain::mac_optimization::context::MacOptimizationContext;
+use crate::framework_demo::demo2::domain::shared::pipeline_mode::mode_name;
 
 pub fn apply_balance_limits(
     model: &mut MetaModel<f64>,
@@ -41,4 +41,3 @@ pub fn apply_balance_limits(
     }
     Ok(())
 }
-

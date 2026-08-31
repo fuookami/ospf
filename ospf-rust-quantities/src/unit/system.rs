@@ -44,7 +44,7 @@ pub trait UnitSystem: std::fmt::Debug + Send + Sync + 'static {
 
     /// 获取指定量纲的标准单位
     /// Get standard unit for dimension
-    /// 
+    ///
     /// 如果用户指定了标准单位，返回用户指定的；否则返回推导的默认单位
     /// Returns user-specified standard unit if set, otherwise returns derived default unit
     fn standard_unit_for_dimension(&self, dimension: &DerivedQuantity) -> Option<Unit> {
@@ -56,22 +56,22 @@ pub trait UnitSystem: std::fmt::Debug + Send + Sync + 'static {
                 return Some(unit.clone());
             }
         }
-        
+
         // 2. 否则使用推导的默认单位
         // Otherwise use derived default unit
         self.unit_for_dimension(dimension)
     }
-    
+
     /// 设置指定量纲的标准单位
     /// Set standard unit for dimension
-    /// 
+    ///
     /// 允许在单位制创建后动态修改标准单位
     /// Allows dynamic modification of standard units after unit system creation
     fn set_standard_unit(&self, dimension: DerivedQuantity, unit: Unit) {
         let mut cache = self.standard_units().write().unwrap();
         cache.insert(dimension, unit);
     }
-    
+
     /// 移除指定量纲的标准单位（恢复使用默认推导单位）
     /// Remove standard unit for dimension (revert to default derived unit)
     fn remove_standard_unit(&self, dimension: &DerivedQuantity) -> bool {
@@ -219,7 +219,7 @@ impl ConcreteUnitSystem {
             standard_units: RwLock::new(HashMap::new()),
         }
     }
-    
+
     /// 创建带标准单位的新单位制
     /// Create new unit system with standard units
     pub fn with_standard_units(
@@ -314,7 +314,7 @@ impl UnitSystemBuilder {
 
     /// 设置指定量纲的标准单位
     /// Set standard unit for dimension
-    /// 
+    ///
     /// 标准单位用于将物理量转换为该量纲的标准表示
     /// Standard units are used to convert quantities to standard representation for that dimension
     pub fn with_standard_unit(mut self, dimension: DerivedQuantity, unit: Unit) -> Self {
@@ -351,8 +351,7 @@ impl UnitSystemBuilder {
 use once_cell::sync::Lazy;
 
 use crate::unit::derived::{
-    Ampere, Bit, Candela, Cetimeter, Gram, Kelvin, Kilogram, Meter, Mole, Radian, Second,
-    Steradian,
+    Ampere, Bit, Candela, Cetimeter, Gram, Kelvin, Kilogram, Meter, Mole, Radian, Second, Steradian,
 };
 // 从各子模块导入基本单位类型 / Import base unit types from submodules
 use crate::unit::physical_unit::CTUnit;
@@ -553,29 +552,29 @@ mod tests {
         let unit = velocity_unit.unwrap();
         assert_eq!(unit.symbol(), "cm·s/");
     }
-    
+
     #[test]
     fn test_standard_unit_default() {
         // 测试默认标准单位（未指定时使用推导单位）
         // Test default standard unit (uses derived unit when not specified)
         let length_dim = DerivedQuantity::from_base(String::new(), FundamentalQuantityEnum::Length);
-        
+
         // SI 系统中长度的默认标准单位应该是米
         // Default standard unit for length in SI should be meter
         let standard_unit = SI_SYSTEM.standard_unit_for_dimension(&length_dim);
         assert!(standard_unit.is_some());
         assert_eq!(standard_unit.unwrap().symbol(), "m");
     }
-    
+
     #[test]
     fn test_standard_unit_custom() {
         // 测试自定义标准单位
         // Test custom standard unit
-        use crate::unit::Kilometer;
         use crate::unit::CTUnit;
-        
+        use crate::unit::Kilometer;
+
         let length_dim = DerivedQuantity::from_base(String::new(), FundamentalQuantityEnum::Length);
-        
+
         // 创建自定义单位制，指定长度的标准单位为千米
         // Create custom unit system with kilometer as standard unit for length
         let custom_system = UnitSystemBuilder::new("CustomLength")
@@ -584,26 +583,26 @@ mod tests {
             .with_base_unit(FundamentalQuantityEnum::Time, Second::INSTANT.clone())
             .with_standard_unit(length_dim.clone(), Kilometer::INSTANT.clone())
             .build();
-        
+
         // 长度的标准单位应该是千米
         // Standard unit for length should be kilometer
         let standard_unit = custom_system.standard_unit_for_dimension(&length_dim);
         assert!(standard_unit.is_some());
         assert_eq!(standard_unit.unwrap().symbol(), "km");
     }
-    
+
     #[test]
     fn test_quantity_to_standard_unit() {
         // 测试物理量转换为标准单位
         // Test quantity conversion to standard unit
         use crate::quantity::Quantity;
-        use crate::unit::{Kilometer, CTUnit};
+        use crate::unit::{CTUnit, Kilometer};
         use bigdecimal::BigDecimal;
-        
+
         // 使用 Meter::INSTANT 的量纲作为标准单位的量纲
         // Use the dimension from Meter::INSTANT for the standard unit dimension
         let length_dim = Meter::INSTANT.dimension().clone();
-        
+
         // 创建自定义单位制，指定长度的标准单位为千米
         // Create custom unit system with kilometer as standard unit for length
         let custom_system = UnitSystemBuilder::new("CustomLength")
@@ -612,30 +611,30 @@ mod tests {
             .with_base_unit(FundamentalQuantityEnum::Time, Second::INSTANT.clone())
             .with_standard_unit(length_dim.clone(), Kilometer::INSTANT.clone())
             .build();
-        
+
         // 创建一个以米为单位的物理量
         // Create a quantity in meters
         let quantity = Quantity::new(BigDecimal::from(1000), Meter::INSTANT.clone());
-        
+
         // 转换为标准单位（应该是千米）
         // Convert to standard unit (should be kilometer)
         let standard_quantity = quantity.to_standard_unit(custom_system.as_ref());
         assert!(standard_quantity.is_some());
-        
+
         let sq = standard_quantity.unwrap();
         assert_eq!(sq.unit.symbol(), "km");
         assert_eq!(sq.value, BigDecimal::from(1));
     }
-    
+
     #[test]
     fn test_set_standard_unit_runtime() {
         // 测试运行时设置标准单位
         // Test setting standard unit at runtime
-        use crate::unit::Kilometer;
         use crate::unit::CTUnit;
-        
+        use crate::unit::Kilometer;
+
         let length_dim = DerivedQuantity::from_base(String::new(), FundamentalQuantityEnum::Length);
-        
+
         // 创建单位制（未指定标准单位）
         // Create unit system without standard unit
         let custom_system = UnitSystemBuilder::new("RuntimeStandard")
@@ -643,28 +642,28 @@ mod tests {
             .with_base_unit(FundamentalQuantityEnum::Mass, Kilogram::INSTANT.clone())
             .with_base_unit(FundamentalQuantityEnum::Time, Second::INSTANT.clone())
             .build();
-        
+
         // 默认标准单位是米
         // Default standard unit is meter
         let default_unit = custom_system.standard_unit_for_dimension(&length_dim);
         assert!(default_unit.is_some());
         assert_eq!(default_unit.unwrap().symbol(), "m");
-        
+
         // 运行时设置标准单位为千米
         // Set standard unit to kilometer at runtime
         custom_system.set_standard_unit(length_dim.clone(), Kilometer::INSTANT.clone());
-        
+
         // 现在标准单位应该是千米
         // Now standard unit should be kilometer
         let new_standard = custom_system.standard_unit_for_dimension(&length_dim);
         assert!(new_standard.is_some());
         assert_eq!(new_standard.unwrap().symbol(), "km");
-        
+
         // 移除标准单位，恢复默认
         // Remove standard unit, revert to default
         let removed = custom_system.remove_standard_unit(&length_dim);
         assert!(removed);
-        
+
         // 恢复后的标准单位应该是米
         // Reverted standard unit should be meter
         let reverted = custom_system.standard_unit_for_dimension(&length_dim);

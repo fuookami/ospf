@@ -5,7 +5,7 @@
 //! Provides unit definitions for time dimension, including second, millisecond, microsecond, nanosecond, minute, hour, day, week, etc.
 
 use crate::dimension::derived::Time;
-use crate::scale::{Scale, MICRO, MILLI, NANO, SEXAGESIMAL};
+use crate::scale::{MICRO, MILLI, NANO, SEXAGESIMAL, Scale};
 use crate::unit::CTUnit;
 
 // ============================================================================
@@ -22,4 +22,10 @@ define_unit!(Day, "day", "d", Time, &*Hour::SCALE * &Scale::from_int(24));
 define_unit!(Week, "week", "w", Time, &*Day::SCALE * &Scale::from_int(7));
 
 // 年 / Year (365.25 days)
-define_unit!(Year, "year", "yr", Time, &*Day::SCALE * &Scale::from_f64(365.25));
+define_unit!(
+    Year,
+    "year",
+    "yr",
+    Time,
+    &*Day::SCALE * &Scale::from_f64(365.25)
+);

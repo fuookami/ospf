@@ -1,5 +1,5 @@
-use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
-use crate::framework::demo2::domain::shared::mode_switch::ModeSelector;
+use crate::framework_demo::demo2::domain::shared::mode_switch::ModeSelector;
+use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 
 pub struct PipelineSpec<T> {
     pub priority: u8,
@@ -22,7 +22,7 @@ pub fn collect_pipeline_steps<T: Copy>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+    use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 
     #[test]
     fn collect_pipeline_steps_filters_and_sorts() {

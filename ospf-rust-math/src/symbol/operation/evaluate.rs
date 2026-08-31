@@ -47,11 +47,17 @@ use std::ops::Add;
 ///     T::zero()  // 可以使用 Zero / Can use Zero
 /// }
 /// ```
-pub trait Evaluatable: MulRef + std::ops::Mul<Output = Self> + Add<Output = Self> + Zero + ZeroRef + 'static {}
+pub trait Evaluatable:
+    MulRef + std::ops::Mul<Output = Self> + Add<Output = Self> + Zero + ZeroRef + 'static
+{
+}
 
 /// 为满足约束的类型自动实现 Evaluatable
 /// Auto-implement Evaluatable for types satisfying constraints
-impl<T: MulRef + std::ops::Mul<Output = T> + Add<Output = T> + Zero + ZeroRef + 'static> Evaluatable for T {}
+impl<T: MulRef + std::ops::Mul<Output = T> + Add<Output = T> + Zero + ZeroRef + 'static> Evaluatable
+    for T
+{
+}
 
 /// 求值 trait / Evaluation trait
 ///

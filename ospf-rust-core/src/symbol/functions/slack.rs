@@ -13,15 +13,17 @@ use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
 use super::MaxFunction;
+use super::big_m::infer_linear_difference_abs_bound_from_tokens;
 
 const DEFAULT_BIG_M: f64 = 1_000_000.0;
 const MIN_BIG_M: f64 = 1.0;
@@ -106,8 +108,46 @@ where
         )
     }
 
+    /// 使用自动 ID 与调用方提供的名称创建松弛函数。
+    /// Create a slack function with an auto id and caller-provided name.
+    pub fn named(name: impl AsRef<str>, left: Linear<V>, right: Linear<V>) -> Self {
+        Self::new(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            left,
+            right,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建松弛函数。
+    /// Create a slack function with an auto id and auto-generated name.
+    pub fn auto(left: Linear<V>, right: Linear<V>) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("slack", id);
+        Self::new(id, &name, left, right)
+    }
+
     pub fn with_target(id: u64, name: &str, left: Linear<V>, right_value: V) -> Self {
         Self::new(id, name, left, Linear::new(vec![], right_value))
+    }
+
+    /// 使用自动 ID 与调用方提供的名称创建目标值松弛函数。
+    /// Create a target-value slack function with an auto id and caller-provided name.
+    pub fn named_target(name: impl AsRef<str>, left: Linear<V>, right_value: V) -> Self {
+        Self::with_target(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            left,
+            right_value,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建目标值松弛函数。
+    /// Create a target-value slack function with an auto id and auto-generated name.
+    pub fn auto_target(left: Linear<V>, right_value: V) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("slack", id);
+        Self::with_target(id, &name, left, right_value)
     }
 
     pub fn with_big_m(id: u64, name: &str, left: Linear<V>, right: Linear<V>, big_m: V) -> Self {
@@ -131,6 +171,31 @@ where
         }
     }
 
+    /// 使用自动 ID 与调用方提供的名称创建指定 Big-M 的松弛函数。
+    /// Create a slack function with custom Big-M, auto id, and caller-provided name.
+    pub fn named_with_big_m(
+        name: impl AsRef<str>,
+        left: Linear<V>,
+        right: Linear<V>,
+        big_m: V,
+    ) -> Self {
+        Self::with_big_m(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            left,
+            right,
+            big_m,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建指定 Big-M 的松弛函数。
+    /// Create a slack function with custom Big-M, auto id, and auto-generated name.
+    pub fn auto_with_big_m(left: Linear<V>, right: Linear<V>, big_m: V) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("slack", id);
+        Self::with_big_m(id, &name, left, right, big_m)
+    }
+
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -140,6 +205,12 @@ where
         let mut cloned = self.clone();
         cloned.left = left;
         cloned.right = right;
+        cloned
+    }
+
+    pub(crate) fn with_big_m_value(&self, big_m: V) -> Self {
+        let mut cloned = self.clone();
+        cloned.big_m = big_m;
         cloned
     }
 
@@ -192,51 +263,8 @@ where
     }
 
     fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
-        let left_const = to_f64(self.left.constant_term())?;
-        let right_const = to_f64(self.right.constant_term())?;
-        let mut lower = left_const - right_const;
-        let mut upper = lower;
-
-        for monomial in self.left.monomials() {
-            let token = tokens.get(monomial.var_index())?;
-            let var_lower = to_f64(&token.variable.lower_bound()?)?;
-            let var_upper = to_f64(&token.variable.upper_bound()?)?;
-            if !var_lower.is_finite() || !var_upper.is_finite() {
-                return None;
-            }
-
-            let coefficient = to_f64(monomial.coefficient())?;
-            if coefficient >= 0.0 {
-                lower += coefficient * var_lower;
-                upper += coefficient * var_upper;
-            } else {
-                lower += coefficient * var_upper;
-                upper += coefficient * var_lower;
-            }
-        }
-
-        for monomial in self.right.monomials() {
-            let token = tokens.get(monomial.var_index())?;
-            let var_lower = to_f64(&token.variable.lower_bound()?)?;
-            let var_upper = to_f64(&token.variable.upper_bound()?)?;
-            if !var_lower.is_finite() || !var_upper.is_finite() {
-                return None;
-            }
-
-            let coefficient = -to_f64(monomial.coefficient())?;
-            if coefficient >= 0.0 {
-                lower += coefficient * var_lower;
-                upper += coefficient * var_upper;
-            } else {
-                lower += coefficient * var_upper;
-                upper += coefficient * var_lower;
-            }
-        }
-
-        if !lower.is_finite() || !upper.is_finite() {
-            return None;
-        }
-        Some(lower.abs().max(upper.abs()).max(MIN_BIG_M))
+        infer_linear_difference_abs_bound_from_tokens(&self.left, &self.right, tokens)
+            .map(|big_m| big_m.max(MIN_BIG_M))
     }
 
     fn build_mechanism_constraints(

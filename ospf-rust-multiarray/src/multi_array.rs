@@ -27,7 +27,9 @@
 use super::concept::{AccessOrder, StorageOrder};
 use super::error::MappingIndexError;
 use super::multi_array_view::MultiArrayView;
-use super::shape::{AbstractShape, DynShape};
+use super::shape::{
+    AbstractShape, DynShape, Shape1, Shape2, Shape3, Shape4, ShapeAccessOrderExt, ShapeIndicesIter,
+};
 use cc_traits::{Collection, CollectionMut, CollectionRef, Iter, IterMut, Len};
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -477,6 +479,30 @@ where
     pub fn enumerate(&self) -> MultiArrayEnumerateIter<'_, T, S, C> {
         MultiArrayEnumerateIter::new(self)
     }
+
+    /// 使用指定访问顺序迭代元素 / Iterate elements with specified access order.
+    pub fn iter_with_order(
+        &self,
+        access_order: AccessOrder,
+    ) -> MultiArrayWithOrderIter<'_, T, S, C> {
+        MultiArrayWithOrderIter::new(self, access_order)
+    }
+
+    /// 使用指定访问顺序进行枚举迭代 / Enumerate iteration with specified access order.
+    pub fn enumerate_with_order(
+        &self,
+        access_order: AccessOrder,
+    ) -> MultiArrayEnumerateWithOrderIter<'_, T, S, C> {
+        MultiArrayEnumerateWithOrderIter::new(self, access_order)
+    }
+
+    /// 按访问顺序展平为列表 / Flatten to a list with specified access order.
+    pub fn flatten(&self, access_order: AccessOrder) -> std::vec::Vec<T>
+    where
+        T: Clone,
+    {
+        self.iter_with_order(access_order).cloned().collect()
+    }
 }
 
 impl<T, S, C> Clone for MultiArray<T, S, C>
@@ -491,6 +517,84 @@ where
             shape: self.shape.clone(),
             _marker: PhantomData,
         }
+    }
+}
+
+/// 带访问顺序的数组迭代器 / Multi-array iterator with explicit access order.
+pub struct MultiArrayWithOrderIter<'a, T, S, C>
+where
+    S: AbstractShape,
+    C: MultiArrayCollection<T>,
+{
+    array: &'a MultiArray<T, S, C>,
+    indices: ShapeIndicesIter<'a, S>,
+}
+
+impl<'a, T, S, C> MultiArrayWithOrderIter<'a, T, S, C>
+where
+    S: AbstractShape,
+    C: MultiArrayCollection<T>,
+{
+    pub fn new(array: &'a MultiArray<T, S, C>, access_order: AccessOrder) -> Self {
+        Self {
+            array,
+            indices: array.shape.iterate(access_order),
+        }
+    }
+}
+
+impl<'a, T, S, C> Iterator for MultiArrayWithOrderIter<'a, T, S, C>
+where
+    S: AbstractShape,
+    C: MultiArrayCollection<T>,
+{
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let vector = self.indices.next()?;
+        let index = self.array.shape.index_of(&vector).ok()?;
+        Some(&self.array[index])
+    }
+}
+
+/// 带访问顺序的数组枚举迭代器 / Multi-array enumerate iterator with explicit access order.
+pub struct MultiArrayEnumerateWithOrderIter<'a, T, S, C>
+where
+    S: AbstractShape,
+    C: MultiArrayCollection<T>,
+{
+    array: &'a MultiArray<T, S, C>,
+    indices: ShapeIndicesIter<'a, S>,
+    current_index: usize,
+}
+
+impl<'a, T, S, C> MultiArrayEnumerateWithOrderIter<'a, T, S, C>
+where
+    S: AbstractShape,
+    C: MultiArrayCollection<T>,
+{
+    pub fn new(array: &'a MultiArray<T, S, C>, access_order: AccessOrder) -> Self {
+        Self {
+            array,
+            indices: array.shape.iterate(access_order),
+            current_index: 0,
+        }
+    }
+}
+
+impl<'a, T, S, C> Iterator for MultiArrayEnumerateWithOrderIter<'a, T, S, C>
+where
+    S: AbstractShape,
+    C: MultiArrayCollection<T>,
+{
+    type Item = (usize, S::VectorType, &'a T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let vector = self.indices.next()?;
+        let linear_index = self.array.shape.index_of(&vector).ok()?;
+        let index = self.current_index;
+        self.current_index += 1;
+        Some((index, vector, &self.array[linear_index]))
     }
 }
 
@@ -583,6 +687,62 @@ impl MultiArrayBuilder {
         G: Fn(usize, &<S as AbstractShape>::VectorType) -> T,
     {
         MultiArray::<T, S, C>::new_by(shape, generator)
+    }
+
+    /// 按默认访问顺序（RowMajor）从列表创建数组 / Create array from list in default access order (RowMajor).
+    pub fn from_list<T, S>(shape: S, list: std::vec::Vec<T>) -> MultiArray<T, S>
+    where
+        S: AbstractShape,
+    {
+        Self::from_list_with_order(shape, list, AccessOrder::default())
+    }
+
+    /// 按指定访问顺序从列表创建数组 / Create array from list in specified access order.
+    pub fn from_list_with_order<T, S>(
+        shape: S,
+        list: std::vec::Vec<T>,
+        access_order: AccessOrder,
+    ) -> MultiArray<T, S>
+    where
+        S: AbstractShape,
+    {
+        assert_eq!(
+            list.len(),
+            shape.len(),
+            "List size ({}) must match shape size ({}) / 列表长度 ({}) 必须等于形状长度 ({})",
+            list.len(),
+            shape.len(),
+            list.len(),
+            shape.len()
+        );
+
+        let mut reordered: std::vec::Vec<Option<T>> = (0..shape.len()).map(|_| None).collect();
+        let mut list_iter = list.into_iter();
+
+        for vector in shape.iterate(access_order) {
+            let linear_index = shape.index_of(&vector).expect(
+                "Shape iteration must always yield valid indices / 形状迭代必须产生有效索引",
+            );
+            let value = list_iter
+                .next()
+                .expect("List length must match shape size / 列表长度必须与形状长度匹配");
+            reordered[linear_index] = Some(value);
+        }
+
+        let values: std::vec::Vec<T> = reordered
+            .into_iter()
+            .map(|value| {
+                value.expect(
+                    "All linear indices must be assigned exactly once / 所有线性索引必须且只能被赋值一次",
+                )
+            })
+            .collect();
+
+        MultiArray {
+            list: values.into_iter().collect(),
+            shape,
+            _marker: PhantomData,
+        }
     }
 
     /// 使用指定存储顺序创建多维数组
@@ -684,6 +844,63 @@ impl MultiArrayBuilder {
             generator,
         )
     }
+}
+
+/// 一维多维数组类型别名。
+/// 1D multi-array type alias.
+pub type MultiArray1<T, SO = StorageOrder, C = Vec<T>> = MultiArray<T, Shape1<SO>, C>;
+
+/// 二维多维数组类型别名。
+/// 2D multi-array type alias.
+pub type MultiArray2<T, SO = StorageOrder, C = Vec<T>> = MultiArray<T, Shape2<SO>, C>;
+
+/// 三维多维数组类型别名。
+/// 3D multi-array type alias.
+pub type MultiArray3<T, SO = StorageOrder, C = Vec<T>> = MultiArray<T, Shape3<SO>, C>;
+
+/// 四维多维数组类型别名。
+/// 4D multi-array type alias.
+pub type MultiArray4<T, SO = StorageOrder, C = Vec<T>> = MultiArray<T, Shape4<SO>, C>;
+
+/// 动态维度多维数组类型别名。
+/// Dynamic-dimensional multi-array type alias.
+pub type DynMultiArray<T, C = Vec<T>> = MultiArray<T, DynShape, C>;
+
+/// 使用给定形状和值创建多维数组。
+/// Create a multi-array with a given shape and fill value.
+pub fn multi_array_of_shape<T, S>(shape: S, value: T) -> MultiArray<T, S>
+where
+    T: Clone,
+    S: AbstractShape,
+{
+    MultiArray::new_with(shape, value)
+}
+
+/// 创建一维多维数组。
+/// Create a 1D multi-array.
+pub fn multi_array_1<T>(d1: usize, value: T) -> MultiArray1<T>
+where
+    T: Clone,
+{
+    MultiArray::new_with(Shape1::new([d1]), value)
+}
+
+/// 创建二维多维数组。
+/// Create a 2D multi-array.
+pub fn multi_array_2<T>(d1: usize, d2: usize, value: T) -> MultiArray2<T>
+where
+    T: Clone,
+{
+    MultiArray::new_with(Shape2::new([d1, d2]), value)
+}
+
+/// 创建三维多维数组。
+/// Create a 3D multi-array.
+pub fn multi_array_3<T>(d1: usize, d2: usize, d3: usize, value: T) -> MultiArray3<T>
+where
+    T: Clone,
+{
+    MultiArray::new_with(Shape3::new([d1, d2, d3]), value)
 }
 
 impl<T, S, C> Deref for MultiArray<T, S, C>
@@ -1010,9 +1227,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DummyIndex;
     use crate::concept::StorageOrder as RuntimeStorageOrder;
     use crate::shape::Shape;
-    use crate::DummyIndex;
 
     type RTShape<const D: usize> = Shape<D, RuntimeStorageOrder>;
 
@@ -1246,7 +1463,7 @@ mod tests {
 
     #[test]
     fn test_multi_array_view_conversion() {
-        use crate::{dummy_expect, MultiArrayToView};
+        use crate::{MultiArrayToView, dummy_expect};
 
         let shape: RTShape<2> = Shape::new([3, 4]);
         let mut array = MultiArrayBuilder::new_with(shape, 0);
@@ -1415,5 +1632,113 @@ mod tests {
 
         let list_ref: &Vec<i32> = array.deref();
         assert_eq!(list_ref.len(), 6);
+    }
+
+    #[test]
+    fn test_multi_array_iter_with_order() {
+        let shape: RTShape<2> = Shape::new([2, 3]);
+        let array: MultiArray<i32, _> =
+            MultiArrayBuilder::new_by(shape, |_idx, vector| (vector[0] * 10 + vector[1]) as i32);
+
+        let row_major: std::vec::Vec<i32> = array
+            .iter_with_order(AccessOrder::RowMajor)
+            .copied()
+            .collect();
+        assert_eq!(row_major, vec![0, 1, 2, 10, 11, 12]);
+
+        let column_major: std::vec::Vec<i32> = array
+            .iter_with_order(AccessOrder::ColumnMajor)
+            .copied()
+            .collect();
+        assert_eq!(column_major, vec![0, 10, 1, 11, 2, 12]);
+    }
+
+    #[test]
+    fn test_multi_array_enumerate_with_order() {
+        let shape: RTShape<2> = Shape::new([2, 2]);
+        let array: MultiArray<i32, _> =
+            MultiArrayBuilder::new_by(shape, |_idx, vector| (vector[0] * 10 + vector[1]) as i32);
+
+        let entries: std::vec::Vec<(usize, [usize; 2], i32)> = array
+            .enumerate_with_order(AccessOrder::ColumnMajor)
+            .map(|(index, vector, value)| (index, vector, *value))
+            .collect();
+
+        assert_eq!(
+            entries,
+            vec![
+                (0, [0, 0], 0),
+                (1, [1, 0], 10),
+                (2, [0, 1], 1),
+                (3, [1, 1], 11),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multi_array_flatten_with_order() {
+        let shape: RTShape<2> = Shape::new([2, 3]);
+        let array: MultiArray<i32, _> =
+            MultiArrayBuilder::new_by(shape, |_idx, vector| (vector[0] * 10 + vector[1]) as i32);
+
+        let flattened = array.flatten(AccessOrder::ColumnMajor);
+        assert_eq!(flattened, vec![0, 10, 1, 11, 2, 12]);
+    }
+
+    #[test]
+    fn test_multi_array_from_list_with_order() {
+        let shape: RTShape<2> = Shape::new([2, 3]);
+
+        let row_array = MultiArrayBuilder::from_list(shape.clone(), vec![1, 2, 3, 4, 5, 6]);
+        assert_eq!(row_array[&[0, 0]], 1);
+        assert_eq!(row_array[&[0, 1]], 2);
+        assert_eq!(row_array[&[1, 2]], 6);
+
+        let column_array = MultiArrayBuilder::from_list_with_order(
+            shape,
+            vec![1, 2, 3, 4, 5, 6],
+            AccessOrder::ColumnMajor,
+        );
+        assert_eq!(column_array[&[0, 0]], 1);
+        assert_eq!(column_array[&[1, 0]], 2);
+        assert_eq!(column_array[&[0, 1]], 3);
+        assert_eq!(column_array[&[1, 2]], 6);
+    }
+
+    #[test]
+    fn test_kotlin_parity_constructors() {
+        let array1 = multi_array_1(3, 7);
+        assert_eq!(array1.len(), 3);
+        assert_eq!(array1[&[2]], 7);
+
+        let array2 = multi_array_2(2, 3, 5);
+        assert_eq!(array2.len(), 6);
+        assert_eq!(array2[&[1, 2]], 5);
+
+        let array3 = multi_array_3(2, 2, 2, 9);
+        assert_eq!(array3.len(), 8);
+        assert_eq!(array3[&[1, 1, 1]], 9);
+    }
+
+    #[test]
+    fn test_kotlin_parity_type_aliases() {
+        let array1: MultiArray1<i32> = MultiArray::new_with(Shape1::new([2]), 1);
+        let array2: MultiArray2<i32> = MultiArray::new_with(Shape2::new([2, 2]), 2);
+        let array3: MultiArray3<i32> = MultiArray::new_with(Shape3::new([2, 2, 2]), 3);
+        let array4: MultiArray4<i32> = MultiArray::new_with(Shape4::new([1, 2, 2, 2]), 4);
+        let dyn_array: DynMultiArray<i32> = MultiArray::new_with(DynShape::new(vec![2, 2]), 5);
+
+        assert_eq!(array1[&[1]], 1);
+        assert_eq!(array2[&[1, 1]], 2);
+        assert_eq!(array3[&[1, 1, 1]], 3);
+        assert_eq!(array4[&[0, 1, 1, 1]], 4);
+        assert_eq!(dyn_array[&vec![1, 1]], 5);
+    }
+
+    #[test]
+    fn test_multi_array_of_shape() {
+        let array: MultiArray2<i32> = multi_array_of_shape(Shape2::new([2, 3]), 11);
+        assert_eq!(array.len(), 6);
+        assert_eq!(array[&[1, 2]], 11);
     }
 }

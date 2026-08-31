@@ -1,10 +1,13 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::variable::UContinuousVariableItem;
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
+use ospf_rust_core::variable::{
+    UContinuous, UContinuousVariableItem, VariableCombination2D, VariableRange,
+};
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
+use ospf_rust_multiarray::{MultiArrayBuilder, Shape};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct Node {
@@ -69,70 +72,76 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let node_count = data.nodes.len();
 
     let mut model = MetaModel::<f64>::new("demo11");
-    let mut arc_idx = vec![vec![None; node_count]; node_count];
-    for arc in &data.capacities {
-        let var = UContinuousVariableItem::auto(&format!("x_{}_{}", arc.from, arc.to));
-        let idx = model.register_variable(var)?;
-        arc_idx[arc.from][arc.to] = Some(idx);
-        model.add_linear_constraint(
-            &[(idx, 1.0)],
-            ConstraintRelation::LessEqual,
-            arc.capacity,
-            &format!("cap_{}_{}", arc.from, arc.to),
-        )?;
-    }
-    let flow_idx = model.register_variable(UContinuousVariableItem::auto("flow"))?;
+    let arc_shape = Shape::new([node_count, node_count]);
+    let arc_vars: VariableCombination2D<UContinuous> =
+        VariableCombination2D::with_name_and_range_generator(
+            arc_shape.clone(),
+            "x",
+            |_index, vector| format!("{}_{}", vector[0], vector[1]),
+            |_index, vector| {
+                data.capacities
+                    .iter()
+                    .find(|arc| arc.from == vector[0] && arc.to == vector[1])
+                    .map(|arc| VariableRange::bounded(0.0, arc.capacity))
+                    .unwrap_or_else(|| VariableRange::fixed(0.0))
+            },
+        );
+    let arc_idx = MultiArrayBuilder::from_list(
+        arc_shape,
+        model.register_variables::<UContinuous, _>(arc_vars.iter().cloned())?,
+    );
+    let flow_var = UContinuousVariableItem::auto("flow");
+    let flow_idx = model.register_variable(flow_var.clone())?;
 
-    let mut objective = vec![0.0; model.num_tokens()];
-    objective[flow_idx] = 1.0;
-    model.set_linear_objective(objective, ObjectiveCategory::Maximum);
+    let flow = Linear::new(
+        vec![LinearMonomial::new(1.0, flow_var.to_owned_symbol())],
+        0.0,
+    );
+    let flow_out = MultiArrayBuilder::new_by(Shape::<1>::new([node_count]), |_idx, vector| {
+        let node = vector[0];
+        Linear::new(
+            (0..node_count)
+                .map(|j| LinearMonomial::new(1.0, arc_vars[&[node, j]].to_owned_symbol()))
+                .collect(),
+            0.0,
+        )
+    });
+    let flow_in = MultiArrayBuilder::new_by(Shape::<1>::new([node_count]), |_idx, vector| {
+        let node = vector[0];
+        Linear::new(
+            (0..node_count)
+                .map(|i| LinearMonomial::new(1.0, arc_vars[&[i, node]].to_owned_symbol()))
+                .collect(),
+            0.0,
+        )
+    });
+
+    model.set_math_linear_objective(flow.clone(), ObjectiveCategory::Maximum, "flow")?;
 
     for node in 0..node_count {
-        let mut coeffs: Vec<(usize, f64)> = Vec::new();
-        for j in 0..node_count {
-            if let Some(idx) = arc_idx[node][j] {
-                coeffs.push((idx, 1.0));
-            }
-        }
-        for i in 0..node_count {
-            if let Some(idx) = arc_idx[i][node] {
-                coeffs.push((idx, -1.0));
-            }
-        }
-
+        let balance = flow_out[node].clone() - flow_in[node].clone();
         if node == data.root {
-            coeffs.push((flow_idx, -1.0));
-            model.add_linear_constraint(&coeffs, ConstraintRelation::Equal, 0.0, "root_balance")?;
+            model.add_math_inequality((balance - flow.clone()).eq_to(0.0), "root_balance");
         } else if node == data.end {
-            coeffs.push((flow_idx, 1.0));
-            model.add_linear_constraint(&coeffs, ConstraintRelation::Equal, 0.0, "end_balance")?;
+            model.add_math_inequality((balance + flow.clone()).eq_to(0.0), "end_balance");
         } else {
-            model.add_linear_constraint(
-                &coeffs,
-                ConstraintRelation::Equal,
-                0.0,
-                &format!("balance_{}", node),
-            )?;
+            model.add_math_inequality(balance.eq_to(0.0), &format!("balance_{}", node));
         }
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo11 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo11 ===");
     println!("status: {:?}", output.status);
     println!("max flow: {:.2}", read_solution_value(&solution, flow_idx));
     for arc in &data.capacities {
-        if let Some(idx) = arc_idx[arc.from][arc.to] {
-            let value = read_solution_value(&solution, idx);
-            if value > 0.0 {
-                println!(
-                    "{} -> {} = {:.2}",
-                    data.nodes[arc.from].name, data.nodes[arc.to].name, value
-                );
-            }
+        let value = read_solution_value(&solution, arc_idx[&[arc.from, arc.to]]);
+        if value > 0.0 {
+            println!(
+                "{} -> {} = {:.2}",
+                data.nodes[arc.from].name, data.nodes[arc.to].name, value
+            );
         }
     }
     Ok(())

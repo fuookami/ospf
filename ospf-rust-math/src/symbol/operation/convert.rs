@@ -100,6 +100,29 @@ pub trait ToCanonical<T, E: Exponent = i32>: Sized {
     fn to_canonical(self) -> Canonical<T, E>;
 }
 
+/// Kotlin 风格线性多项式转换命名兼容 Trait。
+/// Kotlin-style compatibility trait for linear polynomial conversion naming.
+pub trait ToLinearPolynomial<T>: ToLinear<T> {}
+
+impl<T, P> ToLinearPolynomial<T> for P where P: ToLinear<T> {}
+
+/// Kotlin 风格二次多项式转换命名兼容 Trait。
+/// Kotlin-style compatibility trait for quadratic polynomial conversion naming.
+pub trait ToQuadraticPolynomial<T>: ToQuadratic<T> {}
+
+impl<T, P> ToQuadraticPolynomial<T> for P where P: ToQuadratic<T> {}
+
+/// Kotlin 风格标准多项式转换命名兼容 Trait。
+/// Kotlin-style compatibility trait for canonical polynomial conversion naming.
+pub trait ToCanonicalPolynomial<T, E: Exponent = i32>: ToCanonical<T, E> {}
+
+impl<T, E, P> ToCanonicalPolynomial<T, E> for P
+where
+    E: Exponent,
+    P: ToCanonical<T, E>,
+{
+}
+
 // ============================================================================
 // 尝试转换错误类型 / Fallible Conversion Error Types
 // ============================================================================
@@ -143,7 +166,10 @@ impl std::fmt::Display for TryToQuadraticError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TryToQuadraticError::HasHigherOrderTerms => {
-                write!(f, "Cannot convert to quadratic: contains higher order terms")
+                write!(
+                    f,
+                    "Cannot convert to quadratic: contains higher order terms"
+                )
             }
             TryToQuadraticError::MonomialDegreeTooHigh => {
                 write!(f, "Cannot convert to quadratic: monomial degree exceeds 2")
@@ -228,6 +254,29 @@ pub trait TryToCanonical<T, E: Exponent = i32>: Sized {
     fn try_to_canonical(self) -> Result<Canonical<T, E>, TryToCanonicalError>;
 }
 
+/// Kotlin 风格线性多项式尝试转换命名兼容 Trait。
+/// Kotlin-style compatibility trait for fallible linear polynomial conversion naming.
+pub trait TryToLinearPolynomial<T>: TryToLinear<T> {}
+
+impl<T, P> TryToLinearPolynomial<T> for P where P: TryToLinear<T> {}
+
+/// Kotlin 风格二次多项式尝试转换命名兼容 Trait。
+/// Kotlin-style compatibility trait for fallible quadratic polynomial conversion naming.
+pub trait TryToQuadraticPolynomial<T>: TryToQuadratic<T> {}
+
+impl<T, P> TryToQuadraticPolynomial<T> for P where P: TryToQuadratic<T> {}
+
+/// Kotlin 风格标准多项式尝试转换命名兼容 Trait。
+/// Kotlin-style compatibility trait for fallible canonical polynomial conversion naming.
+pub trait TryToCanonicalPolynomial<T, E: Exponent = i32>: TryToCanonical<T, E> {}
+
+impl<T, E, P> TryToCanonicalPolynomial<T, E> for P
+where
+    E: Exponent,
+    P: TryToCanonical<T, E>,
+{
+}
+
 // ============================================================================
 // 宏：为实现了 To* 的类型提供 TryTo* 实现
 // Macro: provide TryTo* implementations for types implementing To*
@@ -242,7 +291,10 @@ macro_rules! impl_try_to_linear_from_to_linear {
         where
             $ty: $crate::symbol::operation::ToLinear<T>,
         {
-            fn try_to_linear(self) -> Result<$crate::symbol::Linear<T>, $crate::symbol::operation::TryToLinearError> {
+            fn try_to_linear(
+                self,
+            ) -> Result<$crate::symbol::Linear<T>, $crate::symbol::operation::TryToLinearError>
+            {
                 Ok(self.to_linear())
             }
         }
@@ -270,11 +322,17 @@ macro_rules! impl_try_to_quadratic_from_to_quadratic {
 #[macro_export]
 macro_rules! impl_try_to_canonical_from_to_canonical {
     ($ty:ty) => {
-        impl<T, E: $crate::operator::Exponent> $crate::symbol::operation::TryToCanonical<T, E> for $ty
+        impl<T, E: $crate::operator::Exponent> $crate::symbol::operation::TryToCanonical<T, E>
+            for $ty
         where
             $ty: $crate::symbol::operation::ToCanonical<T, E>,
         {
-            fn try_to_canonical(self) -> Result<$crate::symbol::Canonical<T, E>, $crate::symbol::operation::TryToCanonicalError> {
+            fn try_to_canonical(
+                self,
+            ) -> Result<
+                $crate::symbol::Canonical<T, E>,
+                $crate::symbol::operation::TryToCanonicalError,
+            > {
                 Ok(self.to_canonical())
             }
         }

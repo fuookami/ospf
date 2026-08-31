@@ -1,6 +1,6 @@
 # Symbol - 符号运算模块
 
-[English](README.md)
+:us: English | :cn: [简体中文](README_ch.md)
 
 ## 概述
 

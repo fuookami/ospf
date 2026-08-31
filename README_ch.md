@@ -8,7 +8,7 @@ ospf：https://github.com/fuookami/ospf
 
 文档：https://fuookami.github.io/ospf/
 
-:us: [English](README.md) | :cn: 简体中文
+🇺🇸 [English](README.md) | 🇨🇳 简体中文
 
 ## 示例入口
 
@@ -20,3 +20,4 @@ Demo2 的 Benders 在线判定覆盖参数示例可见：
 ## 许可证
 
 本项目基于 MIT 许可证发布 - 详情请参阅 [LICENSE](LICENSE) 文件。
+

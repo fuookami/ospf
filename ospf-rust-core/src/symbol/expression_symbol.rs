@@ -12,7 +12,7 @@ use super::{
     Category, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     QuadraticIntermediateSymbol,
 };
-use crate::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 use crate::token::TokenList;
 
 /// Generic expression symbol.

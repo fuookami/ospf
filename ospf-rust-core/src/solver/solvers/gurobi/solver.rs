@@ -425,6 +425,7 @@ impl GurobiSolver {
         &self,
         grb_model: &mut grb::Model,
         objective_category: ObjectiveCategory,
+        grb_vars: Option<&[grb::Var]>,
     ) -> Result<()> {
         let no_improvement_time_limit = self
             .config
@@ -451,10 +452,12 @@ impl GurobiSolver {
         }
 
         let mut best_objective: Option<f64> = None;
+        let mut initial_objective_value: Option<f64> = None;
         let mut last_improvement_time = Instant::now();
         let optimize_start_time = Instant::now();
         let mut last_telemetry_emit_time: Option<Instant> = None;
         let mut pending_observer_terminate = false;
+        let callback_vars = grb_vars.map(|vars| vars.to_vec());
         let improvement_tolerance = self
             .config
             .improve_threshold
@@ -467,8 +470,43 @@ impl GurobiSolver {
                 }
             }
 
-            let snapshot = if let grb::callback::Where::MIP(mip_ctx) = &where_ctx {
+            let snapshot = if let grb::callback::Where::MIPSol(mip_ctx) = &where_ctx {
+                let objective_value = mip_ctx.obj().ok().filter(|value| value.is_finite());
+                if initial_objective_value.is_none() {
+                    initial_objective_value = objective_value;
+                }
+                let best_bound = mip_ctx.obj_bnd().ok().filter(|value| value.is_finite());
+                let node_count = mip_ctx
+                    .node_cnt()
+                    .ok()
+                    .filter(|value| value.is_finite() && *value >= 0.0)
+                    .map(|value| value as usize);
+                let mip_gap =
+                    objective_value
+                        .zip(best_bound)
+                        .map(|(objective_value, best_bound)| {
+                            Self::compute_relative_gap(objective_value, best_bound)
+                        });
+                let incumbent_solution = callback_vars
+                    .as_ref()
+                    .and_then(|vars| mip_ctx.get_solution(vars).ok());
+                GurobiNativeSnapshot {
+                    where_point: GurobiNativeWhere::Mip,
+                    solve_time: optimize_start_time.elapsed(),
+                    objective_category,
+                    initial_objective_value,
+                    objective_value,
+                    incumbent_solution,
+                    best_bound,
+                    mip_gap,
+                    iterations: None,
+                    node_count,
+                }
+            } else if let grb::callback::Where::MIP(mip_ctx) = &where_ctx {
                 let objective_value = mip_ctx.obj_best().ok().filter(|value| value.is_finite());
+                if initial_objective_value.is_none() {
+                    initial_objective_value = objective_value;
+                }
                 let best_bound = mip_ctx.obj_bnd().ok().filter(|value| value.is_finite());
                 let node_count = mip_ctx
                     .node_cnt()
@@ -489,7 +527,10 @@ impl GurobiSolver {
                 GurobiNativeSnapshot {
                     where_point: GurobiNativeWhere::Mip,
                     solve_time: optimize_start_time.elapsed(),
+                    objective_category,
+                    initial_objective_value,
                     objective_value,
+                    incumbent_solution: None,
                     best_bound,
                     mip_gap,
                     iterations,
@@ -499,7 +540,10 @@ impl GurobiSolver {
                 GurobiNativeSnapshot {
                     where_point: GurobiNativeWhere::Other,
                     solve_time: optimize_start_time.elapsed(),
+                    objective_category,
+                    initial_objective_value,
                     objective_value: None,
+                    incumbent_solution: None,
                     best_bound: None,
                     mip_gap: None,
                     iterations: None,
@@ -508,7 +552,10 @@ impl GurobiSolver {
             };
 
             if let Some(callback) = telemetry_callback.as_ref() {
-                if let grb::callback::Where::MIP(_) = &where_ctx {
+                if matches!(
+                    &where_ctx,
+                    grb::callback::Where::MIP(_) | grb::callback::Where::MIPSol(_)
+                ) {
                     let should_emit = match telemetry_min_interval {
                         None => true,
                         Some(min_interval_seconds) => last_telemetry_emit_time
@@ -520,7 +567,10 @@ impl GurobiSolver {
                     if should_emit {
                         callback(&GurobiTelemetryStatus {
                             solve_time: snapshot.solve_time,
+                            objective_category: snapshot.objective_category,
+                            initial_objective_value: snapshot.initial_objective_value,
                             objective_value: snapshot.objective_value,
+                            incumbent_solution: snapshot.incumbent_solution.clone(),
                             best_bound: snapshot.best_bound,
                             mip_gap: snapshot.mip_gap,
                             iterations: snapshot.iterations,
@@ -608,8 +658,20 @@ impl GurobiSolver {
             Status::NodeLimit => SolverStatus::IterationLimit,
             Status::TimeLimit => SolverStatus::TimeLimit,
             Status::Numeric => SolverStatus::NumericError,
-            Status::SubOptimal => SolverStatus::Optimal,
+            Status::SubOptimal => SolverStatus::Feasible,
             _ => SolverStatus::Unknown,
+        }
+    }
+
+    /// 结合解数量细化状态 / Refine status with solution availability.
+    pub(super) fn refine_status_with_solution(
+        status: SolverStatus,
+        has_solution: bool,
+    ) -> SolverStatus {
+        if has_solution && matches!(status, SolverStatus::Unknown) {
+            SolverStatus::Feasible
+        } else {
+            status
         }
     }
 

@@ -1,10 +1,11 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::variable::UContinuousVariableItem;
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
+use ospf_rust_core::variable::{UContinuous, VariableCombination2D};
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
+use ospf_rust_multiarray::{MultiArrayBuilder, Shape};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct MonthPlan {
@@ -40,50 +41,78 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     let n = plans.len();
     let mut model = MetaModel::<f64>::new("demo16");
-    let mut x_idx = vec![vec![0usize; n]; n];
-    for i in 0..n {
-        for j in 0..n {
-            x_idx[i][j] = model
-                .register_variable(UContinuousVariableItem::auto(&format!("x_{}_{}", i, j)))?;
-        }
-    }
+    let x_shape = Shape::new([n, n]);
+    let x_vars: VariableCombination2D<UContinuous> =
+        VariableCombination2D::with_name_generator(x_shape.clone(), "x", |_index, vector| {
+            format!("{}_{}", vector[0], vector[1])
+        });
+    let x_idx = MultiArrayBuilder::from_list(
+        x_shape,
+        model.register_variables::<UContinuous, _>(x_vars.iter().cloned())?,
+    );
 
-    let mut objective = vec![0.0; model.num_tokens()];
+    let mut delay_delivery_cost_terms = Vec::new();
+    let mut storage_cost_terms = Vec::new();
+    let mut produce_cost_terms = Vec::with_capacity(n * n);
     for i in 0..n {
         for j in 0..n {
             if i < j {
-                objective[x_idx[i][j]] += (j - i) as f64 * storage_price;
-                objective[x_idx[j][i]] += ((j - i) * (j - i)) as f64 * delay_price;
+                storage_cost_terms.push(LinearMonomial::new(
+                    (j - i) as f64 * storage_price,
+                    x_vars[&[i, j]].to_owned_symbol(),
+                ));
+                delay_delivery_cost_terms.push(LinearMonomial::new(
+                    ((j - i) * (j - i)) as f64 * delay_price,
+                    x_vars[&[j, i]].to_owned_symbol(),
+                ));
             }
-            objective[x_idx[i][j]] += product_price;
+            produce_cost_terms.push(LinearMonomial::new(
+                product_price,
+                x_vars[&[i, j]].to_owned_symbol(),
+            ));
         }
     }
-    model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+    let delay_delivery_cost = Linear::new(delay_delivery_cost_terms, 0.0);
+    let storage_cost = Linear::new(storage_cost_terms, 0.0);
+    let produce_cost = Linear::new(produce_cost_terms, 0.0);
+    let total_cost = delay_delivery_cost + storage_cost + produce_cost;
+    let produce = MultiArrayBuilder::new_by(Shape::<1>::new([n]), |_idx, vec| {
+        let i = vec[0];
+        Linear::new(
+            (0..n)
+                .map(|j| LinearMonomial::new(1.0, x_vars[&[i, j]].to_owned_symbol()))
+                .collect(),
+            0.0,
+        )
+    });
+    let supply = MultiArrayBuilder::new_by(Shape::<1>::new([n]), |_idx, vec| {
+        let j = vec[0];
+        Linear::new(
+            (0..n)
+                .map(|i| LinearMonomial::new(1.0, x_vars[&[i, j]].to_owned_symbol()))
+                .collect(),
+            0.0,
+        )
+    });
+
+    model.set_math_linear_objective(total_cost, ObjectiveCategory::Minimum, "cost")?;
 
     for j in 0..n {
-        let coefficients: Vec<(usize, f64)> = (0..n).map(|i| (x_idx[i][j], 1.0)).collect();
-        model.add_linear_constraint(
-            &coefficients,
-            ConstraintRelation::GreaterEqual,
-            plans[j].demand,
+        model.add_math_inequality(
+            supply[j].clone().ge(plans[j].demand),
             &format!("demand_{}", plans[j].month),
-        )?;
+        );
     }
 
     for i in 0..n {
-        let coefficients: Vec<(usize, f64)> = (0..n).map(|j| (x_idx[i][j], 1.0)).collect();
-        model.add_linear_constraint(
-            &coefficients,
-            ConstraintRelation::LessEqual,
-            plans[i].productivity,
+        model.add_math_inequality(
+            produce[i].clone().le(plans[i].productivity),
             &format!("productivity_{}", plans[i].month),
-        )?;
+        );
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo16 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo16 ===");
     println!("status: {:?}", output.status);
@@ -92,7 +121,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
     for i in 0..n {
         for j in 0..n {
-            let value = read_solution_value(&solution, x_idx[i][j]);
+            let value = read_solution_value(&solution, x_idx[&[i, j]]);
             if value > 0.0 {
                 println!(
                     "produce month {} -> demand month {}: {:.2}",

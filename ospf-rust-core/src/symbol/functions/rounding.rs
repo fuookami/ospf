@@ -10,8 +10,8 @@ use num_traits::{FromPrimitive, One, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{
     BinaryVariableItem, ContinuousVariableItem, IntegerVariableItem, VariableId, new_group_id,
@@ -19,6 +19,7 @@ use crate::variable::{
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
 use super::big_m::{BigMPolicy, infer_linear_abs_bound_from_tokens};
 
@@ -129,20 +130,95 @@ where
         }
     }
 
+    /// 使用自动 ID 与调用方提供的名称创建取整函数。
+    /// Create a rounding function with an auto id and caller-provided name.
+    pub fn named(name: impl AsRef<str>, input: Linear<V>, kind: RoundingKind) -> Self {
+        Self::new(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            input,
+            kind,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建取整函数。
+    /// Create a rounding function with an auto id and auto-generated name.
+    pub fn auto(input: Linear<V>, kind: RoundingKind) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("rounding", id);
+        Self::new(id, &name, input, kind)
+    }
+
     pub fn floor(id: u64, name: &str, input: Linear<V>) -> Self {
         Self::new(id, name, input, RoundingKind::Floor)
+    }
+
+    /// 使用自动 ID 与调用方提供的名称创建 floor 函数。
+    /// Create a floor function with an auto id and caller-provided name.
+    pub fn named_floor(name: impl AsRef<str>, input: Linear<V>) -> Self {
+        Self::floor(next_auto_intermediate_symbol_id(), name.as_ref(), input)
+    }
+
+    /// 使用自动 ID 与自动名称创建 floor 函数。
+    /// Create a floor function with an auto id and auto-generated name.
+    pub fn auto_floor(input: Linear<V>) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("floor", id);
+        Self::floor(id, &name, input)
     }
 
     pub fn ceil(id: u64, name: &str, input: Linear<V>) -> Self {
         Self::new(id, name, input, RoundingKind::Ceil)
     }
 
+    /// 使用自动 ID 与调用方提供的名称创建 ceil 函数。
+    /// Create a ceil function with an auto id and caller-provided name.
+    pub fn named_ceil(name: impl AsRef<str>, input: Linear<V>) -> Self {
+        Self::ceil(next_auto_intermediate_symbol_id(), name.as_ref(), input)
+    }
+
+    /// 使用自动 ID 与自动名称创建 ceil 函数。
+    /// Create a ceil function with an auto id and auto-generated name.
+    pub fn auto_ceil(input: Linear<V>) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("ceil", id);
+        Self::ceil(id, &name, input)
+    }
+
     pub fn round(id: u64, name: &str, input: Linear<V>) -> Self {
         Self::new(id, name, input, RoundingKind::Round)
     }
 
+    /// 使用自动 ID 与调用方提供的名称创建 round 函数。
+    /// Create a round function with an auto id and caller-provided name.
+    pub fn named_round(name: impl AsRef<str>, input: Linear<V>) -> Self {
+        Self::round(next_auto_intermediate_symbol_id(), name.as_ref(), input)
+    }
+
+    /// 使用自动 ID 与自动名称创建 round 函数。
+    /// Create a round function with an auto id and auto-generated name.
+    pub fn auto_round(input: Linear<V>) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("round", id);
+        Self::round(id, &name, input)
+    }
+
     pub fn trunc(id: u64, name: &str, input: Linear<V>) -> Self {
         Self::new(id, name, input, RoundingKind::Trunc)
+    }
+
+    /// 使用自动 ID 与调用方提供的名称创建 trunc 函数。
+    /// Create a trunc function with an auto id and caller-provided name.
+    pub fn named_trunc(name: impl AsRef<str>, input: Linear<V>) -> Self {
+        Self::trunc(next_auto_intermediate_symbol_id(), name.as_ref(), input)
+    }
+
+    /// 使用自动 ID 与自动名称创建 trunc 函数。
+    /// Create a trunc function with an auto id and auto-generated name.
+    pub fn auto_trunc(input: Linear<V>) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("trunc", id);
+        Self::trunc(id, &name, input)
     }
 
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
@@ -469,6 +545,14 @@ where
 
         Ok(constraints)
     }
+
+    pub(crate) fn mechanism_constraints_with_big_m(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        big_m: f64,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        self.build_mechanism_constraints(symbol_to_index, big_m.max(BIG_M_POLICY.min()))
+    }
 }
 
 impl<V> Display for RoundingFunction<V>
@@ -697,7 +781,12 @@ mod tests {
             .find(|constraint| constraint.name == "trunc_bound_sign_lb")
             .expect("trunc sign_lb constraint should exist");
         let sign_index = symbol_to_index
-            .get(&(f.sign_variable().expect("trunc should have sign var").id().unique_id() as usize))
+            .get(
+                &(f.sign_variable()
+                    .expect("trunc should have sign var")
+                    .id()
+                    .unique_id() as usize),
+            )
             .copied()
             .expect("sign variable index should exist");
         let sign_term = sign_lb
@@ -737,7 +826,12 @@ mod tests {
             .find(|constraint| constraint.name == "trunc_default_sign_lb")
             .expect("trunc sign_lb constraint should exist");
         let sign_index = symbol_to_index
-            .get(&(f.sign_variable().expect("trunc should have sign var").id().unique_id() as usize))
+            .get(
+                &(f.sign_variable()
+                    .expect("trunc should have sign var")
+                    .id()
+                    .unique_id() as usize),
+            )
             .copied()
             .expect("sign variable index should exist");
         let sign_term = sign_lb

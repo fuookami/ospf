@@ -1,5 +1,7 @@
 # ospf-rust-quantities
 
+🇺🇸 [English](README.md) | 🇨🇳 简体中文
+
 Physical quantities, dimensions and units system
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -17,8 +19,6 @@ Physical quantities, dimensions and units system
 - **Predefined Unit Systems**: Built-in SI, MKS, CGS and other unit systems
 - **Generic Value Types**: Supports `BigDecimal`, `f64`, and other numeric types
 - **Complete Bilingual Documentation**: Available in both Chinese and English
-
-[中文文档 / Chinese Documentation](./README_ch.md)
 
 ## Installation
 

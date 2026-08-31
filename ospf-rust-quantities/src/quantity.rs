@@ -14,10 +14,12 @@
 //! - 类型安全的算术运算
 
 use crate::dimension::DerivedQuantity;
-use crate::dimension::derived_quantity::{SameDerivedDimension, CTDerivedQuantity};
-use crate::error::DimensionMismatchError;
-use crate::unit::{Unit, UnitSystem, CTUnit, ct_conversion_factor, CTUnitMul, CTUnitDiv, CTUnitReciprocal};
+use crate::dimension::derived_quantity::{CTDerivedQuantity, SameDerivedDimension};
+use crate::error::{DimensionMismatchError, UnitConversionError};
 use crate::unit::concept::UnitTrait;
+use crate::unit::{
+    CTUnit, CTUnitDiv, CTUnitMul, CTUnitReciprocal, Unit, UnitConversionRule, UnitSystem,
+};
 use bigdecimal::BigDecimal;
 use ospf_rust_base::{ErrorPosition, Ret, error};
 use ospf_rust_math::operator::abs::Abs;
@@ -104,18 +106,18 @@ impl<V, U: CTUnit + Default> Quantity<V, U> {
     /// let length: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(10));
     /// ```
     pub fn new_ct(value: V) -> Self {
-        Self { 
-            value, 
+        Self {
+            value,
             unit: U::default(),
         }
     }
-    
+
     /// 获取单位符号（编译时）
     /// Get unit symbol (compile-time)
     pub fn unit_symbol() -> &'static str {
         U::SYMBOL
     }
-    
+
     /// 获取单位名称（编译时）
     /// Get unit name (compile-time)
     pub fn unit_name() -> &'static str {
@@ -133,7 +135,7 @@ impl<V, U: UnitTrait> Quantity<V, U> {
     pub fn value(&self) -> &V {
         &self.value
     }
-    
+
     /// 获取单位引用
     /// Get unit reference
     pub fn unit(&self) -> &U {
@@ -185,7 +187,7 @@ impl<V, U: UnitTrait> AsRef<Quantity<V, U>> for Quantity<V, U> {
 
 impl<V> Quantity<V, Unit>
 where
-    V: Clone + Mul<V, Output = V>,
+    V: Clone + Mul<V, Output = V> + Add<V, Output = V> + Sub<V, Output = V> + Div<V, Output = V>,
     BigDecimal: Into<V>,
 {
     /// 获取量纲
@@ -204,8 +206,12 @@ where
     /// 如果目标单位的量纲与当前单位的量纲不匹配，返回 `DimensionMismatchError`。
     /// Returns `DimensionMismatchError` if the target unit's dimension doesn't match.
     pub fn to_unit(&self, target: &Unit) -> Ret<Quantity<V, Unit>> {
-        let factor = match self.unit.conversion_factor_to(target) {
-            Some(f) => f,
+        if self.unit == *target {
+            return Ok(self.clone());
+        }
+
+        let value = match self.unit.convert_value_to(self.value.clone(), target) {
+            Some(value) => value,
             None => {
                 return Err(Box::new(error!(DimensionMismatchError {
                     expected: target.dimension().symbol().to_string(),
@@ -215,14 +221,7 @@ where
             }
         };
 
-        if factor == BigDecimal::from(1) {
-            return Ok(self.clone());
-        }
-
-        Ok(Quantity::new(
-            self.value.clone() * factor.into(),
-            target.clone(),
-        ))
+        Ok(Quantity::new(value, target.clone()))
     }
 
     /// 尝试转换到另一个单位（返回 Option）
@@ -245,7 +244,7 @@ where
 
 impl<V, U: CTUnit> Quantity<V, U>
 where
-    V: Clone + Mul<V, Output = V> + Div<V, Output = V>,
+    V: Clone + Mul<V, Output = V> + Add<V, Output = V> + Sub<V, Output = V> + Div<V, Output = V>,
     BigDecimal: Into<V> + From<V>,
 {
     /// 转换到另一个单位类型（编译时量纲检查）
@@ -263,8 +262,9 @@ where
     where
         <U as CTUnit>::Dimension: SameDerivedDimension<<Target as CTUnit>::Dimension>,
     {
-        let factor = ct_conversion_factor::<U, Target>();
-        Quantity::new_ct(self.value * factor.into())
+        let value = U::convert_value_to::<V, Target>(self.value)
+            .expect("Cannot convert quantities with different dimensions");
+        Quantity::new_ct(value)
     }
 }
 
@@ -321,7 +321,12 @@ impl<V> Eq for Quantity<V, Unit> where V: Eq {}
 
 impl<V> PartialOrd for Quantity<V, Unit>
 where
-    V: PartialOrd + Clone + Mul<V, Output = V>,
+    V: PartialOrd
+        + Clone
+        + Mul<V, Output = V>
+        + Add<V, Output = V>
+        + Sub<V, Output = V>
+        + Div<V, Output = V>,
     BigDecimal: Into<V>,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -368,9 +373,30 @@ impl<V: Ord, U: CTUnit> Ord for Quantity<V, U> {
 
 impl<V> Quantity<V, Unit>
 where
-    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V>,
+    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V> + Div<V, Output = V>,
     BigDecimal: Into<V>,
 {
+    fn linear_difference_unit(unit: &Unit) -> Unit {
+        if unit.is_linear() {
+            return unit.clone();
+        }
+
+        Unit::new_with_conversion(
+            format!("{} difference", unit.name()),
+            format!("delta({})", unit.symbol()),
+            unit.dimension().clone(),
+            UnitConversionRule::linear(unit.scale().clone()),
+        )
+    }
+
+    fn convert_linear_difference_value(value: V, from: &Unit, to: &Unit) -> Option<V> {
+        if !from.same_dimension(to) {
+            return None;
+        }
+        let factor: V = (from.scale().value() / to.scale().value()).into();
+        Some(value * factor)
+    }
+
     /// 加法（返回 Result）
     /// Addition (returning Result)
     ///
@@ -384,8 +410,52 @@ where
                 operation: "addition"
             })));
         }
+        if !self.unit.is_linear() && !other.unit.is_linear() {
+            return Err(Box::new(error!(UnitConversionError {
+                from_unit: other.unit.symbol().to_string(),
+                to_unit: self.unit.symbol().to_string(),
+                reason: "two affine temperature points cannot be added"
+            })));
+        }
 
-        if self.unit == other.unit {
+        if !self.unit.is_linear() || !other.unit.is_linear() {
+            if !self.unit.is_linear() {
+                let delta = match Self::convert_linear_difference_value(
+                    other.value.clone(),
+                    &other.unit,
+                    &self.unit,
+                ) {
+                    Some(value) => value,
+                    None => {
+                        return Err(Box::new(error!(UnitConversionError {
+                            from_unit: other.unit.symbol().to_string(),
+                            to_unit: self.unit.symbol().to_string(),
+                            reason: "linear difference cannot be converted to affine unit"
+                        })));
+                    }
+                };
+                return Ok(Quantity::new(self.value.clone() + delta, self.unit.clone()));
+            }
+
+            let delta = match Self::convert_linear_difference_value(
+                self.value.clone(),
+                &self.unit,
+                &other.unit,
+            ) {
+                Some(value) => value,
+                None => {
+                    return Err(Box::new(error!(UnitConversionError {
+                        from_unit: self.unit.symbol().to_string(),
+                        to_unit: other.unit.symbol().to_string(),
+                        reason: "linear difference cannot be converted to affine unit"
+                    })));
+                }
+            };
+            return Ok(Quantity::new(
+                other.value.clone() + delta,
+                other.unit.clone(),
+            ));
+        } else if self.unit == other.unit {
             Ok(Quantity::new(
                 self.value.clone() + other.value.clone(),
                 self.unit.clone(),
@@ -409,8 +479,45 @@ where
                 operation: "subtraction"
             })));
         }
+        if !self.unit.is_linear() && !other.unit.is_linear() {
+            let self_standard = self.unit.conversion().to_standard_value(self.value.clone());
+            let other_standard = other
+                .unit
+                .conversion()
+                .to_standard_value(other.value.clone());
+            let difference_unit = Self::linear_difference_unit(&self.unit);
+            let scale: V = difference_unit.scale().value().clone().into();
+            return Ok(Quantity::new(
+                (self_standard - other_standard) / scale,
+                difference_unit,
+            ));
+        }
 
-        if self.unit == other.unit {
+        if self.unit.is_linear() && !other.unit.is_linear() {
+            return Err(Box::new(error!(UnitConversionError {
+                from_unit: other.unit.symbol().to_string(),
+                to_unit: self.unit.symbol().to_string(),
+                reason: "a temperature point cannot be subtracted from a linear difference"
+            })));
+        }
+
+        if !self.unit.is_linear() {
+            let delta = match Self::convert_linear_difference_value(
+                other.value.clone(),
+                &other.unit,
+                &self.unit,
+            ) {
+                Some(value) => value,
+                None => {
+                    return Err(Box::new(error!(UnitConversionError {
+                        from_unit: other.unit.symbol().to_string(),
+                        to_unit: self.unit.symbol().to_string(),
+                        reason: "linear difference cannot be converted to affine unit"
+                    })));
+                }
+            };
+            return Ok(Quantity::new(self.value.clone() - delta, self.unit.clone()));
+        } else if self.unit == other.unit {
             Ok(Quantity::new(
                 self.value.clone() - other.value.clone(),
                 self.unit.clone(),
@@ -431,7 +538,7 @@ where
 
 impl<V> Add for Quantity<V, Unit>
 where
-    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V>,
+    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V> + Div<V, Output = V>,
     BigDecimal: Into<V>,
 {
     type Output = Quantity<V, Unit>;
@@ -444,7 +551,7 @@ where
 
 impl<V> Sub for Quantity<V, Unit>
 where
-    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V>,
+    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V> + Div<V, Output = V>,
     BigDecimal: Into<V>,
 {
     type Output = Quantity<V, Unit>;
@@ -462,6 +569,10 @@ where
     type Output = Quantity<V, Unit>;
 
     fn mul(self, rhs: V) -> Self::Output {
+        assert!(
+            self.unit.is_linear(),
+            "Cannot multiply quantity with affine unit"
+        );
         Quantity::new(self.value * rhs, self.unit)
     }
 }
@@ -473,6 +584,10 @@ where
     type Output = Quantity<V, Unit>;
 
     fn div(self, rhs: V) -> Self::Output {
+        assert!(
+            self.unit.is_linear(),
+            "Cannot divide quantity with affine unit"
+        );
         Quantity::new(self.value / rhs, self.unit)
     }
 }
@@ -484,6 +599,10 @@ where
     type Output = Quantity<V, Unit>;
 
     fn neg(self) -> Self::Output {
+        assert!(
+            self.unit.is_linear(),
+            "Cannot negate quantity with affine unit"
+        );
         Quantity::new(-self.value, self.unit)
     }
 }
@@ -527,6 +646,10 @@ where
     type Output = Quantity<V, U>;
 
     fn add(self, other: Self) -> Self::Output {
+        assert!(
+            *U::OFFSET == BigDecimal::from(0),
+            "Cannot add affine-unit quantities"
+        );
         Quantity::new_ct(self.value + other.value)
     }
 }
@@ -538,13 +661,17 @@ where
     type Output = Quantity<V, U>;
 
     fn sub(self, other: Self) -> Self::Output {
+        assert!(
+            *U::OFFSET == BigDecimal::from(0),
+            "Cannot subtract affine-unit quantities"
+        );
         Quantity::new_ct(self.value - other.value)
     }
 }
 
 /// 标量乘法（值类型与标量类型相同）
 /// Scalar multiplication (value type equals scalar type)
-/// 
+///
 /// 支持 `Quantity<V, U> * V` 形式的标量乘法。
 /// Supports scalar multiplication in the form `Quantity<V, U> * V`.
 impl<V, U: CTUnit + Default> Mul<V> for Quantity<V, U>
@@ -554,13 +681,17 @@ where
     type Output = Quantity<V, U>;
 
     fn mul(self, rhs: V) -> Self::Output {
+        assert!(
+            *U::OFFSET == BigDecimal::from(0),
+            "Cannot multiply affine-unit quantity"
+        );
         Quantity::new_ct(self.value * rhs)
     }
 }
 
 /// 不同类型标量乘法的辅助 trait
 /// Helper trait for different-type scalar multiplication
-/// 
+///
 /// 用于支持 `Quantity<Linear<T>, U> * T` 形式的标量乘法。
 /// Used to support scalar multiplication in the form `Quantity<Linear<T>, U> * T`.
 pub trait ScalarMul<S> {
@@ -586,6 +717,10 @@ where
     type Output = Quantity<V, U>;
 
     fn div(self, rhs: V) -> Self::Output {
+        assert!(
+            *U::OFFSET == BigDecimal::from(0),
+            "Cannot divide affine-unit quantity"
+        );
         Quantity::new_ct(self.value / rhs)
     }
 }
@@ -597,6 +732,10 @@ where
     type Output = Quantity<V, U>;
 
     fn neg(self) -> Self::Output {
+        assert!(
+            *U::OFFSET == BigDecimal::from(0),
+            "Cannot negate affine-unit quantity"
+        );
         Quantity::new_ct(-self.value)
     }
 }
@@ -613,6 +752,10 @@ where
     type Output = Quantity<V, CTUnitMul<U1, U2>>;
 
     fn mul(self, other: Quantity<V, U2>) -> Self::Output {
+        assert!(
+            *U1::OFFSET == BigDecimal::from(0) && *U2::OFFSET == BigDecimal::from(0),
+            "Cannot multiply affine-unit quantities"
+        );
         Quantity::new_ct(self.value * other.value)
     }
 }
@@ -625,6 +768,10 @@ where
     type Output = Quantity<V, CTUnitDiv<U1, U2>>;
 
     fn div(self, other: Quantity<V, U2>) -> Self::Output {
+        assert!(
+            *U1::OFFSET == BigDecimal::from(0) && *U2::OFFSET == BigDecimal::from(0),
+            "Cannot divide affine-unit quantities"
+        );
         Quantity::new_ct(self.value / other.value)
     }
 }
@@ -635,7 +782,7 @@ where
 
 impl<V> Add<&Quantity<V, Unit>> for &Quantity<V, Unit>
 where
-    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V>,
+    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V> + Div<V, Output = V>,
     BigDecimal: Into<V>,
 {
     type Output = Quantity<V, Unit>;
@@ -648,7 +795,7 @@ where
 
 impl<V> Sub<&Quantity<V, Unit>> for &Quantity<V, Unit>
 where
-    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V>,
+    V: Add<Output = V> + Sub<Output = V> + Clone + Mul<V, Output = V> + Div<V, Output = V>,
     BigDecimal: Into<V>,
 {
     type Output = Quantity<V, Unit>;
@@ -666,6 +813,10 @@ where
     type Output = Quantity<V, Unit>;
 
     fn mul(self, rhs: &V) -> Self::Output {
+        assert!(
+            self.unit.is_linear(),
+            "Cannot multiply quantity with affine unit"
+        );
         Quantity::new(self.value.clone() * rhs.clone(), self.unit.clone())
     }
 }
@@ -677,6 +828,10 @@ where
     type Output = Quantity<V, Unit>;
 
     fn div(self, rhs: &V) -> Self::Output {
+        assert!(
+            self.unit.is_linear(),
+            "Cannot divide quantity with affine unit"
+        );
         Quantity::new(self.value.clone() / rhs.clone(), self.unit.clone())
     }
 }
@@ -688,6 +843,10 @@ where
     type Output = Quantity<V, Unit>;
 
     fn neg(self) -> Self::Output {
+        assert!(
+            self.unit.is_linear(),
+            "Cannot negate quantity with affine unit"
+        );
         Quantity::new(-self.value.clone(), self.unit.clone())
     }
 }
@@ -727,6 +886,10 @@ where
     type Output = Quantity<V, U>;
 
     fn add(self, other: &Quantity<V, U>) -> Self::Output {
+        assert!(
+            *U::OFFSET == BigDecimal::from(0),
+            "Cannot add affine-unit quantities"
+        );
         Quantity::new_ct(self.value.clone() + other.value.clone())
     }
 }
@@ -738,6 +901,10 @@ where
     type Output = Quantity<V, U>;
 
     fn sub(self, other: &Quantity<V, U>) -> Self::Output {
+        assert!(
+            *U::OFFSET == BigDecimal::from(0),
+            "Cannot subtract affine-unit quantities"
+        );
         Quantity::new_ct(self.value.clone() - other.value.clone())
     }
 }
@@ -749,6 +916,10 @@ where
     type Output = Quantity<V, U>;
 
     fn mul(self, rhs: &V) -> Self::Output {
+        assert!(
+            *U::OFFSET == BigDecimal::from(0),
+            "Cannot multiply affine-unit quantity"
+        );
         Quantity::new_ct(self.value.clone() * rhs.clone())
     }
 }
@@ -760,6 +931,10 @@ where
     type Output = Quantity<V, U>;
 
     fn div(self, rhs: &V) -> Self::Output {
+        assert!(
+            *U::OFFSET == BigDecimal::from(0),
+            "Cannot divide affine-unit quantity"
+        );
         Quantity::new_ct(self.value.clone() / rhs.clone())
     }
 }
@@ -771,6 +946,10 @@ where
     type Output = Quantity<V, U>;
 
     fn neg(self) -> Self::Output {
+        assert!(
+            *U::OFFSET == BigDecimal::from(0),
+            "Cannot negate affine-unit quantity"
+        );
         Quantity::new_ct(-self.value.clone())
     }
 }
@@ -783,6 +962,10 @@ where
     type Output = Quantity<V, CTUnitMul<U1, U2>>;
 
     fn mul(self, other: &Quantity<V, U2>) -> Self::Output {
+        assert!(
+            *U1::OFFSET == BigDecimal::from(0) && *U2::OFFSET == BigDecimal::from(0),
+            "Cannot multiply affine-unit quantities"
+        );
         Quantity::new_ct(self.value.clone() * other.value.clone())
     }
 }
@@ -795,6 +978,10 @@ where
     type Output = Quantity<V, CTUnitDiv<U1, U2>>;
 
     fn div(self, other: &Quantity<V, U2>) -> Self::Output {
+        assert!(
+            *U1::OFFSET == BigDecimal::from(0) && *U2::OFFSET == BigDecimal::from(0),
+            "Cannot divide affine-unit quantities"
+        );
         Quantity::new_ct(self.value.clone() / other.value.clone())
     }
 }
@@ -1003,7 +1190,11 @@ where
 {
     fn cmp_within(&self, other: &Self, tolerance: &Tolerance<V>) -> Ordering {
         if !self.unit.same_dimension(&other.unit) {
-            return self.unit.dimension().symbol().cmp(&other.unit.dimension().symbol());
+            return self
+                .unit
+                .dimension()
+                .symbol()
+                .cmp(&other.unit.dimension().symbol());
         }
 
         if self.unit == other.unit {
@@ -1126,15 +1317,19 @@ impl<V: Clone, U: CTUnit> QuantityTrait for Quantity<V, U> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::unit::derived::{Kilogram, Kilometer, Meter, Second};
-    use crate::unit::system::SI_SYSTEM;
-    use crate::unit::{CTUnit, UnitSystemBuilder};
+    use crate::dimension::derived_quantity::QuantityDomain;
+    use crate::unit::CTUnit;
+    use crate::unit::derived::{
+        Bit, Byte, Celsius, Fahrenheit, Kelvin, Kilobit, Kilobyte, Kilogram, Kilometer, Meter,
+        NoneUnit, Second,
+    };
     use bigdecimal::BigDecimal;
-    use ospf_rust_math::symbol::{Linear, LinearMonomial, OwnedSymbol, DynSymbol, SymbolDynId};
-    use num_rational::BigRational;
     use num_bigint::BigInt;
+    use num_rational::BigRational;
+    use ospf_rust_math::symbol::{DynSymbol, Linear, LinearMonomial, OwnedSymbol, SymbolDynId};
     use std::any::Any;
     use std::fmt::{Display, Formatter};
+    use std::str::FromStr;
     // ========================================================================
     // 测试用简单符号 / Simple symbol for testing
     // ========================================================================
@@ -1152,14 +1347,41 @@ mod tests {
     }
 
     impl DynSymbol for SimpleSymbol {
-        fn name(&self) -> &str { &self.name }
-        fn display_name(&self) -> &str { &self.name }
-        fn dyn_id(&self) -> SymbolDynId<'_> { SymbolDynId::standalone(self.id) }
-        fn as_any(&self) -> &dyn Any { self }
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn display_name(&self) -> &str {
+            &self.name
+        }
+        fn dyn_id(&self) -> SymbolDynId<'_> {
+            SymbolDynId::standalone(self.id)
+        }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
     }
 
     fn make_symbol(name: &str, id: usize) -> OwnedSymbol {
-        OwnedSymbol::new(SimpleSymbol { id, name: name.to_string() })
+        OwnedSymbol::new(SimpleSymbol {
+            id,
+            name: name.to_string(),
+        })
+    }
+
+    fn assert_big_decimal_close(actual: &BigDecimal, expected: &str) {
+        let expected = BigDecimal::from_str(expected).unwrap();
+        let tolerance = BigDecimal::from_str("0.0000000001").unwrap();
+        let diff = if actual >= &expected {
+            actual - &expected
+        } else {
+            &expected - actual
+        };
+        assert!(
+            diff <= tolerance,
+            "expected approximately {}, got {}",
+            expected,
+            actual
+        );
     }
 
     // ========================================================================
@@ -1182,11 +1404,78 @@ mod tests {
     }
 
     #[test]
+    fn test_rt_temperature_affine_conversion() {
+        assert_eq!(Celsius::SYMBOL, "°C");
+        assert_eq!(Fahrenheit::SYMBOL, "°F");
+
+        let zero_c = Quantity::new(BigDecimal::from(0), Celsius::INSTANT.clone());
+        let kelvin = zero_c.to_unit(&Kelvin::INSTANT.clone()).unwrap();
+        assert_big_decimal_close(&kelvin.value, "273.15");
+
+        let thirty_two_f = Quantity::new(BigDecimal::from(32), Fahrenheit::INSTANT.clone());
+        let kelvin = thirty_two_f.to_unit(&Kelvin::INSTANT.clone()).unwrap();
+        assert_big_decimal_close(&kelvin.value, "273.15");
+
+        let boiling_c = Quantity::new(BigDecimal::from(100), Celsius::INSTANT.clone());
+        let fahrenheit = boiling_c.to_unit(&Fahrenheit::INSTANT.clone()).unwrap();
+        assert_big_decimal_close(&fahrenheit.value, "212");
+    }
+
+    #[test]
+    fn test_information_unit_domain_matches_kotlin() {
+        assert_eq!(Bit::DOMAIN, QuantityDomain::Discrete);
+        assert_eq!(Bit::INSTANT.domain(), QuantityDomain::Discrete);
+        assert_eq!(Byte::DOMAIN, QuantityDomain::Discrete);
+        assert_eq!(Byte::INSTANT.domain(), QuantityDomain::Discrete);
+        assert_eq!(Kilobit::DOMAIN, QuantityDomain::Continuous);
+        assert_eq!(Kilobit::INSTANT.domain(), QuantityDomain::Continuous);
+        assert_eq!(Kilobyte::DOMAIN, QuantityDomain::Continuous);
+        assert_eq!(Kilobyte::INSTANT.domain(), QuantityDomain::Continuous);
+    }
+
+    #[test]
+    fn test_none_unit_alias() {
+        assert_eq!(NoneUnit::SYMBOL, "1");
+    }
+
+    #[test]
     fn test_rt_quantity_add() {
         let q1 = Quantity::new(BigDecimal::from(10), Meter::INSTANT.clone());
         let q2 = Quantity::new(BigDecimal::from(5), Meter::INSTANT.clone());
         let sum = q1 + q2;
         assert_eq!(sum.value, BigDecimal::from(15));
+    }
+
+    #[test]
+    fn test_rt_affine_quantity_add_is_rejected() {
+        let q1 = Quantity::new(BigDecimal::from(10), Celsius::INSTANT.clone());
+        let q2 = Quantity::new(BigDecimal::from(5), Celsius::INSTANT.clone());
+        assert!(q1.checked_add(&q2).is_err());
+    }
+
+    #[test]
+    fn test_rt_affine_quantity_sub_returns_linear_difference() {
+        let boiling = Quantity::new(BigDecimal::from(100), Celsius::INSTANT.clone());
+        let freezing = Quantity::new(BigDecimal::from(0), Celsius::INSTANT.clone());
+        let difference = boiling.checked_sub(&freezing).unwrap();
+        assert_big_decimal_close(&difference.value, "100");
+        assert!(difference.unit.is_linear());
+        assert_eq!(difference.unit.dimension(), Celsius::INSTANT.dimension());
+
+        let shifted = freezing.checked_add(&difference).unwrap();
+        assert_eq!(shifted.unit.symbol(), "°C");
+        assert_big_decimal_close(&shifted.value, "100");
+
+        let back = shifted.checked_sub(&difference).unwrap();
+        assert_eq!(back.unit.symbol(), "°C");
+        assert_big_decimal_close(&back.value, "0");
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot multiply quantity with affine unit")]
+    fn test_rt_affine_scalar_multiply_is_rejected() {
+        let q = Quantity::new(BigDecimal::from(10), Celsius::INSTANT.clone());
+        let _ = q * BigDecimal::from(2);
     }
 
     #[test]
@@ -1213,6 +1502,17 @@ mod tests {
         let length_m: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(1000));
         let length_km: Quantity<BigDecimal, Kilometer> = length_m.to();
         assert_eq!(length_km.value, BigDecimal::from(1));
+    }
+
+    #[test]
+    fn test_ct_temperature_affine_conversion() {
+        let zero_c: Quantity<BigDecimal, Celsius> = Quantity::new_ct(BigDecimal::from(0));
+        let kelvin: Quantity<BigDecimal, Kelvin> = zero_c.to();
+        assert_big_decimal_close(&kelvin.value, "273.15");
+
+        let boiling_c: Quantity<BigDecimal, Celsius> = Quantity::new_ct(BigDecimal::from(100));
+        let fahrenheit: Quantity<BigDecimal, Fahrenheit> = boiling_c.to();
+        assert_big_decimal_close(&fahrenheit.value, "212");
     }
 
     #[test]
@@ -1269,6 +1569,32 @@ mod tests {
         assert_eq!(length.unit_name(), "meter");
     }
 
+    #[test]
+    fn test_geometry_accepts_quantity_scalars() {
+        use ospf_rust_math::geometry::{Box2, Point2, Rectangle2};
+
+        type Length = Quantity<BigDecimal, Meter>;
+
+        fn meters(value: i32) -> Length {
+            Quantity::new_ct(BigDecimal::from(value))
+        }
+
+        let point: Point2<Length> = Point2::new(meters(1), meters(2));
+        assert_eq!(point.x_ref().value, BigDecimal::from(1));
+        assert_eq!(point.y_ref().value, BigDecimal::from(2));
+
+        let rectangle = Rectangle2::new(meters(3), meters(4));
+        assert_eq!(rectangle.width_ref().value, BigDecimal::from(3));
+        assert_eq!(rectangle.height_ref().value, BigDecimal::from(4));
+
+        let bbox: Box2<Length> = Box2::new(meters(0), meters(0), rectangle);
+        assert_eq!(bbox.rectangle_width().unwrap().value, BigDecimal::from(3));
+        assert_eq!(bbox.rectangle_height().unwrap().value, BigDecimal::from(4));
+        assert!(bbox.contains_rectangle_point(&point));
+        assert!(bbox.contains_rectangle(meters(3), meters(4), true, true, true));
+        assert!(!bbox.contains_rectangle(meters(4), meters(2), true, true, true));
+    }
+
     // ========================================================================
     // 物理量多项式测试 / Physical quantity polynomial tests
     // ========================================================================
@@ -1282,32 +1608,33 @@ mod tests {
 
         // 创建线性多项式：2x + 3y + 1.0
         // Create linear polynomial: 2x + 3y + 1.0
-        let linear = Linear::new(vec![
-            LinearMonomial::new(2.0, x.clone()),
-            LinearMonomial::new(3.0, y.clone()),
-        ], 1.0);
+        let linear = Linear::new(
+            vec![
+                LinearMonomial::new(2.0, x.clone()),
+                LinearMonomial::new(3.0, y.clone()),
+            ],
+            1.0,
+        );
 
         // 包装为物理量
         // Wrap as physical quantity
         let distance: Quantity<Linear<f64>, Meter> = Quantity::new_ct(linear);
-        
+
         // 验证基本属性
         // Verify basic properties
         assert_eq!(distance.value.len(), 2);
         assert_eq!(distance.value.constant, 1.0);
-        
+
         // 测试标量乘法（使用 ScalarMul trait）
         // Test scalar multiplication (using ScalarMul trait)
         let scaled = distance.clone().scalar_mul(2.0);
         assert_eq!(scaled.value.monomials[0].coefficient, 4.0);
-        
+
         // 测试加法
         // Test addition
-        let linear2 = Linear::new(vec![
-            LinearMonomial::new(1.0, x.clone()),
-        ], 2.0);
+        let linear2 = Linear::new(vec![LinearMonomial::new(1.0, x.clone())], 2.0);
         let distance2: Quantity<Linear<f64>, Meter> = Quantity::new_ct(linear2);
-        
+
         let sum = distance + distance2;
         // 注意：Linear 的加法可能保留所有项，具体行为取决于 Linear 的实现
         // Note: Linear addition may retain all terms, behavior depends on Linear implementation
@@ -1324,32 +1651,36 @@ mod tests {
 
         // 创建线性多项式：2x + 3y + 1.0
         // Create linear polynomial: 2x + 3y + 1.0
-        let linear = Linear::new(vec![
-            LinearMonomial::new(BigDecimal::from(2), x.clone()),
-            LinearMonomial::new(BigDecimal::from(3), y.clone()),
-        ], BigDecimal::from(1));
+        let linear = Linear::new(
+            vec![
+                LinearMonomial::new(BigDecimal::from(2), x.clone()),
+                LinearMonomial::new(BigDecimal::from(3), y.clone()),
+            ],
+            BigDecimal::from(1),
+        );
 
         // 包装为物理量
         // Wrap as physical quantity
         let distance: Quantity<Linear<BigDecimal>, Meter> = Quantity::new_ct(linear);
-        
+
         // 验证基本属性
         // Verify basic properties
         assert_eq!(distance.value.len(), 2);
         assert_eq!(distance.value.constant, BigDecimal::from(1));
-        
+
         // 测试标量乘法（使用 ScalarMul trait）
         // Test scalar multiplication (using ScalarMul trait)
         let scaled = distance.clone().scalar_mul(BigDecimal::from(2));
         assert_eq!(scaled.value.monomials[0].coefficient, BigDecimal::from(4));
-        
+
         // 测试加法
         // Test addition
-        let linear2 = Linear::new(vec![
-            LinearMonomial::new(BigDecimal::from(1), x.clone()),
-        ], BigDecimal::from(2));
+        let linear2 = Linear::new(
+            vec![LinearMonomial::new(BigDecimal::from(1), x.clone())],
+            BigDecimal::from(2),
+        );
         let distance2: Quantity<Linear<BigDecimal>, Meter> = Quantity::new_ct(linear2);
-        
+
         let sum = distance + distance2;
         // 注意：Linear 的加法可能保留所有项，具体行为取决于 Linear 的实现
         // Note: Linear addition may retain all terms, behavior depends on Linear implementation
@@ -1370,20 +1701,23 @@ mod tests {
         let coef_y = BigRational::new(BigInt::from(5), BigInt::from(2));
         let constant = BigRational::new(BigInt::from(1), BigInt::from(1));
 
-        let linear = Linear::new(vec![
-            LinearMonomial::new(coef_x.clone(), x.clone()),
-            LinearMonomial::new(coef_y.clone(), y.clone()),
-        ], constant.clone());
+        let linear = Linear::new(
+            vec![
+                LinearMonomial::new(coef_x.clone(), x.clone()),
+                LinearMonomial::new(coef_y.clone(), y.clone()),
+            ],
+            constant.clone(),
+        );
 
         // 包装为物理量
         // Wrap as physical quantity
         let distance: Quantity<Linear<BigRational>, Meter> = Quantity::new_ct(linear);
-        
+
         // 验证基本属性
         // Verify basic properties
         assert_eq!(distance.value.len(), 2);
         assert_eq!(distance.value.constant, constant);
-        
+
         // 测试标量乘法（使用 ScalarMul trait）
         // Test scalar multiplication (using ScalarMul trait)
         let scalar = BigRational::new(BigInt::from(2), BigInt::from(1));
@@ -1391,15 +1725,16 @@ mod tests {
         // 3/2 * 2 = 3
         let expected = BigRational::new(BigInt::from(3), BigInt::from(1));
         assert_eq!(scaled.value.monomials[0].coefficient, expected);
-        
+
         // 测试加法
         // Test addition
         let coef2 = BigRational::new(BigInt::from(1), BigInt::from(1));
-        let linear2 = Linear::new(vec![
-            LinearMonomial::new(coef2.clone(), x.clone()),
-        ], BigRational::new(BigInt::from(2), BigInt::from(1)));
+        let linear2 = Linear::new(
+            vec![LinearMonomial::new(coef2.clone(), x.clone())],
+            BigRational::new(BigInt::from(2), BigInt::from(1)),
+        );
         let distance2: Quantity<Linear<BigRational>, Meter> = Quantity::new_ct(linear2);
-        
+
         let sum = distance + distance2;
         // 注意：Linear 的加法可能保留所有项，具体行为取决于 Linear 的实现
         // Note: Linear addition may retain all terms, behavior depends on Linear implementation

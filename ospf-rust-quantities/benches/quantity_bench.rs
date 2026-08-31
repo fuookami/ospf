@@ -4,11 +4,11 @@
 //! 比较编译时物理量（Quantity<V, U: CTUnit>）与运行时物理量（Quantity<V, Unit>）的性能差异
 //! Comparing performance between compile-time (Quantity<V, U: CTUnit>) and runtime (Quantity<V, Unit>) physical quantities
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use ospf_rust_quantities::quantity::Quantity;
-use ospf_rust_quantities::unit::derived::{Meter, Kilometer, Second, Kilogram};
-use ospf_rust_quantities::unit::{CTUnit, Unit};
 use bigdecimal::BigDecimal;
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use ospf_rust_quantities::quantity::Quantity;
+use ospf_rust_quantities::unit::derived::{Kilogram, Kilometer, Meter, Second};
+use ospf_rust_quantities::unit::{CTUnit, Unit};
 
 // ============================================================================
 // 创建性能测试 / Creation performance tests
@@ -242,7 +242,8 @@ fn bench_unit_conversion(c: &mut Criterion) {
     // 编译时物理量反向单位转换 / Compile-time quantity reverse unit conversion
     group.bench_function("ct_quantity_kilometer_to_meter", |b| {
         b.iter(|| {
-            let ct_length_km: Quantity<BigDecimal, Kilometer> = Quantity::new_ct(BigDecimal::from(1));
+            let ct_length_km: Quantity<BigDecimal, Kilometer> =
+                Quantity::new_ct(BigDecimal::from(1));
             let _m: Quantity<BigDecimal, Meter> = ct_length_km.to();
         });
     });
@@ -299,101 +300,130 @@ fn bench_batch_operations(c: &mut Criterion) {
     // 测试不同规模的批量操作 / Test batch operations with different sizes
     for size in [100, 1000, 10000].iter() {
         // 编译时物理量批量加法（引用版本）/ Compile-time quantity batch addition (reference version)
-        group.bench_with_input(BenchmarkId::new("ct_quantity_add_ref", size), size, |b, &size| {
-            let ct_values: Vec<Quantity<BigDecimal, Meter>> = (0..size)
-                .map(|i| Quantity::new_ct(BigDecimal::from(i as i64)))
-                .collect();
-
-            b.iter(|| {
-                let mut sum: Quantity<BigDecimal, Meter> = Quantity::new_ct(BigDecimal::from(0));
-                for q in &ct_values {
-                    sum = &sum + q;
-                }
-                black_box(sum)
-            });
-        });
-
-        // 运行时物理量批量加法（引用版本）/ Runtime quantity batch addition (reference version)
-        group.bench_with_input(BenchmarkId::new("quantity_add_ref", size), size, |b, &size| {
-            let values: Vec<Quantity<BigDecimal, Unit>> = (0..size)
-                .map(|i| Quantity::new(BigDecimal::from(i as i64), Meter::INSTANT.clone()))
-                .collect();
-
-            b.iter(|| {
-                let mut sum = Quantity::new(BigDecimal::from(0), Meter::INSTANT.clone());
-                for q in &values {
-                    sum = &sum + q;
-                }
-                black_box(sum)
-            });
-        });
-
-        // 编译时物理量批量乘法（引用版本）/ Compile-time quantity batch multiplication (reference version)
-        group.bench_with_input(BenchmarkId::new("ct_quantity_mul_ref", size), size, |b, &size| {
-            let ct_lengths: Vec<Quantity<BigDecimal, Meter>> = (0..size)
-                .map(|i| Quantity::new_ct(BigDecimal::from(i as i64 + 1)))
-                .collect();
-            let ct_masses: Vec<Quantity<BigDecimal, Kilogram>> = (0..size)
-                .map(|i| Quantity::new_ct(BigDecimal::from(i as i64 + 1)))
-                .collect();
-
-            b.iter(|| {
-                let mut products = Vec::with_capacity(size);
-                for (l, m) in ct_lengths.iter().zip(ct_masses.iter()) {
-                    products.push(l * m);
-                }
-                black_box(products)
-            });
-        });
-
-        // 运行时物理量批量乘法（引用版本）/ Runtime quantity batch multiplication (reference version)
-        group.bench_with_input(BenchmarkId::new("quantity_mul_ref", size), size, |b, &size| {
-            let lengths: Vec<Quantity<BigDecimal, Unit>> = (0..size)
-                .map(|i| Quantity::new(BigDecimal::from(i as i64 + 1), Meter::INSTANT.clone()))
-                .collect();
-            let masses: Vec<Quantity<BigDecimal, Unit>> = (0..size)
-                .map(|i| Quantity::new(BigDecimal::from(i as i64 + 1), Kilogram::INSTANT.clone()))
-                .collect();
-
-            b.iter(|| {
-                let mut products = Vec::with_capacity(size);
-                for (l, m) in lengths.iter().zip(masses.iter()) {
-                    products.push(l * m);
-                }
-                black_box(products)
-            });
-        });
-
-        // 编译时物理量批量单位转换 / Compile-time quantity batch unit conversion
-        group.bench_with_input(BenchmarkId::new("ct_quantity_convert", size), size, |b, &size| {
-            b.iter(|| {
-                let ct_lengths_m: Vec<Quantity<BigDecimal, Meter>> = (0..size)
-                    .map(|i| Quantity::new_ct(BigDecimal::from(i as i64 * 1000)))
+        group.bench_with_input(
+            BenchmarkId::new("ct_quantity_add_ref", size),
+            size,
+            |b, &size| {
+                let ct_values: Vec<Quantity<BigDecimal, Meter>> = (0..size)
+                    .map(|i| Quantity::new_ct(BigDecimal::from(i as i64)))
                     .collect();
 
-                let mut lengths_km = Vec::with_capacity(size);
-                for l in &ct_lengths_m {
-                    lengths_km.push(l.clone().to::<Kilometer>());
-                }
-                black_box(lengths_km)
-            });
-        });
+                b.iter(|| {
+                    let mut sum: Quantity<BigDecimal, Meter> =
+                        Quantity::new_ct(BigDecimal::from(0));
+                    for q in &ct_values {
+                        sum = &sum + q;
+                    }
+                    black_box(sum)
+                });
+            },
+        );
+
+        // 运行时物理量批量加法（引用版本）/ Runtime quantity batch addition (reference version)
+        group.bench_with_input(
+            BenchmarkId::new("quantity_add_ref", size),
+            size,
+            |b, &size| {
+                let values: Vec<Quantity<BigDecimal, Unit>> = (0..size)
+                    .map(|i| Quantity::new(BigDecimal::from(i as i64), Meter::INSTANT.clone()))
+                    .collect();
+
+                b.iter(|| {
+                    let mut sum = Quantity::new(BigDecimal::from(0), Meter::INSTANT.clone());
+                    for q in &values {
+                        sum = &sum + q;
+                    }
+                    black_box(sum)
+                });
+            },
+        );
+
+        // 编译时物理量批量乘法（引用版本）/ Compile-time quantity batch multiplication (reference version)
+        group.bench_with_input(
+            BenchmarkId::new("ct_quantity_mul_ref", size),
+            size,
+            |b, &size| {
+                let ct_lengths: Vec<Quantity<BigDecimal, Meter>> = (0..size)
+                    .map(|i| Quantity::new_ct(BigDecimal::from(i as i64 + 1)))
+                    .collect();
+                let ct_masses: Vec<Quantity<BigDecimal, Kilogram>> = (0..size)
+                    .map(|i| Quantity::new_ct(BigDecimal::from(i as i64 + 1)))
+                    .collect();
+
+                b.iter(|| {
+                    let mut products = Vec::with_capacity(size);
+                    for (l, m) in ct_lengths.iter().zip(ct_masses.iter()) {
+                        products.push(l * m);
+                    }
+                    black_box(products)
+                });
+            },
+        );
+
+        // 运行时物理量批量乘法（引用版本）/ Runtime quantity batch multiplication (reference version)
+        group.bench_with_input(
+            BenchmarkId::new("quantity_mul_ref", size),
+            size,
+            |b, &size| {
+                let lengths: Vec<Quantity<BigDecimal, Unit>> = (0..size)
+                    .map(|i| Quantity::new(BigDecimal::from(i as i64 + 1), Meter::INSTANT.clone()))
+                    .collect();
+                let masses: Vec<Quantity<BigDecimal, Unit>> = (0..size)
+                    .map(|i| {
+                        Quantity::new(BigDecimal::from(i as i64 + 1), Kilogram::INSTANT.clone())
+                    })
+                    .collect();
+
+                b.iter(|| {
+                    let mut products = Vec::with_capacity(size);
+                    for (l, m) in lengths.iter().zip(masses.iter()) {
+                        products.push(l * m);
+                    }
+                    black_box(products)
+                });
+            },
+        );
+
+        // 编译时物理量批量单位转换 / Compile-time quantity batch unit conversion
+        group.bench_with_input(
+            BenchmarkId::new("ct_quantity_convert", size),
+            size,
+            |b, &size| {
+                b.iter(|| {
+                    let ct_lengths_m: Vec<Quantity<BigDecimal, Meter>> = (0..size)
+                        .map(|i| Quantity::new_ct(BigDecimal::from(i as i64 * 1000)))
+                        .collect();
+
+                    let mut lengths_km = Vec::with_capacity(size);
+                    for l in &ct_lengths_m {
+                        lengths_km.push(l.clone().to::<Kilometer>());
+                    }
+                    black_box(lengths_km)
+                });
+            },
+        );
 
         // 运行时物理量批量单位转换 / Runtime quantity batch unit conversion
-        group.bench_with_input(BenchmarkId::new("quantity_convert", size), size, |b, &size| {
-            let lengths_m: Vec<Quantity<BigDecimal, Unit>> = (0..size)
-                .map(|i| Quantity::new(BigDecimal::from(i as i64 * 1000), Meter::INSTANT.clone()))
-                .collect();
-            let km_unit = Kilometer::INSTANT.clone();
+        group.bench_with_input(
+            BenchmarkId::new("quantity_convert", size),
+            size,
+            |b, &size| {
+                let lengths_m: Vec<Quantity<BigDecimal, Unit>> = (0..size)
+                    .map(|i| {
+                        Quantity::new(BigDecimal::from(i as i64 * 1000), Meter::INSTANT.clone())
+                    })
+                    .collect();
+                let km_unit = Kilometer::INSTANT.clone();
 
-            b.iter(|| {
-                let mut lengths_km = Vec::with_capacity(size);
-                for l in &lengths_m {
-                    lengths_km.push(l.to_unit(&km_unit).unwrap());
-                }
-                black_box(lengths_km)
-            });
-        });
+                b.iter(|| {
+                    let mut lengths_km = Vec::with_capacity(size);
+                    for l in &lengths_m {
+                        lengths_km.push(l.to_unit(&km_unit).unwrap());
+                    }
+                    black_box(lengths_km)
+                });
+            },
+        );
     }
 
     group.finish();

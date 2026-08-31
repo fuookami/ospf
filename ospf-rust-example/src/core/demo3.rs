@@ -1,10 +1,10 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
 use ospf_rust_core::variable::UIntegerVariableItem;
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct Material {
@@ -64,36 +64,57 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let targets = build_product_targets();
 
     let mut model = MetaModel::<f64>::new("demo3");
+    let mut x_vars = Vec::with_capacity(materials.len());
     let mut x_idx = vec![0usize; materials.len()];
 
     for (m, _) in materials.iter().enumerate() {
         let variable = UIntegerVariableItem::auto(&format!("x_{}", m));
-        x_idx[m] = model.register_variable(variable)?;
+        x_idx[m] = model.register_variable(variable.clone())?;
+        x_vars.push(variable);
     }
 
-    let mut objective = vec![0.0; model.num_tokens()];
-    for (m, material) in materials.iter().enumerate() {
-        objective[x_idx[m]] = material.unit_cost;
-    }
-    model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+    let cost = Linear::new(
+        x_vars
+            .iter()
+            .zip(materials.iter())
+            .map(|(var, material)| LinearMonomial::new(material.unit_cost, var.to_owned_symbol()))
+            .collect(),
+        0.0,
+    );
+    let yields: Vec<Linear<f64>> = targets
+        .iter()
+        .enumerate()
+        .map(|(p, _)| {
+            Linear::new(
+                x_vars
+                    .iter()
+                    .zip(materials.iter())
+                    .filter_map(|(var, material)| {
+                        let coefficient = material.yield_of(p);
+                        (coefficient != 0.0)
+                            .then(|| LinearMonomial::new(coefficient, var.to_owned_symbol()))
+                    })
+                    .collect(),
+                0.0,
+            )
+        })
+        .collect();
+
+    model.set_math_linear_objective(cost, ObjectiveCategory::Minimum, "cost")?;
 
     for (p, target) in targets.iter().enumerate() {
-        let mut coefficients = Vec::with_capacity(materials.len());
-        for (m, material) in materials.iter().enumerate() {
-            coefficients.push((x_idx[m], material.yield_of(p)));
-        }
-        model.add_linear_constraint(
-            &coefficients,
-            ConstraintRelation::Equal,
-            target.min_yield,
-            &format!("yield_{}", target.name),
-        )?;
+        model.add_math_inequality(
+            yields[p].clone().ge(target.min_yield),
+            &format!("yield_{}_lb", target.name),
+        );
+        model.add_math_inequality(
+            yields[p].clone().le(target.min_yield),
+            &format!("yield_{}_ub", target.name),
+        );
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo3 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo3 ===");
     println!("status: {:?}", output.status);
@@ -101,7 +122,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         println!("total cost: {:.2}", obj);
     }
     for (m, material) in materials.iter().enumerate() {
-        println!("{}: {:.2}", material.name, read_solution_value(&solution, x_idx[m]));
+        println!(
+            "{}: {:.2}",
+            material.name,
+            read_solution_value(&solution, x_idx[m])
+        );
     }
     Ok(())
 }

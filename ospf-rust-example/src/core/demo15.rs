@@ -1,10 +1,13 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::variable::{UContinuousVariableItem, VariableRange};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
+use ospf_rust_core::variable::{
+    UContinuous, VariableCombination1D, VariableCombination3D, VariableRange,
+};
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
+use ospf_rust_multiarray::{MultiArrayBuilder, Shape};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Clone, Copy)]
 struct Replacement {
@@ -156,87 +159,132 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let manufacturers = build_manufacturers();
 
     let mut model = MetaModel::<f64>::new("demo15");
-    let mut x_idx = vec![vec![vec![None; car_models.len()]; centers.len()]; manufacturers.len()];
-    for m in 0..manufacturers.len() {
-        for d in 0..centers.len() {
-            for c in 0..car_models.len() {
-                if manufacturers[m].productivity_by_model[c].is_some() {
-                    let var = UContinuousVariableItem::auto(&format!("x_{}_{}_{}", m, d, c));
-                    x_idx[m][d][c] = Some(model.register_variable(var)?);
+    let x_shape = Shape::new([manufacturers.len(), centers.len(), car_models.len()]);
+    let x_vars: VariableCombination3D<UContinuous> =
+        VariableCombination3D::with_name_and_range_generator(
+            x_shape.clone(),
+            "x",
+            |_index, vector| format!("{}_{}_{}", vector[0], vector[1], vector[2]),
+            |_index, vector| {
+                if manufacturers[vector[0]].productivity_by_model[vector[2]].is_some() {
+                    VariableRange::with_lower(0.0)
+                } else {
+                    VariableRange::fixed(0.0)
                 }
-            }
-        }
-    }
+            },
+        );
+    let x_idx = MultiArrayBuilder::from_list(
+        x_shape,
+        model.register_variables::<UContinuous, _>(x_vars.iter().cloned())?,
+    );
 
-    let mut y_idx = vec![Vec::<usize>::new(); centers.len()];
+    let mut y_vars: Vec<VariableCombination1D<UContinuous>> = Vec::with_capacity(centers.len());
+    let mut y_idx = Vec::with_capacity(centers.len());
     for d in 0..centers.len() {
-        for (r, replacement) in centers[d].replacements.iter().enumerate() {
-            let var = UContinuousVariableItem::auto_with_range(
-                &format!("y_{}_{}", d, r),
-                VariableRange::bounded(0.0, replacement.max_ratio),
+        let y_shape = Shape::new([centers[d].replacements.len()]);
+        let y_for_center: VariableCombination1D<UContinuous> =
+            VariableCombination1D::with_name_and_range_generator(
+                y_shape.clone(),
+                &format!("y_{}", d),
+                |_index, vector| vector[0].to_string(),
+                |_index, vector| {
+                    VariableRange::bounded(0.0, centers[d].replacements[vector[0]].max_ratio)
+                },
             );
-            y_idx[d].push(model.register_variable(var)?);
-        }
+        let y_indices = MultiArrayBuilder::from_list(
+            y_shape,
+            model.register_variables::<UContinuous, _>(y_for_center.iter().cloned())?,
+        );
+        y_vars.push(y_for_center);
+        y_idx.push(y_indices);
     }
 
-    let mut objective = vec![0.0; model.num_tokens()];
+    let mut cost_terms = Vec::new();
     for m in 0..manufacturers.len() {
         for d in 0..centers.len() {
             for c in 0..car_models.len() {
-                if let Some(idx) = x_idx[m][d][c] {
-                    objective[idx] = manufacturers[m].logistics_cost_to_centers[d];
-                }
+                cost_terms.push(LinearMonomial::new(
+                    manufacturers[m].logistics_cost_to_centers[d],
+                    x_vars[&[m, d, c]].to_owned_symbol(),
+                ));
             }
         }
     }
-    model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+    let cost = Linear::new(cost_terms, 0.0);
+    let trans = MultiArrayBuilder::new_by(
+        Shape::<2>::new([manufacturers.len(), car_models.len()]),
+        |_idx, vec| {
+            let m = vec[0];
+            let c = vec[1];
+            Linear::new(
+                (0..centers.len())
+                    .map(|d| LinearMonomial::new(1.0, x_vars[&[m, d, c]].to_owned_symbol()))
+                    .collect(),
+                0.0,
+            )
+        },
+    );
+    let receive = MultiArrayBuilder::new_by(
+        Shape::<2>::new([centers.len(), car_models.len()]),
+        |_idx, vec| {
+            let d = vec[0];
+            let c = vec[1];
+            Linear::new(
+                (0..manufacturers.len())
+                    .map(|m| LinearMonomial::new(1.0, x_vars[&[m, d, c]].to_owned_symbol()))
+                    .collect(),
+                0.0,
+            )
+        },
+    );
+    let demand = MultiArrayBuilder::new_by(
+        Shape::<2>::new([centers.len(), car_models.len()]),
+        |_idx, vec| {
+            let d = vec[0];
+            let c = vec[1];
+            let mut terms = Vec::new();
+            for (r_idx, replacement) in centers[d].replacements.iter().enumerate() {
+                if replacement.from == c {
+                    terms.push(LinearMonomial::new(
+                        centers[d].demands[replacement.from],
+                        y_vars[d][r_idx].to_owned_symbol(),
+                    ));
+                }
+                if replacement.to == c {
+                    terms.push(LinearMonomial::new(
+                        -centers[d].demands[replacement.from],
+                        y_vars[d][r_idx].to_owned_symbol(),
+                    ));
+                }
+            }
+            Linear::new(terms, 0.0)
+        },
+    );
+
+    model.set_math_linear_objective(cost, ObjectiveCategory::Minimum, "cost")?;
 
     for d in 0..centers.len() {
         for c in 0..car_models.len() {
-            let mut coefficients: Vec<(usize, f64)> = Vec::new();
-            for m in 0..manufacturers.len() {
-                if let Some(idx) = x_idx[m][d][c] {
-                    coefficients.push((idx, 1.0));
-                }
-            }
-            for (r_idx, replacement) in centers[d].replacements.iter().enumerate() {
-                let y = y_idx[d][r_idx];
-                if replacement.from == c {
-                    coefficients.push((y, centers[d].demands[replacement.from]));
-                }
-                if replacement.to == c {
-                    coefficients.push((y, -centers[d].demands[replacement.from]));
-                }
-            }
-            model.add_linear_constraint(
-                &coefficients,
-                ConstraintRelation::GreaterEqual,
-                centers[d].demands[c],
+            model.add_math_inequality(
+                (receive[&[d, c]].clone() + demand[&[d, c]].clone()).ge(centers[d].demands[c]),
                 &format!("demand_{}_{}", d, c),
-            )?;
+            );
         }
     }
 
     for m in 0..manufacturers.len() {
         for c in 0..car_models.len() {
             if let Some(cap) = manufacturers[m].productivity_by_model[c] {
-                let coefficients: Vec<(usize, f64)> = (0..centers.len())
-                    .filter_map(|d| x_idx[m][d][c].map(|idx| (idx, 1.0)))
-                    .collect();
-                model.add_linear_constraint(
-                    &coefficients,
-                    ConstraintRelation::LessEqual,
-                    cap,
+                model.add_math_inequality(
+                    trans[&[m, c]].clone().le(cap),
                     &format!("capacity_{}_{}", m, c),
-                )?;
+                );
             }
         }
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo15 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo15 ===");
     println!("status: {:?}", output.status);
@@ -246,14 +294,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     for m in 0..manufacturers.len() {
         for d in 0..centers.len() {
             for c in 0..car_models.len() {
-                if let Some(idx) = x_idx[m][d][c] {
-                    let value = read_solution_value(&solution, idx);
-                    if value > 0.0 {
-                        println!(
-                            "{} -> {} {} = {:.2}",
-                            manufacturers[m].name, centers[d].name, car_models[c].name, value
-                        );
-                    }
+                let value = read_solution_value(&solution, x_idx[&[m, d, c]]);
+                if value > 0.0 {
+                    println!(
+                        "{} -> {} {} = {:.2}",
+                        manufacturers[m].name, centers[d].name, car_models[c].name, value
+                    );
                 }
             }
         }

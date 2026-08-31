@@ -66,7 +66,7 @@ use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 /// let v = Vector::<3, f64>::from_components([1.0, 2.0, 3.0]);
 /// ```
 #[derive(Clone, PartialEq)]
-pub struct Vector<const D: usize, S: Field + Float = f64> {
+pub struct Vector<const D: usize, S = f64> {
     /// 分量数组 / Component array
     components: [S; D],
 }
@@ -75,7 +75,7 @@ pub struct Vector<const D: usize, S: Field + Float = f64> {
 // 构造方法 / Constructors
 // ============================================================================
 
-impl<const D: usize, S: Field + Float> Vector<D, S> {
+impl<const D: usize, S> Vector<D, S> {
     /// 从分量数组创建向量
     /// Create a vector from component array
     ///
@@ -87,6 +87,12 @@ impl<const D: usize, S: Field + Float> Vector<D, S> {
     /// ```
     pub fn from_components(components: [S; D]) -> Self {
         Self { components }
+    }
+
+    /// 消费向量并返回分量数组
+    /// Consume the vector and return the component array
+    pub fn into_components(self) -> [S; D] {
+        self.components
     }
 
     /// 创建零向量
@@ -127,7 +133,7 @@ impl<const D: usize, S: Field + Float> Vector<D, S> {
     where
         S: Zero + One,
     {
-        let mut components = [S::zero(); D];
+        let mut components = std::array::from_fn(|_| S::zero());
         if axis < D {
             components[axis] = S::one();
         }
@@ -152,10 +158,10 @@ impl<const D: usize, S: Field + Float> Vector<D, S> {
         &mut self.components
     }
 
-    /// 获取指定维度的分量值
-    /// Get the component value at the specified dimension
-    pub fn get(&self, i: usize) -> Option<S> {
-        self.components.get(i).copied()
+    /// 获取指定维度的分量引用
+    /// Get a reference to the component at the specified dimension
+    pub fn get_ref(&self, i: usize) -> Option<&S> {
+        self.components.get(i)
     }
 
     /// 设置指定维度的分量值
@@ -170,27 +176,35 @@ impl<const D: usize, S: Field + Float> Vector<D, S> {
     }
 }
 
+impl<const D: usize, S: Copy> Vector<D, S> {
+    /// 获取指定维度的分量值
+    /// Get the component value at the specified dimension
+    pub fn get(&self, i: usize) -> Option<S> {
+        self.components.get(i).copied()
+    }
+}
+
 // ============================================================================
 // 2D 便捷方法 / 2D convenience methods
 // ============================================================================
 
-impl<S: Field + Float> Vector<2, S> {
+impl<S> Vector<2, S> {
     /// 创建 2D 向量
     /// Create a 2D vector
     pub fn new(x: S, y: S) -> Self {
         Self::from_components([x, y])
     }
 
-    /// 获取 x 分量
-    /// Get x component
-    pub fn x(&self) -> S {
-        self.components[0]
+    /// 获取 x 分量引用
+    /// Get x component reference
+    pub fn x_ref(&self) -> &S {
+        &self.components[0]
     }
 
-    /// 获取 y 分量
-    /// Get y component
-    pub fn y(&self) -> S {
-        self.components[1]
+    /// 获取 y 分量引用
+    /// Get y component reference
+    pub fn y_ref(&self) -> &S {
+        &self.components[1]
     }
 
     /// 设置 x 分量
@@ -204,7 +218,23 @@ impl<S: Field + Float> Vector<2, S> {
     pub fn set_y(&mut self, y: S) {
         self.components[1] = y;
     }
+}
 
+impl<S: Copy> Vector<2, S> {
+    /// 获取 x 分量
+    /// Get x component
+    pub fn x(&self) -> S {
+        self.components[0]
+    }
+
+    /// 获取 y 分量
+    /// Get y component
+    pub fn y(&self) -> S {
+        self.components[1]
+    }
+}
+
+impl<S: Field + Float> Vector<2, S> {
     /// 计算 2D 叉积（返回标量）
     /// Calculate 2D cross product (returns scalar)
     ///
@@ -236,29 +266,29 @@ impl<S: Field + Float> Vector<2, S> {
 // 3D 便捷方法 / 3D convenience methods
 // ============================================================================
 
-impl<S: Field + Float> Vector<3, S> {
+impl<S> Vector<3, S> {
     /// 创建 3D 向量
     /// Create a 3D vector
     pub fn new(x: S, y: S, z: S) -> Self {
         Self::from_components([x, y, z])
     }
 
-    /// 获取 x 分量
-    /// Get x component
-    pub fn x(&self) -> S {
-        self.components[0]
+    /// 获取 x 分量引用
+    /// Get x component reference
+    pub fn x_ref(&self) -> &S {
+        &self.components[0]
     }
 
-    /// 获取 y 分量
-    /// Get y component
-    pub fn y(&self) -> S {
-        self.components[1]
+    /// 获取 y 分量引用
+    /// Get y component reference
+    pub fn y_ref(&self) -> &S {
+        &self.components[1]
     }
 
-    /// 获取 z 分量
-    /// Get z component
-    pub fn z(&self) -> S {
-        self.components[2]
+    /// 获取 z 分量引用
+    /// Get z component reference
+    pub fn z_ref(&self) -> &S {
+        &self.components[2]
     }
 
     /// 设置 x 分量
@@ -278,7 +308,29 @@ impl<S: Field + Float> Vector<3, S> {
     pub fn set_z(&mut self, z: S) {
         self.components[2] = z;
     }
+}
 
+impl<S: Copy> Vector<3, S> {
+    /// 获取 x 分量
+    /// Get x component
+    pub fn x(&self) -> S {
+        self.components[0]
+    }
+
+    /// 获取 y 分量
+    /// Get y component
+    pub fn y(&self) -> S {
+        self.components[1]
+    }
+
+    /// 获取 z 分量
+    /// Get z component
+    pub fn z(&self) -> S {
+        self.components[2]
+    }
+}
+
+impl<S: Field + Float> Vector<3, S> {
     /// 计算 3D 叉积
     /// Calculate 3D cross product
     ///
@@ -428,7 +480,7 @@ pub type Vector4<S = f64> = Vector<4, S>;
 // Trait 实现 / Trait implementations
 // ============================================================================
 
-impl<const D: usize, S: Field + Float> Index<usize> for Vector<D, S> {
+impl<const D: usize, S> Index<usize> for Vector<D, S> {
     type Output = S;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -436,37 +488,46 @@ impl<const D: usize, S: Field + Float> Index<usize> for Vector<D, S> {
     }
 }
 
-impl<const D: usize, S: Field + Float> IndexMut<usize> for Vector<D, S> {
+impl<const D: usize, S> IndexMut<usize> for Vector<D, S> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.components[index]
     }
 }
 
-impl<const D: usize, S: Field + Float> Add for Vector<D, S> {
+impl<const D: usize, S> Add for Vector<D, S>
+where
+    S: Clone + Add<Output = S>,
+{
     type Output = Self;
 
     fn add(self, other: Self) -> Self::Output {
         Self::from_components(std::array::from_fn(|i| {
-            self.components[i] + other.components[i]
+            self.components[i].clone() + other.components[i].clone()
         }))
     }
 }
 
-impl<const D: usize, S: Field + Float> Sub for Vector<D, S> {
+impl<const D: usize, S> Sub for Vector<D, S>
+where
+    S: Clone + Sub<Output = S>,
+{
     type Output = Self;
 
     fn sub(self, other: Self) -> Self::Output {
         Self::from_components(std::array::from_fn(|i| {
-            self.components[i] - other.components[i]
+            self.components[i].clone() - other.components[i].clone()
         }))
     }
 }
 
-impl<const D: usize, S: Field + Float> Neg for Vector<D, S> {
+impl<const D: usize, S> Neg for Vector<D, S>
+where
+    S: Clone + Neg<Output = S>,
+{
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Self::from_components(std::array::from_fn(|i| -self.components[i]))
+        Self::from_components(std::array::from_fn(|i| -self.components[i].clone()))
     }
 }
 
@@ -478,7 +539,10 @@ impl<const D: usize, S: Field + Float> Mul<S> for Vector<D, S> {
     }
 }
 
-impl<const D: usize, S: Field + Float> Zero for Vector<D, S> {
+impl<const D: usize, S> Zero for Vector<D, S>
+where
+    S: Zero + Clone,
+{
     fn zero() -> Self {
         Self::zero_vector()
     }
@@ -520,7 +584,7 @@ impl<const D: usize, S: Field + Float> InnerProductSpace for Vector<D, S> {
     }
 }
 
-impl<const D: usize, S: Field + Float> Debug for Vector<D, S> {
+impl<const D: usize, S: Debug> Debug for Vector<D, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "Vector{}(", D)?;
         for (i, c) in self.components.iter().enumerate() {
@@ -533,7 +597,7 @@ impl<const D: usize, S: Field + Float> Debug for Vector<D, S> {
     }
 }
 
-impl<const D: usize, S: Field + Float + Display> Display for Vector<D, S> {
+impl<const D: usize, S: Display> Display for Vector<D, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(f, "[")?;
         for (i, c) in self.components.iter().enumerate() {
@@ -546,7 +610,7 @@ impl<const D: usize, S: Field + Float + Display> Display for Vector<D, S> {
     }
 }
 
-impl<const D: usize, S: Field + Float> Default for Vector<D, S> {
+impl<const D: usize, S: Zero> Default for Vector<D, S> {
     fn default() -> Self {
         Self::zero_vector()
     }
@@ -556,13 +620,13 @@ impl<const D: usize, S: Field + Float> Default for Vector<D, S> {
 // 从 Point 转换 / Conversion from Point
 // ============================================================================
 
-impl<const D: usize, S: Field + Float> From<Point<D, S>> for Vector<D, S> {
+impl<const D: usize, S> From<Point<D, S>> for Vector<D, S> {
     fn from(point: Point<D, S>) -> Self {
-        Self::from_components(*point.coords())
+        Self::from_components(point.into_coords())
     }
 }
 
-impl<const D: usize, S: Field + Float> From<Vector<D, S>> for Point<D, S> {
+impl<const D: usize, S> From<Vector<D, S>> for Point<D, S> {
     fn from(vector: Vector<D, S>) -> Self {
         Point::from_coords(vector.components)
     }

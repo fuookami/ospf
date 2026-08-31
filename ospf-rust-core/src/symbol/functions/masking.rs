@@ -14,8 +14,8 @@ use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 #[cfg(test)]
 use crate::variable::VariableId;
@@ -24,6 +24,7 @@ use crate::variable::{BinaryVariableItem, ContinuousVariableItem, new_standalone
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
 };
+use super::big_m::infer_linear_abs_bound_from_tokens;
 
 const DEFAULT_BIG_M: f64 = 1_000_000.0;
 const MIN_BIG_M: f64 = 1.0;
@@ -137,6 +138,12 @@ where
         cloned
     }
 
+    pub(crate) fn with_big_m_value(&self, big_m: V) -> Self {
+        let mut cloned = self.clone();
+        cloned.big_m = big_m;
+        cloned
+    }
+
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
@@ -186,31 +193,7 @@ where
     }
 
     fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
-        let mut lower = to_f64(self.input.constant_term())?;
-        let mut upper = lower;
-
-        for monomial in self.input.monomials() {
-            let token = tokens.get(monomial.var_index())?;
-            let var_lower = to_f64(&token.variable.lower_bound()?)?;
-            let var_upper = to_f64(&token.variable.upper_bound()?)?;
-            if !var_lower.is_finite() || !var_upper.is_finite() {
-                return None;
-            }
-
-            let coefficient = to_f64(monomial.coefficient())?;
-            if coefficient >= 0.0 {
-                lower += coefficient * var_lower;
-                upper += coefficient * var_upper;
-            } else {
-                lower += coefficient * var_upper;
-                upper += coefficient * var_lower;
-            }
-        }
-
-        if !lower.is_finite() || !upper.is_finite() {
-            return None;
-        }
-        Some(lower.abs().max(upper.abs()).max(MIN_BIG_M))
+        infer_linear_abs_bound_from_tokens(&self.input, tokens).map(|big_m| big_m.max(MIN_BIG_M))
     }
 
     fn build_mechanism_constraints(

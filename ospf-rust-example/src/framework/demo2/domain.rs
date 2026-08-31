@@ -1,48 +1,39 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::solver::solvers::GurobiSolver;
+use ospf_rust_core::model::object::ObjectiveCategory;
+use ospf_rust_core::solver::{FeasibleSolverOutput, solvers::GurobiSolver};
 use ospf_rust_core::variable::{UContinuousVariableItem, VariableId};
 use ospf_rust_framework::solver::{
-    BendersIterationSnapshot, BendersRuntimeMetrics, GurobiLinearBendersDecompositionSolver,
-    LinearBendersDecompositionSolver, SolveOptions as FrameworkSolveOptions,
+    BendersIterationSnapshot, BendersRuntimeMetrics, FeasibleSolutionV, FrameworkSolveOptions,
+    GurobiLinearBendersDecompositionSolver, LinearBendersDecompositionSolver,
 };
 
-use crate::framework::demo2::infrastructure::dto::{
+use self::service::domain_pipeline::apply_domain_pipeline;
+use self::shared::pipeline_mode::Demo2PipelineMode;
+use crate::example_modeling::solve_linear_meta_model_typed_if_feasible;
+use crate::framework_demo::demo2::diagnostics::{
+    NOTE_CODE_BENDERS_ADAPTIVE_EFFECTIVE, NOTE_CODE_BENDERS_CUT_EFFICIENCY_LOW,
+    NOTE_CODE_BENDERS_FAILED, NOTE_CODE_BENDERS_GAP, NOTE_CODE_BENDERS_GAP_GUARD_EXCEEDED,
+    NOTE_CODE_BENDERS_ITERATIONS, NOTE_CODE_BENDERS_PROBLEM_SIZE_BINARY_VARIABLES,
+    NOTE_CODE_BENDERS_PROGRESS_GUARD_TRIGGERED, NOTE_CODE_BENDERS_QUALITY_ACTION,
+    NOTE_CODE_BENDERS_QUALITY_GUARD_EFFECTIVE, NOTE_CODE_BENDERS_QUALITY_SCORE,
+    NOTE_CODE_BENDERS_TIME_GUARD_EXCEEDED, NOTE_CODE_BENDERS_TIME_MS,
+    NOTE_CODE_BENDERS_TRAJECTORY_WEAK, NOTE_CODE_CAPACITY_UTILIZATION_HIGH,
+    NOTE_CODE_CARGO_EXCEEDS_ALL_POSITIONS, NOTE_CODE_ENVELOPE_LONGITUDINAL_MAX_CLOSE,
+    NOTE_CODE_ENVELOPE_LONGITUDINAL_MIN_CLOSE, NOTE_CODE_ENVELOPE_RANGE_INVALID,
+    NOTE_CODE_LATERAL_IMBALANCE_CLOSE, NOTE_CODE_MIN_PAYLOAD_GT_TOTAL_CAPACITY,
+    NOTE_CODE_MIN_PAYLOAD_GT_UPPER, NOTE_CODE_MIN_PAYLOAD_RATIO_OUT_OF_RANGE,
+    NOTE_CODE_PAYLOAD_LOWER_CLOSE, NOTE_CODE_PAYLOAD_UPPER_NEGATIVE,
+    NOTE_CODE_PAYLOAD_UPPER_UTILIZATION_HIGH, NOTE_CODE_REDUNDANCY_DESTINATION_CONCENTRATION_HIGH,
+    NOTE_CODE_SOLVER_PATH, NOTE_GROUP_AIRWORTHINESS, NOTE_GROUP_MAC_OPTIMIZATION,
+    NOTE_GROUP_PAYLOAD, NOTE_GROUP_REDUNDANCY, NOTE_GROUP_SOLVER, NOTE_LEVEL_CRITICAL,
+    NOTE_LEVEL_DIAGNOSTIC, build_structured_diagnostics, push_grouped_note,
+};
+use crate::framework_demo::demo2::infrastructure::dto::{
     AircraftTypeInput, BendersAdaptiveConfig, BendersQualityOverrideConfig, Demo2Request,
     Demo2Response, LoadingOrderResponse,
 };
-use crate::framework::demo2::diagnostics::{
-    build_structured_diagnostics,
-    NOTE_CODE_CAPACITY_UTILIZATION_HIGH, NOTE_CODE_CARGO_EXCEEDS_ALL_POSITIONS,
-    NOTE_CODE_BENDERS_ADAPTIVE_EFFECTIVE,
-    NOTE_CODE_BENDERS_FAILED,
-    NOTE_CODE_BENDERS_GAP,
-    NOTE_CODE_BENDERS_GAP_GUARD_EXCEEDED,
-    NOTE_CODE_BENDERS_ITERATIONS,
-    NOTE_CODE_BENDERS_CUT_EFFICIENCY_LOW,
-    NOTE_CODE_BENDERS_PROGRESS_GUARD_TRIGGERED,
-    NOTE_CODE_BENDERS_PROBLEM_SIZE_BINARY_VARIABLES,
-    NOTE_CODE_BENDERS_QUALITY_GUARD_EFFECTIVE,
-    NOTE_CODE_BENDERS_QUALITY_ACTION,
-    NOTE_CODE_BENDERS_QUALITY_SCORE,
-    NOTE_CODE_BENDERS_TRAJECTORY_WEAK,
-    NOTE_CODE_BENDERS_TIME_GUARD_EXCEEDED,
-    NOTE_CODE_BENDERS_TIME_MS,
-    NOTE_CODE_SOLVER_PATH,
-    NOTE_CODE_REDUNDANCY_DESTINATION_CONCENTRATION_HIGH,
-    NOTE_CODE_ENVELOPE_LONGITUDINAL_MAX_CLOSE, NOTE_CODE_ENVELOPE_LONGITUDINAL_MIN_CLOSE,
-    NOTE_CODE_ENVELOPE_RANGE_INVALID, NOTE_CODE_LATERAL_IMBALANCE_CLOSE,
-    NOTE_CODE_MIN_PAYLOAD_GT_TOTAL_CAPACITY, NOTE_CODE_MIN_PAYLOAD_GT_UPPER,
-    NOTE_CODE_MIN_PAYLOAD_RATIO_OUT_OF_RANGE, NOTE_CODE_PAYLOAD_LOWER_CLOSE,
-    NOTE_CODE_PAYLOAD_UPPER_NEGATIVE, NOTE_CODE_PAYLOAD_UPPER_UTILIZATION_HIGH,
-    NOTE_GROUP_AIRWORTHINESS, NOTE_GROUP_MAC_OPTIMIZATION, NOTE_GROUP_PAYLOAD, NOTE_GROUP_REDUNDANCY,
-    NOTE_GROUP_SOLVER,
-    NOTE_LEVEL_CRITICAL, NOTE_LEVEL_DIAGNOSTIC, push_grouped_note,
-};
-use self::service::domain_pipeline::apply_domain_pipeline;
-use self::shared::pipeline_mode::Demo2PipelineMode;
 
 pub mod airworthiness;
 pub mod express_effectiveness;
@@ -98,7 +89,10 @@ struct BendersQualityGuardConfig {
 }
 
 fn supported_aircraft(aircraft_type: AircraftTypeInput) -> bool {
-    matches!(aircraft_type, AircraftTypeInput::B737 | AircraftTypeInput::B757)
+    matches!(
+        aircraft_type,
+        AircraftTypeInput::B737 | AircraftTypeInput::B757
+    )
 }
 
 fn default_benders_quality_guard_config() -> BendersQualityGuardConfig {
@@ -151,24 +145,29 @@ fn resolve_benders_quality_guard_config(
 ) -> BendersQualityGuardConfig {
     let default_config = default_benders_quality_guard_config();
     let override_config = override_config.unwrap_or_default();
-    let (score_gap_weight, score_time_weight, score_iteration_weight, score_cut_density_weight, score_trajectory_weight) =
-        normalize_benders_quality_weights(
-            override_config
-                .score_gap_weight
-                .unwrap_or(default_config.score_gap_weight),
-            override_config
-                .score_time_weight
-                .unwrap_or(default_config.score_time_weight),
-            override_config
-                .score_iteration_weight
-                .unwrap_or(default_config.score_iteration_weight),
-            override_config
-                .score_cut_density_weight
-                .unwrap_or(default_config.score_cut_density_weight),
-            override_config
-                .score_trajectory_weight
-                .unwrap_or(default_config.score_trajectory_weight),
-        );
+    let (
+        score_gap_weight,
+        score_time_weight,
+        score_iteration_weight,
+        score_cut_density_weight,
+        score_trajectory_weight,
+    ) = normalize_benders_quality_weights(
+        override_config
+            .score_gap_weight
+            .unwrap_or(default_config.score_gap_weight),
+        override_config
+            .score_time_weight
+            .unwrap_or(default_config.score_time_weight),
+        override_config
+            .score_iteration_weight
+            .unwrap_or(default_config.score_iteration_weight),
+        override_config
+            .score_cut_density_weight
+            .unwrap_or(default_config.score_cut_density_weight),
+        override_config
+            .score_trajectory_weight
+            .unwrap_or(default_config.score_trajectory_weight),
+    );
     BendersQualityGuardConfig {
         weak_gap_multiplier: override_config
             .weak_gap_multiplier
@@ -284,7 +283,9 @@ fn tune_benders_adaptive_config(
         max_iterations: tuned_max_iterations,
         tolerance: tuned_tolerance,
         max_stall_iterations: Some(stall_window_base.min(tuned_max_iterations.max(1))),
-        objective_stall_iterations: Some(objective_stall_window_base.min(tuned_max_iterations.max(1))),
+        objective_stall_iterations: Some(
+            objective_stall_window_base.min(tuned_max_iterations.max(1)),
+        ),
     }
 }
 
@@ -485,7 +486,11 @@ fn resolve_benders_time_guard_ms(
         .max(quality_guard.time_guard_min_ms)
 }
 
-fn push_benders_time_guard_exceeded_note(notes: &mut Vec<String>, benders_time_ms: u128, time_guard_ms: u128) {
+fn push_benders_time_guard_exceeded_note(
+    notes: &mut Vec<String>,
+    benders_time_ms: u128,
+    time_guard_ms: u128,
+) {
     notes.push(format!(
         "benders_time_guard_exceeded: time_ms={} > guard_ms={}",
         benders_time_ms, time_guard_ms
@@ -549,8 +554,14 @@ fn push_benders_trajectory_weak_note(
     snapshots: &[BendersIterationSnapshot],
     avg_step_improvement: f64,
 ) {
-    let first_obj = snapshots.first().map(|snapshot| snapshot.master_obj).unwrap_or(0.0);
-    let last_obj = snapshots.last().map(|snapshot| snapshot.master_obj).unwrap_or(0.0);
+    let first_obj = snapshots
+        .first()
+        .map(|snapshot| snapshot.master_obj)
+        .unwrap_or(0.0);
+    let last_obj = snapshots
+        .last()
+        .map(|snapshot| snapshot.master_obj)
+        .unwrap_or(0.0);
     notes.push(format!(
         "benders_trajectory_weak: first_obj={:.6},last_obj={:.6},avg_step_abs_delta={:.6},iterations={}",
         first_obj,
@@ -574,7 +585,10 @@ fn push_benders_trajectory_weak_note(
 }
 
 fn push_benders_quality_action_note(notes: &mut Vec<String>, action: &str, reason: &str) {
-    notes.push(format!("benders_quality_action={},reason={}", action, reason));
+    notes.push(format!(
+        "benders_quality_action={},reason={}",
+        action, reason
+    ));
     push_grouped_note(
         notes,
         NOTE_LEVEL_DIAGNOSTIC,
@@ -633,7 +647,8 @@ fn resolve_benders_quality_score(
         if snapshots.len() >= quality_guard.trajectory_min_snapshots {
             let mut abs_step_sum = 0.0_f64;
             for index in 1..snapshots.len() {
-                abs_step_sum += (snapshots[index].master_obj - snapshots[index - 1].master_obj).abs();
+                abs_step_sum +=
+                    (snapshots[index].master_obj - snapshots[index - 1].master_obj).abs();
             }
             let avg_step_improvement = abs_step_sum / ((snapshots.len() - 1) as f64);
             let step_threshold = (adaptive.tolerance * quality_guard.trajectory_step_multiplier)
@@ -658,10 +673,7 @@ fn resolve_benders_quality_score(
     (score * 100.0).clamp(0.0, 100.0)
 }
 
-fn push_benders_quality_score_note(
-    notes: &mut Vec<String>,
-    quality_score: f64,
-) {
+fn push_benders_quality_score_note(notes: &mut Vec<String>, quality_score: f64) {
     notes.push(format!("benders_quality_score={:.2}", quality_score));
     push_grouped_note(
         notes,
@@ -687,7 +699,8 @@ fn resolve_benders_quality_reason(
 
     let time_guard_ms = resolve_benders_time_guard_ms(adaptive, quality_guard);
     let weak_gap = benders_gap
-        > (adaptive.tolerance * quality_guard.weak_gap_multiplier).max(quality_guard.weak_gap_floor);
+        > (adaptive.tolerance * quality_guard.weak_gap_multiplier)
+            .max(quality_guard.weak_gap_floor);
     if weak_gap && benders_time_ms > time_guard_ms {
         return Some(BENDERS_QUALITY_REASON_TIME_GUARD_EXCEEDED);
     }
@@ -708,7 +721,8 @@ fn resolve_benders_quality_reason(
     }
 
     if weak_gap {
-        if let Some(snapshots) = benders_runtime_metrics.map(|metrics| &metrics.iteration_snapshots) {
+        if let Some(snapshots) = benders_runtime_metrics.map(|metrics| &metrics.iteration_snapshots)
+        {
             if snapshots.len() >= quality_guard.trajectory_min_snapshots {
                 let mut abs_step_sum = 0.0_f64;
                 for index in 1..snapshots.len() {
@@ -716,7 +730,8 @@ fn resolve_benders_quality_reason(
                         (snapshots[index].master_obj - snapshots[index - 1].master_obj).abs();
                 }
                 let avg_step_improvement = abs_step_sum / ((snapshots.len() - 1) as f64);
-                let step_threshold = (adaptive.tolerance * quality_guard.trajectory_step_multiplier)
+                let step_threshold = (adaptive.tolerance
+                    * quality_guard.trajectory_step_multiplier)
                     .max(quality_guard.trajectory_step_floor);
                 if avg_step_improvement < step_threshold {
                     return Some(BENDERS_QUALITY_REASON_TRAJECTORY_WEAK);
@@ -763,9 +778,14 @@ fn demo2_response(
 }
 
 fn append_core_feasibility_diagnostics(request: &Demo2Request, notes: &mut Vec<String>) {
-    let total_capacity: f64 = request.positions.iter().map(|position| position.max_weight).sum();
+    let total_capacity: f64 = request
+        .positions
+        .iter()
+        .map(|position| position.max_weight)
+        .sum();
     let total_cargo_weight: f64 = request.cargos.iter().map(|cargo| cargo.weight).sum();
-    let min_payload_required = request.payload_upper_bound.min(total_cargo_weight) * request.min_payload_ratio;
+    let min_payload_required =
+        request.payload_upper_bound.min(total_cargo_weight) * request.min_payload_ratio;
 
     if request.envelope_longitudinal_moment_min > request.envelope_longitudinal_moment_max {
         push_grouped_note(
@@ -871,10 +891,8 @@ fn append_critical_constraint_notes(
 
     let total_payload: f64 = position_loads.iter().sum();
     let total_cargo_weight: f64 = request.cargos.iter().map(|cargo| cargo.weight).sum();
-    let min_payload = request
-        .payload_upper_bound
-        .min(total_cargo_weight)
-        * request.min_payload_ratio;
+    let min_payload =
+        request.payload_upper_bound.min(total_cargo_weight) * request.min_payload_ratio;
     if request.payload_upper_bound > EPS
         && total_payload / request.payload_upper_bound + EPS >= CRITICAL_RATIO
     {
@@ -1008,7 +1026,7 @@ fn solve_linear_benders(
     sub_model: &MetaModel<f64>,
     fixed_variable_ids: Vec<VariableId>,
     adaptive: EffectiveBendersAdaptiveConfig,
-) -> Result<ospf_rust_framework::solver::FeasibleSolution, Box<dyn Error>> {
+) -> Result<FeasibleSolutionV<f64>, Box<dyn Error>> {
     let mechanism_model = sub_model.try_to_mechanism_model()?;
     let solver = GurobiLinearBendersDecompositionSolver::new().with_cut_context(
         mechanism_model,
@@ -1023,7 +1041,14 @@ fn solve_linear_benders(
     if let Some(objective_stall_iterations) = adaptive.objective_stall_iterations {
         options = options.with_objective_stall_iterations(objective_stall_iterations);
     }
-    Ok(solver.solve_meta_with_options(master_model, sub_model, options)?)
+    Ok(solver.solve_meta_typed_with_options(master_model, sub_model, options)?)
+}
+
+fn solve_meta_typed_if_feasible(
+    model: MetaModel<f64>,
+) -> Result<Option<FeasibleSolverOutput<f64>>, Box<dyn Error>> {
+    let solver = GurobiSolver::new();
+    solve_linear_meta_model_typed_if_feasible(model, &solver)
 }
 
 fn analyze_solution_vector(
@@ -1046,12 +1071,7 @@ fn analyze_solution_vector(
         }
     }
     append_critical_constraint_notes(request, x_idx, solution, &mut notes);
-    demo2_response(
-        String::from("Optimal"),
-        Some(objective),
-        assignments,
-        notes,
-    )
+    demo2_response(String::from("Optimal"), Some(objective), assignments, notes)
 }
 
 impl FullLoadApplication {
@@ -1263,7 +1283,9 @@ impl FullLoadApplication {
         for c in 0..request.cargos.len() {
             for p in 0..request.positions.len() {
                 let var_name = format!("x_{}_{}", c, p);
-                x_idx[c][p] = model.register_variable(ospf_rust_core::variable::BinaryVariableItem::auto(&var_name))?;
+                x_idx[c][p] = model.register_variable(
+                    ospf_rust_core::variable::BinaryVariableItem::auto(&var_name),
+                )?;
             }
         }
 
@@ -1274,13 +1296,7 @@ impl FullLoadApplication {
             }
         }
         model.set_linear_objective(objective, ObjectiveCategory::Maximum);
-        apply_domain_pipeline(
-            Demo2PipelineMode::FullLoad,
-            model,
-            request,
-            &x_idx,
-            None,
-        )?;
+        apply_domain_pipeline(Demo2PipelineMode::FullLoad, model, request, &x_idx, None)?;
 
         Ok(x_idx)
     }
@@ -1301,16 +1317,20 @@ impl FullLoadApplication {
         let mut sub_model = MetaModel::<f64>::new("framework_demo2_full_load_sub");
         let mut x_idx_master = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
         let mut x_idx_sub = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
-        let mut fixed_variable_ids = Vec::with_capacity(request.cargos.len() * request.positions.len());
+        let mut fixed_variable_ids =
+            Vec::with_capacity(request.cargos.len() * request.positions.len());
 
         for c in 0..request.cargos.len() {
             for p in 0..request.positions.len() {
-                let master_var = ospf_rust_core::variable::BinaryVariableItem::auto(
-                    &format!("x_bm_{}_{}", c, p),
-                );
+                let master_var = ospf_rust_core::variable::BinaryVariableItem::auto(&format!(
+                    "x_bm_{}_{}",
+                    c, p
+                ));
                 let shared_id = master_var.id();
-                let sub_var =
-                    ospf_rust_core::variable::BinaryVariableItem::create(shared_id, &format!("x_bs_{}_{}", c, p));
+                let sub_var = ospf_rust_core::variable::BinaryVariableItem::create(
+                    shared_id,
+                    &format!("x_bs_{}_{}", c, p),
+                );
                 x_idx_master[c][p] = master_model.register_variable(master_var)?;
                 x_idx_sub[c][p] = sub_model.register_variable(sub_var)?;
                 fixed_variable_ids.push(shared_id);
@@ -1377,8 +1397,7 @@ impl FullLoadApplication {
         &self,
         request: &Demo2Request,
         adaptive: EffectiveBendersAdaptiveConfig,
-    ) -> Result<(Vec<Vec<usize>>, ospf_rust_framework::solver::FeasibleSolution), Box<dyn Error>>
-    {
+    ) -> Result<(Vec<Vec<usize>>, FeasibleSolutionV<f64>), Box<dyn Error>> {
         let (master_model, sub_model, x_idx_master, fixed_variable_ids) =
             self.build_benders_models(request)?;
         let benders_result =
@@ -1389,26 +1408,25 @@ impl FullLoadApplication {
     fn solve(
         &self,
         model: MetaModel<f64>,
-    ) -> Result<ospf_rust_core::solver::SolverOutput, Box<dyn Error>> {
-        let solver = GurobiSolver::new();
-        Ok(model.solve(&solver)?)
+    ) -> Result<Option<FeasibleSolverOutput<f64>>, Box<dyn Error>> {
+        solve_meta_typed_if_feasible(model)
     }
 
     fn analyze(
         &self,
         request: &Demo2Request,
         x_idx: &[Vec<usize>],
-        output: ospf_rust_core::solver::SolverOutput,
+        output: Option<FeasibleSolverOutput<f64>>,
         mut notes: Vec<String>,
     ) -> Result<Demo2Response, Box<dyn Error>> {
-        if !output.status.is_feasible() || output.solution.is_none() {
+        let Some(feasible_output) = output else {
             notes.push(String::from(
                 "solver returned no feasible solution; mapped to explicit NoSolution response",
             ));
             return Ok(no_solution_response("NoSolution", notes));
-        }
+        };
         let mut assignments = Vec::new();
-        let solution = output.solution.unwrap_or_default();
+        let solution = feasible_output.solution;
 
         for c in 0..request.cargos.len() {
             for p in 0..request.positions.len() {
@@ -1424,8 +1442,8 @@ impl FullLoadApplication {
         append_critical_constraint_notes(request, x_idx, &solution, &mut notes);
 
         Ok(demo2_response(
-            format!("{:?}", output.status),
-            output.objective_value,
+            format!("{:?}", feasible_output.status),
+            feasible_output.objective_value,
             assignments,
             notes,
         ))
@@ -1640,8 +1658,9 @@ impl PredistributionApplication {
         for c in 0..request.cargos.len() {
             for p in 0..request.positions.len() {
                 let var_name = format!("x_pre_{}_{}", c, p);
-                x_idx[c][p] =
-                    model.register_variable(ospf_rust_core::variable::BinaryVariableItem::auto(&var_name))?;
+                x_idx[c][p] = model.register_variable(
+                    ospf_rust_core::variable::BinaryVariableItem::auto(&var_name),
+                )?;
             }
         }
 
@@ -1663,9 +1682,8 @@ impl PredistributionApplication {
     fn solve(
         &self,
         model: MetaModel<f64>,
-    ) -> Result<ospf_rust_core::solver::SolverOutput, Box<dyn Error>> {
-        let solver = GurobiSolver::new();
-        Ok(model.solve(&solver)?)
+    ) -> Result<Option<FeasibleSolverOutput<f64>>, Box<dyn Error>> {
+        solve_meta_typed_if_feasible(model)
     }
 
     fn build_benders_models(
@@ -1689,18 +1707,23 @@ impl PredistributionApplication {
 
         for c in 0..request.cargos.len() {
             for p in 0..request.positions.len() {
-                let master_var =
-                    ospf_rust_core::variable::BinaryVariableItem::auto(&format!("x_pre_bm_{}_{}", c, p));
+                let master_var = ospf_rust_core::variable::BinaryVariableItem::auto(&format!(
+                    "x_pre_bm_{}_{}",
+                    c, p
+                ));
                 let shared_id = master_var.id();
-                let sub_var =
-                    ospf_rust_core::variable::BinaryVariableItem::create(shared_id, &format!("x_pre_bs_{}_{}", c, p));
+                let sub_var = ospf_rust_core::variable::BinaryVariableItem::create(
+                    shared_id,
+                    &format!("x_pre_bs_{}_{}", c, p),
+                );
                 x_idx_master[c][p] = master_model.register_variable(master_var)?;
                 x_idx_sub[c][p] = sub_model.register_variable(sub_var)?;
                 fixed_variable_ids.push(shared_id);
             }
         }
 
-        let z = master_model.register_variable(UContinuousVariableItem::auto("pre_benders_max_deviation"))?;
+        let z = master_model
+            .register_variable(UContinuousVariableItem::auto("pre_benders_max_deviation"))?;
         let mut objective = vec![0.0; master_model.num_tokens()];
         objective[z] = 1.0;
         master_model.set_linear_objective(objective, ObjectiveCategory::Minimum);
@@ -1757,8 +1780,7 @@ impl PredistributionApplication {
         &self,
         request: &Demo2Request,
         adaptive: EffectiveBendersAdaptiveConfig,
-    ) -> Result<(Vec<Vec<usize>>, ospf_rust_framework::solver::FeasibleSolution), Box<dyn Error>>
-    {
+    ) -> Result<(Vec<Vec<usize>>, FeasibleSolutionV<f64>), Box<dyn Error>> {
         let (master_model, sub_model, x_idx_master, fixed_variable_ids) =
             self.build_benders_models(request)?;
         let benders_result =
@@ -1770,17 +1792,17 @@ impl PredistributionApplication {
         &self,
         request: &Demo2Request,
         x_idx: &[Vec<usize>],
-        output: ospf_rust_core::solver::SolverOutput,
+        output: Option<FeasibleSolverOutput<f64>>,
         mut notes: Vec<String>,
     ) -> Result<Demo2Response, Box<dyn Error>> {
-        if !output.status.is_feasible() || output.solution.is_none() {
+        let Some(feasible_output) = output else {
             notes.push(String::from(
                 "solver returned no feasible solution; mapped to explicit NoSolution response",
             ));
             return Ok(no_solution_response("NoSolution", notes));
-        }
+        };
         let mut assignments = Vec::new();
-        let solution = output.solution.unwrap_or_default();
+        let solution = feasible_output.solution;
 
         for c in 0..request.cargos.len() {
             for p in 0..request.positions.len() {
@@ -1796,8 +1818,8 @@ impl PredistributionApplication {
         append_critical_constraint_notes(request, x_idx, &solution, &mut notes);
 
         Ok(demo2_response(
-            format!("{:?}", output.status),
-            output.objective_value,
+            format!("{:?}", feasible_output.status),
+            feasible_output.objective_value,
             assignments,
             notes,
         ))
@@ -2012,8 +2034,9 @@ impl WeightRecommendationApplication {
         for c in 0..request.cargos.len() {
             for p in 0..request.positions.len() {
                 let var_name = format!("x_wr_{}_{}", c, p);
-                x_idx[c][p] =
-                    model.register_variable(ospf_rust_core::variable::BinaryVariableItem::auto(&var_name))?;
+                x_idx[c][p] = model.register_variable(
+                    ospf_rust_core::variable::BinaryVariableItem::auto(&var_name),
+                )?;
             }
         }
 
@@ -2021,8 +2044,8 @@ impl WeightRecommendationApplication {
         let mut objective = vec![0.0; model.num_tokens()];
         for c in 0..request.cargos.len() {
             for p in 0..request.positions.len() {
-                objective[x_idx[c][p]] +=
-                    request.cargos[c].weight * request.weight_recommendation_objective.payload_priority;
+                objective[x_idx[c][p]] += request.cargos[c].weight
+                    * request.weight_recommendation_objective.payload_priority;
             }
         }
         objective[z] -= request.weight_recommendation_objective.balance_priority;
@@ -2050,17 +2073,20 @@ impl WeightRecommendationApplication {
         ),
         Box<dyn Error>,
     > {
-        let mut master_model = MetaModel::<f64>::new("framework_demo2_weight_recommendation_master");
+        let mut master_model =
+            MetaModel::<f64>::new("framework_demo2_weight_recommendation_master");
         let mut sub_model = MetaModel::<f64>::new("framework_demo2_weight_recommendation_sub");
         let mut x_idx_master = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
         let mut x_idx_sub = vec![vec![0usize; request.positions.len()]; request.cargos.len()];
-        let mut fixed_variable_ids = Vec::with_capacity(request.cargos.len() * request.positions.len());
+        let mut fixed_variable_ids =
+            Vec::with_capacity(request.cargos.len() * request.positions.len());
 
         for c in 0..request.cargos.len() {
             for p in 0..request.positions.len() {
-                let master_var = ospf_rust_core::variable::BinaryVariableItem::auto(
-                    &format!("x_wr_bm_{}_{}", c, p),
-                );
+                let master_var = ospf_rust_core::variable::BinaryVariableItem::auto(&format!(
+                    "x_wr_bm_{}_{}",
+                    c, p
+                ));
                 let shared_id = master_var.id();
                 let sub_var = ospf_rust_core::variable::BinaryVariableItem::create(
                     shared_id,
@@ -2072,12 +2098,13 @@ impl WeightRecommendationApplication {
             }
         }
 
-        let z = master_model.register_variable(UContinuousVariableItem::auto("wr_benders_max_deviation"))?;
+        let z = master_model
+            .register_variable(UContinuousVariableItem::auto("wr_benders_max_deviation"))?;
         let mut objective = vec![0.0; master_model.num_tokens()];
         for c in 0..request.cargos.len() {
             for p in 0..request.positions.len() {
-                objective[x_idx_master[c][p]] +=
-                    request.cargos[c].weight * request.weight_recommendation_objective.payload_priority;
+                objective[x_idx_master[c][p]] += request.cargos[c].weight
+                    * request.weight_recommendation_objective.payload_priority;
             }
         }
         objective[z] -= request.weight_recommendation_objective.balance_priority;
@@ -2135,8 +2162,7 @@ impl WeightRecommendationApplication {
         &self,
         request: &Demo2Request,
         adaptive: EffectiveBendersAdaptiveConfig,
-    ) -> Result<(Vec<Vec<usize>>, ospf_rust_framework::solver::FeasibleSolution), Box<dyn Error>>
-    {
+    ) -> Result<(Vec<Vec<usize>>, FeasibleSolutionV<f64>), Box<dyn Error>> {
         let (master_model, sub_model, x_idx_master, fixed_variable_ids) =
             self.build_benders_models(request)?;
         let benders_result =
@@ -2147,26 +2173,25 @@ impl WeightRecommendationApplication {
     fn solve(
         &self,
         model: MetaModel<f64>,
-    ) -> Result<ospf_rust_core::solver::SolverOutput, Box<dyn Error>> {
-        let solver = GurobiSolver::new();
-        Ok(model.solve(&solver)?)
+    ) -> Result<Option<FeasibleSolverOutput<f64>>, Box<dyn Error>> {
+        solve_meta_typed_if_feasible(model)
     }
 
     fn analyze(
         &self,
         request: &Demo2Request,
         x_idx: &[Vec<usize>],
-        output: ospf_rust_core::solver::SolverOutput,
+        output: Option<FeasibleSolverOutput<f64>>,
         mut notes: Vec<String>,
     ) -> Result<Demo2Response, Box<dyn Error>> {
-        if !output.status.is_feasible() || output.solution.is_none() {
+        let Some(feasible_output) = output else {
             notes.push(String::from(
                 "solver returned no feasible solution; mapped to explicit NoSolution response",
             ));
             return Ok(no_solution_response("NoSolution", notes));
-        }
+        };
         let mut assignments = Vec::new();
-        let solution = output.solution.unwrap_or_default();
+        let solution = feasible_output.solution;
 
         for c in 0..request.cargos.len() {
             for p in 0..request.positions.len() {
@@ -2182,8 +2207,8 @@ impl WeightRecommendationApplication {
         append_critical_constraint_notes(request, x_idx, &solution, &mut notes);
 
         Ok(demo2_response(
-            format!("{:?}", output.status),
-            output.objective_value,
+            format!("{:?}", feasible_output.status),
+            feasible_output.objective_value,
             assignments,
             notes,
         ))
@@ -2248,9 +2273,9 @@ impl LoadingOrderApplication {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::framework::demo2::infrastructure::dto::{
-        AircraftTypeInput, BendersAdaptiveConfig, CargoInput, Demo2Request, PositionInput, SolvePolicy,
-        WeightRecommendationObjectiveConfig,
+    use crate::framework_demo::demo2::infrastructure::dto::{
+        AircraftTypeInput, BendersAdaptiveConfig, CargoInput, Demo2Request, PositionInput,
+        SolvePolicy, WeightRecommendationObjectiveConfig,
     };
 
     #[test]
@@ -2282,8 +2307,14 @@ mod tests {
 
         assert!(output.status == "Optimal" || output.status == "Feasible");
         assert!(
-            output.notes.iter().any(|note| note.contains("solver_path=benders"))
-                || output.notes.iter().any(|note| note.contains("solver_path=milp_fallback"))
+            output
+                .notes
+                .iter()
+                .any(|note| note.contains("solver_path=benders"))
+                || output
+                    .notes
+                    .iter()
+                    .any(|note| note.contains("solver_path=milp_fallback"))
         );
     }
 
@@ -2368,8 +2399,14 @@ mod tests {
 
         assert!(output.status == "Optimal" || output.status == "Feasible");
         assert!(
-            output.notes.iter().any(|note| note.contains("solver_path=benders"))
-                || output.notes.iter().any(|note| note.contains("solver_path=milp_fallback"))
+            output
+                .notes
+                .iter()
+                .any(|note| note.contains("solver_path=benders"))
+                || output
+                    .notes
+                    .iter()
+                    .any(|note| note.contains("solver_path=milp_fallback"))
         );
     }
 
@@ -2568,7 +2605,7 @@ mod tests {
     fn weight_recommendation_prioritizes_balance_over_small_extra_payload() {
         let mut request = Demo2Request::sample();
         request.cargos = vec![
-            crate::framework::demo2::infrastructure::dto::CargoInput {
+            crate::framework_demo::demo2::infrastructure::dto::CargoInput {
                 name: String::from("H1"),
                 weight: 10.0,
                 priority: 6,
@@ -2576,7 +2613,7 @@ mod tests {
                 destination: String::from("D1"),
                 requires_separation: false,
             },
-            crate::framework::demo2::infrastructure::dto::CargoInput {
+            crate::framework_demo::demo2::infrastructure::dto::CargoInput {
                 name: String::from("H2"),
                 weight: 10.0,
                 priority: 6,
@@ -2584,7 +2621,7 @@ mod tests {
                 destination: String::from("D2"),
                 requires_separation: false,
             },
-            crate::framework::demo2::infrastructure::dto::CargoInput {
+            crate::framework_demo::demo2::infrastructure::dto::CargoInput {
                 name: String::from("L1"),
                 weight: 1.0,
                 priority: 1,
@@ -2594,13 +2631,13 @@ mod tests {
             },
         ];
         request.positions = vec![
-            crate::framework::demo2::infrastructure::dto::PositionInput {
+            crate::framework_demo::demo2::infrastructure::dto::PositionInput {
                 name: String::from("P1"),
                 max_weight: 20.0,
                 longitudinal_arm: -1.0,
                 lateral_arm: 0.0,
             },
-            crate::framework::demo2::infrastructure::dto::PositionInput {
+            crate::framework_demo::demo2::infrastructure::dto::PositionInput {
                 name: String::from("P2"),
                 max_weight: 20.0,
                 longitudinal_arm: 1.0,
@@ -2664,8 +2701,14 @@ mod tests {
 
         assert!(output.status == "Optimal" || output.status == "Feasible");
         assert!(
-            output.notes.iter().any(|note| note.contains("solver_path=benders"))
-                || output.notes.iter().any(|note| note.contains("solver_path=milp_fallback"))
+            output
+                .notes
+                .iter()
+                .any(|note| note.contains("solver_path=benders"))
+                || output
+                    .notes
+                    .iter()
+                    .any(|note| note.contains("solver_path=milp_fallback"))
         );
     }
 
@@ -2902,22 +2945,23 @@ mod tests {
 
     #[test]
     fn resolve_benders_quality_guard_config_applies_overrides() {
-        let quality_guard = resolve_benders_quality_guard_config(Some(BendersQualityOverrideConfig {
-            weak_gap_multiplier: Some(30.0),
-            weak_gap_floor: Some(2e-5),
-            iteration_pressure_percent: Some(80),
-            cut_density_min_iterations: Some(10),
-            cut_density_threshold: Some(0.4),
-            trajectory_min_snapshots: Some(8),
-            trajectory_step_multiplier: Some(25.0),
-            trajectory_step_floor: Some(2e-6),
-            time_guard_min_ms: Some(1200),
-            score_gap_weight: Some(0.4),
-            score_time_weight: Some(0.3),
-            score_iteration_weight: Some(0.1),
-            score_cut_density_weight: Some(0.1),
-            score_trajectory_weight: Some(0.1),
-        }));
+        let quality_guard =
+            resolve_benders_quality_guard_config(Some(BendersQualityOverrideConfig {
+                weak_gap_multiplier: Some(30.0),
+                weak_gap_floor: Some(2e-5),
+                iteration_pressure_percent: Some(80),
+                cut_density_min_iterations: Some(10),
+                cut_density_threshold: Some(0.4),
+                trajectory_min_snapshots: Some(8),
+                trajectory_step_multiplier: Some(25.0),
+                trajectory_step_floor: Some(2e-6),
+                time_guard_min_ms: Some(1200),
+                score_gap_weight: Some(0.4),
+                score_time_weight: Some(0.3),
+                score_iteration_weight: Some(0.1),
+                score_cut_density_weight: Some(0.1),
+                score_trajectory_weight: Some(0.1),
+            }));
 
         assert!((quality_guard.weak_gap_multiplier - 30.0).abs() <= 1e-12);
         assert!((quality_guard.weak_gap_floor - 2e-5).abs() <= 1e-12);
@@ -3287,7 +3331,8 @@ mod tests {
                 && note.contains("trajectory_step_multiplier=25.000")
                 && note.contains("trajectory_step_floor=0.000002")
                 && note.contains("time_guard_min_ms=1200")
-                && note.contains("score_weights=gap:0.400|time:0.300|iter:0.100|cut:0.100|traj:0.100")
+                && note
+                    .contains("score_weights=gap:0.400|time:0.300|iter:0.100|cut:0.100|traj:0.100")
         }));
         assert!(output.diagnostics.iter().any(|note| {
             note.level == "diagnostic"
@@ -3336,7 +3381,8 @@ mod tests {
                 && note.contains("trajectory_step_multiplier=25.000")
                 && note.contains("trajectory_step_floor=0.000002")
                 && note.contains("time_guard_min_ms=1200")
-                && note.contains("score_weights=gap:0.400|time:0.300|iter:0.100|cut:0.100|traj:0.100")
+                && note
+                    .contains("score_weights=gap:0.400|time:0.300|iter:0.100|cut:0.100|traj:0.100")
         }));
         assert!(output.diagnostics.iter().any(|note| {
             note.level == "diagnostic"
@@ -3372,7 +3418,9 @@ mod tests {
         });
 
         let app = WeightRecommendationApplication;
-        let output = app.execute(request).expect("weight-recommendation should run");
+        let output = app
+            .execute(request)
+            .expect("weight-recommendation should run");
 
         assert!(output.notes.iter().any(|note| {
             note.contains("benders_quality_guard_effective=")
@@ -3385,7 +3433,8 @@ mod tests {
                 && note.contains("trajectory_step_multiplier=25.000")
                 && note.contains("trajectory_step_floor=0.000002")
                 && note.contains("time_guard_min_ms=1200")
-                && note.contains("score_weights=gap:0.400|time:0.300|iter:0.100|cut:0.100|traj:0.100")
+                && note
+                    .contains("score_weights=gap:0.400|time:0.300|iter:0.100|cut:0.100|traj:0.100")
         }));
         assert!(output.diagnostics.iter().any(|note| {
             note.level == "diagnostic"

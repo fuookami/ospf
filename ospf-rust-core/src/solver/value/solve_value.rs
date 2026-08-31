@@ -1,5 +1,5 @@
-//! 求解值类型约束
-//! Solve value type constraints
+//! 求解值类型约束（Kotlin 对齐主路径）
+//! Solve value type constraints (Kotlin-aligned main path)
 
 use std::fmt::Debug;
 use std::str::FromStr;

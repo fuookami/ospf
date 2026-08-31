@@ -16,8 +16,8 @@ use super::dummy_index::{DummyIndex, DummyIndexIterator, IteratorVector};
 use super::error::{DimensionMismatchingError, IndexCalculationError, OutOfShapeError};
 use super::map_index::MapIndex;
 use cc_traits::Len;
-use ospf_rust_base::error::*;
 use ospf_rust_base::Indices;
+use ospf_rust_base::error::*;
 use std::fmt::{Debug, Display, Formatter};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
@@ -188,7 +188,7 @@ pub trait AbstractShape {
     /// Convert linear index to vector
     fn vector_of(&self, mut index: usize) -> Result<Self::VectorType, IndexCalculationError> {
         let mut vector = self.zero();
-        
+
         // 根据存储顺序决定遍历方向
         // Determine traversal direction based on storage order
         // RowMajor: 从高维到低维计算 (Calculate from high to low dimension)
@@ -261,6 +261,128 @@ pub trait AbstractShape {
     /// Convert map vector to iterator vector
     fn map_to_iterator_vector(&self, map_vector: &Self::MapVectorType) -> Self::IteratorVectorType;
 }
+
+/// 形状索引迭代器 / Shape index iterator.
+pub struct ShapeIndicesIter<'a, S: AbstractShape> {
+    shape: &'a S,
+    current: S::VectorType,
+    started: bool,
+    finished: bool,
+    access_order: AccessOrder,
+}
+
+impl<'a, S: AbstractShape> ShapeIndicesIter<'a, S> {
+    /// 创建形状索引迭代器 / Create a shape index iterator.
+    pub fn new(shape: &'a S, access_order: AccessOrder) -> Self {
+        let mut finished = false;
+        if shape.dimension() > 0 {
+            for dim in 0..shape.dimension() {
+                if shape.len_of_dimension(dim).unwrap_or(0) == 0 {
+                    finished = true;
+                    break;
+                }
+            }
+        }
+
+        Self {
+            shape,
+            current: shape.zero(),
+            started: false,
+            finished,
+            access_order,
+        }
+    }
+
+    #[inline]
+    fn step_row_major(&mut self) -> bool {
+        if self.shape.dimension() == 0 {
+            return false;
+        }
+
+        for dim in (0..self.shape.dimension()).rev() {
+            let len = self.shape.len_of_dimension(dim).unwrap_or(0);
+            if self.current[dim] + 1 < len {
+                self.current[dim] += 1;
+                return true;
+            }
+            self.current[dim] = 0;
+        }
+        false
+    }
+
+    #[inline]
+    fn step_column_major(&mut self) -> bool {
+        if self.shape.dimension() == 0 {
+            return false;
+        }
+
+        for dim in 0..self.shape.dimension() {
+            let len = self.shape.len_of_dimension(dim).unwrap_or(0);
+            if self.current[dim] + 1 < len {
+                self.current[dim] += 1;
+                return true;
+            }
+            self.current[dim] = 0;
+        }
+        false
+    }
+}
+
+impl<S: AbstractShape> Iterator for ShapeIndicesIter<'_, S> {
+    type Item = S::VectorType;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+
+        if !self.started {
+            self.started = true;
+            return Some(self.current.clone());
+        }
+
+        let advanced = match self.access_order {
+            AccessOrder::RowMajor => self.step_row_major(),
+            AccessOrder::ColumnMajor => self.step_column_major(),
+        };
+
+        if !advanced {
+            self.finished = true;
+            return None;
+        }
+
+        Some(self.current.clone())
+    }
+}
+
+/// 形状访问顺序扩展 / Shape access-order extensions.
+pub trait ShapeAccessOrderExt: AbstractShape {
+    /// 默认顺序索引迭代（RowMajor）/ Iterate indices in default order (RowMajor).
+    fn indices(&self) -> ShapeIndicesIter<'_, Self>
+    where
+        Self: Sized,
+    {
+        ShapeIndicesIter::new(self, AccessOrder::default())
+    }
+
+    /// 按访问顺序索引迭代 / Iterate indices with a specified access order.
+    fn indices_with_order(&self, access_order: AccessOrder) -> ShapeIndicesIter<'_, Self>
+    where
+        Self: Sized,
+    {
+        ShapeIndicesIter::new(self, access_order)
+    }
+
+    /// `indices_with_order` 的别名 / Alias of `indices_with_order`.
+    fn iterate(&self, access_order: AccessOrder) -> ShapeIndicesIter<'_, Self>
+    where
+        Self: Sized,
+    {
+        self.indices_with_order(access_order)
+    }
+}
+
+impl<S: AbstractShape> ShapeAccessOrderExt for S {}
 
 /// 编译期形状结构体
 /// Compile-time shape struct
@@ -1258,5 +1380,34 @@ mod tests {
 
         let display_str = format!("{}", shape);
         assert!(display_str.contains("[3, 4]"));
+    }
+
+    #[test]
+    fn test_shape_access_order_indices() {
+        let shape: Shape<2> = Shape::new([2, 3]);
+
+        let row_major: std::vec::Vec<[usize; 2]> = shape.indices().collect();
+        assert_eq!(
+            row_major,
+            vec![[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]]
+        );
+
+        let column_major: std::vec::Vec<[usize; 2]> =
+            shape.iterate(AccessOrder::ColumnMajor).collect();
+        assert_eq!(
+            column_major,
+            vec![[0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]]
+        );
+    }
+
+    #[test]
+    fn test_dyn_shape_access_order_indices() {
+        let shape: DynShape = DynShape::new(vec![2, 2]);
+        let vectors: std::vec::Vec<std::vec::Vec<usize>> =
+            shape.iterate(AccessOrder::ColumnMajor).collect();
+        assert_eq!(
+            vectors,
+            vec![vec![0, 0], vec![1, 0], vec![0, 1], vec![1, 1]]
+        );
     }
 }

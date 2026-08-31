@@ -1,6 +1,6 @@
 # ospf-rust-multiarray
 
-[English Documentation](README.md)
+:us: English | :cn: [简体中文](README_ch.md)
 
 高性能、泛型的 Rust 多维数组库，支持编译期和运行期形状。
 
@@ -69,11 +69,17 @@ let block_array = BlockMultiArrayBuilder::new(shape);
 带命名列的表格数据结构：
 
 ```rust
-use ospf_rust_multiarray::{DataFrame, DataFrameBuilder};
+use ospf_rust_multiarray::{data_frame_of, DataFrameBuilder};
 
-let mut df = DataFrameBuilder::new();
-df.add_column("x", vec![1.0, 2.0, 3.0]);
-df.add_column("y", vec![4.0, 5.0, 6.0]);
+let df = data_frame_of([
+    ("x", vec![Some(1.0), Some(2.0), Some(3.0)]),
+    ("y", vec![Some(4.0), Some(5.0), Some(6.0)]),
+]);
+
+let rows = DataFrameBuilder::build_rows(["x", "y"], |rows| {
+    rows.row([Some(1.0), Some(4.0)]);
+    rows.row([Some(2.0), Some(5.0)]);
+});
 ```
 
 ## 性能特性

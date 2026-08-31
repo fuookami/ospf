@@ -52,7 +52,7 @@ use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 /// assert!(radius_diff.abs() < 1e-10);
 /// ```
 #[derive(Clone, PartialEq)]
-pub struct Circle<const D: usize, S: Field + Float = f64> {
+pub struct Circle<const D: usize, S = f64> {
     /// 圆心 / Center
     center: Point<D, S>,
     /// 半径 / Radius
@@ -63,7 +63,7 @@ pub struct Circle<const D: usize, S: Field + Float = f64> {
 // 构造方法 / Constructors
 // ============================================================================
 
-impl<const D: usize, S: Field + Float> Circle<D, S> {
+impl<const D: usize, S> Circle<D, S> {
     /// 创建新的圆
     /// Create a new circle
     ///
@@ -95,10 +95,16 @@ impl<const D: usize, S: Field + Float> Circle<D, S> {
         &self.center
     }
 
-    /// 获取半径
-    /// Get the radius
-    pub fn radius(&self) -> S {
-        self.radius
+    /// 获取半径引用
+    /// Get the radius reference
+    pub fn radius_ref(&self) -> &S {
+        &self.radius
+    }
+
+    /// 消费圆并返回圆心和半径
+    /// Consume the circle and return center and radius
+    pub fn into_parts(self) -> (Point<D, S>, S) {
+        (self.center, self.radius)
     }
 
     /// 设置圆心
@@ -111,6 +117,14 @@ impl<const D: usize, S: Field + Float> Circle<D, S> {
     /// Set the radius
     pub fn set_radius(&mut self, radius: S) {
         self.radius = radius;
+    }
+}
+
+impl<const D: usize, S: Copy> Circle<D, S> {
+    /// 获取半径
+    /// Get the radius
+    pub fn radius(&self) -> S {
+        self.radius
     }
 }
 
@@ -303,7 +317,7 @@ pub type Sphere3<S = f64> = Circle<3, S>;
 // Trait 实现 / Trait implementations
 // ============================================================================
 
-impl<const D: usize, S: Field + Float> Debug for Circle<D, S> {
+impl<const D: usize, S: Debug> Debug for Circle<D, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(
             f,
@@ -313,7 +327,7 @@ impl<const D: usize, S: Field + Float> Debug for Circle<D, S> {
     }
 }
 
-impl<const D: usize, S: Field + Float + Display> Display for Circle<D, S> {
+impl<const D: usize, S: Display> Display for Circle<D, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         write!(
             f,

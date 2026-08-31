@@ -1,4 +1,3 @@
-
 //! 索引值转换模块
 //! Index value conversion module
 //!

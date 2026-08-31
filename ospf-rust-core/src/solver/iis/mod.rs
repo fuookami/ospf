@@ -29,7 +29,6 @@ pub use iis_config::*;
 pub use iis_model::*;
 
 use crate::error::Result;
-use crate::model::intermediate::BasicLinearTriadModel;
 
 /// 计算 IIS / Compute IIS
 ///
@@ -47,15 +46,18 @@ use crate::model::intermediate::BasicLinearTriadModel;
 ///
 /// ```rust,no_run
 /// use ospf_rust_core::solver::iis::{compute_iis, IISConfig};
-/// use ospf_rust_core::model::intermediate::BasicLinearTriadModel;
+/// use ospf_rust_core::model::intermediate::LinearTriadModel;
 ///
 /// // 假设有一个不可行的模型 / Assume an infeasible model
-/// let model: BasicLinearTriadModel = unimplemented!();
+/// let model: LinearTriadModel = unimplemented!();
 ///
 /// let iis = compute_iis(&model, &IISConfig::default()).unwrap();
 /// println!("IIS contains {} constraints", iis.num_constraints());
 /// ```
-pub fn compute_iis(model: &BasicLinearTriadModel, config: &IISConfig) -> Result<LinearIISModel> {
+pub fn compute_iis<M>(model: &M, config: &IISConfig) -> Result<LinearIISModel>
+where
+    M: LinearTriadModelIISSource + ?Sized,
+{
     match config.algorithm {
         IISAlgorithm::ElasticFiltering => elastic_filtering::compute_iis_elastic(model, config),
         IISAlgorithm::DeletionFiltering => deletion_filtering::compute_iis_deletion(model, config),

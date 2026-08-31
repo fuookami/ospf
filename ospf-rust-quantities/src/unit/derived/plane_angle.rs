@@ -5,7 +5,7 @@
 //! Provides SI unit definitions for plane angle dimension, including radian, degree, arc minute, arc second, etc.
 
 use crate::dimension::derived::PlaneAngle;
-use crate::scale::{Scale, SEXAGESIMAL};
+use crate::scale::{SEXAGESIMAL, Scale};
 use crate::unit::CTUnit;
 use once_cell::sync::Lazy;
 
@@ -17,7 +17,13 @@ use once_cell::sync::Lazy;
 define_unit!(Radian, "radian", "rad", PlaneAngle);
 
 // 毫弧度 / Milliradian
-define_unit!(Milliradian, "milliradian", "mrad", PlaneAngle, Scale::from_f64(0.001));
+define_unit!(
+    Milliradian,
+    "milliradian",
+    "mrad",
+    PlaneAngle,
+    Scale::from_f64(0.001)
+);
 
 // 度 / Degree
 pub static RADIAN_TO_DEGREE: Lazy<Scale> =
@@ -44,10 +50,28 @@ define_unit!(
 );
 
 // 周角 / Round angle (360 degrees = 2π radians)
-define_unit!(RoundAngle, "round angle", "round angle", PlaneAngle, Scale::from_f64(std::f64::consts::PI * 2.0));
+define_unit!(
+    RoundAngle,
+    "round angle",
+    "round angle",
+    PlaneAngle,
+    Scale::from_f64(std::f64::consts::PI * 2.0)
+);
 
 // 直角 / Right angle (90 degrees = π/2 radians)
-define_unit!(RightAngle, "right angle", "right angle", PlaneAngle, Scale::from_f64(std::f64::consts::PI / 2.0));
+define_unit!(
+    RightAngle,
+    "right angle",
+    "right angle",
+    PlaneAngle,
+    Scale::from_f64(std::f64::consts::PI / 2.0)
+);
 
 // 梯度 / Gradian (gon)
-define_unit!(Gradian, "gradian", "gon", PlaneAngle, Scale::from_f64(std::f64::consts::PI / 200.0));
+define_unit!(
+    Gradian,
+    "gradian",
+    "gon",
+    PlaneAngle,
+    Scale::from_f64(std::f64::consts::PI / 200.0)
+);

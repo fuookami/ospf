@@ -10,7 +10,7 @@
 //! 2. 行优先 vs 列优先存储顺序
 
 use cc_traits::Iter;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use ospf_rust_multiarray::*;
 
 // ============================================================================
@@ -155,7 +155,8 @@ fn bench_index_access_benchmark(c: &mut Criterion) {
     // RT Array with dynamic dimension - vec index access
     // RT 数组，动态维度 - 向量索引访问
     let shape_rt = DynShape::new(vec![size, size]);
-    let array_rt: MultiArray<f64, DynShape> = MultiArrayBuilder::new_by(shape_rt, |idx, _| idx as f64);
+    let array_rt: MultiArray<f64, DynShape> =
+        MultiArrayBuilder::new_by(shape_rt, |idx, _| idx as f64);
 
     group.bench_function("RT dynamic dim - vec index", |b| {
         b.iter(|| {
@@ -209,7 +210,8 @@ fn bench_view_benchmark(c: &mut Criterion) {
     // Setup arrays with runtime storage order (required for view builders)
     // 设置运行时存储顺序的数组（视图构建器需要）
     let shape_rt = DynShape::new(vec![size * 2, size * 2]);
-    let array_rt: MultiArray<f64, DynShape> = MultiArrayBuilder::new_by(shape_rt, |idx, _| idx as f64);
+    let array_rt: MultiArray<f64, DynShape> =
+        MultiArrayBuilder::new_by(shape_rt, |idx, _| idx as f64);
 
     // RT View - sliced iteration
     // RT 视图 - 切片迭代

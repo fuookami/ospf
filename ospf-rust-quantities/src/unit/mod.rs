@@ -30,12 +30,15 @@ pub use concept::UnitTrait;
 
 // 从 physical_unit 模块重导出
 pub use physical_unit::{
-    ct_conversion_factor, CTUnit, CTUnitDiv, CTUnitMul, CTUnitPow,
-    CTUnitReciprocal, Unit, UnitBuilder, UnitInner,
+    CTUnit, CTUnitDiv, CTUnitMul, CTUnitPow, CTUnitReciprocal, Unit, UnitBuilder,
+    UnitConversionRule, UnitInner, ct_conversion_factor,
 };
 
 // 从 system 模块重导出
-pub use system::{ConcreteUnitSystem, UnitSystem, UnitSystemBuilder};
+pub use system::{
+    CGS_SYSTEM, CGS_SYSTEM as CGS, ConcreteUnitSystem, MKS_SYSTEM, MKS_SYSTEM as MKS, SI_SYSTEM,
+    SI_SYSTEM as SI, UnitSystem, UnitSystemBuilder,
+};
 
 // 从 derived 模块重导出所有单位
 pub use derived::*;

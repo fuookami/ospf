@@ -17,7 +17,7 @@
 
 use super::fundamental_quantity::{
     CTFundamentalQuantityTrait, FundamentalDimension, FundamentalQuantity, FundamentalQuantityEnum,
-    Info, Omega, Phi, Theta, I, J, L, M, N, T,
+    I, Info, J, L, M, N, Omega, Phi, T, Theta,
 };
 use crate::dimension::{
     CTFundamentalDimension, CTFundamentalDiv, CTFundamentalMul, CTFundamentalPow,
@@ -36,6 +36,68 @@ use typenum::Integer;
 // ============================================================================
 // 运行时导出量纲 / Runtime derived dimension
 // ============================================================================
+
+/// QuantityDomain - 物理量取值域
+/// QuantityDomain - Quantity value domain
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum QuantityDomain {
+    /// 连续量 / Continuous quantity
+    Continuous,
+    /// 离散量 / Discrete quantity
+    Discrete,
+}
+
+impl QuantityDomain {
+    /// 取值域乘法合成规则
+    /// Compose value domain for multiplication
+    pub const fn mul_domain(self, rhs: Self) -> Self {
+        if matches!(self, Self::Discrete) && matches!(rhs, Self::Discrete) {
+            Self::Discrete
+        } else {
+            Self::Continuous
+        }
+    }
+
+    /// 取值域除法合成规则
+    /// Compose value domain for division
+    pub const fn div_domain(self, _rhs: Self) -> Self {
+        Self::Continuous
+    }
+
+    /// 取值域幂次合成规则
+    /// Compose value domain for powers
+    pub const fn pow(self, index: i64) -> Self {
+        if index <= 0 {
+            Self::Continuous
+        } else if index == 1 {
+            self
+        } else {
+            let mut i = 1;
+            let mut domain = self;
+            while i < index {
+                domain = domain.mul_domain(self);
+                i += 1;
+            }
+            domain
+        }
+    }
+}
+
+impl Mul for QuantityDomain {
+    type Output = QuantityDomain;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        self.mul_domain(rhs)
+    }
+}
+
+impl Div for QuantityDomain {
+    type Output = QuantityDomain;
+
+    fn div(self, _rhs: Self) -> Self::Output {
+        self.div_domain(_rhs)
+    }
+}
 
 fn add_power(
     quantities: &Vec<FundamentalQuantity>,
@@ -147,6 +209,8 @@ pub struct DerivedQuantityInner {
     name: String,
     /// 量纲幂次列表 / Dimension power list
     quantities: Vec<FundamentalQuantity>,
+    /// 取值域 / Value domain
+    domain: QuantityDomain,
     /// 量纲符号 / Dimension symbol
     symbol: OnceLock<String>,
 }
@@ -169,6 +233,7 @@ impl DerivedQuantity {
             inner: Arc::new(DerivedQuantityInner {
                 name,
                 quantities: Vec::new(),
+                domain: QuantityDomain::Continuous,
                 symbol: OnceLock::new(),
             }),
         }
@@ -190,10 +255,31 @@ impl DerivedQuantity {
         if power == 0 {
             Self::none(name)
         } else {
+            Self::from_base_with_power_and_domain(
+                name,
+                dimension,
+                power,
+                QuantityDomain::Continuous,
+            )
+        }
+    }
+
+    /// 从单个基础量纲、幂次和取值域创建
+    /// Create from single base dimension, power, and value domain
+    pub fn from_base_with_power_and_domain(
+        name: String,
+        dimension: FundamentalQuantityEnum,
+        power: i64,
+        domain: QuantityDomain,
+    ) -> Self {
+        if power == 0 {
+            Self::none(name)
+        } else {
             Self {
                 inner: Arc::new(DerivedQuantityInner {
                     name,
                     quantities: vec![FundamentalQuantity::new(dimension, power)],
+                    domain,
                     symbol: OnceLock::new(),
                 }),
             }
@@ -203,10 +289,21 @@ impl DerivedQuantity {
     /// 从量纲幂次列表创建
     /// Create from dimension power list
     pub fn from_quantities(name: String, quantities: Vec<FundamentalQuantity>) -> Self {
+        Self::from_quantities_with_domain(name, quantities, QuantityDomain::Continuous)
+    }
+
+    /// 从量纲幂次列表和取值域创建
+    /// Create from dimension powers and value domain
+    pub fn from_quantities_with_domain(
+        name: String,
+        quantities: Vec<FundamentalQuantity>,
+        domain: QuantityDomain,
+    ) -> Self {
         Self {
             inner: Arc::new(DerivedQuantityInner {
                 name,
                 quantities: simplify(quantities),
+                domain,
                 symbol: OnceLock::new(),
             }),
         }
@@ -223,6 +320,7 @@ impl DerivedQuantity {
             inner: Arc::new(DerivedQuantityInner {
                 name: self.inner.name.clone(),
                 quantities: add_power(&self.inner.quantities, dimension, power),
+                domain: QuantityDomain::Continuous,
                 symbol: OnceLock::new(),
             }),
         }
@@ -249,6 +347,11 @@ impl DerivedQuantity {
     /// Get dimension powers iterator
     pub fn powers(&self) -> impl Iterator<Item = &FundamentalQuantity> {
         self.inner.quantities.iter()
+    }
+
+    /// 获取取值域 / Get value domain
+    pub fn domain(&self) -> QuantityDomain {
+        self.inner.domain
     }
 
     /// 获取量纲名称
@@ -292,21 +395,32 @@ impl DerivedQuantity {
 pub struct DerivedQuantityBuilder {
     name: Option<String>,
     quantities: Vec<FundamentalQuantity>,
+    domain: QuantityDomain,
 }
 
 impl DerivedQuantityBuilder {
     pub fn new(quantities: Vec<FundamentalQuantity>) -> Self {
+        Self::new_with_domain(quantities, QuantityDomain::Continuous)
+    }
+
+    pub fn new_with_domain(quantities: Vec<FundamentalQuantity>, domain: QuantityDomain) -> Self {
         Self {
             name: None,
             quantities,
+            domain,
         }
     }
 
     pub fn build(self) -> DerivedQuantity {
-        DerivedQuantity::from_quantities(
+        DerivedQuantity::from_quantities_with_domain(
             self.name.unwrap_or_else(|| "".to_string()),
             self.quantities.clone(),
+            self.domain,
         )
+    }
+
+    pub fn domain(&self) -> QuantityDomain {
+        self.domain
     }
 
     pub fn name(&mut self, name: String) -> &mut Self {
@@ -320,6 +434,7 @@ impl Clone for DerivedQuantityInner {
         Self {
             name: self.name.clone(),
             quantities: self.quantities.clone(),
+            domain: self.domain,
             symbol: OnceLock::new(),
         }
     }
@@ -374,7 +489,7 @@ impl Mul for DerivedQuantity {
 
     fn mul(self, rhs: Self) -> Self::Output {
         let new_quantities = add_powers(self.inner.quantities.clone(), &rhs.inner.quantities);
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, self.domain() * rhs.domain())
     }
 }
 
@@ -383,7 +498,7 @@ impl Mul for &DerivedQuantity {
 
     fn mul(self, rhs: Self) -> Self::Output {
         let new_quantities = add_powers(self.inner.quantities.clone(), &rhs.inner.quantities);
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, self.domain() * rhs.domain())
     }
 }
 
@@ -392,7 +507,7 @@ impl Mul for DerivedQuantityBuilder {
 
     fn mul(self, rhs: Self) -> Self::Output {
         let new_quantities = add_powers(self.quantities, &rhs.quantities);
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, self.domain * rhs.domain)
     }
 }
 
@@ -401,7 +516,7 @@ impl Mul<DerivedQuantity> for DerivedQuantityBuilder {
 
     fn mul(self, rhs: DerivedQuantity) -> Self::Output {
         let new_quantities = add_powers(self.quantities, &rhs.inner.quantities);
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, self.domain * rhs.domain())
     }
 }
 
@@ -410,7 +525,7 @@ impl Mul<&DerivedQuantity> for DerivedQuantityBuilder {
 
     fn mul(self, rhs: &DerivedQuantity) -> Self::Output {
         let new_quantities = add_powers(self.quantities, &rhs.inner.quantities);
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, self.domain * rhs.domain())
     }
 }
 
@@ -422,9 +537,12 @@ impl Mul<i64> for DerivedQuantity {
         // Pre-allocate capacity
         let mut new_quantities = Vec::with_capacity(self.inner.quantities.len());
         for dp in &self.inner.quantities {
-            new_quantities.push(FundamentalQuantity::new(dp.dimension.clone(), dp.power * rhs));
+            new_quantities.push(FundamentalQuantity::new(
+                dp.dimension.clone(),
+                dp.power * rhs,
+            ));
         }
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, self.domain().pow(rhs))
     }
 }
 
@@ -436,9 +554,12 @@ impl Mul<i64> for &DerivedQuantity {
         // Pre-allocate capacity
         let mut new_quantities = Vec::with_capacity(self.inner.quantities.len());
         for dp in &self.inner.quantities {
-            new_quantities.push(FundamentalQuantity::new(dp.dimension.clone(), dp.power * rhs));
+            new_quantities.push(FundamentalQuantity::new(
+                dp.dimension.clone(),
+                dp.power * rhs,
+            ));
         }
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, self.domain().pow(rhs))
     }
 }
 
@@ -446,7 +567,8 @@ impl Mul<i64> for DerivedQuantityBuilder {
     type Output = DerivedQuantityBuilder;
 
     fn mul(mut self, rhs: i64) -> Self::Output {
-        self.quantities.iter_mut().for_each(|dp| dp.power += rhs);
+        self.quantities.iter_mut().for_each(|dp| dp.power *= rhs);
+        self.domain = self.domain.pow(rhs);
         self
     }
 }
@@ -456,7 +578,7 @@ impl Div for DerivedQuantity {
 
     fn div(self, rhs: Self) -> Self::Output {
         let new_quantities = sub_powers(self.inner.quantities.clone(), &rhs.inner.quantities);
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, self.domain() / rhs.domain())
     }
 }
 
@@ -465,7 +587,7 @@ impl Div for &DerivedQuantity {
 
     fn div(self, rhs: Self) -> Self::Output {
         let new_quantities = sub_powers(self.inner.quantities.clone(), &rhs.inner.quantities);
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, self.domain() / rhs.domain())
     }
 }
 
@@ -474,7 +596,7 @@ impl Div for DerivedQuantityBuilder {
 
     fn div(self, rhs: Self) -> Self::Output {
         let new_quantities = sub_powers(self.quantities, &rhs.quantities);
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, self.domain / rhs.domain)
     }
 }
 
@@ -483,7 +605,7 @@ impl Div<DerivedQuantity> for DerivedQuantityBuilder {
 
     fn div(self, rhs: DerivedQuantity) -> Self::Output {
         let new_quantities = sub_powers(self.quantities, &rhs.inner.quantities);
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, self.domain / rhs.domain())
     }
 }
 
@@ -492,7 +614,7 @@ impl Div<&DerivedQuantity> for DerivedQuantityBuilder {
 
     fn div(self, rhs: &DerivedQuantity) -> Self::Output {
         let new_quantities = sub_powers(self.quantities, &rhs.inner.quantities);
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, self.domain / rhs.domain())
     }
 }
 
@@ -504,9 +626,12 @@ impl Div<i64> for DerivedQuantity {
         // Pre-allocate capacity
         let mut new_quantities = Vec::with_capacity(self.inner.quantities.len());
         for dp in &self.inner.quantities {
-            new_quantities.push(FundamentalQuantity::new(dp.dimension.clone(), dp.power - rhs));
+            new_quantities.push(FundamentalQuantity::new(
+                dp.dimension.clone(),
+                dp.power / rhs,
+            ));
         }
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, QuantityDomain::Continuous)
     }
 }
 
@@ -518,9 +643,12 @@ impl Div<i64> for &DerivedQuantity {
         // Pre-allocate capacity
         let mut new_quantities = Vec::with_capacity(self.inner.quantities.len());
         for dp in &self.inner.quantities {
-            new_quantities.push(FundamentalQuantity::new(dp.dimension.clone(), dp.power - rhs));
+            new_quantities.push(FundamentalQuantity::new(
+                dp.dimension.clone(),
+                dp.power / rhs,
+            ));
         }
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, QuantityDomain::Continuous)
     }
 }
 
@@ -528,9 +656,8 @@ impl Div<i64> for DerivedQuantityBuilder {
     type Output = DerivedQuantityBuilder;
 
     fn div(mut self, rhs: i64) -> Self::Output {
-        self.quantities.iter_mut().for_each(|dp|
-            dp.power -= rhs
-        );
+        self.quantities.iter_mut().for_each(|dp| dp.power /= rhs);
+        self.domain = QuantityDomain::Continuous;
         self
     }
 }
@@ -548,7 +675,7 @@ impl Reciprocal for DerivedQuantity {
                 power: -dp.power,
             });
         }
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, QuantityDomain::Continuous)
     }
 }
 
@@ -565,7 +692,7 @@ impl Reciprocal for &DerivedQuantity {
                 power: -dp.power,
             });
         }
-        DerivedQuantityBuilder::new(new_quantities)
+        DerivedQuantityBuilder::new_with_domain(new_quantities, QuantityDomain::Continuous)
     }
 }
 
@@ -576,6 +703,7 @@ impl Reciprocal for DerivedQuantityBuilder {
         self.quantities.iter_mut().for_each(|dp| {
             dp.power = -dp.power;
         });
+        self.domain = QuantityDomain::Continuous;
         self
     }
 }
@@ -653,6 +781,9 @@ pub trait CTDerivedQuantity {
     /// 量纲名称 / Dimension name
     const NAME: &'static str = "";
 
+    /// 取值域 / Value domain
+    const DOMAIN: QuantityDomain = QuantityDomain::Continuous;
+
     /// 量纲符号 / Dimension symbol
     const SYMBOL: Lazy<String> = Lazy::new(|| {
         let mut result = String::new();
@@ -698,7 +829,7 @@ pub trait CTDerivedQuantity {
 
     /// 运行时量纲值 / Runtime dimension value
     const INSTANT: Lazy<DerivedQuantity> = Lazy::new(|| {
-        DerivedQuantity::from_quantities(
+        DerivedQuantity::from_quantities_with_domain(
             Self::NAME.to_string(),
             vec![
                 Self::L::INSTANT.clone(),
@@ -712,6 +843,7 @@ pub trait CTDerivedQuantity {
                 Self::Phi::INSTANT.clone(),
                 Self::Omega::INSTANT.clone(),
             ],
+            Self::DOMAIN,
         )
     });
 }
@@ -829,6 +961,8 @@ where
     type Info = CTFundamentalMul<D1::Info, D2::Info>;
     type Phi = CTFundamentalMul<D1::Phi, D2::Phi>;
     type Omega = CTFundamentalMul<D1::Omega, D2::Omega>;
+
+    const DOMAIN: QuantityDomain = D1::DOMAIN.mul_domain(D2::DOMAIN);
 }
 
 /// CTDerivedDiv - 编译时导出量纲除法
@@ -912,6 +1046,8 @@ where
     type Info = CTFundamentalDiv<D1::Info, D2::Info>;
     type Phi = CTFundamentalDiv<D1::Phi, D2::Phi>;
     type Omega = CTFundamentalDiv<D1::Omega, D2::Omega>;
+
+    const DOMAIN: QuantityDomain = D1::DOMAIN.div_domain(D2::DOMAIN);
 }
 
 /// CTDerivedPow - 编译时导出量纲幂次
@@ -966,6 +1102,8 @@ where
     type Info = CTFundamentalPow<D::Info, N>;
     type Phi = CTFundamentalPow<D::Phi, N>;
     type Omega = CTFundamentalPow<D::Omega, N>;
+
+    const DOMAIN: QuantityDomain = D::DOMAIN.pow(N::I64);
 }
 
 /// CTDerivedReciprocal - 编译时导出量纲倒数
@@ -1019,6 +1157,8 @@ where
     type Info = CTFundamentalReciprocal<D::Info>;
     type Phi = CTFundamentalReciprocal<D::Phi>;
     type Omega = CTFundamentalReciprocal<D::Omega>;
+
+    const DOMAIN: QuantityDomain = QuantityDomain::Continuous;
 }
 
 // ============================================================================
@@ -1028,7 +1168,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dimension::{Info0, Omega0, Phi0, Theta0, I0, I1, J0, L0, L1, L2, M0, M1, N0, T0, T1};
+    use crate::dimension::{
+        I0, I1, Info0, J0, L0, L1, L2, M0, M1, N0, Omega0, Phi0, T0, T1, Theta0,
+    };
 
     // ========================================================================
     // 运行时量纲测试 / Runtime dimension tests
@@ -1183,6 +1325,55 @@ mod tests {
         assert!(symbol.contains("T"));
     }
 
+    #[test]
+    fn test_quantity_domain_composition() {
+        // 只有离散量相乘仍为离散 / Only discrete times discrete remains discrete
+        assert_eq!(
+            QuantityDomain::Discrete * QuantityDomain::Discrete,
+            QuantityDomain::Discrete
+        );
+        assert_eq!(
+            QuantityDomain::Discrete * QuantityDomain::Continuous,
+            QuantityDomain::Continuous
+        );
+        assert_eq!(
+            QuantityDomain::Discrete / QuantityDomain::Discrete,
+            QuantityDomain::Continuous
+        );
+        assert_eq!(QuantityDomain::Discrete.pow(0), QuantityDomain::Continuous);
+        assert_eq!(QuantityDomain::Discrete.pow(-1), QuantityDomain::Continuous);
+        assert_eq!(QuantityDomain::Discrete.pow(2), QuantityDomain::Discrete);
+    }
+
+    #[test]
+    fn test_runtime_derived_quantity_domain() {
+        let information = DerivedQuantity::from_base_with_power_and_domain(
+            "".to_string(),
+            FundamentalQuantityEnum::Information,
+            1,
+            QuantityDomain::Discrete,
+        );
+        let length = DerivedQuantity::from_base("".to_string(), FundamentalQuantityEnum::Length);
+
+        assert_eq!(information.domain(), QuantityDomain::Discrete);
+        assert_eq!(
+            (&information * &information).build().domain(),
+            QuantityDomain::Discrete
+        );
+        assert_eq!(
+            (&information * &length).build().domain(),
+            QuantityDomain::Continuous
+        );
+        assert_eq!(
+            (&information / &information).build().domain(),
+            QuantityDomain::Continuous
+        );
+        assert_eq!(
+            (&information).reciprocal().build().domain(),
+            QuantityDomain::Continuous
+        );
+    }
+
     // ========================================================================
     // 编译时量纲测试 / Compile-time dimension tests
     // ========================================================================
@@ -1259,6 +1450,26 @@ mod tests {
         // T^1 -> T^-1 (frequency)
         type TNeg1 = CTFundamentalReciprocal<T1>;
         assert_eq!(<TNeg1 as CTFundamentalQuantityTrait>::P::I64, -1);
+    }
+
+    #[test]
+    fn test_compile_time_quantity_domain() {
+        use crate::dimension::derived::{Bandwidth, Information};
+        use typenum::P2;
+
+        type InformationSquared = CTDerivedPow<Information, P2>;
+        type InformationRatio = CTDerivedDiv<Information, Information>;
+
+        assert_eq!(Information::DOMAIN, QuantityDomain::Discrete);
+        assert_eq!(
+            <InformationSquared as CTDerivedQuantity>::DOMAIN,
+            QuantityDomain::Discrete
+        );
+        assert_eq!(
+            <InformationRatio as CTDerivedQuantity>::DOMAIN,
+            QuantityDomain::Continuous
+        );
+        assert_eq!(Bandwidth::DOMAIN, QuantityDomain::Continuous);
     }
 
     #[test]

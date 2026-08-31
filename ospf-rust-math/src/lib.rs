@@ -39,14 +39,20 @@
 //! - [`delaunay_triangulate`] - Delaunay 三角剖分 / Delaunay triangulation
 
 pub mod algebra;
+pub mod chaotic;
 pub mod combinatorics;
+pub mod fractal;
 pub mod geometry;
 pub mod operator;
 pub mod ordinary;
 pub mod symbol;
+pub mod trivalent;
 
 pub use algebra::*;
+pub use chaotic::*;
 pub use combinatorics::*;
+pub use fractal::*;
 pub use geometry::*;
 pub use operator::*;
 pub use symbol::*;
+pub use trivalent::*;

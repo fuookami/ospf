@@ -11,7 +11,7 @@
 //! - 每个组合内的变量共享相同的组 ID，通过索引区分
 //!   Variables within a combination share the same group ID, distinguished by index
 
-use super::{GenericVariableItem, VariableId, VariableTypeTrait, new_group_id};
+use super::{GenericVariableItem, VariableId, VariableRange, VariableTypeTrait, new_group_id};
 use ospf_rust_multiarray::{
     MultiArray, MultiArrayBuilder,
     shape::{AbstractShape, Shape},
@@ -129,6 +129,59 @@ impl<VT: VariableTypeTrait, S: AbstractShape> VariableCombination<VT, S> {
             group_id,
             name_prefix: name_prefix.to_string(),
         }
+    }
+
+    /// 使用自定义名称和范围生成器创建变量组合。
+    /// Create variable combination with custom name and range generators.
+    ///
+    /// # 参数 / Parameters
+    ///
+    /// - `shape`: 数组形状 / Array shape
+    /// - `name_prefix`: 变量名称前缀 / Variable name prefix
+    /// - `name_gen`: 名称生成函数，接收索引和向量坐标，返回变量名后缀
+    ///   Name generator, receives linear index and vector coordinate, returns variable name suffix
+    /// - `range_gen`: 范围生成函数，接收索引和向量坐标，返回变量范围
+    ///   Range generator, receives linear index and vector coordinate, returns variable range
+    pub fn with_name_and_range_generator<N, R>(
+        shape: S,
+        name_prefix: &str,
+        name_gen: N,
+        range_gen: R,
+    ) -> Self
+    where
+        VT: Clone,
+        N: Fn(usize, &S::VectorType) -> String,
+        R: Fn(usize, &S::VectorType) -> VariableRange<VT::Value>,
+    {
+        let group_id = new_group_id();
+
+        let variables = MultiArrayBuilder::new_by(shape, |index, vector| {
+            let id = VariableId::new(group_id, index);
+            let suffix = name_gen(index, vector);
+            let name = format!("{}_{}", name_prefix, suffix);
+            GenericVariableItem::with_range(id, &name, range_gen(index, vector))
+        });
+
+        Self {
+            variables,
+            group_id,
+            name_prefix: name_prefix.to_string(),
+        }
+    }
+
+    /// 使用自定义范围生成器创建变量组合。
+    /// Create variable combination with custom range generator.
+    pub fn with_range_generator<R>(shape: S, name_prefix: &str, range_gen: R) -> Self
+    where
+        VT: Clone,
+        R: Fn(usize, &S::VectorType) -> VariableRange<VT::Value>,
+    {
+        Self::with_name_and_range_generator(
+            shape,
+            name_prefix,
+            |index, _vector| index.to_string(),
+            range_gen,
+        )
     }
 
     /// 使用指定组 ID 创建变量组合 / Create variable combination with specified group ID
@@ -251,6 +304,9 @@ pub type VariableCombination2D<VT> = VariableCombination<VT, Shape<2>>;
 /// 三维变量组合 / 3D Variable Combination
 pub type VariableCombination3D<VT> = VariableCombination<VT, Shape<3>>;
 
+/// 四维变量组合 / 4D Variable Combination
+pub type VariableCombination4D<VT> = VariableCombination<VT, Shape<4>>;
+
 // ============================================================================
 // 特定类型的别名 / Type-specific Aliases
 // ============================================================================
@@ -262,26 +318,50 @@ use super::variable_type::{
 /// 二进制变量组合 / Binary variable combination
 pub type BinaryCombination<S> = VariableCombination<Binary, S>;
 
+/// 二进制变量组合（Kotlin 概念对齐命名）/ Binary variable combination (Kotlin-aligned concept name)
+pub type BinaryVariable<S> = VariableCombination<Binary, S>;
+
 /// 三元变量组合 / Ternary variable combination
 pub type TernaryCombination<S> = VariableCombination<Ternary, S>;
+
+/// 三元变量组合（Kotlin 概念对齐命名）/ Ternary variable combination (Kotlin-aligned concept name)
+pub type TernaryVariable<S> = VariableCombination<Ternary, S>;
 
 /// 平衡三元变量组合 / Balanced ternary variable combination
 pub type BalancedTernaryCombination<S> = VariableCombination<BalancedTernary, S>;
 
+/// 平衡三元变量组合（Kotlin 概念对齐命名）/ Balanced ternary variable combination (Kotlin-aligned concept name)
+pub type BalancedTernaryVariable<S> = VariableCombination<BalancedTernary, S>;
+
 /// 百分比变量组合 / Percentage variable combination
 pub type PercentageCombination<S> = VariableCombination<Percentage, S>;
+
+/// 百分比变量组合（Kotlin 概念对齐命名）/ Percentage variable combination (Kotlin-aligned concept name)
+pub type PercentageVariable<S> = VariableCombination<Percentage, S>;
 
 /// 整数变量组合 / Integer variable combination
 pub type IntegerCombination<S> = VariableCombination<Integer, S>;
 
+/// 整数变量组合（Kotlin 概念对齐命名）/ Integer variable combination (Kotlin-aligned concept name)
+pub type IntegerVariable<S> = VariableCombination<Integer, S>;
+
 /// 无符号整数变量组合 / Unsigned integer variable combination
 pub type UIntegerCombination<S> = VariableCombination<UInteger, S>;
+
+/// 无符号整数变量组合（Kotlin 概念对齐命名）/ Unsigned integer variable combination (Kotlin-aligned concept name)
+pub type UIntegerVariable<S> = VariableCombination<UInteger, S>;
 
 /// 连续变量组合 / Continuous variable combination
 pub type ContinuousCombination<S> = VariableCombination<Continuous, S>;
 
+/// 连续变量组合（Kotlin 概念对齐命名）/ Continuous variable combination (Kotlin-aligned concept name)
+pub type ContinuousVariable<S> = VariableCombination<Continuous, S>;
+
 /// 无符号连续变量组合 / Unsigned continuous variable combination
 pub type UContinuousCombination<S> = VariableCombination<UContinuous, S>;
+
+/// 无符号连续变量组合（Kotlin 概念对齐命名）/ Unsigned continuous variable combination (Kotlin-aligned concept name)
+pub type UContinuousVariable<S> = VariableCombination<UContinuous, S>;
 
 // ---------------------------------------------------------------------------
 // 一维特定类型别名 / 1D Type-specific Aliases
@@ -290,11 +370,175 @@ pub type UContinuousCombination<S> = VariableCombination<UContinuous, S>;
 /// 一维二进制变量组合 / 1D Binary variable combination
 pub type BinaryCombination1D = BinaryCombination<Shape<1>>;
 
+/// 一维二进制变量组合 / 1D Binary variable combination
+pub type BinaryVariable1D = BinaryVariable<Shape<1>>;
+
+/// 二维二进制变量组合 / 2D Binary variable combination
+pub type BinaryVariable2D = BinaryVariable<Shape<2>>;
+
+/// 三维二进制变量组合 / 3D Binary variable combination
+pub type BinaryVariable3D = BinaryVariable<Shape<3>>;
+
+/// 四维二进制变量组合 / 4D Binary variable combination
+pub type BinaryVariable4D = BinaryVariable<Shape<4>>;
+
+/// 一维三元变量组合 / 1D Ternary variable combination
+pub type TernaryVariable1D = TernaryVariable<Shape<1>>;
+
+/// 二维三元变量组合 / 2D Ternary variable combination
+pub type TernaryVariable2D = TernaryVariable<Shape<2>>;
+
+/// 三维三元变量组合 / 3D Ternary variable combination
+pub type TernaryVariable3D = TernaryVariable<Shape<3>>;
+
+/// 四维三元变量组合 / 4D Ternary variable combination
+pub type TernaryVariable4D = TernaryVariable<Shape<4>>;
+
+/// 一维平衡三元变量组合 / 1D Balanced ternary variable combination
+pub type BalancedTernaryVariable1D = BalancedTernaryVariable<Shape<1>>;
+
+/// 二维平衡三元变量组合 / 2D Balanced ternary variable combination
+pub type BalancedTernaryVariable2D = BalancedTernaryVariable<Shape<2>>;
+
+/// 三维平衡三元变量组合 / 3D Balanced ternary variable combination
+pub type BalancedTernaryVariable3D = BalancedTernaryVariable<Shape<3>>;
+
+/// 四维平衡三元变量组合 / 4D Balanced ternary variable combination
+pub type BalancedTernaryVariable4D = BalancedTernaryVariable<Shape<4>>;
+
+/// 一维百分比变量组合 / 1D Percentage variable combination
+pub type PercentageVariable1D = PercentageVariable<Shape<1>>;
+
+/// 二维百分比变量组合 / 2D Percentage variable combination
+pub type PercentageVariable2D = PercentageVariable<Shape<2>>;
+
+/// 三维百分比变量组合 / 3D Percentage variable combination
+pub type PercentageVariable3D = PercentageVariable<Shape<3>>;
+
+/// 四维百分比变量组合 / 4D Percentage variable combination
+pub type PercentageVariable4D = PercentageVariable<Shape<4>>;
+
 /// 一维连续变量组合 / 1D Continuous variable combination
 pub type ContinuousCombination1D = ContinuousCombination<Shape<1>>;
 
+/// 一维连续变量组合 / 1D Continuous variable combination
+pub type ContinuousVariable1D = ContinuousVariable<Shape<1>>;
+
+/// 二维连续变量组合 / 2D Continuous variable combination
+pub type ContinuousVariable2D = ContinuousVariable<Shape<2>>;
+
+/// 三维连续变量组合 / 3D Continuous variable combination
+pub type ContinuousVariable3D = ContinuousVariable<Shape<3>>;
+
+/// 四维连续变量组合 / 4D Continuous variable combination
+pub type ContinuousVariable4D = ContinuousVariable<Shape<4>>;
+
 /// 一维整数变量组合 / 1D Integer variable combination
 pub type IntegerCombination1D = IntegerCombination<Shape<1>>;
+
+/// 一维整数变量组合 / 1D Integer variable combination
+pub type IntegerVariable1D = IntegerVariable<Shape<1>>;
+
+/// 二维整数变量组合 / 2D Integer variable combination
+pub type IntegerVariable2D = IntegerVariable<Shape<2>>;
+
+/// 三维整数变量组合 / 3D Integer variable combination
+pub type IntegerVariable3D = IntegerVariable<Shape<3>>;
+
+/// 四维整数变量组合 / 4D Integer variable combination
+pub type IntegerVariable4D = IntegerVariable<Shape<4>>;
+
+/// 一维无符号整数变量组合 / 1D Unsigned integer variable combination
+pub type UIntegerVariable1D = UIntegerVariable<Shape<1>>;
+
+/// 二维无符号整数变量组合 / 2D Unsigned integer variable combination
+pub type UIntegerVariable2D = UIntegerVariable<Shape<2>>;
+
+/// 三维无符号整数变量组合 / 3D Unsigned integer variable combination
+pub type UIntegerVariable3D = UIntegerVariable<Shape<3>>;
+
+/// 四维无符号整数变量组合 / 4D Unsigned integer variable combination
+pub type UIntegerVariable4D = UIntegerVariable<Shape<4>>;
+
+/// 一维无符号连续变量组合 / 1D Unsigned continuous variable combination
+pub type UContinuousVariable1D = UContinuousVariable<Shape<1>>;
+
+/// 二维无符号连续变量组合 / 2D Unsigned continuous variable combination
+pub type UContinuousVariable2D = UContinuousVariable<Shape<2>>;
+
+/// 三维无符号连续变量组合 / 3D Unsigned continuous variable combination
+pub type UContinuousVariable3D = UContinuousVariable<Shape<3>>;
+
+/// 四维无符号连续变量组合 / 4D Unsigned continuous variable combination
+pub type UContinuousVariable4D = UContinuousVariable<Shape<4>>;
+
+// ============================================================================
+// 便捷构造函数 / Convenience Constructors
+// ============================================================================
+
+/// 创建二进制变量组合 / Create a binary variable combination
+pub fn binary_variables<S>(shape: S, name: &str) -> BinaryVariable<S>
+where
+    S: AbstractShape,
+{
+    VariableCombination::new(shape, name)
+}
+
+/// 创建三元变量组合 / Create a ternary variable combination
+pub fn ternary_variables<S>(shape: S, name: &str) -> TernaryVariable<S>
+where
+    S: AbstractShape,
+{
+    VariableCombination::new(shape, name)
+}
+
+/// 创建平衡三元变量组合 / Create a balanced ternary variable combination
+pub fn balanced_ternary_variables<S>(shape: S, name: &str) -> BalancedTernaryVariable<S>
+where
+    S: AbstractShape,
+{
+    VariableCombination::new(shape, name)
+}
+
+/// 创建百分比变量组合 / Create a percentage variable combination
+pub fn percentage_variables<S>(shape: S, name: &str) -> PercentageVariable<S>
+where
+    S: AbstractShape,
+{
+    VariableCombination::new(shape, name)
+}
+
+/// 创建整数变量组合 / Create an integer variable combination
+pub fn integer_variables<S>(shape: S, name: &str) -> IntegerVariable<S>
+where
+    S: AbstractShape,
+{
+    VariableCombination::new(shape, name)
+}
+
+/// 创建无符号整数变量组合 / Create an unsigned integer variable combination
+pub fn unsigned_integer_variables<S>(shape: S, name: &str) -> UIntegerVariable<S>
+where
+    S: AbstractShape,
+{
+    VariableCombination::new(shape, name)
+}
+
+/// 创建连续变量组合 / Create a continuous variable combination
+pub fn continuous_variables<S>(shape: S, name: &str) -> ContinuousVariable<S>
+where
+    S: AbstractShape,
+{
+    VariableCombination::new(shape, name)
+}
+
+/// 创建无符号连续变量组合 / Create an unsigned continuous variable combination
+pub fn unsigned_continuous_variables<S>(shape: S, name: &str) -> UContinuousVariable<S>
+where
+    S: AbstractShape,
+{
+    VariableCombination::new(shape, name)
+}
 
 // ============================================================================
 // 测试 / Tests
@@ -358,6 +602,18 @@ mod tests {
     }
 
     #[test]
+    fn test_kotlin_aligned_aliases_and_helpers() {
+        let binary: BinaryVariable2D = binary_variables(Shape::new([2, 3]), "x");
+        let continuous: ContinuousVariable3D = continuous_variables(Shape::new([2, 2, 2]), "y");
+        let integer: IntegerVariable4D = integer_variables(Shape::new([1, 1, 1, 2]), "z");
+
+        assert_eq!(binary.len(), 6);
+        assert_eq!(binary[&[1, 2]].name(), "x_5");
+        assert_eq!(continuous.len(), 8);
+        assert_eq!(integer.len(), 2);
+    }
+
+    #[test]
     fn test_with_name_generator() {
         let vars: BinaryCombination1D =
             VariableCombination::with_name_generator(Shape::new([3]), "company", |index, _vec| {
@@ -367,6 +623,27 @@ mod tests {
         assert_eq!(vars[0].name(), "company_C1");
         assert_eq!(vars[1].name(), "company_C2");
         assert_eq!(vars[2].name(), "company_C3");
+    }
+
+    #[test]
+    fn test_with_name_and_range_generator() {
+        let vars: VariableCombination2D<Binary> =
+            VariableCombination::with_name_and_range_generator(
+                Shape::new([2, 2]),
+                "arc",
+                |_index, vec| format!("{}_{}", vec[0], vec[1]),
+                |_index, vec| {
+                    if vec[0] == vec[1] {
+                        VariableRange::fixed(0.0)
+                    } else {
+                        Binary::default_range()
+                    }
+                },
+            );
+
+        assert_eq!(vars[&[0, 1]].name(), "arc_0_1");
+        assert_eq!(vars[&[0, 0]].range(), &VariableRange::fixed(0.0));
+        assert_eq!(vars[&[1, 0]].range(), &Binary::default_range());
     }
 
     #[test]

@@ -16,14 +16,22 @@
 //! - [`token`] - Token 系统（Token System）
 //! - [`symbol`] - 中间符号系统（Intermediate Symbol System）
 //! - [`model`] - 模型系统（Model System）
-//!   - [`model::flatten`] - 表达式平展系统（Expression Flatten System）
+//!   - [`symbol::flatten`] - 表达式平展系统主路径（Expression Flatten primary path）
 //!   - [`model::mechanism`] - 机理模型系统，包含约束（Mechanism Model System, includes constraints）
 //!   - [`model::intermediate`] - 中间模型层（Intermediate Model Layer）
 //!   - [`model::callback`] - 回调模型层（Callback Model Layer）
 //! - [`solver`] - 求解器接口（Solver Interface）
 
+#[cfg(any(
+    all(feature = "gurobi10", feature = "gurobi11"),
+    all(feature = "gurobi10", feature = "gurobi12"),
+    all(feature = "gurobi11", feature = "gurobi12"),
+))]
+compile_error!("Only one Gurobi version feature can be enabled: gurobi10, gurobi11, or gurobi12.");
+
 pub mod error;
 pub mod model;
+pub mod prelude;
 pub mod solver;
 pub mod symbol;
 pub mod token;
@@ -32,7 +40,10 @@ pub mod variable;
 pub use error::*;
 pub use model::*;
 pub use solver::*;
-pub use symbol::*;
+pub use symbol::expression_symbol::*;
+pub use symbol::function::*;
+pub use symbol::function_symbol::*;
+pub use symbol::monomial_cell::*;
 pub use token::*;
 
 // 重新导出常用类型

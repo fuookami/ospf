@@ -10,11 +10,11 @@ use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 use crate::model::{
     ConstraintRelation, LinearConstraint, LinearInequality, QuadraticConstraint,
     QuadraticInequality,
 };
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 use crate::token::{IntoValue, Token, TokenList};
 #[cfg(test)]
 use crate::variable::VariableId;
@@ -24,12 +24,19 @@ use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     QuadraticFunctionSymbol,
 };
+use super::big_m::{
+    infer_big_m_for_quadratic_polynomials, infer_quadratic_abs_bound_from_tokens,
+    infer_quadratic_difference_abs_bound_from_tokens,
+    infer_quadratic_shifted_abs_bound_from_tokens,
+};
 use super::{
     BinaryzationFunction, BinaryzationMethod, BivariateLinearPiecewiseFunction, CosFunction,
     InequalityFunction, InequalityKind, MaskingFunction, MaxFunction, MinFunction, ModFunction,
     Point2, Point3, RoundingFunction, RoundingKind, SigmoidFunction, SigmoidPrecision, SinFunction,
     SlackFunction, SlackRangeFunction, UnivariateLinearPiecewiseFunction,
 };
+
+const MIN_BIG_M: f64 = 1.0;
 
 fn evaluate_quadratic<V>(
     poly: &Quadratic<V>,
@@ -119,6 +126,19 @@ where
     V: FromPrimitive,
 {
     V::from_f64(value)
+}
+
+fn convert_f64_to_v<V>(value: f64, context: &str) -> Result<V>
+where
+    V: FromPrimitive,
+{
+    from_f64(value).ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "failed to convert `{}` value {} from f64 into model value type",
+            context, value
+        ))
+        .into()
+    })
 }
 
 fn auxiliary_id(base: u64, salt: u64) -> u64 {
@@ -573,6 +593,43 @@ where
         Ok(constraints)
     }
 
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = self.bridge.mechanism_constraints(symbol_to_index)?;
+        let bridge_index = symbol_to_index
+            .get(&(self.bridge.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic binaryzation bridge variable id {}",
+                    self.bridge.result_variable().id().unique_id()
+                ))
+            })?;
+        let mapped_input = Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                bridge_index,
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        );
+        let mut mapped_inner = self.inner.with_input_polynomial(mapped_input);
+        if let Some(big_m) = infer_quadratic_shifted_abs_bound_from_tokens(
+            &self.input,
+            self.inner.threshold(),
+            tokens,
+        ) {
+            mapped_inner = mapped_inner.with_big_m_value(convert_f64_to_v(
+                big_m.max(MIN_BIG_M),
+                "quadratic binaryzation inferred big-M",
+            )?);
+        }
+        constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
+
     fn quadratic_mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
@@ -821,6 +878,43 @@ where
             from_f64(0.0).expect("convert 0.0"),
         );
         let mapped_inner = self.inner.with_left_polynomial(mapped_input);
+        constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = self.bridge.mechanism_constraints(symbol_to_index)?;
+        let bridge_index = symbol_to_index
+            .get(&(self.bridge.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic inequality bridge variable id {}",
+                    self.bridge.result_variable().id().unique_id()
+                ))
+            })?;
+        let mapped_input = Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                bridge_index,
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        );
+        let mut mapped_inner = self.inner.with_left_polynomial(mapped_input);
+        if let Some(big_m) = infer_quadratic_shifted_abs_bound_from_tokens(
+            &self.input,
+            self.inner.right_value(),
+            tokens,
+        ) {
+            mapped_inner = mapped_inner.with_big_m_value(convert_f64_to_v(
+                big_m.max(MIN_BIG_M),
+                "quadratic inequality inferred big-M",
+            )?);
+        }
         constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
         Ok(constraints)
     }
@@ -1078,6 +1172,39 @@ where
         );
         let mapped_inner = self.inner.with_input_polynomial(mapped_input);
         constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = self.bridge.mechanism_constraints(symbol_to_index)?;
+        let bridge_index = symbol_to_index
+            .get(&(self.bridge.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic rounding bridge variable id {}",
+                    self.bridge.result_variable().id().unique_id()
+                ))
+            })?;
+        let mapped_input = Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                bridge_index,
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        );
+        let mapped_inner = self.inner.with_input_polynomial(mapped_input);
+        match infer_quadratic_abs_bound_from_tokens(&self.input, tokens) {
+            Some(big_m) => constraints.extend(
+                mapped_inner
+                    .mechanism_constraints_with_big_m(symbol_to_index, big_m.max(MIN_BIG_M))?,
+            ),
+            None => constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?),
+        }
         Ok(constraints)
     }
 
@@ -1587,6 +1714,44 @@ where
         Ok(constraints)
     }
 
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = Vec::new();
+        for bridge in &self.bridges {
+            constraints.extend(bridge.mechanism_constraints(symbol_to_index)?);
+        }
+        let mut mapped_inputs = Vec::with_capacity(self.bridges.len());
+        for bridge in &self.bridges {
+            let bridge_index = symbol_to_index
+                .get(&(bridge.result_variable().id().unique_id() as usize))
+                .copied()
+                .ok_or_else(|| {
+                    ModelError::SymbolNotRegistered(format!(
+                        "quadratic min bridge variable id {}",
+                        bridge.result_variable().id().unique_id()
+                    ))
+                })?;
+            mapped_inputs.push(Linear::new(
+                vec![LinearMonomial::new(
+                    from_f64(1.0).expect("convert 1.0"),
+                    bridge_index,
+                )],
+                from_f64(0.0).expect("convert 0.0"),
+            ));
+        }
+        let mapped_inner = self.inner.with_polynomials(mapped_inputs);
+        let big_m = infer_big_m_for_quadratic_polynomials(&self.inputs, tokens, MIN_BIG_M);
+        match big_m {
+            Some(big_m) => constraints
+                .extend(mapped_inner.mechanism_constraints_with_big_m(symbol_to_index, big_m)?),
+            None => constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?),
+        }
+        Ok(constraints)
+    }
+
     fn quadratic_mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
@@ -1848,6 +2013,44 @@ where
         }
         let mapped_inner = self.inner.with_polynomials(mapped_inputs);
         constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = Vec::new();
+        for bridge in &self.bridges {
+            constraints.extend(bridge.mechanism_constraints(symbol_to_index)?);
+        }
+        let mut mapped_inputs = Vec::with_capacity(self.bridges.len());
+        for bridge in &self.bridges {
+            let bridge_index = symbol_to_index
+                .get(&(bridge.result_variable().id().unique_id() as usize))
+                .copied()
+                .ok_or_else(|| {
+                    ModelError::SymbolNotRegistered(format!(
+                        "quadratic max bridge variable id {}",
+                        bridge.result_variable().id().unique_id()
+                    ))
+                })?;
+            mapped_inputs.push(Linear::new(
+                vec![LinearMonomial::new(
+                    from_f64(1.0).expect("convert 1.0"),
+                    bridge_index,
+                )],
+                from_f64(0.0).expect("convert 0.0"),
+            ));
+        }
+        let mapped_inner = self.inner.with_polynomials(mapped_inputs);
+        let big_m = infer_big_m_for_quadratic_polynomials(&self.inputs, tokens, MIN_BIG_M);
+        match big_m {
+            Some(big_m) => constraints
+                .extend(mapped_inner.mechanism_constraints_with_big_m(symbol_to_index, big_m)?),
+            None => constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?),
+        }
         Ok(constraints)
     }
 
@@ -2147,6 +2350,58 @@ where
             from_f64(0.0).expect("convert 0.0"),
         );
         let mapped_inner = self.inner.with_polynomials(mapped_left, mapped_right);
+        constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = self.left_bridge.mechanism_constraints(symbol_to_index)?;
+        constraints.extend(self.right_bridge.mechanism_constraints(symbol_to_index)?);
+        let left_index = symbol_to_index
+            .get(&(self.left_bridge.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic slack left bridge variable id {}",
+                    self.left_bridge.result_variable().id().unique_id()
+                ))
+            })?;
+        let right_index = symbol_to_index
+            .get(&(self.right_bridge.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic slack right bridge variable id {}",
+                    self.right_bridge.result_variable().id().unique_id()
+                ))
+            })?;
+        let mapped_left = Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                left_index,
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        );
+        let mapped_right = Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                right_index,
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        );
+        let mut mapped_inner = self.inner.with_polynomials(mapped_left, mapped_right);
+        if let Some(big_m) =
+            infer_quadratic_difference_abs_bound_from_tokens(&self.left, &self.right, tokens)
+        {
+            mapped_inner = mapped_inner.with_big_m_value(convert_f64_to_v(
+                big_m.max(MIN_BIG_M),
+                "quadratic slack inferred big-M",
+            )?);
+        }
         constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
         Ok(constraints)
     }
@@ -2662,6 +2917,39 @@ where
             from_f64(0.0).expect("convert 0.0"),
         );
         let mapped_inner = self.inner.with_input_polynomial(mapped_input);
+        constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = self.bridge.mechanism_constraints(symbol_to_index)?;
+        let bridge_index = symbol_to_index
+            .get(&(self.bridge.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic masking bridge variable id {}",
+                    self.bridge.result_variable().id().unique_id()
+                ))
+            })?;
+        let mapped_input = Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                bridge_index,
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        );
+        let mut mapped_inner = self.inner.with_input_polynomial(mapped_input);
+        if let Some(big_m) = infer_quadratic_abs_bound_from_tokens(&self.input, tokens) {
+            mapped_inner = mapped_inner.with_big_m_value(convert_f64_to_v(
+                big_m.max(MIN_BIG_M),
+                "quadratic masking inferred big-M",
+            )?);
+        }
         constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
         Ok(constraints)
     }
@@ -4261,6 +4549,40 @@ where
         Ok(constraints)
     }
 
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = self.bridge.mechanism_constraints(symbol_to_index)?;
+        let bridge_index = symbol_to_index
+            .get(&(self.bridge.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic semi bridge variable id {}",
+                    self.bridge.result_variable().id().unique_id()
+                ))
+            })?;
+        let mapped_input = Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                bridge_index,
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        );
+        let zero_input = Linear::new(vec![], from_f64(0.0).expect("convert 0.0"));
+        let mapped_inner = self.inner.with_polynomials(vec![mapped_input, zero_input]);
+        match infer_quadratic_abs_bound_from_tokens(&self.input, tokens) {
+            Some(big_m) => constraints.extend(
+                mapped_inner
+                    .mechanism_constraints_with_big_m(symbol_to_index, big_m.max(MIN_BIG_M))?,
+            ),
+            None => constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?),
+        }
+        Ok(constraints)
+    }
+
     fn quadratic_mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
@@ -5112,7 +5434,29 @@ impl_quadratic_function_symbol!(
 mod tests {
     use super::*;
     use crate::token::{MutableTokenList, VecTokenList};
-    use crate::variable::{BinaryVariableItem, ContinuousVariableItem};
+    use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableRange};
+
+    fn token_index_map<V>(tokens: &[Token<V>]) -> HashMap<usize, usize>
+    where
+        V: Clone + Debug + Send + Sync + 'static,
+    {
+        tokens
+            .iter()
+            .enumerate()
+            .map(|(index, token)| (token.id().unique_id() as usize, index + 1))
+            .collect()
+    }
+
+    fn coefficient_for_index(constraint: &LinearConstraint<f64>, index: usize) -> f64 {
+        *constraint
+            .inequality
+            .polynomial
+            .monomials()
+            .iter()
+            .find(|monomial| monomial.var_index() == index)
+            .expect("expected monomial should exist")
+            .coefficient()
+    }
 
     #[test]
     fn quadratic_linear_function_generates_quadratic_constraint() {
@@ -5149,6 +5493,44 @@ mod tests {
     }
 
     #[test]
+    fn quadratic_binaryzation_infers_big_m_from_original_bounds() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(0.0, 2.0),
+        );
+        let quad = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+        let qbin: QuadraticBinaryzationFunction<f64> = QuadraticBinaryzationFunction::new(
+            20012,
+            "qbin_bound",
+            quad,
+            1.0,
+            100.0,
+            BinaryzationMethod::BigM,
+        );
+
+        let mut aux_tokens = Vec::new();
+        qbin.register_tokens(&mut aux_tokens)
+            .expect("quadratic binaryzation tokens should be registered");
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        tokens.extend(aux_tokens);
+
+        let constraints = qbin
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic binaryzation constraints should be generated");
+        let upper = constraints
+            .iter()
+            .find(|constraint| constraint.name == "qbin_bound_bin_ub")
+            .expect("upper binaryzation constraint should exist");
+        let y_index = *symbol_to_index
+            .get(&(qbin.result_variable().id().unique_id() as usize))
+            .expect("binary result index should exist");
+
+        assert!((coefficient_for_index(upper, y_index) + 3.0).abs() <= 1e-9);
+    }
+
+    #[test]
     fn quadratic_inequality_calculate_value() {
         let x = ContinuousVariableItem::create(VariableId::standalone(0), "x");
         let mut tokens = VecTokenList::<f64>::new();
@@ -5159,6 +5541,39 @@ mod tests {
         let quad = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0); // 4.0
         let ineq = QuadraticInequalityFunction::less_equal(20021, "qineq", quad, 5.0, 10.0);
         assert_eq!(ineq.calculate_value(&tokens, false), Some(1.0));
+    }
+
+    #[test]
+    fn quadratic_inequality_infers_big_m_from_original_bounds() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(0.0, 2.0),
+        );
+        let quad = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+        let ineq: QuadraticInequalityFunction<f64> =
+            QuadraticInequalityFunction::less_equal(20022, "qineq_bound", quad, 1.0, 100.0);
+
+        let mut aux_tokens = Vec::new();
+        ineq.register_tokens(&mut aux_tokens)
+            .expect("quadratic inequality tokens should be registered");
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        tokens.extend(aux_tokens);
+
+        let constraints = ineq
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic inequality constraints should be generated");
+        let upper = constraints
+            .iter()
+            .find(|constraint| constraint.name == "qineq_bound_ineq_ub")
+            .expect("upper inequality constraint should exist");
+        let y_index = *symbol_to_index
+            .get(&(ineq.result_variable().id().unique_id() as usize))
+            .expect("inequality result index should exist");
+
+        assert!((upper.inequality.rhs - 3.0).abs() <= 1e-9);
+        assert!((coefficient_for_index(upper, y_index) - 3.0).abs() <= 1e-9);
     }
 
     #[test]
@@ -5180,6 +5595,46 @@ mod tests {
 
         let qmod = QuadraticModFunction::new(20032, "qmod", quad, 2.0);
         assert_eq!(qmod.calculate_value(&tokens, false), Some(1.0));
+    }
+
+    #[test]
+    fn quadratic_rounding_infers_big_m_from_original_bounds() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(0.0, 2.0),
+        );
+        let quad = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+        let qtrunc: QuadraticRoundingFunction<f64> =
+            QuadraticRoundingFunction::trunc(20033, "qtrunc_bound", quad);
+
+        let mut aux_tokens = Vec::new();
+        qtrunc
+            .register_tokens(&mut aux_tokens)
+            .expect("quadratic rounding tokens should be registered");
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let sign_index = *symbol_to_index
+            .get(
+                &(qtrunc
+                    .inner
+                    .sign_variable()
+                    .expect("trunc rounding sign variable should exist")
+                    .id()
+                    .unique_id() as usize),
+            )
+            .expect("rounding sign index should exist");
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        tokens.extend(aux_tokens);
+
+        let constraints = qtrunc
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic rounding constraints should be generated");
+        let lower = constraints
+            .iter()
+            .find(|constraint| constraint.name == "qtrunc_bound_sign_lb")
+            .expect("rounding sign lower constraint should exist");
+
+        assert!((coefficient_for_index(lower, sign_index) + 4.0).abs() <= 1e-9);
     }
 
     #[test]
@@ -5205,6 +5660,92 @@ mod tests {
     }
 
     #[test]
+    fn quadratic_min_infers_big_m_from_original_candidate_bounds() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(0.0, 2.0),
+        );
+        let quad = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+        let constant = Quadratic::new(vec![], 2.0);
+        let qmin: QuadraticMinFunction<f64> =
+            QuadraticMinFunction::new(20043, "qmin_bound", vec![quad, constant], true);
+
+        let mut aux_tokens = Vec::new();
+        qmin.register_tokens(&mut aux_tokens)
+            .expect("quadratic min tokens should be registered");
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let selector_id = aux_tokens
+            .iter()
+            .find(|token| {
+                token.id() != qmin.bridges[0].result_variable().id()
+                    && token.id() != qmin.bridges[1].result_variable().id()
+                    && token.id() != qmin.result_variable().id()
+            })
+            .expect("min selector token should exist")
+            .id()
+            .unique_id() as usize;
+        let selector_index = *symbol_to_index
+            .get(&selector_id)
+            .expect("min selector index should exist");
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        tokens.extend(aux_tokens);
+
+        let constraints = qmin
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic min constraints should be generated");
+        let lower = constraints
+            .iter()
+            .find(|constraint| constraint.name == "qmin_bound_min_lb_0")
+            .expect("min lower constraint should exist");
+
+        assert!((coefficient_for_index(lower, selector_index) + 4.0).abs() <= 1e-9);
+    }
+
+    #[test]
+    fn quadratic_max_infers_big_m_from_original_candidate_bounds() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(0.0, 2.0),
+        );
+        let quad = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+        let constant = Quadratic::new(vec![], 2.0);
+        let qmax: QuadraticMaxFunction<f64> =
+            QuadraticMaxFunction::new(20044, "qmax_bound", vec![quad, constant], true);
+
+        let mut aux_tokens = Vec::new();
+        qmax.register_tokens(&mut aux_tokens)
+            .expect("quadratic max tokens should be registered");
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let selector_id = aux_tokens
+            .iter()
+            .find(|token| {
+                token.id() != qmax.bridges[0].result_variable().id()
+                    && token.id() != qmax.bridges[1].result_variable().id()
+                    && token.id() != qmax.result_variable().id()
+            })
+            .expect("max selector token should exist")
+            .id()
+            .unique_id() as usize;
+        let selector_index = *symbol_to_index
+            .get(&selector_id)
+            .expect("max selector index should exist");
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        tokens.extend(aux_tokens);
+
+        let constraints = qmax
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic max constraints should be generated");
+        let upper = constraints
+            .iter()
+            .find(|constraint| constraint.name == "qmax_bound_max_ub_0")
+            .expect("max upper constraint should exist");
+
+        assert!((coefficient_for_index(upper, selector_index) - 4.0).abs() <= 1e-9);
+    }
+
+    #[test]
     fn quadratic_slack_and_slack_range_calculate_value() {
         let x = ContinuousVariableItem::create(VariableId::standalone(0), "x");
         let y = ContinuousVariableItem::create(VariableId::standalone(1), "y");
@@ -5223,6 +5764,51 @@ mod tests {
 
         let qslack_range = QuadraticSlackRangeFunction::new(20052, "qslack_range", left, 1.0, 2.0);
         assert_eq!(qslack_range.calculate_value(&tokens, false), Some(1.0));
+    }
+
+    #[test]
+    fn quadratic_slack_infers_big_m_from_original_difference_bounds() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(0.0, 2.0),
+        );
+        let left = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+        let right = Quadratic::new(vec![], 1.0);
+        let qslack: QuadraticSlackFunction<f64> =
+            QuadraticSlackFunction::with_big_m(20053, "qslack_bound", left, right, 100.0);
+
+        let mut aux_tokens = Vec::new();
+        qslack
+            .register_tokens(&mut aux_tokens)
+            .expect("quadratic slack tokens should be registered");
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let side_id = aux_tokens
+            .iter()
+            .find(|token| {
+                token.id() != qslack.left_bridge.result_variable().id()
+                    && token.id() != qslack.right_bridge.result_variable().id()
+                    && token.id() != qslack.result_variable().id()
+            })
+            .expect("slack side token should exist")
+            .id()
+            .unique_id() as usize;
+        let side_index = *symbol_to_index
+            .get(&side_id)
+            .expect("slack side index should exist");
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        tokens.extend(aux_tokens);
+
+        let constraints = qslack
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic slack constraints should be generated");
+        let branch = constraints
+            .iter()
+            .find(|constraint| constraint.name == "qslack_bound_slack_branch_pos")
+            .expect("positive slack branch constraint should exist");
+
+        assert!((branch.inequality.rhs - 3.0).abs() <= 1e-9);
+        assert!((coefficient_for_index(branch, side_index) - 3.0).abs() <= 1e-9);
     }
 
     #[test]
@@ -5269,6 +5855,43 @@ mod tests {
         let quad = Quadratic::new(vec![QuadraticMonomial::new_linear(1.0, 0)], 0.0);
         let qmask = QuadraticMaskingFunction::new(20081, "qmask", quad, mask);
         assert_eq!(qmask.calculate_value(&tokens, false), Some(2.5));
+    }
+
+    #[test]
+    fn quadratic_masking_infers_big_m_from_original_bounds() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(0.0, 2.0),
+        );
+        let mask = BinaryVariableItem::create(VariableId::standalone(1), "m");
+        let quad = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+        let qmask: QuadraticMaskingFunction<f64> =
+            QuadraticMaskingFunction::with_big_m(20082, "qmask_bound", quad, mask.clone(), 100.0);
+
+        let mut aux_tokens = Vec::new();
+        qmask
+            .register_tokens(&mut aux_tokens)
+            .expect("quadratic masking tokens should be registered");
+        aux_tokens.push(Token::from_generic(mask.clone(), 1));
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        tokens.extend(aux_tokens);
+
+        let constraints = qmask
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic masking constraints should be generated");
+        let upper = constraints
+            .iter()
+            .find(|constraint| constraint.name == "qmask_bound_masking_eq_ub")
+            .expect("upper masking constraint should exist");
+
+        assert!((upper.inequality.rhs - 4.0).abs() <= 1e-9);
+        let mask_index = *symbol_to_index
+            .get(&(mask.id().unique_id() as usize))
+            .expect("mask index should exist");
+
+        assert!((coefficient_for_index(upper, mask_index) - 4.0).abs() <= 1e-9);
     }
 
     #[test]
@@ -5361,6 +5984,48 @@ mod tests {
         tx2.set_result(2.0);
         tokens_pos.add_token(tx2);
         assert_eq!(qsemi.calculate_value(&tokens_pos, false), Some(2.0));
+    }
+
+    #[test]
+    fn quadratic_semi_infers_big_m_from_original_bounds() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(0.0, 2.0),
+        );
+        let quad = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+        let qsemi: QuadraticSemiFunction<f64> =
+            QuadraticSemiFunction::new(20102, "qsemi_bound", quad);
+
+        let mut aux_tokens = Vec::new();
+        qsemi
+            .register_tokens(&mut aux_tokens)
+            .expect("quadratic semi tokens should be registered");
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let selector_id = aux_tokens
+            .iter()
+            .find(|token| {
+                token.id() != qsemi.bridge.result_variable().id()
+                    && token.id() != qsemi.result_variable().id()
+            })
+            .expect("semi selector token should exist")
+            .id()
+            .unique_id() as usize;
+        let selector_index = *symbol_to_index
+            .get(&selector_id)
+            .expect("semi selector index should exist");
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        tokens.extend(aux_tokens);
+
+        let constraints = qsemi
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic semi constraints should be generated");
+        let upper = constraints
+            .iter()
+            .find(|constraint| constraint.name == "qsemi_bound_max_ub_0")
+            .expect("semi max upper constraint should exist");
+
+        assert!((coefficient_for_index(upper, selector_index) - 4.0).abs() <= 1e-9);
     }
 
     #[test]

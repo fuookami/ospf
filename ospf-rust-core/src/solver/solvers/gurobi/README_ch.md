@@ -31,9 +31,10 @@ English version: [README.md](./README.md)
 在 workspace 根目录执行：
 
 ```bash
-cargo test -p ospf-rust-core gurobi_native_observer_integration --features gurobi12 -- --nocapture
-cargo test -p ospf-rust-core gurobi_telemetry_callback_integration --features gurobi12 -- --nocapture
-cargo test -p ospf-rust-core gurobi_stage_callback_integration --features gurobi12 -- --nocapture
+cargo test -p ospf-rust-core gurobi_native_observer_integration --features gurobi10 -- --nocapture
+cargo test -p ospf-rust-core gurobi_telemetry_callback_integration --features gurobi10 -- --nocapture
+cargo test -p ospf-rust-core gurobi_stage_callback_integration --features gurobi10 -- --nocapture
 ```
 
-若当前环境是 Gurobi 10/11，请将 `gurobi12` 替换为 `gurobi10`/`gurobi11`。
+当前 workspace 按本机 Gurobi 10 环境验证。若使用 Gurobi 11/12，
+请将 `gurobi10` 替换为 `gurobi11`/`gurobi12`。

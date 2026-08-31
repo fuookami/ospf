@@ -3,7 +3,7 @@ pub mod policy_registry;
 
 #[cfg(test)]
 mod tests {
-    use super::policy_registry::{policy_matrix_snapshot, DomainPolicySnapshot};
+    use super::policy_registry::{DomainPolicySnapshot, policy_matrix_snapshot};
 
     #[test]
     fn pipeline_mode_matrix_snapshot() {

@@ -5,12 +5,14 @@
 //! Form: Σ cᵢ * ∏ Sⱼ^nⱼ + d
 
 use crate::algebra::concept::AbelianGroup;
-use crate::operator::{AddRef, DivRef, Exponent, MulRef, NegOneRef, NegRef, OneRef, SubRef, ZeroRef};
+use crate::operator::{
+    AddRef, DivRef, Exponent, MulRef, NegOneRef, NegRef, OneRef, SubRef, ZeroRef,
+};
 use crate::symbol::{CanonicalMonomial, Linear, OwnedSymbol, Quadratic};
 use num_traits::{One, Zero};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::ops::{Add, Sub, Mul, Div, Neg, AddAssign, SubAssign, MulAssign, DivAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 // ============================================================================
 // Canonical - 标准多项式
@@ -161,7 +163,7 @@ impl<T: Zero + PartialEq, E: Exponent + PartialEq> Canonical<T, E> {
 
     /// 返回简化后的多项式（合并同类项，移除零系数项）
     /// Return simplified polynomial (combine like terms, remove zero coefficients)
-    /// 
+    ///
     /// 与 `simplify` 不同，此方法返回新的多项式，不修改原实例。
     /// Unlike `simplify`, this method returns a new polynomial without modifying the original.
     pub fn simplified(self) -> Self
@@ -249,7 +251,9 @@ impl<T: MulRef, E: Exponent> Mul<T> for Canonical<T, E> {
 
     fn mul(self, rhs: T) -> Self::Output {
         Canonical {
-            monomials: self.monomials.into_iter()
+            monomials: self
+                .monomials
+                .into_iter()
                 .map(|m| CanonicalMonomial::new(T::mul_ref(&m.coefficient, &rhs), m.powers))
                 .collect(),
             constant: T::mul_ref(&self.constant, &rhs),
@@ -262,7 +266,9 @@ impl<T: DivRef, E: Exponent> Div<T> for Canonical<T, E> {
 
     fn div(self, rhs: T) -> Self::Output {
         Canonical {
-            monomials: self.monomials.into_iter()
+            monomials: self
+                .monomials
+                .into_iter()
                 .map(|m| CanonicalMonomial::new(T::div_ref(&m.coefficient, &rhs), m.powers))
                 .collect(),
             constant: T::div_ref(&self.constant, &rhs),
@@ -303,7 +309,9 @@ impl<T: MulRef, E: Exponent> Mul<&T> for Canonical<T, E> {
 
     fn mul(self, rhs: &T) -> Self::Output {
         Canonical {
-            monomials: self.monomials.into_iter()
+            monomials: self
+                .monomials
+                .into_iter()
                 .map(|m| CanonicalMonomial::new(T::mul_ref(&m.coefficient, rhs), m.powers))
                 .collect(),
             constant: T::mul_ref(&self.constant, rhs),
@@ -317,7 +325,9 @@ impl<T: DivRef, E: Exponent> Div<&T> for Canonical<T, E> {
 
     fn div(self, rhs: &T) -> Self::Output {
         Canonical {
-            monomials: self.monomials.into_iter()
+            monomials: self
+                .monomials
+                .into_iter()
                 .map(|m| CanonicalMonomial::new(T::div_ref(&m.coefficient, rhs), m.powers))
                 .collect(),
             constant: T::div_ref(&self.constant, rhs),
@@ -354,12 +364,12 @@ impl<T: for<'a> SubAssign<&'a T>, E: Exponent> SubAssign<&T> for Canonical<T, E>
 }
 
 // MulAssign: Canonical<T, E> *= T
-impl<T: Clone + MulAssign, E: Exponent> MulAssign<T> for Canonical<T, E> {
+impl<T: for<'a> MulAssign<&'a T>, E: Exponent> MulAssign<T> for Canonical<T, E> {
     fn mul_assign(&mut self, rhs: T) {
         for m in &mut self.monomials {
-            m.coefficient *= rhs.clone();
+            m.coefficient *= &rhs;
         }
-        self.constant *= rhs;
+        self.constant *= &rhs;
     }
 }
 
@@ -374,12 +384,12 @@ impl<T: for<'a> MulAssign<&'a T>, E: Exponent> MulAssign<&T> for Canonical<T, E>
 }
 
 // DivAssign: Canonical<T, E> /= T
-impl<T: Clone + DivAssign, E: Exponent> DivAssign<T> for Canonical<T, E> {
+impl<T: for<'a> DivAssign<&'a T>, E: Exponent> DivAssign<T> for Canonical<T, E> {
     fn div_assign(&mut self, rhs: T) {
         for m in &mut self.monomials {
-            m.coefficient /= rhs.clone();
+            m.coefficient /= &rhs;
         }
-        self.constant /= rhs;
+        self.constant /= &rhs;
     }
 }
 
@@ -439,7 +449,9 @@ impl<T: MulRef, E: Exponent> Mul<T> for &Canonical<T, E> {
 
     fn mul(self, rhs: T) -> Self::Output {
         Canonical {
-            monomials: self.monomials.iter()
+            monomials: self
+                .monomials
+                .iter()
                 .map(|m| CanonicalMonomial::new(T::mul_ref(&m.coefficient, &rhs), m.powers.clone()))
                 .collect(),
             constant: T::mul_ref(&self.constant, &rhs),
@@ -453,7 +465,9 @@ impl<T: MulRef, E: Exponent> Mul<&T> for &Canonical<T, E> {
 
     fn mul(self, rhs: &T) -> Self::Output {
         Canonical {
-            monomials: self.monomials.iter()
+            monomials: self
+                .monomials
+                .iter()
                 .map(|m| CanonicalMonomial::new(T::mul_ref(&m.coefficient, rhs), m.powers.clone()))
                 .collect(),
             constant: T::mul_ref(&self.constant, rhs),
@@ -467,7 +481,9 @@ impl<T: DivRef + Clone, E: Exponent> Div<T> for &Canonical<T, E> {
 
     fn div(self, rhs: T) -> Self::Output {
         Canonical {
-            monomials: self.monomials.iter()
+            monomials: self
+                .monomials
+                .iter()
                 .map(|m| CanonicalMonomial::new(T::div_ref(&m.coefficient, &rhs), m.powers.clone()))
                 .collect(),
             constant: T::div_ref(&self.constant, &rhs),
@@ -481,7 +497,9 @@ impl<T: DivRef + Clone, E: Exponent> Div<&T> for &Canonical<T, E> {
 
     fn div(self, rhs: &T) -> Self::Output {
         Canonical {
-            monomials: self.monomials.iter()
+            monomials: self
+                .monomials
+                .iter()
                 .map(|m| CanonicalMonomial::new(T::div_ref(&m.coefficient, rhs), m.powers.clone()))
                 .collect(),
             constant: T::div_ref(&self.constant, rhs),
@@ -559,13 +577,11 @@ impl<T: AbelianGroup + One> Add<Linear<T>> for Canonical<T, i32> {
         let mut monomials = self.monomials;
         // 直接转换 LinearMonomial 为 CanonicalMonomial，避免创建临时 vec
         // Directly convert LinearMonomial to CanonicalMonomial, avoiding temporary vec
-        monomials.extend(
-            rhs.monomials.into_iter().map(|m| {
-                let mut powers = HashMap::new();
-                powers.insert(m.symbol, 1);
-                CanonicalMonomial::new(m.coefficient, powers)
-            })
-        );
+        monomials.extend(rhs.monomials.into_iter().map(|m| {
+            let mut powers = HashMap::new();
+            powers.insert(m.symbol, 1);
+            CanonicalMonomial::new(m.coefficient, powers)
+        }));
         Self {
             monomials,
             constant: self.constant + rhs.constant,
@@ -583,25 +599,23 @@ impl<T: AbelianGroup + One> Add<Quadratic<T>> for Canonical<T, i32> {
         let mut monomials = self.monomials;
         // 直接转换 QuadraticMonomial 为 CanonicalMonomial，避免创建临时 vec
         // Directly convert QuadraticMonomial to CanonicalMonomial, avoiding temporary vec
-        monomials.extend(
-            rhs.monomials.into_iter().map(|m| {
-                let mut powers: HashMap<OwnedSymbol, i32> = HashMap::new();
-                match m.symbol2 {
-                    Some(symbol2) => {
-                        // 二次项: c * S1 * S2
-                        // Quadratic term: c * S1 * S2
-                        powers.insert(m.symbol1, 1);
-                        powers.entry(symbol2).and_modify(|e| *e += 1).or_insert(1);
-                    }
-                    None => {
-                        // 线性项: c * S1
-                        // Linear term: c * S1
-                        powers.insert(m.symbol1, 1);
-                    }
+        monomials.extend(rhs.monomials.into_iter().map(|m| {
+            let mut powers: HashMap<OwnedSymbol, i32> = HashMap::new();
+            match m.symbol2 {
+                Some(symbol2) => {
+                    // 二次项: c * S1 * S2
+                    // Quadratic term: c * S1 * S2
+                    powers.insert(m.symbol1, 1);
+                    powers.entry(symbol2).and_modify(|e| *e += 1).or_insert(1);
                 }
-                CanonicalMonomial::new(m.coefficient, powers)
-            })
-        );
+                None => {
+                    // 线性项: c * S1
+                    // Linear term: c * S1
+                    powers.insert(m.symbol1, 1);
+                }
+            }
+            CanonicalMonomial::new(m.coefficient, powers)
+        }));
         Self {
             monomials,
             constant: self.constant + rhs.constant,
@@ -623,13 +637,11 @@ impl<T: AbelianGroup + One> Sub<Linear<T>> for Canonical<T, i32> {
         let mut monomials = self.monomials;
         // 直接转换 LinearMonomial 为负的 CanonicalMonomial，避免创建临时 vec
         // Directly convert LinearMonomial to negated CanonicalMonomial, avoiding temporary vec
-        monomials.extend(
-            rhs.monomials.into_iter().map(|m| {
-                let mut powers = HashMap::new();
-                powers.insert(m.symbol, 1);
-                CanonicalMonomial::new(-m.coefficient, powers)
-            })
-        );
+        monomials.extend(rhs.monomials.into_iter().map(|m| {
+            let mut powers = HashMap::new();
+            powers.insert(m.symbol, 1);
+            CanonicalMonomial::new(-m.coefficient, powers)
+        }));
         Self {
             monomials,
             constant: self.constant - rhs.constant,
@@ -647,25 +659,23 @@ impl<T: AbelianGroup + One> Sub<Quadratic<T>> for Canonical<T, i32> {
         let mut monomials = self.monomials;
         // 直接转换 QuadraticMonomial 为负的 CanonicalMonomial，避免创建临时 vec
         // Directly convert QuadraticMonomial to negated CanonicalMonomial, avoiding temporary vec
-        monomials.extend(
-            rhs.monomials.into_iter().map(|m| {
-                let mut powers: HashMap<OwnedSymbol, i32> = HashMap::new();
-                match m.symbol2 {
-                    Some(symbol2) => {
-                        // 二次项: -c * S1 * S2
-                        // Quadratic term: -c * S1 * S2
-                        powers.insert(m.symbol1, 1);
-                        powers.entry(symbol2).and_modify(|e| *e += 1).or_insert(1);
-                    }
-                    None => {
-                        // 线性项: -c * S1
-                        // Linear term: -c * S1
-                        powers.insert(m.symbol1, 1);
-                    }
+        monomials.extend(rhs.monomials.into_iter().map(|m| {
+            let mut powers: HashMap<OwnedSymbol, i32> = HashMap::new();
+            match m.symbol2 {
+                Some(symbol2) => {
+                    // 二次项: -c * S1 * S2
+                    // Quadratic term: -c * S1 * S2
+                    powers.insert(m.symbol1, 1);
+                    powers.entry(symbol2).and_modify(|e| *e += 1).or_insert(1);
                 }
-                CanonicalMonomial::new(-m.coefficient, powers)
-            })
-        );
+                None => {
+                    // 线性项: -c * S1
+                    // Linear term: -c * S1
+                    powers.insert(m.symbol1, 1);
+                }
+            }
+            CanonicalMonomial::new(-m.coefficient, powers)
+        }));
         Self {
             monomials,
             constant: self.constant - rhs.constant,
@@ -847,7 +857,9 @@ impl<T: AbelianGroup + SubAssign, E: Exponent> SubAssign for Canonical<T, E> {
 }
 
 // SubAssign: Canonical<T, E> -= &Canonical<T, E>
-impl<T: AbelianGroup + for<'a> SubAssign<&'a T> + NegRef, E: Exponent> SubAssign<&Self> for Canonical<T, E> {
+impl<T: AbelianGroup + for<'a> SubAssign<&'a T> + NegRef, E: Exponent> SubAssign<&Self>
+    for Canonical<T, E>
+{
     fn sub_assign(&mut self, rhs: &Self) {
         self.monomials.extend(rhs.monomials.iter().map(|m| -m));
         self.constant -= &rhs.constant;
@@ -873,7 +885,9 @@ impl<T: AbelianGroup + Clone, E: Exponent> AddAssign<&CanonicalMonomial<T, E>> f
 }
 
 // SubAssign: Canonical<T, E> -= CanonicalMonomial<T, E>
-impl<T: AbelianGroup + Neg<Output = T>, E: Exponent> SubAssign<CanonicalMonomial<T, E>> for Canonical<T, E> {
+impl<T: AbelianGroup + Neg<Output = T>, E: Exponent> SubAssign<CanonicalMonomial<T, E>>
+    for Canonical<T, E>
+{
     fn sub_assign(&mut self, rhs: CanonicalMonomial<T, E>) {
         self.monomials.push(-rhs);
     }
@@ -991,7 +1005,9 @@ impl<T: Clone, E: Exponent> Add<&Canonical<T, E>> for &CanonicalMonomial<T, E> {
 }
 
 // Sub: CanonicalMonomial<T, E> - Canonical<T, E>
-impl<T: AbelianGroup + Neg<Output = T> + Clone, E: Exponent> Sub<Canonical<T, E>> for CanonicalMonomial<T, E> {
+impl<T: AbelianGroup + Neg<Output = T> + Clone, E: Exponent> Sub<Canonical<T, E>>
+    for CanonicalMonomial<T, E>
+{
     type Output = Canonical<T, E>;
 
     fn sub(self, rhs: Canonical<T, E>) -> Self::Output {
@@ -1002,7 +1018,9 @@ impl<T: AbelianGroup + Neg<Output = T> + Clone, E: Exponent> Sub<Canonical<T, E>
 }
 
 // Sub: &CanonicalMonomial<T, E> - Canonical<T, E>
-impl<T: AbelianGroup + Neg<Output = T> + Clone, E: Exponent> Sub<Canonical<T, E>> for &CanonicalMonomial<T, E> {
+impl<T: AbelianGroup + Neg<Output = T> + Clone, E: Exponent> Sub<Canonical<T, E>>
+    for &CanonicalMonomial<T, E>
+{
     type Output = Canonical<T, E>;
 
     fn sub(self, rhs: Canonical<T, E>) -> Self::Output {
@@ -1279,7 +1297,8 @@ impl<T: One, E: Exponent> AddAssign<OwnedSymbol> for Canonical<T, E> {
     fn add_assign(&mut self, rhs: OwnedSymbol) {
         let mut powers = HashMap::new();
         powers.insert(rhs, E::one());
-        self.monomials.push(CanonicalMonomial::new(T::one(), powers));
+        self.monomials
+            .push(CanonicalMonomial::new(T::one(), powers));
     }
 }
 
@@ -1288,7 +1307,8 @@ impl<T: One, E: Exponent + Clone> AddAssign<&OwnedSymbol> for Canonical<T, E> {
     fn add_assign(&mut self, rhs: &OwnedSymbol) {
         let mut powers = HashMap::new();
         powers.insert(rhs.clone(), E::one());
-        self.monomials.push(CanonicalMonomial::new(T::one(), powers));
+        self.monomials
+            .push(CanonicalMonomial::new(T::one(), powers));
     }
 }
 
@@ -1297,7 +1317,8 @@ impl<T: One + Neg<Output = T>, E: Exponent> SubAssign<OwnedSymbol> for Canonical
     fn sub_assign(&mut self, rhs: OwnedSymbol) {
         let mut powers = HashMap::new();
         powers.insert(rhs, E::one());
-        self.monomials.push(CanonicalMonomial::new(T::one().neg(), powers));
+        self.monomials
+            .push(CanonicalMonomial::new(T::one().neg(), powers));
     }
 }
 
@@ -1306,7 +1327,8 @@ impl<T: One + Neg<Output = T>, E: Exponent + Clone> SubAssign<&OwnedSymbol> for 
     fn sub_assign(&mut self, rhs: &OwnedSymbol) {
         let mut powers = HashMap::new();
         powers.insert(rhs.clone(), E::one());
-        self.monomials.push(CanonicalMonomial::new(T::one().neg(), powers));
+        self.monomials
+            .push(CanonicalMonomial::new(T::one().neg(), powers));
     }
 }
 
@@ -1383,10 +1405,8 @@ impl<T: One + Neg<Output = T> + Clone, E: Exponent + Clone> Sub<&OwnedSymbol> fo
 // ============================================================================
 
 // Mul: Canonical<T, E> * Canonical<T, E>
-impl<
-    T: Clone + Zero + MulRef,
-    E: Exponent + Add<Output = E> + Clone + for<'a> AddAssign<&'a E>,
-> Mul for Canonical<T, E>
+impl<T: Clone + Zero + MulRef, E: Exponent + Add<Output = E> + Clone + for<'a> AddAssign<&'a E>> Mul
+    for Canonical<T, E>
 {
     type Output = Self;
 
@@ -1396,10 +1416,8 @@ impl<
 }
 
 // Mul: Canonical<T, E> * &Canonical<T, E>
-impl<
-    T: Clone + Zero + MulRef,
-    E: Exponent + Add<Output = E> + Clone + for<'a> AddAssign<&'a E>,
-> Mul<&Self> for Canonical<T, E>
+impl<T: Clone + Zero + MulRef, E: Exponent + Add<Output = E> + Clone + for<'a> AddAssign<&'a E>>
+    Mul<&Self> for Canonical<T, E>
 {
     type Output = Self;
 
@@ -1409,10 +1427,8 @@ impl<
 }
 
 // Mul: &Canonical<T, E> * Canonical<T, E>
-impl<
-    T: Clone + Zero + MulRef,
-    E: Exponent + Add<Output = E> + Clone + for<'a> AddAssign<&'a E>,
-> Mul<Canonical<T, E>> for &Canonical<T, E>
+impl<T: Clone + Zero + MulRef, E: Exponent + Add<Output = E> + Clone + for<'a> AddAssign<&'a E>>
+    Mul<Canonical<T, E>> for &Canonical<T, E>
 {
     type Output = Canonical<T, E>;
 
@@ -1442,7 +1458,7 @@ impl<
         // 单项式 × 单项式
         // Monomial × Monomial
         for m1 in &self.monomials {
-             for m2 in &other.monomials {
+            for m2 in &other.monomials {
                 // 使用 MulRef 避免克隆
                 // Use MulRef to avoid cloning
                 let coefficient = T::mul_ref(&m1.coefficient, &m2.coefficient);
@@ -1842,23 +1858,24 @@ where
 // 求值实现 / Evaluate Implementation
 // ============================================================================
 
-use crate::symbol::operation::{Evaluate, EvaluateOrdered, Evaluatable};
+use crate::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
 
 impl<T, E: Exponent> Evaluate<T> for Canonical<T, E>
 where
-    T: MulRef + One + Clone,
+    T: MulRef + One + Clone + AddRef,
     E: Clone + One + PartialEq + num_traits::ToPrimitive,
 {
     fn evaluate(&self, values: &HashMap<OwnedSymbol, T>) -> T
     where
         T: Evaluatable,
     {
-        let mut result = self.constant.clone();
+        let mut result = T::add_ref(T::zero_ref(), &self.constant);
 
         // 使用单项式的 evaluate 方法
         // Use monomial's evaluate method
         for monomial in &self.monomials {
-            result = result + monomial.evaluate(values);
+            let term = monomial.evaluate(values);
+            result = T::add_ref(&result, &term);
         }
 
         result
@@ -1869,7 +1886,7 @@ where
         T: Evaluatable,
     {
         let mut new_monomials = Vec::new();
-        let mut new_constant = self.constant.clone();
+        let mut new_constant = T::add_ref(T::zero_ref(), &self.constant);
 
         for monomial in &self.monomials {
             let partial = monomial.partial_evaluate(values);
@@ -1877,7 +1894,7 @@ where
             if partial.powers.is_empty() {
                 // 所有符号都已求值，加到常数项
                 // All symbols evaluated, add to constant
-                new_constant = new_constant + partial.coefficient;
+                new_constant = T::add_ref(&new_constant, &partial.coefficient);
             } else if !partial.coefficient.is_zero() {
                 // 还有未求值的符号，保留单项式
                 // Still has unevaluated symbols, keep monomial
@@ -1891,19 +1908,20 @@ where
 
 impl<T, E: Exponent> EvaluateOrdered<T> for Canonical<T, E>
 where
-    T: MulRef + One + Clone,
+    T: MulRef + One + Clone + AddRef,
     E: Clone + One + PartialEq + num_traits::ToPrimitive,
 {
     fn evaluate_ordered(&self, symbols: &[OwnedSymbol], values: &[T]) -> T
     where
         T: Evaluatable,
     {
-        let mut result = self.constant.clone();
+        let mut result = T::add_ref(T::zero_ref(), &self.constant);
 
         // 使用单项式的 evaluate_ordered 方法
         // Use monomial's evaluate_ordered method
         for monomial in &self.monomials {
-            result = result + monomial.evaluate_ordered(symbols, values);
+            let term = monomial.evaluate_ordered(symbols, values);
+            result = T::add_ref(&result, &term);
         }
 
         result

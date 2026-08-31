@@ -10,8 +10,8 @@ use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
 
@@ -541,7 +541,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::flatten::LinearMonomial;
+    use crate::symbol::flatten::LinearMonomial;
     use crate::token::{MutableTokenList, Token, VecTokenList};
     use crate::variable::{ContinuousVariableItem, VariableId};
 

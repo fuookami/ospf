@@ -1,10 +1,10 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
 use ospf_rust_core::variable::{BinaryVariableItem, UContinuousVariableItem};
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct InvestmentProduct {
@@ -50,73 +50,79 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let max_risk = 0.02;
 
     let mut model = MetaModel::<f64>::new("demo12");
+    let mut x_vars = Vec::with_capacity(product_count);
+    let mut assign_vars = Vec::with_capacity(product_count);
+    let mut premium_vars = Vec::with_capacity(product_count);
     let mut x_idx = vec![0usize; product_count];
-    let mut assign_idx = vec![0usize; product_count];
     let mut premium_idx = vec![0usize; product_count];
 
     for i in 0..product_count {
-        x_idx[i] = model.register_variable(UContinuousVariableItem::auto(&format!("x_{}", i)))?;
-        assign_idx[i] = model.register_variable(BinaryVariableItem::auto(&format!("a_{}", i)))?;
-        premium_idx[i] =
-            model.register_variable(UContinuousVariableItem::auto(&format!("premium_{}", i)))?;
+        let x_var = UContinuousVariableItem::auto(&format!("x_{}", i));
+        let assign_var = BinaryVariableItem::auto(&format!("a_{}", i));
+        let premium_var = UContinuousVariableItem::auto(&format!("premium_{}", i));
+        x_idx[i] = model.register_variable(x_var.clone())?;
+        model.register_variable(assign_var.clone())?;
+        premium_idx[i] = model.register_variable(premium_var.clone())?;
+        x_vars.push(x_var);
+        assign_vars.push(assign_var);
+        premium_vars.push(premium_var);
     }
 
-    let mut objective = vec![0.0; model.num_tokens()];
+    let mut yield_terms = Vec::with_capacity(product_count * 2);
+    let mut funds_terms = Vec::with_capacity(product_count * 2);
+    let mut risk_terms = Vec::with_capacity(product_count);
     for i in 0..product_count {
-        objective[x_idx[i]] = products[i].yield_rate;
-        objective[premium_idx[i]] = -1.0;
+        yield_terms.push(LinearMonomial::new(
+            products[i].yield_rate,
+            x_vars[i].to_owned_symbol(),
+        ));
+        yield_terms.push(LinearMonomial::new(-1.0, premium_vars[i].to_owned_symbol()));
+        funds_terms.push(LinearMonomial::new(1.0, x_vars[i].to_owned_symbol()));
+        funds_terms.push(LinearMonomial::new(1.0, premium_vars[i].to_owned_symbol()));
+        risk_terms.push(LinearMonomial::new(
+            products[i].risk_rate / funds,
+            x_vars[i].to_owned_symbol(),
+        ));
     }
-    model.set_linear_objective(objective, ObjectiveCategory::Maximum);
+    let yield_expr = Linear::new(yield_terms, 0.0);
+    let funds_expr = Linear::new(funds_terms, 0.0);
+    let risk_expr = Linear::new(risk_terms, 0.0);
 
-    let mut fund_coefficients = Vec::with_capacity(product_count * 2);
-    for i in 0..product_count {
-        fund_coefficients.push((x_idx[i], 1.0));
-        fund_coefficients.push((premium_idx[i], 1.0));
-    }
-    model.add_linear_constraint(
-        &fund_coefficients,
-        ConstraintRelation::Equal,
-        funds,
-        "funds",
-    )?;
-
-    let risk_coefficients: Vec<(usize, f64)> = (0..product_count)
-        .map(|i| (x_idx[i], products[i].risk_rate / funds))
-        .collect();
-    model.add_linear_constraint(
-        &risk_coefficients,
-        ConstraintRelation::LessEqual,
-        max_risk,
-        "risk",
-    )?;
+    model.set_math_linear_objective(yield_expr, ObjectiveCategory::Maximum, "yield")?;
+    model.add_math_inequality(funds_expr.eq_to(funds), "funds");
+    model.add_math_inequality(risk_expr.le(max_risk), "risk");
 
     for i in 0..product_count {
-        model.add_linear_constraint(
-            &[(x_idx[i], 1.0), (assign_idx[i], -funds)],
-            ConstraintRelation::LessEqual,
+        let activation = Linear::new(
+            vec![
+                LinearMonomial::new(1.0, x_vars[i].to_owned_symbol()),
+                LinearMonomial::new(-funds, assign_vars[i].to_owned_symbol()),
+            ],
             0.0,
-            &format!("activate_{}", i),
-        )?;
+        );
+        model.add_math_inequality(activation.le(0.0), &format!("activate_{}", i));
 
-        model.add_linear_constraint(
-            &[(premium_idx[i], 1.0), (x_idx[i], -products[i].premium_rate)],
-            ConstraintRelation::GreaterEqual,
+        let premium_rate = Linear::new(
+            vec![
+                LinearMonomial::new(1.0, premium_vars[i].to_owned_symbol()),
+                LinearMonomial::new(-products[i].premium_rate, x_vars[i].to_owned_symbol()),
+            ],
             0.0,
-            &format!("premium_rate_{}", i),
-        )?;
+        );
+        model.add_math_inequality(premium_rate.ge(0.0), &format!("premium_rate_{}", i));
 
-        model.add_linear_constraint(
-            &[(premium_idx[i], 1.0), (assign_idx[i], -products[i].min_premium)],
-            ConstraintRelation::GreaterEqual,
+        let premium_min = Linear::new(
+            vec![
+                LinearMonomial::new(1.0, premium_vars[i].to_owned_symbol()),
+                LinearMonomial::new(-products[i].min_premium, assign_vars[i].to_owned_symbol()),
+            ],
             0.0,
-            &format!("premium_min_{}", i),
-        )?;
+        );
+        model.add_math_inequality(premium_min.ge(0.0), &format!("premium_min_{}", i));
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo12 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo12 ===");
     println!("status: {:?}", output.status);

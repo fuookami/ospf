@@ -5,7 +5,7 @@ use std::sync::Arc;
 use ospf_rust_core::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::model::{ConstraintRelation, LinearConstraint, LinearInequality, MetaModel};
 use ospf_rust_core::solver::solvers::GurobiSolver;
-use ospf_rust_core::symbol::functions::{CosFunction, ModFunction, RoundingFunction, SinFunction};
+use ospf_rust_core::symbol::function::{CosFunction, ModFunction, RoundingFunction, SinFunction};
 use ospf_rust_core::variable::{ContinuousVariableItem, VariableId, VariableRange};
 
 fn equality_constraint(index: usize, rhs: f64, name: &str) -> LinearConstraint<f64> {

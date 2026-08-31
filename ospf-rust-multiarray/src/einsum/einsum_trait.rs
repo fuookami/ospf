@@ -4,11 +4,11 @@
 //! 提供爱因斯坦求和的核心 trait 和错误类型。
 //! Provides core traits and error types for Einstein summation.
 
-use num_traits::Zero;
-use std::ops::{Add, Mul, AddAssign};
-use crate::{AbstractShape, DynShape, MultiArray};
 use super::indices::{IndexList, find_common_indices};
 use super::tensor_expr::TensorExpr;
+use crate::{AbstractShape, DynShape, MultiArray};
+use num_traits::Zero;
+use std::ops::{Add, AddAssign, Mul};
 
 // ============================================================================
 // EinsumError - 爱因斯坦求和错误
@@ -30,7 +30,7 @@ pub enum EinsumError {
         /// Description
         message: String,
     },
-    
+
     /// 形状不兼容
     /// Incompatible shapes
     IncompatibleShapes {
@@ -44,7 +44,7 @@ pub enum EinsumError {
         /// Description
         message: String,
     },
-    
+
     /// 索引重复
     /// Duplicate indices
     DuplicateIndices {
@@ -52,7 +52,7 @@ pub enum EinsumError {
         /// Duplicate index
         index: usize,
     },
-    
+
     /// 不支持的运算
     /// Unsupported operation
     UnsupportedOperation {
@@ -65,14 +65,22 @@ pub enum EinsumError {
 impl std::fmt::Display for EinsumError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EinsumError::DimensionMismatch { expected, actual, message } => {
+            EinsumError::DimensionMismatch {
+                expected,
+                actual,
+                message,
+            } => {
                 write!(
                     f,
                     "Dimension mismatch: expected {}, got {} / 维度不匹配：期望 {}，实际 {} ({})",
                     expected, actual, expected, actual, message
                 )
             }
-            EinsumError::IncompatibleShapes { shape1, shape2, message } => {
+            EinsumError::IncompatibleShapes {
+                shape1,
+                shape2,
+                message,
+            } => {
                 write!(
                     f,
                     "Incompatible shapes: {:?} vs {:?} / 形状不兼容：{:?} vs {:?} ({})",
@@ -80,11 +88,7 @@ impl std::fmt::Display for EinsumError {
                 )
             }
             EinsumError::DuplicateIndices { index } => {
-                write!(
-                    f,
-                    "Duplicate index: {} / 索引重复：{}",
-                    index, index
-                )
+                write!(f, "Duplicate index: {} / 索引重复：{}", index, index)
             }
             EinsumError::UnsupportedOperation { message } => {
                 write!(
@@ -152,7 +156,10 @@ where
     ///
     /// 结果张量
     /// Result tensor
-    fn einsum(&self, other: &TensorExpr<'a, T, S2, Idx2>) -> Result<MultiArray<T, DynShape>, EinsumError>
+    fn einsum(
+        &self,
+        other: &TensorExpr<'a, T, S2, Idx2>,
+    ) -> Result<MultiArray<T, DynShape>, EinsumError>
     where
         T: Clone + Zero + Add<Output = T> + Mul<Output = T> + AddAssign;
 }
@@ -161,7 +168,8 @@ where
 // 通用实现
 // ============================================================================
 
-impl<'a, T, S1, Idx1, S2, Idx2, OutIdx> EinsteinSum<'a, T, S1, Idx1, S2, Idx2, OutIdx> for TensorExpr<'a, T, S1, Idx1>
+impl<'a, T, S1, Idx1, S2, Idx2, OutIdx> EinsteinSum<'a, T, S1, Idx1, S2, Idx2, OutIdx>
+    for TensorExpr<'a, T, S1, Idx1>
 where
     S1: AbstractShape,
     S2: AbstractShape,
@@ -169,7 +177,10 @@ where
     Idx2: IndexList,
     OutIdx: IndexList,
 {
-    fn einsum(&self, other: &TensorExpr<'a, T, S2, Idx2>) -> Result<MultiArray<T, DynShape>, EinsumError>
+    fn einsum(
+        &self,
+        other: &TensorExpr<'a, T, S2, Idx2>,
+    ) -> Result<MultiArray<T, DynShape>, EinsumError>
     where
         T: Clone + Zero + Add<Output = T> + Mul<Output = T> + AddAssign,
     {
@@ -178,11 +189,11 @@ where
         let lhs_ids = Idx1::to_ids();
         let rhs_ids = Idx2::to_ids();
         let out_ids = OutIdx::to_ids();
-        
+
         // 找出公共索引（求和索引）
         // Find common indices (summation indices)
         let common_ids = find_common_indices(&lhs_ids, &rhs_ids);
-        
+
         // 获取形状信息
         // Get shape information
         let lhs_shape: Vec<usize> = (0..self.data().shape.dimension())
@@ -191,13 +202,13 @@ where
         let rhs_shape: Vec<usize> = (0..other.data().shape.dimension())
             .filter_map(|i| other.data().shape.len_of_dimension(i).ok())
             .collect();
-        
+
         // 验证公共索引的维度匹配
         // Validate dimension match for common indices
         for &common_id in &common_ids {
             let lhs_pos = lhs_ids.iter().position(|&id| id == common_id);
             let rhs_pos = rhs_ids.iter().position(|&id| id == common_id);
-            
+
             if let (Some(lp), Some(rp)) = (lhs_pos, rhs_pos) {
                 if lhs_shape.get(lp) != rhs_shape.get(rp) {
                     return Err(EinsumError::IncompatibleShapes {
@@ -208,11 +219,11 @@ where
                 }
             }
         }
-        
+
         // 计算输出形状
         // Calculate output shape
         let mut out_shape = Vec::new();
-        
+
         // 从 lhs 添加非求和索引的维度
         // Add dimensions from lhs for non-summation indices
         for (i, &id) in lhs_ids.iter().enumerate() {
@@ -222,7 +233,7 @@ where
                 }
             }
         }
-        
+
         // 从 rhs 添加非求和索引的维度
         // Add dimensions from rhs for non-summation indices
         for (i, &id) in rhs_ids.iter().enumerate() {
@@ -232,7 +243,7 @@ where
                 }
             }
         }
-        
+
         // 如果输出形状为空，至少需要一个维度（标量结果）
         // If output shape is empty, need at least one dimension (scalar result)
         if out_shape.is_empty() && !out_ids.is_empty() {
@@ -240,12 +251,12 @@ where
             // Scalar output
             out_shape.push(1);
         }
-        
+
         // 创建输出数组
         // Create output array
         let out_dyn_shape = DynShape::new(out_shape.clone());
         let mut result = MultiArray::<T, DynShape>::new_with(out_dyn_shape, T::zero());
-        
+
         // 执行爱因斯坦求和
         // Perform Einstein summation
         perform_einsum(
@@ -259,7 +270,7 @@ where
             &out_ids,
             &common_ids,
         )?;
-        
+
         Ok(result)
     }
 }
@@ -300,41 +311,44 @@ where
 {
     let lhs_len = lhs.len();
     let rhs_len = rhs.len();
-    
+
     // 对于每个 lhs 元素
     // For each lhs element
     for lhs_linear in 0..lhs_len {
         // 计算 lhs 的向量坐标
         // Calculate lhs vector coordinates
         let lhs_coords = linear_to_coords(lhs_linear, lhs_shape);
-        
+
         // 对于每个 rhs 元素
         // For each rhs element
         for rhs_linear in 0..rhs_len {
             // 计算 rhs 的向量坐标
             // Calculate rhs vector coordinates
             let rhs_coords = linear_to_coords(rhs_linear, rhs_shape);
-            
+
             // 检查公共索引是否匹配
             // Check if common indices match
             if !check_common_indices_match(&lhs_coords, lhs_ids, &rhs_coords, rhs_ids, common_ids) {
                 continue;
             }
-            
+
             // 计算输出坐标
             // Calculate output coordinates
             let out_coords = calculate_output_coords(
-                &lhs_coords, lhs_ids,
-                &rhs_coords, rhs_ids,
-                out_ids, common_ids,
+                &lhs_coords,
+                lhs_ids,
+                &rhs_coords,
+                rhs_ids,
+                out_ids,
+                common_ids,
             );
-            
+
             // 计算乘积并累加到结果
             // Calculate product and accumulate to result
             let lhs_val = &lhs[lhs_linear];
             let rhs_val = &rhs[rhs_linear];
             let product = lhs_val.clone() * rhs_val.clone();
-            
+
             // 计算结果的线性索引
             // Calculate result linear index
             if let Some(result_linear) = coords_to_linear(&out_coords, &result.shape) {
@@ -342,7 +356,7 @@ where
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -352,13 +366,13 @@ fn linear_to_coords(linear: usize, shape: &[usize]) -> Vec<usize> {
     let ndim = shape.len();
     let mut coords = vec![0; ndim];
     let mut remaining = linear;
-    
+
     for i in 0..ndim {
         let stride: usize = shape[i + 1..].iter().copied().product::<usize>().max(1);
         coords[i] = remaining / stride;
         remaining %= stride;
     }
-    
+
     coords
 }
 
@@ -368,10 +382,10 @@ fn coords_to_linear(coords: &[usize], shape: &DynShape) -> Option<usize> {
     if coords.len() != shape.dimension() {
         return None;
     }
-    
+
     let mut linear = 0;
     let mut stride = 1;
-    
+
     for i in (0..shape.dimension()).rev() {
         let dim_len = shape.len_of_dimension(i).ok()?;
         if *coords.get(i)? >= dim_len {
@@ -380,7 +394,7 @@ fn coords_to_linear(coords: &[usize], shape: &DynShape) -> Option<usize> {
         linear += coords[i] * stride;
         stride *= dim_len;
     }
-    
+
     Some(linear)
 }
 
@@ -396,14 +410,14 @@ fn check_common_indices_match(
     for &common_id in common_ids {
         let lhs_pos = lhs_ids.iter().position(|&id| id == common_id);
         let rhs_pos = rhs_ids.iter().position(|&id| id == common_id);
-        
+
         if let (Some(lp), Some(rp)) = (lhs_pos, rhs_pos) {
             if lhs_coords.get(lp) != rhs_coords.get(rp) {
                 return false;
             }
         }
     }
-    
+
     true
 }
 
@@ -418,7 +432,7 @@ fn calculate_output_coords(
     _common_ids: &[usize],
 ) -> Vec<usize> {
     let mut out_coords = Vec::with_capacity(out_ids.len());
-    
+
     for &out_id in out_ids {
         // 先在 lhs 中查找
         // First search in lhs
@@ -428,7 +442,7 @@ fn calculate_output_coords(
                 continue;
             }
         }
-        
+
         // 再在 rhs 中查找
         // Then search in rhs
         if let Some(pos) = rhs_ids.iter().position(|&id| id == out_id) {
@@ -437,45 +451,57 @@ fn calculate_output_coords(
             }
         }
     }
-    
+
     out_coords
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::indices::{I, IL, IL2, J, K};
     use super::*;
-    use crate::{Shape, MultiArrayBuilder};
-    use super::super::indices::{I, J, K, IL, IL2};
-    
+    use crate::{MultiArrayBuilder, Shape};
+
     #[test]
     fn test_linear_to_coords() {
         let shape = vec![2, 3];
-        
+
         // 线性索引 0 -> [0, 0]
         assert_eq!(linear_to_coords(0, &shape), vec![0, 0]);
-        
+
         // 线性索引 1 -> [0, 1]
         assert_eq!(linear_to_coords(1, &shape), vec![0, 1]);
-        
+
         // 线性索引 3 -> [1, 0]
         assert_eq!(linear_to_coords(3, &shape), vec![1, 0]);
     }
-    
+
     #[test]
     fn test_check_common_indices_match() {
-        let lhs_coords = vec![1, 2, 3];  // i=1, j=2, k=3
-        let lhs_ids = vec![0, 1, 2];     // i, j, k
-        let rhs_coords = vec![2, 3, 4];  // j=2, k=3, l=4
-        let rhs_ids = vec![1, 2, 3];     // j, k, l
-        let common_ids = vec![1, 2];     // j, k
-        
+        let lhs_coords = vec![1, 2, 3]; // i=1, j=2, k=3
+        let lhs_ids = vec![0, 1, 2]; // i, j, k
+        let rhs_coords = vec![2, 3, 4]; // j=2, k=3, l=4
+        let rhs_ids = vec![1, 2, 3]; // j, k, l
+        let common_ids = vec![1, 2]; // j, k
+
         // j=2 在两边匹配，k=3 在两边匹配
         // j=2 matches on both sides, k=3 matches on both sides
-        assert!(check_common_indices_match(&lhs_coords, &lhs_ids, &rhs_coords, &rhs_ids, &common_ids));
-        
+        assert!(check_common_indices_match(
+            &lhs_coords,
+            &lhs_ids,
+            &rhs_coords,
+            &rhs_ids,
+            &common_ids
+        ));
+
         // 测试不匹配情况
         // Test mismatch case
-        let rhs_coords_mismatch = vec![5, 3, 4];  // j=5, k=3, l=4
-        assert!(!check_common_indices_match(&lhs_coords, &lhs_ids, &rhs_coords_mismatch, &rhs_ids, &common_ids));
+        let rhs_coords_mismatch = vec![5, 3, 4]; // j=5, k=3, l=4
+        assert!(!check_common_indices_match(
+            &lhs_coords,
+            &lhs_ids,
+            &rhs_coords_mismatch,
+            &rhs_ids,
+            &common_ids
+        ));
     }
 }

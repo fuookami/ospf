@@ -10,8 +10,8 @@ use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
 
@@ -128,6 +128,18 @@ where
         let mut cloned = self.clone();
         cloned.polynomials = polynomials;
         cloned
+    }
+
+    pub(crate) fn mechanism_constraints_with_big_m(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        big_m: f64,
+    ) -> Result<Vec<LinearConstraint<V>>>
+    where
+        V: Add<Output = V> + Mul<Output = V> + Zero + ToPrimitive + FromPrimitive,
+        f64: IntoValue<V>,
+    {
+        self.build_mechanism_constraints(symbol_to_index, big_m)
     }
 
     pub fn result_variable(&self) -> &ContinuousVariableItem {
@@ -535,6 +547,18 @@ where
         let mut cloned = self.clone();
         cloned.polynomials = polynomials;
         cloned
+    }
+
+    pub(crate) fn mechanism_constraints_with_big_m(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        big_m: f64,
+    ) -> Result<Vec<LinearConstraint<V>>>
+    where
+        V: Add<Output = V> + Mul<Output = V> + Zero + ToPrimitive + FromPrimitive,
+        f64: IntoValue<V>,
+    {
+        self.build_mechanism_constraints(symbol_to_index, big_m)
     }
 
     pub fn result_variable(&self) -> &ContinuousVariableItem {

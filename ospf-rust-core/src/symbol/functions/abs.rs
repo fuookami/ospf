@@ -3,40 +3,73 @@
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
 use std::sync::Arc;
 
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
-use crate::token::{Token, TokenList};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
+use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
 use super::big_m::{BigMPolicy, infer_linear_abs_bound_from_tokens};
 
-fn evaluate_linear(
-    poly: &Linear<f64>,
-    token_table: &dyn TokenList<f64>,
+fn evaluate_linear<V>(
+    poly: &Linear<V>,
+    token_table: &dyn TokenList<V>,
     zero_if_none: bool,
-) -> Option<f64> {
-    let mut value = *poly.constant_term();
+) -> Option<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + Add<Output = V> + Mul<Output = V> + Zero,
+{
+    let mut value = poly.constant_term().clone();
     for monomial in poly.monomials() {
         let term_value = match token_table
             .find_by_index(monomial.var_index())
             .and_then(|token| token.get_result())
         {
             Some(v) => v,
-            None if zero_if_none => 0.0,
+            None if zero_if_none => V::zero(),
             None => return None,
         };
-        value += monomial.coefficient() * term_value;
+        value = value + monomial.coefficient().clone() * term_value;
     }
     Some(value)
+}
+
+fn to_f64<V>(value: &V) -> Option<f64>
+where
+    V: ToPrimitive,
+{
+    value.to_f64()
+}
+
+fn from_f64<V>(value: f64) -> Option<V>
+where
+    V: FromPrimitive,
+{
+    V::from_f64(value)
+}
+
+fn convert_f64_to_v<V>(value: f64, context: &str) -> Result<V>
+where
+    V: FromPrimitive,
+{
+    from_f64(value).ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "failed to convert `{}` value {} from f64 into model value type",
+            context, value
+        ))
+        .into()
+    })
 }
 
 const DEFAULT_BIG_M: f64 = 1_000_000.0;
@@ -46,17 +79,23 @@ const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
 ///
 /// 数学形式 / Mathematical Form:
 /// - result = |x|
-#[derive(Debug)]
-pub struct AbsFunction {
+#[derive(Debug, Clone)]
+pub struct AbsFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     id: IntermediateSymbolId,
-    input: Linear<f64>,
+    input: Linear<V>,
     result_var: ContinuousVariableItem,
     side_var: BinaryVariableItem,
 }
 
-impl AbsFunction {
+impl<V> AbsFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     /// 创建新的绝对值函数 / Create new abs function
-    pub fn new(id: u64, name: &str, input: Linear<f64>) -> Self {
+    pub fn new(id: u64, name: &str, input: Linear<V>) -> Self {
         let group_id = new_group_id();
         let result_var =
             ContinuousVariableItem::create(VariableId::new(group_id, 0), &format!("{}_abs", name));
@@ -71,7 +110,21 @@ impl AbsFunction {
         }
     }
 
-    pub fn input_polynomial(&self) -> &Linear<f64> {
+    /// 使用自动 ID 与调用方提供的名称创建绝对值函数。
+    /// Create an abs function with an auto id and caller-provided name.
+    pub fn named(name: impl AsRef<str>, input: Linear<V>) -> Self {
+        Self::new(next_auto_intermediate_symbol_id(), name.as_ref(), input)
+    }
+
+    /// 使用自动 ID 与自动名称创建绝对值函数。
+    /// Create an abs function with an auto id and auto-generated name.
+    pub fn auto(input: Linear<V>) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("abs", id);
+        Self::new(id, &name, input)
+    }
+
+    pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
@@ -83,16 +136,34 @@ impl AbsFunction {
         &self.side_var
     }
 
-    fn infer_big_m_from_tokens(&self, tokens: &[Token<f64>]) -> Option<f64> {
+    fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64>
+    where
+        V: ToPrimitive,
+    {
         infer_linear_abs_bound_from_tokens(&self.input, tokens)
             .map(|bound| (2.0 * bound).max(BIG_M_POLICY.min()))
     }
+}
 
+impl<V> AbsFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
     fn build_mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
         big_m: f64,
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+    ) -> Result<Vec<LinearConstraint<V>>> {
         let result_index = symbol_to_index
             .get(&(self.result_var.id().unique_id() as usize))
             .copied()
@@ -113,21 +184,43 @@ impl AbsFunction {
             })?;
 
         let mut constraints = Vec::new();
+        let mut input_monomials = Vec::with_capacity(self.input.monomials().len());
+        for monomial in self.input.monomials() {
+            let coefficient = to_f64(monomial.coefficient()).ok_or_else(|| {
+                ModelError::InvalidConstraint(format!(
+                    "abs `{}` input coefficient cannot be converted to f64",
+                    self.id.name
+                ))
+            })?;
+            input_monomials.push((coefficient, monomial.var_index()));
+        }
+        let input_constant = to_f64(self.input.constant_term()).ok_or_else(|| {
+            ModelError::InvalidConstraint(format!(
+                "abs `{}` input constant cannot be converted to f64",
+                self.id.name
+            ))
+        })?;
 
         // y - x >= 0
         let mut ge_x_monomials = Vec::with_capacity(self.input.monomials().len() + 1);
-        ge_x_monomials.push(LinearMonomial::new(1.0, result_index));
-        for monomial in self.input.monomials() {
+        ge_x_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(1.0, "abs result coefficient")?,
+            result_index,
+        ));
+        for (coefficient, index) in &input_monomials {
             ge_x_monomials.push(LinearMonomial::new(
-                -monomial.coefficient(),
-                monomial.var_index(),
+                convert_f64_to_v::<V>(-*coefficient, "abs input coefficient")?,
+                *index,
             ));
         }
         constraints.push(LinearConstraint::from_symbol(
             LinearInequality::new(
-                Linear::new(ge_x_monomials, -self.input.constant_term()),
+                Linear::new(
+                    ge_x_monomials,
+                    convert_f64_to_v::<V>(-input_constant, "abs input constant")?,
+                ),
                 ConstraintRelation::GreaterEqual,
-                0.0,
+                convert_f64_to_v::<V>(0.0, "abs rhs")?,
             ),
             &format!("{}_abs_ge_x", self.id.name),
             Arc::new(self.clone()),
@@ -135,18 +228,24 @@ impl AbsFunction {
 
         // y + x >= 0
         let mut ge_neg_x_monomials = Vec::with_capacity(self.input.monomials().len() + 1);
-        ge_neg_x_monomials.push(LinearMonomial::new(1.0, result_index));
-        for monomial in self.input.monomials() {
+        ge_neg_x_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(1.0, "abs result coefficient")?,
+            result_index,
+        ));
+        for (coefficient, index) in &input_monomials {
             ge_neg_x_monomials.push(LinearMonomial::new(
-                *monomial.coefficient(),
-                monomial.var_index(),
+                convert_f64_to_v::<V>(*coefficient, "abs input coefficient")?,
+                *index,
             ));
         }
         constraints.push(LinearConstraint::from_symbol(
             LinearInequality::new(
-                Linear::new(ge_neg_x_monomials, *self.input.constant_term()),
+                Linear::new(
+                    ge_neg_x_monomials,
+                    convert_f64_to_v::<V>(input_constant, "abs input constant")?,
+                ),
                 ConstraintRelation::GreaterEqual,
-                0.0,
+                convert_f64_to_v::<V>(0.0, "abs rhs")?,
             ),
             &format!("{}_abs_ge_neg_x", self.id.name),
             Arc::new(self.clone()),
@@ -154,19 +253,28 @@ impl AbsFunction {
 
         // y - x + M * b <= M
         let mut le_pos_branch_monomials = Vec::with_capacity(self.input.monomials().len() + 2);
-        le_pos_branch_monomials.push(LinearMonomial::new(1.0, result_index));
-        for monomial in self.input.monomials() {
+        le_pos_branch_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(1.0, "abs result coefficient")?,
+            result_index,
+        ));
+        for (coefficient, index) in &input_monomials {
             le_pos_branch_monomials.push(LinearMonomial::new(
-                -monomial.coefficient(),
-                monomial.var_index(),
+                convert_f64_to_v::<V>(-*coefficient, "abs input coefficient")?,
+                *index,
             ));
         }
-        le_pos_branch_monomials.push(LinearMonomial::new(big_m, side_index));
+        le_pos_branch_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(big_m, "abs side coefficient")?,
+            side_index,
+        ));
         constraints.push(LinearConstraint::from_symbol(
             LinearInequality::new(
-                Linear::new(le_pos_branch_monomials, -self.input.constant_term()),
+                Linear::new(
+                    le_pos_branch_monomials,
+                    convert_f64_to_v::<V>(-input_constant, "abs input constant")?,
+                ),
                 ConstraintRelation::LessEqual,
-                big_m,
+                convert_f64_to_v::<V>(big_m, "abs rhs")?,
             ),
             &format!("{}_abs_pos_branch", self.id.name),
             Arc::new(self.clone()),
@@ -174,19 +282,28 @@ impl AbsFunction {
 
         // y + x - M * b <= 0
         let mut le_neg_branch_monomials = Vec::with_capacity(self.input.monomials().len() + 2);
-        le_neg_branch_monomials.push(LinearMonomial::new(1.0, result_index));
-        for monomial in self.input.monomials() {
+        le_neg_branch_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(1.0, "abs result coefficient")?,
+            result_index,
+        ));
+        for (coefficient, index) in &input_monomials {
             le_neg_branch_monomials.push(LinearMonomial::new(
-                *monomial.coefficient(),
-                monomial.var_index(),
+                convert_f64_to_v::<V>(*coefficient, "abs input coefficient")?,
+                *index,
             ));
         }
-        le_neg_branch_monomials.push(LinearMonomial::new(-big_m, side_index));
+        le_neg_branch_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(-big_m, "abs side coefficient")?,
+            side_index,
+        ));
         constraints.push(LinearConstraint::from_symbol(
             LinearInequality::new(
-                Linear::new(le_neg_branch_monomials, *self.input.constant_term()),
+                Linear::new(
+                    le_neg_branch_monomials,
+                    convert_f64_to_v::<V>(input_constant, "abs input constant")?,
+                ),
                 ConstraintRelation::LessEqual,
-                0.0,
+                convert_f64_to_v::<V>(0.0, "abs rhs")?,
             ),
             &format!("{}_abs_neg_branch", self.id.name),
             Arc::new(self.clone()),
@@ -196,24 +313,19 @@ impl AbsFunction {
     }
 }
 
-impl Clone for AbsFunction {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id.clone(),
-            input: self.input.clone(),
-            result_var: self.result_var.clone(),
-            side_var: self.side_var.clone(),
-        }
-    }
-}
-
-impl Display for AbsFunction {
+impl<V> Display for AbsFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "abs({})", self.id.name)
     }
 }
 
-impl DynSymbol for AbsFunction {
+impl<V> DynSymbol for AbsFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     fn name(&self) -> &str {
         &self.id.name
     }
@@ -231,7 +343,10 @@ impl DynSymbol for AbsFunction {
     }
 }
 
-impl Symbol for AbsFunction {
+impl<V> Symbol for AbsFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     type Id = IntermediateSymbolId;
 
     fn id(&self) -> Self::Id {
@@ -239,7 +354,20 @@ impl Symbol for AbsFunction {
     }
 }
 
-impl IntermediateSymbol for AbsFunction {
+impl<V> IntermediateSymbol<V> for AbsFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
     fn category(&self) -> Category {
         Category::Linear
     }
@@ -248,42 +376,42 @@ impl IntermediateSymbol for AbsFunction {
         false
     }
 
-    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol>> {
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
         HashSet::new()
     }
 
     fn flush(&self, _force: bool) {}
 
-    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<f64>>) -> Result<()> {
-        <Self as FunctionSymbol>::register_tokens(self, tokens)
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
     }
 
     fn mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+    ) -> Result<Vec<LinearConstraint<V>>> {
         self.build_mechanism_constraints(symbol_to_index, DEFAULT_BIG_M)
     }
 
     fn mechanism_constraints_with_tokens(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
-        tokens: &[Token<f64>],
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
         let big_m = BIG_M_POLICY.resolve(self.infer_big_m_from_tokens(tokens));
         self.build_mechanism_constraints(symbol_to_index, big_m)
     }
 
     fn evaluate_from_tokens(
         &self,
-        token_table: &dyn TokenList<f64>,
+        token_table: &dyn TokenList<V>,
         zero_if_none: bool,
-    ) -> Option<f64> {
-        <Self as FunctionSymbol>::calculate_value(self, token_table, zero_if_none)
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
     }
 
-    fn prepare(&self, values: &std::collections::HashMap<usize, f64>) -> Option<f64> {
-        values.get(&self.result_var.index()).copied()
+    fn prepare(&self, values: &std::collections::HashMap<usize, V>) -> Option<V> {
+        values.get(&self.result_var.index()).cloned()
     }
 
     fn to_raw_string(&self, _unfold: u64) -> String {
@@ -291,8 +419,21 @@ impl IntermediateSymbol for AbsFunction {
     }
 }
 
-impl FunctionSymbol for AbsFunction {
-    fn register_tokens(&self, tokens: &mut Vec<Token<f64>>) -> Result<()> {
+impl<V> FunctionSymbol<V> for AbsFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
         tokens.push(Token::from_generic(
             self.result_var.clone(),
             self.result_var.index(),
@@ -304,18 +445,37 @@ impl FunctionSymbol for AbsFunction {
         Ok(())
     }
 
-    fn calculate_value(&self, token_table: &dyn TokenList<f64>, zero_if_none: bool) -> Option<f64> {
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
         let value = evaluate_linear(&self.input, token_table, zero_if_none)?;
-        Some(value.abs())
+        from_f64(to_f64(&value)?.abs())
     }
 }
 
-impl LinearIntermediateSymbol for AbsFunction {
-    fn to_linear_polynomial(&self) -> Linear<f64> {
-        Linear::new(vec![LinearMonomial::new(1.0, self.result_var.index())], 0.0)
+impl<V> LinearIntermediateSymbol<V> for AbsFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                self.result_var.index(),
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        )
     }
 
-    fn to_quadratic_polynomial(&self) -> Quadratic<f64> {
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
         Quadratic::from_linear(&self.to_linear_polynomial())
     }
 }
@@ -343,6 +503,33 @@ mod tests {
     }
 
     #[test]
+    fn abs_function_supports_f32_values() {
+        let x = ContinuousVariableItem::create(VariableId::standalone(0), "x");
+        let mut tokens = VecTokenList::<f32>::new();
+        let tx = Token::from_generic(x, 0);
+        tx.set_result(-3.0_f32);
+        tokens.add_token(tx);
+
+        let abs: AbsFunction<f32> = AbsFunction::new(
+            1001,
+            "abs_f32",
+            Linear::new(vec![LinearMonomial::new(2.0_f32, 0)], 1.0_f32),
+        );
+        let value =
+            <AbsFunction<f32> as FunctionSymbol<f32>>::calculate_value(&abs, &tokens, false);
+        assert_eq!(value, Some(5.0_f32));
+
+        let result_id = abs.result_variable().id().unique_id() as usize;
+        let side_id = abs.side_variable().id().unique_id() as usize;
+        let symbol_to_index = HashMap::from([(result_id, 1usize), (side_id, 2usize)]);
+        let constraints = abs
+            .mechanism_constraints(&symbol_to_index)
+            .expect("f32 abs mechanism constraints should be generated");
+
+        assert_eq!(constraints.len(), 4);
+    }
+
+    #[test]
     fn abs_function_zero_if_none() {
         let x = ContinuousVariableItem::create(VariableId::standalone(0), "x");
         let mut tokens = VecTokenList::new();
@@ -362,7 +549,7 @@ mod tests {
             "x",
             VariableRange::bounded(-2.0, 3.0),
         );
-        let abs = AbsFunction::new(
+        let abs: AbsFunction<f64> = AbsFunction::new(
             102,
             "abs_bound",
             Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
@@ -403,7 +590,7 @@ mod tests {
     #[test]
     fn abs_function_falls_back_to_default_big_m_without_bounds() {
         let x = ContinuousVariableItem::create(VariableId::standalone(0), "x");
-        let abs = AbsFunction::new(
+        let abs: AbsFunction<f64> = AbsFunction::new(
             103,
             "abs_default_m",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),

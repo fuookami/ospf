@@ -1,7 +1,12 @@
+//! 错误处理模块。
+//! Error handling module.
+
 use paste::paste;
 use std::fmt::{Debug, Display, Formatter};
 use strum::{Display, EnumString};
 
+/// 错误码枚举。
+/// Error code enumeration.
 #[repr(u8)]
 #[derive(EnumString, Clone, Copy, Display, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ErrorCode {
@@ -79,9 +84,111 @@ pub enum ErrorCode {
     Unknown = u8::MAX,
 }
 
+impl ErrorCode {
+    /// 从 u8 错误码安全转换，未知值返回 Unknown。
+    /// Safely convert from a u8 error code, returning Unknown for unrecognized values.
+    pub fn from_u8(value: u8) -> Self {
+        match value {
+            0x00 => Self::None,
+            0x01 => Self::AuthenticationError,
+            0x10 => Self::NotAFile,
+            0x11 => Self::NotADirectory,
+            0x12 => Self::FileNotFound,
+            0x13 => Self::DirectoryUnusable,
+            0x14 => Self::FileExtensionNotMatched,
+            0x15 => Self::DataNotFound,
+            0x16 => Self::DataEmpty,
+            0x17 => Self::EnumVisitorEmpty,
+            0x18 => Self::UniqueBoxLocked,
+            0x19 => Self::UniqueRefLocked,
+            0x1a => Self::SerializationFailed,
+            0x1b => Self::DeserializationFailed,
+            0x20 => Self::TokenExisted,
+            0x21 => Self::SymbolRepetitive,
+            0x22 => Self::LackOfPipelines,
+            0x23 => Self::SolverNotFound,
+            0x24 => Self::OREngineEnvironmentLost,
+            0x25 => Self::OREngineConnectionOvertime,
+            0x26 => Self::OREngineModelingException,
+            0x27 => Self::OREngineSolvingException,
+            0x28 => Self::OREngineTerminated,
+            0x29 => Self::ORModelInfeasible,
+            0x2a => Self::ORModelUnbounded,
+            0x2b => Self::ORModelInfeasibleOrUnbounded,
+            0x2c => Self::ORSolutionInvalid,
+            0x30 => Self::ApplicationFailed,
+            0x31 => Self::ApplicationError,
+            0x32 => Self::ApplicationException,
+            0x33 => Self::ApplicationStopped,
+            0x34 => Self::IllegalArgument,
+            0xfe => Self::Other,
+            0xff => Self::Unknown,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// 从 u64 错误码安全转换，未知值返回 Unknown。
+    /// Safely convert from a u64 error code, returning Unknown for unrecognized values.
+    pub fn from_u64(value: u64) -> Self {
+        u8::try_from(value)
+            .map(Self::from_u8)
+            .unwrap_or(Self::Unknown)
+    }
+
+    /// 转为 u8 错误码。
+    /// Convert to a u8 error code.
+    pub fn to_u8(self) -> u8 {
+        self as u8
+    }
+
+    /// 转为 u64 错误码。
+    /// Convert to a u64 error code.
+    pub fn to_u64(self) -> u64 {
+        self.to_u8().into()
+    }
+}
+
 impl From<u8> for ErrorCode {
     fn from(value: u8) -> ErrorCode {
-        unsafe { std::mem::transmute(value) }
+        Self::from_u8(value)
+    }
+}
+
+impl From<u16> for ErrorCode {
+    fn from(value: u16) -> ErrorCode {
+        u8::try_from(value)
+            .map(Self::from_u8)
+            .unwrap_or(Self::Unknown)
+    }
+}
+
+impl From<u32> for ErrorCode {
+    fn from(value: u32) -> ErrorCode {
+        u8::try_from(value)
+            .map(Self::from_u8)
+            .unwrap_or(Self::Unknown)
+    }
+}
+
+impl From<u64> for ErrorCode {
+    fn from(value: u64) -> ErrorCode {
+        Self::from_u64(value)
+    }
+}
+
+impl From<u128> for ErrorCode {
+    fn from(value: u128) -> ErrorCode {
+        u64::try_from(value)
+            .map(Self::from_u64)
+            .unwrap_or(Self::Unknown)
+    }
+}
+
+impl From<usize> for ErrorCode {
+    fn from(value: usize) -> ErrorCode {
+        u64::try_from(value)
+            .map(Self::from_u64)
+            .unwrap_or(Self::Unknown)
     }
 }
 
@@ -121,9 +228,15 @@ impl From<ErrorCode> for usize {
     }
 }
 
+/// 错误位置信息。
+/// Error position information.
 #[derive(Clone, Copy)]
 pub struct ErrorPosition {
+    /// 源文件名。
+    /// Source file name.
     pub file: &'static str,
+    /// 行号。
+    /// Line number.
     pub line: u32,
 }
 
@@ -139,20 +252,38 @@ impl Debug for ErrorPosition {
     }
 }
 
+/// 带错误位置的trait。
+/// Trait for types with error position information.
 pub trait WithErrorPosition {
+    /// 返回错误位置。
+    /// Returns the error position.
     fn position(&self) -> &ErrorPosition;
 }
 
+/// 错误trait。
+/// Error trait.
 pub trait Error: Display + Debug {
+    /// 返回错误码。
+    /// Returns the error code.
     fn code(&self) -> ErrorCode;
+    /// 返回错误消息。
+    /// Returns the error message.
     fn msg(&self) -> String;
 }
 
+/// 带附加参数的错误trait。
+/// Error trait with additional argument.
 pub trait ExError<T: Sized>: Error {
+    /// 返回附加参数引用。
+    /// Returns reference to the additional argument.
     fn arg(&self) -> Option<&T>;
 }
 
+/// 成功标记类型。
+/// Success marker type.
 pub struct Ok {}
+/// 成功标记常量。
+/// Success marker constant.
 pub const OK: Ok = Ok {};
 
 impl<E> From<Ok> for std::result::Result<(), E> {
@@ -161,12 +292,165 @@ impl<E> From<Ok> for std::result::Result<(), E> {
     }
 }
 
+/// 返回类型别名。
+/// Return type alias.
 pub type Ret<T> = Result<T, Box<dyn Error>>;
+/// Try类型别名。
+/// Try type alias.
 pub type Try = Result<(), Box<dyn Error>>;
+/// 带附加参数的返回类型别名。
+/// Extended return type alias with additional argument.
+pub type ExRet<T> = ExResult<T, Box<dyn Error>>;
+/// 带附加参数的Try类型别名。
+/// Extended try type alias with additional argument.
+pub type ExTry = ExResult<(), Box<dyn Error>>;
 
+/// 扩展结果类型，支持警告和致命错误。
+/// Extended result type supporting warnings and fatal errors.
+#[derive(Clone, Debug)]
+pub enum ExResult<T, E> {
+    Ok(T),
+    Failed(E),
+    Warn { value: T, warnings: Vec<E> },
+    Fatal(Vec<E>),
+}
+
+impl<T, E> ExResult<T, E> {
+    pub fn ok(value: T) -> Self {
+        Self::Ok(value)
+    }
+
+    pub fn failed(error: E) -> Self {
+        Self::Failed(error)
+    }
+
+    pub fn warning(value: T, warning: E) -> Self {
+        Self::Warn {
+            value,
+            warnings: vec![warning],
+        }
+    }
+
+    pub fn warn(value: T, warnings: Vec<E>) -> Self {
+        Self::Warn { value, warnings }
+    }
+
+    pub fn fatal_error(error: E) -> Self {
+        Self::Fatal(vec![error])
+    }
+
+    pub fn fatal(errors: Vec<E>) -> Self {
+        Self::Fatal(errors)
+    }
+
+    pub fn fetal_error(error: E) -> Self {
+        Self::Fatal(vec![error])
+    }
+
+    pub fn fetal(errors: Vec<E>) -> Self {
+        Self::Fatal(errors)
+    }
+
+    pub fn is_ok(&self) -> bool {
+        matches!(self, Self::Ok(_))
+    }
+
+    pub fn is_failed(&self) -> bool {
+        matches!(self, Self::Failed(_) | Self::Fatal(_))
+    }
+
+    pub fn is_warned(&self) -> bool {
+        matches!(self, Self::Warn { .. })
+    }
+
+    pub fn is_fatal(&self) -> bool {
+        matches!(self, Self::Fatal(_))
+    }
+
+    pub fn is_fetal(&self) -> bool {
+        self.is_fatal()
+    }
+
+    pub fn value(&self) -> Option<&T> {
+        match self {
+            Self::Ok(value) => Some(value),
+            Self::Warn { value, .. } => Some(value),
+            Self::Failed(_) | Self::Fatal(_) => None,
+        }
+    }
+
+    pub fn value_mut(&mut self) -> Option<&mut T> {
+        match self {
+            Self::Ok(value) => Some(value),
+            Self::Warn { value, .. } => Some(value),
+            Self::Failed(_) | Self::Fatal(_) => None,
+        }
+    }
+
+    pub fn failed_error(&self) -> Option<&E> {
+        match self {
+            Self::Failed(error) => Some(error),
+            Self::Ok(_) | Self::Warn { .. } | Self::Fatal(_) => None,
+        }
+    }
+
+    pub fn warnings(&self) -> Option<&[E]> {
+        match self {
+            Self::Warn { warnings, .. } => Some(warnings.as_slice()),
+            Self::Ok(_) | Self::Failed(_) | Self::Fatal(_) => None,
+        }
+    }
+
+    pub fn fatal_errors(&self) -> Option<&[E]> {
+        match self {
+            Self::Fatal(errors) => Some(errors.as_slice()),
+            Self::Ok(_) | Self::Failed(_) | Self::Warn { .. } => None,
+        }
+    }
+
+    pub fn fetal_errors(&self) -> Option<&[E]> {
+        self.fatal_errors()
+    }
+
+    pub fn map<U, F>(self, transform: F) -> ExResult<U, E>
+    where
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            Self::Ok(value) => ExResult::Ok(transform(value)),
+            Self::Warn { value, warnings } => ExResult::Warn {
+                value: transform(value),
+                warnings,
+            },
+            Self::Failed(error) => ExResult::Failed(error),
+            Self::Fatal(errors) => ExResult::Fatal(errors),
+        }
+    }
+}
+
+impl<T, E> From<std::result::Result<T, E>> for ExResult<T, E> {
+    fn from(value: std::result::Result<T, E>) -> Self {
+        match value {
+            std::result::Result::Ok(value) => Self::Ok(value),
+            std::result::Result::Err(error) => Self::Failed(error),
+        }
+    }
+}
+
+impl From<Ok> for ExTry {
+    fn from(_: Ok) -> Self {
+        ExResult::Ok(())
+    }
+}
+
+/// 定义错误结构体类型的宏。
+/// Macro for defining error struct types.
+///
+/// 自动添加`position`字段并实现`WithErrorPosition`trait。
+/// Automatically adds a `position` field and implements the `WithErrorPosition` trait.
 #[macro_export]
 macro_rules! error_type {
-    ($(#[$derive:meta])* $vis:vis struct $name:ident $(< $( $param:tt ),* >)? { $($fieldVis:vis $field:ident: $type:ty),* }) => {
+    ($(#[$derive:meta])* $vis:vis struct $name:ident $(< $( $param:tt ),* >)? { $($fieldVis:vis $field:ident: $type:ty),* $(,)? }) => {
         $(#[$derive])*
         $vis struct $name $(< $( $param ),* >)? {
             $($fieldVis $field: $type,)*
@@ -181,6 +465,11 @@ macro_rules! error_type {
     };
 }
 
+/// 定义错误枚举类型的宏。
+/// Macro for defining error enum types.
+///
+/// 自动实现`From`、`WithErrorPosition`、`Debug`、`Display`和`Error`trait。
+/// Automatically implements `From`, `WithErrorPosition`, `Debug`, `Display`, and `Error` traits.
 #[macro_export]
 macro_rules! error_enum {
     ($(#[$derive:meta])* $vis:vis enum $name:ident {
@@ -245,6 +534,11 @@ macro_rules! error_enum {
     };
 }
 
+/// 创建错误实例的宏。
+/// Macro for creating error instances.
+///
+/// 自动填充`position`字段为当前文件和行号。
+/// Automatically fills the `position` field with current file and line number.
 #[macro_export]
 macro_rules! error {
     ($name:ident { $($field:ident: $val:expr),* }) => {
@@ -265,7 +559,7 @@ mod tests {
     error_type!(
         #[derive(Clone, Copy)]
         pub struct TestError {
-            pub message: &'static str
+            pub message: &'static str,
         }
     );
 
@@ -294,7 +588,7 @@ mod tests {
     error_type!(
         #[derive(Clone, Copy)]
         pub struct AnotherError {
-            pub code: u32
+            pub code: u32,
         }
     );
 
@@ -351,6 +645,64 @@ mod tests {
             message: "another test"
         }));
         let enum4 = TestErrorEnum::Another(error!(AnotherError { code: 500 }));
+    }
+
+    #[test]
+    fn test_ex_result_warn() {
+        let result = ExResult::warning(42u32, error!(TestError { message: "warning" }));
+
+        assert!(!result.is_ok());
+        assert!(!result.is_failed());
+        assert!(result.is_warned());
+        assert_eq!(result.value(), Some(&42u32));
+
+        let warnings = result.warnings().unwrap();
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].msg(), "warning".to_string());
+    }
+
+    #[test]
+    fn test_ex_result_fetal_alias() {
+        let result: ExResult<u32, TestError> = ExResult::fetal(vec![
+            error!(TestError { message: "fatal-1" }),
+            error!(TestError { message: "fatal-2" }),
+        ]);
+
+        assert!(!result.is_ok());
+        assert!(result.is_failed());
+        assert!(result.is_fatal());
+        assert!(result.is_fetal());
+
+        let errors = result.fetal_errors().unwrap();
+        assert_eq!(errors.len(), 2);
+        assert_eq!(errors[0].msg(), "fatal-1".to_string());
+        assert_eq!(errors[1].msg(), "fatal-2".to_string());
+    }
+
+    #[test]
+    fn test_ex_result_map() {
+        let warned = ExResult::warning(10u32, error!(TestError { message: "warn" }));
+        let mapped = warned.map(|value| value + 5);
+        assert!(mapped.is_warned());
+        assert_eq!(mapped.value(), Some(&15u32));
+
+        let fatal: ExResult<u32, TestError> =
+            ExResult::fatal_error(error!(TestError { message: "fatal" }));
+        let mapped_fatal = fatal.map(|value| value + 5);
+        assert!(mapped_fatal.is_fatal());
+        assert!(mapped_fatal.value().is_none());
+    }
+
+    #[test]
+    fn test_error_code_safe_conversion() {
+        assert_eq!(
+            ErrorCode::from_u8(0x2b),
+            ErrorCode::ORModelInfeasibleOrUnbounded
+        );
+        assert_eq!(ErrorCode::from_u8(0x7f), ErrorCode::Unknown);
+        assert_eq!(ErrorCode::from_u64(0x1_0000), ErrorCode::Unknown);
+        assert_eq!(ErrorCode::IllegalArgument.to_u8(), 0x34);
+        assert_eq!(ErrorCode::Other.to_u64(), 0xfe);
     }
 }
 

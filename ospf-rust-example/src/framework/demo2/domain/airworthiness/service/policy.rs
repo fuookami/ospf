@@ -1,7 +1,7 @@
-use crate::framework::demo2::domain::airworthiness::service::limits;
-use crate::framework::demo2::domain::airworthiness::service::pipeline_list_generator::AirworthinessPipelineStep;
-use crate::framework::demo2::domain::shared::mode_switch::ModeSelector;
-use crate::framework::demo2::domain::shared::pipeline_policy::PipelineSpec;
+use crate::framework_demo::demo2::domain::airworthiness::service::limits;
+use crate::framework_demo::demo2::domain::airworthiness::service::pipeline_list_generator::AirworthinessPipelineStep;
+use crate::framework_demo::demo2::domain::shared::mode_switch::ModeSelector;
+use crate::framework_demo::demo2::domain::shared::pipeline_policy::PipelineSpec;
 
 pub fn pipeline_specs() -> Vec<PipelineSpec<AirworthinessPipelineStep>> {
     vec![
@@ -32,4 +32,3 @@ pub fn pipeline_specs() -> Vec<PipelineSpec<AirworthinessPipelineStep>> {
         },
     ]
 }
-

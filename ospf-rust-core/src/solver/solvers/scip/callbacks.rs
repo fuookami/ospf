@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::error::Result;
+use crate::model::ObjectiveCategory;
 use crate::solver::SolverStatus;
 
 /// SCIP staged callback points.
@@ -46,8 +47,14 @@ pub type SCIPStageCallback = Arc<dyn Fn(&SCIPStageStatus) -> Result<()> + Send +
 pub struct SCIPTelemetryStatus {
     /// Elapsed solve time.
     pub solve_time: Duration,
+    /// 目标方向 / Objective direction.
+    pub objective_category: ObjectiveCategory,
+    /// 首个 incumbent 目标值 / First incumbent objective value.
+    pub initial_objective_value: Option<f64>,
     /// Current objective value.
     pub objective_value: Option<f64>,
+    /// 当前 incumbent 解向量 / Current incumbent solution vector.
+    pub incumbent_solution: Option<Vec<f64>>,
     /// Current best bound.
     pub best_bound: Option<f64>,
     /// Current MIP gap.
@@ -85,8 +92,14 @@ pub struct SCIPNativeSnapshot {
     pub handler_name: String,
     /// 累计耗时 / Elapsed solve time.
     pub solve_time: Duration,
+    /// 目标方向 / Objective direction.
+    pub objective_category: ObjectiveCategory,
+    /// 首个 incumbent 目标值 / First incumbent objective value.
+    pub initial_objective_value: Option<f64>,
     /// 当前目标值 / Current objective value.
     pub objective_value: Option<f64>,
+    /// 当前 incumbent 解向量 / Current incumbent solution vector.
+    pub incumbent_solution: Option<Vec<f64>>,
     /// 当前最优界 / Current best bound.
     pub best_bound: Option<f64>,
     /// 当前 MIP gap / Current MIP gap.
@@ -141,3 +154,51 @@ pub type SCIPNativeObserver =
 /// SCIP 原生回调（覆盖语义）/ SCIP native callback (override semantics).
 pub type SCIPNativeCallback =
     Arc<dyn Fn(&SCIPNativeSnapshot) -> Result<SCIPNativeControl> + Send + Sync>;
+
+/// Rust-style alias for [`SCIPStage`].
+/// [`SCIPStage`] 的 Rust 风格别名。
+pub type ScipStage = SCIPStage;
+
+/// Rust-style alias for [`SCIPStageStatus`].
+/// [`SCIPStageStatus`] 的 Rust 风格别名。
+pub type ScipStageStatus = SCIPStageStatus;
+
+/// Rust-style alias for [`SCIPStageCallback`].
+/// [`SCIPStageCallback`] 的 Rust 风格别名。
+pub type ScipStageCallback = SCIPStageCallback;
+
+/// Rust-style alias for [`SCIPTelemetryStatus`].
+/// [`SCIPTelemetryStatus`] 的 Rust 风格别名。
+pub type ScipTelemetryStatus = SCIPTelemetryStatus;
+
+/// Rust-style alias for [`SCIPTelemetryCallback`].
+/// [`SCIPTelemetryCallback`] 的 Rust 风格别名。
+pub type ScipTelemetryCallback = SCIPTelemetryCallback;
+
+/// Rust-style alias for [`SCIPSnapshotControl`].
+/// [`SCIPSnapshotControl`] 的 Rust 风格别名。
+pub type ScipSnapshotControl = SCIPSnapshotControl;
+
+/// Rust-style alias for [`SCIPSnapshotObserver`].
+/// [`SCIPSnapshotObserver`] 的 Rust 风格别名。
+pub type ScipSnapshotObserver = SCIPSnapshotObserver;
+
+/// Rust-style alias for [`SCIPNativeSnapshot`].
+/// [`SCIPNativeSnapshot`] 的 Rust 风格别名。
+pub type ScipNativeSnapshot = SCIPNativeSnapshot;
+
+/// Rust-style alias for [`SCIPNativeWhere`].
+/// [`SCIPNativeWhere`] 的 Rust 风格别名。
+pub type ScipNativeWhere = SCIPNativeWhere;
+
+/// Rust-style alias for [`SCIPNativeControl`].
+/// [`SCIPNativeControl`] 的 Rust 风格别名。
+pub type ScipNativeControl = SCIPNativeControl;
+
+/// Rust-style alias for [`SCIPNativeObserver`].
+/// [`SCIPNativeObserver`] 的 Rust 风格别名。
+pub type ScipNativeObserver = SCIPNativeObserver;
+
+/// Rust-style alias for [`SCIPNativeCallback`].
+/// [`SCIPNativeCallback`] 的 Rust 风格别名。
+pub type ScipNativeCallback = SCIPNativeCallback;

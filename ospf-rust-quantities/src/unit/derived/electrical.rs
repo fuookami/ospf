@@ -1,18 +1,8 @@
-//! Electrical units - 电学单位
-//! Electrical units - SI electrical units
-//!
-//! 提供电学量纲的 SI 单位定义，包括安培、伏特、欧姆、库仑、法拉、亨利等。
-//! Provides SI unit definitions for electrical dimensions, including ampere, volt, ohm, coulomb, farad, henry, etc.
-
 use super::power::Watt;
 use super::time::{Hour, Second};
-use crate::dimension::derived::{ElectricCharge, ElectricCurrent, ElectricPotential};
-use crate::scale::{KILO, MICRO, MILLI};
+use crate::dimension::derived::{Capacitance, ElectricCharge, ElectricCurrent, ElectricPotential};
+use crate::scale::{KILO, MEGA, MICRO, MILLI, NANO, PICO};
 use crate::unit::{CTUnit, CTUnitDiv, CTUnitMul};
-
-// ============================================================================
-// 电流单位 / Electric current units
-// ============================================================================
 
 define_unit!(Ampere, "ampere", "A", ElectricCurrent);
 define_unit!(
@@ -23,25 +13,43 @@ define_unit!(
     &*Ampere::SCALE * &*MILLI
 );
 define_unit!(
-    MicroAmpere,
+    Microampere,
     "microampere",
-    "μA",
+    "uA",
     ElectricCurrent,
     &*Ampere::SCALE * &*MICRO
 );
-
-// ============================================================================
-// 电荷单位 / Electric charge units
-// ============================================================================
+define_unit!(
+    Kiloampere,
+    "kiloampere",
+    "kA",
+    ElectricCurrent,
+    &*Ampere::SCALE * &*KILO
+);
 
 define_unit_by!(Coulomb, "coulomb", "C", CTUnitMul<Ampere, Second>);
 define_unit!(
-    MilliCoulomb,
+    Millicoulomb,
     "millicoulomb",
     "mC",
     ElectricCharge,
     &*Coulomb::SCALE * &*MILLI
 );
+define_unit!(
+    Microcoulomb,
+    "microcoulomb",
+    "uC",
+    ElectricCharge,
+    &*Coulomb::SCALE * &*MICRO
+);
+define_unit!(
+    Kilocoulomb,
+    "kilocoulomb",
+    "kC",
+    ElectricCharge,
+    &*Coulomb::SCALE * &*KILO
+);
+define_unit_by!(AmpereSecond, "ampere-second", "As", CTUnitMul<Ampere, Second>);
 define_unit_by!(
     MilliampereHour,
     "milliampere-hour",
@@ -49,28 +57,80 @@ define_unit_by!(
     CTUnitMul<Milliampere, Hour>
 );
 define_unit_by!(
+    MicroampereHour,
+    "microampere-hour",
+    "uAh",
+    CTUnitMul<Microampere, Hour>
+);
+define_unit_by!(
     AmpereHour,
     "ampere-hour",
     "Ah",
     CTUnitMul<Ampere, Hour>
 );
-
-// ============================================================================
-// 电压单位 / Electric potential units
-// ============================================================================
+define_unit_by!(
+    KiloampereHour,
+    "kiloampere-hour",
+    "kAh",
+    CTUnitMul<Kiloampere, Hour>
+);
 
 define_unit_by!(Volt, "volt", "V", CTUnitDiv<Watt, Ampere>);
 define_unit!(
-    MilliVolt,
+    Microvolt,
+    "microvolt",
+    "uV",
+    ElectricPotential,
+    &*Volt::SCALE * &*MICRO
+);
+define_unit!(
+    Millivolt,
     "millivolt",
     "mV",
     ElectricPotential,
     &*Volt::SCALE * &*MILLI
 );
 define_unit!(
-    KiloVolt,
+    Kilovolt,
     "kilovolt",
     "kV",
     ElectricPotential,
     &*Volt::SCALE * &*KILO
+);
+define_unit!(
+    Megavolt,
+    "megavolt",
+    "MV",
+    ElectricPotential,
+    &*Volt::SCALE * &*MEGA
+);
+
+define_unit_by!(Farad, "farad", "F", CTUnitDiv<Coulomb, Volt>);
+define_unit!(
+    Millifarad,
+    "millifarad",
+    "mF",
+    Capacitance,
+    &*Farad::SCALE * &*MILLI
+);
+define_unit!(
+    Microfarad,
+    "microfarad",
+    "uF",
+    Capacitance,
+    &*Farad::SCALE * &*MICRO
+);
+define_unit!(
+    Nanofarad,
+    "nanofarad",
+    "nF",
+    Capacitance,
+    &*Farad::SCALE * &*NANO
+);
+define_unit!(
+    Picofarad,
+    "picofarad",
+    "pF",
+    Capacitance,
+    &*Farad::SCALE * &*PICO
 );

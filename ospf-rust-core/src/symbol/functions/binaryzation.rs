@@ -10,14 +10,16 @@ use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
+use super::big_m::infer_linear_shifted_abs_bound_from_tokens;
 
 const DEFAULT_BIG_M: f64 = 1_000_000.0;
 const MIN_BIG_M: f64 = 1.0;
@@ -143,6 +145,33 @@ where
         }
     }
 
+    /// 使用自动 ID 与调用方提供的名称创建二值化函数。
+    /// Create a binaryzation function with an auto id and caller-provided name.
+    pub fn named(
+        name: impl AsRef<str>,
+        input: Linear<V>,
+        threshold: V,
+        big_m: V,
+        method: BinaryzationMethod,
+    ) -> Self {
+        Self::new(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            input,
+            threshold,
+            big_m,
+            method,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建二值化函数。
+    /// Create a binaryzation function with an auto id and auto-generated name.
+    pub fn auto(input: Linear<V>, threshold: V, big_m: V, method: BinaryzationMethod) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("binaryzation", id);
+        Self::new(id, &name, input, threshold, big_m, method)
+    }
+
     pub fn with_big_m(id: u64, name: &str, input: Linear<V>, big_m: V) -> Self {
         Self::new(
             id,
@@ -152,6 +181,25 @@ where
             big_m,
             BinaryzationMethod::BigM,
         )
+    }
+
+    /// 使用自动 ID 与调用方提供的名称创建 Big-M 二值化函数。
+    /// Create a Big-M binaryzation function with an auto id and caller-provided name.
+    pub fn named_big_m(name: impl AsRef<str>, input: Linear<V>, big_m: V) -> Self {
+        Self::with_big_m(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            input,
+            big_m,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建 Big-M 二值化函数。
+    /// Create a Big-M binaryzation function with an auto id and auto-generated name.
+    pub fn auto_big_m(input: Linear<V>, big_m: V) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("binaryzation", id);
+        Self::with_big_m(id, &name, input, big_m)
     }
 
     pub fn with_threshold(id: u64, name: &str, input: Linear<V>, threshold: V) -> Self {
@@ -165,6 +213,25 @@ where
         )
     }
 
+    /// 使用自动 ID 与调用方提供的名称创建阈值二值化函数。
+    /// Create a threshold binaryzation function with an auto id and caller-provided name.
+    pub fn named_threshold(name: impl AsRef<str>, input: Linear<V>, threshold: V) -> Self {
+        Self::with_threshold(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            input,
+            threshold,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建阈值二值化函数。
+    /// Create a threshold binaryzation function with an auto id and auto-generated name.
+    pub fn auto_threshold(input: Linear<V>, threshold: V) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("binaryzation", id);
+        Self::with_threshold(id, &name, input, threshold)
+    }
+
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -173,6 +240,12 @@ where
     pub(crate) fn with_input_polynomial(&self, input: Linear<V>) -> Self {
         let mut cloned = self.clone();
         cloned.input = input;
+        cloned
+    }
+
+    pub(crate) fn with_big_m_value(&self, big_m: V) -> Self {
+        let mut cloned = self.clone();
+        cloned.big_m = big_m;
         cloned
     }
 
@@ -229,33 +302,8 @@ where
     }
 
     fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
-        let mut lower = to_f64(self.input.constant_term())?;
-        let mut upper = lower;
-        for monomial in self.input.monomials() {
-            let token = tokens.get(monomial.var_index())?;
-            let var_lower = to_f64(&token.variable.lower_bound()?)?;
-            let var_upper = to_f64(&token.variable.upper_bound()?)?;
-            if !var_lower.is_finite() || !var_upper.is_finite() {
-                return None;
-            }
-
-            let coefficient = to_f64(monomial.coefficient())?;
-            if coefficient >= 0.0 {
-                lower += coefficient * var_lower;
-                upper += coefficient * var_upper;
-            } else {
-                lower += coefficient * var_upper;
-                upper += coefficient * var_lower;
-            }
-        }
-
-        let threshold = to_f64(&self.threshold)?;
-        lower -= threshold;
-        upper -= threshold;
-        if !lower.is_finite() || !upper.is_finite() {
-            return None;
-        }
-        Some(lower.abs().max(upper.abs()).max(MIN_BIG_M))
+        infer_linear_shifted_abs_bound_from_tokens(&self.input, &self.threshold, tokens)
+            .map(|big_m| big_m.max(MIN_BIG_M))
     }
 
     fn build_mechanism_constraints(

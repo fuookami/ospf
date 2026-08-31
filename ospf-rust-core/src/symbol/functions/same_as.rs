@@ -10,15 +10,15 @@ use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
 };
-use super::big_m::{BigMPolicy, infer_linear_bounds_from_tokens};
+use super::big_m::{BigMPolicy, infer_linear_difference_abs_bound_from_tokens};
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -72,6 +72,8 @@ where
 
 const DEFAULT_BIG_M: f64 = 1_000_000.0;
 const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
+const ZERO_INDICATOR_TOLERANCE: f64 = 1.0e-10;
+const ZERO_INDICATOR_STRICT_BOUNDARY: f64 = ZERO_INDICATOR_TOLERANCE * 16.0 + f64::EPSILON * 16.0;
 
 /// Checks if two polynomials are effectively equal.
 #[derive(Debug, Clone)]
@@ -150,12 +152,8 @@ where
     f64: IntoValue<V>,
 {
     fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
-        let (first_lower, first_upper) = infer_linear_bounds_from_tokens(&self.first, tokens)?;
-        let (second_lower, second_upper) = infer_linear_bounds_from_tokens(&self.second, tokens)?;
-        let diff_lower = first_lower - second_upper;
-        let diff_upper = first_upper - second_lower;
-        let inferred = diff_lower.abs().max(diff_upper.abs());
-        Some(inferred.max(BIG_M_POLICY.min()))
+        infer_linear_difference_abs_bound_from_tokens(&self.first, &self.second, tokens)
+            .map(|big_m| big_m.max(BIG_M_POLICY.min()))
     }
 
     fn build_mechanism_constraints(
@@ -202,7 +200,7 @@ where
             ))
             .into());
         }
-        let strict_boundary = tolerance + f64::EPSILON * 16.0;
+        let strict_boundary = tolerance + ZERO_INDICATOR_STRICT_BOUNDARY;
 
         let mut difference_monomials: Vec<LinearMonomial<V>> = Vec::new();
         for monomial in self.first.monomials() {
@@ -485,8 +483,30 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::model::{ConstraintRelation, LinearConstraint};
     use crate::token::Token;
     use crate::variable::{ContinuousVariableItem, VariableRange};
+
+    fn constraint_lhs(constraint: &LinearConstraint<f64>, values: &HashMap<usize, f64>) -> f64 {
+        let mut lhs = *constraint.inequality.polynomial.constant_term();
+        for monomial in constraint.inequality.polynomial.monomials() {
+            lhs += *monomial.coefficient()
+                * values
+                    .get(&monomial.var_index())
+                    .copied()
+                    .unwrap_or_default();
+        }
+        lhs
+    }
+
+    fn satisfies(constraint: &LinearConstraint<f64>, values: &HashMap<usize, f64>) -> bool {
+        let lhs = constraint_lhs(constraint, values);
+        match constraint.inequality.relation {
+            ConstraintRelation::LessEqual => lhs <= constraint.inequality.rhs + 1e-9,
+            ConstraintRelation::Equal => (lhs - constraint.inequality.rhs).abs() <= 1e-9,
+            ConstraintRelation::GreaterEqual => lhs + 1e-9 >= constraint.inequality.rhs,
+        }
+    }
 
     #[test]
     fn same_as_function_infers_big_m_from_variable_bounds() {
@@ -569,5 +589,75 @@ mod tests {
 
         assert!((upper.inequality.rhs - DEFAULT_BIG_M).abs() <= 1e-9);
         assert!((*result_term.coefficient() - DEFAULT_BIG_M).abs() <= 1e-9);
+    }
+
+    #[test]
+    fn same_as_indicator_treats_zero_difference_as_satisfied() {
+        let f: SameAsFunction<f64> = SameAsFunction::new(
+            7002,
+            "same_as_zero",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            Linear::new(vec![], 0.0),
+            0.0,
+        );
+
+        let result_id = f.result_variable().id().unique_id() as usize;
+        let side_id = f.side_variable().id().unique_id() as usize;
+        let symbol_to_index = HashMap::from([(result_id, 1usize), (side_id, 2usize)]);
+        let constraints = f
+            .build_mechanism_constraints(&symbol_to_index, 10.0)
+            .expect("same_as constraints should be generated");
+
+        let satisfied = HashMap::from([(0usize, 0.0), (1usize, 1.0), (2usize, 0.0)]);
+        assert!(
+            constraints
+                .iter()
+                .all(|constraint| satisfies(constraint, &satisfied))
+        );
+
+        let zero_result_side0 = HashMap::from([(0usize, 0.0), (1usize, 0.0), (2usize, 0.0)]);
+        let zero_result_side1 = HashMap::from([(0usize, 0.0), (1usize, 0.0), (2usize, 1.0)]);
+        assert!(
+            !constraints
+                .iter()
+                .all(|constraint| satisfies(constraint, &zero_result_side0))
+        );
+        assert!(
+            !constraints
+                .iter()
+                .all(|constraint| satisfies(constraint, &zero_result_side1))
+        );
+    }
+
+    #[test]
+    fn same_as_indicator_treats_nonzero_difference_as_violated() {
+        let f: SameAsFunction<f64> = SameAsFunction::new(
+            7003,
+            "same_as_nonzero",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            Linear::new(vec![], 0.0),
+            0.0,
+        );
+
+        let result_id = f.result_variable().id().unique_id() as usize;
+        let side_id = f.side_variable().id().unique_id() as usize;
+        let symbol_to_index = HashMap::from([(result_id, 1usize), (side_id, 2usize)]);
+        let constraints = f
+            .build_mechanism_constraints(&symbol_to_index, 10.0)
+            .expect("same_as constraints should be generated");
+
+        let violated = HashMap::from([(0usize, 1.0e-6), (1usize, 0.0), (2usize, 1.0)]);
+        assert!(
+            constraints
+                .iter()
+                .all(|constraint| satisfies(constraint, &violated))
+        );
+
+        let wrong_result = HashMap::from([(0usize, 1.0e-6), (1usize, 1.0), (2usize, 0.0)]);
+        assert!(
+            !constraints
+                .iter()
+                .all(|constraint| satisfies(constraint, &wrong_result))
+        );
     }
 }

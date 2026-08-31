@@ -2,6 +2,7 @@
 //! IIS Model Definition
 
 use super::ConstraintSource;
+use crate::model::intermediate::{BasicLinearTriadModel, LinearTriadModel, LinearTriadModelView};
 use std::collections::HashSet;
 
 /// 线性 IIS 模型 / Linear IIS Model
@@ -156,17 +157,11 @@ impl std::fmt::Display for IISReport {
     }
 }
 
-/// 基本线性三角模型视图 trait / Basic Linear Triad Model View Trait
+/// 线性三角模型 IIS 视图 trait / Linear Triad Model IIS View Trait
 ///
 /// 提供 IIS 算法所需的模型操作接口。
 /// Provides model operation interface needed by IIS algorithms.
-pub trait BasicLinearTriadModelView {
-    /// 获取变量数量 / Get variable count
-    fn num_variables(&self) -> usize;
-
-    /// 获取约束数量 / Get constraint count
-    fn num_constraints(&self) -> usize;
-
+pub trait LinearTriadModelIISView: LinearTriadModelView {
     /// 检查模型是否可行 / Check if model is feasible
     fn is_feasible(&self) -> bool;
 
@@ -182,6 +177,35 @@ pub trait BasicLinearTriadModelView {
     /// 恢复变量边界 / Restore variable bound
     fn restore_bound(&mut self, var_index: usize, is_lower: bool);
 }
+
+/// 线性三角模型 IIS 输入视图 / Linear Triad Model IIS Input View
+///
+/// 用于把不同线性模型统一映射到 `BasicLinearTriadModel` 视图。
+/// Used to map different linear model containers into `BasicLinearTriadModel` view.
+pub trait LinearTriadModelIISSource {
+    /// 获取基础线性三角模型引用 / Get basic linear triad model reference
+    fn as_basic_linear_triad_model(&self) -> &BasicLinearTriadModel;
+}
+
+impl LinearTriadModelIISSource for BasicLinearTriadModel {
+    fn as_basic_linear_triad_model(&self) -> &BasicLinearTriadModel {
+        self
+    }
+}
+
+impl LinearTriadModelIISSource for LinearTriadModel {
+    fn as_basic_linear_triad_model(&self) -> &BasicLinearTriadModel {
+        &self.basic
+    }
+}
+
+/// 基本线性三角模型视图 trait（兼容层）/ Basic Linear Triad Model View Trait (compatibility)
+#[doc(hidden)]
+#[deprecated(note = "use LinearTriadModelIISView instead")]
+pub trait BasicLinearTriadModelView: LinearTriadModelIISView {}
+
+#[allow(deprecated)]
+impl<T> BasicLinearTriadModelView for T where T: LinearTriadModelIISView {}
 
 // 类型别名 / Type aliases
 /// f64 精度的线性 IIS 模型（默认）/ Linear IIS model with f64 precision (default)

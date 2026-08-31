@@ -2,9 +2,9 @@ use std::error::Error;
 
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 
-use crate::framework::demo2::domain::airworthiness::aggregation::AirworthinessAggregation;
-use crate::framework::demo2::domain::airworthiness::context::AirworthinessContext;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use crate::framework_demo::demo2::domain::airworthiness::aggregation::AirworthinessAggregation;
+use crate::framework_demo::demo2::domain::airworthiness::context::AirworthinessContext;
+use crate::framework_demo::demo2::domain::shared::pipeline_mode::mode_name;
 
 pub fn apply_adjacent_gap_limits(
     model: &mut MetaModel<f64>,
@@ -25,15 +25,22 @@ pub fn apply_adjacent_gap_limits(
             &current_minus_next,
             ConstraintRelation::LessEqual,
             context.request.max_adjacent_load_gap,
-            &format!("airworthiness_adjacent_gap_pos_{}_{}", mode_name(context.mode), p),
+            &format!(
+                "airworthiness_adjacent_gap_pos_{}_{}",
+                mode_name(context.mode),
+                p
+            ),
         )?;
         model.add_linear_constraint(
             &next_minus_current,
             ConstraintRelation::LessEqual,
             context.request.max_adjacent_load_gap,
-            &format!("airworthiness_adjacent_gap_neg_{}_{}", mode_name(context.mode), p),
+            &format!(
+                "airworthiness_adjacent_gap_neg_{}_{}",
+                mode_name(context.mode),
+                p
+            ),
         )?;
     }
     Ok(())
 }
-

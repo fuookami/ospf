@@ -19,10 +19,10 @@
 //! - 电磁学量纲：电荷、电压、电阻、电容等
 //! - 光学量纲：光通量、照度、亮度
 
-use super::derived_quantity::CTDerivedQuantity;
+use super::derived_quantity::{CTDerivedQuantity, QuantityDomain};
 use super::fundamental_quantity::{
-    Info0, Info1, Omega0, Omega1, Phi0, Phi1, Theta0, Theta1, I0, I1, J0, J1, L0, L1, M0, M1, N0, N1,
-    T0, T1,
+    I0, I1, Info0, Info1, J0, J1, L0, L1, M0, M1, N0, N1, Omega0, Omega1, Phi0, Phi1, T0, T1,
+    Theta0, Theta1,
 };
 use crate::dimension::{CTDerivedDiv, CTDerivedMul, CTDerivedPow, CTDerivedReciprocal};
 use typenum::{P2, P3};
@@ -182,6 +182,7 @@ impl CTDerivedQuantity for Information {
     type Omega = Omega0;
 
     const NAME: &'static str = "Information";
+    const DOMAIN: QuantityDomain = QuantityDomain::Discrete;
 }
 
 /// 平面角量纲: φ / Plane Angle dimension: φ
@@ -258,6 +259,7 @@ macro_rules! define_derived_dimension {
             type Omega = <$ct_expr as CTDerivedQuantity>::Omega;
 
             const NAME: &'static str = $display_name;
+            const DOMAIN: QuantityDomain = <$ct_expr as CTDerivedQuantity>::DOMAIN;
         }
     };
 }

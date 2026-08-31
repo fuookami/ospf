@@ -16,4 +16,4 @@ pub use pso::ParticleSwarmHeuristicSolver;
 pub use gurobi::GurobiSolver;
 
 #[cfg(feature = "scip")]
-pub use scip::SCIPSolver;
+pub use scip::{SCIPSolver, ScipSolver};

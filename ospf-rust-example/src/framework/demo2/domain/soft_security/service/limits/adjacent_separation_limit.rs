@@ -2,9 +2,9 @@ use std::error::Error;
 
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
-use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAggregation;
-use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
+use crate::framework_demo::demo2::domain::shared::pipeline_mode::mode_name;
+use crate::framework_demo::demo2::domain::soft_security::aggregation::SoftSecurityAggregation;
+use crate::framework_demo::demo2::domain::soft_security::context::SoftSecurityContext;
 
 pub fn apply_adjacent_separation_limits(
     model: &mut MetaModel<f64>,
@@ -20,7 +20,10 @@ pub fn apply_adjacent_separation_limits(
             let right_cargo = aggregation.separated[j];
             for p in 0..(context.request.positions.len() - 1) {
                 model.add_linear_constraint(
-                    &[(context.x_idx[left_cargo][p], 1.0), (context.x_idx[right_cargo][p + 1], 1.0)],
+                    &[
+                        (context.x_idx[left_cargo][p], 1.0),
+                        (context.x_idx[right_cargo][p + 1], 1.0),
+                    ],
                     ConstraintRelation::LessEqual,
                     1.0,
                     &format!(
@@ -32,7 +35,10 @@ pub fn apply_adjacent_separation_limits(
                     ),
                 )?;
                 model.add_linear_constraint(
-                    &[(context.x_idx[right_cargo][p], 1.0), (context.x_idx[left_cargo][p + 1], 1.0)],
+                    &[
+                        (context.x_idx[right_cargo][p], 1.0),
+                        (context.x_idx[left_cargo][p + 1], 1.0),
+                    ],
                     ConstraintRelation::LessEqual,
                     1.0,
                     &format!(

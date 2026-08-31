@@ -21,7 +21,10 @@ use crate::symbol::{
     Canonical, CanonicalMonomial, DynSymbol, Linear, LinearMonomial, OwnedSymbol, Quadratic,
     QuadraticMonomial, SymbolDynId,
 };
+use std::any::Any;
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt;
 
 // ============================================================================
 // SymbolExpr - 可序列化的符号表达式
@@ -270,7 +273,7 @@ pub trait FromSerializable<T>: Sized {
 // 实现序列化转换 / Implement Serialization Conversions
 // ============================================================================
 
-use std::fmt::{Display, Formatter, Result};
+use std::fmt::{Display, Formatter};
 
 /// 用于反序列化的简单符号 / Simple symbol for deserialization
 #[derive(Debug, Clone)]
@@ -280,7 +283,7 @@ struct SimpleSymbolForSerde {
 }
 
 impl Display for SimpleSymbolForSerde {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name)
     }
 }
@@ -323,6 +326,229 @@ impl<T: Clone> SymbolExpr<T> {
             _ => None, // 复杂表达式暂不支持直接转换为 OwnedSymbol
         }
     }
+}
+
+// ============================================================================
+// JSON 便捷函数 / JSON Convenience Functions
+// ============================================================================
+
+/// JSON 序列化错误。
+/// JSON serialization error.
+#[derive(Debug)]
+pub enum JsonSerdeError {
+    /// JSON 编码或解码失败。
+    /// JSON encoding or decoding failed.
+    Json(serde_json::Error),
+    /// JSON 中的符号无法恢复。
+    /// Symbol in JSON cannot be restored.
+    InvalidSymbol,
+}
+
+impl fmt::Display for JsonSerdeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Json(error) => write!(f, "json error: {error}"),
+            Self::InvalidSymbol => write!(f, "symbol cannot be restored from json"),
+        }
+    }
+}
+
+impl Error for JsonSerdeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Json(error) => Some(error),
+            Self::InvalidSymbol => None,
+        }
+    }
+}
+
+impl From<serde_json::Error> for JsonSerdeError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Json(error)
+    }
+}
+
+/// 转换为 JSON 字符串。
+/// Convert to a JSON string.
+pub trait ToJsonString {
+    /// 转换为紧凑 JSON 字符串。
+    /// Convert to a compact JSON string.
+    fn to_json_string(&self) -> Result<String, serde_json::Error>;
+
+    /// 转换为格式化 JSON 字符串。
+    /// Convert to a pretty JSON string.
+    fn to_json_string_pretty(&self) -> Result<String, serde_json::Error>;
+}
+
+fn default_symbol_to_expr<T>(symbol: &OwnedSymbol) -> SymbolExpr<T> {
+    let dyn_id = symbol.dyn_id();
+    if dyn_id.is_standalone() {
+        SymbolExpr::WithId {
+            name: symbol.name().to_string(),
+            id: dyn_id.parent_id,
+        }
+    } else {
+        SymbolExpr::Simple {
+            name: symbol.name().to_string(),
+        }
+    }
+}
+
+fn default_expr_to_symbol<T: Clone>(expr: &SymbolExpr<T>) -> Option<OwnedSymbol> {
+    expr.to_owned_symbol()
+}
+
+fn to_json<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value)
+}
+
+fn to_pretty_json<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(value)
+}
+
+impl<T> ToJsonString for Linear<T>
+where
+    T: Clone + Serialize,
+{
+    fn to_json_string(&self) -> Result<String, serde_json::Error> {
+        to_json(&self.to_serializable(default_symbol_to_expr))
+    }
+
+    fn to_json_string_pretty(&self) -> Result<String, serde_json::Error> {
+        to_pretty_json(&self.to_serializable(default_symbol_to_expr))
+    }
+}
+
+impl<T> ToJsonString for Quadratic<T>
+where
+    T: Clone + Serialize,
+{
+    fn to_json_string(&self) -> Result<String, serde_json::Error> {
+        to_json(&self.to_serializable(default_symbol_to_expr))
+    }
+
+    fn to_json_string_pretty(&self) -> Result<String, serde_json::Error> {
+        to_pretty_json(&self.to_serializable(default_symbol_to_expr))
+    }
+}
+
+impl<T> ToJsonString for Canonical<T>
+where
+    T: Clone + Serialize,
+{
+    fn to_json_string(&self) -> Result<String, serde_json::Error> {
+        to_json(&self.to_serializable(default_symbol_to_expr))
+    }
+
+    fn to_json_string_pretty(&self) -> Result<String, serde_json::Error> {
+        to_pretty_json(&self.to_serializable(default_symbol_to_expr))
+    }
+}
+
+impl<T> ToJsonString for LinearInequality<T>
+where
+    T: Clone + Serialize,
+{
+    fn to_json_string(&self) -> Result<String, serde_json::Error> {
+        to_json(&self.to_serializable(default_symbol_to_expr))
+    }
+
+    fn to_json_string_pretty(&self) -> Result<String, serde_json::Error> {
+        to_pretty_json(&self.to_serializable(default_symbol_to_expr))
+    }
+}
+
+impl<T> ToJsonString for QuadraticInequality<T>
+where
+    T: Clone + Serialize,
+{
+    fn to_json_string(&self) -> Result<String, serde_json::Error> {
+        to_json(&self.to_serializable(default_symbol_to_expr))
+    }
+
+    fn to_json_string_pretty(&self) -> Result<String, serde_json::Error> {
+        to_pretty_json(&self.to_serializable(default_symbol_to_expr))
+    }
+}
+
+impl<T> ToJsonString for CanonicalInequality<T>
+where
+    T: Clone + Serialize,
+{
+    fn to_json_string(&self) -> Result<String, serde_json::Error> {
+        to_json(&self.to_serializable(default_symbol_to_expr))
+    }
+
+    fn to_json_string_pretty(&self) -> Result<String, serde_json::Error> {
+        to_pretty_json(&self.to_serializable(default_symbol_to_expr))
+    }
+}
+
+/// 从 JSON 字符串反序列化线性多项式。
+/// Deserialize a linear polynomial from a JSON string.
+pub fn linear_polynomial_from_json<T>(json: &str) -> Result<Linear<T>, JsonSerdeError>
+where
+    T: Clone + for<'de> Deserialize<'de>,
+{
+    let expr: LinearMonomialExprs<T> = serde_json::from_str(json)?;
+    Linear::from_serializable(&expr, default_expr_to_symbol).ok_or(JsonSerdeError::InvalidSymbol)
+}
+
+/// 从 JSON 字符串反序列化二次多项式。
+/// Deserialize a quadratic polynomial from a JSON string.
+pub fn quadratic_polynomial_from_json<T>(json: &str) -> Result<Quadratic<T>, JsonSerdeError>
+where
+    T: Clone + for<'de> Deserialize<'de>,
+{
+    let expr: QuadraticMonomialExprs<T> = serde_json::from_str(json)?;
+    Quadratic::from_serializable(&expr, default_expr_to_symbol).ok_or(JsonSerdeError::InvalidSymbol)
+}
+
+/// 从 JSON 字符串反序列化标准多项式。
+/// Deserialize a canonical polynomial from a JSON string.
+pub fn canonical_polynomial_from_json<T>(json: &str) -> Result<Canonical<T>, JsonSerdeError>
+where
+    T: Clone + for<'de> Deserialize<'de>,
+{
+    let expr: CanonicalMonomialExprs<T> = serde_json::from_str(json)?;
+    Canonical::from_serializable(&expr, default_expr_to_symbol).ok_or(JsonSerdeError::InvalidSymbol)
+}
+
+/// 从 JSON 字符串反序列化线性不等式。
+/// Deserialize a linear inequality from a JSON string.
+pub fn linear_inequality_from_json<T>(json: &str) -> Result<LinearInequality<T>, JsonSerdeError>
+where
+    T: Clone + for<'de> Deserialize<'de>,
+{
+    let expr: LinearInequalityExpr<T> = serde_json::from_str(json)?;
+    LinearInequality::from_serializable(&expr, default_expr_to_symbol)
+        .ok_or(JsonSerdeError::InvalidSymbol)
+}
+
+/// 从 JSON 字符串反序列化二次不等式。
+/// Deserialize a quadratic inequality from a JSON string.
+pub fn quadratic_inequality_from_json<T>(
+    json: &str,
+) -> Result<QuadraticInequality<T>, JsonSerdeError>
+where
+    T: Clone + for<'de> Deserialize<'de>,
+{
+    let expr: QuadraticInequalityExpr<T> = serde_json::from_str(json)?;
+    QuadraticInequality::from_serializable(&expr, default_expr_to_symbol)
+        .ok_or(JsonSerdeError::InvalidSymbol)
+}
+
+/// 从 JSON 字符串反序列化标准不等式。
+/// Deserialize a canonical inequality from a JSON string.
+pub fn canonical_inequality_from_json<T>(
+    json: &str,
+) -> Result<CanonicalInequality<T>, JsonSerdeError>
+where
+    T: Clone + for<'de> Deserialize<'de>,
+{
+    let expr: CanonicalInequalityExpr<T> = serde_json::from_str(json)?;
+    CanonicalInequality::from_serializable(&expr, default_expr_to_symbol)
+        .ok_or(JsonSerdeError::InvalidSymbol)
 }
 
 // ============================================================================
@@ -678,5 +904,42 @@ mod tests {
             Comparison::GreaterEqual
         );
         assert_eq!(Comparison::from(ComparisonExpr::Equal), Comparison::Equal);
+    }
+
+    #[test]
+    fn test_linear_json_round_trip() {
+        let symbol = OwnedSymbol::new(SimpleSymbolForSerde {
+            id: 7,
+            name: "x".to_string(),
+        });
+        let linear = Linear::new(vec![LinearMonomial::new(2.5, symbol)], 1.0);
+
+        let json = linear.to_json_string().unwrap();
+        let restored: Linear<f64> = linear_polynomial_from_json(&json).unwrap();
+
+        assert_eq!(restored.monomials.len(), 1);
+        assert_eq!(restored.monomials[0].coefficient, 2.5);
+        assert_eq!(restored.monomials[0].symbol.name(), "x");
+        assert_eq!(restored.constant, 1.0);
+    }
+
+    #[test]
+    fn test_canonical_inequality_json_round_trip() {
+        let symbol = OwnedSymbol::new(SimpleSymbolForSerde {
+            id: 3,
+            name: "x".to_string(),
+        });
+        let mut powers = HashMap::new();
+        powers.insert(symbol, 2);
+        let lhs = Canonical::new(vec![CanonicalMonomial::new(4.0, powers)], 1.0);
+        let inequality = CanonicalInequality::new(lhs, Comparison::LessEqual, 9.0);
+
+        let json = inequality.to_json_string().unwrap();
+        let restored: CanonicalInequality<f64> = canonical_inequality_from_json(&json).unwrap();
+
+        assert_eq!(restored.comparison, Comparison::LessEqual);
+        assert_eq!(restored.rhs, 9.0);
+        assert_eq!(restored.lhs.monomials.len(), 1);
+        assert_eq!(restored.lhs.monomials[0].coefficient, 4.0);
     }
 }

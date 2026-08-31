@@ -15,7 +15,9 @@ use ospf_rust_core::solvers::scip::{
     SCIPConfig, SCIPNativeCallback, SCIPNativeControl, SCIPNativeObserver, SCIPNativeWhere,
 };
 use ospf_rust_core::token::Token;
-use ospf_rust_core::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, VariableType};
+use ospf_rust_core::variable::{
+    BinaryVariableItem, ContinuousVariableItem, VariableId, VariableType,
+};
 use ospf_rust_framework::{
     ColumnGenerationSolver, LinearBendersDecompositionSolver, QuadraticBendersDecompositionSolver,
     ScipColumnGenerationSolver, ScipLinearBendersDecompositionSolver,
@@ -159,14 +161,18 @@ async fn scip_linear_benders_native_callback_interrupt_async() {
         Ok(SCIPNativeControl::Continue)
     });
 
-    let solver = ScipLinearBendersDecompositionSolver::with_config(SCIPConfig::new().with_output(false))
-        .with_native_callback(Some(callback))
-        .with_telemetry_min_interval(0.1);
+    let solver =
+        ScipLinearBendersDecompositionSolver::with_config(SCIPConfig::new().with_output(false))
+            .with_native_callback(Some(callback))
+            .with_telemetry_min_interval(0.1);
     let result = solver.solve_master(&model, &[]).await;
     match result {
         Ok(output) => {
             assert!(
-                matches!(output.status, ospf_rust_core::solver::SolverStatus::UserInterrupt),
+                matches!(
+                    output.status,
+                    ospf_rust_core::solver::SolverStatus::UserInterrupt
+                ),
                 "expected UserInterrupt status, got {:?}",
                 output.status
             );
@@ -280,16 +286,18 @@ async fn scip_quadratic_benders_native_callback_interrupt_async() {
         Ok(SCIPNativeControl::Continue)
     });
 
-    let solver = ScipQuadraticBendersDecompositionSolver::with_config(
-        SCIPConfig::new().with_output(false),
-    )
-    .with_native_callback(Some(callback))
-    .with_telemetry_min_interval(0.1);
+    let solver =
+        ScipQuadraticBendersDecompositionSolver::with_config(SCIPConfig::new().with_output(false))
+            .with_native_callback(Some(callback))
+            .with_telemetry_min_interval(0.1);
     let result = solver.solve_master(&model, &[]).await;
     match result {
         Ok(output) => {
             assert!(
-                matches!(output.status, ospf_rust_core::solver::SolverStatus::UserInterrupt),
+                matches!(
+                    output.status,
+                    ospf_rust_core::solver::SolverStatus::UserInterrupt
+                ),
                 "expected UserInterrupt status, got {:?}",
                 output.status
             );
@@ -324,12 +332,11 @@ async fn scip_quadratic_benders_subproblem_native_callback_interrupt_async() {
         Ok(SCIPNativeControl::Continue)
     });
 
-    let solver = ScipQuadraticBendersDecompositionSolver::with_config(
-        SCIPConfig::new().with_output(false),
-    )
-    .with_cut_context(mechanism_model, objective_variable, fixed_variable_ids)
-    .with_native_callback(Some(callback))
-    .with_telemetry_min_interval(0.1);
+    let solver =
+        ScipQuadraticBendersDecompositionSolver::with_config(SCIPConfig::new().with_output(false))
+            .with_cut_context(mechanism_model, objective_variable, fixed_variable_ids)
+            .with_native_callback(Some(callback))
+            .with_telemetry_min_interval(0.1);
 
     let result = solver.solve_sub_quadratic(&model, &[0.0]).await;
     assert!(
@@ -363,12 +370,11 @@ async fn scip_quadratic_benders_subproblem_native_observer_interrupt_async() {
         Ok(SCIPNativeControl::Continue)
     });
 
-    let solver = ScipQuadraticBendersDecompositionSolver::with_config(
-        SCIPConfig::new().with_output(false),
-    )
-    .with_cut_context(mechanism_model, objective_variable, fixed_variable_ids)
-    .add_native_observer(observer)
-    .with_telemetry_min_interval(0.1);
+    let solver =
+        ScipQuadraticBendersDecompositionSolver::with_config(SCIPConfig::new().with_output(false))
+            .with_cut_context(mechanism_model, objective_variable, fixed_variable_ids)
+            .add_native_observer(observer)
+            .with_telemetry_min_interval(0.1);
 
     let result = solver.solve_sub_quadratic(&model, &[0.0]).await;
     assert!(

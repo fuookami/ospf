@@ -1,10 +1,10 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
 use ospf_rust_core::variable::UIntegerVariableItem;
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct Product {
@@ -67,44 +67,51 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let max_man_hours = 2000.0;
 
     let mut model = MetaModel::<f64>::new("demo8");
+    let mut x_vars = Vec::with_capacity(products.len());
     let mut x_idx = vec![0usize; products.len()];
 
     for (p, _) in products.iter().enumerate() {
         let variable = UIntegerVariableItem::auto(&format!("x_{}", p));
-        x_idx[p] = model.register_variable(variable)?;
+        x_idx[p] = model.register_variable(variable.clone())?;
+        x_vars.push(variable);
     }
 
-    let mut objective = vec![0.0; model.num_tokens()];
-    for (p, product) in products.iter().enumerate() {
-        objective[x_idx[p]] = product.profit;
-    }
-    model.set_linear_objective(objective, ObjectiveCategory::Maximum);
+    let profit = Linear::new(
+        x_vars
+            .iter()
+            .zip(products.iter())
+            .map(|(var, product)| LinearMonomial::new(product.profit, var.to_owned_symbol()))
+            .collect(),
+        0.0,
+    );
+    let man_hours: Vec<Linear<f64>> = equipments
+        .iter()
+        .map(|equipment| {
+            Linear::new(
+                x_vars
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(p, var)| {
+                        let value = equipment.man_hours_for(p);
+                        (value != 0.0).then(|| LinearMonomial::new(value, var.to_owned_symbol()))
+                    })
+                    .collect(),
+                0.0,
+            )
+        })
+        .collect();
+
+    model.set_math_linear_objective(profit, ObjectiveCategory::Maximum, "profit")?;
 
     for (e, equipment) in equipments.iter().enumerate() {
-        let coefficients: Vec<(usize, f64)> = products
-            .iter()
-            .enumerate()
-            .filter_map(|(p, _)| {
-                let value = equipment.man_hours_for(p);
-                if value == 0.0 {
-                    None
-                } else {
-                    Some((x_idx[p], value))
-                }
-            })
-            .collect();
-        model.add_linear_constraint(
-            &coefficients,
-            ConstraintRelation::LessEqual,
-            equipment.amount * max_man_hours,
+        model.add_math_inequality(
+            man_hours[e].clone().le(equipment.amount * max_man_hours),
             &format!("equipment_{}_{}", e, equipment.name),
-        )?;
+        );
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo8 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo8 ===");
     println!("status: {:?}", output.status);
@@ -112,7 +119,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         println!("profit: {:.2}", obj);
     }
     for (p, product) in products.iter().enumerate() {
-        println!("{}: {:.2}", product.name, read_solution_value(&solution, x_idx[p]));
+        println!(
+            "{}: {:.2}",
+            product.name,
+            read_solution_value(&solution, x_idx[p])
+        );
     }
     Ok(())
 }

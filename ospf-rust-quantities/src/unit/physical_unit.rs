@@ -18,7 +18,7 @@
 
 use crate::dimension::derived_quantity::{
     CTDerivedDiv, CTDerivedMul, CTDerivedPow, CTDerivedQuantity, CTDerivedReciprocal,
-    DerivedQuantity, DerivedQuantityBuilder, SameDerivedDimension,
+    DerivedQuantity, DerivedQuantityBuilder, QuantityDomain, SameDerivedDimension,
 };
 use crate::scale::Scale;
 use crate::unit::concept::UnitTrait;
@@ -27,12 +27,75 @@ use once_cell::sync::Lazy;
 use ospf_rust_math::operator::reciprocal::Reciprocal;
 use std::fmt;
 use std::marker::PhantomData;
-use std::ops::{Div, Mul};
+use std::ops::{Add, Div, Mul, Sub};
 use std::sync::Arc;
 use typenum::Integer;
 // ============================================================================
 // 运行时单位数据结构 / Runtime unit data structure
 // ============================================================================
+
+/// UnitConversionRule - 单位转换规则
+/// UnitConversionRule - Unit conversion rule
+///
+/// 约定标准值为 `value * scale + offset`。
+/// Standard value is defined as `value * scale + offset`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnitConversionRule {
+    /// 线性转换 / Linear conversion
+    Linear { scale: Scale },
+    /// 仿射转换 / Affine conversion
+    Affine { scale: Scale, offset: BigDecimal },
+}
+
+impl UnitConversionRule {
+    /// 创建线性转换规则 / Create a linear conversion rule
+    pub fn linear(scale: Scale) -> Self {
+        Self::Linear { scale }
+    }
+
+    /// 创建仿射转换规则 / Create an affine conversion rule
+    pub fn affine(scale: Scale, offset: BigDecimal) -> Self {
+        Self::Affine { scale, offset }
+    }
+
+    /// 获取线性比例部分 / Get the linear scale part
+    pub fn scale(&self) -> &Scale {
+        match self {
+            Self::Linear { scale } | Self::Affine { scale, .. } => scale,
+        }
+    }
+
+    /// 获取 offset 部分 / Get the offset part
+    pub fn offset(&self) -> BigDecimal {
+        match self {
+            Self::Linear { .. } => BigDecimal::from(0),
+            Self::Affine { offset, .. } => offset.clone(),
+        }
+    }
+
+    /// 是否为线性转换 / Whether the rule is linear
+    pub fn is_linear(&self) -> bool {
+        matches!(self, Self::Linear { .. })
+    }
+
+    /// 转换为标准值 / Convert to standard value
+    pub fn to_standard_value<V>(&self, value: V) -> V
+    where
+        V: Mul<V, Output = V> + Add<V, Output = V>,
+        BigDecimal: Into<V>,
+    {
+        value * self.scale().value().clone().into() + self.offset().into()
+    }
+
+    /// 从标准值转换 / Convert from standard value
+    pub fn value_from_standard<V>(&self, value: V) -> V
+    where
+        V: Sub<V, Output = V> + Div<V, Output = V>,
+        BigDecimal: Into<V>,
+    {
+        (value - self.offset().into()) / self.scale().value().clone().into()
+    }
+}
 
 /// UnitInner - 单位内部数据
 /// UnitInner - Unit internal data
@@ -44,8 +107,10 @@ pub struct UnitInner {
     symbol: String,
     /// 单位量纲 / Unit dimension
     dimension: DerivedQuantity,
-    /// 相对于基本单位的比例尺 / Scale relative to base unit
-    scale: Scale,
+    /// 单位取值域 / Unit value domain
+    domain: QuantityDomain,
+    /// 到标准单位的转换规则 / Conversion rule to the standard unit
+    conversion: UnitConversionRule,
 }
 
 /// Unit - 运行时单位
@@ -62,12 +127,62 @@ impl Unit {
     /// 创建单位
     /// Create unit
     pub fn new(name: String, symbol: String, dimension: DerivedQuantity, scale: Scale) -> Self {
+        let domain = dimension.domain();
+        Self::new_with_conversion_and_domain(
+            name,
+            symbol,
+            dimension,
+            UnitConversionRule::linear(scale),
+            domain,
+        )
+    }
+
+    /// 使用指定取值域创建单位
+    /// Create unit with a specified value domain
+    pub fn new_with_domain(
+        name: String,
+        symbol: String,
+        dimension: DerivedQuantity,
+        scale: Scale,
+        domain: QuantityDomain,
+    ) -> Self {
+        Self::new_with_conversion_and_domain(
+            name,
+            symbol,
+            dimension,
+            UnitConversionRule::linear(scale),
+            domain,
+        )
+    }
+
+    /// 使用转换规则创建单位
+    /// Create unit with conversion rule
+    pub fn new_with_conversion(
+        name: String,
+        symbol: String,
+        dimension: DerivedQuantity,
+        conversion: UnitConversionRule,
+    ) -> Self {
+        let domain = dimension.domain();
+        Self::new_with_conversion_and_domain(name, symbol, dimension, conversion, domain)
+    }
+
+    /// 使用转换规则和指定取值域创建单位
+    /// Create unit with conversion rule and a specified value domain
+    pub fn new_with_conversion_and_domain(
+        name: String,
+        symbol: String,
+        dimension: DerivedQuantity,
+        conversion: UnitConversionRule,
+        domain: QuantityDomain,
+    ) -> Self {
         Self {
             inner: Arc::new(UnitInner {
                 name,
                 symbol,
                 dimension,
-                scale,
+                domain,
+                conversion,
             }),
         }
     }
@@ -87,9 +202,24 @@ impl Unit {
         &self.inner.dimension
     }
 
+    /// 获取取值域 / Get value domain
+    pub fn domain(&self) -> QuantityDomain {
+        self.inner.domain
+    }
+
     /// 获取比例尺 / Get scale
     pub fn scale(&self) -> &Scale {
-        &self.inner.scale
+        self.inner.conversion.scale()
+    }
+
+    /// 获取转换规则 / Get conversion rule
+    pub fn conversion(&self) -> &UnitConversionRule {
+        &self.inner.conversion
+    }
+
+    /// 是否为线性单位 / Whether this unit is linear
+    pub fn is_linear(&self) -> bool {
+        self.inner.conversion.is_linear()
     }
 
     /// 检查量纲是否相等
@@ -107,7 +237,24 @@ impl Unit {
         if !self.same_dimension(other) {
             return None;
         }
-        Some(self.inner.scale.value() / other.inner.scale.value())
+        if !self.is_linear() || !other.is_linear() {
+            return None;
+        }
+        Some(self.scale().value() / other.scale().value())
+    }
+
+    /// 将值转换到另一个同量纲单位
+    /// Convert a value to another unit with the same dimension
+    pub fn convert_value_to<V>(&self, value: V, other: &Unit) -> Option<V>
+    where
+        V: Mul<V, Output = V> + Add<V, Output = V> + Sub<V, Output = V> + Div<V, Output = V>,
+        BigDecimal: Into<V>,
+    {
+        if !self.same_dimension(other) {
+            return None;
+        }
+        let standard = self.inner.conversion.to_standard_value(value);
+        Some(other.inner.conversion.value_from_standard(standard))
     }
 }
 
@@ -116,15 +263,32 @@ pub struct UnitBuilder {
     symbol: Option<String>,
     dimension: DerivedQuantityBuilder,
     scale: Scale,
+    domain: QuantityDomain,
 }
 
 impl UnitBuilder {
     pub fn new(dimension: DerivedQuantityBuilder, scale: Scale) -> Self {
+        let domain = dimension.domain();
         Self {
             name: None,
             symbol: None,
             dimension,
             scale,
+            domain,
+        }
+    }
+
+    pub fn new_with_domain(
+        dimension: DerivedQuantityBuilder,
+        scale: Scale,
+        domain: QuantityDomain,
+    ) -> Self {
+        Self {
+            name: None,
+            symbol: None,
+            dimension,
+            scale,
+            domain,
         }
     }
 
@@ -134,13 +298,14 @@ impl UnitBuilder {
             symbol: None,
             dimension: DerivedQuantityBuilder::new(dimension.powers().cloned().collect()),
             scale,
+            domain: dimension.domain(),
         }
     }
 
     pub fn build(self) -> Unit {
         let name = self.name.unwrap_or_else(|| "".to_string());
         let symbol = self.symbol.unwrap_or_else(|| "".to_string());
-        Unit::new(name, symbol, self.dimension.into(), self.scale)
+        Unit::new_with_domain(name, symbol, self.dimension.into(), self.scale, self.domain)
     }
 
     pub fn name(&mut self, name: &str) -> &mut Self {
@@ -156,7 +321,9 @@ impl UnitBuilder {
 
 impl PartialEq for Unit {
     fn eq(&self, other: &Self) -> bool {
-        self.inner.dimension == other.inner.dimension && self.inner.scale == other.inner.scale
+        self.inner.dimension == other.inner.dimension
+            && self.domain() == other.domain()
+            && self.inner.conversion == other.inner.conversion
     }
 }
 
@@ -164,12 +331,16 @@ impl Eq for Unit {}
 
 impl std::hash::Hash for Unit {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.inner.name.hash(state);
-        self.inner.symbol.hash(state);
         self.inner.dimension.hash(state);
-        // Scale doesn't implement Hash, use value string representation
-        // Scale 没有实现 Hash，使用值的字符串表示
-        self.inner.scale.value().to_string().hash(state);
+        self.domain().hash(state);
+        self.inner
+            .conversion
+            .scale()
+            .value()
+            .to_string()
+            .hash(state);
+        self.inner.conversion.offset().to_string().hash(state);
+        self.inner.conversion.is_linear().hash(state);
     }
 }
 
@@ -189,9 +360,14 @@ impl Mul for Unit {
     type Output = UnitBuilder;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        UnitBuilder::new(
+        assert!(
+            self.is_linear() && rhs.is_linear(),
+            "Cannot multiply affine units"
+        );
+        UnitBuilder::new_with_domain(
             &self.inner.dimension * &rhs.inner.dimension,
-            &self.inner.scale * &rhs.inner.scale,
+            self.scale() * rhs.scale(),
+            self.domain() * rhs.domain(),
         )
     }
 }
@@ -200,9 +376,14 @@ impl Mul for &Unit {
     type Output = UnitBuilder;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        UnitBuilder::new(
+        assert!(
+            self.is_linear() && rhs.is_linear(),
+            "Cannot multiply affine units"
+        );
+        UnitBuilder::new_with_domain(
             &self.inner.dimension * &rhs.inner.dimension,
-            &self.inner.scale * &rhs.inner.scale,
+            self.scale() * rhs.scale(),
+            self.domain() * rhs.domain(),
         )
     }
 }
@@ -211,7 +392,11 @@ impl Mul for UnitBuilder {
     type Output = UnitBuilder;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        UnitBuilder::new(self.dimension * rhs.dimension, self.scale * rhs.scale)
+        UnitBuilder::new_with_domain(
+            self.dimension * rhs.dimension,
+            self.scale * rhs.scale,
+            self.domain * rhs.domain,
+        )
     }
 }
 
@@ -219,9 +404,11 @@ impl Mul<Unit> for UnitBuilder {
     type Output = UnitBuilder;
 
     fn mul(self, rhs: Unit) -> Self::Output {
-        UnitBuilder::new(
+        assert!(rhs.is_linear(), "Cannot multiply affine units");
+        UnitBuilder::new_with_domain(
             self.dimension * &rhs.inner.dimension,
-            self.scale * &rhs.inner.scale,
+            self.scale * rhs.scale(),
+            self.domain * rhs.domain(),
         )
     }
 }
@@ -230,9 +417,11 @@ impl Mul<&Unit> for UnitBuilder {
     type Output = UnitBuilder;
 
     fn mul(self, rhs: &Unit) -> Self::Output {
-        UnitBuilder::new(
+        assert!(rhs.is_linear(), "Cannot multiply affine units");
+        UnitBuilder::new_with_domain(
             self.dimension * &rhs.inner.dimension,
-            self.scale * &rhs.inner.scale,
+            self.scale * rhs.scale(),
+            self.domain * rhs.domain(),
         )
     }
 }
@@ -241,9 +430,14 @@ impl Div for Unit {
     type Output = UnitBuilder;
 
     fn div(self, rhs: Self) -> Self::Output {
-        UnitBuilder::new(
+        assert!(
+            self.is_linear() && rhs.is_linear(),
+            "Cannot divide affine units"
+        );
+        UnitBuilder::new_with_domain(
             &self.inner.dimension / &rhs.inner.dimension,
-            &self.inner.scale / &rhs.inner.scale,
+            self.scale() / rhs.scale(),
+            self.domain() / rhs.domain(),
         )
     }
 }
@@ -252,9 +446,14 @@ impl Div for &Unit {
     type Output = UnitBuilder;
 
     fn div(self, rhs: Self) -> Self::Output {
-        UnitBuilder::new(
+        assert!(
+            self.is_linear() && rhs.is_linear(),
+            "Cannot divide affine units"
+        );
+        UnitBuilder::new_with_domain(
             &self.inner.dimension / &rhs.inner.dimension,
-            &self.inner.scale / &rhs.inner.scale,
+            self.scale() / rhs.scale(),
+            self.domain() / rhs.domain(),
         )
     }
 }
@@ -263,7 +462,11 @@ impl Div for UnitBuilder {
     type Output = UnitBuilder;
 
     fn div(self, rhs: Self) -> Self::Output {
-        UnitBuilder::new(self.dimension / rhs.dimension, self.scale / rhs.scale)
+        UnitBuilder::new_with_domain(
+            self.dimension / rhs.dimension,
+            self.scale / rhs.scale,
+            self.domain / rhs.domain,
+        )
     }
 }
 
@@ -271,9 +474,11 @@ impl Div<Unit> for UnitBuilder {
     type Output = UnitBuilder;
 
     fn div(self, rhs: Unit) -> Self::Output {
-        UnitBuilder::new(
+        assert!(rhs.is_linear(), "Cannot divide affine units");
+        UnitBuilder::new_with_domain(
             self.dimension / &rhs.inner.dimension,
-            self.scale / &rhs.inner.scale,
+            self.scale / rhs.scale(),
+            self.domain / rhs.domain(),
         )
     }
 }
@@ -282,9 +487,11 @@ impl Div<&Unit> for UnitBuilder {
     type Output = UnitBuilder;
 
     fn div(self, rhs: &Unit) -> Self::Output {
-        UnitBuilder::new(
+        assert!(rhs.is_linear(), "Cannot divide affine units");
+        UnitBuilder::new_with_domain(
             self.dimension / &rhs.inner.dimension,
-            self.scale / &rhs.inner.scale,
+            self.scale / rhs.scale(),
+            self.domain / rhs.domain(),
         )
     }
 }
@@ -293,7 +500,12 @@ impl Mul<i64> for Unit {
     type Output = UnitBuilder;
 
     fn mul(self, rhs: i64) -> Self::Output {
-        UnitBuilder::new_by(&self.inner.dimension, &self.inner.scale * rhs)
+        assert!(self.is_linear(), "Cannot scale affine units");
+        UnitBuilder::new_with_domain(
+            DerivedQuantityBuilder::new(self.inner.dimension.powers().cloned().collect()),
+            self.scale() * rhs,
+            self.domain(),
+        )
     }
 }
 
@@ -301,7 +513,12 @@ impl<'a> Mul<i64> for &'a Unit {
     type Output = UnitBuilder;
 
     fn mul(self, rhs: i64) -> Self::Output {
-        UnitBuilder::new_by(&self.inner.dimension, &self.inner.scale * rhs)
+        assert!(self.is_linear(), "Cannot scale affine units");
+        UnitBuilder::new_with_domain(
+            DerivedQuantityBuilder::new(self.inner.dimension.powers().cloned().collect()),
+            self.scale() * rhs,
+            self.domain(),
+        )
     }
 }
 
@@ -309,7 +526,7 @@ impl Mul<i64> for UnitBuilder {
     type Output = UnitBuilder;
 
     fn mul(self, rhs: i64) -> Self::Output {
-        UnitBuilder::new(self.dimension * rhs, self.scale * rhs)
+        UnitBuilder::new_with_domain(self.dimension * rhs, self.scale * rhs, self.domain)
     }
 }
 
@@ -317,7 +534,12 @@ impl Div<i64> for Unit {
     type Output = UnitBuilder;
 
     fn div(self, rhs: i64) -> Self::Output {
-        UnitBuilder::new_by(&self.inner.dimension, &self.inner.scale / rhs)
+        assert!(self.is_linear(), "Cannot scale affine units");
+        UnitBuilder::new_with_domain(
+            DerivedQuantityBuilder::new(self.inner.dimension.powers().cloned().collect()),
+            self.scale() / rhs,
+            self.domain(),
+        )
     }
 }
 
@@ -325,7 +547,12 @@ impl<'a> Div<i64> for &'a Unit {
     type Output = UnitBuilder;
 
     fn div(self, rhs: i64) -> Self::Output {
-        UnitBuilder::new_by(&self.inner.dimension.clone(), &self.inner.scale / rhs)
+        assert!(self.is_linear(), "Cannot scale affine units");
+        UnitBuilder::new_with_domain(
+            DerivedQuantityBuilder::new(self.inner.dimension.powers().cloned().collect()),
+            self.scale() / rhs,
+            self.domain(),
+        )
     }
 }
 
@@ -333,7 +560,7 @@ impl Div<i64> for UnitBuilder {
     type Output = UnitBuilder;
 
     fn div(self, rhs: i64) -> Self::Output {
-        UnitBuilder::new(self.dimension / rhs, self.scale / rhs)
+        UnitBuilder::new_with_domain(self.dimension / rhs, self.scale / rhs, self.domain)
     }
 }
 
@@ -341,9 +568,11 @@ impl Reciprocal for Unit {
     type Output = UnitBuilder;
 
     fn reciprocal(self) -> Self::Output {
-        UnitBuilder::new(
+        assert!(self.is_linear(), "Cannot take reciprocal of affine units");
+        UnitBuilder::new_with_domain(
             (&self.inner.dimension).reciprocal().into(),
-            (&self.inner.scale).reciprocal(),
+            self.scale().reciprocal(),
+            QuantityDomain::Continuous,
         )
     }
 }
@@ -352,9 +581,11 @@ impl Reciprocal for &Unit {
     type Output = UnitBuilder;
 
     fn reciprocal(self) -> Self::Output {
-        UnitBuilder::new(
+        assert!(self.is_linear(), "Cannot take reciprocal of affine units");
+        UnitBuilder::new_with_domain(
             (&self.inner.dimension).reciprocal().into(),
-            (&self.inner.scale).reciprocal(),
+            self.scale().reciprocal(),
+            QuantityDomain::Continuous,
         )
     }
 }
@@ -381,7 +612,7 @@ impl UnitTrait for Unit {
     }
 
     fn scale_value(&self) -> BigDecimal {
-        self.inner.scale.value().clone()
+        self.scale().value().clone()
     }
 }
 
@@ -435,16 +666,29 @@ pub trait CTUnit: UnitTrait {
     /// 单位比例尺 / Unit scale
     const SCALE: Lazy<Scale> = Lazy::new(|| Scale::new());
 
+    /// 单位 offset / Unit offset
+    const OFFSET: Lazy<BigDecimal> = Lazy::new(|| BigDecimal::from(0));
+
+    /// 单位取值域 / Unit value domain
+    const DOMAIN: QuantityDomain = <<Self as CTUnit>::Dimension as CTDerivedQuantity>::DOMAIN;
+
     /// 单位量纲类型 / Unit dimension type
     type Dimension: CTDerivedQuantity;
 
     /// 运行时单位实例 / Runtime unit instance
     const INSTANT: Lazy<Unit> = Lazy::new(|| {
-        Unit::new(
+        let conversion = if *Self::OFFSET == BigDecimal::from(0) {
+            UnitConversionRule::linear(Self::SCALE.clone())
+        } else {
+            UnitConversionRule::affine(Self::SCALE.clone(), Self::OFFSET.clone())
+        };
+
+        Unit::new_with_conversion_and_domain(
             Self::NAME.to_string(),
             Self::SYMBOL.to_string(),
             <Self as CTUnit>::Dimension::INSTANT.clone(),
-            Self::SCALE.clone(),
+            conversion,
+            Self::DOMAIN,
         )
     });
 
@@ -457,7 +701,7 @@ pub trait CTUnit: UnitTrait {
     /// 检查是否与另一个单位类型完全相等（量纲和比例尺，运行时比较）
     /// Check if fully equal to another unit type (dimension and scale, runtime comparison)
     fn unit_eq<U: CTUnit>() -> bool {
-        Self::dim_eq::<U>() && *Self::SCALE == *U::SCALE
+        Self::dim_eq::<U>() && *Self::SCALE == *U::SCALE && *Self::OFFSET == *U::OFFSET
     }
 
     /// 计算到另一个单位的转换系数（运行时计算）
@@ -469,7 +713,24 @@ pub trait CTUnit: UnitTrait {
         if !Self::dim_eq::<U>() {
             return None;
         }
+        if *Self::OFFSET != BigDecimal::from(0) || *U::OFFSET != BigDecimal::from(0) {
+            return None;
+        }
         Some(Self::SCALE.value() / U::SCALE.value())
+    }
+
+    /// 将值转换到另一个编译时单位
+    /// Convert a value to another compile-time unit
+    fn convert_value_to<V, U: CTUnit>(value: V) -> Option<V>
+    where
+        V: Mul<V, Output = V> + Add<V, Output = V> + Sub<V, Output = V> + Div<V, Output = V>,
+        BigDecimal: Into<V>,
+    {
+        if !Self::dim_eq::<U>() {
+            return None;
+        }
+        let standard = value * Self::SCALE.value().clone().into() + Self::OFFSET.clone().into();
+        Some((standard - U::OFFSET.clone().into()) / U::SCALE.value().clone().into())
     }
 }
 
@@ -524,7 +785,9 @@ pub struct CTUnitMul<U1: CTUnit, U2: CTUnit> {
 
 impl<U1: CTUnit, U2: CTUnit> Default for CTUnitMul<U1, U2> {
     fn default() -> Self {
-        Self { _marker: PhantomData }
+        Self {
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -556,6 +819,7 @@ where
     CTDerivedMul<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension>: CTDerivedQuantity,
 {
     const SCALE: Lazy<Scale> = Lazy::new(|| &*U1::SCALE * &*U2::SCALE);
+    const DOMAIN: QuantityDomain = U1::DOMAIN.mul_domain(U2::DOMAIN);
     type Dimension = CTDerivedMul<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension>;
 }
 
@@ -565,7 +829,9 @@ pub struct CTUnitDiv<U1: CTUnit, U2: CTUnit> {
 
 impl<U1: CTUnit, U2: CTUnit> Default for CTUnitDiv<U1, U2> {
     fn default() -> Self {
-        Self { _marker: PhantomData }
+        Self {
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -597,6 +863,7 @@ where
     CTDerivedDiv<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension>: CTDerivedQuantity,
 {
     const SCALE: Lazy<Scale> = Lazy::new(|| &*U1::SCALE / &*U2::SCALE);
+    const DOMAIN: QuantityDomain = U1::DOMAIN.div_domain(U2::DOMAIN);
     type Dimension = CTDerivedDiv<<U1 as CTUnit>::Dimension, <U2 as CTUnit>::Dimension>;
 }
 
@@ -606,7 +873,9 @@ pub struct CTUnitPow<U: CTUnit, N: Integer> {
 
 impl<U: CTUnit, N: Integer> Default for CTUnitPow<U, N> {
     fn default() -> Self {
-        Self { _marker: PhantomData }
+        Self {
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -625,7 +894,9 @@ where
     }
 
     fn dimension_symbol(&self) -> String {
-        <CTDerivedPow<<U as CTUnit>::Dimension, N> as CTDerivedQuantity>::INSTANT.symbol().to_string()
+        <CTDerivedPow<<U as CTUnit>::Dimension, N> as CTDerivedQuantity>::INSTANT
+            .symbol()
+            .to_string()
     }
 
     fn scale_value(&self) -> BigDecimal {
@@ -638,6 +909,7 @@ where
     CTDerivedPow<<U as CTUnit>::Dimension, N>: CTDerivedQuantity,
 {
     const SCALE: Lazy<Scale> = Lazy::new(|| U::SCALE.clone().pow(&BigDecimal::from(N::I64)));
+    const DOMAIN: QuantityDomain = U::DOMAIN.pow(N::I64);
     type Dimension = CTDerivedPow<<U as CTUnit>::Dimension, N>;
 }
 
@@ -647,7 +919,9 @@ pub struct CTUnitReciprocal<U: CTUnit> {
 
 impl<U: CTUnit> Default for CTUnitReciprocal<U> {
     fn default() -> Self {
-        Self { _marker: PhantomData }
+        Self {
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -666,7 +940,9 @@ where
     }
 
     fn dimension_symbol(&self) -> String {
-        <CTDerivedReciprocal<<U as CTUnit>::Dimension> as CTDerivedQuantity>::INSTANT.symbol().to_string()
+        <CTDerivedReciprocal<<U as CTUnit>::Dimension> as CTDerivedQuantity>::INSTANT
+            .symbol()
+            .to_string()
     }
 
     fn scale_value(&self) -> BigDecimal {
@@ -679,6 +955,7 @@ where
     CTDerivedReciprocal<<U as CTUnit>::Dimension>: CTDerivedQuantity,
 {
     const SCALE: Lazy<Scale> = Lazy::new(|| U::SCALE.clone().reciprocal());
+    const DOMAIN: QuantityDomain = QuantityDomain::Continuous;
     type Dimension = CTDerivedReciprocal<<U as CTUnit>::Dimension>;
 }
 
@@ -699,10 +976,18 @@ mod tests {
     impl UnitTrait for TestMeter {
         type Dimension = Length;
 
-        fn symbol(&self) -> &'static str { "m" }
-        fn name(&self) -> &'static str { "meter" }
-        fn dimension_symbol(&self) -> String { Length::INSTANT.symbol().to_string() }
-        fn scale_value(&self) -> BigDecimal { BigDecimal::from(1) }
+        fn symbol(&self) -> &'static str {
+            "m"
+        }
+        fn name(&self) -> &'static str {
+            "meter"
+        }
+        fn dimension_symbol(&self) -> String {
+            Length::INSTANT.symbol().to_string()
+        }
+        fn scale_value(&self) -> BigDecimal {
+            BigDecimal::from(1)
+        }
     }
 
     impl CTUnit for TestMeter {
@@ -718,10 +1003,18 @@ mod tests {
     impl UnitTrait for TestKilometer {
         type Dimension = Length;
 
-        fn symbol(&self) -> &'static str { "km" }
-        fn name(&self) -> &'static str { "kilometer" }
-        fn dimension_symbol(&self) -> String { Length::INSTANT.symbol().to_string() }
-        fn scale_value(&self) -> BigDecimal { BigDecimal::from(1000) }
+        fn symbol(&self) -> &'static str {
+            "km"
+        }
+        fn name(&self) -> &'static str {
+            "kilometer"
+        }
+        fn dimension_symbol(&self) -> String {
+            Length::INSTANT.symbol().to_string()
+        }
+        fn scale_value(&self) -> BigDecimal {
+            BigDecimal::from(1000)
+        }
     }
 
     impl CTUnit for TestKilometer {
@@ -737,10 +1030,18 @@ mod tests {
     impl UnitTrait for TestSecond {
         type Dimension = Time;
 
-        fn symbol(&self) -> &'static str { "s" }
-        fn name(&self) -> &'static str { "second" }
-        fn dimension_symbol(&self) -> String { Time::INSTANT.symbol().to_string() }
-        fn scale_value(&self) -> BigDecimal { BigDecimal::from(1) }
+        fn symbol(&self) -> &'static str {
+            "s"
+        }
+        fn name(&self) -> &'static str {
+            "second"
+        }
+        fn dimension_symbol(&self) -> String {
+            Time::INSTANT.symbol().to_string()
+        }
+        fn scale_value(&self) -> BigDecimal {
+            BigDecimal::from(1)
+        }
     }
 
     impl CTUnit for TestSecond {

@@ -7,7 +7,7 @@
 //! ## 核心概念 / Core Concepts
 //!
 //! 爱因斯坦表示法的核心是**隐式求和约定**：当一个索引在表达式中出现两次时，自动对该索引进行求和。
-//! The core of Einstein notation is the **implicit summation convention**: 
+//! The core of Einstein notation is the **implicit summation convention**:
 //! when an index appears twice in an expression, it is automatically summed over.
 //!
 //! ## 使用示例 / Usage Examples
@@ -26,18 +26,20 @@
 //! assert!(c.is_ok());
 //! ```
 
-mod indices;
-mod tensor_expr;
 mod einsum_trait;
+mod indices;
 mod operations;
+mod tensor_expr;
 
 #[cfg(test)]
 mod tests;
 
-pub use indices::{IndexLabel, IndexList, Nil, Cons, I, J, K, L, M, N, IL, IL2, IL3, IL4, IL5, IL6};
-pub use tensor_expr::TensorExpr;
 pub use einsum_trait::{EinsteinSum, EinsumError};
-pub use operations::{matmul, dot, trace, outer, transpose, contract};
+pub use indices::{
+    Cons, I, IL, IL2, IL3, IL4, IL5, IL6, IndexLabel, IndexList, J, K, L, M, N, Nil,
+};
+pub use operations::{contract, dot, matmul, outer, trace, transpose};
+pub use tensor_expr::TensorExpr;
 
 // ============================================================================
 // einsum! 宏 / einsum! macro
@@ -82,53 +84,49 @@ macro_rules! einsum {
     ($a:expr, $b:expr, "ij,jk->ik") => {
         $crate::einsum::matmul($a, $b)
     };
-    
+
     // 点积
     // Dot product
     ($a:expr, $b:expr, "i,i->") => {
         $crate::einsum::dot($a, $b)
     };
-    
+
     // 外积
     // Outer product
     ($a:expr, $b:expr, "i,j->ij") => {
         $crate::einsum::outer($a, $b)
     };
-    
+
     // 迹
     // Trace
     ($a:expr, "ii->") => {
         $crate::einsum::trace($a)
     };
-    
+
     // 转置
     // Transpose
     ($a:expr, "ij->ji") => {
         $crate::einsum::transpose($a)
     };
-    
+
     // 批量矩阵乘法
     // Batch matrix multiplication
-    ($a:expr, $b:expr, "bij,bjk->bik") => {
-        {
-            // 对于批量矩阵乘法，使用更通用的实现
-            // For batch matrix multiplication, use a more generic implementation
-            $crate::einsum::matmul($a, $b)
-        }
-    };
-    
+    ($a:expr, $b:expr, "bij,bjk->bik") => {{
+        // 对于批量矩阵乘法，使用更通用的实现
+        // For batch matrix multiplication, use a more generic implementation
+        $crate::einsum::matmul($a, $b)
+    }};
+
     // 通用爱因斯坦求和
     // Generic Einstein summation
-    ($a:expr, $b:expr, $spec:expr) => {
-        {
-            // 对于其他模式，使用字符串解析
-            // For other patterns, use string parsing
-            let _ = ($a, $b, $spec);
-            Err($crate::einsum::EinsumError::UnsupportedOperation {
-                message: format!("Unsupported einsum pattern: {}", $spec),
-            })
-        }
-    };
+    ($a:expr, $b:expr, $spec:expr) => {{
+        // 对于其他模式，使用字符串解析
+        // For other patterns, use string parsing
+        let _ = ($a, $b, $spec);
+        Err($crate::einsum::EinsumError::UnsupportedOperation {
+            message: format!("Unsupported einsum pattern: {}", $spec),
+        })
+    }};
 }
 
 /// 创建类型级别的索引列表
@@ -147,11 +145,11 @@ macro_rules! einsum {
 #[macro_export]
 macro_rules! index_list {
     () => { $crate::einsum::Nil };
-    
+
     ($i:ty) => {
         $crate::einsum::Cons<$i, $crate::einsum::Nil>
     };
-    
+
     ($i:ty, $($rest:ty),+) => {
         $crate::einsum::Cons<$i, index_list!($($rest),+)>
     };

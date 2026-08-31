@@ -6,8 +6,8 @@
 
 use crate::operator::{Exponent, NegOneRef, OneRef, ZeroRef};
 use crate::symbol::{Canonical, Comparison};
-use std::fmt;
 use num_traits::Zero;
+use std::fmt;
 
 // ============================================================================
 // CanonicalInequality - 标准不等式
@@ -74,14 +74,7 @@ impl<T: Clone + std::ops::Neg<Output = T>, E: Exponent> CanonicalInequality<T, E
 
 impl<T, E: Exponent> fmt::Display for CanonicalInequality<T, E>
 where
-    T: fmt::Debug
-        + fmt::Display
-        + Zero
-        + PartialEq
-        + OneRef
-        + NegOneRef
-        + ZeroRef
-        + 'static,
+    T: fmt::Debug + fmt::Display + Zero + PartialEq + OneRef + NegOneRef + ZeroRef + 'static,
     E: fmt::Display + One + PartialEq,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -129,15 +122,15 @@ impl<T: Clone, E: Exponent> Canonical<T, E> {
 // 求值实现 / Evaluate Implementation
 // ============================================================================
 
+use crate::operator::{AddRef, MulRef};
 use crate::symbol::OwnedSymbol;
-use crate::symbol::operation::{Evaluate, EvaluateOrdered, Evaluatable};
-use crate::operator::MulRef;
+use crate::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
 use num_traits::{One, ToPrimitive};
 use std::collections::HashMap;
 
 impl<T, E: Exponent> Evaluate<T> for CanonicalInequality<T, E>
 where
-    T: MulRef + One + Clone,
+    T: MulRef + One + Clone + AddRef,
     E: Clone + One + PartialEq + ToPrimitive,
 {
     fn evaluate(&self, values: &HashMap<OwnedSymbol, T>) -> T
@@ -165,7 +158,7 @@ where
 
 impl<T, E: Exponent> EvaluateOrdered<T> for CanonicalInequality<T, E>
 where
-    T: MulRef + One + Clone,
+    T: MulRef + One + Clone + AddRef,
     E: Clone + One + PartialEq + ToPrimitive,
 {
     fn evaluate_ordered(&self, symbols: &[OwnedSymbol], values: &[T]) -> T
@@ -178,7 +171,7 @@ where
 
 impl<T, E: Exponent> CanonicalInequality<T, E>
 where
-    T: MulRef + One + Clone,
+    T: MulRef + One + Clone + AddRef,
     E: Clone + One + PartialEq + ToPrimitive,
 {
     /// 检查不等式是否满足（给定符号值映射）

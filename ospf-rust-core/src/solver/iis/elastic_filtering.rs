@@ -5,14 +5,18 @@ use super::deletion_filtering::{
     ActiveSources, compute_iis_deletion_with_active, is_active_model_feasible_with_tolerance,
     is_basic_model_feasible_with_tolerance, solve_linear_model,
 };
-use super::{ConstraintSource, IISConfig, LinearIISModel};
+use super::{ConstraintSource, IISConfig, LinearIISModel, LinearTriadModelIISSource};
 use crate::error::Result;
 use crate::model::ObjectiveCategory;
 use crate::model::intermediate::{BasicLinearTriadModel, LinearTriadModel, SparseVector};
 use crate::token::Token;
 use crate::variable::{UContinuousVariableItem, VariableId};
 
-fn next_group_id(model: &BasicLinearTriadModel) -> usize {
+fn next_group_id<M>(model: &M) -> usize
+where
+    M: LinearTriadModelIISSource + ?Sized,
+{
+    let model = model.as_basic_linear_triad_model();
     model
         .variables
         .iter()
@@ -29,10 +33,14 @@ fn add_slack_variable(model: &mut BasicLinearTriadModel, next_id: &mut usize, na
     model.add_variable(token)
 }
 
-fn build_elastic_relaxation(
-    model: &BasicLinearTriadModel,
+fn build_elastic_relaxation<M>(
+    model: &M,
     config: &IISConfig,
-) -> (LinearTriadModel, Vec<ConstraintSource>, usize) {
+) -> (LinearTriadModel, Vec<ConstraintSource>, usize)
+where
+    M: LinearTriadModelIISSource + ?Sized,
+{
+    let model = model.as_basic_linear_triad_model();
     let mut relaxed = BasicLinearTriadModel::new(&format!("{}_iis_elastic", model.name));
     let original_variable_count = model.num_variables();
 
@@ -141,10 +149,11 @@ fn build_elastic_relaxation(
 ///
 /// # 返回 / Returns
 /// IIS 模型 / IIS model
-pub fn compute_iis_elastic(
-    model: &BasicLinearTriadModel,
-    config: &IISConfig,
-) -> Result<LinearIISModel> {
+pub fn compute_iis_elastic<M>(model: &M, config: &IISConfig) -> Result<LinearIISModel>
+where
+    M: LinearTriadModelIISSource + ?Sized,
+{
+    let model = model.as_basic_linear_triad_model();
     let start = std::time::Instant::now();
 
     if config.verbose {

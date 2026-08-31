@@ -7,7 +7,7 @@
 use super::acceleration::MeterPerSecondSquared;
 use super::mass::Kilogram;
 use crate::dimension::derived::Force;
-use crate::scale::{Scale, KILO, MEGA};
+use crate::scale::{KILO, MEGA, Scale};
 use crate::unit::{CTUnit, CTUnitMul};
 
 // ============================================================================
@@ -21,14 +21,14 @@ define_unit_by!(
     CTUnitMul<Kilogram, MeterPerSecondSquared>
 );
 define_unit!(
-    KiloNewton,
+    Kilonewton,
     "kilonewton",
     "kN",
     Force,
     &*Newton::SCALE * &*KILO
 );
 define_unit!(
-    MegaNewton,
+    Meganewton,
     "meganewton",
     "MN",
     Force,

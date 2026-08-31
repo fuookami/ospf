@@ -1,5 +1,5 @@
-use crate::framework::demo2::domain::mac_optimization::context::MacOptimizationContext;
-use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework_demo::demo2::domain::mac_optimization::context::MacOptimizationContext;
+use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 
 pub struct MacOptimizationAggregation {
     pub target_balance: f64,
@@ -12,10 +12,22 @@ pub struct MacOptimizationAggregation {
 
 impl MacOptimizationAggregation {
     pub fn from_context(context: &MacOptimizationContext<'_>) -> Self {
-        let total_capacity: f64 = context.request.positions.iter().map(|pos| pos.max_weight).sum();
-        let total_weight: f64 = context.request.cargos.iter().map(|cargo| cargo.weight).sum();
+        let total_capacity: f64 = context
+            .request
+            .positions
+            .iter()
+            .map(|pos| pos.max_weight)
+            .sum();
+        let total_weight: f64 = context
+            .request
+            .cargos
+            .iter()
+            .map(|cargo| cargo.weight)
+            .sum();
         let target_balance = match context.mode {
-            Demo2PipelineMode::Predistribution => total_weight / context.request.positions.len() as f64,
+            Demo2PipelineMode::Predistribution => {
+                total_weight / context.request.positions.len() as f64
+            }
             Demo2PipelineMode::WeightRecommendation => {
                 total_capacity.min(total_weight) / context.request.positions.len() as f64
             }
@@ -38,8 +50,10 @@ impl MacOptimizationAggregation {
 
         for p in 0..context.request.positions.len() {
             for c in 0..context.request.cargos.len() {
-                let long_coeff = context.request.cargos[c].weight * context.request.positions[p].longitudinal_arm;
-                let lat_coeff = context.request.cargos[c].weight * context.request.positions[p].lateral_arm;
+                let long_coeff = context.request.cargos[c].weight
+                    * context.request.positions[p].longitudinal_arm;
+                let lat_coeff =
+                    context.request.cargos[c].weight * context.request.positions[p].lateral_arm;
                 long_moment.push((context.x_idx[c][p], long_coeff));
                 neg_long_moment.push((context.x_idx[c][p], -long_coeff));
                 lat_moment.push((context.x_idx[c][p], lat_coeff));
@@ -57,4 +71,3 @@ impl MacOptimizationAggregation {
         }
     }
 }
-

@@ -2,9 +2,9 @@ use std::error::Error;
 
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 
-use crate::framework::demo2::domain::airworthiness::aggregation::AirworthinessAggregation;
-use crate::framework::demo2::domain::airworthiness::context::AirworthinessContext;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use crate::framework_demo::demo2::domain::airworthiness::aggregation::AirworthinessAggregation;
+use crate::framework_demo::demo2::domain::airworthiness::context::AirworthinessContext;
+use crate::framework_demo::demo2::domain::shared::pipeline_mode::mode_name;
 
 pub fn apply_envelope_limits(
     model: &mut MetaModel<f64>,
@@ -31,4 +31,3 @@ pub fn apply_envelope_limits(
     )?;
     Ok(())
 }
-

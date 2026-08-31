@@ -79,16 +79,40 @@ define_unit!(
 define_unit!(Hectoliter, "hectoliter", "hL", Volume, Scale::from_f64(0.1));
 
 //  deciliter / Deciliter
-define_unit!(Deciliter, "deciliter", "dL", Volume, Scale::from_f64(0.0001));
+define_unit!(
+    Deciliter,
+    "deciliter",
+    "dL",
+    Volume,
+    Scale::from_f64(0.0001)
+);
 
 //  centiliter / Centiliter
-define_unit!(Centiliter, "centiliter", "cL", Volume, Scale::from_f64(0.00001));
+define_unit!(
+    Centiliter,
+    "centiliter",
+    "cL",
+    Volume,
+    Scale::from_f64(0.00001)
+);
 
 //  milliliter / Milliliter
-define_unit!(Milliliter, "milliliter", "mL", Volume, Scale::from_f64(0.000001));
+define_unit!(
+    Milliliter,
+    "milliliter",
+    "mL",
+    Volume,
+    Scale::from_f64(0.000001)
+);
 
 //  microliter / Microliter
-define_unit!(Microliter, "microliter", "μL", Volume, Scale::from_f64(0.000000001));
+define_unit!(
+    Microliter,
+    "microliter",
+    "μL",
+    Volume,
+    Scale::from_f64(0.000000001)
+);
 
 // ============================================================================
 // 英制体积单位 / Imperial volume units

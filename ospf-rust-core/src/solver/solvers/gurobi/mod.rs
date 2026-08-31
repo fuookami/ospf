@@ -86,10 +86,33 @@ mod tests {
     }
 
     #[test]
+    fn test_gurobi_config_ergonomic_aliases() {
+        let config = GurobiConfig::new()
+            .with_gap(0.02)
+            .with_memory_limit_mb(1536.0)
+            .with_improve_threshold(1e-5);
+
+        assert_eq!(config.mip_gap, Some(0.02));
+        assert_eq!(config.mem_limit, Some(1.5));
+        assert_eq!(config.improve_threshold, Some(1e-5));
+
+        let config = config.with_memory_limit_gb(4.0);
+        assert_eq!(config.mem_limit, Some(4.0));
+    }
+
+    #[test]
     fn test_inf_or_unbd_status_mapping() {
         assert_eq!(
             super::solver::GurobiSolver::convert_status(grb::Status::InfOrUnbd),
             SolverStatus::InfeasibleOrUnbounded
+        );
+    }
+
+    #[test]
+    fn test_suboptimal_status_mapping() {
+        assert_eq!(
+            super::solver::GurobiSolver::convert_status(grb::Status::SubOptimal),
+            SolverStatus::Feasible
         );
     }
 

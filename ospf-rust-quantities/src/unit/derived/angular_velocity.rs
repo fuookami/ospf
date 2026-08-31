@@ -6,8 +6,8 @@
 
 use super::plane_angle::{Degree, Radian};
 use super::time::Second;
-use crate::unit::physical_unit::CTUnit;
 use crate::unit::CTUnitDiv;
+use crate::unit::physical_unit::CTUnit;
 
 // ============================================================================
 // 角速度单位 / Angular velocity units

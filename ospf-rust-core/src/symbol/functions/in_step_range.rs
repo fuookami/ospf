@@ -10,8 +10,8 @@ use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
 
@@ -679,7 +679,9 @@ mod tests {
             1.0,
         );
 
-        let points = f.step_points_f64().expect("step points should be generated");
+        let points = f
+            .step_points_f64()
+            .expect("step points should be generated");
         let result_id = f.result_variable().id().unique_id() as usize;
         let mut symbol_to_index = HashMap::new();
         symbol_to_index.insert(result_id, 1usize);
@@ -723,7 +725,9 @@ mod tests {
             1.0,
         );
 
-        let points = f.step_points_f64().expect("step points should be generated");
+        let points = f
+            .step_points_f64()
+            .expect("step points should be generated");
         let result_id = f.result_variable().id().unique_id() as usize;
         let mut symbol_to_index = HashMap::new();
         symbol_to_index.insert(result_id, 1usize);

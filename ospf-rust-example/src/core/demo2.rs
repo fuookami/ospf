@@ -1,12 +1,11 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
+use ospf_rust_core::variable::{Binary, VariableCombination2D};
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
+use ospf_rust_multiarray::{MultiArrayBuilder, Shape};
 
-use super::common::{
-    add_constraint_with_metadata, linear_expr_from_indices, linear_expr_from_sparse_terms,
-    read_solution_value, register_binary_matrix, solve,
-};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct Product {
@@ -63,57 +62,69 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let products = build_products();
 
     let mut model = MetaModel::<f64>::new("demo2");
-    let x_idx = register_binary_matrix(&mut model, companies.len(), products.len(), "x")?;
-    let group = model.create_constraint_group(2002, "demo2_assignment")?;
+    let x_shape = Shape::new([companies.len(), products.len()]);
+    let x_vars: VariableCombination2D<Binary> =
+        VariableCombination2D::with_name_generator(x_shape.clone(), "x", |_index, vector| {
+            format!("{}_{}", vector[0], vector[1])
+        });
+    let x_idx = MultiArrayBuilder::from_list(
+        x_shape,
+        model.register_variables::<Binary, _>(x_vars.iter().cloned())?,
+    );
 
-    let mut objective = vec![0.0; model.num_tokens()];
+    let mut cost_terms = Vec::with_capacity(companies.len() * products.len());
     for (c, company) in companies.iter().enumerate() {
         for (p, _) in products.iter().enumerate() {
-            objective[x_idx[c][p]] = company.cost_of(p);
+            cost_terms.push(LinearMonomial::new(
+                company.cost_of(p),
+                x_vars[&[c, p]].to_owned_symbol(),
+            ));
         }
     }
-    model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+    let cost = Linear::new(cost_terms, 0.0);
+    let assignment_company =
+        MultiArrayBuilder::new_by(Shape::<1>::new([companies.len()]), |_idx, vec| {
+            let c = vec[0];
+            Linear::new(
+                products
+                    .iter()
+                    .enumerate()
+                    .map(|(p, _)| LinearMonomial::new(1.0, x_vars[&[c, p]].to_owned_symbol()))
+                    .collect(),
+                0.0,
+            )
+        });
+    let assignment_product =
+        MultiArrayBuilder::new_by(Shape::<1>::new([products.len()]), |_idx, vec| {
+            let p = vec[0];
+            Linear::new(
+                companies
+                    .iter()
+                    .enumerate()
+                    .map(|(c, _)| LinearMonomial::new(1.0, x_vars[&[c, p]].to_owned_symbol()))
+                    .collect(),
+                0.0,
+            )
+        });
+
+    model.set_math_linear_objective(cost, ObjectiveCategory::Minimum, "cost")?;
 
     for (c, _) in companies.iter().enumerate() {
-        let indices: Vec<usize> = products.iter().enumerate().map(|(p, _)| x_idx[c][p]).collect();
-        let coefficients = linear_expr_from_indices(&indices, 1.0);
-        add_constraint_with_metadata(
-            &mut model,
-            &coefficients,
-            ConstraintRelation::LessEqual,
-            1.0,
+        model.add_math_inequality(
+            assignment_company[c].clone().le(1.0),
             &format!("company_{}", c),
-            Some(group.clone()),
-            false,
-            1,
-            Some(String::from("{\"kind\":\"company-capacity\"}")),
-        )?;
+        );
     }
 
     for (p, _) in products.iter().enumerate() {
-        let raw_terms: Vec<(usize, f64)> = companies
-            .iter()
-            .enumerate()
-            .map(|(c, _)| (x_idx[c][p], 1.0))
-            .collect();
-        let coefficients = linear_expr_from_sparse_terms(&raw_terms);
-        add_constraint_with_metadata(
-            &mut model,
-            &coefficients,
-            ConstraintRelation::Equal,
-            1.0,
+        model.add_math_inequality(
+            assignment_product[p].clone().eq_to(1.0),
             &format!("product_{}", p),
-            Some(group.clone()),
-            false,
-            1,
-            Some(String::from("{\"kind\":\"product-partition\"}")),
-        )?;
+        );
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo2 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo2 ===");
     println!("status: {:?}", output.status);
@@ -122,7 +133,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
     for (c, company) in companies.iter().enumerate() {
         for (p, product) in products.iter().enumerate() {
-            if read_solution_value(&solution, x_idx[c][p]) > 0.5 {
+            if read_solution_value(&solution, x_idx[&[c, p]]) > 0.5 {
                 println!("assign {} -> {}", product.name, company.name);
             }
         }

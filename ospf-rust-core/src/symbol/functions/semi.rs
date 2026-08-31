@@ -9,8 +9,8 @@ use num_traits::{FromPrimitive, ToPrimitive};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
 
@@ -78,6 +78,97 @@ where
             upper,
             declared_dependency_ids: Vec::new(),
         }
+    }
+
+    /// 从连续变量有限边界推导半连续激活区间。
+    /// Derive the semi-continuous active range from finite continuous-variable bounds.
+    pub fn try_from_variable(
+        id: u64,
+        name: &str,
+        variable: &ContinuousVariableItem,
+        lower: Option<V>,
+        upper: Option<V>,
+    ) -> Result<Self>
+    where
+        V: ToPrimitive + FromPrimitive,
+    {
+        let resolve_bound =
+            |explicit: Option<V>, inferred: Option<f64>, context: &str| -> Result<V> {
+                if let Some(value) = explicit {
+                    let value_as_f64 = to_f64(&value).ok_or_else(|| {
+                        ModelError::InvalidConstraint(format!(
+                            "semi `{}` explicit {} bound cannot be converted to f64",
+                            name, context
+                        ))
+                    })?;
+                    if !value_as_f64.is_finite() {
+                        return Err(ModelError::InvalidConstraint(format!(
+                            "semi `{}` explicit {} bound must be finite",
+                            name, context
+                        ))
+                        .into());
+                    }
+                    return Ok(value);
+                }
+
+                let value = inferred.ok_or_else(|| {
+                    ModelError::InvalidConstraint(format!(
+                        "semi `{}` cannot infer finite {} bound from variable `{}`",
+                        name,
+                        context,
+                        variable.name()
+                    ))
+                })?;
+                if !value.is_finite() {
+                    return Err(ModelError::InvalidConstraint(format!(
+                        "semi `{}` inferred {} bound from variable `{}` must be finite",
+                        name,
+                        context,
+                        variable.name()
+                    ))
+                    .into());
+                }
+                convert_f64_to_v::<V>(value, context)
+            };
+
+        let lower = resolve_bound(lower, variable.range().lower_bound, "lower")?;
+        let upper = resolve_bound(upper, variable.range().upper_bound, "upper")?;
+        let lower_as_f64 = to_f64(&lower).ok_or_else(|| {
+            ModelError::InvalidConstraint(format!(
+                "semi `{}` lower bound cannot be converted to f64",
+                name
+            ))
+        })?;
+        let upper_as_f64 = to_f64(&upper).ok_or_else(|| {
+            ModelError::InvalidConstraint(format!(
+                "semi `{}` upper bound cannot be converted to f64",
+                name
+            ))
+        })?;
+        if lower_as_f64 > upper_as_f64 {
+            return Err(ModelError::InvalidConstraint(format!(
+                "semi `{}` lower bound {} is greater than upper bound {}",
+                name, lower_as_f64, upper_as_f64
+            ))
+            .into());
+        }
+
+        Ok(Self::new(id, name, lower, upper))
+    }
+
+    /// Kotlin `from(variable, ...)` 概念对齐别名。
+    /// Kotlin `from(variable, ...)` concept-aligned alias.
+    pub fn from_variable(
+        id: u64,
+        name: &str,
+        variable: &ContinuousVariableItem,
+        lower: Option<V>,
+        upper: Option<V>,
+    ) -> Result<Self>
+    where
+        V: ToPrimitive + FromPrimitive,
+    {
+        Self::try_from_variable(id, name, variable, lower, upper)
     }
 
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
@@ -337,5 +428,77 @@ where
 
     fn to_quadratic_polynomial(&self) -> Quadratic<V> {
         Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::variable::VariableRange;
+
+    #[test]
+    fn semi_function_derives_bounds_from_variable_range() {
+        let variable = ContinuousVariableItem::with_range(
+            VariableId::standalone(10_000),
+            "semi_source",
+            VariableRange::bounded(2.0, 5.0),
+        );
+
+        let semi =
+            SemiFunction::<f64>::try_from_variable(9000, "semi_from_var", &variable, None, None)
+                .expect("semi bounds should be inferred from finite variable bounds");
+
+        assert_eq!(*semi.lower_bound(), 2.0);
+        assert_eq!(*semi.upper_bound(), 5.0);
+    }
+
+    #[test]
+    fn semi_function_explicit_bounds_override_variable_range() {
+        let variable = ContinuousVariableItem::with_range(
+            VariableId::standalone(10_001),
+            "semi_source_override",
+            VariableRange::bounded(2.0, 5.0),
+        );
+
+        let semi = SemiFunction::<f64>::from_variable(
+            9001,
+            "semi_override",
+            &variable,
+            Some(1.5),
+            Some(6.5),
+        )
+        .expect("explicit semi bounds should override variable bounds");
+
+        assert_eq!(*semi.lower_bound(), 1.5);
+        assert_eq!(*semi.upper_bound(), 6.5);
+    }
+
+    #[test]
+    fn semi_function_requires_missing_bounds_to_be_explicit() {
+        let variable = ContinuousVariableItem::with_range(
+            VariableId::standalone(10_002),
+            "semi_source_unbounded",
+            VariableRange::with_lower(2.0),
+        );
+
+        let missing_upper = SemiFunction::<f64>::try_from_variable(
+            9002,
+            "semi_missing_upper",
+            &variable,
+            None,
+            None,
+        );
+        assert!(missing_upper.is_err());
+
+        let explicit_upper = SemiFunction::<f64>::try_from_variable(
+            9003,
+            "semi_explicit_upper",
+            &variable,
+            None,
+            Some(8.0),
+        )
+        .expect("explicit upper bound should fill the missing variable bound");
+        assert_eq!(*explicit_upper.lower_bound(), 2.0);
+        assert_eq!(*explicit_upper.upper_bound(), 8.0);
     }
 }

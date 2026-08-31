@@ -9,6 +9,9 @@
     allow(dead_code, unused, incomplete_features, static_mut_refs)
 )]
 
+//! 基础工具库。
+//! Base utility library for ospf-rust, providing error handling, indexed types, collection abstractions, and more.
+
 #[macro_use]
 extern crate strum;
 
@@ -17,7 +20,7 @@ pub use collection::*;
 pub use container::*;
 pub use error::*;
 pub use generator_iterator::*;
-pub use indexed_type::{Indexed, ManualIndexed};
+pub use indexed_type::{Indexed, IndexedSliceExt, ManualIndexed};
 pub use iter::*;
 
 #[macro_use]

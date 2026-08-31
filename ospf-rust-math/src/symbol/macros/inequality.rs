@@ -112,7 +112,11 @@ macro_rules! qineq {
 
     // >= 大于等于
     (($lhs:expr) >= $rhs:expr) => {
-        $crate::symbol::QuadraticInequality::new($lhs, $crate::symbol::Comparison::GreaterEqual, $rhs)
+        $crate::symbol::QuadraticInequality::new(
+            $lhs,
+            $crate::symbol::Comparison::GreaterEqual,
+            $rhs,
+        )
     };
 
     // < 小于
@@ -152,7 +156,11 @@ macro_rules! cineq {
 
     // >= 大于等于
     (($lhs:expr) >= $rhs:expr) => {
-        $crate::symbol::CanonicalInequality::new($lhs, $crate::symbol::Comparison::GreaterEqual, $rhs)
+        $crate::symbol::CanonicalInequality::new(
+            $lhs,
+            $crate::symbol::Comparison::GreaterEqual,
+            $rhs,
+        )
     };
 
     // < 小于
@@ -202,8 +210,8 @@ macro_rules! constraints {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ineq, qineq, constraints, lin, quad, symbols_test};
     use crate::symbol::{LinearInequality, QuadraticInequality};
+    use crate::{constraints, ineq, lin, qineq, quad, symbols_test};
 
     #[test]
     fn test_linear_inequalities() {

@@ -6,7 +6,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::error::Result;
-use crate::solver::SolverStatus;
+use crate::model::ObjectiveCategory;
+use crate::solver::{SolverConfig, SolverStatus};
 
 /// Gurobi 分阶段回调节点 / Gurobi staged callback points
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,8 +51,14 @@ pub type GurobiStageCallback = Arc<dyn Fn(&GurobiStageStatus) -> Result<()> + Se
 pub struct GurobiTelemetryStatus {
     /// 累计耗时 / Elapsed solve time
     pub solve_time: Duration,
+    /// 目标方向 / Objective direction
+    pub objective_category: ObjectiveCategory,
+    /// 首个 incumbent 目标值 / First incumbent objective value
+    pub initial_objective_value: Option<f64>,
     /// 当前目标值（MIP incumbent）/ Current objective value (MIP incumbent)
     pub objective_value: Option<f64>,
+    /// 当前 incumbent 解向量 / Current incumbent solution vector
+    pub incumbent_solution: Option<Vec<f64>>,
     /// 当前最优下界 / Current best bound
     pub best_bound: Option<f64>,
     /// 当前 MIP Gap / Current MIP gap
@@ -81,8 +88,14 @@ pub struct GurobiNativeSnapshot {
     pub where_point: GurobiNativeWhere,
     /// 累计耗时 / Elapsed solve time
     pub solve_time: Duration,
+    /// 目标方向 / Objective direction
+    pub objective_category: ObjectiveCategory,
+    /// 首个 incumbent 目标值 / First incumbent objective value
+    pub initial_objective_value: Option<f64>,
     /// 当前目标值 / Current objective value
     pub objective_value: Option<f64>,
+    /// 当前 incumbent 解向量 / Current incumbent solution vector
+    pub incumbent_solution: Option<Vec<f64>>,
     /// 当前最优下界 / Current best bound
     pub best_bound: Option<f64>,
     /// 当前 MIP gap / Current MIP gap
@@ -294,6 +307,36 @@ impl Default for GurobiConfig {
     }
 }
 
+impl From<&SolverConfig> for GurobiConfig {
+    fn from(config: &SolverConfig) -> Self {
+        let mut gurobi_config = GurobiConfig::new();
+        gurobi_config.time_limit = config.time_limit.map(|duration| duration.as_secs_f64());
+        gurobi_config.mip_gap = config.mip_gap;
+        gurobi_config.max_iterations = config
+            .iteration_limit
+            .map(|limit| limit.min(i32::MAX as usize) as i32);
+        gurobi_config.output_flag = config.verbose;
+        gurobi_config.threads = config
+            .threads
+            .map(|threads| threads.min(i32::MAX as usize) as i32);
+        gurobi_config.node_limit = config
+            .node_limit
+            .map(|limit| limit.min(i32::MAX as usize) as i32);
+        gurobi_config.mem_limit = config.memory_limit.map(|limit_mb| limit_mb as f64 / 1024.0);
+        gurobi_config.no_improvement_time_limit = config
+            .no_improvement_time_limit
+            .map(|duration| duration.as_secs_f64());
+        gurobi_config.improve_threshold = config.improve_threshold;
+        gurobi_config
+    }
+}
+
+impl From<SolverConfig> for GurobiConfig {
+    fn from(config: SolverConfig) -> Self {
+        Self::from(&config)
+    }
+}
+
 impl GurobiConfig {
     fn kotlin_style_thread_count() -> i32 {
         let cores = std::thread::available_parallelism()
@@ -435,6 +478,12 @@ impl GurobiConfig {
         self
     }
 
+    /// 设置求解 gap（`with_mip_gap` 的易用别名）/
+    /// Set solve gap (ergonomic alias for `with_mip_gap`)
+    pub fn with_gap(self, gap: f64) -> Self {
+        self.with_mip_gap(gap)
+    }
+
     /// 设置最大迭代次数 / Set max iterations
     pub fn with_max_iterations(mut self, iterations: i32) -> Self {
         self.max_iterations = Some(iterations);
@@ -505,6 +554,16 @@ impl GurobiConfig {
     pub fn with_mem_limit(mut self, mem_limit: f64) -> Self {
         self.mem_limit = Some(mem_limit);
         self
+    }
+
+    /// 设置内存限制（MB）/ Set memory limit (MB)
+    pub fn with_memory_limit_mb(self, memory_limit_mb: f64) -> Self {
+        self.with_mem_limit(memory_limit_mb / 1024.0)
+    }
+
+    /// 设置内存限制（GB）/ Set memory limit (GB)
+    pub fn with_memory_limit_gb(self, memory_limit_gb: f64) -> Self {
+        self.with_mem_limit(memory_limit_gb)
     }
 
     /// 设置 Compute Server 地址 / Set Compute Server endpoint

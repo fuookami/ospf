@@ -7,7 +7,7 @@
 use super::area::SquareMeter;
 use super::force::Newton;
 use crate::dimension::derived::Pressure;
-use crate::scale::{Scale, KILO, MEGA};
+use crate::scale::{HECTO, KILO, MEGA, MILLI, Scale};
 use crate::unit::{CTUnit, CTUnitDiv};
 
 // ============================================================================
@@ -15,6 +15,13 @@ use crate::unit::{CTUnit, CTUnitDiv};
 // ============================================================================
 
 define_unit_by!(Pascal, "pascal", "Pa", CTUnitDiv<Newton, SquareMeter>);
+define_unit!(
+    Hectopascal,
+    "hectopascal",
+    "hPa",
+    Pressure,
+    &*Pascal::SCALE * &*HECTO
+);
 define_unit!(
     Kilopascal,
     "kilopascal",
@@ -35,4 +42,39 @@ define_unit!(
     "bar",
     Pressure,
     &*Pascal::SCALE * &Scale::from_int(100000)
+);
+define_unit!(
+    StandardAtmosphericPressure,
+    "standard atmospheric pressure",
+    "atm",
+    Pressure,
+    &*Pascal::SCALE * &Scale::from_int(101325)
+);
+define_unit!(
+    MeterMercury,
+    "meter mercury",
+    "mHg",
+    Pressure,
+    &*Pascal::SCALE * &Scale::from_f64(133322.387415)
+);
+define_unit!(
+    MillimeterMercury,
+    "millimeter mercury",
+    "mmHg",
+    Pressure,
+    &*MeterMercury::SCALE * &*MILLI
+);
+define_unit!(
+    InchOfMercury,
+    "inch of mercury",
+    "inHg",
+    Pressure,
+    &*Pascal::SCALE * &Scale::from_f64(3386.38815789)
+);
+define_unit!(
+    Millibar,
+    "millibar",
+    "mbar",
+    Pressure,
+    &*Bar::SCALE * &*MILLI
 );

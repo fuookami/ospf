@@ -32,6 +32,8 @@
 //! 注意：`Exponent` trait 定义在 [`crate::operator::Exponent`]。
 //! Note: The `Exponent` trait is defined in [`crate::operator::Exponent`].
 
+pub mod category;
+pub mod expression;
 pub mod inequality;
 pub mod monomial;
 pub mod operation;
@@ -53,6 +55,8 @@ pub mod parser;
 #[macro_use]
 pub mod macros;
 
+pub use category::*;
+pub use expression::*;
 pub use symbol::*;
 // 允许模糊的 glob 重导出（monomial 和 inequality 模块都有 linear/quadratic/canonical 子模块）
 // Allow ambiguous glob re-exports (monomial and inequality modules both have linear/quadratic/canonical submodules)

@@ -10,16 +10,20 @@ use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
+use super::big_m::infer_linear_shifted_abs_bound_from_tokens;
 
 const MIN_BIG_M: f64 = 1.0;
+const INDICATOR_TOLERANCE: f64 = 1.0e-10;
+const INDICATOR_STRICT_BOUNDARY: f64 = INDICATOR_TOLERANCE * 16.0 + f64::EPSILON * 16.0;
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -132,12 +136,79 @@ where
         }
     }
 
+    /// 使用自动 ID 与调用方提供的名称创建不等式指示函数。
+    /// Create an inequality indicator function with an auto id and caller-provided name.
+    pub fn named(
+        name: impl AsRef<str>,
+        left: Linear<V>,
+        right: V,
+        kind: InequalityKind,
+        big_m: V,
+    ) -> Self {
+        Self::new(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            left,
+            right,
+            kind,
+            big_m,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建不等式指示函数。
+    /// Create an inequality indicator function with an auto id and auto-generated name.
+    pub fn auto(left: Linear<V>, right: V, kind: InequalityKind, big_m: V) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("inequality", id);
+        Self::new(id, &name, left, right, kind, big_m)
+    }
+
     pub fn less_equal(id: u64, name: &str, left: Linear<V>, right: V, big_m: V) -> Self {
         Self::new(id, name, left, right, InequalityKind::LessEqual, big_m)
     }
 
+    /// 使用自动 ID 与调用方提供的名称创建 `<=` 指示函数。
+    /// Create a `<=` indicator function with an auto id and caller-provided name.
+    pub fn named_less_equal(name: impl AsRef<str>, left: Linear<V>, right: V, big_m: V) -> Self {
+        Self::less_equal(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            left,
+            right,
+            big_m,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建 `<=` 指示函数。
+    /// Create a `<=` indicator function with an auto id and auto-generated name.
+    pub fn auto_less_equal(left: Linear<V>, right: V, big_m: V) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("less_equal", id);
+        Self::less_equal(id, &name, left, right, big_m)
+    }
+
     pub fn greater_equal(id: u64, name: &str, left: Linear<V>, right: V, big_m: V) -> Self {
         Self::new(id, name, left, right, InequalityKind::GreaterEqual, big_m)
+    }
+
+    /// 使用自动 ID 与调用方提供的名称创建 `>=` 指示函数。
+    /// Create a `>=` indicator function with an auto id and caller-provided name.
+    pub fn named_greater_equal(name: impl AsRef<str>, left: Linear<V>, right: V, big_m: V) -> Self {
+        Self::greater_equal(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            left,
+            right,
+            big_m,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建 `>=` 指示函数。
+    /// Create a `>=` indicator function with an auto id and auto-generated name.
+    pub fn auto_greater_equal(left: Linear<V>, right: V, big_m: V) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("greater_equal", id);
+        Self::greater_equal(id, &name, left, right, big_m)
     }
 
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
@@ -148,6 +219,12 @@ where
     pub(crate) fn with_left_polynomial(&self, left: Linear<V>) -> Self {
         let mut cloned = self.clone();
         cloned.left = left;
+        cloned
+    }
+
+    pub(crate) fn with_big_m_value(&self, big_m: V) -> Self {
+        let mut cloned = self.clone();
+        cloned.big_m = big_m;
         cloned
     }
 
@@ -204,33 +281,8 @@ where
     }
 
     fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
-        let mut lower = to_f64(self.left.constant_term())?;
-        let mut upper = lower;
-        for monomial in self.left.monomials() {
-            let token = tokens.get(monomial.var_index())?;
-            let var_lower = to_f64(&token.variable.lower_bound()?)?;
-            let var_upper = to_f64(&token.variable.upper_bound()?)?;
-            if !var_lower.is_finite() || !var_upper.is_finite() {
-                return None;
-            }
-
-            let coefficient = to_f64(monomial.coefficient())?;
-            if coefficient >= 0.0 {
-                lower += coefficient * var_lower;
-                upper += coefficient * var_upper;
-            } else {
-                lower += coefficient * var_upper;
-                upper += coefficient * var_lower;
-            }
-        }
-
-        let right = to_f64(&self.right)?;
-        lower -= right;
-        upper -= right;
-        if !lower.is_finite() || !upper.is_finite() {
-            return None;
-        }
-        Some(lower.abs().max(upper.abs()).max(MIN_BIG_M))
+        infer_linear_shifted_abs_bound_from_tokens(&self.left, &self.right, tokens)
+            .map(|big_m| big_m.max(MIN_BIG_M))
     }
 
     fn build_mechanism_constraints(
@@ -255,9 +307,8 @@ where
                 self.id.name
             ))
         })?;
-        let tolerance = f64::EPSILON * 16.0;
-        let strict_gap = f64::EPSILON * 16.0;
-        let strict_boundary = tolerance + strict_gap;
+        let tolerance = INDICATOR_TOLERANCE;
+        let strict_boundary = INDICATOR_STRICT_BOUNDARY;
 
         let mut monomials = Vec::with_capacity(self.left.monomials().len() + 1);
         for monomial in self.left.monomials() {
@@ -598,7 +649,7 @@ where
     fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
         let left = to_f64(&evaluate_linear(&self.left, token_table, zero_if_none)?)?;
         let right = to_f64(&self.right)?;
-        let eps = f64::EPSILON * 16.0;
+        let eps = INDICATOR_TOLERANCE;
 
         let satisfied = match self.kind {
             InequalityKind::LessEqual => left <= right + eps,
@@ -646,8 +697,30 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::token::Token;
+    use crate::model::{ConstraintRelation, LinearConstraint};
+    use crate::token::{MutableTokenList, Token, VecTokenList};
     use crate::variable::{ContinuousVariableItem, VariableRange};
+
+    fn constraint_lhs(constraint: &LinearConstraint<f64>, values: &HashMap<usize, f64>) -> f64 {
+        let mut lhs = *constraint.inequality.polynomial.constant_term();
+        for monomial in constraint.inequality.polynomial.monomials() {
+            lhs += *monomial.coefficient()
+                * values
+                    .get(&monomial.var_index())
+                    .copied()
+                    .unwrap_or_default();
+        }
+        lhs
+    }
+
+    fn satisfies(constraint: &LinearConstraint<f64>, values: &HashMap<usize, f64>) -> bool {
+        let lhs = constraint_lhs(constraint, values);
+        match constraint.inequality.relation {
+            ConstraintRelation::LessEqual => lhs <= constraint.inequality.rhs + 1e-9,
+            ConstraintRelation::Equal => (lhs - constraint.inequality.rhs).abs() <= 1e-9,
+            ConstraintRelation::GreaterEqual => lhs + 1e-9 >= constraint.inequality.rhs,
+        }
+    }
 
     #[test]
     fn inequality_function_infers_big_m_from_variable_bounds() {
@@ -726,5 +799,107 @@ mod tests {
 
         assert!((upper.inequality.rhs - 11.0).abs() <= 1e-9);
         assert!((*y_term.coefficient() - 11.0).abs() <= 1e-9);
+    }
+
+    #[test]
+    fn equality_indicator_treats_zero_difference_as_satisfied() {
+        let x = ContinuousVariableItem::create(VariableId::standalone(40_020), "x");
+        let f: InequalityFunction<f64> = InequalityFunction::new(
+            5002,
+            "ineq_eq_zero",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            0.0,
+            InequalityKind::Equal,
+            10.0,
+        );
+
+        let tx = Token::from_generic(x, 0);
+        tx.set_result(0.0);
+        let mut tokens = VecTokenList::new();
+        tokens.add_token(tx);
+        assert_eq!(
+            <InequalityFunction as FunctionSymbol>::calculate_value(&f, &tokens, false),
+            Some(1.0)
+        );
+
+        let result_id = f.result_variable().id().unique_id() as usize;
+        let side_id = f
+            .side_var
+            .as_ref()
+            .expect("equal inequality should have a side variable")
+            .id()
+            .unique_id() as usize;
+        let symbol_to_index = HashMap::from([(result_id, 1usize), (side_id, 2usize)]);
+        let constraints = f
+            .mechanism_constraints(&symbol_to_index)
+            .expect("equal inequality constraints should be generated");
+
+        let satisfied = HashMap::from([(0usize, 0.0), (1usize, 1.0), (2usize, 0.0)]);
+        assert!(
+            constraints
+                .iter()
+                .all(|constraint| satisfies(constraint, &satisfied))
+        );
+
+        let zero_result_side0 = HashMap::from([(0usize, 0.0), (1usize, 0.0), (2usize, 0.0)]);
+        let zero_result_side1 = HashMap::from([(0usize, 0.0), (1usize, 0.0), (2usize, 1.0)]);
+        assert!(
+            !constraints
+                .iter()
+                .all(|constraint| satisfies(constraint, &zero_result_side0))
+        );
+        assert!(
+            !constraints
+                .iter()
+                .all(|constraint| satisfies(constraint, &zero_result_side1))
+        );
+    }
+
+    #[test]
+    fn equality_indicator_treats_nonzero_difference_as_violated() {
+        let x = ContinuousVariableItem::create(VariableId::standalone(40_030), "x");
+        let f: InequalityFunction<f64> = InequalityFunction::new(
+            5003,
+            "ineq_eq_nonzero",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            0.0,
+            InequalityKind::Equal,
+            10.0,
+        );
+
+        let tx = Token::from_generic(x, 0);
+        tx.set_result(1.0e-6);
+        let mut tokens = VecTokenList::new();
+        tokens.add_token(tx);
+        assert_eq!(
+            <InequalityFunction as FunctionSymbol>::calculate_value(&f, &tokens, false),
+            Some(0.0)
+        );
+
+        let result_id = f.result_variable().id().unique_id() as usize;
+        let side_id = f
+            .side_var
+            .as_ref()
+            .expect("equal inequality should have a side variable")
+            .id()
+            .unique_id() as usize;
+        let symbol_to_index = HashMap::from([(result_id, 1usize), (side_id, 2usize)]);
+        let constraints = f
+            .mechanism_constraints(&symbol_to_index)
+            .expect("equal inequality constraints should be generated");
+
+        let violated = HashMap::from([(0usize, 1.0e-6), (1usize, 0.0), (2usize, 1.0)]);
+        assert!(
+            constraints
+                .iter()
+                .all(|constraint| satisfies(constraint, &violated))
+        );
+
+        let wrong_result = HashMap::from([(0usize, 1.0e-6), (1usize, 1.0), (2usize, 0.0)]);
+        assert!(
+            !constraints
+                .iter()
+                .all(|constraint| satisfies(constraint, &wrong_result))
+        );
     }
 }

@@ -2,9 +2,9 @@ use std::error::Error;
 
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 
-use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
-use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use crate::framework_demo::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
+use crate::framework_demo::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
+use crate::framework_demo::demo2::domain::shared::pipeline_mode::mode_name;
 
 pub fn apply_source_early_limits(
     model: &mut MetaModel<f64>,
@@ -23,9 +23,12 @@ pub fn apply_source_early_limits(
             &coefficients,
             ConstraintRelation::GreaterEqual,
             1.0,
-            &format!("loading_source_early_{}_{}", mode_name(context.mode), source),
+            &format!(
+                "loading_source_early_{}_{}",
+                mode_name(context.mode),
+                source
+            ),
         )?;
     }
     Ok(())
 }
-

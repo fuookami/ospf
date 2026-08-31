@@ -4,7 +4,9 @@
 //! 提供带宽量纲的 SI 单位定义，带宽为信息量除以时间，包括比特每秒、千比特每秒等。
 //! Provides SI unit definitions for bandwidth dimension, bandwidth is information divided by time, including bit per second, kilobit per second, etc.
 
-use super::information::{Bit, Byte, Gigabit, Kilobit, Kilobyte, Megabit, Megabyte, Terabit};
+use super::information::{
+    Bit, Byte, Exabit, Gigabit, Kilobit, Kilobyte, Megabit, Megabyte, Petabit, Terabit,
+};
 use super::time::Second;
 use crate::unit::{CTUnit, CTUnitDiv};
 
@@ -41,6 +43,18 @@ define_unit_by!(
     "terabit per second",
     "Tbit/s",
     CTUnitDiv<Terabit, Second>
+);
+define_unit_by!(
+    PetabitPerSecond,
+    "petabit per second",
+    "Pbit/s",
+    CTUnitDiv<Petabit, Second>
+);
+define_unit_by!(
+    ExabitPerSecond,
+    "exabit per second",
+    "Ebit/s",
+    CTUnitDiv<Exabit, Second>
 );
 define_unit_by!(
     BytePerSecond,

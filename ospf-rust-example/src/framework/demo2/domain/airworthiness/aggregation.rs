@@ -1,4 +1,4 @@
-use crate::framework::demo2::domain::airworthiness::context::AirworthinessContext;
+use crate::framework_demo::demo2::domain::airworthiness::context::AirworthinessContext;
 
 pub struct AirworthinessAggregation {
     pub total_payload_coefficients: Vec<(usize, f64)>,
@@ -27,4 +27,3 @@ impl AirworthinessAggregation {
         }
     }
 }
-

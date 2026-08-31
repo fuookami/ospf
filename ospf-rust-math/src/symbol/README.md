@@ -1,6 +1,6 @@
 # Symbol - Symbolic Computation Module
 
-[中文文档](README_ch.md)
+🇺🇸 [English](README.md) | 🇨🇳 简体中文
 
 ## Overview
 

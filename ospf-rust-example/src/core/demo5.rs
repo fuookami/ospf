@@ -1,10 +1,10 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
 use ospf_rust_core::variable::BinaryVariableItem;
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct Cargo {
@@ -38,35 +38,37 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let max_weight = 10.0;
 
     let mut model = MetaModel::<f64>::new("demo5");
+    let mut x_vars = Vec::with_capacity(cargos.len());
     let mut x_idx = vec![0usize; cargos.len()];
 
     for (i, _) in cargos.iter().enumerate() {
         let variable = BinaryVariableItem::auto(&format!("x_{}", i));
-        x_idx[i] = model.register_variable(variable)?;
+        x_idx[i] = model.register_variable(variable.clone())?;
+        x_vars.push(variable);
     }
 
-    let mut objective = vec![0.0; model.num_tokens()];
-    for (i, cargo) in cargos.iter().enumerate() {
-        objective[x_idx[i]] = cargo.value;
-    }
-    model.set_linear_objective(objective, ObjectiveCategory::Maximum);
+    let cargo_value = Linear::new(
+        x_vars
+            .iter()
+            .zip(cargos.iter())
+            .map(|(var, cargo)| LinearMonomial::new(cargo.value, var.to_owned_symbol()))
+            .collect(),
+        0.0,
+    );
+    let cargo_weight = Linear::new(
+        x_vars
+            .iter()
+            .zip(cargos.iter())
+            .map(|(var, cargo)| LinearMonomial::new(cargo.weight, var.to_owned_symbol()))
+            .collect(),
+        0.0,
+    );
 
-    let coefficients: Vec<(usize, f64)> = x_idx
-        .iter()
-        .enumerate()
-        .map(|(i, idx)| (*idx, cargos[i].weight))
-        .collect();
-    model.add_linear_constraint(
-        &coefficients,
-        ConstraintRelation::LessEqual,
-        max_weight,
-        "weight",
-    )?;
+    model.set_math_linear_objective(cargo_value, ObjectiveCategory::Maximum, "value")?;
+    model.add_math_inequality(cargo_weight.le(max_weight), "weight");
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo5 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo5 ===");
     println!("status: {:?}", output.status);

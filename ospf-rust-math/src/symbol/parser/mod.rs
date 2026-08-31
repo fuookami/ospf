@@ -27,8 +27,9 @@ pub use parser::Parser;
 use std::fmt::Debug;
 use std::ops::{Add, Mul, Neg, Sub};
 
-use crate::symbol::inequality::{LinearInequality, QuadraticInequality};
-use crate::symbol::{Linear, Quadratic};
+use crate::operator::{Exponent, MulRef};
+use crate::symbol::inequality::{CanonicalInequality, LinearInequality, QuadraticInequality};
+use crate::symbol::{Canonical, Linear, Quadratic};
 
 /// 解析线性多项式 / Parse linear polynomial
 ///
@@ -134,4 +135,85 @@ where
 {
     let mut parser = Parser::new(s);
     parser.parse_quadratic_inequality()
+}
+
+/// 解析标准多项式 / Parse canonical polynomial
+///
+/// 支持格式：`x^2 * y + 2*x + 1`, `x^3`, `x*x*y`
+/// Supported formats: `x^2 * y + 2*x + 1`, `x^3`, `x*x*y`
+pub fn parse_canonical<T, E>(s: &str) -> ParseResult<Canonical<T, E>>
+where
+    T: std::str::FromStr
+        + Clone
+        + num_traits::Zero
+        + num_traits::One
+        + Neg<Output = T>
+        + Add<Output = T>
+        + Sub<Output = T>
+        + Mul<Output = T>
+        + MulRef
+        + Debug
+        + PartialEq,
+    E: Exponent
+        + std::str::FromStr
+        + Clone
+        + num_traits::Zero
+        + num_traits::One
+        + Add<Output = E>
+        + for<'a> std::ops::AddAssign<&'a E>
+        + PartialEq,
+{
+    let mut parser = Parser::new(s);
+    parser.parse_canonical()
+}
+
+/// 解析标准不等式 / Parse canonical inequality
+///
+/// 支持格式：`x^3 + 2*y <= 10`, `x*x*y >= 1`
+/// Supported formats: `x^3 + 2*y <= 10`, `x*x*y >= 1`
+pub fn parse_canonical_inequality<T, E>(s: &str) -> ParseResult<CanonicalInequality<T, E>>
+where
+    T: std::str::FromStr
+        + Clone
+        + num_traits::Zero
+        + num_traits::One
+        + Neg<Output = T>
+        + Add<Output = T>
+        + Sub<Output = T>
+        + Mul<Output = T>
+        + MulRef
+        + Debug
+        + PartialEq,
+    E: Exponent
+        + std::str::FromStr
+        + Clone
+        + num_traits::Zero
+        + num_traits::One
+        + Add<Output = E>
+        + for<'a> std::ops::AddAssign<&'a E>
+        + PartialEq,
+{
+    let mut parser = Parser::new(s);
+    parser.parse_canonical_inequality()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_canonical, parse_canonical_inequality};
+    use crate::symbol::Comparison;
+
+    #[test]
+    fn top_level_parse_canonical_works() {
+        let canonical = parse_canonical::<f64, i32>("x ^ 2 * y + 2 * x + 1").unwrap();
+        assert_eq!(canonical.monomials.len(), 2);
+        assert_eq!(canonical.constant, 1.0);
+    }
+
+    #[test]
+    fn top_level_parse_canonical_inequality_works() {
+        let inequality = parse_canonical_inequality::<f64, i32>("x ^ 3 + 2 * y <= 10").unwrap();
+        assert_eq!(inequality.comparison, Comparison::LessEqual);
+        assert_eq!(inequality.rhs, 10.0);
+        assert_eq!(inequality.lhs.monomials.len(), 2);
+    }
 }

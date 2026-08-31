@@ -18,14 +18,19 @@ use ospf_rust_core::model::mechanism::{ConstraintRelation, LinearInequality, Mec
 use ospf_rust_core::solver::{Solver, SolverExt, SolverOutput};
 use ospf_rust_core::variable::VariableId;
 
-use super::benders_decomposition::{
-    CutSense, LinearBendersDecompositionSolver, LinearCut, LinearFeasibleResult,
-    LinearInfeasibleResult, LinearSubResult, QuadraticBendersDecompositionSolver, QuadraticCut,
-    QuadraticFeasibleResult, QuadraticInfeasibleResult, QuadraticSubResult,
+use super::CutSense;
+use super::column_generation_solver::{
+    ColumnGenerationSolver, FeasibleSolution, FeasibleSolutionV, LPResult, LPResultV,
+    LinearDualSolution, RegistrationStatus, RegistrationStatusCallback, SolvingStatus,
+    SolvingStatusCallback,
 };
-use super::column_generation::{
-    ColumnGenerationSolver, FeasibleSolution, LPResult, LinearDualSolution, RegistrationStatus,
-    RegistrationStatusCallback, SolvingStatus, SolvingStatusCallback,
+use super::linear_benders_decomposition_solver::{
+    LinearBendersDecompositionSolver, LinearCut, LinearFeasibleResult, LinearInfeasibleResult,
+    LinearSubResult, LinearSubResultV, QuadraticSubResultV,
+};
+use super::quadratic_benders_decomposition_solver::{
+    QuadraticBendersDecompositionSolver, QuadraticCut, QuadraticFeasibleResult,
+    QuadraticInfeasibleResult, QuadraticSubResult,
 };
 
 /// Benders 割生成上下文 / Benders cut generation context
@@ -135,7 +140,7 @@ fn export_lp_model_if_requested<M>(
     model: &M,
     solver_name: &str,
     stage: &str,
-    options: &super::SolveOptions,
+    options: &super::FrameworkSolveOptions,
 ) -> Result<()>
 where
     M: LPExportableModel,
@@ -156,8 +161,20 @@ where
 }
 
 pub(crate) fn solver_output_to_feasible(output: &SolverOutput) -> Result<FeasibleSolution> {
-    if let Some(feasible) = FeasibleSolution::from_output(output) {
-        return Ok(feasible);
+    if matches!(
+        output.status,
+        ospf_rust_core::solver::SolverStatus::TimeLimit
+    ) && output.solution.is_none()
+    {
+        return Err(CoreError::Solver(SolverError::SolveFailed(
+            "solver terminated by time limit without feasible solution".into(),
+        )));
+    }
+    if output.status.is_feasible() {
+        return FeasibleSolution::try_from_output(
+            output,
+            ospf_rust_core::solver::SolveValueConversionPolicy::Strict,
+        );
     }
 
     let err = match output.status {
@@ -187,11 +204,16 @@ pub(crate) fn solution_vector_from_output(
             context, output.status
         ))));
     }
-    output.solution.clone().ok_or_else(|| {
-        CoreError::Solver(SolverError::SolveFailed(format!(
-            "{} missing solution vector",
-            context
-        )))
+    FeasibleSolution::try_feasible_typed_output_from_output(
+        output,
+        ospf_rust_core::solver::SolveValueConversionPolicy::Strict,
+    )
+    .map(|typed_output| typed_output.solution)
+    .map_err(|err| match err {
+        CoreError::Solver(SolverError::NoSolution) => CoreError::Solver(SolverError::SolveFailed(
+            format!("{} missing solution vector", context),
+        )),
+        other => other,
     })
 }
 
@@ -204,9 +226,50 @@ where
     S: Solver + Send + Sync,
 {
     if let Some(dual) = output.dual_solution.clone() {
-        return Ok(dual);
+        if lp_dual_row_objective_matches(lp_model, output, &dual) {
+            return Ok(dual[..lp_model.num_constraints()].to_vec());
+        }
     }
 
+    resolve_lp_dual_solution_by_model(solver, lp_model)
+}
+
+fn lp_dual_row_objective_matches(
+    lp_model: &LinearTriadModel,
+    output: &SolverOutput,
+    dual: &[f64],
+) -> bool {
+    let expected_rows = lp_model.num_constraints();
+    if dual.len() < expected_rows {
+        return false;
+    }
+    let Some(primal_objective) = output.objective_value else {
+        return true;
+    };
+    if !primal_objective.is_finite() {
+        return true;
+    }
+
+    let dual_objective = lp_model
+        .basic
+        .b
+        .iter()
+        .take(expected_rows)
+        .zip(dual.iter())
+        .map(|(rhs, dual_value)| rhs * dual_value)
+        .sum::<f64>();
+    if !dual_objective.is_finite() {
+        return false;
+    }
+
+    let scale = primal_objective.abs().max(dual_objective.abs()).max(1.0);
+    (primal_objective - dual_objective).abs() <= 1e-6 * scale
+}
+
+fn resolve_lp_dual_solution_by_model<S>(solver: &S, lp_model: &LinearTriadModel) -> Result<Vec<f64>>
+where
+    S: Solver + Send + Sync,
+{
     // 回退：显式构造并求解对偶模型，取前 m 个行乘子。
     // Fallback: explicitly solve dual model and take first m row multipliers.
     let dual_model = lp_model.to_dual();
@@ -221,6 +284,46 @@ where
         ))));
     }
     Ok(dual_solution[..expected_rows].to_vec())
+}
+
+pub(crate) fn resolve_farkas_dual_solution<S>(
+    solver: &S,
+    lp_model: &LinearTriadModel,
+    output: &SolverOutput,
+) -> Result<Vec<f64>>
+where
+    S: Solver + Send + Sync,
+{
+    if let Some(farkas_solution) = output.dual_solution.clone() {
+        let expected_rows = lp_model.num_constraints();
+        if farkas_solution.len() >= expected_rows {
+            return Ok(farkas_solution[..expected_rows].to_vec());
+        }
+    }
+    resolve_farkas_dual_solution_by_model(solver, lp_model)
+}
+
+fn resolve_farkas_dual_solution_by_model<S>(
+    solver: &S,
+    lp_model: &LinearTriadModel,
+) -> Result<Vec<f64>>
+where
+    S: Solver + Send + Sync,
+{
+    // 回退：显式构造并求解 Farkas 对偶模型。
+    // Fallback: explicitly solve the Farkas dual model.
+    let farkas_model = lp_model.to_farkas_dual();
+    let farkas_output = solver.solve_linear(&farkas_model)?;
+    let farkas_solution = solution_vector_from_output(&farkas_output, "farkas dual model")?;
+    let expected_rows = lp_model.num_constraints();
+    if farkas_solution.len() < expected_rows {
+        return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+            "farkas dual solution length {} is smaller than expected row count {}",
+            farkas_solution.len(),
+            expected_rows
+        ))));
+    }
+    Ok(farkas_solution[..expected_rows].to_vec())
 }
 
 fn append_linear_cut_row(
@@ -546,7 +649,7 @@ where
     fn solve_milp_impl(
         &self,
         model: &LinearTriadModel,
-        options: &super::SolveOptions,
+        options: &super::FrameworkSolveOptions,
     ) -> Result<FeasibleSolution> {
         emit_registration_status(
             &self.name,
@@ -555,17 +658,40 @@ where
         )?;
         export_lp_model_if_requested(model, &self.name, "milp", options)?;
         let core_callback = build_core_solving_callback(options.solving_status_callback.clone(), 0);
-        let options = ospf_rust_core::solver::SolveOptions::new()
-            .with_value_conversion_policy(options.value_conversion_policy)
-            .with_solving_callback(core_callback.as_ref());
-        let output = self.solver.solve_linear_with_options(model, &options)?;
+        let core_options = options.to_core_solve_options(core_callback.as_ref());
+        let output = self
+            .solver
+            .solve_linear_with_options(model, &core_options)?;
         solver_output_to_feasible(&output)
+    }
+
+    fn solve_milp_typed_impl<V>(
+        &self,
+        model: &LinearTriadModel,
+        options: &super::FrameworkSolveOptions,
+    ) -> Result<FeasibleSolutionV<V>>
+    where
+        V: ospf_rust_core::solver::SolveValue,
+    {
+        emit_registration_status(
+            &self.name,
+            model,
+            options.registration_status_callback.clone(),
+        )?;
+        export_lp_model_if_requested(model, &self.name, "milp", options)?;
+        let core_callback = build_core_solving_callback(options.solving_status_callback.clone(), 0);
+        let core_options = options.to_core_solve_options(core_callback.as_ref());
+        let output = self
+            .solver
+            .solve_linear_with_options(model, &core_options)?;
+        let typed_output = output.try_into_feasible_typed::<V>(options.value_conversion_policy)?;
+        FeasibleSolutionV::try_from_typed_output(typed_output)
     }
 
     fn solve_lp_impl(
         &self,
         model: &LinearTriadModel,
-        options: &super::SolveOptions,
+        options: &super::FrameworkSolveOptions,
     ) -> Result<LPResult> {
         emit_registration_status(
             &self.name,
@@ -577,10 +703,10 @@ where
         export_lp_model_if_requested(&lp_model, &self.name, "lp_relaxed", options)?;
 
         let core_callback = build_core_solving_callback(options.solving_status_callback.clone(), 0);
-        let options = ospf_rust_core::solver::SolveOptions::new()
-            .with_value_conversion_policy(options.value_conversion_policy)
-            .with_solving_callback(core_callback.as_ref());
-        let output = self.solver.solve_linear_with_options(&lp_model, &options)?;
+        let core_options = options.to_core_solve_options(core_callback.as_ref());
+        let output = self
+            .solver
+            .solve_linear_with_options(&lp_model, &core_options)?;
         let feasible = solver_output_to_feasible(&output)?;
         let dual = resolve_lp_dual_solution(&self.solver, &lp_model, &output)?;
 
@@ -588,6 +714,42 @@ where
             feasible,
             LinearDualSolution::new(dual, Vec::new()),
         ))
+    }
+
+    fn solve_lp_typed_impl<V>(
+        &self,
+        model: &LinearTriadModel,
+        options: &super::FrameworkSolveOptions,
+    ) -> Result<LPResultV<V>>
+    where
+        V: ospf_rust_core::solver::SolveValue,
+    {
+        emit_registration_status(
+            &self.name,
+            model,
+            options.registration_status_callback.clone(),
+        )?;
+        let mut lp_model = model.clone();
+        lp_model.linear_relax();
+        export_lp_model_if_requested(&lp_model, &self.name, "lp_relaxed", options)?;
+
+        let core_callback = build_core_solving_callback(options.solving_status_callback.clone(), 0);
+        let core_options = options.to_core_solve_options(core_callback.as_ref());
+        let output = self
+            .solver
+            .solve_linear_with_options(&lp_model, &core_options)?;
+        let typed_output = output
+            .clone()
+            .try_into_feasible_typed::<V>(options.value_conversion_policy)?;
+        let feasible = FeasibleSolutionV::try_from_typed_output(typed_output)?;
+        let dual = resolve_lp_dual_solution(&self.solver, &lp_model, &output)?;
+        let dual_solution = LinearDualSolution::new(dual, Vec::new())
+            .try_into_typed::<V>(options.value_conversion_policy)?;
+
+        Ok(LPResultV {
+            result: feasible,
+            dual_solution,
+        })
     }
 }
 
@@ -604,7 +766,7 @@ where
     async fn solve_milp_with_options(
         &self,
         model: &LinearTriadModel,
-        options: super::SolveOptions,
+        options: super::FrameworkSolveOptions,
     ) -> Result<FeasibleSolution> {
         self.solve_milp_impl(model, &options)
     }
@@ -612,9 +774,59 @@ where
     async fn solve_lp_with_options(
         &self,
         model: &LinearTriadModel,
-        options: super::SolveOptions,
+        options: super::FrameworkSolveOptions,
     ) -> Result<LPResult> {
         self.solve_lp_impl(model, &options)
+    }
+
+    fn solve_lp_typed_with_options<'a, V>(
+        &'a self,
+        model: &'a LinearTriadModel,
+        options: super::FrameworkSolveOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<LPResultV<V>>> + Send + 'a>>
+    where
+        Self: Sized,
+        V: ospf_rust_core::solver::SolveValue,
+    {
+        Box::pin(async move { self.solve_lp_typed_impl(model, &options) })
+    }
+
+    fn solve_typed_with_options<'a, V>(
+        &'a self,
+        meta_model: &'a ospf_rust_core::model::MetaModel<V>,
+        options: super::FrameworkSolveOptions,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<FeasibleSolutionV<V>>> + Send + 'a>,
+    >
+    where
+        Self: Sized,
+        V: ospf_rust_core::solver::SolveValue,
+    {
+        let mechanism_model = match meta_model.try_to_mechanism_model_with_status_callback(
+            options.model_building_status_callback.as_ref(),
+        ) {
+            Ok(model) => model,
+            Err(err) => return Box::pin(std::future::ready(Err(err))),
+        };
+        let mechanism_model = match ospf_rust_core::solver::convert_mechanism_model_to_f64(
+            &mechanism_model,
+            options.value_conversion_policy,
+        ) {
+            Ok(model) => model,
+            Err(err) => return Box::pin(std::future::ready(Err(err))),
+        };
+        let triad_model = match mechanism_model.try_into_linear_triad_model_with_status_callback(
+            options.model_building_status_callback.as_ref(),
+        ) {
+            Ok(model) => model,
+            Err(err) => return Box::pin(std::future::ready(Err(err))),
+        };
+        let options = if options.name.is_some() {
+            options
+        } else {
+            options.with_name(self.name())
+        };
+        Box::pin(async move { self.solve_milp_typed_impl(&triad_model, &options) })
     }
 }
 
@@ -630,7 +842,7 @@ where
     fn solve_milp_with_options(
         &self,
         model: &LinearTriadModel,
-        options: super::SolveOptions,
+        options: super::FrameworkSolveOptions,
     ) -> Result<FeasibleSolution> {
         self.solve_milp_impl(model, &options)
     }
@@ -638,9 +850,48 @@ where
     fn solve_lp_with_options(
         &self,
         model: &LinearTriadModel,
-        options: super::SolveOptions,
+        options: super::FrameworkSolveOptions,
     ) -> Result<LPResult> {
         self.solve_lp_impl(model, &options)
+    }
+
+    fn solve_lp_typed_with_options<V>(
+        &self,
+        model: &LinearTriadModel,
+        options: super::FrameworkSolveOptions,
+    ) -> Result<LPResultV<V>>
+    where
+        Self: Sized,
+        V: ospf_rust_core::solver::SolveValue,
+    {
+        self.solve_lp_typed_impl(model, &options)
+    }
+
+    fn solve_typed_with_options<V>(
+        &self,
+        meta_model: &ospf_rust_core::model::MetaModel<V>,
+        options: super::FrameworkSolveOptions,
+    ) -> Result<FeasibleSolutionV<V>>
+    where
+        Self: Sized,
+        V: ospf_rust_core::solver::SolveValue,
+    {
+        let mechanism_model = meta_model.try_to_mechanism_model_with_status_callback(
+            options.model_building_status_callback.as_ref(),
+        )?;
+        let mechanism_model = ospf_rust_core::solver::convert_mechanism_model_to_f64(
+            &mechanism_model,
+            options.value_conversion_policy,
+        )?;
+        let triad_model = mechanism_model.try_into_linear_triad_model_with_status_callback(
+            options.model_building_status_callback.as_ref(),
+        )?;
+        let options = if options.name.is_some() {
+            options
+        } else {
+            options.with_name(self.name())
+        };
+        self.solve_milp_typed_impl(&triad_model, &options)
     }
 }
 
@@ -749,9 +1000,8 @@ where
         }
 
         if sub_output.status.is_infeasible() {
-            let farkas_model = fixed_subproblem.to_farkas_dual();
-            let farkas_output = self.solver.solve_linear(&farkas_model)?;
-            let farkas_solution = solution_vector_from_output(&farkas_output, "farkas dual model")?;
+            let farkas_solution =
+                resolve_farkas_dual_solution(&self.solver, &fixed_subproblem, &sub_output)?;
             let mut result = LinearInfeasibleResult::new(LinearDualSolution::new(
                 farkas_solution.clone(),
                 Vec::new(),
@@ -815,6 +1065,21 @@ where
     ) -> Result<LinearSubResult> {
         self.solve_sub_impl(model, master_solution)
     }
+
+    fn solve_sub_typed<'a, V>(
+        &'a self,
+        model: &'a LinearTriadModel,
+        master_solution: &'a [f64],
+        policy: ospf_rust_core::solver::SolveValueConversionPolicy,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<LinearSubResultV<V>>> + Send + 'a>>
+    where
+        V: ospf_rust_core::solver::SolveValue,
+    {
+        Box::pin(async move {
+            self.solve_sub_impl(model, master_solution)?
+                .try_into_typed(policy)
+        })
+    }
 }
 
 #[cfg(not(feature = "async"))]
@@ -836,6 +1101,19 @@ where
         master_solution: &[f64],
     ) -> Result<LinearSubResult> {
         self.solve_sub_impl(model, master_solution)
+    }
+
+    fn solve_sub_typed<V>(
+        &self,
+        model: &LinearTriadModel,
+        master_solution: &[f64],
+        policy: ospf_rust_core::solver::SolveValueConversionPolicy,
+    ) -> Result<LinearSubResultV<V>>
+    where
+        V: ospf_rust_core::solver::SolveValue,
+    {
+        self.solve_sub_impl(model, master_solution)?
+            .try_into_typed(policy)
     }
 }
 
@@ -1015,10 +1293,8 @@ where
                 if let Some(linear_surrogate) =
                     quadratic_model_to_linear_surrogate(&fixed_subproblem)
                 {
-                    let farkas_model = linear_surrogate.to_farkas_dual();
-                    let farkas_output = self.solver.solve_linear(&farkas_model)?;
                     farkas_solution =
-                        solution_vector_from_output(&farkas_output, "quadratic farkas dual model")?;
+                        resolve_farkas_dual_solution(&self.solver, &linear_surrogate, &sub_output)?;
                 }
             }
 
@@ -1149,9 +1425,8 @@ where
         }
 
         if sub_output.status.is_infeasible() {
-            let farkas_model = fixed_subproblem.to_farkas_dual();
-            let farkas_output = self.solver.solve_linear(&farkas_model)?;
-            let farkas_solution = solution_vector_from_output(&farkas_output, "farkas dual model")?;
+            let farkas_solution =
+                resolve_farkas_dual_solution(&self.solver, &fixed_subproblem, &sub_output)?;
             let mut result = LinearInfeasibleResult::new(LinearDualSolution::new(
                 farkas_solution.clone(),
                 Vec::new(),
@@ -1214,6 +1489,21 @@ where
     ) -> Result<LinearSubResult> {
         self.solve_sub_linear_impl(model, master_solution)
     }
+
+    fn solve_sub_typed<'a, V>(
+        &'a self,
+        model: &'a LinearTriadModel,
+        master_solution: &'a [f64],
+        policy: ospf_rust_core::solver::SolveValueConversionPolicy,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<LinearSubResultV<V>>> + Send + 'a>>
+    where
+        V: ospf_rust_core::solver::SolveValue,
+    {
+        Box::pin(async move {
+            self.solve_sub_linear_impl(model, master_solution)?
+                .try_into_typed(policy)
+        })
+    }
 }
 
 #[cfg(not(feature = "async"))]
@@ -1235,6 +1525,19 @@ where
         master_solution: &[f64],
     ) -> Result<LinearSubResult> {
         self.solve_sub_linear_impl(model, master_solution)
+    }
+
+    fn solve_sub_typed<V>(
+        &self,
+        model: &LinearTriadModel,
+        master_solution: &[f64],
+        policy: ospf_rust_core::solver::SolveValueConversionPolicy,
+    ) -> Result<LinearSubResultV<V>>
+    where
+        V: ospf_rust_core::solver::SolveValue,
+    {
+        self.solve_sub_linear_impl(model, master_solution)?
+            .try_into_typed(policy)
     }
 }
 
@@ -1260,6 +1563,23 @@ where
     ) -> Result<QuadraticSubResult> {
         self.solve_sub_quadratic_impl(model, master_solution)
     }
+
+    fn solve_sub_quadratic_typed<'a, V>(
+        &'a self,
+        model: &'a QuadraticTetradModel,
+        master_solution: &'a [f64],
+        policy: ospf_rust_core::solver::SolveValueConversionPolicy,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<QuadraticSubResultV<V>>> + Send + 'a>,
+    >
+    where
+        V: ospf_rust_core::solver::SolveValue,
+    {
+        Box::pin(async move {
+            self.solve_sub_quadratic_impl(model, master_solution)?
+                .try_into_typed(policy)
+        })
+    }
 }
 
 #[cfg(not(feature = "async"))]
@@ -1283,6 +1603,19 @@ where
     ) -> Result<QuadraticSubResult> {
         self.solve_sub_quadratic_impl(model, master_solution)
     }
+
+    fn solve_sub_quadratic_typed<V>(
+        &self,
+        model: &QuadraticTetradModel,
+        master_solution: &[f64],
+        policy: ospf_rust_core::solver::SolveValueConversionPolicy,
+    ) -> Result<QuadraticSubResultV<V>>
+    where
+        V: ospf_rust_core::solver::SolveValue,
+    {
+        self.solve_sub_quadratic_impl(model, master_solution)?
+            .try_into_typed(policy)
+    }
 }
 
 #[cfg(test)]
@@ -1295,7 +1628,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use ospf_rust_core::model::intermediate::{
-        BasicQuadraticTetradModel, SparseMatrix, SparseVector,
+        BasicLinearTriadModel, BasicQuadraticTetradModel, SparseMatrix, SparseVector,
     };
     use ospf_rust_core::model::{
         BasicMechanismModel, Linear, LinearConstraint, LinearInequality, LinearMonomial,
@@ -1305,7 +1638,244 @@ mod tests {
         LinearSolver, QuadraticSolver, SolverCapability, SolverInfo, SolverStatus,
     };
     use ospf_rust_core::token::Token;
-    use ospf_rust_core::variable::ContinuousVariableItem;
+    use ospf_rust_core::variable::{ContinuousVariableItem, UContinuousVariableItem};
+
+    #[derive(Debug)]
+    struct MockCoreColumnGenerationSolver;
+
+    #[test]
+    fn solution_vector_from_output_returns_solution_for_feasible_output() {
+        let output = SolverOutput::optimal(2.0, vec![1.0, 3.0]);
+        let solution =
+            solution_vector_from_output(&output, "core_extensions_helper").expect("must map");
+        assert_eq!(solution, vec![1.0, 3.0]);
+    }
+
+    #[test]
+    fn solution_vector_from_output_reports_missing_solution_context() {
+        let output = SolverOutput::new(SolverStatus::Feasible).with_objective(2.0);
+        let err = solution_vector_from_output(&output, "core_extensions_helper")
+            .expect_err("missing solution vector should fail");
+        let message = err.to_string();
+        assert!(message.contains("core_extensions_helper missing solution vector"));
+    }
+
+    #[test]
+    fn solver_output_to_feasible_maps_feasible_output() {
+        let output = SolverOutput::optimal(2.0, vec![1.0, 3.0]);
+        let feasible =
+            solver_output_to_feasible(&output).expect("feasible solver output should map");
+        assert_eq!(feasible.obj, 2.0);
+        assert_eq!(feasible.solution, vec![1.0, 3.0]);
+    }
+
+    #[test]
+    fn solver_output_to_feasible_reports_missing_objective_for_feasible_status() {
+        let output = SolverOutput::new(SolverStatus::Feasible).with_solution(vec![1.0]);
+        let err = solver_output_to_feasible(&output)
+            .expect_err("feasible status without objective should fail");
+        let message = err.to_string();
+        assert!(message.contains("missing objective value"));
+    }
+
+    #[test]
+    fn solver_output_to_feasible_reports_missing_solution_for_feasible_status() {
+        let output = SolverOutput::new(SolverStatus::Feasible).with_objective(1.0);
+        let err = solver_output_to_feasible(&output)
+            .expect_err("feasible status without solution should fail");
+        let message = err.to_string();
+        assert!(message.contains("missing solution vector"));
+    }
+
+    #[test]
+    fn solver_output_to_feasible_maps_infeasible_status_to_infeasible_error() {
+        let output = SolverOutput::new(SolverStatus::Infeasible);
+        let err = solver_output_to_feasible(&output)
+            .expect_err("infeasible status should map to infeasible error");
+        assert!(matches!(err, CoreError::Solver(SolverError::Infeasible)));
+    }
+
+    #[test]
+    fn solver_output_to_feasible_maps_unbounded_status_to_unbounded_error() {
+        let output = SolverOutput::new(SolverStatus::Unbounded);
+        let err = solver_output_to_feasible(&output)
+            .expect_err("unbounded status should map to unbounded error");
+        assert!(matches!(err, CoreError::Solver(SolverError::Unbounded)));
+    }
+
+    #[test]
+    fn solver_output_to_feasible_preserves_time_limit_diagnostic_message() {
+        let output = SolverOutput::new(SolverStatus::TimeLimit);
+        let err = solver_output_to_feasible(&output)
+            .expect_err("time limit without feasible solution should fail");
+        let message = err.to_string();
+        assert!(message.contains("time limit"));
+    }
+
+    impl SolverInfo for MockCoreColumnGenerationSolver {
+        fn name(&self) -> &str {
+            "mock_core_column_generation_solver"
+        }
+
+        fn capabilities(&self) -> Vec<SolverCapability> {
+            vec![SolverCapability::Linear, SolverCapability::Quadratic]
+        }
+    }
+
+    impl LinearSolver for MockCoreColumnGenerationSolver {
+        fn solve_linear(&self, _model: &LinearTriadModel) -> Result<SolverOutput> {
+            Ok(SolverOutput::optimal(1.0, vec![2.0]))
+        }
+    }
+
+    impl QuadraticSolver for MockCoreColumnGenerationSolver {
+        fn solve_quadratic(&self, _model: &QuadraticTetradModel) -> Result<SolverOutput> {
+            Ok(SolverOutput::optimal(1.0, vec![2.0]))
+        }
+    }
+
+    fn build_single_row_lp_model() -> LinearTriadModel {
+        let mut basic = BasicLinearTriadModel::new("single_row_lp");
+        basic.add_variable_with_bounds(
+            Token::from_generic(UContinuousVariableItem::auto("x"), 0),
+            0.0,
+            f64::INFINITY,
+            ospf_rust_core::variable::VariableType::UContinuous,
+        );
+        let mut row = SparseVector::new();
+        row.add(0, 1.0);
+        basic.add_constraint(row, 2.0);
+        let mut model = LinearTriadModel::from_basic(basic);
+        model.set_objective(vec![1.0], ObjectiveCategory::Maximum);
+        model
+    }
+
+    #[derive(Debug)]
+    struct DualFallbackSolver;
+
+    impl SolverInfo for DualFallbackSolver {
+        fn name(&self) -> &str {
+            "dual_fallback_solver"
+        }
+
+        fn capabilities(&self) -> Vec<SolverCapability> {
+            vec![SolverCapability::Linear, SolverCapability::Quadratic]
+        }
+    }
+
+    impl LinearSolver for DualFallbackSolver {
+        fn solve_linear(&self, model: &LinearTriadModel) -> Result<SolverOutput> {
+            if model.basic.name.ends_with("_farkas_dual") {
+                return Ok(SolverOutput::optimal(0.0, vec![0.5]));
+            }
+            if model.basic.name.ends_with("_dual") {
+                return Ok(SolverOutput::optimal(2.0, vec![1.0]));
+            }
+            Ok(SolverOutput::optimal(2.0, vec![2.0]))
+        }
+    }
+
+    impl QuadraticSolver for DualFallbackSolver {
+        fn solve_quadratic(&self, _model: &QuadraticTetradModel) -> Result<SolverOutput> {
+            Ok(SolverOutput::optimal(0.0, vec![]))
+        }
+    }
+
+    #[test]
+    fn resolve_lp_dual_solution_keeps_consistent_native_dual() {
+        let model = build_single_row_lp_model();
+        let mut output = SolverOutput::optimal(2.0, vec![2.0]);
+        output.dual_solution = Some(vec![1.0]);
+
+        let dual = resolve_lp_dual_solution(&DualFallbackSolver, &model, &output)
+            .expect("consistent native dual should be accepted");
+        assert_eq!(dual, vec![1.0]);
+    }
+
+    #[test]
+    fn resolve_lp_dual_solution_truncates_extra_native_entries() {
+        let model = build_single_row_lp_model();
+        let mut output = SolverOutput::optimal(2.0, vec![2.0]);
+        output.dual_solution = Some(vec![1.0, 999.0]);
+
+        let dual = resolve_lp_dual_solution(&DualFallbackSolver, &model, &output)
+            .expect("consistent native dual should be normalized to row multipliers");
+        assert_eq!(dual, vec![1.0]);
+    }
+
+    #[test]
+    fn resolve_lp_dual_solution_falls_back_when_native_dual_objective_mismatches() {
+        let model = build_single_row_lp_model();
+        let mut output = SolverOutput::optimal(2.0, vec![2.0]);
+        output.dual_solution = Some(vec![0.0]);
+
+        let dual = resolve_lp_dual_solution(&DualFallbackSolver, &model, &output)
+            .expect("inconsistent native dual should fall back to explicit dual model");
+        assert_eq!(dual, vec![1.0]);
+    }
+
+    #[test]
+    fn resolve_farkas_dual_solution_keeps_solver_provided_certificate() {
+        let model = build_single_row_lp_model();
+        let mut output = SolverOutput::new(SolverStatus::Infeasible);
+        output.dual_solution = Some(vec![3.0]);
+
+        let farkas = resolve_farkas_dual_solution(&DualFallbackSolver, &model, &output)
+            .expect("solver-provided Farkas certificate should be accepted");
+        assert_eq!(farkas, vec![3.0]);
+    }
+
+    #[test]
+    fn resolve_farkas_dual_solution_truncates_extra_native_entries() {
+        let model = build_single_row_lp_model();
+        let mut output = SolverOutput::new(SolverStatus::Infeasible);
+        output.dual_solution = Some(vec![3.0, 4.0]);
+
+        let farkas = resolve_farkas_dual_solution(&DualFallbackSolver, &model, &output)
+            .expect("solver-provided Farkas certificate should be normalized to row multipliers");
+        assert_eq!(farkas, vec![3.0]);
+    }
+
+    #[test]
+    fn resolve_farkas_dual_solution_falls_back_to_explicit_model_when_missing() {
+        let model = build_single_row_lp_model();
+        let output = SolverOutput::new(SolverStatus::Infeasible);
+
+        let farkas = resolve_farkas_dual_solution(&DualFallbackSolver, &model, &output)
+            .expect("missing Farkas certificate should fall back to explicit model");
+        assert_eq!(farkas, vec![0.5]);
+    }
+
+    #[cfg(not(feature = "async"))]
+    #[test]
+    fn core_column_generation_adapter_typed_meta_shortcut_returns_typed_output() {
+        let mut meta_model = ospf_rust_core::model::MetaModel::<f64>::new("core_cg_typed_meta");
+        let x = ContinuousVariableItem::auto("core_cg_typed_meta_x");
+        let x_index = meta_model
+            .register_variable(x)
+            .expect("register variable should succeed");
+        meta_model
+            .add_linear_constraint(
+                &[(x_index, 1.0)],
+                ConstraintRelation::LessEqual,
+                2.0,
+                "core_cg_typed_meta_c",
+            )
+            .expect("add constraint should succeed");
+
+        let adapter =
+            CoreColumnGenerationAdapter::new("mock_core_cg", MockCoreColumnGenerationSolver);
+        let output = adapter
+            .solve_typed_with_options(
+                &meta_model,
+                crate::solver::FrameworkSolveOptions::new().with_value_conversion_policy(
+                    ospf_rust_core::solver::SolveValueConversionPolicy::Strict,
+                ),
+            )
+            .expect("typed solve should succeed");
+        assert!((output.obj - 1.0).abs() <= f64::EPSILON);
+        assert_eq!(output.solution, vec![2.0]);
+    }
 
     #[derive(Debug)]
     struct MockQuadraticDualSolver {
@@ -1392,7 +1962,7 @@ mod tests {
                 .expect("system time should be after unix epoch")
                 .as_nanos()
         );
-        let options = crate::solver::SolveOptions::new()
+        let options = crate::solver::FrameworkSolveOptions::new()
             .with_name(unique.clone())
             .with_log_model(true);
         export_lp_model_if_requested(&model, "mock_solver", "milp", &options)

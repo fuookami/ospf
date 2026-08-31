@@ -1792,8 +1792,8 @@ mod tests {
         ));
         basic.add_quadratic_constraint(QuadraticConstraint::new(
             QuadraticInequality::new(
-                crate::model::flatten::Quadratic::new(
-                    vec![crate::model::flatten::QuadraticMonomial::new_quadratic(
+                crate::symbol::flatten::Quadratic::new(
+                    vec![crate::symbol::flatten::QuadraticMonomial::new_quadratic(
                         1.0, 0, 0,
                     )],
                     0.0,
@@ -1860,8 +1860,8 @@ mod tests {
         ));
         basic.add_quadratic_constraint(QuadraticConstraint::new(
             QuadraticInequality::new(
-                crate::model::flatten::Quadratic::new(
-                    vec![crate::model::flatten::QuadraticMonomial::new_quadratic(
+                crate::symbol::flatten::Quadratic::new(
+                    vec![crate::symbol::flatten::QuadraticMonomial::new_quadratic(
                         1.0, 0, 0,
                     )],
                     0.0,

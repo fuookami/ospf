@@ -159,7 +159,7 @@ impl<T: Clone> Linear<T> {
 // ============================================================================
 
 use crate::symbol::OwnedSymbol;
-use crate::symbol::operation::{Evaluate, EvaluateOrdered, Evaluatable};
+use crate::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
 use std::collections::HashMap;
 
 use crate::operator::MulRef;

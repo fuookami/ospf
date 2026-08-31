@@ -1,3 +1,6 @@
+//! 索引类型模块。
+//! Indexed type module.
+
 use std::any::TypeId;
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -6,6 +9,8 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, OnceLock};
 
+/// 自动生成的索引类型。
+/// Automatically generated index type.
 #[derive(Debug, Clone)]
 pub struct Index<T: 'static> {
     index: usize,
@@ -35,6 +40,8 @@ impl<T: 'static> Display for Index<T> {
     }
 }
 
+/// 手动设置的索引类型。
+/// Manually set index type.
 #[derive(Debug, Clone)]
 pub struct ManualIndex<T: 'static> {
     index: Cell<Option<usize>>,
@@ -42,10 +49,14 @@ pub struct ManualIndex<T: 'static> {
 }
 
 impl<T: 'static> ManualIndex<T> {
+    /// 检查是否已设置索引。
+    /// Checks if index has been set.
     pub fn indexed(&self) -> bool {
         self.index.get().is_some()
     }
 
+    /// 设置索引值。
+    /// Sets the index value.
     pub fn set_index(&self, index: usize) {
         self.index.set(Some(index))
     }
@@ -82,47 +93,107 @@ impl<T: 'static> Display for ManualIndex<T> {
     }
 }
 
+/// 可索引trait。
+/// Trait for indexable types.
 pub trait Indexed<T: 'static = Self>: Sized {
+    /// 返回索引值。
+    /// Returns the index value.
     fn index(&self) -> usize;
 
+    /// 重置索引生成器。
+    /// Resets the index generator.
     fn flush() {
         Self::flush_with::<T>()
     }
 
+    /// 重置指定类型的索引生成器。
+    /// Resets the index generator for the specified type.
     fn flush_with<U: 'static>() {
         (*IndexGenerator::instance::<U>().lock().unwrap()).flush();
     }
 }
 
+/// 手动索引trait。
+/// Trait for manually indexed types.
 pub trait ManualIndexed<T: 'static = Self>: Indexed<T> {
+    /// 检查是否已设置索引。
+    /// Checks if index has been set.
     fn indexed(&self) -> bool;
 
+    /// 设置索引值。
+    /// Sets the index value.
     fn set_index(&self, index: usize);
 
+    /// 使用自动生成的索引设置当前对象。
+    /// Sets the current object with an auto-generated index.
     fn set_indexed(&self) {
         self.set_indexed_with::<T>()
     }
 
+    /// 使用自动生成的索引设置当前对象（指定类型）。
+    /// Sets the current object with an auto-generated index (specified type).
     fn set_indexed_with<U: 'static>(&self) {
-        self.set_index((*IndexGenerator::instance::<T>().lock().unwrap()).next())
+        self.set_index((*IndexGenerator::instance::<U>().lock().unwrap()).next())
+    }
+
+    /// 刷新索引为新值。
+    /// Refreshes the index to a new value.
+    fn refresh_index(&self) {
+        self.refresh_index_with::<T>()
+    }
+
+    /// 刷新索引为新值（指定类型）。
+    /// Refreshes the index to a new value (specified type).
+    fn refresh_index_with<U: 'static>(&self) {
+        self.set_index((*IndexGenerator::instance::<U>().lock().unwrap()).next())
     }
 }
 
+/// 可索引切片查找扩展。
+/// Indexed slice lookup extension.
+pub trait IndexedSliceExt<T>
+where
+    T: Indexed + 'static,
+{
+    /// 先按元素 index 查找，找不到时按切片下标获取。
+    /// Find by element index first, then fall back to slice position.
+    fn find_or_get(&self, index: usize) -> Option<&T>;
+}
+
+impl<T> IndexedSliceExt<T> for [T]
+where
+    T: Indexed + 'static,
+{
+    fn find_or_get(&self, index: usize) -> Option<&T> {
+        self.iter()
+            .find(|item| item.index() == index)
+            .or_else(|| self.get(index))
+    }
+}
+
+/// 索引生成器实现。
+/// Index generator implementation.
 pub struct IndexGeneratorImpl {
     next_index: usize,
 }
 
 impl IndexGeneratorImpl {
+    /// 创建新的索引生成器。
+    /// Creates a new index generator.
     pub fn new() -> Self {
         Self { next_index: 0 }
     }
 
+    /// 获取下一个索引。
+    /// Gets the next index.
     pub fn next(&mut self) -> usize {
         let ret = self.next_index;
         self.next_index += 1;
         ret
     }
 
+    /// 重置索引计数器。
+    /// Resets the index counter.
     pub fn flush(&mut self) {
         self.next_index = 0
     }
@@ -156,6 +227,8 @@ impl IndexGenerator {
     }
 }
 
+/// 为已定义的结构体实现`Indexed`trait。
+/// Implements the `Indexed` trait for a defined struct.
 #[macro_export]
 macro_rules! indexed_type {
     ($vis:vis struct $name:ident { $($fieldVis:vis $field:ident: $type:ty),* }) => {
@@ -191,6 +264,11 @@ macro_rules! indexed_type {
     };
 }
 
+/// 定义自动索引的结构体类型。
+/// Defines an auto-indexed struct type.
+///
+/// 自动添加`index`字段并实现`Indexed`trait。
+/// Automatically adds an `index` field and implements the `Indexed` trait.
 #[macro_export]
 macro_rules! auto_indexed_type {
     ($(#[$derive:meta])* $vis:vis struct $name:ident { $($fieldVis:vis $field:ident: $type:ty),* }) => {
@@ -204,6 +282,11 @@ macro_rules! auto_indexed_type {
     };
 }
 
+/// 定义手动索引的结构体类型。
+/// Defines a manually indexed struct type.
+///
+/// 自动添加`index`字段并实现`Indexed`和`ManualIndexed`trait。
+/// Automatically adds an `index` field and implements `Indexed` and `ManualIndexed` traits.
 #[macro_export]
 macro_rules! manual_indexed_type {
     ($(#[$derive:meta])* $vis:vis struct $name:ident { $($fieldVis:vis $field:ident: $type:ty),* }) => {
@@ -227,6 +310,11 @@ macro_rules! manual_indexed_type {
     };
 }
 
+/// 创建带索引的结构体实例。
+/// Creates an indexed struct instance.
+///
+/// 自动初始化`index`字段。
+/// Automatically initializes the `index` field.
 #[macro_export]
 macro_rules! indexed {
     ($name:ident { $($field:ident: $val:expr),* }) => {
@@ -301,10 +389,20 @@ mod tests {
         let index2: isize = (&instance2).into();
         assert_eq!(index1, 10);
         assert_eq!(index2, 0);
+
+        instance2.refresh_index();
+        assert_eq!(instance2.index(), 1);
     }
 
     auto_indexed_type! {
         pub struct TestIndexFlush {
+            pub name: &'static str,
+            pub value: u32
+        }
+    }
+
+    auto_indexed_type! {
+        pub struct TestFindOrGetIndexed {
             pub name: &'static str,
             pub value: u32
         }
@@ -324,6 +422,24 @@ mod tests {
             value: 2
         });
         assert_eq!(instance2.index(), 0);
+    }
+
+    #[test]
+    fn test_find_or_get() {
+        TestFindOrGetIndexed::flush();
+        let instance0 = indexed!(TestFindOrGetIndexed {
+            name: "test0",
+            value: 0
+        });
+        let instance1 = indexed!(TestFindOrGetIndexed {
+            name: "test1",
+            value: 1
+        });
+        let items = vec![instance1, instance0];
+
+        assert_eq!(items.find_or_get(0).map(|item| item.name), Some("test0"));
+        assert_eq!(items.find_or_get(1).map(|item| item.name), Some("test1"));
+        assert_eq!(items.find_or_get(2).map(|item| item.name), None);
     }
 }
 

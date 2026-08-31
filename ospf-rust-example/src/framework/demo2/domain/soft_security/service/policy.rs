@@ -1,7 +1,7 @@
-use crate::framework::demo2::domain::shared::mode_switch::ModeSelector;
-use crate::framework::demo2::domain::shared::pipeline_policy::PipelineSpec;
-use crate::framework::demo2::domain::soft_security::service::limits;
-use crate::framework::demo2::domain::soft_security::service::pipeline_list_generator::SoftSecurityPipelineStep;
+use crate::framework_demo::demo2::domain::shared::mode_switch::ModeSelector;
+use crate::framework_demo::demo2::domain::shared::pipeline_policy::PipelineSpec;
+use crate::framework_demo::demo2::domain::soft_security::service::limits;
+use crate::framework_demo::demo2::domain::soft_security::service::pipeline_list_generator::SoftSecurityPipelineStep;
 
 pub fn pipeline_specs() -> Vec<PipelineSpec<SoftSecurityPipelineStep>> {
     vec![

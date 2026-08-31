@@ -1,6 +1,8 @@
 # ospf-rust-quantities
 
-物理量、量纲和单位系统 / Physical quantities, dimensions and units system
+:us: English | :cn: [简体中文](README_ch.md)
+
+物理量、量纲和单位系统
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -19,8 +21,6 @@
 - **预定义单位制 / Predefined Unit Systems**: 内置 SI、MKS、CGS 等单位制
 - **泛型值类型 / Generic Value Types**: 支持 `BigDecimal`、`f64` 等多种数值类型
 - **完整的中英双语文档 / Complete Bilingual Documentation**
-
-[English Documentation / 英文文档](./README.md)
 
 ## 安装 / Installation
 

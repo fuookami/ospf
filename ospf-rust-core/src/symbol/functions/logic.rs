@@ -3,41 +3,73 @@
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
 use std::sync::Arc;
 
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::{ModelError, Result};
-use crate::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
-use crate::token::{Token, TokenList};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
+use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-    LogicFunctionSymbol,
+    LogicFunctionSymbol, auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
 use super::big_m::{BigMPolicy, infer_big_m_for_polynomials, infer_linear_abs_bound_from_tokens};
 
-fn evaluate_linear(
-    poly: &Linear<f64>,
-    token_table: &dyn TokenList<f64>,
+fn evaluate_linear<V>(
+    poly: &Linear<V>,
+    token_table: &dyn TokenList<V>,
     zero_if_none: bool,
-) -> Option<f64> {
-    let mut value = *poly.constant_term();
+) -> Option<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + Add<Output = V> + Mul<Output = V> + Zero,
+{
+    let mut value = poly.constant_term().clone();
     for monomial in poly.monomials() {
         let term_value = match token_table
             .find_by_index(monomial.var_index())
             .and_then(|token| token.get_result())
         {
             Some(v) => v,
-            None if zero_if_none => 0.0,
+            None if zero_if_none => V::zero(),
             None => return None,
         };
-        value += monomial.coefficient() * term_value;
+        value = value + monomial.coefficient().clone() * term_value;
     }
     Some(value)
+}
+
+fn to_f64<V>(value: &V) -> Option<f64>
+where
+    V: ToPrimitive,
+{
+    value.to_f64()
+}
+
+fn from_f64<V>(value: f64) -> Option<V>
+where
+    V: FromPrimitive,
+{
+    V::from_f64(value)
+}
+
+fn convert_f64_to_v<V>(value: f64, context: &str) -> Result<V>
+where
+    V: FromPrimitive,
+{
+    from_f64(value).ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "failed to convert `{}` value {} from f64 into model value type",
+            context, value
+        ))
+        .into()
+    })
 }
 
 fn as_binary(value: f64) -> f64 {
@@ -53,100 +85,155 @@ const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
 const NONZERO_TOLERANCE: f64 = f64::EPSILON * 16.0;
 const STRICT_NONZERO_BOUNDARY: f64 = NONZERO_TOLERANCE + f64::EPSILON * 16.0;
 
-fn nonzero_indicator_inequalities(
-    polynomial: &Linear<f64>,
+fn nonzero_indicator_inequalities<V>(
+    polynomial: &Linear<V>,
     indicator_index: usize,
     side_index: usize,
     big_m: f64,
     name_prefix: &str,
-) -> Vec<(LinearInequality<f64>, String)> {
+) -> Result<Vec<(LinearInequality<V>, String)>>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
     let mut constraints = Vec::with_capacity(4);
+    let mut base_monomials = Vec::with_capacity(polynomial.monomials().len());
+    for monomial in polynomial.monomials() {
+        let coefficient = to_f64(monomial.coefficient()).ok_or_else(|| {
+            ModelError::InvalidConstraint(format!(
+                "logic `{}` input coefficient cannot be converted to f64",
+                name_prefix
+            ))
+        })?;
+        base_monomials.push((coefficient, monomial.var_index()));
+    }
+    let constant = to_f64(polynomial.constant_term()).ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "logic `{}` input constant cannot be converted to f64",
+            name_prefix
+        ))
+    })?;
 
     let mut ub_monomials = Vec::with_capacity(polynomial.monomials().len() + 1);
-    for monomial in polynomial.monomials() {
+    for (coefficient, index) in &base_monomials {
         ub_monomials.push(LinearMonomial::new(
-            *monomial.coefficient(),
-            monomial.var_index(),
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
         ));
     }
-    ub_monomials.push(LinearMonomial::new(-big_m, indicator_index));
+    ub_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(-big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
     constraints.push((
         LinearInequality::new(
-            Linear::new(ub_monomials, *polynomial.constant_term()),
+            Linear::new(
+                ub_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
             ConstraintRelation::LessEqual,
-            NONZERO_TOLERANCE,
+            convert_f64_to_v::<V>(NONZERO_TOLERANCE, "logic rhs")?,
         ),
         format!("{}_band_ub", name_prefix),
     ));
 
     let mut lb_monomials = Vec::with_capacity(polynomial.monomials().len() + 1);
-    for monomial in polynomial.monomials() {
+    for (coefficient, index) in &base_monomials {
         lb_monomials.push(LinearMonomial::new(
-            *monomial.coefficient(),
-            monomial.var_index(),
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
         ));
     }
-    lb_monomials.push(LinearMonomial::new(big_m, indicator_index));
+    lb_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
     constraints.push((
         LinearInequality::new(
-            Linear::new(lb_monomials, *polynomial.constant_term()),
+            Linear::new(
+                lb_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
             ConstraintRelation::GreaterEqual,
-            -NONZERO_TOLERANCE,
+            convert_f64_to_v::<V>(-NONZERO_TOLERANCE, "logic rhs")?,
         ),
         format!("{}_band_lb", name_prefix),
     ));
 
     let mut out_lb_monomials = Vec::with_capacity(polynomial.monomials().len() + 2);
-    for monomial in polynomial.monomials() {
+    for (coefficient, index) in &base_monomials {
         out_lb_monomials.push(LinearMonomial::new(
-            *monomial.coefficient(),
-            monomial.var_index(),
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
         ));
     }
-    out_lb_monomials.push(LinearMonomial::new(-big_m, indicator_index));
-    out_lb_monomials.push(LinearMonomial::new(-big_m, side_index));
+    out_lb_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(-big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
+    out_lb_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(-big_m, "logic side coefficient")?,
+        side_index,
+    ));
     constraints.push((
         LinearInequality::new(
-            Linear::new(out_lb_monomials, *polynomial.constant_term()),
+            Linear::new(
+                out_lb_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
             ConstraintRelation::GreaterEqual,
-            STRICT_NONZERO_BOUNDARY - 2.0 * big_m,
+            convert_f64_to_v::<V>(STRICT_NONZERO_BOUNDARY - 2.0 * big_m, "logic rhs")?,
         ),
         format!("{}_out_lb", name_prefix),
     ));
 
     let mut out_ub_monomials = Vec::with_capacity(polynomial.monomials().len() + 2);
-    for monomial in polynomial.monomials() {
+    for (coefficient, index) in &base_monomials {
         out_ub_monomials.push(LinearMonomial::new(
-            *monomial.coefficient(),
-            monomial.var_index(),
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
         ));
     }
-    out_ub_monomials.push(LinearMonomial::new(big_m, indicator_index));
-    out_ub_monomials.push(LinearMonomial::new(-big_m, side_index));
+    out_ub_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
+    out_ub_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(-big_m, "logic side coefficient")?,
+        side_index,
+    ));
     constraints.push((
         LinearInequality::new(
-            Linear::new(out_ub_monomials, *polynomial.constant_term()),
+            Linear::new(
+                out_ub_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
             ConstraintRelation::LessEqual,
-            -STRICT_NONZERO_BOUNDARY + big_m,
+            convert_f64_to_v::<V>(-STRICT_NONZERO_BOUNDARY + big_m, "logic rhs")?,
         ),
         format!("{}_out_ub", name_prefix),
     ));
 
-    constraints
+    Ok(constraints)
 }
 
 /// 与函数 / And Function
-#[derive(Debug)]
-pub struct AndFunction {
+#[derive(Debug, Clone)]
+pub struct AndFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     id: IntermediateSymbolId,
-    polynomials: Vec<Linear<f64>>,
+    polynomials: Vec<Linear<V>>,
     result_var: BinaryVariableItem,
     indicator_vars: Vec<BinaryVariableItem>,
     side_vars: Vec<BinaryVariableItem>,
 }
 
-impl AndFunction {
-    pub fn new(id: u64, name: &str, polynomials: Vec<Linear<f64>>) -> Self {
+impl<V> AndFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    pub fn new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> Self {
         let n = polynomials.len();
         let group_id = new_group_id();
         let result_var =
@@ -177,7 +264,25 @@ impl AndFunction {
         }
     }
 
-    pub fn polynomials(&self) -> &[Linear<f64>] {
+    /// 使用自动 ID 与调用方提供的名称创建 and 函数。
+    /// Create an and function with an auto id and caller-provided name.
+    pub fn named(name: impl AsRef<str>, polynomials: Vec<Linear<V>>) -> Self {
+        Self::new(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            polynomials,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建 and 函数。
+    /// Create an and function with an auto id and auto-generated name.
+    pub fn auto(polynomials: Vec<Linear<V>>) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("and", id);
+        Self::new(id, &name, polynomials)
+    }
+
+    pub fn polynomials(&self) -> &[Linear<V>] {
         &self.polynomials
     }
 
@@ -194,16 +299,34 @@ impl AndFunction {
     }
 }
 
-impl AndFunction {
-    fn infer_big_m_from_tokens(&self, tokens: &[Token<f64>]) -> Option<f64> {
+impl<V> AndFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
         infer_big_m_for_polynomials(&self.polynomials, tokens, BIG_M_POLICY.min())
     }
+}
 
+impl<V> AndFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
     fn build_mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
         big_m: f64,
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+    ) -> Result<Vec<LinearConstraint<V>>> {
         if self.polynomials.len() != self.indicator_vars.len()
             || self.polynomials.len() != self.side_vars.len()
         {
@@ -255,7 +378,7 @@ impl AndFunction {
                 side_index,
                 big_m,
                 &format!("{}_and_nz_{}", self.id.name, i),
-            ) {
+            )? {
                 constraints.push(LinearConstraint::from_symbol(
                     inequality,
                     &name,
@@ -267,9 +390,15 @@ impl AndFunction {
         if indicator_indices.is_empty() {
             constraints.push(LinearConstraint::from_symbol(
                 LinearInequality::new(
-                    Linear::new(vec![LinearMonomial::new(1.0, result_index)], 0.0),
+                    Linear::new(
+                        vec![LinearMonomial::new(
+                            convert_f64_to_v::<V>(1.0, "and result coefficient")?,
+                            result_index,
+                        )],
+                        convert_f64_to_v::<V>(0.0, "and constant")?,
+                    ),
                     ConstraintRelation::Equal,
-                    1.0,
+                    convert_f64_to_v::<V>(1.0, "and rhs")?,
                 ),
                 &format!("{}_and_empty", self.id.name),
                 source,
@@ -282,13 +411,19 @@ impl AndFunction {
                 LinearInequality::new(
                     Linear::new(
                         vec![
-                            LinearMonomial::new(1.0, result_index),
-                            LinearMonomial::new(-1.0, indicator_index),
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(1.0, "and result coefficient")?,
+                                result_index,
+                            ),
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(-1.0, "and indicator coefficient")?,
+                                indicator_index,
+                            ),
                         ],
-                        0.0,
+                        convert_f64_to_v::<V>(0.0, "and constant")?,
                     ),
                     ConstraintRelation::LessEqual,
-                    0.0,
+                    convert_f64_to_v::<V>(0.0, "and rhs")?,
                 ),
                 &format!("{}_and_link_ub_{}", self.id.name, i),
                 Arc::new(self.clone()),
@@ -296,15 +431,21 @@ impl AndFunction {
         }
 
         let mut lb_monomials = Vec::with_capacity(indicator_indices.len() + 1);
-        lb_monomials.push(LinearMonomial::new(1.0, result_index));
+        lb_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(1.0, "and result coefficient")?,
+            result_index,
+        ));
         for indicator_index in &indicator_indices {
-            lb_monomials.push(LinearMonomial::new(-1.0, *indicator_index));
+            lb_monomials.push(LinearMonomial::new(
+                convert_f64_to_v::<V>(-1.0, "and indicator coefficient")?,
+                *indicator_index,
+            ));
         }
         constraints.push(LinearConstraint::from_symbol(
             LinearInequality::new(
-                Linear::new(lb_monomials, 0.0),
+                Linear::new(lb_monomials, convert_f64_to_v::<V>(0.0, "and constant")?),
                 ConstraintRelation::GreaterEqual,
-                1.0 - indicator_indices.len() as f64,
+                convert_f64_to_v::<V>(1.0 - indicator_indices.len() as f64, "and rhs")?,
             ),
             &format!("{}_and_link_lb", self.id.name),
             Arc::new(self.clone()),
@@ -314,25 +455,19 @@ impl AndFunction {
     }
 }
 
-impl Clone for AndFunction {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id.clone(),
-            polynomials: self.polynomials.clone(),
-            result_var: self.result_var.clone(),
-            indicator_vars: self.indicator_vars.clone(),
-            side_vars: self.side_vars.clone(),
-        }
-    }
-}
-
-impl Display for AndFunction {
+impl<V> Display for AndFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "and({})", self.id.name)
     }
 }
 
-impl DynSymbol for AndFunction {
+impl<V> DynSymbol for AndFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     fn name(&self) -> &str {
         &self.id.name
     }
@@ -350,7 +485,10 @@ impl DynSymbol for AndFunction {
     }
 }
 
-impl Symbol for AndFunction {
+impl<V> Symbol for AndFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     type Id = IntermediateSymbolId;
 
     fn id(&self) -> Self::Id {
@@ -358,7 +496,20 @@ impl Symbol for AndFunction {
     }
 }
 
-impl IntermediateSymbol for AndFunction {
+impl<V> IntermediateSymbol<V> for AndFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
     fn category(&self) -> Category {
         Category::Linear
     }
@@ -367,42 +518,42 @@ impl IntermediateSymbol for AndFunction {
         false
     }
 
-    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol>> {
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
         HashSet::new()
     }
 
     fn flush(&self, _force: bool) {}
 
-    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<f64>>) -> Result<()> {
-        <Self as FunctionSymbol>::register_tokens(self, tokens)
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
     }
 
     fn mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+    ) -> Result<Vec<LinearConstraint<V>>> {
         self.build_mechanism_constraints(symbol_to_index, BIG_M_POLICY.fallback())
     }
 
     fn mechanism_constraints_with_tokens(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
-        tokens: &[Token<f64>],
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
         let big_m = BIG_M_POLICY.resolve(self.infer_big_m_from_tokens(tokens));
         self.build_mechanism_constraints(symbol_to_index, big_m)
     }
 
     fn evaluate_from_tokens(
         &self,
-        token_table: &dyn TokenList<f64>,
+        token_table: &dyn TokenList<V>,
         zero_if_none: bool,
-    ) -> Option<f64> {
-        <Self as FunctionSymbol>::calculate_value(self, token_table, zero_if_none)
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
     }
 
-    fn prepare(&self, values: &std::collections::HashMap<usize, f64>) -> Option<f64> {
-        values.get(&self.result_var.index()).copied()
+    fn prepare(&self, values: &std::collections::HashMap<usize, V>) -> Option<V> {
+        values.get(&self.result_var.index()).cloned()
     }
 
     fn to_raw_string(&self, _unfold: u64) -> String {
@@ -410,8 +561,21 @@ impl IntermediateSymbol for AndFunction {
     }
 }
 
-impl FunctionSymbol for AndFunction {
-    fn register_tokens(&self, tokens: &mut Vec<Token<f64>>) -> Result<()> {
+impl<V> FunctionSymbol<V> for AndFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
         tokens.push(Token::from_generic(
             self.result_var.clone(),
             self.result_var.index(),
@@ -428,41 +592,80 @@ impl FunctionSymbol for AndFunction {
         Ok(())
     }
 
-    fn calculate_value(&self, token_table: &dyn TokenList<f64>, zero_if_none: bool) -> Option<f64> {
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
         for polynomial in &self.polynomials {
             let value = evaluate_linear(polynomial, token_table, zero_if_none)?;
-            if as_binary(value) == 0.0 {
-                return Some(0.0);
+            if as_binary(to_f64(&value)?) == 0.0 {
+                return from_f64(0.0);
             }
         }
-        Some(1.0)
+        from_f64(1.0)
     }
 }
 
-impl LinearIntermediateSymbol for AndFunction {
-    fn to_linear_polynomial(&self) -> Linear<f64> {
-        Linear::new(vec![LinearMonomial::new(1.0, self.result_var.index())], 0.0)
+impl<V> LinearIntermediateSymbol<V> for AndFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                self.result_var.index(),
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        )
     }
 
-    fn to_quadratic_polynomial(&self) -> Quadratic<f64> {
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
         Quadratic::from_linear(&self.to_linear_polynomial())
     }
 }
 
-impl LogicFunctionSymbol for AndFunction {}
+impl<V> LogicFunctionSymbol<V> for AndFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+}
 
 /// 或函数 / Or Function
-#[derive(Debug)]
-pub struct OrFunction {
+#[derive(Debug, Clone)]
+pub struct OrFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     id: IntermediateSymbolId,
-    polynomials: Vec<Linear<f64>>,
+    polynomials: Vec<Linear<V>>,
     result_var: BinaryVariableItem,
     indicator_vars: Vec<BinaryVariableItem>,
     side_vars: Vec<BinaryVariableItem>,
 }
 
-impl OrFunction {
-    pub fn new(id: u64, name: &str, polynomials: Vec<Linear<f64>>) -> Self {
+impl<V> OrFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    pub fn new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> Self {
         let n = polynomials.len();
         let group_id = new_group_id();
         let result_var =
@@ -493,7 +696,25 @@ impl OrFunction {
         }
     }
 
-    pub fn polynomials(&self) -> &[Linear<f64>] {
+    /// 使用自动 ID 与调用方提供的名称创建 or 函数。
+    /// Create an or function with an auto id and caller-provided name.
+    pub fn named(name: impl AsRef<str>, polynomials: Vec<Linear<V>>) -> Self {
+        Self::new(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            polynomials,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建 or 函数。
+    /// Create an or function with an auto id and auto-generated name.
+    pub fn auto(polynomials: Vec<Linear<V>>) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("or", id);
+        Self::new(id, &name, polynomials)
+    }
+
+    pub fn polynomials(&self) -> &[Linear<V>] {
         &self.polynomials
     }
 
@@ -510,16 +731,34 @@ impl OrFunction {
     }
 }
 
-impl OrFunction {
-    fn infer_big_m_from_tokens(&self, tokens: &[Token<f64>]) -> Option<f64> {
+impl<V> OrFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
         infer_big_m_for_polynomials(&self.polynomials, tokens, BIG_M_POLICY.min())
     }
+}
 
+impl<V> OrFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
     fn build_mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
         big_m: f64,
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+    ) -> Result<Vec<LinearConstraint<V>>> {
         if self.polynomials.len() != self.indicator_vars.len()
             || self.polynomials.len() != self.side_vars.len()
         {
@@ -571,7 +810,7 @@ impl OrFunction {
                 side_index,
                 big_m,
                 &format!("{}_or_nz_{}", self.id.name, i),
-            ) {
+            )? {
                 constraints.push(LinearConstraint::from_symbol(
                     inequality,
                     &name,
@@ -583,9 +822,15 @@ impl OrFunction {
         if indicator_indices.is_empty() {
             constraints.push(LinearConstraint::from_symbol(
                 LinearInequality::new(
-                    Linear::new(vec![LinearMonomial::new(1.0, result_index)], 0.0),
+                    Linear::new(
+                        vec![LinearMonomial::new(
+                            convert_f64_to_v::<V>(1.0, "or result coefficient")?,
+                            result_index,
+                        )],
+                        convert_f64_to_v::<V>(0.0, "or constant")?,
+                    ),
                     ConstraintRelation::Equal,
-                    0.0,
+                    convert_f64_to_v::<V>(0.0, "or rhs")?,
                 ),
                 &format!("{}_or_empty", self.id.name),
                 source,
@@ -598,13 +843,19 @@ impl OrFunction {
                 LinearInequality::new(
                     Linear::new(
                         vec![
-                            LinearMonomial::new(1.0, result_index),
-                            LinearMonomial::new(-1.0, indicator_index),
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(1.0, "or result coefficient")?,
+                                result_index,
+                            ),
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(-1.0, "or indicator coefficient")?,
+                                indicator_index,
+                            ),
                         ],
-                        0.0,
+                        convert_f64_to_v::<V>(0.0, "or constant")?,
                     ),
                     ConstraintRelation::GreaterEqual,
-                    0.0,
+                    convert_f64_to_v::<V>(0.0, "or rhs")?,
                 ),
                 &format!("{}_or_link_lb_{}", self.id.name, i),
                 Arc::new(self.clone()),
@@ -612,15 +863,21 @@ impl OrFunction {
         }
 
         let mut ub_monomials = Vec::with_capacity(indicator_indices.len() + 1);
-        ub_monomials.push(LinearMonomial::new(1.0, result_index));
+        ub_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(1.0, "or result coefficient")?,
+            result_index,
+        ));
         for indicator_index in &indicator_indices {
-            ub_monomials.push(LinearMonomial::new(-1.0, *indicator_index));
+            ub_monomials.push(LinearMonomial::new(
+                convert_f64_to_v::<V>(-1.0, "or indicator coefficient")?,
+                *indicator_index,
+            ));
         }
         constraints.push(LinearConstraint::from_symbol(
             LinearInequality::new(
-                Linear::new(ub_monomials, 0.0),
+                Linear::new(ub_monomials, convert_f64_to_v::<V>(0.0, "or constant")?),
                 ConstraintRelation::LessEqual,
-                0.0,
+                convert_f64_to_v::<V>(0.0, "or rhs")?,
             ),
             &format!("{}_or_link_ub", self.id.name),
             Arc::new(self.clone()),
@@ -630,25 +887,19 @@ impl OrFunction {
     }
 }
 
-impl Clone for OrFunction {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id.clone(),
-            polynomials: self.polynomials.clone(),
-            result_var: self.result_var.clone(),
-            indicator_vars: self.indicator_vars.clone(),
-            side_vars: self.side_vars.clone(),
-        }
-    }
-}
-
-impl Display for OrFunction {
+impl<V> Display for OrFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "or({})", self.id.name)
     }
 }
 
-impl DynSymbol for OrFunction {
+impl<V> DynSymbol for OrFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     fn name(&self) -> &str {
         &self.id.name
     }
@@ -666,7 +917,10 @@ impl DynSymbol for OrFunction {
     }
 }
 
-impl Symbol for OrFunction {
+impl<V> Symbol for OrFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     type Id = IntermediateSymbolId;
 
     fn id(&self) -> Self::Id {
@@ -674,7 +928,20 @@ impl Symbol for OrFunction {
     }
 }
 
-impl IntermediateSymbol for OrFunction {
+impl<V> IntermediateSymbol<V> for OrFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
     fn category(&self) -> Category {
         Category::Linear
     }
@@ -683,42 +950,42 @@ impl IntermediateSymbol for OrFunction {
         false
     }
 
-    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol>> {
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
         HashSet::new()
     }
 
     fn flush(&self, _force: bool) {}
 
-    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<f64>>) -> Result<()> {
-        <Self as FunctionSymbol>::register_tokens(self, tokens)
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
     }
 
     fn mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+    ) -> Result<Vec<LinearConstraint<V>>> {
         self.build_mechanism_constraints(symbol_to_index, BIG_M_POLICY.fallback())
     }
 
     fn mechanism_constraints_with_tokens(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
-        tokens: &[Token<f64>],
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
         let big_m = BIG_M_POLICY.resolve(self.infer_big_m_from_tokens(tokens));
         self.build_mechanism_constraints(symbol_to_index, big_m)
     }
 
     fn evaluate_from_tokens(
         &self,
-        token_table: &dyn TokenList<f64>,
+        token_table: &dyn TokenList<V>,
         zero_if_none: bool,
-    ) -> Option<f64> {
-        <Self as FunctionSymbol>::calculate_value(self, token_table, zero_if_none)
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
     }
 
-    fn prepare(&self, values: &std::collections::HashMap<usize, f64>) -> Option<f64> {
-        values.get(&self.result_var.index()).copied()
+    fn prepare(&self, values: &std::collections::HashMap<usize, V>) -> Option<V> {
+        values.get(&self.result_var.index()).cloned()
     }
 
     fn to_raw_string(&self, _unfold: u64) -> String {
@@ -726,8 +993,21 @@ impl IntermediateSymbol for OrFunction {
     }
 }
 
-impl FunctionSymbol for OrFunction {
-    fn register_tokens(&self, tokens: &mut Vec<Token<f64>>) -> Result<()> {
+impl<V> FunctionSymbol<V> for OrFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
         tokens.push(Token::from_generic(
             self.result_var.clone(),
             self.result_var.index(),
@@ -744,41 +1024,80 @@ impl FunctionSymbol for OrFunction {
         Ok(())
     }
 
-    fn calculate_value(&self, token_table: &dyn TokenList<f64>, zero_if_none: bool) -> Option<f64> {
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
         for polynomial in &self.polynomials {
             let value = evaluate_linear(polynomial, token_table, zero_if_none)?;
-            if as_binary(value) > 0.0 {
-                return Some(1.0);
+            if as_binary(to_f64(&value)?) > 0.0 {
+                return from_f64(1.0);
             }
         }
-        Some(0.0)
+        from_f64(0.0)
     }
 }
 
-impl LinearIntermediateSymbol for OrFunction {
-    fn to_linear_polynomial(&self) -> Linear<f64> {
-        Linear::new(vec![LinearMonomial::new(1.0, self.result_var.index())], 0.0)
+impl<V> LinearIntermediateSymbol<V> for OrFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                self.result_var.index(),
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        )
     }
 
-    fn to_quadratic_polynomial(&self) -> Quadratic<f64> {
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
         Quadratic::from_linear(&self.to_linear_polynomial())
     }
 }
 
-impl LogicFunctionSymbol for OrFunction {}
+impl<V> LogicFunctionSymbol<V> for OrFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+}
 
 /// 非函数 / Not Function
-#[derive(Debug)]
-pub struct NotFunction {
+#[derive(Debug, Clone)]
+pub struct NotFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     id: IntermediateSymbolId,
-    polynomial: Linear<f64>,
+    polynomial: Linear<V>,
     result_var: BinaryVariableItem,
     indicator_var: BinaryVariableItem,
     side_var: BinaryVariableItem,
 }
 
-impl NotFunction {
-    pub fn new(id: u64, name: &str, polynomial: Linear<f64>) -> Self {
+impl<V> NotFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    pub fn new(id: u64, name: &str, polynomial: Linear<V>) -> Self {
         let group_id = new_group_id();
         let result_var =
             BinaryVariableItem::create(VariableId::new(group_id, 0), &format!("{}_not", name));
@@ -796,7 +1115,25 @@ impl NotFunction {
         }
     }
 
-    pub fn polynomial(&self) -> &Linear<f64> {
+    /// 使用自动 ID 与调用方提供的名称创建 not 函数。
+    /// Create a not function with an auto id and caller-provided name.
+    pub fn named(name: impl AsRef<str>, polynomial: Linear<V>) -> Self {
+        Self::new(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            polynomial,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建 not 函数。
+    /// Create a not function with an auto id and auto-generated name.
+    pub fn auto(polynomial: Linear<V>) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("not", id);
+        Self::new(id, &name, polynomial)
+    }
+
+    pub fn polynomial(&self) -> &Linear<V> {
         &self.polynomial
     }
 
@@ -813,17 +1150,35 @@ impl NotFunction {
     }
 }
 
-impl NotFunction {
-    fn infer_big_m_from_tokens(&self, tokens: &[Token<f64>]) -> Option<f64> {
+impl<V> NotFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
         infer_linear_abs_bound_from_tokens(&self.polynomial, tokens)
             .map(|bound| bound.max(BIG_M_POLICY.min()))
     }
+}
 
+impl<V> NotFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
     fn build_mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
         big_m: f64,
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+    ) -> Result<Vec<LinearConstraint<V>>> {
         let result_index = symbol_to_index
             .get(&(self.result_var.id().unique_id() as usize))
             .copied()
@@ -860,7 +1215,7 @@ impl NotFunction {
             side_index,
             big_m,
             &format!("{}_not_nz", self.id.name),
-        ) {
+        )? {
             constraints.push(LinearConstraint::from_symbol(
                 inequality,
                 &name,
@@ -872,13 +1227,19 @@ impl NotFunction {
             LinearInequality::new(
                 Linear::new(
                     vec![
-                        LinearMonomial::new(1.0, result_index),
-                        LinearMonomial::new(1.0, indicator_index),
+                        LinearMonomial::new(
+                            convert_f64_to_v::<V>(1.0, "not result coefficient")?,
+                            result_index,
+                        ),
+                        LinearMonomial::new(
+                            convert_f64_to_v::<V>(1.0, "not indicator coefficient")?,
+                            indicator_index,
+                        ),
                     ],
-                    0.0,
+                    convert_f64_to_v::<V>(0.0, "not constant")?,
                 ),
                 ConstraintRelation::Equal,
-                1.0,
+                convert_f64_to_v::<V>(1.0, "not rhs")?,
             ),
             &format!("{}_not_link", self.id.name),
             source,
@@ -888,25 +1249,19 @@ impl NotFunction {
     }
 }
 
-impl Clone for NotFunction {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id.clone(),
-            polynomial: self.polynomial.clone(),
-            result_var: self.result_var.clone(),
-            indicator_var: self.indicator_var.clone(),
-            side_var: self.side_var.clone(),
-        }
-    }
-}
-
-impl Display for NotFunction {
+impl<V> Display for NotFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "not({})", self.id.name)
     }
 }
 
-impl DynSymbol for NotFunction {
+impl<V> DynSymbol for NotFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     fn name(&self) -> &str {
         &self.id.name
     }
@@ -924,7 +1279,10 @@ impl DynSymbol for NotFunction {
     }
 }
 
-impl Symbol for NotFunction {
+impl<V> Symbol for NotFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     type Id = IntermediateSymbolId;
 
     fn id(&self) -> Self::Id {
@@ -932,7 +1290,20 @@ impl Symbol for NotFunction {
     }
 }
 
-impl IntermediateSymbol for NotFunction {
+impl<V> IntermediateSymbol<V> for NotFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
     fn category(&self) -> Category {
         Category::Linear
     }
@@ -941,42 +1312,42 @@ impl IntermediateSymbol for NotFunction {
         false
     }
 
-    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol>> {
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
         HashSet::new()
     }
 
     fn flush(&self, _force: bool) {}
 
-    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<f64>>) -> Result<()> {
-        <Self as FunctionSymbol>::register_tokens(self, tokens)
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
     }
 
     fn mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+    ) -> Result<Vec<LinearConstraint<V>>> {
         self.build_mechanism_constraints(symbol_to_index, BIG_M_POLICY.fallback())
     }
 
     fn mechanism_constraints_with_tokens(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
-        tokens: &[Token<f64>],
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
         let big_m = BIG_M_POLICY.resolve(self.infer_big_m_from_tokens(tokens));
         self.build_mechanism_constraints(symbol_to_index, big_m)
     }
 
     fn evaluate_from_tokens(
         &self,
-        token_table: &dyn TokenList<f64>,
+        token_table: &dyn TokenList<V>,
         zero_if_none: bool,
-    ) -> Option<f64> {
-        <Self as FunctionSymbol>::calculate_value(self, token_table, zero_if_none)
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
     }
 
-    fn prepare(&self, values: &std::collections::HashMap<usize, f64>) -> Option<f64> {
-        values.get(&self.result_var.index()).copied()
+    fn prepare(&self, values: &std::collections::HashMap<usize, V>) -> Option<V> {
+        values.get(&self.result_var.index()).cloned()
     }
 
     fn to_raw_string(&self, _unfold: u64) -> String {
@@ -984,8 +1355,21 @@ impl IntermediateSymbol for NotFunction {
     }
 }
 
-impl FunctionSymbol for NotFunction {
-    fn register_tokens(&self, tokens: &mut Vec<Token<f64>>) -> Result<()> {
+impl<V> FunctionSymbol<V> for NotFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
         tokens.push(Token::from_generic(
             self.result_var.clone(),
             self.result_var.index(),
@@ -1001,40 +1385,79 @@ impl FunctionSymbol for NotFunction {
         Ok(())
     }
 
-    fn calculate_value(&self, token_table: &dyn TokenList<f64>, zero_if_none: bool) -> Option<f64> {
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
         let value = evaluate_linear(&self.polynomial, token_table, zero_if_none)?;
-        if as_binary(value) == 0.0 {
-            Some(1.0)
+        if as_binary(to_f64(&value)?) == 0.0 {
+            from_f64(1.0)
         } else {
-            Some(0.0)
+            from_f64(0.0)
         }
     }
 }
 
-impl LinearIntermediateSymbol for NotFunction {
-    fn to_linear_polynomial(&self) -> Linear<f64> {
-        Linear::new(vec![LinearMonomial::new(1.0, self.result_var.index())], 0.0)
+impl<V> LinearIntermediateSymbol<V> for NotFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                self.result_var.index(),
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        )
     }
 
-    fn to_quadratic_polynomial(&self) -> Quadratic<f64> {
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
         Quadratic::from_linear(&self.to_linear_polynomial())
     }
 }
 
-impl LogicFunctionSymbol for NotFunction {}
+impl<V> LogicFunctionSymbol<V> for NotFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+}
 
 /// 异或函数 / Xor Function
-#[derive(Debug)]
-pub struct XorFunction {
+#[derive(Debug, Clone)]
+pub struct XorFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     id: IntermediateSymbolId,
-    polynomials: Vec<Linear<f64>>,
+    polynomials: Vec<Linear<V>>,
     result_var: BinaryVariableItem,
     indicator_vars: Vec<BinaryVariableItem>,
     side_vars: Vec<BinaryVariableItem>,
 }
 
-impl XorFunction {
-    pub fn new(id: u64, name: &str, polynomials: Vec<Linear<f64>>) -> Self {
+impl<V> XorFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    pub fn new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> Self {
         assert!(
             polynomials.len() >= 2,
             "XorFunction requires at least two input polynomials.",
@@ -1069,7 +1492,25 @@ impl XorFunction {
         }
     }
 
-    pub fn polynomials(&self) -> &[Linear<f64>] {
+    /// 使用自动 ID 与调用方提供的名称创建 xor 函数。
+    /// Create a xor function with an auto id and caller-provided name.
+    pub fn named(name: impl AsRef<str>, polynomials: Vec<Linear<V>>) -> Self {
+        Self::new(
+            next_auto_intermediate_symbol_id(),
+            name.as_ref(),
+            polynomials,
+        )
+    }
+
+    /// 使用自动 ID 与自动名称创建 xor 函数。
+    /// Create a xor function with an auto id and auto-generated name.
+    pub fn auto(polynomials: Vec<Linear<V>>) -> Self {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("xor", id);
+        Self::new(id, &name, polynomials)
+    }
+
+    pub fn polynomials(&self) -> &[Linear<V>] {
         &self.polynomials
     }
 
@@ -1086,16 +1527,34 @@ impl XorFunction {
     }
 }
 
-impl XorFunction {
-    fn infer_big_m_from_tokens(&self, tokens: &[Token<f64>]) -> Option<f64> {
+impl<V> XorFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
         infer_big_m_for_polynomials(&self.polynomials, tokens, BIG_M_POLICY.min())
     }
+}
 
+impl<V> XorFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
     fn build_mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
         big_m: f64,
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+    ) -> Result<Vec<LinearConstraint<V>>> {
         if self.polynomials.len() != self.indicator_vars.len()
             || self.polynomials.len() != self.side_vars.len()
         {
@@ -1147,7 +1606,7 @@ impl XorFunction {
                 side_index,
                 big_m,
                 &format!("{}_xor_nz_{}", self.id.name, i),
-            ) {
+            )? {
                 constraints.push(LinearConstraint::from_symbol(
                     inequality,
                     &name,
@@ -1157,30 +1616,45 @@ impl XorFunction {
         }
 
         let mut sum_monomials = Vec::with_capacity(indicator_indices.len() + 1);
-        sum_monomials.push(LinearMonomial::new(1.0, result_index));
+        sum_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(1.0, "xor result coefficient")?,
+            result_index,
+        ));
         for indicator_index in &indicator_indices {
-            sum_monomials.push(LinearMonomial::new(-1.0, *indicator_index));
+            sum_monomials.push(LinearMonomial::new(
+                convert_f64_to_v::<V>(-1.0, "xor indicator coefficient")?,
+                *indicator_index,
+            ));
         }
         constraints.push(LinearConstraint::from_symbol(
             LinearInequality::new(
-                Linear::new(sum_monomials, 0.0),
+                Linear::new(sum_monomials, convert_f64_to_v::<V>(0.0, "xor constant")?),
                 ConstraintRelation::LessEqual,
-                0.0,
+                convert_f64_to_v::<V>(0.0, "xor rhs")?,
             ),
             &format!("{}_xor_sum_ub", self.id.name),
             source.clone(),
         ));
 
         let mut all_one_monomials = Vec::with_capacity(indicator_indices.len() + 1);
-        all_one_monomials.push(LinearMonomial::new(1.0, result_index));
+        all_one_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(1.0, "xor result coefficient")?,
+            result_index,
+        ));
         for indicator_index in &indicator_indices {
-            all_one_monomials.push(LinearMonomial::new(1.0, *indicator_index));
+            all_one_monomials.push(LinearMonomial::new(
+                convert_f64_to_v::<V>(1.0, "xor indicator coefficient")?,
+                *indicator_index,
+            ));
         }
         constraints.push(LinearConstraint::from_symbol(
             LinearInequality::new(
-                Linear::new(all_one_monomials, 0.0),
+                Linear::new(
+                    all_one_monomials,
+                    convert_f64_to_v::<V>(0.0, "xor constant")?,
+                ),
                 ConstraintRelation::LessEqual,
-                indicator_indices.len() as f64,
+                convert_f64_to_v::<V>(indicator_indices.len() as f64, "xor rhs")?,
             ),
             &format!("{}_xor_all_one_ub", self.id.name),
             source.clone(),
@@ -1192,14 +1666,23 @@ impl XorFunction {
                     LinearInequality::new(
                         Linear::new(
                             vec![
-                                LinearMonomial::new(1.0, result_index),
-                                LinearMonomial::new(-1.0, indicator_indices[i]),
-                                LinearMonomial::new(1.0, indicator_indices[j]),
+                                LinearMonomial::new(
+                                    convert_f64_to_v::<V>(1.0, "xor result coefficient")?,
+                                    result_index,
+                                ),
+                                LinearMonomial::new(
+                                    convert_f64_to_v::<V>(-1.0, "xor left indicator coefficient")?,
+                                    indicator_indices[i],
+                                ),
+                                LinearMonomial::new(
+                                    convert_f64_to_v::<V>(1.0, "xor right indicator coefficient")?,
+                                    indicator_indices[j],
+                                ),
                             ],
-                            0.0,
+                            convert_f64_to_v::<V>(0.0, "xor constant")?,
                         ),
                         ConstraintRelation::GreaterEqual,
-                        0.0,
+                        convert_f64_to_v::<V>(0.0, "xor rhs")?,
                     ),
                     &format!("{}_xor_diff_lb_{}_{}", self.id.name, i, j),
                     source.clone(),
@@ -1208,14 +1691,23 @@ impl XorFunction {
                     LinearInequality::new(
                         Linear::new(
                             vec![
-                                LinearMonomial::new(1.0, result_index),
-                                LinearMonomial::new(1.0, indicator_indices[i]),
-                                LinearMonomial::new(-1.0, indicator_indices[j]),
+                                LinearMonomial::new(
+                                    convert_f64_to_v::<V>(1.0, "xor result coefficient")?,
+                                    result_index,
+                                ),
+                                LinearMonomial::new(
+                                    convert_f64_to_v::<V>(1.0, "xor left indicator coefficient")?,
+                                    indicator_indices[i],
+                                ),
+                                LinearMonomial::new(
+                                    convert_f64_to_v::<V>(-1.0, "xor right indicator coefficient")?,
+                                    indicator_indices[j],
+                                ),
                             ],
-                            0.0,
+                            convert_f64_to_v::<V>(0.0, "xor constant")?,
                         ),
                         ConstraintRelation::GreaterEqual,
-                        0.0,
+                        convert_f64_to_v::<V>(0.0, "xor rhs")?,
                     ),
                     &format!("{}_xor_diff_lb_{}_{}_rev", self.id.name, i, j),
                     source.clone(),
@@ -1227,25 +1719,19 @@ impl XorFunction {
     }
 }
 
-impl Clone for XorFunction {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id.clone(),
-            polynomials: self.polynomials.clone(),
-            result_var: self.result_var.clone(),
-            indicator_vars: self.indicator_vars.clone(),
-            side_vars: self.side_vars.clone(),
-        }
-    }
-}
-
-impl Display for XorFunction {
+impl<V> Display for XorFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "xor({})", self.id.name)
     }
 }
 
-impl DynSymbol for XorFunction {
+impl<V> DynSymbol for XorFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     fn name(&self) -> &str {
         &self.id.name
     }
@@ -1263,7 +1749,10 @@ impl DynSymbol for XorFunction {
     }
 }
 
-impl Symbol for XorFunction {
+impl<V> Symbol for XorFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
     type Id = IntermediateSymbolId;
 
     fn id(&self) -> Self::Id {
@@ -1271,7 +1760,20 @@ impl Symbol for XorFunction {
     }
 }
 
-impl IntermediateSymbol for XorFunction {
+impl<V> IntermediateSymbol<V> for XorFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
     fn category(&self) -> Category {
         Category::Linear
     }
@@ -1280,42 +1782,42 @@ impl IntermediateSymbol for XorFunction {
         false
     }
 
-    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol>> {
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
         HashSet::new()
     }
 
     fn flush(&self, _force: bool) {}
 
-    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<f64>>) -> Result<()> {
-        <Self as FunctionSymbol>::register_tokens(self, tokens)
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
     }
 
     fn mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+    ) -> Result<Vec<LinearConstraint<V>>> {
         self.build_mechanism_constraints(symbol_to_index, BIG_M_POLICY.fallback())
     }
 
     fn mechanism_constraints_with_tokens(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
-        tokens: &[Token<f64>],
-    ) -> Result<Vec<LinearConstraint<f64>>> {
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
         let big_m = BIG_M_POLICY.resolve(self.infer_big_m_from_tokens(tokens));
         self.build_mechanism_constraints(symbol_to_index, big_m)
     }
 
     fn evaluate_from_tokens(
         &self,
-        token_table: &dyn TokenList<f64>,
+        token_table: &dyn TokenList<V>,
         zero_if_none: bool,
-    ) -> Option<f64> {
-        <Self as FunctionSymbol>::calculate_value(self, token_table, zero_if_none)
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
     }
 
-    fn prepare(&self, values: &std::collections::HashMap<usize, f64>) -> Option<f64> {
-        values.get(&self.result_var.index()).copied()
+    fn prepare(&self, values: &std::collections::HashMap<usize, V>) -> Option<V> {
+        values.get(&self.result_var.index()).cloned()
     }
 
     fn to_raw_string(&self, _unfold: u64) -> String {
@@ -1323,8 +1825,21 @@ impl IntermediateSymbol for XorFunction {
     }
 }
 
-impl FunctionSymbol for XorFunction {
-    fn register_tokens(&self, tokens: &mut Vec<Token<f64>>) -> Result<()> {
+impl<V> FunctionSymbol<V> for XorFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
         tokens.push(Token::from_generic(
             self.result_var.clone(),
             self.result_var.index(),
@@ -1341,37 +1856,70 @@ impl FunctionSymbol for XorFunction {
         Ok(())
     }
 
-    fn calculate_value(&self, token_table: &dyn TokenList<f64>, zero_if_none: bool) -> Option<f64> {
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
         let mut has_zero = false;
         let mut has_non_zero = false;
 
         for polynomial in &self.polynomials {
             let value = evaluate_linear(polynomial, token_table, zero_if_none)?;
-            if as_binary(value) == 0.0 {
+            if as_binary(to_f64(&value)?) == 0.0 {
                 has_zero = true;
             } else {
                 has_non_zero = true;
             }
             if has_zero && has_non_zero {
-                return Some(1.0);
+                return from_f64(1.0);
             }
         }
 
-        Some(0.0)
+        from_f64(0.0)
     }
 }
 
-impl LinearIntermediateSymbol for XorFunction {
-    fn to_linear_polynomial(&self) -> Linear<f64> {
-        Linear::new(vec![LinearMonomial::new(1.0, self.result_var.index())], 0.0)
+impl<V> LinearIntermediateSymbol<V> for XorFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                self.result_var.index(),
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        )
     }
 
-    fn to_quadratic_polynomial(&self) -> Quadratic<f64> {
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
         Quadratic::from_linear(&self.to_linear_polynomial())
     }
 }
 
-impl LogicFunctionSymbol for XorFunction {}
+impl<V> LogicFunctionSymbol<V> for XorFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+}
 
 #[cfg(test)]
 mod tests {
@@ -1427,6 +1975,57 @@ mod tests {
             <XorFunction as FunctionSymbol>::calculate_value(&xor_fn, &tokens, false),
             Some(1.0)
         );
+    }
+
+    #[test]
+    fn logic_functions_support_f32_values() {
+        let x_var = BinaryVariableItem::create(VariableId::standalone(0), "x");
+        let y_var = BinaryVariableItem::create(VariableId::standalone(1), "y");
+        let tx = Token::from_generic(x_var, 0);
+        tx.set_result(1.0_f32);
+        let ty = Token::from_generic(y_var, 1);
+        ty.set_result(0.0_f32);
+        let mut tokens = VecTokenList::<f32>::new();
+        tokens.add_token(tx);
+        tokens.add_token(ty);
+
+        let p0 = Linear::new(vec![LinearMonomial::new(1.0_f32, 0)], 0.0_f32);
+        let p1 = Linear::new(vec![LinearMonomial::new(1.0_f32, 1)], 0.0_f32);
+        let and_fn: AndFunction<f32> =
+            AndFunction::new(1001, "and_f32", vec![p0.clone(), p1.clone()]);
+        let or_fn: OrFunction<f32> = OrFunction::new(1002, "or_f32", vec![p0.clone(), p1.clone()]);
+        let not_fn: NotFunction<f32> = NotFunction::new(1003, "not_f32", p1.clone());
+        let xor_fn: XorFunction<f32> = XorFunction::new(1004, "xor_f32", vec![p0, p1]);
+
+        assert_eq!(
+            <AndFunction<f32> as FunctionSymbol<f32>>::calculate_value(&and_fn, &tokens, false),
+            Some(0.0_f32)
+        );
+        assert_eq!(
+            <OrFunction<f32> as FunctionSymbol<f32>>::calculate_value(&or_fn, &tokens, false),
+            Some(1.0_f32)
+        );
+        assert_eq!(
+            <NotFunction<f32> as FunctionSymbol<f32>>::calculate_value(&not_fn, &tokens, false),
+            Some(1.0_f32)
+        );
+        assert_eq!(
+            <XorFunction<f32> as FunctionSymbol<f32>>::calculate_value(&xor_fn, &tokens, false),
+            Some(1.0_f32)
+        );
+
+        let mut aux_tokens = Vec::new();
+        <XorFunction<f32> as FunctionSymbol<f32>>::register_tokens(&xor_fn, &mut aux_tokens)
+            .expect("f32 xor tokens should be registered");
+        let symbol_to_index: HashMap<_, _> = aux_tokens
+            .iter()
+            .map(|token| (token.id().unique_id() as usize, token.solver_index))
+            .collect();
+        let constraints = xor_fn
+            .mechanism_constraints(&symbol_to_index)
+            .expect("f32 xor mechanism constraints should be generated");
+
+        assert!(!constraints.is_empty());
     }
 
     #[test]

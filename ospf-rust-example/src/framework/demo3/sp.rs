@@ -1,9 +1,10 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::solver::solvers::GurobiSolver;
 use ospf_rust_core::variable::UIntegerVariableItem;
+use ospf_rust_framework::solver::{
+    ColumnGenerationSolver, FrameworkSolveOptions, GurobiColumnGenerationSolver,
+};
 
 use crate::framework::demo3::domain::{CuttingPlan, Product};
 
@@ -26,11 +27,16 @@ impl Sp {
             y_idx[p] = model.register_variable(UIntegerVariableItem::auto(&format!("y_{}", p)))?;
         }
 
-        let mut objective = vec![0.0; model.num_tokens()];
-        for (p, idx) in y_idx.iter().enumerate() {
-            objective[*idx] = shadow_prices.get(p).copied().unwrap_or(0.0);
-        }
-        model.set_linear_objective(objective, ObjectiveCategory::Maximum);
+        let objective = MetaModel::linear_expression_builder()
+            .terms(
+                y_idx
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .map(|(p, idx)| (idx, shadow_prices.get(p).copied().unwrap_or(0.0))),
+            )
+            .maximize("sp_max_dual_profit");
+        model.set_linear_objective_input(objective);
 
         let length_coefficients: Vec<(usize, f64)> = products
             .iter()
@@ -44,17 +50,19 @@ impl Sp {
             "length",
         )?;
 
-        let solver = GurobiSolver::new();
-        let output = model.solve(&solver)?;
-        let solution = output
-            .solution
-            .ok_or_else(|| String::from("sp has no feasible solution"))?;
+        let linear_model = model.try_to_linear_triad_model()?;
+        let solver = GurobiColumnGenerationSolver::new();
+        let output = solver.solve_milp_with_options(
+            &linear_model,
+            FrameworkSolveOptions::new().with_name("framework_demo3_sp_milp"),
+        )?;
+        let solution = output.solution;
 
         let amounts: Vec<u64> = y_idx
             .iter()
             .map(|idx| solution.get(*idx).copied().unwrap_or(0.0).round() as u64)
             .collect();
-        let score = output.objective_value.unwrap_or(0.0);
+        let score = output.obj;
         let reduced_cost = 1.0 - score;
         Ok((CuttingPlan::new(amounts), reduced_cost))
     }

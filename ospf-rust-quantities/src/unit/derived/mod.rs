@@ -69,6 +69,7 @@ pub mod resistance;
 // 导出波动与周期量 / Derived wave and periodic quantities
 pub mod bandwidth;
 pub mod frequency;
+pub mod wavenumber;
 
 // 导出化学量 / Derived chemical quantities
 pub mod catalytic_activity;
@@ -119,6 +120,7 @@ pub use resistance::*;
 // 导出波动与周期量 / Derived wave and periodic quantities
 pub use bandwidth::*;
 pub use frequency::*;
+pub use wavenumber::*;
 
 // 导出化学量 / Derived chemical quantities
 pub use catalytic_activity::*;
@@ -157,3 +159,6 @@ impl CTUnit for None {
     const SCALE: Lazy<Scale> = Lazy::new(|| Scale::new());
     type Dimension = DimLess;
 }
+
+/// Kotlin 命名兼容别名 / Kotlin naming compatibility alias
+pub type NoneUnit = None;

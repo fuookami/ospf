@@ -1,17 +1,21 @@
-﻿//! 浜屾澶氶」寮?
+//! 浜屾澶氶」寮?
 //! Quadratic polynomial
 //!
 //! 褰㈠紡锛毼?c岬⑩奔S岬獗?+ 危 d岬岬?+ e
 //! Form: 危 c岬⑩奔S岬獗?+ 危 d岬岬?+ e
 
-use crate::algebra::concept::AbelianGroup;
-use crate::operator::{AddRef, DivRef, Exponent, MulRef, NegOneRef, NegRef, OneRef, SubRef, ZeroRef};
+use crate::algebra::concept::{AbelianGroup, AbelianGroupRef};
+use crate::operator::{
+    AddRef, DivRef, Exponent, MulRef, NegOneRef, NegRef, OneRef, SubRef, ZeroRef,
+};
 use crate::symbol::operation::{ToCanonical, ToQuadratic, TryToLinear, TryToLinearError};
-use crate::symbol::{Canonical, CanonicalMonomial, Linear, LinearMonomial, OwnedSymbol, QuadraticMonomial};
+use crate::symbol::{
+    Canonical, CanonicalMonomial, Linear, LinearMonomial, OwnedSymbol, QuadraticMonomial,
+};
 use num_traits::{One, Zero};
 use std::collections::HashMap;
 use std::fmt;
-use std::ops::{Add, Sub, Mul, Div, Neg, AddAssign, SubAssign, MulAssign, DivAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 // ============================================================================
 // Quadratic - 浜屾澶氶」寮?
@@ -149,7 +153,7 @@ impl<T: Clone + num_traits::Zero + PartialEq> Quadratic<T> {
 
     /// 杩斿洖绠€鍖栧悗鐨勫椤瑰紡锛堝悎骞跺悓绫婚」锛岀Щ闄ら浂绯绘暟椤癸級
     /// Return simplified polynomial (combine like terms, remove zero coefficients)
-    /// 
+    ///
     /// 涓?`simplify` 涓嶅悓锛屾鏂规硶杩斿洖鏂扮殑澶氶」寮忥紝涓嶄慨鏀瑰師瀹炰緥銆?
     /// Unlike `simplify`, this method returns a new polynomial without modifying the original.
     pub fn simplified(self) -> Self {
@@ -270,8 +274,12 @@ impl<T: MulRef> Mul<&T> for Quadratic<T> {
 
     fn mul(self, rhs: &T) -> Self::Output {
         Quadratic {
-            monomials: self.monomials.into_iter()
-                .map(|m| QuadraticMonomial::new(T::mul_ref(&m.coefficient, rhs), m.symbol1, m.symbol2))
+            monomials: self
+                .monomials
+                .into_iter()
+                .map(|m| {
+                    QuadraticMonomial::new(T::mul_ref(&m.coefficient, rhs), m.symbol1, m.symbol2)
+                })
                 .collect(),
             constant: T::mul_ref(&self.constant, rhs),
         }
@@ -284,8 +292,12 @@ impl<T: DivRef> Div<&T> for Quadratic<T> {
 
     fn div(self, rhs: &T) -> Self::Output {
         Quadratic {
-            monomials: self.monomials.into_iter()
-                .map(|m| QuadraticMonomial::new(T::div_ref(&m.coefficient, rhs), m.symbol1, m.symbol2))
+            monomials: self
+                .monomials
+                .into_iter()
+                .map(|m| {
+                    QuadraticMonomial::new(T::div_ref(&m.coefficient, rhs), m.symbol1, m.symbol2)
+                })
                 .collect(),
             constant: T::div_ref(&self.constant, rhs),
         }
@@ -321,42 +333,42 @@ impl<T: SubAssign + Clone> SubAssign<&T> for Quadratic<T> {
 }
 
 // MulAssign: Quadratic<T> *= T
-impl<T: Clone + MulAssign> MulAssign<T> for Quadratic<T> {
+impl<T: for<'a> MulAssign<&'a T>> MulAssign<T> for Quadratic<T> {
     fn mul_assign(&mut self, rhs: T) {
         for m in &mut self.monomials {
-            m.coefficient *= rhs.clone();
+            m.coefficient *= &rhs;
+        }
+        self.constant *= &rhs;
+    }
+}
+
+// MulAssign: Quadratic<T> *= &T
+impl<T: for<'a> MulAssign<&'a T>> MulAssign<&T> for Quadratic<T> {
+    fn mul_assign(&mut self, rhs: &T) {
+        for m in &mut self.monomials {
+            m.coefficient *= rhs;
         }
         self.constant *= rhs;
     }
 }
 
-// MulAssign: Quadratic<T> *= &T
-impl<T: Clone + MulAssign> MulAssign<&T> for Quadratic<T> {
-    fn mul_assign(&mut self, rhs: &T) {
-        for m in &mut self.monomials {
-            m.coefficient *= rhs.clone();
-        }
-        self.constant *= rhs.clone();
-    }
-}
-
 // DivAssign: Quadratic<T> /= T
-impl<T: Clone + DivAssign> DivAssign<T> for Quadratic<T> {
+impl<T: for<'a> DivAssign<&'a T>> DivAssign<T> for Quadratic<T> {
     fn div_assign(&mut self, rhs: T) {
         for m in &mut self.monomials {
-            m.coefficient /= rhs.clone();
+            m.coefficient /= &rhs;
         }
-        self.constant /= rhs;
+        self.constant /= &rhs;
     }
 }
 
 // DivAssign: Quadratic<T> /= &T
-impl<T: Clone + DivAssign> DivAssign<&T> for Quadratic<T> {
+impl<T: for<'a> DivAssign<&'a T>> DivAssign<&T> for Quadratic<T> {
     fn div_assign(&mut self, rhs: &T) {
         for m in &mut self.monomials {
-            m.coefficient /= rhs.clone();
+            m.coefficient /= rhs;
         }
-        self.constant /= rhs.clone();
+        self.constant /= rhs;
     }
 }
 
@@ -406,8 +418,16 @@ impl<T: MulRef + Clone> Mul<T> for &Quadratic<T> {
 
     fn mul(self, rhs: T) -> Self::Output {
         Quadratic {
-            monomials: self.monomials.iter()
-                .map(|m| QuadraticMonomial::new(T::mul_ref(&m.coefficient, &rhs), m.symbol1.clone(), m.symbol2.clone()))
+            monomials: self
+                .monomials
+                .iter()
+                .map(|m| {
+                    QuadraticMonomial::new(
+                        T::mul_ref(&m.coefficient, &rhs),
+                        m.symbol1.clone(),
+                        m.symbol2.clone(),
+                    )
+                })
                 .collect(),
             constant: T::mul_ref(&self.constant, &rhs),
         }
@@ -420,8 +440,16 @@ impl<T: MulRef + Clone> Mul<&T> for &Quadratic<T> {
 
     fn mul(self, rhs: &T) -> Self::Output {
         Quadratic {
-            monomials: self.monomials.iter()
-                .map(|m| QuadraticMonomial::new(T::mul_ref(&m.coefficient, rhs), m.symbol1.clone(), m.symbol2.clone()))
+            monomials: self
+                .monomials
+                .iter()
+                .map(|m| {
+                    QuadraticMonomial::new(
+                        T::mul_ref(&m.coefficient, rhs),
+                        m.symbol1.clone(),
+                        m.symbol2.clone(),
+                    )
+                })
                 .collect(),
             constant: T::mul_ref(&self.constant, rhs),
         }
@@ -434,8 +462,16 @@ impl<T: DivRef + Clone> Div<T> for &Quadratic<T> {
 
     fn div(self, rhs: T) -> Self::Output {
         Quadratic {
-            monomials: self.monomials.iter()
-                .map(|m| QuadraticMonomial::new(T::div_ref(&m.coefficient, &rhs), m.symbol1.clone(), m.symbol2.clone()))
+            monomials: self
+                .monomials
+                .iter()
+                .map(|m| {
+                    QuadraticMonomial::new(
+                        T::div_ref(&m.coefficient, &rhs),
+                        m.symbol1.clone(),
+                        m.symbol2.clone(),
+                    )
+                })
                 .collect(),
             constant: T::div_ref(&self.constant, &rhs),
         }
@@ -448,8 +484,16 @@ impl<T: DivRef + Clone> Div<&T> for &Quadratic<T> {
 
     fn div(self, rhs: &T) -> Self::Output {
         Quadratic {
-            monomials: self.monomials.iter()
-                .map(|m| QuadraticMonomial::new(T::div_ref(&m.coefficient, rhs), m.symbol1.clone(), m.symbol2.clone()))
+            monomials: self
+                .monomials
+                .iter()
+                .map(|m| {
+                    QuadraticMonomial::new(
+                        T::div_ref(&m.coefficient, rhs),
+                        m.symbol1.clone(),
+                        m.symbol2.clone(),
+                    )
+                })
                 .collect(),
             constant: T::div_ref(&self.constant, rhs),
         }
@@ -457,7 +501,7 @@ impl<T: DivRef + Clone> Div<&T> for &Quadratic<T> {
 }
 
 // Add: &Quadratic<T> + Quadratic<T>
-impl<T: AbelianGroup> Add<Quadratic<T>> for &Quadratic<T> {
+impl<T: AbelianGroupRef> Add<Quadratic<T>> for &Quadratic<T> {
     type Output = Quadratic<T>;
 
     fn add(self, rhs: Quadratic<T>) -> Self::Output {
@@ -465,13 +509,13 @@ impl<T: AbelianGroup> Add<Quadratic<T>> for &Quadratic<T> {
         monomials.extend(rhs.monomials);
         Quadratic {
             monomials,
-            constant: self.constant.clone() + rhs.constant,
+            constant: T::add_ref(&self.constant, &rhs.constant),
         }
     }
 }
 
 // Add: &Quadratic<T> + &Quadratic<T>
-impl<T: AbelianGroup> Add<Self> for &Quadratic<T> {
+impl<T: AbelianGroupRef> Add<Self> for &Quadratic<T> {
     type Output = Quadratic<T>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -479,13 +523,13 @@ impl<T: AbelianGroup> Add<Self> for &Quadratic<T> {
         monomials.extend(rhs.monomials.iter().cloned());
         Quadratic {
             monomials,
-            constant: self.constant.clone() + rhs.constant.clone(),
+            constant: T::add_ref(&self.constant, &rhs.constant),
         }
     }
 }
 
 // Sub: &Quadratic<T> - Quadratic<T>
-impl<T: AbelianGroup> Sub<Quadratic<T>> for &Quadratic<T> {
+impl<T: AbelianGroupRef> Sub<Quadratic<T>> for &Quadratic<T> {
     type Output = Quadratic<T>;
 
     fn sub(self, rhs: Quadratic<T>) -> Self::Output {
@@ -493,13 +537,13 @@ impl<T: AbelianGroup> Sub<Quadratic<T>> for &Quadratic<T> {
         monomials.extend(rhs.monomials.into_iter().map(|m| -m));
         Quadratic {
             monomials,
-            constant: self.constant.clone() - rhs.constant,
+            constant: T::sub_ref(&self.constant, &rhs.constant),
         }
     }
 }
 
 // Sub: &Quadratic<T> - &Quadratic<T>
-impl<T: AbelianGroup + NegRef> Sub<Self> for &Quadratic<T> {
+impl<T: AbelianGroupRef> Sub<Self> for &Quadratic<T> {
     type Output = Quadratic<T>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -507,13 +551,13 @@ impl<T: AbelianGroup + NegRef> Sub<Self> for &Quadratic<T> {
         monomials.extend(rhs.monomials.iter().map(|m| -m));
         Quadratic {
             monomials,
-            constant: self.constant.clone() - rhs.constant.clone(),
+            constant: T::sub_ref(&self.constant, &rhs.constant),
         }
     }
 }
 
 // Add: &Quadratic<T> + Linear<T>
-impl<T: AbelianGroup> Add<Linear<T>> for &Quadratic<T> {
+impl<T: AbelianGroupRef> Add<Linear<T>> for &Quadratic<T> {
     type Output = Quadratic<T>;
 
     fn add(self, rhs: Linear<T>) -> Self::Output {
@@ -522,15 +566,19 @@ impl<T: AbelianGroup> Add<Linear<T>> for &Quadratic<T> {
 }
 
 // Add: &Quadratic<T> + &Linear<T>
-impl<T: AbelianGroup> Add<&Linear<T>> for &Quadratic<T> {
+impl<T: AbelianGroupRef> Add<&Linear<T>> for &Quadratic<T> {
     type Output = Quadratic<T>;
 
     fn add(self, rhs: &Linear<T>) -> Self::Output {
         let mut monomials = self.monomials.clone();
-        monomials.extend(rhs.monomials.iter().map(|m| QuadraticMonomial::linear(m.coefficient.clone(), m.symbol.clone())));
+        monomials.extend(
+            rhs.monomials
+                .iter()
+                .map(|m| QuadraticMonomial::linear(m.coefficient.clone(), m.symbol.clone())),
+        );
         Quadratic {
             monomials,
-            constant: self.constant.clone() + rhs.constant.clone(),
+            constant: T::add_ref(&self.constant, &rhs.constant),
         }
     }
 }
@@ -550,8 +598,9 @@ impl<T: AbelianGroup> Add<Linear<T>> for Quadratic<T> {
         // 鐩存帴杞崲 LinearMonomial 涓?QuadraticMonomial锛岄伩鍏嶅垱寤轰复鏃?vec
         // Directly convert LinearMonomial to QuadraticMonomial, avoiding temporary vec
         monomials.extend(
-            rhs.monomials.into_iter()
-                .map(|m| QuadraticMonomial::linear(m.coefficient, m.symbol))
+            rhs.monomials
+                .into_iter()
+                .map(|m| QuadraticMonomial::linear(m.coefficient, m.symbol)),
         );
         Self {
             monomials,
@@ -561,15 +610,19 @@ impl<T: AbelianGroup> Add<Linear<T>> for Quadratic<T> {
 }
 
 // Add: Quadratic<T> + &Linear<T>
-impl<T: AbelianGroup> Add<&Linear<T>> for Quadratic<T> {
+impl<T: AbelianGroupRef> Add<&Linear<T>> for Quadratic<T> {
     type Output = Quadratic<T>;
 
     fn add(self, rhs: &Linear<T>) -> Self::Output {
         let mut monomials = self.monomials;
-        monomials.extend(rhs.monomials.iter().map(|m| QuadraticMonomial::linear(m.coefficient.clone(), m.symbol.clone())));
+        monomials.extend(
+            rhs.monomials
+                .iter()
+                .map(|m| QuadraticMonomial::linear(m.coefficient.clone(), m.symbol.clone())),
+        );
         Self {
             monomials,
-            constant: self.constant + rhs.constant.clone(),
+            constant: T::add_ref(&self.constant, &rhs.constant),
         }
     }
 }
@@ -696,7 +749,7 @@ impl_scalar_ref_ops_for_quadratic!(f32, f64, i8, i16, i32, i64, i128, isize);
 // ============================================================================
 
 // Add: Quadratic<T> + &Quadratic<T>
-impl<T: AbelianGroup> Add<&Self> for Quadratic<T> {
+impl<T: AbelianGroupRef> Add<&Self> for Quadratic<T> {
     type Output = Self;
 
     fn add(self, rhs: &Self) -> Self::Output {
@@ -704,13 +757,13 @@ impl<T: AbelianGroup> Add<&Self> for Quadratic<T> {
         monomials.extend(rhs.monomials.iter().cloned());
         Self {
             monomials,
-            constant: self.constant + rhs.constant.clone(),
+            constant: T::add_ref(&self.constant, &rhs.constant),
         }
     }
 }
 
 // Sub: Quadratic<T> - &Quadratic<T>
-impl<T: AbelianGroup + NegRef> Sub<&Self> for Quadratic<T> {
+impl<T: AbelianGroupRef> Sub<&Self> for Quadratic<T> {
     type Output = Self;
 
     fn sub(self, rhs: &Self) -> Self::Output {
@@ -718,7 +771,7 @@ impl<T: AbelianGroup + NegRef> Sub<&Self> for Quadratic<T> {
         monomials.extend(rhs.monomials.iter().map(|m| -m));
         Self {
             monomials,
-            constant: self.constant - rhs.constant.clone(),
+            constant: T::sub_ref(&self.constant, &rhs.constant),
         }
     }
 }
@@ -733,11 +786,11 @@ impl<T: AbelianGroup> AddAssign for Quadratic<T> {
 }
 
 // AddAssign: Quadratic<T> += &Quadratic<T>
-impl<T: AbelianGroup> AddAssign<&Self> for Quadratic<T> {
+impl<T: AbelianGroupRef> AddAssign<&Self> for Quadratic<T> {
     fn add_assign(&mut self, rhs: &Self) {
         self.monomials.extend(rhs.monomials.iter().cloned());
         let lhs = std::mem::replace(&mut self.constant, T::zero());
-        self.constant = lhs + rhs.constant.clone();
+        self.constant = T::add_ref(&lhs, &rhs.constant);
     }
 }
 
@@ -751,11 +804,11 @@ impl<T: AbelianGroup> SubAssign for Quadratic<T> {
 }
 
 // SubAssign: Quadratic<T> -= &Quadratic<T>
-impl<T: AbelianGroup + NegRef> SubAssign<&Self> for Quadratic<T> {
+impl<T: AbelianGroupRef> SubAssign<&Self> for Quadratic<T> {
     fn sub_assign(&mut self, rhs: &Self) {
         self.monomials.extend(rhs.monomials.iter().map(|m| -m));
         let lhs = std::mem::replace(&mut self.constant, T::zero());
-        self.constant = lhs - rhs.constant.clone();
+        self.constant = T::sub_ref(&lhs, &rhs.constant);
     }
 }
 
@@ -1086,28 +1139,32 @@ impl<T: One + NegRef + Clone> Sub<&Quadratic<T>> for &OwnedSymbol {
 // AddAssign: Quadratic<T> += OwnedSymbol
 impl<T: One> AddAssign<OwnedSymbol> for Quadratic<T> {
     fn add_assign(&mut self, rhs: OwnedSymbol) {
-        self.monomials.push(QuadraticMonomial::linear(T::one(), rhs));
+        self.monomials
+            .push(QuadraticMonomial::linear(T::one(), rhs));
     }
 }
 
 // AddAssign: Quadratic<T> += &OwnedSymbol
 impl<T: One> AddAssign<&OwnedSymbol> for Quadratic<T> {
     fn add_assign(&mut self, rhs: &OwnedSymbol) {
-        self.monomials.push(QuadraticMonomial::linear(T::one(), rhs.clone()));
+        self.monomials
+            .push(QuadraticMonomial::linear(T::one(), rhs.clone()));
     }
 }
 
 // SubAssign: Quadratic<T> -= OwnedSymbol
 impl<T: One + Neg<Output = T>> SubAssign<OwnedSymbol> for Quadratic<T> {
     fn sub_assign(&mut self, rhs: OwnedSymbol) {
-        self.monomials.push(QuadraticMonomial::linear(T::one().neg(), rhs));
+        self.monomials
+            .push(QuadraticMonomial::linear(T::one().neg(), rhs));
     }
 }
 
 // SubAssign: Quadratic<T> -= &OwnedSymbol
 impl<T: One + Neg<Output = T>> SubAssign<&OwnedSymbol> for Quadratic<T> {
     fn sub_assign(&mut self, rhs: &OwnedSymbol) {
-        self.monomials.push(QuadraticMonomial::linear(T::one().neg(), rhs.clone()));
+        self.monomials
+            .push(QuadraticMonomial::linear(T::one().neg(), rhs.clone()));
     }
 }
 
@@ -1236,14 +1293,7 @@ impl<T: Clone + Zero + One + MulRef> Quadratic<T> {
 
 impl<T> fmt::Display for Quadratic<T>
 where
-    T: fmt::Debug
-        + fmt::Display
-        + Zero
-        + PartialEq
-        + OneRef
-        + NegOneRef
-        + ZeroRef
-        + 'static,
+    T: fmt::Debug + fmt::Display + Zero + PartialEq + OneRef + NegOneRef + ZeroRef + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.monomials.is_empty() {
@@ -1371,7 +1421,7 @@ impl<T: Clone> SecondOrderDifferentiate<T> for Quadratic<T> {
 // 姹傚€煎疄鐜?/ Evaluate Implementation
 // ============================================================================
 
-use crate::symbol::operation::{Evaluate, EvaluateOrdered, Evaluatable};
+use crate::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
 
 impl<T: Clone> Evaluate<T> for Quadratic<T> {
     fn evaluate(&self, values: &HashMap<OwnedSymbol, T>) -> T
@@ -1512,8 +1562,7 @@ impl<
         + for<'a> AddAssign<&'a T>
         + Add<Output = T>
         + Mul<Output = T>
-        + Div<Output = T>
-        + std::hash::Hash,
+        + Div<Output = T>,
 > ToMatrixForm<T> for Quadratic<T>
 {
     type MatrixForm = QuadraticMatrixForm<T>;
@@ -1635,7 +1684,8 @@ impl<T: Zero + Clone> TryToLinear<T> for Quadratic<T> {
                 None => {
                     // 绾挎€ч」
                     // Linear term
-                    linear_monomials.push(LinearMonomial::new(monomial.coefficient, monomial.symbol1));
+                    linear_monomials
+                        .push(LinearMonomial::new(monomial.coefficient, monomial.symbol1));
                 }
             }
         }
@@ -1660,7 +1710,10 @@ impl<T: Zero + Clone> TryToLinear<T> for &Quadratic<T> {
                 None => {
                     // 绾挎€ч」
                     // Linear term
-                    linear_monomials.push(LinearMonomial::new(monomial.coefficient.clone(), monomial.symbol1.clone()));
+                    linear_monomials.push(LinearMonomial::new(
+                        monomial.coefficient.clone(),
+                        monomial.symbol1.clone(),
+                    ));
                 }
             }
         }
@@ -1763,8 +1816,3 @@ mod tests {
         assert_eq!(scaled.constant, 3.0);
     }
 }
-
-
-
-
-

@@ -999,7 +999,7 @@ pub type MultiArrayViewBuilderCM = MultiArrayViewBuilder<ColumnMajor>;
 mod tests {
     use super::*;
     use crate::dummy_index::DummyIndex;
-    use crate::map_index::{MapIndex, _0, _1, _2};
+    use crate::map_index::{_0, _1, _2, MapIndex};
     use crate::multi_array::MultiArrayBuilder;
     use crate::shape::Shape;
     use crate::{dummy_expect, map_expect};

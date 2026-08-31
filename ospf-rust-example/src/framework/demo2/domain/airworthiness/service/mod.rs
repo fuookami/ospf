@@ -2,14 +2,14 @@ use std::error::Error;
 
 use ospf_rust_core::model::MetaModel;
 
-use crate::framework::demo2::domain::airworthiness::aggregation::AirworthinessAggregation;
-use crate::framework::demo2::domain::airworthiness::context::AirworthinessContext;
-use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
-use crate::framework::demo2::infrastructure::dto::Demo2Request;
+use crate::framework_demo::demo2::domain::airworthiness::aggregation::AirworthinessAggregation;
+use crate::framework_demo::demo2::domain::airworthiness::context::AirworthinessContext;
+use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework_demo::demo2::infrastructure::dto::Demo2Request;
 
 mod limits;
-mod policy;
 pub(crate) mod pipeline_list_generator;
+mod policy;
 
 pub fn apply_airworthiness_pipeline(
     model: &mut MetaModel<f64>,

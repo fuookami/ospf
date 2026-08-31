@@ -3,7 +3,10 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use ospf_rust_math::symbol::Symbol;
 
@@ -14,6 +17,23 @@ use crate::model::{
 };
 use crate::token::{Token, TokenList};
 use crate::variable::VariableRange;
+
+const AUTO_INTERMEDIATE_SYMBOL_ID_START: u64 = 1_000_000_000;
+
+static NEXT_AUTO_INTERMEDIATE_SYMBOL_ID: AtomicU64 =
+    AtomicU64::new(AUTO_INTERMEDIATE_SYMBOL_ID_START);
+
+/// 生成自动中间符号 ID，使用较高命名空间以降低与显式 ID 冲突的概率。
+/// Generate an auto intermediate symbol id from a high namespace to reduce collision risk with explicit ids.
+pub(crate) fn next_auto_intermediate_symbol_id() -> u64 {
+    NEXT_AUTO_INTERMEDIATE_SYMBOL_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+/// 生成自动中间符号名称，保持名称可读并包含唯一 ID。
+/// Generate a readable auto intermediate symbol name that includes the unique id.
+pub(crate) fn auto_intermediate_symbol_name(prefix: &str, id: u64) -> String {
+    format!("{}_{}", prefix, id)
+}
 
 /// Unique identifier for intermediate symbols.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -277,9 +297,9 @@ pub trait LinearIntermediateSymbol<V = f64>: IntermediateSymbol<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
-    fn to_linear_polynomial(&self) -> crate::flatten::Linear<V>;
+    fn to_linear_polynomial(&self) -> crate::symbol::flatten::Linear<V>;
 
-    fn to_quadratic_polynomial(&self) -> crate::flatten::Quadratic<V>;
+    fn to_quadratic_polynomial(&self) -> crate::symbol::flatten::Quadratic<V>;
 }
 
 /// Quadratic-symbol specialization.
@@ -287,7 +307,7 @@ pub trait QuadraticIntermediateSymbol<V = f64>: IntermediateSymbol<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
-    fn to_quadratic_polynomial(&self) -> crate::flatten::Quadratic<V>;
+    fn to_quadratic_polynomial(&self) -> crate::symbol::flatten::Quadratic<V>;
 }
 
 #[cfg(test)]

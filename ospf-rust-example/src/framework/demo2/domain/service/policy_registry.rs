@@ -1,10 +1,12 @@
-use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 
+#[allow(dead_code)]
 pub struct DomainPolicySnapshot {
     pub domain: &'static str,
     pub step_counts: Vec<usize>,
 }
 
+#[allow(dead_code)]
 pub fn mode_order() -> [Demo2PipelineMode; 3] {
     [
         Demo2PipelineMode::FullLoad,
@@ -13,6 +15,7 @@ pub fn mode_order() -> [Demo2PipelineMode; 3] {
     ]
 }
 
+#[allow(dead_code)]
 pub fn policy_matrix_snapshot() -> Vec<DomainPolicySnapshot> {
     let modes = mode_order();
     vec![
@@ -21,7 +24,7 @@ pub fn policy_matrix_snapshot() -> Vec<DomainPolicySnapshot> {
             step_counts: modes
                 .iter()
                 .map(|mode| {
-                    crate::framework::demo2::domain::stowage::service::pipeline_list_generator::pipeline_steps(
+                    crate::framework_demo::demo2::domain::stowage::service::pipeline_list_generator::pipeline_steps(
                         *mode,
                     )
                     .len()
@@ -33,7 +36,7 @@ pub fn policy_matrix_snapshot() -> Vec<DomainPolicySnapshot> {
             step_counts: modes
                 .iter()
                 .map(|mode| {
-                    crate::framework::demo2::domain::airworthiness::service::pipeline_list_generator::pipeline_steps(
+                    crate::framework_demo::demo2::domain::airworthiness::service::pipeline_list_generator::pipeline_steps(
                         *mode,
                     )
                     .len()
@@ -45,7 +48,7 @@ pub fn policy_matrix_snapshot() -> Vec<DomainPolicySnapshot> {
             step_counts: modes
                 .iter()
                 .map(|mode| {
-                    crate::framework::demo2::domain::mac_optimization::service::pipeline_list_generator::pipeline_steps(
+                    crate::framework_demo::demo2::domain::mac_optimization::service::pipeline_list_generator::pipeline_steps(
                         *mode,
                     )
                     .len()
@@ -57,7 +60,7 @@ pub fn policy_matrix_snapshot() -> Vec<DomainPolicySnapshot> {
             step_counts: modes
                 .iter()
                 .map(|mode| {
-                    crate::framework::demo2::domain::loading_effectiveness::service::pipeline_list_generator::pipeline_steps(
+                    crate::framework_demo::demo2::domain::loading_effectiveness::service::pipeline_list_generator::pipeline_steps(
                         *mode,
                     )
                     .len()
@@ -69,7 +72,7 @@ pub fn policy_matrix_snapshot() -> Vec<DomainPolicySnapshot> {
             step_counts: modes
                 .iter()
                 .map(|mode| {
-                    crate::framework::demo2::domain::express_effectiveness::service::pipeline_list_generator::pipeline_steps(
+                    crate::framework_demo::demo2::domain::express_effectiveness::service::pipeline_list_generator::pipeline_steps(
                         *mode,
                     )
                     .len()
@@ -81,7 +84,7 @@ pub fn policy_matrix_snapshot() -> Vec<DomainPolicySnapshot> {
             step_counts: modes
                 .iter()
                 .map(|mode| {
-                    crate::framework::demo2::domain::soft_security::service::pipeline_list_generator::pipeline_steps(
+                    crate::framework_demo::demo2::domain::soft_security::service::pipeline_list_generator::pipeline_steps(
                         *mode,
                     )
                     .len()
@@ -93,7 +96,7 @@ pub fn policy_matrix_snapshot() -> Vec<DomainPolicySnapshot> {
             step_counts: modes
                 .iter()
                 .map(|mode| {
-                    crate::framework::demo2::domain::redundancy::service::pipeline_list_generator::pipeline_steps(
+                    crate::framework_demo::demo2::domain::redundancy::service::pipeline_list_generator::pipeline_steps(
                         *mode,
                     )
                     .len()
@@ -102,4 +105,3 @@ pub fn policy_matrix_snapshot() -> Vec<DomainPolicySnapshot> {
         },
     ]
 }
-

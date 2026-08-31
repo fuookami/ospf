@@ -1,10 +1,10 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
 use ospf_rust_core::variable::{ContinuousVariableItem, VariableRange};
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
 
-use super::common::{read_solution_value, solve};
+use super::common::{read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct Material {
@@ -60,6 +60,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let products = build_products();
 
     let mut model = MetaModel::<f64>::new("demo4");
+    let mut x_vars = Vec::with_capacity(products.len());
     let mut x_idx = vec![0usize; products.len()];
 
     for (p, product) in products.iter().enumerate() {
@@ -67,44 +68,56 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             &format!("x_{}", p),
             VariableRange::bounded(0.0, product.max_yield),
         );
-        x_idx[p] = model.register_variable(variable)?;
+        x_idx[p] = model.register_variable(variable.clone())?;
+        x_vars.push(variable);
     }
 
-    let mut objective = vec![0.0; model.num_tokens()];
-    for (p, product) in products.iter().enumerate() {
-        objective[x_idx[p]] = product.profit;
-    }
-    model.set_linear_objective(objective, ObjectiveCategory::Maximum);
+    let profit = Linear::new(
+        x_vars
+            .iter()
+            .zip(products.iter())
+            .map(|(var, product)| LinearMonomial::new(product.profit, var.to_owned_symbol()))
+            .collect(),
+        0.0,
+    );
+    let usage: Vec<Linear<f64>> = materials
+        .iter()
+        .enumerate()
+        .map(|(m, _)| {
+            Linear::new(
+                x_vars
+                    .iter()
+                    .zip(products.iter())
+                    .map(|(var, product)| {
+                        LinearMonomial::new(product.usage_of(m), var.to_owned_symbol())
+                    })
+                    .collect(),
+                0.0,
+            )
+        })
+        .collect();
 
     for (m, material) in materials.iter().enumerate() {
-        let coefficients = vec![(x_idx[0], products[0].usage_of(m)), (x_idx[1], products[1].usage_of(m))];
-        model.add_linear_constraint(
-            &coefficients,
-            ConstraintRelation::LessEqual,
-            material.available,
+        model.add_math_inequality(
+            usage[m].clone().le(material.available),
             &format!("material_{}_{}", m, material.name),
-        )?;
+        );
     }
+
+    model.set_math_linear_objective(profit, ObjectiveCategory::Maximum, "profit")?;
 
     for p1 in 0..products.len() {
         for p2 in 0..products.len() {
             if p1 == p2 {
                 continue;
             }
-            let coefficients = vec![(x_idx[p1], 1.0), (x_idx[p2], -1.0)];
-            model.add_linear_constraint(
-                &coefficients,
-                ConstraintRelation::LessEqual,
-                1.0,
-                &format!("diff_{}_{}", p1, p2),
-            )?;
+            let difference = x_vars[p1].clone() - x_vars[p2].clone();
+            model.add_math_inequality(difference.le(1.0), &format!("diff_{}_{}", p1, p2));
         }
     }
 
-    let output = solve(model)?;
-    let solution = output
-        .solution
-        .ok_or_else(|| String::from("demo4 has no feasible solution"))?;
+    let output = solve_typed(model)?;
+    let solution = output.solution;
 
     println!("=== Demo4 ===");
     println!("status: {:?}", output.status);

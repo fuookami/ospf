@@ -5,7 +5,10 @@ use ospf_rust_core::model::{ConstraintRelation, MetaModel, SymbolicLinearInequal
 use ospf_rust_core::variable::BinaryVariableItem;
 use ospf_rust_math::symbol::{Linear, LinearMonomial};
 
-use super::common::{read_solution_value, solve};
+use super::common::{
+    add_constraint_with_metadata, linear_expr_from_indices, read_solution_value,
+    register_binary_matrix, set_linear_objective_from_sparse_terms, solve_typed,
+};
 
 #[derive(Clone)]
 struct Worker {
@@ -50,75 +53,104 @@ impl AssignmentData {
     }
 }
 
+fn build_assignment_vars(data: &AssignmentData) -> Vec<Vec<BinaryVariableItem>> {
+    let mut vars: Vec<Vec<BinaryVariableItem>> = Vec::with_capacity(data.workers.len());
+    for w in 0..data.workers.len() {
+        let mut var_row: Vec<BinaryVariableItem> = Vec::with_capacity(data.tasks.len());
+        for t in 0..data.tasks.len() {
+            var_row.push(BinaryVariableItem::auto(&format!("x_{}_{}", w, t)));
+        }
+        vars.push(var_row);
+    }
+    vars
+}
+
 fn register_assignment_vars(
     model: &mut MetaModel<f64>,
     data: &AssignmentData,
 ) -> Result<(Vec<Vec<BinaryVariableItem>>, Vec<Vec<usize>>), Box<dyn Error>> {
-    let mut vars: Vec<Vec<BinaryVariableItem>> = Vec::with_capacity(data.workers.len());
+    let vars = build_assignment_vars(data);
     let mut idx: Vec<Vec<usize>> = Vec::with_capacity(data.workers.len());
-
-    for w in 0..data.workers.len() {
-        let mut var_row: Vec<BinaryVariableItem> = Vec::with_capacity(data.tasks.len());
+    for var_row in &vars {
         let mut idx_row: Vec<usize> = Vec::with_capacity(data.tasks.len());
-        for t in 0..data.tasks.len() {
-            let var = BinaryVariableItem::auto(&format!("x_{}_{}", w, t));
-            let token_idx = model.register_variable(var.clone())?;
-            var_row.push(var);
-            idx_row.push(token_idx);
+        for var in var_row {
+            idx_row.push(model.register_variable(var.clone())?);
         }
-        vars.push(var_row);
         idx.push(idx_row);
     }
-
     Ok((vars, idx))
 }
 
 fn set_objective(model: &mut MetaModel<f64>, data: &AssignmentData, idx: &[Vec<usize>]) {
-    let mut objective = vec![0.0; model.num_tokens()];
+    let mut objective_terms: Vec<(usize, f64)> =
+        Vec::with_capacity(data.workers.len() * data.tasks.len());
     for w in 0..data.workers.len() {
         for t in 0..data.tasks.len() {
-            objective[idx[w][t]] = data.costs[w][t];
+            objective_terms.push((idx[w][t], data.costs[w][t]));
         }
     }
-    model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+    set_linear_objective_from_sparse_terms(model, &objective_terms, ObjectiveCategory::Minimum);
 }
 
-fn build_low_level_model(data: &AssignmentData) -> Result<(MetaModel<f64>, Vec<Vec<usize>>), Box<dyn Error>> {
+fn build_low_level_model(
+    data: &AssignmentData,
+) -> Result<(MetaModel<f64>, Vec<Vec<usize>>), Box<dyn Error>> {
+    // legacy/teaching path: keep explicit sparse-style modeling for comparison.
+    // legacy/teaching 路径：保留显式 sparse 风格建模用于对比。
     let mut model = MetaModel::<f64>::new("core_shortcuts_low_level");
-    let (_vars, idx) = register_assignment_vars(&mut model, data)?;
+    let idx = register_binary_matrix(&mut model, data.workers.len(), data.tasks.len(), "x")?;
     set_objective(&mut model, data, &idx);
 
     for (w, worker) in data.workers.iter().enumerate() {
-        let coefficients: Vec<(usize, f64)> = (0..data.tasks.len()).map(|t| (idx[w][t], 1.0)).collect();
-        model.add_linear_constraint(
+        let indices: Vec<usize> = (0..data.tasks.len()).map(|t| idx[w][t]).collect();
+        let coefficients = linear_expr_from_indices(&indices, 1.0);
+        add_constraint_with_metadata(
+            &mut model,
             &coefficients,
             ConstraintRelation::LessEqual,
             1.0,
             &format!("worker_capacity_{}", worker.name),
+            None,
+            false,
+            0,
+            None,
         )?;
     }
 
     for (t, task) in data.tasks.iter().enumerate() {
-        let coefficients: Vec<(usize, f64)> = (0..data.workers.len()).map(|w| (idx[w][t], 1.0)).collect();
-        model.add_linear_constraint(
+        let indices: Vec<usize> = (0..data.workers.len()).map(|w| idx[w][t]).collect();
+        let coefficients = linear_expr_from_indices(&indices, 1.0);
+        add_constraint_with_metadata(
+            &mut model,
             &coefficients,
             ConstraintRelation::Equal,
             1.0,
             &format!("task_partition_{}", task.name),
+            None,
+            false,
+            0,
+            None,
         )?;
     }
 
-    model.add_linear_constraint(
+    add_constraint_with_metadata(
+        &mut model,
         &[(idx[0][0], 1.0), (idx[1][1], 1.0)],
         ConstraintRelation::GreaterEqual,
         1.0,
         "prefer_diagonal_low_level",
+        None,
+        false,
+        0,
+        None,
     )?;
 
     Ok((model, idx))
 }
 
-fn build_shortcut_model(data: &AssignmentData) -> Result<(MetaModel<f64>, Vec<Vec<usize>>), Box<dyn Error>> {
+fn build_shortcut_model(
+    data: &AssignmentData,
+) -> Result<(MetaModel<f64>, Vec<Vec<usize>>), Box<dyn Error>> {
     let mut model = MetaModel::<f64>::new("core_shortcuts_shortcut");
     let (vars, idx) = register_assignment_vars(&mut model, data)?;
     set_objective(&mut model, data, &idx);
@@ -126,7 +158,8 @@ fn build_shortcut_model(data: &AssignmentData) -> Result<(MetaModel<f64>, Vec<Ve
     let group = model.create_constraint_group(1801, "assignment_shortcuts")?;
 
     for (w, worker) in data.workers.iter().enumerate() {
-        let coefficients: Vec<(usize, f64)> = (0..data.tasks.len()).map(|t| (idx[w][t], 1.0)).collect();
+        let coefficients: Vec<(usize, f64)> =
+            (0..data.tasks.len()).map(|t| (idx[w][t], 1.0)).collect();
         model.add_le_constraint_with_metadata(
             &coefficients,
             1.0,
@@ -138,7 +171,8 @@ fn build_shortcut_model(data: &AssignmentData) -> Result<(MetaModel<f64>, Vec<Ve
         )?;
     }
 
-    let task0_coefficients: Vec<(usize, f64)> = (0..data.workers.len()).map(|w| (idx[w][0], 1.0)).collect();
+    let task0_coefficients: Vec<(usize, f64)> =
+        (0..data.workers.len()).map(|w| (idx[w][0], 1.0)).collect();
     model.partition_linear_coefficients_with_metadata(
         &task0_coefficients,
         &format!("task_partition_{}", data.tasks[0].name),
@@ -168,21 +202,19 @@ fn build_shortcut_model(data: &AssignmentData) -> Result<(MetaModel<f64>, Vec<Ve
         Some("{\"kind\":\"preference\"}".to_string()),
     )?;
 
-    let symbolic = vec![
-        (
-            SymbolicLinearInequality::greater_equal(
-                Linear::new(
-                    vec![
-                        LinearMonomial::new(1.0, vars[0][0].to_owned_symbol()),
-                        LinearMonomial::new(1.0, vars[1][1].to_owned_symbol()),
-                    ],
-                    0.0,
-                ),
-                1.0,
+    let symbolic = vec![(
+        SymbolicLinearInequality::greater_equal(
+            Linear::new(
+                vec![
+                    LinearMonomial::new(1.0, vars[0][0].to_owned_symbol()),
+                    LinearMonomial::new(1.0, vars[1][1].to_owned_symbol()),
+                ],
+                0.0,
             ),
-            "prefer_diagonal_symbolic",
+            1.0,
         ),
-    ];
+        "prefer_diagonal_symbolic",
+    )];
     model.add_symbolic_inequalities(symbolic);
 
     Ok((model, idx))
@@ -206,17 +238,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let (low_model, low_idx) = build_low_level_model(&data)?;
     let (shortcut_model, shortcut_idx) = build_shortcut_model(&data)?;
 
-    let low_output = solve(low_model)?;
-    let low_solution = low_output
-        .solution
-        .as_ref()
-        .ok_or_else(|| String::from("core_shortcuts low-level has no feasible solution"))?;
+    let low_output = solve_typed(low_model)?;
+    let low_solution = &low_output.solution;
 
-    let shortcut_output = solve(shortcut_model)?;
-    let shortcut_solution = shortcut_output
-        .solution
-        .as_ref()
-        .ok_or_else(|| String::from("core_shortcuts shortcut has no feasible solution"))?;
+    let shortcut_output = solve_typed(shortcut_model)?;
+    let shortcut_solution = &shortcut_output.solution;
 
     println!("=== Core Shortcuts ===");
     println!("low-level status: {:?}", low_output.status);
@@ -229,7 +255,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
 
     print_solution("low-level assignment:", &data, &low_idx, low_solution);
-    print_solution("shortcut assignment:", &data, &shortcut_idx, shortcut_solution);
+    print_solution(
+        "shortcut assignment:",
+        &data,
+        &shortcut_idx,
+        shortcut_solution,
+    );
 
     Ok(())
 }

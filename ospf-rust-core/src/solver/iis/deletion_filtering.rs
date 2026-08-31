@@ -13,7 +13,7 @@ use crate::solver::SolverOutput;
 #[cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
 use crate::solver::solvers::{GurobiSolver, gurobi::GurobiConfig};
 
-use super::{ConstraintSource, IISConfig, LinearIISModel};
+use super::{ConstraintSource, IISConfig, LinearIISModel, LinearTriadModelIISSource};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ActiveSources {
@@ -23,7 +23,11 @@ pub(crate) struct ActiveSources {
 }
 
 impl ActiveSources {
-    pub(crate) fn from_model(model: &BasicLinearTriadModel, include_bounds: bool) -> Self {
+    pub(crate) fn from_model<M>(model: &M, include_bounds: bool) -> Self
+    where
+        M: LinearTriadModelIISSource + ?Sized,
+    {
+        let model = model.as_basic_linear_triad_model();
         let mut active = Self::default();
         for constraint_index in 0..model.num_constraints() {
             active.constraints.insert(constraint_index);
@@ -149,7 +153,11 @@ fn is_effectively_zero(value: f64, tolerance: f64) -> bool {
     value.abs() <= tolerance
 }
 
-fn quick_feasibility_probe(model: &BasicLinearTriadModel, tolerance: f64) -> Option<bool> {
+fn quick_feasibility_probe<M>(model: &M, tolerance: f64) -> Option<bool>
+where
+    M: LinearTriadModelIISSource + ?Sized,
+{
+    let model = model.as_basic_linear_triad_model();
     for var_index in 0..model.num_variables() {
         let lower = model
             .lb
@@ -190,11 +198,15 @@ fn quick_feasibility_probe(model: &BasicLinearTriadModel, tolerance: f64) -> Opt
     if all_rows_zero { Some(true) } else { None }
 }
 
-fn quick_active_feasibility_probe(
-    model: &BasicLinearTriadModel,
+fn quick_active_feasibility_probe<M>(
+    model: &M,
     active: &ActiveSources,
     tolerance: f64,
-) -> Option<bool> {
+) -> Option<bool>
+where
+    M: LinearTriadModelIISSource + ?Sized,
+{
+    let model = model.as_basic_linear_triad_model();
     for var_index in 0..model.num_variables() {
         let lower = if active.lower_bounds.contains(&var_index) {
             model
@@ -243,24 +255,28 @@ fn quick_active_feasibility_probe(
     if all_rows_zero { Some(true) } else { None }
 }
 
-pub(crate) fn is_basic_model_feasible_with_tolerance(
-    model: &BasicLinearTriadModel,
-    tolerance: f64,
-) -> Result<bool> {
+pub(crate) fn is_basic_model_feasible_with_tolerance<M>(model: &M, tolerance: f64) -> Result<bool>
+where
+    M: LinearTriadModelIISSource + ?Sized,
+{
     let tolerance = normalized_tolerance(tolerance);
     if let Some(feasible) = quick_feasibility_probe(model, tolerance) {
         return Ok(feasible);
     }
 
-    let linear_model = LinearTriadModel::from_basic(model.clone());
+    let linear_model = LinearTriadModel::from_basic(model.as_basic_linear_triad_model().clone());
     let output = solve_linear_model(&linear_model)?;
     Ok(output.status.is_feasible())
 }
 
-pub(crate) fn build_submodel_from_active(
-    model: &BasicLinearTriadModel,
+pub(crate) fn build_submodel_from_active<M>(
+    model: &M,
     active: &ActiveSources,
-) -> BasicLinearTriadModel {
+) -> BasicLinearTriadModel
+where
+    M: LinearTriadModelIISSource + ?Sized,
+{
+    let model = model.as_basic_linear_triad_model();
     let mut submodel = BasicLinearTriadModel::new(&format!("{}_iis_active", model.name));
 
     for (var_index, token) in model.variables.iter().cloned().enumerate() {
@@ -336,11 +352,14 @@ pub(crate) fn build_submodel_from_active(
     submodel
 }
 
-pub(crate) fn is_active_model_feasible_with_tolerance(
-    model: &BasicLinearTriadModel,
+pub(crate) fn is_active_model_feasible_with_tolerance<M>(
+    model: &M,
     active: &ActiveSources,
     tolerance: f64,
-) -> Result<bool> {
+) -> Result<bool>
+where
+    M: LinearTriadModelIISSource + ?Sized,
+{
     let tolerance = normalized_tolerance(tolerance);
     if let Some(feasible) = quick_active_feasibility_probe(model, active, tolerance) {
         return Ok(feasible);
@@ -350,11 +369,15 @@ pub(crate) fn is_active_model_feasible_with_tolerance(
     is_basic_model_feasible_with_tolerance(&submodel, tolerance)
 }
 
-pub(crate) fn compute_iis_deletion_with_active(
-    model: &BasicLinearTriadModel,
+pub(crate) fn compute_iis_deletion_with_active<M>(
+    model: &M,
     config: &IISConfig,
     mut active: ActiveSources,
-) -> Result<LinearIISModel> {
+) -> Result<LinearIISModel>
+where
+    M: LinearTriadModelIISSource + ?Sized,
+{
+    let model = model.as_basic_linear_triad_model();
     let start = Instant::now();
 
     if config.verbose {
@@ -442,10 +465,10 @@ pub(crate) fn compute_iis_deletion_with_active(
 ///
 /// # 返回 / Returns
 /// IIS 模型 / IIS model
-pub fn compute_iis_deletion(
-    model: &BasicLinearTriadModel,
-    config: &IISConfig,
-) -> Result<LinearIISModel> {
+pub fn compute_iis_deletion<M>(model: &M, config: &IISConfig) -> Result<LinearIISModel>
+where
+    M: LinearTriadModelIISSource + ?Sized,
+{
     let active = ActiveSources::from_model(model, config.include_bounds);
     compute_iis_deletion_with_active(model, config, active)
 }

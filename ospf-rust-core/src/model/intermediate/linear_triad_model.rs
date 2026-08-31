@@ -2,7 +2,7 @@
 //! Linear Triad Model
 
 use super::super::object::ObjectiveCategory;
-use super::{BasicLinearTriadModel, SparseVector};
+use super::{BasicLinearTriadModel, LinearElasticBuilder, SparseVector};
 use crate::token::Token;
 use crate::variable::{ContinuousVariableItem, VariableId, VariableType};
 
@@ -99,6 +99,11 @@ impl LinearTriadModel {
         model.c = objective;
         model.objective_category = ObjectiveCategory::Minimum;
         model
+    }
+
+    /// 创建弹性模型构建器 / Create elastic-model builder
+    pub fn elastic_builder(&self) -> LinearElasticBuilder<'_> {
+        LinearElasticBuilder::new(self)
     }
 
     /// 整理对偶解（过滤近零值）/ Tidy dual solution (filter near-zero entries)

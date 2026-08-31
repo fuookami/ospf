@@ -12,4 +12,3 @@ pub fn mode_name(mode: Demo2PipelineMode) -> &'static str {
         Demo2PipelineMode::WeightRecommendation => "weight_recommendation",
     }
 }
-

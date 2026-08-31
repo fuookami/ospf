@@ -15,8 +15,8 @@ use num_traits::Zero;
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 
 use crate::error::Result;
-use crate::flatten::{Linear, Quadratic, QuadraticMonomial};
 use crate::model::LinearConstraint;
+use crate::symbol::flatten::{Linear, Quadratic, QuadraticMonomial};
 use crate::token::{Token, TokenList};
 
 use super::super::{
@@ -254,7 +254,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::flatten::{LinearMonomial, QuadraticMonomialKind};
+    use crate::symbol::flatten::{LinearMonomial, QuadraticMonomialKind};
     use crate::token::{MutableTokenList, VecTokenList};
     use crate::variable::{ContinuousVariableItem, VariableId};
 

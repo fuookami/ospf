@@ -48,9 +48,9 @@ macro_rules! lin {
         $crate::symbol::Linear::new(
             vec![
                 $crate::symbol::LinearMonomial::new(1.0f64, $s1.clone()),
-                $crate::symbol::LinearMonomial::new(1.0f64, $s2.clone())
+                $crate::symbol::LinearMonomial::new(1.0f64, $s2.clone()),
             ],
-            0.0f64
+            0.0f64,
         )
     };
 
@@ -60,9 +60,9 @@ macro_rules! lin {
             vec![
                 $crate::symbol::LinearMonomial::new(1.0f64, $s1.clone()),
                 $crate::symbol::LinearMonomial::new(1.0f64, $s2.clone()),
-                $crate::symbol::LinearMonomial::new(1.0f64, $s3.clone())
+                $crate::symbol::LinearMonomial::new(1.0f64, $s3.clone()),
             ],
-            0.0f64
+            0.0f64,
         )
     };
 
@@ -70,7 +70,7 @@ macro_rules! lin {
     ($s:ident + $const:expr) => {
         $crate::symbol::Linear::new(
             vec![$crate::symbol::LinearMonomial::new(1.0f64, $s.clone())],
-            $const as f64
+            $const as f64,
         )
     };
 
@@ -78,15 +78,18 @@ macro_rules! lin {
     ($c:literal * $s:ident + $const:expr) => {
         $crate::symbol::Linear::new(
             vec![$crate::symbol::LinearMonomial::new($c as f64, $s.clone())],
-            $const as f64
+            $const as f64,
         )
     };
 
     // 带常数的负系数 * 单个符号
     (- $c:literal * $s:ident + $const:expr) => {
         $crate::symbol::Linear::new(
-            vec![$crate::symbol::LinearMonomial::new(-($c as f64), $s.clone())],
-            $const as f64
+            vec![$crate::symbol::LinearMonomial::new(
+                -($c as f64),
+                $s.clone(),
+            )],
+            $const as f64,
         )
     };
 
@@ -95,9 +98,9 @@ macro_rules! lin {
         $crate::symbol::Linear::new(
             vec![
                 $crate::symbol::LinearMonomial::new($c1 as f64, $s1.clone()),
-                $crate::symbol::LinearMonomial::new($c2 as f64, $s2.clone())
+                $crate::symbol::LinearMonomial::new($c2 as f64, $s2.clone()),
             ],
-            0.0f64
+            0.0f64,
         )
     };
 
@@ -106,9 +109,9 @@ macro_rules! lin {
         $crate::symbol::Linear::new(
             vec![
                 $crate::symbol::LinearMonomial::new($c1 as f64, $s1.clone()),
-                $crate::symbol::LinearMonomial::new(-($c2 as f64), $s2.clone())
+                $crate::symbol::LinearMonomial::new(-($c2 as f64), $s2.clone()),
             ],
-            0.0f64
+            0.0f64,
         )
     };
 
@@ -117,9 +120,9 @@ macro_rules! lin {
         $crate::symbol::Linear::new(
             vec![
                 $crate::symbol::LinearMonomial::new(-($c1 as f64), $s1.clone()),
-                $crate::symbol::LinearMonomial::new($c2 as f64, $s2.clone())
+                $crate::symbol::LinearMonomial::new($c2 as f64, $s2.clone()),
             ],
-            0.0f64
+            0.0f64,
         )
     };
 
@@ -128,9 +131,9 @@ macro_rules! lin {
         $crate::symbol::Linear::new(
             vec![
                 $crate::symbol::LinearMonomial::new(-($c1 as f64), $s1.clone()),
-                $crate::symbol::LinearMonomial::new(-($c2 as f64), $s2.clone())
+                $crate::symbol::LinearMonomial::new(-($c2 as f64), $s2.clone()),
             ],
-            0.0f64
+            0.0f64,
         )
     };
 
@@ -138,7 +141,7 @@ macro_rules! lin {
     ($s:ident) => {
         $crate::symbol::Linear::new(
             vec![$crate::symbol::LinearMonomial::new(1.0f64, $s.clone())],
-            0.0f64
+            0.0f64,
         )
     };
 
@@ -146,15 +149,18 @@ macro_rules! lin {
     ($c:literal * $s:ident) => {
         $crate::symbol::Linear::new(
             vec![$crate::symbol::LinearMonomial::new($c as f64, $s.clone())],
-            0.0f64
+            0.0f64,
         )
     };
 
     // 负系数 * 单个符号 - 放在最后
     (- $c:literal * $s:ident) => {
         $crate::symbol::Linear::new(
-            vec![$crate::symbol::LinearMonomial::new(-($c as f64), $s.clone())],
-            0.0f64
+            vec![$crate::symbol::LinearMonomial::new(
+                -($c as f64),
+                $s.clone(),
+            )],
+            0.0f64,
         )
     };
 }
@@ -207,48 +213,72 @@ macro_rules! quad {
     // c * x * y (系数 * 两个符号)
     ($c:literal * $s1:ident * $s2:ident) => {
         $crate::symbol::Quadratic::new(
-            vec![$crate::symbol::QuadraticMonomial::quadratic($c as f64, $s1.clone(), $s2.clone())],
-            0.0f64
+            vec![$crate::symbol::QuadraticMonomial::quadratic(
+                $c as f64,
+                $s1.clone(),
+                $s2.clone(),
+            )],
+            0.0f64,
         )
     };
 
     // 负系数 * x * y
     (- $c:literal * $s1:ident * $s2:ident) => {
         $crate::symbol::Quadratic::new(
-            vec![$crate::symbol::QuadraticMonomial::quadratic(-($c as f64), $s1.clone(), $s2.clone())],
-            0.0f64
+            vec![$crate::symbol::QuadraticMonomial::quadratic(
+                -($c as f64),
+                $s1.clone(),
+                $s2.clone(),
+            )],
+            0.0f64,
         )
     };
 
     // x * y (两个符号相乘)
     ($s1:ident * $s2:ident) => {
         $crate::symbol::Quadratic::new(
-            vec![$crate::symbol::QuadraticMonomial::quadratic(1.0f64, $s1.clone(), $s2.clone())],
-            0.0f64
+            vec![$crate::symbol::QuadraticMonomial::quadratic(
+                1.0f64,
+                $s1.clone(),
+                $s2.clone(),
+            )],
+            0.0f64,
         )
     };
 
     // c * x^2 (系数 * 平方)
     ($c:literal * $s:ident ^ 2) => {
         $crate::symbol::Quadratic::new(
-            vec![$crate::symbol::QuadraticMonomial::quadratic($c as f64, $s.clone(), $s.clone())],
-            0.0f64
+            vec![$crate::symbol::QuadraticMonomial::quadratic(
+                $c as f64,
+                $s.clone(),
+                $s.clone(),
+            )],
+            0.0f64,
         )
     };
 
     // 负系数 * x^2
     (- $c:literal * $s:ident ^ 2) => {
         $crate::symbol::Quadratic::new(
-            vec![$crate::symbol::QuadraticMonomial::quadratic(-($c as f64), $s.clone(), $s.clone())],
-            0.0f64
+            vec![$crate::symbol::QuadraticMonomial::quadratic(
+                -($c as f64),
+                $s.clone(),
+                $s.clone(),
+            )],
+            0.0f64,
         )
     };
 
     // x^2 (平方)
     ($s:ident ^ 2) => {
         $crate::symbol::Quadratic::new(
-            vec![$crate::symbol::QuadraticMonomial::quadratic(1.0f64, $s.clone(), $s.clone())],
-            0.0f64
+            vec![$crate::symbol::QuadraticMonomial::quadratic(
+                1.0f64,
+                $s.clone(),
+                $s.clone(),
+            )],
+            0.0f64,
         )
     };
 }
@@ -366,8 +396,8 @@ macro_rules! canonical {
 
 #[cfg(test)]
 mod tests {
-    use crate::{lin, quad, symbols_test};
     use crate::symbol::{Linear, Quadratic};
+    use crate::{lin, quad, symbols_test};
 
     #[test]
     fn test_lin_basic() {

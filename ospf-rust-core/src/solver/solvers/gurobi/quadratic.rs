@@ -298,7 +298,7 @@ fn solve_quadratic_internal(
     solver.emit_stage_status(GurobiStage::Configuration, None, start_time.elapsed(), None)?;
 
     // 优化
-    solver.optimize_model(&mut grb_model, model.objective_category)?;
+    solver.optimize_model(&mut grb_model, model.objective_category, Some(&grb_vars))?;
 
     // 获取结果；当状态为 InfOrUnbd 时，关闭 DualReductions 再优化一次以区分 Infeasible/Unbounded
     let mut status = grb_model.status().map_err(|e| {
@@ -314,7 +314,7 @@ fn solve_quadratic_internal(
                 e
             )))
         })?;
-        solver.optimize_model(&mut grb_model, model.objective_category)?;
+        solver.optimize_model(&mut grb_model, model.objective_category, Some(&grb_vars))?;
         status = grb_model.status().map_err(|e| {
             CoreError::Solver(SolverError::SolveFailed(format!(
                 "Gurobi get status error: {}",
@@ -322,11 +322,14 @@ fn solve_quadratic_internal(
             )))
         })?;
     }
-    let solver_status = GurobiSolver::convert_status(status);
+    let mapped_status = GurobiSolver::convert_status(status);
+    let has_solution = matches!(mapped_status, crate::solver::SolverStatus::Optimal)
+        || grb_model.get_attr(attr::SolCount).unwrap_or(0) > 0;
+    let solver_status = GurobiSolver::refine_status_with_solution(mapped_status, has_solution);
 
     let mut output = SolverOutput::new(solver_status);
 
-    if solver_status.is_feasible() {
+    if solver_status.is_feasible() && has_solution {
         if let Ok(obj) = grb_model.get_attr(attr::ObjVal) {
             output.objective_value = Some(obj);
         }
@@ -410,7 +413,7 @@ fn solve_quadratic_internal(
     }
 
     let mut solutions = Vec::new();
-    if collect_solution_pool && solution_amount > 1 && solver_status.is_feasible() {
+    if collect_solution_pool && solution_amount > 1 && solver_status.is_feasible() && has_solution {
         if let Some(primary) = output.solution.clone() {
             solutions.push(primary);
         }

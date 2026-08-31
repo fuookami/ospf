@@ -36,7 +36,7 @@ use super::concept::{AccessOrder, AccessOrderTrait, ColumnMajor, RowMajor, Stora
 use super::index_value::TryIntoIndexValue;
 use super::shape::AbstractShape;
 use cc_traits::{Collection, Len};
-use dyn_clone::{clone_trait_object, DynClone};
+use dyn_clone::{DynClone, clone_trait_object};
 use ospf_rust_base::collection::Indices;
 use ospf_rust_base::error::*;
 use std::alloc::Allocator;
@@ -314,7 +314,7 @@ impl DummyIndex {
                 } else {
                     DummyIndexIterator::Continuous(Range { start: 0, end: 0 })
                 }
-            },
+            }
             DummyIndex::IndexArray(indexes) => DummyIndexIterator::Discrete(
                 indexes
                     .iter()
@@ -1402,10 +1402,17 @@ mod tests {
         let dummy_vec: [DummyIndex; 2] = dummy_expect![0..2, 0..3];
         let iterators = shape.dummy_to_iterator_vector(&dummy_vec);
 
-        assert!(<RowMajor as AdvancePolicy<Shape<2>>>::init_iterator::<[DummyIndexIterator; 2]>(&policy, &iterators, &mut current_vector));
+        assert!(<RowMajor as AdvancePolicy<Shape<2>>>::init_iterator::<
+            [DummyIndexIterator; 2],
+        >(&policy, &iterators, &mut current_vector));
 
         let mut count = 0;
-        while <RowMajor as AdvancePolicy<Shape<2>>>::advance::<[DummyIndexIterator; 2]>(&policy, &iterators, &mut current_positions, &mut current_vector) {
+        while <RowMajor as AdvancePolicy<Shape<2>>>::advance::<[DummyIndexIterator; 2]>(
+            &policy,
+            &iterators,
+            &mut current_positions,
+            &mut current_vector,
+        ) {
             count += 1;
         }
         assert_eq!(count, 5);
@@ -1421,10 +1428,17 @@ mod tests {
         let dummy_vec: [DummyIndex; 2] = dummy_expect![0..2, 0..3];
         let iterators = shape.dummy_to_iterator_vector(&dummy_vec);
 
-        assert!(<ColumnMajor as AdvancePolicy<Shape<2>>>::init_iterator::<[DummyIndexIterator; 2]>(&policy, &iterators, &mut current_vector));
+        assert!(<ColumnMajor as AdvancePolicy<Shape<2>>>::init_iterator::<
+            [DummyIndexIterator; 2],
+        >(&policy, &iterators, &mut current_vector));
 
         let mut count = 0;
-        while <ColumnMajor as AdvancePolicy<Shape<2>>>::advance::<[DummyIndexIterator; 2]>(&policy, &iterators, &mut current_positions, &mut current_vector) {
+        while <ColumnMajor as AdvancePolicy<Shape<2>>>::advance::<[DummyIndexIterator; 2]>(
+            &policy,
+            &iterators,
+            &mut current_positions,
+            &mut current_vector,
+        ) {
             count += 1;
         }
         assert_eq!(count, 5);

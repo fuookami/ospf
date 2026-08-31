@@ -1,9 +1,10 @@
 use std::error::Error;
 
-use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::solver::solvers::GurobiSolver;
 use ospf_rust_core::variable::{UContinuousVariableItem, UIntegerVariableItem};
+use ospf_rust_framework::solver::{
+    ColumnGenerationSolver, FrameworkSolveOptions, GurobiColumnGenerationSolver,
+};
 
 use crate::framework::demo3::domain::{CuttingPlan, Product};
 
@@ -35,11 +36,15 @@ impl Rmp {
 
     pub fn solve_lp(&self) -> Result<LpResultData, Box<dyn Error>> {
         let (model, _) = self.build_model(false)?;
-        let solver = GurobiSolver::new();
-        let output = model.solve(&solver)?;
+        let linear_model = model.try_to_linear_triad_model()?;
+        let solver = GurobiColumnGenerationSolver::new();
+        let output = solver.solve_lp_with_options(
+            &linear_model,
+            FrameworkSolveOptions::new().with_name("framework_demo3_rmp_lp"),
+        )?;
 
-        let objective = output.objective_value.unwrap_or(0.0);
-        let dual = output.dual_solution.unwrap_or_default();
+        let objective = output.result.obj;
+        let dual = output.dual_solution.constraints;
         let mut shadow_prices = vec![0.0; self.products.len()];
         for (i, slot) in shadow_prices.iter_mut().enumerate() {
             if let Some(value) = dual.get(i) {
@@ -55,11 +60,13 @@ impl Rmp {
 
     pub fn solve_milp(&self) -> Result<Vec<(CuttingPlan, u64)>, Box<dyn Error>> {
         let (model, x_idx) = self.build_model(true)?;
-        let solver = GurobiSolver::new();
-        let output = model.solve(&solver)?;
-        let solution = output
-            .solution
-            .ok_or_else(|| String::from("rmp milp has no feasible solution"))?;
+        let linear_model = model.try_to_linear_triad_model()?;
+        let solver = GurobiColumnGenerationSolver::new();
+        let output = solver.solve_milp_with_options(
+            &linear_model,
+            FrameworkSolveOptions::new().with_name("framework_demo3_rmp_milp"),
+        )?;
+        let solution = output.solution;
 
         let mut ret = Vec::new();
         for (k, plan) in self.plans.iter().enumerate() {
@@ -83,14 +90,10 @@ impl Rmp {
             x_idx.push(idx);
         }
 
-        let objective: Vec<f64> = {
-            let mut coeff = vec![0.0; model.num_tokens()];
-            for idx in &x_idx {
-                coeff[*idx] = 1.0;
-            }
-            coeff
-        };
-        model.set_linear_objective(objective, ObjectiveCategory::Minimum);
+        let objective = MetaModel::linear_expression_builder()
+            .terms(x_idx.iter().copied().map(|index| (index, 1.0)))
+            .minimize("rmp_min_stock_used");
+        model.set_linear_objective_input(objective);
 
         for (p, product) in self.products.iter().enumerate() {
             let coefficients: Vec<(usize, f64)> = self

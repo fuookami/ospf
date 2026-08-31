@@ -1,19 +1,8 @@
-//! Stress units - 应力单位
-//! Stress units - SI stress units
-//!
-//! 提供应力量纲的 SI 单位定义，应力与压力同量纲，包括帕斯卡、兆帕等。
-//! Provides SI unit definitions for stress dimension, stress has the same dimension as pressure, including pascal, megapascal, etc.
-
 use super::area::SquareMeter;
 use super::force::Newton;
 use crate::dimension::derived::Pressure;
-// Stress has same dimension as pressure
-use crate::scale::{Scale, KILO, MEGA};
+use crate::scale::{KILO, MEGA, Scale};
 use crate::unit::{CTUnit, CTUnitDiv};
-
-// ============================================================================
-// 应力单位 / Stress units
-// ============================================================================
 
 define_unit_by!(
     PascalStress,
@@ -43,9 +32,23 @@ define_unit!(
     Scale::from_f64(6894.757)
 );
 define_unit!(
+    PoundForcePerSquareFoot,
+    "pound-force per square foot",
+    "psf",
+    Pressure,
+    Scale::from_f64(47.88025898)
+);
+define_unit!(
     KilogramForcePerSquareCentimeter,
     "kilogram-force per square centimeter",
-    "kgf/cm²",
+    "kgf/cm^2",
     Pressure,
     Scale::from_f64(98066.5)
+);
+define_unit!(
+    KilogramForcePerSquareMeter,
+    "kilogram-force per square meter",
+    "kgf/m^2",
+    Pressure,
+    Scale::from_f64(9.80665)
 );

@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::error::{ModelError, Result};
-use crate::model::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
+use crate::model::basic::ConstraintPriority;
 use crate::symbol::IntermediateSymbol;
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 use ospf_rust_math::symbol::{Linear as SymbolicLinear, Quadratic as SymbolicQuadratic};
 
 use super::ConstraintGroup;
@@ -120,6 +121,11 @@ where
 
     pub fn with_priority(mut self, priority: u32) -> Self {
         self.priority = priority;
+        self
+    }
+
+    pub fn with_constraint_priority(mut self, priority: ConstraintPriority) -> Self {
+        self.priority = priority.into();
         self
     }
 

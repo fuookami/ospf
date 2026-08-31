@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
+use crate::framework_demo::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 
 pub struct LoadingEffectivenessAggregation {
     pub big_m: f64,

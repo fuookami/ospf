@@ -1,16 +1,21 @@
 use std::error::Error;
 use std::sync::Arc;
 
+use crate::example_modeling::solve_linear_meta_model_typed;
+use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::model::{ConstraintGroup, ConstraintRelation, MetaModel};
-use ospf_rust_core::solver::{SolverCapability, SolverInfo, SolverOutput, solvers::GurobiSolver};
+use ospf_rust_core::solver::{
+    FeasibleSolverOutput, SolverCapability, SolverInfo, solvers::GurobiSolver,
+};
 use ospf_rust_core::symbol::BinaryzationMethod;
 use ospf_rust_core::variable::BinaryVariableItem;
 
-/// 推荐入口：求解 MetaModel / Recommended entry: solve MetaModel
-pub fn solve(meta_model: MetaModel<f64>) -> Result<SolverOutput, Box<dyn Error>> {
+/// 推荐 typed 入口：求解 MetaModel / Recommended typed entry: solve MetaModel
+pub fn solve_typed(
+    meta_model: MetaModel<f64>,
+) -> Result<FeasibleSolverOutput<f64>, Box<dyn Error>> {
     let solver = GurobiSolver::new();
-    let output = meta_model.solve(&solver)?;
-    Ok(output)
+    solve_linear_meta_model_typed(meta_model, &solver)
 }
 
 pub fn read_solution_value(solution: &[f64], idx: usize) -> f64 {
@@ -41,8 +46,16 @@ pub fn linear_expr_from_indices(indices: &[usize], coefficient: f64) -> Vec<(usi
         .collect()
 }
 
-pub fn linear_expr_from_sparse_terms(terms: &[(usize, f64)]) -> Vec<(usize, f64)> {
-    terms.to_vec()
+pub fn set_linear_objective_from_sparse_terms(
+    model: &mut MetaModel<f64>,
+    terms: &[(usize, f64)],
+    category: ObjectiveCategory,
+) {
+    let mut objective = vec![0.0; model.num_tokens()];
+    for (index, coefficient) in terms {
+        objective[*index] = *coefficient;
+    }
+    model.set_linear_objective(objective, category);
 }
 
 pub fn add_constraint_with_metadata(

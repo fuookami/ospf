@@ -330,10 +330,7 @@ impl<
 }
 
 impl<T, E: Exponent + fmt::Display + One + PartialEq> CanonicalMonomial<T, E> {
-    fn format_powers(
-        powers: &HashMap<OwnedSymbol, E>,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn format_powers(powers: &HashMap<OwnedSymbol, E>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut first = true;
         for (symbol, exp) in powers {
             if first {
@@ -357,7 +354,7 @@ impl<T, E: Exponent + fmt::Display + One + PartialEq> CanonicalMonomial<T, E> {
 // ============================================================================
 
 use crate::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
-use num_traits::{ One, ToPrimitive };
+use num_traits::{One, ToPrimitive};
 
 impl<T, E: Exponent> Evaluate<T> for CanonicalMonomial<T, E>
 where

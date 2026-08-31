@@ -7,7 +7,7 @@
 use super::amount_of_substance::Mole;
 use super::time::Second;
 use crate::dimension::derived::CatalyticActivity;
-use crate::scale::{Scale, MICRO, MILLI};
+use crate::scale::{MICRO, MILLI, Scale};
 use crate::unit::{CTUnit, CTUnitDiv};
 
 // ============================================================================

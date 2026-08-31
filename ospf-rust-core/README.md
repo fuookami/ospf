@@ -1,8 +1,8 @@
 # OSPF Rust Core
 
-[中文](README_ch.md) | English
-
 The core module of the OSPF (Operational Research Solver Framework) Rust implementation, providing fundamental data structures and abstractions for optimization modeling.
+
+:us: English | :cn: [简体中文](README_ch.md)
 
 ## Overview
 
@@ -92,6 +92,24 @@ fn solve_with_callable<S: ospf_rust_core::solver::Solver>(
 }
 ```
 
+With `async` feature enabled, blocking solver calls can be moved to Tokio's blocking
+thread pool:
+
+```rust
+use std::sync::Arc;
+use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::solver::{solve_async_with_callback, SolvingStatusCallback, Solver};
+
+#[cfg(feature = "async")]
+async fn solve_in_background<S: Solver + 'static>(
+    meta_model: MetaModel<f64>,
+    solver: Arc<S>,
+    callback: SolvingStatusCallback,
+) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolverOutput> {
+    solve_async_with_callback(solver, meta_model, callback).await
+}
+```
+
 ### MetaModel Shortcut APIs
 
 `MetaModel` now provides shortcut APIs for high-frequency modeling paths:
@@ -102,7 +120,7 @@ fn solve_with_callable<S: ospf_rust_core::solver::Solver>(
 
 ```rust,ignore
 use std::sync::Arc;
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::model::{
     ConstraintGroup, ConstraintRelation, LinearInequality, MetaModel, SymbolicLinearInequality,
 };
@@ -110,7 +128,7 @@ use ospf_rust_core::model::{
 let mut model = MetaModel::<f64>::new("shortcut_demo");
 
 // 1) Metadata shortcut
-let g = Arc::new(ConstraintGroup::new("logic"));
+let g = Arc::new(ConstraintGroup::new(1001, "logic"));
 let ineq = LinearInequality::new(
     Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
     ConstraintRelation::LessEqual,
@@ -142,17 +160,55 @@ model.partition_linear_coefficients(&[(0, 1.0), (1, 1.0)], "p_coeff")?;
 model.partition_linear_indices(&[2, 3, 4], "p_idx")?;
 ```
 
+### Phase4 Builder APIs
+
+`MetaModel` also provides Kotlin-aligned builder inputs to reduce manual sparse arrays:
+
+```rust,ignore
+use ospf_rust_core::model::{LinearExpressionBuilder, MetaModel, ObjectiveCategory};
+
+let mut model = MetaModel::<f64>::new("builder_demo");
+
+let c = LinearExpressionBuilder::new()
+    .term(0, 1.0)
+    .term(1, 2.0)
+    .constant(-3.0)
+    .le(0.0, "capacity");
+model.add_linear_constraint_input(c)?;
+
+let objective = LinearExpressionBuilder::new()
+    .term(0, 4.0)
+    .term(1, 5.0)
+    .maximize("profit")
+    .category(ObjectiveCategory::Maximum);
+model.set_linear_objective_input(objective);
+```
+
+### Phase5 Gate
+
+Default gate and scans:
+
+```bash
+bash scripts/phase5_gate.sh
+powershell -File scripts/phase5_gate.ps1
+```
+
 ### Feature Flags
 
 - `async` - Enable async/await support
 - `serde` - Enable serialization/deserialization
 - `nightly` - Enable callable solver wrapper (`as_fn`)
-- `gurobi` - Enable Gurobi solver bindings
+- `gurobi` - Alias for `gurobi10`
 - `gurobi10`, `gurobi11`, `gurobi12` - Gurobi version-specific bindings
 - `scip` - Enable SCIP solver bindings
+- `scip-bundled` - Enable bundled SCIP from `russcip`
+- `scip-from-source` - Build SCIP from source through `russcip`
 - `scip-quadratic` - Enable SCIP with quadratic support
 
 ### Solver Backends (Gurobi / SCIP)
+
+Rust does not split solver backends into Maven-like modules. Enable each backend through Cargo
+features on the crate that you depend on.
 
 Backend-specific notes are documented here:
 
@@ -161,9 +217,16 @@ Backend-specific notes are documented here:
 
 Common feature examples:
 
+```toml
+[dependencies]
+ospf-rust-core = { path = "../ospf-rust-core", features = ["gurobi10"] }
+# or
+ospf-rust-core = { path = "../ospf-rust-core", features = ["scip-bundled"] }
+```
+
 ```bash
-# Gurobi 12
-cargo test -p ospf-rust-core --features gurobi12
+# Gurobi 10
+cargo test -p ospf-rust-core --features gurobi10
 
 # SCIP (system install)
 cargo test -p ospf-rust-core --features scip
@@ -171,6 +234,51 @@ cargo test -p ospf-rust-core --features scip
 # SCIP bundled
 cargo test -p ospf-rust-core --features scip-bundled
 ```
+
+Recommended backend imports:
+
+```rust,ignore
+use ospf_rust_core::solver::backend::{GurobiSolver, ScipSolver};
+```
+
+`SCIPSolver` and `SCIPConfig` are kept as compatibility names. Prefer `ScipSolver` and
+`ScipConfig` in new Rust code.
+
+Backend configs expose concise aliases for common tuning knobs:
+
+```rust,ignore
+use ospf_rust_core::solver::backend::{GurobiConfig, GurobiSolver, ScipConfig, ScipSolver};
+
+let gurobi = GurobiSolver::with_config(
+    GurobiConfig::new()
+        .with_gap(1e-4)
+        .with_memory_limit_gb(8.0)
+        .with_improve_threshold(1e-6),
+);
+
+let scip = ScipSolver::with_config(
+    ScipConfig::new()
+        .with_gap(1e-4)
+        .with_memory_limit_mb(2048.0)
+        .with_improve_threshold(1e-6),
+);
+```
+
+Multi-solution calls use `solution_amount`. Gurobi and SCIP both try the native solution-pool path
+when the backend supports it:
+
+```rust,ignore
+use ospf_rust_core::solver::{SolveOptions, SolverExt};
+
+let options = SolveOptions::new().with_solution_amount(5);
+let multi = solver.solve_multi_with_options(&meta_model, &options)?;
+```
+
+### Kotlin-Aligned Public Paths (Migration Note)
+
+- `symbol::function` is the new preferred entry (legacy `symbol::functions` kept for compatibility).
+- `symbol::flatten` is the new preferred entry (legacy `model::flatten` kept for compatibility).
+- `solver::config`, `solver::output`, `solver::value`, `solver::backend` are introduced as aligned paths.
 
 ## Dependencies
 

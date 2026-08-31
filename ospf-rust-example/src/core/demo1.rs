@@ -17,19 +17,18 @@
 //! This example demonstrates the complete workflow of high-level modeling using MetaModel:
 //! 1. 在 MetaModel 中注册决策变量
 //!    Register decision variables in MetaModel
-//! 2. 使用运算符重载在 MetaModel 中添加约束条件
-//!    Add constraints in MetaModel using operator overloading
-//! 3. 在 MetaModel 中设置目标函数
-//!    Set objective function in MetaModel
+//! 2. 使用 math.symbol 构建中间表达式
+//!    Build intermediate expressions with math.symbol
+//! 3. 将中间表达式注册为约束和目标
+//!    Register intermediate expressions as constraints and objective
 //! 4. 转换: MetaModel -> MechanismModel -> LinearTriadModel
 //!    Transform: MetaModel -> MechanismModel -> LinearTriadModel
 //! 5. 求解 / Solve
 
-use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::solver::{LinearSolver, solvers::GurobiSolver};
+use super::common::solve_typed;
+use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
 use ospf_rust_core::variable::{Binary, VariableCombination1D};
-use ospf_rust_math::symbol::Linear;
+use ospf_rust_math::symbol::{Linear, LinearMonomial};
 use ospf_rust_multiarray::Shape;
 
 /// 公司数据结构 / Company data structure
@@ -67,6 +66,25 @@ fn get_companies() -> Vec<Company> {
     ]
 }
 
+/// 构建公司指标表达式 / Build company metric expression
+fn company_metric_expression<F>(
+    decision_vars: &VariableCombination1D<Binary>,
+    companies: &[Company],
+    metric: F,
+) -> Linear<f64>
+where
+    F: Fn(&Company) -> f64,
+{
+    Linear::new(
+        decision_vars
+            .iter()
+            .zip(companies.iter())
+            .map(|(var, company)| LinearMonomial::new(metric(company), var.to_owned_symbol()))
+            .collect(),
+        0.0,
+    )
+}
+
 /// Demo1 主函数 / Demo1 main function
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Demo1: Portfolio Selection Problem ===\n");
@@ -91,7 +109,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let decision_vars: VariableCombination1D<Binary> =
         VariableCombination1D::new(Shape::new([companies.len()]), "select");
 
-    // 注册变量到模型 / Register variables to model
+    // 注册变量到模型 / Register variables into model
     for var in decision_vars.iter() {
         meta_model.register_variable(var.clone())?;
     }
@@ -103,52 +121,56 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // ========================================================================
-    // 步骤 2: 使用运算符重载在 MetaModel 中添加约束
-    // Step 2: Add constraints in MetaModel using operator overloading
+    // 步骤 2: 使用 math.symbol 构建中间表达式
+    // Step 2: Build intermediate expressions with math.symbol
     // ========================================================================
 
-    // 收集变量引用用于构建约束表达式
-    // Collect variable references for building constraint expressions
-    let var_refs: Vec<_> = decision_vars.iter().collect();
+    let total_capital_expr =
+        company_metric_expression(&decision_vars, &companies, |company| company.capital);
+    let total_liability_expr =
+        company_metric_expression(&decision_vars, &companies, |company| company.liability);
+    let total_profit_expr =
+        company_metric_expression(&decision_vars, &companies, |company| company.profit);
+
+    println!("Step 2: Built intermediate expressions with math.symbol");
+    println!("  Expression: total_capital");
+    println!("  Expression: total_liability");
+    println!("  Expression: total_profit");
+    println!();
+
+    // ========================================================================
+    // 步骤 3: 将中间表达式注册为约束和目标
+    // Step 3: Register intermediate expressions as constraints and objective
+    // ========================================================================
 
     // 约束1: 总资本 >= min_capital
-    // 使用运算符重载和 Linear::ge() 便捷方法
-    // Using operator overloading and Linear::ge() convenience method
-    let mut capital_expr = Linear::zero();
-    for (i, company) in companies.iter().enumerate() {
-        capital_expr = capital_expr + company.capital * var_refs[i];
-    }
-    meta_model.add_math_inequality(capital_expr.ge(min_capital), "capital_constraint");
+    // Constraint 1: total capital >= min_capital
+    meta_model.add_math_inequality(total_capital_expr.ge(min_capital), "capital_constraint");
     println!(
-        "Step 2: Added constraint: total capital >= {} (using Linear::ge())",
+        "Step 3: Added constraint: total capital >= {} (using math.symbol)",
         min_capital
     );
 
     // 约束2: 总负债 <= max_liability
-    // 使用运算符重载和 Linear::le() 便捷方法
-    // Using operator overloading and Linear::le() convenience method
-    let mut liability_expr = Linear::zero();
-    for (i, company) in companies.iter().enumerate() {
-        liability_expr = liability_expr + company.liability * var_refs[i];
-    }
-    meta_model.add_math_inequality(liability_expr.le(max_liability), "liability_constraint");
+    // Constraint 2: total liability <= max_liability
+    meta_model.add_math_inequality(
+        total_liability_expr.le(max_liability),
+        "liability_constraint",
+    );
     println!(
-        "  Added constraint: total liability <= {} (using Linear::le())",
+        "  Added constraint: total liability <= {} (using math.symbol)",
         max_liability
     );
-    println!();
-
-    // ========================================================================
-    // 步骤 3: 在 MetaModel 中设置目标函数
-    // Step 3: Set objective function in MetaModel
-    // ========================================================================
 
     // 最大化总利润 / Maximize total profit
-    let profit_coeffs: Vec<f64> = companies.iter().map(|c| c.profit).collect();
-    meta_model.set_linear_objective(profit_coeffs.clone(), ObjectiveCategory::Maximum);
+    meta_model.set_math_linear_objective(
+        total_profit_expr,
+        ObjectiveCategory::Maximum,
+        "total_profit",
+    )?;
 
     println!("Step 3: Set objective: maximize total profit");
-    println!("  Coefficients: {:?}", profit_coeffs);
+    println!("  Objective input name: total_profit");
     println!();
 
     // ========================================================================
@@ -161,7 +183,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     // 4.1: MetaModel -> MechanismModel
     // 符号约束在转换时自动映射到整数索引
     // Symbolic constraints are automatically mapped to integer indices during transformation
-    let mechanism_model = meta_model.into_mechanism_model();
+    let mechanism_model = meta_model.try_to_mechanism_model()?;
     println!("  4.1: MetaModel -> MechanismModel");
     println!("       Variables: {}", mechanism_model.num_variables());
     println!("       Constraints: {}", mechanism_model.num_constraints());
@@ -185,70 +207,53 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     // 步骤 5: 求解 / Step 5: Solve
     // ========================================================================
 
-    println!("Step 5: Solving with Gurobi...");
-    let solver = GurobiSolver::new();
+    println!("Step 5: Solving with typed MetaModel entry...");
+    let output = solve_typed(meta_model)?;
+    println!("\n=== Solver Output ===");
+    println!("Status: {:?}", output.status);
+    if let Some(obj) = output.objective_value {
+        println!("Objective value (total profit): {:.0}", obj);
+    }
 
-    match solver.solve_linear(&linear_model) {
-        Ok(output) => {
-            println!("\n=== Solver Output ===");
-            println!("Status: {:?}", output.status);
+    let solution = output.solution;
+    println!("\n=== Solution ===");
+    let mut selected: Vec<String> = Vec::new();
+    let mut total_capital = 0.0;
+    let mut total_liability = 0.0;
 
-            if let Some(obj) = output.objective_value {
-                println!("Objective value (total profit): {:.0}", obj);
-            }
+    for (i, var) in decision_vars.iter().enumerate() {
+        let val = solution.get(i).copied().unwrap_or(0.0);
+        println!("  {} = {:.6}", var.name(), val);
 
-            if let Some(ref solution) = output.solution {
-                println!("\n=== Solution ===");
-                let mut selected: Vec<String> = Vec::new();
-                let mut total_capital = 0.0;
-                let mut total_liability = 0.0;
-
-                for (i, var) in decision_vars.iter().enumerate() {
-                    let val = solution[i];
-                    println!("  {} = {:.6}", var.name(), val);
-
-                    if val > 0.5 {
-                        selected.push(companies[i].name.clone());
-                        total_capital += companies[i].capital;
-                        total_liability += companies[i].liability;
-                    }
-                }
-
-                println!("\n=== Results ===");
-                println!("Selected companies: {:?}", selected);
-                println!(
-                    "Total capital: {:.2} (required >= {:.2})",
-                    total_capital, min_capital
-                );
-                println!(
-                    "Total liability: {:.2} (required <= {:.2})",
-                    total_liability, max_liability
-                );
-
-                // 验证约束 / Verify constraints
-                println!("\n=== Constraint Verification ===");
-                if total_capital >= min_capital {
-                    println!("✓ Capital constraint satisfied");
-                } else {
-                    println!("✗ Capital constraint violated!");
-                }
-                if total_liability <= max_liability {
-                    println!("✓ Liability constraint satisfied");
-                } else {
-                    println!("✗ Liability constraint violated!");
-                }
-            }
-
-            if let Some(iter) = output.iterations {
-                println!("\nIterations: {}", iter);
-            }
-
-            println!("Solve time: {:?}", output.solve_time);
+        if val > 0.5 {
+            selected.push(companies[i].name.clone());
+            total_capital += companies[i].capital;
+            total_liability += companies[i].liability;
         }
-        Err(e) => {
-            println!("Solver error: {}", e);
-            return Err(e.into());
-        }
+    }
+
+    println!("\n=== Results ===");
+    println!("Selected companies: {:?}", selected);
+    println!(
+        "Total capital: {:.2} (required >= {:.2})",
+        total_capital, min_capital
+    );
+    println!(
+        "Total liability: {:.2} (required <= {:.2})",
+        total_liability, max_liability
+    );
+
+    // 验证约束 / Verify constraints
+    println!("\n=== Constraint Verification ===");
+    if total_capital >= min_capital {
+        println!("✓ Capital constraint satisfied");
+    } else {
+        println!("✗ Capital constraint violated!");
+    }
+    if total_liability <= max_liability {
+        println!("✓ Liability constraint satisfied");
+    } else {
+        println!("✗ Liability constraint violated!");
     }
 
     Ok(())

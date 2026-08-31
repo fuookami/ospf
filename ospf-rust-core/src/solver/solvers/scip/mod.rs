@@ -1,6 +1,8 @@
-//! SCIP 姹傝В鍣ㄦ帴鍙?//! SCIP Solver Interface
+//! SCIP 求解器接口
+//! SCIP Solver Interface
 
-//! 姝ゆā鍧椾粎鍦ㄥ惎鐢?`scip` feature 鏃跺彲鐢ㄣ€?//! This module is only available when the `scip` feature is enabled.
+//! 此模块仅在启用 `scip` feature 时可用。
+//! This module is only available when the `scip` feature is enabled.
 
 use std::time::{Duration, Instant};
 
@@ -15,7 +17,7 @@ use crate::variable::VariableType;
 #[cfg(feature = "scip")]
 use russcip::{
     Constraint, Event, EventMask, Eventhdlr, Model, ParamSetting, ProblemCreated, ProblemOrSolving,
-    SCIPEventhdlr, Solving, Status as SCIPStatus, Unsolved, VarType, WithSolutions,
+    SCIPEventhdlr, Solving, Status as SCIPStatus, Unsolved, VarType, Variable, WithSolutions,
     WithSolvingStats,
 };
 
@@ -23,17 +25,20 @@ mod callbacks;
 mod config;
 
 pub use callbacks::{
-    SCIPNativeCallback, SCIPNativeControl, SCIPNativeObserver, SCIPNativeSnapshot,
-    SCIPNativeWhere,
+    SCIPNativeCallback, SCIPNativeControl, SCIPNativeObserver, SCIPNativeSnapshot, SCIPNativeWhere,
     SCIPSnapshotControl, SCIPSnapshotObserver, SCIPStage, SCIPStageCallback, SCIPStageStatus,
-    SCIPTelemetryCallback, SCIPTelemetryStatus,
+    SCIPTelemetryCallback, SCIPTelemetryStatus, ScipNativeCallback, ScipNativeControl,
+    ScipNativeObserver, ScipNativeSnapshot, ScipNativeWhere, ScipSnapshotControl,
+    ScipSnapshotObserver, ScipStage, ScipStageCallback, ScipStageStatus, ScipTelemetryCallback,
+    ScipTelemetryStatus,
 };
-pub use config::{PresolvingMode, SCIPConfig};
+pub use config::{PresolvingMode, SCIPConfig, ScipConfig};
 
 #[cfg(feature = "scip")]
 #[derive(Clone)]
 struct SCIPTelemetryRuntime {
     objective_category: ObjectiveCategory,
+    scip_vars: Vec<Variable>,
     no_improvement_time_limit: Option<f64>,
     improvement_tolerance: f64,
     telemetry_min_interval: Option<f64>,
@@ -61,6 +66,7 @@ struct SCIPTelemetryEventHandler {
     last_improvement: Instant,
     last_telemetry_emit: Option<Instant>,
     best_objective: Option<f64>,
+    initial_objective_value: Option<f64>,
 }
 
 #[cfg(feature = "scip")]
@@ -73,6 +79,7 @@ impl SCIPTelemetryEventHandler {
             last_improvement: now,
             last_telemetry_emit: None,
             best_objective: None,
+            initial_objective_value: None,
         }
     }
 
@@ -101,11 +108,22 @@ impl SCIPTelemetryEventHandler {
         SCIPNativeWhere::Other
     }
 
-    fn build_snapshot(&self, model: &Model<Solving>) -> SCIPTelemetryStatus {
-        let objective_value = model
-            .best_sol()
+    fn build_snapshot(&mut self, model: &Model<Solving>) -> SCIPTelemetryStatus {
+        let best_solution = model.best_sol();
+        let objective_value = best_solution
+            .as_ref()
             .map(|sol| sol.obj_val())
             .filter(|v| v.is_finite());
+        if self.initial_objective_value.is_none() {
+            self.initial_objective_value = objective_value;
+        }
+        let incumbent_solution = best_solution.as_ref().map(|solution| {
+            self.runtime
+                .scip_vars
+                .iter()
+                .map(|var| solution.val(var))
+                .collect()
+        });
         let best_bound = {
             let bound = model.best_bound();
             if bound.is_finite() { Some(bound) } else { None }
@@ -115,7 +133,10 @@ impl SCIPTelemetryEventHandler {
             .and_then(|(obj, bound)| SCIPSolver::relative_gap(obj, bound));
         SCIPTelemetryStatus {
             solve_time: self.solve_started_at.elapsed(),
+            objective_category: self.runtime.objective_category,
+            initial_objective_value: self.initial_objective_value,
             objective_value,
+            incumbent_solution,
             best_bound,
             mip_gap,
             iterations: Some(model.n_lp_iterations()),
@@ -170,7 +191,10 @@ impl Eventhdlr for SCIPTelemetryEventHandler {
             event_mask_bits,
             handler_name: eventhdlr.name(),
             solve_time: snapshot.solve_time,
+            objective_category: snapshot.objective_category,
+            initial_objective_value: snapshot.initial_objective_value,
             objective_value: snapshot.objective_value,
+            incumbent_solution: snapshot.incumbent_solution.clone(),
             best_bound: snapshot.best_bound,
             mip_gap: snapshot.mip_gap,
             iterations: snapshot.iterations,
@@ -222,20 +246,23 @@ impl Eventhdlr for SCIPTelemetryEventHandler {
     }
 }
 
-/// SCIP 姹傝В鍣?/ SCIP Solver
+/// SCIP 求解器 / SCIP Solver
 ///
-/// 灏佽 SCIP 浼樺寲鍣ㄧ殑姹傝В鍣ㄥ疄鐜般€?/// Solver implementation wrapping SCIP optimizer.
+/// 封装 SCIP 优化器的求解器实现。
+/// Solver implementation wrapping SCIP optimizer.
 ///
-/// # 鐗规€?/ Features
+/// # 特性 / Features
 ///
-/// - 鏀寔 LP銆丮IP銆丵P锛堥€氳繃澶栭儴姹傝В鍣級
-/// - 寮€婧愬厤璐?/// - 鏀寔绾︽潫鏁存暟瑙勫垝
+/// - 支持 LP、MIP、QP（QP 支持依赖 SCIP 插件与外部求解器）
+/// - Supports LP, MIP, and QP (QP support depends on SCIP plugins and external solvers)
+/// - 开源免费 / Open-source and free
+/// - 支持约束整数规划 / Supports constraint integer programming
 ///
-/// # 鍓嶆彁鏉′欢 / Prerequisites
+/// # 前提条件 / Prerequisites
 ///
-/// - 闇€瑕佸惎鐢?`scip` feature
+/// - 需要启用 `scip` feature / Requires enabling the `scip` feature
 ///
-/// # 绀轰緥 / Examples
+/// # 示例 / Examples
 ///
 /// ```rust,ignore
 /// use ospf_rust_core::solver::solvers::SCIPSolver;
@@ -250,7 +277,7 @@ impl Eventhdlr for SCIPTelemetryEventHandler {
 #[derive(Debug)]
 #[cfg(feature = "scip")]
 pub struct SCIPSolver {
-    /// 閰嶇疆 / Configuration
+    /// 配置 / Configuration
     config: SCIPConfig,
 }
 
@@ -263,29 +290,29 @@ impl Default for SCIPSolver {
 
 #[cfg(feature = "scip")]
 impl SCIPSolver {
-    /// 鍒涘缓鏂扮殑 SCIP 姹傝В鍣?/ Create new SCIP solver
+    /// 创建新的 SCIP 求解器 / Create new SCIP solver
     pub fn new() -> Self {
         Self {
             config: SCIPConfig::default(),
         }
     }
 
-    /// 鍒涘缓甯﹂厤缃殑姹傝В鍣?/ Create solver with configuration
+    /// 使用配置创建求解器 / Create solver with configuration
     pub fn with_config(config: SCIPConfig) -> Self {
         Self { config }
     }
 
-    /// 鑾峰彇閰嶇疆寮曠敤 / Get configuration reference
+    /// 获取配置引用 / Get configuration reference
     pub fn config(&self) -> &SCIPConfig {
         &self.config
     }
 
-    /// 鑾峰彇鍙彉閰嶇疆寮曠敤 / Get mutable configuration reference
+    /// 获取可变配置引用 / Get mutable configuration reference
     pub fn config_mut(&mut self) -> &mut SCIPConfig {
         &mut self.config
     }
 
-    /// 灏?SCIP 鐘舵€佽浆鎹负姹傝В鍣ㄧ姸鎬?/ Convert SCIP status to solver status
+    /// 将 SCIP 状态转换为求解器状态 / Convert SCIP status to solver status
     fn convert_status(status: SCIPStatus) -> SolverStatus {
         match status {
             SCIPStatus::Optimal => SolverStatus::Optimal,
@@ -337,9 +364,11 @@ impl SCIPSolver {
     fn build_telemetry_runtime(
         &self,
         objective_category: ObjectiveCategory,
+        scip_vars: &[Variable],
     ) -> SCIPTelemetryRuntime {
         SCIPTelemetryRuntime {
             objective_category,
+            scip_vars: scip_vars.to_vec(),
             no_improvement_time_limit: self.config.no_improvement_time_limit,
             improvement_tolerance: self.config.improvement_tolerance.unwrap_or(1e-9),
             telemetry_min_interval: self.config.telemetry_min_interval,
@@ -354,8 +383,9 @@ impl SCIPSolver {
         &self,
         scip: &mut Model<ProblemCreated>,
         objective_category: ObjectiveCategory,
+        scip_vars: &[Variable],
     ) {
-        let runtime = self.build_telemetry_runtime(objective_category);
+        let runtime = self.build_telemetry_runtime(objective_category, scip_vars);
         if !runtime.enabled() {
             return;
         }
@@ -494,6 +524,52 @@ impl SCIPSolver {
         let denominator = objective_value.abs().max(1.0);
         Some((objective_value - best_bound).abs() / denominator)
     }
+
+    fn solutions_equal(left: &[f64], right: &[f64]) -> bool {
+        left.len() == right.len()
+            && left
+                .iter()
+                .zip(right.iter())
+                .all(|(left, right)| (*left - *right).abs() <= f64::EPSILON)
+    }
+
+    fn push_unique_solution(solutions: &mut Vec<Vec<f64>>, candidate: Vec<f64>) {
+        if !candidate.is_empty()
+            && !solutions
+                .iter()
+                .any(|existing| Self::solutions_equal(existing, &candidate))
+        {
+            solutions.push(candidate);
+        }
+    }
+
+    fn collect_solution_pool(
+        primary_solution: Option<Vec<f64>>,
+        scip_solutions: Option<Vec<russcip::solution::Solution>>,
+        scip_vars: &[Variable],
+        solution_amount: usize,
+    ) -> Vec<Vec<f64>> {
+        let mut solutions = Vec::new();
+        if let Some(primary) = primary_solution {
+            Self::push_unique_solution(&mut solutions, primary);
+        }
+
+        if solution_amount <= solutions.len() {
+            solutions.truncate(solution_amount);
+            return solutions;
+        }
+
+        if let Some(scip_solutions) = scip_solutions {
+            for solution in scip_solutions {
+                let candidate = scip_vars.iter().map(|var| solution.val(var)).collect();
+                Self::push_unique_solution(&mut solutions, candidate);
+                if solutions.len() >= solution_amount {
+                    break;
+                }
+            }
+        }
+        solutions
+    }
 }
 
 #[cfg(feature = "scip")]
@@ -508,17 +584,43 @@ impl SCIPSolver {
             SolverCapability::Mip,
             SolverCapability::NativeIndicator,
             SolverCapability::NativeSOS1,
-            // SCIP 鐨?QP 鏀寔闇€瑕佸閮ㄦ眰瑙ｅ櫒锛堝 IPOPT锛?            #[cfg(feature = "scip-quadratic")]
+            // SCIP 的 QP 支持通常需要外部求解器（如 IPOPT）。
+            // SCIP QP support usually requires an external solver such as IPOPT.
+            #[cfg(feature = "scip-quadratic")]
             SolverCapability::Quadratic,
         ]
     }
 
     fn solve_linear(&self, model: &LinearTriadModel) -> Result<SolverOutput> {
+        let (output, _) = self.solve_linear_internal(model, 1, false)?;
+        Ok(output)
+    }
+
+    fn solve_linear_with_solution_pool_internal(
+        &self,
+        model: &LinearTriadModel,
+        solution_amount: usize,
+    ) -> Result<(SolverOutput, Vec<Vec<f64>>)> {
+        self.solve_linear_internal(model, solution_amount.max(1), true)
+    }
+
+    fn solve_linear_internal(
+        &self,
+        model: &LinearTriadModel,
+        solution_amount: usize,
+        collect_solution_pool: bool,
+    ) -> Result<(SolverOutput, Vec<Vec<f64>>)> {
         let start_time = Instant::now();
 
         let mut scip = self.create_problem(model.objective_category)?;
+        if collect_solution_pool && solution_amount > 1 {
+            scip = scip
+                .set_int_param("limits/solutions", solution_amount as i32)
+                .map_err(|e| Self::map_scip_error("set param", e))?;
+        }
 
-        // 娣诲姞鍙橀噺
+        // 添加变量
+        // Add variables.
         let mut scip_vars = Vec::with_capacity(model.num_variables());
         for (i, token) in model.variables.iter().enumerate() {
             let lb = model.lb[i];
@@ -543,13 +645,15 @@ impl SCIPSolver {
             scip_vars.push(var);
         }
 
-        // 娣诲姞绾︽潫: Ax <= b
+        // 添加约束：Ax <= b
+        // Add constraints: Ax <= b.
         let mut linear_constraints: Vec<Constraint> = Vec::with_capacity(model.num_constraints());
         for i in 0..model.num_constraints() {
             let mut vars = Vec::new();
             let mut values = Vec::new();
 
-            // 浠庣█鐤忕煩闃垫彁鍙栫害鏉熻 / Build sparse row terms from triad matrix row
+            // 从稀疏矩阵提取约束行
+            // Build sparse row terms from triad matrix row.
             if let Some(row) = model.A.get_row(i) {
                 for &(j, val) in row.entries.iter() {
                     if val != 0.0 {
@@ -570,7 +674,7 @@ impl SCIPSolver {
         }
 
         self.emit_stage_status(SCIPStage::AfterModeling, None, start_time.elapsed(), None)?;
-        self.install_telemetry_handler(&mut scip, model.objective_category);
+        self.install_telemetry_handler(&mut scip, model.objective_category, &scip_vars);
         self.emit_stage_status(SCIPStage::Configuration, None, start_time.elapsed(), None)?;
 
         let solved = scip.solve();
@@ -598,13 +702,26 @@ impl SCIPSolver {
             }
         }
 
-        // 绾挎€у鍋朵箻瀛愶紙鏈€浣冲姫鍔涳級/ Linear dual multipliers (best effort)
+        // 线性对偶乘子（尽力获取）
+        // Linear dual multipliers (best effort).
         if matches!(solver_status, SolverStatus::Optimal) {
             let dual_solution = Self::collect_dual_solution(&linear_constraints);
             if !dual_solution.is_empty() {
                 output.dual_solution = Some(dual_solution);
             }
         }
+
+        let solutions =
+            if collect_solution_pool && solution_amount > 1 && output.status.is_feasible() {
+                Self::collect_solution_pool(
+                    output.solution.clone(),
+                    solved.get_sols(),
+                    &scip_vars,
+                    solution_amount,
+                )
+            } else {
+                Vec::new()
+            };
 
         output.solve_time = start_time.elapsed();
         self.emit_stage_status(
@@ -617,15 +734,39 @@ impl SCIPSolver {
             output.solve_time,
             Some(&output),
         )?;
-        Ok(output)
+        Ok((output, solutions))
     }
 
     fn solve_quadratic(&self, model: &QuadraticTetradModel) -> Result<SolverOutput> {
+        let (output, _) = self.solve_quadratic_internal(model, 1, false)?;
+        Ok(output)
+    }
+
+    fn solve_quadratic_with_solution_pool_internal(
+        &self,
+        model: &QuadraticTetradModel,
+        solution_amount: usize,
+    ) -> Result<(SolverOutput, Vec<Vec<f64>>)> {
+        self.solve_quadratic_internal(model, solution_amount.max(1), true)
+    }
+
+    fn solve_quadratic_internal(
+        &self,
+        model: &QuadraticTetradModel,
+        solution_amount: usize,
+        collect_solution_pool: bool,
+    ) -> Result<(SolverOutput, Vec<Vec<f64>>)> {
         let start_time = Instant::now();
 
         let mut scip = self.create_problem(model.objective_category)?;
+        if collect_solution_pool && solution_amount > 1 {
+            scip = scip
+                .set_int_param("limits/solutions", solution_amount as i32)
+                .map_err(|e| Self::map_scip_error("set param", e))?;
+        }
 
-        // 娣诲姞鍙橀噺
+        // 添加变量
+        // Add variables.
         let mut scip_vars = Vec::with_capacity(model.num_variables());
         for (i, token) in model.linear.variables.iter().enumerate() {
             let lb = model.linear.lb[i];
@@ -651,7 +792,8 @@ impl SCIPSolver {
             scip_vars.push(var);
         }
 
-        // 閫氳繃寮曞叆杈呭姪鍙橀噺鎶婁簩娆＄洰鏍囪浆鎴愪簩娆＄害鏉?/ Transform quadratic objective via auxiliary-variable quadratic constraint
+        // 通过引入辅助变量，将二次目标转换为二次约束。
+        // Transform quadratic objective through auxiliary-variable quadratic constraints.
         let has_quadratic_objective = model.Q.rows.iter().any(|row| {
             row.entries
                 .iter()
@@ -770,7 +912,8 @@ impl SCIPSolver {
             );
         }
 
-        // 娣诲姞绾︽潫
+        // 添加线性约束
+        // Add linear constraints.
         let mut linear_constraints: Vec<Constraint> =
             Vec::with_capacity(model.linear.num_constraints());
         for i in 0..model.linear.num_constraints() {
@@ -797,7 +940,7 @@ impl SCIPSolver {
         }
 
         self.emit_stage_status(SCIPStage::AfterModeling, None, start_time.elapsed(), None)?;
-        self.install_telemetry_handler(&mut scip, model.objective_category);
+        self.install_telemetry_handler(&mut scip, model.objective_category, &scip_vars);
         self.emit_stage_status(SCIPStage::Configuration, None, start_time.elapsed(), None)?;
 
         let solved = scip.solve();
@@ -825,7 +968,8 @@ impl SCIPSolver {
             }
         }
 
-        // 绾挎€х害鏉熷鍋跺€硷紙鐢ㄤ簬浜屾瀛愰棶棰樻渶浼樻€?cut锛? Linear-row duals for quadratic-subproblem optimality cuts
+        // 线性约束对偶值（用于二次子问题最优性 cut）
+        // Linear-row duals for quadratic-subproblem optimality cuts.
         if matches!(solver_status, SolverStatus::Optimal) {
             let dual_solution = Self::collect_dual_solution(&linear_constraints);
             if !dual_solution.is_empty() {
@@ -834,12 +978,25 @@ impl SCIPSolver {
         }
 
         if solver_status.is_infeasible() {
-            // 绾挎€х害鏉?Farkas 涔樺瓙锛堢敤浜庝簩娆″瓙闂鍙鎬?cut锛? Linear-row Farkas duals for quadratic-subproblem feasibility cuts
+            // 线性约束 Farkas 乘子（用于二次子问题可行性 cut）
+            // Linear-row Farkas duals for quadratic-subproblem feasibility cuts.
             let farkas_solution = Self::collect_farkas_solution(&linear_constraints);
             if !farkas_solution.is_empty() {
                 output.dual_solution = Some(farkas_solution);
             }
         }
+
+        let solutions =
+            if collect_solution_pool && solution_amount > 1 && output.status.is_feasible() {
+                Self::collect_solution_pool(
+                    output.solution.clone(),
+                    solved.get_sols(),
+                    &scip_vars,
+                    solution_amount,
+                )
+            } else {
+                Vec::new()
+            };
 
         output.solve_time = start_time.elapsed();
         self.emit_stage_status(
@@ -852,7 +1009,7 @@ impl SCIPSolver {
             output.solve_time,
             Some(&output),
         )?;
-        Ok(output)
+        Ok((output, solutions))
     }
 }
 
@@ -872,6 +1029,20 @@ impl LinearSolver for SCIPSolver {
     fn solve_linear(&self, model: &LinearTriadModel) -> Result<SolverOutput> {
         SCIPSolver::solve_linear(self, model)
     }
+
+    fn solve_linear_with_solution_pool(
+        &self,
+        model: &LinearTriadModel,
+        solution_amount: usize,
+    ) -> Result<Option<(SolverOutput, Vec<Vec<f64>>)>> {
+        if solution_amount <= 1 {
+            return Ok(None);
+        }
+        Ok(Some(self.solve_linear_with_solution_pool_internal(
+            model,
+            solution_amount,
+        )?))
+    }
 }
 
 #[cfg(feature = "scip")]
@@ -879,14 +1050,33 @@ impl QuadraticSolver for SCIPSolver {
     fn solve_quadratic(&self, model: &QuadraticTetradModel) -> Result<SolverOutput> {
         SCIPSolver::solve_quadratic(self, model)
     }
+
+    fn solve_quadratic_with_solution_pool(
+        &self,
+        model: &QuadraticTetradModel,
+        solution_amount: usize,
+    ) -> Result<Option<(SolverOutput, Vec<Vec<f64>>)>> {
+        if solution_amount <= 1 {
+            return Ok(None);
+        }
+        Ok(Some(self.solve_quadratic_with_solution_pool_internal(
+            model,
+            solution_amount,
+        )?))
+    }
 }
+
+/// Rust-style alias for [`SCIPSolver`].
+/// [`SCIPSolver`] 的 Rust 风格别名。
+#[cfg(feature = "scip")]
+pub type ScipSolver = SCIPSolver;
 
 #[cfg(all(test, feature = "scip"))]
 mod tests {
     use super::*;
-    use crate::flatten::{Quadratic, QuadraticMonomial};
     use crate::model::intermediate::{BasicQuadraticTetradModel, SparseMatrix, SparseVector};
     use crate::model::{ConstraintRelation, ObjectiveCategory};
+    use crate::symbol::flatten::{Quadratic, QuadraticMonomial};
     use crate::token::Token;
     use crate::variable::UContinuousVariableItem;
     use std::sync::Arc;
@@ -933,6 +1123,40 @@ mod tests {
         assert_eq!(config.no_improvement_time_limit, Some(30.0));
         assert_eq!(config.improvement_tolerance, Some(1e-6));
         assert_eq!(config.telemetry_min_interval, Some(0.2));
+    }
+
+    #[test]
+    fn test_scip_config_ergonomic_aliases() {
+        let config = SCIPConfig::new()
+            .with_gap(0.02)
+            .with_memory_limit_gb(1.5)
+            .with_improve_threshold(1e-5);
+
+        assert_eq!(config.mip_gap, Some(0.02));
+        assert_eq!(config.mem_limit, Some(1536.0));
+        assert_eq!(config.improvement_tolerance, Some(1e-5));
+
+        let config = config.with_memory_limit_mb(512.0);
+        assert_eq!(config.mem_limit, Some(512.0));
+    }
+
+    #[test]
+    fn test_scip_lp_subproblem_defaults() {
+        let config = SCIPConfig::new()
+            .with_time_limit(10.0)
+            .with_mip_gap(0.01)
+            .with_lp_subproblem_defaults();
+
+        assert_eq!(config.threads, Some(1));
+        assert_eq!(config.presolving, Some(PresolvingMode::Off));
+        assert_eq!(config.heuristics_priority, Some(0));
+        assert_eq!(config.time_limit, Some(10.0));
+        assert_eq!(config.mip_gap, Some(0.01));
+
+        let defaults = SCIPConfig::recommended_lp_subproblem_defaults();
+        assert_eq!(defaults.threads, Some(1));
+        assert_eq!(defaults.presolving, Some(PresolvingMode::Off));
+        assert_eq!(defaults.heuristics_priority, Some(0));
     }
 
     #[test]
@@ -1054,7 +1278,10 @@ mod tests {
             .expect("telemetry callback should be registered");
         callback(&SCIPTelemetryStatus {
             solve_time: Duration::ZERO,
+            objective_category: ObjectiveCategory::Minimum,
+            initial_objective_value: Some(1.0),
             objective_value: Some(1.0),
+            incumbent_solution: Some(vec![1.0]),
             best_bound: Some(0.8),
             mip_gap: Some(0.2),
             iterations: Some(10),
@@ -1065,7 +1292,10 @@ mod tests {
 
         let control = (config.snapshot_observers[0])(&SCIPTelemetryStatus {
             solve_time: Duration::ZERO,
+            objective_category: ObjectiveCategory::Minimum,
+            initial_objective_value: Some(1.0),
             objective_value: Some(1.0),
+            incumbent_solution: Some(vec![1.0]),
             best_bound: Some(0.8),
             mip_gap: Some(0.2),
             iterations: Some(10),
@@ -1078,10 +1308,8 @@ mod tests {
 
     #[test]
     fn test_native_callback_and_observer_helpers_register() {
-        let native_callback: SCIPNativeCallback =
-            Arc::new(|_| Ok(SCIPNativeControl::Continue));
-        let native_observer: SCIPNativeObserver =
-            Arc::new(|_| Ok(SCIPNativeControl::Continue));
+        let native_callback: SCIPNativeCallback = Arc::new(|_| Ok(SCIPNativeControl::Continue));
+        let native_observer: SCIPNativeObserver = Arc::new(|_| Ok(SCIPNativeControl::Continue));
 
         let config = SCIPConfig::new()
             .with_native_callback(Some(native_callback))
@@ -1093,14 +1321,10 @@ mod tests {
 
     #[test]
     fn test_native_callback_override_and_observer_append_semantics() {
-        let first_callback: SCIPNativeCallback =
-            Arc::new(|_| Ok(SCIPNativeControl::Continue));
-        let second_callback: SCIPNativeCallback =
-            Arc::new(|_| Ok(SCIPNativeControl::Continue));
-        let first_observer: SCIPNativeObserver =
-            Arc::new(|_| Ok(SCIPNativeControl::Continue));
-        let second_observer: SCIPNativeObserver =
-            Arc::new(|_| Ok(SCIPNativeControl::Continue));
+        let first_callback: SCIPNativeCallback = Arc::new(|_| Ok(SCIPNativeControl::Continue));
+        let second_callback: SCIPNativeCallback = Arc::new(|_| Ok(SCIPNativeControl::Continue));
+        let first_observer: SCIPNativeObserver = Arc::new(|_| Ok(SCIPNativeControl::Continue));
+        let second_observer: SCIPNativeObserver = Arc::new(|_| Ok(SCIPNativeControl::Continue));
 
         let config = SCIPConfig::new()
             .add_native_callback(first_callback.clone())
@@ -1137,7 +1361,10 @@ mod tests {
             event_mask_bits: u64::from(EventMask::NODE_EVENT),
             handler_name: "__test__".to_string(),
             solve_time: Duration::ZERO,
+            objective_category: ObjectiveCategory::Minimum,
+            initial_objective_value: None,
             objective_value: None,
+            incumbent_solution: None,
             best_bound: None,
             mip_gap: None,
             iterations: None,

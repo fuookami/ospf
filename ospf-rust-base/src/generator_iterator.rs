@@ -1,6 +1,11 @@
+//! 生成器迭代器。
+//! Generator iterator utilities.
+
 use std::ops::{Coroutine, CoroutineState};
 use std::pin::Pin;
 
+/// 将生成器包装为迭代器。
+/// Wraps a generator as an iterator.
 pub struct GeneratorIterator<G>(pub G);
 
 impl<G: Coroutine + Unpin> Iterator for GeneratorIterator<G> {

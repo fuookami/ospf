@@ -1,9 +1,9 @@
 use std::f64::consts::PI;
 use std::sync::Arc;
 
-use crate::flatten::{Linear, LinearMonomial};
 use crate::model::BasicModel;
-use crate::symbol::functions::*;
+use crate::symbol::flatten::{Linear, LinearMonomial};
+use crate::symbol::function::*;
 use crate::symbol::{FunctionSymbol, LinearExpressionSymbol};
 use crate::token::{MutableTokenList, Token, VecTokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId};

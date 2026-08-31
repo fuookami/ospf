@@ -7,20 +7,22 @@
 use ospf_rust_core::model::mechanism::MechanismModel;
 use ospf_rust_core::solver::solvers::SCIPSolver as CoreScipSolver;
 use ospf_rust_core::solver::solvers::scip::{
-    SCIPConfig, SCIPNativeCallback, SCIPNativeObserver, SCIPSnapshotObserver, SCIPStage,
-    SCIPStageCallback, SCIPTelemetryCallback,
+    PresolvingMode, SCIPConfig, SCIPNativeCallback, SCIPNativeObserver, SCIPSnapshotObserver,
+    SCIPStage, SCIPStageCallback, SCIPTelemetryCallback,
 };
 use ospf_rust_core::variable::VariableId;
 
-use super::SolveOptions;
-use super::benders_decomposition::{
-    LinearBendersDecompositionSolver, LinearCut, LinearSubResult,
-    QuadraticBendersDecompositionSolver, QuadraticCut, QuadraticSubResult,
-};
-use super::column_generation::{ColumnGenerationSolver, FeasibleSolution, LPResult};
+use super::FrameworkSolveOptions;
+use super::column_generation_solver::{ColumnGenerationSolver, FeasibleSolution, LPResult};
 use super::core_extensions::{
     BendersCutContext, CoreColumnGenerationAdapter, CoreLinearBendersAdapter,
     CoreQuadraticBendersAdapter,
+};
+use super::linear_benders_decomposition_solver::{
+    LinearBendersDecompositionSolver, LinearCut, LinearSubResult,
+};
+use super::quadratic_benders_decomposition_solver::{
+    QuadraticBendersDecompositionSolver, QuadraticCut, QuadraticSubResult,
 };
 
 /// SCIP 列生成求解器 / SCIP column generation solver
@@ -64,12 +66,32 @@ impl ScipColumnGenerationSolver {
         self.inner.solver()
     }
 
+    /// 应用推荐 LP/子问题配置 / Apply recommended LP/subproblem settings.
+    pub fn with_lp_subproblem_defaults(self) -> Self {
+        self.map_config(|config| config.with_lp_subproblem_defaults())
+    }
+
+    /// 设置求解 gap / Set solve gap
+    pub fn with_gap(self, gap: f64) -> Self {
+        self.map_config(|config| config.with_gap(gap))
+    }
+
     pub fn with_node_limit(self, limit: i64) -> Self {
         self.map_config(|config| config.with_node_limit(limit))
     }
 
     pub fn with_mem_limit(self, limit_mb: f64) -> Self {
         self.map_config(|config| config.with_mem_limit(limit_mb))
+    }
+
+    /// 设置内存限制（MB）/ Set memory limit (MB)
+    pub fn with_memory_limit_mb(self, memory_limit_mb: f64) -> Self {
+        self.map_config(|config| config.with_memory_limit_mb(memory_limit_mb))
+    }
+
+    /// 设置内存限制（GB）/ Set memory limit (GB)
+    pub fn with_memory_limit_gb(self, memory_limit_gb: f64) -> Self {
+        self.map_config(|config| config.with_memory_limit_gb(memory_limit_gb))
     }
 
     pub fn with_display_freq(self, freq: i32) -> Self {
@@ -86,6 +108,11 @@ impl ScipColumnGenerationSolver {
 
     pub fn with_improvement_tolerance(self, tolerance: f64) -> Self {
         self.map_config(|config| config.with_improvement_tolerance(tolerance))
+    }
+
+    /// 设置改进判定阈值 / Set improvement threshold
+    pub fn with_improve_threshold(self, threshold: f64) -> Self {
+        self.map_config(|config| config.with_improve_threshold(threshold))
     }
 
     pub fn with_telemetry_min_interval(self, seconds: f64) -> Self {
@@ -169,7 +196,7 @@ impl ColumnGenerationSolver for ScipColumnGenerationSolver {
     async fn solve_milp_with_options(
         &self,
         model: &ospf_rust_core::model::intermediate::LinearTriadModel,
-        options: SolveOptions,
+        options: FrameworkSolveOptions,
     ) -> ospf_rust_core::error::Result<FeasibleSolution> {
         self.inner.solve_milp_with_options(model, options).await
     }
@@ -177,7 +204,7 @@ impl ColumnGenerationSolver for ScipColumnGenerationSolver {
     async fn solve_lp_with_options(
         &self,
         model: &ospf_rust_core::model::intermediate::LinearTriadModel,
-        options: SolveOptions,
+        options: FrameworkSolveOptions,
     ) -> ospf_rust_core::error::Result<LPResult> {
         self.inner.solve_lp_with_options(model, options).await
     }
@@ -192,7 +219,7 @@ impl ColumnGenerationSolver for ScipColumnGenerationSolver {
     fn solve_milp_with_options(
         &self,
         model: &ospf_rust_core::model::intermediate::LinearTriadModel,
-        options: SolveOptions,
+        options: FrameworkSolveOptions,
     ) -> ospf_rust_core::error::Result<FeasibleSolution> {
         self.inner.solve_milp_with_options(model, options)
     }
@@ -200,7 +227,7 @@ impl ColumnGenerationSolver for ScipColumnGenerationSolver {
     fn solve_lp_with_options(
         &self,
         model: &ospf_rust_core::model::intermediate::LinearTriadModel,
-        options: SolveOptions,
+        options: FrameworkSolveOptions,
     ) -> ospf_rust_core::error::Result<LPResult> {
         self.inner.solve_lp_with_options(model, options)
     }
@@ -263,12 +290,32 @@ impl ScipLinearBendersDecompositionSolver {
         self.inner.solver()
     }
 
+    /// 应用推荐 LP/子问题配置 / Apply recommended LP/subproblem settings.
+    pub fn with_lp_subproblem_defaults(self) -> Self {
+        self.map_config(|config| config.with_lp_subproblem_defaults())
+    }
+
+    /// 设置求解 gap / Set solve gap
+    pub fn with_gap(self, gap: f64) -> Self {
+        self.map_config(|config| config.with_gap(gap))
+    }
+
     pub fn with_node_limit(self, limit: i64) -> Self {
         self.map_config(|config| config.with_node_limit(limit))
     }
 
     pub fn with_mem_limit(self, limit_mb: f64) -> Self {
         self.map_config(|config| config.with_mem_limit(limit_mb))
+    }
+
+    /// 设置内存限制（MB）/ Set memory limit (MB)
+    pub fn with_memory_limit_mb(self, memory_limit_mb: f64) -> Self {
+        self.map_config(|config| config.with_memory_limit_mb(memory_limit_mb))
+    }
+
+    /// 设置内存限制（GB）/ Set memory limit (GB)
+    pub fn with_memory_limit_gb(self, memory_limit_gb: f64) -> Self {
+        self.map_config(|config| config.with_memory_limit_gb(memory_limit_gb))
     }
 
     pub fn with_display_freq(self, freq: i32) -> Self {
@@ -285,6 +332,11 @@ impl ScipLinearBendersDecompositionSolver {
 
     pub fn with_improvement_tolerance(self, tolerance: f64) -> Self {
         self.map_config(|config| config.with_improvement_tolerance(tolerance))
+    }
+
+    /// 设置改进判定阈值 / Set improvement threshold
+    pub fn with_improve_threshold(self, threshold: f64) -> Self {
+        self.map_config(|config| config.with_improve_threshold(threshold))
     }
 
     pub fn with_telemetry_min_interval(self, seconds: f64) -> Self {
@@ -473,8 +525,28 @@ impl ScipQuadraticBendersDecompositionSolver {
         self.map_configs(|config| config.with_node_limit(limit))
     }
 
+    /// 应用推荐 LP/子问题配置 / Apply recommended LP/subproblem settings.
+    pub fn with_lp_subproblem_defaults(self) -> Self {
+        self.map_configs(|config| config.with_lp_subproblem_defaults())
+    }
+
+    /// 设置求解 gap / Set solve gap
+    pub fn with_gap(self, gap: f64) -> Self {
+        self.map_configs(|config| config.with_gap(gap))
+    }
+
     pub fn with_mem_limit(self, limit_mb: f64) -> Self {
         self.map_configs(|config| config.with_mem_limit(limit_mb))
+    }
+
+    /// 设置内存限制（MB）/ Set memory limit (MB)
+    pub fn with_memory_limit_mb(self, memory_limit_mb: f64) -> Self {
+        self.map_configs(|config| config.with_memory_limit_mb(memory_limit_mb))
+    }
+
+    /// 设置内存限制（GB）/ Set memory limit (GB)
+    pub fn with_memory_limit_gb(self, memory_limit_gb: f64) -> Self {
+        self.map_configs(|config| config.with_memory_limit_gb(memory_limit_gb))
     }
 
     pub fn with_display_freq(self, freq: i32) -> Self {
@@ -491,6 +563,11 @@ impl ScipQuadraticBendersDecompositionSolver {
 
     pub fn with_improvement_tolerance(self, tolerance: f64) -> Self {
         self.map_configs(|config| config.with_improvement_tolerance(tolerance))
+    }
+
+    /// 设置改进判定阈值 / Set improvement threshold
+    pub fn with_improve_threshold(self, threshold: f64) -> Self {
+        self.map_configs(|config| config.with_improve_threshold(threshold))
     }
 
     pub fn with_telemetry_min_interval(self, seconds: f64) -> Self {
@@ -828,10 +905,8 @@ mod tests {
 
     #[test]
     fn scip_column_generation_add_native_callback_overrides_previous_callback() {
-        let first: SCIPNativeCallback =
-            Arc::new(|_| Ok(SCIPNativeControl::Continue));
-        let second: SCIPNativeCallback =
-            Arc::new(|_| Ok(SCIPNativeControl::Continue));
+        let first: SCIPNativeCallback = Arc::new(|_| Ok(SCIPNativeControl::Continue));
+        let second: SCIPNativeCallback = Arc::new(|_| Ok(SCIPNativeControl::Continue));
         let solver = ScipColumnGenerationSolver::new()
             .add_native_callback(first.clone())
             .add_native_callback(second.clone());
@@ -849,10 +924,8 @@ mod tests {
 
     #[test]
     fn scip_column_generation_add_native_observer_appends_observers() {
-        let first: SCIPNativeObserver =
-            Arc::new(|_| Ok(SCIPNativeControl::Continue));
-        let second: SCIPNativeObserver =
-            Arc::new(|_| Ok(SCIPNativeControl::Continue));
+        let first: SCIPNativeObserver = Arc::new(|_| Ok(SCIPNativeControl::Continue));
+        let second: SCIPNativeObserver = Arc::new(|_| Ok(SCIPNativeControl::Continue));
         let solver = ScipColumnGenerationSolver::new()
             .add_native_observer(first.clone())
             .add_native_observer(second.clone());
@@ -860,6 +933,67 @@ mod tests {
         assert_eq!(observers.len(), 2);
         assert!(Arc::ptr_eq(&observers[0], &first));
         assert!(Arc::ptr_eq(&observers[1], &second));
+    }
+
+    #[test]
+    fn scip_lp_subproblem_defaults_are_available_on_framework_wrappers() {
+        let column_generation = ScipColumnGenerationSolver::new().with_lp_subproblem_defaults();
+        let column_config = column_generation.solver().config();
+        assert_eq!(column_config.threads, Some(1));
+        assert_eq!(column_config.presolving, Some(PresolvingMode::Off));
+        assert_eq!(column_config.heuristics_priority, Some(0));
+
+        let linear_benders =
+            ScipLinearBendersDecompositionSolver::new().with_lp_subproblem_defaults();
+        let linear_config = linear_benders.solver().config();
+        assert_eq!(linear_config.threads, Some(1));
+        assert_eq!(linear_config.presolving, Some(PresolvingMode::Off));
+        assert_eq!(linear_config.heuristics_priority, Some(0));
+
+        let quadratic_benders =
+            ScipQuadraticBendersDecompositionSolver::new().with_lp_subproblem_defaults();
+        let linear_path_config = quadratic_benders.linear.solver().config();
+        let quadratic_path_config = quadratic_benders.quadratic.solver().config();
+        assert_eq!(linear_path_config.threads, Some(1));
+        assert_eq!(quadratic_path_config.threads, Some(1));
+        assert_eq!(linear_path_config.presolving, Some(PresolvingMode::Off));
+        assert_eq!(quadratic_path_config.presolving, Some(PresolvingMode::Off));
+        assert_eq!(linear_path_config.heuristics_priority, Some(0));
+        assert_eq!(quadratic_path_config.heuristics_priority, Some(0));
+    }
+
+    #[test]
+    fn scip_ergonomic_config_aliases_are_available_on_framework_wrappers() {
+        let column_generation = ScipColumnGenerationSolver::new()
+            .with_gap(0.02)
+            .with_memory_limit_gb(1.5)
+            .with_improve_threshold(1e-5);
+        let column_config = column_generation.solver().config();
+        assert_eq!(column_config.mip_gap, Some(0.02));
+        assert_eq!(column_config.mem_limit, Some(1536.0));
+        assert_eq!(column_config.improvement_tolerance, Some(1e-5));
+
+        let linear_benders = ScipLinearBendersDecompositionSolver::new()
+            .with_gap(0.03)
+            .with_memory_limit_mb(640.0)
+            .with_improve_threshold(1e-6);
+        let linear_config = linear_benders.solver().config();
+        assert_eq!(linear_config.mip_gap, Some(0.03));
+        assert_eq!(linear_config.mem_limit, Some(640.0));
+        assert_eq!(linear_config.improvement_tolerance, Some(1e-6));
+
+        let quadratic_benders = ScipQuadraticBendersDecompositionSolver::new()
+            .with_gap(0.04)
+            .with_memory_limit_gb(2.0)
+            .with_improve_threshold(1e-7);
+        let linear_path_config = quadratic_benders.linear.solver().config();
+        let quadratic_path_config = quadratic_benders.quadratic.solver().config();
+        assert_eq!(linear_path_config.mip_gap, Some(0.04));
+        assert_eq!(quadratic_path_config.mip_gap, Some(0.04));
+        assert_eq!(linear_path_config.mem_limit, Some(2048.0));
+        assert_eq!(quadratic_path_config.mem_limit, Some(2048.0));
+        assert_eq!(linear_path_config.improvement_tolerance, Some(1e-7));
+        assert_eq!(quadratic_path_config.improvement_tolerance, Some(1e-7));
     }
 
     #[test]
