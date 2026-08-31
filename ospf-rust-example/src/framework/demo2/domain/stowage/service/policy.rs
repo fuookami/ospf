@@ -1,7 +1,7 @@
-use crate::framework_demo::demo2::domain::shared::mode_switch::ModeSelector;
-use crate::framework_demo::demo2::domain::shared::pipeline_policy::PipelineSpec;
-use crate::framework_demo::demo2::domain::stowage::service::limits;
-use crate::framework_demo::demo2::domain::stowage::service::pipeline_list_generator::StowagePipelineStep;
+use crate::framework::demo2::domain::shared::mode_switch::ModeSelector;
+use crate::framework::demo2::domain::shared::pipeline_policy::PipelineSpec;
+use crate::framework::demo2::domain::stowage::service::limits;
+use crate::framework::demo2::domain::stowage::service::pipeline_list_generator::StowagePipelineStep;
 
 pub fn pipeline_specs() -> Vec<PipelineSpec<StowagePipelineStep>> {
     vec![

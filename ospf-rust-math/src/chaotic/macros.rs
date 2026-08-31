@@ -1,6 +1,8 @@
 //! 混沌系统构造宏。
 //! Chaotic system construction macros.
 
+#![allow(unused_macros)]
+
 /// 生成基于三维点的混沌系统结构体及生成器。
 /// Generate a 3D-point-based chaotic system struct and its generator.
 macro_rules! point3_system {

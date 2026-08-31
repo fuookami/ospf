@@ -1,10 +1,10 @@
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
-use crate::framework_demo::demo2::domain::redundancy::aggregation::RedundancyAggregation;
-use crate::framework_demo::demo2::domain::redundancy::context::RedundancyContext;
-use crate::framework_demo::demo2::domain::redundancy::service::policy;
-use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
-use crate::framework_demo::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
+use crate::framework::demo2::domain::redundancy::aggregation::RedundancyAggregation;
+use crate::framework::demo2::domain::redundancy::context::RedundancyContext;
+use crate::framework::demo2::domain::redundancy::service::policy;
+use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
 
 pub type RedundancyPipelineStep = fn(
     model: &mut MetaModel<f64>,

@@ -1,63 +1,116 @@
 use std::error::Error;
-use crate::framework::demo3::domain::{Product, initial_plans};
-use crate::framework::demo3::rmp::Rmp;
-use crate::framework::demo3::sp::Sp;
+
+use ospf_rust_quantities::quantity::Quantity;
+use ospf_rust_quantities::unit::CTUnit;
+use ospf_rust_quantities::unit::derived::Meter;
+use ospf_rust_framework_csp1d::{
+    csp1d_problem, Csp1dColumnGeneration, Csp1dConfiguration, Csp1dSolutionStatus,
+    DefaultQuantityArithmetic, FullSumGenerator, GenerationConstraints,
+    Material, NSameGenerator, Product, ProductDemand, ProductLegacyInput,
+    ReducedCostPricingGenerator, WidthRange,
+};
+
+fn quantity(value: f64) -> Quantity<f64, ospf_rust_quantities::unit::Unit> {
+    Quantity::new(value, Meter::INSTANT.clone())
+}
+
+struct RawProduct {
+    width: f64,
+    demand: f64,
+}
 
 pub fn run() -> Result<(), Box<dyn Error>> {
-    let stock_length = 1000u64;
-    let products = vec![
-        Product {
-            length: 450,
-            demand: 97,
-        },
-        Product {
-            length: 360,
-            demand: 610,
-        },
-        Product {
-            length: 310,
-            demand: 395,
-        },
-        Product {
-            length: 140,
-            demand: 211,
-        },
+    let raw_length = 1000.0_f64;
+    let raw_products = vec![
+        RawProduct { width: 450.0, demand: 97.0 },
+        RawProduct { width: 360.0, demand: 610.0 },
+        RawProduct { width: 310.0, demand: 395.0 },
+        RawProduct { width: 140.0, demand: 211.0 },
     ];
 
-    let initial = initial_plans(stock_length, &products);
-    let mut rmp = Rmp::new(products.clone(), initial);
-    let sp = Sp::new();
+    let products: Vec<Product<f64>> = raw_products
+        .iter()
+        .enumerate()
+        .map(|(index, raw)| {
+            Product::legacy(ProductLegacyInput {
+                id: format!("p-{index}"),
+                name: format!("product-{}", raw.width as i64),
+                width: vec![raw.width],
+                length: None,
+                unit_weight: None,
+                weight: None,
+                max_over_produce_length: None,
+                unit: Meter::INSTANT.clone(),
+            })
+        })
+        .collect();
 
-    for iteration in 0..128usize {
-        let lp = rmp.solve_lp()?;
-        let (new_plan, reduced_cost) = sp.solve(stock_length, &products, &lp.shadow_prices)?;
-        println!(
-            "iter {}: lp_obj={:.4}, reduced_cost={:.6}, plan={:?}",
-            iteration, lp.objective, reduced_cost, new_plan.amounts
-        );
+    let material = Material {
+        id: "m-1000".into(),
+        name: "material-1000".into(),
+        width_range: WidthRange::new(quantity(0.0), quantity(raw_length)),
+        length: None,
+        unit_weight: None,
+        machine_id: None,
+        available_batches: u64::MAX,
+    };
 
-        if reduced_cost >= -1e-6 {
-            break;
-        }
-        if !rmp.add_column_if_new(new_plan) {
-            break;
-        }
-    }
+    let demands: Vec<ProductDemand<f64>> = raw_products
+        .iter()
+        .enumerate()
+        .map(|(index, raw)| {
+            ProductDemand::legacy_roll(products[index].clone(), raw.demand)
+        })
+        .collect();
 
-    let solution = rmp.solve_milp()?;
-    println!("=== Framework Demo3 ===");
-    for (plan, amount) in solution {
-        if amount == 0 {
-            continue;
-        }
-        let detail: Vec<String> = plan
-            .amounts
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| **c > 0)
-            .map(|(idx, count)| format!("{}x{}", products[idx].length, count))
-            .collect();
-        println!("{} -> {}", detail.join(","), amount);
-    }
+    let problem = csp1d_problem::<f64, _>(|builder| {
+        builder
+            .products(products.clone())
+            .material(material)
+            .demands(demands)
+            .configuration(Csp1dConfiguration {
+                max_initial_plans: 16,
+                max_pricing_plans: 32,
+                iteration_limit: 16,
+            });
+    });
+
+    let pricing_enumerator = FullSumGenerator::with_constraints(GenerationConstraints {
+        max_knife_count: Some(8),
+        ..GenerationConstraints::default()
+    })
+    .with_max_plans(256);
+    let initial_generator = NSameGenerator::default().with_max_plans(16);
+    let pricing_generator = ReducedCostPricingGenerator::new(pricing_enumerator);
+
+    let solver = Csp1dColumnGeneration::with_generators(
+        Box::new(initial_generator),
+        Box::new(pricing_generator),
+    );
+
+    let result = solver.solve_with_trace(problem, None);
+
+    let plan_descriptions: Vec<String> = result
+        .solution
+        .produce
+        .cutting_plans
+        .iter()
+        .map(|usage| {
+            let pattern: Vec<String> = usage
+                .plan
+                .slices
+                .iter()
+                .map(|slice| format!("{} * {}", slice.width.value, slice.amount))
+                .collect();
+            format!("{}: {}", pattern.join(","), usage.amount)
+        })
+        .collect();
+
+    println!("{}", plan_descriptions.join(";"));
+    println!(
+        "termination={:?}; plans={}",
+        result.trace.termination_reason, result.trace.final_plan_count
+    );
+
     Ok(())
 }

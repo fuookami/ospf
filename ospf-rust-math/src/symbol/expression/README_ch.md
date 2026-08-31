@@ -1,6 +1,6 @@
 # expression
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 运行时表达式系统，用于构建和求值动态表达式。本模块提供灵活的表达式 AST 及求值能力。
 

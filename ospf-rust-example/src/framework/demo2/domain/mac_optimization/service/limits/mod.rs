@@ -1,5 +1,7 @@
-pub mod balance_limit;
-pub mod moment_limit;
+pub mod horizontal_stabilizer_limit;
+pub mod lateral_balance_limit;
+pub mod longitudinal_balance_limit;
 
-pub use balance_limit::apply_balance_limits;
-pub use moment_limit::apply_moment_limits;
+pub use horizontal_stabilizer_limit::apply_horizontal_stabilizer_limits;
+pub use lateral_balance_limit::apply_lateral_balance_limits;
+pub use longitudinal_balance_limit::apply_longitudinal_balance_limits;

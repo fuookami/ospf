@@ -1,6 +1,6 @@
 # concept
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 本模块定义了完整的代数结构层次 trait，为抽象代数运算提供基础。
 

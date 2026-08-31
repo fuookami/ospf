@@ -1,79 +1,148 @@
 # OSPF Rust Framework Gantt Scheduling
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: [English](README.md) | :cn: 简体中文
 
-本 crate 是 `ospf-kotlin-framework-gantt-scheduling` 的 Rust 迁移目标。
-当前状态已包含 Gantt 领域框架基础、任务与任务束编译、资源/产出/产能上下文、
-定价图与标签搜索、迭代列生命周期、隔离 branch-and-price 树搜索，以及已由测试覆盖的小规模 final MILP branch-and-price flow。
+## 简介
+
+`ospf-rust-framework-gantt-scheduling` 是 Kotlin `ospf-kotlin-framework-gantt-scheduling` 的 Rust 迁移目标。它提供可复用 Gantt scheduling 领域框架基础、task/bunch compilation、resource/produce/capacity context、pricing graph 和 label search、迭代列生命周期、隔离 branch-and-price tree search，以及已有测试覆盖的小型 final-MILP branch-and-price flow。
+
+## 作用范围
+
+本 crate 拥有 task modeling、task compilation、bunch compilation、bunch generation、capacity scheduling、resource constraint、produce/consumption tracking、time infrastructure 和 application-level branch-and-price 编排等可复用排程内核。
+
+明确非目标：
+
+1. 业务专用请求 DTO、租户上下文、公式语言和项目运行时策略。
+2. solver backend 安装、许可证管理或 backend plugin 所有权。
+3. 并发 tree execution 和 solver-native node callback；本 crate 暴露 hook 给下游集成。
+
+## 模块结构
+
+| Rust 模块或目录 | Kotlin 边界 | 职责 |
+| --- | --- | --- |
+| [`src/infrastructure`](src/infrastructure/README_ch.md) | `gantt-scheduling-infrastructure` | Time range、window、slot、duration range、working calendar、calendar policy、local date offset 和 render DTO。 |
+| [`src/domain/task`](src/domain/task/README_ch.md) | `gantt-scheduling-domain-task-context` | Task、executor、assignment、task plan、task bunch、cost、solver value adapter、task-step graph 和 shadow-price key。 |
+| [`src/domain/task_compilation`](src/domain/task_compilation/README_ch.md) | `gantt-scheduling-domain-task-compilation-context` | task-level MILP component、time variable、switch、makespan、solution analysis 和 limit/objective pipeline。 |
+| [`src/domain/task_generation`](src/domain/task_generation/README_ch.md) | `gantt-scheduling-domain-task-generation-context` | 从 Kotlin 映射保留的 task-generation 扩展点。 |
+| [`src/domain/bunch_compilation`](src/domain/bunch_compilation/README_ch.md) | `gantt-scheduling-domain-bunch-compilation-context` | task bunch 的 column-generation master problem、slot-based compilation、迭代列和 bunch solution。 |
+| [`src/domain/bunch_generation`](src/domain/bunch_generation/README_ch.md) | `gantt-scheduling-domain-bunch-generation-context` | pricing graph、label-setting search、feasibility policy 和 slot-based bunch generation。 |
+| [`src/domain/capacity_scheduling`](src/domain/capacity_scheduling/README_ch.md) | `gantt-scheduling-domain-capacity-scheduling-context` | capacity action、capacity/order compilation、capacity column、action bound 和 capacity solution。 |
+| [`src/domain/resource`](src/domain/resource/README_ch.md) | `gantt-scheduling-domain-resource-context` | execution/storage/connection resource、resource usage、capacity、slack 和 resource limit。 |
+| [`src/domain/produce`](src/domain/produce/README_ch.md) | `gantt-scheduling-domain-produce-context` | material demand、reserve、production task、produce usage、consumption usage 和 quantity objective。 |
+| [`src/domain/common`](src/domain/common/README_ch.md) | shared Gantt domain helpers | constraint index 和 dynamic model lifecycle 兼容 alias。 |
+| [`src/application`](src/application/README_ch.md) | `gantt-scheduling-application` | APS/MPS/LSP marker、column generation、branch-and-price algorithm、service constructor、hook 和 iteration state。 |
+
+## 架构概览
+
+本 crate 遵循 context / aggregation / pipeline 架构：
+
+1. domain context 定义可复用排程实体，并向 `MetaModel` 注册变量、中间值、约束、目标和提取逻辑。
+2. bunch compilation 是 column-generation master problem；bunch generation 是 pricing problem。
+3. task compilation、capacity scheduling、resource 和 produce context 提供可复用 MILP component 与可选约束/目标族。
+4. application algorithm 负责编排 LP/MILP 阶段、列生命周期、branch decision、hook 和状态恢复。
+
+普通 MILP、RMP LP 和 final MILP 尽量共享 context 与 iterative compilation 入口，用于注册、加列、shadow-price 提取和 solution extraction。
+
+## 核心概念
+
+1. task 是可排程工作单元，包含 executor、time、duration、status 和可选 multi-step dependency graph。
+2. task bunch 是分配给同一 executor 的有序路线/列。
+3. bunch compilation 在 master problem 中选择列。
+4. bunch generation 通过 pricing graph 和 label search 产生改进列。
+5. dynamic model lifecycle 跟踪 warm-start state、column range、hidden/fixed/removed column 和 solver solution。
 
 ## Public API
 
-- 任务领域：`domain::task::{TaskTrait, ExecutorTrait, AssignmentPolicyTrait,
-  TaskPlanTrait, TaskStepGraph, TaskStepTrait, BasicTaskStep, StepRelation,
-  Cost, BunchCostPolicy, CostBreakdown, DefaultBunchCostPolicy,
-  SolverValueAdapter, F64SolverValueAdapter}`。
-- 任务编译：`domain::task_compilation::{BasicTaskCompilationContext,
-  IterativeTaskCompilationContext, Switch, SwitchCostMinimization,
-  SwitchTimeMinimization}`。
-- 产能排程：`domain::capacity_scheduling::{CapacityCompilation,
-  CapacityOrderCompilation, CapacityColumn, CapacityColumnAggregation,
-  CapacitySchedulingSolution}`。
-- 任务束编译：`domain::bunch_compilation::{BasicBunchCompilationContext,
-  IterativeBunchCompilationContext, BasicSlotBasedBunchCompilationContext,
-  SlotBasedBunchCompilationContext, SlotBasedCapacityPreSolver, BunchEntry,
-  BunchSolution}`。
-- 任务束生成：`domain::bunch_generation::{SlotBasedBunchGenerator,
-  BunchFeasibilityPolicy, BunchTaskCandidate, CapacityIntermediateValues}`。
-- application helper：`application::service::create_bunch_branch_and_price` 和
-  `application::service::search_bunch_branch_and_price_with_fresh_model`。
-- 动态生命周期：`domain::common::GanttDynamicModelLifecycle`，由
-  `ospf_rust_framework::model::DynamicModelLifecycle` 重导出。
-- 日历策略：`infrastructure::{CalendarPolicy, CompositeCalendarPolicy}`。
+| API | 职责 | 稳定性 |
+| --- | --- | --- |
+| `domain::task::{TaskTrait, ExecutorTrait, AssignmentPolicyTrait, TaskPlanTrait}` | 核心 task 与 assignment 抽象。 | migration |
+| `domain::task::{TaskStepGraph, TaskStepTrait, BasicTaskStep, StepRelation}` | multi-step task dependency model。 | migration |
+| `domain::task::{Cost, BunchCostPolicy, CostBreakdown, DefaultBunchCostPolicy}` | cost 与 reduced-cost policy surface。 | migration |
+| `domain::task::{SolverValueAdapter, F64SolverValueAdapter}` | 泛型 solver value conversion 和 `f64` 边界。 | migration |
+| `domain::task_compilation::{BasicTaskCompilationContext, IterativeTaskCompilationContext, Switch, SwitchCostMinimization, SwitchTimeMinimization}` | task compilation context 和 switch objective pipeline。 | migration |
+| `domain::capacity_scheduling::{CapacityCompilation, CapacityOrderCompilation, CapacityColumn, CapacityColumnAggregation, CapacitySchedulingSolution}` | capacity scheduling 注册和提取。 | migration |
+| `domain::bunch_compilation::{BasicBunchCompilationContext, IterativeBunchCompilationContext, BasicSlotBasedBunchCompilationContext, SlotBasedBunchCompilationContext, SlotBasedCapacityPreSolver, BunchEntry, BunchSolution}` | bunch master problem 和 slot-based column lifecycle。 | migration |
+| `domain::bunch_generation::{SlotBasedBunchGenerator, BunchFeasibilityPolicy, BunchTaskCandidate, CapacityIntermediateValues}` | pricing 与 feasibility 扩展面。 | migration |
+| `application::service::{create_bunch_branch_and_price, search_bunch_branch_and_price_with_fresh_model, search_bunch_branch_and_price_with_hooks}` | application helper constructor 和 search 入口。 | migration |
+| `application::algorithm::{BranchAndPriceTreeSearch, StrongBranchingStrategy, BranchCutCallback, BranchNodeCallback}` | 隔离 branch-and-price tree search hook。 | migration |
+| `domain::common::GanttDynamicModelLifecycle` | shared framework dynamic lifecycle 的兼容 alias。 | migration |
+| `infrastructure::{CalendarPolicy, CompositeCalendarPolicy}` | calendar 扩展 policy surface。 | migration |
 
-泛型求解器数值转换使用 `SolverValueAdapter`，f64 求解边界使用 `F64SolverValueAdapter`。
+## 建模扩展点
 
-## 扩展点
+扩展点包括：
 
-- `domain::bunch_generation::BunchFeasibilityPolicy` 用于向基于时隙的任务束生成注入任务、资源、产出、产能和业务可行性规则。
-- `domain::task::BunchCostPolicy` 用于注入任务成本、执行器成本、连接成本、产能成本和软约束惩罚。`DefaultBunchGenerationPolicy::with_cost_policy` 可把这些业务公式接入 reduced cost 计算，而无需修改 application branch-and-price flow。
-- `infrastructure::CalendarPolicy` 在 `WorkingCalendar` 外提供复杂班次、额外不可用时间、连接窗口和休息规则的可注入扩展入口。
-- `domain::task::TaskStepGraph` 将多步任务依赖建模为经过校验的 DAG，覆盖起始步骤、前向步骤向量和后向步骤向量语义。
-- `domain::task_compilation::Switch` 支持与 Kotlin 对齐的静态时间切换路径，以及可选 `TaskTime` 动态切换路径；切换成本和切换时间目标已作为标准 pipeline 暴露，并支持切换时间 threshold slack。
-- `domain::capacity_scheduling::CapacityCompilation` 与 `CapacityOrderCompilation` 会注册每个时隙的动作上界并提取无序/带序产能解；`CapacityColumnAggregation` 负责 iteration 列记录、加列去重和 removed 列跟踪。
-- `domain::bunch_compilation::SlotBasedBunchCompilationContext` 在迭代任务束编译上下文之上增加产能预求解、时隙约束查询、按时隙加列和按时隙查询任务束。
-- `domain::common::ConstraintIndexMap` 将业务约束 key 映射到对偶解索引，用于稳定提取 shadow price。
-- `domain::common::GanttDynamicModelLifecycle` 复用 framework 公共动态生命周期，集中承载 warm start、`setSolution`、`flush`、列隐藏/固定/移除和列范围恢复语义。`GanttModelStateFacade` 是共享列可选状态的兼容别名。
-- `application::algorithm::BranchAndPriceTreeSearch` 提供与具体模型解耦的多节点 branch-and-price 搜索骨架。
-- `application::algorithm::BranchAndPriceTreeSearch` 支持 `StrongBranchingStrategy`、`BranchCutCallback` 和 `BranchNodeCallback` 扩展点。
-- `application::algorithm::BunchBranchAndPriceAlgorithm::solve_branch_node` 将分支决策适配为列状态 fallback，并复用当前单节点 branch-and-price 流程。它会在每个节点求解前后快照/恢复 application 状态，避免兄弟节点共享 shadow price、固定/隐藏列、incumbent 或迭代状态。
-- `application::algorithm::BunchBranchAndPriceAlgorithm::solve_branch_node_with_fresh_model` 提供更强的节点隔离入口：快照编译上下文，并让每个节点在调用方构建的 fresh `MetaModel` 上求解。
-- `application::service::search_bunch_branch_and_price_with_fresh_model` 将 `BranchAndPriceTreeSearch` 接到隔离节点入口，是多节点 branch-and-price 推荐的 application public helper。
-- `application::service::search_bunch_branch_and_price_with_hooks` 在 fresh-model 隔离节点搜索上增加强分支、cut 和节点 trace hooks。
+1. `domain::bunch_generation::BunchFeasibilityPolicy` 注入 task、resource、produce、capacity 和业务可行性规则。
+2. `domain::task::BunchCostPolicy` 注入 task、executor、connection、capacity 和软约束 cost formula。
+3. `infrastructure::CalendarPolicy` 注入复杂班次、额外不可用区间、连接窗口和休息规则。
+4. `domain::task::TaskStepGraph` 表达经过校验的 multi-step task dependency。
+5. `domain::task_compilation::Switch` objective pipeline 支持 static-time 与可选 dynamic `TaskTime` switch path。
+6. `domain::capacity_scheduling::CapacityCompilation` 和 `CapacityOrderCompilation` 支持 unordered/ordered capacity extraction。
+7. `domain::bunch_compilation::SlotBasedBunchCompilationContext` 支持 capacity pre-solving、slot constraint lookup、slot-wise column addition 和 slot-wise bunch query。
+8. `domain::common::ConstraintIndexMap` 支持稳定 shadow-price extraction。
+9. `application::algorithm::BranchAndPriceTreeSearch` 暴露 strong branching、cut 和 node tracing hook。
 
-## Branch-And-Price Flow
+## 泛型数值边界
 
-已测试的 application flow：
+domain API 通过 `SolverValueAdapter` 使用泛型 solver-value 抽象。`F64SolverValueAdapter` 标记当前 `f64` solver 边界。solver conversion 集中在 context registration、application solver call 和 result extraction，不应散落在 domain logic 中。
 
-1. 为每个分支节点构建 fresh `MetaModel<f64>`。
-2. 注册任务束编译 context。
-3. 求解初始 MILP。
+## 物理量边界
+
+时间、持续时长、产能、资源数量、产量、消耗量、slack 和需求满足应使用 infrastructure time type、`ospf-rust-quantities` 物理量或明确 domain wrapper。裸 `f64` 限于 solver adapter、registration、extraction 和低层系数边界。
+
+## 求解生命周期
+
+已测试 branch-and-price application flow：
+
+1. 为每个 branch node 构造新的 `MetaModel<f64>`。
+2. 注册 bunch compilation context。
+3. 求解 initial MILP。
 4. 求解 RMP LP，并通过 context 提取 shadow price。
-5. 通过 `BunchCGPolicy` 生成任务束，并用 `add_columns` 注册新列。
+5. 通过 `BunchCGPolicy` 生成 bunch，并使用 `add_columns` 注册。
 6. 求解 final MILP，并通过共享 context 提取 `BunchSolution`。
-7. 在进入下一个树节点前恢复 application 与 context 状态。
+7. 在进入下一个 tree node 前恢复 application 和 context state。
 
-## 当前动态模型边界
+multi-node tree search 优先使用 `solve_branch_node_with_fresh_model`，它会恢复 application state、dynamic lifecycle 和 compilation context，并在求解后丢弃 node-local `MetaModel`。
 
-`GanttDynamicModelLifecycle` 现在是 framework 公共动态模型生命周期的 Gantt 兼容别名。它记录 solver solution、派生 warm-start 列、刷新临时状态、恢复列范围，并持久保留 removed 列。core `MetaModel` 已公开 solution、flush 和变量范围接口；生命周期会在 MILP 求解前把缓存解写回 `MetaModel`，供 adapter 将 token result 映射为原生 warm start。多节点树搜索优先使用 `solve_branch_node_with_fresh_model`，它会恢复 application 状态、动态生命周期和编译上下文，并在求解后丢弃节点本地 `MetaModel`。
+## 输出
+
+`BunchSolution` 及相关 bunch scheduling 输出包含 selected bunch、task assignment、canceled task、executor assignment 和 total cost。`CapacitySchedulingSolution` 包含 capacity column 和每个 time slot 的 production action。iteration 与 branch-search 输出记录 LP/IP objective、node status、branch decision、incumbent state 和 trace hook。
+
+## 使用方式
+
+```rust,ignore
+use ospf_rust_framework_gantt_scheduling::application::service::{
+    create_bunch_branch_and_price,
+    search_bunch_branch_and_price_with_fresh_model,
+};
+
+let algorithm = create_bunch_branch_and_price(config);
+let result = search_bunch_branch_and_price_with_fresh_model(algorithm, input)?;
+```
+
+## 本地验证
+
+```powershell
+cargo check -p ospf-rust-framework-gantt-scheduling
+cargo test -p ospf-rust-framework-gantt-scheduling
+cargo check -p ospf-rust-framework-gantt-scheduling --features serde
+```
 
 ## 当前边界
 
-- 普通 MILP、RMP LP、final MILP 共享 context 与 iterative compilation 入口，用于注册、加列、shadow price 提取和解提取；solver 转换仍保留在 application 层。
-- 多步任务图作为任务领域扩展模型暴露，现有单步任务编译路径保持不变。
-- 时隙级任务束编译使用共享 `MetaModel<f64>` 求解边界和可插拔产能预求解器 trait；下游产能排程器可提供更丰富的中间值，而无需修改 application solver flow。
-- 产能排程和任务切换注册现在复用 core 的变量范围、solution、函数符号和 objective pipeline 接口，不再依赖 Gantt 本地生命周期补丁。
-- solver 原生 warm start 属于 adapter 能力；共享生命周期将缓存解写入 `MetaModel`，Gurobi adapter 已将 token result 映射到原生 `Start`，其他 adapter 可复用同一 solution 状态继续补齐。
-- 并发树搜索和 solver 原生节点回调仍不属于本 crate 当前边界，但 branch-and-price search 已提供强分支、cut 和节点回调 trait 供下游集成。
-- 复杂班次日历和自定义成本公式已通过标准 policy 扩展点支持，并有最小测试覆盖。
+1. 普通 MILP、RMP LP 和 final MILP 共享 context 与 iterative compilation 入口，用于注册、加列、shadow-price extraction 和 solution extraction。solver conversion 仍在 application 层。
+2. multi-step task graph 作为 domain extension model 暴露；既有 single-step task compilation 保持不变。
+3. slot-based bunch compilation 当前使用共享 `MetaModel<f64>` solver 边界和可插拔 capacity pre-solver trait。
+4. capacity scheduling 与 task switch registration 使用共享 core variable-range、solution、function-symbol 和 objective-pipeline interface，而不是 Gantt-local lifecycle shim。
+5. native solver warm start 仍是 adapter 能力。shared lifecycle 把缓存的 solver-order solution 写入 `MetaModel`；Gurobi adapter 已能把 token result 映射到 native `Start`。
+6. 并发 tree execution 和 solver-native node callback 仍在本 crate 之外，但 branch-and-price search 暴露 strong-branching、cut 和 node callback trait 给下游集成。
+7. complex shift calendar 和 custom cost formula 已通过标准 policy extension point 支持，并有最小测试覆盖。
 
-详细迁移目标、清单和验收标准见 [gantt.md](gantt.md)。
+详细迁移目标、清单和验收标准应与本节当前边界清单以及 Kotlin Gantt Scheduling README 保持一致。
+
+## 相关模块
+
+- [根 README](../README_ch.md)
+- [Gantt application README](src/application/README_ch.md)
+- [Gantt domain README](src/domain/README_ch.md)
+- [Kotlin Gantt Scheduling README](../../ospf-kotlin/ospf-kotlin-framework-gantt-scheduling/README_ch.md)

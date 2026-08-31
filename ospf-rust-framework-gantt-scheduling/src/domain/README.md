@@ -1,6 +1,6 @@
 # Domain Layer
 
-[中文](README_ch.md)
+:us: English | :cn: [简体中文](README_ch.md)
 
 This directory contains the domain modeling layer for the Gantt scheduling framework. It maps Kotlin Gantt Scheduling domain submodules into Rust modules organized around contexts, aggregations, model components, and pipelines.
 
@@ -23,9 +23,29 @@ This directory contains the domain modeling layer for the Gantt scheduling frame
 - [`resource`](resource/README.md): execution, storage, connection resources, resource usage, capacity, slack, and resource limits.
 - [`common`](common/README.md): shared constraint indexes and dynamic model lifecycle re-exports.
 
-## Design Notes
+## Public API
+
+- `task`
+- `task_compilation`
+- `task_generation`
+- `bunch_generation`
+- `bunch_compilation`
+- `capacity_scheduling`
+- `produce`
+- `resource`
+- `common`
+
+## Extension Points
 
 Domain modules should own optimization semantics. Application code may compose them, but should not duplicate variable registration, constraint construction, or solution extraction logic.
+
+## Lifecycle and Data Flow
+
+Task, resource, and produce models define shared vocabulary; compilation contexts register master-model variables and expressions; generation contexts create pricing columns; capacity and bunch contexts connect task flows to solver iterations; common helpers keep dynamic model state and constraint indexes reusable.
+
+## Verification
+
+Use `cargo test -p ospf-rust-framework-gantt-scheduling --lib` for domain coverage. Add focused tests when changing context registration, pipeline constraints, or solution extraction.
 
 ## Related Directories
 

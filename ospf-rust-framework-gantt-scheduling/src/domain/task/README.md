@@ -1,6 +1,6 @@
 # Task Domain
 
-[中文](README_ch.md)
+:us: English | :cn: [简体中文](README_ch.md)
 
 This directory contains the core task-side domain model. It maps Kotlin `gantt-scheduling-domain-task-context`.
 
@@ -42,6 +42,18 @@ This directory contains the core task-side domain model. It maps Kotlin `gantt-s
 - `F64SolverValueAdapter`
 - `TaskStepGraph`
 - `TaskStepGraphBuilder`
+
+## Extension Points
+
+Extend task semantics through executor traits, assignment policies, task traits, task-plan traits, cost policies, solver value adapters, and task-step graph builders. Keep model variable registration in `task_compilation`.
+
+## Lifecycle and Data Flow
+
+Task and executor models define schedulable work, assignment and cost policies provide business decisions, solver value adapters normalize solver outputs, shadow-price keys connect compilation to pricing, and task-step graphs describe multi-step workflow dependencies.
+
+## Verification
+
+Use `cargo test -p ospf-rust-framework-gantt-scheduling --lib` when changing task vocabulary, assignment behavior, cost policies, solver value adapters, or task-step graph construction.
 
 ## Related Directories
 

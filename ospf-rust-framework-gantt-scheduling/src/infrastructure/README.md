@@ -1,6 +1,6 @@
 # Infrastructure
 
-[中文](README_ch.md)
+:us: English | :cn: [简体中文](README_ch.md)
 
 This directory contains time, calendar, and rendering DTO infrastructure shared by the Gantt scheduling domain.
 
@@ -38,6 +38,18 @@ This directory contains time, calendar, and rendering DTO infrastructure shared 
 - `GanttRenderTaskDto`
 - `GanttRenderSubTaskDto`
 - `GanttRenderTaskCategory`
+
+## Extension Points
+
+Add calendar behavior through `CalendarPolicy` implementations and compose them with `CompositeCalendarPolicy`. Keep solver/domain time conversion in `GanttValueAdapter` and keep visualization-only structures under `dto/`.
+
+## Lifecycle and Data Flow
+
+Domain models use time ranges, windows, slots, and duration bounds; calendar policies answer availability queries; solver-facing flows convert time values through adapters; application/reporting code emits render DTOs at the output boundary.
+
+## Verification
+
+Use `cargo test -p ospf-rust-framework-gantt-scheduling --lib` when changing time utilities, calendar policies, or render DTO conversions.
 
 ## Related Directories
 

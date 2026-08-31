@@ -1,6 +1,6 @@
 # 产能排程
 
-[English](README.md)
+:us: [English](README.md) | :cn: 简体中文
 
 本目录包含产能排程模型组件和 pipeline，对应 Kotlin `gantt-scheduling-domain-capacity-scheduling-context` 模块。
 
@@ -34,6 +34,18 @@
 - `CapacityCostMinimization`
 - `CapacitySchedulingAggregation`
 - `CapacitySchedulingContext`
+
+## 扩展点
+
+产能排程通过 `ProductionActionTrait`、capacity column、ordered compilation，以及 executor capacity、order constraint、capacity-cost objective 等 limit pipeline 扩展。资源词汇保留在 `resource`，物料流词汇保留在 `produce`。
+
+## 生命周期与数据流
+
+production action 和 executor-slot 候选被编译为 capacity variable；可选 ordered compilation 注册顺序敏感变量；limit pipeline 注册产能约束和成本目标；solution extraction 输出 action allocation 与 executor capacity result。
+
+## 验证
+
+修改 capacity column、ordered compilation、capacity limit 或 solution extraction 时运行 `cargo test -p ospf-rust-framework-gantt-scheduling --lib`。
 
 ## 相关目录
 

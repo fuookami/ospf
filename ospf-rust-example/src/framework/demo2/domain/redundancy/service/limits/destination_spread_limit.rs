@@ -1,8 +1,8 @@
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use crate::framework_demo::demo2::domain::redundancy::aggregation::RedundancyAggregation;
-use crate::framework_demo::demo2::domain::redundancy::context::RedundancyContext;
-use crate::framework_demo::demo2::domain::shared::pipeline_mode::mode_name;
+use crate::framework::demo2::domain::redundancy::aggregation::RedundancyAggregation;
+use crate::framework::demo2::domain::redundancy::context::RedundancyContext;
+use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
 pub fn apply_destination_spread_limits(
     model: &mut MetaModel<f64>,

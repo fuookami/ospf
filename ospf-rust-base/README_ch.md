@@ -1,6 +1,20 @@
 # ospf-rust-base
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
+
+## 简介
+
+`ospf-rust-base` 是 `ospf-rust` workspace 的基础工具 crate。它把 Kotlin 支撑模块中的基础工具职责映射为 Rust 的错误处理、索引、集合、容器、迭代器和可克隆函数辅助。
+
+## 作用范围
+
+本 crate 拥有所有其他 crate 使用的小型、轻依赖基础工具。
+
+明确非目标：
+
+1. 优化建模、solver 抽象或领域 framework 逻辑。
+2. 数学代数、物理量或多维数组。
+3. application/runtime adapter。
 
 [ospf-rust](https://github.com/fuookami/ospf-rust) 项目的基础工具库。
 
@@ -333,6 +347,30 @@ assert!(nums.iter().none(|&x| x < 0));
 // 检查没有元素等于 10
 assert!(nums.iter().none(|&x| x == 10));
 ```
+
+## Public API
+
+| API | 职责 | 稳定性 |
+| --- | --- | --- |
+| `Ret<T>` / `Try` | 共享 fallible result alias。 | stable within migration |
+| `ExResult<T, E>` | 带 warning 和 fatal variant 的扩展 result state。 | stable within migration |
+| `error_type!`、`error_enum!`、`error!` | 带位置 metadata 的 error 构造宏。 | stable within migration |
+| `Indexed`、`ManualIndexed`、`IndexedSliceExt` | 类型安全索引契约。 | stable within migration |
+| `ChunkedVec` | 面向大向量的分块存储。 | stable within migration |
+| `cloneable_function!` | 生成可克隆 boxed closure trait。 | stable within migration |
+
+## 本地验证
+
+```powershell
+cargo check -p ospf-rust-base
+cargo test -p ospf-rust-base
+cargo check -p ospf-rust-base --features arrayvec
+```
+
+## 相关模块
+
+- [根 README](../README_ch.md)
+- [Kotlin workspace README](../../ospf-kotlin/README_ch.md)
 
 ## 特性
 

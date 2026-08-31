@@ -1,10 +1,10 @@
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
-use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
-use crate::framework_demo::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
-use crate::framework_demo::demo2::domain::stowage::aggregation::StowageAggregation;
-use crate::framework_demo::demo2::domain::stowage::context::StowageContext;
-use crate::framework_demo::demo2::domain::stowage::service::policy;
+use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
+use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;
+use crate::framework::demo2::domain::stowage::context::StowageContext;
+use crate::framework::demo2::domain::stowage::service::policy;
 
 pub type StowagePipelineStep = fn(
     model: &mut MetaModel<f64>,

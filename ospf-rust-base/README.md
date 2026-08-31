@@ -1,6 +1,20 @@
 # ospf-rust-base
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: English | :cn: [简体中文](README_ch.md)
+
+## Introduction
+
+`ospf-rust-base` is the base utility crate for the `ospf-rust` workspace. It maps the foundational utility role of Kotlin support modules into Rust error handling, indexing, collection, container, iterator, and cloneable-function helpers.
+
+## Scope
+
+This crate owns small, dependency-light utilities used by all other crates.
+
+Explicit non-goals:
+
+1. Optimization modeling, solver abstraction, or domain framework logic.
+2. Mathematical algebra, physical quantities, or multi-dimensional arrays.
+3. Application/runtime adapters.
 
 Base utility library for the [ospf-rust](https://github.com/fuookami/ospf-rust) project.
 
@@ -333,6 +347,30 @@ assert!(nums.iter().none(|&x| x < 0));
 // Check no element equals 10
 assert!(nums.iter().none(|&x| x == 10));
 ```
+
+## Public API
+
+| API | Responsibility | Stability |
+| --- | --- | --- |
+| `Ret<T>` / `Try` | Shared fallible result aliases. | stable within migration |
+| `ExResult<T, E>` | Extended result states with warning and fatal variants. | stable within migration |
+| `error_type!`, `error_enum!`, `error!` | Error construction macros with position metadata. | stable within migration |
+| `Indexed`, `ManualIndexed`, `IndexedSliceExt` | Type-safe indexing contracts. | stable within migration |
+| `ChunkedVec` | Chunked storage for large vectors. | stable within migration |
+| `cloneable_function!` | Cloneable boxed closure trait generation. | stable within migration |
+
+## Local Validation
+
+```powershell
+cargo check -p ospf-rust-base
+cargo test -p ospf-rust-base
+cargo check -p ospf-rust-base --features arrayvec
+```
+
+## Related Modules
+
+- [Root README](../README.md)
+- [Kotlin workspace README](../../ospf-kotlin/README.md)
 
 ## Features
 

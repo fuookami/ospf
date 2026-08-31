@@ -1,6 +1,6 @@
 # symbol
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 符号数学系统的核心符号定义。本模块为优化和代数计算中的数学符号表示提供基础抽象。
 

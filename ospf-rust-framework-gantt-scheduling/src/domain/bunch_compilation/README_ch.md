@@ -1,6 +1,6 @@
 # 任务束编译
 
-[English](README.md)
+:us: [English](README.md) | :cn: 简体中文
 
 本目录包含任务束编译的主问题侧实现，对应 Kotlin `gantt-scheduling-domain-bunch-compilation-context`。
 
@@ -36,6 +36,18 @@
 - `BasicSlotBasedBunchCompilationContext`
 - `SlotBasedCapacityPreSolver`
 - `StaticSlotBasedCapacityPreSolver`
+
+## 扩展点
+
+主问题行为通过 bunch compilation context、迭代任务束列操作、时隙级产能预求解器和 shadow-price pipeline 扩展。pricing 规则保留在 `bunch_generation`，任务级变量语义保留在 `task_compilation`。
+
+## 生命周期与数据流
+
+compilation context 将初始任务束列和聚合表达式注册到 `MetaModel`，iterative context 在列生成过程中新增或刷新列，shadow-price pipeline 将对偶值暴露给 pricing，solution analyzer 从最终 solver value 中提取任务和任务束排程。
+
+## 验证
+
+修改 bunch compilation、shadow price 提取、slot-based pre-solve 或 solution analysis 时运行 `cargo test -p ospf-rust-framework-gantt-scheduling --lib`。
 
 ## 相关目录
 

@@ -1,6 +1,6 @@
 # Capacity Scheduling
 
-[中文](README_ch.md)
+:us: English | :cn: [简体中文](README_ch.md)
 
 This directory contains capacity scheduling model components and pipelines. It maps the Kotlin `gantt-scheduling-domain-capacity-scheduling-context` module.
 
@@ -34,6 +34,18 @@ This directory contains capacity scheduling model components and pipelines. It m
 - `CapacityCostMinimization`
 - `CapacitySchedulingAggregation`
 - `CapacitySchedulingContext`
+
+## Extension Points
+
+Extend capacity scheduling through `ProductionActionTrait`, capacity columns, ordered compilation, and limit pipelines such as executor capacity, order constraints, and capacity-cost objectives. Keep resource vocabulary in `resource` and material flow vocabulary in `produce`.
+
+## Lifecycle and Data Flow
+
+Production actions and executor-slot candidates are compiled into capacity variables, optional ordered compilation adds sequence-sensitive variables, limit pipelines register capacity constraints and cost objectives, and solution extraction produces action allocations plus executor capacity results.
+
+## Verification
+
+Use `cargo test -p ospf-rust-framework-gantt-scheduling --lib` when changing capacity columns, ordered compilation, capacity limits, or solution extraction.
 
 ## Related Directories
 

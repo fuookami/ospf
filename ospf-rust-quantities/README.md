@@ -1,6 +1,20 @@
 # ospf-rust-quantities
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: English | :cn: [简体中文](README_ch.md)
+
+## Introduction
+
+`ospf-rust-quantities` maps Kotlin `ospf-kotlin-quantities` into a Rust physical quantity, dimension, and unit system. It supports compile-time and runtime unit modes through `Quantity<V, U>` and integrates with `ospf-rust-math` for quantity-aware symbolic computation.
+
+## Scope
+
+This crate owns physical dimensions, unit systems, unit conversion, quantity arithmetic, compile-time/runtime quantity modes, and quantity-aware symbolic helpers.
+
+Explicit non-goals:
+
+1. Optimization solver modeling or framework orchestration.
+2. Domain-specific business units unless they become general reusable units.
+3. Serialization protocol ownership beyond quantity/unit data boundaries.
 
 Physical quantities, dimensions and units system
 
@@ -28,6 +42,14 @@ Add dependency in `Cargo.toml`:
 [dependencies]
 ospf-rust-quantities = "0.1.0"
 ```
+
+## Generic Numeric Boundaries
+
+`Quantity<V, U>` is generic over value type `V`. Supported examples include `f64`, `BigDecimal`, and rational/symbolic values through math integration. Conversion between numeric types should remain explicit at caller or adapter boundaries.
+
+## Physical Quantity Boundaries
+
+Physical quantities should preserve dimensions through compile-time unit types when units are known statically, or through runtime `Unit` when unit selection is dynamic. Bare values are appropriate only for dimensionless scale factors, counts, and low-level adapter edges.
 
 ## Quick Start
 
@@ -314,6 +336,20 @@ cargo bench --package ospf-rust-quantities --bench quantity_bench
 | Need compile-time dimension safety | Compile-time |
 | Interoperability with user-provided units | Runtime |
 | Mixed scenarios | Use compile-time and convert to runtime when needed |
+
+## Local Validation
+
+```powershell
+cargo check -p ospf-rust-quantities
+cargo test -p ospf-rust-quantities
+cargo bench --package ospf-rust-quantities --bench quantity_bench
+```
+
+## Related Modules
+
+- [Root README](../README.md)
+- [Math README](../ospf-rust-math/README.md)
+- [Kotlin quantities README](../../ospf-kotlin/ospf-kotlin-quantities/README.md)
 
 ## License
 

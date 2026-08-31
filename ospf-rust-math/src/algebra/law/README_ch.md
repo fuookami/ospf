@@ -1,6 +1,6 @@
 # law
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 本模块提供代数定律采样验证器，用于验证类型是否正确实现了其所声明的代数结构。
 

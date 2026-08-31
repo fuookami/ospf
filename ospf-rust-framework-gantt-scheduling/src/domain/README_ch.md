@@ -1,6 +1,6 @@
 # 领域层
 
-[English](README.md)
+:us: [English](README.md) | :cn: 简体中文
 
 本目录包含 Gantt Scheduling framework 的领域建模层，将 Kotlin Gantt Scheduling 各领域子模块映射为 Rust 的 context、aggregation、model component 与 pipeline 结构。
 
@@ -23,9 +23,29 @@
 - [`resource`](resource/README_ch.md)：执行资源、存储资源、连接资源、资源使用量、容量、松弛和资源限制。
 - [`common`](common/README_ch.md)：共享约束索引和动态模型生命周期重导出。
 
-## 设计说明
+## Public API
+
+- `task`
+- `task_compilation`
+- `task_generation`
+- `bunch_generation`
+- `bunch_compilation`
+- `capacity_scheduling`
+- `produce`
+- `resource`
+- `common`
+
+## 扩展点
 
 领域模块应持有优化语义。应用层可以组合这些能力，但不应重复变量注册、约束构造或解提取逻辑。
+
+## 生命周期与数据流
+
+task、resource 和 produce 模型定义共享词汇；compilation context 注册主问题变量和表达式；generation context 创建 pricing column；capacity 与 bunch context 将任务流程接入 solver 迭代；common helper 复用动态模型状态和约束索引。
+
+## 验证
+
+领域覆盖使用 `cargo test -p ospf-rust-framework-gantt-scheduling --lib`。修改 context 注册、pipeline 约束或 solution extraction 时应补充聚焦测试。
 
 ## 相关目录
 

@@ -15,7 +15,7 @@ mod tests {
             },
             DomainPolicySnapshot {
                 domain: "airworthiness",
-                step_counts: vec![5, 5, 5],
+                step_counts: vec![4, 4, 4],
             },
             DomainPolicySnapshot {
                 domain: "mac_optimization",

@@ -1,6 +1,6 @@
 # operation
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: English | :cn: [简体中文](README_ch.md)
 
 Symbolic operation module providing polynomial type conversion, evaluation, differentiation, and output capabilities.
 

@@ -1,6 +1,6 @@
 # macros
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 构造宏模块，用于简化单项式、多项式和不等式的构造。提供数学风格宏和旧版构造宏。
 

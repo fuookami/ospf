@@ -1,6 +1,6 @@
 # operation
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 符号运算模块，提供多项式类型转换、求值、微分和输出功能。
 

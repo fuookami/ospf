@@ -1,64 +1,96 @@
 # OSPF Rust Core
 
-OSPF（运筹学求解器框架）Rust 实现的核心模块，提供优化建模的基础数据结构和抽象。
+:us: [English](README.md) | :cn: 简体中文
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+## 简介
 
-## 概述
+`ospf-rust-core` 是 OSPF Rust workspace 的核心建模 crate。它拥有从变量和符号表达式，到 `MetaModel` 构建与展开，再到 solver 抽象、结果输出、IIS diagnostics 和 feature-gated backend adapter 的优化模型生命周期。
 
-`ospf-rust-core` 实现了一个运筹学建模框架，支持：
+## 作用范围
 
-- 线性规划 (LP)
-- 混合整数规划 (MIP)
-- 二次规划 (QP)
+本 crate 覆盖：
 
-## 核心模块
+1. 变量与 token 系统。
+2. 符号表达式和函数符号系统。
+3. `MetaModel`、mechanism model、intermediate standard-form model 和 callback model 层。
+4. solver trait、options、outputs、value conversion、heuristic interface、IIS diagnostics 和 Gurobi/SCIP adapter 边界。
 
-### 变量系统 (`variable`)
-- 变量类型定义（二元、整数、连续）
-- 变量 Arena，用于高效内存管理
-- 变量组合和范围
+明确非目标：
 
-### Token 系统 (`token`)
-- 表达式中变量的 Token 表示
-- Token 列表和表，用于高效查找
-- 变量数据管理
+1. framework 层 column-generation 编排、Benders 组合器、持久化和远程求解；这些属于 `ospf-rust-framework`。
+2. 分切、装箱或排程等领域专用建模。
+3. solver 安装和许可证管理，除 backend setup notes 外不在本 crate 处理。
 
-### 符号系统 (`symbol`)
-- 表达式符号（单项式、多项式）
-- 自定义表达式的函数符号
-- 中间符号表示
-- 单项式单元操作
+## 模块结构
 
-### 模型系统 (`model`)
-- **基本模型**：核心模型结构
-- **配置**：模型配置选项
-- **平展系统**：表达式平展，用于求解器输入
-- **机理模型**：约束组和基于机理的建模
-- **中间模型**：线性和二次模型表示
-  - `LinearTriadModel` - 线性模型 (A, b, c)
-  - `QuadraticTetradModel` - 二次模型 (Q, A, b, c)
-- **回调模型**：多目标和基于回调的建模
+| Rust 模块 | Kotlin 边界 | 职责 |
+| --- | --- | --- |
+| `variable` | `core/variable` | 变量类型系统、变量项、组合和范围。 |
+| `token` | `core/token` | 变量-token 映射、token list/table、缓存值和 solver result access。 |
+| `symbol` | `core/symbol` | 表达式符号、monomial cell、函数符号、中间符号和 flattening helper。 |
+| `model` | `core/model` | `MetaModel`、mechanism model、intermediate triad/tetrad model、callback model、constraint/objective DSL 和 model state。 |
+| `solver` | `core/solver` | solver trait、options、backend config、output type、value conversion、heuristic helper、IIS diagnostics 和 backend adapter。 |
+| `error` | `core/error` | core error 和 result 类型。 |
 
-### 求解器接口 (`solver`)
-- 求解器配置
-- 求解器输出结构
-- 启发式算法
-  - 种群管理
-  - 选择、交叉、变异算子
-  - 归一化技术
-- IIS（不可约不一致子系统）分析
+## 架构概览
 
-## 使用方法
+`ospf-rust-core` 遵循 Kotlin 对齐的模型生命周期：
 
-在 `Cargo.toml` 中添加：
+```text
+用户定义层      ->  MetaModel<V>
+    -> 机理层   ->  MechanismModel<V>
+    -> 标准形式 ->  LinearTriadModel / QuadraticTetradModel
+    -> solver层 ->  SolverOutput
+```
+
+本 crate 显式保留模型构建、表达式展开、solver-order token 映射和结果提取，使上层 framework crate 可以组合它们，而不拥有底层建模细节。
+
+## 核心概念
+
+1. 变量描述 binary、integer 和 continuous 等 solver decision domain。
+2. token 把变量和符号连接到 solver-order index 与缓存结果。
+3. symbol 表达线性/二次表达式、函数符号和中间值。
+4. `MetaModel` 是面向用户的装配层；mechanism 与 intermediate model 为 solver 消费而生成。
+5. solver trait 和 backend adapter 把 standard-form model 转为后端调用并返回结构化 output。
+
+## Public API
+
+| API | 职责 | 稳定性 |
+| --- | --- | --- |
+| `MetaModel<V>` | 主要用户侧模型装配对象。 | stable within migration |
+| `Variable`、`VariableRange`、`VariableType` | 决策变量定义和范围。 | stable within migration |
+| `Token`、`TokenList`、`TokenTable` | solver-order token 映射和 result/cache access。 | stable within migration |
+| `symbol::function` | 推荐函数符号路径。 | stable within migration |
+| `symbol::flatten` | 推荐表达式展开路径。 | stable within migration |
+| `model::mechanism` | mechanism model 与 constraint/objective lowering。 | migration |
+| `LinearTriadModel`、`QuadraticTetradModel` | standard-form solver input model。 | migration |
+| `Solver`、`SolverExt`、`SolveOptions` | 统一 solver trait 和 solve options。 | migration |
+| `solver::backend::{GurobiSolver, ScipSolver}` | feature-gated backend adapter。 | migration |
+
+## 泛型数值边界
+
+`MetaModel<V>` 对建模值类型泛型化。backend adapter 当前通过后端数值域求解，最常见为 `f64`。转换应保留在 solver、flattening 和 extraction 边界。`big-rational` 与 `big-decimal` feature path 通过 core/framework conversion policy 支持协同。
+
+## 求解生命周期
+
+常见求解路径：
+
+1. 使用变量、符号、约束和目标构建 `MetaModel<V>`。
+2. 通过 mechanism 与 flattening 层降低符号表达式。
+3. dump 为线性或二次 standard form。
+4. 调用 `Solver` 实现。
+5. 把 solver-order value 写回 token，并暴露结构化 output。
+
+## 使用方式
+
+添加依赖：
 
 ```toml
 [dependencies]
 ospf-rust-core = { path = "path/to/ospf-rust-core" }
 ```
 
-### 统一求解入口（推荐）
+### 统一求解入口
 
 高频路径建议直接从 `MetaModel` 调用：
 
@@ -70,16 +102,14 @@ fn solve_model<S: ospf_rust_core::solver::Solver>(
     meta_model: &MetaModel<f64>,
     solver: &S,
 ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolverOutput> {
-    // 最短路径
     let _output = meta_model.solve(solver)?;
 
-    // 带参数对象
     let options = SolveOptions::new();
     solver.solve_with_options(meta_model, &options)
 }
 ```
 
-启用 `nightly` 特性时，还可使用可调用包装器：
+启用 `nightly` feature 时，还可使用 callable wrapper：
 
 ```rust
 #[cfg(feature = "nightly")]
@@ -92,7 +122,7 @@ fn solve_with_callable<S: ospf_rust_core::solver::Solver>(
 }
 ```
 
-启用 `async` 特性时，可以把阻塞式求解调用移到 Tokio blocking 线程池：
+启用 `async` feature 时，可把阻塞式求解调用移到 Tokio blocking 线程池：
 
 ```rust
 use std::sync::Arc;
@@ -109,13 +139,13 @@ async fn solve_in_background<S: Solver + 'static>(
 }
 ```
 
-### MetaModel 快捷接口示例
+### MetaModel 快捷接口
 
-`MetaModel` 已补齐高频建模快捷入口，典型包括：
+`MetaModel` 提供高频建模快捷入口：
 
-1. 带元数据的线性约束快捷添加（`group/lazy/priority/args`）
-2. symbolic 约束批量添加
-3. 按系数或索引列表构造 partition 约束
+1. 带元数据的线性约束快捷添加（`group/lazy/priority/args`）。
+2. symbolic 约束批量添加。
+3. 按系数或索引列表构造 partition 约束。
 
 ```rust,ignore
 use std::sync::Arc;
@@ -126,7 +156,6 @@ use ospf_rust_core::model::{
 
 let mut model = MetaModel::<f64>::new("shortcut_demo");
 
-// 1) 带元数据的快捷接口
 let g = Arc::new(ConstraintGroup::new(1001, "logic"));
 let ineq = LinearInequality::new(
     Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -137,12 +166,11 @@ model.add_inequality_with_metadata(
     ineq,
     "c_meta",
     Some(g),
-    true,   // lazy
-    20,     // priority
+    true,
+    20,
     Some("{\"tag\":\"demo\"}".to_string()),
 )?;
 
-// 2) 批量 symbolic 约束
 model.add_symbolic_inequalities(vec![
     (
         SymbolicLinearInequality::new(Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0), ConstraintRelation::GreaterEqual, 0.0),
@@ -154,14 +182,13 @@ model.add_symbolic_inequalities(vec![
     ),
 ]);
 
-// 3) partition 快捷入口
 model.partition_linear_coefficients(&[(0, 1.0), (1, 1.0)], "p_coeff")?;
 model.partition_linear_indices(&[2, 3, 4], "p_idx")?;
 ```
 
-### Phase4 Builder 接口
+### Builder 输入
 
-`MetaModel` 额外提供 Kotlin 风格的 builder 输入，减少手写稀疏数组：
+`MetaModel` 也提供 Kotlin 对齐 builder 输入，减少手写稀疏数组：
 
 ```rust,ignore
 use ospf_rust_core::model::{LinearExpressionBuilder, MetaModel, ObjectiveCategory};
@@ -183,36 +210,26 @@ let objective = LinearExpressionBuilder::new()
 model.set_linear_objective_input(objective);
 ```
 
-### Phase5 门禁
+## Feature Flags
 
-默认门禁与扫描：
+- `async`：启用 async 支持。
+- `serde`：启用序列化/反序列化。
+- `nightly`：启用 callable solver wrapper（`as_fn`）。
+- `gurobi`：`gurobi10` 的别名。
+- `gurobi10`、`gurobi11`、`gurobi12`：Gurobi 版本特定绑定。
+- `scip`：启用 SCIP solver binding。
+- `scip-bundled`：启用来自 `russcip` 的 bundled SCIP。
+- `scip-from-source`：通过 `russcip` 从源码构建 SCIP。
+- `scip-quadratic`：启用 SCIP 二次支持。
 
-```bash
-bash scripts/phase5_gate.sh
-powershell -File scripts/phase5_gate.ps1
-```
+## Solver Backend
 
-### 特性标志
+Rust 不按 Maven module 拆分 solver backend。依赖哪个 crate，就在该 crate 上通过 Cargo feature 启用对应后端。
 
-- `async` - 启用 async/await 支持
-- `serde` - 启用序列化/反序列化
-- `nightly` - 启用可调用求解器包装器（`as_fn`）
-- `gurobi` - `gurobi10` 的别名
-- `gurobi10`, `gurobi11`, `gurobi12` - Gurobi 版本特定绑定
-- `scip` - 启用 SCIP 求解器绑定
-- `scip-bundled` - 启用 `russcip` bundled SCIP
-- `scip-from-source` - 通过 `russcip` 从源码构建 SCIP
-- `scip-quadratic` - 启用 SCIP 二次支持
+后端专用说明：
 
-### 求解器后端说明（Gurobi / SCIP）
-
-Rust 侧不按 Maven module 拆分求解器后端；依赖哪个 crate，就在该 crate 上通过 Cargo
-feature 启用对应后端。
-
-后端专用说明文档：
-
-1. Gurobi: [solver/solvers/gurobi/README.md](src/solver/solvers/gurobi/README.md)
-2. SCIP: [solver/solvers/scip/README.md](src/solver/solvers/scip/README.md)
+1. Gurobi: [solver/solvers/gurobi/README_ch.md](src/solver/solvers/gurobi/README_ch.md)
+2. SCIP: [solver/solvers/scip/README_ch.md](src/solver/solvers/scip/README_ch.md)
 
 常见 feature 示例：
 
@@ -224,109 +241,48 @@ ospf-rust-core = { path = "../ospf-rust-core", features = ["scip-bundled"] }
 ```
 
 ```bash
-# Gurobi 10
 cargo test -p ospf-rust-core --features gurobi10
-
-# SCIP（本机安装）
 cargo test -p ospf-rust-core --features scip
-
-# SCIP bundled
 cargo test -p ospf-rust-core --features scip-bundled
 ```
 
-推荐后端导入路径：
+推荐后端导入：
 
 ```rust,ignore
 use ospf_rust_core::solver::backend::{GurobiSolver, ScipSolver};
 ```
 
-`SCIPSolver` 和 `SCIPConfig` 作为兼容名称保留。新的 Rust 代码建议优先使用
-`ScipSolver` 和 `ScipConfig`。
+`SCIPSolver` 和 `SCIPConfig` 作为兼容名称保留。新的 Rust 代码建议使用 `ScipSolver` 和 `ScipConfig`。
 
-后端配置提供常用调参别名：
+## Kotlin 对齐公共路径
 
-```rust,ignore
-use ospf_rust_core::solver::backend::{GurobiConfig, GurobiSolver, ScipConfig, ScipSolver};
+- `symbol::function` 是新的推荐入口；旧 `symbol::functions` 保留兼容。
+- `symbol::flatten` 是新的推荐入口；旧 `model::flatten` 保留兼容。
+- 已引入 `solver::config`、`solver::output`、`solver::value` 和 `solver::backend` 对齐路径。
 
-let gurobi = GurobiSolver::with_config(
-    GurobiConfig::new()
-        .with_gap(1e-4)
-        .with_memory_limit_gb(8.0)
-        .with_improve_threshold(1e-6),
-);
+## 本地验证
 
-let scip = ScipSolver::with_config(
-    ScipConfig::new()
-        .with_gap(1e-4)
-        .with_memory_limit_mb(2048.0)
-        .with_improve_threshold(1e-6),
-);
+```powershell
+cargo check -p ospf-rust-core
+cargo test -p ospf-rust-core --no-run
+cargo test -p ospf-rust-core --lib
+bash scripts/phase5_gate.sh
+powershell -File scripts/phase5_gate.ps1
 ```
-
-多解调用统一使用 `solution_amount`。Gurobi 和 SCIP 会在后端支持时优先走原生
-solution pool 路径：
-
-```rust,ignore
-use ospf_rust_core::solver::{SolveOptions, SolverExt};
-
-let options = SolveOptions::new().with_solution_amount(5);
-let multi = solver.solve_multi_with_options(&meta_model, &options)?;
-```
-
-### Kotlin 对齐公共路径（迁移说明）
-
-- `symbol::function` 作为新主路径（旧 `symbol::functions` 保留兼容）。
-- `symbol::flatten` 作为新主路径（旧 `model::flatten` 保留兼容）。
-- 已引入 `solver::config`、`solver::output`、`solver::value`、`solver::backend` 对齐路径。
 
 ## 依赖
 
-- `ospf-rust-base` - 基础工具和集合
-- `ospf-rust-math` - 数学类型和运算
-- `ospf-rust-multiarray` - 多维数组支持
-- `thiserror` - 错误处理派生宏
+- `ospf-rust-base`
+- `ospf-rust-math`
+- `ospf-rust-multiarray`
+- `thiserror`
 
-## 架构
+## 相关模块
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                      用户代码                            │
-└─────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│                     模型层                              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐  │
-│  │  回调    │ │  中间    │ │  机理    │ │   平展    │  │
-│  └──────────┘ └──────────┘ └──────────┘ └───────────┘  │
-└─────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│                     符号层                              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                │
-│  │ 表达式   │ │  函数    │ │  中间    │                │
-│  │  符号    │ │  符号    │ │  符号    │                │
-│  └──────────┘ └──────────┘ └──────────┘                │
-└─────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│                     Token 层                            │
-│  ┌──────────┐ ┌──────────┐                             │
-│  │  Token   │ │ TokenList│                             │
-│  └──────────┘ └──────────┘                             │
-└─────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│                     变量层                              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                │
-│  │ 变量ID   │ │   变量   │ │  Arena   │                │
-│  └──────────┘ └──────────┘ └──────────┘                │
-└─────────────────────────────────────────────────────────┘
-```
+- [根 README](../README_ch.md)
+- [Framework README](../ospf-rust-framework/README_ch.md)
+- [Kotlin core README](../../ospf-kotlin/ospf-kotlin-core/README_ch.md)
 
 ## 许可证
 
-本项目与主 OSPF Rust 项目使用相同的许可证。
+本项目与主 OSPF Rust 项目使用相同许可证。

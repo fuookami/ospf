@@ -1,6 +1,6 @@
 # 任务编译
 
-[English](README.md)
+:us: [English](README.md) | :cn: 简体中文
 
 本目录包含任务编译模型组件、context 封装和限制 pipeline，对应 Kotlin `gantt-scheduling-domain-task-compilation-context`。
 
@@ -52,6 +52,18 @@
 - `TaskAdvanceTimeMinimization`
 - `ExecutorCostMinimization`
 - `ExecutorLeisureMinimization`
+
+## 扩展点
+
+任务编译行为通过 compilation context、iterative compilation state、solution analyzer，以及 assignment、conflict、time、cost、makespan、switch 相关 limit pipeline 扩展。任务词汇保留在 `task`，任务束级列保留在 `bunch_compilation`。
+
+## 生命周期与数据流
+
+compilation context 将 assignment、timing、switch 和 makespan 变量注册到 `MetaModel`；iterative context 维护动态编译状态；limit pipeline 添加约束和目标；analyzer 将 solver value 转换为 task solution 与 summary。
+
+## 验证
+
+修改 task variable registration、iterative state、limit pipeline 或 solution analysis 时运行 `cargo test -p ospf-rust-framework-gantt-scheduling --lib`。
 
 ## 相关目录
 

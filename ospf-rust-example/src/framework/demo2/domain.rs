@@ -12,7 +12,7 @@ use ospf_rust_framework::solver::{
 use self::service::domain_pipeline::apply_domain_pipeline;
 use self::shared::pipeline_mode::Demo2PipelineMode;
 use crate::example_modeling::solve_linear_meta_model_typed_if_feasible;
-use crate::framework_demo::demo2::diagnostics::{
+use crate::framework::demo2::diagnostics::{
     NOTE_CODE_BENDERS_ADAPTIVE_EFFECTIVE, NOTE_CODE_BENDERS_CUT_EFFICIENCY_LOW,
     NOTE_CODE_BENDERS_FAILED, NOTE_CODE_BENDERS_GAP, NOTE_CODE_BENDERS_GAP_GUARD_EXCEEDED,
     NOTE_CODE_BENDERS_ITERATIONS, NOTE_CODE_BENDERS_PROBLEM_SIZE_BINARY_VARIABLES,
@@ -30,15 +30,19 @@ use crate::framework_demo::demo2::diagnostics::{
     NOTE_GROUP_PAYLOAD, NOTE_GROUP_REDUNDANCY, NOTE_GROUP_SOLVER, NOTE_LEVEL_CRITICAL,
     NOTE_LEVEL_DIAGNOSTIC, build_structured_diagnostics, push_grouped_note,
 };
-use crate::framework_demo::demo2::infrastructure::dto::{
+use crate::framework::demo2::infrastructure::dto::{
     AircraftTypeInput, BendersAdaptiveConfig, BendersQualityOverrideConfig, Demo2Request,
     Demo2Response, LoadingOrderResponse,
 };
 
-pub mod airworthiness;
+pub mod aircraft;
+pub mod airworthiness_security;
 pub mod express_effectiveness;
 pub mod loading_effectiveness;
+pub mod mac;
 pub mod mac_optimization;
+pub mod payload_maximization;
+pub mod recommended_weight_equalization;
 pub mod redundancy;
 pub mod service;
 pub mod shared;
@@ -880,7 +884,7 @@ fn append_critical_constraint_notes(
                     NOTE_GROUP_AIRWORTHINESS,
                     NOTE_CODE_CAPACITY_UTILIZATION_HIGH,
                     &format!(
-                        "airworthiness_capacity_{} utilization {:.2}%",
+                        "airworthiness_security_capacity_{} utilization {:.2}%",
                         request.positions[p].name,
                         ratio * 100.0
                     ),
@@ -902,7 +906,7 @@ fn append_critical_constraint_notes(
             NOTE_GROUP_PAYLOAD,
             NOTE_CODE_PAYLOAD_UPPER_UTILIZATION_HIGH,
             &format!(
-                "airworthiness_payload_upper utilization {:.2}%",
+                "airworthiness_security_payload_upper utilization {:.2}%",
                 total_payload / request.payload_upper_bound * 100.0
             ),
         );
@@ -914,7 +918,7 @@ fn append_critical_constraint_notes(
             NOTE_GROUP_PAYLOAD,
             NOTE_CODE_PAYLOAD_LOWER_CLOSE,
             &format!(
-                "airworthiness_payload_lower payload {:.2} close to minimum {:.2}",
+                "airworthiness_security_payload_lower payload {:.2} close to minimum {:.2}",
                 total_payload, min_payload
             ),
         );
@@ -943,7 +947,7 @@ fn append_critical_constraint_notes(
                 NOTE_GROUP_AIRWORTHINESS,
                 NOTE_CODE_ENVELOPE_LONGITUDINAL_MAX_CLOSE,
                 &format!(
-                    "airworthiness_envelope_longitudinal_max close ({:.3})",
+                    "airworthiness_security_envelope_longitudinal_max close ({:.3})",
                     longitudinal_moment
                 ),
             );
@@ -955,7 +959,7 @@ fn append_critical_constraint_notes(
                 NOTE_GROUP_AIRWORTHINESS,
                 NOTE_CODE_ENVELOPE_LONGITUDINAL_MIN_CLOSE,
                 &format!(
-                    "airworthiness_envelope_longitudinal_min close ({:.3})",
+                    "airworthiness_security_envelope_longitudinal_min close ({:.3})",
                     longitudinal_moment
                 ),
             );
@@ -1355,7 +1359,7 @@ impl FullLoadApplication {
             Demo2PipelineMode::FullLoad,
         )?;
 
-        airworthiness::service::apply_airworthiness_pipeline(
+        airworthiness_security::service::apply_airworthiness_security_pipeline(
             &mut sub_model,
             request,
             &x_idx_sub,
@@ -1718,7 +1722,7 @@ impl PredistributionApplication {
             Demo2PipelineMode::Predistribution,
         )?;
 
-        airworthiness::service::apply_airworthiness_pipeline(
+        airworthiness_security::service::apply_airworthiness_security_pipeline(
             &mut sub_model,
             request,
             &x_idx_sub,
@@ -2068,7 +2072,7 @@ impl WeightRecommendationApplication {
             Demo2PipelineMode::WeightRecommendation,
         )?;
 
-        airworthiness::service::apply_airworthiness_pipeline(
+        airworthiness_security::service::apply_airworthiness_security_pipeline(
             &mut sub_model,
             request,
             &x_idx_sub,
@@ -2193,7 +2197,7 @@ impl LoadingOrderApplication {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::framework_demo::demo2::infrastructure::dto::{
+    use crate::framework::demo2::infrastructure::dto::{
         AircraftTypeInput, BendersAdaptiveConfig, CargoInput, Demo2Request, PositionInput,
         SolvePolicy, WeightRecommendationObjectiveConfig,
     };
@@ -2525,7 +2529,7 @@ mod tests {
     fn weight_recommendation_prioritizes_balance_over_small_extra_payload() {
         let mut request = Demo2Request::sample();
         request.cargos = vec![
-            crate::framework_demo::demo2::infrastructure::dto::CargoInput {
+            crate::framework::demo2::infrastructure::dto::CargoInput {
                 name: String::from("H1"),
                 weight: 10.0,
                 priority: 6,
@@ -2533,7 +2537,7 @@ mod tests {
                 destination: String::from("D1"),
                 requires_separation: false,
             },
-            crate::framework_demo::demo2::infrastructure::dto::CargoInput {
+            crate::framework::demo2::infrastructure::dto::CargoInput {
                 name: String::from("H2"),
                 weight: 10.0,
                 priority: 6,
@@ -2541,7 +2545,7 @@ mod tests {
                 destination: String::from("D2"),
                 requires_separation: false,
             },
-            crate::framework_demo::demo2::infrastructure::dto::CargoInput {
+            crate::framework::demo2::infrastructure::dto::CargoInput {
                 name: String::from("L1"),
                 weight: 1.0,
                 priority: 1,
@@ -2551,17 +2555,25 @@ mod tests {
             },
         ];
         request.positions = vec![
-            crate::framework_demo::demo2::infrastructure::dto::PositionInput {
+            crate::framework::demo2::infrastructure::dto::PositionInput {
                 name: String::from("P1"),
                 max_weight: 20.0,
                 longitudinal_arm: -1.0,
                 lateral_arm: 0.0,
+                    area: 5.0,
+                    length: 2.0,
+                    max_load_count: 3,
+                    loaded_items: Vec::new(),
             },
-            crate::framework_demo::demo2::infrastructure::dto::PositionInput {
+            crate::framework::demo2::infrastructure::dto::PositionInput {
                 name: String::from("P2"),
                 max_weight: 20.0,
                 longitudinal_arm: 1.0,
                 lateral_arm: 0.0,
+                    area: 5.0,
+                    length: 2.0,
+                    max_load_count: 3,
+                    loaded_items: Vec::new(),
             },
         ];
         request.payload_upper_bound = 40.0;
@@ -2927,6 +2939,10 @@ mod tests {
                 max_weight: 100.0,
                 longitudinal_arm: idx as f64,
                 lateral_arm: 0.0,
+                area: 5.0,
+                length: 2.0,
+                max_load_count: 3,
+                loaded_items: Vec::new(),
             })
             .collect();
 
@@ -3391,12 +3407,12 @@ mod tests {
         assert!(
             master_constraint_names
                 .iter()
-                .all(|name| !name.starts_with("airworthiness_"))
+                .all(|name| !name.starts_with("airworthiness_security_"))
         );
         assert!(
             sub_constraint_names
                 .iter()
-                .all(|name| name.starts_with("airworthiness_"))
+                .all(|name| name.starts_with("airworthiness_security_"))
         );
     }
 
@@ -3426,12 +3442,12 @@ mod tests {
         assert!(
             master_constraint_names
                 .iter()
-                .all(|name| !name.starts_with("airworthiness_"))
+                .all(|name| !name.starts_with("airworthiness_security_"))
         );
         assert!(
             sub_constraint_names
                 .iter()
-                .all(|name| name.starts_with("airworthiness_"))
+                .all(|name| name.starts_with("airworthiness_security_"))
         );
     }
 
@@ -3461,12 +3477,12 @@ mod tests {
         assert!(
             master_constraint_names
                 .iter()
-                .all(|name| !name.starts_with("airworthiness_"))
+                .all(|name| !name.starts_with("airworthiness_security_"))
         );
         assert!(
             sub_constraint_names
                 .iter()
-                .all(|name| name.starts_with("airworthiness_"))
+                .all(|name| name.starts_with("airworthiness_security_"))
         );
     }
 
@@ -3504,6 +3520,10 @@ mod tests {
             max_weight: 10.0,
             longitudinal_arm: 0.0,
             lateral_arm: 0.0,
+                    area: 5.0,
+                    length: 2.0,
+                    max_load_count: 3,
+                    loaded_items: Vec::new(),
         }];
         request.payload_upper_bound = 10.0;
         request.min_payload_ratio = 0.0;
@@ -3561,12 +3581,20 @@ mod tests {
                 max_weight: 10.0,
                 longitudinal_arm: 0.0,
                 lateral_arm: 0.0,
+                    area: 5.0,
+                    length: 2.0,
+                    max_load_count: 3,
+                    loaded_items: Vec::new(),
             },
             PositionInput {
                 name: String::from("P2"),
                 max_weight: 10.0,
                 longitudinal_arm: 0.0,
                 lateral_arm: 0.0,
+                    area: 5.0,
+                    length: 2.0,
+                    max_load_count: 3,
+                    loaded_items: Vec::new(),
             },
         ];
         request.payload_upper_bound = 20.0;

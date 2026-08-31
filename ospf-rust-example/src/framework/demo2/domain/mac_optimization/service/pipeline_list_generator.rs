@@ -1,10 +1,10 @@
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
-use crate::framework_demo::demo2::domain::mac_optimization::aggregation::MacOptimizationAggregation;
-use crate::framework_demo::demo2::domain::mac_optimization::context::MacOptimizationContext;
-use crate::framework_demo::demo2::domain::mac_optimization::service::policy;
-use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
-use crate::framework_demo::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
+use crate::framework::demo2::domain::mac_optimization::aggregation::MacOptimizationAggregation;
+use crate::framework::demo2::domain::mac_optimization::context::MacOptimizationContext;
+use crate::framework::demo2::domain::mac_optimization::service::policy;
+use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
 
 pub type MacOptimizationPipelineStep = fn(
     model: &mut MetaModel<f64>,

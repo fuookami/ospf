@@ -1,8 +1,14 @@
 # Application Algorithms
 
-[中文](README_ch.md)
+:us: English | :cn: [简体中文](README_ch.md)
 
 This directory contains application-level solving algorithms. The algorithms coordinate model lifecycle, pricing, branching, and policy decisions, while domain modules still own concrete model registration.
+
+## Responsibilities
+
+- Coordinate task and bunch model lifecycle without owning domain expressions.
+- Run column-generation iterations, branch-and-price search, callbacks, and optional strong branching.
+- Keep search policy, hooks, and iteration state close to the application boundary.
 
 ## Modules
 
@@ -24,9 +30,17 @@ This directory contains application-level solving algorithms. The algorithms coo
 - `BranchCutCallback`
 - `BranchNodeCallback`
 
-## Design Notes
+## Extension Points
 
 Algorithms in this directory should orchestrate existing contexts and services. They may manage lifecycle snapshots, warm-start state, node search order, and callback dispatch, but domain-specific constraints and objectives should remain in `src/domain`.
+
+## Lifecycle and Data Flow
+
+Column-generation algorithms build or refresh master models, ask pricing services for new columns, record iteration snapshots, and stop when policy thresholds are met. Branch-and-price wraps the bunch column-generation flow with node selection, branching decisions, cuts, and callback hooks.
+
+## Verification
+
+Use `cargo test -p ospf-rust-framework-gantt-scheduling --lib` and focus on task column generation, bunch column generation, and branch-and-price tests.
 
 ## Related Directories
 

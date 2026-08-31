@@ -1,4 +1,4 @@
-use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 
 #[derive(Clone, Copy)]
 #[allow(dead_code)]

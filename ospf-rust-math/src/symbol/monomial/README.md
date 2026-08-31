@@ -1,6 +1,6 @@
 # monomial
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: English | :cn: [简体中文](README_ch.md)
 
 Monomial types for representing single-term polynomial components. This module defines three monomial types with different algebraic structures.
 

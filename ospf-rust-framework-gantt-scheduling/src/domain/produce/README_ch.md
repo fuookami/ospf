@@ -1,6 +1,6 @@
 # 产出与消耗领域
 
-[English](README.md)
+:us: [English](README.md) | :cn: 简体中文
 
 本目录建模物料产出与消耗，对应 Kotlin `gantt-scheduling-domain-produce-context`。
 
@@ -36,6 +36,18 @@
 - `ConsumptionLessQuantityMinimization`
 - `ConsumptionQuantityMaximization`
 - `ConsumptionQuantityMinimization`
+
+## 扩展点
+
+物料流通过 `MaterialTrait`、`ProductionTaskTrait`、produce/consumption usage component 和数量型 limit pipeline 扩展。资源容量逻辑保留在 `resource`，执行器/时间分配保留在 `capacity_scheduling`。
+
+## 生命周期与数据流
+
+material demand 与 reserve 模型定义需求和可用数量，production task 暴露 produce 与 consumption usage，limit pipeline 注册数量约束或目标，下游 scheduling context 将这些表达式与产能和任务决策组合。
+
+## 验证
+
+修改 material model、usage component 或 produce/consumption quantity limit 时运行 `cargo test -p ospf-rust-framework-gantt-scheduling --lib`。
 
 ## 相关目录
 

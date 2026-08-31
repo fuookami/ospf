@@ -1,6 +1,6 @@
 # Task Compilation
 
-[中文](README_ch.md)
+:us: English | :cn: [简体中文](README_ch.md)
 
 This directory contains task-compilation model components, context wrappers, and limits pipelines. It maps Kotlin `gantt-scheduling-domain-task-compilation-context`.
 
@@ -52,6 +52,18 @@ This directory contains task-compilation model components, context wrappers, and
 - `TaskAdvanceTimeMinimization`
 - `ExecutorCostMinimization`
 - `ExecutorLeisureMinimization`
+
+## Extension Points
+
+Add task-compilation behavior through compilation contexts, iterative compilation state, solution analyzers, and limit pipelines for assignment, conflict, time, cost, makespan, or switch behavior. Keep task vocabulary in `task` and bunch-level columns in `bunch_compilation`.
+
+## Lifecycle and Data Flow
+
+Compilation contexts register assignment, timing, switch, and makespan variables into `MetaModel`; iterative contexts maintain dynamic compilation state; limit pipelines add constraints and objectives; analyzers convert solver values into task solutions and summaries.
+
+## Verification
+
+Use `cargo test -p ospf-rust-framework-gantt-scheduling --lib` when changing task variable registration, iterative state, limit pipelines, or solution analysis.
 
 ## Related Directories
 

@@ -1,6 +1,20 @@
 # ospf-rust-multiarray
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: English | :cn: [简体中文](README_ch.md)
+
+## Introduction
+
+`ospf-rust-multiarray` maps Kotlin `ospf-kotlin-multiarray` into a Rust multi-dimensional array crate with compile-time and runtime shape support, storage-order-aware indexing, zero-copy views, block arrays, and lightweight tabular data structures.
+
+## Scope
+
+This crate owns generic array storage, shape/index conversion, views, slicing, dimension mapping, block arrays, and `DataFrame` helpers.
+
+Explicit non-goals:
+
+1. Tensor algebra engines or optimization model assembly.
+2. Domain-specific data protocols.
+3. Physical-unit semantics; those belong in `ospf-rust-quantities`.
 
 A high-performance, generic multi-dimensional array library for Rust with compile-time and runtime shape support.
 
@@ -255,6 +269,23 @@ let transposed = array.map_view(&map_expect![_1, _0]).unwrap();
 // Chained views
 let sub_view = view.view_by_dummy(&dummy_expect![0, ..]).unwrap();
 ```
+
+## Generic Numeric Boundaries
+
+`MultiArray<T, S>` is generic over element type `T`; numeric semantics are supplied by callers. This crate should not impose optimization-specific numeric conversions.
+
+## Local Validation
+
+```powershell
+cargo check -p ospf-rust-multiarray
+cargo test -p ospf-rust-multiarray
+cargo bench --package ospf-rust-multiarray --bench multiarray_bench
+```
+
+## Related Modules
+
+- [Root README](../README.md)
+- [Kotlin multiarray README](../../ospf-kotlin/ospf-kotlin-multiarray/README.md)
 
 ## Installation
 

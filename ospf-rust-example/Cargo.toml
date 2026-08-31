@@ -14,3 +14,7 @@ ospf-rust-framework = { path = "../ospf-rust-framework" }
 ospf-rust-base = { path = "../ospf-rust-base" }
 ospf-rust-math = { path = "../ospf-rust-math" }
 ospf-rust-multiarray = { path = "../ospf-rust-multiarray" }
+ospf-rust-framework-csp1d = { path = "../ospf-rust-framework-csp1d" }
+ospf-rust-framework-gantt-scheduling = { path = "../ospf-rust-framework-gantt-scheduling" }
+ospf-rust-quantities = { path = "../ospf-rust-quantities" }
+time = { version = "0.3", features = ["std", "macros"] }

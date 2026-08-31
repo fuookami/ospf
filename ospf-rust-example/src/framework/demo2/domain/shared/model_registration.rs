@@ -8,7 +8,7 @@ use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::variable::{BinaryVariableItem, UContinuousVariableItem, VariableId};
 
-use crate::framework_demo::demo2::infrastructure::dto::Demo2Request;
+use crate::framework::demo2::infrastructure::dto::Demo2Request;
 use super::pipeline_mode::Demo2PipelineMode;
 
 /// 变量注册结果 / Variable registration result

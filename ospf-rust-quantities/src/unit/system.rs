@@ -264,6 +264,7 @@ impl UnitSystem for ConcreteUnitSystem {
 #[derive(Debug)]
 pub struct UnitSystemBuilder {
     name: String,
+    #[allow(dead_code)]
     prototype: Option<Arc<dyn UnitSystem>>,
     base_units: HashMap<FundamentalQuantityEnum, Unit>,
     derived_units: HashMap<DerivedQuantity, Unit>,

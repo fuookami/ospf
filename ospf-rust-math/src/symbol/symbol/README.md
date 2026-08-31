@@ -1,6 +1,6 @@
 # symbol
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: English | :cn: [简体中文](README_ch.md)
 
 Core symbol definitions for the symbolic mathematics system. This module provides the fundamental abstractions for representing mathematical symbols in optimization and algebraic computations.
 

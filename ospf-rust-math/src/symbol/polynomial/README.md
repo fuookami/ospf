@@ -1,6 +1,6 @@
 # polynomial
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: English | :cn: [简体中文](README_ch.md)
 
 Polynomial types for representing algebraic expressions in optimization problems. This module defines three polynomial types with increasing expressiveness.
 

@@ -1,6 +1,20 @@
 # ospf-rust-quantities
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
+
+## 简介
+
+`ospf-rust-quantities` 把 Kotlin `ospf-kotlin-quantities` 映射为 Rust 物理量、量纲和单位系统。它通过 `Quantity<V, U>` 支持编译期与运行期单位模式，并与 `ospf-rust-math` 集成以支持物理量感知的符号计算。
+
+## 作用范围
+
+本 crate 拥有物理量纲、单位制、单位转换、物理量算术、编译期/运行期物理量模式和物理量感知符号 helper。
+
+明确非目标：
+
+1. 优化 solver 建模或 framework 编排。
+2. 领域专用业务单位，除非它们成为通用可复用单位。
+3. 除 quantity/unit 数据边界外的序列化协议所有权。
 
 物理量、量纲和单位系统
 
@@ -30,6 +44,14 @@
 [dependencies]
 ospf-rust-quantities = "0.1.0"
 ```
+
+## 泛型数值边界
+
+`Quantity<V, U>` 对值类型 `V` 泛型化。支持示例包括 `f64`、`BigDecimal`，以及通过 math 集成支持的 rational/symbolic value。数值类型转换应保留在调用方或 adapter 边界显式完成。
+
+## 物理量边界
+
+单位静态已知时，应通过编译期单位类型保留物理量维度；单位运行时动态选择时，应通过 runtime `Unit` 保留维度。裸值只适合无量纲 scale factor、计数和低层 adapter 边界。
 
 ## 快速开始 / Quick Start
 
@@ -333,6 +355,20 @@ cargo bench --package ospf-rust-quantities --bench quantity_bench
 | 需要编译时量纲安全 / Need compile-time dimension safety | 编译时 / Compile-time |
 | 与用户提供的单位互操作 / Interoperability with user-provided units | 运行时 / Runtime |
 | 混合场景 / Mixed scenarios | 使用编译时，需要时转换为运行时 / Use compile-time and convert to runtime when needed |
+
+## 本地验证
+
+```powershell
+cargo check -p ospf-rust-quantities
+cargo test -p ospf-rust-quantities
+cargo bench --package ospf-rust-quantities --bench quantity_bench
+```
+
+## 相关模块
+
+- [根 README](../README_ch.md)
+- [Math README](../ospf-rust-math/README_ch.md)
+- [Kotlin quantities README](../../ospf-kotlin/ospf-kotlin-quantities/README_ch.md)
 
 ## 许可证 / License
 

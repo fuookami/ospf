@@ -1,6 +1,6 @@
 # polynomial
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 多项式类型，用于表示优化问题中的代数表达式。本模块定义了三种表达能力递增的多项式类型。
 

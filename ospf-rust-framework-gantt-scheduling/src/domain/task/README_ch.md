@@ -1,6 +1,6 @@
 # 任务领域
 
-[English](README.md)
+:us: [English](README.md) | :cn: 简体中文
 
 本目录包含任务侧核心领域模型，对应 Kotlin `gantt-scheduling-domain-task-context`。
 
@@ -42,6 +42,18 @@
 - `F64SolverValueAdapter`
 - `TaskStepGraph`
 - `TaskStepGraphBuilder`
+
+## 扩展点
+
+任务语义通过 executor trait、assignment policy、task trait、task-plan trait、cost policy、solver value adapter 和 task-step graph builder 扩展。模型变量注册保留在 `task_compilation`。
+
+## 生命周期与数据流
+
+task 与 executor 模型定义可排程工作，assignment 和 cost policy 提供业务决策，solver value adapter 标准化 solver 输出，shadow-price key 连接 compilation 与 pricing，task-step graph 描述多步骤流程依赖。
+
+## 验证
+
+修改 task vocabulary、assignment behavior、cost policy、solver value adapter 或 task-step graph construction 时运行 `cargo test -p ospf-rust-framework-gantt-scheduling --lib`。
 
 ## 相关目录
 

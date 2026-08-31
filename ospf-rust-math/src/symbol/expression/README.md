@@ -1,6 +1,6 @@
 # expression
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: English | :cn: [简体中文](README_ch.md)
 
 Runtime expression system for building and evaluating dynamic expressions. This module provides a flexible expression AST with evaluation capabilities.
 

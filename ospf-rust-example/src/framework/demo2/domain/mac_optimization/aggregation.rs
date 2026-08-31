@@ -1,5 +1,5 @@
-use crate::framework_demo::demo2::domain::mac_optimization::context::MacOptimizationContext;
-use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework::demo2::domain::mac_optimization::context::MacOptimizationContext;
+use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 
 pub struct MacOptimizationAggregation {
     pub target_balance: f64,

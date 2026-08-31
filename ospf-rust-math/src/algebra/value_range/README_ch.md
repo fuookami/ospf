@@ -1,6 +1,6 @@
 # value_range
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 本模块提供值空间（区间）的实现，支持无穷大、编译时和运行时开闭性质，以及完整的区间代数运算。
 

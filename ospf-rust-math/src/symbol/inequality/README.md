@@ -1,6 +1,6 @@
 # inequality
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: English | :cn: [简体中文](README_ch.md)
 
 Inequality types for constraint representation in optimization problems. This module provides inequality types corresponding to polynomial forms.
 

@@ -1,5 +1,5 @@
-use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
-use crate::framework_demo::demo2::infrastructure::dto::Demo2Request;
+use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework::demo2::infrastructure::dto::Demo2Request;
 
 pub struct RedundancyContext<'a> {
     pub request: &'a Demo2Request,

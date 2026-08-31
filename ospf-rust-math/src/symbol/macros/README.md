@@ -1,6 +1,6 @@
 # macros
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: English | :cn: [简体中文](README_ch.md)
 
 Construction macros module for simplifying monomial, polynomial, and inequality construction. Provides both mathematical-style macros and legacy construction macros.
 

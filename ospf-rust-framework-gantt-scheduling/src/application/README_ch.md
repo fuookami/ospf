@@ -1,6 +1,6 @@
 # 应用层
 
-[English](README.md)
+:us: [English](README.md) | :cn: 简体中文
 
 本目录是 Gantt Scheduling framework 面向应用调用方的编排层，对应 Kotlin `gantt-scheduling-application` 模块，但建模细节仍下沉到 domain context 与 pipeline。
 
@@ -18,7 +18,7 @@
 - `model`：任务迭代与任务束迭代模型。
 - `iteration.rs`：共享迭代与迭代快照结构。
 
-## 入口
+## Public API
 
 - `APS`：高级计划与排程入口标记。
 - `MPS`：主生产计划入口标记。
@@ -28,9 +28,17 @@
 - `search_bunch_branch_and_price_with_fresh_model`
 - `search_bunch_branch_and_price_with_hooks`
 
-## 边界
+## 扩展点
 
 应用层不应直接拼装领域变量或硬编码约束族。新增业务规则应先通过 domain context、aggregation、pipeline、policy 或 solver hook 表达，再在本层组合。
+
+## 生命周期与数据流
+
+调用方通过 service constructor 或 algorithm 类型进入，组合任务级或任务束级流程，运行列生成或 branch-and-price 循环，并从 domain context 获取迭代快照与 solver-facing 结果。application 层只协调流程，模型注册继续委托给 domain 模块。
+
+## 验证
+
+应用入口检查使用 `cargo check -p ospf-rust-framework-gantt-scheduling`，algorithm/service 覆盖使用 `cargo test -p ospf-rust-framework-gantt-scheduling --lib`。
 
 ## 相关目录
 

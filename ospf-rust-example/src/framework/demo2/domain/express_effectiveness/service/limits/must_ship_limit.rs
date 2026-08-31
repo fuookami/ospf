@@ -1,8 +1,8 @@
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use crate::framework_demo::demo2::domain::express_effectiveness::aggregation::ExpressEffectivenessAggregation;
-use crate::framework_demo::demo2::domain::express_effectiveness::context::ExpressEffectivenessContext;
-use crate::framework_demo::demo2::domain::shared::pipeline_mode::mode_name;
+use crate::framework::demo2::domain::express_effectiveness::aggregation::ExpressEffectivenessAggregation;
+use crate::framework::demo2::domain::express_effectiveness::context::ExpressEffectivenessContext;
+use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
 pub fn apply_must_ship_limits(
     model: &mut MetaModel<f64>,

@@ -1,6 +1,6 @@
 # inequality
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 不等式类型，用于优化问题中的约束表示。本模块提供与多项式形式对应的不等式类型。
 

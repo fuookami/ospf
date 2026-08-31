@@ -1,6 +1,6 @@
 # symbol/parser
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 多项式和不等式的字符串解析器。需要启用 `parser` feature flag。
 

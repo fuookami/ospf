@@ -1,6 +1,6 @@
 # chaotic
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: English | :cn: [简体中文](README_ch.md)
 
 ## Overview
 

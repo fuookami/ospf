@@ -1,6 +1,6 @@
 # combinatorics
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 组合数学算法，包括组合、排列和笛卡尔积。
 

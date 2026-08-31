@@ -1,6 +1,6 @@
 # BPP3D 基础设施层
 
-[English](README.md)
+:us: [English](README.md) | :cn: 简体中文
 
 该 context 对应 Kotlin `bpp3d-infrastructure`。
 
@@ -16,10 +16,36 @@ infrastructure 包含 domain 与 application 共享的 typed geometry、orientat
 - `pwl_approximation.rs` 提供连续圆柱半径建模使用的半径与半径平方 PWL 支持。
 - `renderer.rs` 包含 application 输出使用的 render DTO、shape 和 axis enum。
 
+## Public API
+
+- `MetricPoint2`
+- `MetricPoint3`
+- `MetricSize2`
+- `MetricSize3`
+- `MetricAabb2`
+- `MetricAabb3`
+- `MetricPlacement2`
+- `MetricPlacement3`
+- `Orientation`
+- `PackingShape3`
+- `PwlRadiusSquaredApproximation`
+- `ConservativeRadiusEnvelope`
+- `RenderLoadingPlanDto`
+- `SchemaDto`
+
 ## 扩展点
 
 跨 context 共享的新几何适配放在这里。裸 `f64` 转换应限制在 solver/render 边界，面向 domain 的 API 继续使用 `Quantity<V, U>` 和 unit trait。
 
+## 生命周期与数据流
+
+domain context 使用类型化 metric geometry 和带单位 shape；solver 边界显式转换为标量坐标；continuous-radius 建模使用 PWL helper；application/reporting 在输出边界序列化 render DTO。
+
 ## 验证
 
 使用常规 crate 检查，并通过 `cargo test -p ospf-rust-framework-bpp3d --lib` 覆盖基础设施测试。
+
+## 相关目录
+
+- [`../domain`](../domain/README_ch.md)
+- [`../application`](../application/README_ch.md)

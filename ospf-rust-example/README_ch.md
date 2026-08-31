@@ -1,22 +1,53 @@
 # OSPF Rust Example
 
-中文 | [English](README.md)
+:us: [English](README.md) | :cn: 简体中文
 
-`ospf-rust-example` 提供基于 `ospf-rust-core` 与 `ospf-rust-framework` 的可运行、可测试示例。
+## 简介
 
-## Kotlin 对齐目录
+`ospf-rust-example` 提供基于 `ospf-rust-core`、`ospf-rust-framework` 和领域 framework crate 的可运行、可测试示例。它把 Kotlin example/demo 职责映射为 Rust 命令入口和迁移兼容示例。
 
-- `src/example_modeling.rs`：统一建模与 typed 求解 helper
-- `src/core_demo`：core 示例主入口
-- `src/heuristic_demo`：启发式示例入口（当前骨架阶段）
-- `src/framework_demo`：framework 示例主入口
-- `src/core` 与 `src/framework`：迁移期兼容实现模块
+## 作用范围
+
+本 crate 拥有示例、命令分发、迁移兼容 demo、请求/响应 DTO 示例，以及用于验证 framework 使用方式的行为契约。
+
+明确非目标：
+
+1. 属于 `ospf-rust-core` 或 `ospf-rust-framework` 的共享建模抽象。
+2. 属于 CSP1D、BPP3D 或 Gantt Scheduling 等领域 crate 的可复用领域 framework 逻辑。
+3. 生产级请求协议或部署 adapter。
+
+## 模块结构
+
+| Rust 路径 | 职责 |
+| --- | --- |
+| `src/main.rs` | 命令分发入口。 |
+| `src/example_modeling.rs` | 共享建模和 typed solve helper。 |
+| `src/core` | core 建模 demo、shortcut API、capability gate 和 backend-aware 示例。 |
+| `src/framework/demo1` | framework routing/bandwidth context 示例。 |
+| `src/framework/demo2` | Adaptive Benders / MILP fallback 行为契约示例。 |
+| `src/framework/demo3` | CSP1D-facing demo scaffold。 |
+| `src/framework/demo4` | Gantt-scheduling-facing scaffold 与 domain layout experiment。 |
+
+## Public API
+
+本 crate 主要作为 executable 使用。稳定表面是命令名称和已文档化的行为契约：
+
+| Command | 职责 | Backend |
+| --- | --- | --- |
+| `core:demo1` | core 建模 demo。 | Gurobi feature |
+| `core:all` | 运行 core demo set。 | Gurobi feature |
+| `core:generic-number` | generic-number 建模路径。 | Gurobi feature |
+| `core:shortcuts` | `MetaModel` shortcut API demo。 | Gurobi feature |
+| `framework:demo1` | framework routing/bandwidth context demo。 | Gurobi feature |
+| `framework:demo2` | Adaptive Benders 和 MILP fallback demo。 | Gurobi feature |
+| `framework:demo3` | CSP1D scaffold 入口。 | Gurobi feature |
+| `framework:demo4` | Gantt scaffold 入口。 | Gurobi feature |
 
 ## 命令说明
 
-默认构建/测试路径（不依赖商业后端）：
+默认构建/测试路径，不依赖商业后端：
 
-```bash
+```powershell
 cargo check -p ospf-rust-example
 cargo test -p ospf-rust-example --no-run
 cargo test -p ospf-rust-example
@@ -24,7 +55,7 @@ cargo test -p ospf-rust-example
 
 需要后端的运行命令：
 
-```bash
+```powershell
 cargo run -p ospf-rust-example --features backend-gurobi -- core:demo1
 cargo run -p ospf-rust-example --features backend-gurobi -- core:all
 cargo run -p ospf-rust-example --features backend-gurobi -- core:generic-number
@@ -35,63 +66,37 @@ cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo3
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo4
 ```
 
-后端 build-only 验证命令：
+后端 build-only 验证：
 
-```bash
+```powershell
 cargo test -p ospf-rust-example --features backend-gurobi --no-run
 ```
 
-未启用后端 feature 时，直接运行 demo 命令会得到明确提示：
-`rerun with --features backend-gurobi`。
+未启用 backend feature 时，运行后端 demo 会返回提示 `rerun with --features backend-gurobi`。
 
-`framework:demo4` 当前仅保持骨架与命令入口。由于 gantt-scheduling 对齐缺口仍在，
-该方向明确标注为“暂缓实现”，不作为已完成功能宣称。
+`framework:demo4` 当前保持为 scaffold 命令入口。Gantt-scheduling parity 明确暂缓，不标记为已完成功能。
 
 ## Demo2 的 Benders 行为契约
 
-`framework_demo::demo2` 支持自适应 Benders，并可按策略回退 MILP。
+`framework::demo2` 支持自适应 Benders，并可选 MILP fallback。
 
-当 `prefer_benders=true` 时，应用层会基于问题规模（`cargo_count * position_count`）
-推导生效参数，并在 notes 中同时输出“配置参数”和“生效参数”。
-生效参数中包含 `max_stall_iterations`（连续无新 cut 的停滞窗口）。
-同时包含 `objective_stall_iterations`（目标改进停滞窗口）。
+当 `prefer_benders=true` 时，应用层会基于问题规模（`cargo_count * position_count`）推导生效的 adaptive profile，并在 notes 中同时输出配置参数和生效参数。生效参数包含用于 cut stagnation 的 `max_stall_iterations`，以及用于 objective-improvement stagnation 的 `objective_stall_iterations`。
 
 ### 状态与路径语义
 
-1. `prefer_benders=false`
-- 直接走 MILP 求解。
-- `notes/diagnostics` 包含 `solver_path=milp_direct`。
+1. `prefer_benders=false`：直接走 MILP；diagnostics 包含 `solver_path=milp_direct`。
+2. `prefer_benders=true` 且 Benders 成功：响应状态为 `Feasible` 或 `Optimal`；diagnostics 包含 `solver_path=benders`。
+3. `prefer_benders=true`、Benders 失败且 `benders_fallback_to_milp=true`：应用层重试 MILP；最终路径为 `solver_path=milp_fallback`；`benders_failed` 保持可观测。
+4. `prefer_benders=true`、Benders 失败且 `benders_fallback_to_milp=false`：响应状态为 `BendersFailed`；不再重试 MILP。
 
-2. `prefer_benders=true` 且 Benders 成功
-- 响应状态为求解器返回的可行/最优（`Feasible` 或 `Optimal`）。
-- `notes/diagnostics` 包含 `solver_path=benders`。
-- 运行指标会同时输出为文本 note 与结构化 diagnostics：
-  - `benders_iterations`
-  - `benders_gap`
-  - `benders_time_ms`
-  - `benders_adaptive_effective`
-  - `benders_problem_size_binary_variables`
+`BendersFailed` 表示请求终止在 Benders 错误路径。`milp_fallback` 表示 Benders 先失败，但请求通过 MILP 恢复。
 
-3. `prefer_benders=true`，Benders 失败，`benders_fallback_to_milp=true`
-- 应用层自动重试 MILP。
-- 最终路径为 `solver_path=milp_fallback`。
-- Benders 失败原因仍通过 `benders_failed` 保留可观测性。
+### 在线判定覆盖配置
 
-4. `prefer_benders=true`，Benders 失败，`benders_fallback_to_milp=false`
-- 响应状态为 `BendersFailed`。
-- 不再回退 MILP。
-- 通过 `benders_failed` 输出失败诊断。
-
-`BendersFailed` 与 `milp_fallback` 的语义明确不同：
-- `BendersFailed`：请求终止在 Benders 失败路径。
-- `milp_fallback`：Benders 先失败，但请求通过 MILP 回退恢复并完成求解。
-
-### 在线判定覆盖配置（请求级）
-
-`Demo2Request.benders_quality_overrides` 支持按请求覆盖在线质量守卫阈值。
-若不传，则使用默认守卫配置。
+`Demo2Request.benders_quality_overrides` 支持按请求覆盖在线质量守卫阈值。不传时使用默认守卫配置。
 
 可覆盖字段：
+
 - `weak_gap_multiplier`
 - `weak_gap_floor`
 - `iteration_pressure_percent`
@@ -107,36 +112,24 @@ cargo test -p ospf-rust-example --features backend-gurobi --no-run
 - `score_cut_density_weight`
 - `score_trajectory_weight`
 
-示例：
+走 Benders 路径时，响应 notes/diagnostics 会输出 `benders_quality_guard_effective`，用于观测最终生效阈值。
 
-```rust
-let mut request = Demo2Request::sample();
-request.solve_policy.prefer_benders = true;
-request.benders_quality_overrides = Some(BendersQualityOverrideConfig {
-    weak_gap_multiplier: Some(30.0),
-    weak_gap_floor: Some(2e-5),
-    iteration_pressure_percent: Some(80),
-    cut_density_min_iterations: Some(10),
-    cut_density_threshold: Some(0.4),
-    trajectory_min_snapshots: Some(8),
-    trajectory_step_multiplier: Some(25.0),
-    trajectory_step_floor: Some(2e-6),
-    time_guard_min_ms: Some(1200),
-    score_gap_weight: Some(0.4),
-    score_time_weight: Some(0.3),
-    score_iteration_weight: Some(0.1),
-    score_cut_density_weight: Some(0.1),
-    score_trajectory_weight: Some(0.1),
-});
+## 本地验证
+
+```powershell
+cargo check -p ospf-rust-example
+cargo test -p ospf-rust-example --no-run
+cargo test -p ospf-rust-example
+cargo test -p ospf-rust-example --features backend-gurobi --no-run
 ```
 
-当走 Benders 路径时，响应中的 notes/diagnostics 会输出
-`benders_quality_guard_effective`，用于观测最终生效阈值。
+## 当前边界
 
-## API 入口文件
+本 crate 允许保留迁移兼容布局和 scaffold 命令入口。在这里沉淀出的可复用建模模式，应在下游依赖前上移到合适的 core/framework/domain crate。
 
-- 公共示例入口：`src/framework_demo/demo2/mod.rs`
-- 公共调度模块：`src/framework_demo/mod.rs`（`framework_demo::run_demo2`）
-- 当前实现位置（兼容转发目标）：`src/framework/demo2/domain.rs`
-- 请求/响应 DTO：`src/framework/demo2/infrastructure/dto.rs`
-- 诊断解析与 grouped-note 约定：`src/framework/demo2/diagnostics.rs`
+## 相关模块
+
+- [根 README](../README_ch.md)
+- [Core README](../ospf-rust-core/README_ch.md)
+- [Framework README](../ospf-rust-framework/README_ch.md)
+- [Kotlin example README](../../ospf-kotlin/ospf-kotlin-example/README_ch.md)

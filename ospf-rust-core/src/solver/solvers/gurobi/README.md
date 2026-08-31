@@ -1,6 +1,6 @@
 # Gurobi Solver Notes
 
-中文文档请见：[README_ch.md](./README_ch.md)
+:us: English | :cn: [简体中文](README_ch.md)
 
 ## Prerequisites
 

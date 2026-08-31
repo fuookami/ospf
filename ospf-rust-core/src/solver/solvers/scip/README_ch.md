@@ -1,6 +1,6 @@
 # SCIP 求解器说明
 
-English version: [README.md](./README.md)
+:us: [English](README.md) | :cn: 简体中文
 
 ## 前置依赖
 

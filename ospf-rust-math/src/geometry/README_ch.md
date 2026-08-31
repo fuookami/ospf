@@ -1,6 +1,6 @@
 # 几何模块
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 本模块提供几何实体和计算几何算法。
 

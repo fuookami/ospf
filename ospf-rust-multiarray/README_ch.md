@@ -1,6 +1,20 @@
 # ospf-rust-multiarray
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
+
+## 简介
+
+`ospf-rust-multiarray` 把 Kotlin `ospf-kotlin-multiarray` 映射为 Rust 多维数组 crate，支持编译期与运行期 shape、存储顺序感知索引、零拷贝 view、block array 和轻量 tabular data structure。
+
+## 作用范围
+
+本 crate 拥有泛型数组存储、shape/index 转换、view、切片、维度映射、block array 和 `DataFrame` helper。
+
+明确非目标：
+
+1. tensor algebra engine 或优化模型装配。
+2. 领域专用数据协议。
+3. 物理单位语义；这些属于 `ospf-rust-quantities`。
 
 高性能、泛型的 Rust 多维数组库，支持编译期和运行期形状。
 
@@ -255,6 +269,23 @@ let transposed = array.map_view(&map_expect![_1, _0]).unwrap();
 // 链式视图
 let sub_view = view.view_by_dummy(&dummy_expect![0, ..]).unwrap();
 ```
+
+## 泛型数值边界
+
+`MultiArray<T, S>` 对元素类型 `T` 泛型化；数值语义由调用方提供。本 crate 不应引入优化专用数值转换。
+
+## 本地验证
+
+```powershell
+cargo check -p ospf-rust-multiarray
+cargo test -p ospf-rust-multiarray
+cargo bench --package ospf-rust-multiarray --bench multiarray_bench
+```
+
+## 相关模块
+
+- [根 README](../README_ch.md)
+- [Kotlin multiarray README](../../ospf-kotlin/ospf-kotlin-multiarray/README_ch.md)
 
 ## 安装
 

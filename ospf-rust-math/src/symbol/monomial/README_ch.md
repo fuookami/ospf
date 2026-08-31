@@ -1,6 +1,6 @@
 # monomial
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 单项式类型，用于表示多项式的单项组件。本模块定义了三种具有不同代数结构的单项式类型。
 

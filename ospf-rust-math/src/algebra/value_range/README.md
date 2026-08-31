@@ -1,6 +1,6 @@
 # value_range
 
-🇺🇸 [English](README.md) | 🇨🇳 简体中文
+:us: English | :cn: [简体中文](README_ch.md)
 
 This module provides value range/interval implementations with support for infinity, compile-time and runtime openness, and complete interval algebra operations.
 

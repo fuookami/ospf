@@ -1,8 +1,8 @@
 use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use crate::framework_demo::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
-use crate::framework_demo::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
-use crate::framework_demo::demo2::domain::shared::pipeline_mode::mode_name;
+use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
+use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
+use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 
 pub fn apply_source_early_limits(
     model: &mut MetaModel<f64>,

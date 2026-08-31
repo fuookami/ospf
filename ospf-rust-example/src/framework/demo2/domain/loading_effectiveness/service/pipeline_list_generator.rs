@@ -1,10 +1,10 @@
 use std::error::Error;
 use ospf_rust_core::model::MetaModel;
-use crate::framework_demo::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
-use crate::framework_demo::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
-use crate::framework_demo::demo2::domain::loading_effectiveness::service::policy;
-use crate::framework_demo::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
-use crate::framework_demo::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
+use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
+use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
+use crate::framework::demo2::domain::loading_effectiveness::service::policy;
+use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use crate::framework::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
 
 pub type LoadingEffectivenessPipelineStep = fn(
     model: &mut MetaModel<f64>,
@@ -19,7 +19,7 @@ pub fn pipeline_steps(mode: Demo2PipelineMode) -> Vec<LoadingEffectivenessPipeli
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::framework_demo::demo2::domain::loading_effectiveness::service::limits;
+    use crate::framework::demo2::domain::loading_effectiveness::service::limits;
 
     #[test]
     fn loading_pipeline_applies_mode_filter() {

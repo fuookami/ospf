@@ -1,7 +1,7 @@
-use crate::framework_demo::demo2::domain::loading_effectiveness::service::limits;
-use crate::framework_demo::demo2::domain::loading_effectiveness::service::pipeline_list_generator::LoadingEffectivenessPipelineStep;
-use crate::framework_demo::demo2::domain::shared::mode_switch::ModeSelector;
-use crate::framework_demo::demo2::domain::shared::pipeline_policy::PipelineSpec;
+use crate::framework::demo2::domain::loading_effectiveness::service::limits;
+use crate::framework::demo2::domain::loading_effectiveness::service::pipeline_list_generator::LoadingEffectivenessPipelineStep;
+use crate::framework::demo2::domain::shared::mode_switch::ModeSelector;
+use crate::framework::demo2::domain::shared::pipeline_policy::PipelineSpec;
 
 pub fn pipeline_specs() -> Vec<PipelineSpec<LoadingEffectivenessPipelineStep>> {
     vec![

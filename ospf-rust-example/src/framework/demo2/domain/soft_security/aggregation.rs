@@ -1,4 +1,4 @@
-use crate::framework_demo::demo2::domain::soft_security::context::SoftSecurityContext;
+use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
 
 pub struct SoftSecurityAggregation {
     pub separated: Vec<usize>,

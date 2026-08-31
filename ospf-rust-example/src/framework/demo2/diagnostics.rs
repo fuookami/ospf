@@ -1,4 +1,4 @@
-use crate::framework_demo::demo2::infrastructure::dto::DiagnosticNote;
+use crate::framework::demo2::infrastructure::dto::DiagnosticNote;
 
 pub const NOTE_LEVEL_DIAGNOSTIC: &str = "diagnostic";
 pub const NOTE_LEVEL_CRITICAL: &str = "critical";

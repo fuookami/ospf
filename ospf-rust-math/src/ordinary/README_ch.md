@@ -1,6 +1,6 @@
 # ordinary
 
-:us: English | :cn: [简体中文](README_ch.md)
+:us: [English](README.md) | :cn: 简体中文
 
 ## 概述
 
