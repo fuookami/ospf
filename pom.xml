@@ -69,7 +69,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <kotlin.code.style>official</kotlin.code.style>
         <kotlin.compiler.jvmTarget>17</kotlin.compiler.jvmTarget>
-        <kotlin.compiler.daemon>true</kotlin.compiler.daemon>
+        <kotlin.compiler.daemon>false</kotlin.compiler.daemon>
         <kotlin.version>2.2.20</kotlin.version>
         <!-- kotlinx -->
         <kotlinx-datetime.version>0.7.1</kotlinx-datetime.version>
