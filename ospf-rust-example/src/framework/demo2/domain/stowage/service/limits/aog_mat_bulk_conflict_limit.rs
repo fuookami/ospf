@@ -1,10 +1,10 @@
 //! AOG/MAT 散货冲突限制 / AOG/MAT bulk conflict limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;
 use crate::framework::demo2::domain::stowage::context::StowageContext;
 use crate::framework::demo2::domain::stowage::model::stowage::StowageVariables;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// AOG/MAT 散货冲突限制: 航材与普通散货不能混装在同一舱位
 /// 对齐 Kotlin AOGMATBulkConflictLimit

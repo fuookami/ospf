@@ -1,8 +1,15 @@
 #![cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
 
 use ospf_rust_core::model::ObjectiveCategory;
-use ospf_rust_core::model::intermediate::{BasicLinearTriadModel, LinearTriadModel, SparseVector};
+use ospf_rust_core::model::intermediate::{
+    BasicLinearTriadModel, BasicQuadraticTetradModel, LinearTriadModel, QuadraticTetradModel,
+    SparseVector,
+};
 use ospf_rust_core::solver::solvers::GurobiSolver;
+use ospf_rust_core::solver::{
+    linear_model_fingerprint, require_optimal_lp_certificate_for_linear_model,
+    require_optimal_lp_certificate_for_model,
+};
 use ospf_rust_core::token::Token;
 use ospf_rust_core::variable::{
     ContinuousVariableItem, UContinuousVariableItem, VariableId, VariableType,
@@ -149,4 +156,75 @@ fn gurobi_solves_min_with_lower_bound_primal_and_dual_with_equal_objectives() {
     assert_close(primal_obj, 1.0);
     assert_close(dual_obj, 1.0);
     assert_close(primal_obj, dual_obj);
+}
+
+#[test]
+fn gurobi_linear_report_preserves_certificate_provenance_and_fingerprints() {
+    let mut basic = BasicLinearTriadModel::new("gurobi_report_linear");
+    let x = ContinuousVariableItem::create(VariableId::standalone(3301), "x");
+    basic.add_variable_with_bounds(
+        Token::from_generic(x, 0),
+        0.0,
+        4.0,
+        VariableType::Continuous,
+    );
+    basic.add_constraint(sparse_row(&[(0, 1.0)]), 3.0);
+    let mut model = LinearTriadModel::from_basic(basic);
+    model.set_objective(vec![1.0], ObjectiveCategory::Maximum);
+
+    let report = GurobiSolver::new()
+        .solve_linear_report(&model)
+        .expect("Gurobi report solve should succeed");
+
+    assert!(report.is_optimal());
+    assert_eq!(report.statistics.solution_count, Some(1));
+    assert!(
+        report
+            .solution
+            .as_ref()
+            .and_then(|solution| solution.dual_solution.as_ref())
+            .is_some()
+    );
+    assert_eq!(
+        report.fingerprints.model,
+        Some(linear_model_fingerprint(&model).unwrap())
+    );
+    assert!(report.fingerprints.configuration.is_some());
+    assert!(report.fingerprints.solver.is_some());
+    assert!(report.provenance.backend_version.is_some());
+    require_optimal_lp_certificate_for_model(&report, &linear_model_fingerprint(&model).unwrap())
+        .expect("Gurobi optimal LP report should pass the certificate gate");
+    require_optimal_lp_certificate_for_linear_model(&report, &model)
+        .expect("Gurobi optimal LP report should pass the strict model-bound certificate gate");
+}
+
+#[test]
+fn gurobi_quadratic_report_preserves_native_optimality() {
+    let mut basic = BasicLinearTriadModel::new("gurobi_report_quadratic");
+    let x = ContinuousVariableItem::create(VariableId::standalone(3302), "x");
+    basic.add_variable_with_bounds(
+        Token::from_generic(x, 0),
+        -2.0,
+        2.0,
+        VariableType::Continuous,
+    );
+    let mut linear = LinearTriadModel::from_basic(basic);
+    linear.set_objective(vec![0.0], ObjectiveCategory::Minimum);
+    let mut model =
+        QuadraticTetradModel::from_basic(BasicQuadraticTetradModel::from_linear(linear.basic));
+    let mut quadratic = ospf_rust_core::model::intermediate::SparseMatrix::new();
+    let mut row = SparseVector::new();
+    row.add(0, 1.0);
+    quadratic.add_row(row);
+    model.set_objective(vec![0.0], quadratic, ObjectiveCategory::Minimum);
+
+    let report = GurobiSolver::new()
+        .solve_quadratic_report(&model)
+        .expect("Gurobi quadratic report solve should succeed");
+
+    assert!(report.is_optimal());
+    assert_eq!(report.statistics.solution_count, Some(1));
+    assert!(report.fingerprints.model.is_some());
+    assert!(report.fingerprints.configuration.is_some());
+    assert!(report.fingerprints.solver.is_some());
 }

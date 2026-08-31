@@ -1,10 +1,10 @@
 //! 甘特调度领域错误类型
 //! Gantt Scheduling domain error types
 
-use std::fmt::{Debug, Display, Formatter};
-use ospf_rust_base::error::{ErrorCode, Error, ErrorPosition, WithErrorPosition};
-use ospf_rust_base::error_type;
+use ospf_rust_base::error::{Error, ErrorCode, ErrorPosition, WithErrorPosition};
 use ospf_rust_base::error_enum;
+use ospf_rust_base::error_type;
+use std::fmt::{Debug, Display, Formatter};
 
 // ============================================================================
 // 甘特调度领域错误
@@ -15,7 +15,7 @@ error_type!(
     #[derive(Clone, Debug)]
     pub struct GanttSchedulingCapabilityError {
         /// 错误详情 / Error detail
-        pub detail: Option<String>
+        pub detail: Option<String>,
     }
 );
 
@@ -29,8 +29,12 @@ impl Display for GanttSchedulingCapabilityError {
 }
 
 impl Error for GanttSchedulingCapabilityError {
-    fn code(&self) -> ErrorCode { ErrorCode::IllegalArgument }
-    fn msg(&self) -> String { format!("{}", self) }
+    fn code(&self) -> ErrorCode {
+        ErrorCode::IllegalArgument
+    }
+    fn msg(&self) -> String {
+        format!("{}", self)
+    }
 }
 
 error_type!(
@@ -38,7 +42,7 @@ error_type!(
     #[derive(Clone, Debug)]
     pub struct GanttSchedulingLifecycleError {
         /// 错误详情 / Error detail
-        pub detail: Option<String>
+        pub detail: Option<String>,
     }
 );
 
@@ -52,8 +56,12 @@ impl Display for GanttSchedulingLifecycleError {
 }
 
 impl Error for GanttSchedulingLifecycleError {
-    fn code(&self) -> ErrorCode { ErrorCode::ApplicationError }
-    fn msg(&self) -> String { format!("{}", self) }
+    fn code(&self) -> ErrorCode {
+        ErrorCode::ApplicationError
+    }
+    fn msg(&self) -> String {
+        format!("{}", self)
+    }
 }
 
 error_type!(
@@ -61,7 +69,7 @@ error_type!(
     #[derive(Clone, Debug)]
     pub struct GanttSchedulingSolvingError {
         /// 错误详情 / Error detail
-        pub detail: Option<String>
+        pub detail: Option<String>,
     }
 );
 
@@ -75,8 +83,12 @@ impl Display for GanttSchedulingSolvingError {
 }
 
 impl Error for GanttSchedulingSolvingError {
-    fn code(&self) -> ErrorCode { ErrorCode::ApplicationFailed }
-    fn msg(&self) -> String { format!("{}", self) }
+    fn code(&self) -> ErrorCode {
+        ErrorCode::ApplicationFailed
+    }
+    fn msg(&self) -> String {
+        format!("{}", self)
+    }
 }
 
 error_type!(
@@ -84,7 +96,7 @@ error_type!(
     #[derive(Clone, Debug)]
     pub struct GanttSchedulingValidationError {
         /// 错误详情 / Error detail
-        pub detail: Option<String>
+        pub detail: Option<String>,
     }
 );
 
@@ -98,8 +110,12 @@ impl Display for GanttSchedulingValidationError {
 }
 
 impl Error for GanttSchedulingValidationError {
-    fn code(&self) -> ErrorCode { ErrorCode::IllegalArgument }
-    fn msg(&self) -> String { format!("{}", self) }
+    fn code(&self) -> ErrorCode {
+        ErrorCode::IllegalArgument
+    }
+    fn msg(&self) -> String {
+        format!("{}", self)
+    }
 }
 
 error_enum!(
@@ -118,10 +134,16 @@ error_enum!(
 impl From<GanttSchedulingError> for crate::GanttError {
     fn from(err: GanttSchedulingError) -> Self {
         match err {
-            GanttSchedulingError::Capability(e) => crate::GanttError::Unsupported { message: e.msg() },
-            GanttSchedulingError::Lifecycle(e) => crate::GanttError::Unsupported { message: e.msg() },
+            GanttSchedulingError::Capability(e) => {
+                crate::GanttError::Unsupported { message: e.msg() }
+            }
+            GanttSchedulingError::Lifecycle(e) => {
+                crate::GanttError::Unsupported { message: e.msg() }
+            }
             GanttSchedulingError::Solving(e) => crate::GanttError::Calculation { message: e.msg() },
-            GanttSchedulingError::Validation(e) => crate::GanttError::InvalidTimeRange { message: e.msg() },
+            GanttSchedulingError::Validation(e) => {
+                crate::GanttError::InvalidTimeRange { message: e.msg() }
+            }
         }
     }
 }

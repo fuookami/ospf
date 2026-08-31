@@ -1,9 +1,9 @@
 //! 载荷限制 / Payload limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;
 use crate::framework::demo2::domain::airworthiness_security::context::AirworthinessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 业载限制 / Payload limit
 ///
@@ -28,13 +28,19 @@ pub fn apply_payload_limits(
         &aggregation.total_payload_coefficients,
         ConstraintRelation::LessEqual,
         context.request.payload_upper_bound,
-        &format!("airworthiness_security_payload_upper_{}", mode_name(context.mode)),
+        &format!(
+            "airworthiness_security_payload_upper_{}",
+            mode_name(context.mode)
+        ),
     )?;
     model.add_linear_constraint(
         &aggregation.total_payload_coefficients,
         ConstraintRelation::GreaterEqual,
         min_payload,
-        &format!("airworthiness_security_payload_lower_{}", mode_name(context.mode)),
+        &format!(
+            "airworthiness_security_payload_lower_{}",
+            mode_name(context.mode)
+        ),
     )?;
     Ok(())
 }

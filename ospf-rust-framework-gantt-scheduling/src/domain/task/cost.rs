@@ -3,8 +3,8 @@
 //! 表示调度任务的成本项，支持泛型数值和物理量。
 //! Represents cost items for scheduling tasks, supporting generic numeric values and quantities.
 
-use ospf_rust_core::solver::value::SolveValue;
 use crate::infrastructure::GanttValueAdapter;
+use ospf_rust_core::solver::value::SolveValue;
 
 /// 成本项 / Cost item
 ///
@@ -79,9 +79,7 @@ impl<V: SolveValue> Cost<V> {
         let cost_sum = if items.iter().all(|i| i.valid()) {
             let sum_f64: f64 = items
                 .iter()
-                .map(|i| {
-                    GanttValueAdapter::<V>::to_f64(i.cost_quantity.as_ref().unwrap())
-                })
+                .map(|i| GanttValueAdapter::<V>::to_f64(i.cost_quantity.as_ref().unwrap()))
                 .sum();
             Some(GanttValueAdapter::<V>::from_f64(sum_f64))
         } else {

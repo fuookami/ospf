@@ -11,6 +11,13 @@
 //! - `DynShape<C, SO>`: 运行期形状，维度在运行时确定
 //!   Runtime shape with dimension determined at runtime
 
+use super::concept::*;
+use super::dummy_index::{DummyIndex, DummyIndexIterator, IteratorVector};
+use super::error::{DimensionMismatchingError, IndexCalculationError, OutOfShapeError};
+use super::map_index::MapIndex;
+use cc_traits::Len;
+use ospf_rust_base::Indices;
+use ospf_rust_base::error::*;
 use std::fmt::{Debug, Display, Formatter};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
@@ -18,13 +25,6 @@ use std::mem;
 use std::ops::{Index, IndexMut, RangeFull};
 use std::result::Result;
 use std::sync::OnceLock;
-use cc_traits::Len;
-use ospf_rust_base::Indices;
-use ospf_rust_base::error::*;
-use super::concept::*;
-use super::dummy_index::{DummyIndex, DummyIndexIterator, IteratorVector};
-use super::error::{DimensionMismatchingError, IndexCalculationError, OutOfShapeError};
-use super::map_index::MapIndex;
 
 /// 抽象形状 trait
 /// Abstract shape trait
@@ -223,7 +223,11 @@ pub trait AbstractShape {
                 vector[i] += 1;
                 carry = false;
             }
-            if vector[i] == self.len_of_dimension(i).expect("dimension index should be valid in next_vector") {
+            if vector[i]
+                == self
+                    .len_of_dimension(i)
+                    .expect("dimension index should be valid in next_vector")
+            {
                 vector[i] = 0;
                 carry = true;
             }
@@ -234,7 +238,9 @@ pub trait AbstractShape {
     /// 将负索引转换为实际索引
     /// Convert negative index to actual index
     fn actual_index(&self, dimension: usize, index: isize) -> Option<usize> {
-        let len = self.len_of_dimension(dimension).expect("dimension should be valid in actual_index");
+        let len = self
+            .len_of_dimension(dimension)
+            .expect("dimension should be valid in actual_index");
         let len_isize = len.cast_signed();
 
         if index >= len_isize || index < -len_isize {
@@ -277,7 +283,11 @@ impl<'a, S: AbstractShape> ShapeIndicesIter<'a, S> {
         let mut finished = false;
         if shape.dimension() > 0 {
             for dim in 0..shape.dimension() {
-                if shape.len_of_dimension(dim).expect("dimension should be valid in ShapeIndicesIter::new") == 0 {
+                if shape
+                    .len_of_dimension(dim)
+                    .expect("dimension should be valid in ShapeIndicesIter::new")
+                    == 0
+                {
                     finished = true;
                     break;
                 }
@@ -300,7 +310,10 @@ impl<'a, S: AbstractShape> ShapeIndicesIter<'a, S> {
         }
 
         for dim in (0..self.shape.dimension()).rev() {
-            let len = self.shape.len_of_dimension(dim).expect("dimension should be valid in step_row_major");
+            let len = self
+                .shape
+                .len_of_dimension(dim)
+                .expect("dimension should be valid in step_row_major");
             if self.current[dim] + 1 < len {
                 self.current[dim] += 1;
                 return true;
@@ -317,7 +330,10 @@ impl<'a, S: AbstractShape> ShapeIndicesIter<'a, S> {
         }
 
         for dim in 0..self.shape.dimension() {
-            let len = self.shape.len_of_dimension(dim).expect("dimension should be valid in step_column_major");
+            let len = self
+                .shape
+                .len_of_dimension(dim)
+                .expect("dimension should be valid in step_column_major");
             if self.current[dim] + 1 < len {
                 self.current[dim] += 1;
                 return true;

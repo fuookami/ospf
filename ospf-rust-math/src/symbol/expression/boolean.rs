@@ -1,16 +1,16 @@
 //! 布尔表达式 AST
 //! Boolean expression AST
 
+use super::dsl::{and_pair, or_pair};
+use super::normalize::{NormalizeConfig, boolean_structural_key, normalize_boolean_expression};
+use super::operators::*;
+use super::property_path::PropertyPath;
+use super::scalar::ScalarExpression;
+use super::value::ExpressionValue;
+use crate::Trivalent;
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::ops::{BitAnd, BitOr, Not as StdNot};
-use crate::Trivalent;
-use super::property_path::PropertyPath;
-use super::operators::*;
-use super::value::ExpressionValue;
-use super::scalar::ScalarExpression;
-use super::dsl::{and_pair, or_pair};
-use super::normalize::{boolean_structural_key, normalize_boolean_expression, NormalizeConfig};
 
 /// 解析后的布尔表达式。
 /// Parsed boolean expression.

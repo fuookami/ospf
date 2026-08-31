@@ -1,20 +1,29 @@
 //! 二次掩码范围函数 / Quadratic masking range function
 
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    QuadraticFunctionSymbol,
+};
+use super::quadratic_linear::*;
+use crate::error::{ModelError, Result};
+use crate::model::{
+    ConstraintRelation, LinearConstraint, QuadraticConstraint, QuadraticInequality,
+};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
+use crate::token::{IntoValue, Token, TokenList};
+use crate::variable::{ContinuousVariableItem, new_standalone_id};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, Mul};
 use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-use crate::error::{ModelError, Result};
-use crate::model::{ConstraintRelation, LinearConstraint, QuadraticConstraint, QuadraticInequality};
-use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
-use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{ContinuousVariableItem, new_standalone_id};
-use super::super::{Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol, QuadraticFunctionSymbol};
-use super::quadratic_linear::*;
 
+/// 二次表达式掩码范围函数 / Quadratic masking-range function
+///
+/// 在掩码表达式生效时将结果限制在给定的二次上下界内。
+/// Restricts the result to quadratic bounds when the mask expression is active.
 #[derive(Debug, Clone)]
 pub struct QuadraticMaskingRangeFunction<V = f64>
 where
@@ -35,12 +44,16 @@ impl<V> QuadraticMaskingRangeFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive + ToPrimitive,
 {
+    /// 使用常数上下界创建掩码范围函数。
+    /// Create a masking-range function with constant bounds.
     pub fn new(id: u64, name: &str, mask: Quadratic<V>, lower: V, upper: V) -> Self {
         let lower_poly = Quadratic::new(vec![], lower);
         let upper_poly = Quadratic::new(vec![], upper);
         Self::with_quadratic_bounds(id, name, mask, lower_poly, upper_poly)
     }
 
+    /// 使用二次表达式上下界创建掩码范围函数。
+    /// Create a masking-range function with quadratic bounds.
     pub fn with_quadratic_bounds(
         id: u64,
         name: &str,
@@ -79,11 +92,15 @@ where
         }
     }
 
+    /// 声明该函数依赖的模型元素 ID。
+    /// Declare the model element IDs consumed by this function.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回结果变量。
+    /// Return the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }

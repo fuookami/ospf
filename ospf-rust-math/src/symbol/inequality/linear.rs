@@ -4,8 +4,8 @@
 //! 形式：lhs op rhs，如 2x + 3y ≤ 5
 //! Form: lhs op rhs, e.g., 2x + 3y ≤ 5
 
-use std::fmt::{Debug, Display};
 use crate::symbol::{Comparison, Linear};
+use std::fmt::{Debug, Display};
 
 // ============================================================================
 // LinearInequality - 线性不等式

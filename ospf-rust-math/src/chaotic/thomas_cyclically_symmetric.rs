@@ -4,10 +4,10 @@
 //! 与 [`super::thomas::ThomasAttractor`] 公式相同，仅默认参数不同。
 //! Same formula as [`super::thomas::ThomasAttractor`], only default parameters differ.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Thomas 循环对称吸引子的一阶欧拉步进模型。
@@ -46,16 +46,24 @@ impl<S: Field + Float> Default for ThomasCyclicallySymmetricAttractorGenerator<S
 
 /// 创建 Thomas 循环对称吸引子。
 /// Create a Thomas cyclically symmetric attractor.
-pub fn thomas_cyclically_symmetric_attractor<S: Field + Float>(b: S, h: S) -> ThomasCyclicallySymmetricAttractor<S> {
+pub fn thomas_cyclically_symmetric_attractor<S: Field + Float>(
+    b: S,
+    h: S,
+) -> ThomasCyclicallySymmetricAttractor<S> {
     ThomasCyclicallySymmetricAttractor::new(b, h)
 }
 
 /// 创建 Thomas 循环对称吸引子生成器。
 /// Create a Thomas cyclically symmetric attractor generator.
 pub fn thomas_cyclically_symmetric_attractor_generator<S: Field + Float>(
-    b: S, h: S, x: Point3<S>,
+    b: S,
+    h: S,
+    x: Point3<S>,
 ) -> ThomasCyclicallySymmetricAttractorGenerator<S> {
-    ThomasCyclicallySymmetricAttractorGenerator::new(ThomasCyclicallySymmetricAttractor::new(b, h), x)
+    ThomasCyclicallySymmetricAttractorGenerator::new(
+        ThomasCyclicallySymmetricAttractor::new(b, h),
+        x,
+    )
 }
 
 #[cfg(test)]

@@ -1,10 +1,10 @@
 //! Lu-Chen 系统。
 //! Lu-Chen system.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Lu-Chen 系统的一阶欧拉步进模型。
@@ -53,7 +53,12 @@ pub fn lu_chen_system<S: Field + Float>(a: S, b: S, c: S, d: S, h: S) -> LuChenS
 /// 创建 Lu-Chen 系统生成器。
 /// Create a Lu-Chen system generator.
 pub fn lu_chen_system_generator<S: Field + Float>(
-    a: S, b: S, c: S, d: S, h: S, x: Point3<S>,
+    a: S,
+    b: S,
+    c: S,
+    d: S,
+    h: S,
+    x: Point3<S>,
 ) -> LuChenSystemGenerator<S> {
     LuChenSystemGenerator::new(LuChenSystem::new(a, b, c, d, h), x)
 }

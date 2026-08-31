@@ -1,10 +1,10 @@
 //! Hadley 吸引子。
 //! Hadley attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Hadley 吸引子的一阶欧拉步进模型。
@@ -47,14 +47,25 @@ impl<S: Field + Float> Default for HadleyAttractorGenerator<S> {
 
 /// 创建 Hadley 吸引子。
 /// Create a Hadley attractor.
-pub fn hadley_attractor<S: Field + Float>(alpha: S, beta: S, delta: S, zeta: S, h: S) -> HadleyAttractor<S> {
+pub fn hadley_attractor<S: Field + Float>(
+    alpha: S,
+    beta: S,
+    delta: S,
+    zeta: S,
+    h: S,
+) -> HadleyAttractor<S> {
     HadleyAttractor::new(alpha, beta, delta, zeta, h)
 }
 
 /// 创建 Hadley 吸引子生成器。
 /// Create a Hadley attractor generator.
 pub fn hadley_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, delta: S, zeta: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    delta: S,
+    zeta: S,
+    h: S,
+    x: Point3<S>,
 ) -> HadleyAttractorGenerator<S> {
     HadleyAttractorGenerator::new(HadleyAttractor::new(alpha, beta, delta, zeta, h), x)
 }

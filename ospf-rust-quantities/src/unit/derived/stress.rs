@@ -1,10 +1,10 @@
 //! 压力/应力单位 / Pressure/Stress units
 
+use super::area::SquareMeter;
+use super::force::Newton;
 use crate::dimension::derived::Pressure;
 use crate::scale::{KILO, MEGA, Scale};
 use crate::unit::{CTUnit, CTUnitDiv};
-use super::area::SquareMeter;
-use super::force::Newton;
 
 define_unit_by!(
     PascalStress,

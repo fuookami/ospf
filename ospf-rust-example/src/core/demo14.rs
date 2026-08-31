@@ -1,14 +1,12 @@
 //! Demo14 模块 / Demo14 module
 use std::error::Error;
 
-use ospf_rust_multiarray::Shape;
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
-use ospf_rust_core::symbol::{
-    LinearExpressionSymbol, flat_map1,
-};
+use ospf_rust_core::model::{ConstraintRelation, MetaModel, ObjectiveCategory};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, flat_map1};
 use ospf_rust_core::variable::{UInteger, VariableCombination2D, VariableRange};
+use ospf_rust_multiarray::Shape;
 
-use super::common::{read_solution_value, solve_typed, extract_coeffs};
+use super::common::{extract_coeffs, read_solution_value, solve_typed};
 
 /// Node type enum
 #[derive(Clone, Copy)]
@@ -97,7 +95,8 @@ struct TransportModel {
     /// 成本符号 / Cost symbol
     cost: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
     /// 流出符号 / Flow out symbol
-    trans_out: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    trans_out:
+        ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
     /// 流入符号 / Flow in symbol
     trans_in: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
 }
@@ -117,7 +116,10 @@ impl TransportModel {
                 "x",
                 |_index, vector| format!("{}_{}", vector[0], vector[1]),
                 |_index, vector| {
-                    if arcs.iter().any(|arc| arc.from == vector[0] && arc.to == vector[1]) {
+                    if arcs
+                        .iter()
+                        .any(|arc| arc.from == vector[0] && arc.to == vector[1])
+                    {
                         VariableRange::with_lower(0.0)
                     } else {
                         VariableRange::fixed(0.0)
@@ -127,34 +129,59 @@ impl TransportModel {
         let x_idx = model.register_combination(&x_vars)?;
 
         // Objective: minimize cost = sum(unit_cost * x[from][to]) over arcs
-        let cost = flat_map1("cost", arcs, |arc| {
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                    arc.unit_cost,
-                    x_idx[&[arc.from, arc.to]],
-                )],
-                0.0,
-            )
-        }, |_, arc| format!("{}_{}", arc.from, arc.to));
+        let cost = flat_map1(
+            "cost",
+            arcs,
+            |arc| {
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        arc.unit_cost,
+                        x_idx[&[arc.from, arc.to]],
+                    )],
+                    0.0,
+                )
+            },
+            |_, arc| format!("{}_{}", arc.from, arc.to),
+        );
         model.add_symbol_combination(&cost)?;
 
         // Flow out from each node: sum_to x[node][to]
         let node_indices: Vec<usize> = (0..nodes.len()).collect();
-        let trans_out = flat_map1("trans_out", &node_indices, |&node| {
-            let monomials: Vec<_> = (0..nodes.len())
-                .map(|to| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[node, to]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, &node| format!("{}", node));
+        let trans_out = flat_map1(
+            "trans_out",
+            &node_indices,
+            |&node| {
+                let monomials: Vec<_> = (0..nodes.len())
+                    .map(|to| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            1.0,
+                            x_idx[&[node, to]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, &node| format!("{}", node),
+        );
         model.add_symbol_combination(&trans_out)?;
 
         // Flow in to each node: sum_from x[from][node]
-        let trans_in = flat_map1("trans_in", &node_indices, |&node| {
-            let monomials: Vec<_> = (0..nodes.len())
-                .map(|from| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[from, node]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, &node| format!("{}", node));
+        let trans_in = flat_map1(
+            "trans_in",
+            &node_indices,
+            |&node| {
+                let monomials: Vec<_> = (0..nodes.len())
+                    .map(|from| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            1.0,
+                            x_idx[&[from, node]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, &node| format!("{}", node),
+        );
         model.add_symbol_combination(&trans_in)?;
 
         Ok(TransportModel {

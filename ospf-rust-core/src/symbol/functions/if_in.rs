@@ -1,23 +1,22 @@
 //! If-in 函数符号 / If-in function symbol
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
+};
+use super::big_m::infer_linear_bounds_from_tokens;
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
-};
-use super::big_m::infer_linear_bounds_from_tokens;
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -76,7 +75,7 @@ const STEP_EPSILON: f64 = 1e-8;
 /// Checks whether an input value belongs to a discrete set of values.
 ///
 /// 数学形式 / Mathematical Form:
-/// - result = 1 if input in {values[0], values[1], ...} else 0
+/// - `result = 1` if input in `{values[0], values[1], ...}`, otherwise `0`
 #[derive(Debug, Clone)]
 pub struct IfInFunction<V = f64>
 where
@@ -103,16 +102,9 @@ where
     V: Clone + Debug + Send + Sync + 'static,
 {
     /// 创建新的 if-in 函数 / Create new if-in function
-    pub fn new(
-        id: u64,
-        name: &str,
-        input: Linear<V>,
-        values: Vec<V>,
-        big_m: V,
-    ) -> Self {
+    pub fn new(id: u64, name: &str, input: Linear<V>, values: Vec<V>, big_m: V) -> Self {
         let aux_group_id = new_group_id();
-        let result_var =
-            BinaryVariableItem::create(VariableId::new(aux_group_id, 0), name);
+        let result_var = BinaryVariableItem::create(VariableId::new(aux_group_id, 0), name);
 
         Self {
             id: IntermediateSymbolId::new(id, name),
@@ -127,12 +119,7 @@ where
 
     /// 使用自动 ID 与调用方提供的名称创建 if-in 函数。
     /// Create an if-in function with an auto id and caller-provided name.
-    pub fn named(
-        name: impl AsRef<str>,
-        input: Linear<V>,
-        values: Vec<V>,
-        big_m: V,
-    ) -> Self {
+    pub fn named(name: impl AsRef<str>, input: Linear<V>, values: Vec<V>, big_m: V) -> Self {
         Self::new(
             next_auto_intermediate_symbol_id(),
             name.as_ref(),
@@ -597,7 +584,10 @@ where
         let count = self.values.len();
         for i in 0..count {
             let indicator_var = self.value_indicator_variable(i);
-            tokens.push(Token::from_generic(indicator_var.clone(), indicator_var.index()));
+            tokens.push(Token::from_generic(
+                indicator_var.clone(),
+                indicator_var.index(),
+            ));
         }
         for i in 0..count {
             let side_var = self.value_side_variable(count, i);
@@ -694,8 +684,7 @@ mod tests {
             vec![1.0, 3.0, 5.0],
             100.0,
         );
-        let value =
-            <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
+        let value = <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
         assert_eq!(value, Some(1.0));
     }
 
@@ -714,8 +703,7 @@ mod tests {
             vec![1.0, 3.0, 5.0],
             100.0,
         );
-        let value =
-            <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
+        let value = <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
         assert_eq!(value, Some(0.0));
     }
 
@@ -735,8 +723,7 @@ mod tests {
             vec![1.0, 3.0, 5.0],
             100.0,
         );
-        let value =
-            <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
+        let value = <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
         assert_eq!(value, Some(1.0));
     }
 
@@ -777,7 +764,10 @@ mod tests {
 
         assert_eq!(constraints.len(), 1);
         assert_eq!(constraints[0].name, "ifin_empty_empty");
-        assert_eq!(constraints[0].inequality.relation, ConstraintRelation::Equal);
+        assert_eq!(
+            constraints[0].inequality.relation,
+            ConstraintRelation::Equal
+        );
         assert_eq!(constraints[0].inequality.rhs, 0.0);
     }
 
@@ -908,13 +898,19 @@ mod tests {
             .iter()
             .find(|c| c.name == "ifin_or_or_lb_0")
             .expect("or_lb_0 should exist");
-        assert_eq!(or_lb_0.inequality.relation, ConstraintRelation::GreaterEqual);
+        assert_eq!(
+            or_lb_0.inequality.relation,
+            ConstraintRelation::GreaterEqual
+        );
 
         let or_lb_1 = constraints
             .iter()
             .find(|c| c.name == "ifin_or_or_lb_1")
             .expect("or_lb_1 should exist");
-        assert_eq!(or_lb_1.inequality.relation, ConstraintRelation::GreaterEqual);
+        assert_eq!(
+            or_lb_1.inequality.relation,
+            ConstraintRelation::GreaterEqual
+        );
 
         // Verify OR link upper bound exists
         let or_ub = constraints
@@ -934,7 +930,10 @@ mod tests {
             .iter()
             .find(|c| c.name == "ifin_or_pt0_band_lb")
             .expect("pt0 band_lb should exist");
-        assert_eq!(band_lb_0.inequality.relation, ConstraintRelation::GreaterEqual);
+        assert_eq!(
+            band_lb_0.inequality.relation,
+            ConstraintRelation::GreaterEqual
+        );
     }
 
     #[test]
@@ -969,12 +968,12 @@ mod tests {
         // pt0 (value=1.0): x=3 > value, so side_0=1 (upper side)
         // pt1 (value=3.0): x=3 ≈ value, indicator_1=1, side_1 doesn't matter
         let assignment = HashMap::from([
-            (0usize, 3.0_f64),  // x
-            (1usize, 1.0),      // result
-            (2usize, 0.0),      // indicator_0
-            (3usize, 1.0),      // indicator_1
-            (4usize, 1.0),      // side_0 (upper: x > value[0])
-            (5usize, 0.0),      // side_1
+            (0usize, 3.0_f64), // x
+            (1usize, 1.0),     // result
+            (2usize, 0.0),     // indicator_0
+            (3usize, 1.0),     // indicator_1
+            (4usize, 1.0),     // side_0 (upper: x > value[0])
+            (5usize, 0.0),     // side_1
         ]);
 
         assert!(
@@ -1017,12 +1016,12 @@ mod tests {
         // pt0 (value=1.0): x=2 > value, so side_0=1 (upper side)
         // pt1 (value=3.0): x=2 < value, so side_1=0 (lower side)
         let assignment = HashMap::from([
-            (0usize, 2.0_f64),  // x
-            (1usize, 0.0),      // result
-            (2usize, 0.0),      // indicator_0
-            (3usize, 0.0),      // indicator_1
-            (4usize, 1.0),      // side_0 (upper: x > value[0])
-            (5usize, 0.0),      // side_1 (lower: x < value[1])
+            (0usize, 2.0_f64), // x
+            (1usize, 0.0),     // result
+            (2usize, 0.0),     // indicator_0
+            (3usize, 0.0),     // indicator_1
+            (4usize, 1.0),     // side_0 (upper: x > value[0])
+            (5usize, 0.0),     // side_1 (lower: x < value[1])
         ]);
 
         assert!(
@@ -1065,12 +1064,12 @@ mod tests {
         // All indicators must be 0 since x doesn't match any value,
         // but result=1 violates or_ub: result <= sum(indicators) = 0
         let assignment = HashMap::from([
-            (0usize, 2.0_f64),  // x
-            (1usize, 1.0),      // result (wrong!)
-            (2usize, 0.0),      // indicator_0
-            (3usize, 0.0),      // indicator_1
-            (4usize, 1.0),      // side_0
-            (5usize, 1.0),      // side_1
+            (0usize, 2.0_f64), // x
+            (1usize, 1.0),     // result (wrong!)
+            (2usize, 0.0),     // indicator_0
+            (3usize, 0.0),     // indicator_1
+            (4usize, 1.0),     // side_0
+            (5usize, 1.0),     // side_1
         ]);
 
         assert!(

@@ -34,7 +34,9 @@ extern crate strum;
 #[macro_export]
 macro_rules! lock_unwrap {
     ($lock:expr) => {
-        $lock.lock().expect("lock poisoned: another thread panicked while holding the lock")
+        $lock
+            .lock()
+            .expect("lock poisoned: another thread panicked while holding the lock")
     };
 }
 
@@ -51,7 +53,9 @@ macro_rules! lock_unwrap {
 #[macro_export]
 macro_rules! read_unwrap {
     ($lock:expr) => {
-        $lock.read().expect("rwlock poisoned: another thread panicked while holding the read lock")
+        $lock
+            .read()
+            .expect("rwlock poisoned: another thread panicked while holding the read lock")
     };
 }
 
@@ -68,7 +72,9 @@ macro_rules! read_unwrap {
 #[macro_export]
 macro_rules! write_unwrap {
     ($lock:expr) => {
-        $lock.write().expect("rwlock poisoned: another thread panicked while holding the write lock")
+        $lock
+            .write()
+            .expect("rwlock poisoned: another thread panicked while holding the write lock")
     };
 }
 

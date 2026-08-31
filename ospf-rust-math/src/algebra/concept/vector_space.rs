@@ -1,10 +1,10 @@
 //! 向量空间 trait
 //! Vector space trait
 
+use super::Field;
+use num_traits::Zero;
 use std::fmt::Debug;
 use std::ops::{Add, Neg, Sub};
-use num_traits::Zero;
-use super::Field;
 
 // ============================================================================
 // VectorSpace Trait - 向量空间

@@ -4,8 +4,12 @@ use std::sync::Arc;
 
 use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::model::{ConstraintGroup, ConstraintRelation, MetaModel};
-use ospf_rust_core::solver::{FeasibleSolverOutput, SolverCapability, SolverInfo, solvers::GurobiSolver};
-use ospf_rust_core::symbol::{BinaryzationMethod, LinearExpressionSymbol, LinearIntermediateSymbol};
+use ospf_rust_core::solver::{
+    FeasibleSolverOutput, SolverCapability, SolverInfo, solvers::GurobiSolver,
+};
+use ospf_rust_core::symbol::{
+    BinaryzationMethod, LinearExpressionSymbol, LinearIntermediateSymbol,
+};
 use ospf_rust_core::variable::BinaryVariableItem;
 
 use crate::example_modeling::solve_linear_meta_model_typed;
@@ -53,7 +57,11 @@ pub fn extract_coeffs(sym: &LinearExpressionSymbol<f64>) -> Vec<(usize, f64)> {
 /// 从 `SymbolCombination` 的单个符号提取系数对
 /// Extract coefficient pairs from a single symbol in a `SymbolCombination`
 pub fn extract_symbol_coeffs(
-    sym: &ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, ospf_rust_multiarray::Shape<1>>,
+    sym: &ospf_rust_core::symbol::SymbolCombination<
+        f64,
+        LinearExpressionSymbol<f64>,
+        ospf_rust_multiarray::Shape<1>,
+    >,
     index: usize,
 ) -> Vec<(usize, f64)> {
     extract_coeffs(&sym[index])

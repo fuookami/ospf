@@ -27,6 +27,7 @@ impl SCIPSolver {
     /// 4. Install the telemetry handler and solve
     /// 5. Extract the primal solution, dual solution, best bound, and MIP gap
     pub(super) fn solve_linear(&self, model: &LinearTriadModel) -> Result<SolverOutput> {
+        crate::solver::audit::validate_linear_model_for_backend(model)?;
         let start_time = Instant::now();
 
         // 创建 SCIP 问题实例，根据目标类别设置最大化/最小化
@@ -89,6 +90,7 @@ impl SCIPSolver {
                 model.b[i],
                 &format!("c{}", i),
             );
+            scip.set_cons_removable(&constraint, false);
             linear_constraints.push(constraint);
         }
 
@@ -118,6 +120,7 @@ impl SCIPSolver {
         let mut output = SolverOutput::new(solver_status);
         output.node_count = Some(solved.n_nodes());
         output.iterations = Some(solved.n_lp_iterations());
+        output.solution_count = Some(solved.n_sols());
 
         // 提取最优边界（若有限）
         // Extract the best bound (if finite)
@@ -128,7 +131,9 @@ impl SCIPSolver {
 
         // 提取原始解和目标值
         // Extract the primal solution and objective value
-        if let Some(solution) = solution {
+        if solver_status.is_feasible()
+            && let Some(solution) = solution
+        {
             let objective_value = solution.obj_val();
             output.objective_value = Some(objective_value);
             output.solution = Some(scip_vars.iter().map(|var| solution.val(var)).collect());
@@ -142,9 +147,24 @@ impl SCIPSolver {
         // 在最优解时提取线性对偶乘子（尽力获取）
         // Extract linear dual multipliers when optimal (best effort)
         if matches!(solver_status, SolverStatus::Optimal) {
-            let dual_solution = Self::collect_dual_solution(&linear_constraints);
-            if !dual_solution.is_empty() {
+            let dual_solution = Self::collect_dual_solution(
+                &linear_constraints,
+                model.objective_category,
+            );
+            if let Some(dual_solution) = dual_solution
+                && !dual_solution.is_empty()
+            {
                 output.dual_solution = Some(dual_solution);
+            }
+        }
+
+        if solver_status.is_infeasible() {
+            // 读取线性 LP 的 Farkas 乘子；失败时保留不可行报告并交给 generic fallback。
+            // Read linear LP Farkas multipliers; preserve the infeasible report and use the generic fallback when unavailable.
+            if let Some(farkas_solution) = Self::collect_farkas_solution(&linear_constraints)
+                && !farkas_solution.is_empty()
+            {
+                output.dual_solution = Some(farkas_solution);
             }
         }
 

@@ -1,17 +1,16 @@
-
 //! 比例尺 / Scale
 //!
 //! 保持 base^exponent 形式的符号运算，避免精度损失 / Maintains base^exponent form for symbolic computation, avoiding precision loss
 
-use std::cmp::Ordering;
-use std::ops::{Div, Mul};
-use std::sync::OnceLock;
 use bigdecimal::{BigDecimal, FromPrimitive};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use once_cell::sync::Lazy;
 use ospf_rust_math::operator::reciprocal::Reciprocal;
 use ospf_rust_math::ordinary;
+use std::cmp::Ordering;
+use std::ops::{Div, Mul};
+use std::sync::OnceLock;
 
 /// ScaleBase - 高精度数值基
 /// ScaleBase - High-precision numeric base
@@ -178,7 +177,11 @@ impl Scale {
             Self::new()
         } else {
             Self::from_base_exponent(
-                ScaleBase::float(BigDecimal::from_f64(base).expect("无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64")),
+                ScaleBase::float(
+                    BigDecimal::from_f64(base).expect(
+                        "无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64",
+                    ),
+                ),
                 BigDecimal::from(1),
             )
         }
@@ -556,7 +559,8 @@ impl Mul<f64> for Scale {
 
     fn mul(mut self, rhs: f64) -> Self::Output {
         for factor in self.scales.iter_mut() {
-            factor.exponent += BigDecimal::from_f64(rhs).expect("无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64")
+            factor.exponent += BigDecimal::from_f64(rhs)
+                .expect("无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64")
         }
         Scale {
             scales: self.scales,
@@ -575,7 +579,10 @@ impl Mul<f64> for &Scale {
                 .iter()
                 .map(|f| ScaleFactor {
                     base: f.base.clone(),
-                    exponent: &f.exponent + BigDecimal::from_f64(rhs).expect("无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64"),
+                    exponent: &f.exponent
+                        + BigDecimal::from_f64(rhs).expect(
+                            "无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64",
+                        ),
                 })
                 .collect(),
             value: OnceLock::new(),
@@ -588,7 +595,8 @@ impl Div<f64> for Scale {
 
     fn div(mut self, rhs: f64) -> Self::Output {
         for factor in self.scales.iter_mut() {
-            factor.exponent -= BigDecimal::from_f64(rhs).expect("无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64");
+            factor.exponent -= BigDecimal::from_f64(rhs)
+                .expect("无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64");
         }
         Scale {
             scales: self.scales,
@@ -607,7 +615,10 @@ impl Div<f64> for &Scale {
                 .iter()
                 .map(|f| ScaleFactor {
                     base: f.base.clone(),
-                    exponent: &f.exponent - BigDecimal::from_f64(rhs).expect("无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64"),
+                    exponent: &f.exponent
+                        - BigDecimal::from_f64(rhs).expect(
+                            "无法从浮点数创建 BigDecimal / Failed to create BigDecimal from f64",
+                        ),
                 })
                 .collect(),
             value: OnceLock::new(),

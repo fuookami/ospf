@@ -4,8 +4,8 @@
 //! 形式：lhs op rhs，如 x² + 2y ≤ 10
 //! Form: lhs op rhs, e.g., x² + 2y ≤ 10
 
-use std::fmt::{Debug, Display};
 use crate::symbol::{Comparison, Quadratic};
+use std::fmt::{Debug, Display};
 
 // ============================================================================
 // QuadraticInequality - 二次不等式

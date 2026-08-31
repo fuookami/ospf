@@ -1,8 +1,8 @@
 //! 气动公式定义 / Aerodynamic formula definitions
+use super::super::super::shared::units;
 use super::aircraft_model::AircraftModel;
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::Unit;
-use super::super::super::shared::units;
 
 /// 公式 / Formula (对齐 Kotlin Formula)
 #[derive(Debug, Clone)]
@@ -22,9 +22,15 @@ pub struct Formula {
 impl Formula {
     /// 计算平衡力臂 / Calculate balanced arm
     pub fn balanced_arm(&self, dow: f64, doi: f64, liferaft_weight: f64, liferaft_arm: f64) -> f64 {
-        let numerator = dow * self.standard_datum.value + doi * self.chord.value + liferaft_weight * liferaft_arm;
+        let numerator = dow * self.standard_datum.value
+            + doi * self.chord.value
+            + liferaft_weight * liferaft_arm;
         let denominator = dow + doi + liferaft_weight;
-        if denominator > 0.0 { numerator / denominator } else { 0.0 }
+        if denominator > 0.0 {
+            numerator / denominator
+        } else {
+            0.0
+        }
     }
 
     /// 计算力臂 / Calculate arm distance

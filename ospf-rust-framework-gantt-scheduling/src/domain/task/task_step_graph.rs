@@ -9,9 +9,7 @@ use std::hash::{Hash, Hasher};
 
 use time::Duration;
 
-use crate::domain::common::{
-    GanttId, TaskPlanId, TaskPlanIdTrait, TaskStepId, TaskStepIdTrait,
-};
+use crate::domain::common::{GanttId, TaskPlanId, TaskPlanIdTrait, TaskStepId, TaskStepIdTrait};
 use crate::domain::task::{ExecutorTrait, TaskStatus};
 use crate::{GanttError, GanttResult};
 
@@ -29,7 +27,8 @@ pub enum StepRelation {
 ///
 /// 表示多步任务中的一个可执行步骤。
 /// Represents one executable step in a multi-step task.
-pub trait TaskStepTrait<E>: Send + Sync + std::fmt::Debug + Clone + Eq + std::hash::Hash + 'static
+pub trait TaskStepTrait<E>:
+    Send + Sync + std::fmt::Debug + Clone + Eq + std::hash::Hash + 'static
 where
     E: ExecutorTrait,
 {
@@ -180,11 +179,7 @@ where
     I: TaskStepIdTrait,
 {
     /// 创建前向向量 / Create forward vector
-    pub fn new(
-        from: impl Into<I>,
-        to: Vec<impl Into<I>>,
-        relation: StepRelation,
-    ) -> Self {
+    pub fn new(from: impl Into<I>, to: Vec<impl Into<I>>, relation: StepRelation) -> Self {
         Self {
             from: from.into(),
             to: to.into_iter().map(Into::into).collect(),
@@ -213,11 +208,7 @@ where
     I: TaskStepIdTrait,
 {
     /// 创建后向向量 / Create backward vector
-    pub fn new(
-        from: Vec<impl Into<I>>,
-        to: impl Into<I>,
-        relation: StepRelation,
-    ) -> Self {
+    pub fn new(from: Vec<impl Into<I>>, to: impl Into<I>, relation: StepRelation) -> Self {
         Self {
             from: from.into_iter().map(Into::into).collect(),
             to: to.into(),
@@ -387,11 +378,7 @@ where
     }
 
     /// 设置起始步骤 / Set start steps
-    pub fn start_steps(
-        mut self,
-        steps: Vec<impl Into<S::Id>>,
-        relation: StepRelation,
-    ) -> Self {
+    pub fn start_steps(mut self, steps: Vec<impl Into<S::Id>>, relation: StepRelation) -> Self {
         self.start_steps = Some(StartSteps::new(steps, relation));
         self
     }
@@ -464,13 +451,13 @@ where
         Ok(ids)
     }
 
-    fn validate_start_steps(
-        &self,
-        step_ids: &HashSet<S::Id>,
-    ) -> GanttResult<StartSteps<S::Id>> {
-        let start_steps = self.start_steps.clone().ok_or_else(|| GanttError::Calculation {
-            message: "task step graph start steps must be set".to_string(),
-        })?;
+    fn validate_start_steps(&self, step_ids: &HashSet<S::Id>) -> GanttResult<StartSteps<S::Id>> {
+        let start_steps = self
+            .start_steps
+            .clone()
+            .ok_or_else(|| GanttError::Calculation {
+                message: "task step graph start steps must be set".to_string(),
+            })?;
         if start_steps.steps.is_empty() {
             return Err(GanttError::Calculation {
                 message: "task step graph start steps must not be empty".to_string(),
@@ -485,7 +472,10 @@ where
             self.ensure_step_id_exists(&vector.from, step_ids, "forward source")?;
             if vector.to.is_empty() {
                 return Err(GanttError::Calculation {
-                    message: format!("forward vector `{}` target list must not be empty", vector.from),
+                    message: format!(
+                        "forward vector `{}` target list must not be empty",
+                        vector.from
+                    ),
                 });
             }
             self.ensure_step_ids_exist(&vector.to, step_ids, "forward targets")?;
@@ -498,7 +488,10 @@ where
             self.ensure_step_id_exists(&vector.to, step_ids, "backward target")?;
             if vector.from.is_empty() {
                 return Err(GanttError::Calculation {
-                    message: format!("backward vector `{}` source list must not be empty", vector.to),
+                    message: format!(
+                        "backward vector `{}` source list must not be empty",
+                        vector.to
+                    ),
                 });
             }
             self.ensure_step_ids_exist(&vector.from, step_ids, "backward sources")?;
@@ -546,10 +539,8 @@ where
     }
 
     fn validate_acyclic(&self, step_ids: &HashSet<S::Id>) -> GanttResult<()> {
-        let mut indegrees: HashMap<S::Id, usize> = step_ids
-            .iter()
-            .map(|id| (id.clone(), 0))
-            .collect();
+        let mut indegrees: HashMap<S::Id, usize> =
+            step_ids.iter().map(|id| (id.clone(), 0)).collect();
         let mut adjacency: HashMap<S::Id, Vec<S::Id>> = HashMap::new();
 
         for vector in self.forward_task_step_vectors.values() {

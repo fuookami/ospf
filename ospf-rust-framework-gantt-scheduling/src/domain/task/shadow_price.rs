@@ -4,9 +4,9 @@
 //! Integrates framework ShadowPriceMap, providing task-level and bunch-level
 //! shadow price arguments.
 
-use std::any::TypeId;
-use ospf_rust_framework::model::shadow_price::ShadowPriceKey;
 use super::executor::ExecutorTrait;
+use ospf_rust_framework::model::shadow_price::ShadowPriceKey;
+use std::any::TypeId;
 
 /// 甘特排程影子价格参数 / Gantt scheduling shadow price arguments
 ///
@@ -51,11 +51,7 @@ pub struct BunchGanttSchedulingShadowPriceArguments<E: ExecutorTrait> {
 
 impl<E: ExecutorTrait> BunchGanttSchedulingShadowPriceArguments<E> {
     /// 创建新的束级影子价格参数 / Create new bunch-level shadow price arguments
-    pub fn new(
-        executor: E,
-        task_key: Option<String>,
-        prev_task_key: Option<String>,
-    ) -> Self {
+    pub fn new(executor: E, task_key: Option<String>, prev_task_key: Option<String>) -> Self {
         Self {
             executor,
             task_key,
@@ -152,8 +148,7 @@ impl GanttShadowPriceKey {
     pub fn executor_slot_compilation(executor_id: &str, slot_index: usize) -> Self {
         Self::new::<Self>(format!(
             "executor_slot_compilation_{}_{}",
-            executor_id,
-            slot_index,
+            executor_id, slot_index,
         ))
     }
 }

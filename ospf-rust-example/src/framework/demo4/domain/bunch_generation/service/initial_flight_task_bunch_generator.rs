@@ -1,6 +1,6 @@
 //! 初始飞行任务束生成器模块 / Initial flight task bunch generator module
-use std::collections::HashMap;
 use super::super::model::Graph;
+use std::collections::HashMap;
 
 /// 初始飞行任务束生成器 / Initial flight task bunch generator
 /// 对齐 FSRA InitialFlightTaskBunchGenerator
@@ -75,8 +75,8 @@ impl InitialFlightTaskBunchGenerator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::super::model::{Graph, Node};
+    use super::*;
     use time::macros::datetime;
 
     fn task_node(id: &str, index: u64) -> Node {
@@ -99,11 +99,7 @@ mod tests {
         graphs.insert("AC1".to_string(), graph1);
 
         let generator = InitialFlightTaskBunchGenerator;
-        let bunches = generator.generate(
-            &["AC1".to_string()],
-            &graphs,
-            &[],
-        );
+        let bunches = generator.generate(&["AC1".to_string()], &graphs, &[]);
         assert_eq!(bunches.len(), 1);
         assert!(bunches[0].contains(&"T1".to_string()));
     }
@@ -112,11 +108,7 @@ mod tests {
     fn locked_tasks_are_included() {
         let graphs = HashMap::new(); // no graphs
         let generator = InitialFlightTaskBunchGenerator;
-        let bunches = generator.generate(
-            &["AC1".to_string()],
-            &graphs,
-            &["LOCKED".to_string()],
-        );
+        let bunches = generator.generate(&["AC1".to_string()], &graphs, &["LOCKED".to_string()]);
         assert!(bunches.iter().any(|b| b.contains(&"LOCKED".to_string())));
     }
 
@@ -126,11 +118,7 @@ mod tests {
         graphs.insert("AC1".to_string(), Graph::new());
 
         let generator = InitialFlightTaskBunchGenerator;
-        let bunches = generator.generate(
-            &["AC1".to_string()],
-            &graphs,
-            &[],
-        );
+        let bunches = generator.generate(&["AC1".to_string()], &graphs, &[]);
         // Empty graph has Root -> End path, but no tasks
         assert!(bunches.is_empty() || bunches[0].is_empty());
     }

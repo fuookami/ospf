@@ -3,11 +3,11 @@
 //! 描述任务的计划信息，包括时间约束、执行者约束和状态标记。
 //! Describes task plan information including time constraints, executor constraints, and status flags.
 
-use time::{Duration, OffsetDateTime};
-use std::collections::HashSet;
 use super::ExecutorTrait;
 use crate::domain::common::{TaskPlanId, TaskPlanIdTrait};
 use crate::infrastructure::TimeRange;
+use std::collections::HashSet;
+use time::{Duration, OffsetDateTime};
 
 /// 任务状态 / Task status
 ///
@@ -73,7 +73,9 @@ where
     }
     /// 持续时间 / Duration
     fn duration(&self) -> Option<Duration> {
-        self.time().map(|t| t.duration()).or_else(|| self.scheduled_time().map(|t| t.duration()))
+        self.time()
+            .map(|t| t.duration())
+            .or_else(|| self.scheduled_time().map(|t| t.duration()))
     }
     /// 最小持续时间 / Minimum duration
     fn min_duration(&self) -> Option<Duration> {

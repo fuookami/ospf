@@ -4,6 +4,9 @@
 //! 本模块提供 Benders 分解算法的求解器接口。
 //! This module provides solver interfaces for Benders decomposition algorithms.
 
+use std::time::Instant;
+
+use super::column_generation_solver::emit_combinatorial_progress;
 use super::{
     BendersIterationSnapshot, BendersRuntimeMetrics, BendersStopReason, FeasibleSolution,
     FeasibleSolutionV, FrameworkSolveOptions, LinearDualSolution, LinearDualSolutionV,
@@ -11,9 +14,18 @@ use super::{
 use ospf_rust_core::error::{CoreError, Result, SolverError};
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::intermediate::{LinearTriadModel, QuadraticTetradModel};
-use ospf_rust_core::solver::{SolveValue, SolveValueConversionPolicy, SolverOutput};
+use ospf_rust_core::solver::{
+    ModelFingerprint, ProgressValue, SolveHandle, SolveReport, SolveStage, SolveValue,
+    SolveValueConversionPolicy, SolverOutput, SolverProvenance, TerminationReason,
+    cancelled_solve_report, convert_report_value, linear_model_fingerprint,
+    quadratic_model_fingerprint, require_infeasibility_certificate_for_model,
+    require_optimal_lp_certificate_for_model,
+};
+#[cfg(test)]
+use ospf_rust_core::solver::{require_infeasibility_certificate, require_optimal_lp_certificate};
 
 /// 线性子问题结果 / Linear Sub-problem Result
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum LinearSubResult {
     /// 可行解 / Feasible solution
@@ -43,6 +55,8 @@ pub struct LinearFeasibleResult {
     pub dual_solution: LinearDualSolution,
     /// Benders 切割 / Benders cuts
     pub cuts: Option<Vec<LinearCut>>,
+    /// 产生该子结果的统一报告 / Unified report that produced this sub-result.
+    pub report: Option<SolveReport<f64>>,
 }
 
 /// 线性可行结果（typed）/ Linear feasible result (typed)
@@ -57,6 +71,8 @@ where
     pub dual_solution: LinearDualSolutionV<V>,
     /// Benders 切割 / Benders cuts
     pub cuts: Option<Vec<LinearCut>>,
+    /// typed 统一报告 / Typed unified report.
+    pub report: Option<SolveReport<V>>,
 }
 
 impl LinearFeasibleResult {
@@ -66,12 +82,20 @@ impl LinearFeasibleResult {
             result,
             dual_solution,
             cuts: None,
+            report: None,
         }
     }
 
     /// 添加切割 / Add cuts
     pub fn with_cuts(mut self, cuts: Vec<LinearCut>) -> Self {
         self.cuts = Some(cuts);
+        self
+    }
+
+    /// 绑定产生结果的统一报告 / Attach the unified report that produced this result.
+    pub fn with_report(mut self, report: SolveReport<f64>) -> Self {
+        self.result = self.result.clone().with_source_report(report.clone());
+        self.report = Some(report);
         self
     }
 
@@ -87,6 +111,10 @@ impl LinearFeasibleResult {
             result: self.result.try_into_typed(policy)?,
             dual_solution: self.dual_solution.try_into_typed(policy)?,
             cuts: self.cuts,
+            report: self
+                .report
+                .map(|report| convert_report_value(report, policy))
+                .transpose()?,
         })
     }
 }
@@ -98,6 +126,8 @@ pub struct LinearInfeasibleResult {
     pub farkas_dual_solution: LinearDualSolution,
     /// Benders 切割 / Benders cuts
     pub cuts: Option<Vec<LinearCut>>,
+    /// 产生该子结果的统一报告 / Unified report that produced this sub-result.
+    pub report: Option<SolveReport<f64>>,
 }
 
 /// 线性不可行结果（typed）/ Linear infeasible result (typed)
@@ -110,6 +140,8 @@ where
     pub farkas_dual_solution: LinearDualSolutionV<V>,
     /// Benders 切割 / Benders cuts
     pub cuts: Option<Vec<LinearCut>>,
+    /// typed 统一报告 / Typed unified report.
+    pub report: Option<SolveReport<V>>,
 }
 
 impl LinearInfeasibleResult {
@@ -118,12 +150,19 @@ impl LinearInfeasibleResult {
         Self {
             farkas_dual_solution,
             cuts: None,
+            report: None,
         }
     }
 
     /// 添加切割 / Add cuts
     pub fn with_cuts(mut self, cuts: Vec<LinearCut>) -> Self {
         self.cuts = Some(cuts);
+        self
+    }
+
+    /// 绑定产生结果的统一报告 / Attach the unified report that produced this result.
+    pub fn with_report(mut self, report: SolveReport<f64>) -> Self {
+        self.report = Some(report);
         self
     }
 
@@ -138,6 +177,10 @@ impl LinearInfeasibleResult {
         Ok(LinearInfeasibleResultV {
             farkas_dual_solution: self.farkas_dual_solution.try_into_typed(policy)?,
             cuts: self.cuts,
+            report: self
+                .report
+                .map(|report| convert_report_value(report, policy))
+                .transpose()?,
         })
     }
 }
@@ -211,6 +254,7 @@ impl LinearCut {
 }
 
 /// 切割方向 / Cut Sense
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CutSense {
     /// 小于等于 / Less or equal
@@ -241,15 +285,308 @@ fn build_benders_runtime_metrics(
     }
 }
 
-fn master_solution_from_output(output: &SolverOutput) -> Result<Vec<f64>> {
-    output
+fn master_solution_from_report(report: &SolveReport<f64>) -> Result<Vec<f64>> {
+    report.validate()?;
+    if !report.is_optimal() {
+        return Err(CoreError::contract_error(
+            "Benders master must return a verified optimal report",
+        ));
+    }
+    report
         .solution
-        .clone()
-        .ok_or(CoreError::Solver(SolverError::Infeasible))
+        .as_ref()
+        .map(|solution| solution.values.clone())
+        .ok_or_else(|| CoreError::contract_error("Benders master report has no incumbent vector"))
 }
 
-fn master_objective_from_output(output: &SolverOutput) -> f64 {
-    output.objective_value.unwrap_or(0.0)
+fn master_objective_from_report(report: &SolveReport<f64>) -> Result<f64> {
+    report.validate()?;
+    if !report.is_optimal() {
+        return Err(CoreError::contract_error(
+            "Benders master must return a verified optimal report",
+        ));
+    }
+    report
+        .solution
+        .as_ref()
+        .and_then(|solution| solution.objective_value.or(solution.objective))
+        .ok_or_else(|| CoreError::contract_error("Benders master report has no objective value"))
+}
+
+fn partial_master_solution_from_report(
+    report: &SolveReport<f64>,
+    executed_iterations: usize,
+    total_cuts: usize,
+    no_cut_iterations: usize,
+    no_obj_improvement_iterations: usize,
+    iteration_snapshots: Vec<BendersIterationSnapshot>,
+) -> Result<FeasibleSolution> {
+    report.validate()?;
+    if report.is_optimal() || !report.has_incumbent() {
+        return Err(CoreError::contract_error(
+            "a partial Benders master result requires a non-optimal incumbent report",
+        ));
+    }
+    let solution = FeasibleSolution::try_from_report(report)?;
+    let metrics = build_benders_runtime_metrics(
+        executed_iterations,
+        None,
+        total_cuts,
+        no_cut_iterations,
+        no_obj_improvement_iterations,
+        Some(BendersStopReason::MasterTermination(
+            report.termination_reason,
+        )),
+        iteration_snapshots,
+    );
+    Ok(solution
+        .with_benders_iterations(executed_iterations)
+        .with_benders_runtime_metrics(metrics))
+}
+
+fn approximately_equal(left: f64, right: f64) -> bool {
+    (left - right).abs() <= 1e-8 * left.abs().max(right.abs()).max(1.0)
+}
+
+fn apply_master_bound(
+    mut solution: FeasibleSolution,
+    master_report: &SolveReport<f64>,
+) -> (FeasibleSolution, bool) {
+    let bound = master_report.statistics.best_bound_value;
+    solution.possible_best_obj = bound;
+    solution.gap = bound
+        .map(|value| (solution.obj - value).abs() / solution.obj.abs().max(1.0))
+        .unwrap_or(0.0);
+    (solution, master_report.is_optimal() && bound.is_some())
+}
+
+fn benders_proof_reference(
+    master_report: &SolveReport<f64>,
+    subproblem_report: Option<&SolveReport<f64>>,
+    subproblem_certificate: Option<&str>,
+) -> Option<String> {
+    if let Some(reference) = subproblem_certificate {
+        return Some(reference.to_owned());
+    }
+    if master_report.is_optimal() {
+        return Some("master-optimality-gate".to_owned());
+    }
+    subproblem_report.and_then(|report| report.proof.as_ref()?.reference.clone())
+}
+
+fn update_last_benders_snapshot_stop_reason(
+    snapshots: &mut [BendersIterationSnapshot],
+    stop_reason: Option<BendersStopReason>,
+) {
+    if let Some(snapshot) = snapshots.last_mut() {
+        snapshot.stop_reason = stop_reason;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_benders_progress(
+    options: &FrameworkSolveOptions,
+    phase: &str,
+    iteration: usize,
+    max_iterations: usize,
+    stage_progress: f64,
+    elapsed: std::time::Duration,
+    objective_value: Option<f64>,
+    best_bound: Option<f64>,
+    terminal: bool,
+) -> Result<()> {
+    let overall_progress = if terminal || max_iterations == 0 {
+        ProgressValue::known(100.0)?
+    } else {
+        ProgressValue::known(iteration as f64 / max_iterations as f64 * 100.0)?
+    };
+    let relative_gap = objective_value
+        .zip(best_bound)
+        .map(|(objective, bound)| (objective - bound).abs() / objective.abs().max(1.0));
+    let (stage, stage_path) = if terminal {
+        (
+            SolveStage::Completed,
+            vec!["benders".to_owned(), "completed".to_owned()],
+        )
+    } else {
+        (
+            SolveStage::Combinatorial,
+            vec![
+                "benders".to_owned(),
+                format!("iteration/{iteration}"),
+                phase.to_owned(),
+            ],
+        )
+    };
+    emit_combinatorial_progress(
+        options,
+        options.name.as_deref().unwrap_or("benders"),
+        stage,
+        stage_path,
+        ProgressValue::known(stage_progress)?,
+        overall_progress,
+        elapsed,
+        objective_value,
+        best_bound,
+        relative_gap,
+        terminal,
+    )
+}
+
+#[cfg(test)]
+fn certified_linear_feasible_result(result: &LinearFeasibleResult) -> bool {
+    let Some(report) = result.report.as_ref() else {
+        return false;
+    };
+    let Ok(certificate) = require_optimal_lp_certificate(report) else {
+        return false;
+    };
+    let Some(solution) = report.solution.as_ref() else {
+        return false;
+    };
+    let Some(report_objective) = solution.objective_value.or(solution.objective) else {
+        return false;
+    };
+    if !approximately_equal(report_objective, result.result.obj)
+        || solution.values.len() != result.result.solution.len()
+        || solution
+            .values
+            .iter()
+            .zip(&result.result.solution)
+            .any(|(left, right)| !approximately_equal(*left, *right))
+        || certificate.dual.len() != result.dual_solution.constraints.len()
+        || certificate
+            .dual
+            .iter()
+            .zip(&result.dual_solution.constraints)
+            .any(|(left, right)| !approximately_equal(*left, *right))
+    {
+        return false;
+    }
+    true
+}
+
+fn certified_linear_feasible_result_for_model(
+    result: &LinearFeasibleResult,
+    expected_model: &ModelFingerprint,
+) -> bool {
+    let Some(report) = result.report.as_ref() else {
+        return false;
+    };
+    let Ok(certificate) = require_optimal_lp_certificate_for_model(report, expected_model) else {
+        return false;
+    };
+    let Some(solution) = report.solution.as_ref() else {
+        return false;
+    };
+    let Some(report_objective) = solution.objective_value.or(solution.objective) else {
+        return false;
+    };
+    approximately_equal(report_objective, result.result.obj)
+        && solution.values.len() == result.result.solution.len()
+        && solution
+            .values
+            .iter()
+            .zip(&result.result.solution)
+            .all(|(left, right)| approximately_equal(*left, *right))
+        && certificate.dual.len() == result.dual_solution.constraints.len()
+        && certificate
+            .dual
+            .iter()
+            .zip(&result.dual_solution.constraints)
+            .all(|(left, right)| approximately_equal(*left, *right))
+}
+
+#[cfg(test)]
+fn certified_linear_infeasible_result(result: &LinearInfeasibleResult) -> bool {
+    let Some(report) = result.report.as_ref() else {
+        return false;
+    };
+    if require_infeasibility_certificate(report).is_err() {
+        return false;
+    }
+    let evidence = report
+        .proof
+        .as_ref()
+        .and_then(|proof| proof.evidence.as_deref())
+        .or_else(|| {
+            report
+                .solution
+                .as_ref()
+                .and_then(|solution| solution.dual_solution.as_deref())
+        });
+    let Some(evidence) = evidence else {
+        return false;
+    };
+    evidence.len() == result.farkas_dual_solution.constraints.len()
+        && evidence
+            .iter()
+            .zip(&result.farkas_dual_solution.constraints)
+            .all(|(left, right)| approximately_equal(*left, *right))
+}
+
+fn certified_linear_infeasible_result_for_model(
+    result: &LinearInfeasibleResult,
+    expected_model: &ModelFingerprint,
+) -> bool {
+    let Some(report) = result.report.as_ref() else {
+        return false;
+    };
+    if require_infeasibility_certificate_for_model(report, expected_model).is_err() {
+        return false;
+    }
+    let evidence = report
+        .proof
+        .as_ref()
+        .and_then(|proof| proof.evidence.as_deref())
+        .or_else(|| {
+            report
+                .solution
+                .as_ref()
+                .and_then(|solution| solution.dual_solution.as_deref())
+        });
+    let Some(evidence) = evidence else {
+        return false;
+    };
+    evidence.len() == result.farkas_dual_solution.constraints.len()
+        && evidence
+            .iter()
+            .zip(&result.farkas_dual_solution.constraints)
+            .all(|(left, right)| approximately_equal(*left, *right))
+}
+
+fn benders_cancelled(options: &FrameworkSolveOptions) -> bool {
+    options
+        .cancellation_handle
+        .as_ref()
+        .is_some_and(SolveHandle::is_cancelled)
+}
+
+fn benders_cancel_error() -> CoreError {
+    CoreError::cancelled("BENDERS")
+}
+
+fn subproblem_termination_reason(report: Option<&SolveReport<f64>>) -> TerminationReason {
+    report
+        .map(|report| report.termination_reason)
+        .unwrap_or(TerminationReason::BackendFailure)
+}
+
+fn benders_cancelled_report(
+    solver_name: &str,
+    options: &FrameworkSolveOptions,
+) -> Result<SolveReport<f64>> {
+    let handle = options.cancellation_handle.as_ref().ok_or_else(|| {
+        CoreError::contract_error("Benders cancellation report requires a SolveHandle")
+    })?;
+    cancelled_solve_report(
+        SolverProvenance {
+            solver_id: solver_name.to_owned(),
+            backend_name: "framework-benders".to_owned(),
+            ..SolverProvenance::default()
+        },
+        handle,
+    )
 }
 
 /// 线性 Benders 分解求解器 trait / Linear Benders Decomposition Solver Trait
@@ -275,6 +612,56 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
     /// 求解主问题（同步）/ Solve master problem (synchronous)
     #[cfg(not(feature = "async"))]
     fn solve_master(&self, model: &LinearTriadModel, cuts: &[LinearCut]) -> Result<SolverOutput>;
+
+    /// 以统一报告求解主问题 / Solve the master problem as a unified report.
+    ///
+    /// 旧 `solve_master` 实现只提供兼容 facade，因此默认路径不会凭状态枚举
+    /// 生成 optimality proof；原生 adapter 应覆盖此方法并直接返回 backend report。
+    /// The legacy `solve_master` method only provides a compatibility facade, so the
+    /// default path never invents an optimality proof from its status enum. Native
+    /// adapters should override this method and return the backend report directly.
+    #[cfg(feature = "async")]
+    async fn solve_master_report(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master(model, cuts)
+            .await?
+            .try_into_solve_report()
+    }
+
+    /// 以统一报告求解主问题（同步）/ Solve the master problem as a unified report (sync).
+    #[cfg(not(feature = "async"))]
+    fn solve_master_report(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master(model, cuts)?.try_into_solve_report()
+    }
+
+    /// 使用统一选项求解 master report / Solve the master report with unified options.
+    #[cfg(feature = "async")]
+    async fn solve_master_report_with_options(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+        _options: &FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_report(model, cuts).await
+    }
+
+    /// 使用统一选项求解 master report / Solve the master report with unified options.
+    #[cfg(not(feature = "async"))]
+    fn solve_master_report_with_options(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+        _options: &FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_report(model, cuts)
+    }
 
     /// 求解子问题 / Solve sub-problem
     #[cfg(feature = "async")]
@@ -325,6 +712,28 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
             .try_into_typed(policy)
     }
 
+    /// 使用统一选项求解子问题 / Solve the sub-problem with unified options.
+    #[cfg(not(feature = "async"))]
+    fn solve_sub_with_options(
+        &self,
+        model: &LinearTriadModel,
+        master_solution: &[f64],
+        _options: &FrameworkSolveOptions,
+    ) -> Result<LinearSubResult> {
+        self.solve_sub(model, master_solution)
+    }
+
+    /// 使用统一选项求解子问题 / Solve the sub-problem with unified options.
+    #[cfg(feature = "async")]
+    async fn solve_sub_with_options(
+        &self,
+        model: &LinearTriadModel,
+        master_solution: &[f64],
+        _options: &FrameworkSolveOptions,
+    ) -> Result<LinearSubResult> {
+        self.solve_sub(model, master_solution).await
+    }
+
     /// 使用 MetaModel 执行 Benders 分解（async）/
     /// Execute Benders decomposition from MetaModel (async)
     #[cfg(feature = "async")]
@@ -341,6 +750,52 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
             sub_meta_model,
             FrameworkSolveOptions::default(),
         )
+    }
+
+    /// 使用 MetaModel 执行 Benders 并返回统一报告 / Execute Benders from MetaModel and return a unified report.
+    #[cfg(feature = "async")]
+    fn solve_report<'a, V>(
+        &'a self,
+        master_meta_model: &'a MetaModel<V>,
+        sub_meta_model: &'a MetaModel<V>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<SolveReport<V>>> + Send + 'a>>
+    where
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
+    {
+        self.solve_report_with_options(
+            master_meta_model,
+            sub_meta_model,
+            FrameworkSolveOptions::default(),
+        )
+    }
+
+    /// 使用参数对象执行 Benders 并返回统一报告 / Execute Benders with options and return a unified report.
+    #[cfg(feature = "async")]
+    fn solve_report_with_options<'a, V>(
+        &'a self,
+        master_meta_model: &'a MetaModel<V>,
+        sub_meta_model: &'a MetaModel<V>,
+        options: FrameworkSolveOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<SolveReport<V>>> + Send + 'a>>
+    where
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
+    {
+        let policy = options.value_conversion_policy;
+        let cancel_options = options.clone();
+        let solve_future = self.solve_meta_with_options(master_meta_model, sub_meta_model, options);
+        let solver_name = self.name().to_owned();
+        Box::pin(async move {
+            match solve_future.await {
+                Ok(solution) => {
+                    convert_report_value(solution.to_solve_report(&solver_name)?, policy)
+                }
+                Err(_error) if benders_cancelled(&cancel_options) => convert_report_value(
+                    benders_cancelled_report(&solver_name, &cancel_options)?,
+                    policy,
+                ),
+                Err(error) => Err(error),
+            }
+        })
     }
 
     /// 使用 MetaModel 执行 Benders 分解（简化参数对象，async）/
@@ -458,6 +913,46 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         )
     }
 
+    /// 使用 MetaModel 执行 Benders 并返回统一报告 / Execute Benders from MetaModel and return a unified report.
+    #[cfg(not(feature = "async"))]
+    fn solve_report<V>(
+        &self,
+        master_meta_model: &MetaModel<V>,
+        sub_meta_model: &MetaModel<V>,
+    ) -> Result<SolveReport<V>>
+    where
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
+    {
+        self.solve_report_with_options(
+            master_meta_model,
+            sub_meta_model,
+            FrameworkSolveOptions::default(),
+        )
+    }
+
+    /// 使用参数对象执行 Benders 并返回统一报告 / Execute Benders with options and return a unified report.
+    #[cfg(not(feature = "async"))]
+    fn solve_report_with_options<V>(
+        &self,
+        master_meta_model: &MetaModel<V>,
+        sub_meta_model: &MetaModel<V>,
+        options: FrameworkSolveOptions,
+    ) -> Result<SolveReport<V>>
+    where
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
+    {
+        let policy = options.value_conversion_policy;
+        let cancel_options = options.clone();
+        match self.solve_meta_with_options(master_meta_model, sub_meta_model, options) {
+            Ok(solution) => convert_report_value(solution.to_solve_report(self.name())?, policy),
+            Err(_error) if benders_cancelled(&cancel_options) => convert_report_value(
+                benders_cancelled_report(self.name(), &cancel_options)?,
+                policy,
+            ),
+            Err(error) => Err(error),
+        }
+    }
+
     /// 使用 MetaModel 执行 Benders 分解（简化参数对象，同步）/
     /// Execute Benders decomposition from MetaModel with simplified options object (synchronous)
     #[cfg(not(feature = "async"))]
@@ -541,16 +1036,21 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>>
     {
         Box::pin(async move {
-            self.solve(
-                master_model,
-                sub_model,
-                options.max_iterations,
-                options.tolerance,
-                options.max_stall_iterations,
-                options.objective_stall_iterations,
-            )
-            .await
+            self.solve_with_options_impl(master_model, sub_model, options)
+                .await
         })
+    }
+
+    /// 使用统一选项执行 Benders 迭代 / Execute Benders iterations with unified options.
+    #[cfg(feature = "async")]
+    async fn solve_with_options_impl(
+        &self,
+        master_model: &LinearTriadModel,
+        sub_model: &LinearTriadModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<FeasibleSolution> {
+        self.solve_core_with_options(master_model, sub_model, options)
+            .await
     }
 
     /// 使用参数对象执行 Benders 分解（同步）/
@@ -562,14 +1062,18 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         sub_model: &LinearTriadModel,
         options: FrameworkSolveOptions,
     ) -> Result<FeasibleSolution> {
-        self.solve(
-            master_model,
-            sub_model,
-            options.max_iterations,
-            options.tolerance,
-            options.max_stall_iterations,
-            options.objective_stall_iterations,
-        )
+        self.solve_with_options_impl(master_model, sub_model, options)
+    }
+
+    /// 使用统一选项执行 Benders 迭代 / Execute Benders iterations with unified options.
+    #[cfg(not(feature = "async"))]
+    fn solve_with_options_impl(
+        &self,
+        master_model: &LinearTriadModel,
+        sub_model: &LinearTriadModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<FeasibleSolution> {
+        self.solve_core_with_options(master_model, sub_model, options)
     }
 
     /// 执行 Benders 分解迭代 / Execute Benders decomposition iteration
@@ -583,6 +1087,26 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         max_stall_iterations: Option<usize>,
         objective_stall_iterations: Option<usize>,
     ) -> Result<FeasibleSolution> {
+        let mut options =
+            FrameworkSolveOptions::default().with_iterations(max_iterations, tolerance);
+        options.max_stall_iterations = max_stall_iterations;
+        options.objective_stall_iterations = objective_stall_iterations;
+        self.solve_core_with_options(master_model, sub_model, options)
+            .await
+    }
+
+    /// 带统一选项的线性 Benders 核心循环 / Linear Benders core loop with unified options.
+    #[cfg(feature = "async")]
+    async fn solve_core_with_options(
+        &self,
+        master_model: &LinearTriadModel,
+        sub_model: &LinearTriadModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<FeasibleSolution> {
+        let max_iterations = options.max_iterations;
+        let tolerance = options.tolerance;
+        let max_stall_iterations = options.max_stall_iterations;
+        let objective_stall_iterations = options.objective_stall_iterations;
         let mut cuts = Vec::new();
         let mut best_solution: Option<FeasibleSolution> = None;
         let mut best_solution_iterations: Option<usize> = None;
@@ -594,14 +1118,47 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         let mut executed_iterations = 0usize;
         let mut stop_reason: Option<BendersStopReason> = None;
         let mut iteration_snapshots: Vec<BendersIterationSnapshot> = Vec::new();
+        let begin = Instant::now();
 
         for iter in 0..max_iterations {
             executed_iterations = iter + 1;
+            if benders_cancelled(&options) {
+                return Err(benders_cancel_error());
+            }
+            emit_benders_progress(
+                &options,
+                "master",
+                executed_iterations,
+                max_iterations,
+                0.0,
+                begin.elapsed(),
+                None,
+                None,
+                false,
+            )?;
             // 求解主问题 / Solve master problem
-            let master_result = self.solve_master(master_model, &cuts).await?;
+            let master_report = self
+                .solve_master_report_with_options(master_model, &cuts, &options)
+                .await?;
+            if benders_cancelled(&options) {
+                return Err(benders_cancel_error());
+            }
 
-            let master_solution = master_solution_from_output(&master_result)?;
-            let master_obj = master_objective_from_output(&master_result);
+            let master_solution = match master_solution_from_report(&master_report) {
+                Ok(solution) => solution,
+                Err(_error) if master_report.has_incumbent() => {
+                    return partial_master_solution_from_report(
+                        &master_report,
+                        executed_iterations,
+                        cuts.len(),
+                        no_cut_iterations,
+                        no_obj_improvement_iterations,
+                        iteration_snapshots,
+                    );
+                }
+                Err(error) => return Err(error),
+            };
+            let master_obj = master_objective_from_report(&master_report)?;
 
             if (master_obj - prev_obj).abs() < tolerance {
                 no_obj_improvement_iterations += 1;
@@ -612,23 +1169,58 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
 
             // 求解子问题 / Solve sub-problem
             let cuts_before = cuts.len();
-            let sub_result = self.solve_sub(sub_model, &master_solution).await?;
+            let sub_result = self
+                .solve_sub_with_options(sub_model, &master_solution, &options)
+                .await?;
+            if benders_cancelled(&options) {
+                return Err(benders_cancel_error());
+            }
+            let sub_model_fingerprint = linear_model_fingerprint(sub_model)?;
+            let subproblem_report;
+            let mut subproblem_certificate = None;
 
             match sub_result {
                 LinearSubResult::Feasible(feasible) => {
                     // 更新最优解 / Update best solution
-                    best_solution = Some(feasible.result.clone());
+                    subproblem_report = feasible.report.clone();
+                    let (candidate, _) =
+                        apply_master_bound(feasible.result.clone(), &master_report);
+                    best_solution = Some(candidate);
                     best_solution_iterations = Some(iter + 1);
 
-                    // 添加切割（如果有）/ Add cuts if present
-                    if let Some(new_cuts) = feasible.cuts {
-                        cuts.extend(new_cuts);
+                    // 只有通过统一最优 LP/dual 证书的结果才能产生 exact cut。
+                    // Only a result with a verified unified optimal-LP/dual certificate may produce an exact cut.
+                    let certified = certified_linear_feasible_result_for_model(
+                        &feasible,
+                        &sub_model_fingerprint,
+                    );
+                    if certified {
+                        subproblem_certificate = Some("subproblem-optimality");
+                        if let Some(new_cuts) = feasible.cuts {
+                            cuts.extend(new_cuts);
+                        }
+                    } else {
+                        stop_reason = Some(BendersStopReason::SubproblemTermination(
+                            subproblem_termination_reason(feasible.report.as_ref()),
+                        ));
                     }
                 }
                 LinearSubResult::Infeasible(infeasible) => {
-                    // 添加可行性切割 / Add feasibility cuts
-                    if let Some(new_cuts) = infeasible.cuts {
-                        cuts.extend(new_cuts);
+                    subproblem_report = infeasible.report.clone();
+                    // 只有 verified Farkas/evidence 才能产生可行性切割。
+                    // Only verified Farkas/evidence may produce a feasibility cut.
+                    if certified_linear_infeasible_result_for_model(
+                        &infeasible,
+                        &sub_model_fingerprint,
+                    ) {
+                        subproblem_certificate = Some("subproblem-infeasibility");
+                        if let Some(new_cuts) = infeasible.cuts {
+                            cuts.extend(new_cuts);
+                        }
+                    } else {
+                        return Err(CoreError::contract_error(
+                            "Benders infeasible subproblem lacks a verified Farkas certificate",
+                        ));
                     }
                 }
             }
@@ -642,26 +1234,58 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
             iteration_snapshots.push(BendersIterationSnapshot {
                 iteration: iter + 1,
                 master_obj,
-                master_gap: master_result.mip_gap,
+                master_gap: master_report.statistics.relative_gap,
+                master_bound: master_report.statistics.best_bound_value,
                 cuts_added,
                 total_cuts: cuts.len(),
                 no_cut_iterations,
                 no_obj_improvement_iterations,
+                master_attempt_id: format!("benders/iteration/{}/master", iter + 1),
+                subproblem_attempt_id: Some(format!("benders/iteration/{}/subproblem", iter + 1)),
+                master_report: Some(master_report.clone()),
+                subproblem_report: subproblem_report.clone(),
+                bound_valid: master_report.is_optimal()
+                    && master_report.statistics.best_bound_value.is_some(),
+                proof_reference: benders_proof_reference(
+                    &master_report,
+                    subproblem_report.as_ref(),
+                    subproblem_certificate,
+                ),
+                stop_reason,
             });
-            if let Some(window) = max_stall_iterations {
-                if no_cut_iterations >= window {
-                    stop_reason = Some(BendersStopReason::CutStall);
-                    log::info!(
-                        "Benders decomposition stopped at iteration {} due to cut stagnation window {}",
-                        iter + 1,
-                        window
-                    );
-                    break;
-                }
+            emit_benders_progress(
+                &options,
+                "subproblem",
+                executed_iterations,
+                max_iterations,
+                100.0,
+                begin.elapsed(),
+                Some(master_obj),
+                master_report.statistics.best_bound_value,
+                false,
+            )?;
+            if matches!(
+                stop_reason,
+                Some(BendersStopReason::SubproblemTermination(_))
+            ) {
+                break;
+            }
+            if let Some(window) = max_stall_iterations
+                && no_cut_iterations >= window
+            {
+                stop_reason = Some(BendersStopReason::CutStall);
+                update_last_benders_snapshot_stop_reason(&mut iteration_snapshots, stop_reason);
+                log::info!(
+                    "Benders decomposition stopped at iteration {} due to cut stagnation window {}",
+                    iter + 1,
+                    window
+                );
+                break;
             }
 
             if no_obj_improvement_iterations >= objective_stall_iterations {
                 stop_reason = Some(BendersStopReason::ObjectiveStall);
+                update_last_benders_snapshot_stop_reason(&mut iteration_snapshots, stop_reason);
                 log::info!(
                     "Benders decomposition stopped at iteration {} due to objective stall window {}",
                     iter + 1,
@@ -673,7 +1297,24 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
 
         if stop_reason.is_none() && executed_iterations >= max_iterations && max_iterations > 0 {
             stop_reason = Some(BendersStopReason::IterationLimit);
+            update_last_benders_snapshot_stop_reason(&mut iteration_snapshots, stop_reason);
         }
+
+        let best_objective = best_solution.as_ref().map(|solution| solution.obj);
+        let best_bound = best_solution
+            .as_ref()
+            .and_then(|solution| solution.possible_best_obj);
+        emit_benders_progress(
+            &options,
+            "completed",
+            executed_iterations,
+            max_iterations,
+            100.0,
+            begin.elapsed(),
+            best_objective,
+            best_bound,
+            true,
+        )?;
 
         match best_solution {
             Some(solution) => {
@@ -693,9 +1334,7 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
                     None => solution.with_benders_runtime_metrics(runtime_metrics),
                 })
             }
-            None => Err(CoreError::Solver(SolverError::SolveFailed(
-                "Benders decomposition did not converge".into(),
-            ))),
+            None => Err(CoreError::Solver(SolverError::NoSolution)),
         }
     }
 
@@ -710,6 +1349,25 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         max_stall_iterations: Option<usize>,
         objective_stall_iterations: Option<usize>,
     ) -> Result<FeasibleSolution> {
+        let mut options =
+            FrameworkSolveOptions::default().with_iterations(max_iterations, tolerance);
+        options.max_stall_iterations = max_stall_iterations;
+        options.objective_stall_iterations = objective_stall_iterations;
+        self.solve_core_with_options(master_model, sub_model, options)
+    }
+
+    /// 带统一选项的线性 Benders 核心循环 / Linear Benders core loop with unified options.
+    #[cfg(not(feature = "async"))]
+    fn solve_core_with_options(
+        &self,
+        master_model: &LinearTriadModel,
+        sub_model: &LinearTriadModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<FeasibleSolution> {
+        let max_iterations = options.max_iterations;
+        let tolerance = options.tolerance;
+        let max_stall_iterations = options.max_stall_iterations;
+        let objective_stall_iterations = options.objective_stall_iterations;
         let mut cuts = Vec::new();
         let mut best_solution: Option<FeasibleSolution> = None;
         let mut best_solution_iterations: Option<usize> = None;
@@ -721,14 +1379,46 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
         let mut executed_iterations = 0usize;
         let mut stop_reason: Option<BendersStopReason> = None;
         let mut iteration_snapshots: Vec<BendersIterationSnapshot> = Vec::new();
+        let begin = Instant::now();
 
         for iter in 0..max_iterations {
             executed_iterations = iter + 1;
+            if benders_cancelled(&options) {
+                return Err(benders_cancel_error());
+            }
+            emit_benders_progress(
+                &options,
+                "master",
+                executed_iterations,
+                max_iterations,
+                0.0,
+                begin.elapsed(),
+                None,
+                None,
+                false,
+            )?;
             // 求解主问题 / Solve master problem
-            let master_result = self.solve_master(master_model, &cuts)?;
+            let master_report =
+                self.solve_master_report_with_options(master_model, &cuts, &options)?;
+            if benders_cancelled(&options) {
+                return Err(benders_cancel_error());
+            }
 
-            let master_solution = master_solution_from_output(&master_result)?;
-            let master_obj = master_objective_from_output(&master_result);
+            let master_solution = match master_solution_from_report(&master_report) {
+                Ok(solution) => solution,
+                Err(_error) if master_report.has_incumbent() => {
+                    return partial_master_solution_from_report(
+                        &master_report,
+                        executed_iterations,
+                        cuts.len(),
+                        no_cut_iterations,
+                        no_obj_improvement_iterations,
+                        iteration_snapshots,
+                    );
+                }
+                Err(error) => return Err(error),
+            };
+            let master_obj = master_objective_from_report(&master_report)?;
 
             if (master_obj - prev_obj).abs() < tolerance {
                 no_obj_improvement_iterations += 1;
@@ -739,23 +1429,56 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
 
             // 求解子问题 / Solve sub-problem
             let cuts_before = cuts.len();
-            let sub_result = self.solve_sub(sub_model, &master_solution)?;
+            let sub_result = self.solve_sub_with_options(sub_model, &master_solution, &options)?;
+            if benders_cancelled(&options) {
+                return Err(benders_cancel_error());
+            }
+            let sub_model_fingerprint = linear_model_fingerprint(sub_model)?;
+            let subproblem_report;
+            let mut subproblem_certificate = None;
 
             match sub_result {
                 LinearSubResult::Feasible(feasible) => {
                     // 更新最优解 / Update best solution
-                    best_solution = Some(feasible.result.clone());
+                    subproblem_report = feasible.report.clone();
+                    let (candidate, _) =
+                        apply_master_bound(feasible.result.clone(), &master_report);
+                    best_solution = Some(candidate);
                     best_solution_iterations = Some(iter + 1);
 
-                    // 添加切割（如果有）/ Add cuts if present
-                    if let Some(new_cuts) = feasible.cuts {
-                        cuts.extend(new_cuts);
+                    // 只有通过统一最优 LP/dual 证书的结果才能产生 exact cut。
+                    // Only a result with a verified unified optimal-LP/dual certificate may produce an exact cut.
+                    let certified = certified_linear_feasible_result_for_model(
+                        &feasible,
+                        &sub_model_fingerprint,
+                    );
+                    if certified {
+                        subproblem_certificate = Some("subproblem-optimality");
+                        if let Some(new_cuts) = feasible.cuts {
+                            cuts.extend(new_cuts);
+                        }
+                    } else {
+                        stop_reason = Some(BendersStopReason::SubproblemTermination(
+                            subproblem_termination_reason(feasible.report.as_ref()),
+                        ));
                     }
                 }
                 LinearSubResult::Infeasible(infeasible) => {
-                    // 添加可行性切割 / Add feasibility cuts
-                    if let Some(new_cuts) = infeasible.cuts {
-                        cuts.extend(new_cuts);
+                    subproblem_report = infeasible.report.clone();
+                    // 只有 verified Farkas/evidence 才能产生可行性切割。
+                    // Only verified Farkas/evidence may produce a feasibility cut.
+                    if certified_linear_infeasible_result_for_model(
+                        &infeasible,
+                        &sub_model_fingerprint,
+                    ) {
+                        subproblem_certificate = Some("subproblem-infeasibility");
+                        if let Some(new_cuts) = infeasible.cuts {
+                            cuts.extend(new_cuts);
+                        }
+                    } else {
+                        return Err(CoreError::contract_error(
+                            "Benders infeasible subproblem lacks a verified Farkas certificate",
+                        ));
                     }
                 }
             }
@@ -769,26 +1492,58 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
             iteration_snapshots.push(BendersIterationSnapshot {
                 iteration: iter + 1,
                 master_obj,
-                master_gap: master_result.mip_gap,
+                master_gap: master_report.statistics.relative_gap,
+                master_bound: master_report.statistics.best_bound_value,
                 cuts_added,
                 total_cuts: cuts.len(),
                 no_cut_iterations,
                 no_obj_improvement_iterations,
+                master_attempt_id: format!("benders/iteration/{}/master", iter + 1),
+                subproblem_attempt_id: Some(format!("benders/iteration/{}/subproblem", iter + 1)),
+                master_report: Some(master_report.clone()),
+                subproblem_report: subproblem_report.clone(),
+                bound_valid: master_report.is_optimal()
+                    && master_report.statistics.best_bound_value.is_some(),
+                proof_reference: benders_proof_reference(
+                    &master_report,
+                    subproblem_report.as_ref(),
+                    subproblem_certificate,
+                ),
+                stop_reason,
             });
-            if let Some(window) = max_stall_iterations {
-                if no_cut_iterations >= window {
-                    stop_reason = Some(BendersStopReason::CutStall);
-                    log::info!(
-                        "Benders decomposition stopped at iteration {} due to cut stagnation window {}",
-                        iter + 1,
-                        window
-                    );
-                    break;
-                }
+            emit_benders_progress(
+                &options,
+                "subproblem",
+                executed_iterations,
+                max_iterations,
+                100.0,
+                begin.elapsed(),
+                Some(master_obj),
+                master_report.statistics.best_bound_value,
+                false,
+            )?;
+            if matches!(
+                stop_reason,
+                Some(BendersStopReason::SubproblemTermination(_))
+            ) {
+                break;
+            }
+            if let Some(window) = max_stall_iterations
+                && no_cut_iterations >= window
+            {
+                stop_reason = Some(BendersStopReason::CutStall);
+                update_last_benders_snapshot_stop_reason(&mut iteration_snapshots, stop_reason);
+                log::info!(
+                    "Benders decomposition stopped at iteration {} due to cut stagnation window {}",
+                    iter + 1,
+                    window
+                );
+                break;
             }
 
             if no_obj_improvement_iterations >= objective_stall_iterations {
                 stop_reason = Some(BendersStopReason::ObjectiveStall);
+                update_last_benders_snapshot_stop_reason(&mut iteration_snapshots, stop_reason);
                 log::info!(
                     "Benders decomposition stopped at iteration {} due to objective stall window {}",
                     iter + 1,
@@ -800,7 +1555,24 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
 
         if stop_reason.is_none() && executed_iterations >= max_iterations && max_iterations > 0 {
             stop_reason = Some(BendersStopReason::IterationLimit);
+            update_last_benders_snapshot_stop_reason(&mut iteration_snapshots, stop_reason);
         }
+
+        let best_objective = best_solution.as_ref().map(|solution| solution.obj);
+        let best_bound = best_solution
+            .as_ref()
+            .and_then(|solution| solution.possible_best_obj);
+        emit_benders_progress(
+            &options,
+            "completed",
+            executed_iterations,
+            max_iterations,
+            100.0,
+            begin.elapsed(),
+            best_objective,
+            best_bound,
+            true,
+        )?;
 
         match best_solution {
             Some(solution) => {
@@ -820,9 +1592,7 @@ pub trait LinearBendersDecompositionSolver: Send + Sync {
                     None => solution.with_benders_runtime_metrics(runtime_metrics),
                 })
             }
-            None => Err(CoreError::Solver(SolverError::SolveFailed(
-                "Benders decomposition did not converge".into(),
-            ))),
+            None => Err(CoreError::Solver(SolverError::NoSolution)),
         }
     }
 }
@@ -856,6 +1626,7 @@ impl QuadraticCut {
 }
 
 /// 二次子问题结果 / Quadratic Sub-problem Result
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum QuadraticSubResult {
     /// 可行解 / Feasible solution
@@ -1025,6 +1796,56 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         quadratic_cuts: &[QuadraticCut],
     ) -> Result<SolverOutput>;
 
+    /// 以统一报告求解二次主问题 / Solve the quadratic master problem as a unified report.
+    #[cfg(feature = "async")]
+    async fn solve_master_quadratic_report(
+        &self,
+        model: &QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_quadratic(model, linear_cuts, quadratic_cuts)
+            .await?
+            .try_into_solve_report()
+    }
+
+    /// 以统一报告求解二次主问题（同步）/ Solve the quadratic master as a unified report (sync).
+    #[cfg(not(feature = "async"))]
+    fn solve_master_quadratic_report(
+        &self,
+        model: &QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_quadratic(model, linear_cuts, quadratic_cuts)?
+            .try_into_solve_report()
+    }
+
+    /// 使用统一选项求解二次 master report / Solve the quadratic master report with unified options.
+    #[cfg(feature = "async")]
+    async fn solve_master_quadratic_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+        _options: &FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_quadratic_report(model, linear_cuts, quadratic_cuts)
+            .await
+    }
+
+    /// 使用统一选项求解二次 master report / Solve the quadratic master report with unified options.
+    #[cfg(not(feature = "async"))]
+    fn solve_master_quadratic_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+        _options: &FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_quadratic_report(model, linear_cuts, quadratic_cuts)
+    }
+
     /// 求解二次子问题 / Solve quadratic sub-problem
     #[cfg(feature = "async")]
     async fn solve_sub_quadratic(
@@ -1078,6 +1899,28 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
             .try_into_typed(policy)
     }
 
+    /// 使用统一选项求解二次子问题 / Solve the quadratic sub-problem with unified options.
+    #[cfg(not(feature = "async"))]
+    fn solve_sub_quadratic_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        master_solution: &[f64],
+        _options: &FrameworkSolveOptions,
+    ) -> Result<QuadraticSubResult> {
+        self.solve_sub_quadratic(model, master_solution)
+    }
+
+    /// 使用统一选项求解二次子问题 / Solve the quadratic sub-problem with unified options.
+    #[cfg(feature = "async")]
+    async fn solve_sub_quadratic_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        master_solution: &[f64],
+        _options: &FrameworkSolveOptions,
+    ) -> Result<QuadraticSubResult> {
+        self.solve_sub_quadratic(model, master_solution).await
+    }
+
     /// 使用 MetaModel 执行二次 Benders 分解（async）/
     /// Execute quadratic Benders decomposition from MetaModel (async)
     #[cfg(feature = "async")]
@@ -1094,6 +1937,53 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
             sub_meta_model,
             FrameworkSolveOptions::default(),
         )
+    }
+
+    /// 使用 MetaModel 执行二次 Benders 并返回统一报告 / Execute quadratic Benders and return a unified report.
+    #[cfg(feature = "async")]
+    fn solve_report_quadratic<'a, V>(
+        &'a self,
+        master_meta_model: &'a MetaModel<V>,
+        sub_meta_model: &'a MetaModel<V>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<SolveReport<V>>> + Send + 'a>>
+    where
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
+    {
+        self.solve_report_quadratic_with_options(
+            master_meta_model,
+            sub_meta_model,
+            FrameworkSolveOptions::default(),
+        )
+    }
+
+    /// 使用参数对象执行二次 Benders 并返回统一报告 / Execute quadratic Benders with options and return a unified report.
+    #[cfg(feature = "async")]
+    fn solve_report_quadratic_with_options<'a, V>(
+        &'a self,
+        master_meta_model: &'a MetaModel<V>,
+        sub_meta_model: &'a MetaModel<V>,
+        options: FrameworkSolveOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<SolveReport<V>>> + Send + 'a>>
+    where
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
+    {
+        let policy = options.value_conversion_policy;
+        let cancel_options = options.clone();
+        let solve_future =
+            self.solve_meta_quadratic_with_options(master_meta_model, sub_meta_model, options);
+        let solver_name = self.name().to_owned();
+        Box::pin(async move {
+            match solve_future.await {
+                Ok(solution) => {
+                    convert_report_value(solution.to_solve_report(&solver_name)?, policy)
+                }
+                Err(_error) if benders_cancelled(&cancel_options) => convert_report_value(
+                    benders_cancelled_report(&solver_name, &cancel_options)?,
+                    policy,
+                ),
+                Err(error) => Err(error),
+            }
+        })
     }
 
     /// 使用 MetaModel 执行二次 Benders 分解（简化参数对象，async）/
@@ -1213,6 +2103,46 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         )
     }
 
+    /// 使用 MetaModel 执行二次 Benders 并返回统一报告 / Execute quadratic Benders and return a unified report.
+    #[cfg(not(feature = "async"))]
+    fn solve_report_quadratic<V>(
+        &self,
+        master_meta_model: &MetaModel<V>,
+        sub_meta_model: &MetaModel<V>,
+    ) -> Result<SolveReport<V>>
+    where
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
+    {
+        self.solve_report_quadratic_with_options(
+            master_meta_model,
+            sub_meta_model,
+            FrameworkSolveOptions::default(),
+        )
+    }
+
+    /// 使用参数对象执行二次 Benders 并返回统一报告 / Execute quadratic Benders with options and return a unified report.
+    #[cfg(not(feature = "async"))]
+    fn solve_report_quadratic_with_options<V>(
+        &self,
+        master_meta_model: &MetaModel<V>,
+        sub_meta_model: &MetaModel<V>,
+        options: FrameworkSolveOptions,
+    ) -> Result<SolveReport<V>>
+    where
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
+    {
+        let policy = options.value_conversion_policy;
+        let cancel_options = options.clone();
+        match self.solve_meta_quadratic_with_options(master_meta_model, sub_meta_model, options) {
+            Ok(solution) => convert_report_value(solution.to_solve_report(self.name())?, policy),
+            Err(_error) if benders_cancelled(&cancel_options) => convert_report_value(
+                benders_cancelled_report(self.name(), &cancel_options)?,
+                policy,
+            ),
+            Err(error) => Err(error),
+        }
+    }
+
     /// 使用 MetaModel 执行二次 Benders 分解（简化参数对象，同步）/
     /// Execute quadratic Benders decomposition from MetaModel with simplified options object (synchronous)
     #[cfg(not(feature = "async"))]
@@ -1296,16 +2226,21 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>>
     {
         Box::pin(async move {
-            self.solve_quadratic(
-                master_model,
-                sub_model,
-                options.max_iterations,
-                options.tolerance,
-                options.max_stall_iterations,
-                options.objective_stall_iterations,
-            )
-            .await
+            self.solve_quadratic_with_options_impl(master_model, sub_model, options)
+                .await
         })
+    }
+
+    /// 使用统一选项执行二次 Benders 迭代 / Execute quadratic Benders iterations with unified options.
+    #[cfg(feature = "async")]
+    async fn solve_quadratic_with_options_impl(
+        &self,
+        master_model: &QuadraticTetradModel,
+        sub_model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<FeasibleSolution> {
+        self.solve_quadratic_core_with_options(master_model, sub_model, options)
+            .await
     }
 
     /// 使用参数对象执行二次 Benders 分解（同步）/
@@ -1317,14 +2252,18 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         sub_model: &QuadraticTetradModel,
         options: FrameworkSolveOptions,
     ) -> Result<FeasibleSolution> {
-        self.solve_quadratic(
-            master_model,
-            sub_model,
-            options.max_iterations,
-            options.tolerance,
-            options.max_stall_iterations,
-            options.objective_stall_iterations,
-        )
+        self.solve_quadratic_with_options_impl(master_model, sub_model, options)
+    }
+
+    /// 使用统一选项执行二次 Benders 迭代 / Execute quadratic Benders iterations with unified options.
+    #[cfg(not(feature = "async"))]
+    fn solve_quadratic_with_options_impl(
+        &self,
+        master_model: &QuadraticTetradModel,
+        sub_model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<FeasibleSolution> {
+        self.solve_quadratic_core_with_options(master_model, sub_model, options)
     }
 
     /// 执行二次 Benders 分解迭代 / Execute quadratic Benders decomposition iteration
@@ -1338,6 +2277,26 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         max_stall_iterations: Option<usize>,
         objective_stall_iterations: Option<usize>,
     ) -> Result<FeasibleSolution> {
+        let mut options =
+            FrameworkSolveOptions::default().with_iterations(max_iterations, tolerance);
+        options.max_stall_iterations = max_stall_iterations;
+        options.objective_stall_iterations = objective_stall_iterations;
+        self.solve_quadratic_core_with_options(master_model, sub_model, options)
+            .await
+    }
+
+    /// 带统一选项的二次 Benders 核心循环 / Quadratic Benders core loop with unified options.
+    #[cfg(feature = "async")]
+    async fn solve_quadratic_core_with_options(
+        &self,
+        master_model: &QuadraticTetradModel,
+        sub_model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<FeasibleSolution> {
+        let max_iterations = options.max_iterations;
+        let tolerance = options.tolerance;
+        let max_stall_iterations = options.max_stall_iterations;
+        let objective_stall_iterations = options.objective_stall_iterations;
         let mut linear_cuts = Vec::new();
         let mut quadratic_cuts = Vec::new();
         let mut best_solution: Option<FeasibleSolution> = None;
@@ -1350,14 +2309,50 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         let mut executed_iterations = 0usize;
         let mut stop_reason: Option<BendersStopReason> = None;
         let mut iteration_snapshots: Vec<BendersIterationSnapshot> = Vec::new();
+        let begin = Instant::now();
 
         for iter in 0..max_iterations {
             executed_iterations = iter + 1;
-            let master_result = self
-                .solve_master_quadratic(master_model, &linear_cuts, &quadratic_cuts)
+            if benders_cancelled(&options) {
+                return Err(benders_cancel_error());
+            }
+            emit_benders_progress(
+                &options,
+                "master",
+                executed_iterations,
+                max_iterations,
+                0.0,
+                begin.elapsed(),
+                None,
+                None,
+                false,
+            )?;
+            let master_report = self
+                .solve_master_quadratic_report_with_options(
+                    master_model,
+                    &linear_cuts,
+                    &quadratic_cuts,
+                    &options,
+                )
                 .await?;
-            let master_solution = master_solution_from_output(&master_result)?;
-            let master_obj = master_objective_from_output(&master_result);
+            if benders_cancelled(&options) {
+                return Err(benders_cancel_error());
+            }
+            let master_solution = match master_solution_from_report(&master_report) {
+                Ok(solution) => solution,
+                Err(_error) if master_report.has_incumbent() => {
+                    return partial_master_solution_from_report(
+                        &master_report,
+                        executed_iterations,
+                        linear_cuts.len() + quadratic_cuts.len(),
+                        no_cut_iterations,
+                        no_obj_improvement_iterations,
+                        iteration_snapshots,
+                    );
+                }
+                Err(error) => return Err(error),
+            };
+            let master_obj = master_objective_from_report(&master_report)?;
 
             if (master_obj - prev_obj).abs() < tolerance {
                 no_obj_improvement_iterations += 1;
@@ -1368,25 +2363,55 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
 
             let cuts_before = linear_cuts.len() + quadratic_cuts.len();
             let sub_result = self
-                .solve_sub_quadratic(sub_model, &master_solution)
+                .solve_sub_quadratic_with_options(sub_model, &master_solution, &options)
                 .await?;
+            if benders_cancelled(&options) {
+                return Err(benders_cancel_error());
+            }
+            let sub_model_fingerprint = quadratic_model_fingerprint(sub_model)?;
+            let subproblem_report;
+            let mut subproblem_certificate = None;
             match sub_result {
                 QuadraticSubResult::Feasible(feasible) => {
-                    best_solution = Some(feasible.linear.result.clone());
+                    subproblem_report = feasible.linear.report.clone();
+                    let (candidate, _) =
+                        apply_master_bound(feasible.linear.result.clone(), &master_report);
+                    best_solution = Some(candidate);
                     best_solution_iterations = Some(iter + 1);
-                    if let Some(new_linear_cuts) = feasible.linear.cuts {
-                        linear_cuts.extend(new_linear_cuts);
-                    }
-                    if let Some(new_quadratic_cuts) = feasible.quadratic_cuts {
-                        quadratic_cuts.extend(new_quadratic_cuts);
+                    if certified_linear_feasible_result_for_model(
+                        &feasible.linear,
+                        &sub_model_fingerprint,
+                    ) {
+                        subproblem_certificate = Some("subproblem-optimality");
+                        if let Some(new_linear_cuts) = feasible.linear.cuts {
+                            linear_cuts.extend(new_linear_cuts);
+                        }
+                        if let Some(new_quadratic_cuts) = feasible.quadratic_cuts {
+                            quadratic_cuts.extend(new_quadratic_cuts);
+                        }
+                    } else {
+                        stop_reason = Some(BendersStopReason::SubproblemTermination(
+                            subproblem_termination_reason(feasible.linear.report.as_ref()),
+                        ));
                     }
                 }
                 QuadraticSubResult::Infeasible(infeasible) => {
-                    if let Some(new_linear_cuts) = infeasible.linear.cuts {
-                        linear_cuts.extend(new_linear_cuts);
-                    }
-                    if let Some(new_quadratic_cuts) = infeasible.quadratic_cuts {
-                        quadratic_cuts.extend(new_quadratic_cuts);
+                    subproblem_report = infeasible.linear.report.clone();
+                    if certified_linear_infeasible_result_for_model(
+                        &infeasible.linear,
+                        &sub_model_fingerprint,
+                    ) {
+                        subproblem_certificate = Some("subproblem-infeasibility");
+                        if let Some(new_linear_cuts) = infeasible.linear.cuts {
+                            linear_cuts.extend(new_linear_cuts);
+                        }
+                        if let Some(new_quadratic_cuts) = infeasible.quadratic_cuts {
+                            quadratic_cuts.extend(new_quadratic_cuts);
+                        }
+                    } else {
+                        return Err(CoreError::contract_error(
+                            "quadratic Benders infeasible subproblem lacks a verified Farkas certificate",
+                        ));
                     }
                 }
             }
@@ -1401,26 +2426,58 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
             iteration_snapshots.push(BendersIterationSnapshot {
                 iteration: iter + 1,
                 master_obj,
-                master_gap: master_result.mip_gap,
+                master_gap: master_report.statistics.relative_gap,
+                master_bound: master_report.statistics.best_bound_value,
                 cuts_added,
                 total_cuts: total_cuts_now,
                 no_cut_iterations,
                 no_obj_improvement_iterations,
+                master_attempt_id: format!("benders/iteration/{}/master", iter + 1),
+                subproblem_attempt_id: Some(format!("benders/iteration/{}/subproblem", iter + 1)),
+                master_report: Some(master_report.clone()),
+                subproblem_report: subproblem_report.clone(),
+                bound_valid: master_report.is_optimal()
+                    && master_report.statistics.best_bound_value.is_some(),
+                proof_reference: benders_proof_reference(
+                    &master_report,
+                    subproblem_report.as_ref(),
+                    subproblem_certificate,
+                ),
+                stop_reason,
             });
-            if let Some(window) = max_stall_iterations {
-                if no_cut_iterations >= window {
-                    stop_reason = Some(BendersStopReason::CutStall);
-                    log::info!(
-                        "Quadratic Benders decomposition stopped at iteration {} due to cut stagnation window {}",
-                        iter + 1,
-                        window
-                    );
-                    break;
-                }
+            emit_benders_progress(
+                &options,
+                "subproblem",
+                executed_iterations,
+                max_iterations,
+                100.0,
+                begin.elapsed(),
+                Some(master_obj),
+                master_report.statistics.best_bound_value,
+                false,
+            )?;
+            if matches!(
+                stop_reason,
+                Some(BendersStopReason::SubproblemTermination(_))
+            ) {
+                break;
+            }
+            if let Some(window) = max_stall_iterations
+                && no_cut_iterations >= window
+            {
+                stop_reason = Some(BendersStopReason::CutStall);
+                update_last_benders_snapshot_stop_reason(&mut iteration_snapshots, stop_reason);
+                log::info!(
+                    "Quadratic Benders decomposition stopped at iteration {} due to cut stagnation window {}",
+                    iter + 1,
+                    window
+                );
+                break;
             }
 
             if no_obj_improvement_iterations >= objective_stall_iterations {
                 stop_reason = Some(BendersStopReason::ObjectiveStall);
+                update_last_benders_snapshot_stop_reason(&mut iteration_snapshots, stop_reason);
                 log::info!(
                     "Quadratic Benders decomposition stopped at iteration {} due to objective stall window {}",
                     iter + 1,
@@ -1432,7 +2489,24 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
 
         if stop_reason.is_none() && executed_iterations >= max_iterations && max_iterations > 0 {
             stop_reason = Some(BendersStopReason::IterationLimit);
+            update_last_benders_snapshot_stop_reason(&mut iteration_snapshots, stop_reason);
         }
+
+        let best_objective = best_solution.as_ref().map(|solution| solution.obj);
+        let best_bound = best_solution
+            .as_ref()
+            .and_then(|solution| solution.possible_best_obj);
+        emit_benders_progress(
+            &options,
+            "completed",
+            executed_iterations,
+            max_iterations,
+            100.0,
+            begin.elapsed(),
+            best_objective,
+            best_bound,
+            true,
+        )?;
 
         match best_solution {
             Some(solution) => {
@@ -1452,9 +2526,7 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
                     None => solution.with_benders_runtime_metrics(runtime_metrics),
                 })
             }
-            None => Err(CoreError::Solver(SolverError::SolveFailed(
-                "Quadratic Benders decomposition did not converge".into(),
-            ))),
+            None => Err(CoreError::Solver(SolverError::NoSolution)),
         }
     }
 
@@ -1469,6 +2541,25 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         max_stall_iterations: Option<usize>,
         objective_stall_iterations: Option<usize>,
     ) -> Result<FeasibleSolution> {
+        let mut options =
+            FrameworkSolveOptions::default().with_iterations(max_iterations, tolerance);
+        options.max_stall_iterations = max_stall_iterations;
+        options.objective_stall_iterations = objective_stall_iterations;
+        self.solve_quadratic_core_with_options(master_model, sub_model, options)
+    }
+
+    /// 带统一选项的二次 Benders 核心循环 / Quadratic Benders core loop with unified options.
+    #[cfg(not(feature = "async"))]
+    fn solve_quadratic_core_with_options(
+        &self,
+        master_model: &QuadraticTetradModel,
+        sub_model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<FeasibleSolution> {
+        let max_iterations = options.max_iterations;
+        let tolerance = options.tolerance;
+        let max_stall_iterations = options.max_stall_iterations;
+        let objective_stall_iterations = options.objective_stall_iterations;
         let mut linear_cuts = Vec::new();
         let mut quadratic_cuts = Vec::new();
         let mut best_solution: Option<FeasibleSolution> = None;
@@ -1481,13 +2572,48 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
         let mut executed_iterations = 0usize;
         let mut stop_reason: Option<BendersStopReason> = None;
         let mut iteration_snapshots: Vec<BendersIterationSnapshot> = Vec::new();
+        let begin = Instant::now();
 
         for iter in 0..max_iterations {
             executed_iterations = iter + 1;
-            let master_result =
-                self.solve_master_quadratic(master_model, &linear_cuts, &quadratic_cuts)?;
-            let master_solution = master_solution_from_output(&master_result)?;
-            let master_obj = master_objective_from_output(&master_result);
+            if benders_cancelled(&options) {
+                return Err(benders_cancel_error());
+            }
+            emit_benders_progress(
+                &options,
+                "master",
+                executed_iterations,
+                max_iterations,
+                0.0,
+                begin.elapsed(),
+                None,
+                None,
+                false,
+            )?;
+            let master_report = self.solve_master_quadratic_report_with_options(
+                master_model,
+                &linear_cuts,
+                &quadratic_cuts,
+                &options,
+            )?;
+            if benders_cancelled(&options) {
+                return Err(benders_cancel_error());
+            }
+            let master_solution = match master_solution_from_report(&master_report) {
+                Ok(solution) => solution,
+                Err(_error) if master_report.has_incumbent() => {
+                    return partial_master_solution_from_report(
+                        &master_report,
+                        executed_iterations,
+                        linear_cuts.len() + quadratic_cuts.len(),
+                        no_cut_iterations,
+                        no_obj_improvement_iterations,
+                        iteration_snapshots,
+                    );
+                }
+                Err(error) => return Err(error),
+            };
+            let master_obj = master_objective_from_report(&master_report)?;
 
             if (master_obj - prev_obj).abs() < tolerance {
                 no_obj_improvement_iterations += 1;
@@ -1497,24 +2623,55 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
             prev_obj = master_obj;
 
             let cuts_before = linear_cuts.len() + quadratic_cuts.len();
-            let sub_result = self.solve_sub_quadratic(sub_model, &master_solution)?;
+            let sub_result =
+                self.solve_sub_quadratic_with_options(sub_model, &master_solution, &options)?;
+            if benders_cancelled(&options) {
+                return Err(benders_cancel_error());
+            }
+            let sub_model_fingerprint = quadratic_model_fingerprint(sub_model)?;
+            let subproblem_report;
+            let mut subproblem_certificate = None;
             match sub_result {
                 QuadraticSubResult::Feasible(feasible) => {
-                    best_solution = Some(feasible.linear.result.clone());
+                    subproblem_report = feasible.linear.report.clone();
+                    let (candidate, _) =
+                        apply_master_bound(feasible.linear.result.clone(), &master_report);
+                    best_solution = Some(candidate);
                     best_solution_iterations = Some(iter + 1);
-                    if let Some(new_linear_cuts) = feasible.linear.cuts {
-                        linear_cuts.extend(new_linear_cuts);
-                    }
-                    if let Some(new_quadratic_cuts) = feasible.quadratic_cuts {
-                        quadratic_cuts.extend(new_quadratic_cuts);
+                    if certified_linear_feasible_result_for_model(
+                        &feasible.linear,
+                        &sub_model_fingerprint,
+                    ) {
+                        subproblem_certificate = Some("subproblem-optimality");
+                        if let Some(new_linear_cuts) = feasible.linear.cuts {
+                            linear_cuts.extend(new_linear_cuts);
+                        }
+                        if let Some(new_quadratic_cuts) = feasible.quadratic_cuts {
+                            quadratic_cuts.extend(new_quadratic_cuts);
+                        }
+                    } else {
+                        stop_reason = Some(BendersStopReason::SubproblemTermination(
+                            subproblem_termination_reason(feasible.linear.report.as_ref()),
+                        ));
                     }
                 }
                 QuadraticSubResult::Infeasible(infeasible) => {
-                    if let Some(new_linear_cuts) = infeasible.linear.cuts {
-                        linear_cuts.extend(new_linear_cuts);
-                    }
-                    if let Some(new_quadratic_cuts) = infeasible.quadratic_cuts {
-                        quadratic_cuts.extend(new_quadratic_cuts);
+                    subproblem_report = infeasible.linear.report.clone();
+                    if certified_linear_infeasible_result_for_model(
+                        &infeasible.linear,
+                        &sub_model_fingerprint,
+                    ) {
+                        subproblem_certificate = Some("subproblem-infeasibility");
+                        if let Some(new_linear_cuts) = infeasible.linear.cuts {
+                            linear_cuts.extend(new_linear_cuts);
+                        }
+                        if let Some(new_quadratic_cuts) = infeasible.quadratic_cuts {
+                            quadratic_cuts.extend(new_quadratic_cuts);
+                        }
+                    } else {
+                        return Err(CoreError::contract_error(
+                            "quadratic Benders infeasible subproblem lacks a verified Farkas certificate",
+                        ));
                     }
                 }
             }
@@ -1529,26 +2686,58 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
             iteration_snapshots.push(BendersIterationSnapshot {
                 iteration: iter + 1,
                 master_obj,
-                master_gap: master_result.mip_gap,
+                master_gap: master_report.statistics.relative_gap,
+                master_bound: master_report.statistics.best_bound_value,
                 cuts_added,
                 total_cuts: total_cuts_now,
                 no_cut_iterations,
                 no_obj_improvement_iterations,
+                master_attempt_id: format!("benders/iteration/{}/master", iter + 1),
+                subproblem_attempt_id: Some(format!("benders/iteration/{}/subproblem", iter + 1)),
+                master_report: Some(master_report.clone()),
+                subproblem_report: subproblem_report.clone(),
+                bound_valid: master_report.is_optimal()
+                    && master_report.statistics.best_bound_value.is_some(),
+                proof_reference: benders_proof_reference(
+                    &master_report,
+                    subproblem_report.as_ref(),
+                    subproblem_certificate,
+                ),
+                stop_reason,
             });
-            if let Some(window) = max_stall_iterations {
-                if no_cut_iterations >= window {
-                    stop_reason = Some(BendersStopReason::CutStall);
-                    log::info!(
-                        "Quadratic Benders decomposition stopped at iteration {} due to cut stagnation window {}",
-                        iter + 1,
-                        window
-                    );
-                    break;
-                }
+            emit_benders_progress(
+                &options,
+                "subproblem",
+                executed_iterations,
+                max_iterations,
+                100.0,
+                begin.elapsed(),
+                Some(master_obj),
+                master_report.statistics.best_bound_value,
+                false,
+            )?;
+            if matches!(
+                stop_reason,
+                Some(BendersStopReason::SubproblemTermination(_))
+            ) {
+                break;
+            }
+            if let Some(window) = max_stall_iterations
+                && no_cut_iterations >= window
+            {
+                stop_reason = Some(BendersStopReason::CutStall);
+                update_last_benders_snapshot_stop_reason(&mut iteration_snapshots, stop_reason);
+                log::info!(
+                    "Quadratic Benders decomposition stopped at iteration {} due to cut stagnation window {}",
+                    iter + 1,
+                    window
+                );
+                break;
             }
 
             if no_obj_improvement_iterations >= objective_stall_iterations {
                 stop_reason = Some(BendersStopReason::ObjectiveStall);
+                update_last_benders_snapshot_stop_reason(&mut iteration_snapshots, stop_reason);
                 log::info!(
                     "Quadratic Benders decomposition stopped at iteration {} due to objective stall window {}",
                     iter + 1,
@@ -1560,7 +2749,24 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
 
         if stop_reason.is_none() && executed_iterations >= max_iterations && max_iterations > 0 {
             stop_reason = Some(BendersStopReason::IterationLimit);
+            update_last_benders_snapshot_stop_reason(&mut iteration_snapshots, stop_reason);
         }
+
+        let best_objective = best_solution.as_ref().map(|solution| solution.obj);
+        let best_bound = best_solution
+            .as_ref()
+            .and_then(|solution| solution.possible_best_obj);
+        emit_benders_progress(
+            &options,
+            "completed",
+            executed_iterations,
+            max_iterations,
+            100.0,
+            begin.elapsed(),
+            best_objective,
+            best_bound,
+            true,
+        )?;
 
         match best_solution {
             Some(solution) => {
@@ -1580,9 +2786,7 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
                     None => solution.with_benders_runtime_metrics(runtime_metrics),
                 })
             }
-            None => Err(CoreError::Solver(SolverError::SolveFailed(
-                "Quadratic Benders decomposition did not converge".into(),
-            ))),
+            None => Err(CoreError::Solver(SolverError::NoSolution)),
         }
     }
 }
@@ -1590,16 +2794,333 @@ pub trait QuadraticBendersDecompositionSolver: LinearBendersDecompositionSolver 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ospf_rust_core::error::SolverErrorClass;
     use ospf_rust_core::model::intermediate::{
         BasicLinearTriadModel, BasicQuadraticTetradModel, LinearTriadModel, QuadraticTetradModel,
     };
     use ospf_rust_core::model::{ConstraintRelation, MetaModel};
     #[cfg(not(feature = "async"))]
     use ospf_rust_core::model::{ModelBuildingStage, ModelBuildingStatusCallback};
+    use ospf_rust_core::solver::{
+        CancellationOrigin, ProblemStatus, SolveFingerprints, SolveHandle, SolveProgressReporter,
+        SolveProgressSnapshot, SolveProof, SolveReport, SolveSolution, SolveStage, SolverStatus,
+        TerminationReason,
+    };
     use ospf_rust_core::variable::ContinuousVariableItem;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    #[cfg(not(feature = "async"))]
     use std::sync::{Arc, Mutex};
+
+    fn verified_master_report(objective: f64, values: Vec<f64>) -> SolveReport<f64> {
+        let mut solution = SolveSolution::vector(values);
+        solution.objective = Some(objective);
+        solution.objective_value = Some(objective);
+        SolveReport::builder(ProblemStatus::Feasible, TerminationReason::Completed)
+            .solution(solution)
+            .proof(SolveProof::optimality())
+            .build()
+            .expect("test master report should satisfy the report contract")
+    }
+
+    fn verified_linear_subproblem_report(
+        model: &LinearTriadModel,
+        objective: f64,
+        values: Vec<f64>,
+    ) -> SolveReport<f64> {
+        let mut solution = SolveSolution::vector(values);
+        solution.objective = Some(objective);
+        solution.objective_value = Some(objective);
+        solution.dual_solution = Some(vec![0.0]);
+        SolveReport::builder(ProblemStatus::Feasible, TerminationReason::Completed)
+            .solution(solution)
+            .proof(SolveProof::optimality())
+            .fingerprints(SolveFingerprints {
+                model: Some(linear_model_fingerprint(model).expect("linear model fingerprint")),
+                ..SolveFingerprints::default()
+            })
+            .build()
+            .expect("test linear subproblem report should satisfy the report contract")
+    }
+
+    fn verified_quadratic_subproblem_report(
+        model: &QuadraticTetradModel,
+        objective: f64,
+        values: Vec<f64>,
+    ) -> SolveReport<f64> {
+        let mut solution = SolveSolution::vector(values);
+        solution.objective = Some(objective);
+        solution.objective_value = Some(objective);
+        solution.dual_solution = Some(vec![0.0]);
+        SolveReport::builder(ProblemStatus::Feasible, TerminationReason::Completed)
+            .solution(solution)
+            .proof(SolveProof::optimality())
+            .fingerprints(SolveFingerprints {
+                model: Some(
+                    quadratic_model_fingerprint(model).expect("quadratic model fingerprint"),
+                ),
+                ..SolveFingerprints::default()
+            })
+            .build()
+            .expect("test quadratic subproblem report should satisfy the report contract")
+    }
+
+    struct NonOptimalMasterBendersSolver {
+        sub_calls: AtomicUsize,
+    }
+
+    impl NonOptimalMasterBendersSolver {
+        fn new() -> Self {
+            Self {
+                sub_calls: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    #[cfg_attr(feature = "async", async_trait::async_trait)]
+    impl LinearBendersDecompositionSolver for NonOptimalMasterBendersSolver {
+        fn name(&self) -> &str {
+            "non_optimal_master_benders"
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve_master(
+            &self,
+            _model: &LinearTriadModel,
+            _cuts: &[LinearCut],
+        ) -> Result<SolverOutput> {
+            Ok(SolverOutput::new(SolverStatus::TimeLimit)
+                .with_objective(1.0)
+                .with_solution(vec![1.0]))
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_master(
+            &self,
+            _model: &LinearTriadModel,
+            _cuts: &[LinearCut],
+        ) -> Result<SolverOutput> {
+            Ok(SolverOutput::new(SolverStatus::TimeLimit)
+                .with_objective(1.0)
+                .with_solution(vec![1.0]))
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve_sub(
+            &self,
+            _model: &LinearTriadModel,
+            _master_solution: &[f64],
+        ) -> Result<LinearSubResult> {
+            self.sub_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(LinearSubResult::Feasible(
+                LinearFeasibleResult::new(
+                    FeasibleSolution::new(1.0, vec![1.0]),
+                    LinearDualSolution::new(vec![0.0], Vec::new()),
+                )
+                .with_report(verified_linear_subproblem_report(
+                    _model,
+                    1.0,
+                    vec![1.0],
+                )),
+            ))
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_sub(
+            &self,
+            _model: &LinearTriadModel,
+            _master_solution: &[f64],
+        ) -> Result<LinearSubResult> {
+            self.sub_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(LinearSubResult::Feasible(
+                LinearFeasibleResult::new(
+                    FeasibleSolution::new(1.0, vec![1.0]),
+                    LinearDualSolution::new(vec![0.0], Vec::new()),
+                )
+                .with_report(verified_linear_subproblem_report(
+                    _model,
+                    1.0,
+                    vec![1.0],
+                )),
+            ))
+        }
+    }
+
+    #[cfg_attr(feature = "async", async_trait::async_trait)]
+    impl QuadraticBendersDecompositionSolver for NonOptimalMasterBendersSolver {
+        #[cfg(feature = "async")]
+        async fn solve_master_quadratic(
+            &self,
+            _model: &QuadraticTetradModel,
+            _linear_cuts: &[LinearCut],
+            _quadratic_cuts: &[QuadraticCut],
+        ) -> Result<SolverOutput> {
+            Ok(SolverOutput::new(SolverStatus::TimeLimit)
+                .with_objective(1.0)
+                .with_solution(vec![1.0]))
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_master_quadratic(
+            &self,
+            _model: &QuadraticTetradModel,
+            _linear_cuts: &[LinearCut],
+            _quadratic_cuts: &[QuadraticCut],
+        ) -> Result<SolverOutput> {
+            Ok(SolverOutput::new(SolverStatus::TimeLimit)
+                .with_objective(1.0)
+                .with_solution(vec![1.0]))
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve_master_quadratic_report(
+            &self,
+            _model: &QuadraticTetradModel,
+            _linear_cuts: &[LinearCut],
+            _quadratic_cuts: &[QuadraticCut],
+        ) -> Result<SolveReport<f64>> {
+            let mut solution = SolveSolution::vector(vec![1.0]);
+            solution.objective = Some(1.0);
+            solution.objective_value = Some(1.0);
+            SolveReport::builder(ProblemStatus::Feasible, TerminationReason::TimeLimit)
+                .solution(solution)
+                .build()
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_master_quadratic_report(
+            &self,
+            _model: &QuadraticTetradModel,
+            _linear_cuts: &[LinearCut],
+            _quadratic_cuts: &[QuadraticCut],
+        ) -> Result<SolveReport<f64>> {
+            let mut solution = SolveSolution::vector(vec![1.0]);
+            solution.objective = Some(1.0);
+            solution.objective_value = Some(1.0);
+            SolveReport::builder(ProblemStatus::Feasible, TerminationReason::TimeLimit)
+                .solution(solution)
+                .build()
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve_sub_quadratic(
+            &self,
+            _model: &QuadraticTetradModel,
+            _master_solution: &[f64],
+        ) -> Result<QuadraticSubResult> {
+            self.sub_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(QuadraticSubResult::Feasible(QuadraticFeasibleResult::new(
+                LinearFeasibleResult::new(
+                    FeasibleSolution::new(1.0, vec![1.0]),
+                    LinearDualSolution::new(vec![0.0], Vec::new()),
+                )
+                .with_report(verified_quadratic_subproblem_report(
+                    _model,
+                    1.0,
+                    vec![1.0],
+                )),
+            )))
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_sub_quadratic(
+            &self,
+            _model: &QuadraticTetradModel,
+            _master_solution: &[f64],
+        ) -> Result<QuadraticSubResult> {
+            self.sub_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(QuadraticSubResult::Feasible(QuadraticFeasibleResult::new(
+                LinearFeasibleResult::new(
+                    FeasibleSolution::new(1.0, vec![1.0]),
+                    LinearDualSolution::new(vec![0.0], Vec::new()),
+                )
+                .with_report(verified_quadratic_subproblem_report(
+                    _model,
+                    1.0,
+                    vec![1.0],
+                )),
+            )))
+        }
+    }
+
+    struct UnverifiedInfeasibleSubproblemBendersSolver {
+        sub_calls: AtomicUsize,
+    }
+
+    impl UnverifiedInfeasibleSubproblemBendersSolver {
+        fn new() -> Self {
+            Self {
+                sub_calls: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    #[cfg_attr(feature = "async", async_trait::async_trait)]
+    impl LinearBendersDecompositionSolver for UnverifiedInfeasibleSubproblemBendersSolver {
+        fn name(&self) -> &str {
+            "unverified_infeasible_subproblem_benders"
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve_master(
+            &self,
+            _model: &LinearTriadModel,
+            _cuts: &[LinearCut],
+        ) -> Result<SolverOutput> {
+            Ok(SolverOutput::optimal(1.0, vec![1.0]))
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_master(
+            &self,
+            _model: &LinearTriadModel,
+            _cuts: &[LinearCut],
+        ) -> Result<SolverOutput> {
+            Ok(SolverOutput::optimal(1.0, vec![1.0]))
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve_master_report(
+            &self,
+            _model: &LinearTriadModel,
+            _cuts: &[LinearCut],
+        ) -> Result<SolveReport<f64>> {
+            Ok(verified_master_report(1.0, vec![1.0]))
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_master_report(
+            &self,
+            _model: &LinearTriadModel,
+            _cuts: &[LinearCut],
+        ) -> Result<SolveReport<f64>> {
+            Ok(verified_master_report(1.0, vec![1.0]))
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve_sub(
+            &self,
+            _model: &LinearTriadModel,
+            _master_solution: &[f64],
+        ) -> Result<LinearSubResult> {
+            self.sub_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(LinearSubResult::Infeasible(
+                LinearInfeasibleResult::new(LinearDualSolution::new(vec![1.0], Vec::new()))
+                    .with_cuts(vec![LinearCut::ge("unverified-cut", vec![(0, 1.0)], 0.0)]),
+            ))
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_sub(
+            &self,
+            _model: &LinearTriadModel,
+            _master_solution: &[f64],
+        ) -> Result<LinearSubResult> {
+            self.sub_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(LinearSubResult::Infeasible(
+                LinearInfeasibleResult::new(LinearDualSolution::new(vec![1.0], Vec::new()))
+                    .with_cuts(vec![LinearCut::ge("unverified-cut", vec![(0, 1.0)], 0.0)]),
+            ))
+        }
+    }
 
     #[test]
     fn test_linear_cut() {
@@ -1622,14 +3143,331 @@ mod tests {
         assert_eq!(cut.quadratic_coefficients.len(), 1);
     }
 
+    #[test]
+    fn subproblem_cuts_require_verified_reports() {
+        let legacy_feasible = LinearFeasibleResult::new(
+            FeasibleSolution::new(1.0, vec![1.0]),
+            LinearDualSolution::new(vec![0.0], Vec::new()),
+        )
+        .with_cuts(vec![LinearCut::ge("legacy_cut", vec![(0, 1.0)], 0.0)]);
+        assert!(!certified_linear_feasible_result(&legacy_feasible));
+
+        let mut solution = SolveSolution::vector(vec![1.0]);
+        solution.objective = Some(1.0);
+        solution.objective_value = Some(1.0);
+        solution.dual_solution = Some(vec![0.0]);
+        let report = SolveReport::builder(ProblemStatus::Feasible, TerminationReason::Completed)
+            .solution(solution)
+            .proof(SolveProof::optimality())
+            .build()
+            .expect("verified feasible subproblem report should be valid");
+        let certified_feasible = legacy_feasible.with_report(report);
+        assert!(certified_linear_feasible_result(&certified_feasible));
+
+        let legacy_infeasible =
+            LinearInfeasibleResult::new(LinearDualSolution::new(vec![1.0], Vec::new())).with_cuts(
+                vec![LinearCut::ge("legacy_farkas_cut", vec![(0, 1.0)], 0.0)],
+            );
+        assert!(!certified_linear_infeasible_result(&legacy_infeasible));
+
+        let mut proof = SolveProof::<f64>::infeasibility();
+        proof.evidence = Some(vec![1.0]);
+        let report = SolveReport::builder(ProblemStatus::Infeasible, TerminationReason::Completed)
+            .proof(proof)
+            .build()
+            .expect("verified infeasible subproblem report should be valid");
+        let certified_infeasible = legacy_infeasible.with_report(report);
+        assert!(certified_linear_infeasible_result(&certified_infeasible));
+    }
+
+    #[test]
+    fn subproblem_certificate_must_match_the_current_model_fingerprint() {
+        let model = LinearTriadModel::from_basic(BasicLinearTriadModel::new("current-sub"));
+        let expected_model = linear_model_fingerprint(&model).expect("model fingerprint");
+        let mut wrong_model = expected_model.clone();
+        wrong_model.value.push('x');
+
+        let mut solution = SolveSolution::vector(vec![1.0]);
+        solution.objective = Some(1.0);
+        solution.objective_value = Some(1.0);
+        solution.dual_solution = Some(vec![0.0]);
+        let report = SolveReport::builder(ProblemStatus::Feasible, TerminationReason::Completed)
+            .solution(solution)
+            .proof(SolveProof::optimality())
+            .fingerprints(SolveFingerprints {
+                model: Some(wrong_model),
+                ..SolveFingerprints::default()
+            })
+            .build()
+            .expect("mismatched report should still be structurally valid");
+        let result = LinearFeasibleResult::new(
+            FeasibleSolution::new(1.0, vec![1.0]),
+            LinearDualSolution::new(vec![0.0], Vec::new()),
+        )
+        .with_report(report)
+        .with_cuts(vec![LinearCut::ge("must-not-apply", vec![(0, 1.0)], 0.0)]);
+
+        assert!(!certified_linear_feasible_result_for_model(
+            &result,
+            &expected_model
+        ));
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn unverified_infeasible_subproblem_is_a_contract_error_async() {
+        let solver = UnverifiedInfeasibleSubproblemBendersSolver::new();
+        let model = LinearTriadModel::from_basic(BasicLinearTriadModel::new(
+            "unverified_infeasible_subproblem_async",
+        ));
+
+        let error = solver
+            .solve(&model, &model, 1, 1e-9, None, None)
+            .await
+            .expect_err("an unverified infeasible subproblem must stop Benders");
+
+        assert_eq!(
+            error.solver_error_class(),
+            SolverErrorClass::InternalContract
+        );
+        assert_eq!(solver.sub_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[cfg(not(feature = "async"))]
+    #[test]
+    fn unverified_infeasible_subproblem_is_a_contract_error() {
+        let solver = UnverifiedInfeasibleSubproblemBendersSolver::new();
+        let model = LinearTriadModel::from_basic(BasicLinearTriadModel::new(
+            "unverified_infeasible_subproblem",
+        ));
+
+        let error = solver
+            .solve(&model, &model, 1, 1e-9, None, None)
+            .expect_err("an unverified infeasible subproblem must stop Benders");
+
+        assert_eq!(
+            error.solver_error_class(),
+            SolverErrorClass::InternalContract
+        );
+        assert_eq!(solver.sub_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn test_non_optimal_master_preserves_incumbent_before_async_subproblem() {
+        let solver = NonOptimalMasterBendersSolver::new();
+        let model =
+            LinearTriadModel::from_basic(BasicLinearTriadModel::new("non_optimal_master_async"));
+
+        let result = solver.solve(&model, &model, 1, 1e-9, None, None).await;
+
+        let result = result.expect("a master incumbent should be preserved");
+        assert_eq!(result.obj, 1.0);
+        assert_eq!(solver.sub_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn test_non_optimal_master_report_keeps_native_termination_async() {
+        let solver = NonOptimalMasterBendersSolver::new();
+        let model = build_meta_model("non_optimal_master_report_async");
+        let snapshots = Arc::new(Mutex::new(Vec::<SolveProgressSnapshot>::new()));
+        let snapshots_for_reporter = Arc::clone(&snapshots);
+        let reporter: SolveProgressReporter = Arc::new(move |snapshot| {
+            snapshots_for_reporter
+                .lock()
+                .expect("progress snapshot mutex should not be poisoned")
+                .push(snapshot.clone());
+            Ok(())
+        });
+
+        let report = solver
+            .solve_report_with_options(
+                &model,
+                &model,
+                FrameworkSolveOptions::default().with_progress_reporter(Some(reporter)),
+            )
+            .await
+            .expect("a master incumbent should be projected to a report");
+
+        assert_eq!(report.problem_status, ProblemStatus::Feasible);
+        assert_eq!(report.termination_reason, TerminationReason::TimeLimit);
+        assert!(!report.is_optimal());
+        assert_eq!(solver.sub_calls.load(Ordering::SeqCst), 0);
+        assert!(
+            snapshots
+                .lock()
+                .expect("progress snapshots")
+                .iter()
+                .any(|snapshot| {
+                    snapshot.stage == SolveStage::Combinatorial
+                        && snapshot.stage_path
+                            == vec![
+                                "benders".to_owned(),
+                                "iteration/1".to_owned(),
+                                "master".to_owned(),
+                            ]
+                })
+        );
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn test_non_optimal_quadratic_master_preserves_incumbent_before_async_subproblem() {
+        let solver = NonOptimalMasterBendersSolver::new();
+        let model = QuadraticTetradModel::from_basic(BasicQuadraticTetradModel::new(
+            "non_optimal_quadratic_master_async",
+        ));
+
+        let result = solver
+            .solve_quadratic(&model, &model, 1, 1e-9, None, None)
+            .await
+            .expect("a quadratic master incumbent should be preserved");
+
+        assert_eq!(result.obj, 1.0);
+        assert_eq!(solver.sub_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn test_pre_cancelled_benders_report_does_not_start_master() {
+        let solver = NonOptimalMasterBendersSolver::new();
+        let model = build_meta_model("pre_cancelled_benders");
+        let handle = SolveHandle::new();
+        assert!(handle.cancel(CancellationOrigin::User));
+
+        let report = solver
+            .solve_report_with_options(
+                &model,
+                &model,
+                FrameworkSolveOptions::default().with_cancellation_handle(Some(handle)),
+            )
+            .await
+            .expect("pre-cancelled Benders should return a report");
+
+        assert_eq!(report.termination_reason, TerminationReason::Cancelled);
+        assert_eq!(solver.sub_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[cfg(not(feature = "async"))]
+    #[test]
+    fn test_non_optimal_master_preserves_incumbent_before_subproblem() {
+        let solver = NonOptimalMasterBendersSolver::new();
+        let model = LinearTriadModel::from_basic(BasicLinearTriadModel::new("non_optimal_master"));
+
+        let result = solver.solve(&model, &model, 1, 1e-9, None, None);
+
+        let result = result.expect("a master incumbent should be preserved");
+        assert_eq!(result.obj, 1.0);
+        assert_eq!(solver.sub_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[cfg(not(feature = "async"))]
+    #[test]
+    fn test_non_optimal_master_report_keeps_native_termination() {
+        let solver = NonOptimalMasterBendersSolver::new();
+        let model = build_meta_model("non_optimal_master_report");
+        let snapshots = Arc::new(Mutex::new(Vec::<SolveProgressSnapshot>::new()));
+        let snapshots_for_reporter = Arc::clone(&snapshots);
+        let reporter: SolveProgressReporter = Arc::new(move |snapshot| {
+            snapshots_for_reporter
+                .lock()
+                .expect("progress snapshot mutex should not be poisoned")
+                .push(snapshot.clone());
+            Ok(())
+        });
+
+        let report = solver
+            .solve_report_with_options(
+                &model,
+                &model,
+                FrameworkSolveOptions::default().with_progress_reporter(Some(reporter)),
+            )
+            .expect("a master incumbent should be projected to a report");
+
+        assert_eq!(report.problem_status, ProblemStatus::Feasible);
+        assert_eq!(report.termination_reason, TerminationReason::TimeLimit);
+        assert!(!report.is_optimal());
+        assert_eq!(solver.sub_calls.load(Ordering::SeqCst), 0);
+        assert!(
+            snapshots
+                .lock()
+                .expect("progress snapshots")
+                .iter()
+                .any(|snapshot| {
+                    snapshot.stage == SolveStage::Combinatorial
+                        && snapshot.stage_path
+                            == vec![
+                                "benders".to_owned(),
+                                "iteration/1".to_owned(),
+                                "master".to_owned(),
+                            ]
+                })
+        );
+    }
+
+    #[cfg(not(feature = "async"))]
+    #[test]
+    fn test_non_optimal_quadratic_master_preserves_incumbent_before_subproblem() {
+        let solver = NonOptimalMasterBendersSolver::new();
+        let model = QuadraticTetradModel::from_basic(BasicQuadraticTetradModel::new(
+            "non_optimal_quadratic_master",
+        ));
+
+        let result = solver
+            .solve_quadratic(&model, &model, 1, 1e-9, None, None)
+            .expect("a quadratic master incumbent should be preserved");
+
+        assert_eq!(result.obj, 1.0);
+        assert_eq!(solver.sub_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[cfg(not(feature = "async"))]
+    #[test]
+    fn test_pre_cancelled_benders_report_does_not_start_master() {
+        let solver = NonOptimalMasterBendersSolver::new();
+        let model = build_meta_model("pre_cancelled_benders");
+        let handle = SolveHandle::new();
+        assert!(handle.cancel(CancellationOrigin::User));
+
+        let report = solver
+            .solve_report_with_options(
+                &model,
+                &model,
+                FrameworkSolveOptions::default().with_cancellation_handle(Some(handle)),
+            )
+            .expect("pre-cancelled Benders should return a report");
+
+        assert_eq!(report.termination_reason, TerminationReason::Cancelled);
+        assert_eq!(solver.sub_calls.load(Ordering::SeqCst), 0);
+    }
+
     struct MockQuadraticBendersSolver {
         call_index: AtomicUsize,
+        verified_subproblem: bool,
     }
 
     impl MockQuadraticBendersSolver {
         fn new() -> Self {
             Self {
                 call_index: AtomicUsize::new(0),
+                verified_subproblem: true,
+            }
+        }
+
+        fn new_unverified_subproblem() -> Self {
+            Self {
+                call_index: AtomicUsize::new(0),
+                verified_subproblem: false,
+            }
+        }
+
+        fn next_quadratic_master_objective(&self) -> f64 {
+            let index = self.call_index.fetch_add(1, Ordering::SeqCst);
+            match index {
+                0 => 10.0,
+                1 => 5.0,
+                _ => 5.0,
             }
         }
     }
@@ -1690,27 +3528,57 @@ mod tests {
         }
 
         #[cfg(feature = "async")]
-        async fn solve_sub(
+        async fn solve_master_report(
             &self,
             _model: &LinearTriadModel,
+            _cuts: &[LinearCut],
+        ) -> Result<SolveReport<f64>> {
+            Ok(verified_master_report(0.0, vec![0.0]))
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_master_report(
+            &self,
+            _model: &LinearTriadModel,
+            _cuts: &[LinearCut],
+        ) -> Result<SolveReport<f64>> {
+            Ok(verified_master_report(0.0, vec![0.0]))
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve_sub(
+            &self,
+            model: &LinearTriadModel,
             _master_solution: &[f64],
         ) -> Result<LinearSubResult> {
-            Ok(LinearSubResult::Feasible(LinearFeasibleResult::new(
+            let result = LinearFeasibleResult::new(
                 FeasibleSolution::new(0.0, vec![0.0]),
-                LinearDualSolution::default(),
-            )))
+                LinearDualSolution::new(vec![0.0], Vec::new()),
+            );
+            let result = if self.verified_subproblem {
+                result.with_report(verified_linear_subproblem_report(model, 0.0, vec![0.0]))
+            } else {
+                result
+            };
+            Ok(LinearSubResult::Feasible(result))
         }
 
         #[cfg(not(feature = "async"))]
         fn solve_sub(
             &self,
-            _model: &LinearTriadModel,
+            model: &LinearTriadModel,
             _master_solution: &[f64],
         ) -> Result<LinearSubResult> {
-            Ok(LinearSubResult::Feasible(LinearFeasibleResult::new(
+            let result = LinearFeasibleResult::new(
                 FeasibleSolution::new(0.0, vec![0.0]),
-                LinearDualSolution::default(),
-            )))
+                LinearDualSolution::new(vec![0.0], Vec::new()),
+            );
+            let result = if self.verified_subproblem {
+                result.with_report(verified_linear_subproblem_report(model, 0.0, vec![0.0]))
+            } else {
+                result
+            };
+            Ok(LinearSubResult::Feasible(result))
         }
     }
 
@@ -1723,13 +3591,19 @@ mod tests {
             _linear_cuts: &[LinearCut],
             _quadratic_cuts: &[QuadraticCut],
         ) -> Result<SolverOutput> {
-            let index = self.call_index.fetch_add(1, Ordering::SeqCst);
-            let objective = match index {
-                0 => 10.0,
-                1 => 5.0,
-                _ => 5.0,
-            };
+            let objective = self.next_quadratic_master_objective();
             Ok(SolverOutput::optimal(objective, vec![objective]))
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve_master_quadratic_report(
+            &self,
+            _model: &QuadraticTetradModel,
+            _linear_cuts: &[LinearCut],
+            _quadratic_cuts: &[QuadraticCut],
+        ) -> Result<SolveReport<f64>> {
+            let objective = self.next_quadratic_master_objective();
+            Ok(verified_master_report(objective, vec![objective]))
         }
 
         #[cfg(not(feature = "async"))]
@@ -1739,44 +3613,123 @@ mod tests {
             _linear_cuts: &[LinearCut],
             _quadratic_cuts: &[QuadraticCut],
         ) -> Result<SolverOutput> {
-            let index = self.call_index.fetch_add(1, Ordering::SeqCst);
-            let objective = match index {
-                0 => 10.0,
-                1 => 5.0,
-                _ => 5.0,
-            };
+            let objective = self.next_quadratic_master_objective();
             Ok(SolverOutput::optimal(objective, vec![objective]))
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_master_quadratic_report(
+            &self,
+            _model: &QuadraticTetradModel,
+            _linear_cuts: &[LinearCut],
+            _quadratic_cuts: &[QuadraticCut],
+        ) -> Result<SolveReport<f64>> {
+            let objective = self.next_quadratic_master_objective();
+            Ok(verified_master_report(objective, vec![objective]))
         }
 
         #[cfg(feature = "async")]
         async fn solve_sub_quadratic(
             &self,
-            _model: &QuadraticTetradModel,
+            model: &QuadraticTetradModel,
             master_solution: &[f64],
         ) -> Result<QuadraticSubResult> {
             let objective = master_solution.first().copied().unwrap_or(0.0);
+            let result = LinearFeasibleResult::new(
+                FeasibleSolution::new(objective, master_solution.to_vec()),
+                LinearDualSolution::new(vec![0.0], Vec::new()),
+            );
+            let result = if self.verified_subproblem {
+                result.with_report(verified_quadratic_subproblem_report(
+                    model,
+                    objective,
+                    master_solution.to_vec(),
+                ))
+            } else {
+                result
+            };
             Ok(QuadraticSubResult::Feasible(QuadraticFeasibleResult::new(
-                LinearFeasibleResult::new(
-                    FeasibleSolution::new(objective, master_solution.to_vec()),
-                    LinearDualSolution::default(),
-                ),
+                result,
             )))
         }
 
         #[cfg(not(feature = "async"))]
         fn solve_sub_quadratic(
             &self,
-            _model: &QuadraticTetradModel,
+            model: &QuadraticTetradModel,
             master_solution: &[f64],
         ) -> Result<QuadraticSubResult> {
             let objective = master_solution.first().copied().unwrap_or(0.0);
+            let result = LinearFeasibleResult::new(
+                FeasibleSolution::new(objective, master_solution.to_vec()),
+                LinearDualSolution::new(vec![0.0], Vec::new()),
+            );
+            let result = if self.verified_subproblem {
+                result.with_report(verified_quadratic_subproblem_report(
+                    model,
+                    objective,
+                    master_solution.to_vec(),
+                ))
+            } else {
+                result
+            };
             Ok(QuadraticSubResult::Feasible(QuadraticFeasibleResult::new(
-                LinearFeasibleResult::new(
-                    FeasibleSolution::new(objective, master_solution.to_vec()),
-                    LinearDualSolution::default(),
-                ),
+                result,
             )))
         }
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn unverified_feasible_subproblem_returns_incomplete_report_async() {
+        let solver = MockQuadraticBendersSolver::new_unverified_subproblem();
+        let model = build_meta_model("unverified_feasible_subproblem_async");
+
+        let report = solver
+            .solve_report_with_options(
+                &model,
+                &model,
+                FrameworkSolveOptions::new().with_iterations(10, 1e-9),
+            )
+            .await
+            .expect("an incumbent should be preserved when the subproblem proof is unavailable");
+
+        assert_eq!(report.problem_status, ProblemStatus::Feasible);
+        assert_eq!(report.termination_reason, TerminationReason::BackendFailure);
+        assert!(!report.is_optimal());
+        assert!(
+            report
+                .diagnostics
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "IncompleteBendersProof")
+        );
+    }
+
+    #[cfg(not(feature = "async"))]
+    #[test]
+    fn unverified_feasible_subproblem_returns_incomplete_report() {
+        let solver = MockQuadraticBendersSolver::new_unverified_subproblem();
+        let model = build_meta_model("unverified_feasible_subproblem");
+
+        let report = solver
+            .solve_report_with_options(
+                &model,
+                &model,
+                FrameworkSolveOptions::new().with_iterations(10, 1e-9),
+            )
+            .expect("an incumbent should be preserved when the subproblem proof is unavailable");
+
+        assert_eq!(report.problem_status, ProblemStatus::Feasible);
+        assert_eq!(report.termination_reason, TerminationReason::BackendFailure);
+        assert!(!report.is_optimal());
+        assert!(
+            report
+                .diagnostics
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "IncompleteBendersProof")
+        );
     }
 
     #[cfg(feature = "async")]
@@ -1836,16 +3789,8 @@ mod tests {
 
         assert!((result.obj - 0.0).abs() <= 1e-9);
         let stages = stages.lock().unwrap();
-        assert!(
-            stages
-                .iter()
-                .any(|stage| *stage == ModelBuildingStage::RegisterTokens)
-        );
-        assert!(
-            stages
-                .iter()
-                .any(|stage| *stage == ModelBuildingStage::FlattenLinearModel)
-        );
+        assert!(stages.contains(&ModelBuildingStage::RegisterTokens));
+        assert!(stages.contains(&ModelBuildingStage::FlattenLinearModel));
     }
 
     #[cfg(not(feature = "async"))]
@@ -1870,16 +3815,8 @@ mod tests {
 
         assert!((result.obj - 0.0).abs() <= 1e-9);
         let stages = stages.lock().unwrap();
-        assert!(
-            stages
-                .iter()
-                .any(|stage| *stage == ModelBuildingStage::RegisterTokens)
-        );
-        assert!(
-            stages
-                .iter()
-                .any(|stage| *stage == ModelBuildingStage::FlattenLinearModel)
-        );
+        assert!(stages.contains(&ModelBuildingStage::RegisterTokens));
+        assert!(stages.contains(&ModelBuildingStage::FlattenLinearModel));
     }
 
     #[cfg(not(feature = "async"))]
@@ -1975,6 +3912,105 @@ mod tests {
             Some(BendersStopReason::CutStall)
         );
         assert_eq!(runtime_metrics.iteration_snapshots.len(), 2);
+    }
+
+    #[cfg(not(feature = "async"))]
+    #[test]
+    fn benders_iteration_snapshot_retains_reports_and_bound_contract() {
+        let solver = MockQuadraticBendersSolver::new();
+        let model = QuadraticTetradModel::from_basic(BasicQuadraticTetradModel::new(
+            "benders_snapshot_contract",
+        ));
+
+        let result = solver
+            .solve_quadratic(&model, &model, 1, 1e-9, None, None)
+            .expect("one verified Benders iteration should return an incumbent");
+        let metrics = result
+            .benders_runtime_metrics
+            .as_ref()
+            .expect("Benders metrics should retain the iteration snapshot");
+        let snapshot = metrics
+            .iteration_snapshots
+            .first()
+            .expect("one iteration snapshot should be recorded");
+
+        assert_eq!(snapshot.master_attempt_id, "benders/iteration/1/master");
+        assert_eq!(
+            snapshot.subproblem_attempt_id.as_deref(),
+            Some("benders/iteration/1/subproblem")
+        );
+        assert!(
+            snapshot
+                .master_report
+                .as_ref()
+                .is_some_and(|report| { report.is_optimal() && report.proof.is_some() })
+        );
+        assert!(
+            snapshot
+                .subproblem_report
+                .as_ref()
+                .is_some_and(|report| report.is_optimal() && report.proof.is_some())
+        );
+        assert_eq!(
+            snapshot.proof_reference.as_deref(),
+            Some("subproblem-optimality")
+        );
+        assert!(!snapshot.bound_valid);
+        assert_eq!(
+            snapshot.stop_reason,
+            Some(BendersStopReason::IterationLimit)
+        );
+        assert!(result.possible_best_obj.is_none());
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn benders_iteration_snapshot_retains_reports_and_bound_contract_async() {
+        let solver = MockQuadraticBendersSolver::new();
+        let model = QuadraticTetradModel::from_basic(BasicQuadraticTetradModel::new(
+            "benders_snapshot_contract_async",
+        ));
+
+        let result = solver
+            .solve_quadratic(&model, &model, 1, 1e-9, None, None)
+            .await
+            .expect("one verified Benders iteration should return an incumbent");
+        let metrics = result
+            .benders_runtime_metrics
+            .as_ref()
+            .expect("Benders metrics should retain the iteration snapshot");
+        let snapshot = metrics
+            .iteration_snapshots
+            .first()
+            .expect("one iteration snapshot should be recorded");
+
+        assert_eq!(snapshot.master_attempt_id, "benders/iteration/1/master");
+        assert_eq!(
+            snapshot.subproblem_attempt_id.as_deref(),
+            Some("benders/iteration/1/subproblem")
+        );
+        assert!(
+            snapshot
+                .master_report
+                .as_ref()
+                .is_some_and(|report| { report.is_optimal() && report.proof.is_some() })
+        );
+        assert!(
+            snapshot
+                .subproblem_report
+                .as_ref()
+                .is_some_and(|report| report.is_optimal() && report.proof.is_some())
+        );
+        assert_eq!(
+            snapshot.proof_reference.as_deref(),
+            Some("subproblem-optimality")
+        );
+        assert!(!snapshot.bound_valid);
+        assert_eq!(
+            snapshot.stop_reason,
+            Some(BendersStopReason::IterationLimit)
+        );
+        assert!(result.possible_best_obj.is_none());
     }
 
     #[cfg(feature = "async")]

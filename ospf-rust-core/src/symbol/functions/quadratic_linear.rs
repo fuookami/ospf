@@ -1,12 +1,9 @@
 //! 二次线性桥接函数 / Quadratic linear bridge function
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    QuadraticFunctionSymbol,
+};
 use crate::error::{ModelError, Result};
 use crate::model::{
     ConstraintRelation, LinearConstraint, LinearInequality, QuadraticConstraint,
@@ -15,10 +12,13 @@ use crate::model::{
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{ContinuousVariableItem, new_standalone_id};
-use super::super::{
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-    QuadraticFunctionSymbol,
-};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 pub(super) const MIN_BIG_M: f64 = 1.0;
 
@@ -59,7 +59,10 @@ where
     Some(value)
 }
 
-pub(super) fn evaluate_quadratic_from_values<V>(poly: &Quadratic<V>, values: &HashMap<usize, V>) -> Option<V>
+pub(super) fn evaluate_quadratic_from_values<V>(
+    poly: &Quadratic<V>,
+    values: &HashMap<usize, V>,
+) -> Option<V>
 where
     V: Clone + Debug + Send + Sync + 'static + Add<Output = V> + Mul<Output = V>,
 {
@@ -130,6 +133,10 @@ pub(super) fn auxiliary_id(base: u64, salt: u64) -> u64 {
         .wrapping_add(salt.wrapping_mul(0x517c_c1b7_2722_0a95))
 }
 
+/// 二次表达式线性化函数 / Quadratic linearization function
+///
+/// 为二次表达式创建可用于线性约束注册的桥接结果变量。
+/// Creates a bridge result variable for registering a quadratic expression in linear constraints.
 #[derive(Debug, Clone)]
 pub struct QuadraticLinearFunction<V = f64>
 where
@@ -145,6 +152,8 @@ impl<V> QuadraticLinearFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建二次表达式线性化函数。
+    /// Create a quadratic linearization function.
     pub fn new(id: u64, name: &str, input: Quadratic<V>) -> Self {
         let result_var =
             ContinuousVariableItem::create(new_standalone_id(), &format!("{}_lin_y", name));
@@ -156,11 +165,15 @@ where
         }
     }
 
+    /// 声明该函数依赖的模型元素 ID。
+    /// Declare the model element IDs consumed by this function.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回线性化结果变量。
+    /// Return the linearized result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }

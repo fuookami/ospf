@@ -1,6 +1,6 @@
 //! 冗余聚合 / Redundancy aggregation
-use std::collections::BTreeMap;
 use crate::framework::demo2::domain::redundancy::context::RedundancyContext;
+use std::collections::BTreeMap;
 
 /// 冗余聚合 / Redundancy aggregation
 ///

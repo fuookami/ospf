@@ -1,12 +1,12 @@
 //! 管道列表生成器 / Pipeline list generator
 
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use super::super::aggregation::Aggregation;
 use super::limits::{
     apply_node_assignment_constraints, apply_service_assignment_constraints,
     apply_service_cost_objective,
 };
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 /// 路线管道列表生成器 / Route pipeline list generator
 /// 对齐 Kotlin route_context/service/PipelineListGenerator

@@ -40,7 +40,7 @@ Explicit non-goals:
 User definition layer  ->  MetaModel<V>
     -> mechanism layer  ->  MechanismModel<V>
     -> standard form    ->  LinearTriadModel / QuadraticTetradModel
-    -> solver layer     ->  SolverOutput
+    -> solver layer     ->  SolveReport (SolverOutput is compatibility-only)
 ```
 
 The crate keeps model construction, expression flattening, solver-order token mapping, and result extraction explicit so higher-level framework crates can compose them without owning low-level modeling internals.
@@ -92,22 +92,49 @@ ospf-rust-core = { path = "path/to/ospf-rust-core" }
 
 ### Unified Solve API
 
+The full report, proof, cancellation, identity, and legacy-migration contract is documented in
+[`docs/solve-contract.md`](../docs/solve-contract.md).
+
+Native feature and license evidence follows the
+[`solver-native-matrix.md`](../docs/solver-native-matrix.md) procedure. Source
+commit coverage is recorded in [`solver-traceability.md`](../docs/solver-traceability.md);
+feature compilation alone is not native solver evidence.
+
 For the most common path, call `MetaModel` directly:
 
 ```rust
 use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::solver::{SolveOptions, SolverExt};
+use ospf_rust_core::solver::{SolveOptions, SolveReport, SolverExt};
 
 fn solve_model<S: ospf_rust_core::solver::Solver>(
     meta_model: &MetaModel<f64>,
     solver: &S,
-) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolverOutput> {
-    let _output = meta_model.solve(solver)?;
+) -> ospf_rust_core::error::Result<SolveReport<f64>> {
+    let _report = meta_model.solve_report(solver)?;
 
     let options = SolveOptions::new();
-    solver.solve_with_options(meta_model, &options)
+    solver.solve_report_with_options(meta_model, &options)
 }
 ```
+
+Exact consumers must use the report certificate helpers. A limit or interruption
+may retain an incumbent, but it cannot be treated as an optimality proof. Native
+license failures are classified as `LICENSE`; missing libraries and environment
+setup remain `ENVIRONMENT`.
+
+### Constraint Programming Boundary
+
+The core crate also provides an integer CP AST for Boolean literals, integer expressions,
+immutable snapshots, canonical snapshot artifacts, and global constraints such as
+`NoOverlap`. CP domains and objective evaluation use exact `i64` values; the CP path does
+not silently narrow integer semantics to `f64`.
+
+Gurobi and SCIP expose the CP facade through feature-gated, MIP-backed `ExactLowering`.
+This is an exact formulation path with snapshot validation and unified `SolveReport` proof
+checks, not a claim that either backend provides native CP search. Native optional-interval
+trees, incremental CP sessions, and global constraints without an explicit lowering are
+outside this facade and remain `Conditional` or `Unsupported` until their capability gate
+is closed. Consumers should inspect the capability matrix before selecting a backend.
 
 With `nightly` feature enabled, a callable wrapper is also available:
 

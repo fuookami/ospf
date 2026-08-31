@@ -1,8 +1,8 @@
 //! 航班容量模型模块 / Flight capacity model module
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 航班容量 / Flight capacity
 /// 对齐 Kotlin FlightCapacity

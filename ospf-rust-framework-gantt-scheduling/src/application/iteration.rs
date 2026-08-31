@@ -145,8 +145,7 @@ impl Iteration {
 
         // 找到每个执行器的最佳 reduced cost
         // Find best reduced cost per executor
-        let mut best_reduced_cost_per_executor =
-            std::collections::HashMap::<usize, f64>::new();
+        let mut best_reduced_cost_per_executor = std::collections::HashMap::<usize, f64>::new();
 
         for col in new_columns {
             if let Some(executor_idx) = executor_of(col) {
@@ -424,11 +423,7 @@ mod tests {
             },
         ];
 
-        iter.refresh_lower_bound(
-            &new_cols,
-            |c| c.reduced_cost,
-            |c| c.executor,
-        );
+        iter.refresh_lower_bound(&new_cols, |c| c.reduced_cost, |c| c.executor);
 
         // 对偶目标 = 10.0 + (-2.0) + (-3.0) = 5.0
         // lower_bound = max(-inf, 5.0) = 5.0

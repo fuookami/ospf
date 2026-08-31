@@ -10,11 +10,11 @@
 //! - `Quadratic`: `polynomial/quadratic.rs`
 //! - `Canonical`: `polynomial/canonical.rs`
 
-use std::collections::HashMap;
-use std::ops::Add;
-use num_traits::Zero;
 use crate::operator::{MulRef, ZeroRef};
 use crate::symbol::symbol::OwnedSymbol;
+use num_traits::Zero;
+use std::collections::HashMap;
+use std::ops::Add;
 
 // ============================================================================
 // Evaluatable - 可求值类型约束

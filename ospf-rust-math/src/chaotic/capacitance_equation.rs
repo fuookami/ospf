@@ -1,10 +1,10 @@
 //! 电容方程。
 //! Capacitance equation.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// 电容方程的一阶欧拉步进模型。

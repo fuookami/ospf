@@ -1,14 +1,12 @@
 //! Demo3 模块 / Demo3 module
 use std::error::Error;
 
-use ospf_rust_multiarray::{MultiArray, Shape};
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
-use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1_indexed,
-};
+use ospf_rust_core::model::{ConstraintRelation, MetaModel, ObjectiveCategory};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination, flat_map1_indexed};
 use ospf_rust_core::variable::{UInteger, VariableCombination1D};
+use ospf_rust_multiarray::{MultiArray, Shape};
 
-use super::common::{read_solution_value, solve_typed, extract_coeffs};
+use super::common::{extract_coeffs, read_solution_value, solve_typed};
 
 /// 材料数据结构 / Material data structure
 #[derive(Debug, Clone)]
@@ -20,7 +18,11 @@ struct Material {
 
 impl Material {
     fn new(name: &str, unit_cost: f64, yields: Vec<f64>) -> Self {
-        Self { name: name.to_string(), unit_cost, yields }
+        Self {
+            name: name.to_string(),
+            unit_cost,
+            yields,
+        }
     }
 }
 
@@ -33,7 +35,10 @@ struct ProductTarget {
 
 impl ProductTarget {
     fn new(name: &str, min_yield: f64) -> Self {
-        Self { name: name.to_string(), min_yield }
+        Self {
+            name: name.to_string(),
+            min_yield,
+        }
     }
 }
 
@@ -73,30 +78,55 @@ impl BlendingModel {
         let x_idx = model.register_combination(&x)?;
 
         // 2. 成本符号
-        let cost = flat_map1_indexed("cost", materials, |m_idx, m| {
-            let var_index = x_idx[m_idx];
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(m.unit_cost, var_index)],
-                0.0,
-            )
-        }, |_, m| m.name.clone());
+        let cost = flat_map1_indexed(
+            "cost",
+            materials,
+            |m_idx, m| {
+                let var_index = x_idx[m_idx];
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        m.unit_cost,
+                        var_index,
+                    )],
+                    0.0,
+                )
+            },
+            |_, m| m.name.clone(),
+        );
         model.add_symbol_combination(&cost)?;
 
         // 3. 产量符号
-        let yields = flat_map1_indexed("yield", targets, |p, _t| {
-            let monomials: Vec<_> = materials.iter().enumerate().filter_map(|(m_idx, m)| {
-                let coeff = m.yields[p];
-                if coeff != 0.0 {
-                    Some(ospf_rust_core::symbol::flatten::LinearMonomial::new(coeff, x_idx[m_idx]))
-                } else {
-                    None
-                }
-            }).collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, t| t.name.clone());
+        let yields = flat_map1_indexed(
+            "yield",
+            targets,
+            |p, _t| {
+                let monomials: Vec<_> = materials
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(m_idx, m)| {
+                        let coeff = m.yields[p];
+                        if coeff != 0.0 {
+                            Some(ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                                coeff,
+                                x_idx[m_idx],
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, t| t.name.clone(),
+        );
         model.add_symbol_combination(&yields)?;
 
-        Ok(BlendingModel { x, x_idx, cost, yields })
+        Ok(BlendingModel {
+            x,
+            x_idx,
+            cost,
+            yields,
+        })
     }
 
     fn add_constraints(
@@ -112,8 +142,18 @@ impl BlendingModel {
         // 产量约束
         for (p, target) in targets.iter().enumerate() {
             let coeffs = extract_coeffs(&self.yields[p]);
-            model.add_linear_constraint(&coeffs, ConstraintRelation::GreaterEqual, target.min_yield, &format!("yield_{}_lb", target.name))?;
-            model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, target.min_yield, &format!("yield_{}_ub", target.name))?;
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::GreaterEqual,
+                target.min_yield,
+                &format!("yield_{}_lb", target.name),
+            )?;
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::LessEqual,
+                target.min_yield,
+                &format!("yield_{}_ub", target.name),
+            )?;
         }
         Ok(())
     }
@@ -136,7 +176,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         println!("total cost: {:.2}", obj);
     }
     for (m, _) in materials.iter().enumerate() {
-        println!("{}: {:.2}", materials[m].name, read_solution_value(&solution, blending.x_idx[m]));
+        println!(
+            "{}: {:.2}",
+            materials[m].name,
+            read_solution_value(&solution, blending.x_idx[m])
+        );
     }
     Ok(())
 }
@@ -145,5 +189,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 mod tests {
     use super::*;
     #[test]
-    fn test_demo3() { assert!(run().is_ok()); }
+    fn test_demo3() {
+        assert!(run().is_ok());
+    }
 }

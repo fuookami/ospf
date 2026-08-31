@@ -1,10 +1,10 @@
 //! Halvorsen 吸引子。
 //! Halvorsen attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Halvorsen 吸引子的一阶欧拉步进模型。
@@ -51,7 +51,9 @@ pub fn halvorsen_attractor<S: Field + Float>(alpha: S, h: S) -> HalvorsenAttract
 /// 创建 Halvorsen 吸引子生成器。
 /// Create a Halvorsen attractor generator.
 pub fn halvorsen_attractor_generator<S: Field + Float>(
-    alpha: S, h: S, x: Point3<S>,
+    alpha: S,
+    h: S,
+    x: Point3<S>,
 ) -> HalvorsenAttractorGenerator<S> {
     HalvorsenAttractorGenerator::new(HalvorsenAttractor::new(alpha, h), x)
 }

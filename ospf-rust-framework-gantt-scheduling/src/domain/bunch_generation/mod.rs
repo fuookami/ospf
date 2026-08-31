@@ -13,8 +13,7 @@ pub mod service;
 
 pub use pricing::{BunchPricingProblem, LabelSettingAlgorithm};
 pub use service::{
-    BunchFeasibilityPolicy, BunchGenerationConfig, BunchTaskCandidate,
-    CapacityIntermediateValues, DefaultBunchFeasibilityPolicy, PlannedTaskBunchGenerator,
-    SlotBasedBunchGenerator, SlotBunchPricingRequest, SlotConstraints,
-    UnplannedTaskBunchGenerator,
+    BunchFeasibilityPolicy, BunchGenerationConfig, BunchTaskCandidate, CapacityIntermediateValues,
+    DefaultBunchFeasibilityPolicy, PlannedTaskBunchGenerator, SlotBasedBunchGenerator,
+    SlotBunchPricingRequest, SlotConstraints, UnplannedTaskBunchGenerator,
 };

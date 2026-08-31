@@ -5,7 +5,9 @@ use num_traits::{One, Zero};
 use std::ops::Add;
 
 /// 目标方向 / Objective direction
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "SCREAMING_SNAKE_CASE"))]
 pub enum ObjectiveCategory {
     /// 最小化 / Minimize
     #[default]

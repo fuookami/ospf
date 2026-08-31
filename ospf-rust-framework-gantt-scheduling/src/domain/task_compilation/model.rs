@@ -6,26 +6,24 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use ospf_rust_core::model::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::model::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::LinearIntermediateSymbol;
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::function::{
     AndFunction, InequalityFunction, InequalityKind, MaskingFunction,
 };
 use ospf_rust_core::symbol::functions::min_max::MinMaxFunction;
 use ospf_rust_core::symbol::functions::slack::SlackFunction;
-use ospf_rust_core::symbol::LinearIntermediateSymbol;
 use ospf_rust_core::variable::{Binary, UContinuous};
 
-use crate::domain::task::{AssignmentPolicyTrait, ExecutorTrait, TaskTrait};
-use crate::domain::task_compilation::adapter::{
-    build_linear_expression_symbol, next_gantt_symbol_id,
-    IndexedVariableArray1, IndexedVariableArray2,
-    symbols_to_indexed_1d,
-    IndexedLinearExpressionSymbols1,
-};
 use crate::GanttError;
 use crate::GanttResult;
+use crate::domain::task::{AssignmentPolicyTrait, ExecutorTrait, TaskTrait};
+use crate::domain::task_compilation::adapter::{
+    IndexedLinearExpressionSymbols1, IndexedVariableArray1, IndexedVariableArray2,
+    build_linear_expression_symbol, next_gantt_symbol_id, symbols_to_indexed_1d,
+};
 
 // ============================================================================
 // Compilation 组件 / Compilation Component
@@ -137,7 +135,10 @@ where
         let task_indices: Vec<usize> = (0..n_tasks).collect();
         let executor_indices: Vec<usize> = (0..n_executors).collect();
         self.x = Some(IndexedVariableArray2::new(
-            "x", &task_indices, &executor_indices, model,
+            "x",
+            &task_indices,
+            &executor_indices,
+            model,
         )?);
 
         // Register y[task] - binary cancellation variables (if enabled)
@@ -151,10 +152,10 @@ where
         }
 
         // Build intermediate expression symbols
-        let x = self.x.as_ref()
-            .ok_or_else(|| GanttError::Calculation {
-                message: "x variables must be initialized before building intermediate symbols".to_string(),
-            })?;
+        let x = self.x.as_ref().ok_or_else(|| GanttError::Calculation {
+            message: "x variables must be initialized before building intermediate symbols"
+                .to_string(),
+        })?;
 
         // 构建 task_assignment[task] = sum(x[task, executor] for executor)
         for ti in 0..n_tasks {
@@ -164,10 +165,10 @@ where
                     terms.push((idx, 1.0));
                 }
             }
-            let symbol = build_linear_expression_symbol(
-                &format!("task_assignment_{}", ti), &terms, 0.0,
-            );
-            model.add_symbol(symbol.clone())
+            let symbol =
+                build_linear_expression_symbol(&format!("task_assignment_{}", ti), &terms, 0.0);
+            model
+                .add_symbol(symbol.clone())
                 .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to register task_assignment_{}: {:?}", ti, e),
                 })?;
@@ -182,15 +183,15 @@ where
                     terms.push((idx, 1.0));
                 }
             }
-            if let Some(ref y) = self.y {
-                if let Some(idx) = y.model_index(&ti) {
-                    terms.push((idx, 1.0));
-                }
+            if let Some(ref y) = self.y
+                && let Some(idx) = y.model_index(&ti)
+            {
+                terms.push((idx, 1.0));
             }
-            let symbol = build_linear_expression_symbol(
-                &format!("task_compilation_{}", ti), &terms, 0.0,
-            );
-            model.add_symbol(symbol.clone())
+            let symbol =
+                build_linear_expression_symbol(&format!("task_compilation_{}", ti), &terms, 0.0);
+            model
+                .add_symbol(symbol.clone())
                 .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to register task_compilation_{}: {:?}", ti, e),
                 })?;
@@ -205,15 +206,18 @@ where
                     terms.push((idx, 1.0));
                 }
             }
-            if let Some(ref z) = self.z {
-                if let Some(idx) = z.model_index(&ei) {
-                    terms.push((idx, 1.0));
-                }
+            if let Some(ref z) = self.z
+                && let Some(idx) = z.model_index(&ei)
+            {
+                terms.push((idx, 1.0));
             }
             let symbol = build_linear_expression_symbol(
-                &format!("executor_compilation_{}", ei), &terms, 0.0,
+                &format!("executor_compilation_{}", ei),
+                &terms,
+                0.0,
             );
-            model.add_symbol(symbol.clone())
+            model
+                .add_symbol(symbol.clone())
                 .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to register executor_compilation_{}: {:?}", ei, e),
                 })?;
@@ -225,13 +229,19 @@ where
         let executor_keys: Vec<usize> = (0..n_executors).collect();
 
         self.task_assignment_indexed = Some(symbols_to_indexed_1d(
-            "task_assignment", &task_keys, &self.task_assignment_symbols,
+            "task_assignment",
+            &task_keys,
+            &self.task_assignment_symbols,
         ));
         self.task_compilation_indexed = Some(symbols_to_indexed_1d(
-            "task_compilation", &task_keys, &self.task_compilation_symbols,
+            "task_compilation",
+            &task_keys,
+            &self.task_compilation_symbols,
         ));
         self.executor_compilation_indexed = Some(symbols_to_indexed_1d(
-            "executor_compilation", &executor_keys, &self.executor_compilation_symbols,
+            "executor_compilation",
+            &executor_keys,
+            &self.executor_compilation_symbols,
         ));
 
         Ok(())
@@ -242,20 +252,28 @@ where
     /// 返回 `Vec<Vec<usize>>`，其中外层是任务索引，内层是组成表达式的变量索引。
     /// Returns `Vec<Vec<usize>>`, where outer is task index, inner is variable indices composing the expression.
     pub fn task_compilation_model_indices(&self) -> Vec<Vec<usize>> {
-        self.task_compilation_symbols.iter()
+        self.task_compilation_symbols
+            .iter()
             .map(|s| {
                 let poly = s.to_linear_polynomial();
-                poly.monomials().iter().map(|m: &ospf_rust_core::model::flatten::LinearMonomial<f64>| m.var_index()).collect()
+                poly.monomials()
+                    .iter()
+                    .map(|m: &ospf_rust_core::model::flatten::LinearMonomial<f64>| m.var_index())
+                    .collect()
             })
             .collect()
     }
 
     /// 获取 executor_compilation[executor] 的所有变量模型索引 / Get all variable model indices for executor_compilation[executor]
     pub fn executor_compilation_model_indices(&self) -> Vec<Vec<usize>> {
-        self.executor_compilation_symbols.iter()
+        self.executor_compilation_symbols
+            .iter()
             .map(|s| {
                 let poly = s.to_linear_polynomial();
-                poly.monomials().iter().map(|m: &ospf_rust_core::model::flatten::LinearMonomial<f64>| m.var_index()).collect()
+                poly.monomials()
+                    .iter()
+                    .map(|m: &ospf_rust_core::model::flatten::LinearMonomial<f64>| m.var_index())
+                    .collect()
             })
             .collect()
     }
@@ -387,7 +405,11 @@ impl TaskTime {
         durations: Vec<f64>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<()> {
-        assert_eq!(scheduled_starts.len(), n_tasks, "scheduled_starts length mismatch");
+        assert_eq!(
+            scheduled_starts.len(),
+            n_tasks,
+            "scheduled_starts length mismatch"
+        );
         assert_eq!(durations.len(), n_tasks, "durations length mismatch");
 
         self.scheduled_starts = scheduled_starts.clone();
@@ -396,10 +418,9 @@ impl TaskTime {
         let task_indices: Vec<usize> = (0..n_tasks).collect();
         self.est = Some(IndexedVariableArray1::new("est", &task_indices, model)?);
 
-        let est = self.est.as_ref()
-            .ok_or_else(|| GanttError::Calculation {
-                message: "est variables must be initialized".to_string(),
-            })?;
+        let est = self.est.as_ref().ok_or_else(|| GanttError::Calculation {
+            message: "est variables must be initialized".to_string(),
+        })?;
 
         // 构建 estimate_start_time[task] = est[task]
         // 和 estimate_end_time[task] = est[task] + duration[task]
@@ -411,7 +432,8 @@ impl TaskTime {
                     &[(est_idx, 1.0)],
                     0.0,
                 );
-                model.add_symbol(start_symbol.clone())
+                model
+                    .add_symbol(start_symbol.clone())
                     .map_err(|e| GanttError::Calculation {
                         message: format!("Failed to register estimate_start_time_{}: {:?}", ti, e),
                     })?;
@@ -424,7 +446,8 @@ impl TaskTime {
                     &[(est_idx, 1.0)],
                     duration,
                 );
-                model.add_symbol(end_symbol.clone())
+                model
+                    .add_symbol(end_symbol.clone())
                     .map_err(|e| GanttError::Calculation {
                         message: format!("Failed to register estimate_end_time_{}: {:?}", ti, e),
                     })?;
@@ -440,31 +463,38 @@ impl TaskTime {
                 // delay_time = max(0, est - scheduled_start)
                 if self.delay_enabled {
                     let est_linear = Linear::new(
-                        vec![ospf_rust_core::model::flatten::LinearMonomial::new(1.0, est_idx)],
+                        vec![ospf_rust_core::model::flatten::LinearMonomial::new(
+                            1.0, est_idx,
+                        )],
                         0.0,
                     );
-                    let ss_linear = Linear::new(
-                        vec![],
-                        ss,
-                    );
+                    let ss_linear = Linear::new(vec![], ss);
                     let delay_slack = Arc::new(SlackFunction::named(
-                        &format!("delay_time_{}", ti),
+                        format!("delay_time_{}", ti),
                         est_linear,
                         ss_linear,
                     ));
                     // SlackFunction 注册到模型时自动注册其 result_variable
                     // SlackFunction auto-registers its result_variable when added to model
-                    model.add_symbol(delay_slack.clone())
+                    model
+                        .add_symbol(delay_slack.clone())
                         .map_err(|e| GanttError::Calculation {
-                            message: format!("Failed to register delay_time_{} symbol: {:?}", ti, e),
+                            message: format!(
+                                "Failed to register delay_time_{} symbol: {:?}",
+                                ti, e
+                            ),
                         })?;
                     // 通过 find_token 获取 result_variable 的求解器索引
                     // Get solver index for the result_variable via find_token
                     let delay_var_id = delay_slack.result_variable().id();
-                    let delay_var_idx = model.find_token(delay_var_id)
+                    let delay_var_idx = model
+                        .find_token(delay_var_id)
                         .map(|t| t.solver_index)
                         .ok_or_else(|| GanttError::Calculation {
-                            message: format!("delay_time_{} result variable not found in model tokens", ti),
+                            message: format!(
+                                "delay_time_{} result variable not found in model tokens",
+                                ti
+                            ),
                         })?;
                     self.delay_time_slacks.push(Some(delay_slack));
                     self.delay_time_model_indices.push(Some(delay_var_idx));
@@ -475,28 +505,35 @@ impl TaskTime {
 
                 // advance_time = max(0, scheduled_start - est)
                 if self.advance_enabled {
-                    let ss_linear = Linear::new(
-                        vec![],
-                        ss,
-                    );
+                    let ss_linear = Linear::new(vec![], ss);
                     let est_linear = Linear::new(
-                        vec![ospf_rust_core::model::flatten::LinearMonomial::new(1.0, est_idx)],
+                        vec![ospf_rust_core::model::flatten::LinearMonomial::new(
+                            1.0, est_idx,
+                        )],
                         0.0,
                     );
                     let advance_slack = Arc::new(SlackFunction::named(
-                        &format!("advance_time_{}", ti),
+                        format!("advance_time_{}", ti),
                         ss_linear,
                         est_linear,
                     ));
-                    model.add_symbol(advance_slack.clone())
-                        .map_err(|e| GanttError::Calculation {
-                            message: format!("Failed to register advance_time_{} symbol: {:?}", ti, e),
-                        })?;
+                    model.add_symbol(advance_slack.clone()).map_err(|e| {
+                        GanttError::Calculation {
+                            message: format!(
+                                "Failed to register advance_time_{} symbol: {:?}",
+                                ti, e
+                            ),
+                        }
+                    })?;
                     let advance_var_id = advance_slack.result_variable().id();
-                    let advance_var_idx = model.find_token(advance_var_id)
+                    let advance_var_idx = model
+                        .find_token(advance_var_id)
                         .map(|t| t.solver_index)
                         .ok_or_else(|| GanttError::Calculation {
-                            message: format!("advance_time_{} result variable not found in model tokens", ti),
+                            message: format!(
+                                "advance_time_{} result variable not found in model tokens",
+                                ti
+                            ),
                         })?;
                     self.advance_time_slacks.push(Some(advance_slack));
                     self.advance_time_model_indices.push(Some(advance_var_idx));
@@ -516,10 +553,14 @@ impl TaskTime {
         // 构建索引符号组合 / Build indexed symbol combinations
         let task_keys: Vec<usize> = (0..n_tasks).collect();
         self.estimate_start_time_indexed = Some(symbols_to_indexed_1d(
-            "estimate_start_time", &task_keys, &self.estimate_start_time_symbols,
+            "estimate_start_time",
+            &task_keys,
+            &self.estimate_start_time_symbols,
         ));
         self.estimate_end_time_indexed = Some(symbols_to_indexed_1d(
-            "estimate_end_time", &task_keys, &self.estimate_end_time_symbols,
+            "estimate_end_time",
+            &task_keys,
+            &self.estimate_end_time_symbols,
         ));
 
         Ok(())
@@ -527,10 +568,9 @@ impl TaskTime {
 
     /// 获取 est[task] 的模型索引列表 / Get model indices for est variables
     pub fn est_model_indices(&self) -> Vec<Option<usize>> {
-        self.est.as_ref()
-            .map(|est| {
-                (0..est.len()).map(|ti| est.model_index(&ti)).collect()
-            })
+        self.est
+            .as_ref()
+            .map(|est| (0..est.len()).map(|ti| est.model_index(&ti)).collect())
             .unwrap_or_default()
     }
 }
@@ -577,7 +617,9 @@ impl Makespan {
         task_time: &TaskTime,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<()> {
-        let end_time_polynomials: Vec<Linear<f64>> = task_time.estimate_end_time_symbols.iter()
+        let end_time_polynomials: Vec<Linear<f64>> = task_time
+            .estimate_end_time_symbols
+            .iter()
             .map(|s: &Arc<LinearExpressionSymbol<f64>>| s.to_linear_polynomial())
             .collect();
 
@@ -593,7 +635,8 @@ impl Makespan {
 
         // MinMaxFunction 注册到模型时自动注册其辅助变量
         // MinMaxFunction auto-registers its auxiliary variables when added to model
-        model.add_symbol(Arc::new(makespan_fn.clone()))
+        model
+            .add_symbol(Arc::new(makespan_fn.clone()))
             .map_err(|e| GanttError::Calculation {
                 message: format!("Failed to register makespan symbol: {:?}", e),
             })?;
@@ -601,7 +644,8 @@ impl Makespan {
         // 通过 find_token 获取 result_variable 的求解器索引
         // Get solver index for the result_variable via find_token
         let makespan_var_id = makespan_fn.result_variable().id();
-        let makespan_idx = model.find_token(makespan_var_id)
+        let makespan_idx = model
+            .find_token(makespan_var_id)
             .map(|t| t.solver_index)
             .ok_or_else(|| GanttError::Calculation {
                 message: "makespan result variable not found in model tokens".to_string(),
@@ -698,7 +742,8 @@ impl Switch {
         };
         if self.task_count > 1 && compilation.tasks.iter().any(|task| task.time().is_none()) {
             return Err(GanttError::Calculation {
-                message: "enabled static switch requires every task to have a time range".to_string(),
+                message: "enabled static switch requires every task to have a time range"
+                    .to_string(),
             });
         }
 
@@ -710,14 +755,22 @@ impl Switch {
                         continue;
                     }
 
-                    let from_idx = x.model_index(&from, &ei)
-                        .ok_or_else(|| GanttError::Calculation {
-                            message: format!("x[{}, {}] model index not found for switch", from, ei),
-                        })?;
-                    let to_idx = x.model_index(&to, &ei)
-                        .ok_or_else(|| GanttError::Calculation {
-                            message: format!("x[{}, {}] model index not found for switch", to, ei),
-                        })?;
+                    let from_idx =
+                        x.model_index(&from, &ei)
+                            .ok_or_else(|| GanttError::Calculation {
+                                message: format!(
+                                    "x[{}, {}] model index not found for switch",
+                                    from, ei
+                                ),
+                            })?;
+                    let to_idx =
+                        x.model_index(&to, &ei)
+                            .ok_or_else(|| GanttError::Calculation {
+                                message: format!(
+                                    "x[{}, {}] model index not found for switch",
+                                    to, ei
+                                ),
+                            })?;
                     let switch_symbol = Arc::new(AndFunction::new(
                         next_gantt_symbol_id(),
                         &format!("switch_{}_{}_{}", ei, from, to),
@@ -726,14 +779,22 @@ impl Switch {
                             Linear::new(vec![LinearMonomial::new(1.0, to_idx)], 0.0),
                         ],
                     ));
-                    model.add_symbol(switch_symbol.clone())
-                        .map_err(|e| GanttError::Calculation {
-                            message: format!("Failed to register switch_{}_{}_{}: {:?}", ei, from, to, e),
-                        })?;
-                    let switch_idx = model.find_token(switch_symbol.result_variable().id())
+                    model.add_symbol(switch_symbol.clone()).map_err(|e| {
+                        GanttError::Calculation {
+                            message: format!(
+                                "Failed to register switch_{}_{}_{}: {:?}",
+                                ei, from, to, e
+                            ),
+                        }
+                    })?;
+                    let switch_idx = model
+                        .find_token(switch_symbol.result_variable().id())
                         .map(|token| token.solver_index)
                         .ok_or_else(|| GanttError::Calculation {
-                            message: format!("switch_{}_{}_{} result variable not found", ei, from, to),
+                            message: format!(
+                                "switch_{}_{}_{} result variable not found",
+                                ei, from, to
+                            ),
                         })?;
                     self.switch_model_indices[flat_index] = Some(switch_idx);
                     self.switch_symbols.push(switch_symbol);
@@ -756,13 +817,15 @@ impl Switch {
                 if switch_terms.is_empty() {
                     continue;
                 }
-                model.add_le_constraint(
-                    &switch_indicator_terms,
-                    1.0,
-                    &format!("switch_sum_{}_{}", from, to),
-                ).map_err(|e| GanttError::Calculation {
-                    message: format!("Failed to register switch_sum_{}_{}: {:?}", from, to, e),
-                })?;
+                model
+                    .add_le_constraint(
+                        &switch_indicator_terms,
+                        1.0,
+                        &format!("switch_sum_{}_{}", from, to),
+                    )
+                    .map_err(|e| GanttError::Calculation {
+                        message: format!("Failed to register switch_sum_{}_{}: {:?}", from, to, e),
+                    })?;
 
                 let symbol = Arc::new(LinearExpressionSymbol::new(
                     next_gantt_symbol_id(),
@@ -770,7 +833,8 @@ impl Switch {
                     switch_terms,
                     0.0,
                 ));
-                model.add_symbol(symbol.clone())
+                model
+                    .add_symbol(symbol.clone())
                     .map_err(|e| GanttError::Calculation {
                         message: format!("Failed to register switch_time_{}_{}: {:?}", from, to, e),
                     })?;
@@ -822,7 +886,8 @@ impl Switch {
 
         self.front_of_symbols = vec![None; self.task_count * self.task_count];
         self.between_in_symbols = vec![None; self.task_count * self.task_count * self.task_count];
-        self.switch_model_indices = vec![None; self.executor_count * self.task_count * self.task_count];
+        self.switch_model_indices =
+            vec![None; self.executor_count * self.task_count * self.task_count];
         self.switch_time_mask_symbols =
             vec![None; self.executor_count * self.task_count * self.task_count];
         self.switch_time_symbols = vec![None; self.task_count * self.task_count];
@@ -844,7 +909,8 @@ impl Switch {
                     InequalityKind::LessEqual,
                     Self::dynamic_switch_big_m(task_time),
                 ));
-                model.add_symbol(front_of.clone())
+                model
+                    .add_symbol(front_of.clone())
                     .map_err(|e| GanttError::Calculation {
                         message: format!("Failed to register front_of_{}_{}: {:?}", from, to, e),
                     })?;
@@ -859,7 +925,8 @@ impl Switch {
                     if from == to || from == middle || to == middle {
                         continue;
                     }
-                    let Some(front_middle) = self.front_of_model_polynomial(model, from, middle)? else {
+                    let Some(front_middle) = self.front_of_model_polynomial(model, from, middle)?
+                    else {
                         continue;
                     };
                     let Some(middle_to) = self.front_of_model_polynomial(model, middle, to)? else {
@@ -870,7 +937,8 @@ impl Switch {
                         &format!("between_in_{}_{}_{}", middle, from, to),
                         vec![front_middle, middle_to],
                     ));
-                    model.add_symbol(between.clone())
+                    model
+                        .add_symbol(between.clone())
                         .map_err(|e| GanttError::Calculation {
                             message: format!(
                                 "Failed to register between_in_{}_{}_{}: {:?}",
@@ -892,14 +960,22 @@ impl Switch {
                     let Some(front_of) = self.front_of_model_polynomial(model, from, to)? else {
                         continue;
                     };
-                    let from_idx = x.model_index(&from, &ei)
-                        .ok_or_else(|| GanttError::Calculation {
-                            message: format!("x[{}, {}] model index not found for dynamic switch", from, ei),
-                        })?;
-                    let to_idx = x.model_index(&to, &ei)
-                        .ok_or_else(|| GanttError::Calculation {
-                            message: format!("x[{}, {}] model index not found for dynamic switch", to, ei),
-                        })?;
+                    let from_idx =
+                        x.model_index(&from, &ei)
+                            .ok_or_else(|| GanttError::Calculation {
+                                message: format!(
+                                    "x[{}, {}] model index not found for dynamic switch",
+                                    from, ei
+                                ),
+                            })?;
+                    let to_idx =
+                        x.model_index(&to, &ei)
+                            .ok_or_else(|| GanttError::Calculation {
+                                message: format!(
+                                    "x[{}, {}] model index not found for dynamic switch",
+                                    to, ei
+                                ),
+                            })?;
 
                     let mut switch_conditions = vec![
                         Linear::new(vec![LinearMonomial::new(1.0, from_idx)], 0.0),
@@ -922,14 +998,22 @@ impl Switch {
                         &format!("switch_{}_{}_{}", ei, from, to),
                         switch_conditions,
                     ));
-                    model.add_symbol(switch_symbol.clone())
-                        .map_err(|e| GanttError::Calculation {
-                            message: format!("Failed to register switch_{}_{}_{}: {:?}", ei, from, to, e),
-                        })?;
-                    let switch_idx = model.find_token(switch_symbol.result_variable().id())
+                    model.add_symbol(switch_symbol.clone()).map_err(|e| {
+                        GanttError::Calculation {
+                            message: format!(
+                                "Failed to register switch_{}_{}_{}: {:?}",
+                                ei, from, to, e
+                            ),
+                        }
+                    })?;
+                    let switch_idx = model
+                        .find_token(switch_symbol.result_variable().id())
                         .map(|token| token.solver_index)
                         .ok_or_else(|| GanttError::Calculation {
-                            message: format!("switch_{}_{}_{} result variable not found", ei, from, to),
+                            message: format!(
+                                "switch_{}_{}_{} result variable not found",
+                                ei, from, to
+                            ),
                         })?;
                     let flat_index = self.switch_flat_index(ei, from, to);
                     self.switch_model_indices[flat_index] = Some(switch_idx);
@@ -945,13 +1029,14 @@ impl Switch {
                         time_gap,
                         switch_symbol.result_variable().clone(),
                     ));
-                    model.add_symbol(masking_symbol.clone())
-                        .map_err(|e| GanttError::Calculation {
+                    model.add_symbol(masking_symbol.clone()).map_err(|e| {
+                        GanttError::Calculation {
                             message: format!(
                                 "Failed to register switch_time_mask_{}_{}_{}: {:?}",
                                 ei, from, to, e,
                             ),
-                        })?;
+                        }
+                    })?;
                     let mask_flat_index = self.switch_flat_index(ei, from, to);
                     self.switch_time_mask_symbols[mask_flat_index] = Some(masking_symbol);
                 }
@@ -967,7 +1052,8 @@ impl Switch {
                         switch_indicator_terms.push((switch_idx, 1.0));
                     }
                     if let Some(mask_symbol) = self.switch_time_mask_symbol(ei, from, to) {
-                        let mask_idx = model.find_token(mask_symbol.result_variable().id())
+                        let mask_idx = model
+                            .find_token(mask_symbol.result_variable().id())
                             .map(|token| token.solver_index)
                             .ok_or_else(|| GanttError::Calculation {
                                 message: format!(
@@ -981,13 +1067,15 @@ impl Switch {
                 if switch_time_terms.is_empty() {
                     continue;
                 }
-                model.add_le_constraint(
-                    &switch_indicator_terms,
-                    1.0,
-                    &format!("switch_sum_{}_{}", from, to),
-                ).map_err(|e| GanttError::Calculation {
-                    message: format!("Failed to register switch_sum_{}_{}: {:?}", from, to, e),
-                })?;
+                model
+                    .add_le_constraint(
+                        &switch_indicator_terms,
+                        1.0,
+                        &format!("switch_sum_{}_{}", from, to),
+                    )
+                    .map_err(|e| GanttError::Calculation {
+                        message: format!("Failed to register switch_sum_{}_{}: {:?}", from, to, e),
+                    })?;
 
                 let symbol = Arc::new(LinearExpressionSymbol::new(
                     next_gantt_symbol_id(),
@@ -995,7 +1083,8 @@ impl Switch {
                     switch_time_terms,
                     0.0,
                 ));
-                model.add_symbol(symbol.clone())
+                model
+                    .add_symbol(symbol.clone())
                     .map_err(|e| GanttError::Calculation {
                         message: format!("Failed to register switch_time_{}_{}: {:?}", from, to, e),
                     })?;
@@ -1138,7 +1227,8 @@ impl Switch {
         let Some(symbol) = self.front_of_symbol(from_task_index, to_task_index) else {
             return Ok(None);
         };
-        let solver_index = model.find_token(symbol.result_variable().id())
+        let solver_index = model
+            .find_token(symbol.result_variable().id())
             .map(|token| token.solver_index)
             .ok_or_else(|| GanttError::Calculation {
                 message: format!(
@@ -1159,10 +1249,13 @@ impl Switch {
         from_task_index: usize,
         to_task_index: usize,
     ) -> GanttResult<Option<Linear<f64>>> {
-        let Some(symbol) = self.between_in_symbol(middle_task_index, from_task_index, to_task_index) else {
+        let Some(symbol) =
+            self.between_in_symbol(middle_task_index, from_task_index, to_task_index)
+        else {
             return Ok(None);
         };
-        let solver_index = model.find_token(symbol.result_variable().id())
+        let solver_index = model
+            .find_token(symbol.result_variable().id())
             .map(|token| token.solver_index)
             .ok_or_else(|| GanttError::Calculation {
                 message: format!(
@@ -1216,12 +1309,14 @@ impl Switch {
     }
 
     fn dynamic_switch_big_m(task_time: &TaskTime) -> f64 {
-        let max_scheduled_start = task_time.scheduled_starts
+        let max_scheduled_start = task_time
+            .scheduled_starts
             .iter()
             .flatten()
             .copied()
             .fold(0.0_f64, |acc, value| acc.max(value.abs()));
-        let max_duration = task_time.durations
+        let max_duration = task_time
+            .durations
             .iter()
             .copied()
             .fold(0.0_f64, |acc, value| acc.max(value.abs()));
@@ -1268,7 +1363,6 @@ impl Switch {
         let distance = to_time.start - from_time.end;
         distance.whole_seconds().max(0) as f64
     }
-
 }
 
 // ============================================================================
@@ -1316,12 +1410,10 @@ impl<T> TaskSolution<T> {
 mod tests {
     use super::*;
     use crate::domain::task_compilation::adapter::{
-        IndexedVariableArray1, IndexedVariableArray2,
-        build_linear_expression_symbol,
+        IndexedVariableArray1, IndexedVariableArray2, build_linear_expression_symbol,
     };
     use crate::domain::task_compilation::{
-        TaskCompilationAggregation,
-        TaskCompilationAggregationWithTime,
+        TaskCompilationAggregation, TaskCompilationAggregationWithTime,
     };
     use ospf_rust_core::variable::Binary;
 
@@ -1362,10 +1454,12 @@ mod tests {
         let mut task_time = TaskTime::new(true, false, true, false);
 
         let n_tasks = 2;
-        let scheduled_starts = vec![Some(10.0), None];  // task 0 有排程时间，task 1 没有
+        let scheduled_starts = vec![Some(10.0), None]; // task 0 有排程时间，task 1 没有
         let durations = vec![5.0, 3.0];
 
-        task_time.register(n_tasks, scheduled_starts, durations, &mut model).unwrap();
+        task_time
+            .register(n_tasks, scheduled_starts, durations, &mut model)
+            .unwrap();
 
         assert!(task_time.est.is_some());
         let est = task_time.est.as_ref().unwrap();
@@ -1394,7 +1488,9 @@ mod tests {
         let mut task_time = TaskTime::new(false, false, false, false);
         let scheduled_starts = vec![None, None];
         let durations = vec![5.0, 3.0];
-        task_time.register(2, scheduled_starts, durations, &mut model).unwrap();
+        task_time
+            .register(2, scheduled_starts, durations, &mut model)
+            .unwrap();
 
         // 再注册 Makespan
         let mut makespan = Makespan::new(false);
@@ -1435,18 +1531,27 @@ mod tests {
 
     impl TestTask {
         fn new(id: &str, name: &str) -> Self {
-            Self { id: id.into(), name: name.to_string() }
+            Self {
+                id: id.into(),
+                name: name.to_string(),
+            }
         }
     }
 
-    use crate::domain::task::{ExecutorTrait, AssignmentPolicyTrait, TaskTrait, BasicExecutor, BasicAssignmentPolicy};
+    use crate::domain::task::{
+        AssignmentPolicyTrait, BasicAssignmentPolicy, BasicExecutor, ExecutorTrait, TaskTrait,
+    };
     use crate::infrastructure::TimeRange;
 
     impl<E: ExecutorTrait, A: AssignmentPolicyTrait<E>> TaskTrait<E, A> for TestTask {
         type Id = String;
 
-        fn id(&self) -> &Self::Id { &self.id }
-        fn name(&self) -> &str { &self.name }
+        fn id(&self) -> &Self::Id {
+            &self.id
+        }
+        fn name(&self) -> &str {
+            &self.name
+        }
     }
 
     #[derive(Debug, Clone)]
@@ -1469,18 +1574,21 @@ mod tests {
     impl<E: ExecutorTrait, A: AssignmentPolicyTrait<E>> TaskTrait<E, A> for TimedTestTask {
         type Id = String;
 
-        fn id(&self) -> &Self::Id { &self.id }
-        fn name(&self) -> &str { &self.name }
-        fn time(&self) -> Option<&TimeRange> { Some(&self.time) }
+        fn id(&self) -> &Self::Id {
+            &self.id
+        }
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn time(&self) -> Option<&TimeRange> {
+            Some(&self.time)
+        }
     }
 
     #[test]
     fn test_full_task_compilation_model_registration() {
         // 创建 2 个任务和 2 个执行者 / Create 2 tasks and 2 executors
-        let tasks = vec![
-            TestTask::new("t0", "Task 0"),
-            TestTask::new("t1", "Task 1"),
-        ];
+        let tasks = vec![TestTask::new("t0", "Task 0"), TestTask::new("t1", "Task 1")];
         let executors = vec![
             BasicExecutor::new("e0", "Executor 0"),
             BasicExecutor::new("e1", "Executor 1"),
@@ -1489,24 +1597,27 @@ mod tests {
         let mut model = MetaModel::<f64>::new("test_full_compilation");
 
         // 创建并注册 TaskCompilationAggregationWithTime
-        let mut aggregation: TaskCompilationAggregationWithTime<TestTask, BasicExecutor, BasicAssignmentPolicy<BasicExecutor>> =
-            TaskCompilationAggregationWithTime::new(
-                tasks,
-                executors,
-                true,   // task_cancel_enabled
-                false,  // with_executor_leisure
-                false,  // switch_enabled
-                true,   // delay_enabled
-                false,  // over_max_delay_enabled
-                true,   // advance_enabled
-                false,  // over_max_advance_enabled
-                false,  // makespan_extra
-            );
+        let mut aggregation: TaskCompilationAggregationWithTime<
+            TestTask,
+            BasicExecutor,
+            BasicAssignmentPolicy<BasicExecutor>,
+        > = TaskCompilationAggregationWithTime::new(
+            tasks, executors, true,  // task_cancel_enabled
+            false, // with_executor_leisure
+            false, // switch_enabled
+            true,  // delay_enabled
+            false, // over_max_delay_enabled
+            true,  // advance_enabled
+            false, // over_max_advance_enabled
+            false, // makespan_extra
+        );
 
         let scheduled_starts = vec![Some(10.0), Some(20.0)];
         let durations = vec![5.0, 3.0];
 
-        aggregation.register(scheduled_starts, durations, &mut model).unwrap();
+        aggregation
+            .register(scheduled_starts, durations, &mut model)
+            .unwrap();
 
         // 验证 Compilation 组件
         let compilation = &aggregation.compilation;
@@ -1550,7 +1661,9 @@ mod tests {
         // For each task, the sum of task_compilation[task] variable indices should equal 1
         for (ti, group) in tc_groups.iter().enumerate() {
             let indices: Vec<(usize, f64)> = group.iter().map(|&idx| (idx, 1.0)).collect();
-            model.add_eq_constraint(&indices, 1.0, &format!("task_compilation_{}", ti)).unwrap();
+            model
+                .add_eq_constraint(&indices, 1.0, &format!("task_compilation_{}", ti))
+                .unwrap();
         }
 
         // 2. ExecutorCompilationConstraint — 使用 executor_compilation_model_indices
@@ -1558,7 +1671,9 @@ mod tests {
         assert_eq!(ec_groups.len(), 2);
         for (ei, group) in ec_groups.iter().enumerate() {
             let indices: Vec<(usize, f64)> = group.iter().map(|&idx| (idx, 1.0)).collect();
-            model.add_eq_constraint(&indices, 1.0, &format!("executor_compilation_{}", ei)).unwrap();
+            model
+                .add_eq_constraint(&indices, 1.0, &format!("executor_compilation_{}", ei))
+                .unwrap();
         }
 
         // 3. MakespanMinimization
@@ -1569,7 +1684,9 @@ mod tests {
         }
 
         // 4. TaskDelayTimeMinimization
-        let delay_cost_terms: Vec<(usize, f64)> = task_time.delay_time_model_indices.iter()
+        let delay_cost_terms: Vec<(usize, f64)> = task_time
+            .delay_time_model_indices
+            .iter()
             .filter_map(|idx: &Option<usize>| idx.map(|i| (i, 1.0)))
             .collect();
         let delay_obj = TaskDelayTimeMinimization::new(delay_cost_terms);
@@ -1577,7 +1694,9 @@ mod tests {
         delay_obj.invoke(&model).unwrap();
 
         // 5. TaskAdvanceTimeMinimization
-        let advance_cost_terms: Vec<(usize, f64)> = task_time.advance_time_model_indices.iter()
+        let advance_cost_terms: Vec<(usize, f64)> = task_time
+            .advance_time_model_indices
+            .iter()
             .filter_map(|idx: &Option<usize>| idx.map(|i| (i, 1.0)))
             .collect();
         let advance_obj = TaskAdvanceTimeMinimization::new(advance_cost_terms);
@@ -1588,8 +1707,22 @@ mod tests {
         // 模型应该成功注册变量、中间符号、约束和目标
         // Model should successfully register variables, intermediate symbols, constraints, and objectives
         // Compilation 变量
-        assert!(compilation.x.as_ref().unwrap().model_index(&0, &0).is_some());
-        assert!(compilation.x.as_ref().unwrap().model_index(&1, &1).is_some());
+        assert!(
+            compilation
+                .x
+                .as_ref()
+                .unwrap()
+                .model_index(&0, &0)
+                .is_some()
+        );
+        assert!(
+            compilation
+                .x
+                .as_ref()
+                .unwrap()
+                .model_index(&1, &1)
+                .is_some()
+        );
     }
 
     #[test]
@@ -1629,13 +1762,7 @@ mod tests {
             TimedTestTask,
             BasicExecutor,
             BasicAssignmentPolicy<BasicExecutor>,
-        > = TaskCompilationAggregation::new(
-            tasks,
-            executors,
-            false,
-            false,
-            true,
-        );
+        > = TaskCompilationAggregation::new(tasks, executors, false, false, true);
         aggregation.register(&mut model).unwrap();
 
         assert!(aggregation.switch.switch_model_index(0, 0, 1).is_some());
@@ -1673,28 +1800,26 @@ mod tests {
             BasicExecutor,
             BasicAssignmentPolicy<BasicExecutor>,
         > = TaskCompilationAggregationWithTime::new(
-            tasks,
-            executors,
-            false,
-            false,
-            true,
-            false,
-            false,
-            false,
-            false,
-            false,
+            tasks, executors, false, false, true, false, false, false, false, false,
         );
-        aggregation.register(
-            vec![Some(0.0), Some(10.0), Some(20.0)],
-            vec![5.0, 5.0, 5.0],
-            &mut model,
-        ).unwrap();
+        aggregation
+            .register(
+                vec![Some(0.0), Some(10.0), Some(20.0)],
+                vec![5.0, 5.0, 5.0],
+                &mut model,
+            )
+            .unwrap();
 
         assert!(aggregation.switch.front_of_symbol(0, 1).is_some());
         assert!(aggregation.switch.between_in_symbol(1, 0, 2).is_some());
         assert!(aggregation.switch.switch_model_index(0, 0, 1).is_some());
         assert!(aggregation.switch.switch_model_index(0, 0, 2).is_some());
-        assert!(aggregation.switch.switch_time_mask_symbol(0, 0, 1).is_some());
+        assert!(
+            aggregation
+                .switch
+                .switch_time_mask_symbol(0, 0, 1)
+                .is_some()
+        );
         assert!(aggregation.switch.switch_time_symbol(0, 1).is_some());
         let mechanism = model.try_to_mechanism_model().unwrap();
         assert!(mechanism.as_basic().num_constraints() > 0);
@@ -1702,7 +1827,8 @@ mod tests {
         let x = aggregation.compilation.x.as_ref().unwrap();
         let est = aggregation.task_time.est.as_ref().unwrap();
         let switch_idx = aggregation.switch.switch_model_index(0, 0, 1).unwrap();
-        let mask_idx = aggregation.switch
+        let mask_idx = aggregation
+            .switch
             .switch_time_mask_symbol(0, 0, 1)
             .and_then(|symbol| model.find_token(symbol.result_variable().id()))
             .map(|token| token.solver_index)
@@ -1725,24 +1851,20 @@ mod tests {
     #[test]
     fn test_task_compilation_aggregation_without_time() {
         // 不带时间的简单聚合 / Simple aggregation without time
-        let tasks = vec![
-            TestTask::new("t0", "Task 0"),
-            TestTask::new("t1", "Task 1"),
-        ];
-        let executors = vec![
-            BasicExecutor::new("e0", "Executor 0"),
-        ];
+        let tasks = vec![TestTask::new("t0", "Task 0"), TestTask::new("t1", "Task 1")];
+        let executors = vec![BasicExecutor::new("e0", "Executor 0")];
 
         let mut model = MetaModel::<f64>::new("test_basic_aggregation");
 
-        let mut aggregation: TaskCompilationAggregation<TestTask, BasicExecutor, BasicAssignmentPolicy<BasicExecutor>> =
-            TaskCompilationAggregation::new(
-                tasks,
-                executors,
-                false,  // task_cancel_enabled
-                true,   // with_executor_leisure
-                false,  // switch_enabled
-            );
+        let mut aggregation: TaskCompilationAggregation<
+            TestTask,
+            BasicExecutor,
+            BasicAssignmentPolicy<BasicExecutor>,
+        > = TaskCompilationAggregation::new(
+            tasks, executors, false, // task_cancel_enabled
+            true,  // with_executor_leisure
+            false, // switch_enabled
+        );
 
         aggregation.register(&mut model).unwrap();
 
@@ -1770,7 +1892,14 @@ mod tests {
 
         // 先注册 TaskTime 组件
         let mut task_time = TaskTime::new(true, true, false, false);
-        task_time.register(3, vec![Some(10.0), Some(20.0), Some(30.0)], vec![5.0, 3.0, 7.0], &mut model).unwrap();
+        task_time
+            .register(
+                3,
+                vec![Some(10.0), Some(20.0), Some(30.0)],
+                vec![5.0, 3.0, 7.0],
+                &mut model,
+            )
+            .unwrap();
 
         // 只有部分任务有 max_delay
         let max_delay_values: Vec<Option<f64>> = vec![Some(5.0), None, Some(10.0)];
@@ -1790,15 +1919,16 @@ mod tests {
     fn test_deadline_constraints_registration() {
         // 测试截止时间约束注册 / Test deadline constraint registration
         use crate::domain::task_compilation::service::limits::{
-            TaskDelayLastEndTimeConstraint,
-            TaskAdvanceEarliestEndTimeConstraint,
+            TaskAdvanceEarliestEndTimeConstraint, TaskDelayLastEndTimeConstraint,
         };
         use ospf_rust_framework::model::pipeline::Pipeline;
 
         let mut model = MetaModel::<f64>::new("test_deadline");
 
         let mut task_time = TaskTime::new(false, false, false, false);
-        task_time.register(2, vec![None, None], vec![5.0, 3.0], &mut model).unwrap();
+        task_time
+            .register(2, vec![None, None], vec![5.0, 3.0], &mut model)
+            .unwrap();
 
         let est_indices = task_time.est_model_indices();
 
@@ -1806,11 +1936,8 @@ mod tests {
         let last_end_times: Vec<Option<f64>> = vec![Some(20.0), None];
         let durations = vec![5.0, 3.0];
 
-        let delay_constraint = TaskDelayLastEndTimeConstraint::new(
-            &est_indices,
-            &last_end_times,
-            &durations,
-        );
+        let delay_constraint =
+            TaskDelayLastEndTimeConstraint::new(&est_indices, &last_end_times, &durations);
         // 只有 task 0 有 last_end_time，adjusted = 20.0 - 5.0 = 15.0
         assert_eq!(delay_constraint.constraints.len(), 1);
         assert_eq!(delay_constraint.constraints[0].1, 15.0);
@@ -1837,8 +1964,7 @@ mod tests {
     fn test_executor_cost_and_leisure_minimization() {
         // 测试执行器成本和空闲最小化 / Test executor cost and leisure minimization
         use crate::domain::task_compilation::service::limits::{
-            ExecutorCostMinimization,
-            ExecutorLeisureMinimization,
+            ExecutorCostMinimization, ExecutorLeisureMinimization,
         };
         use ospf_rust_framework::model::pipeline::Pipeline;
 
@@ -1851,13 +1977,17 @@ mod tests {
             BasicExecutor::new("e1", "Executor 1"),
         ];
 
-        let mut compilation: Compilation<TestTask, BasicExecutor, BasicAssignmentPolicy<BasicExecutor>> =
-            Compilation::new(tasks, executors, false, true);
+        let mut compilation: Compilation<
+            TestTask,
+            BasicExecutor,
+            BasicAssignmentPolicy<BasicExecutor>,
+        > = Compilation::new(tasks, executors, false, true);
         compilation.register(&mut model).unwrap();
 
         // ExecutorCostMinimization: 使用 executor_compilation 中间符号的第一个变量索引
         let ec_groups = compilation.executor_compilation_model_indices();
-        let cost_terms: Vec<(usize, f64)> = ec_groups.iter()
+        let cost_terms: Vec<(usize, f64)> = ec_groups
+            .iter()
             .enumerate()
             .map(|(ei, g)| (g[0], (ei + 1) as f64 * 10.0))
             .collect();
@@ -1868,9 +1998,8 @@ mod tests {
 
         // ExecutorLeisureMinimization: 使用 z 变量索引
         if let Some(ref z) = compilation.z {
-            let leisure_indices: Vec<usize> = (0..z.len())
-                .filter_map(|ei| z.model_index(&ei))
-                .collect();
+            let leisure_indices: Vec<usize> =
+                (0..z.len()).filter_map(|ei| z.model_index(&ei)).collect();
             let leisure_obj = ExecutorLeisureMinimization::new(leisure_indices);
             leisure_obj.register(&mut model);
             leisure_obj.invoke(&model).unwrap();

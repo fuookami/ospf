@@ -1,9 +1,9 @@
 //! 主舱门空舱限制 / Main deck door empty limits
-use std::error::Error;
-use ospf_rust_core::model::{LinearObjectiveInput, MetaModel};
+use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAggregation;
 use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{LinearObjectiveInput, MetaModel};
+use std::error::Error;
 
 /// 主甲板舱门空载限制: 主甲板舱门附近舱位必须装载 / Main deck door empty limit: positions near main deck door must be loaded
 /// 对齐 Kotlin MainDeckDoorEmptyLimit
@@ -31,12 +31,10 @@ pub fn apply_main_deck_door_empty_limits(
     }
 
     if !objective_terms.is_empty() {
-        let obj_input = LinearObjectiveInput::minimize(
-            &format!(
-                "soft_security_main_deck_door_empty_{}",
-                mode_name(context.mode)
-            ),
-        )
+        let obj_input = LinearObjectiveInput::minimize(&format!(
+            "soft_security_main_deck_door_empty_{}",
+            mode_name(context.mode)
+        ))
         .terms(objective_terms.iter().copied());
         model.add_linear_objective_input(obj_input);
     }

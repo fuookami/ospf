@@ -1,13 +1,13 @@
 //! P0 评估测试模块 / P0 evaluation tests module.
 
-use std::f64::consts::PI;
-use std::sync::Arc;
 use crate::model::BasicModel;
 use crate::symbol::flatten::{Linear, LinearMonomial};
 use crate::symbol::function::*;
 use crate::symbol::{FunctionSymbol, LinearExpressionSymbol};
 use crate::token::{MutableTokenList, Token, VecTokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId};
+use std::f64::consts::PI;
+use std::sync::Arc;
 
 fn assert_close(actual: f64, expected: f64) {
     assert!(

@@ -1,4 +1,3 @@
-
 //! BigDecimal 幂运算函数
 //! BigDecimal power functions using Taylor series
 //!

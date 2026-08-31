@@ -10,6 +10,8 @@ pub struct BunchCompilationContext {
 impl BunchCompilationContext {
     /// 创建新的编译上下文 / Create new compilation context
     pub fn new() -> Self {
-        Self { compilations: Vec::new() }
+        Self {
+            compilations: Vec::new(),
+        }
     }
 }

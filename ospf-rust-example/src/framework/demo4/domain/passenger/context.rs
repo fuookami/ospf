@@ -12,6 +12,8 @@ pub struct PassengerContext {
 impl PassengerContext {
     /// 创建新的旅客上下文 / Create new passenger context
     pub fn new() -> Self {
-        Self { passengers: Vec::new() }
+        Self {
+            passengers: Vec::new(),
+        }
     }
 }

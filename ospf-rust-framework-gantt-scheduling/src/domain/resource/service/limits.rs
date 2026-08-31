@@ -3,12 +3,12 @@
 //! 实现资源容量约束和松弛量最小化 Pipeline。
 //! Implements resource capacity constraint and slack minimization pipelines.
 
+use ospf_rust_core::error::Result;
 use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::model::object::SubObjective;
 use ospf_rust_core::model::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::model::mechanism::constraint_group::ConstraintGroup;
+use ospf_rust_core::model::object::SubObjective;
 use ospf_rust_framework::model::pipeline::Pipeline;
-use ospf_rust_core::error::Result;
 
 use crate::domain::resource::model::capacity::ResourceCapacity;
 use crate::domain::resource::model::usage::ResourceUsage;
@@ -58,8 +58,12 @@ impl ResourceCapacityConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for ResourceCapacityConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (slot_idx, capacity) in self.capacities.iter().enumerate() {
@@ -69,7 +73,7 @@ impl Pipeline<MetaModel<f64>> for ResourceCapacityConstraint {
                 // 由于 quantity 是中间表达式，需要通过其变量索引添加约束
                 // 这里简化为：如果 over slack 不启用，直接约束
                 if let Err(e) = model.add_le_constraint(
-                    &[],  // 空系数表示常数 0
+                    &[], // 空系数表示常数 0
                     capacity.upper_bound,
                     &format!("{}_ub_{}", self.name, slot_idx),
                 ) {
@@ -78,14 +82,14 @@ impl Pipeline<MetaModel<f64>> for ResourceCapacityConstraint {
             }
 
             // 当 less slack 未启用时，添加下界约束
-            if !self.less_enabled || !capacity.less_enabled() {
-                if let Err(e) = model.add_ge_constraint(
+            if (!self.less_enabled || !capacity.less_enabled())
+                && let Err(e) = model.add_ge_constraint(
                     &[],
                     capacity.lower_bound,
                     &format!("{}_lb_{}", self.name, slot_idx),
-                ) {
-                    log::warn!("Failed to register {}_lb_{}: {:?}", self.name, slot_idx, e);
-                }
+                )
+            {
+                log::warn!("Failed to register {}_lb_{}: {:?}", self.name, slot_idx, e);
             }
         }
     }
@@ -113,7 +117,9 @@ pub struct ResourceOverQuantityMinimization {
 impl ResourceOverQuantityMinimization {
     /// 从 ResourceUsage 创建过量最小化 / Create from ResourceUsage
     pub fn from_usage(usage: &ResourceUsage, coefficient: f64) -> Self {
-        let cost_terms: Vec<(usize, f64)> = usage.over_quantity_indices.iter()
+        let cost_terms: Vec<(usize, f64)> = usage
+            .over_quantity_indices
+            .iter()
             .filter_map(|idx| idx.map(|i| (i, coefficient)))
             .collect();
         Self {
@@ -124,14 +130,20 @@ impl ResourceOverQuantityMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for ResourceOverQuantityMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -158,7 +170,9 @@ pub struct ResourceLessQuantityMinimization {
 impl ResourceLessQuantityMinimization {
     /// 从 ResourceUsage 创建不足最小化 / Create from ResourceUsage
     pub fn from_usage(usage: &ResourceUsage, coefficient: f64) -> Self {
-        let cost_terms: Vec<(usize, f64)> = usage.less_quantity_indices.iter()
+        let cost_terms: Vec<(usize, f64)> = usage
+            .less_quantity_indices
+            .iter()
             .filter_map(|idx| idx.map(|i| (i, coefficient)))
             .collect();
         Self {
@@ -169,14 +183,20 @@ impl ResourceLessQuantityMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for ResourceLessQuantityMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -209,9 +229,7 @@ mod tests {
     fn test_resource_capacity_constraint() {
         let mut model = MetaModel::<f64>::new("test_resource_constraint");
 
-        let capacities = vec![
-            ResourceCapacity::new(test_time_range(), 0.0, 100.0),
-        ];
+        let capacities = vec![ResourceCapacity::new(test_time_range(), 0.0, 100.0)];
 
         let mut usage = ResourceUsage::new("machine", 1, false, false);
         usage.register(&capacities, &mut model).unwrap();
@@ -225,9 +243,13 @@ mod tests {
     fn test_resource_over_quantity_minimization() {
         let mut model = MetaModel::<f64>::new("test_resource_over_obj");
 
-        let capacities = vec![
-            ResourceCapacity::with_slack(test_time_range(), 0.0, 100.0, None, Some(20.0)),
-        ];
+        let capacities = vec![ResourceCapacity::with_slack(
+            test_time_range(),
+            0.0,
+            100.0,
+            None,
+            Some(20.0),
+        )];
 
         let mut usage = ResourceUsage::new("machine", 1, true, false);
         usage.register(&capacities, &mut model).unwrap();
@@ -242,9 +264,13 @@ mod tests {
     fn test_resource_less_quantity_minimization() {
         let mut model = MetaModel::<f64>::new("test_resource_less_obj");
 
-        let capacities = vec![
-            ResourceCapacity::with_slack(test_time_range(), 5.0, 100.0, Some(10.0), None),
-        ];
+        let capacities = vec![ResourceCapacity::with_slack(
+            test_time_range(),
+            5.0,
+            100.0,
+            Some(10.0),
+            None,
+        )];
 
         let mut usage = ResourceUsage::new("machine", 1, false, true);
         usage.register(&capacities, &mut model).unwrap();
@@ -259,9 +285,13 @@ mod tests {
     fn test_resource_capacity_constraint_with_slack() {
         let mut model = MetaModel::<f64>::new("test_resource_constraint_slack");
 
-        let capacities = vec![
-            ResourceCapacity::with_slack(test_time_range(), 0.0, 100.0, Some(10.0), Some(20.0)),
-        ];
+        let capacities = vec![ResourceCapacity::with_slack(
+            test_time_range(),
+            0.0,
+            100.0,
+            Some(10.0),
+            Some(20.0),
+        )];
 
         let mut usage = ResourceUsage::new("machine", 1, true, true);
         usage.register(&capacities, &mut model).unwrap();
@@ -275,9 +305,13 @@ mod tests {
     fn test_resource_over_and_less_minimization_combined() {
         let mut model = MetaModel::<f64>::new("test_resource_combined_obj");
 
-        let capacities = vec![
-            ResourceCapacity::with_slack(test_time_range(), 5.0, 100.0, Some(10.0), Some(20.0)),
-        ];
+        let capacities = vec![ResourceCapacity::with_slack(
+            test_time_range(),
+            5.0,
+            100.0,
+            Some(10.0),
+            Some(20.0),
+        )];
 
         let mut usage = ResourceUsage::new("machine", 1, true, true);
         usage.register(&capacities, &mut model).unwrap();

@@ -4,7 +4,7 @@
 //! Handles cross-day boundary scenarios: when working hours extend past midnight,
 //! the logical date may differ from the calendar date.
 
-use time::{Date, Time, Duration};
+use time::{Date, Duration, Time};
 
 /// 本地日期偏移 / Local date offset
 ///
@@ -74,29 +74,29 @@ mod tests {
     #[test]
     fn test_date_after_offset() {
         let offset = LocalDateOffset::new(time!(08:00));
-        let result = offset.date(date!(2020-08-30), time!(09:00));
-        assert_eq!(result, date!(2020-08-30));
+        let result = offset.date(date!(2020 - 08 - 30), time!(09:00));
+        assert_eq!(result, date!(2020 - 08 - 30));
     }
 
     #[test]
     fn test_date_before_offset() {
         let offset = LocalDateOffset::new(time!(08:00));
-        let result = offset.date(date!(2020-08-30), time!(07:00));
-        assert_eq!(result, date!(2020-08-29));
+        let result = offset.date(date!(2020 - 08 - 30), time!(07:00));
+        assert_eq!(result, date!(2020 - 08 - 29));
     }
 
     #[test]
     fn test_date_at_offset() {
         let offset = LocalDateOffset::new(time!(08:00));
-        let result = offset.date(date!(2020-08-30), time!(08:00));
+        let result = offset.date(date!(2020 - 08 - 30), time!(08:00));
         // Equal to offset -> same day
-        assert_eq!(result, date!(2020-08-30));
+        assert_eq!(result, date!(2020 - 08 - 30));
     }
 
     #[test]
     fn test_default_no_offset() {
         let offset = LocalDateOffset::default();
-        let result = offset.date(date!(2020-08-30), time!(00:00));
-        assert_eq!(result, date!(2020-08-30));
+        let result = offset.date(date!(2020 - 08 - 30), time!(00:00));
+        assert_eq!(result, date!(2020 - 08 - 30));
     }
 }

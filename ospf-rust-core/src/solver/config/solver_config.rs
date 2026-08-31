@@ -14,10 +14,16 @@ pub struct SolverConfig {
     pub iteration_limit: Option<usize>,
     /// 节点限制（MIP）/ Node limit (MIP)
     pub node_limit: Option<usize>,
+    /// 解数量限制 / Solution limit
+    pub solution_limit: Option<usize>,
     /// MIP Gap 容差 / MIP Gap tolerance
     pub mip_gap: Option<f64>,
     /// 无改进提前终止阈值 / No-improvement early-stop threshold
     pub no_improvement_time_limit: Option<Duration>,
+    /// 可中断时间，达到前不触发无改进提前终止 / Interruptible time before which no-improvement early-stop is suppressed
+    pub interruptible_time: Option<Duration>,
+    /// 可中断绝对 gap，绝对 gap 未低于此值时不触发无改进提前终止 / Interruptible absolute gap below which no-improvement early-stop is allowed
+    pub interruptible_gap: Option<f64>,
     /// 改进判定阈值 / Improvement tolerance threshold
     pub improve_threshold: Option<f64>,
     /// 最优容差 / Optimality tolerance
@@ -42,8 +48,11 @@ impl SolverConfig {
             time_limit: None,
             iteration_limit: None,
             node_limit: None,
+            solution_limit: None,
             mip_gap: None,
             no_improvement_time_limit: None,
+            interruptible_time: None,
+            interruptible_gap: None,
             improve_threshold: None,
             optimality_tolerance: None,
             feasibility_tolerance: None,
@@ -109,6 +118,12 @@ impl SolverConfig {
         self
     }
 
+    /// 设置解数量限制 / Set solution limit
+    pub fn with_solution_limit(mut self, limit: usize) -> Self {
+        self.solution_limit = Some(limit);
+        self
+    }
+
     /// 设置 MIP Gap / Set MIP gap
     pub fn with_mip_gap(mut self, gap: f64) -> Self {
         self.mip_gap = Some(gap);
@@ -123,6 +138,18 @@ impl SolverConfig {
     /// 设置无改进提前终止阈值 / Set no-improvement early-stop threshold
     pub fn with_no_improvement_time_limit(mut self, limit: Duration) -> Self {
         self.no_improvement_time_limit = Some(limit);
+        self
+    }
+
+    /// 设置可中断时间 / Set interruptible time
+    pub fn with_interruptible_time(mut self, limit: Duration) -> Self {
+        self.interruptible_time = Some(limit);
+        self
+    }
+
+    /// 设置可中断绝对 gap / Set interruptible absolute gap
+    pub fn with_interruptible_gap(mut self, gap: f64) -> Self {
+        self.interruptible_gap = Some(gap);
         self
     }
 
@@ -209,12 +236,16 @@ mod tests {
     fn kotlin_aligned_no_improvement_fields_are_set() {
         let config = SolverConfig::new("early_stop")
             .with_no_improvement_time_limit(Duration::from_secs(11))
+            .with_interruptible_time(Duration::from_secs(60))
+            .with_interruptible_gap(0.05)
             .with_improve_threshold(1e-6);
 
         assert_eq!(
             config.no_improvement_time_limit,
             Some(Duration::from_secs(11))
         );
+        assert_eq!(config.interruptible_time, Some(Duration::from_secs(60)));
+        assert_eq!(config.interruptible_gap, Some(0.05));
         assert_eq!(config.improve_threshold, Some(1e-6));
     }
 }

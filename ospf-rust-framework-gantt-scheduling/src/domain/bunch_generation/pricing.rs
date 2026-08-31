@@ -50,29 +50,25 @@ where
     /// 返回 reduced cost < 0 的束列表。
     /// Returns list of bunches with negative reduced cost.
     pub fn solve(&self, bunch_index_offset: usize) -> Vec<BunchEntry<I>> {
-        let algorithm = LabelSettingAlgorithm::new(
-            &self.graph,
-            &self.task_shadow_prices,
-        );
+        let algorithm = LabelSettingAlgorithm::new(&self.graph, &self.task_shadow_prices);
 
         let labels = algorithm.run();
         let mut bunches = Vec::new();
 
         for (i, label) in labels.into_iter().enumerate() {
-            if label.is_better_bunch() {
-                if let Some(task_indices) = label.generate_bunch_tasks() {
-                    if !task_indices.is_empty() {
-                        let reduced_cost = label.reduced_cost();
-                        bunches.push(BunchEntry {
-                            index: bunch_index_offset + i,
-                            executor_id: self.executor_id.clone(),
-                            task_indices,
-                            cost: reduced_cost,
-                            iteration: 0, // 由调用方设置
-                            slot_index: None,
-                        });
-                    }
-                }
+            if label.is_better_bunch()
+                && let Some(task_indices) = label.generate_bunch_tasks()
+                && !task_indices.is_empty()
+            {
+                let reduced_cost = label.reduced_cost();
+                bunches.push(BunchEntry {
+                    index: bunch_index_offset + i,
+                    executor_id: self.executor_id.clone(),
+                    task_indices,
+                    cost: reduced_cost,
+                    iteration: 0, // 由调用方设置
+                    slot_index: None,
+                });
             }
         }
 
@@ -101,11 +97,11 @@ pub struct LabelSettingAlgorithm<'a> {
 
 impl<'a> LabelSettingAlgorithm<'a> {
     /// 创建 Label Setting 算法 / Create Label Setting algorithm
-    pub fn new(
-        graph: &'a Graph,
-        shadow_prices: &'a HashMap<usize, f64>,
-    ) -> Self {
-        Self { graph, shadow_prices }
+    pub fn new(graph: &'a Graph, shadow_prices: &'a HashMap<usize, f64>) -> Self {
+        Self {
+            graph,
+            shadow_prices,
+        }
     }
 
     /// 执行算法 / Run the algorithm
@@ -144,7 +140,8 @@ impl<'a> LabelSettingAlgorithm<'a> {
                     // 扩展标签
                     let new_label = match target {
                         Node::Task(task_node) => {
-                            let shadow_price = self.shadow_prices
+                            let shadow_price = self
+                                .shadow_prices
                                 .get(&task_node.task_index)
                                 .copied()
                                 .unwrap_or(0.0);
@@ -157,9 +154,7 @@ impl<'a> LabelSettingAlgorithm<'a> {
                                 shadow_price,
                             )
                         }
-                        Node::End => {
-                            Label::end(label.clone())
-                        }
+                        Node::End => Label::end(label.clone()),
                         Node::Root => continue, // 不回到根节点
                     };
 
@@ -172,7 +167,8 @@ impl<'a> LabelSettingAlgorithm<'a> {
                             let new_tasks_set: HashSet<usize> = new_tasks.into_iter().collect();
 
                             let is_dominated = visited_sets.iter().any(|vs| {
-                                vs.iter().all(|t| new_tasks_set.contains(t)) && vs.len() >= new_tasks_set.len()
+                                vs.iter().all(|t| new_tasks_set.contains(t))
+                                    && vs.len() >= new_tasks_set.len()
                             });
 
                             if !is_dominated {
@@ -193,7 +189,10 @@ impl<'a> LabelSettingAlgorithm<'a> {
         }
 
         // 过滤出 reduced cost < 0 的标签
-        final_labels.into_iter().filter(|l| l.is_better_bunch()).collect()
+        final_labels
+            .into_iter()
+            .filter(|l| l.is_better_bunch())
+            .collect()
     }
 }
 
@@ -217,9 +216,7 @@ mod tests {
         graph.add_edge(task0, graph.end().clone());
 
         let mut pricing = BunchPricingProblem::new("exec_1".to_string(), graph);
-        pricing.set_shadow_prices(HashMap::from([
-            (0, 1.0),
-        ]));
+        pricing.set_shadow_prices(HashMap::from([(0, 1.0)]));
 
         let _bunches = pricing.solve(0);
         // 应生成包含 task 0 的束（reduced cost 取决于 cost 设置）

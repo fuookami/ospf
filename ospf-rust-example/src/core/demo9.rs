@@ -1,14 +1,12 @@
 //! Demo9 模块 / Demo9 module
 use std::error::Error;
 
-use ospf_rust_multiarray::{MultiArray, Shape};
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
 use ospf_rust_core::symbol::{
-    SymbolCombination, AbsFunction, LinearExpressionSymbol, flat_map1_indexed,
+    AbsFunction, LinearExpressionSymbol, SymbolCombination, flat_map1_indexed,
 };
-use ospf_rust_core::variable::{
-    Integer, VariableCombination1D, VariableRange,
-};
+use ospf_rust_core::variable::{Integer, VariableCombination1D, VariableRange};
+use ospf_rust_multiarray::{MultiArray, Shape};
 
 use super::common::{read_solution_value, solve_typed};
 
@@ -22,7 +20,11 @@ struct Settlement {
 
 impl Settlement {
     fn new(name: &str, x: f64, y: f64) -> Self {
-        Self { name: name.to_string(), x, y }
+        Self {
+            name: name.to_string(),
+            x,
+            y,
+        }
     }
 }
 
@@ -65,44 +67,40 @@ impl LocationModel {
         let n = settlements.len();
 
         // Scalar decision variables with bounded range
-        let x = VariableCombination1D::with_range_generator(
-            Shape::new([1]), "x",
-            |_, _| VariableRange::bounded(-100.0, 100.0),
-        );
-        let y = VariableCombination1D::with_range_generator(
-            Shape::new([1]), "y",
-            |_, _| VariableRange::bounded(-100.0, 100.0),
-        );
+        let x = VariableCombination1D::with_range_generator(Shape::new([1]), "x", |_, _| {
+            VariableRange::bounded(-100.0, 100.0)
+        });
+        let y = VariableCombination1D::with_range_generator(Shape::new([1]), "y", |_, _| {
+            VariableRange::bounded(-100.0, 100.0)
+        });
         let x_idx = model.register_combination(&x)?;
         let y_idx = model.register_combination(&y)?;
 
         // Per-settlement absolute distance components via AbsFunction
-        let dx_fn = SymbolCombination::new(
-            Shape::new([n]), "dx",
-            |i, _| {
-                AbsFunction::named(
-                    &format!("dx_{}", settlements[i].name),
-                    ospf_rust_core::symbol::flatten::Linear::new(
-                        vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[0])],
-                        -settlements[i].x,
-                    ),
-                )
-            },
-        );
+        let dx_fn = SymbolCombination::new(Shape::new([n]), "dx", |i, _| {
+            AbsFunction::named(
+                &format!("dx_{}", settlements[i].name),
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        1.0, x_idx[0],
+                    )],
+                    -settlements[i].x,
+                ),
+            )
+        });
         model.add_symbol_combination(&dx_fn)?;
 
-        let dy_fn = SymbolCombination::new(
-            Shape::new([n]), "dy",
-            |i, _| {
-                AbsFunction::named(
-                    &format!("dy_{}", settlements[i].name),
-                    ospf_rust_core::symbol::flatten::Linear::new(
-                        vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, y_idx[0])],
-                        -settlements[i].y,
-                    ),
-                )
-            },
-        );
+        let dy_fn = SymbolCombination::new(Shape::new([n]), "dy", |i, _| {
+            AbsFunction::named(
+                &format!("dy_{}", settlements[i].name),
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        1.0, y_idx[0],
+                    )],
+                    -settlements[i].y,
+                ),
+            )
+        });
         model.add_symbol_combination(&dy_fn)?;
 
         // Compute result variable indices from AbsFunction symbols
@@ -114,20 +112,29 @@ impl LocationModel {
             .collect();
 
         // Objective symbol: each settlement contributes dx_i + dy_i
-        let distance_expr = flat_map1_indexed("distance", settlements, |i, _settlement| {
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, dx_fn_idx[i]),
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, dy_fn_idx[i]),
-                ],
-                0.0,
-            )
-        }, |_, settlement| settlement.name.clone());
+        let distance_expr = flat_map1_indexed(
+            "distance",
+            settlements,
+            |i, _settlement| {
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, dx_fn_idx[i]),
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, dy_fn_idx[i]),
+                    ],
+                    0.0,
+                )
+            },
+            |_, settlement| settlement.name.clone(),
+        );
         model.add_symbol_combination(&distance_expr)?;
 
         Ok(LocationModel {
-            x, y, x_idx, y_idx,
-            dx_fn, dy_fn,
+            x,
+            y,
+            x_idx,
+            y_idx,
+            dx_fn,
+            dy_fn,
             distance_expr,
         })
     }

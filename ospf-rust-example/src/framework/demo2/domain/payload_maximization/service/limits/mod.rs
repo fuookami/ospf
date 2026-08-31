@@ -1,6 +1,6 @@
 //! 业载最大化约束限制 / Payload maximization constraint limits.
-use std::error::Error;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 最大业载限制 / Max payload limit
 /// 对齐 Kotlin MaxPayloadLimit

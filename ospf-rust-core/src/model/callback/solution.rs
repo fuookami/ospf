@@ -1,8 +1,8 @@
 //! Solution 类型定义
 //! Solution Type Definition
 
-use std::collections::HashMap;
 use crate::variable::VariableId;
+use std::collections::HashMap;
 
 /// 解向量 / Solution Vector
 ///
@@ -26,7 +26,7 @@ pub type PartialSolution<V> = HashMap<VariableId, V>;
 ///
 /// 表示解的状态。
 /// Represents the status of a solution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SolutionStatus {
     /// 最优 / Optimal
     Optimal,
@@ -37,15 +37,10 @@ pub enum SolutionStatus {
     /// 无界 / Unbounded
     Unbounded,
     /// 未求解 / NotSolved
+    #[default]
     NotSolved,
     /// 未知 / Unknown
     Unknown,
-}
-
-impl Default for SolutionStatus {
-    fn default() -> Self {
-        Self::NotSolved
-    }
 }
 
 /// 带状态的解 / Solution with Status

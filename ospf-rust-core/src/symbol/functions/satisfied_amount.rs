@@ -1,21 +1,20 @@
 //! 满足数量函数符号 / Satisfied amount function symbol
 
-use std::any::Any;
-use std::collections::HashSet;
-use std::fmt::{Debug, Display, Formatter};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
+};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, new_standalone_id};
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
-};
+use num_traits::{FromPrimitive, ToPrimitive};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::HashSet;
+use std::fmt::{Debug, Display, Formatter};
+use std::sync::Arc;
 
 fn from_f64<V>(value: f64) -> Option<V>
 where
@@ -63,6 +62,8 @@ impl<V> SatisfiedAmountFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建满足数量函数。
+    /// Create a satisfied-count function.
     pub fn new(id: u64, name: &str, indicators: Vec<BinaryVariableItem>) -> Self {
         let result_var = ContinuousVariableItem::create(new_standalone_id(), name);
 
@@ -211,19 +212,27 @@ where
         .with_amount_range(Some(lower), Some(upper))
     }
 
+    /// 声明该函数依赖的模型元素 ID。
+    /// Declare the model element IDs consumed by this function.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回满足数量结果变量。
+    /// Return the satisfied-count result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 返回 indicator 二值变量。
+    /// Return the indicator binary variables.
     pub fn indicator_variables(&self) -> &[BinaryVariableItem] {
         &self.indicators
     }
 
+    /// 返回满足数量的下界和上界。
+    /// Return the lower and upper bounds of the satisfied count.
     pub fn amount_range(&self) -> (Option<usize>, Option<usize>) {
         (self.amount_lower, self.amount_upper)
     }

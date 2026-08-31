@@ -22,7 +22,11 @@ pub trait ScalarFunctionEvaluator {
     ///
     /// # 返回 / Returns
     /// 求值结果，未识别的函数返回 None / Evaluation result, None for unrecognized functions
-    fn evaluate(&self, name: &str, arguments: &[Option<ExpressionValue>]) -> Option<ExpressionValue>;
+    fn evaluate(
+        &self,
+        name: &str,
+        arguments: &[Option<ExpressionValue>],
+    ) -> Option<ExpressionValue>;
 }
 
 /// 默认标量函数求值器。
@@ -33,7 +37,11 @@ pub trait ScalarFunctionEvaluator {
 pub struct DefaultScalarFunctionEvaluator;
 
 impl ScalarFunctionEvaluator for DefaultScalarFunctionEvaluator {
-    fn evaluate(&self, name: &str, arguments: &[Option<ExpressionValue>]) -> Option<ExpressionValue> {
+    fn evaluate(
+        &self,
+        name: &str,
+        arguments: &[Option<ExpressionValue>],
+    ) -> Option<ExpressionValue> {
         match name.to_ascii_lowercase().as_str() {
             super::ScalarFunctionNames::ABS => {
                 let value = arguments.first()?.as_ref()?;
@@ -81,15 +89,17 @@ impl MathFunctionEvaluator {
     /// 支持的数学函数名集合。
     /// Set of supported math function names.
     pub const SUPPORTED_FUNCTIONS: &'static [&'static str] = &[
-        "sqrt", "pow", "log", "log10", "exp",
-        "sin", "cos", "tan", "asin", "acos", "atan",
-        "floor", "ceil", "round",
-        "max", "min", "abs",
+        "sqrt", "pow", "log", "log10", "exp", "sin", "cos", "tan", "asin", "acos", "atan", "floor",
+        "ceil", "round", "max", "min", "abs",
     ];
 }
 
 impl ScalarFunctionEvaluator for MathFunctionEvaluator {
-    fn evaluate(&self, name: &str, arguments: &[Option<ExpressionValue>]) -> Option<ExpressionValue> {
+    fn evaluate(
+        &self,
+        name: &str,
+        arguments: &[Option<ExpressionValue>],
+    ) -> Option<ExpressionValue> {
         match name.to_ascii_lowercase().as_str() {
             "sqrt" => evaluate_single_arg(arguments, f64::sqrt),
             "pow" => evaluate_two_arg(arguments, f64::powf),
@@ -128,7 +138,11 @@ pub struct CompositeFunctionEvaluator<'a, A: ScalarFunctionEvaluator, B: ScalarF
 impl<'a, A: ScalarFunctionEvaluator, B: ScalarFunctionEvaluator> ScalarFunctionEvaluator
     for CompositeFunctionEvaluator<'a, A, B>
 {
-    fn evaluate(&self, name: &str, arguments: &[Option<ExpressionValue>]) -> Option<ExpressionValue> {
+    fn evaluate(
+        &self,
+        name: &str,
+        arguments: &[Option<ExpressionValue>],
+    ) -> Option<ExpressionValue> {
         self.primary
             .evaluate(name, arguments)
             .or_else(|| self.fallback.evaluate(name, arguments))
@@ -147,7 +161,9 @@ fn evaluate_single_arg(
     let value = arguments.first()?.as_ref()?;
     let number = expression_number(value)?;
     let result = operation(number);
-    result.is_finite().then_some(ExpressionValue::Number(result))
+    result
+        .is_finite()
+        .then_some(ExpressionValue::Number(result))
 }
 
 fn evaluate_two_arg(
@@ -162,7 +178,9 @@ fn evaluate_two_arg(
     let left = expression_number(left)?;
     let right = expression_number(right)?;
     let result = operation(left, right);
-    result.is_finite().then_some(ExpressionValue::Number(result))
+    result
+        .is_finite()
+        .then_some(ExpressionValue::Number(result))
 }
 
 fn expression_number(value: &ExpressionValue) -> Option<f64> {
@@ -191,10 +209,8 @@ mod tests {
     fn math_function_evaluator_supports_all_17_functions() {
         assert_eq!(MathFunctionEvaluator::SUPPORTED_FUNCTIONS.len(), 17);
         let expected = [
-            "sqrt", "pow", "log", "log10", "exp",
-            "sin", "cos", "tan", "asin", "acos", "atan",
-            "floor", "ceil", "round",
-            "max", "min", "abs",
+            "sqrt", "pow", "log", "log10", "exp", "sin", "cos", "tan", "asin", "acos", "atan",
+            "floor", "ceil", "round", "max", "min", "abs",
         ];
         for name in &expected {
             assert!(
@@ -206,10 +222,7 @@ mod tests {
 
     #[test]
     fn math_sqrt() {
-        let result = MathFunctionEvaluator.evaluate(
-            "sqrt",
-            &[Some(ExpressionValue::Number(16.0))],
-        );
+        let result = MathFunctionEvaluator.evaluate("sqrt", &[Some(ExpressionValue::Number(16.0))]);
         assert_eq!(result, Some(ExpressionValue::Number(4.0)));
     }
 
@@ -217,29 +230,23 @@ mod tests {
     fn math_pow() {
         let result = MathFunctionEvaluator.evaluate(
             "pow",
-            &[Some(ExpressionValue::Number(2.0)), Some(ExpressionValue::Number(3.0))],
+            &[
+                Some(ExpressionValue::Number(2.0)),
+                Some(ExpressionValue::Number(3.0)),
+            ],
         );
         assert_eq!(result, Some(ExpressionValue::Number(8.0)));
     }
 
     #[test]
     fn math_floor_ceil_round() {
-        let result = MathFunctionEvaluator.evaluate(
-            "floor",
-            &[Some(ExpressionValue::Number(3.7))],
-        );
+        let result = MathFunctionEvaluator.evaluate("floor", &[Some(ExpressionValue::Number(3.7))]);
         assert_eq!(result, Some(ExpressionValue::Number(3.0)));
 
-        let result = MathFunctionEvaluator.evaluate(
-            "ceil",
-            &[Some(ExpressionValue::Number(3.2))],
-        );
+        let result = MathFunctionEvaluator.evaluate("ceil", &[Some(ExpressionValue::Number(3.2))]);
         assert_eq!(result, Some(ExpressionValue::Number(4.0)));
 
-        let result = MathFunctionEvaluator.evaluate(
-            "round",
-            &[Some(ExpressionValue::Number(3.7))],
-        );
+        let result = MathFunctionEvaluator.evaluate("round", &[Some(ExpressionValue::Number(3.7))]);
         assert_eq!(result, Some(ExpressionValue::Number(4.0)));
     }
 
@@ -247,41 +254,39 @@ mod tests {
     fn math_max_min() {
         let result = MathFunctionEvaluator.evaluate(
             "max",
-            &[Some(ExpressionValue::Number(3.0)), Some(ExpressionValue::Number(4.0))],
+            &[
+                Some(ExpressionValue::Number(3.0)),
+                Some(ExpressionValue::Number(4.0)),
+            ],
         );
         assert_eq!(result, Some(ExpressionValue::Number(4.0)));
 
         let result = MathFunctionEvaluator.evaluate(
             "min",
-            &[Some(ExpressionValue::Number(3.0)), Some(ExpressionValue::Number(4.0))],
+            &[
+                Some(ExpressionValue::Number(3.0)),
+                Some(ExpressionValue::Number(4.0)),
+            ],
         );
         assert_eq!(result, Some(ExpressionValue::Number(3.0)));
     }
 
     #[test]
     fn math_exp() {
-        let result = MathFunctionEvaluator.evaluate(
-            "exp",
-            &[Some(ExpressionValue::Number(0.0))],
-        );
+        let result = MathFunctionEvaluator.evaluate("exp", &[Some(ExpressionValue::Number(0.0))]);
         assert_eq!(result, Some(ExpressionValue::Number(1.0)));
     }
 
     #[test]
     fn math_abs() {
-        let result = MathFunctionEvaluator.evaluate(
-            "abs",
-            &[Some(ExpressionValue::Number(-5.0))],
-        );
+        let result = MathFunctionEvaluator.evaluate("abs", &[Some(ExpressionValue::Number(-5.0))]);
         assert_eq!(result, Some(ExpressionValue::Number(5.0)));
     }
 
     #[test]
     fn math_unknown_function_falls_through() {
-        let result = MathFunctionEvaluator.evaluate(
-            "unknownFunc",
-            &[Some(ExpressionValue::Number(1.0))],
-        );
+        let result =
+            MathFunctionEvaluator.evaluate("unknownFunc", &[Some(ExpressionValue::Number(1.0))]);
         assert_eq!(result, None);
     }
 
@@ -289,17 +294,18 @@ mod tests {
     fn math_wrong_arity_returns_none() {
         let result = MathFunctionEvaluator.evaluate(
             "sqrt",
-            &[Some(ExpressionValue::Number(1.0)), Some(ExpressionValue::Number(2.0))],
+            &[
+                Some(ExpressionValue::Number(1.0)),
+                Some(ExpressionValue::Number(2.0)),
+            ],
         );
         assert_eq!(result, None);
     }
 
     #[test]
     fn math_string_arg_returns_none() {
-        let result = MathFunctionEvaluator.evaluate(
-            "sqrt",
-            &[Some(ExpressionValue::String("abc".to_string()))],
-        );
+        let result = MathFunctionEvaluator
+            .evaluate("sqrt", &[Some(ExpressionValue::String("abc".to_string()))]);
         assert_eq!(result, None);
     }
 }

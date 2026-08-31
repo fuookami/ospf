@@ -1,9 +1,9 @@
 //! 舱位模型定义 / Position model definitions
+use super::aircraft_model::AircraftModel;
+use super::deck::DeckLocation;
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::Unit;
 use std::collections::HashMap;
-use super::aircraft_model::AircraftModel;
-use super::deck::DeckLocation;
 /// 舱位位置标签 / Position location tag (对齐 Kotlin PositionLocationTag)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PositionLocationTag {
@@ -32,15 +32,25 @@ pub struct PositionLocation {
 
 impl PositionLocation {
     /// 是否为主舱位置 / Whether main compartment
-    pub fn main(&self) -> bool { self.tags.contains(&PositionLocationTag::Main) }
+    pub fn main(&self) -> bool {
+        self.tags.contains(&PositionLocationTag::Main)
+    }
     /// 是否为下舱位置 / Whether lower compartment
-    pub fn low(&self) -> bool { self.tags.contains(&PositionLocationTag::Low) }
+    pub fn low(&self) -> bool {
+        self.tags.contains(&PositionLocationTag::Low)
+    }
     /// 是否为散货舱位置 / Whether bulk compartment
-    pub fn bulk(&self) -> bool { self.tags.contains(&PositionLocationTag::Bulk) }
+    pub fn bulk(&self) -> bool {
+        self.tags.contains(&PositionLocationTag::Bulk)
+    }
     /// 是否为机头位置 / Whether head position
-    pub fn head(&self) -> bool { self.tags.contains(&PositionLocationTag::Head) }
+    pub fn head(&self) -> bool {
+        self.tags.contains(&PositionLocationTag::Head)
+    }
     /// 是否为机尾位置 / Whether tail position
-    pub fn tail(&self) -> bool { self.tags.contains(&PositionLocationTag::Tail) }
+    pub fn tail(&self) -> bool {
+        self.tags.contains(&PositionLocationTag::Tail)
+    }
 
     /// 推断甲板位置 / Infer deck location from tags
     pub fn deck_location(&self) -> DeckLocation {

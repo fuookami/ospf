@@ -1,12 +1,12 @@
 //! 冗余范围限制 / Redundancy range limits
-use std::error::Error;
-use std::sync::Arc;
-use ospf_rust_core::model::{LinearObjectiveInput, MetaModel};
-use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
-use ospf_rust_core::symbol::function::SlackFunction;
 use crate::framework::demo2::domain::redundancy::aggregation::RedundancyAggregation;
 use crate::framework::demo2::domain::redundancy::context::RedundancyContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{LinearObjectiveInput, MetaModel};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::function::SlackFunction;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 冗余限制: 最小化冗余松弛变量 / Redundancy limit: minimize redundancy slack variable
 /// 对齐 Kotlin RedundancyLimit
@@ -57,9 +57,8 @@ pub fn apply_redundancy_limits(
     model.add_symbol(Arc::new(slack_fn))?;
 
     // 最小化 redundancy_slack
-    let obj = LinearObjectiveInput::minimize(
-        &format!("redundancy_{}", mode_name(context.mode)),
-    ).terms(std::iter::once((slack_idx, 1.0)));
+    let obj = LinearObjectiveInput::minimize(&format!("redundancy_{}", mode_name(context.mode)))
+        .terms(std::iter::once((slack_idx, 1.0)));
     model.add_linear_objective_input(obj);
 
     Ok(())

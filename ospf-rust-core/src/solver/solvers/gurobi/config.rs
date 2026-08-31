@@ -195,6 +195,8 @@ pub struct GurobiConfig {
     pub log_file: Option<String>,
     /// 节点限制 / Node limit
     pub node_limit: Option<i32>,
+    /// 解数量限制 / Solution limit
+    pub solution_limit: Option<i32>,
     /// 内存限制（GB）/ Memory limit (GB)
     pub mem_limit: Option<f64>,
     /// Compute Server 地址 / Compute Server endpoint
@@ -207,6 +209,10 @@ pub struct GurobiConfig {
     pub cs_queue_timeout: Option<f64>,
     /// 无改进提前终止阈值（秒）/ No-improvement early-stop threshold (seconds)
     pub no_improvement_time_limit: Option<f64>,
+    /// 可中断时间（秒），达到前不触发无改进提前终止 / Interruptible time (seconds) before which no-improvement early-stop is suppressed
+    pub interruptible_time: Option<f64>,
+    /// 可中断绝对 gap，绝对 gap 未低于此值时不触发无改进提前终止 / Interruptible absolute gap below which no-improvement early-stop is allowed
+    pub interruptible_gap: Option<f64>,
     /// 改进判定阈值 / Improvement tolerance threshold
     pub improve_threshold: Option<f64>,
     /// 遥测最小上报间隔（秒）/ Minimum telemetry emit interval (seconds)
@@ -253,15 +259,18 @@ impl fmt::Debug for GurobiConfig {
             )
             .field("log_file", &self.log_file)
             .field("node_limit", &self.node_limit)
+            .field("solution_limit", &self.solution_limit)
             .field("mem_limit", &self.mem_limit)
             .field("compute_server", &self.compute_server)
             .field(
-                "server_password_registered",
+                "server_credential_registered",
                 &self.server_password.is_some(),
             )
             .field("server_timeout", &self.server_timeout)
             .field("cs_queue_timeout", &self.cs_queue_timeout)
             .field("no_improvement_time_limit", &self.no_improvement_time_limit)
+            .field("interruptible_time", &self.interruptible_time)
+            .field("interruptible_gap", &self.interruptible_gap)
             .field("improve_threshold", &self.improve_threshold)
             .field("telemetry_min_interval", &self.telemetry_min_interval)
             .field("stage_callback_registered", &self.stage_callback.is_some())
@@ -301,12 +310,15 @@ impl Default for GurobiConfig {
             auto_apply_numeric_profile: false,
             log_file: None,
             node_limit: None,
+            solution_limit: None,
             mem_limit: None,
             compute_server: None,
             server_password: None,
             server_timeout: None,
             cs_queue_timeout: None,
             no_improvement_time_limit: None,
+            interruptible_time: None,
+            interruptible_gap: None,
             improve_threshold: None,
             telemetry_min_interval: None,
             stage_callback: None,
@@ -337,10 +349,17 @@ impl From<&SolverConfig> for GurobiConfig {
         gurobi_config.node_limit = config
             .node_limit
             .map(|limit| limit.min(i32::MAX as usize) as i32);
+        gurobi_config.solution_limit = config
+            .solution_limit
+            .map(|limit| limit.min(i32::MAX as usize) as i32);
         gurobi_config.mem_limit = config.memory_limit.map(|limit_mb| limit_mb as f64 / 1024.0);
         gurobi_config.no_improvement_time_limit = config
             .no_improvement_time_limit
             .map(|duration| duration.as_secs_f64());
+        gurobi_config.interruptible_time = config
+            .interruptible_time
+            .map(|duration| duration.as_secs_f64());
+        gurobi_config.interruptible_gap = config.interruptible_gap;
         gurobi_config.improve_threshold = config.improve_threshold;
         gurobi_config
     }
@@ -525,8 +544,7 @@ impl GurobiConfig {
 
     /// 设置最优性容差 / Set optimality tolerance
     pub fn with_optimality_tolerance(mut self, tolerance: f64) -> Self {
-        self.optimality_tolerance =
-            (tolerance.is_finite() && tolerance > 0.0).then_some(tolerance);
+        self.optimality_tolerance = (tolerance.is_finite() && tolerance > 0.0).then_some(tolerance);
         self
     }
 
@@ -585,6 +603,12 @@ impl GurobiConfig {
         self
     }
 
+    /// 设置解数量限制 / Set solution limit
+    pub fn with_solution_limit(mut self, solution_limit: i32) -> Self {
+        self.solution_limit = Some(solution_limit);
+        self
+    }
+
     /// 设置内存限制（GB）/ Set memory limit (GB)
     pub fn with_mem_limit(mut self, mem_limit: f64) -> Self {
         self.mem_limit = Some(mem_limit);
@@ -628,6 +652,18 @@ impl GurobiConfig {
     /// 设置无改进提前终止阈值（秒）/ Set no-improvement early-stop threshold (seconds)
     pub fn with_no_improvement_time_limit(mut self, seconds: f64) -> Self {
         self.no_improvement_time_limit = (seconds > 0.0).then_some(seconds);
+        self
+    }
+
+    /// 设置可中断时间（秒）/ Set interruptible time (seconds)
+    pub fn with_interruptible_time(mut self, seconds: f64) -> Self {
+        self.interruptible_time = (seconds >= 0.0).then_some(seconds);
+        self
+    }
+
+    /// 设置可中断绝对 gap / Set interruptible absolute gap
+    pub fn with_interruptible_gap(mut self, gap: f64) -> Self {
+        self.interruptible_gap = (gap >= 0.0).then_some(gap);
         self
     }
 

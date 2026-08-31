@@ -1,10 +1,10 @@
 //! Rayleigh-Benard 吸引子。
 //! Rayleigh-Benard attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Rayleigh-Benard 吸引子的一阶欧拉步进模型。
@@ -46,7 +46,10 @@ impl<S: Field + Float> Default for RayleighBenardAttractorGenerator<S> {
 /// 创建 Rayleigh-Benard 吸引子。
 /// Create a Rayleigh-Benard attractor.
 pub fn rayleigh_benard_attractor<S: Field + Float>(
-    alpha: S, beta: S, gamma: S, h: S,
+    alpha: S,
+    beta: S,
+    gamma: S,
+    h: S,
 ) -> RayleighBenardAttractor<S> {
     RayleighBenardAttractor::new(alpha, beta, gamma, h)
 }
@@ -54,7 +57,11 @@ pub fn rayleigh_benard_attractor<S: Field + Float>(
 /// 创建 Rayleigh-Benard 吸引子生成器。
 /// Create a Rayleigh-Benard attractor generator.
 pub fn rayleigh_benard_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, gamma: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    gamma: S,
+    h: S,
+    x: Point3<S>,
 ) -> RayleighBenardAttractorGenerator<S> {
     RayleighBenardAttractorGenerator::new(RayleighBenardAttractor::new(alpha, beta, gamma, h), x)
 }

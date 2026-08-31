@@ -1,9 +1,9 @@
 //! 表面密度限制 / Surface density limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;
 use crate::framework::demo2::domain::airworthiness_security::context::AirworthinessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 表面密度限制 / Surface density limit
 /// 对齐 Kotlin SurfaceDensityLimit: loadWeight[j] <= position.area * maxSurfaceDensity

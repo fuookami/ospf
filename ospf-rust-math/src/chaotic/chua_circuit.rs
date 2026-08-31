@@ -1,10 +1,10 @@
 //! Chua circuit system.
 //! Chua 电路系统。
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Chua 电路的一阶欧拉步进模型。
@@ -95,11 +95,9 @@ mod tests {
 
     #[test]
     fn generator_returns_current_value_before_advancing() {
-        let mut generator = ChuaCircuitGenerator::new(ChuaCircuit::default(), Point3::new(1.0, 1.0, 1.0));
+        let mut generator =
+            ChuaCircuitGenerator::new(ChuaCircuit::default(), Point3::new(1.0, 1.0, 1.0));
         assert_eq!(generator.next_point(), Point3::new(1.0, 1.0, 1.0));
-        assert_point3_close(
-            generator.x().clone(),
-            Point3::new(1.17784, 1.01, 0.72),
-        );
+        assert_point3_close(generator.x().clone(), Point3::new(1.17784, 1.01, 0.72));
     }
 }

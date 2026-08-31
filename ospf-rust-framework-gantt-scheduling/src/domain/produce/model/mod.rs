@@ -9,6 +9,6 @@ pub mod production_task;
 pub mod usage;
 
 pub use demand::{MaterialDemand, MaterialReserves};
-pub use material::{MaterialTrait, Product, SemiProduct, RawMaterial};
+pub use material::{MaterialTrait, Product, RawMaterial, SemiProduct};
 pub use production_task::ProductionTaskTrait;
-pub use usage::{ProduceUsage, ConsumptionUsage};
+pub use usage::{ConsumptionUsage, ProduceUsage};

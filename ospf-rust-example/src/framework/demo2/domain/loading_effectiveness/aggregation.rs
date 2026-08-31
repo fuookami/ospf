@@ -1,6 +1,6 @@
 //! 装卸效能聚合 / Loading effectiveness aggregation
-use std::collections::BTreeMap;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
+use std::collections::BTreeMap;
 
 /// 装载效能聚合数据 / Loading effectiveness aggregation data
 pub struct LoadingEffectivenessAggregation {

@@ -1,14 +1,14 @@
 //! 标量表达式 AST
 //! Scalar expression AST
 
-use std::collections::HashSet;
-use std::fmt::{Display, Formatter};
-use crate::symbol::OwnedSymbol;
-use super::property_path::{PropertyPath, property_path_from_owned_symbol};
-use super::operators::*;
-use super::value::ExpressionValue;
 use super::boolean::BooleanExpression;
 use super::normalize::scalar_structural_key;
+use super::operators::*;
+use super::property_path::{PropertyPath, property_path_from_owned_symbol};
+use super::value::ExpressionValue;
+use crate::symbol::OwnedSymbol;
+use std::collections::HashSet;
+use std::fmt::{Display, Formatter};
 
 /// 解析后的标量表达式。
 /// Parsed scalar expression.
@@ -206,11 +206,7 @@ impl<T> ScalarExpression<T> {
                 condition,
                 then_branch,
                 else_branch,
-            } => {
-                condition.is_constant()
-                    && then_branch.is_constant()
-                    && else_branch.is_constant()
-            }
+            } => condition.is_constant() && then_branch.is_constant() && else_branch.is_constant(),
             Self::Boolean(expr) => expr.is_constant(),
         }
     }

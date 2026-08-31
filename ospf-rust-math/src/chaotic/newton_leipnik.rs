@@ -1,10 +1,10 @@
 //! Newton-Leipnik 吸引子。
 //! Newton-Leipnik attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Newton-Leipnik 吸引子的一阶欧拉步进模型。
@@ -47,14 +47,21 @@ impl<S: Field + Float> Default for NewtonLeipnikAttractorGenerator<S> {
 
 /// 创建 Newton-Leipnik 吸引子。
 /// Create a Newton-Leipnik attractor.
-pub fn newton_leipnik_attractor<S: Field + Float>(alpha: S, beta: S, h: S) -> NewtonLeipnikAttractor<S> {
+pub fn newton_leipnik_attractor<S: Field + Float>(
+    alpha: S,
+    beta: S,
+    h: S,
+) -> NewtonLeipnikAttractor<S> {
     NewtonLeipnikAttractor::new(alpha, beta, h)
 }
 
 /// 创建 Newton-Leipnik 吸引子生成器。
 /// Create a Newton-Leipnik attractor generator.
 pub fn newton_leipnik_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    h: S,
+    x: Point3<S>,
 ) -> NewtonLeipnikAttractorGenerator<S> {
     NewtonLeipnikAttractorGenerator::new(NewtonLeipnikAttractor::new(alpha, beta, h), x)
 }

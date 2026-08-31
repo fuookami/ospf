@@ -40,7 +40,7 @@
 用户定义层      ->  MetaModel<V>
     -> 机理层   ->  MechanismModel<V>
     -> 标准形式 ->  LinearTriadModel / QuadraticTetradModel
-    -> solver层 ->  SolverOutput
+    -> solver层 ->  SolveReport（SolverOutput 仅作兼容 facade）
 ```
 
 本 crate 显式保留模型构建、表达式展开、solver-order token 映射和结果提取，使上层 framework crate 可以组合它们，而不拥有底层建模细节。
@@ -92,22 +92,46 @@ ospf-rust-core = { path = "path/to/ospf-rust-core" }
 
 ### 统一求解入口
 
+完整的 report、proof、取消、身份和 legacy 迁移合同见
+[`docs/solve-contract_ch.md`](../docs/solve-contract_ch.md)。
+
+原生 feature 和许可证证据遵循
+[`solver-native-matrix_ch.md`](../docs/solver-native-matrix_ch.md)；source commit
+覆盖见 [`solver-traceability_ch.md`](../docs/solver-traceability_ch.md)。只编译 feature
+不构成原生 solver 证据。
+
 高频路径建议直接从 `MetaModel` 调用：
 
 ```rust
 use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::solver::{SolveOptions, SolverExt};
+use ospf_rust_core::solver::{SolveOptions, SolveReport, SolverExt};
 
 fn solve_model<S: ospf_rust_core::solver::Solver>(
     meta_model: &MetaModel<f64>,
     solver: &S,
-) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolverOutput> {
-    let _output = meta_model.solve(solver)?;
+) -> ospf_rust_core::error::Result<SolveReport<f64>> {
+    let _report = meta_model.solve_report(solver)?;
 
     let options = SolveOptions::new();
-    solver.solve_with_options(meta_model, &options)
+    solver.solve_report_with_options(meta_model, &options)
 }
 ```
+
+精确消费方必须使用 report certificate helper。limit 或 interruption 可以保留 incumbent，
+但不能据此当作最优证明。原生 License 失败归类为 `LICENSE`；缺少动态库和环境配置仍归类为
+`ENVIRONMENT`。
+
+### 约束规划边界
+
+core crate 同时提供整数 CP AST，包括布尔文字、整数表达式、不可变 snapshot、规范化
+snapshot artifact，以及 `NoOverlap` 等全局约束。CP 值域和目标求值使用精确 `i64`，
+CP 路径不会静默把整数语义降为 `f64`。
+
+Gurobi 和 SCIP 通过 feature-gated、MIP-backed 的 `ExactLowering` 暴露 CP facade。
+这是一条带 snapshot 校验和统一 `SolveReport` proof 校验的精确 formulation 路径，
+不代表 backend 提供 native CP search。native optional-interval tree、增量 CP session，
+以及没有显式 lowering 的全局约束不属于该 facade；在能力门禁关闭前，它们保持
+`Conditional` 或 `Unsupported`。选择 backend 前应先检查 capability matrix。
 
 启用 `nightly` feature 时，还可使用 callable wrapper：
 

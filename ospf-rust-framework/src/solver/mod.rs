@@ -27,10 +27,15 @@ pub mod column_generation_solver;
     feature = "gurobi12"
 ))]
 mod core_extensions;
+pub mod experiment;
 pub mod framework_async;
 pub mod framework_number_aliases;
 pub mod framework_solve_options;
 pub mod linear_benders_decomposition_solver;
+pub mod logic_based_benders;
+#[cfg(feature = "serde")]
+pub mod logic_based_benders_checkpoint;
+pub mod logic_based_benders_context;
 #[doc(hidden)]
 pub mod options;
 #[doc(hidden)]
@@ -66,9 +71,14 @@ pub mod scip_extension;
 
 pub use benders_decomposition::CutSense;
 pub use column_generation_solver::*;
+pub use experiment::*;
 pub use framework_number_aliases::*;
 pub use framework_solve_options::*;
 pub use linear_benders_decomposition_solver::*;
+pub use logic_based_benders::*;
+#[cfg(feature = "serde")]
+pub use logic_based_benders_checkpoint::*;
+pub use logic_based_benders_context::*;
 // 兼容别名：保留 `SolveOptions`
 // Compatibility alias: keep `SolveOptions`.
 #[doc(hidden)]

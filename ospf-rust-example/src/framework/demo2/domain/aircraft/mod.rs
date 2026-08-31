@@ -2,9 +2,9 @@
 pub mod model;
 pub mod service;
 
+use super::shared::units;
 use model::*;
 use std::collections::HashMap;
-use super::shared::units;
 
 /// 飞机领域聚合 / Aircraft domain aggregation
 #[derive(Debug)]
@@ -65,10 +65,18 @@ impl AircraftContext {
         request: &crate::framework::demo2::infrastructure::dto::Demo2Request,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let aircraft_type = match request.aircraft_type {
-            crate::framework::demo2::infrastructure::dto::AircraftTypeInput::B737 => AircraftType::B737,
-            crate::framework::demo2::infrastructure::dto::AircraftTypeInput::B757 => AircraftType::B757,
-            crate::framework::demo2::infrastructure::dto::AircraftTypeInput::B767 => AircraftType::B767,
-            crate::framework::demo2::infrastructure::dto::AircraftTypeInput::B747 => AircraftType::B747,
+            crate::framework::demo2::infrastructure::dto::AircraftTypeInput::B737 => {
+                AircraftType::B737
+            }
+            crate::framework::demo2::infrastructure::dto::AircraftTypeInput::B757 => {
+                AircraftType::B757
+            }
+            crate::framework::demo2::infrastructure::dto::AircraftTypeInput::B767 => {
+                AircraftType::B767
+            }
+            crate::framework::demo2::infrastructure::dto::AircraftTypeInput::B747 => {
+                AircraftType::B747
+            }
             _ => AircraftType::B737,
         };
 
@@ -137,9 +145,27 @@ impl AircraftContext {
         };
 
         let mut fuel = HashMap::new();
-        fuel.insert(FlightPhase::ZeroFuel, FuelConstant { weight: units::weight(0.0), arm: units::length(0.0) });
-        fuel.insert(FlightPhase::TakeOff, FuelConstant { weight: units::weight(0.0), arm: units::length(0.0) });
-        fuel.insert(FlightPhase::Landing, FuelConstant { weight: units::weight(0.0), arm: units::length(0.0) });
+        fuel.insert(
+            FlightPhase::ZeroFuel,
+            FuelConstant {
+                weight: units::weight(0.0),
+                arm: units::length(0.0),
+            },
+        );
+        fuel.insert(
+            FlightPhase::TakeOff,
+            FuelConstant {
+                weight: units::weight(0.0),
+                arm: units::length(0.0),
+            },
+        );
+        fuel.insert(
+            FlightPhase::Landing,
+            FuelConstant {
+                weight: units::weight(0.0),
+                arm: units::length(0.0),
+            },
+        );
 
         self.aggregation = Some(Aggregation {
             reg_no: "DEFAULT".to_string(),

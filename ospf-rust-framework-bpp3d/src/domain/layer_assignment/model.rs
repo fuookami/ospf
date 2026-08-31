@@ -19,15 +19,14 @@
 //! replacing `ExpressionArray1`. See `build_linear_expression_symbol` and
 //! `ImpreciseAssignment::build_symbols`.
 
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::hash::Hash;
 use ospf_rust_core::model::meta_model::MetaModel;
 use ospf_rust_core::variable::VariableRange;
 use ospf_rust_core::variable::variable_item::{
     BinaryVariableItem, ContinuousVariableItem, UContinuousVariableItem,
 };
-
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::hash::Hash;
 
 include!("model/variable_array1.rs");
 include!("model/variable_array2.rs");

@@ -20,10 +20,8 @@ pub struct MPS;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LSP;
 
-pub use iteration::{Iteration, IterationSnapshot};
 pub use algorithm::{
-    ColumnGenerationPolicy,
+    BunchBranchAndPriceAlgorithm, BunchCGPolicy, ColumnGenerationPolicy,
     TaskColumnGenerationAlgorithm,
-    BunchBranchAndPriceAlgorithm,
-    BunchCGPolicy,
 };
+pub use iteration::{Iteration, IterationSnapshot};

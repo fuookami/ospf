@@ -29,7 +29,7 @@ pub use solver::GurobiSolver;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::{SolverCapability, SolverInfo, SolverStatus};
+    use crate::solver::{SolverCapability, SolverInfo, SolverOutput, SolverStatus};
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -55,6 +55,8 @@ mod tests {
             .with_server_timeout(30)
             .with_cs_queue_timeout(30.0)
             .with_no_improvement_time_limit(15.0)
+            .with_interruptible_time(60.0)
+            .with_interruptible_gap(0.05)
             .with_improve_threshold(1e-6)
             .with_telemetry_min_interval(0.25)
             .with_stage_callback(Some(Arc::new(|_| Ok(()))))
@@ -76,6 +78,8 @@ mod tests {
         assert_eq!(config.server_timeout, Some(30));
         assert_eq!(config.cs_queue_timeout, Some(30.0));
         assert_eq!(config.no_improvement_time_limit, Some(15.0));
+        assert_eq!(config.interruptible_time, Some(60.0));
+        assert_eq!(config.interruptible_gap, Some(0.05));
         assert_eq!(config.improve_threshold, Some(1e-6));
         assert_eq!(config.telemetry_min_interval, Some(0.25));
         assert!(config.stage_callback.is_some());
@@ -83,6 +87,104 @@ mod tests {
         assert!(config.native_callback.is_some());
         assert_eq!(config.native_observers.len(), 1);
         assert!(config.env_callback.is_some());
+
+        let debug = format!("{config:?}");
+        assert!(!debug.contains("password"));
+        let first_provenance =
+            super::solver::GurobiSolver::with_config(config.clone()).provenance();
+        let second_provenance = super::solver::GurobiSolver::with_config(
+            config.clone().with_server_password("different-password"),
+        )
+        .provenance();
+        assert_ne!(
+            first_provenance
+                .effective_configuration
+                .get("server_password_digest"),
+            second_provenance
+                .effective_configuration
+                .get("server_password_digest")
+        );
+        let report = super::solver::GurobiSolver::with_config(config)
+            .report_from_output(SolverOutput::optimal(1.0, vec![1.0]), None)
+            .expect("callback report should be valid");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "NonReplayableCallback")
+        );
+        assert_eq!(
+            report
+                .provenance
+                .effective_configuration
+                .get("interruptible_time")
+                .map(String::as_str),
+            Some("Some(60.0)")
+        );
+        assert_eq!(
+            report
+                .provenance
+                .effective_configuration
+                .get("interruptible_gap")
+                .map(String::as_str),
+            Some("Some(0.05)")
+        );
+    }
+
+    #[test]
+    fn optimal_status_without_sol_count_is_not_an_incumbent() {
+        assert_eq!(
+            super::solver::GurobiSolver::refine_status_with_solution(SolverStatus::Optimal, false,),
+            SolverStatus::Unknown
+        );
+        assert_eq!(
+            super::solver::GurobiSolver::refine_status_with_solution(SolverStatus::Optimal, true,),
+            SolverStatus::Optimal
+        );
+    }
+
+    #[test]
+    fn nonzero_mip_gap_does_not_claim_exact_optimality() {
+        assert_eq!(
+            super::solver::GurobiSolver::refine_status_with_mip_gap(
+                SolverStatus::Optimal,
+                true,
+                true,
+                Some(0.1),
+                Some(0.05),
+            ),
+            SolverStatus::GapLimit
+        );
+        assert_eq!(
+            super::solver::GurobiSolver::refine_status_with_mip_gap(
+                SolverStatus::Optimal,
+                true,
+                true,
+                Some(0.1),
+                Some(0.0),
+            ),
+            SolverStatus::Optimal
+        );
+        assert_eq!(
+            super::solver::GurobiSolver::refine_status_with_mip_gap(
+                SolverStatus::Optimal,
+                true,
+                true,
+                Some(0.1),
+                None,
+            ),
+            SolverStatus::GapLimit
+        );
+        assert_eq!(
+            super::solver::GurobiSolver::refine_status_with_mip_gap(
+                SolverStatus::Optimal,
+                true,
+                false,
+                Some(0.1),
+                Some(0.05),
+            ),
+            SolverStatus::Optimal
+        );
     }
 
     #[test]
@@ -112,7 +214,7 @@ mod tests {
     fn test_suboptimal_status_mapping() {
         assert_eq!(
             super::solver::GurobiSolver::convert_status(grb::Status::SubOptimal),
-            SolverStatus::Feasible
+            SolverStatus::Suboptimal
         );
     }
 
@@ -125,6 +227,37 @@ mod tests {
         assert!(solver.supports(SolverCapability::Quadratic));
         assert!(solver.supports(SolverCapability::NativeIndicator));
         assert!(solver.supports(SolverCapability::NativeSOS1));
+    }
+
+    #[test]
+    fn test_gurobi_provenance_separates_feature_binding_and_native_version() {
+        let provenance = super::solver::GurobiSolver::new().provenance();
+        let native_version = provenance
+            .environment_summary
+            .get("native_version")
+            .expect("native Gurobi version should be present");
+        let feature = provenance
+            .environment_summary
+            .get("feature")
+            .expect("Gurobi feature should be present");
+
+        assert_eq!(
+            provenance.backend_version.as_deref(),
+            Some(native_version.as_str())
+        );
+        assert_eq!(provenance.solver_id, format!("gurobi/{}", native_version));
+        assert!(matches!(
+            feature.as_str(),
+            "gurobi10" | "gurobi11" | "gurobi12"
+        ));
+        assert_eq!(
+            provenance
+                .environment_summary
+                .get("binding")
+                .map(String::as_str),
+            Some("grb-3.0.1")
+        );
+        assert_ne!(native_version, feature);
     }
 
     #[test]
@@ -158,13 +291,17 @@ mod tests {
         let common = crate::solver::SolverConfig::new("gurobi")
             .with_seed(42)
             .with_optimality_tolerance(1e-8)
-            .with_feasibility_tolerance(1e-7);
+            .with_feasibility_tolerance(1e-7)
+            .with_interruptible_time(Duration::from_secs(60))
+            .with_interruptible_gap(0.05);
 
         let config = GurobiConfig::from(&common);
 
         assert_eq!(config.seed, Some(42));
         assert_eq!(config.optimality_tolerance, Some(1e-8));
         assert_eq!(config.feasibility_tolerance, Some(1e-7));
+        assert_eq!(config.interruptible_time, Some(60.0));
+        assert_eq!(config.interruptible_gap, Some(0.05));
     }
 
     #[test]

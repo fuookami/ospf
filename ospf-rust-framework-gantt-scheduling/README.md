@@ -22,7 +22,7 @@ Explicit non-goals:
 | --- | --- | --- |
 | [`src/infrastructure`](src/infrastructure/README.md) | `gantt-scheduling-infrastructure` | Time ranges, windows, slots, duration ranges, working calendars, calendar policies, local date offsets, and render DTOs. |
 | [`src/domain/task`](src/domain/task/README.md) | `gantt-scheduling-domain-task-context` | Task, executor, assignment, task plan, task bunch, cost, solver value adapter, task-step graph, and shadow-price keys. |
-| [`src/domain/task_compilation`](src/domain/task_compilation/README.md) | `gantt-scheduling-domain-task-compilation-context` | Task-level MILP components, time variables, switches, makespan, solution analysis, and limit/objective pipelines. |
+| [`src/domain/task_compilation`](src/domain/task_compilation/README.md) | `gantt-scheduling-domain-task-compilation-context` | Task-level MILP components, CP assignment/NoOverlap components, time variables, switches, makespan, solution analysis, and limit/objective pipelines. |
 | [`src/domain/task_generation`](src/domain/task_generation/README.md) | `gantt-scheduling-domain-task-generation-context` | Reserved task-generation extension point mapped from Kotlin. |
 | [`src/domain/bunch_compilation`](src/domain/bunch_compilation/README.md) | `gantt-scheduling-domain-bunch-compilation-context` | Column-generation master problem for task bunches, slot-based compilation, iterative columns, and bunch solutions. |
 | [`src/domain/bunch_generation`](src/domain/bunch_generation/README.md) | `gantt-scheduling-domain-bunch-generation-context` | Pricing graph, label-setting search, feasibility policies, and slot-based bunch generation. |
@@ -60,7 +60,7 @@ Ordinary MILP, RMP LP, and final MILP share context and iterative compilation en
 | `domain::task::{TaskStepGraph, TaskStepTrait, BasicTaskStep, StepRelation}` | Multi-step task dependency model. | migration |
 | `domain::task::{Cost, BunchCostPolicy, CostBreakdown, DefaultBunchCostPolicy}` | Cost and reduced-cost policy surface. | migration |
 | `domain::task::{SolverValueAdapter, F64SolverValueAdapter}` | Generic solver value conversion and `f64` boundary. | migration |
-| `domain::task_compilation::{BasicTaskCompilationContext, IterativeTaskCompilationContext, Switch, SwitchCostMinimization, SwitchTimeMinimization}` | Task compilation contexts and switch objective pipelines. | migration |
+| `domain::task_compilation::{BasicTaskCompilationContext, IterativeTaskCompilationContext, NoOverlapConstraintProgrammingComponent, NoOverlapTask, Switch, SwitchCostMinimization, SwitchTimeMinimization}` | Task compilation contexts, production CP assignment/NoOverlap snapshots, and switch objective pipelines. | migration |
 | `domain::capacity_scheduling::{CapacityCompilation, CapacityOrderCompilation, CapacityColumn, CapacityColumnAggregation, CapacitySchedulingSolution}` | Capacity scheduling registration and extraction. | migration |
 | `domain::bunch_compilation::{BasicBunchCompilationContext, IterativeBunchCompilationContext, BasicSlotBasedBunchCompilationContext, SlotBasedBunchCompilationContext, SlotBasedCapacityPreSolver, BunchEntry, BunchSolution}` | Bunch master problem and slot-based column lifecycle. | migration |
 | `domain::bunch_generation::{SlotBasedBunchGenerator, BunchFeasibilityPolicy, BunchTaskCandidate, CapacityIntermediateValues}` | Pricing and feasibility extension surface. | migration |
@@ -94,6 +94,22 @@ exactly-one capacity-column selections.
 ## Generic Numeric Boundaries
 
 Domain APIs use generic solver-value abstractions through `SolverValueAdapter`. `F64SolverValueAdapter` marks the current `f64` solver boundary. Solver conversion remains concentrated in context registration, application solver calls, and result extraction rather than scattered through domain logic.
+
+## CP/NoOverlap Production Boundary
+
+`domain::task_compilation::NoOverlapConstraintProgrammingComponent` is the production CP model
+component. Its `from_compilation` entry consumes task/executor identities and explicit `i64`
+durations, then builds assignment `ExactlyOne`, start variables, and one optional fixed-duration
+interval for every `(task, executor)` pair. Each interval uses that pair's assignment literal as
+its presence, and every executor receives an independent `NoOverlap` constraint in the immutable
+core snapshot. It does not select or invoke a solver.
+
+The snapshot can be solved by the offline exact solver or by the Gurobi/SCIP MIP-backed
+`ExactLowering` facade. Native optional/variable-duration interval bindings remain
+`Unsupported`; Cumulative raw-handler work remains `Conditional`. The Gantt differential gate
+enumerates the production `from_compilation` snapshot against the corresponding finite MILP
+formulation, including parallel assignments on different executors. No test-only model builder is
+used by the gate.
 
 ## Physical Quantity Boundaries
 
@@ -149,6 +165,11 @@ cargo check -p ospf-rust-framework-gantt-scheduling --features serde
 7. Complex shift calendars and custom cost formulas are supported through standard policy extension points and covered by minimal tests.
 
 The migration target, checklist, and acceptance criteria should stay aligned with the current-boundaries list above and the Kotlin Gantt Scheduling README.
+
+Branch-and-price exact gates consume the shared `SolveReport` and certificate
+helpers. An incumbent from a limit is retained as a candidate only; it does not
+close the node bound. See the [unified solve contract](../../docs/solve-contract.md)
+and [native matrix](../../docs/solver-native-matrix.md).
 
 ## Related Modules
 

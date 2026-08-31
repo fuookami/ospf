@@ -1,6 +1,6 @@
 //! 节点带宽模型：定义节点维度的带宽变量与符号 / Node bandwidth model: defines node-dimension bandwidth variables and symbols
 
-use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination};
 use ospf_rust_multiarray::Shape;
 
 /// 一维线性表达式符号组合类型别名 / 1D linear expression symbol combination type alias

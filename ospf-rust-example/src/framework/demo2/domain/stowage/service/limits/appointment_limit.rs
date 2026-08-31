@@ -1,10 +1,10 @@
 //! 指定舱位限制 / Appointment limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;
 use crate::framework::demo2::domain::stowage::context::StowageContext;
 use crate::framework::demo2::domain::stowage::model::stowage::StowageVariables;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 预约限制: 预约的 cargo-position 对强制 x[c][p] = 1
 /// 对齐 Kotlin AppointmentLimit

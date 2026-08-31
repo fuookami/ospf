@@ -1,14 +1,13 @@
 //! 领域层 / Domain layer
-use std::error::Error;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::solver::{FeasibleSolverOutput, solvers::GurobiSolver};
 use ospf_rust_core::variable::{UContinuousVariableItem, VariableId};
 use ospf_rust_framework::solver::{
-
     BendersIterationSnapshot, BendersRuntimeMetrics, FeasibleSolutionV, FrameworkSolveOptions,
     GurobiLinearBendersDecompositionSolver, LinearBendersDecompositionSolver,
 };
+use std::error::Error;
 
 use self::service::domain_pipeline::apply_domain_pipeline;
 use self::shared::pipeline_mode::Demo2PipelineMode;
@@ -1353,14 +1352,23 @@ impl FullLoadApplication {
         model: &mut MetaModel<f64>,
     ) -> Result<Vec<Vec<usize>>, Box<dyn Error>> {
         let registration = shared::model_registration::register_variables(
-            request, model, "x", Demo2PipelineMode::FullLoad,
+            request,
+            model,
+            "x",
+            Demo2PipelineMode::FullLoad,
         )?;
         shared::model_registration::construct_objective(
-            request, model, &registration, Demo2PipelineMode::FullLoad,
+            request,
+            model,
+            &registration,
+            Demo2PipelineMode::FullLoad,
         )?;
         apply_domain_pipeline(
-            Demo2PipelineMode::FullLoad, model, request,
-            &registration.x_idx, registration.z,
+            Demo2PipelineMode::FullLoad,
+            model,
+            request,
+            &registration.x_idx,
+            registration.z,
             &registration.estimate_load_weight_idx,
             &registration.estimate_loaded_idx,
             &registration.loaded_idx,
@@ -1386,7 +1394,10 @@ impl FullLoadApplication {
 
         let (x_idx_master, x_idx_sub, fixed_variable_ids) =
             shared::model_registration::register_benders_variables(
-                request, &mut master_model, &mut sub_model, "x",
+                request,
+                &mut master_model,
+                &mut sub_model,
+                "x",
             )?;
 
         let master_intermediates = shared::model_registration::register_derived_variables(
@@ -1407,7 +1418,10 @@ impl FullLoadApplication {
             loaded_idx: master_intermediates.loaded_idx.clone(),
         };
         shared::model_registration::construct_objective(
-            request, &mut master_model, &registration, Demo2PipelineMode::FullLoad,
+            request,
+            &mut master_model,
+            &registration,
+            Demo2PipelineMode::FullLoad,
         )?;
 
         stowage::service::apply_stowage_pipeline(
@@ -1725,10 +1739,16 @@ impl PredistributionApplication {
         model: &mut MetaModel<f64>,
     ) -> Result<Vec<Vec<usize>>, Box<dyn Error>> {
         let registration = shared::model_registration::register_variables(
-            request, model, "x_pre", Demo2PipelineMode::Predistribution,
+            request,
+            model,
+            "x_pre",
+            Demo2PipelineMode::Predistribution,
         )?;
         shared::model_registration::construct_objective(
-            request, model, &registration, Demo2PipelineMode::Predistribution,
+            request,
+            model,
+            &registration,
+            Demo2PipelineMode::Predistribution,
         )?;
         apply_domain_pipeline(
             Demo2PipelineMode::Predistribution,
@@ -1768,7 +1788,10 @@ impl PredistributionApplication {
 
         let (x_idx_master, x_idx_sub, fixed_variable_ids) =
             shared::model_registration::register_benders_variables(
-                request, &mut master_model, &mut sub_model, "x_pre",
+                request,
+                &mut master_model,
+                &mut sub_model,
+                "x_pre",
             )?;
 
         let z = master_model
@@ -1791,7 +1814,10 @@ impl PredistributionApplication {
             loaded_idx: master_intermediates.loaded_idx.clone(),
         };
         shared::model_registration::construct_objective(
-            request, &mut master_model, &registration, Demo2PipelineMode::Predistribution,
+            request,
+            &mut master_model,
+            &registration,
+            Demo2PipelineMode::Predistribution,
         )?;
 
         stowage::service::apply_stowage_pipeline(
@@ -2102,10 +2128,16 @@ impl WeightRecommendationApplication {
         model: &mut MetaModel<f64>,
     ) -> Result<Vec<Vec<usize>>, Box<dyn Error>> {
         let registration = shared::model_registration::register_variables(
-            request, model, "x_wr", Demo2PipelineMode::WeightRecommendation,
+            request,
+            model,
+            "x_wr",
+            Demo2PipelineMode::WeightRecommendation,
         )?;
         shared::model_registration::construct_objective(
-            request, model, &registration, Demo2PipelineMode::WeightRecommendation,
+            request,
+            model,
+            &registration,
+            Demo2PipelineMode::WeightRecommendation,
         )?;
         apply_domain_pipeline(
             Demo2PipelineMode::WeightRecommendation,
@@ -2139,7 +2171,10 @@ impl WeightRecommendationApplication {
 
         let (x_idx_master, x_idx_sub, fixed_variable_ids) =
             shared::model_registration::register_benders_variables(
-                request, &mut master_model, &mut sub_model, "x_wr",
+                request,
+                &mut master_model,
+                &mut sub_model,
+                "x_wr",
             )?;
 
         let z = master_model
@@ -2162,7 +2197,10 @@ impl WeightRecommendationApplication {
             loaded_idx: master_intermediates.loaded_idx.clone(),
         };
         shared::model_registration::construct_objective(
-            request, &mut master_model, &registration, Demo2PipelineMode::WeightRecommendation,
+            request,
+            &mut master_model,
+            &registration,
+            Demo2PipelineMode::WeightRecommendation,
         )?;
 
         stowage::service::apply_stowage_pipeline(
@@ -2714,10 +2752,10 @@ mod tests {
                 max_weight: 20.0,
                 longitudinal_arm: -1.0,
                 lateral_arm: 0.0,
-                    area: 5.0,
-                    length: 2.0,
-                    max_load_count: 3,
-                    loaded_items: Vec::new(),
+                area: 5.0,
+                length: 2.0,
+                max_load_count: 3,
+                loaded_items: Vec::new(),
                 predicate_load_weight_min: None,
             },
             crate::framework::demo2::infrastructure::dto::PositionInput {
@@ -2725,10 +2763,10 @@ mod tests {
                 max_weight: 20.0,
                 longitudinal_arm: 1.0,
                 lateral_arm: 0.0,
-                    area: 5.0,
-                    length: 2.0,
-                    max_load_count: 3,
-                    loaded_items: Vec::new(),
+                area: 5.0,
+                length: 2.0,
+                max_load_count: 3,
+                loaded_items: Vec::new(),
                 predicate_load_weight_min: None,
             },
         ];
@@ -3011,6 +3049,7 @@ mod tests {
                 total_cuts: iteration,
                 no_cut_iterations: 0,
                 no_obj_improvement_iterations: 0,
+                ..BendersIterationSnapshot::default()
             })
             .collect();
         let runtime_metrics = BendersRuntimeMetrics {
@@ -3680,18 +3719,18 @@ mod tests {
             source: String::from("S1"),
             destination: String::from("D1"),
             requires_separation: false,
-                code: None,
+            code: None,
         }];
         request.positions = vec![PositionInput {
             name: String::from("P1"),
             max_weight: 10.0,
             longitudinal_arm: 0.0,
             lateral_arm: 0.0,
-                    area: 5.0,
-                    length: 2.0,
-                    max_load_count: 3,
-                    loaded_items: Vec::new(),
-                predicate_load_weight_min: None,
+            area: 5.0,
+            length: 2.0,
+            max_load_count: 3,
+            loaded_items: Vec::new(),
+            predicate_load_weight_min: None,
         }];
         request.adjacent_positions.clear();
         request.payload_upper_bound = 10.0;
@@ -3758,10 +3797,10 @@ mod tests {
                 max_weight: 10.0,
                 longitudinal_arm: 0.0,
                 lateral_arm: 0.0,
-                    area: 5.0,
-                    length: 2.0,
-                    max_load_count: 3,
-                    loaded_items: Vec::new(),
+                area: 5.0,
+                length: 2.0,
+                max_load_count: 3,
+                loaded_items: Vec::new(),
                 predicate_load_weight_min: None,
             },
             PositionInput {
@@ -3769,10 +3808,10 @@ mod tests {
                 max_weight: 10.0,
                 longitudinal_arm: 0.0,
                 lateral_arm: 0.0,
-                    area: 5.0,
-                    length: 2.0,
-                    max_load_count: 3,
-                    loaded_items: Vec::new(),
+                area: 5.0,
+                length: 2.0,
+                max_load_count: 3,
+                loaded_items: Vec::new(),
                 predicate_load_weight_min: None,
             },
         ];

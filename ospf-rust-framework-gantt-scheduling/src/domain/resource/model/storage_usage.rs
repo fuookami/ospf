@@ -10,13 +10,12 @@ use ospf_rust_core::model::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::functions::slack::SlackFunction;
 
-use crate::domain::task_compilation::adapter::{
-    next_gantt_symbol_id, symbols_to_indexed_1d,
-    IndexedLinearExpressionSymbols1,
-};
-use crate::domain::resource::model::capacity::ResourceCapacity;
-use crate::GanttResult;
 use crate::GanttError;
+use crate::GanttResult;
+use crate::domain::resource::model::capacity::ResourceCapacity;
+use crate::domain::task_compilation::adapter::{
+    IndexedLinearExpressionSymbols1, next_gantt_symbol_id, symbols_to_indexed_1d,
+};
 
 /// 存储资源使用量 / Storage resource usage
 ///
@@ -128,9 +127,13 @@ impl StorageResourceUsage {
         capacities: &[ResourceCapacity],
         model: &mut MetaModel<f64>,
     ) -> GanttResult<()> {
-        assert_eq!(capacities.len(), self.slot_count,
+        assert_eq!(
+            capacities.len(),
+            self.slot_count,
             "capacities length ({}) must match slot_count ({})",
-            capacities.len(), self.slot_count);
+            capacities.len(),
+            self.slot_count
+        );
 
         self.quantity_symbols.clear();
 
@@ -149,9 +152,13 @@ impl StorageResourceUsage {
                 monomials.clone(),
                 capacity.lower_bound,
             ));
-            model.add_symbol(quantity_symbol.clone())
+            model
+                .add_symbol(quantity_symbol.clone())
                 .map_err(|e| GanttError::Calculation {
-                    message: format!("Failed to register {}_quantity_{}: {:?}", self.name, slot_idx, e),
+                    message: format!(
+                        "Failed to register {}_quantity_{}: {:?}",
+                        self.name, slot_idx, e
+                    ),
                 })?;
             self.quantity_symbols.push(quantity_symbol);
 
@@ -160,19 +167,27 @@ impl StorageResourceUsage {
                 let quantity_poly = Linear::new(monomials.clone(), capacity.lower_bound);
                 let ub_poly = Linear::new(vec![], capacity.upper_bound);
                 let over_slack = Arc::new(SlackFunction::named(
-                    &format!("{}_over_quantity_{}", self.name, slot_idx),
+                    format!("{}_over_quantity_{}", self.name, slot_idx),
                     quantity_poly,
                     ub_poly,
                 ));
-                model.add_symbol(over_slack.clone())
+                model
+                    .add_symbol(over_slack.clone())
                     .map_err(|e| GanttError::Calculation {
-                        message: format!("Failed to register {}_over_quantity_{}: {:?}", self.name, slot_idx, e),
+                        message: format!(
+                            "Failed to register {}_over_quantity_{}: {:?}",
+                            self.name, slot_idx, e
+                        ),
                     })?;
                 let var_id = over_slack.result_variable().id();
-                let solver_idx = model.find_token(var_id)
+                let solver_idx = model
+                    .find_token(var_id)
                     .map(|t| t.solver_index)
                     .ok_or_else(|| GanttError::Calculation {
-                        message: format!("{}_over_quantity_{} result variable not found", self.name, slot_idx),
+                        message: format!(
+                            "{}_over_quantity_{} result variable not found",
+                            self.name, slot_idx
+                        ),
                     })?;
                 self.over_quantity_indices[slot_idx] = Some(solver_idx);
             }
@@ -182,19 +197,27 @@ impl StorageResourceUsage {
                 let lb_poly = Linear::new(vec![], capacity.lower_bound);
                 let quantity_poly = Linear::new(monomials, capacity.lower_bound);
                 let less_slack = Arc::new(SlackFunction::named(
-                    &format!("{}_less_quantity_{}", self.name, slot_idx),
+                    format!("{}_less_quantity_{}", self.name, slot_idx),
                     lb_poly,
                     quantity_poly,
                 ));
-                model.add_symbol(less_slack.clone())
+                model
+                    .add_symbol(less_slack.clone())
                     .map_err(|e| GanttError::Calculation {
-                        message: format!("Failed to register {}_less_quantity_{}: {:?}", self.name, slot_idx, e),
+                        message: format!(
+                            "Failed to register {}_less_quantity_{}: {:?}",
+                            self.name, slot_idx, e
+                        ),
                     })?;
                 let var_id = less_slack.result_variable().id();
-                let solver_idx = model.find_token(var_id)
+                let solver_idx = model
+                    .find_token(var_id)
                     .map(|t| t.solver_index)
                     .ok_or_else(|| GanttError::Calculation {
-                        message: format!("{}_less_quantity_{} result variable not found", self.name, slot_idx),
+                        message: format!(
+                            "{}_less_quantity_{} result variable not found",
+                            self.name, slot_idx
+                        ),
                     })?;
                 self.less_quantity_indices[slot_idx] = Some(solver_idx);
             }
@@ -203,7 +226,9 @@ impl StorageResourceUsage {
         // 构建索引符号组合 / Build indexed symbol combinations
         let slot_keys: Vec<usize> = (0..self.slot_count).collect();
         self.quantity_indexed = Some(symbols_to_indexed_1d(
-            &format!("{}_quantity", self.name), &slot_keys, &self.quantity_symbols,
+            &format!("{}_quantity", self.name),
+            &slot_keys,
+            &self.quantity_symbols,
         ));
 
         Ok(())
@@ -228,9 +253,13 @@ mod tests {
     fn test_storage_resource_usage_basic() {
         let mut model = MetaModel::<f64>::new("test_storage_usage");
 
-        let capacities = vec![
-            ResourceCapacity::with_slack(test_time_range(), 10.0, 100.0, Some(5.0), Some(20.0)),
-        ];
+        let capacities = vec![ResourceCapacity::with_slack(
+            test_time_range(),
+            10.0,
+            100.0,
+            Some(5.0),
+            Some(20.0),
+        )];
 
         let mut usage = StorageResourceUsage::new("warehouse", 1, true, true);
         usage.register(&capacities, &mut model).unwrap();
@@ -244,13 +273,17 @@ mod tests {
     fn test_storage_resource_usage_with_contributions() {
         let mut model = MetaModel::<f64>::new("test_storage_contrib");
 
-        let capacities = vec![
-            ResourceCapacity::with_slack(test_time_range(), 0.0, 100.0, Some(5.0), Some(20.0)),
-        ];
+        let capacities = vec![ResourceCapacity::with_slack(
+            test_time_range(),
+            0.0,
+            100.0,
+            Some(5.0),
+            Some(20.0),
+        )];
 
         let mut usage = StorageResourceUsage::new("warehouse", 1, true, true);
-        usage.add_inflow(0, 0, 10.0);   // task 0 supplies 10 units
-        usage.add_outflow(0, 1, 3.0);   // task 1 consumes 3 units
+        usage.add_inflow(0, 0, 10.0); // task 0 supplies 10 units
+        usage.add_outflow(0, 1, 3.0); // task 1 consumes 3 units
         usage.register(&capacities, &mut model).unwrap();
 
         assert_eq!(usage.quantity_symbols.len(), 1);

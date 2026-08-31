@@ -1,14 +1,12 @@
 //! Demo13 模块 / Demo13 module
 use std::error::Error;
 
-use ospf_rust_multiarray::Shape;
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
-use ospf_rust_core::symbol::{
-    LinearExpressionSymbol, flat_map1_indexed,
-};
+use ospf_rust_core::model::{ConstraintRelation, MetaModel, ObjectiveCategory};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, flat_map1_indexed};
 use ospf_rust_core::variable::{UInteger, VariableCombination2D};
+use ospf_rust_multiarray::Shape;
 
-use super::common::{read_solution_value, solve_typed, extract_coeffs};
+use super::common::{extract_coeffs, read_solution_value, solve_typed};
 
 /// Dealer data structure
 #[derive(Debug, Clone)]
@@ -112,33 +110,54 @@ impl TransportModel {
         let y_idx = model.register_combination(&y_vars)?;
 
         // Objective: minimize cost = sum(distance[d][c] * y[d][c])
-        let cost = flat_map1_indexed("cost", dealers, |d, dealer| {
-            let monomials: Vec<_> = (0..centers.len())
-                .map(|c| ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                    dealer.distance_to(c),
-                    y_idx[&[d, c]],
-                ))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, dealer| dealer.name.clone());
+        let cost = flat_map1_indexed(
+            "cost",
+            dealers,
+            |d, dealer| {
+                let monomials: Vec<_> = (0..centers.len())
+                    .map(|c| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            dealer.distance_to(c),
+                            y_idx[&[d, c]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, dealer| dealer.name.clone(),
+        );
         model.add_symbol_combination(&cost)?;
 
         // Supply constraints per center: sum_d x[d][c] <= supply[c]
-        let trans = flat_map1_indexed("trans", centers, |c, _center| {
-            let monomials: Vec<_> = (0..dealers.len())
-                .map(|d| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[d, c]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, center| center.name.clone());
+        let trans = flat_map1_indexed(
+            "trans",
+            centers,
+            |c, _center| {
+                let monomials: Vec<_> = (0..dealers.len())
+                    .map(|d| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[d, c]])
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, center| center.name.clone(),
+        );
         model.add_symbol_combination(&trans)?;
 
         // Demand constraints per dealer: sum_c x[d][c] >= demand[d]
-        let receive = flat_map1_indexed("receive", dealers, |d, _dealer| {
-            let monomials: Vec<_> = (0..centers.len())
-                .map(|c| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[d, c]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, dealer| dealer.name.clone());
+        let receive = flat_map1_indexed(
+            "receive",
+            dealers,
+            |d, _dealer| {
+                let monomials: Vec<_> = (0..centers.len())
+                    .map(|c| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[d, c]])
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, dealer| dealer.name.clone(),
+        );
         model.add_symbol_combination(&receive)?;
 
         Ok(TransportModel {
@@ -198,13 +217,22 @@ impl TransportModel {
             for c in 0..centers.len() {
                 let truck = ospf_rust_core::symbol::flatten::Linear::new(
                     vec![
-                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, self.x_idx[&[d, c]]),
-                        ospf_rust_core::symbol::flatten::LinearMonomial::new(-car_capacity, self.y_idx[&[d, c]]),
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            1.0,
+                            self.x_idx[&[d, c]],
+                        ),
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            -car_capacity,
+                            self.y_idx[&[d, c]],
+                        ),
                     ],
                     0.0,
                 );
-                let coeffs: Vec<_> = truck.monomials().iter()
-                    .map(|m| (m.var_index(), *m.coefficient())).collect();
+                let coeffs: Vec<_> = truck
+                    .monomials()
+                    .iter()
+                    .map(|m| (m.var_index(), *m.coefficient()))
+                    .collect();
                 model.add_linear_constraint(
                     &coeffs,
                     ConstraintRelation::LessEqual,

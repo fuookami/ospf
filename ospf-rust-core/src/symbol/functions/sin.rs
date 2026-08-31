@@ -1,20 +1,19 @@
 //! 正弦函数符号 / Sine function symbol
 
-use std::any::Any;
-use std::collections::HashSet;
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, One, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{
-
     BinaryVariableItem, ContinuousVariableItem, VariableId, VariableRange, new_group_id,
 };
+use num_traits::{FromPrimitive, One, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::HashSet;
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
@@ -118,6 +117,7 @@ pub(crate) fn build_piecewise_auxiliary_variables(
 
 /// 构建分段线性逼近的机理约束
 /// Build mechanism constraints for piecewise-linear approximation
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_piecewise_constraints<V>(
     symbol_name: &str,
     input: &Linear<V>,

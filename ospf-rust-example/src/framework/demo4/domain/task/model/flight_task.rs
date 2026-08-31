@@ -1,13 +1,13 @@
 //! 飞行任务模型模块 / Flight task model module
 
-use time::{Duration, OffsetDateTime};
-use std::collections::HashSet;
-use ospf_rust_framework_gantt_scheduling::domain::task::{
-    TaskTrait, TaskType, TaskKey, ExecutorTrait, AssignmentPolicyTrait, TaskStatus,
-};
-use ospf_rust_framework_gantt_scheduling::infrastructure::TimeRange;
 use super::aircraft::Aircraft;
 use super::airport::Airport;
+use ospf_rust_framework_gantt_scheduling::domain::task::{
+    AssignmentPolicyTrait, ExecutorTrait, TaskKey, TaskStatus, TaskTrait, TaskType,
+};
+use ospf_rust_framework_gantt_scheduling::infrastructure::TimeRange;
+use std::collections::HashSet;
+use time::{Duration, OffsetDateTime};
 
 /// 飞行任务类别 / Flight task category
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -25,7 +25,10 @@ pub enum FlightTaskCategory {
 impl FlightTaskCategory {
     /// 是否为航班类型 / Check if this is a flight type category
     pub fn is_flight_type(&self) -> bool {
-        matches!(self, FlightTaskCategory::Flight | FlightTaskCategory::VirtualFlight)
+        matches!(
+            self,
+            FlightTaskCategory::Flight | FlightTaskCategory::VirtualFlight
+        )
     }
 }
 
@@ -175,7 +178,9 @@ impl FlightTaskImpl {
 
     /// 获取执行飞机（恢复或原计划） / Get aircraft (recovery or planned)
     pub fn aircraft(&self) -> Option<&Aircraft> {
-        self.recovery_aircraft.as_ref().or(self.plan.aircraft.as_ref())
+        self.recovery_aircraft
+            .as_ref()
+            .or(self.plan.aircraft.as_ref())
     }
 
     /// 获取出发机场 / Get departure airport
@@ -251,15 +256,24 @@ impl TaskTrait<Aircraft, FlightAssignmentPolicy> for FlightTaskImpl {
     }
 
     fn cancel_enabled(&self) -> bool {
-        !self.plan.flight_task_status.contains(&FlightTaskStatus::NotCancel)
+        !self
+            .plan
+            .flight_task_status
+            .contains(&FlightTaskStatus::NotCancel)
     }
 
     fn delay_enabled(&self) -> bool {
-        !self.plan.flight_task_status.contains(&FlightTaskStatus::NotDelay)
+        !self
+            .plan
+            .flight_task_status
+            .contains(&FlightTaskStatus::NotDelay)
     }
 
     fn advance_enabled(&self) -> bool {
-        !self.plan.flight_task_status.contains(&FlightTaskStatus::NotAdvance)
+        !self
+            .plan
+            .flight_task_status
+            .contains(&FlightTaskStatus::NotAdvance)
     }
 
     fn executor(&self) -> Option<&Aircraft> {

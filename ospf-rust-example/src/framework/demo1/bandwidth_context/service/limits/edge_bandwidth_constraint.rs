@@ -1,10 +1,10 @@
 //! 边带宽约束模块 / Edge bandwidth constraint module
 
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
-use ospf_rust_multiarray::{MultiArray, Shape};
 use crate::framework::demo1::route_context::model::{Edge, Node, Service};
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination};
+use ospf_rust_multiarray::{MultiArray, Shape};
+use std::error::Error;
 
 /// 一维线性表达式符号组合类型别名 / 1D linear expression symbol combination type alias
 type Symbols1D = SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>;

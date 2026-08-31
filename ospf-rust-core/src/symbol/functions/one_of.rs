@@ -1,20 +1,19 @@
 //! 选一函数与 If-Else 函数符号 / OneOf and IfElse function symbols
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{
-
     BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id, new_standalone_id,
 };
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
@@ -145,19 +144,27 @@ where
         Self::new(id, &name, polynomials)
     }
 
+    /// 声明该函数依赖的模型元素 ID。
+    /// Declare the model element IDs consumed by this function.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回结果变量。
+    /// Return the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 返回每个候选多项式对应的选择变量。
+    /// Return the selection variable for each candidate polynomial.
     pub fn selection_variables(&self) -> &[BinaryVariableItem] {
         &self.selection_vars
     }
 
+    /// 返回候选线性多项式。
+    /// Return the candidate linear polynomials.
     pub fn polynomials(&self) -> &[Linear<V>] {
         &self.polynomials
     }
@@ -613,6 +620,8 @@ impl<V> IfElseFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建一个使用二值条件在两个表达式之间选择的函数。
+    /// Create a function that selects between two expressions using a binary condition.
     pub fn new(
         id: u64,
         name: &str,
@@ -658,23 +667,33 @@ where
         Self::new(id, &name, condition, then_expr, else_expr)
     }
 
+    /// 声明该函数依赖的模型元素 ID。
+    /// Declare the model element IDs consumed by this function.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回条件变量。
+    /// Return the condition variable.
     pub fn condition_variable(&self) -> &BinaryVariableItem {
         &self.condition
     }
 
+    /// 返回结果变量。
+    /// Return the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 返回条件为真时使用的表达式。
+    /// Return the expression used when the condition is true.
     pub fn then_expression(&self) -> &Linear<V> {
         &self.then_expr
     }
 
+    /// 返回条件为假时使用的表达式。
+    /// Return the expression used when the condition is false.
     pub fn else_expression(&self) -> &Linear<V> {
         &self.else_expr
     }

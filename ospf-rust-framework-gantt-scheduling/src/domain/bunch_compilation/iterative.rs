@@ -16,13 +16,13 @@ use ospf_rust_core::model::flatten::LinearMonomial;
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::variable::VariableRange;
 
+use crate::GanttError;
+use crate::GanttResult;
 use crate::domain::bunch_compilation::model::{BunchCompilation, BunchEntry, BunchSolution};
 use crate::domain::common::{ExecutorId, ExecutorIdTrait};
 use crate::domain::task_compilation::adapter::{
     IndexedLinearExpressionSymbols1, extract_value, next_gantt_symbol_id, symbols_to_indexed_1d,
 };
-use crate::GanttError;
-use crate::GanttResult;
 
 /// 迭代束编译 / Iterative bunch compilation
 ///
@@ -43,7 +43,6 @@ where
 
     // ---- 累积项源（Option C：分开存储，按需重建）----
     // Accumulated term sources (Option C: store separately, rebuild on demand)
-
     /// bunchCost 项：(x_model_index, cost) / bunchCost terms
     pub cost_terms: Vec<(usize, f64)>,
     /// taskCompilation[task] 项 / taskCompilation terms per task
@@ -83,11 +82,8 @@ where
         with_executor_leisure: bool,
     ) -> Self {
         let executor_ids = executor_ids.into_iter().map(Into::into).collect::<Vec<_>>();
-        let base = BunchCompilation::new_with_ids(
-            n_tasks,
-            executor_ids.clone(),
-            with_executor_leisure,
-        );
+        let base =
+            BunchCompilation::new_with_ids(n_tasks, executor_ids.clone(), with_executor_leisure);
         let n_executors = executor_ids.len();
 
         Self {
@@ -109,15 +105,13 @@ where
 
         // 初始化 taskCompilation 的 y 项
         for ti in 0..self.base.n_tasks {
-            self.task_compilation_terms[ti] =
-                vec![(self.base.y_indices[ti], 1.0)];
+            self.task_compilation_terms[ti] = vec![(self.base.y_indices[ti], 1.0)];
         }
 
         // 初始化 executorCompilation 的 z 项
         for (ei, _) in self.base.executor_ids.iter().enumerate() {
             if self.base.with_executor_leisure {
-                self.executor_compilation_terms[ei] =
-                    vec![(self.base.z_indices[ei], 1.0)];
+                self.executor_compilation_terms[ei] = vec![(self.base.z_indices[ei], 1.0)];
             } else {
                 self.executor_compilation_terms[ei] = Vec::new();
             }
@@ -144,7 +138,10 @@ where
         // 由于 base.add_columns 返回的是 bunch index 列表，
         // 而 x 变量是按添加顺序注册的，我们需要从 base.x_indices 中获取
         // 当前迭代的 x 变量索引
-        let iter_x_indices = self.base.x_indices.get(iteration)
+        let iter_x_indices = self
+            .base
+            .x_indices
+            .get(iteration)
             .map(|v| v.as_slice())
             .unwrap_or(&[]);
 
@@ -152,7 +149,10 @@ where
         let prev_x_count = iter_x_indices.len().saturating_sub(added_indices.len());
 
         for (pos, &bunch_idx) in added_indices.iter().enumerate() {
-            let entry = self.base.aggregation.get_bunch(bunch_idx)
+            let entry = self
+                .base
+                .aggregation
+                .get_bunch(bunch_idx)
                 .expect("bunch entry must exist after add_bunches");
 
             // 获取 x 变量模型索引
@@ -172,10 +172,10 @@ where
             }
 
             // 更新 executorCompilation[executor] 项
-            if let Some(exec_idx) = self.find_executor_index(&entry.executor_id) {
-                if exec_idx < self.executor_compilation_terms.len() {
-                    self.executor_compilation_terms[exec_idx].push((x_model_idx, 1.0));
-                }
+            if let Some(exec_idx) = self.find_executor_index(&entry.executor_id)
+                && exec_idx < self.executor_compilation_terms.len()
+            {
+                self.executor_compilation_terms[exec_idx].push((x_model_idx, 1.0));
             }
         }
 
@@ -221,7 +221,9 @@ where
     /// Rebuilds all intermediate expression symbols from current term accumulators.
     pub fn rebuild_intermediate_symbols(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
         // 重建 bunchCost
-        let cost_terms: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let cost_terms: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let cost_id = next_gantt_symbol_id();
@@ -231,7 +233,8 @@ where
             cost_terms,
             0.0,
         ));
-        model.add_symbol(cost_symbol.clone())
+        model
+            .add_symbol(cost_symbol.clone())
             .map_err(|e| GanttError::Calculation {
                 message: format!("Failed to rebuild bunch_cost: {:?}", e),
             })?;
@@ -240,7 +243,8 @@ where
         // 重建 taskCompilation[task]
         self.base.task_compilation_symbols.clear();
         for ti in 0..self.base.n_tasks {
-            let terms: Vec<LinearMonomial<f64>> = self.task_compilation_terms[ti].iter()
+            let terms: Vec<LinearMonomial<f64>> = self.task_compilation_terms[ti]
+                .iter()
                 .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
                 .collect();
             let sym_id = next_gantt_symbol_id();
@@ -250,7 +254,8 @@ where
                 terms,
                 0.0,
             ));
-            model.add_symbol(symbol.clone())
+            model
+                .add_symbol(symbol.clone())
                 .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to rebuild task_compilation_{}: {:?}", ti, e),
                 })?;
@@ -260,7 +265,8 @@ where
         // 重建 executorCompilation[executor]
         self.base.executor_compilation_symbols.clear();
         for (ei, exec_id) in self.base.executor_ids.iter().enumerate() {
-            let terms: Vec<LinearMonomial<f64>> = self.executor_compilation_terms[ei].iter()
+            let terms: Vec<LinearMonomial<f64>> = self.executor_compilation_terms[ei]
+                .iter()
                 .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
                 .collect();
             let sym_id = next_gantt_symbol_id();
@@ -270,9 +276,13 @@ where
                 terms,
                 0.0,
             ));
-            model.add_symbol(symbol.clone())
+            model
+                .add_symbol(symbol.clone())
                 .map_err(|e| GanttError::Calculation {
-                    message: format!("Failed to rebuild executor_compilation_{}: {:?}", exec_id, e),
+                    message: format!(
+                        "Failed to rebuild executor_compilation_{}: {:?}",
+                        exec_id, e
+                    ),
                 })?;
             self.base.executor_compilation_symbols.push(symbol);
         }
@@ -284,6 +294,7 @@ where
     ///
     /// 重建中间表达式并返回最新的索引符号组合。
     /// Rebuilds intermediate expressions and returns the latest indexed symbol combinations.
+    #[allow(clippy::type_complexity)]
     pub fn refresh_symbols(
         &mut self,
         model: &mut MetaModel<f64>,
@@ -300,10 +311,7 @@ where
     ///
     /// 强制重建所有中间表达式符号，替换现有符号池。
     /// Forces rebuild of all intermediate expression symbols, replacing the existing symbol pool.
-    pub fn replace_symbol_pool(
-        &mut self,
-        model: &mut MetaModel<f64>,
-    ) -> GanttResult<()> {
+    pub fn replace_symbol_pool(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
         self.rebuild_intermediate_symbols(model)
     }
 
@@ -311,6 +319,7 @@ where
     ///
     /// 返回当前最新的索引符号组合（不触发重建）。
     /// Returns the latest indexed symbol combinations without triggering rebuild.
+    #[allow(clippy::type_complexity)]
     pub fn active_symbols(
         &self,
     ) -> (
@@ -322,10 +331,16 @@ where
         let executor_keys: Vec<usize> = (0..self.base.executor_ids.len()).collect();
 
         // 从 term 累积器构建临时符号以创建索引
-        let task_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> =
-            self.task_compilation_terms.iter().enumerate().map(|(ti, terms)| {
-                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms.iter()
-                    .map(|&(idx, coeff)| ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx))
+        let task_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> = self
+            .task_compilation_terms
+            .iter()
+            .enumerate()
+            .map(|(ti, terms)| {
+                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms
+                    .iter()
+                    .map(|&(idx, coeff)| {
+                        ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx)
+                    })
                     .collect();
                 Arc::new(LinearExpressionSymbol::new(
                     0,
@@ -333,12 +348,19 @@ where
                     monomials,
                     0.0,
                 ))
-            }).collect();
+            })
+            .collect();
 
-        let executor_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> =
-            self.executor_compilation_terms.iter().enumerate().map(|(ei, terms)| {
-                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms.iter()
-                    .map(|&(idx, coeff)| ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx))
+        let executor_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> = self
+            .executor_compilation_terms
+            .iter()
+            .enumerate()
+            .map(|(ei, terms)| {
+                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms
+                    .iter()
+                    .map(|&(idx, coeff)| {
+                        ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx)
+                    })
                     .collect();
                 Arc::new(LinearExpressionSymbol::new(
                     0,
@@ -346,35 +368,61 @@ where
                     monomials,
                     0.0,
                 ))
-            }).collect();
+            })
+            .collect();
 
         // bunch cost 作为一维索引
         let cost_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> = if !self.cost_terms.is_empty() {
-            let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = self.cost_terms.iter()
-                .map(|&(idx, coeff)| ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx))
+            let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = self
+                .cost_terms
+                .iter()
+                .map(|&(idx, coeff)| {
+                    ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx)
+                })
                 .collect();
-            vec![Arc::new(LinearExpressionSymbol::new(0, "bunch_cost", monomials, 0.0))]
+            vec![Arc::new(LinearExpressionSymbol::new(
+                0,
+                "bunch_cost",
+                monomials,
+                0.0,
+            ))]
         } else {
             vec![]
         };
 
         let cost_indexed = if !cost_symbols.is_empty() {
-            Some(symbols_to_indexed_1d("bunch_cost", &[0usize], &cost_symbols))
+            Some(symbols_to_indexed_1d(
+                "bunch_cost",
+                &[0usize],
+                &cost_symbols,
+            ))
         } else {
             None
         };
         let task_compilation_indexed = if !task_compilation_symbols.is_empty() {
-            Some(symbols_to_indexed_1d("task_compilation", &task_keys, &task_compilation_symbols))
+            Some(symbols_to_indexed_1d(
+                "task_compilation",
+                &task_keys,
+                &task_compilation_symbols,
+            ))
         } else {
             None
         };
         let executor_compilation_indexed = if !executor_compilation_symbols.is_empty() {
-            Some(symbols_to_indexed_1d("executor_compilation", &executor_keys, &executor_compilation_symbols))
+            Some(symbols_to_indexed_1d(
+                "executor_compilation",
+                &executor_keys,
+                &executor_compilation_symbols,
+            ))
         } else {
             None
         };
 
-        (cost_indexed, task_compilation_indexed, executor_compilation_indexed)
+        (
+            cost_indexed,
+            task_compilation_indexed,
+            executor_compilation_indexed,
+        )
     }
 
     /// 全局固定 / Globally fix
@@ -414,7 +462,10 @@ where
         let mut newly_fixed = HashSet::new();
         let mut best = None::<(usize, f64)>;
 
-        for &bunch_idx in &self.base.aggregation.bunches()
+        for &bunch_idx in &self
+            .base
+            .aggregation
+            .bunches()
             .into_iter()
             .map(|b| b.index)
             .collect::<Vec<_>>()
@@ -423,37 +474,36 @@ where
                 continue;
             }
 
-            if let Some(&x_idx) = self.bunch_x_map.get(&bunch_idx) {
-                if let Some(value) = extract_value(solution, x_idx) {
-                    if best.map_or(true, |(_, best_value)| value >= best_value) {
-                        best = Some((bunch_idx, value));
-                    }
-                    if value >= threshold {
-                        self.fixed_bunches.insert(bunch_idx);
-                        newly_fixed.insert(bunch_idx);
-                        model
-                            .fix_variable_by_index(x_idx, 1.0)
-                            .map_err(|e| GanttError::Calculation {
-                                message: format!("Failed to locally fix bunch {}: {:?}", bunch_idx, e),
-                            })?;
-                    }
+            if let Some(&x_idx) = self.bunch_x_map.get(&bunch_idx)
+                && let Some(value) = extract_value(solution, x_idx)
+            {
+                if best.is_none_or(|(_, best_value)| value >= best_value) {
+                    best = Some((bunch_idx, value));
+                }
+                if value >= threshold {
+                    self.fixed_bunches.insert(bunch_idx);
+                    newly_fixed.insert(bunch_idx);
+                    model.fix_variable_by_index(x_idx, 1.0).map_err(|e| {
+                        GanttError::Calculation {
+                            message: format!("Failed to locally fix bunch {}: {:?}", bunch_idx, e),
+                        }
+                    })?;
                 }
             }
         }
 
-        if newly_fixed.is_empty() {
-            if let Some((bunch_idx, value)) = best {
-                if value >= 1.0 - threshold {
-                    self.fixed_bunches.insert(bunch_idx);
-                    newly_fixed.insert(bunch_idx);
-                    if let Some(&x_idx) = self.bunch_x_map.get(&bunch_idx) {
-                        model
-                            .fix_variable_by_index(x_idx, 1.0)
-                            .map_err(|e| GanttError::Calculation {
-                                message: format!("Failed to locally fix best bunch {}: {:?}", bunch_idx, e),
-                            })?;
-                    }
-                }
+        if newly_fixed.is_empty()
+            && let Some((bunch_idx, value)) = best
+            && value >= 1.0 - threshold
+        {
+            self.fixed_bunches.insert(bunch_idx);
+            newly_fixed.insert(bunch_idx);
+            if let Some(&x_idx) = self.bunch_x_map.get(&bunch_idx) {
+                model
+                    .fix_variable_by_index(x_idx, 1.0)
+                    .map_err(|e| GanttError::Calculation {
+                        message: format!("Failed to locally fix best bunch {}: {:?}", bunch_idx, e),
+                    })?;
             }
         }
 
@@ -499,12 +549,11 @@ where
     pub fn extract_hidden_executors(&self, solution: &[f64]) -> HashSet<I> {
         let mut hidden = HashSet::new();
         for (executor_index, &z_idx) in self.base.z_indices.iter().enumerate() {
-            if let Some(value) = extract_value(solution, z_idx) {
-                if value > 1e-6 {
-                    if let Some(executor_id) = self.base.executor_ids.get(executor_index) {
-                        hidden.insert(executor_id.clone());
-                    }
-                }
+            if let Some(value) = extract_value(solution, z_idx)
+                && value > 1e-6
+                && let Some(executor_id) = self.base.executor_ids.get(executor_index)
+            {
+                hidden.insert(executor_id.clone());
             }
         }
         hidden
@@ -527,10 +576,10 @@ where
     pub fn extract_fixed(&self, solution: &[f64]) -> HashSet<usize> {
         let mut fixed = HashSet::new();
         for (&bunch_idx, &x_idx) in &self.bunch_x_map {
-            if let Some(value) = extract_value(solution, x_idx) {
-                if value > 0.5 {
-                    fixed.insert(bunch_idx);
-                }
+            if let Some(value) = extract_value(solution, x_idx)
+                && value > 0.5
+            {
+                fixed.insert(bunch_idx);
             }
         }
         fixed
@@ -543,10 +592,10 @@ where
     pub fn extract_kept(&self, solution: &[f64]) -> HashSet<usize> {
         let mut kept = HashSet::new();
         for (&bunch_idx, &x_idx) in &self.bunch_x_map {
-            if let Some(value) = extract_value(solution, x_idx) {
-                if value > 1e-6 {
-                    kept.insert(bunch_idx);
-                }
+            if let Some(value) = extract_value(solution, x_idx)
+                && value > 1e-6
+            {
+                kept.insert(bunch_idx);
             }
         }
         kept
@@ -561,14 +610,14 @@ where
         let mut assigned_tasks = HashSet::new();
 
         for (&bunch_idx, &x_idx) in &self.bunch_x_map {
-            if let Some(value) = extract_value(solution, x_idx) {
-                if value > 0.5 {
-                    selected_bunches.push(bunch_idx);
-                    // 记录该束包含的任务
-                    if let Some(entry) = self.base.aggregation.get_bunch(bunch_idx) {
-                        for &task_idx in &entry.task_indices {
-                            assigned_tasks.insert(task_idx);
-                        }
+            if let Some(value) = extract_value(solution, x_idx)
+                && value > 0.5
+            {
+                selected_bunches.push(bunch_idx);
+                // 记录该束包含的任务
+                if let Some(entry) = self.base.aggregation.get_bunch(bunch_idx) {
+                    for &task_idx in &entry.task_indices {
+                        assigned_tasks.insert(task_idx);
                     }
                 }
             }
@@ -646,13 +695,19 @@ mod tests {
         // y 项应在 taskCompilation_terms 中
         for ti in 0..3 {
             assert_eq!(compilation.task_compilation_terms[ti].len(), 1);
-            assert_eq!(compilation.task_compilation_terms[ti][0].0, compilation.base.y_indices[ti]);
+            assert_eq!(
+                compilation.task_compilation_terms[ti][0].0,
+                compilation.base.y_indices[ti]
+            );
         }
 
         // z 项应在 executorCompilation_terms 中
         for ei in 0..2 {
             assert_eq!(compilation.executor_compilation_terms[ei].len(), 1);
-            assert_eq!(compilation.executor_compilation_terms[ei][0].0, compilation.base.z_indices[ei]);
+            assert_eq!(
+                compilation.executor_compilation_terms[ei][0].0,
+                compilation.base.z_indices[ei]
+            );
         }
     }
 
@@ -692,8 +747,18 @@ mod tests {
 
         // 验证项累积器更新
         assert_eq!(compilation.cost_terms.len(), 2);
-        assert!(compilation.cost_terms.iter().any(|(_, c)| (*c - 5.0).abs() < f64::EPSILON));
-        assert!(compilation.cost_terms.iter().any(|(_, c)| (*c - 3.0).abs() < f64::EPSILON));
+        assert!(
+            compilation
+                .cost_terms
+                .iter()
+                .any(|(_, c)| (*c - 5.0).abs() < f64::EPSILON)
+        );
+        assert!(
+            compilation
+                .cost_terms
+                .iter()
+                .any(|(_, c)| (*c - 3.0).abs() < f64::EPSILON)
+        );
 
         // task 0 应有 y[0] + x[0] 两个项
         assert_eq!(compilation.task_compilation_terms[0].len(), 2);
@@ -715,11 +780,7 @@ mod tests {
     fn test_iterative_bunch_compilation_remove_columns() {
         let mut model = MetaModel::<f64>::new("test_iterative_bunch_remove");
 
-        let mut compilation = IterativeBunchCompilation::new(
-            2,
-            vec!["exec_1".to_string()],
-            false,
-        );
+        let mut compilation = IterativeBunchCompilation::new(2, vec!["exec_1".to_string()], false);
         compilation.register(&mut model).unwrap();
 
         let bunches = vec![
@@ -754,11 +815,7 @@ mod tests {
     #[test]
     fn test_iterative_bunch_compilation_globally_fix() {
         let mut model = MetaModel::<f64>::new("test_iterative_bunch_global_fix");
-        let mut compilation = IterativeBunchCompilation::new(
-            2,
-            vec!["exec_1".to_string()],
-            false,
-        );
+        let mut compilation = IterativeBunchCompilation::new(2, vec!["exec_1".to_string()], false);
         compilation.register(&mut model).unwrap();
         compilation
             .add_columns(
@@ -821,7 +878,10 @@ mod tests {
 
         // 构造解向量：使用足够大的向量
         // 确定 x 变量的最大索引来分配解向量
-        let max_idx = compilation.bunch_x_map.values().copied()
+        let max_idx = compilation
+            .bunch_x_map
+            .values()
+            .copied()
             .chain(compilation.base.y_indices.iter().copied())
             .chain(compilation.base.z_indices.iter().copied())
             .max()
@@ -852,24 +912,18 @@ mod tests {
     fn test_iterative_bunch_compilation_dedup() {
         let mut model = MetaModel::<f64>::new("test_iterative_bunch_dedup");
 
-        let mut compilation = IterativeBunchCompilation::new(
-            2,
-            vec!["exec_1".to_string()],
-            false,
-        );
+        let mut compilation = IterativeBunchCompilation::new(2, vec!["exec_1".to_string()], false);
         compilation.register(&mut model).unwrap();
 
         // 第一批列
-        let bunches_1 = vec![
-            BunchEntry {
-                index: 0,
-                executor_id: "exec_1".into(),
-                task_indices: vec![0, 1],
-                cost: 5.0,
-                iteration: 0,
-                slot_index: None,
-            },
-        ];
+        let bunches_1 = vec![BunchEntry {
+            index: 0,
+            executor_id: "exec_1".into(),
+            task_indices: vec![0, 1],
+            cost: 5.0,
+            iteration: 0,
+            slot_index: None,
+        }];
         compilation.add_columns(0, bunches_1, &mut model).unwrap();
 
         // 重复列（应被去重）

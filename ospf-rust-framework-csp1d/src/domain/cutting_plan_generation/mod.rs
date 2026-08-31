@@ -3,10 +3,10 @@
 use ospf_rust_core::solver::SolveValue;
 
 use crate::domain::material::{
-    from_f64, shadow_price_unit_symbol, to_f64, Csp1dShadowPriceKey, CuttingPlan,
-    CuttingPlanDemandContribution, CuttingPlanProduction, CuttingPlanSlice, Costar,
-    Csp1dQuantity, MachineBatchShadowPriceKey, MachineCapacityShadowPriceKey,
-    MaterialUsageShadowPriceKey, ProductDemandShadowPriceKey,
+    Costar, Csp1dQuantity, Csp1dShadowPriceKey, CuttingPlan, CuttingPlanDemandContribution,
+    CuttingPlanProduction, CuttingPlanSlice, MachineBatchShadowPriceKey,
+    MachineCapacityShadowPriceKey, MaterialUsageShadowPriceKey, ProductDemandShadowPriceKey,
+    from_f64, shadow_price_unit_symbol, to_f64,
 };
 use crate::domain::produce::{Csp1dDomainPolicy, SimpleDomainCalculationContext};
 
@@ -27,28 +27,30 @@ pub fn width_feasibility_check_from_policies<V: SolveValue>(
     if width_policies.is_empty() {
         return None;
     }
-    Some(std::sync::Arc::new(move |material, product, product_width| {
-        let plan = CuttingPlan {
-            id: format!("width-check-{}-{}", material.id, product.id).into(),
-            material: material.clone(),
-            machine_id: material.machine_id.clone(),
-            slices: vec![CuttingPlanSlice {
-                production: CuttingPlanProduction::Product(product.clone()),
-                width: product_width.clone(),
-                amount: 1,
-            }],
-            demand_contributions: Vec::new(),
-            capacity_consumption: None,
-        };
-        let context = SimpleDomainCalculationContext {
-            plan,
-            plan_index: usize::MAX,
-            domain_value_sample: Some(domain_value_sample.clone()),
-        };
-        width_policies
-            .iter()
-            .all(|policy| policy.is_width_feasible(&context))
-    }))
+    Some(std::sync::Arc::new(
+        move |material, product, product_width| {
+            let plan = CuttingPlan {
+                id: format!("width-check-{}-{}", material.id, product.id).into(),
+                material: material.clone(),
+                machine_id: material.machine_id.clone(),
+                slices: vec![CuttingPlanSlice {
+                    production: CuttingPlanProduction::Product(product.clone()),
+                    width: product_width.clone(),
+                    amount: 1,
+                }],
+                demand_contributions: Vec::new(),
+                capacity_consumption: None,
+            };
+            let context = SimpleDomainCalculationContext {
+                plan,
+                plan_index: usize::MAX,
+                domain_value_sample: Some(domain_value_sample.clone()),
+            };
+            width_policies
+                .iter()
+                .all(|policy| policy.is_width_feasible(&context))
+        },
+    ))
 }
 
 /// 初始切割方案生成器 / Initial cutting plan generator
@@ -79,10 +81,7 @@ pub trait Csp1dPricingGenerator<V: SolveValue>: Send + Sync {
     fn generate(&self, input: &Csp1dPricingInput<V>) -> Vec<CuttingPlan<V>>;
 
     /// 生成定价方案并返回报告 / Generate pricing plans with report
-    fn generate_with_report(
-        &self,
-        input: &Csp1dPricingInput<V>,
-    ) -> CuttingPlanGenerationReport<V> {
+    fn generate_with_report(&self, input: &Csp1dPricingInput<V>) -> CuttingPlanGenerationReport<V> {
         let plans = self.generate(input);
         CuttingPlanGenerationReport {
             plans: plans.clone(),
@@ -117,7 +116,8 @@ impl<V: SolveValue> Csp1dInitialCuttingPlanGenerator<V> for SimpleInitialCutting
                     continue;
                 };
                 let plan = CuttingPlan {
-                    id: format!("init-{}-{}-{}", material.id, demand.product.id, plans.len()).into(),
+                    id: format!("init-{}-{}-{}", material.id, demand.product.id, plans.len())
+                        .into(),
                     material: material.clone(),
                     machine_id: material.machine_id.clone(),
                     slices: vec![CuttingPlanSlice {
@@ -126,10 +126,7 @@ impl<V: SolveValue> Csp1dInitialCuttingPlanGenerator<V> for SimpleInitialCutting
                         amount: 1,
                     }],
                     demand_contributions: vec![CuttingPlanDemandContribution::from_demand(
-                        demand,
-                        width,
-                        1,
-                        None,
+                        demand, width, 1, None,
                     )],
                     capacity_consumption: None,
                 };
@@ -137,10 +134,7 @@ impl<V: SolveValue> Csp1dInitialCuttingPlanGenerator<V> for SimpleInitialCutting
                     .width_feasibility_check
                     .as_ref()
                     .map(|_| {
-                        material.enabled_without_width_check_with_machines(
-                            &plan,
-                            &input.machines,
-                        )
+                        material.enabled_without_width_check_with_machines(&plan, &input.machines)
                     })
                     .unwrap_or_else(|| material.enabled(&plan, &input.machines))
                 {
@@ -381,7 +375,13 @@ impl<V: SolveValue> Csp1dInitialCuttingPlanGenerator<V> for FullSumGenerator<V> 
         input: &CuttingPlanGenerationInput<V>,
     ) -> CuttingPlanGenerationReport<V> {
         let max_depth = self.constraints.max_knife_count.unwrap_or(7);
-        generate_combination_plans(input, &self.constraints, max_depth, self.max_plans, "fullsum")
+        generate_combination_plans(
+            input,
+            &self.constraints,
+            max_depth,
+            self.max_plans,
+            "fullsum",
+        )
     }
 }
 
@@ -423,14 +423,7 @@ impl CostarFiller {
         }
         let mut results = Vec::new();
         let mut slices = plan.slices.clone();
-        self.fill_dfs(
-            plan,
-            costars,
-            0,
-            rest_width,
-            &mut slices,
-            &mut results,
-        );
+        self.fill_dfs(plan, costars, 0, rest_width, &mut slices, &mut results);
         if results.is_empty() {
             vec![plan.clone()]
         } else {
@@ -537,7 +530,13 @@ impl<V: SolveValue> Csp1dPricingGenerator<V> for SimplePricingGenerator {
                 continue;
             };
             let plan = CuttingPlan {
-                id: format!("pricing-{}-{}-{}", material.id, demand.product.id, plans.len()).into(),
+                id: format!(
+                    "pricing-{}-{}-{}",
+                    material.id,
+                    demand.product.id,
+                    plans.len()
+                )
+                .into(),
                 material: material.clone(),
                 machine_id: material.machine_id.clone(),
                 slices: vec![CuttingPlanSlice {
@@ -545,12 +544,9 @@ impl<V: SolveValue> Csp1dPricingGenerator<V> for SimplePricingGenerator {
                     width: width.clone(),
                     amount: 1,
                 }],
-                    demand_contributions: vec![CuttingPlanDemandContribution::from_demand(
-                        demand,
-                        width,
-                        1,
-                        None,
-                    )],
+                demand_contributions: vec![CuttingPlanDemandContribution::from_demand(
+                    demand, width, 1, None,
+                )],
                 capacity_consumption: None,
             };
             if !input
@@ -602,11 +598,10 @@ where
         self.generate_with_report(input).plans
     }
 
-    fn generate_with_report(
-        &self,
-        input: &Csp1dPricingInput<V>,
-    ) -> CuttingPlanGenerationReport<V> {
-        let mut report = self.enumerator.generate_with_report(&input.generation_input);
+    fn generate_with_report(&self, input: &Csp1dPricingInput<V>) -> CuttingPlanGenerationReport<V> {
+        let mut report = self
+            .enumerator
+            .generate_with_report(&input.generation_input);
         if report.plans.is_empty() || input.max_generated_plans == 0 {
             report.plans.clear();
             report.statistics.accepted_plans = 0;
@@ -638,7 +633,9 @@ where
                 let benefit = input
                     .pricing_policies
                     .iter()
-                    .fold(benefit, |benefit, policy| policy.modify_benefit(&plan, benefit));
+                    .fold(benefit, |benefit, policy| {
+                        policy.modify_benefit(&plan, benefit)
+                    });
                 let base_cost = compute_objective_cost(&plan, &input.objective_config)?;
                 let cost = input
                     .pricing_cost_modifiers
@@ -648,8 +645,11 @@ where
                     .pricing_policies
                     .iter()
                     .fold(cost, |cost, policy| policy.modify_cost(&plan, cost));
-                is_pricing_improving(input, &plan, &benefit, &cost)
-                    .then_some(PricedCandidate { plan, benefit, cost })
+                is_pricing_improving(input, &plan, &benefit, &cost).then_some(PricedCandidate {
+                    plan,
+                    benefit,
+                    cost,
+                })
             })
             .collect::<Vec<_>>();
         priced.sort_by(|left, right| {
@@ -769,10 +769,7 @@ fn generate_n_same<V: SolveValue>(
                     );
                     plan_index += 1;
                     let feasible = if input.width_feasibility_check.is_some() {
-                        material.enabled_without_width_check_with_machines(
-                            &plan,
-                            &input.machines,
-                        )
+                        material.enabled_without_width_check_with_machines(&plan, &input.machines)
                     } else {
                         material.enabled(&plan, &input.machines)
                     };
@@ -807,8 +804,13 @@ fn generate_combination_plans<V: SolveValue>(
     let mut material_template_cache = std::collections::HashMap::new();
     let mut quantity_cache = GenerationQuantityCache::new();
     for material in &input.materials {
-        let material_entries =
-            material_entries_for(input, material, &entries, &mut material_entry_cache, &mut collector);
+        let material_entries = material_entries_for(
+            input,
+            material,
+            &entries,
+            &mut material_entry_cache,
+            &mut collector,
+        );
         if material_entries.is_empty() {
             continue;
         }
@@ -849,7 +851,9 @@ fn generate_combination_plans<V: SolveValue>(
             &mut collector,
         );
         if can_reuse_material_slice_templates(input, constraints) && !collector.should_stop() {
-            material_template_cache.entry(material_key).or_insert(template_recorder);
+            material_template_cache
+                .entry(material_key)
+                .or_insert(template_recorder);
         }
         if collector.should_stop() {
             break;
@@ -907,7 +911,12 @@ fn search_combinations<V: SolveValue>(
             .max_knife_count
             .map(|max_count| amount <= max_count)
             .unwrap_or(true);
-        if max_ok && constraints.min_knife_count.map(|min_count| amount >= min_count).unwrap_or(true) {
+        if max_ok
+            && constraints
+                .min_knife_count
+                .map(|min_count| amount >= min_count)
+                .unwrap_or(true)
+        {
             let plan = build_plan(
                 id_prefix,
                 material,
@@ -917,10 +926,7 @@ fn search_combinations<V: SolveValue>(
             );
             *plan_index += 1;
             let feasible = if input.width_feasibility_check.is_some() {
-                material.enabled_without_width_check_with_machines(
-                    &plan,
-                    &input.machines,
-                )
+                material.enabled_without_width_check_with_machines(&plan, &input.machines)
             } else {
                 material.enabled(&plan, &input.machines)
             };
@@ -1011,7 +1017,9 @@ fn material_entries_for<V: SolveValue>(
     entries
 }
 
-fn material_width_range_key<V: SolveValue>(material: &crate::domain::material::Material<V>) -> String {
+fn material_width_range_key<V: SolveValue>(
+    material: &crate::domain::material::Material<V>,
+) -> String {
     format!(
         "{:?}:{}|{:?}:{}",
         material.width_range.lower_bound.value,
@@ -1109,7 +1117,10 @@ fn max_amount_for_width<V: SolveValue>(
     amount
 }
 
-fn satisfies_knife_count<V: SolveValue>(amount: u64, constraints: &GenerationConstraints<V>) -> bool {
+fn satisfies_knife_count<V: SolveValue>(
+    amount: u64,
+    constraints: &GenerationConstraints<V>,
+) -> bool {
     constraints
         .max_knife_count
         .map(|max_count| amount <= max_count)
@@ -1315,8 +1326,7 @@ fn can_cross_contribution_dominate<V: SolveValue>(
             .demand_contributions
             .iter()
             .find(|new| {
-                new.product.id == existing.product.id
-                    && new.quantity.unit == existing.quantity.unit
+                new.product.id == existing.product.id && new.quantity.unit == existing.quantity.unit
             })
             .and_then(|new| {
                 Some((
@@ -1334,11 +1344,10 @@ fn merge_contributions<V: SolveValue>(
 ) -> Vec<CuttingPlanDemandContribution<V>> {
     let mut merged: Vec<CuttingPlanDemandContribution<V>> = Vec::new();
     for contribution in contributions {
-        if let Some(existing) = merged
-            .iter_mut()
-            .find(|existing| existing.product.id == contribution.product.id
-                && existing.quantity.unit == contribution.quantity.unit)
-        {
+        if let Some(existing) = merged.iter_mut().find(|existing| {
+            existing.product.id == contribution.product.id
+                && existing.quantity.unit == contribution.quantity.unit
+        }) {
             if let (Some(lhs), Some(rhs)) = (
                 to_f64(&existing.quantity.value),
                 to_f64(&contribution.quantity.value),
@@ -1448,7 +1457,10 @@ fn compute_objective_cost<V: SolveValue>(
         .as_ref()
         .and_then(to_f64)
         .unwrap_or(0.0);
-    let rest_width = plan.rest_width().and_then(|rest| to_f64(&rest.value)).unwrap_or(0.0);
+    let rest_width = plan
+        .rest_width()
+        .and_then(|rest| to_f64(&rest.value))
+        .unwrap_or(0.0);
     let trim_penalty = objective_config
         .trim_width_penalty
         .as_ref()

@@ -1,9 +1,9 @@
 //! 隔离限制 / Separation limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAggregation;
 use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 分离限制 / Separation limit
 ///

@@ -1,9 +1,9 @@
 //! 维护任务模块 / Maintenance task module
 
-use time::{Duration, OffsetDateTime};
 use super::aircraft::Aircraft;
 use super::airport::Airport;
 use super::flight_task::{FlightTaskAssignment, FlightTaskStatus};
+use time::{Duration, OffsetDateTime};
 
 /// 维护类别 / Maintenance category
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -51,12 +51,18 @@ pub struct Maintenance {
 impl Maintenance {
     /// 创建新的维护任务 / Create a new maintenance task
     pub fn new(plan: MaintenancePlan) -> Self {
-        Self { plan, recovery_aircraft: None, recovery_time: None }
+        Self {
+            plan,
+            recovery_aircraft: None,
+            recovery_time: None,
+        }
     }
 
     /// 获取当前执行飞机（恢复或原计划） / Get current aircraft (recovery or planned)
     pub fn aircraft(&self) -> &Aircraft {
-        self.recovery_aircraft.as_ref().unwrap_or(&self.plan.aircraft)
+        self.recovery_aircraft
+            .as_ref()
+            .unwrap_or(&self.plan.aircraft)
     }
 
     /// 是否已恢复 / Check if recovered

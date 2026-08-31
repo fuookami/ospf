@@ -1,13 +1,13 @@
 //! 表达式 DSL 与便捷构造函数
 //! Expression DSL and convenience constructors
 
-use std::marker::PhantomData;
-use crate::Trivalent;
-use super::property_path::PropertyPath;
-use super::operators::*;
-use super::value::ExpressionValue;
-use super::scalar::ScalarExpression;
 use super::boolean::{BooleanExpression, ParsedBooleanExpression};
+use super::operators::*;
+use super::property_path::PropertyPath;
+use super::scalar::ScalarExpression;
+use super::value::ExpressionValue;
+use crate::Trivalent;
+use std::marker::PhantomData;
 
 /// 标量表达式构建扩展。
 /// Scalar expression builder extension.
@@ -540,7 +540,10 @@ pub fn not_expr<T>(expression: BooleanExpression<T>) -> BooleanExpression<T> {
     BooleanExpression::not_expr(expression)
 }
 
-pub(super) fn and_pair<T>(left: BooleanExpression<T>, right: BooleanExpression<T>) -> BooleanExpression<T> {
+pub(super) fn and_pair<T>(
+    left: BooleanExpression<T>,
+    right: BooleanExpression<T>,
+) -> BooleanExpression<T> {
     let mut operands = Vec::new();
     if let BooleanExpression::And(items) = left {
         operands.extend(items);
@@ -555,7 +558,10 @@ pub(super) fn and_pair<T>(left: BooleanExpression<T>, right: BooleanExpression<T
     BooleanExpression::And(operands)
 }
 
-pub(super) fn or_pair<T>(left: BooleanExpression<T>, right: BooleanExpression<T>) -> BooleanExpression<T> {
+pub(super) fn or_pair<T>(
+    left: BooleanExpression<T>,
+    right: BooleanExpression<T>,
+) -> BooleanExpression<T> {
     let mut operands = Vec::new();
     if let BooleanExpression::Or(items) = left {
         operands.extend(items);

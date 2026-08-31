@@ -7,20 +7,18 @@ pub mod model;
 pub mod service;
 
 pub use model::{
-    PackedBin, PackedItem, MaterialSummary, MaterialAttribute, MaterialPackingNumbers,
-    MaterialPackingPlan, PackageSolutionLikeAdapter,
+    MaterialAttribute, MaterialPackingNumbers, MaterialPackingPlan, MaterialSummary,
+    PackageSolutionLikeAdapter, PackedBin, PackedItem,
 };
 
 pub use service::{
-    PackingGeometryGuard, PackingGeometryContract,
-    Packer, PackingResult, PackingAggregation,
-    MaterialPacker, PackingRendererAdapter,
-    KnownCoordinatePlacement, LayerPlacementAdapter,
-    LayerTraceReplayAdapter, LayerTraceReplayResult,
+    KnownCoordinatePlacement, LayerPlacementAdapter, LayerTraceReplayAdapter,
+    LayerTraceReplayResult, MaterialPacker, Packer, PackingAggregation, PackingGeometryContract,
+    PackingGeometryGuard, PackingRendererAdapter, PackingResult,
 };
 
-use std::collections::HashMap;
 use crate::domain::item::MaterialKey;
+use std::collections::HashMap;
 
 // ============================================================================
 // PackingContext - 装箱上下文 / Packing context

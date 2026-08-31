@@ -1,8 +1,8 @@
 //! 指数类型约束
 //! Exponent type constraint
 
-use num_traits::One;
 use crate::algebra::concept::AbelianGroup;
+use num_traits::One;
 
 // ============================================================================
 // Exponent Trait - 指数类型约束

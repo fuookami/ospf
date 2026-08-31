@@ -1,11 +1,8 @@
 //! SeaORM 持久化后端
 //! SeaORM persistence backend
 
-use std::fmt::{Display, Formatter};
-use std::marker::PhantomData;
 use ospf_rust_math::Trivalent;
 use ospf_rust_math::symbol::{
-
     BinaryOperator, BooleanExpression, ComparisonOperator, ExpressionValue, NullCheckType,
     PatternMatchMode, ScalarExpression, ScalarFunctionNames, UnaryOperator,
     property_path_from_owned_symbol,
@@ -15,6 +12,8 @@ use sea_orm::{
     ConnectionTrait, DbErr, Delete, EntityTrait, FromQueryResult, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, Select, Update,
 };
+use std::fmt::{Display, Formatter};
+use std::marker::PhantomData;
 
 use crate::persistence::{
     NullsOrder, PersistenceFieldResolver, RepositoryQuery, SetFromExpression, SetNull, SetValue,
@@ -465,11 +464,9 @@ where
                         .to_string(),
                 ))
             }
-            ScalarExpression::Boolean(_) => {
-                Err(SeaOrmTranslationError::UnsupportedPredicate(
-                    "boolean scalar expression is not supported by SeaORM translator".to_string(),
-                ))
-            }
+            ScalarExpression::Boolean(_) => Err(SeaOrmTranslationError::UnsupportedPredicate(
+                "boolean scalar expression is not supported by SeaORM translator".to_string(),
+            )),
             ScalarExpression::Custom { description, .. } => {
                 Err(SeaOrmTranslationError::UnsupportedPredicate(
                     description

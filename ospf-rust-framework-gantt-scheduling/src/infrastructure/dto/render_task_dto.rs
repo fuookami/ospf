@@ -3,8 +3,8 @@
 //! 用于甘特图渲染的任务数据传输对象。
 //! Task data transfer objects for Gantt chart rendering.
 
-use time::OffsetDateTime;
 use crate::infrastructure::TimeRange;
+use time::OffsetDateTime;
 
 /// 甘特渲染任务类别 / Gantt render task category
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

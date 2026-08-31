@@ -3,15 +3,15 @@
 //! Bottom-Up-Left-Justified 算法实现，用于二维贪心放置。
 //! Bottom-Up-Left-Justified algorithm implementation for 2D greedy placement.
 
-use std::fmt::Debug;
 use std::cmp::Ordering;
+use std::fmt::Debug;
 
 use ospf_rust_math::algebra::Field;
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::concept::UnitTrait;
 use ospf_rust_quantities::unit::physical_unit::CTUnit;
 
-use crate::infrastructure::geometry::{MetricPoint2, MetricSize2, MetricAabb2};
+use crate::infrastructure::geometry::{MetricAabb2, MetricPoint2, MetricSize2};
 use crate::infrastructure::packing_shape::ShapeFootprint2;
 
 // ============================================================================
@@ -158,12 +158,15 @@ where
             let (width, depth) = self.footprint_dimensions(&projection.footprint, false);
 
             // 尝试找到最左下角位置
-            if let Some((position, rotated)) = self.find_position(
-                &width, &depth, projection, &placed_aabbs,
-            ) {
+            if let Some((position, rotated)) =
+                self.find_position(&width, &depth, projection, &placed_aabbs)
+            {
                 let aabb = MetricAabb2::new(
                     position.clone(),
-                    MetricSize2 { width: width.clone(), height: depth.clone() },
+                    MetricSize2 {
+                        width: width.clone(),
+                        height: depth.clone(),
+                    },
                 );
                 placed_aabbs.push(aabb);
                 placements[idx] = Some(BlaPlacement {
@@ -178,11 +181,7 @@ where
     }
 
     /// 比较投影装载优先级 / Compare projection loading priority
-    fn compare_projection(
-        &self,
-        lhs: &BlaProjection<V, U>,
-        rhs: &BlaProjection<V, U>,
-    ) -> Ordering {
+    fn compare_projection(&self, lhs: &BlaProjection<V, U>, rhs: &BlaProjection<V, U>) -> Ordering {
         if lhs.bottom_only != rhs.bottom_only {
             return rhs.bottom_only.cmp(&lhs.bottom_only);
         }
@@ -311,7 +310,10 @@ where
                 // 检查是否与已放置物体重叠
                 let candidate = MetricAabb2::new(
                     position.clone(),
-                    MetricSize2 { width: width.clone(), height: depth.clone() },
+                    MetricSize2 {
+                        width: width.clone(),
+                        height: depth.clone(),
+                    },
                 );
 
                 let overlaps = placed.iter().any(|aabb| candidate.overlaps(aabb));
@@ -340,11 +342,8 @@ mod tests {
 
     #[test]
     fn bla_single_rectangle_fits() {
-        let bla = BottomUpLeftJustifiedAlgorithm::new(
-            meters(10.0),
-            meters(10.0),
-            BlaConfig::default(),
-        );
+        let bla =
+            BottomUpLeftJustifiedAlgorithm::new(meters(10.0), meters(10.0), BlaConfig::default());
 
         let projections = vec![BlaProjection {
             footprint: ShapeFootprint2::Rectangle {
@@ -368,11 +367,8 @@ mod tests {
 
     #[test]
     fn bla_two_rectangles_no_overlap() {
-        let bla = BottomUpLeftJustifiedAlgorithm::new(
-            meters(10.0),
-            meters(10.0),
-            BlaConfig::default(),
-        );
+        let bla =
+            BottomUpLeftJustifiedAlgorithm::new(meters(10.0), meters(10.0), BlaConfig::default());
 
         let projections = vec![
             BlaProjection {
@@ -407,24 +403,27 @@ mod tests {
         let p0 = placements[0].as_ref().unwrap();
         let p1 = placements[1].as_ref().unwrap();
 
-        let aabb0 = MetricAabb2::new(p0.position.clone(), MetricSize2 {
-            width: meters(5.0),
-            height: meters(5.0),
-        });
-        let aabb1 = MetricAabb2::new(p1.position.clone(), MetricSize2 {
-            width: meters(5.0),
-            height: meters(5.0),
-        });
+        let aabb0 = MetricAabb2::new(
+            p0.position.clone(),
+            MetricSize2 {
+                width: meters(5.0),
+                height: meters(5.0),
+            },
+        );
+        let aabb1 = MetricAabb2::new(
+            p1.position.clone(),
+            MetricSize2 {
+                width: meters(5.0),
+                height: meters(5.0),
+            },
+        );
         assert!(!aabb0.overlaps(&aabb1));
     }
 
     #[test]
     fn bla_too_large_fails() {
-        let bla = BottomUpLeftJustifiedAlgorithm::new(
-            meters(5.0),
-            meters(5.0),
-            BlaConfig::default(),
-        );
+        let bla =
+            BottomUpLeftJustifiedAlgorithm::new(meters(5.0), meters(5.0), BlaConfig::default());
 
         let projections = vec![BlaProjection {
             footprint: ShapeFootprint2::Rectangle {
@@ -444,11 +443,8 @@ mod tests {
 
     #[test]
     fn bla_circle_fits() {
-        let bla = BottomUpLeftJustifiedAlgorithm::new(
-            meters(10.0),
-            meters(10.0),
-            BlaConfig::default(),
-        );
+        let bla =
+            BottomUpLeftJustifiedAlgorithm::new(meters(10.0), meters(10.0), BlaConfig::default());
 
         let projections = vec![BlaProjection {
             footprint: ShapeFootprint2::Circle {
@@ -517,11 +513,8 @@ mod tests {
 
     #[test]
     fn bla_container_full() {
-        let bla = BottomUpLeftJustifiedAlgorithm::new(
-            meters(5.0),
-            meters(5.0),
-            BlaConfig::default(),
-        );
+        let bla =
+            BottomUpLeftJustifiedAlgorithm::new(meters(5.0), meters(5.0), BlaConfig::default());
 
         // 第一个 5x5 占满容器，第二个放不下
         let projections = vec![
@@ -556,11 +549,8 @@ mod tests {
 
     #[test]
     fn bla_bottom_only_precedes_weight() {
-        let bla = BottomUpLeftJustifiedAlgorithm::new(
-            meters(10.0),
-            meters(10.0),
-            BlaConfig::default(),
-        );
+        let bla =
+            BottomUpLeftJustifiedAlgorithm::new(meters(10.0), meters(10.0), BlaConfig::default());
 
         let projections = vec![
             BlaProjection {

@@ -1,23 +1,22 @@
 //! 二值化函数符号 / Binaryzation function symbol
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
+};
+use super::big_m::infer_linear_shifted_abs_bound_from_tokens;
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
-};
-use super::big_m::infer_linear_shifted_abs_bound_from_tokens;
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 const DEFAULT_BIG_M: f64 = 1_000_000.0;
 const MIN_BIG_M: f64 = 1.0;
@@ -72,9 +71,12 @@ where
     })
 }
 
+/// 二值化约束的编码方式 / Encoding method for binaryization constraints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryzationMethod {
+    /// 使用 Big-M 约束 / Use Big-M constraints.
     BigM,
+    /// 使用阈值约束 / Use threshold constraints.
     Threshold,
     /// Request solver-native indicator modeling when available.
     ///
@@ -120,6 +122,7 @@ impl<V> BinaryzationFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建二值化函数 / Create a binaryization function.
     pub fn new(
         id: u64,
         name: &str,
@@ -170,6 +173,7 @@ where
         Self::new(id, &name, input, threshold, big_m, method)
     }
 
+    /// 使用 Big-M 语义创建二值化函数 / Create a binaryization function with Big-M semantics.
     pub fn with_big_m(id: u64, name: &str, input: Linear<V>, big_m: V) -> Self {
         Self::new(
             id,
@@ -200,6 +204,7 @@ where
         Self::with_big_m(id, &name, input, big_m)
     }
 
+    /// 使用阈值语义创建二值化函数 / Create a threshold binaryization function.
     pub fn with_threshold(id: u64, name: &str, input: Linear<V>, threshold: V) -> Self {
         Self::new(
             id,
@@ -230,6 +235,7 @@ where
         Self::with_threshold(id, &name, input, threshold)
     }
 
+    /// 设置声明的依赖符号 ID / Set declared dependency symbol IDs.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -247,22 +253,27 @@ where
         cloned
     }
 
+    /// 获取二值结果变量 / Get the binary result variable.
     pub fn result_variable(&self) -> &BinaryVariableItem {
         &self.result_var
     }
 
+    /// 获取输入多项式 / Get the input polynomial.
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
+    /// 获取阈值 / Get the threshold.
     pub fn threshold(&self) -> &V {
         &self.threshold
     }
 
+    /// 获取 Big-M 值 / Get the Big-M value.
     pub fn big_m(&self) -> &V {
         &self.big_m
     }
 
+    /// 获取二值化方法 / Get the binaryization method.
     pub fn method(&self) -> BinaryzationMethod {
         self.method
     }

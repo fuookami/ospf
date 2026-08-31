@@ -4,10 +4,10 @@
 //! 提供集中式单位转换 helper，避免 model 文件中散落的 `.value` 直接提取。
 //! Provides centralized unit conversion helpers to avoid scattered `.value` extraction in model files.
 
-use std::error::Error;
 use ospf_rust_quantities::quantity::Quantity;
-use ospf_rust_quantities::unit::{CTUnit, Unit};
 use ospf_rust_quantities::unit::derived::{Kilogram, Meter};
+use ospf_rust_quantities::unit::{CTUnit, Unit};
+use std::error::Error;
 
 /// 重量单位 / Weight unit (千克)
 pub fn weight_unit() -> Unit {
@@ -49,7 +49,10 @@ pub fn quantity_value_in_unit(
     unit: &Unit,
 ) -> Result<f64, Box<dyn Error>> {
     let converted = quantity.to_unit(unit).map_err(|e| {
-        Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e))) as Box<dyn std::error::Error>
+        Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("{:?}", e),
+        )) as Box<dyn std::error::Error>
     })?;
     Ok(converted.value)
 }

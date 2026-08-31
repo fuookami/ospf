@@ -3,8 +3,8 @@
 //! 解析过程中的中间表示，支持递归嵌套。
 //! Intermediate representation during parsing, supports recursive nesting.
 
-use std::collections::HashMap;
 use crate::symbol::inequality::Comparison;
+use std::collections::HashMap;
 
 /// 表达式节点 / Expression node
 #[derive(Clone, Debug, PartialEq)]

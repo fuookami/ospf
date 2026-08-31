@@ -6,7 +6,5 @@
 pub mod limits;
 
 pub use limits::{
-    ResourceCapacityConstraint,
-    ResourceOverQuantityMinimization,
-    ResourceLessQuantityMinimization,
+    ResourceCapacityConstraint, ResourceLessQuantityMinimization, ResourceOverQuantityMinimization,
 };

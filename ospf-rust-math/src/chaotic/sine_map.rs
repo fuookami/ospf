@@ -1,8 +1,8 @@
 //! 正弦映射。
 //! Sine map.
 
-use num_traits::Float;
 use crate::algebra::Field;
+use num_traits::Float;
 scalar_map!(
     /// 正弦映射。
     /// Sine map.
@@ -25,7 +25,10 @@ impl<S: Field + Float> Default for SineMap<S> {
 
 impl<S: Field + Float> Default for SineMapGenerator<S> {
     fn default() -> Self {
-        Self::new(SineMap::default(), S::from(0.5).expect("0.5 must be representable"))
+        Self::new(
+            SineMap::default(),
+            S::from(0.5).expect("0.5 must be representable"),
+        )
     }
 }
 

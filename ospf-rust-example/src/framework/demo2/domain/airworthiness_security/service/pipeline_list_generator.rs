@@ -1,11 +1,11 @@
 //! 适航性安全管线步骤生成器 / Airworthiness security pipeline step generator
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;
 use crate::framework::demo2::domain::airworthiness_security::context::AirworthinessContext;
 use crate::framework::demo2::domain::airworthiness_security::service::policy;
 use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 use crate::framework::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 /// 适航性管道步骤类型 / Airworthiness pipeline step type
 ///

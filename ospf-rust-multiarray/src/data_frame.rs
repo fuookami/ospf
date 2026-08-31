@@ -1,14 +1,14 @@
 //! 数据帧模块，提供二维表格数据结构及列名索引。
 //! Data frame module providing a two-dimensional tabular data structure with column name indexing.
 
-use std::any::Any;
-use std::collections::HashMap;
-use std::ops::{Bound, Deref, DerefMut, Index, IndexMut, Range, RangeBounds};
 use super::concept::AccessOrder;
 use super::dummy_index::DummyIndex;
 use super::multi_array::{MultiArray, MultiArrayBuilder, MultiArrayCollection};
 use super::multi_array_view::MultiArrayView;
 use super::shape::{AbstractShape, Shape};
+use std::any::Any;
+use std::collections::HashMap;
+use std::ops::{Bound, Deref, DerefMut, Index, IndexMut, Range, RangeBounds};
 
 /// 数据帧，基于多维数组的二维表格结构，支持列名索引。
 /// Data frame, a two-dimensional tabular structure based on a multi-array with column name indexing.
@@ -36,13 +36,19 @@ where
     /// 获取行数 / Get the number of rows.
     #[inline]
     pub fn nrows(&self) -> usize {
-        self.array.shape.len_of_dimension(0).expect("shape dimension 0 should be valid in nrows")
+        self.array
+            .shape
+            .len_of_dimension(0)
+            .expect("shape dimension 0 should be valid in nrows")
     }
 
     /// 获取列数 / Get the number of columns.
     #[inline]
     pub fn ncols(&self) -> usize {
-        self.array.shape.len_of_dimension(1).expect("shape dimension 1 should be valid in ncols")
+        self.array
+            .shape
+            .len_of_dimension(1)
+            .expect("shape dimension 1 should be valid in ncols")
     }
 
     /// 获取列名切片 / Get a slice of column names.
@@ -283,7 +289,10 @@ where
         let col_indices: Vec<usize> = selected
             .iter()
             .map(|name| {
-                self.get_column_index(name).expect(&format!("Column name not found: {} / 列名不存在: {}", name, name))
+                self.get_column_index(name).expect(&format!(
+                    "Column name not found: {} / 列名不存在: {}",
+                    name, name
+                ))
             })
             .collect();
 

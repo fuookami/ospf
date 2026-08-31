@@ -1,10 +1,10 @@
 //! 群 trait
 //! Group trait
 
-use std::ops::{Neg, Sub};
-use crate::operator::{NegRef, SubRef};
 use super::Monoid;
 use super::MonoidRef;
+use crate::operator::{NegRef, SubRef};
+use std::ops::{Neg, Sub};
 
 // ============================================================================
 // Group Trait - 群

@@ -1,14 +1,25 @@
 //! Gurobi 求解器主体
 //! Gurobi solver core
 
-use std::time::{Duration, Instant};
-use crate::error::Result;
+use crate::error::{CoreError, Result};
 use crate::model::intermediate::{LinearTriadModel, QuadraticTetradModel};
 use crate::model::object::ObjectiveCategory;
+use crate::solver::solver::{emit_progress_start, emit_progress_terminal};
 use crate::solver::{
-
-    LinearSolver, QuadraticSolver, SolverCapability, SolverInfo, SolverOutput, SolverStatus,
+    CapabilitySupport, LinearSolver, QuadraticSolver, SolveHandle, SolveReport, SolveWarning,
+    SolverCapabilities, SolverCapability, SolverDescriptor, SolverInfo, SolverOutput,
+    SolverProvenance, SolverStatus, SolvingStatus, attach_linear_solution_audit,
+    attach_quadratic_model_mapping, cancelled_solve_report,
+    solver_output_to_report_with_cancellation, solver_output_to_report_with_provenance,
+    validate_per_solve_limits, verify_native_terminal_proof,
 };
+use crate::solver::{
+    configuration_fingerprint, linear_model_fingerprint, quadratic_model_fingerprint,
+    sha256_fingerprint, solver_provenance_fingerprint,
+};
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use super::config::{
     GurobiConfig, GurobiNativeControl, GurobiNativeSnapshot, GurobiNativeWhere,
@@ -65,6 +76,11 @@ impl Default for GurobiSolver {
 }
 
 impl GurobiSolver {
+    const GRB_ERROR_INVALID_ARGUMENT: i32 = 10_003;
+    const GRB_ERROR_NO_LICENSE: i32 = 10_009;
+    const GRB_ERROR_UNKNOWN_PARAMETER: i32 = 10_007;
+    const GRB_ERROR_VALUE_OUT_OF_RANGE: i32 = 10_008;
+
     fn compute_relative_gap(objective_value: f64, best_bound: f64) -> f64 {
         let denominator = objective_value.abs().max(1.0);
         ((objective_value - best_bound).abs() / denominator).max(0.0)
@@ -237,6 +253,54 @@ impl GurobiSolver {
         &mut self.config
     }
 
+    pub(super) fn environment_error(error: grb::Error) -> crate::error::CoreError {
+        Self::environment_error_with_context("param", error)
+    }
+
+    fn environment_start_error(context: &str, error: grb::Error) -> crate::error::CoreError {
+        Self::environment_error_with_context(context, error)
+    }
+
+    fn environment_error_with_context(context: &str, error: grb::Error) -> crate::error::CoreError {
+        let message = error.to_string();
+        match error {
+            grb::Error::FromAPI(_, code) if code == Self::GRB_ERROR_NO_LICENSE => {
+                crate::error::CoreError::solver_license(format!(
+                    "Gurobi {} requires a valid license: {}",
+                    context, message
+                ))
+            }
+            grb::Error::FromAPI(_, code)
+                if matches!(
+                    code,
+                    Self::GRB_ERROR_INVALID_ARGUMENT
+                        | Self::GRB_ERROR_UNKNOWN_PARAMETER
+                        | Self::GRB_ERROR_VALUE_OUT_OF_RANGE
+                ) =>
+            {
+                crate::error::CoreError::Solver(crate::error::SolverError::InvalidInput(format!(
+                    "Gurobi {} configuration error: {}",
+                    context, message
+                )))
+            }
+            _ => crate::error::CoreError::solver_environment(format!(
+                "Gurobi {} error: {}",
+                context, message
+            )),
+        }
+    }
+
+    fn backend_error(context: &str, error: impl std::fmt::Display) -> crate::error::CoreError {
+        crate::error::CoreError::solver_backend(format!("Gurobi {} error: {}", context, error))
+    }
+
+    fn record_callback_error(slot: &Arc<Mutex<Option<CoreError>>>, message: impl Into<String>) {
+        let mut error = slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if error.is_none() {
+            *error = Some(CoreError::callback_error(message));
+        }
+    }
+
     pub(super) fn create_env(&self) -> Result<grb::Env> {
         use grb::prelude::*;
 
@@ -246,29 +310,17 @@ impl GurobiSolver {
             || self.config.cs_queue_timeout.is_some();
 
         if has_compute_server {
-            let mut env = Env::empty().map_err(|e| {
-                crate::error::CoreError::SolverEnvironmentLost(crate::error::SolverEnvironmentLostError::new(format!(
-                    "Gurobi empty env error: {}",
-                    e
-                )))
-            })?;
+            let mut env =
+                Env::empty().map_err(|e| Self::environment_start_error("empty environment", e))?;
             self.apply_env_params_empty(&mut env)?;
-            let mut started_env = env.start().map_err(|e| {
-                crate::error::CoreError::SolverEnvironmentLost(crate::error::SolverEnvironmentLostError::new(format!(
-                    "Gurobi env start error: {}",
-                    e
-                )))
-            })?;
+            let mut started_env = env
+                .start()
+                .map_err(|e| Self::environment_start_error("environment start", e))?;
             self.apply_env_callback(&mut started_env)?;
             return Ok(started_env);
         }
 
-        let mut env = Env::new("").map_err(|e| {
-            crate::error::CoreError::SolverEnvironmentLost(crate::error::SolverEnvironmentLostError::new(format!(
-                "Gurobi env error: {}",
-                e
-            )))
-        })?;
+        let mut env = Env::new("").map_err(|e| Self::environment_start_error("environment", e))?;
         self.apply_env_params_started(&mut env)?;
         self.apply_env_callback(&mut env)?;
         Ok(env)
@@ -278,76 +330,44 @@ impl GurobiSolver {
         use grb::prelude::*;
 
         if !self.config.output_flag {
-            env.set(param::OutputFlag, 0).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::OutputFlag, 0)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(tl) = self.config.time_limit {
-            env.set(param::TimeLimit, tl).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::TimeLimit, tl)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(gap) = self.config.mip_gap {
-            env.set(param::MIPGap, gap).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::MIPGap, gap)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(iter) = self.config.max_iterations {
-            env.set(param::IterationLimit, iter as f64).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::IterationLimit, iter as f64)
+                .map_err(|e| Self::environment_error(e))?;
+        }
+        if let Some(solution_limit) = self.config.solution_limit {
+            env.set(param::SolutionLimit, solution_limit)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(threads) = self.config.threads {
-            env.set(param::Threads, threads).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::Threads, threads)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(seed) = self.config.seed {
-            env.set(param::Seed, seed).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::Seed, seed)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(tolerance) = self.config.optimality_tolerance {
-            env.set(param::OptimalityTol, tolerance).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::OptimalityTol, tolerance)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(tolerance) = self.config.feasibility_tolerance {
-            env.set(param::FeasibilityTol, tolerance).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::FeasibilityTol, tolerance)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(ref log_file) = self.config.log_file {
-            env.set(param::LogFile, log_file.clone()).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::LogFile, log_file.clone())
+                .map_err(|e| Self::environment_error(e))?;
         }
         Ok(())
     }
@@ -356,108 +376,60 @@ impl GurobiSolver {
         use grb::prelude::*;
 
         if !self.config.output_flag {
-            env.set(param::OutputFlag, 0).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::OutputFlag, 0)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(tl) = self.config.time_limit {
-            env.set(param::TimeLimit, tl).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::TimeLimit, tl)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(gap) = self.config.mip_gap {
-            env.set(param::MIPGap, gap).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::MIPGap, gap)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(iter) = self.config.max_iterations {
-            env.set(param::IterationLimit, iter as f64).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::IterationLimit, iter as f64)
+                .map_err(|e| Self::environment_error(e))?;
+        }
+        if let Some(solution_limit) = self.config.solution_limit {
+            env.set(param::SolutionLimit, solution_limit)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(threads) = self.config.threads {
-            env.set(param::Threads, threads).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::Threads, threads)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(seed) = self.config.seed {
-            env.set(param::Seed, seed).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::Seed, seed)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(tolerance) = self.config.optimality_tolerance {
-            env.set(param::OptimalityTol, tolerance).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::OptimalityTol, tolerance)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(tolerance) = self.config.feasibility_tolerance {
-            env.set(param::FeasibilityTol, tolerance).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::FeasibilityTol, tolerance)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(ref log_file) = self.config.log_file {
-            env.set(param::LogFile, log_file.clone()).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::LogFile, log_file.clone())
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(server_timeout) = self.config.server_timeout {
-            env.set(param::ServerTimeout, server_timeout).map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi param error: {}",
-                    e
-                )))
-            })?;
+            env.set(param::ServerTimeout, server_timeout)
+                .map_err(|e| Self::environment_error(e))?;
         }
         if let Some(cs_queue_timeout) = self.config.cs_queue_timeout {
             env.set(param::CSQueueTimeout, cs_queue_timeout)
-                .map_err(|e| {
-                    crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(
-                        format!("Gurobi param error: {}", e),
-                    ))
-                })?;
+                .map_err(Self::environment_error)?;
         }
         if let Some(ref compute_server) = self.config.compute_server {
             env.set(param::ComputeServer, compute_server.clone())
-                .map_err(|e| {
-                    crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(
-                        format!("Gurobi param error: {}", e),
-                    ))
-                })?;
+                .map_err(Self::environment_error)?;
         }
         if let Some(ref server_password) = self.config.server_password {
             env.set(param::ServerPassword, server_password.clone())
-                .map_err(|e| {
-                    crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(
-                        format!("Gurobi param error: {}", e),
-                    ))
-                })?;
+                .map_err(Self::environment_error)?;
         }
         Ok(())
     }
@@ -474,11 +446,20 @@ impl GurobiSolver {
         grb_model: &mut grb::Model,
         objective_category: ObjectiveCategory,
         grb_vars: Option<&[grb::Var]>,
+        cancellation_handle: Option<&SolveHandle>,
     ) -> Result<()> {
         let no_improvement_time_limit = self
             .config
             .no_improvement_time_limit
             .filter(|seconds| *seconds > 0.0);
+        let interruptible_time = self
+            .config
+            .interruptible_time
+            .filter(|seconds| !seconds.is_nan() && *seconds >= 0.0);
+        let interruptible_gap = self
+            .config
+            .interruptible_gap
+            .filter(|gap| !gap.is_nan() && *gap >= 0.0);
         let telemetry_min_interval = self
             .config
             .telemetry_min_interval
@@ -490,13 +471,11 @@ impl GurobiSolver {
             && telemetry_callback.is_none()
             && native_observers.is_empty()
             && native_callback.is_none()
+            && cancellation_handle.is_none()
         {
-            return grb_model.optimize().map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi optimize error: {}",
-                    e
-                )))
-            });
+            return grb_model
+                .optimize()
+                .map_err(|e| Self::backend_error("optimize", e));
         }
 
         let mut best_objective: Option<f64> = None;
@@ -506,12 +485,32 @@ impl GurobiSolver {
         let mut last_telemetry_emit_time: Option<Instant> = None;
         let mut pending_observer_terminate = false;
         let callback_vars = grb_vars.map(|vars| vars.to_vec());
+        let cancellation_handle = cancellation_handle.cloned();
+        let callback_error = Arc::new(Mutex::new(None::<CoreError>));
+        let callback_error_for_closure = Arc::clone(&callback_error);
         let improvement_tolerance = self
             .config
             .improve_threshold
             .filter(|value| *value > 0.0)
             .unwrap_or(1e-9f64);
         let mut callback = move |where_ctx: grb::callback::Where<'_>| -> grb::callback::CbResult {
+            if cancellation_handle
+                .as_ref()
+                .is_some_and(SolveHandle::is_cancelled)
+            {
+                match &where_ctx {
+                    grb::callback::Where::Polling(context) => context.terminate(),
+                    grb::callback::Where::PreSolve(context) => context.terminate(),
+                    grb::callback::Where::Simplex(context) => context.terminate(),
+                    grb::callback::Where::MIP(context) => context.terminate(),
+                    grb::callback::Where::MIPSol(context) => context.terminate(),
+                    grb::callback::Where::MIPNode(context) => context.terminate(),
+                    grb::callback::Where::Message(context) => context.terminate(),
+                    grb::callback::Where::Barrier(context) => context.terminate(),
+                    grb::callback::Where::IIS(context) => context.terminate(),
+                    _ => {}
+                }
+            }
             if pending_observer_terminate {
                 if let grb::callback::Where::MIP(mip_ctx) = &where_ctx {
                     mip_ctx.terminate();
@@ -613,7 +612,7 @@ impl GurobiSolver {
                             .unwrap_or(true),
                     };
                     if should_emit {
-                        callback(&GurobiTelemetryStatus {
+                        if let Err(error) = callback(&GurobiTelemetryStatus {
                             solve_time: snapshot.solve_time,
                             objective_category: snapshot.objective_category,
                             initial_objective_value: snapshot.initial_objective_value,
@@ -623,25 +622,38 @@ impl GurobiSolver {
                             mip_gap: snapshot.mip_gap,
                             iterations: snapshot.iterations,
                             node_count: snapshot.node_count,
-                        })
-                        .map_err(|error| {
-                            grb::Error::FromAPI(
+                        }) {
+                            Self::record_callback_error(
+                                &callback_error_for_closure,
                                 format!("Gurobi telemetry callback error: {}", error),
-                                40000,
-                            )
-                        })?;
+                            );
+                            pending_observer_terminate = true;
+                            if let grb::callback::Where::MIP(mip_ctx) = &where_ctx {
+                                mip_ctx.terminate();
+                            }
+                            return Ok(());
+                        }
                         last_telemetry_emit_time = Some(Instant::now());
                     }
                 }
             }
 
             for observer in &native_observers {
-                match observer(&snapshot).map_err(|error| {
-                    grb::Error::FromAPI(
-                        format!("Gurobi native observer callback error: {}", error),
-                        40000,
-                    )
-                })? {
+                let control = match observer(&snapshot) {
+                    Ok(control) => control,
+                    Err(error) => {
+                        Self::record_callback_error(
+                            &callback_error_for_closure,
+                            format!("Gurobi native observer callback error: {}", error),
+                        );
+                        pending_observer_terminate = true;
+                        if let grb::callback::Where::MIP(mip_ctx) = &where_ctx {
+                            mip_ctx.terminate();
+                        }
+                        return Ok(());
+                    }
+                };
+                match control {
                     GurobiNativeControl::Continue => {}
                     GurobiNativeControl::Terminate => {
                         pending_observer_terminate = true;
@@ -671,6 +683,16 @@ impl GurobiSolver {
                                 best_objective = Some(current_best);
                                 last_improvement_time = Instant::now();
                             } else if last_improvement_time.elapsed().as_secs_f64() >= limit_seconds
+                                && interruptible_time
+                                    .map(|minimum| snapshot.solve_time.as_secs_f64() >= minimum)
+                                    .unwrap_or(true)
+                                && interruptible_gap
+                                    .map(|threshold| {
+                                        snapshot.best_bound.is_some_and(|best_bound| {
+                                            (current_best - best_bound).abs() < threshold
+                                        })
+                                    })
+                                    .unwrap_or(true)
                             {
                                 mip_ctx.terminate();
                             }
@@ -680,18 +702,25 @@ impl GurobiSolver {
             }
 
             if let Some(callback) = native_callback.as_ref() {
-                callback(where_ctx)?;
+                if let Err(error) = callback(where_ctx) {
+                    Self::record_callback_error(
+                        &callback_error_for_closure,
+                        format!("Gurobi native callback error: {}", error),
+                    );
+                    return Err(error);
+                }
             }
             Ok(())
         };
-        grb_model
-            .optimize_with_callback(&mut callback)
-            .map_err(|e| {
-                crate::error::CoreError::Solver(crate::error::SolverError::SolveFailed(format!(
-                    "Gurobi optimize_with_callback error: {}",
-                    e
-                )))
-            })
+        let optimize_result = grb_model.optimize_with_callback(&mut callback);
+        if let Some(error) = callback_error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+        {
+            return Err(error);
+        }
+        optimize_result.map_err(|e| Self::backend_error("optimize_with_callback", e))
     }
 
     /// 将 Gurobi 状态转换为求解器状态 / Convert Gurobi status to solver status
@@ -703,10 +732,14 @@ impl GurobiSolver {
             Status::InfOrUnbd => SolverStatus::InfeasibleOrUnbounded,
             Status::Unbounded => SolverStatus::Unbounded,
             Status::IterationLimit => SolverStatus::IterationLimit,
-            Status::NodeLimit => SolverStatus::IterationLimit,
+            Status::NodeLimit => SolverStatus::NodeLimit,
             Status::TimeLimit => SolverStatus::TimeLimit,
+            Status::SolutionLimit => SolverStatus::SolutionLimit,
+            Status::Interrupted => SolverStatus::UserInterrupt,
             Status::Numeric => SolverStatus::NumericError,
-            Status::SubOptimal => SolverStatus::Feasible,
+            Status::SubOptimal => SolverStatus::Suboptimal,
+            Status::UserObjLimit => SolverStatus::ObjectiveLimit,
+            Status::CutOff => SolverStatus::Cutoff,
             _ => SolverStatus::Unknown,
         }
     }
@@ -716,8 +749,34 @@ impl GurobiSolver {
         status: SolverStatus,
         has_solution: bool,
     ) -> SolverStatus {
-        if has_solution && matches!(status, SolverStatus::Unknown) {
+        if matches!(status, SolverStatus::Optimal) && !has_solution {
+            SolverStatus::Unknown
+        } else if has_solution && matches!(status, SolverStatus::Unknown) {
             SolverStatus::Feasible
+        } else {
+            status
+        }
+    }
+
+    /// 区分非零 MIP gap 终止与精确最优 / Distinguish non-zero MIP-gap termination from an exact optimum.
+    ///
+    /// Gurobi reports both cases as `OPTIMAL`.  A positive configured gap is
+    /// therefore an exact certificate only when the returned incumbent and
+    /// bound agree within the report tolerance.
+    pub(super) fn refine_status_with_mip_gap(
+        status: SolverStatus,
+        has_solution: bool,
+        has_integer_variables: bool,
+        configured_gap: Option<f64>,
+        actual_gap: Option<f64>,
+    ) -> SolverStatus {
+        if status == SolverStatus::Optimal
+            && has_solution
+            && has_integer_variables
+            && configured_gap.is_some_and(|gap| gap.is_finite() && gap > 0.0)
+            && actual_gap.is_none_or(|gap| gap > 1e-8)
+        {
+            SolverStatus::GapLimit
         } else {
             status
         }
@@ -755,6 +814,22 @@ impl GurobiSolver {
         quadratic::solve_quadratic(self, model)
     }
 
+    /// 求解线性模型并返回统一报告 / Solve a linear model as a unified report
+    pub fn solve_linear_report(&self, model: &LinearTriadModel) -> Result<SolveReport<f64>> {
+        self.attach_model_fingerprint(
+            self.report_from_output(self.solve_linear(model)?, None)?,
+            model,
+        )
+    }
+
+    /// 求解二次模型并返回统一报告 / Solve a quadratic model as a unified report
+    pub fn solve_quadratic_report(&self, model: &QuadraticTetradModel) -> Result<SolveReport<f64>> {
+        self.attach_quadratic_model_fingerprint(
+            self.report_from_output(self.solve_quadratic(model)?, None)?,
+            model,
+        )
+    }
+
     /// 求解线性模型并返回解池 / Solve linear model and return solution pool
     pub fn solve_linear_multi(
         &self,
@@ -788,6 +863,156 @@ impl GurobiSolver {
             SolverCapability::NativeSOS1,
         ]
     }
+
+    pub(super) fn provenance(&self) -> SolverProvenance {
+        let mut configuration = BTreeMap::new();
+        configuration.insert(
+            "time_limit".to_owned(),
+            format!("{:?}", self.config.time_limit),
+        );
+        configuration.insert("mip_gap".to_owned(), format!("{:?}", self.config.mip_gap));
+        configuration.insert(
+            "no_improvement_time_limit".to_owned(),
+            format!("{:?}", self.config.no_improvement_time_limit),
+        );
+        configuration.insert(
+            "interruptible_time".to_owned(),
+            format!("{:?}", self.config.interruptible_time),
+        );
+        configuration.insert(
+            "interruptible_gap".to_owned(),
+            format!("{:?}", self.config.interruptible_gap),
+        );
+        configuration.insert(
+            "improve_threshold".to_owned(),
+            format!("{:?}", self.config.improve_threshold),
+        );
+        configuration.insert(
+            "max_iterations".to_owned(),
+            format!("{:?}", self.config.max_iterations),
+        );
+        configuration.insert("threads".to_owned(), format!("{:?}", self.config.threads));
+        configuration.insert("seed".to_owned(), format!("{:?}", self.config.seed));
+        configuration.insert(
+            "node_limit".to_owned(),
+            format!("{:?}", self.config.node_limit),
+        );
+        configuration.insert(
+            "solution_limit".to_owned(),
+            format!("{:?}", self.config.solution_limit),
+        );
+        configuration.insert(
+            "mem_limit".to_owned(),
+            format!("{:?}", self.config.mem_limit),
+        );
+        configuration.insert(
+            "output_flag".to_owned(),
+            self.config.output_flag.to_string(),
+        );
+        configuration.insert(
+            "native_callback_registered".to_owned(),
+            self.config.native_callback.is_some().to_string(),
+        );
+        configuration.insert(
+            "telemetry_callback_registered".to_owned(),
+            self.config.telemetry_callback.is_some().to_string(),
+        );
+        configuration.insert(
+            "server_password_registered".to_owned(),
+            self.config.server_password.is_some().to_string(),
+        );
+        if let Some(password) = &self.config.server_password {
+            configuration.insert(
+                "server_password_digest".to_owned(),
+                sha256_fingerprint("ospf.solve.secret", password.as_bytes()).value,
+            );
+        }
+        #[cfg(feature = "gurobi10")]
+        let feature_version = "gurobi10";
+        #[cfg(feature = "gurobi11")]
+        let feature_version = "gurobi11";
+        #[cfg(feature = "gurobi12")]
+        let feature_version = "gurobi12";
+        let (major, minor, technical) = grb::version();
+        let native_version = if major >= 0 && minor >= 0 && technical >= 0 {
+            format!("{}.{}.{}", major, minor, technical)
+        } else {
+            "unavailable".to_owned()
+        };
+        let mut environment_summary = BTreeMap::new();
+        environment_summary.insert("binding".to_owned(), "grb-3.0.1".to_owned());
+        environment_summary.insert("feature".to_owned(), feature_version.to_owned());
+        environment_summary.insert("native_version".to_owned(), native_version.clone());
+        SolverProvenance {
+            solver_id: format!("gurobi/{}", native_version),
+            backend_name: "Gurobi".to_owned(),
+            backend_version: Some(native_version),
+            plugin_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            requested_configuration: configuration.clone(),
+            effective_configuration: configuration,
+            thread_count: self.config.threads.map(|value| value.max(0) as usize),
+            random_seed: self.config.seed.map(|value| value.max(0) as u64),
+            deterministic: self.config.seed.map(|_| self.config.threads == Some(1)),
+            environment_summary,
+        }
+    }
+
+    pub(super) fn report_from_output(
+        &self,
+        output: SolverOutput,
+        cancellation_handle: Option<&SolveHandle>,
+    ) -> Result<SolveReport<f64>> {
+        let native_status = output.status;
+        if let Some(handle) = cancellation_handle {
+            handle.mark_completed();
+        }
+        let mut report = match cancellation_handle {
+            Some(handle) => {
+                solver_output_to_report_with_cancellation(output, self.provenance(), handle)
+            }
+            None => solver_output_to_report_with_provenance(output, self.provenance()),
+        }?;
+        verify_native_terminal_proof(&mut report, native_status)?;
+        let provenance = self.provenance();
+        report.fingerprints.configuration = Some(configuration_fingerprint(
+            &provenance.effective_configuration,
+        ));
+        report.fingerprints.solver = Some(solver_provenance_fingerprint(&provenance));
+        if self.has_non_replayable_callback() {
+            report.warnings.push(SolveWarning::new(
+                "NonReplayableCallback",
+                "backend callbacks are execution-only and are not included in replay identity",
+            ));
+        }
+        Ok(report)
+    }
+
+    fn has_non_replayable_callback(&self) -> bool {
+        self.config.stage_callback.is_some()
+            || self.config.telemetry_callback.is_some()
+            || self.config.numeric_diagnostics_callback.is_some()
+            || self.config.native_callback.is_some()
+            || !self.config.native_observers.is_empty()
+            || self.config.env_callback.is_some()
+    }
+
+    fn attach_model_fingerprint(
+        &self,
+        mut report: SolveReport<f64>,
+        model: &LinearTriadModel,
+    ) -> Result<SolveReport<f64>> {
+        report.fingerprints.model = Some(linear_model_fingerprint(model)?);
+        attach_linear_solution_audit(report, model)
+    }
+
+    fn attach_quadratic_model_fingerprint(
+        &self,
+        mut report: SolveReport<f64>,
+        model: &QuadraticTetradModel,
+    ) -> Result<SolveReport<f64>> {
+        report.fingerprints.model = Some(quadratic_model_fingerprint(model)?);
+        attach_quadratic_model_mapping(report, model)
+    }
 }
 
 impl SolverInfo for GurobiSolver {
@@ -798,11 +1023,90 @@ impl SolverInfo for GurobiSolver {
     fn capabilities(&self) -> Vec<SolverCapability> {
         self.capabilities_internal()
     }
+
+    fn descriptor(&self) -> SolverDescriptor {
+        let provenance = self.provenance();
+        let capabilities = SolverCapabilities::from_legacy(&self.capabilities_internal())
+            .with("solution_pool", CapabilitySupport::Supported)
+            .with("primal", CapabilitySupport::Supported)
+            .with("dual", CapabilitySupport::Conditional)
+            .with("external_interrupt", CapabilitySupport::Conditional);
+        SolverDescriptor {
+            solver_id: provenance.solver_id,
+            display_name: "Gurobi".to_owned(),
+            backend_name: provenance.backend_name,
+            backend_version: provenance.backend_version,
+            runtime_available: None,
+            capabilities,
+            warnings: vec![
+                "license and native runtime availability are confirmed when a solve starts"
+                    .to_owned(),
+                "external cancellation is polled from the native callback".to_owned(),
+            ],
+        }
+    }
 }
 
 impl LinearSolver for GurobiSolver {
     fn solve_linear(&self, model: &LinearTriadModel) -> Result<SolverOutput> {
         GurobiSolver::solve_linear(self, model)
+    }
+
+    fn solve_linear_report(&self, model: &LinearTriadModel) -> Result<SolveReport<f64>> {
+        GurobiSolver::solve_linear_report(self, model)
+    }
+
+    fn solve_linear_report_with_options(
+        &self,
+        model: &LinearTriadModel,
+        options: &crate::solver::SolveOptions<'_>,
+    ) -> Result<SolveReport<f64>> {
+        validate_per_solve_limits(options)?;
+        emit_progress_start(options.progress_reporter, self.name())?;
+        if let Some(handle) = options.cancellation_handle
+            && handle.is_cancelled()
+        {
+            let report = cancelled_solve_report(self.provenance(), handle)?;
+            emit_progress_terminal(options.progress_reporter, self.name(), &report)?;
+            return Ok(report);
+        }
+        if let Some(callback) = options.solving_status_callback {
+            callback(&SolvingStatus::solving(self.name()))?;
+        }
+        if options.solution_amount > 1
+            && let Some((output, pool)) =
+                Some(linear::solve_linear_with_solution_pool_with_options(
+                    self,
+                    model,
+                    options.solution_amount,
+                    options,
+                )?)
+        {
+            let final_status = SolvingStatus::from_output(self.name(), &output);
+            let mut report = self.attach_model_fingerprint(
+                self.report_from_output(output, options.cancellation_handle)?,
+                model,
+            )?;
+            if let Some(solution) = report.solution.as_mut() {
+                solution.pool = pool;
+            }
+            if let Some(callback) = options.solving_status_callback {
+                callback(&final_status)?;
+            }
+            emit_progress_terminal(options.progress_reporter, self.name(), &report)?;
+            return Ok(report);
+        }
+        let output = linear::solve_linear_with_options(self, model, options)?;
+        let final_status = SolvingStatus::from_output(self.name(), &output);
+        let report = self.attach_model_fingerprint(
+            self.report_from_output(output, options.cancellation_handle)?,
+            model,
+        )?;
+        if let Some(callback) = options.solving_status_callback {
+            callback(&final_status)?;
+        }
+        emit_progress_terminal(options.progress_reporter, self.name(), &report)?;
+        Ok(report)
     }
 
     fn solve_linear_with_solution_pool(
@@ -819,11 +1123,86 @@ impl LinearSolver for GurobiSolver {
             solution_amount,
         )?))
     }
+
+    fn solve_linear_with_solution_pool_with_options(
+        &self,
+        model: &LinearTriadModel,
+        solution_amount: usize,
+        options: &crate::solver::SolveOptions<'_>,
+    ) -> Result<Option<(SolverOutput, Vec<Vec<f64>>)>> {
+        validate_per_solve_limits(options)?;
+        if solution_amount <= 1 {
+            return Ok(None);
+        }
+        Ok(Some(linear::solve_linear_with_solution_pool_with_options(
+            self,
+            model,
+            solution_amount,
+            options,
+        )?))
+    }
 }
 
 impl QuadraticSolver for GurobiSolver {
     fn solve_quadratic(&self, model: &QuadraticTetradModel) -> Result<SolverOutput> {
         GurobiSolver::solve_quadratic(self, model)
+    }
+
+    fn solve_quadratic_report(&self, model: &QuadraticTetradModel) -> Result<SolveReport<f64>> {
+        GurobiSolver::solve_quadratic_report(self, model)
+    }
+
+    fn solve_quadratic_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: &crate::solver::SolveOptions<'_>,
+    ) -> Result<SolveReport<f64>> {
+        validate_per_solve_limits(options)?;
+        emit_progress_start(options.progress_reporter, self.name())?;
+        if let Some(handle) = options.cancellation_handle
+            && handle.is_cancelled()
+        {
+            let report = cancelled_solve_report(self.provenance(), handle)?;
+            emit_progress_terminal(options.progress_reporter, self.name(), &report)?;
+            return Ok(report);
+        }
+        if let Some(callback) = options.solving_status_callback {
+            callback(&SolvingStatus::solving(self.name()))?;
+        }
+        if options.solution_amount > 1
+            && let Some((output, pool)) =
+                Some(quadratic::solve_quadratic_with_solution_pool_with_options(
+                    self,
+                    model,
+                    options.solution_amount,
+                    options,
+                )?)
+        {
+            let final_status = SolvingStatus::from_output(self.name(), &output);
+            let mut report = self.attach_quadratic_model_fingerprint(
+                self.report_from_output(output, options.cancellation_handle)?,
+                model,
+            )?;
+            if let Some(solution) = report.solution.as_mut() {
+                solution.pool = pool;
+            }
+            if let Some(callback) = options.solving_status_callback {
+                callback(&final_status)?;
+            }
+            emit_progress_terminal(options.progress_reporter, self.name(), &report)?;
+            return Ok(report);
+        }
+        let output = quadratic::solve_quadratic_with_options(self, model, options)?;
+        let final_status = SolvingStatus::from_output(self.name(), &output);
+        let report = self.attach_quadratic_model_fingerprint(
+            self.report_from_output(output, options.cancellation_handle)?,
+            model,
+        )?;
+        if let Some(callback) = options.solving_status_callback {
+            callback(&final_status)?;
+        }
+        emit_progress_terminal(options.progress_reporter, self.name(), &report)?;
+        Ok(report)
     }
 
     fn solve_quadratic_with_solution_pool(
@@ -839,5 +1218,123 @@ impl QuadraticSolver for GurobiSolver {
             model,
             solution_amount,
         )?))
+    }
+
+    fn solve_quadratic_with_solution_pool_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        solution_amount: usize,
+        options: &crate::solver::SolveOptions<'_>,
+    ) -> Result<Option<(SolverOutput, Vec<Vec<f64>>)>> {
+        validate_per_solve_limits(options)?;
+        if solution_amount <= 1 {
+            return Ok(None);
+        }
+        Ok(Some(
+            quadratic::solve_quadratic_with_solution_pool_with_options(
+                self,
+                model,
+                solution_amount,
+                options,
+            )?,
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GurobiSolver;
+    use crate::error::{CoreError, SolverErrorClass};
+    use crate::solver::{CapabilitySupport, SolverInfo};
+
+    #[test]
+    fn provenance_separates_binding_feature_native_and_package_versions() {
+        let provenance = GurobiSolver::new().provenance();
+        let environment = &provenance.environment_summary;
+
+        assert_eq!(
+            environment.get("binding").map(String::as_str),
+            Some("grb-3.0.1")
+        );
+        assert!(
+            environment
+                .get("feature")
+                .is_some_and(|feature| feature.starts_with("gurobi"))
+        );
+        let native_version = environment
+            .get("native_version")
+            .expect("native Gurobi version should be recorded");
+        assert_eq!(
+            provenance.backend_version.as_deref(),
+            Some(native_version.as_str())
+        );
+        assert_eq!(provenance.solver_id, format!("gurobi/{native_version}"));
+        assert_eq!(
+            provenance.plugin_version.as_deref(),
+            Some(env!("CARGO_PKG_VERSION"))
+        );
+        assert_ne!(native_version, "grb-3.0.1");
+    }
+
+    #[test]
+    fn descriptor_does_not_claim_license_dependent_interrupt_as_unconditional() {
+        let descriptor = GurobiSolver::new().descriptor();
+        assert_eq!(
+            descriptor.capabilities.support("external_interrupt"),
+            CapabilitySupport::Conditional
+        );
+        assert!(
+            descriptor
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("native callback"))
+        );
+    }
+
+    #[test]
+    fn no_license_native_error_is_not_reported_as_generic_environment_failure() {
+        let error = GurobiSolver::environment_start_error(
+            "environment",
+            grb::Error::FromAPI("license unavailable".to_owned(), 10_009),
+        );
+        assert_eq!(error.solver_error_class(), SolverErrorClass::License);
+
+        let error = GurobiSolver::environment_error(grb::Error::FromAPI(
+            "license unavailable".to_owned(),
+            10_009,
+        ));
+        assert_eq!(error.solver_error_class(), SolverErrorClass::License);
+    }
+
+    #[test]
+    fn invalid_native_configuration_errors_are_not_reported_as_environment_failures() {
+        for code in [10_003, 10_007, 10_008] {
+            let error = GurobiSolver::environment_start_error(
+                "configuration",
+                grb::Error::FromAPI("invalid configuration".to_owned(), code),
+            );
+            assert_eq!(error.solver_error_class(), SolverErrorClass::Input);
+        }
+    }
+
+    #[test]
+    fn native_gurobi_error_construction_points_keep_their_contract_classes() {
+        let model_error = GurobiSolver::backend_error("model", "invalid row");
+        assert_eq!(model_error.solver_error_class(), SolverErrorClass::Backend);
+
+        let callback_error = CoreError::callback_error("observer failed");
+        assert_eq!(
+            callback_error.solver_error_class(),
+            SolverErrorClass::Callback
+        );
+
+        let environment_error = GurobiSolver::environment_error_with_context(
+            "dynamic library",
+            grb::Error::FromAPI("library unavailable".to_owned(), 42_000),
+        );
+        assert_eq!(
+            environment_error.solver_error_class(),
+            SolverErrorClass::Environment
+        );
     }
 }

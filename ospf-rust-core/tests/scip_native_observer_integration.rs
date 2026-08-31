@@ -32,13 +32,13 @@ fn build_mip_model(name: &str) -> LinearTriadModel {
     let mut weight_row = SparseVector::new();
     let mut diversity_row = SparseVector::new();
     let mut objective = vec![0.0; item_count];
-    for index in 0..item_count {
+    for (index, objective_value) in objective.iter_mut().enumerate() {
         let weight = ((index % 7) + 1) as f64;
         let diversity = ((index % 5) + 1) as f64;
         let profit = ((index * 11 + 7) % 19 + 1) as f64;
         weight_row.add(index, weight);
         diversity_row.add(index, diversity);
-        objective[index] = profit;
+        *objective_value = profit;
     }
     basic.add_constraint(weight_row, 70.0);
     basic.add_constraint(diversity_row, 55.0);

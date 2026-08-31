@@ -1,9 +1,9 @@
 //! 物品排序反向限制 / Item order reverse limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 物品顺序反转限制: 高优先级货物不能在低优先级之后装载 / Item order reverse limit: higher-priority cargos cannot load after lower-priority ones
 /// 对齐 Kotlin ItemOrderReverseLimit

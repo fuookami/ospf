@@ -1,10 +1,10 @@
 //! Shimizu-Morioka 吸引子。
 //! Shimizu-Morioka attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Shimizu-Morioka 吸引子的一阶欧拉步进模型。
@@ -45,14 +45,21 @@ impl<S: Field + Float> Default for ShimizuMoriokaAttractorGenerator<S> {
 
 /// 创建 Shimizu-Morioka 吸引子。
 /// Create a Shimizu-Morioka attractor.
-pub fn shimizu_morioka_attractor<S: Field + Float>(alpha: S, beta: S, h: S) -> ShimizuMoriokaAttractor<S> {
+pub fn shimizu_morioka_attractor<S: Field + Float>(
+    alpha: S,
+    beta: S,
+    h: S,
+) -> ShimizuMoriokaAttractor<S> {
     ShimizuMoriokaAttractor::new(alpha, beta, h)
 }
 
 /// 创建 Shimizu-Morioka 吸引子生成器。
 /// Create a Shimizu-Morioka attractor generator.
 pub fn shimizu_morioka_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    h: S,
+    x: Point3<S>,
 ) -> ShimizuMoriokaAttractorGenerator<S> {
     ShimizuMoriokaAttractorGenerator::new(ShimizuMoriokaAttractor::new(alpha, beta, h), x)
 }

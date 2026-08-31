@@ -5,7 +5,7 @@
 //!
 //! # 核心模块 / Core Modules
 //!
-//! - [`model`]: 产能编译、生产动作、产能列和解组件
+//! - [`model`][]: 产能编译、生产动作、产能列和解组件
 //! - [`service`]: 产能排程约束和目标 Pipeline
 
 use ospf_rust_core::model::MetaModel;

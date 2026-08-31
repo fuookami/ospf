@@ -1,22 +1,21 @@
 //! 最小值/最大值函数符号 / Min/max function symbols
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+};
+use super::big_m::{BigMPolicy, infer_big_m_for_polynomials};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-};
-use super::big_m::{BigMPolicy, infer_big_m_for_polynomials};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -96,6 +95,7 @@ impl<V> MinFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建最小值函数 / Create a minimum function.
     pub fn new(id: u64, name: &str, polynomials: Vec<Linear<V>>, exact: bool) -> Self {
         let group_id = new_group_id();
         let result_var =
@@ -125,6 +125,7 @@ where
         }
     }
 
+    /// 设置声明的依赖符号 ID / Set declared dependency symbol IDs.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -148,14 +149,17 @@ where
         self.build_mechanism_constraints(symbol_to_index, big_m)
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取输入多项式 / Get the input polynomials.
     pub fn polynomials(&self) -> &[Linear<V>] {
         &self.polynomials
     }
 
+    /// 是否启用精确选择约束 / Whether exact selector constraints are enabled.
     pub fn exact(&self) -> bool {
         self.binary_vars.is_some()
     }
@@ -515,6 +519,7 @@ impl<V> MaxFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建最大值函数 / Create a maximum function.
     pub fn new(id: u64, name: &str, polynomials: Vec<Linear<V>>, exact: bool) -> Self {
         let group_id = new_group_id();
         let result_var =
@@ -544,6 +549,7 @@ where
         }
     }
 
+    /// 设置声明的依赖符号 ID / Set declared dependency symbol IDs.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -567,14 +573,17 @@ where
         self.build_mechanism_constraints(symbol_to_index, big_m)
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取输入多项式 / Get the input polynomials.
     pub fn polynomials(&self) -> &[Linear<V>] {
         &self.polynomials
     }
 
+    /// 是否启用精确选择约束 / Whether exact selector constraints are enabled.
     pub fn exact(&self) -> bool {
         self.binary_vars.is_some()
     }

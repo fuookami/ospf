@@ -12,18 +12,16 @@ pub mod model;
 pub mod service;
 pub mod slot_based;
 
-pub use model::{BunchCompilation, BunchAggregation, BunchEntry, BunchSolution, BunchSolutionSummary};
-pub use iterative::IterativeBunchCompilation;
 pub use context::{
-    IterativeBunchCompilationContext,
-    BasicBunchCompilationContext,
-    BunchShadowPricePipeline,
+    BasicBunchCompilationContext, BunchShadowPricePipeline, IterativeBunchCompilationContext,
     TaskShadowPriceKey,
 };
-pub use slot_based::{
-    BasicSlotBasedBunchCompilationContext,
-    SlotBasedBunchCompilationContext,
-    SlotBasedCapacityPreSolver,
-    StaticSlotBasedCapacityPreSolver,
+pub use iterative::IterativeBunchCompilation;
+pub use model::{
+    BunchAggregation, BunchCompilation, BunchEntry, BunchSolution, BunchSolutionSummary,
 };
 pub use service::limits::ExecutorSlotCompilationConstraint;
+pub use slot_based::{
+    BasicSlotBasedBunchCompilationContext, SlotBasedBunchCompilationContext,
+    SlotBasedCapacityPreSolver, StaticSlotBasedCapacityPreSolver,
+};

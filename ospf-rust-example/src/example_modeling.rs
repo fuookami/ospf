@@ -3,13 +3,12 @@
 //! 示例建模公共 helper（Kotlin 对齐入口）
 //! Example modeling helpers (Kotlin-aligned entry)
 
-use std::error::Error;
 use ospf_rust_core::error::{CoreError, SolverError};
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::solver::{
-
     FeasibleSolverOutput, SolveValueConversionPolicy, Solver, SolverExt, SolverOutput,
 };
+use std::error::Error;
 
 /// 统一线性模型求解 helper
 /// Unified linear model solve helper

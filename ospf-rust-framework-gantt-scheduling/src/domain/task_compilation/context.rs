@@ -159,12 +159,12 @@ impl IterativeTaskCompilationContext for BasicTaskCompilationContext {
         // 从 taskCompilation 约束的对偶值提取影子价格
         for ti in 0..self.compilation.n_tasks {
             let constraint_name = format!("task_compilation_{}", ti);
-            if let Some(&idx) = constraint_name_to_index.get(&constraint_name) {
-                if idx < dual_solution.constraints.len() {
-                    let price = dual_solution.constraints[idx];
-                    if price.abs() > f64::EPSILON {
-                        shadow_prices.insert(ti, price);
-                    }
+            if let Some(&idx) = constraint_name_to_index.get(&constraint_name)
+                && idx < dual_solution.constraints.len()
+            {
+                let price = dual_solution.constraints[idx];
+                if price.abs() > f64::EPSILON {
+                    shadow_prices.insert(ti, price);
                 }
             }
         }

@@ -1,9 +1,9 @@
 //! 转移邻接装载模型 / Transfer adjacent loading model
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::IfFunction;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 转运邻接装载 / Transfer adjacent loading (对齐 Kotlin TransferAdjacentLoading)
 #[derive(Debug, Clone)]
@@ -51,7 +51,10 @@ impl TransferAdjacentLoading {
     ) -> Result<TransferAdjacentLoadingVariables, Box<dyn Error>> {
         // condition: x[item][adjacent_position] (nonzero when item is loaded at adjacent position)
         let condition = Linear::new(
-            vec![LinearMonomial::new(1.0, x_idx[item_idx][adjacent_position_idx])],
+            vec![LinearMonomial::new(
+                1.0,
+                x_idx[item_idx][adjacent_position_idx],
+            )],
             0.0,
         );
         // then_expr: 1.0 (item loaded at adjacent position)
@@ -61,7 +64,10 @@ impl TransferAdjacentLoading {
 
         let if_fn = IfFunction::new(
             *next_id,
-            &format!("transfer_adjacent_loading_if_{}_{}", item_idx, adjacent_position_idx),
+            &format!(
+                "transfer_adjacent_loading_if_{}_{}",
+                item_idx, adjacent_position_idx
+            ),
             condition,
             then_expr,
             else_expr,

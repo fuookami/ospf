@@ -1,10 +1,10 @@
 //! Rabinovich-Fabrikant 方程。
 //! Rabinovich-Fabrikant equation.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Rabinovich-Fabrikant 方程的一阶欧拉步进模型。
@@ -46,14 +46,21 @@ impl<S: Field + Float> Default for RabinovichFabrikantEquationGenerator<S> {
 
 /// 创建 Rabinovich-Fabrikant 方程。
 /// Create a Rabinovich-Fabrikant equation.
-pub fn rabinovich_fabrikant_equation<S: Field + Float>(a: S, b: S, h: S) -> RabinovichFabrikantEquation<S> {
+pub fn rabinovich_fabrikant_equation<S: Field + Float>(
+    a: S,
+    b: S,
+    h: S,
+) -> RabinovichFabrikantEquation<S> {
     RabinovichFabrikantEquation::new(a, b, h)
 }
 
 /// 创建 Rabinovich-Fabrikant 方程序列生成器。
 /// Create a Rabinovich-Fabrikant equation sequence generator.
 pub fn rabinovich_fabrikant_equation_generator<S: Field + Float>(
-    a: S, b: S, h: S, x: Point3<S>,
+    a: S,
+    b: S,
+    h: S,
+    x: Point3<S>,
 ) -> RabinovichFabrikantEquationGenerator<S> {
     RabinovichFabrikantEquationGenerator::new(RabinovichFabrikantEquation::new(a, b, h), x)
 }

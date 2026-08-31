@@ -1,10 +1,10 @@
 //! 拖车装载模型 / Trailer loading model
-use std::collections::HashMap;
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::IfFunction;
+use std::collections::HashMap;
+use std::error::Error;
+use std::sync::Arc;
 
 use super::trailer::Trailer;
 use crate::framework::demo2::infrastructure::dto::PositionPair;
@@ -169,11 +169,12 @@ impl TrailerLoading {
 
                 // condition = loadAmount1 + loadAmount2 - 2
                 // IfFunction fires when both load amounts >= 1 (sum >= 2)
-                let condition_monomials: Vec<LinearMonomial<f64>> =
-                    load_amount1.monomials().iter()
-                        .chain(load_amount2.monomials().iter())
-                        .cloned()
-                        .collect();
+                let condition_monomials: Vec<LinearMonomial<f64>> = load_amount1
+                    .monomials()
+                    .iter()
+                    .chain(load_amount2.monomials().iter())
+                    .cloned()
+                    .collect();
                 let condition = Linear::new(
                     condition_monomials,
                     *load_amount1.constant_term() + *load_amount2.constant_term() - 2.0,
@@ -185,10 +186,7 @@ impl TrailerLoading {
                 let safe_t2 = trailer2.name.replace(' ', "_").to_lowercase();
                 let if_fn = IfFunction::new(
                     *next_id,
-                    &format!(
-                        "trailer_change_{}_{}_{}_{}",
-                        safe_t1, safe_t2, j1, j2
-                    ),
+                    &format!("trailer_change_{}_{}_{}_{}", safe_t1, safe_t2, j1, j2),
                     condition,
                     then_expr,
                     else_expr,

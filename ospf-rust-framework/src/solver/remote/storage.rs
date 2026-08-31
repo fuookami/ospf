@@ -1,19 +1,18 @@
 //! 远程求解对象存储实现
 //! Remote solver object storage implementations
 
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Component, Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use super::domain::{
-
     ObjectEtag, ObjectPath, ObjectRef, ObjectVersion, RemoteSolverError, RemoteSolverErrorCode,
     RemoteSolverResult,
 };
 use super::port::ObjectStoragePort;
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Component, Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// 本地文件对象存储。
 /// Local file object storage.
@@ -121,7 +120,10 @@ impl ObjectStoragePort for LocalFileObjectStoragePort {
     async fn get(&self, object_ref: &ObjectRef) -> RemoteSolverResult<Option<Vec<u8>>> {
         let resolved = self.resolve_ref_path(object_ref)?;
         match fs::read(resolved) {
-            Ok(bytes) => Ok(Some(bytes)),
+            Ok(bytes) => {
+                validate_object_ref_etag(object_ref, &bytes)?;
+                Ok(Some(bytes))
+            }
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(err) => Err(storage_io_error(err)),
         }
@@ -159,6 +161,22 @@ fn storage_io_error(err: std::io::Error) -> RemoteSolverError {
         RemoteSolverErrorCode::StorageIoFailed,
         format!("Local object storage I/O failed: {}", err),
     )
+}
+
+/// 校验对象引用携带的内容摘要 / Validate the content digest carried by an object reference.
+pub(crate) fn validate_object_ref_etag(
+    object_ref: &ObjectRef,
+    bytes: &[u8],
+) -> RemoteSolverResult<()> {
+    if let Some(expected_etag) = object_ref.etag.as_ref()
+        && expected_etag.value() != sha256_hex(bytes)
+    {
+        return Err(RemoteSolverError::invalid_argument(format!(
+            "object '{}' failed ETag validation",
+            object_ref.path
+        )));
+    }
+    Ok(())
 }
 
 fn current_epoch_millis() -> u128 {

@@ -1,9 +1,9 @@
 //! 力矩模型 / Torque model
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::LinearMonomial;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 力矩 / Torque (对齐 Kotlin Torque)
 #[derive(Debug, Clone)]
@@ -83,16 +83,11 @@ impl Torque {
             }
         }
         if !lat_monomials.is_empty() {
-            let lat_symbol = LinearExpressionSymbol::new(
-                next_id,
-                "lateral_torque",
-                lat_monomials,
-                0.0,
-            );
+            let lat_symbol =
+                LinearExpressionSymbol::new(next_id, "lateral_torque", lat_monomials, 0.0);
             model.add_symbol(Arc::new(lat_symbol))?;
         }
 
         Ok(())
     }
 }
-

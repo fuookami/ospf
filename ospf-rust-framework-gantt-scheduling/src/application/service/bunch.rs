@@ -6,8 +6,10 @@
 use std::collections::HashMap;
 
 use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::solver::SolveProgressReporter;
 use ospf_rust_framework::solver::column_generation_solver::ColumnGenerationSolver;
 
+use crate::GanttResult;
 use crate::application::algorithm::bunch_column_generation::{
     BranchGroup, BunchBranchAndPriceAlgorithm, BunchCGPolicy, BunchPricingRequest,
 };
@@ -29,7 +31,6 @@ use crate::domain::task::{
     AssignmentPolicyTrait, BunchCostPolicy, DefaultBunchCostPolicy, ExecutorTrait, TaskTrait,
 };
 use crate::infrastructure::TimeSlot;
-use crate::GanttResult;
 
 /// 束级列生成算法入口 / Bunch column-generation algorithm entry
 ///
@@ -57,6 +58,7 @@ where
 /// This entry captures the capacity pre-solve result in the default bunch-generation
 /// policy so every pricing round uses the same slot-constraint snapshot through
 /// `generate_all_with_policy`.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn create_slot_bunch_branch_and_price<'a, C, CS, E, T, A, TS, P>(
     mut context: C,
     capacity_model: &mut MetaModel<f64>,
@@ -68,15 +70,10 @@ pub fn create_slot_bunch_branch_and_price<'a, C, CS, E, T, A, TS, P>(
     executor_ids: Vec<impl Into<C::ExecutorId>>,
     configuration: ColumnGenerationPolicy,
 ) -> GanttResult<
-    BunchBranchAndPriceAlgorithm<
-        C,
-        CS,
-        DefaultBunchGenerationPolicy<'a, E, T, A, TS, P>,
-    >,
+    BunchBranchAndPriceAlgorithm<C, CS, DefaultBunchGenerationPolicy<'a, E, T, A, TS, P>>,
 >
 where
-    C: SlotBasedBunchCompilationContext<TS>
-        + IterativeBunchCompilationContext<ExecutorId = E::Id>,
+    C: SlotBasedBunchCompilationContext<TS> + IterativeBunchCompilationContext<ExecutorId = E::Id>,
     CS: ColumnGenerationSolver,
     E: ExecutorTrait,
     T: TaskTrait<E, A>,
@@ -112,7 +109,7 @@ pub fn search_bunch_branch_and_price_with_fresh_model<C, S, P, F>(
     algorithm: &mut BunchBranchAndPriceAlgorithm<C, S, P>,
     config: BranchSearchConfig,
     mut build_model: F,
-) -> BranchSearchResult<BunchSolution>
+) -> GanttResult<BranchSearchResult<BunchSolution>>
 where
     C: IterativeBunchCompilationContext + Clone,
     S: ColumnGenerationSolver,
@@ -129,7 +126,7 @@ pub fn search_bunch_branch_and_price_with_hooks<C, S, P, F>(
     config: BranchSearchConfig,
     mut build_model: F,
     hooks: BranchSearchHooks<'_, BunchSolution>,
-) -> BranchSearchResult<BunchSolution>
+) -> GanttResult<BranchSearchResult<BunchSolution>>
 where
     C: IterativeBunchCompilationContext + Clone,
     S: ColumnGenerationSolver,
@@ -140,6 +137,29 @@ where
     search.search_with_hooks(
         |node| algorithm.solve_branch_node_with_fresh_model(node, &mut build_model),
         hooks,
+    )
+}
+
+/// 带统一 progress reporter 搜索束级分支定价树 /
+/// Search the bunch branch-and-price tree with a unified progress reporter
+pub fn search_bunch_branch_and_price_with_progress<C, S, P, F>(
+    algorithm: &mut BunchBranchAndPriceAlgorithm<C, S, P>,
+    config: BranchSearchConfig,
+    mut build_model: F,
+    attempt_id: impl Into<String>,
+    reporter: SolveProgressReporter,
+) -> GanttResult<BranchSearchResult<BunchSolution>>
+where
+    C: IterativeBunchCompilationContext + Clone,
+    S: ColumnGenerationSolver,
+    P: BunchCGPolicy<C::ExecutorId>,
+    F: FnMut() -> MetaModel<f64>,
+{
+    let search = BranchAndPriceTreeSearch::new(config);
+    search.search_with_progress(
+        |node| algorithm.solve_branch_node_with_fresh_model(node, &mut build_model),
+        attempt_id,
+        reporter,
     )
 }
 
@@ -227,8 +247,7 @@ where
     }
 }
 
-impl<E, T, A, S, P, C> BunchCGPolicy<E::Id>
-    for DefaultBunchGenerationPolicy<'_, E, T, A, S, P, C>
+impl<E, T, A, S, P, C> BunchCGPolicy<E::Id> for DefaultBunchGenerationPolicy<'_, E, T, A, S, P, C>
 where
     E: ExecutorTrait,
     T: TaskTrait<E, A>,
@@ -241,11 +260,7 @@ where
         HashMap::new()
     }
 
-    fn reduced_cost(
-        &self,
-        shadow_prices: &HashMap<usize, f64>,
-        bunch: &BunchEntry<E::Id>,
-    ) -> f64 {
+    fn reduced_cost(&self, shadow_prices: &HashMap<usize, f64>, bunch: &BunchEntry<E::Id>) -> f64 {
         self.cost_policy.reduced_cost(bunch, shadow_prices)
     }
 
@@ -287,31 +302,32 @@ where
             .max_columns_per_executor
             .max(request.min_column_amount_per_executor);
 
-        let mut generated = generator.generate_all_with_policy(
-            request.iteration,
-            &self.intermediate_values,
-            &self.candidates,
-            &request.shadow_prices,
-            &self.feasibility_policy,
-        )?
-        .into_iter()
-        .filter_map(|mut entry| {
-            let group = BranchGroup {
-                executor_id: entry.bunch.executor_id.clone(),
-                slot_index: Some(entry.slot_index),
-            };
-            if request.fixed_groups.contains(&group) {
-                return None;
-            }
-            if let Some(price) = request
-                .executor_slot_shadow_prices
-                .get(&(entry.bunch.executor_id.clone(), entry.slot_index))
-            {
-                entry.bunch.cost -= *price;
-            }
-            Some(entry.bunch)
-        })
-        .collect::<Vec<_>>();
+        let mut generated = generator
+            .generate_all_with_policy(
+                request.iteration,
+                &self.intermediate_values,
+                &self.candidates,
+                &request.shadow_prices,
+                &self.feasibility_policy,
+            )?
+            .into_iter()
+            .filter_map(|mut entry| {
+                let group = BranchGroup {
+                    executor_id: entry.bunch.executor_id.clone(),
+                    slot_index: Some(entry.slot_index),
+                };
+                if request.fixed_groups.contains(&group) {
+                    return None;
+                }
+                if let Some(price) = request
+                    .executor_slot_shadow_prices
+                    .get(&(entry.bunch.executor_id.clone(), entry.slot_index))
+                {
+                    entry.bunch.cost -= *price;
+                }
+                Some(entry.bunch)
+            })
+            .collect::<Vec<_>>();
         generated.sort_by(|lhs, rhs| lhs.cost.total_cmp(&rhs.cost));
         Ok(generated)
     }
@@ -328,6 +344,7 @@ mod tests {
 
     use ospf_rust_core::error::Result as CoreResult;
     use ospf_rust_core::model::intermediate::LinearTriadModel;
+    use ospf_rust_core::solver::{SolutionPresence, SolveProof, SolveReport};
     use ospf_rust_framework::solver::column_generation_solver::{
         FeasibleSolution, LPResult, LinearDualSolution,
     };
@@ -420,8 +437,7 @@ mod tests {
             DefaultBunchFeasibilityPolicy,
         );
 
-        let bunches =
-            policy.generate_bunches(1, &["exec_1".into()], &HashMap::from([(0, 2.0)]));
+        let bunches = policy.generate_bunches(1, &["exec_1".into()], &HashMap::from([(0, 2.0)]));
 
         assert!(!bunches.is_empty());
         assert!(bunches.iter().all(|bunch| bunch.executor_id == "exec_1"));
@@ -459,21 +475,17 @@ mod tests {
             &mut capacity_model,
             &capacity_solver,
             ZeroSolver,
-            SlotBasedBunchGenerator::new(
-                vec![executor],
-                BunchGenerationConfig::default(),
-            ),
+            SlotBasedBunchGenerator::new(vec![executor], BunchGenerationConfig::default()),
             vec![BunchTaskCandidate::new(0, &task, false)],
             DefaultBunchFeasibilityPolicy,
             vec![executor_id.clone()],
             ColumnGenerationPolicy::default(),
         )
         .unwrap();
-        let bunches = algorithm.policy.generate_bunches(
-            0,
-            &[executor_id],
-            &HashMap::from([(0, 2.0)]),
-        );
+        let bunches =
+            algorithm
+                .policy
+                .generate_bunches(0, &[executor_id], &HashMap::from([(0, 2.0)]));
 
         assert!(called.load(Ordering::SeqCst));
         assert_eq!(algorithm.policy.intermediate_values.slots.len(), 1);
@@ -567,11 +579,8 @@ mod tests {
             candidates,
             DefaultBunchFeasibilityPolicy,
         );
-        let generated_bunches = policy.generate_bunches(
-            0,
-            &["exec_1".into()],
-            &HashMap::from([(0, 3.0), (1, 4.0)]),
-        );
+        let generated_bunches =
+            policy.generate_bunches(0, &["exec_1".into()], &HashMap::from([(0, 3.0), (1, 4.0)]));
 
         assert!(!generated_bunches.is_empty());
 
@@ -581,35 +590,42 @@ mod tests {
             max_depth: 2,
             gap_tolerance: 1e-9,
             time_limit: StdDuration::from_secs(1),
+            cancellation_handle: None,
         });
-        let result = search.search(|node| {
-            if node.depth == 0 {
-                BranchNodeSolveOutput {
-                    lower_bound: -10.0,
-                    solution: None,
-                    objective: None,
-                    branch_target: generated_bunches.first().map(|bunch| bunch.index),
-                    infeasible: false,
-                }
-            } else {
-                let selected = generated_bunches
-                    .iter()
-                    .filter(|bunch| {
-                        node.decisions.iter().all(|decision| {
-                            decision.fixed_value == 0 || decision.target_index == bunch.index
+        let result = search
+            .search(|node| {
+                if node.depth == 0 {
+                    Ok::<_, std::convert::Infallible>(
+                        BranchNodeSolveOutput::certified(
+                            Vec::<BunchEntry>::new(),
+                            100.0,
+                            -10.0,
+                            generated_bunches.first().map(|bunch| bunch.index),
+                        )
+                        .expect("test root report should be valid"),
+                    )
+                } else {
+                    let selected = generated_bunches
+                        .iter()
+                        .filter(|bunch| {
+                            node.decisions.iter().all(|decision| {
+                                decision.fixed_value == 0 || decision.target_index == bunch.index
+                            })
                         })
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>();
-                BranchNodeSolveOutput {
-                    lower_bound: -1.0,
-                    objective: Some(selected.iter().map(|bunch| bunch.cost).sum::<f64>()),
-                    solution: Some(selected),
-                    branch_target: None,
-                    infeasible: false,
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    Ok::<_, std::convert::Infallible>(
+                        BranchNodeSolveOutput::certified(
+                            selected.clone(),
+                            selected.iter().map(|bunch| bunch.cost).sum::<f64>(),
+                            -1.0,
+                            None,
+                        )
+                        .expect("test child report should be valid"),
+                    )
                 }
-            }
-        });
+            })
+            .expect("branch search should succeed");
 
         assert!(result.processed_nodes >= 2);
         assert!(result.incumbent.is_some());
@@ -716,9 +732,10 @@ mod tests {
                 max_depth: 1,
                 gap_tolerance: 1e-9,
                 time_limit: StdDuration::from_secs(1),
+                cancellation_handle: None,
             },
             || MetaModel::<f64>::new("test_service_isolated_node"),
-        );
+        )?;
 
         assert_eq!(result.processed_nodes, 1);
         assert_eq!(result.incumbent_objective, Some(0.0));
@@ -749,9 +766,10 @@ mod tests {
                 max_depth: 1,
                 gap_tolerance: 1e-9,
                 time_limit: StdDuration::from_secs(1),
+                cancellation_handle: None,
             },
             || MetaModel::<f64>::new("test_service_fixed_state_solution"),
-        );
+        )?;
 
         assert_eq!(result.incumbent_objective, Some(0.0));
         assert_eq!(result.incumbent.unwrap().selected_bunches, vec![3]);
@@ -772,6 +790,12 @@ mod tests {
     }
 
     impl FinalMilpFlowSolver {
+        fn certify(report: &mut SolveReport<f64>) -> CoreResult<()> {
+            report.proof = Some(SolveProof::optimality());
+            report.solution_presence = SolutionPresence::Optimal;
+            report.validate()
+        }
+
         fn solve_milp_model(&self, model: &LinearTriadModel) -> FeasibleSolution {
             let variable_count = model.num_variables();
             self.state
@@ -796,8 +820,28 @@ mod tests {
                 .push(variable_count);
             LPResult::new(
                 FeasibleSolution::new(5.0, vec![0.0; variable_count]),
-                LinearDualSolution::default(),
+                LinearDualSolution::new(
+                    vec![0.0; model.basic.constraint_names.len().max(1)],
+                    Vec::new(),
+                ),
             )
+        }
+
+        fn solve_milp_report_model(
+            &self,
+            model: &LinearTriadModel,
+        ) -> CoreResult<SolveReport<f64>> {
+            let solution = self.solve_milp_model(model);
+            let mut report = solution.to_solve_report(self.name())?;
+            Self::certify(&mut report)?;
+            Ok(report)
+        }
+
+        fn solve_lp_report_model(&self, model: &LinearTriadModel) -> CoreResult<SolveReport<f64>> {
+            let result = self.solve_lp_model(model);
+            let mut report = result.to_solve_report(self.name())?;
+            Self::certify(&mut report)?;
+            Ok(report)
         }
     }
 
@@ -826,6 +870,24 @@ mod tests {
         }
 
         #[cfg(feature = "async")]
+        async fn solve_milp_report_with_options(
+            &self,
+            model: &LinearTriadModel,
+            _options: FrameworkSolveOptions,
+        ) -> CoreResult<SolveReport<f64>> {
+            self.solve_milp_report_model(model)
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_milp_report_with_options(
+            &self,
+            model: &LinearTriadModel,
+            _options: FrameworkSolveOptions,
+        ) -> CoreResult<SolveReport<f64>> {
+            self.solve_milp_report_model(model)
+        }
+
+        #[cfg(feature = "async")]
         async fn solve_lp_with_options(
             &self,
             model: &LinearTriadModel,
@@ -841,6 +903,24 @@ mod tests {
             _options: FrameworkSolveOptions,
         ) -> CoreResult<LPResult> {
             Ok(self.solve_lp_model(model))
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve_lp_report_with_options(
+            &self,
+            model: &LinearTriadModel,
+            _options: FrameworkSolveOptions,
+        ) -> CoreResult<SolveReport<f64>> {
+            self.solve_lp_report_model(model)
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_lp_report_with_options(
+            &self,
+            model: &LinearTriadModel,
+            _options: FrameworkSolveOptions,
+        ) -> CoreResult<SolveReport<f64>> {
+            self.solve_lp_report_model(model)
         }
     }
 
@@ -886,9 +966,11 @@ mod tests {
         let context = BasicBunchCompilationContext::new(1, vec!["exec_1".to_string()], false);
         let solver = FinalMilpFlowSolver::default();
         let solver_state = solver.state.clone();
-        let mut configuration = ColumnGenerationPolicy::default();
-        configuration.max_iterations = 1;
-        configuration.time_limit = StdDuration::from_secs(1);
+        let configuration = ColumnGenerationPolicy {
+            max_iterations: 1,
+            time_limit: StdDuration::from_secs(1),
+            ..Default::default()
+        };
         let mut algorithm = create_bunch_branch_and_price(
             context,
             solver,
@@ -905,9 +987,10 @@ mod tests {
                 max_depth: 1,
                 gap_tolerance: 1e-9,
                 time_limit: StdDuration::from_secs(1),
+                cancellation_handle: None,
             },
             || MetaModel::<f64>::new("test_final_milp_flow"),
-        );
+        )?;
 
         let trace = solver_state.lock().unwrap().clone();
         assert_eq!(result.processed_nodes, 3);

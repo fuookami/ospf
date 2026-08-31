@@ -1,10 +1,10 @@
 //! 电学单位 / Electrical units
 
+use super::power::Watt;
+use super::time::{Hour, Second};
 use crate::dimension::derived::{Capacitance, ElectricCharge, ElectricCurrent, ElectricPotential};
 use crate::scale::{KILO, MEGA, MICRO, MILLI, NANO, PICO};
 use crate::unit::{CTUnit, CTUnitDiv, CTUnitMul};
-use super::power::Watt;
-use super::time::{Hour, Second};
 
 define_unit!(Ampere, "ampere", "A", ElectricCurrent);
 define_unit!(

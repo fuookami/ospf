@@ -1,19 +1,27 @@
 //! 远程求解 HTTP 任务客户端
 //! Remote solver HTTP task client
 
+use super::domain::{
+    BudgetScopeId, ExecutionHandle, HandleId, NodeId, ObjectPath, ObjectRef, OperatorId,
+    ReasonCode, RemoteSolverError, RemoteSolverErrorCode, RemoteSolverResult, RequestId,
+    SerializedSolution, SliceId, SliceResult, SolvePayload, SolveResult, StopAcknowledgement,
+    TaskComplexity, TaskId, TaskStatus, TenantId, TimeSensitivity, TraceId, epoch_millis,
+    option_epoch_millis,
+};
+use super::ospf_serializer::{
+    CheckpointResumeExpectationWithAttempt, load_checkpoint_artifact_from,
+    store_checkpoint_artifact,
+};
+use super::port::{ObjectStoragePort, SolverExecutionPort};
+use super::storage::validate_object_ref_etag;
+use async_trait::async_trait;
+use ospf_rust_core::solver::{
+    AuditFingerprint, CancellationRecord, SolveCheckpoint, SolverProvenance,
+};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use async_trait::async_trait;
-use serde::{Deserialize, Deserializer, Serialize};
-use super::domain::{
-
-    BudgetScopeId, ExecutionHandle, HandleId, NodeId, ObjectPath, ObjectRef, OperatorId,
-    ReasonCode, RemoteSolverError, RemoteSolverErrorCode, RemoteSolverResult, RequestId,
-    SerializedSolution, SliceId, SliceResult, SolvePayload, SolveResult, TaskComplexity, TaskId,
-    TaskStatus, TenantId, TimeSensitivity, TraceId, epoch_millis, option_epoch_millis,
-};
-use super::port::{ObjectStoragePort, SolverExecutionPort};
 
 /// HTTP 传输配置。
 /// HTTP transport configuration.
@@ -232,6 +240,16 @@ where
                 deadline: None,
             })
             .await?;
+        if !response.accepted {
+            return Err(RemoteSolverError::new(
+                RemoteSolverErrorCode::InvalidTaskStateTransition,
+                format!("remote task submission was rejected: {}", response.message),
+            )
+            .with_metadata([
+                ("taskId", response.task_id.value().to_owned()),
+                ("status", format!("{:?}", response.status)),
+            ]));
+        }
         Ok(Self::handle(
             response.task_id,
             slice_id.clone(),
@@ -241,19 +259,53 @@ where
 
     async fn resume(
         &self,
-        _payload: &SolvePayload,
-        _checkpoint: &ObjectRef,
+        payload: &SolvePayload,
+        checkpoint: &ObjectRef,
         task_id: &TaskId,
         slice_id: &SliceId,
         node_id: &NodeId,
         _tenant_id: &TenantId,
     ) -> RemoteSolverResult<ExecutionHandle> {
+        let expected_checkpoint = payload.checkpoint_metadata.as_ref().ok_or_else(|| {
+            RemoteSolverError::invalid_argument(
+                "resuming an HTTP solve requires checkpoint metadata",
+            )
+        })?;
+        expected_checkpoint.validate().map_err(|error| {
+            RemoteSolverError::checkpoint_restore(format!(
+                "resume payload checkpoint failed validation: {}",
+                error
+            ))
+        })?;
+        if slice_id.value() == expected_checkpoint.attempt_id {
+            return Err(RemoteSolverError::checkpoint_restore(
+                "resume requires a new child attempt and cannot reuse the source attempt",
+            ));
+        }
+        let expectation = CheckpointResumeExpectationWithAttempt {
+            run_id: task_id.value().to_owned(),
+            attempt_id: expected_checkpoint.attempt_id.clone(),
+            parent_attempt_id: expected_checkpoint.parent_attempt_id.clone(),
+            model_fingerprint: expected_checkpoint.model_fingerprint.clone(),
+            configuration_fingerprint: expected_checkpoint.configuration_fingerprint.clone(),
+            solver_fingerprint: expected_checkpoint.solver_fingerprint.clone(),
+            provenance: expected_checkpoint.provenance.clone(),
+            cancellation_chain: expected_checkpoint.cancellation_chain.clone(),
+        };
+        let artifact =
+            load_checkpoint_artifact_from(&self.object_storage, checkpoint, &expectation).await?;
+        if artifact.checkpoint != *expected_checkpoint {
+            return Err(RemoteSolverError::checkpoint_restore(
+                "checkpoint artifact identity does not match the resume payload",
+            ));
+        }
         // 当前服务端按任务恢复最新 checkpoint，trait 参数保留用于非 HTTP port。
         // The current server resumes the latest task checkpoint; trait parameters remain for non-HTTP ports.
         let response = self
             .http_client
             .resume(task_id, &RemoteTaskResumeRequest::default())
             .await?;
+        validate_resume_action(&response, expected_checkpoint, slice_id)?;
         Ok(Self::handle(
             response.task_id,
             slice_id.clone(),
@@ -321,31 +373,52 @@ where
         }
 
         if let Some(result_ref) = &view.latest_result_ref {
-            if let Some(bytes) = self.object_storage.get(result_ref).await? {
-                let solution: SerializedSolution =
-                    serde_json::from_slice(&bytes).map_err(|err| {
-                        RemoteSolverError::invalid_argument(format!(
-                            "Failed to decode remote result object '{}': {}",
-                            result_ref.path, err
-                        ))
-                    })?;
-                return Ok(Some(solve_result_from_solution(
-                    solution,
-                    view.latest_checkpoint_ref,
-                    Some(result_ref.clone()),
-                )));
-            }
+            let bytes = self.object_storage.get(result_ref).await?.ok_or_else(|| {
+                RemoteSolverError::new(
+                    RemoteSolverErrorCode::SolverExecutionFailed,
+                    format!(
+                        "remote task {} references missing final result artifact '{}'",
+                        handle.task_id, result_ref.path
+                    ),
+                )
+                .with_metadata([("resultRef", result_ref.path.value().to_owned())])
+            })?;
+            validate_object_ref_etag(result_ref, &bytes)?;
+            let solution: SerializedSolution = serde_json::from_slice(&bytes).map_err(|err| {
+                RemoteSolverError::invalid_argument(format!(
+                    "Failed to decode remote result object '{}': {}",
+                    result_ref.path, err
+                ))
+            })?;
+            return Ok(Some(solve_result_from_solution(
+                solution,
+                view.latest_checkpoint_ref,
+                Some(result_ref.clone()),
+                &handle.task_id,
+                &handle.slice_id,
+            )));
         }
 
-        Ok(Some(solve_result_from_view(&view)))
+        Ok(Some(solve_result_from_view(&view, &handle.slice_id)))
     }
 
-    async fn stop(&self, handle: &ExecutionHandle) -> RemoteSolverResult<bool> {
-        let _ = self
+    async fn stop(&self, handle: &ExecutionHandle) -> RemoteSolverResult<StopAcknowledgement> {
+        let action = self
             .http_client
             .stop(&handle.task_id, &RemoteTaskStopRequest::default())
             .await?;
-        Ok(true)
+        let mut acknowledgement =
+            StopAcknowledgement::new(action.task_id, action.accepted, action.status)
+                .with_cancellation_origin("REMOTE_STOP");
+        acknowledgement.run_id = action.run_id;
+        acknowledgement.attempt_id = action.attempt_id;
+        acknowledgement.model_fingerprint = action.model_fingerprint;
+        acknowledgement.configuration_fingerprint = action.configuration_fingerprint;
+        acknowledgement.solver_fingerprint = action.solver_fingerprint;
+        acknowledgement.provenance = action.provenance;
+        acknowledgement.cancellation_chain = action.cancellation_chain;
+        acknowledgement.message = action.message;
+        Ok(acknowledgement)
     }
 }
 
@@ -697,8 +770,39 @@ pub struct RemoteTaskView {
 pub struct RemoteTaskAction {
     /// 任务 ID / Task ID
     pub task_id: TaskId,
+    /// 是否接受操作 / Whether the operation was accepted.
+    #[serde(default = "default_remote_action_accepted")]
+    pub accepted: bool,
     /// 任务状态 / Task status
     pub status: TaskStatus,
+    /// 求解运行 ID / Solve run identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    /// 求解 attempt ID / Solve attempt identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_id: Option<String>,
+    /// 模型指纹 / Model fingerprint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_fingerprint: Option<AuditFingerprint>,
+    /// 生效配置指纹 / Effective configuration fingerprint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configuration_fingerprint: Option<AuditFingerprint>,
+    /// solver 环境指纹 / Solver environment fingerprint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solver_fingerprint: Option<AuditFingerprint>,
+    /// solver provenance / Solver provenance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<SolverProvenance>,
+    /// 跨 attempt 取消链 / Cross-attempt cancellation chain.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cancellation_chain: Vec<CancellationRecord>,
+    /// 服务端附加消息 / Server message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+fn default_remote_action_accepted() -> bool {
+    true
 }
 
 /// 远程任务停止请求。
@@ -750,11 +854,13 @@ impl RemoteErrorCodeName for str {
     fn to_remote_error_code(&self) -> RemoteSolverErrorCode {
         match self {
             "INVALID_ARGUMENT" => RemoteSolverErrorCode::InvalidArgument,
+            "UNSUPPORTED_PROTOCOL_VERSION" => RemoteSolverErrorCode::UnsupportedProtocolVersion,
             "INVALID_TASK_STATE_TRANSITION" => RemoteSolverErrorCode::InvalidTaskStateTransition,
             "NO_ELIGIBLE_NODE_AVAILABLE" => RemoteSolverErrorCode::NoEligibleNodeAvailable,
             "NODE_OFFLINE" => RemoteSolverErrorCode::NodeOffline,
             "SOLVER_EXECUTION_FAILED" => RemoteSolverErrorCode::SolverExecutionFailed,
             "CHECKPOINT_EXPORT_FAILED" => RemoteSolverErrorCode::CheckpointExportFailed,
+            "CHECKPOINT_RESTORE_FAILED" => RemoteSolverErrorCode::CheckpointRestoreFailed,
             "EVENT_PUBLISH_FAILED" => RemoteSolverErrorCode::EventPublishFailed,
             "STORAGE_IO_FAILED" => RemoteSolverErrorCode::StorageIoFailed,
             "TASK_NOT_TERMINAL_WITHIN_MAX_ROUNDS" => {
@@ -801,6 +907,61 @@ fn is_terminal_status(status: TaskStatus) -> bool {
     )
 }
 
+/// 校验 resume action 的接受状态和完整身份链 / Validate the resume action acceptance and identity chain.
+fn validate_resume_action(
+    action: &RemoteTaskAction,
+    source_checkpoint: &SolveCheckpoint,
+    child_attempt_id: &SliceId,
+) -> RemoteSolverResult<()> {
+    if !action.accepted {
+        return Err(RemoteSolverError::new(
+            RemoteSolverErrorCode::InvalidTaskStateTransition,
+            format!(
+                "remote task resume was rejected: {}",
+                action
+                    .message
+                    .as_deref()
+                    .unwrap_or("the remote service rejected the resume action")
+            ),
+        )
+        .with_metadata([
+            ("taskId", action.task_id.value().to_owned()),
+            ("status", format!("{:?}", action.status)),
+        ]));
+    }
+
+    if action.run_id.as_deref() != Some(source_checkpoint.run_id.as_str()) {
+        return Err(RemoteSolverError::checkpoint_restore(
+            "remote resume action run identity does not match the source checkpoint",
+        ));
+    }
+    if action.attempt_id.as_deref() != Some(child_attempt_id.value()) {
+        return Err(RemoteSolverError::checkpoint_restore(
+            "remote resume action attempt identity does not match the new child attempt",
+        ));
+    }
+    if action.model_fingerprint.as_ref() != Some(&source_checkpoint.model_fingerprint)
+        || action.configuration_fingerprint.as_ref()
+            != Some(&source_checkpoint.configuration_fingerprint)
+        || action.solver_fingerprint.as_ref() != Some(&source_checkpoint.solver_fingerprint)
+    {
+        return Err(RemoteSolverError::checkpoint_restore(
+            "remote resume action fingerprints do not match the source checkpoint",
+        ));
+    }
+    if action.provenance.as_ref() != Some(&source_checkpoint.provenance) {
+        return Err(RemoteSolverError::checkpoint_restore(
+            "remote resume action provenance does not match the source checkpoint",
+        ));
+    }
+    if action.cancellation_chain != source_checkpoint.cancellation_chain {
+        return Err(RemoteSolverError::checkpoint_restore(
+            "remote resume action cancellation chain does not preserve the source checkpoint",
+        ));
+    }
+    Ok(())
+}
+
 fn slice_result_from_view(
     view: &RemoteTaskView,
     slice_id: &SliceId,
@@ -810,7 +971,9 @@ fn slice_result_from_view(
     SliceResult {
         slice_id: slice_id.clone(),
         completed,
-        feasible: view.status == TaskStatus::Completed,
+        // 任务完成只说明执行生命周期结束，不能推导数学可行性 / Task completion only closes
+        // the execution lifecycle; it does not establish mathematical feasibility.
+        feasible: false,
         objective_value: None,
         gap: None,
         elapsed,
@@ -818,17 +981,26 @@ fn slice_result_from_view(
     }
 }
 
-fn solve_result_from_view(view: &RemoteTaskView) -> SolveResult {
+fn solve_result_from_view(view: &RemoteTaskView, slice_id: &SliceId) -> SolveResult {
+    let mut extension = BTreeMap::new();
+    extension.insert("remote.taskStatus".to_owned(), format!("{:?}", view.status));
     SolveResult {
-        feasible: view.status == TaskStatus::Completed,
-        optimal: view.status == TaskStatus::Completed,
+        // 没有结果 artifact 时只能返回未知数学结论 / Without a result artifact, only an
+        // unknown mathematical conclusion can be returned.
+        feasible: false,
+        optimal: false,
         objective_value: None,
         gap: None,
         elapsed: Duration::ZERO,
         checkpoint_ref: view.latest_checkpoint_ref.clone(),
+        checkpoint_metadata: None,
         result_ref: view.latest_result_ref.clone(),
+        run_id: Some(view.task_id.value().to_owned()),
+        attempt_id: Some(slice_id.value().to_owned()),
+        artifact_digest: None,
+        report: None,
         message: Some(format!("Remote task status is {:?}.", view.status)),
-        extension: BTreeMap::new(),
+        extension,
     }
 }
 
@@ -836,7 +1008,21 @@ fn solve_result_from_solution(
     solution: SerializedSolution,
     checkpoint_ref: Option<ObjectRef>,
     result_ref: Option<ObjectRef>,
+    task_id: &TaskId,
+    slice_id: &SliceId,
 ) -> SolveResult {
+    let run_id = solution
+        .report
+        .as_ref()
+        .and_then(|report| report.run_id.clone());
+    let attempt_id = solution
+        .report
+        .as_ref()
+        .and_then(|report| report.attempt_id.clone());
+    let artifact_digest = solution
+        .report
+        .as_ref()
+        .and_then(|report| report.artifact_digest.clone());
     SolveResult {
         feasible: solution.feasible,
         optimal: solution.optimal,
@@ -844,7 +1030,12 @@ fn solve_result_from_solution(
         gap: solution.gap,
         elapsed: solution.elapsed,
         checkpoint_ref,
+        checkpoint_metadata: None,
         result_ref,
+        run_id: run_id.or_else(|| Some(task_id.value().to_owned())),
+        attempt_id: attempt_id.or_else(|| Some(slice_id.value().to_owned())),
+        artifact_digest,
+        report: solution.report,
         message: solution.message,
         extension: BTreeMap::new(),
     }
@@ -852,6 +1043,7 @@ fn solve_result_from_solution(
 
 #[cfg(test)]
 mod tests {
+    use ospf_rust_core::solver::{AuditFingerprint, SolveCheckpoint, SolverProvenance};
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -943,6 +1135,66 @@ mod tests {
             status_code: 200,
             body: body.to_string(),
         }
+    }
+
+    fn action_response(action: RemoteTaskAction) -> RemoteSolverHttpResponse {
+        let body = serde_json::json!({
+            "code": "OK",
+            "message": "ok",
+            "data": action,
+        });
+        response(&body.to_string())
+    }
+
+    fn accepted_resume_action(
+        task_id: &str,
+        checkpoint: &SolveCheckpoint,
+        attempt_id: &str,
+    ) -> RemoteTaskAction {
+        RemoteTaskAction {
+            task_id: TaskId::of(task_id).expect("task id should be valid"),
+            accepted: true,
+            status: TaskStatus::Running,
+            run_id: Some(checkpoint.run_id.clone()),
+            attempt_id: Some(attempt_id.to_owned()),
+            model_fingerprint: Some(checkpoint.model_fingerprint.clone()),
+            configuration_fingerprint: Some(checkpoint.configuration_fingerprint.clone()),
+            solver_fingerprint: Some(checkpoint.solver_fingerprint.clone()),
+            provenance: Some(checkpoint.provenance.clone()),
+            cancellation_chain: checkpoint.cancellation_chain.clone(),
+            message: Some("accepted".to_owned()),
+        }
+    }
+
+    fn checkpoint_fixture(run_id: &str, attempt_id: &str) -> SolveCheckpoint {
+        let fingerprint = |value: &str| AuditFingerprint {
+            schema_version: "1.0".to_owned(),
+            algorithm: "sha256".to_owned(),
+            value: value.to_owned(),
+        };
+        let state_digest = ospf_rust_core::solver::sha256_fingerprint(
+            "ospf.solve.checkpoint.state",
+            b"portable-state",
+        );
+        SolveCheckpoint::new(
+            run_id,
+            attempt_id,
+            None,
+            fingerprint("model"),
+            fingerprint("config"),
+            fingerprint("solver"),
+            SolverProvenance {
+                solver_id: "fake/1".to_owned(),
+                backend_name: "fake".to_owned(),
+                ..SolverProvenance::default()
+            },
+            1,
+            None,
+            None,
+            None,
+            state_digest,
+        )
+        .expect("checkpoint fixture should be valid")
     }
 
     #[tokio::test]
@@ -1085,6 +1337,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn http_execution_port_rejects_submit_response() {
+        let transport = FakeTransport::new(vec![response(
+            r#"{"code":"OK","message":"ok","data":{"taskId":"task-1","accepted":false,"status":"FAILED","message":"quota rejected"}}"#,
+        )]);
+        let client = RemoteSolverHttpClient::new("http://localhost", transport).unwrap();
+        let port = RemoteSolverHttpExecutionPort::new(client, FakeStorage::default());
+
+        let error = port
+            .start(
+                &SolvePayload::from_linear_model(
+                    super::super::domain::SerializedLinearModel::empty("m"),
+                ),
+                &TaskId::of("task-1").unwrap(),
+                &SliceId::of("slice-1").unwrap(),
+                &NodeId::of("node-1").unwrap(),
+                &TenantId::of("tenant-1").unwrap(),
+            )
+            .await
+            .expect_err("a rejected submit response must not create a handle");
+
+        assert_eq!(
+            error.code,
+            RemoteSolverErrorCode::InvalidTaskStateTransition
+        );
+        assert!(error.to_string().contains("quota rejected"));
+    }
+
+    #[tokio::test]
     async fn http_execution_port_awaits_until_terminal_status() {
         let transport = FakeTransport::new(vec![
             response(
@@ -1111,7 +1391,7 @@ mod tests {
             .unwrap();
 
         assert!(slice.completed);
-        assert!(slice.feasible);
+        assert!(!slice.feasible);
     }
 
     #[tokio::test]
@@ -1143,5 +1423,349 @@ mod tests {
         assert!(result.optimal);
         assert_eq!(result.objective_value, Some(5.0));
         assert_eq!(result.elapsed, Duration::from_millis(7));
+    }
+
+    #[tokio::test]
+    async fn http_execution_port_validates_final_result_etag_before_decoding() {
+        let bytes = br#"{"feasible":true,"optimal":true,"objectiveValue":5.0,"gap":0.0,"variableValues":[1.0],"elapsedMs":7,"solverStatus":"OPTIMAL"}"#;
+        let digest = {
+            use sha2::{Digest, Sha256};
+
+            let digest = Sha256::digest(bytes);
+            digest
+                .iter()
+                .map(|byte| format!("{:02x}", byte))
+                .collect::<String>()
+        };
+        let view = |etag: &str| {
+            serde_json::to_string(&serde_json::json!({
+                "code": "OK",
+                "message": "ok",
+                "data": {
+                    "taskId": "task-1",
+                    "tenantId": "tenant-1",
+                    "status": "COMPLETED",
+                    "latestResultPath": {
+                        "path": "result.json",
+                        "etag": etag,
+                    },
+                    "consumedCost": 1.0,
+                }
+            }))
+            .expect("result view should encode")
+        };
+        let handle = ExecutionHandle {
+            handle_id: HandleId::of("handle-1").unwrap(),
+            task_id: TaskId::of("task-1").unwrap(),
+            slice_id: SliceId::of("slice-1").unwrap(),
+            node_id: NodeId::of("node-1").unwrap(),
+            started_at: SystemTime::UNIX_EPOCH,
+        };
+
+        let good_transport = FakeTransport::new(vec![response(&view(&digest))]);
+        let good_storage = FakeStorage::default();
+        good_storage
+            .objects
+            .lock()
+            .unwrap()
+            .insert("result.json".to_owned(), bytes.to_vec());
+        let good_client = RemoteSolverHttpClient::new("http://localhost", good_transport)
+            .expect("good HTTP client should be valid");
+        let good_port = RemoteSolverHttpExecutionPort::new(good_client, good_storage);
+        assert!(
+            good_port
+                .fetch_final_result(&handle)
+                .await
+                .expect("matching ETag should be accepted")
+                .is_some()
+        );
+
+        let bad_transport = FakeTransport::new(vec![response(&view("stale-etag"))]);
+        let bad_storage = FakeStorage::default();
+        bad_storage
+            .objects
+            .lock()
+            .unwrap()
+            .insert("result.json".to_owned(), bytes.to_vec());
+        let bad_client = RemoteSolverHttpClient::new("http://localhost", bad_transport)
+            .expect("bad HTTP client fixture should be valid");
+        let bad_port = RemoteSolverHttpExecutionPort::new(bad_client, bad_storage);
+        let error = bad_port
+            .fetch_final_result(&handle)
+            .await
+            .expect_err("stale final-result ETag must be rejected");
+        assert!(error.to_string().contains("ETag"));
+    }
+
+    #[tokio::test]
+    async fn http_execution_port_rejects_missing_final_result_artifact() {
+        let transport = FakeTransport::new(vec![response(
+            r#"{"code":"OK","message":"ok","data":{"taskId":"task-1","tenantId":"tenant-1","status":"COMPLETED","latestResultPath":"missing-result.json","consumedCost":1.0}}"#,
+        )]);
+        let client = RemoteSolverHttpClient::new("http://localhost", transport).unwrap();
+        let port = RemoteSolverHttpExecutionPort::new(client, FakeStorage::default());
+        let handle = ExecutionHandle {
+            handle_id: HandleId::of("handle-1").unwrap(),
+            task_id: TaskId::of("task-1").unwrap(),
+            slice_id: SliceId::of("slice-1").unwrap(),
+            node_id: NodeId::of("node-1").unwrap(),
+            started_at: SystemTime::UNIX_EPOCH,
+        };
+
+        let error = port
+            .fetch_final_result(&handle)
+            .await
+            .expect_err("a dangling result reference must be rejected");
+
+        assert_eq!(error.code, RemoteSolverErrorCode::SolverExecutionFailed);
+        assert!(error.to_string().contains("missing final result artifact"));
+    }
+
+    #[tokio::test]
+    async fn http_execution_port_validates_checkpoint_before_resuming_task() {
+        let storage = FakeStorage::default();
+        let checkpoint = checkpoint_fixture("task-1", "slice-0");
+        let transport = FakeTransport::new(vec![action_response(accepted_resume_action(
+            "task-2",
+            &checkpoint,
+            "slice-1",
+        ))]);
+        let requests = transport.requests();
+        let artifact = checkpoint
+            .clone()
+            .with_state(b"portable-state".to_vec())
+            .expect("checkpoint artifact should be valid");
+        let checkpoint_path = ObjectPath::of("checkpoint.json").unwrap();
+        let checkpoint_ref = store_checkpoint_artifact(&storage, &checkpoint_path, &artifact)
+            .await
+            .expect("checkpoint artifact should be stored");
+        let payload = SolvePayload::from_linear_model(
+            super::super::domain::SerializedLinearModel::empty("m"),
+        )
+        .with_snapshot_ref(checkpoint_ref.clone())
+        .with_checkpoint_metadata(checkpoint);
+        let client = RemoteSolverHttpClient::new("http://localhost", transport).unwrap();
+        let port = RemoteSolverHttpExecutionPort::new(client, storage);
+
+        let handle = port
+            .resume(
+                &payload,
+                &checkpoint_ref,
+                &TaskId::of("task-1").unwrap(),
+                &SliceId::of("slice-1").unwrap(),
+                &NodeId::of("node-1").unwrap(),
+                &TenantId::of("tenant-1").unwrap(),
+            )
+            .await
+            .expect("matching checkpoint should resume the task");
+
+        assert_eq!(handle.task_id.value(), "task-2");
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0].url,
+            "http://localhost/api/v1/tasks/task-1/resume"
+        );
+    }
+
+    #[tokio::test]
+    async fn http_execution_port_rejects_reusing_source_attempt() {
+        let transport = FakeTransport::new(Vec::new());
+        let requests = transport.requests();
+        let storage = FakeStorage::default();
+        let checkpoint = checkpoint_fixture("task-1", "slice-0");
+        let artifact = checkpoint
+            .clone()
+            .with_state(b"portable-state".to_vec())
+            .expect("checkpoint artifact should be valid");
+        let checkpoint_path = ObjectPath::of("checkpoint.json").unwrap();
+        let checkpoint_ref = store_checkpoint_artifact(&storage, &checkpoint_path, &artifact)
+            .await
+            .expect("checkpoint artifact should be stored");
+        let payload = SolvePayload::from_linear_model(
+            super::super::domain::SerializedLinearModel::empty("m"),
+        )
+        .with_snapshot_ref(checkpoint_ref.clone())
+        .with_checkpoint_metadata(checkpoint);
+        let client = RemoteSolverHttpClient::new("http://localhost", transport).unwrap();
+        let port = RemoteSolverHttpExecutionPort::new(client, storage);
+
+        let error = port
+            .resume(
+                &payload,
+                &checkpoint_ref,
+                &TaskId::of("task-1").unwrap(),
+                &SliceId::of("slice-0").unwrap(),
+                &NodeId::of("node-1").unwrap(),
+                &TenantId::of("tenant-1").unwrap(),
+            )
+            .await
+            .expect_err("resume must allocate a new child attempt");
+
+        assert_eq!(error.code, RemoteSolverErrorCode::CheckpointRestoreFailed);
+        assert!(requests.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn http_execution_port_rejects_resume_action() {
+        let transport = FakeTransport::new(vec![response(
+            r#"{"code":"OK","message":"ok","data":{"taskId":"task-2","accepted":false,"status":"FAILED","message":"resume rejected"}}"#,
+        )]);
+        let requests = transport.requests();
+        let storage = FakeStorage::default();
+        let checkpoint = checkpoint_fixture("task-1", "slice-0");
+        let artifact = checkpoint
+            .clone()
+            .with_state(b"portable-state".to_vec())
+            .expect("checkpoint artifact should be valid");
+        let checkpoint_path = ObjectPath::of("checkpoint.json").unwrap();
+        let checkpoint_ref = store_checkpoint_artifact(&storage, &checkpoint_path, &artifact)
+            .await
+            .expect("checkpoint artifact should be stored");
+        let payload = SolvePayload::from_linear_model(
+            super::super::domain::SerializedLinearModel::empty("m"),
+        )
+        .with_snapshot_ref(checkpoint_ref.clone())
+        .with_checkpoint_metadata(checkpoint);
+        let client = RemoteSolverHttpClient::new("http://localhost", transport).unwrap();
+        let port = RemoteSolverHttpExecutionPort::new(client, storage);
+
+        let error = port
+            .resume(
+                &payload,
+                &checkpoint_ref,
+                &TaskId::of("task-1").unwrap(),
+                &SliceId::of("slice-1").unwrap(),
+                &NodeId::of("node-1").unwrap(),
+                &TenantId::of("tenant-1").unwrap(),
+            )
+            .await
+            .expect_err("a rejected resume action must not create a handle");
+
+        assert_eq!(
+            error.code,
+            RemoteSolverErrorCode::InvalidTaskStateTransition
+        );
+        assert!(error.to_string().contains("resume rejected"));
+        assert_eq!(requests.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn http_execution_port_rejects_resume_action_identity_mismatch() {
+        let checkpoint = checkpoint_fixture("task-1", "slice-0");
+        let mut action = accepted_resume_action("task-2", &checkpoint, "slice-1");
+        action.run_id = Some("wrong-run".to_owned());
+        let transport = FakeTransport::new(vec![action_response(action)]);
+        let storage = FakeStorage::default();
+        let artifact = checkpoint
+            .clone()
+            .with_state(b"portable-state".to_vec())
+            .expect("checkpoint artifact should be valid");
+        let checkpoint_path = ObjectPath::of("checkpoint.json").unwrap();
+        let checkpoint_ref = store_checkpoint_artifact(&storage, &checkpoint_path, &artifact)
+            .await
+            .expect("checkpoint artifact should be stored");
+        let payload = SolvePayload::from_linear_model(
+            super::super::domain::SerializedLinearModel::empty("m"),
+        )
+        .with_snapshot_ref(checkpoint_ref.clone())
+        .with_checkpoint_metadata(checkpoint);
+        let client = RemoteSolverHttpClient::new("http://localhost", transport).unwrap();
+        let port = RemoteSolverHttpExecutionPort::new(client, storage);
+
+        let error = port
+            .resume(
+                &payload,
+                &checkpoint_ref,
+                &TaskId::of("task-1").unwrap(),
+                &SliceId::of("slice-1").unwrap(),
+                &NodeId::of("node-1").unwrap(),
+                &TenantId::of("tenant-1").unwrap(),
+            )
+            .await
+            .expect_err("resume action identity mismatch must be rejected");
+
+        assert_eq!(error.code, RemoteSolverErrorCode::CheckpointRestoreFailed);
+        assert!(error.to_string().contains("run identity"));
+    }
+
+    #[tokio::test]
+    async fn http_execution_port_rejects_checkpoint_identity_mismatch_without_http_call() {
+        let transport = FakeTransport::new(vec![response(
+            r#"{"code":"OK","message":"ok","data":{"taskId":"task-2","accepted":true,"status":"RUNNING"}}"#,
+        )]);
+        let requests = transport.requests();
+        let storage = FakeStorage::default();
+        let artifact_checkpoint = checkpoint_fixture("task-1", "slice-0");
+        let artifact = artifact_checkpoint
+            .with_state(b"portable-state".to_vec())
+            .expect("checkpoint artifact should be valid");
+        let checkpoint_path = ObjectPath::of("checkpoint.json").unwrap();
+        let checkpoint_ref = store_checkpoint_artifact(&storage, &checkpoint_path, &artifact)
+            .await
+            .expect("checkpoint artifact should be stored");
+        let payload_checkpoint = checkpoint_fixture("task-1", "slice-other");
+        let payload = SolvePayload::from_linear_model(
+            super::super::domain::SerializedLinearModel::empty("m"),
+        )
+        .with_snapshot_ref(checkpoint_ref.clone())
+        .with_checkpoint_metadata(payload_checkpoint);
+        let client = RemoteSolverHttpClient::new("http://localhost", transport).unwrap();
+        let port = RemoteSolverHttpExecutionPort::new(client, storage);
+
+        let error = port
+            .resume(
+                &payload,
+                &checkpoint_ref,
+                &TaskId::of("task-1").unwrap(),
+                &SliceId::of("slice-1").unwrap(),
+                &NodeId::of("node-1").unwrap(),
+                &TenantId::of("tenant-1").unwrap(),
+            )
+            .await
+            .expect_err("checkpoint identity mismatch must reject resume");
+
+        assert_eq!(error.code, RemoteSolverErrorCode::CheckpointRestoreFailed);
+        assert!(requests.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn http_execution_port_rejects_checkpoint_from_another_task() {
+        let transport = FakeTransport::new(vec![response(
+            r#"{"code":"OK","message":"ok","data":{"taskId":"task-3","accepted":true,"status":"RUNNING"}}"#,
+        )]);
+        let requests = transport.requests();
+        let storage = FakeStorage::default();
+        let checkpoint = checkpoint_fixture("task-1", "slice-0");
+        let artifact = checkpoint
+            .clone()
+            .with_state(b"portable-state".to_vec())
+            .expect("checkpoint artifact should be valid");
+        let checkpoint_path = ObjectPath::of("checkpoint.json").unwrap();
+        let checkpoint_ref = store_checkpoint_artifact(&storage, &checkpoint_path, &artifact)
+            .await
+            .expect("checkpoint artifact should be stored");
+        let payload = SolvePayload::from_linear_model(
+            super::super::domain::SerializedLinearModel::empty("m"),
+        )
+        .with_snapshot_ref(checkpoint_ref.clone())
+        .with_checkpoint_metadata(checkpoint);
+        let client = RemoteSolverHttpClient::new("http://localhost", transport).unwrap();
+        let port = RemoteSolverHttpExecutionPort::new(client, storage);
+
+        let error = port
+            .resume(
+                &payload,
+                &checkpoint_ref,
+                &TaskId::of("task-2").unwrap(),
+                &SliceId::of("slice-1").unwrap(),
+                &NodeId::of("node-1").unwrap(),
+                &TenantId::of("tenant-1").unwrap(),
+            )
+            .await
+            .expect_err("a checkpoint from another task must not resume");
+
+        assert_eq!(error.code, RemoteSolverErrorCode::CheckpointRestoreFailed);
+        assert!(requests.lock().unwrap().is_empty());
     }
 }

@@ -4,16 +4,6 @@
 //! Provides functional extensions for dimension tracking, unit conversion,
 //! expression evaluation, duration conversion, min/max operations, and value range operations.
 
-use std::collections::HashMap;
-use std::ops::{Add, Mul, Sub};
-use std::sync::RwLock;
-use std::time::Duration;
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
-use ospf_rust_base::{ErrorPosition, Ret, error, read_unwrap, write_unwrap};
-use ospf_rust_math::algebra::value_range::{Bound, IntervalTrait, ValueRange, ValueWrapper};
-use ospf_rust_math::operator::Exponent;
-use ospf_rust_math::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
-use ospf_rust_math::symbol::{Canonical, Linear, OwnedSymbol, Quadratic};
 use crate::dimension::DerivedQuantity;
 use crate::error::{DimensionMismatchError, SymbolRegistryError, UnitConversionError};
 use crate::quantity::Quantity;
@@ -21,6 +11,16 @@ use crate::unit::concept::UnitTrait;
 use crate::unit::conversion_value::UnitConversionValue;
 use crate::unit::derived::{Day, Hour, Microsecond, Millisecond, Minute, Nanosecond, Second, Year};
 use crate::unit::{CTUnit, Unit};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use ospf_rust_base::{ErrorPosition, Ret, error, read_unwrap, write_unwrap};
+use ospf_rust_math::algebra::value_range::{Bound, IntervalTrait, ValueRange, ValueWrapper};
+use ospf_rust_math::operator::Exponent;
+use ospf_rust_math::symbol::operation::{Evaluatable, Evaluate, EvaluateOrdered};
+use ospf_rust_math::symbol::{Canonical, Linear, OwnedSymbol, Quadratic};
+use std::collections::HashMap;
+use std::ops::{Add, Mul, Sub};
+use std::sync::RwLock;
+use std::time::Duration;
 
 /// 算术运算类型 / Arithmetic operation types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -247,10 +247,7 @@ where
             })) as Box<dyn ospf_rust_base::Error>
         })?;
 
-        Ok(Quantity::new(
-            self.value.clone() * factor_v,
-            target.clone(),
-        ))
+        Ok(Quantity::new(self.value.clone() * factor_v, target.clone()))
     }
 
     fn try_to_unit(&self, target: &Unit) -> Option<QuantityLinear<V>> {
@@ -344,10 +341,7 @@ where
             })) as Box<dyn ospf_rust_base::Error>
         })?;
 
-        Ok(Quantity::new(
-            self.value.clone() * factor_v,
-            target.clone(),
-        ))
+        Ok(Quantity::new(self.value.clone() * factor_v, target.clone()))
     }
 
     fn try_to_unit(&self, target: &Unit) -> Option<QuantityQuadratic<V>> {
@@ -448,10 +442,7 @@ where
             })) as Box<dyn ospf_rust_base::Error>
         })?;
 
-        Ok(Quantity::new(
-            self.value.clone() * factor_v,
-            target.clone(),
-        ))
+        Ok(Quantity::new(self.value.clone() * factor_v, target.clone()))
     }
 
     fn try_to_unit(&self, target: &Unit) -> Option<Quantity<Canonical<V, E>, Unit>> {
@@ -1075,10 +1066,7 @@ mod tests {
         // 验证 Linear<f64> 运行时单位转换：m -> km，系数和常数都乘以 0.001
         // Verify Linear<f64> runtime unit conversion: m -> km, coefficients and constant multiplied by 0.001
         let x = make_symbol("x", 1);
-        let poly = Linear::new(
-            vec![LinearMonomial::new(2.0_f64, x)],
-            1.0_f64,
-        );
+        let poly = Linear::new(vec![LinearMonomial::new(2.0_f64, x)], 1.0_f64);
 
         let distance: QuantityLinear<f64> = Quantity::new(poly, Meter::INSTANT.clone());
         let converted: QuantityLinear<f64> =

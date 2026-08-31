@@ -5,44 +5,41 @@ use std::time::{Duration, Instant};
 
 use ospf_rust_core::error::Result as CoreResult;
 use ospf_rust_core::model::{ConstraintGroup, ConstraintRelation, MetaModel};
+use ospf_rust_framework::model::Pipeline;
+use ospf_rust_framework_csp1d::{
+    Costar, CostarFiller, Csp1dAssignment, Csp1dCandidateFilter, Csp1dColumnGeneration,
+    Csp1dColumnGenerationRecovery, Csp1dConfiguration, Csp1dDomainCalculationContext,
+    Csp1dDomainPolicy, Csp1dError, Csp1dExtensionSet, Csp1dExtractionPolicy, Csp1dFinalMilpStatus,
+    Csp1dFlowContext, Csp1dFlowPolicy, Csp1dIncrementalPipeline, Csp1dInitialCuttingPlanGenerator,
+    Csp1dIterativeContext, Csp1dKpiKeys, Csp1dMilp, Csp1dMilpSolver, Csp1dModelContext,
+    Csp1dModelingContext, Csp1dModelingExtension, Csp1dModelingMode, Csp1dPricingGenerator,
+    Csp1dPricingInput, Csp1dProduceContextBuilder, Csp1dRecovery, Csp1dRecoveryInput,
+    Csp1dRecoveryOptions, Csp1dRecoveryStatus, Csp1dSchedule, Csp1dShadowPriceKey,
+    Csp1dShadowPriceLifecycle, Csp1dSolutionStatus, Csp1dTerminationReason, Csp1dWarmStart,
+    Csp1dWarmStartAdapter, Csp1dWarmStartAdapterInput, Csp1dWarmStartPlanPoolAdapter,
+    Csp1dWarmStartStatus, Csp1dWidthFeasibilityCheck, CuttingPlan, CuttingPlanConstraint,
+    CuttingPlanConstraintContext, CuttingPlanDemandContribution,
+    CuttingPlanGenerationBenchmarkSnapshot, CuttingPlanGenerationInput,
+    CuttingPlanGenerationReport, CuttingPlanGenerationStatistics, CuttingPlanGenerationStopReason,
+    CuttingPlanProduction, CuttingPlanSlice, DFSGenerator, DefaultQuantityArithmetic, DemandMode,
+    FullSumGenerator, GenerationConstraints, GenerationReportMergeOptions,
+    LengthAssignmentModelingConfig, LengthObjectivePipeline, Machine, Material,
+    MaterialUsageShadowPriceKey, MaxKnifeCountConstraint, MaxOverProduceLengthConstraint,
+    MinKnifeCountConstraint, NSameGenerator, NSumGenerator, ProduceAggregation, ProduceInput,
+    Product, ProductDemand, ProductDemandShadowPriceKey, ProductLegacyInput, Production,
+    QuantityArithmetic, QuantityRange, ReducedCostPricingGenerator,
+    SimpleInitialCuttingPlanGenerator, WasteMinimizationConfig, WasteObjectivePipeline, WidthRange,
+    WidthUpperBoundConstraint, YieldModelingConfig, YieldObjectivePipeline,
+    accept_partial_by_policies, convert_solver_value, csp1d_problem, csp1d_solve_config,
+    filter_initial_plans_by_policies, is_equivalent_by_policies, merge_generation_reports,
+    roll_count_unit, select_termination_by_policies, select_termination_by_policies_with_default,
+    shadow_price_key_from_string, shadow_price_key_to_string, shadow_price_unit_symbol,
+    sheet_count_unit,
+};
+use ospf_rust_quantities::dimension::derived_quantity::QuantityDomain;
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::CTUnit;
 use ospf_rust_quantities::unit::derived::{Kilogram, KilogramPerSquareMeter, Meter};
-use ospf_rust_quantities::dimension::derived_quantity::QuantityDomain;
-use ospf_rust_framework::model::Pipeline;
-use ospf_rust_framework_csp1d::{
-    convert_solver_value, csp1d_problem, csp1d_solve_config, shadow_price_key_from_string,
-    shadow_price_key_to_string, shadow_price_unit_symbol, roll_count_unit, sheet_count_unit,
-    accept_partial_by_policies,
-    filter_initial_plans_by_policies, is_equivalent_by_policies, select_termination_by_policies,
-    select_termination_by_policies_with_default, Csp1dCandidateFilter,
-    Csp1dAssignment, Csp1dColumnGeneration, Csp1dColumnGenerationRecovery,
-    Csp1dConfiguration, Csp1dMilp, Csp1dMilpSolver, Csp1dDomainCalculationContext,
-    Csp1dDomainPolicy, Csp1dError,
-    Csp1dFinalMilpStatus, Csp1dFlowContext, Csp1dFlowPolicy, Csp1dIncrementalPipeline,
-    Csp1dInitialCuttingPlanGenerator, Csp1dIterativeContext,
-    Csp1dExtractionPolicy, Csp1dKpiKeys, Csp1dModelContext, Csp1dModelingContext,
-    Csp1dModelingMode,
-    Csp1dPricingInput, Csp1dPricingGenerator,
-    Csp1dProduceContextBuilder, Csp1dRecovery, Csp1dRecoveryInput, Csp1dRecoveryStatus,
-    Csp1dRecoveryOptions, Csp1dShadowPriceKey, Csp1dShadowPriceLifecycle,
-    Csp1dExtensionSet, Csp1dModelingExtension, Csp1dSchedule, Csp1dSolutionStatus,
-    Csp1dTerminationReason, Csp1dWarmStart, Csp1dWarmStartAdapter,
-    Csp1dWarmStartAdapterInput, Csp1dWarmStartPlanPoolAdapter, Csp1dWarmStartStatus,
-    Csp1dWidthFeasibilityCheck,
-    Costar, CostarFiller, CuttingPlan, CuttingPlanConstraint, CuttingPlanConstraintContext,
-    CuttingPlanDemandContribution, CuttingPlanGenerationInput,
-    CuttingPlanGenerationBenchmarkSnapshot, CuttingPlanGenerationReport,
-    CuttingPlanGenerationStatistics, CuttingPlanGenerationStopReason, CuttingPlanProduction,
-    CuttingPlanSlice, DFSGenerator, DefaultQuantityArithmetic, DemandMode, FullSumGenerator, GenerationConstraints,
-    GenerationReportMergeOptions, LengthAssignmentModelingConfig, LengthObjectivePipeline, Machine, Material,
-    MaterialUsageShadowPriceKey, MaxKnifeCountConstraint, MaxOverProduceLengthConstraint,
-    merge_generation_reports, MinKnifeCountConstraint, NSameGenerator, NSumGenerator, Product, ProductDemand,
-    ProductLegacyInput, ProduceAggregation, ProduceInput, ProductDemandShadowPriceKey, Production,
-    QuantityArithmetic, QuantityRange, ReducedCostPricingGenerator,
-    SimpleInitialCuttingPlanGenerator, WasteMinimizationConfig, WasteObjectivePipeline,
-    WidthRange, WidthUpperBoundConstraint, YieldModelingConfig, YieldObjectivePipeline,
-};
 
 fn quantity(value: f64) -> Quantity<f64, ospf_rust_quantities::unit::Unit> {
     Quantity::new(value, Meter::INSTANT.clone())
@@ -327,8 +324,7 @@ impl Pipeline<MetaModel<f64>> for NamedNoopPipeline {
         None
     }
 
-    fn register(&self, _model: &mut MetaModel<f64>) {
-    }
+    fn register(&self, _model: &mut MetaModel<f64>) {}
 
     fn invoke(&self, _model: &MetaModel<f64>) -> CoreResult<()> {
         Ok(())
@@ -483,8 +479,7 @@ impl Csp1dDomainPolicy<f64> for ContributionThresholdPolicy {
         context.material().id == "m1"
             && context.machine_id() == Some("mc1")
             && context.slices().len() == 1
-            && context.contribution_for(&self.product_id).unwrap_or(0.0)
-                >= self.min_contribution
+            && context.contribution_for(&self.product_id).unwrap_or(0.0) >= self.min_contribution
     }
 }
 
@@ -574,7 +569,10 @@ fn builder_constructs_problem_and_solve_config() {
     assert_eq!(problem.machines.len(), 1);
     assert_eq!(problem.demands.len(), 1);
     assert_eq!(problem.configuration.max_initial_plans, 4);
-    let attached = problem.solve_config.as_ref().expect("solve config should be attached");
+    let attached = problem
+        .solve_config
+        .as_ref()
+        .expect("solve config should be attached");
     assert_eq!(attached.column_generation.max_initial_plans, 7);
     assert_eq!(attached.column_generation.max_pricing_plans, 3);
     assert_eq!(attached.column_generation.iteration_limit, 2);
@@ -594,7 +592,12 @@ fn assignment_registers_plan_usage_variables_like_kotlin_helper() {
     assert_eq!(assignment.plan_count, 3);
     assert_eq!(assignment.x.len(), 3);
     assert_eq!(assignment.get(1), Some(assignment.x[1]));
-    assert!(model.tokens().iter().any(|token| token.variable.name() == "x_1"));
+    assert!(
+        model
+            .tokens()
+            .iter()
+            .any(|token| token.variable.name() == "x_1")
+    );
 }
 
 #[test]
@@ -617,8 +620,14 @@ fn solve_config_all_extensions_keeps_distinct_same_mode_extensions() {
     let extensions = config.all_extensions();
 
     assert_eq!(extensions.len(), 2);
-    assert_eq!(extensions[0].resolve_pipeline(None).unwrap().name(), "first");
-    assert_eq!(extensions[1].resolve_pipeline(None).unwrap().name(), "second");
+    assert_eq!(
+        extensions[0].resolve_pipeline(None).unwrap().name(),
+        "first"
+    );
+    assert_eq!(
+        extensions[1].resolve_pipeline(None).unwrap().name(),
+        "second"
+    );
 }
 
 #[test]
@@ -734,7 +743,9 @@ fn material_width_feasibility_matches_kotlin_used_width_semantics() {
         "Kotlin Material.enabled checks total usedWidth against the material width range"
     );
     assert_eq!(
-        plan.rest_width().expect("rest width should be computed").value,
+        plan.rest_width()
+            .expect("rest width should be computed")
+            .value,
         -10.0,
         "Kotlin restWidth keeps the arithmetic subtraction result instead of clamping"
     );
@@ -762,10 +773,7 @@ fn width_override_still_checks_machine_feasibility_like_kotlin_material_helper()
         "Kotlin single-argument helper skips width and machine range checks"
     );
     assert!(
-        !wide_material.enabled_without_width_check_with_machines(
-            &plan,
-            &[narrow_machine.clone()],
-        ),
+        !wide_material.enabled_without_width_check_with_machines(&plan, &[narrow_machine.clone()],),
         "Kotlin machine-aware helper still checks machine material width range"
     );
 
@@ -788,23 +796,12 @@ fn width_override_still_checks_machine_feasibility_like_kotlin_material_helper()
 
 #[test]
 fn quantity_range_arithmetic_and_production_helpers_match_kotlin() {
-    let open_range = QuantityRange::with_bounds(
-        quantity(1.0),
-        quantity(3.0),
-        false,
-        true,
-    )
-    .expect("valid open-left range");
+    let open_range = QuantityRange::with_bounds(quantity(1.0), quantity(3.0), false, true)
+        .expect("valid open-left range");
     assert!(!open_range.contains(&quantity(1.0)));
     assert!(open_range.contains(&quantity(2.0)));
     assert!(open_range.contains(&quantity(3.0)));
-    assert!(QuantityRange::with_bounds(
-        quantity(1.0),
-        quantity(1.0),
-        false,
-        true,
-    )
-    .is_none());
+    assert!(QuantityRange::with_bounds(quantity(1.0), quantity(1.0), false, true,).is_none());
 
     let width_range = WidthRange::with_step(
         QuantityRange::new(quantity(0.5), quantity(2.0)).expect("valid width range"),
@@ -812,11 +809,13 @@ fn quantity_range_arithmetic_and_production_helpers_match_kotlin() {
     )
     .expect("step unit matches range units");
     assert!(width_range.width.contains(&quantity(1.0)));
-    assert!(!WidthRange::with_step(
-        QuantityRange::new(quantity(0.5), quantity(2.0)).expect("valid width range"),
-        Quantity::new(0.1, Kilogram::INSTANT.clone()),
-    )
-    .is_some());
+    assert!(
+        !WidthRange::with_step(
+            QuantityRange::new(quantity(0.5), quantity(2.0)).expect("valid width range"),
+            Quantity::new(0.1, Kilogram::INSTANT.clone()),
+        )
+        .is_some()
+    );
 
     let arithmetic = DefaultQuantityArithmetic::resolve_for(&1.0);
     assert_eq!(
@@ -824,7 +823,10 @@ fn quantity_range_arithmetic_and_production_helpers_match_kotlin() {
         5.0
     );
     assert_eq!(
-        arithmetic.subtract(quantity(3.0), quantity(2.0)).unwrap().value,
+        arithmetic
+            .subtract(quantity(3.0), quantity(2.0))
+            .unwrap()
+            .value,
         1.0
     );
     assert_eq!(
@@ -832,8 +834,8 @@ fn quantity_range_arithmetic_and_production_helpers_match_kotlin() {
             &arithmetic,
             Meter::INSTANT.clone(),
         )
-            .expect("zero quantity")
-            .value,
+        .expect("zero quantity")
+        .value,
         0.0
     );
     assert!(arithmetic.is_positive(&quantity(1.0)));
@@ -880,7 +882,10 @@ fn quantity_range_arithmetic_and_production_helpers_match_kotlin() {
         "kilogram per square meter"
     );
     assert_eq!(
-        CuttingPlanProduction::Costar(costar).length().unwrap().value,
+        CuttingPlanProduction::Costar(costar)
+            .length()
+            .unwrap()
+            .value,
         20.0
     );
 }
@@ -902,17 +907,18 @@ fn weight_demand_contribution_matches_kotlin_quantity_of_formula() {
         Quantity::new(20.0, KilogramPerSquareMeter::INSTANT.clone()),
     );
 
-    let contribution = CuttingPlanDemandContribution::from_demand(
-        &demand,
-        &quantity(2.0),
-        2,
-        None,
-    );
+    let contribution = CuttingPlanDemandContribution::from_demand(&demand, &quantity(2.0), 2, None);
 
-    assert_eq!(product.weight_for(&quantity(2.0), None).unwrap().value, 24.0);
+    assert_eq!(
+        product.weight_for(&quantity(2.0), None).unwrap().value,
+        24.0
+    );
     assert_eq!(product.weight().unwrap().value, 24.0);
     assert_eq!(contribution.quantity.value, 48.0);
-    assert_eq!(contribution.quantity.unit.name(), "kilogram per square meter");
+    assert_eq!(
+        contribution.quantity.unit.name(),
+        "kilogram per square meter"
+    );
 
     let product_weight = product.weight().expect("product weight is inferred");
     assert_eq!(product_weight.unit.symbol(), "kg");
@@ -1004,10 +1010,7 @@ fn domain_policy_context_exposes_kotlin_contribution_for_helper() {
 
     assert_eq!(report.plans.len(), 1);
     assert_eq!(report.plans[0].slices[0].amount, 2);
-    assert_eq!(
-        report.plans[0].demand_contributions[0].quantity.value,
-        2.0
-    );
+    assert_eq!(report.plans[0].demand_contributions[0].quantity.value, 2.0);
 }
 
 #[test]
@@ -1075,7 +1078,10 @@ fn produce_aggregation_deduplicates_and_registers_plan_variables() {
     assert_eq!(aggregation.plan_count(), 1);
 
     let added = aggregation.add_columns(1, vec![cutting_plan("plan-2")]);
-    assert!(added.is_empty(), "canonical-equivalent plan should be deduplicated");
+    assert!(
+        added.is_empty(),
+        "canonical-equivalent plan should be deduplicated"
+    );
 
     let mut different = cutting_plan("plan-3");
     different.slices[0].width = quantity(20.0);
@@ -1110,10 +1116,7 @@ fn flow_policy_helpers_apply_filter_equivalence_and_partial_decisions() {
     ));
     let termination_policy = Arc::new(StopAfterPricingFlowPolicy);
     assert_eq!(
-        select_termination_by_policies(
-            &TestFlowContext::default(),
-            &[termination_policy.clone()],
-        ),
+        select_termination_by_policies(&TestFlowContext::default(), &[termination_policy.clone()],),
         (
             "IterationLimitReached".to_string(),
             Some("Stopped by test flow policy".to_string())
@@ -1161,12 +1164,20 @@ fn column_generation_applies_initial_plan_flow_policy_filter() {
 
     let result = service.solve_with_trace(problem, None);
 
-    assert!(result.solution.generated_plans.iter().any(|plan| plan.id == kept.id));
-    assert!(!result
-        .solution
-        .generated_plans
-        .iter()
-        .any(|plan| plan.id == "drop-me"));
+    assert!(
+        result
+            .solution
+            .generated_plans
+            .iter()
+            .any(|plan| plan.id == kept.id)
+    );
+    assert!(
+        !result
+            .solution
+            .generated_plans
+            .iter()
+            .any(|plan| plan.id == "drop-me")
+    );
 }
 
 #[test]
@@ -1234,7 +1245,10 @@ fn column_generation_uses_flow_policy_equivalence_for_pricing_duplicates() {
 
     let result = service.solve_with_trace(problem, None);
 
-    assert_eq!(result.trace.termination_reason, Csp1dTerminationReason::AllDuplicates);
+    assert_eq!(
+        result.trace.termination_reason,
+        Csp1dTerminationReason::AllDuplicates
+    );
     assert_eq!(result.trace.priced_plan_count, vec![0]);
     assert_eq!(result.solution.generated_plans.len(), 1);
 }
@@ -1262,7 +1276,9 @@ fn column_generation_honors_flow_policy_early_stop_and_termination_selection() {
         Box::new(FixedPlanEnumerator {
             plans: vec![initial],
         }),
-        Box::new(FixedPricingGenerator { plans: vec![priced] }),
+        Box::new(FixedPricingGenerator {
+            plans: vec![priced],
+        }),
     );
 
     let result = service.solve_with_trace(problem, None);
@@ -1305,18 +1321,20 @@ fn produce_context_registers_variables_constraints_and_objective() {
     assert_eq!(context.produce.plan_variable_indices().len(), 1);
     assert_eq!(model.tokens().len(), 1);
     assert_eq!(model.constraints().len(), 4);
-    assert!(
-        model
-            .constraints()
-            .iter()
-            .any(|constraint| constraint.args.as_deref().unwrap_or_default().starts_with("product-demand:"))
-    );
-    assert!(
-        model
-            .constraints()
-            .iter()
-            .any(|constraint| constraint.args.as_deref().unwrap_or_default().starts_with("material-usage:"))
-    );
+    assert!(model.constraints().iter().any(|constraint| {
+        constraint
+            .args
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("product-demand:")
+    }));
+    assert!(model.constraints().iter().any(|constraint| {
+        constraint
+            .args
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("material-usage:")
+    }));
     assert!(!model.objective().sub_objectives.is_empty());
     assert!(
         !model.objective().sub_objectives[0]
@@ -1355,12 +1373,14 @@ fn shadow_price_key_roundtrips_and_lifecycle_extracts_duals() {
     let shadow_prices = lifecycle.extract_from_dual_solution(&model, &duals);
 
     assert!(shadow_prices.contains_key(&key));
-    assert!(shadow_prices.contains_key(&Csp1dShadowPriceKey::ProductDemand(
-        ProductDemandShadowPriceKey {
-            product_id: "p1".into(),
-            unit_symbol: "m".into(),
-        }
-    )));
+    assert!(
+        shadow_prices.contains_key(&Csp1dShadowPriceKey::ProductDemand(
+            ProductDemandShadowPriceKey {
+                product_id: "p1".into(),
+                unit_symbol: "m".into(),
+            }
+        ))
+    );
 }
 
 #[test]
@@ -1463,9 +1483,7 @@ fn milp_solver_derives_default_length_bounds_for_dynamic_product_ids() {
         capacity_consumption: Some(quantity(1.0)),
     };
     let mut length_config = LengthAssignmentModelingConfig::default();
-    length_config
-        .dynamic_product_ids
-        .insert(product.id.clone());
+    length_config.dynamic_product_ids.insert(product.id.clone());
     let input = ProduceInput {
         cutting_plans: vec![plan],
         demands: vec![demand],
@@ -1475,7 +1493,15 @@ fn milp_solver_derives_default_length_bounds_for_dynamic_product_ids() {
     };
 
     let result = Csp1dMilpSolver::new()
-        .solve(input, None, None, Some(length_config), Vec::new(), Vec::new(), false)
+        .solve(
+            input,
+            None,
+            None,
+            Some(length_config),
+            Vec::new(),
+            Vec::new(),
+            false,
+        )
         .expect("MILP solver should derive default assigned-length bounds");
 
     assert!(
@@ -1538,10 +1564,8 @@ fn cg_pipeline_extractors_compute_plan_shadow_price_contribution() {
             _ => 0.0,
         })
         .collect::<Vec<_>>();
-    let mut lifecycle = Csp1dShadowPriceLifecycle::with_pipelines(
-        0.0,
-        context.cg_pipelines.clone(),
-    );
+    let mut lifecycle =
+        Csp1dShadowPriceLifecycle::with_pipelines(0.0, context.cg_pipelines.clone());
     lifecycle
         .try_extract_from_dual_solution(&model, &duals)
         .unwrap();
@@ -1599,9 +1623,15 @@ fn produce_context_registers_yield_waste_length_pipelines() {
         unit_symbol: shadow_price_unit_symbol(&short_demand.quantity.unit),
     };
     let mut yield_config = YieldModelingConfig::default();
-    yield_config.under_production_penalty.insert(demand_key.clone(), 7.0);
-    yield_config.over_production_penalty.insert(demand_key.clone(), 5.0);
-    yield_config.over_production_upper_bound.insert(demand_key, 2.0);
+    yield_config
+        .under_production_penalty
+        .insert(demand_key.clone(), 7.0);
+    yield_config
+        .over_production_penalty
+        .insert(demand_key.clone(), 5.0);
+    yield_config
+        .over_production_upper_bound
+        .insert(demand_key, 2.0);
     let mut material_cost_penalty = BTreeMap::new();
     material_cost_penalty.insert("m1".into(), 3.0);
     let mut length_config = LengthAssignmentModelingConfig::default();
@@ -1670,13 +1700,14 @@ fn produce_context_registers_yield_waste_length_pipelines() {
             .iter()
             .any(|token| token.name().contains("over_length_1"))
     );
-    assert!(
-        model
-            .constraints()
-            .iter()
-            .any(|constraint| constraint.name.contains("over_production_bound_0")
-                && constraint.args.as_deref().unwrap_or_default().starts_with("yield-over-production-bound:"))
-    );
+    assert!(model.constraints().iter().any(|constraint| {
+        constraint.name.contains("over_production_bound_0")
+            && constraint
+                .args
+                .as_deref()
+                .unwrap_or_default()
+                .starts_with("yield-over-production-bound:")
+    }));
     assert!(
         model
             .constraints()
@@ -1688,10 +1719,9 @@ fn produce_context_registers_yield_waste_length_pipelines() {
         .monomials()
         .len();
     assert!(objective_terms >= 7);
-    let yield_terms = YieldObjectivePipeline::new(
-        context.r#yield.as_ref().expect("yield slack").clone(),
-    )
-    .objective_terms();
+    let yield_terms =
+        YieldObjectivePipeline::new(context.r#yield.as_ref().expect("yield slack").clone())
+            .objective_terms();
     assert_eq!(yield_terms.len(), 2);
     let waste_terms = WasteObjectivePipeline::new(
         context.produce.clone(),
@@ -1700,9 +1730,8 @@ fn produce_context_registers_yield_waste_length_pipelines() {
     )
     .objective_terms();
     assert!(!waste_terms.is_empty());
-    let length_pipeline = LengthObjectivePipeline::new(
-        context.length.as_ref().expect("length slack").clone(),
-    );
+    let length_pipeline =
+        LengthObjectivePipeline::new(context.length.as_ref().expect("length slack").clone());
     assert_eq!(length_pipeline.batch_coefficient(), 1.5);
     assert_eq!(length_pipeline.objective_terms().len(), 2);
 }
@@ -1716,7 +1745,9 @@ fn yield_and_length_results_prefer_solver_slack_values() {
         unit_symbol: shadow_price_unit_symbol(&short_demand.quantity.unit),
     };
     let mut yield_config = YieldModelingConfig::default();
-    yield_config.under_production_penalty.insert(demand_key.clone(), 7.0);
+    yield_config
+        .under_production_penalty
+        .insert(demand_key.clone(), 7.0);
     yield_config.over_production_penalty.insert(demand_key, 5.0);
     let mut length_config = LengthAssignmentModelingConfig::default();
     length_config.dynamic_product_ids.insert("p-dyn".into());
@@ -1783,7 +1814,10 @@ fn yield_and_length_results_prefer_solver_slack_values() {
         .extract_yield_result(&model)
         .expect("yield result should be extracted");
     assert_eq!(yield_result.analysis.under_productions.len(), 1);
-    assert_eq!(yield_result.analysis.under_productions[0].shortfall.value, 4.0);
+    assert_eq!(
+        yield_result.analysis.under_productions[0].shortfall.value,
+        4.0
+    );
     assert_eq!(yield_result.analysis.over_productions.len(), 1);
     assert_eq!(yield_result.analysis.over_productions[0].surplus.value, 6.0);
     let length_result = context
@@ -1835,7 +1869,10 @@ fn add_columns_refreshes_builtin_constraints_and_full_objective() {
     assert_eq!(context.produce.plan_count(), 2);
     assert_eq!(context.produce.plan_variable_indices().len(), 2);
     assert_eq!(model.constraints().len(), initial_constraint_count);
-    assert_eq!(model.objective().sub_objectives.len(), initial_objective_count);
+    assert_eq!(
+        model.objective().sub_objectives.len(),
+        initial_objective_count
+    );
     assert_eq!(
         model.objective().sub_objectives[0]
             .polynomial
@@ -1853,7 +1890,10 @@ fn add_columns_refreshes_builtin_constraints_and_full_objective() {
         .iter()
         .find(|constraint| constraint.name == "demand_0")
         .expect("demand constraint should be rebuilt");
-    assert_eq!(demand_constraint.inequality.relation, ConstraintRelation::GreaterEqual);
+    assert_eq!(
+        demand_constraint.inequality.relation,
+        ConstraintRelation::GreaterEqual
+    );
     assert!(
         demand_constraint
             .inequality
@@ -1979,12 +2019,10 @@ fn remove_columns_retires_plan_variables_and_refreshes_builtin_model() {
 
 #[test]
 fn simple_initial_generator_applies_width_check_and_candidate_filters() {
-    let width_check: Csp1dWidthFeasibilityCheck<f64> = Arc::new(|_material, _product, width| {
-        width.value == 30.0
-    });
-    let filter: Csp1dCandidateFilter<f64> = Arc::new(|plan, _existing| {
-        plan.slices.iter().any(|slice| slice.amount == 1)
-    });
+    let width_check: Csp1dWidthFeasibilityCheck<f64> =
+        Arc::new(|_material, _product, width| width.value == 30.0);
+    let filter: Csp1dCandidateFilter<f64> =
+        Arc::new(|plan, _existing| plan.slices.iter().any(|slice| slice.amount == 1));
     let input = CuttingPlanGenerationInput {
         products: vec![product()],
         materials: vec![material()],
@@ -2156,11 +2194,13 @@ fn combination_generators_reuse_slice_templates_for_equivalent_material_widths()
     assert_eq!(report.statistics.material_slice_template_cache_misses, 1);
     assert_eq!(report.statistics.material_slice_template_cache_hits, 1);
     assert!(report.plans.iter().any(|plan| plan.material.id == "m2"));
-    assert!(report
-        .plans
-        .iter()
-        .filter(|plan| plan.material.id == "m2")
-        .all(|plan| plan.demand_contributions[0].quantity.value == 1.0));
+    assert!(
+        report
+            .plans
+            .iter()
+            .filter(|plan| plan.material.id == "m2")
+            .all(|plan| plan.demand_contributions[0].quantity.value == 1.0)
+    );
 }
 
 #[test]
@@ -2222,7 +2262,9 @@ fn generator_dominance_pruning_replaces_same_contribution_worse_rest_width() {
         generation_strategies: Vec::new(),
         candidate_filters: Vec::new(),
         width_feasibility_check: None,
-        canonical_key_overrides: vec![Arc::new(|plan: &CuttingPlan<f64>| Some(plan.id.to_string()))],
+        canonical_key_overrides: vec![Arc::new(|plan: &CuttingPlan<f64>| {
+            Some(plan.id.to_string())
+        })],
         dominance_accept_overrides: Vec::new(),
     };
     let generator = DFSGenerator::with_constraints(GenerationConstraints {
@@ -2297,15 +2339,20 @@ fn costar_filler_adds_costar_slices_without_changing_contributions() {
         .any(|candidate| candidate.slices.iter().any(|slice| {
             matches!(&slice.production, CuttingPlanProduction::Costar(candidate_costar) if candidate_costar.id == costar.id)
         })));
-    assert!(results
-        .iter()
-        .all(|candidate| candidate.demand_contributions.len() == plan.demand_contributions.len()));
-    assert!(results.iter().all(|candidate| candidate
-        .demand_contributions
-        .iter()
-        .zip(plan.demand_contributions.iter())
-        .all(|(left, right)| left.product.id == right.product.id
-            && left.quantity.value == right.quantity.value)));
+    assert!(
+        results.iter().all(
+            |candidate| candidate.demand_contributions.len() == plan.demand_contributions.len()
+        )
+    );
+    assert!(results.iter().all(|candidate| {
+        candidate
+            .demand_contributions
+            .iter()
+            .zip(plan.demand_contributions.iter())
+            .all(|(left, right)| {
+                left.product.id == right.product.id && left.quantity.value == right.quantity.value
+            })
+    }));
 }
 
 #[test]
@@ -2319,10 +2366,8 @@ fn generation_benchmark_snapshot_uses_kotlin_stable_stop_reason_names() {
         ..CuttingPlanGenerationStatistics::default()
     };
 
-    let snapshot = CuttingPlanGenerationBenchmarkSnapshot::from_statistics(
-        "NSameGenerator",
-        &statistics,
-    );
+    let snapshot =
+        CuttingPlanGenerationBenchmarkSnapshot::from_statistics("NSameGenerator", &statistics);
     let stable_line = snapshot.to_stable_line();
 
     assert!(stable_line.contains("generator=NSameGenerator"));
@@ -2434,7 +2479,11 @@ fn reduced_cost_pricing_filters_existing_and_non_improving_candidates() {
     low_value.slices[0].width = quantity(20.0);
     let duplicate_existing = cutting_plan("duplicate-existing");
     let pricing = ReducedCostPricingGenerator::new(FixedPlanEnumerator {
-        plans: vec![low_value.clone(), high_value.clone(), duplicate_existing.clone()],
+        plans: vec![
+            low_value.clone(),
+            high_value.clone(),
+            duplicate_existing.clone(),
+        ],
     });
     let demand_key = Csp1dShadowPriceKey::ProductDemand(ProductDemandShadowPriceKey {
         product_id: "p1".into(),
@@ -2496,9 +2545,18 @@ fn warm_start_plan_pool_adapter_extracts_previous_solution_usages() {
     });
 
     assert!(result.initial_generator.is_some());
-    assert_eq!(result.applied_plan_count, previous.generated_plans.len() as i64);
-    assert_eq!(result.applied_usage_count, previous.produce.cutting_plans.len() as i64);
-    assert_eq!(result.initial_plan_usages.len(), previous.produce.cutting_plans.len());
+    assert_eq!(
+        result.applied_plan_count,
+        previous.generated_plans.len() as i64
+    );
+    assert_eq!(
+        result.applied_usage_count,
+        previous.produce.cutting_plans.len() as i64
+    );
+    assert_eq!(
+        result.initial_plan_usages.len(),
+        previous.produce.cutting_plans.len()
+    );
 }
 
 #[test]
@@ -2532,7 +2590,10 @@ fn recovery_applies_previous_solution_warm_start_trace() {
         .unwrap();
 
     assert_eq!(result.trace.status, Csp1dRecoveryStatus::Solved);
-    assert_eq!(result.trace.warm_start_status, Csp1dWarmStartStatus::Applied);
+    assert_eq!(
+        result.trace.warm_start_status,
+        Csp1dWarmStartStatus::Applied
+    );
     assert_eq!(
         result.trace.applied_warm_start_usage_count,
         previous.produce.cutting_plans.len() as i64
@@ -2578,7 +2639,9 @@ fn default_recovery_reports_unsupported_adapter_when_fallback_is_disabled() {
     assert_eq!(trace.applied_warm_start_usage_count, 0);
     assert_eq!(
         trace.message.as_deref(),
-        Some("Warm start is compatible but current adapter does not support applying it; fallback is disabled")
+        Some(
+            "Warm start is compatible but current adapter does not support applying it; fallback is disabled"
+        )
     );
 }
 
@@ -2653,10 +2716,7 @@ fn recovery_flow_policy_can_disable_default_fallback() {
         })
         .unwrap_err();
 
-    assert!(matches!(
-        error,
-        Csp1dError::RecoveryFallbackDisabled { .. }
-    ));
+    assert!(matches!(error, Csp1dError::RecoveryFallbackDisabled { .. }));
     assert!(observed_context.load(Ordering::SeqCst));
 }
 
@@ -2692,7 +2752,10 @@ fn column_generation_recovery_applies_plan_pool_warm_start_trace() {
         .unwrap();
 
     assert_eq!(result.trace.status, Csp1dRecoveryStatus::Solved);
-    assert_eq!(result.trace.warm_start_status, Csp1dWarmStartStatus::Applied);
+    assert_eq!(
+        result.trace.warm_start_status,
+        Csp1dWarmStartStatus::Applied
+    );
     assert_eq!(
         result.trace.applied_warm_start_plan_count,
         previous.generated_plans.len() as i64
@@ -2774,7 +2837,12 @@ fn column_generation_extracts_yield_waste_length_results_and_kpi_details() {
     assert_eq!(length_result.over_length_records.len(), 1);
     assert_eq!(length_result.over_length_records[0].over_length.value, 1.0);
 
-    assert!(solution.kpi.details.contains_key(Csp1dKpiKeys::TotalTrimWidth));
+    assert!(
+        solution
+            .kpi
+            .details
+            .contains_key(Csp1dKpiKeys::TotalTrimWidth)
+    );
     assert!(
         solution
             .kpi
@@ -2836,7 +2904,10 @@ fn default_column_generation_returns_trace_kpi_and_render() {
     );
     assert!(!result.solution.render.cutting_plans.is_empty());
     let render_plan = &result.solution.render.cutting_plans[0];
-    assert_eq!(render_plan.group, vec!["Material 1".to_string(), "mc1".to_string()]);
+    assert_eq!(
+        render_plan.group,
+        vec!["Material 1".to_string(), "mc1".to_string()]
+    );
     assert_eq!(
         render_plan.width,
         result.solution.produce.cutting_plans[0]
@@ -2846,10 +2917,7 @@ fn default_column_generation_returns_trace_kpi_and_render() {
             .unwrap_or_else(|| "0".to_string())
     );
     assert_eq!(render_plan.standard_width, "100.0");
-    assert_eq!(
-        render_plan.info.get("planId"),
-        Some(&render_plan.id)
-    );
+    assert_eq!(render_plan.info.get("planId"), Some(&render_plan.id));
     assert_eq!(render_plan.productions[0].name, "Product 1");
     assert_eq!(render_plan.productions[0].x, "0");
     assert_eq!(
@@ -2892,8 +2960,8 @@ fn render_schema_serializes_with_kotlin_camel_case_fields() {
         Box::new(EmptyPricingGenerator),
     )
     .solve_with_trace(problem, None);
-    let json = serde_json::to_string(&result.solution.render)
-        .expect("render schema should serialize");
+    let json =
+        serde_json::to_string(&result.solution.render).expect("render schema should serialize");
 
     assert!(json.contains("\"cuttingPlans\""));
     assert!(json.contains("\"unitLength\""));
@@ -2932,11 +3000,13 @@ fn plain_milp_generates_initial_plans_without_pricing_loop() {
     assert!(result.trace.priced_plan_count.is_empty());
     assert!(result.trace.pricing_generation_statistics.is_none());
     assert_eq!(result.trace.final_milp_status, Csp1dFinalMilpStatus::Solved);
-    assert!(result
-        .solution
-        .generated_plans
-        .iter()
-        .any(|plan| plan.id == initial.id));
+    assert!(
+        result
+            .solution
+            .generated_plans
+            .iter()
+            .any(|plan| plan.id == initial.id)
+    );
     assert_eq!(
         result
             .solution
@@ -2945,11 +3015,13 @@ fn plain_milp_generates_initial_plans_without_pricing_loop() {
             .get(Csp1dKpiKeys::FinalMilpStatus),
         Some(&"Solved".to_string())
     );
-    assert!(!result
-        .solution
-        .kpi
-        .details
-        .contains_key(Csp1dKpiKeys::PricingGeneratedCandidates));
+    assert!(
+        !result
+            .solution
+            .kpi
+            .details
+            .contains_key(Csp1dKpiKeys::PricingGeneratedCandidates)
+    );
 }
 
 #[test]
@@ -2981,7 +3053,10 @@ fn plain_milp_applies_domain_policy_width_feasibility_override() {
     assert_eq!(result.solution.status, Csp1dSolutionStatus::Feasible);
     assert_eq!(result.trace.initial_plan_count, 1);
     assert_eq!(result.solution.generated_plans.len(), 1);
-    assert_eq!(result.solution.generated_plans[0].slices[0].width.value, 130.0);
+    assert_eq!(
+        result.solution.generated_plans[0].slices[0].width.value,
+        130.0
+    );
 }
 
 #[test]
@@ -3069,11 +3144,7 @@ fn top_k_plans_are_sorted_by_used_width_like_kotlin() {
     assert_eq!(result.solution.top_plans[0].id, wide.id);
     assert_eq!(result.solution.kpi.top_plan_count, 1);
     assert_eq!(
-        result
-            .solution
-            .render
-            .kpi
-            .get(Csp1dKpiKeys::TopPlanCount),
+        result.solution.render.kpi.get(Csp1dKpiKeys::TopPlanCount),
         Some(&"1".to_string())
     );
 }
@@ -3261,7 +3332,9 @@ fn lifecycle_symbols_and_shadow_prices_consistent_after_column_changes() {
     );
     let machine_batch_terms = symbols.machine_batch_terms("mc1");
     assert!(
-        machine_batch_terms.iter().any(|(idx, _)| *idx == plan_0_var),
+        machine_batch_terms
+            .iter()
+            .any(|(idx, _)| *idx == plan_0_var),
         "initial machine batch terms should reference plan-0"
     );
 
@@ -3269,9 +3342,7 @@ fn lifecycle_symbols_and_shadow_prices_consistent_after_column_changes() {
     let mut new_plan = cutting_plan("plan-2");
     new_plan.slices[0].width = quantity(20.0);
     new_plan.demand_contributions[0].quantity = quantity(1.0);
-    let added = context
-        .add_columns(1, vec![new_plan], &mut model)
-        .unwrap();
+    let added = context.add_columns(1, vec![new_plan], &mut model).unwrap();
     assert_eq!(added.len(), 1);
 
     let symbols = context
@@ -3360,9 +3431,7 @@ fn lifecycle_symbols_and_shadow_prices_consistent_after_column_changes() {
             _ => 0.0,
         })
         .collect::<Vec<_>>();
-    let shadow_prices = context
-        .extract_shadow_price(&model, &duals)
-        .unwrap();
+    let shadow_prices = context.extract_shadow_price(&model, &duals).unwrap();
     assert_eq!(
         shadow_prices
             .get(&Csp1dShadowPriceKey::ProductDemand(

@@ -1,10 +1,10 @@
 //! 平展上下文 trait
 //! Flatten Context Trait
 
-use std::collections::HashMap;
+use super::{Canonical, CanonicalMonomial, Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 use crate::token::TokenList;
 use crate::variable::VariableId;
-use super::{Canonical, CanonicalMonomial, Linear, LinearMonomial, Quadratic, QuadraticMonomial};
+use std::collections::HashMap;
 
 // ============================================================================
 // 平展结果类型
@@ -58,14 +58,17 @@ where
 
     /// 单项式缓存 / Monomial cache
     fn monomial_cache(&self) -> &HashMap<u64, FlattenedMonomial<Self::Monomial>>;
+    /// 获取可变单项式缓存 / Get the mutable monomial cache.
     fn monomial_cache_mut(&mut self) -> &mut HashMap<u64, FlattenedMonomial<Self::Monomial>>;
 
     /// 多项式缓存 / Polynomial cache
     fn polynomial_cache(&self) -> &HashMap<u64, FlattenedPolynomial<Self::Polynomial>>;
+    /// 获取可变多项式缓存 / Get the mutable polynomial cache.
     fn polynomial_cache_mut(&mut self) -> &mut HashMap<u64, FlattenedPolynomial<Self::Polynomial>>;
 
     /// 中间符号缓存 / Intermediate symbol cache
     fn symbol_cache(&self) -> &HashMap<u64, FlattenedSymbol<Self::Polynomial>>;
+    /// 获取可变中间符号缓存 / Get the mutable intermediate-symbol cache.
     fn symbol_cache_mut(&mut self) -> &mut HashMap<u64, FlattenedSymbol<Self::Polynomial>>;
 
     /// 检查变量是否已注册 / Check if variable is registered

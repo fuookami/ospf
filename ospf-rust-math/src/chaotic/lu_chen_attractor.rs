@@ -1,10 +1,10 @@
 //! Lu-Chen 吸引子。
 //! Lu-Chen attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Lu-Chen 吸引子的一阶欧拉步进模型。
@@ -53,7 +53,11 @@ pub fn lu_chen_attractor<S: Field + Float>(alpha: S, beta: S, zeta: S, h: S) -> 
 /// 创建 Lu-Chen 吸引子生成器。
 /// Create a Lu-Chen attractor generator.
 pub fn lu_chen_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, zeta: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    zeta: S,
+    h: S,
+    x: Point3<S>,
 ) -> LuChenAttractorGenerator<S> {
     LuChenAttractorGenerator::new(LuChenAttractor::new(alpha, beta, zeta, h), x)
 }

@@ -1,11 +1,11 @@
 //! 装载管线步骤生成器 / Stowage pipeline step generator
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 use crate::framework::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
 use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;
 use crate::framework::demo2::domain::stowage::context::StowageContext;
 use crate::framework::demo2::domain::stowage::service::policy;
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 /// 装载管线步骤函数类型 / Stowage pipeline step function type
 pub type StowagePipelineStep = fn(

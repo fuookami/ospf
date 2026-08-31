@@ -2,10 +2,11 @@
 //! Unsupported predicate policy
 
 /// 不支持谓词策略 / Unsupported predicate policy
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum UnsupportedPredicatePolicy {
     /// 无法下推时翻译为恒假条件。
     /// Translate unsupported predicates to an always-false condition.
+    #[default]
     AlwaysFalse,
     /// 无法下推时立即返回错误。
     /// Fail immediately when a predicate cannot be pushed down.
@@ -34,11 +35,5 @@ impl UnsupportedPredicatePolicy {
     /// Return whether unsupported predicates should become always-false conditions.
     pub const fn should_use_always_false(self) -> bool {
         matches!(self, Self::AlwaysFalse)
-    }
-}
-
-impl Default for UnsupportedPredicatePolicy {
-    fn default() -> Self {
-        Self::AlwaysFalse
     }
 }

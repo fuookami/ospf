@@ -3,24 +3,25 @@
 //! 航班调度与恢复示例的应用入口，包含框架 trait 实现与演示流程。
 //! Application entry for airline scheduling and recovery demo, with framework trait implementations and showcase flow.
 
-use std::error::Error;
-use std::collections::HashSet;
-use time::{Date, Duration, Month, OffsetDateTime, Time};
+use ospf_rust_framework_gantt_scheduling::domain::task::{
+    AssignmentPolicyTrait, Cost, CostItem, ExecutorTrait, TaskKey, TaskStatus, TaskTrait, TaskType,
+};
 use ospf_rust_framework_gantt_scheduling::infrastructure::{
     DurationUnit, TimeRange, TimeWindow, WorkingCalendar,
 };
-use ospf_rust_framework_gantt_scheduling::domain::task::{
-    Cost, CostItem, ExecutorTrait, TaskTrait, TaskType, TaskKey, TaskStatus,
-    AssignmentPolicyTrait,
-};
+use std::collections::HashSet;
+use std::error::Error;
+use time::{Date, Duration, Month, OffsetDateTime, Time};
 
 use super::domain::task::model::{
-    Aircraft, AircraftCapacity, AircraftMinorType, AircraftType, AircraftUsability,
-    Airport, AirportType, FlightLeg, FlightLegPlan, FlightTaskAssignment,
-    FlightTaskCategory, FlightTaskStatus, FlightCycle, FlightHour,
-    FlightTaskTypeImpl, FlightTaskPlanImpl, FlightTaskImpl, FlightAssignmentPolicy,
+    Aircraft, AircraftCapacity, AircraftMinorType, AircraftType, AircraftUsability, Airport,
+    AirportType, FlightAssignmentPolicy, FlightCycle, FlightHour, FlightLeg, FlightLegPlan,
+    FlightTaskAssignment, FlightTaskCategory, FlightTaskImpl, FlightTaskPlanImpl, FlightTaskStatus,
+    FlightTaskTypeImpl,
 };
-use super::infrastructure::{AircraftRegisterNumber, AircraftMinorTypeCode, AircraftTypeCode, Icao, PassengerClass};
+use super::infrastructure::{
+    AircraftMinorTypeCode, AircraftRegisterNumber, AircraftTypeCode, Icao, PassengerClass,
+};
 
 /// 构造 OffsetDateTime 辅助函数 / Helper to construct an OffsetDateTime from date-time components
 fn dt(year: i32, month: Month, day: u8, hour: u8, min: u8, sec: u8) -> OffsetDateTime {
@@ -59,8 +60,12 @@ impl Demo4Task {
 impl TaskTrait<Demo4Executor, Demo4AssignmentPolicy> for Demo4Task {
     type Id = String;
 
-    fn id(&self) -> &Self::Id { &self.id }
-    fn name(&self) -> &str { &self.name }
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     fn type_(&self) -> TaskType {
         TaskType::new("Demo4Task")
@@ -72,12 +77,22 @@ impl TaskTrait<Demo4Executor, Demo4AssignmentPolicy> for Demo4Task {
         s
     }
 
-    fn cancel_enabled(&self) -> bool { false }
-    fn delay_enabled(&self) -> bool { true }
-    fn advance_enabled(&self) -> bool { true }
+    fn cancel_enabled(&self) -> bool {
+        false
+    }
+    fn delay_enabled(&self) -> bool {
+        true
+    }
+    fn advance_enabled(&self) -> bool {
+        true
+    }
 
-    fn executor(&self) -> Option<&Demo4Executor> { None }
-    fn time(&self) -> Option<&TimeRange> { None }
+    fn executor(&self) -> Option<&Demo4Executor> {
+        None
+    }
+    fn time(&self) -> Option<&TimeRange> {
+        None
+    }
 }
 
 /// Demo4 执行者 / Demo4 executor
@@ -92,15 +107,22 @@ struct Demo4Executor {
 
 impl Demo4Executor {
     fn new(id: &str, name: &str) -> Self {
-        Self { id: id.to_string(), name: name.to_string() }
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+        }
     }
 }
 
 impl ExecutorTrait for Demo4Executor {
     type Id = String;
 
-    fn id(&self) -> &Self::Id { &self.id }
-    fn name(&self) -> &str { &self.name }
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 /// Demo4 分配策略 / Demo4 assignment policy
@@ -142,9 +164,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         cargo_transfer_time: Duration::minutes(120),
         base: false,
     };
-    println!("Airports: {} ({:?}), {} ({:?})",
-        airport_zbaa.icao.0, airport_zbaa.airport_type,
-        airport_zuuu.icao.0, airport_zuuu.airport_type,
+    println!(
+        "Airports: {} ({:?}), {} ({:?})",
+        airport_zbaa.icao.0,
+        airport_zbaa.airport_type,
+        airport_zuuu.icao.0,
+        airport_zuuu.airport_type,
     );
 
     // 创建飞机类型 / Create aircraft type
@@ -171,8 +196,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             ],
         },
     };
-    println!("Aircraft: {} type={:?} cost/h={}",
-        aircraft.reg_no.0, aircraft.type_code().code.0, aircraft.cost_per_hour());
+    println!(
+        "Aircraft: {} type={:?} cost/h={}",
+        aircraft.reg_no.0,
+        aircraft.type_code().code.0,
+        aircraft.cost_per_hour()
+    );
 
     // 创建航班 / Create flight leg
     let flight_plan = FlightLegPlan {
@@ -194,8 +223,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         weight: 1.0,
     };
     let flight_leg = FlightLeg::new(flight_plan);
-    println!("Flight: {} {} -> {} time={:?}",
-        flight_leg.plan.no, flight_leg.dep().icao.0, flight_leg.arr().icao.0,
+    println!(
+        "Flight: {} {} -> {} time={:?}",
+        flight_leg.plan.no,
+        flight_leg.dep().icao.0,
+        flight_leg.arr().icao.0,
         flight_leg.plan.time().map(|(s, e)| (s, e)),
     );
 
@@ -207,8 +239,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             aircraft: Some(aircraft.clone()),
             dep: airport_zbaa.clone(),
             arr: airport_zuuu.clone(),
-            time: Some((dt(2026, Month::June, 7, 8, 0, 0), dt(2026, Month::June, 7, 11, 0, 0))),
-            scheduled_time: Some((dt(2026, Month::June, 7, 8, 0, 0), dt(2026, Month::June, 7, 11, 0, 0))),
+            time: Some((
+                dt(2026, Month::June, 7, 8, 0, 0),
+                dt(2026, Month::June, 7, 11, 0, 0),
+            )),
+            scheduled_time: Some((
+                dt(2026, Month::June, 7, 8, 0, 0),
+                dt(2026, Month::June, 7, 11, 0, 0),
+            )),
             flight_task_status: vec![FlightTaskStatus::NotCancel],
         },
         FlightTaskTypeImpl {
@@ -216,9 +254,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             name: "flight".into(),
         },
     );
-    println!("FlightTask: id={} name={} cancel_enabled={} delay_enabled={}",
-        flight_task.id(), flight_task.name(),
-        flight_task.cancel_enabled(), flight_task.delay_enabled(),
+    println!(
+        "FlightTask: id={} name={} cancel_enabled={} delay_enabled={}",
+        flight_task.id(),
+        flight_task.name(),
+        flight_task.cancel_enabled(),
+        flight_task.delay_enabled(),
     );
 
     // 创建聚合 / Create aggregation
@@ -232,8 +273,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         vec![],
         vec![],
     );
-    println!("Task aggregation: {} airports, {} aircrafts, {} legs",
-        task_agg.airports.len(), task_agg.aircrafts.len(), task_agg.legs.len());
+    println!(
+        "Task aggregation: {} airports, {} aircrafts, {} legs",
+        task_agg.airports.len(),
+        task_agg.aircrafts.len(),
+        task_agg.legs.len()
+    );
 
     // GenericQuantitySample 对齐 Kotlin Demo4GenericQuantitySample
     let time = TimeRange::new(
@@ -245,9 +290,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let cost_sum: f64 = cost.cost_sum.unwrap_or(0.0);
     println!("Cost: items={}, sum={:.2}", cost.items.len(), cost_sum);
 
-    let time_window: TimeWindow<f64> = TimeWindow::hours(
-        time.clone(), 0.0, true, 1.0,
-    );
+    let time_window: TimeWindow<f64> = TimeWindow::hours(time.clone(), 0.0, true, 1.0);
     let duration_val = time_window.value_of_duration(Duration::hours(2));
     println!("TimeWindow value_of_duration(2h): {}", duration_val);
 
@@ -255,10 +298,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     println!("TimeWindow value_of_instant(3:00): {}", instant_val);
 
     // WorkingCalendar / ActualTime
-    let calendar: WorkingCalendar<f64> = WorkingCalendar::new(
-        time_window.clone(),
-        vec![],
-    );
+    let calendar: WorkingCalendar<f64> = WorkingCalendar::new(time_window.clone(), vec![]);
     let query_range = TimeRange::new(
         dt(2026, Month::June, 7, 0, 0, 0),
         dt(2026, Month::June, 7, 4, 0, 0),
@@ -269,16 +309,26 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // FlightHour / FlightCycle
     let fh = FlightHour::new(Duration::hours(10));
     let fc = FlightCycle::new(5);
-    println!("FlightHour: {}h, FlightCycle: {} cycles",
-        DurationUnit::Hours.to_value(fh.hours), fc.cycles);
+    println!(
+        "FlightHour: {}h, FlightCycle: {} cycles",
+        DurationUnit::Hours.to_value(fh.hours),
+        fc.cycles
+    );
 
     // Demo4Task (框架 trait 实现)
     let demo4_task = Demo4Task::new("demo4-task", "Demo Task");
     let demo4_executor = Demo4Executor::new("demo4-executor", "Demo Executor");
-    println!("Demo4Task: id={} name={} type={}",
-        demo4_task.id(), demo4_task.name(), demo4_task.type_().name);
-    println!("Demo4Executor: id={} name={}",
-        demo4_executor.id(), demo4_executor.name());
+    println!(
+        "Demo4Task: id={} name={} type={}",
+        demo4_task.id(),
+        demo4_task.name(),
+        demo4_task.type_().name
+    );
+    println!(
+        "Demo4Executor: id={} name={}",
+        demo4_executor.id(),
+        demo4_executor.name()
+    );
 
     // TaskKey
     let task_key: TaskKey<String> = TaskKey::new("CA1234", TaskType::default_type());

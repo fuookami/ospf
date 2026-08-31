@@ -1,14 +1,16 @@
 //! Demo17 模块 / Demo17 module
 use std::error::Error;
 
-use ospf_rust_multiarray::Shape;
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::model::{ConstraintRelation, MetaModel, ObjectiveCategory};
 use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1, flat_map1_indexed,
+    LinearExpressionSymbol, SymbolCombination, flat_map1, flat_map1_indexed,
 };
-use ospf_rust_core::variable::{Binary, UContinuous, VariableCombination2D, VariableCombination3D, VariableRange};
+use ospf_rust_core::variable::{
+    Binary, UContinuous, VariableCombination2D, VariableCombination3D, VariableRange,
+};
+use ospf_rust_multiarray::Shape;
 
-use super::common::{read_solution_value, solve_typed, extract_coeffs};
+use super::common::{extract_coeffs, read_solution_value, solve_typed};
 
 /// 节点类型枚举 / Node kind enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,18 +154,19 @@ struct VehicleRoutingModel {
 
 impl VehicleRoutingModel {
     /// 注册模型 / Register model
-    fn register(
-        model: &mut MetaModel<f64>,
-        data: &VrpData,
-    ) -> Result<Self, Box<dyn Error>> {
+    fn register(model: &mut MetaModel<f64>, data: &VrpData) -> Result<Self, Box<dyn Error>> {
         let nodes = &data.nodes;
         let node_count = nodes.len();
         let vc = data.vehicle_count;
 
         // Find origin/end node indices by kind (replaces hardcoded index assumptions)
-        let origin_idx = nodes.iter().position(|n| n.kind == NodeKind::Origin)
+        let origin_idx = nodes
+            .iter()
+            .position(|n| n.kind == NodeKind::Origin)
             .expect("origin node must exist");
-        let end_idx = nodes.iter().position(|n| n.kind == NodeKind::End)
+        let end_idx = nodes
+            .iter()
+            .position(|n| n.kind == NodeKind::End)
             .expect("end node must exist");
 
         // 1. 注册 x 变量组合 (node1 x node2 x vehicle)
@@ -176,7 +179,9 @@ impl VehicleRoutingModel {
                 |_index, vector| {
                     let n1 = vector[0];
                     let n2 = vector[1];
-                    if nodes[n1].kind != NodeKind::End && nodes[n2].kind != NodeKind::Origin && n1 != n2
+                    if nodes[n1].kind != NodeKind::End
+                        && nodes[n2].kind != NodeKind::Origin
+                        && n1 != n2
                     {
                         VariableRange::bounded(0.0, 1.0)
                     } else {
@@ -193,119 +198,195 @@ impl VehicleRoutingModel {
                 s_shape.clone(),
                 "s",
                 |_index, vector| format!("{}_{}", vector[0], vector[1]),
-                |_index, vector| VariableRange::bounded(nodes[vector[0]].tw_lb, nodes[vector[0]].tw_ub),
+                |_index, vector| {
+                    VariableRange::bounded(nodes[vector[0]].tw_lb, nodes[vector[0]].tw_ub)
+                },
             );
         let s_idx = model.register_combination(&s_vars)?;
 
         // 3. 构建车辆使用成本符号 / Vehicle usage cost symbol
-        let vehicle_usage_cost = flat_map1("vehicle_usage_cost", &(0..vc).collect::<Vec<_>>(), |&v| {
-            let monomials: Vec<_> = (0..node_count)
-                .map(|n2| ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                    data.fixed_used_cost, x_idx[&[origin_idx, n2, v]],
-                ))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, v| format!("{}", v));
+        let vehicle_usage_cost = flat_map1(
+            "vehicle_usage_cost",
+            &(0..vc).collect::<Vec<_>>(),
+            |&v| {
+                let monomials: Vec<_> = (0..node_count)
+                    .map(|n2| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            data.fixed_used_cost,
+                            x_idx[&[origin_idx, n2, v]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, v| format!("{}", v),
+        );
         model.add_symbol_combination(&vehicle_usage_cost)?;
 
         // 4. 构建运输成本符号 / Transportation cost symbol
         let x_idx_ref = &x_idx;
-        let transportation_cost = flat_map1("transportation_cost", &(0..vc).collect::<Vec<_>>(), |&v| {
-            let monomials: Vec<_> = (0..node_count)
-                .flat_map(|n1| {
-                    (0..node_count).map(move |n2| {
-                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                            dist(&nodes[n1], &nodes[n2]), x_idx_ref[&[n1, n2, v]],
-                        )
+        let transportation_cost = flat_map1(
+            "transportation_cost",
+            &(0..vc).collect::<Vec<_>>(),
+            |&v| {
+                let monomials: Vec<_> = (0..node_count)
+                    .flat_map(|n1| {
+                        (0..node_count).map(move |n2| {
+                            ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                                dist(&nodes[n1], &nodes[n2]),
+                                x_idx_ref[&[n1, n2, v]],
+                            )
+                        })
                     })
-                })
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, v| format!("{}", v));
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, v| format!("{}", v),
+        );
         model.add_symbol_combination(&transportation_cost)?;
 
         // 5. 构建起点/终点流符号 / Origin/destination flow symbols
         // origin[v] = sum over nodes where kind == OriginNode of x[origin, n2, v]
-        let origin = flat_map1("origin", &(0..vc).collect::<Vec<_>>(), |&v| {
-            let monomials: Vec<_> = (0..node_count)
-                .map(|n2| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[origin_idx, n2, v]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, v| format!("{}", v));
+        let origin = flat_map1(
+            "origin",
+            &(0..vc).collect::<Vec<_>>(),
+            |&v| {
+                let monomials: Vec<_> = (0..node_count)
+                    .map(|n2| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            1.0,
+                            x_idx[&[origin_idx, n2, v]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, v| format!("{}", v),
+        );
         model.add_symbol_combination(&origin)?;
 
         // destination[v] = sum over nodes where kind == EndNode of x[n1, end, v]
-        let destination = flat_map1("destination", &(0..vc).collect::<Vec<_>>(), |&v| {
-            let monomials: Vec<_> = (0..node_count)
-                .map(|n1| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[n1, end_idx, v]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, v| format!("{}", v));
+        let destination = flat_map1(
+            "destination",
+            &(0..vc).collect::<Vec<_>>(),
+            |&v| {
+                let monomials: Vec<_> = (0..node_count)
+                    .map(|n1| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            1.0,
+                            x_idx[&[n1, end_idx, v]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, v| format!("{}", v),
+        );
         model.add_symbol_combination(&destination)?;
 
         // 6. 构建流入/流出流符号 / In-flow/out-flow symbols
         // Kotlin: inFlow/outFlow only for non-Origin, non-End nodes (filterIsNotInstance)
         // 只为普通节点构建 in_flow/out_flow，排除 Origin 和 End 节点
-        let regular_indices: Vec<usize> = nodes.iter().enumerate()
+        let regular_indices: Vec<usize> = nodes
+            .iter()
+            .enumerate()
             .filter(|(_, n)| n.kind != NodeKind::Origin && n.kind != NodeKind::End)
             .map(|(i, _)| i)
             .collect();
-        let in_flow_keys: Vec<(usize, usize)> = regular_indices.iter()
+        let in_flow_keys: Vec<(usize, usize)> = regular_indices
+            .iter()
             .flat_map(|&n| (0..vc).map(move |v| (n, v)))
             .collect();
-        let in_flow = flat_map1_indexed("in_flow", &in_flow_keys, |_, &(n, v)| {
-            let monomials: Vec<_> = (0..node_count)
-                .map(|n1| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[n1, n, v]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, &(n, v)| format!("{}_{}", n, v));
+        let in_flow = flat_map1_indexed(
+            "in_flow",
+            &in_flow_keys,
+            |_, &(n, v)| {
+                let monomials: Vec<_> = (0..node_count)
+                    .map(|n1| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            1.0,
+                            x_idx_ref[&[n1, n, v]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, &(n, v)| format!("{}_{}", n, v),
+        );
         model.add_symbol_combination(&in_flow)?;
 
-        let out_flow_keys: Vec<(usize, usize)> = regular_indices.iter()
+        let out_flow_keys: Vec<(usize, usize)> = regular_indices
+            .iter()
             .flat_map(|&n| (0..vc).map(move |v| (n, v)))
             .collect();
-        let out_flow = flat_map1_indexed("out_flow", &out_flow_keys, |_, &(n, v)| {
-            let monomials: Vec<_> = (0..node_count)
-                .map(|n2| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[n, n2, v]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, &(n, v)| format!("{}_{}", n, v));
+        let out_flow = flat_map1_indexed(
+            "out_flow",
+            &out_flow_keys,
+            |_, &(n, v)| {
+                let monomials: Vec<_> = (0..node_count)
+                    .map(|n2| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            1.0,
+                            x_idx_ref[&[n, n2, v]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, &(n, v)| format!("{}_{}", n, v),
+        );
         model.add_symbol_combination(&out_flow)?;
 
         // 7. 构建服务符号 / Service symbol
         // service[n] = sum over (n2, v) of x[n, n2, v] for nodes where kind != OriginNode
         // (matches Kotlin: filterIsInstance excluding OriginNode)
-        let non_origin_indices: Vec<usize> = nodes.iter().enumerate()
+        let non_origin_indices: Vec<usize> = nodes
+            .iter()
+            .enumerate()
             .filter(|(_, n)| n.kind != NodeKind::Origin)
             .map(|(i, _)| i)
             .collect();
-        let service = flat_map1("service", &non_origin_indices, |&n| {
-            let monomials: Vec<_> = (0..node_count)
-                .flat_map(|n2| {
-                    (0..vc).map(move |v| {
-                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[n, n2, v]])
+        let service = flat_map1(
+            "service",
+            &non_origin_indices,
+            |&n| {
+                let monomials: Vec<_> = (0..node_count)
+                    .flat_map(|n2| {
+                        (0..vc).map(move |v| {
+                            ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                                1.0,
+                                x_idx_ref[&[n, n2, v]],
+                            )
+                        })
                     })
-                })
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, &n| format!("{:?}", nodes[n].kind));
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, &n| format!("{:?}", nodes[n].kind),
+        );
         model.add_symbol_combination(&service)?;
 
         // 8. 构建容量符号 / Capacity symbol
-        let capacity = flat_map1("capacity", &(0..vc).collect::<Vec<_>>(), |&v| {
-            let mut monomials = Vec::new();
-            for n2 in 0..node_count {
-                if nodes[n2].kind != NodeKind::Demand {
-                    continue;
+        let capacity = flat_map1(
+            "capacity",
+            &(0..vc).collect::<Vec<_>>(),
+            |&v| {
+                let mut monomials = Vec::new();
+                for n2 in 0..node_count {
+                    if nodes[n2].kind != NodeKind::Demand {
+                        continue;
+                    }
+                    for n1 in 0..node_count {
+                        monomials.push(ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            nodes[n2].demand,
+                            x_idx_ref[&[n1, n2, v]],
+                        ));
+                    }
                 }
-                for n1 in 0..node_count {
-                    monomials.push(ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                        nodes[n2].demand, x_idx_ref[&[n1, n2, v]],
-                    ));
-                }
-            }
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, v| format!("{}", v));
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, v| format!("{}", v),
+        );
         model.add_symbol_combination(&capacity)?;
 
         Ok(VehicleRoutingModel {
@@ -352,18 +433,30 @@ impl VehicleRoutingModel {
         // 10. 起点约束: origin[v] <= 1
         for v in 0..vc {
             let coeffs = extract_coeffs(&self.origin[v]);
-            model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, 1.0, &format!("origin_{}", v))?;
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::LessEqual,
+                1.0,
+                &format!("origin_{}", v),
+            )?;
         }
 
         // 11. 终点约束: destination[v] <= 1
         for v in 0..vc {
             let coeffs = extract_coeffs(&self.destination[v]);
-            model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, 1.0, &format!("destination_{}", v))?;
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::LessEqual,
+                1.0,
+                &format!("destination_{}", v),
+            )?;
         }
 
         // 12. 流量守恒约束: in_flow[n,v] - out_flow[n,v] = 0
         // in_flow/out_flow indexed by position in regular_indices * vc
-        let regular_indices: Vec<usize> = nodes.iter().enumerate()
+        let regular_indices: Vec<usize> = nodes
+            .iter()
+            .enumerate()
             .filter(|(_, n)| n.kind != NodeKind::Origin && n.kind != NodeKind::End)
             .map(|(i, _)| i)
             .collect();
@@ -379,13 +472,20 @@ impl VehicleRoutingModel {
                 for (var_idx, coeff) in out_coeffs {
                     coeffs.push((var_idx, -coeff));
                 }
-                model.add_linear_constraint(&coeffs, ConstraintRelation::Equal, 0.0, &format!("flow_{}_{}", n, v))?;
+                model.add_linear_constraint(
+                    &coeffs,
+                    ConstraintRelation::Equal,
+                    0.0,
+                    &format!("flow_{}_{}", n, v),
+                )?;
             }
         }
 
         // 13. 服务约束: service[n] = 1 (仅需求点)
         // service symbol is indexed over non-origin nodes; iterate to find demand nodes
-        let non_origin_indices: Vec<usize> = nodes.iter().enumerate()
+        let non_origin_indices: Vec<usize> = nodes
+            .iter()
+            .enumerate()
             .filter(|(_, n)| n.kind != NodeKind::Origin)
             .map(|(i, _)| i)
             .collect();
@@ -394,7 +494,12 @@ impl VehicleRoutingModel {
                 continue;
             }
             let coeffs = extract_coeffs(&self.service[svc_idx]);
-            model.add_linear_constraint(&coeffs, ConstraintRelation::Equal, 1.0, &format!("service_{}", node_idx))?;
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::Equal,
+                1.0,
+                &format!("service_{}", node_idx),
+            )?;
         }
 
         // 14. 时间链接约束: s[n1,v] - s[n2,v] + M*x[n1,n2,v] <= M - service_time - dist
@@ -407,7 +512,12 @@ impl VehicleRoutingModel {
                         (self.x_idx[&[n1, n2, v]], data.big_m),
                     ];
                     let rhs = data.big_m - nodes[n1].service_time - dist(&nodes[n1], &nodes[n2]);
-                    model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, rhs, &format!("time_link_{}_{}_{}", n1, n2, v))?;
+                    model.add_linear_constraint(
+                        &coeffs,
+                        ConstraintRelation::LessEqual,
+                        rhs,
+                        &format!("time_link_{}_{}_{}", n1, n2, v),
+                    )?;
                 }
             }
         }
@@ -433,7 +543,12 @@ impl VehicleRoutingModel {
         // 16. 容量约束: capacity[v] <= vehicle_capacity
         for v in 0..vc {
             let coeffs = extract_coeffs(&self.capacity[v]);
-            model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, data.vehicle_capacity, &format!("capacity_{}", v))?;
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::LessEqual,
+                data.vehicle_capacity,
+                &format!("capacity_{}", v),
+            )?;
         }
 
         Ok(())
@@ -457,7 +572,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let solution = output.solution;
 
     // Find origin node index by kind for output
-    let origin_idx = nodes.iter().position(|n| n.kind == NodeKind::Origin)
+    let origin_idx = nodes
+        .iter()
+        .position(|n| n.kind == NodeKind::Origin)
         .expect("origin node must exist");
 
     println!("=== Demo17 ===");

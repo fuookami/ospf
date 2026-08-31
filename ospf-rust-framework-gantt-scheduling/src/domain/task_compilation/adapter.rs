@@ -17,26 +17,20 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::symbol::SymbolCombination;
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
-use ospf_rust_core::symbol::SymbolCombination;
-use ospf_rust_core::variable::{
-    VariableCombination, VariableItem, VariableTypeTrait,
-    Binary,
-};
+use ospf_rust_core::variable::{Binary, VariableCombination, VariableItem, VariableTypeTrait};
 use ospf_rust_multiarray::shape::Shape;
 
 // Re-export framework indexed types for use within gantt-scheduling
 pub use ospf_rust_framework::model::{
-    IndexedVariableCombination1,
-    IndexedVariableCombination2,
-    IndexedLinearExpressionSymbols1,
-    IndexedLinearExpressionSymbols2,
-    OptionalIndexedLinearExpressionSymbols,
+    IndexedLinearExpressionSymbols1, IndexedLinearExpressionSymbols2, IndexedVariableCombination1,
+    IndexedVariableCombination2, OptionalIndexedLinearExpressionSymbols,
 };
 
-use crate::GanttResult;
 use crate::GanttError;
+use crate::GanttResult;
 
 // ============================================================================
 // 符号 ID 生成器 / Symbol ID Generator
@@ -110,10 +104,7 @@ where
         VT::Value: ospf_rust_core::token::IntoValue<V>,
     {
         let n = keys.len();
-        let combination = VariableCombination::<VT, Shape<1>>::new(
-            Shape::new([n]),
-            name,
-        );
+        let combination = VariableCombination::<VT, Shape<1>>::new(Shape::new([n]), name);
 
         // 逐个注册变量到模型，建立映射
         // Register each variable to model, build mappings
@@ -124,13 +115,15 @@ where
             key_to_linear_index.insert(key.clone(), linear_idx);
 
             let var_item = combination[linear_idx].clone();
-            let model_idx = model.register_variable(var_item)
-                .map_err(|e| GanttError::Calculation {
-                    message: format!(
-                        "Failed to register variable {}_{}: {:?}",
-                        name, linear_idx, e
-                    ),
-                })?;
+            let model_idx =
+                model
+                    .register_variable(var_item)
+                    .map_err(|e| GanttError::Calculation {
+                        message: format!(
+                            "Failed to register variable {}_{}: {:?}",
+                            name, linear_idx, e
+                        ),
+                    })?;
             linear_index_to_model_index.push(model_idx);
         }
 
@@ -148,14 +141,16 @@ where
     /// 返回 `register_variable` 返回的 `usize`，可用于约束注册和结果提取。
     /// Returns the `usize` from `register_variable`, usable in constraint registration and solution extraction.
     pub fn model_index(&self, key: &K) -> Option<usize> {
-        self.key_to_linear_index.get(key)
+        self.key_to_linear_index
+            .get(key)
             .and_then(|&linear_idx| self.linear_index_to_model_index.get(linear_idx))
             .copied()
     }
 
     /// 获取键对应的变量项 / Get variable item for key
     pub fn variable_item(&self, key: &K) -> Option<&VariableItem<VT>> {
-        self.key_to_linear_index.get(key)
+        self.key_to_linear_index
+            .get(key)
             .map(|&linear_idx| &self.combination[linear_idx])
     }
 
@@ -233,10 +228,7 @@ where
     {
         let n1 = keys1.len();
         let n2 = keys2.len();
-        let combination = VariableCombination::<VT, Shape<2>>::new(
-            Shape::new([n1, n2]),
-            name,
-        );
+        let combination = VariableCombination::<VT, Shape<2>>::new(Shape::new([n1, n2]), name);
 
         // 逐个注册变量到模型，建立映射
         // Register each variable to model, build mappings
@@ -251,13 +243,15 @@ where
                 linear_index_to_key.insert(linear_idx, (k1.clone(), k2.clone()));
 
                 let var_item = combination[linear_idx].clone();
-                let model_idx = model.register_variable(var_item)
-                    .map_err(|e| GanttError::Calculation {
-                        message: format!(
-                            "Failed to register variable {}_{}_{}: {:?}",
-                            name, i1, i2, e
-                        ),
-                    })?;
+                let model_idx =
+                    model
+                        .register_variable(var_item)
+                        .map_err(|e| GanttError::Calculation {
+                            message: format!(
+                                "Failed to register variable {}_{}_{}: {:?}",
+                                name, i1, i2, e
+                            ),
+                        })?;
                 linear_index_to_model_index.push(model_idx);
             }
         }
@@ -276,14 +270,16 @@ where
 
     /// 获取键对对应的模型注册索引 / Get model registration index for key pair
     pub fn model_index(&self, k1: &K1, k2: &K2) -> Option<usize> {
-        self.key_to_linear_index.get(&(k1.clone(), k2.clone()))
+        self.key_to_linear_index
+            .get(&(k1.clone(), k2.clone()))
             .and_then(|&linear_idx| self.linear_index_to_model_index.get(linear_idx))
             .copied()
     }
 
     /// 获取键对对应的变量项 / Get variable item for key pair
     pub fn variable_item(&self, k1: &K1, k2: &K2) -> Option<&VariableItem<VT>> {
-        self.key_to_linear_index.get(&(k1.clone(), k2.clone()))
+        self.key_to_linear_index
+            .get(&(k1.clone(), k2.clone()))
             .map(|&linear_idx| &self.combination[linear_idx])
     }
 
@@ -393,10 +389,7 @@ where
         let n1 = keys1.len();
         let n2 = keys2.len();
         let n3 = keys3.len();
-        let combination = VariableCombination::<VT, Shape<3>>::new(
-            Shape::new([n1, n2, n3]),
-            name,
-        );
+        let combination = VariableCombination::<VT, Shape<3>>::new(Shape::new([n1, n2, n3]), name);
 
         let mut key_to_linear_index = HashMap::new();
         let mut linear_index_to_key = HashMap::new();
@@ -410,13 +403,15 @@ where
                     linear_index_to_key.insert(linear_idx, (k1.clone(), k2.clone(), k3.clone()));
 
                     let var_item = combination[linear_idx].clone();
-                    let model_idx = model.register_variable(var_item)
-                        .map_err(|e| GanttError::Calculation {
-                            message: format!(
-                                "Failed to register variable {}_{}_{}_{}: {:?}",
-                                name, i1, i2, i3, e
-                            ),
-                        })?;
+                    let model_idx =
+                        model
+                            .register_variable(var_item)
+                            .map_err(|e| GanttError::Calculation {
+                                message: format!(
+                                    "Failed to register variable {}_{}_{}_{}: {:?}",
+                                    name, i1, i2, i3, e
+                                ),
+                            })?;
                     linear_index_to_model_index.push(model_idx);
                 }
             }
@@ -437,14 +432,16 @@ where
 
     /// 获取键三元组对应的模型注册索引 / Get model registration index for key triple
     pub fn model_index(&self, k1: &K1, k2: &K2, k3: &K3) -> Option<usize> {
-        self.key_to_linear_index.get(&(k1.clone(), k2.clone(), k3.clone()))
+        self.key_to_linear_index
+            .get(&(k1.clone(), k2.clone(), k3.clone()))
             .and_then(|&linear_idx| self.linear_index_to_model_index.get(linear_idx))
             .copied()
     }
 
     /// 获取键三元组对应的变量项 / Get variable item for key triple
     pub fn variable_item(&self, k1: &K1, k2: &K2, k3: &K3) -> Option<&VariableItem<VT>> {
-        self.key_to_linear_index.get(&(k1.clone(), k2.clone(), k3.clone()))
+        self.key_to_linear_index
+            .get(&(k1.clone(), k2.clone(), k3.clone()))
             .map(|&linear_idx| &self.combination[linear_idx])
     }
 
@@ -525,11 +522,9 @@ where
     K: std::hash::Hash + Eq + Clone + std::fmt::Debug,
 {
     let combo: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>> =
-        SymbolCombination::new(
-            Shape::new([symbols.len()]),
-            prefix,
-            |index, _vec| symbols[index].as_ref().clone(),
-        );
+        SymbolCombination::new(Shape::new([symbols.len()]), prefix, |index, _vec| {
+            symbols[index].as_ref().clone()
+        });
     IndexedLinearExpressionSymbols1::new(prefix, keys, combo)
 }
 
@@ -632,7 +627,8 @@ pub fn extract_binary_values_1<K>(
 where
     K: Hash + Eq + Clone,
 {
-    array.key_to_linear_index
+    array
+        .key_to_linear_index
         .iter()
         .filter_map(|(k, &linear_idx)| {
             let model_idx = array.linear_index_to_model_index.get(linear_idx)?;
@@ -650,7 +646,8 @@ where
     K1: Hash + Eq + Clone,
     K2: Hash + Eq + Clone,
 {
-    array.key_to_linear_index
+    array
+        .key_to_linear_index
         .iter()
         .filter_map(|((k1, k2), &linear_idx)| {
             let model_idx = array.linear_index_to_model_index.get(linear_idx)?;
@@ -667,7 +664,8 @@ pub fn extract_values_1<K, VT: VariableTypeTrait>(
 where
     K: Hash + Eq + Clone,
 {
-    array.key_to_linear_index
+    array
+        .key_to_linear_index
         .iter()
         .filter_map(|(k, &linear_idx)| {
             let model_idx = array.linear_index_to_model_index.get(linear_idx)?;
@@ -685,7 +683,8 @@ where
     K1: Hash + Eq + Clone,
     K2: Hash + Eq + Clone,
 {
-    array.key_to_linear_index
+    array
+        .key_to_linear_index
         .iter()
         .filter_map(|((k1, k2), &linear_idx)| {
             let model_idx = array.linear_index_to_model_index.get(linear_idx)?;
@@ -738,7 +737,7 @@ mod tests {
         let array: IndexedVariableArray2<usize, usize, Binary> =
             IndexedVariableArray2::new("x", &keys1, &keys2, &mut model).unwrap();
 
-        assert_eq!(array.len(), 6);  // 3 * 2 = 6
+        assert_eq!(array.len(), 6); // 3 * 2 = 6
         assert_eq!(array.keys1.len(), 3);
         assert_eq!(array.keys2.len(), 2);
 
@@ -816,8 +815,8 @@ mod tests {
 
         assert_eq!(extract_binary(&solution, 0), Some(false));
         assert_eq!(extract_binary(&solution, 1), Some(true));
-        assert_eq!(extract_binary(&solution, 2), Some(false));  // 0.3 < 0.5
-        assert_eq!(extract_binary(&solution, 3), Some(true));   // 0.7 > 0.5
+        assert_eq!(extract_binary(&solution, 2), Some(false)); // 0.3 < 0.5
+        assert_eq!(extract_binary(&solution, 3), Some(true)); // 0.7 > 0.5
     }
 
     #[test]

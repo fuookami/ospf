@@ -1,7 +1,7 @@
 //! 推荐重量均衡约束限制 / Recommended weight equalization constraint limits.
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::stowage::model::{LoadVariables, Position};
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 物品顺序限制 / Item order limit
 /// 对齐 Kotlin ItemOrderLimit

@@ -1,14 +1,12 @@
 //! Demo6 模块 / Demo6 module
 use std::error::Error;
 
-use ospf_rust_multiarray::{MultiArray, Shape};
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
-use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1_indexed,
-};
+use ospf_rust_core::model::{ConstraintRelation, MetaModel, ObjectiveCategory};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination, flat_map1_indexed};
 use ospf_rust_core::variable::{UInteger, VariableCombination1D};
+use ospf_rust_multiarray::{MultiArray, Shape};
 
-use super::common::{read_solution_value, solve_typed, extract_coeffs};
+use super::common::{extract_coeffs, read_solution_value, solve_typed};
 
 #[derive(Debug, Clone)]
 struct Cargo {
@@ -20,7 +18,12 @@ struct Cargo {
 
 impl Cargo {
     fn new(name: &str, weight: f64, value: f64, max_amount: f64) -> Self {
-        Self { name: name.to_string(), weight, value, max_amount }
+        Self {
+            name: name.to_string(),
+            weight,
+            value,
+            max_amount,
+        }
     }
 }
 
@@ -44,22 +47,50 @@ impl IntegerKnapsackModel {
         let x = VariableCombination1D::new(Shape::new([cargos.len()]), "x");
         let x_idx = model.register_combination(&x)?;
 
-        let cargo_value = flat_map1_indexed("cargo_value", cargos, |i, c| {
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(c.value, x_idx[i])], 0.0)
-        }, |_, c| c.name.clone());
+        let cargo_value = flat_map1_indexed(
+            "cargo_value",
+            cargos,
+            |i, c| {
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        c.value, x_idx[i],
+                    )],
+                    0.0,
+                )
+            },
+            |_, c| c.name.clone(),
+        );
         model.add_symbol_combination(&cargo_value)?;
 
-        let cargo_weight = flat_map1_indexed("cargo_weight", cargos, |i, c| {
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(c.weight, x_idx[i])], 0.0)
-        }, |_, c| c.name.clone());
+        let cargo_weight = flat_map1_indexed(
+            "cargo_weight",
+            cargos,
+            |i, c| {
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        c.weight, x_idx[i],
+                    )],
+                    0.0,
+                )
+            },
+            |_, c| c.name.clone(),
+        );
         model.add_symbol_combination(&cargo_weight)?;
 
-        Ok(IntegerKnapsackModel { x, x_idx, cargo_value, cargo_weight })
+        Ok(IntegerKnapsackModel {
+            x,
+            x_idx,
+            cargo_value,
+            cargo_weight,
+        })
     }
 
-    fn add_constraints(&self, model: &mut MetaModel<f64>, cargos: &[Cargo], max_weight: f64) -> Result<(), Box<dyn Error>> {
+    fn add_constraints(
+        &self,
+        model: &mut MetaModel<f64>,
+        cargos: &[Cargo],
+        max_weight: f64,
+    ) -> Result<(), Box<dyn Error>> {
         // 目标: 最大化价值
         let val_coeffs = extract_coeffs(&self.cargo_value[0]);
         model.add_linear_objective(&val_coeffs, "value");
@@ -67,7 +98,12 @@ impl IntegerKnapsackModel {
 
         // 重量约束
         let wt_coeffs = extract_coeffs(&self.cargo_weight[0]);
-        model.add_linear_constraint(&wt_coeffs, ConstraintRelation::LessEqual, max_weight, "weight")?;
+        model.add_linear_constraint(
+            &wt_coeffs,
+            ConstraintRelation::LessEqual,
+            max_weight,
+            "weight",
+        )?;
 
         // 上界约束
         for (i, cargo) in cargos.iter().enumerate() {
@@ -95,9 +131,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     println!("=== Demo6 ===");
     println!("status: {:?}", output.status);
-    if let Some(obj) = output.objective_value { println!("value: {:.2}", obj); }
+    if let Some(obj) = output.objective_value {
+        println!("value: {:.2}", obj);
+    }
     for (i, cargo) in cargos.iter().enumerate() {
-        println!("{}: {:.2}", cargo.name, read_solution_value(&solution, knapsack.x_idx[i]));
+        println!(
+            "{}: {:.2}",
+            cargo.name,
+            read_solution_value(&solution, knapsack.x_idx[i])
+        );
     }
     Ok(())
 }
@@ -106,5 +148,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 mod tests {
     use super::*;
     #[test]
-    fn test_demo6() { assert!(run().is_ok()); }
+    fn test_demo6() {
+        assert!(run().is_ok());
+    }
 }

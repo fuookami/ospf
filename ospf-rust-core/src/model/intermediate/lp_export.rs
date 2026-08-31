@@ -1,12 +1,6 @@
 //! 中间模型 LP 导出辅助工具。 / Intermediate-model LP export helpers.
 
-use std::collections::BTreeMap;
-use std::fs;
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
-use std::thread;
 use super::{
-
     BasicLinearTriadModel, BasicQuadraticTetradModel, LinearTriadModel, QuadraticTetradModel,
     SparseMatrix, SparseVector,
 };
@@ -17,6 +11,11 @@ use crate::symbol::IntermediateSymbol;
 use crate::symbol::flatten::{Linear, Quadratic};
 use crate::token::Token;
 use crate::variable::{VariableRange, VariableType};
+use std::collections::BTreeMap;
+use std::fs;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::thread;
 
 /// 模型文件格式 / Model file format
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,7 +151,7 @@ where
         for handle in handles {
             handle
                 .join()
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "dump thread panicked"))??;
+                .map_err(|_| io::Error::other("dump thread panicked"))??;
         }
         Ok(())
     })
@@ -195,7 +194,7 @@ where
         for handle in handles {
             handle
                 .join()
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "dump thread panicked"))??;
+                .map_err(|_| io::Error::other("dump thread panicked"))??;
         }
         Ok(())
     })
@@ -560,10 +559,12 @@ fn apply_fixed_to_linear_terms(
     (combine_linear_terms(active_terms), constant)
 }
 
+type FixedQuadraticTerms = (Vec<(usize, Option<usize>, f64)>, Vec<(usize, f64)>, f64);
+
 fn apply_fixed_to_quadratic_terms(
     terms: &[(usize, Option<usize>, f64)],
     options: &DumpOptions,
-) -> (Vec<(usize, Option<usize>, f64)>, Vec<(usize, f64)>, f64) {
+) -> FixedQuadraticTerms {
     let mut quadratic_terms = Vec::new();
     let mut linear_terms = Vec::new();
     let mut constant = 0.0;
@@ -983,7 +984,8 @@ impl LPExportableModel for MetaModel<f64> {
             Err(err) => {
                 return format!(
                     "Model Name: {}\n\nExport Error: {}\n",
-                    self.as_basic().name, err
+                    self.as_basic().name,
+                    err
                 );
             }
         };
@@ -1007,8 +1009,11 @@ impl LPExportableModel for MetaModel<f64> {
         output.push('\n');
 
         output.push_str("Symbols:\n");
-        let mut symbols: Vec<&dyn IntermediateSymbol<f64>> =
-            self.symbols().iter().map(|symbol| symbol.as_ref()).collect();
+        let mut symbols: Vec<&dyn IntermediateSymbol<f64>> = self
+            .symbols()
+            .iter()
+            .map(|symbol| symbol.as_ref())
+            .collect();
         symbols.sort_by(|lhs, rhs| lhs.id().name.cmp(&rhs.id().name));
         for symbol in symbols {
             let range = symbol

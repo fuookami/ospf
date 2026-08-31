@@ -1,11 +1,11 @@
 //! 基本机理模型
 //! Basic Mechanism Model
 
-use std::collections::HashMap;
-use std::fmt::Debug;
+use super::{LinearConstraint, QuadraticConstraint};
 use crate::token::{AnyVariable, Token, TokenVariableData};
 use crate::variable::VariableId;
-use super::{LinearConstraint, QuadraticConstraint};
+use std::collections::HashMap;
+use std::fmt::Debug;
 
 /// 基本机理模型 / Basic Mechanism Model
 ///

@@ -22,10 +22,10 @@
 //! assert!((circle.circumference() - 2.0 * std::f64::consts::PI * 3.0).abs() < 1e-10);
 //! ```
 
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use num_traits::{Float, FloatConst, One, Zero};
-use crate::algebra::{Epsilon, Field};
 use super::point::{Point, Point2};
+use crate::algebra::{Epsilon, Field};
+use num_traits::{Float, FloatConst, One, Zero};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 // ============================================================================
 // Circle - 泛型圆

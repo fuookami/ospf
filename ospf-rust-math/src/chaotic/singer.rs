@@ -1,8 +1,8 @@
 //! Singer 映射。
 //! Singer map.
 
-use num_traits::Float;
 use crate::algebra::Field;
+use num_traits::Float;
 scalar_map!(
     /// Singer 映射。
     /// Singer map.
@@ -31,7 +31,10 @@ impl<S: Field + Float> Default for SingerMap<S> {
 
 impl<S: Field + Float> Default for SingerMapGenerator<S> {
     fn default() -> Self {
-        Self::new(SingerMap::default(), S::from(0.5).expect("0.5 must be representable"))
+        Self::new(
+            SingerMap::default(),
+            S::from(0.5).expect("0.5 must be representable"),
+        )
     }
 }
 

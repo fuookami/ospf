@@ -1,13 +1,13 @@
 //! 分散空舱装载限制 / Divide empty loading limits
-use std::error::Error;
-use std::sync::Arc;
+use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAggregation;
+use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
+use crate::framework::demo2::domain::stowage::model::cargo::CargoCode;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::IfFunction;
-use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAggregation;
-use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
-use crate::framework::demo2::domain::stowage::model::cargo::CargoCode;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 空舱位标志变量索引 / Empty position flag variable indices
 ///
@@ -51,13 +51,19 @@ pub fn register_divide_empty_loading_symbols(
         if pair.first >= pos_count {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("adjacent_positions[{}].first ({}) >= position count ({})", i, pair.first, pos_count),
+                format!(
+                    "adjacent_positions[{}].first ({}) >= position count ({})",
+                    i, pair.first, pos_count
+                ),
             )));
         }
         if pair.second >= pos_count {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("adjacent_positions[{}].second ({}) >= position count ({})", i, pair.second, pos_count),
+                format!(
+                    "adjacent_positions[{}].second ({}) >= position count ({})",
+                    i, pair.second, pos_count
+                ),
             )));
         }
     }
@@ -90,21 +96,28 @@ pub fn register_divide_empty_loading_symbols(
     let mut empty_between_cargo_idx = vec![0usize; pair_count];
     for (pair_idx, pair) in adjacent_positions.iter().enumerate() {
         let load_amount1 = load_amount_of(pair.first, false); // non-empty at first
-        let load_amount2 = load_amount_all(pair.second);      // all at second
+        let load_amount2 = load_amount_all(pair.second); // all at second
 
         // condition: loadAmount1 - (loadAmount2 + 1)
         let mut condition_monomials = load_amount1.monomials().to_vec();
         for m in load_amount2.monomials() {
             condition_monomials.push(LinearMonomial::new(-*m.coefficient(), m.var_index()));
         }
-        let condition = Linear::new(condition_monomials, *load_amount1.constant_term() - *load_amount2.constant_term() - 1.0);
+        let condition = Linear::new(
+            condition_monomials,
+            *load_amount1.constant_term() - *load_amount2.constant_term() - 1.0,
+        );
 
-        let then_expr = Linear::new(Vec::new(), 1.0);  // true branch: 1
-        let else_expr = Linear::new(Vec::new(), 0.0);  // false branch: 0
+        let then_expr = Linear::new(Vec::new(), 1.0); // true branch: 1
+        let else_expr = Linear::new(Vec::new(), 0.0); // false branch: 0
 
         let if_fn = IfFunction::new(
             next_id,
-            &format!("soft_security_empty_between_cargo_{}_{}", mode_name(context.mode), pair_idx),
+            &format!(
+                "soft_security_empty_between_cargo_{}_{}",
+                mode_name(context.mode),
+                pair_idx
+            ),
             condition,
             then_expr,
             else_expr,
@@ -119,7 +132,7 @@ pub fn register_divide_empty_loading_symbols(
     // loadAmount1 = loadAmountOf(position1) { Empty }, loadAmount2 = loadAmountOf(position2) { !Empty }
     let mut empty_cargo_between_cargo_idx = vec![0usize; pair_count];
     for (pair_idx, pair) in adjacent_positions.iter().enumerate() {
-        let load_amount1 = load_amount_of(pair.first, true);  // empty at first
+        let load_amount1 = load_amount_of(pair.first, true); // empty at first
         let load_amount2 = load_amount_of(pair.second, false); // non-empty at second
 
         // condition: (loadAmount1 + loadAmount2) - 2
@@ -127,14 +140,21 @@ pub fn register_divide_empty_loading_symbols(
         for m in load_amount2.monomials() {
             condition_monomials.push(LinearMonomial::new(*m.coefficient(), m.var_index()));
         }
-        let condition = Linear::new(condition_monomials, *load_amount1.constant_term() + *load_amount2.constant_term() - 2.0);
+        let condition = Linear::new(
+            condition_monomials,
+            *load_amount1.constant_term() + *load_amount2.constant_term() - 2.0,
+        );
 
         let then_expr = Linear::new(Vec::new(), 1.0);
         let else_expr = Linear::new(Vec::new(), 0.0);
 
         let if_fn = IfFunction::new(
             next_id,
-            &format!("soft_security_empty_cargo_between_cargo_{}_{}", mode_name(context.mode), pair_idx),
+            &format!(
+                "soft_security_empty_cargo_between_cargo_{}_{}",
+                mode_name(context.mode),
+                pair_idx
+            ),
             condition,
             then_expr,
             else_expr,
@@ -150,21 +170,28 @@ pub fn register_divide_empty_loading_symbols(
     let mut empty_between_empty_cargo_idx = vec![0usize; pair_count];
     for (pair_idx, pair) in adjacent_positions.iter().enumerate() {
         let load_amount1 = load_amount_of(pair.first, true); // empty at first
-        let load_amount2 = load_amount_all(pair.second);      // all at second
+        let load_amount2 = load_amount_all(pair.second); // all at second
 
         // condition: loadAmount1 - (loadAmount2 + 1)
         let mut condition_monomials = load_amount1.monomials().to_vec();
         for m in load_amount2.monomials() {
             condition_monomials.push(LinearMonomial::new(-*m.coefficient(), m.var_index()));
         }
-        let condition = Linear::new(condition_monomials, *load_amount1.constant_term() - *load_amount2.constant_term() - 1.0);
+        let condition = Linear::new(
+            condition_monomials,
+            *load_amount1.constant_term() - *load_amount2.constant_term() - 1.0,
+        );
 
         let then_expr = Linear::new(Vec::new(), 1.0);
         let else_expr = Linear::new(Vec::new(), 0.0);
 
         let if_fn = IfFunction::new(
             next_id,
-            &format!("soft_security_empty_between_empty_cargo_{}_{}", mode_name(context.mode), pair_idx),
+            &format!(
+                "soft_security_empty_between_empty_cargo_{}_{}",
+                mode_name(context.mode),
+                pair_idx
+            ),
             condition,
             then_expr,
             else_expr,
@@ -214,9 +241,10 @@ pub fn apply_divide_empty_loading_objective(
         }
     }
     if !objective_terms.is_empty() {
-        let obj_input = ospf_rust_core::model::LinearObjectiveInput::minimize(
-            &format!("soft_security_divide_empty_{}", mode_name(mode)),
-        )
+        let obj_input = ospf_rust_core::model::LinearObjectiveInput::minimize(&format!(
+            "soft_security_divide_empty_{}",
+            mode_name(mode)
+        ))
         .terms(objective_terms.iter().copied());
         model.add_linear_objective_input(obj_input);
     }

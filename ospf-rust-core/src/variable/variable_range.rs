@@ -133,8 +133,8 @@ impl<T> VariableRange<T> {
     where
         T: PartialOrd,
     {
-        let lower_ok = self.lower_bound.as_ref().map_or(true, |lb| value >= lb);
-        let upper_ok = self.upper_bound.as_ref().map_or(true, |ub| value <= ub);
+        let lower_ok = self.lower_bound.as_ref().is_none_or(|lb| value >= lb);
+        let upper_ok = self.upper_bound.as_ref().is_none_or(|ub| value <= ub);
         lower_ok && upper_ok
     }
 

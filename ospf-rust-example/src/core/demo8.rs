@@ -1,14 +1,14 @@
 //! Demo8 模块 / Demo8 module
 use std::error::Error;
 
-use ospf_rust_multiarray::{MultiArray, Shape};
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::model::{ConstraintRelation, MetaModel, ObjectiveCategory};
 use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1, flat_map1_indexed,
+    LinearExpressionSymbol, SymbolCombination, flat_map1, flat_map1_indexed,
 };
 use ospf_rust_core::variable::{UInteger, VariableCombination1D};
+use ospf_rust_multiarray::{MultiArray, Shape};
 
-use super::common::{read_solution_value, solve_typed, extract_coeffs};
+use super::common::{extract_coeffs, read_solution_value, solve_typed};
 
 /// Product data structure
 #[derive(Debug, Clone)]
@@ -19,7 +19,10 @@ struct Product {
 
 impl Product {
     fn new(name: &str, profit: f64) -> Self {
-        Self { name: name.to_string(), profit }
+        Self {
+            name: name.to_string(),
+            profit,
+        }
     }
 }
 
@@ -33,7 +36,11 @@ struct Equipment {
 
 impl Equipment {
     fn new(name: &str, amount: f64, man_hours_by_product: Vec<f64>) -> Self {
-        Self { name: name.to_string(), amount, man_hours_by_product }
+        Self {
+            name: name.to_string(),
+            amount,
+            man_hours_by_product,
+        }
     }
 }
 
@@ -74,29 +81,49 @@ impl EquipmentModel {
         let x_idx = model.register_combination(&x)?;
 
         // Objective: profit = sum(profit_i * x_i)
-        let profit = flat_map1_indexed("profit", products, |i, product| {
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(product.profit, x_idx[i])],
-                0.0,
-            )
-        }, |_, product| product.name.clone());
+        let profit = flat_map1_indexed(
+            "profit",
+            products,
+            |i, product| {
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        product.profit,
+                        x_idx[i],
+                    )],
+                    0.0,
+                )
+            },
+            |_, product| product.name.clone(),
+        );
         model.add_symbol_combination(&profit)?;
 
         // Constraints: man_hours per equipment
-        let man_hours = flat_map1("man_hours", equipments, |equipment| {
-            let monomials: Vec<_> = products.iter().enumerate()
-                .filter_map(|(p, product)| {
-                    let value = equipment.man_hours_by_product[p];
-                    (value != 0.0).then(|| {
-                        ospf_rust_core::symbol::flatten::LinearMonomial::new(value, x_idx[p])
+        let man_hours = flat_map1(
+            "man_hours",
+            equipments,
+            |equipment| {
+                let monomials: Vec<_> = products
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(p, product)| {
+                        let value = equipment.man_hours_by_product[p];
+                        (value != 0.0).then(|| {
+                            ospf_rust_core::symbol::flatten::LinearMonomial::new(value, x_idx[p])
+                        })
                     })
-                })
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, equipment| equipment.name.clone());
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, equipment| equipment.name.clone(),
+        );
         model.add_symbol_combination(&man_hours)?;
 
-        Ok(EquipmentModel { x, x_idx, profit, man_hours })
+        Ok(EquipmentModel {
+            x,
+            x_idx,
+            profit,
+            man_hours,
+        })
     }
 
     fn add_constraints(

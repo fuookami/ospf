@@ -1,11 +1,11 @@
 //! Big-M 约束策略与多项式界推断工具 / Big-M constraint policy and polynomial bound inference utilities
 
-use std::fmt::Debug;
-use num_traits::{FromPrimitive, ToPrimitive};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::Token;
+use num_traits::{FromPrimitive, ToPrimitive};
+use std::fmt::Debug;
 
 /// Big-M 策略配置，包含回退值与最小值。
 /// Big-M policy configuration with fallback and minimum values.
@@ -801,6 +801,7 @@ where
     Some(lower.abs().max(upper.abs()))
 }
 
+/// 推断两个线性多项式差值的范围 / Infer bounds for the difference of two linear polynomials.
 pub fn infer_linear_difference_bounds_from_tokens<V>(
     left: &Linear<V>,
     right: &Linear<V>,
@@ -819,6 +820,7 @@ where
     Some((lower, upper))
 }
 
+/// 推断两个线性多项式差值的绝对界 / Infer an absolute bound for the difference of two linear polynomials.
 pub fn infer_linear_difference_abs_bound_from_tokens<V>(
     left: &Linear<V>,
     right: &Linear<V>,
@@ -878,6 +880,7 @@ fn product_bounds(
 }
 
 #[allow(dead_code)]
+/// 推断二次多项式的范围 / Infer bounds for a quadratic polynomial.
 pub fn infer_quadratic_bounds_from_tokens<V>(
     poly: &Quadratic<V>,
     tokens: &[Token<V>],
@@ -926,6 +929,7 @@ where
 }
 
 #[allow(dead_code)]
+/// 推断二次多项式的绝对界 / Infer an absolute bound for a quadratic polynomial.
 pub fn infer_quadratic_abs_bound_from_tokens<V>(
     poly: &Quadratic<V>,
     tokens: &[Token<V>],
@@ -938,6 +942,7 @@ where
 }
 
 #[allow(dead_code)]
+/// 推断减去常数后的二次多项式范围 / Infer bounds for a shifted quadratic polynomial.
 pub fn infer_quadratic_shifted_bounds_from_tokens<V>(
     poly: &Quadratic<V>,
     right: &V,
@@ -957,6 +962,7 @@ where
 }
 
 #[allow(dead_code)]
+/// 推断减去常数后的二次多项式绝对界 / Infer an absolute bound for a shifted quadratic polynomial.
 pub fn infer_quadratic_shifted_abs_bound_from_tokens<V>(
     poly: &Quadratic<V>,
     right: &V,
@@ -969,6 +975,7 @@ where
     Some(lower.abs().max(upper.abs()))
 }
 
+/// 推断两个二次多项式差值的范围 / Infer bounds for the difference of two quadratic polynomials.
 pub fn infer_quadratic_difference_bounds_from_tokens<V>(
     left: &Quadratic<V>,
     right: &Quadratic<V>,
@@ -987,6 +994,7 @@ where
     Some((lower, upper))
 }
 
+/// 推断两个二次多项式差值的绝对界 / Infer an absolute bound for the difference of two quadratic polynomials.
 pub fn infer_quadratic_difference_abs_bound_from_tokens<V>(
     left: &Quadratic<V>,
     right: &Quadratic<V>,
@@ -999,6 +1007,7 @@ where
     Some(lower.abs().max(upper.abs()))
 }
 
+/// 为线性多项式集合推断 Big-M / Infer a Big-M value for linear polynomials.
 pub fn infer_big_m_for_polynomials<V>(
     polynomials: &[Linear<V>],
     tokens: &[Token<V>],
@@ -1016,6 +1025,7 @@ where
 }
 
 #[allow(dead_code)]
+/// 为二次多项式集合推断 Big-M / Infer a Big-M value for quadratic polynomials.
 pub fn infer_big_m_for_quadratic_polynomials<V>(
     polynomials: &[Quadratic<V>],
     tokens: &[Token<V>],
@@ -1194,8 +1204,7 @@ mod tests {
     #[test]
     fn nonzero_indicator_constraints_generates_four_constraints() {
         let poly = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
-        let constraints =
-            nonzero_indicator_constraints(&poly, 1, 2, 100.0, "test").unwrap();
+        let constraints = nonzero_indicator_constraints(&poly, 1, 2, 100.0, "test").unwrap();
         assert_eq!(constraints.len(), 4);
         assert_eq!(constraints[0].1, "test_band_ub");
         assert_eq!(constraints[1].1, "test_band_lb");
@@ -1211,8 +1220,7 @@ mod tests {
         );
         let big_m = 500.0;
 
-        let new_constraints =
-            nonzero_indicator_constraints(&poly, 5, 6, big_m, "nz").unwrap();
+        let new_constraints = nonzero_indicator_constraints(&poly, 5, 6, big_m, "nz").unwrap();
 
         // Verify the constraints have the expected structure
         // Band UB: f(x) - big_m * y <= epsilon

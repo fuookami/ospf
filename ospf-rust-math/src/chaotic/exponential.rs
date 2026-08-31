@@ -1,9 +1,9 @@
 //! 指数映射。
 //! Exponential map.
 
-use num_traits::Float;
-use crate::algebra::Field;
 use super::helpers::default_float;
+use crate::algebra::Field;
+use num_traits::Float;
 
 scalar_map!(
     /// 指数映射。
@@ -26,7 +26,10 @@ impl<S: Field + Float> Default for ExponentialMap<S> {
 
 impl<S: Field + Float> Default for ExponentialMapGenerator<S> {
     fn default() -> Self {
-        Self::new(ExponentialMap::default(), S::from(0.5).expect("0.5 must be representable"))
+        Self::new(
+            ExponentialMap::default(),
+            S::from(0.5).expect("0.5 must be representable"),
+        )
     }
 }
 

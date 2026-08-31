@@ -7,17 +7,17 @@ use std::collections::{HashMap, HashSet};
 
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_framework::solver::column_generation_solver::{
-    ColumnGenerationSolver, LPResult, FeasibleSolution,
+    ColumnGenerationSolver, FeasibleSolution, LPResult,
 };
 use ospf_rust_framework::solver::framework_solve_options::FrameworkSolveOptions;
 
-use crate::application::iteration::Iteration;
+use crate::GanttError;
+use crate::GanttResult;
 use crate::application::algorithm::policy::ColumnGenerationPolicy;
+use crate::application::iteration::Iteration;
+use crate::domain::task::Cost;
 use crate::domain::task_compilation::context::IterativeTaskCompilationContext;
 use crate::domain::task_compilation::iterative::AddedTaskColumn;
-use crate::domain::task::Cost;
-use crate::GanttResult;
-use crate::GanttError;
 
 /// 任务级列生成算法 / Task-level column generation algorithm
 ///
@@ -116,40 +116,27 @@ where
     ///
     /// 求解 LP 松弛并提取影子价格。
     /// Solves LP relaxation and extracts shadow prices.
-    pub fn solve_rmp_lp(
-        &self,
-        model: &MetaModel<f64>,
-    ) -> GanttResult<LPResult> {
+    pub fn solve_rmp_lp(&self, model: &MetaModel<f64>) -> GanttResult<LPResult> {
         let options = FrameworkSolveOptions::new();
-        let triad_model = model.try_to_linear_triad_model().map_err(|e| {
-                GanttError::Calculation {
+        let triad_model =
+            model
+                .try_to_linear_triad_model()
+                .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to convert model: {:?}", e),
-                }
-            })?;
-        solve_lp_with_options_sync(
-            &self.solver,
-            &triad_model,
-            options,
-        )
-            .map_err(|e| GanttError::Calculation {
+                })?;
+        solve_lp_with_options_sync(&self.solver, &triad_model, options).map_err(|e| {
+            GanttError::Calculation {
                 message: format!("LP solve failed: {:?}", e),
-            })
+            }
+        })
     }
 
     /// 求解 MILP / Solve MILP
-    pub fn solve_milp(
-        &self,
-        model: &MetaModel<f64>,
-    ) -> GanttResult<FeasibleSolution> {
+    pub fn solve_milp(&self, model: &MetaModel<f64>) -> GanttResult<FeasibleSolution> {
         let options = FrameworkSolveOptions::new();
-        solve_with_options_sync(
-            &self.solver,
-            model,
-            options,
-        )
-            .map_err(|e| GanttError::Calculation {
-                message: format!("MILP solve failed: {:?}", e),
-            })
+        solve_with_options_sync(&self.solver, model, options).map_err(|e| GanttError::Calculation {
+            message: format!("MILP solve failed: {:?}", e),
+        })
     }
 
     /// 提取影子价格 / Extract shadow prices
@@ -161,10 +148,9 @@ where
         lp_result: &LPResult,
         constraint_name_to_index: &HashMap<String, usize>,
     ) {
-        self.shadow_prices = self.context.extract_shadow_price(
-            &lp_result.dual_solution,
-            constraint_name_to_index,
-        );
+        self.shadow_prices = self
+            .context
+            .extract_shadow_price(&lp_result.dual_solution, constraint_name_to_index);
     }
 
     /// 检查是否应继续迭代 / Check whether iteration should continue
@@ -290,8 +276,7 @@ mod tests {
     #[test]
     fn test_should_continue_checks() {
         let iter = Iteration::new();
-        let policy = ColumnGenerationPolicy::new()
-            .with_max_iterations(2);
+        let policy = ColumnGenerationPolicy::new().with_max_iterations(2);
 
         // 模拟迭代 0 — 应继续
         assert!(iter.iteration < policy.max_iterations);

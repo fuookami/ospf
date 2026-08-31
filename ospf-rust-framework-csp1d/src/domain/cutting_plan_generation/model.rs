@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 use ospf_rust_core::solver::SolveValue;
 
 use crate::domain::material::{
-    to_f64, Costar, Csp1dQuantity, CuttingPlan, CuttingPlanSlice, Machine, Material, Product,
-    ProductDemand, ShadowPriceMap, MaterialId,
+    Costar, Csp1dQuantity, CuttingPlan, CuttingPlanSlice, Machine, Material, MaterialId, Product,
+    ProductDemand, ShadowPriceMap, to_f64,
 };
 use crate::domain::produce::{Csp1dDomainPolicy, Csp1dGenerationStrategy, Csp1dPricingPolicy};
 
@@ -276,9 +276,18 @@ impl<V: SolveValue> std::fmt::Debug for CuttingPlanGenerationInput<V> {
             .field("domain_policies", &self.domain_policies.len())
             .field("generation_strategies", &self.generation_strategies.len())
             .field("candidate_filters", &self.candidate_filters.len())
-            .field("has_width_feasibility_check", &self.width_feasibility_check.is_some())
-            .field("canonical_key_overrides", &self.canonical_key_overrides.len())
-            .field("dominance_accept_overrides", &self.dominance_accept_overrides.len())
+            .field(
+                "has_width_feasibility_check",
+                &self.width_feasibility_check.is_some(),
+            )
+            .field(
+                "canonical_key_overrides",
+                &self.canonical_key_overrides.len(),
+            )
+            .field(
+                "dominance_accept_overrides",
+                &self.dominance_accept_overrides.len(),
+            )
             .finish()
     }
 }
@@ -579,7 +588,9 @@ pub fn merge_generation_reports<V: SolveValue>(
     let timed_out = reports
         .iter()
         .any(|report| report.statistics.stop_reason == CuttingPlanGenerationStopReason::Timeout)
-        || options.deadline.is_some_and(|deadline| Instant::now() > deadline);
+        || options
+            .deadline
+            .is_some_and(|deadline| Instant::now() > deadline);
     statistics.accepted_plans = plans.len() as i64;
     statistics.elapsed_milliseconds = options.started_at.elapsed().as_millis() as i64;
     statistics.stop_reason = if timed_out {
@@ -614,8 +625,7 @@ fn sum_generation_statistics<V: SolveValue>(
             acc.quantity_cache_misses += statistics.quantity_cache_misses;
             acc.material_slice_template_cache_misses +=
                 statistics.material_slice_template_cache_misses;
-            acc.cross_worker_duplicate_candidates +=
-                statistics.cross_worker_duplicate_candidates;
+            acc.cross_worker_duplicate_candidates += statistics.cross_worker_duplicate_candidates;
             acc.cross_contribution_dominated += statistics.cross_contribution_dominated;
             acc
         },
@@ -653,9 +663,15 @@ impl<V: SolveValue> std::fmt::Debug for Csp1dPricingInput<V> {
             .field("max_generated_plans", &self.max_generated_plans)
             .field("objective_config", &self.objective_config)
             .field("pricing_cost_modifiers", &self.pricing_cost_modifiers.len())
-            .field("pricing_benefit_modifiers", &self.pricing_benefit_modifiers.len())
+            .field(
+                "pricing_benefit_modifiers",
+                &self.pricing_benefit_modifiers.len(),
+            )
             .field("is_improving_judges", &self.is_improving_judges.len())
-            .field("canonical_key_overrides", &self.canonical_key_overrides.len())
+            .field(
+                "canonical_key_overrides",
+                &self.canonical_key_overrides.len(),
+            )
             .field("pricing_policies", &self.pricing_policies.len())
             .finish()
     }

@@ -1,10 +1,10 @@
 //! Nose-Hoover 吸引子。
 //! Nose-Hoover attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Nose-Hoover 吸引子的一阶欧拉步进模型。
@@ -50,7 +50,9 @@ pub fn nose_hoover_attractor<S: Field + Float>(alpha: S, h: S) -> NoseHooverAttr
 /// 创建 Nose-Hoover 吸引子生成器。
 /// Create a Nose-Hoover attractor generator.
 pub fn nose_hoover_attractor_generator<S: Field + Float>(
-    alpha: S, h: S, x: Point3<S>,
+    alpha: S,
+    h: S,
+    x: Point3<S>,
 ) -> NoseHooverAttractorGenerator<S> {
     NoseHooverAttractorGenerator::new(NoseHooverAttractor::new(alpha, h), x)
 }

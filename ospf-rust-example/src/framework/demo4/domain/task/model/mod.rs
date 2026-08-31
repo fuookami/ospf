@@ -7,10 +7,10 @@ pub mod aircraft;
 pub mod aircraft_category;
 /// 机型模型 / Aircraft type model
 pub mod aircraft_type;
-/// 停场航空器模型 / Aircraft on ground model
-pub mod aog;
 /// 机场模型 / Airport model
 pub mod airport;
+/// 停场航空器模型 / Aircraft on ground model
+pub mod aog;
 /// 航班循环模型 / Flight cycle model
 pub mod flight_cycle;
 /// 航段模型 / Flight leg model
@@ -34,10 +34,10 @@ pub mod transfer;
 pub use aircraft::*;
 /// 机型模型重导出 / Aircraft type model re-exports
 pub use aircraft_type::*;
-/// 停场航空器模型重导出 / Aircraft on ground model re-exports
-pub use aog::*;
 /// 机场模型重导出 / Airport model re-exports
 pub use airport::*;
+/// 停场航空器模型重导出 / Aircraft on ground model re-exports
+pub use aog::*;
 /// 航班循环模型重导出 / Flight cycle model re-exports
 pub use flight_cycle::*;
 /// 航段模型重导出 / Flight leg model re-exports

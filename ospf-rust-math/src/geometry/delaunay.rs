@@ -27,10 +27,10 @@
 //! println!("Generated {} triangles", triangles.triangles().len());
 //! ```
 
-use std::collections::{HashMap, HashSet};
 use super::edge::{Edge, Edge2};
 use super::point::Point2;
 use super::triangle::Triangle2;
+use std::collections::{HashMap, HashSet};
 
 // ============================================================================
 // Delaunay 三角剖分结果

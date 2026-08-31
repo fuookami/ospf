@@ -6,19 +6,22 @@
 //! This module adapts generic `ospf-rust-core` solvers to framework-level
 //! `ColumnGenerationSolver` and `LinearBendersDecompositionSolver`.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use ospf_rust_core::error::{CoreError, Result, SolverError};
+use ospf_rust_core::error::{CoreError, Result, SolverError, SolverModelingError};
 use ospf_rust_core::model::flatten::{Quadratic, QuadraticMonomial};
 use ospf_rust_core::model::intermediate::{
-
     LPExportableModel, LinearTriadModel, QuadraticTetradModel, SparseVector,
 };
 use ospf_rust_core::model::mechanism::{ConstraintRelation, LinearInequality, MechanismModel};
-use ospf_rust_core::solver::{Solver, SolverExt, SolverOutput};
+use ospf_rust_core::solver::{
+    SolutionPresence, SolveIssue, SolveReport, Solver, SolverExt, SolverOutput,
+    linear_model_fingerprint, require_infeasibility_certificate,
+    require_infeasibility_certificate_for_model, require_optimal_lp_certificate_for_linear_model,
+    require_optimal_lp_certificate_for_model,
+};
 use ospf_rust_core::variable::VariableId;
+use std::collections::HashMap;
+use std::sync::Arc;
 
-use super::CutSense;
 use super::column_generation_solver::{
     ColumnGenerationSolver, FeasibleSolution, FeasibleSolutionV, LPResult, LPResultV,
     LinearDualSolution, RegistrationStatus, RegistrationStatusCallback, SolvingStatus,
@@ -32,6 +35,7 @@ use super::quadratic_benders_decomposition_solver::{
     QuadraticBendersDecompositionSolver, QuadraticCut, QuadraticFeasibleResult,
     QuadraticInfeasibleResult, QuadraticSubResult,
 };
+use super::{CutSense, FrameworkSolveOptions};
 
 /// Benders 割生成上下文 / Benders cut generation context
 #[derive(Debug, Clone)]
@@ -152,7 +156,7 @@ where
     let file_stem = sanitize_file_stem(solve_name);
     let file_name = format!("{}_{}_{}.lp", file_stem, solver_name, stage);
     model.write_lp(&file_name).map_err(|e| {
-        CoreError::Solver(SolverError::SolveFailed(format!(
+        CoreError::SolverModeling(SolverModelingError::new(format!(
             "failed to export LP model `{}`: {}",
             file_name, e
         )))
@@ -161,47 +165,95 @@ where
 }
 
 pub(crate) fn solver_output_to_feasible(output: &SolverOutput) -> Result<FeasibleSolution> {
-    if matches!(
-        output.status,
-        ospf_rust_core::solver::SolverStatus::TimeLimit
-    ) && output.solution.is_none()
-    {
-        return Err(CoreError::Solver(SolverError::SolveFailed(
-            "solver terminated by time limit without feasible solution".into(),
-        )));
-    }
-    if output.status.is_feasible() {
-        return FeasibleSolution::try_from_output(
-            output,
-            ospf_rust_core::solver::SolveValueConversionPolicy::Strict,
-        );
+    let report = output.clone().try_into_solve_report()?;
+    if report.has_incumbent() {
+        if matches!(
+            output.status,
+            ospf_rust_core::solver::SolverStatus::Feasible
+                | ospf_rust_core::solver::SolverStatus::Optimal
+        ) && report.solution.as_ref().is_some_and(|solution| {
+            solution.objective_value.is_none() && solution.objective.is_none()
+        }) {
+            return Err(CoreError::Solver(SolverError::ContractViolation(
+                "solver returned feasible status but missing objective value".to_owned(),
+            )));
+        }
+        return FeasibleSolution::try_from_report(&report);
     }
 
-    let err = match output.status {
-        ospf_rust_core::solver::SolverStatus::Infeasible => SolverError::Infeasible,
-        ospf_rust_core::solver::SolverStatus::InfeasibleOrUnbounded => {
-            SolverError::SolveFailed("problem is infeasible or unbounded".into())
+    if matches!(
+        output.status,
+        ospf_rust_core::solver::SolverStatus::Feasible
+            | ospf_rust_core::solver::SolverStatus::Optimal
+    ) && output.solution.is_none()
+    {
+        return Err(CoreError::Solver(SolverError::ContractViolation(
+            "solver returned feasible status but missing solution vector".to_owned(),
+        )));
+    }
+
+    let err = match report.problem_status {
+        ospf_rust_core::solver::ProblemStatus::Infeasible => SolverError::Infeasible,
+        ospf_rust_core::solver::ProblemStatus::InfeasibleOrUnbounded => {
+            SolverError::InfeasibleOrUnbounded
         }
-        ospf_rust_core::solver::SolverStatus::Unbounded => SolverError::Unbounded,
-        ospf_rust_core::solver::SolverStatus::TimeLimit => SolverError::SolveFailed(
-            "solver terminated by time limit without feasible solution".into(),
-        ),
-        _ => SolverError::SolveFailed(format!(
-            "solver returned non-feasible status {:?}",
-            output.status
-        )),
+        ospf_rust_core::solver::ProblemStatus::Unbounded => SolverError::Unbounded,
+        _ => solver_error_from_report_without_incumbent(&report),
     };
     Err(CoreError::Solver(err))
+}
+
+fn solver_error_from_report_without_incumbent(report: &SolveReport<f64>) -> SolverError {
+    match report.problem_status {
+        ospf_rust_core::solver::ProblemStatus::Infeasible => SolverError::Infeasible,
+        ospf_rust_core::solver::ProblemStatus::InfeasibleOrUnbounded => {
+            SolverError::InfeasibleOrUnbounded
+        }
+        ospf_rust_core::solver::ProblemStatus::Unbounded => SolverError::Unbounded,
+        _ => match report.termination_reason {
+            ospf_rust_core::solver::TerminationReason::TimeLimit => {
+                SolverError::Timeout(std::time::Duration::ZERO)
+            }
+            ospf_rust_core::solver::TerminationReason::Cancelled => {
+                SolverError::Cancelled("REPORT".to_owned())
+            }
+            ospf_rust_core::solver::TerminationReason::Interrupted => {
+                SolverError::Interrupted("UserInterrupt".to_owned())
+            }
+            ospf_rust_core::solver::TerminationReason::NumericalFailure => {
+                SolverError::NumericalError("solver report has no usable incumbent".to_owned())
+            }
+            ospf_rust_core::solver::TerminationReason::BackendFailure => {
+                SolverError::SolveFailed(format!(
+                    "solver returned no incumbent after backend failure: {:?}",
+                    report.problem_status
+                ))
+            }
+            _ => SolverError::NoSolution,
+        },
+    }
 }
 
 pub(crate) fn solution_vector_from_output(
     output: &SolverOutput,
     context: &str,
 ) -> Result<Vec<f64>> {
-    if !output.status.is_feasible() {
-        return Err(CoreError::Solver(SolverError::SolveFailed(format!(
-            "{} did not produce feasible output: {:?}",
-            context, output.status
+    let report = output.clone().try_into_solve_report()?;
+    if matches!(
+        output.status,
+        ospf_rust_core::solver::SolverStatus::Feasible
+            | ospf_rust_core::solver::SolverStatus::Optimal
+    ) && output.solution.is_none()
+    {
+        return Err(CoreError::Solver(SolverError::ContractViolation(format!(
+            "{} missing solution vector",
+            context
+        ))));
+    }
+    if !report.has_incumbent() {
+        return Err(CoreError::Solver(SolverError::ContractViolation(format!(
+            "{} did not produce an incumbent: {:?}",
+            context, report.problem_status
         ))));
     }
     FeasibleSolution::try_feasible_typed_output_from_output(
@@ -210,9 +262,9 @@ pub(crate) fn solution_vector_from_output(
     )
     .map(|typed_output| typed_output.solution)
     .map_err(|err| match err {
-        CoreError::Solver(SolverError::NoSolution) => CoreError::Solver(SolverError::SolveFailed(
-            format!("{} missing solution vector", context),
-        )),
+        CoreError::Solver(SolverError::NoSolution) => CoreError::Solver(
+            SolverError::ContractViolation(format!("{} missing solution vector", context)),
+        ),
         other => other,
     })
 }
@@ -225,63 +277,178 @@ pub(crate) fn resolve_lp_dual_solution<S>(
 where
     S: Solver + Send + Sync,
 {
-    if let Some(dual) = output.dual_solution.clone() {
-        if lp_dual_row_objective_matches(lp_model, output, &dual) {
-            return Ok(dual[..lp_model.num_constraints()].to_vec());
+    let report = output.clone().try_into_solve_report()?;
+    let model_fingerprint = linear_model_fingerprint(lp_model)?;
+    let mut compatibility_report = report;
+    // 兼容旧 SolverOutput 时重新绑定调用方模型指纹；新路径直接传 report，避免丢失来源。
+    // Rebind the caller model fingerprint for the legacy facade; new paths pass the report directly.
+    compatibility_report.fingerprints.model = Some(model_fingerprint);
+    resolve_lp_dual_solution_from_report(solver, lp_model, &compatibility_report)
+}
+
+pub(crate) fn resolve_lp_dual_solution_from_report<S>(
+    solver: &S,
+    lp_model: &LinearTriadModel,
+    report: &SolveReport<f64>,
+) -> Result<Vec<f64>>
+where
+    S: Solver + Send + Sync,
+{
+    resolve_lp_dual_solution_from_report_with_options(solver, lp_model, report, None)
+}
+
+pub(crate) fn resolve_lp_dual_solution_from_report_with_options<S>(
+    solver: &S,
+    lp_model: &LinearTriadModel,
+    report: &SolveReport<f64>,
+    options: Option<&ospf_rust_core::solver::SolveOptions<'_>>,
+) -> Result<Vec<f64>>
+where
+    S: Solver + Send + Sync,
+{
+    let model_fingerprint = linear_model_fingerprint(lp_model)?;
+    require_optimal_lp_certificate_for_model(report, &model_fingerprint)?;
+    if let Ok(certificate) = require_optimal_lp_certificate_for_linear_model(report, lp_model) {
+        return Ok(certificate.dual.to_vec());
+    }
+
+    resolve_lp_dual_solution_by_model(solver, lp_model, options)
+}
+
+const CERTIFICATE_TOLERANCE: f64 = 1e-7;
+
+fn approximately_equal_certificate(left: f64, right: f64) -> bool {
+    let scale = left.abs().max(right.abs()).max(1.0);
+    (left - right).abs() <= CERTIFICATE_TOLERANCE * scale
+}
+
+fn valid_model_dimensions(model: &LinearTriadModel) -> bool {
+    model.c.len() == model.num_variables()
+        && model.basic.lb.len() == model.num_variables()
+        && model.basic.ub.len() == model.num_variables()
+        && model.basic.b.len() == model.num_constraints()
+        && model.basic.A.rows.len() == model.num_constraints()
+}
+
+fn valid_bound_pair(lower: f64, upper: f64) -> bool {
+    if lower.is_nan() || upper.is_nan() {
+        return false;
+    }
+    if lower.is_infinite() && lower.is_sign_positive() {
+        return false;
+    }
+    if upper.is_infinite() && upper.is_sign_negative() {
+        return false;
+    }
+    true
+}
+
+fn farkas_row_certificate_is_valid(lp_model: &LinearTriadModel, dual: &[f64]) -> bool {
+    let expected_rows = lp_model.num_constraints();
+    if dual.len() < expected_rows || !valid_model_dimensions(lp_model) {
+        return false;
+    }
+    let rows = &dual[..expected_rows];
+    if rows
+        .iter()
+        .any(|value| !value.is_finite() || *value < -CERTIFICATE_TOLERANCE)
+    {
+        return false;
+    }
+    if rows
+        .iter()
+        .all(|value| value.abs() <= CERTIFICATE_TOLERANCE)
+    {
+        return false;
+    }
+
+    let mut transposed_activity = vec![0.0; lp_model.num_variables()];
+    for (row_index, row) in lp_model.basic.A.rows.iter().enumerate() {
+        for (column, coefficient) in &row.entries {
+            if *column >= transposed_activity.len() || !coefficient.is_finite() {
+                return false;
+            }
+            transposed_activity[*column] += coefficient * rows[row_index];
+        }
+    }
+    if transposed_activity.iter().any(|value| !value.is_finite()) {
+        return false;
+    }
+
+    let mut has_general_finite_bound = false;
+    for column in 0..lp_model.num_variables() {
+        let lower = lp_model.basic.lb[column];
+        let upper = lp_model.basic.ub[column];
+        if !valid_bound_pair(lower, upper) || lower > upper {
+            return false;
+        }
+        let has_bound_dual = !(lower.is_infinite() && upper.is_infinite())
+            && !(lower == 0.0 && upper.is_infinite())
+            && !(lower.is_infinite() && upper == 0.0);
+        if has_bound_dual {
+            has_general_finite_bound = true;
+        } else if !approximately_equal_certificate(transposed_activity[column], 0.0) {
+            return false;
         }
     }
 
-    resolve_lp_dual_solution_by_model(solver, lp_model)
-}
-
-fn lp_dual_row_objective_matches(
-    lp_model: &LinearTriadModel,
-    output: &SolverOutput,
-    dual: &[f64],
-) -> bool {
-    let expected_rows = lp_model.num_constraints();
-    if dual.len() < expected_rows {
-        return false;
-    }
-    let Some(primal_objective) = output.objective_value else {
-        return true;
-    };
-    if !primal_objective.is_finite() {
-        return true;
-    }
-
-    let dual_objective = lp_model
+    let row_rhs_product = lp_model
         .basic
         .b
         .iter()
-        .take(expected_rows)
-        .zip(dual.iter())
-        .map(|(rhs, dual_value)| rhs * dual_value)
+        .zip(rows.iter())
+        .map(|(rhs, value)| rhs * value)
         .sum::<f64>();
-    if !dual_objective.is_finite() {
+    if !row_rhs_product.is_finite() {
         return false;
     }
-
-    let scale = primal_objective.abs().max(dual_objective.abs()).max(1.0);
-    (primal_objective - dual_objective).abs() <= 1e-6 * scale
+    has_general_finite_bound || row_rhs_product < -CERTIFICATE_TOLERANCE
 }
 
-fn resolve_lp_dual_solution_by_model<S>(solver: &S, lp_model: &LinearTriadModel) -> Result<Vec<f64>>
+fn resolve_lp_dual_solution_by_model<S>(
+    solver: &S,
+    lp_model: &LinearTriadModel,
+    options: Option<&ospf_rust_core::solver::SolveOptions<'_>>,
+) -> Result<Vec<f64>>
 where
     S: Solver + Send + Sync,
 {
     // 回退：显式构造并求解对偶模型，取前 m 个行乘子。
     // Fallback: explicitly solve dual model and take first m row multipliers.
     let dual_model = lp_model.to_dual();
-    let dual_output = solver.solve_linear(&dual_model)?;
-    let dual_solution = solution_vector_from_output(&dual_output, "dual model")?;
+    let dual_report = match options {
+        Some(options) => solver.solve_linear_report_with_options(&dual_model, options)?,
+        None => solver.solve_linear_report(&dual_model)?,
+    };
+    if !dual_report.is_optimal() {
+        return Err(CoreError::Solver(SolverError::ContractViolation(
+            "explicit dual fallback did not produce a verified optimal report".to_owned(),
+        )));
+    }
+    let dual_solution = dual_report
+        .solution
+        .as_ref()
+        .map(|solution| solution.values.clone())
+        .ok_or_else(|| {
+            CoreError::Solver(SolverError::ContractViolation(
+                "dual model report has no solution vector".to_owned(),
+            ))
+        })?;
     let expected_rows = lp_model.num_constraints();
     if dual_solution.len() < expected_rows {
-        return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+        return Err(CoreError::Solver(SolverError::ContractViolation(format!(
             "dual solution length {} is smaller than expected row count {}",
             dual_solution.len(),
             expected_rows
         ))));
+    }
+    if dual_solution[..expected_rows]
+        .iter()
+        .any(|value| !value.is_finite())
+    {
+        return Err(CoreError::Solver(SolverError::ContractViolation(
+            "explicit dual fallback returned a non-finite multiplier".to_owned(),
+        )));
     }
     Ok(dual_solution[..expected_rows].to_vec())
 }
@@ -294,18 +461,61 @@ pub(crate) fn resolve_farkas_dual_solution<S>(
 where
     S: Solver + Send + Sync,
 {
-    if let Some(farkas_solution) = output.dual_solution.clone() {
-        let expected_rows = lp_model.num_constraints();
-        if farkas_solution.len() >= expected_rows {
-            return Ok(farkas_solution[..expected_rows].to_vec());
+    let report = output.clone().try_into_solve_report()?;
+    let model_fingerprint = linear_model_fingerprint(lp_model)?;
+    let mut compatibility_report = report;
+    // 兼容旧 SolverOutput 时重新绑定调用方模型指纹；新路径直接传 report，避免丢失来源。
+    // Rebind the caller model fingerprint for the legacy facade; new paths pass the report directly.
+    compatibility_report.fingerprints.model = Some(model_fingerprint);
+    resolve_farkas_dual_solution_from_report(solver, lp_model, &compatibility_report)
+}
+
+pub(crate) fn resolve_farkas_dual_solution_from_report<S>(
+    solver: &S,
+    lp_model: &LinearTriadModel,
+    report: &SolveReport<f64>,
+) -> Result<Vec<f64>>
+where
+    S: Solver + Send + Sync,
+{
+    resolve_farkas_dual_solution_from_report_with_options(solver, lp_model, report, None)
+}
+
+pub(crate) fn resolve_farkas_dual_solution_from_report_with_options<S>(
+    solver: &S,
+    lp_model: &LinearTriadModel,
+    report: &SolveReport<f64>,
+    options: Option<&ospf_rust_core::solver::SolveOptions<'_>>,
+) -> Result<Vec<f64>>
+where
+    S: Solver + Send + Sync,
+{
+    let model_fingerprint = linear_model_fingerprint(lp_model)?;
+    require_infeasibility_certificate_for_model(report, &model_fingerprint)?;
+    let evidence = report
+        .proof
+        .as_ref()
+        .filter(|proof| proof.kind == ospf_rust_core::solver::ProofKind::Infeasibility)
+        .and_then(|proof| proof.evidence.clone());
+    let native_candidates = [
+        evidence,
+        report
+            .solution
+            .as_ref()
+            .and_then(|solution| solution.dual_solution.clone()),
+    ];
+    for candidate in native_candidates.into_iter().flatten() {
+        if farkas_row_certificate_is_valid(lp_model, &candidate) {
+            return Ok(candidate[..lp_model.num_constraints()].to_vec());
         }
     }
-    resolve_farkas_dual_solution_by_model(solver, lp_model)
+    resolve_farkas_dual_solution_by_model(solver, lp_model, options)
 }
 
 fn resolve_farkas_dual_solution_by_model<S>(
     solver: &S,
     lp_model: &LinearTriadModel,
+    options: Option<&ospf_rust_core::solver::SolveOptions<'_>>,
 ) -> Result<Vec<f64>>
 where
     S: Solver + Send + Sync,
@@ -313,15 +523,39 @@ where
     // 回退：显式构造并求解 Farkas 对偶模型。
     // Fallback: explicitly solve the Farkas dual model.
     let farkas_model = lp_model.to_farkas_dual();
-    let farkas_output = solver.solve_linear(&farkas_model)?;
-    let farkas_solution = solution_vector_from_output(&farkas_output, "farkas dual model")?;
+    let farkas_report = match options {
+        Some(options) => solver.solve_linear_report_with_options(&farkas_model, options)?,
+        None => solver.solve_linear_report(&farkas_model)?,
+    };
+    if !farkas_report.is_optimal() {
+        return Err(CoreError::Solver(SolverError::ContractViolation(
+            "explicit Farkas fallback did not produce a verified optimal report".to_owned(),
+        )));
+    }
+    let farkas_solution = farkas_report
+        .solution
+        .as_ref()
+        .map(|solution| solution.values.clone())
+        .ok_or_else(|| {
+            CoreError::Solver(SolverError::ContractViolation(
+                "Farkas dual model report has no solution vector".to_owned(),
+            ))
+        })?;
     let expected_rows = lp_model.num_constraints();
     if farkas_solution.len() < expected_rows {
-        return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+        return Err(CoreError::Solver(SolverError::ContractViolation(format!(
             "farkas dual solution length {} is smaller than expected row count {}",
             farkas_solution.len(),
             expected_rows
         ))));
+    }
+    if farkas_solution[..expected_rows]
+        .iter()
+        .any(|value| !value.is_finite())
+    {
+        return Err(CoreError::Solver(SolverError::ContractViolation(
+            "explicit Farkas fallback returned a non-finite multiplier".to_owned(),
+        )));
     }
     Ok(farkas_solution[..expected_rows].to_vec())
 }
@@ -336,7 +570,7 @@ fn append_linear_cut_row(
     let mut row = SparseVector::new();
     for (var_index, coefficient) in coefficients {
         if *var_index >= model.num_variables() {
-            return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+            return Err(CoreError::Solver(SolverError::ContractViolation(format!(
                 "cut `{}` references invalid variable index {} (variables={})",
                 name,
                 var_index,
@@ -423,7 +657,7 @@ fn validate_cut_variable_indexes(
     name: &str,
 ) -> Result<()> {
     if let Some((invalid_index, _)) = coefficients.iter().find(|(index, _)| *index >= dimension) {
-        return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+        return Err(CoreError::Solver(SolverError::ContractViolation(format!(
             "cut `{}` references invalid variable index {} (variables={})",
             name, invalid_index, dimension
         ))));
@@ -485,7 +719,7 @@ pub(crate) fn apply_cuts_to_quadratic_model(
             .iter()
             .find(|((i, j), _)| *i >= augmented.num_variables() || *j >= augmented.num_variables())
         {
-            return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+            return Err(CoreError::Solver(SolverError::ContractViolation(format!(
                 "quadratic cut `{}` references invalid variable pair ({}, {}) with variables={}",
                 base_name,
                 invalid_i,
@@ -707,6 +941,15 @@ where
         model: &LinearTriadModel,
         options: &super::FrameworkSolveOptions,
     ) -> Result<FeasibleSolution> {
+        let report = self.solve_milp_report_impl(model, options)?;
+        FeasibleSolution::try_from_report(&report)
+    }
+
+    fn solve_milp_report_impl(
+        &self,
+        model: &LinearTriadModel,
+        options: &super::FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
         emit_registration_status(
             &self.name,
             model,
@@ -715,10 +958,8 @@ where
         export_lp_model_if_requested(model, &self.name, "milp", options)?;
         let core_callback = build_core_solving_callback(options.solving_status_callback.clone(), 0);
         let core_options = options.to_core_solve_options(core_callback.as_ref());
-        let output = self
-            .solver
-            .solve_linear_with_options(model, &core_options)?;
-        solver_output_to_feasible(&output)
+        self.solver
+            .solve_linear_report_with_options(model, &core_options)
     }
 
     fn solve_milp_typed_impl<V>(
@@ -729,19 +970,8 @@ where
     where
         V: ospf_rust_core::solver::SolveValue,
     {
-        emit_registration_status(
-            &self.name,
-            model,
-            options.registration_status_callback.clone(),
-        )?;
-        export_lp_model_if_requested(model, &self.name, "milp", options)?;
-        let core_callback = build_core_solving_callback(options.solving_status_callback.clone(), 0);
-        let core_options = options.to_core_solve_options(core_callback.as_ref());
-        let output = self
-            .solver
-            .solve_linear_with_options(model, &core_options)?;
-        let typed_output = output.try_into_feasible_typed::<V>(options.value_conversion_policy)?;
-        FeasibleSolutionV::try_from_typed_output(typed_output)
+        let report = self.solve_milp_report_impl(model, options)?;
+        FeasibleSolution::try_from_report(&report)?.try_into_typed(options.value_conversion_policy)
     }
 
     fn solve_lp_impl(
@@ -749,6 +979,15 @@ where
         model: &LinearTriadModel,
         options: &super::FrameworkSolveOptions,
     ) -> Result<LPResult> {
+        let report = self.solve_lp_report_impl(model, options)?;
+        LPResult::try_from_solve_report(&report)
+    }
+
+    fn solve_lp_report_impl(
+        &self,
+        model: &LinearTriadModel,
+        options: &super::FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
         emit_registration_status(
             &self.name,
             model,
@@ -760,16 +999,41 @@ where
 
         let core_callback = build_core_solving_callback(options.solving_status_callback.clone(), 0);
         let core_options = options.to_core_solve_options(core_callback.as_ref());
-        let output = self
+        let mut report = self
             .solver
-            .solve_linear_with_options(&lp_model, &core_options)?;
-        let feasible = solver_output_to_feasible(&output)?;
-        let dual = resolve_lp_dual_solution(&self.solver, &lp_model, &output)?;
-
-        Ok(LPResult::new(
-            feasible,
-            LinearDualSolution::new(dual, Vec::new()),
-        ))
+            .solve_linear_report_with_options(&lp_model, &core_options)?;
+        if report.is_optimal() {
+            match resolve_lp_dual_solution_from_report_with_options(
+                &self.solver,
+                &lp_model,
+                &report,
+                Some(&core_options),
+            ) {
+                Ok(dual) => {
+                    if let Some(solution) = report.solution.as_mut() {
+                        solution.dual_solution = Some(dual);
+                    }
+                }
+                Err(error) => {
+                    // 对偶不可验证时只能保留 incumbent，不能继续声称 exact LP。
+                    // When the dual cannot be verified, retain only the incumbent and do not
+                    // continue claiming an exact LP result.
+                    report.solution_presence = SolutionPresence::Incumbent;
+                    report.proof = None;
+                    report.diagnostics.issues.push(SolveIssue::new(
+                        "LpDualUnavailable",
+                        format!("LP dual could not be verified: {}", error),
+                    ));
+                }
+            }
+        } else if report.has_incumbent() {
+            report.diagnostics.issues.push(SolveIssue::new(
+                "LpNotCertifying",
+                "LP incumbent is retained, but its termination is not an exact optimality certificate",
+            ));
+        }
+        report.validate()?;
+        Ok(report)
     }
 
     fn solve_lp_typed_impl<V>(
@@ -780,32 +1044,8 @@ where
     where
         V: ospf_rust_core::solver::SolveValue,
     {
-        emit_registration_status(
-            &self.name,
-            model,
-            options.registration_status_callback.clone(),
-        )?;
-        let mut lp_model = model.clone();
-        lp_model.linear_relax();
-        export_lp_model_if_requested(&lp_model, &self.name, "lp_relaxed", options)?;
-
-        let core_callback = build_core_solving_callback(options.solving_status_callback.clone(), 0);
-        let core_options = options.to_core_solve_options(core_callback.as_ref());
-        let output = self
-            .solver
-            .solve_linear_with_options(&lp_model, &core_options)?;
-        let typed_output = output
-            .clone()
-            .try_into_feasible_typed::<V>(options.value_conversion_policy)?;
-        let feasible = FeasibleSolutionV::try_from_typed_output(typed_output)?;
-        let dual = resolve_lp_dual_solution(&self.solver, &lp_model, &output)?;
-        let dual_solution = LinearDualSolution::new(dual, Vec::new())
-            .try_into_typed::<V>(options.value_conversion_policy)?;
-
-        Ok(LPResultV {
-            result: feasible,
-            dual_solution,
-        })
+        self.solve_lp_impl(model, options)?
+            .try_into_typed(options.value_conversion_policy)
     }
 }
 
@@ -827,12 +1067,28 @@ where
         self.solve_milp_impl(model, &options)
     }
 
+    async fn solve_milp_report_with_options(
+        &self,
+        model: &LinearTriadModel,
+        options: super::FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_milp_report_impl(model, &options)
+    }
+
     async fn solve_lp_with_options(
         &self,
         model: &LinearTriadModel,
         options: super::FrameworkSolveOptions,
     ) -> Result<LPResult> {
         self.solve_lp_impl(model, &options)
+    }
+
+    async fn solve_lp_report_with_options(
+        &self,
+        model: &LinearTriadModel,
+        options: super::FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_lp_report_impl(model, &options)
     }
 
     fn solve_lp_typed_with_options<'a, V>(
@@ -903,12 +1159,28 @@ where
         self.solve_milp_impl(model, &options)
     }
 
+    fn solve_milp_report_with_options(
+        &self,
+        model: &LinearTriadModel,
+        options: super::FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_milp_report_impl(model, &options)
+    }
+
     fn solve_lp_with_options(
         &self,
         model: &LinearTriadModel,
         options: super::FrameworkSolveOptions,
     ) -> Result<LPResult> {
         self.solve_lp_impl(model, &options)
+    }
+
+    fn solve_lp_report_with_options(
+        &self,
+        model: &LinearTriadModel,
+        options: super::FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_lp_report_impl(model, &options)
     }
 
     fn solve_lp_typed_with_options<V>(
@@ -996,6 +1268,27 @@ where
         self.solver.solve_linear(&augmented_model)
     }
 
+    fn solve_master_report_impl(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+    ) -> Result<SolveReport<f64>> {
+        let augmented_model = apply_linear_cuts(model, cuts)?;
+        self.solver.solve_linear_report(&augmented_model)
+    }
+
+    fn solve_master_report_impl_with_options(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+        options: &FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        let augmented_model = apply_linear_cuts(model, cuts)?;
+        let core_options = options.to_core_solve_options(None);
+        self.solver
+            .solve_linear_report_with_options(&augmented_model, &core_options)
+    }
+
     fn build_subproblem_model(
         &self,
         model: &LinearTriadModel,
@@ -1017,17 +1310,48 @@ where
         model: &LinearTriadModel,
         master_solution: &[f64],
     ) -> Result<LinearSubResult> {
-        let fixed_subproblem = self.build_subproblem_model(model, master_solution);
-        let sub_output = self.solver.solve_linear(&fixed_subproblem)?;
+        self.solve_sub_impl_with_options(model, master_solution, &FrameworkSolveOptions::default())
+    }
 
-        if sub_output.status.is_feasible() {
-            let feasible = solver_output_to_feasible(&sub_output)?;
-            let dual_solution =
-                resolve_lp_dual_solution(&self.solver, &fixed_subproblem, &sub_output)?;
+    fn solve_sub_impl_with_options(
+        &self,
+        model: &LinearTriadModel,
+        master_solution: &[f64],
+        options: &FrameworkSolveOptions,
+    ) -> Result<LinearSubResult> {
+        let fixed_subproblem = self.build_subproblem_model(model, master_solution);
+        let core_options = options.to_core_solve_options(None);
+        let sub_report = self
+            .solver
+            .solve_linear_report_with_options(&fixed_subproblem, &core_options)?;
+        if sub_report.has_incumbent() {
+            if !sub_report.is_optimal() {
+                // 保留非最优 incumbent，但禁止提取 dual 或生成 cut；外层 Benders
+                // 将以实际 termination reason 停止并返回 Feasible 报告。
+                // Preserve a non-optimal incumbent, but do not extract duals or cuts; the outer
+                // Benders loop stops with the actual termination reason and a Feasible report.
+                let feasible = FeasibleSolution::try_from_report(&sub_report)?;
+                return Ok(LinearSubResult::Feasible(
+                    LinearFeasibleResult::new(feasible, LinearDualSolution::default())
+                        .with_report(sub_report),
+                ));
+            }
+            let feasible = FeasibleSolution::try_from_report(&sub_report)?;
+            let dual_solution = resolve_lp_dual_solution_from_report_with_options(
+                &self.solver,
+                &fixed_subproblem,
+                &sub_report,
+                Some(&core_options),
+            )?;
+            let mut certified_report = sub_report.clone();
+            if let Some(solution) = certified_report.solution.as_mut() {
+                solution.dual_solution = Some(dual_solution.clone());
+            }
             let mut result = LinearFeasibleResult::new(
                 feasible,
                 LinearDualSolution::new(dual_solution.clone(), Vec::new()),
-            );
+            )
+            .with_report(certified_report);
 
             if let Some(context) = &self.cut_context {
                 if let Some(objective_variable) = context.objective_variable {
@@ -1054,13 +1378,23 @@ where
             return Ok(LinearSubResult::Feasible(result));
         }
 
-        if sub_output.status.is_infeasible() {
-            let farkas_solution =
-                resolve_farkas_dual_solution(&self.solver, &fixed_subproblem, &sub_output)?;
+        if sub_report.problem_status == ospf_rust_core::solver::ProblemStatus::Infeasible {
+            require_infeasibility_certificate(&sub_report)?;
+            let farkas_solution = resolve_farkas_dual_solution_from_report_with_options(
+                &self.solver,
+                &fixed_subproblem,
+                &sub_report,
+                Some(&core_options),
+            )?;
+            let mut certified_report = sub_report.clone();
+            if let Some(proof) = certified_report.proof.as_mut() {
+                proof.evidence = Some(farkas_solution.clone());
+            }
             let mut result = LinearInfeasibleResult::new(LinearDualSolution::new(
                 farkas_solution.clone(),
                 Vec::new(),
-            ));
+            ))
+            .with_report(certified_report);
 
             if let Some(context) = &self.cut_context {
                 let fixed_by_id =
@@ -1084,14 +1418,13 @@ where
             return Ok(LinearSubResult::Infeasible(result));
         }
 
-        if sub_output.status.is_unbounded() {
+        if sub_report.problem_status == ospf_rust_core::solver::ProblemStatus::Unbounded {
             return Err(CoreError::Solver(SolverError::Unbounded));
         }
 
-        Err(CoreError::Solver(SolverError::SolveFailed(format!(
-            "sub-problem solve failed with status {:?}",
-            sub_output.status
-        ))))
+        Err(CoreError::Solver(
+            solver_error_from_report_without_incumbent(&sub_report),
+        ))
     }
 }
 
@@ -1113,12 +1446,38 @@ where
         self.solve_master_impl(model, cuts)
     }
 
+    async fn solve_master_report(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_report_impl(model, cuts)
+    }
+
+    async fn solve_master_report_with_options(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+        options: &FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_report_impl_with_options(model, cuts, options)
+    }
+
     async fn solve_sub(
         &self,
         model: &LinearTriadModel,
         master_solution: &[f64],
     ) -> Result<LinearSubResult> {
         self.solve_sub_impl(model, master_solution)
+    }
+
+    async fn solve_sub_with_options(
+        &self,
+        model: &LinearTriadModel,
+        master_solution: &[f64],
+        options: &FrameworkSolveOptions,
+    ) -> Result<LinearSubResult> {
+        self.solve_sub_impl_with_options(model, master_solution, options)
     }
 
     fn solve_sub_typed<'a, V>(
@@ -1150,12 +1509,38 @@ where
         self.solve_master_impl(model, cuts)
     }
 
+    fn solve_master_report(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_report_impl(model, cuts)
+    }
+
+    fn solve_master_report_with_options(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+        options: &FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_report_impl_with_options(model, cuts, options)
+    }
+
     fn solve_sub(
         &self,
         model: &LinearTriadModel,
         master_solution: &[f64],
     ) -> Result<LinearSubResult> {
         self.solve_sub_impl(model, master_solution)
+    }
+
+    fn solve_sub_with_options(
+        &self,
+        model: &LinearTriadModel,
+        master_solution: &[f64],
+        options: &FrameworkSolveOptions,
+    ) -> Result<LinearSubResult> {
+        self.solve_sub_impl_with_options(model, master_solution, options)
     }
 
     fn solve_sub_typed<V>(
@@ -1218,6 +1603,29 @@ where
         self.solver.solve_quadratic(&augmented_model)
     }
 
+    fn solve_master_quadratic_report_impl(
+        &self,
+        model: &QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+    ) -> Result<SolveReport<f64>> {
+        let augmented_model = apply_cuts_to_quadratic_model(model, linear_cuts, quadratic_cuts)?;
+        self.solver.solve_quadratic_report(&augmented_model)
+    }
+
+    fn solve_master_quadratic_report_impl_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+        options: &FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        let augmented_model = apply_cuts_to_quadratic_model(model, linear_cuts, quadratic_cuts)?;
+        let core_options = options.to_core_solve_options(None);
+        self.solver
+            .solve_quadratic_report_with_options(&augmented_model, &core_options)
+    }
+
     fn build_subproblem_model(
         &self,
         model: &QuadraticTetradModel,
@@ -1260,19 +1668,60 @@ where
         model: &QuadraticTetradModel,
         master_solution: &[f64],
     ) -> Result<QuadraticSubResult> {
-        let fixed_subproblem = self.build_subproblem_model(model, master_solution);
-        let sub_output = self.solver.solve_quadratic(&fixed_subproblem)?;
+        self.solve_sub_quadratic_impl_with_options(
+            model,
+            master_solution,
+            &FrameworkSolveOptions::default(),
+        )
+    }
 
-        if sub_output.status.is_feasible() {
-            let feasible = solver_output_to_feasible(&sub_output)?;
-            let mut dual_solution = sub_output.dual_solution.clone().unwrap_or_default();
+    fn solve_sub_quadratic_impl_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        master_solution: &[f64],
+        options: &FrameworkSolveOptions,
+    ) -> Result<QuadraticSubResult> {
+        let fixed_subproblem = self.build_subproblem_model(model, master_solution);
+        let core_options = options.to_core_solve_options(None);
+        let sub_report = self
+            .solver
+            .solve_quadratic_report_with_options(&fixed_subproblem, &core_options)?;
+        if sub_report.has_incumbent() {
+            if !sub_report.is_optimal() {
+                // 保留非最优 incumbent，但禁止提取 dual 或生成 cut；外层 Benders
+                // 将以实际 termination reason 停止并返回 Feasible 报告。
+                // Preserve a non-optimal incumbent, but do not extract duals or cuts; the outer
+                // Benders loop stops with the actual termination reason and a Feasible report.
+                let feasible = FeasibleSolution::try_from_report(&sub_report)?;
+                return Ok(QuadraticSubResult::Feasible(QuadraticFeasibleResult::new(
+                    LinearFeasibleResult::new(feasible, LinearDualSolution::default())
+                        .with_report(sub_report),
+                )));
+            }
+            let feasible = FeasibleSolution::try_from_report(&sub_report)?;
+            let mut dual_solution = sub_report
+                .solution
+                .as_ref()
+                .and_then(|solution| {
+                    solution
+                        .quadratic_dual_solution
+                        .clone()
+                        .or_else(|| solution.dual_solution.clone())
+                })
+                .unwrap_or_default();
             if dual_solution.is_empty() {
                 if let Some(linear_surrogate) =
                     quadratic_model_to_linear_surrogate(&fixed_subproblem)
                 {
-                    let linear_output = self.solver.solve_linear(&linear_surrogate)?;
-                    dual_solution =
-                        resolve_lp_dual_solution(&self.solver, &linear_surrogate, &linear_output)?;
+                    let linear_report = self
+                        .solver
+                        .solve_linear_report_with_options(&linear_surrogate, &core_options)?;
+                    dual_solution = resolve_lp_dual_solution_from_report_with_options(
+                        &self.solver,
+                        &linear_surrogate,
+                        &linear_report,
+                        Some(&core_options),
+                    )?;
                 }
             }
 
@@ -1294,7 +1743,14 @@ where
             let mut linear_result = LinearFeasibleResult::new(
                 feasible,
                 LinearDualSolution::new(dual_solution.clone(), Vec::new()),
-            );
+            )
+            .with_report({
+                let mut certified_report = sub_report.clone();
+                if let Some(solution) = certified_report.solution.as_mut() {
+                    solution.dual_solution = Some(dual_solution.clone());
+                }
+                certified_report
+            });
             let mut generated_linear_cuts = Vec::new();
             if let Some(context) = &self.cut_context {
                 if let Some(objective_variable) = context.objective_variable {
@@ -1341,14 +1797,40 @@ where
             return Ok(QuadraticSubResult::Feasible(quadratic_result));
         }
 
-        if sub_output.status.is_infeasible() {
-            let mut farkas_solution = sub_output.dual_solution.clone().unwrap_or_default();
+        if sub_report.problem_status == ospf_rust_core::solver::ProblemStatus::Infeasible {
+            require_infeasibility_certificate(&sub_report)?;
+            let mut farkas_solution = sub_report
+                .solution
+                .as_ref()
+                .and_then(|solution| {
+                    solution
+                        .quadratic_dual_solution
+                        .clone()
+                        .or_else(|| solution.dual_solution.clone())
+                })
+                .or_else(|| {
+                    sub_report
+                        .proof
+                        .as_ref()
+                        .filter(|proof| {
+                            proof.kind == ospf_rust_core::solver::ProofKind::Infeasibility
+                        })
+                        .and_then(|proof| proof.evidence.clone())
+                })
+                .unwrap_or_default();
             if farkas_solution.is_empty() {
                 if let Some(linear_surrogate) =
                     quadratic_model_to_linear_surrogate(&fixed_subproblem)
                 {
-                    farkas_solution =
-                        resolve_farkas_dual_solution(&self.solver, &linear_surrogate, &sub_output)?;
+                    let linear_report = self
+                        .solver
+                        .solve_linear_report_with_options(&linear_surrogate, &core_options)?;
+                    farkas_solution = resolve_farkas_dual_solution_from_report_with_options(
+                        &self.solver,
+                        &linear_surrogate,
+                        &linear_report,
+                        Some(&core_options),
+                    )?;
                 }
             }
 
@@ -1367,7 +1849,14 @@ where
             let mut linear_result = LinearInfeasibleResult::new(LinearDualSolution::new(
                 farkas_solution.clone(),
                 Vec::new(),
-            ));
+            ))
+            .with_report({
+                let mut certified_report = sub_report.clone();
+                if let Some(proof) = certified_report.proof.as_mut() {
+                    proof.evidence = Some(farkas_solution.clone());
+                }
+                certified_report
+            });
             let mut generated_linear_cuts = Vec::new();
             if let Some(context) = &self.cut_context {
                 if !farkas_solution.is_empty() {
@@ -1411,14 +1900,13 @@ where
             return Ok(QuadraticSubResult::Infeasible(quadratic_result));
         }
 
-        if sub_output.status.is_unbounded() {
+        if sub_report.problem_status == ospf_rust_core::solver::ProblemStatus::Unbounded {
             return Err(CoreError::Solver(SolverError::Unbounded));
         }
 
-        Err(CoreError::Solver(SolverError::SolveFailed(format!(
-            "quadratic sub-problem solve failed with status {:?}",
-            sub_output.status
-        ))))
+        Err(CoreError::Solver(
+            solver_error_from_report_without_incumbent(&sub_report),
+        ))
     }
 
     fn solve_master_linear_impl(
@@ -1428,6 +1916,15 @@ where
     ) -> Result<SolverOutput> {
         let augmented_model = apply_linear_cuts(model, cuts)?;
         self.solver.solve_linear(&augmented_model)
+    }
+
+    fn solve_master_linear_report_impl(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+    ) -> Result<SolveReport<f64>> {
+        let augmented_model = apply_linear_cuts(model, cuts)?;
+        self.solver.solve_linear_report(&augmented_model)
     }
 
     fn solve_sub_linear_impl(
@@ -1441,22 +1938,34 @@ where
             .as_ref()
             .map(|context| context.fixed_variable_ids.as_slice())
             .unwrap_or_default();
-        fix_linear_subproblem_variables(
-            &mut fixed_subproblem,
-            master_solution,
-            fixed_variable_ids,
-        );
+        fix_linear_subproblem_variables(&mut fixed_subproblem, master_solution, fixed_variable_ids);
         fixed_subproblem.linear_relax();
 
-        let sub_output = self.solver.solve_linear(&fixed_subproblem)?;
-        if sub_output.status.is_feasible() {
-            let feasible = solver_output_to_feasible(&sub_output)?;
+        let sub_report = self.solver.solve_linear_report(&fixed_subproblem)?;
+        if sub_report.has_incumbent() {
+            if !sub_report.is_optimal() {
+                // 保留非最优 incumbent，但禁止提取 dual 或生成 cut；外层 Benders
+                // 将以实际 termination reason 停止并返回 Feasible 报告。
+                // Preserve a non-optimal incumbent, but do not extract duals or cuts; the outer
+                // Benders loop stops with the actual termination reason and a Feasible report.
+                let feasible = FeasibleSolution::try_from_report(&sub_report)?;
+                return Ok(LinearSubResult::Feasible(
+                    LinearFeasibleResult::new(feasible, LinearDualSolution::default())
+                        .with_report(sub_report),
+                ));
+            }
+            let feasible = FeasibleSolution::try_from_report(&sub_report)?;
             let dual_solution =
-                resolve_lp_dual_solution(&self.solver, &fixed_subproblem, &sub_output)?;
+                resolve_lp_dual_solution_from_report(&self.solver, &fixed_subproblem, &sub_report)?;
+            let mut certified_report = sub_report.clone();
+            if let Some(solution) = certified_report.solution.as_mut() {
+                solution.dual_solution = Some(dual_solution.clone());
+            }
             let mut result = LinearFeasibleResult::new(
                 feasible,
                 LinearDualSolution::new(dual_solution.clone(), Vec::new()),
-            );
+            )
+            .with_report(certified_report);
             if let Some(context) = &self.cut_context {
                 if let Some(objective_variable) = context.objective_variable {
                     let fixed_by_id =
@@ -1481,13 +1990,22 @@ where
             return Ok(LinearSubResult::Feasible(result));
         }
 
-        if sub_output.status.is_infeasible() {
-            let farkas_solution =
-                resolve_farkas_dual_solution(&self.solver, &fixed_subproblem, &sub_output)?;
+        if sub_report.problem_status == ospf_rust_core::solver::ProblemStatus::Infeasible {
+            require_infeasibility_certificate(&sub_report)?;
+            let farkas_solution = resolve_farkas_dual_solution_from_report(
+                &self.solver,
+                &fixed_subproblem,
+                &sub_report,
+            )?;
+            let mut certified_report = sub_report.clone();
+            if let Some(proof) = certified_report.proof.as_mut() {
+                proof.evidence = Some(farkas_solution.clone());
+            }
             let mut result = LinearInfeasibleResult::new(LinearDualSolution::new(
                 farkas_solution.clone(),
                 Vec::new(),
-            ));
+            ))
+            .with_report(certified_report);
 
             if let Some(context) = &self.cut_context {
                 let fixed_by_id =
@@ -1510,14 +2028,13 @@ where
             return Ok(LinearSubResult::Infeasible(result));
         }
 
-        if sub_output.status.is_unbounded() {
+        if sub_report.problem_status == ospf_rust_core::solver::ProblemStatus::Unbounded {
             return Err(CoreError::Solver(SolverError::Unbounded));
         }
 
-        Err(CoreError::Solver(SolverError::SolveFailed(format!(
-            "sub-problem solve failed with status {:?}",
-            sub_output.status
-        ))))
+        Err(CoreError::Solver(
+            solver_error_from_report_without_incumbent(&sub_report),
+        ))
     }
 }
 
@@ -1537,6 +2054,14 @@ where
         cuts: &[LinearCut],
     ) -> Result<SolverOutput> {
         self.solve_master_linear_impl(model, cuts)
+    }
+
+    async fn solve_master_report(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_linear_report_impl(model, cuts)
     }
 
     async fn solve_sub(
@@ -1576,6 +2101,14 @@ where
         self.solve_master_linear_impl(model, cuts)
     }
 
+    fn solve_master_report(
+        &self,
+        model: &LinearTriadModel,
+        cuts: &[LinearCut],
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_linear_report_impl(model, cuts)
+    }
+
     fn solve_sub(
         &self,
         model: &LinearTriadModel,
@@ -1613,12 +2146,45 @@ where
         self.solve_master_quadratic_impl(model, linear_cuts, quadratic_cuts)
     }
 
+    async fn solve_master_quadratic_report(
+        &self,
+        model: &QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_quadratic_report_impl(model, linear_cuts, quadratic_cuts)
+    }
+
+    async fn solve_master_quadratic_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+        options: &FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_quadratic_report_impl_with_options(
+            model,
+            linear_cuts,
+            quadratic_cuts,
+            options,
+        )
+    }
+
     async fn solve_sub_quadratic(
         &self,
         model: &QuadraticTetradModel,
         master_solution: &[f64],
     ) -> Result<QuadraticSubResult> {
         self.solve_sub_quadratic_impl(model, master_solution)
+    }
+
+    async fn solve_sub_quadratic_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        master_solution: &[f64],
+        options: &FrameworkSolveOptions,
+    ) -> Result<QuadraticSubResult> {
+        self.solve_sub_quadratic_impl_with_options(model, master_solution, options)
     }
 
     fn solve_sub_quadratic_typed<'a, V>(
@@ -1653,12 +2219,45 @@ where
         self.solve_master_quadratic_impl(model, linear_cuts, quadratic_cuts)
     }
 
+    fn solve_master_quadratic_report(
+        &self,
+        model: &QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_quadratic_report_impl(model, linear_cuts, quadratic_cuts)
+    }
+
+    fn solve_master_quadratic_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+        options: &FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_master_quadratic_report_impl_with_options(
+            model,
+            linear_cuts,
+            quadratic_cuts,
+            options,
+        )
+    }
+
     fn solve_sub_quadratic(
         &self,
         model: &QuadraticTetradModel,
         master_solution: &[f64],
     ) -> Result<QuadraticSubResult> {
         self.solve_sub_quadratic_impl(model, master_solution)
+    }
+
+    fn solve_sub_quadratic_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        master_solution: &[f64],
+        options: &FrameworkSolveOptions,
+    ) -> Result<QuadraticSubResult> {
+        self.solve_sub_quadratic_impl_with_options(model, master_solution, options)
     }
 
     fn solve_sub_quadratic_typed<V>(
@@ -1692,13 +2291,54 @@ mod tests {
         ObjectiveCategory,
     };
     use ospf_rust_core::solver::{
-        LinearSolver, QuadraticSolver, SolverCapability, SolverInfo, SolverStatus,
+        LinearSolver, QuadraticSolver, SolveReport, SolverCapability, SolverInfo, SolverProvenance,
+        SolverStatus, TerminationReason, linear_model_fingerprint, quadratic_model_fingerprint,
+        solver_output_to_report_with_provenance, verify_native_terminal_proof,
     };
     use ospf_rust_core::token::Token;
     use ospf_rust_core::variable::{ContinuousVariableItem, UContinuousVariableItem};
 
+    #[test]
+    fn report_without_incumbent_keeps_terminal_and_backend_error_boundaries() {
+        let time_limit = SolveReport::builder(
+            ospf_rust_core::solver::ProblemStatus::Unknown,
+            ospf_rust_core::solver::TerminationReason::TimeLimit,
+        )
+        .build()
+        .expect("time-limit report should be valid");
+        assert!(matches!(
+            solver_error_from_report_without_incumbent(&time_limit),
+            SolverError::Timeout(_)
+        ));
+
+        let cancelled = SolveReport::builder(
+            ospf_rust_core::solver::ProblemStatus::Unknown,
+            ospf_rust_core::solver::TerminationReason::Cancelled,
+        )
+        .build()
+        .expect("cancelled report should be valid");
+        assert!(matches!(
+            solver_error_from_report_without_incumbent(&cancelled),
+            SolverError::Cancelled(_)
+        ));
+
+        let backend_failure = SolveReport::builder(
+            ospf_rust_core::solver::ProblemStatus::Unknown,
+            ospf_rust_core::solver::TerminationReason::BackendFailure,
+        )
+        .build()
+        .expect("backend-failure report should be valid");
+        assert!(matches!(
+            solver_error_from_report_without_incumbent(&backend_failure),
+            SolverError::SolveFailed(_)
+        ));
+    }
+
     #[derive(Debug)]
     struct MockCoreColumnGenerationSolver;
+
+    #[derive(Debug)]
+    struct VerifiedInfeasibleColumnGenerationSolver;
 
     #[test]
     fn linear_subproblem_fixes_only_declared_shared_variables_by_id() {
@@ -1732,12 +2372,10 @@ mod tests {
         fix_quadratic_subproblem_variables(&mut model, &[4.0, 99.0], &[shared_id]);
 
         assert!(
-            model.basic.linear.lb[0].is_infinite()
-                && model.basic.linear.lb[0].is_sign_negative()
+            model.basic.linear.lb[0].is_infinite() && model.basic.linear.lb[0].is_sign_negative()
         );
         assert!(
-            model.basic.linear.ub[0].is_infinite()
-                && model.basic.linear.ub[0].is_sign_positive()
+            model.basic.linear.ub[0].is_infinite() && model.basic.linear.ub[0].is_sign_positive()
         );
         assert_eq!(model.basic.linear.lb[1], 4.0);
         assert_eq!(model.basic.linear.ub[1], 4.0);
@@ -1808,8 +2446,7 @@ mod tests {
         let output = SolverOutput::new(SolverStatus::TimeLimit);
         let err = solver_output_to_feasible(&output)
             .expect_err("time limit without feasible solution should fail");
-        let message = err.to_string();
-        assert!(message.contains("time limit"));
+        assert!(matches!(err, CoreError::Solver(SolverError::Timeout(_))));
     }
 
     impl SolverInfo for MockCoreColumnGenerationSolver {
@@ -1834,6 +2471,36 @@ mod tests {
         }
     }
 
+    impl SolverInfo for VerifiedInfeasibleColumnGenerationSolver {
+        fn name(&self) -> &str {
+            "verified_infeasible_column_generation_solver"
+        }
+
+        fn capabilities(&self) -> Vec<SolverCapability> {
+            vec![SolverCapability::Linear, SolverCapability::Quadratic]
+        }
+    }
+
+    impl LinearSolver for VerifiedInfeasibleColumnGenerationSolver {
+        fn solve_linear(&self, _model: &LinearTriadModel) -> Result<SolverOutput> {
+            Ok(SolverOutput::new(SolverStatus::Infeasible))
+        }
+
+        fn solve_linear_report(&self, model: &LinearTriadModel) -> Result<SolveReport<f64>> {
+            verified_linear_report(model, SolverOutput::new(SolverStatus::Infeasible))
+        }
+    }
+
+    impl QuadraticSolver for VerifiedInfeasibleColumnGenerationSolver {
+        fn solve_quadratic(&self, _model: &QuadraticTetradModel) -> Result<SolverOutput> {
+            Ok(SolverOutput::new(SolverStatus::Infeasible))
+        }
+
+        fn solve_quadratic_report(&self, model: &QuadraticTetradModel) -> Result<SolveReport<f64>> {
+            verified_quadratic_report(model, SolverOutput::new(SolverStatus::Infeasible))
+        }
+    }
+
     fn build_single_row_lp_model() -> LinearTriadModel {
         let mut basic = BasicLinearTriadModel::new("single_row_lp");
         basic.add_variable_with_bounds(
@@ -1848,6 +2515,100 @@ mod tests {
         let mut model = LinearTriadModel::from_basic(basic);
         model.set_objective(vec![1.0], ObjectiveCategory::Maximum);
         model
+    }
+
+    fn build_infeasible_free_variable_model() -> LinearTriadModel {
+        let mut basic = BasicLinearTriadModel::new("infeasible_free_variable");
+        basic.add_variable_with_bounds(
+            Token::from_generic(ContinuousVariableItem::auto("x"), 0),
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            ospf_rust_core::variable::VariableType::Continuous,
+        );
+        let mut upper = SparseVector::new();
+        upper.add(0, 1.0);
+        basic.add_constraint(upper, -1.0);
+        let mut lower = SparseVector::new();
+        lower.add(0, -1.0);
+        basic.add_constraint(lower, -1.0);
+        LinearTriadModel::from_basic(basic)
+    }
+
+    #[test]
+    fn column_generation_lp_report_preserves_verified_infeasibility() {
+        let model = build_infeasible_free_variable_model();
+        let adapter = CoreColumnGenerationAdapter::new(
+            "verified_infeasible_column_generation",
+            VerifiedInfeasibleColumnGenerationSolver,
+        );
+
+        let report = adapter
+            .solve_lp_report_impl(&model, &FrameworkSolveOptions::default())
+            .expect("report-first LP entry should preserve verified infeasibility");
+        assert_eq!(
+            report.problem_status,
+            ospf_rust_core::solver::ProblemStatus::Infeasible
+        );
+        assert_eq!(
+            report.termination_reason,
+            ospf_rust_core::solver::TerminationReason::Completed
+        );
+        assert!(
+            require_infeasibility_certificate_for_model(
+                &report,
+                &linear_model_fingerprint(&model).expect("model fingerprint should be available")
+            )
+            .is_ok(),
+            "verified infeasible report must remain consumable as a certificate"
+        );
+
+        let legacy_result = adapter.solve_lp_impl(&model, &FrameworkSolveOptions::default());
+        let error = legacy_result.expect_err(
+            "legacy LPResult must reject infeasibility instead of erasing the report contract",
+        );
+        assert!(matches!(
+            error,
+            CoreError::Solver(SolverError::ContractViolation(message))
+                if message.contains("LP report is not certifying")
+        ));
+    }
+
+    fn verified_linear_report(
+        model: &LinearTriadModel,
+        output: SolverOutput,
+    ) -> Result<SolveReport<f64>> {
+        let native_status = output.status;
+        let mut report = solver_output_to_report_with_provenance(
+            output,
+            SolverProvenance {
+                solver_id: "test/native".to_owned(),
+                backend_name: "test".to_owned(),
+                ..SolverProvenance::default()
+            },
+        )?;
+        verify_native_terminal_proof(&mut report, native_status)?;
+        report.fingerprints.model = Some(linear_model_fingerprint(model)?);
+        report.validate()?;
+        Ok(report)
+    }
+
+    fn verified_quadratic_report(
+        model: &QuadraticTetradModel,
+        output: SolverOutput,
+    ) -> Result<SolveReport<f64>> {
+        let native_status = output.status;
+        let mut report = solver_output_to_report_with_provenance(
+            output,
+            SolverProvenance {
+                solver_id: "test/native-quadratic".to_owned(),
+                backend_name: "test".to_owned(),
+                ..SolverProvenance::default()
+            },
+        )?;
+        verify_native_terminal_proof(&mut report, native_status)?;
+        report.fingerprints.model = Some(quadratic_model_fingerprint(model)?);
+        report.validate()?;
+        Ok(report)
     }
 
     #[derive(Debug)]
@@ -1866,18 +2627,167 @@ mod tests {
     impl LinearSolver for DualFallbackSolver {
         fn solve_linear(&self, model: &LinearTriadModel) -> Result<SolverOutput> {
             if model.basic.name.ends_with("_farkas_dual") {
-                return Ok(SolverOutput::optimal(0.0, vec![0.5]));
+                return Ok(SolverOutput::optimal(0.0, vec![0.5, 0.5]));
             }
             if model.basic.name.ends_with("_dual") {
                 return Ok(SolverOutput::optimal(2.0, vec![1.0]));
             }
             Ok(SolverOutput::optimal(2.0, vec![2.0]))
         }
+
+        fn solve_linear_report(&self, model: &LinearTriadModel) -> Result<SolveReport<f64>> {
+            verified_linear_report(model, self.solve_linear(model)?)
+        }
     }
 
     impl QuadraticSolver for DualFallbackSolver {
+        fn solve_quadratic(&self, model: &QuadraticTetradModel) -> Result<SolverOutput> {
+            Ok(SolverOutput::optimal(0.0, vec![0.0; model.num_variables()]))
+        }
+
+        fn solve_quadratic_report(&self, model: &QuadraticTetradModel) -> Result<SolveReport<f64>> {
+            verified_quadratic_report(model, self.solve_quadratic(model)?)
+        }
+    }
+
+    #[derive(Debug)]
+    struct DualUnavailableSolver;
+
+    impl SolverInfo for DualUnavailableSolver {
+        fn name(&self) -> &str {
+            "dual_unavailable_solver"
+        }
+
+        fn capabilities(&self) -> Vec<SolverCapability> {
+            vec![SolverCapability::Linear, SolverCapability::Quadratic]
+        }
+    }
+
+    impl LinearSolver for DualUnavailableSolver {
+        fn solve_linear(&self, model: &LinearTriadModel) -> Result<SolverOutput> {
+            if model.basic.name.ends_with("_dual") {
+                return Err(CoreError::solver_backend(
+                    "explicit dual backend is unavailable",
+                ));
+            }
+            Ok(SolverOutput::optimal(2.0, vec![2.0]))
+        }
+
+        fn solve_linear_report(&self, model: &LinearTriadModel) -> Result<SolveReport<f64>> {
+            verified_linear_report(model, self.solve_linear(model)?)
+        }
+
+        fn solve_linear_report_with_options(
+            &self,
+            model: &LinearTriadModel,
+            _options: &ospf_rust_core::solver::SolveOptions<'_>,
+        ) -> Result<SolveReport<f64>> {
+            self.solve_linear_report(model)
+        }
+    }
+
+    impl QuadraticSolver for DualUnavailableSolver {
+        fn solve_quadratic(&self, model: &QuadraticTetradModel) -> Result<SolverOutput> {
+            Ok(SolverOutput::optimal(0.0, vec![0.0; model.num_variables()]))
+        }
+
+        fn solve_quadratic_report(&self, model: &QuadraticTetradModel) -> Result<SolveReport<f64>> {
+            verified_quadratic_report(model, self.solve_quadratic(model)?)
+        }
+    }
+
+    #[derive(Debug)]
+    struct NonOptimalSubproblemSolver;
+
+    impl SolverInfo for NonOptimalSubproblemSolver {
+        fn name(&self) -> &str {
+            "non_optimal_subproblem_solver"
+        }
+
+        fn capabilities(&self) -> Vec<SolverCapability> {
+            vec![SolverCapability::Linear, SolverCapability::Quadratic]
+        }
+    }
+
+    impl LinearSolver for NonOptimalSubproblemSolver {
+        fn solve_linear(&self, _model: &LinearTriadModel) -> Result<SolverOutput> {
+            Ok(SolverOutput::new(SolverStatus::TimeLimit)
+                .with_objective(2.0)
+                .with_solution(vec![2.0]))
+        }
+
+        fn solve_linear_report(&self, model: &LinearTriadModel) -> Result<SolveReport<f64>> {
+            verified_linear_report(model, self.solve_linear(model)?)
+        }
+    }
+
+    impl QuadraticSolver for NonOptimalSubproblemSolver {
         fn solve_quadratic(&self, _model: &QuadraticTetradModel) -> Result<SolverOutput> {
-            Ok(SolverOutput::optimal(0.0, vec![]))
+            Ok(SolverOutput::new(SolverStatus::TimeLimit)
+                .with_objective(3.0)
+                .with_solution(vec![2.0]))
+        }
+
+        fn solve_quadratic_report(&self, model: &QuadraticTetradModel) -> Result<SolveReport<f64>> {
+            verified_quadratic_report(model, self.solve_quadratic(model)?)
+        }
+    }
+
+    #[test]
+    fn benders_preserves_nonoptimal_subproblem_incumbents_without_cuts() {
+        let linear_adapter =
+            CoreLinearBendersAdapter::new("non_optimal_linear", NonOptimalSubproblemSolver);
+        let linear_result = linear_adapter
+            .solve_sub_impl(&build_single_row_lp_model(), &[2.0])
+            .expect("non-optimal linear subproblem should remain a feasible result");
+        match linear_result {
+            LinearSubResult::Feasible(result) => {
+                assert_eq!(result.result.obj, 2.0);
+                assert!(result.dual_solution.constraints.is_empty());
+                assert!(result.cuts.is_none());
+                assert_eq!(
+                    result
+                        .report
+                        .as_ref()
+                        .map(|report| report.termination_reason),
+                    Some(TerminationReason::TimeLimit)
+                );
+                assert!(
+                    !result
+                        .report
+                        .as_ref()
+                        .expect("subproblem report should be retained")
+                        .is_optimal()
+                );
+            }
+            LinearSubResult::Infeasible(_) => {
+                panic!("non-optimal linear subproblem must not become infeasible")
+            }
+        }
+
+        let quadratic_adapter =
+            CoreQuadraticBendersAdapter::new("non_optimal_quadratic", NonOptimalSubproblemSolver);
+        let quadratic_result = quadratic_adapter
+            .solve_sub_quadratic_impl(&build_quadratic_subproblem_model(), &[2.0])
+            .expect("non-optimal quadratic subproblem should remain a feasible result");
+        match quadratic_result {
+            QuadraticSubResult::Feasible(result) => {
+                assert_eq!(result.linear.result.obj, 3.0);
+                assert!(result.linear.dual_solution.constraints.is_empty());
+                assert!(result.linear.cuts.is_none());
+                assert!(result.quadratic_cuts.is_none());
+                assert_eq!(
+                    result
+                        .linear
+                        .report
+                        .as_ref()
+                        .map(|report| report.termination_reason),
+                    Some(TerminationReason::TimeLimit)
+                );
+            }
+            QuadraticSubResult::Infeasible(_) => {
+                panic!("non-optimal quadratic subproblem must not become infeasible")
+            }
         }
     }
 
@@ -1887,7 +2797,9 @@ mod tests {
         let mut output = SolverOutput::optimal(2.0, vec![2.0]);
         output.dual_solution = Some(vec![1.0]);
 
-        let dual = resolve_lp_dual_solution(&DualFallbackSolver, &model, &output)
+        let report =
+            verified_linear_report(&model, output).expect("native LP report should be verified");
+        let dual = resolve_lp_dual_solution_from_report(&DualFallbackSolver, &model, &report)
             .expect("consistent native dual should be accepted");
         assert_eq!(dual, vec![1.0]);
     }
@@ -1898,7 +2810,9 @@ mod tests {
         let mut output = SolverOutput::optimal(2.0, vec![2.0]);
         output.dual_solution = Some(vec![1.0, 999.0]);
 
-        let dual = resolve_lp_dual_solution(&DualFallbackSolver, &model, &output)
+        let report =
+            verified_linear_report(&model, output).expect("native LP report should be verified");
+        let dual = resolve_lp_dual_solution_from_report(&DualFallbackSolver, &model, &report)
             .expect("consistent native dual should be normalized to row multipliers");
         assert_eq!(dual, vec![1.0]);
     }
@@ -1909,41 +2823,103 @@ mod tests {
         let mut output = SolverOutput::optimal(2.0, vec![2.0]);
         output.dual_solution = Some(vec![0.0]);
 
-        let dual = resolve_lp_dual_solution(&DualFallbackSolver, &model, &output)
+        let report =
+            verified_linear_report(&model, output).expect("native LP report should be verified");
+        let dual = resolve_lp_dual_solution_from_report(&DualFallbackSolver, &model, &report)
             .expect("inconsistent native dual should fall back to explicit dual model");
         assert_eq!(dual, vec![1.0]);
     }
 
     #[test]
-    fn resolve_farkas_dual_solution_keeps_solver_provided_certificate() {
+    fn lp_report_downgrades_when_dual_cannot_be_verified() {
         let model = build_single_row_lp_model();
-        let mut output = SolverOutput::new(SolverStatus::Infeasible);
-        output.dual_solution = Some(vec![3.0]);
+        let adapter = CoreColumnGenerationAdapter::new("dual_unavailable", DualUnavailableSolver);
 
-        let farkas = resolve_farkas_dual_solution(&DualFallbackSolver, &model, &output)
+        let report = adapter
+            .solve_lp_report_impl(&model, &FrameworkSolveOptions::default())
+            .expect("an incumbent should still be returned when the dual is unavailable");
+
+        assert_eq!(
+            report.problem_status,
+            ospf_rust_core::solver::ProblemStatus::Feasible
+        );
+        assert_eq!(
+            report.solution_presence,
+            SolutionPresence::Incumbent,
+            "a missing dual must remove the exact LP solution presence"
+        );
+        assert!(!report.is_optimal());
+        assert!(report.proof.is_none());
+        assert!(report.has_incumbent());
+        assert!(
+            report
+                .diagnostics
+                .issues
+                .iter()
+                .any(|issue| issue.code == "LpDualUnavailable")
+        );
+        report
+            .validate()
+            .expect("downgraded report should validate");
+    }
+
+    #[test]
+    fn dual_fallback_honors_cancellation_options() {
+        let model = build_single_row_lp_model();
+        let output = SolverOutput::optimal(2.0, vec![2.0]);
+        let report =
+            verified_linear_report(&model, output).expect("native LP report should be verified");
+        let handle = ospf_rust_core::solver::SolveHandle::new();
+        assert!(handle.cancel(ospf_rust_core::solver::CancellationOrigin::User));
+        let options =
+            ospf_rust_core::solver::SolveOptions::new().with_cancellation_handle(Some(&handle));
+
+        let result = resolve_lp_dual_solution_from_report_with_options(
+            &DualFallbackSolver,
+            &model,
+            &report,
+            Some(&options),
+        );
+
+        assert!(result.is_err(), "cancelled fallback must not return a dual");
+    }
+
+    #[test]
+    fn resolve_farkas_dual_solution_keeps_solver_provided_certificate() {
+        let model = build_infeasible_free_variable_model();
+        let mut output = SolverOutput::new(SolverStatus::Infeasible);
+        output.dual_solution = Some(vec![3.0, 3.0]);
+
+        let report = verified_linear_report(&model, output)
+            .expect("native Farkas report should be verified");
+        let farkas = resolve_farkas_dual_solution_from_report(&DualFallbackSolver, &model, &report)
             .expect("solver-provided Farkas certificate should be accepted");
-        assert_eq!(farkas, vec![3.0]);
+        assert_eq!(farkas, vec![3.0, 3.0]);
     }
 
     #[test]
     fn resolve_farkas_dual_solution_truncates_extra_native_entries() {
-        let model = build_single_row_lp_model();
+        let model = build_infeasible_free_variable_model();
         let mut output = SolverOutput::new(SolverStatus::Infeasible);
-        output.dual_solution = Some(vec![3.0, 4.0]);
+        output.dual_solution = Some(vec![3.0, 3.0, 4.0]);
 
-        let farkas = resolve_farkas_dual_solution(&DualFallbackSolver, &model, &output)
+        let report = verified_linear_report(&model, output)
+            .expect("native Farkas report should be verified");
+        let farkas = resolve_farkas_dual_solution_from_report(&DualFallbackSolver, &model, &report)
             .expect("solver-provided Farkas certificate should be normalized to row multipliers");
-        assert_eq!(farkas, vec![3.0]);
+        assert_eq!(farkas, vec![3.0, 3.0]);
     }
 
     #[test]
     fn resolve_farkas_dual_solution_falls_back_to_explicit_model_when_missing() {
-        let model = build_single_row_lp_model();
+        let model = build_infeasible_free_variable_model();
         let output = SolverOutput::new(SolverStatus::Infeasible);
 
-        let farkas = resolve_farkas_dual_solution(&DualFallbackSolver, &model, &output)
+        let report = verified_linear_report(&model, output)
+            .expect("native infeasibility report should be verified");
+        let farkas = resolve_farkas_dual_solution_from_report(&DualFallbackSolver, &model, &report)
             .expect("missing Farkas certificate should fall back to explicit model");
-        assert_eq!(farkas, vec![0.5]);
+        assert_eq!(farkas, vec![0.5, 0.5]);
     }
 
     #[cfg(not(feature = "async"))]
@@ -2005,6 +2981,10 @@ mod tests {
     impl QuadraticSolver for MockQuadraticDualSolver {
         fn solve_quadratic(&self, _model: &QuadraticTetradModel) -> Result<SolverOutput> {
             Ok(self.quadratic_output.clone())
+        }
+
+        fn solve_quadratic_report(&self, model: &QuadraticTetradModel) -> Result<SolveReport<f64>> {
+            verified_quadratic_report(model, self.solve_quadratic(model)?)
         }
     }
 

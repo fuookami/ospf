@@ -91,8 +91,17 @@ impl PwlRadiusSquaredApproximation {
     }
 
     /// 从半径区间构建 PWL 近似 / Build PWL approximation from radius interval
-    pub fn from_radius_interval(r_min: f64, r_max: f64, config: &PwlRadiusApproximationConfig) -> Self {
-        assert!(r_min > 0.0 && r_max > r_min, "Invalid radius interval: [{}, {}]", r_min, r_max);
+    pub fn from_radius_interval(
+        r_min: f64,
+        r_max: f64,
+        config: &PwlRadiusApproximationConfig,
+    ) -> Self {
+        assert!(
+            r_min > 0.0 && r_max > r_min,
+            "Invalid radius interval: [{}, {}]",
+            r_min,
+            r_max
+        );
 
         let n = config.max_segments.max(1);
         let mut breakpoints = Vec::with_capacity(n + 1);
@@ -138,7 +147,8 @@ impl PwlRadiusSquaredApproximation {
         }
 
         // 计算最大误差
-        let (max_abs_error, max_rel_error) = compute_max_error(r_min, r_max, &breakpoints, &slopes, &intercepts);
+        let (max_abs_error, max_rel_error) =
+            compute_max_error(r_min, r_max, &breakpoints, &slopes, &intercepts);
 
         Self {
             breakpoints,
@@ -150,7 +160,12 @@ impl PwlRadiusSquaredApproximation {
     }
 
     /// 推导最优段数 / Derive optimal segment count
-    pub fn derive_segment_count(r_min: f64, r_max: f64, relative_error_tolerance: f64, max_segments: usize) -> SegmentCountDerivation {
+    pub fn derive_segment_count(
+        r_min: f64,
+        r_max: f64,
+        relative_error_tolerance: f64,
+        max_segments: usize,
+    ) -> SegmentCountDerivation {
         let mut best_n = 1;
         let mut best_error = f64::MAX;
         let mut iterations = 0;
@@ -240,7 +255,13 @@ impl fmt::Display for PwlRadiusSquaredApproximation {
 }
 
 /// 计算最大误差 / Compute maximum error
-fn compute_max_error(_r_min: f64, _r_max: f64, breakpoints: &[f64], slopes: &[f64], intercepts: &[f64]) -> (f64, f64) {
+fn compute_max_error(
+    _r_min: f64,
+    _r_max: f64,
+    breakpoints: &[f64],
+    slopes: &[f64],
+    intercepts: &[f64],
+) -> (f64, f64) {
     let n = slopes.len();
     let sample_per_segment = 100;
     let mut max_abs = 0.0_f64;
@@ -319,7 +340,11 @@ impl ConservativeRadiusEnvelope {
     }
 
     /// 保守足迹宽度 / Conservative footprint width
-    pub fn footprint_width(&self, axis: ospf_rust_math::geometry::Axis3, cylinder_height: f64) -> f64 {
+    pub fn footprint_width(
+        &self,
+        axis: ospf_rust_math::geometry::Axis3,
+        cylinder_height: f64,
+    ) -> f64 {
         match axis {
             ospf_rust_math::geometry::Axis3::X => cylinder_height,
             _ => self.envelope_diameter(),
@@ -327,7 +352,11 @@ impl ConservativeRadiusEnvelope {
     }
 
     /// 保守足迹深度 / Conservative footprint depth
-    pub fn footprint_depth(&self, axis: ospf_rust_math::geometry::Axis3, cylinder_height: f64) -> f64 {
+    pub fn footprint_depth(
+        &self,
+        axis: ospf_rust_math::geometry::Axis3,
+        cylinder_height: f64,
+    ) -> f64 {
         match axis {
             ospf_rust_math::geometry::Axis3::Z => cylinder_height,
             _ => self.envelope_diameter(),
@@ -359,7 +388,9 @@ pub struct HorizontalCylinderSupportGeometry {
 }
 
 /// 横向圆柱径向轴 / Horizontal cylinder radial axis
-pub fn horizontal_cylinder_support_radial_axis(axis: ospf_rust_math::geometry::Axis3) -> ospf_rust_math::geometry::Axis3 {
+pub fn horizontal_cylinder_support_radial_axis(
+    axis: ospf_rust_math::geometry::Axis3,
+) -> ospf_rust_math::geometry::Axis3 {
     match axis {
         ospf_rust_math::geometry::Axis3::X => ospf_rust_math::geometry::Axis3::Z,
         ospf_rust_math::geometry::Axis3::Z => ospf_rust_math::geometry::Axis3::X,
@@ -368,7 +399,12 @@ pub fn horizontal_cylinder_support_radial_axis(axis: ospf_rust_math::geometry::A
 }
 
 /// 判断区间集合是否覆盖目标跨度 / Check if interval set covers target span
-pub fn intervals_cover_span(target_min: f64, target_max: f64, intervals: &[(f64, f64)], tolerance: f64) -> bool {
+pub fn intervals_cover_span(
+    target_min: f64,
+    target_max: f64,
+    intervals: &[(f64, f64)],
+    tolerance: f64,
+) -> bool {
     if intervals.is_empty() {
         return false;
     }
@@ -429,12 +465,10 @@ pub fn horizontal_cylinder_cuboid_support_coverage(
             // 支撑物必须在圆柱 Y 范围内
             && s.max_y >= cylinder_y - tolerance - s.max_y.abs()
         })
-        .map(|s| {
-            match radial_axis {
-                ospf_rust_math::geometry::Axis3::X => (s.min_x, s.max_x),
-                ospf_rust_math::geometry::Axis3::Z => (s.min_z, s.max_z),
-                _ => (s.min_x, s.max_x),
-            }
+        .map(|s| match radial_axis {
+            ospf_rust_math::geometry::Axis3::X => (s.min_x, s.max_x),
+            ospf_rust_math::geometry::Axis3::Z => (s.min_z, s.max_z),
+            _ => (s.min_x, s.max_x),
         })
         .collect();
 
@@ -522,10 +556,20 @@ mod tests {
         assert!(intervals_cover_span(0.0, 4.0, &[(0.0, 4.0)], 1e-10));
 
         // 两个区间合并覆盖
-        assert!(intervals_cover_span(0.0, 4.0, &[(0.0, 2.0), (2.0, 4.0)], 1e-10));
+        assert!(intervals_cover_span(
+            0.0,
+            4.0,
+            &[(0.0, 2.0), (2.0, 4.0)],
+            1e-10
+        ));
 
         // 有间隙不覆盖
-        assert!(!intervals_cover_span(0.0, 4.0, &[(0.0, 1.0), (3.0, 4.0)], 1e-10));
+        assert!(!intervals_cover_span(
+            0.0,
+            4.0,
+            &[(0.0, 1.0), (3.0, 4.0)],
+            1e-10
+        ));
 
         // 空区间不覆盖
         assert!(!intervals_cover_span(0.0, 4.0, &[], 1e-10));
@@ -534,7 +578,10 @@ mod tests {
     #[test]
     fn horizontal_cylinder_on_floor_has_support() {
         let result = horizontal_cylinder_cuboid_support_coverage(
-            0.0, 4.0, 0.0, 4.0,
+            0.0,
+            4.0,
+            0.0,
+            4.0,
             0.0, // y=0 means on floor
             ospf_rust_math::geometry::Axis3::X,
             &[],

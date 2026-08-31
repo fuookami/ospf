@@ -22,7 +22,7 @@
 | --- | --- | --- |
 | [`src/infrastructure`](src/infrastructure/README_ch.md) | `gantt-scheduling-infrastructure` | Time range、window、slot、duration range、working calendar、calendar policy、local date offset 和 render DTO。 |
 | [`src/domain/task`](src/domain/task/README_ch.md) | `gantt-scheduling-domain-task-context` | Task、executor、assignment、task plan、task bunch、cost、solver value adapter、task-step graph 和 shadow-price key。 |
-| [`src/domain/task_compilation`](src/domain/task_compilation/README_ch.md) | `gantt-scheduling-domain-task-compilation-context` | task-level MILP component、time variable、switch、makespan、solution analysis 和 limit/objective pipeline。 |
+| [`src/domain/task_compilation`](src/domain/task_compilation/README_ch.md) | `gantt-scheduling-domain-task-compilation-context` | task-level MILP component、CP assignment/NoOverlap component、time variable、switch、makespan、solution analysis 和 limit/objective pipeline。 |
 | [`src/domain/task_generation`](src/domain/task_generation/README_ch.md) | `gantt-scheduling-domain-task-generation-context` | 从 Kotlin 映射保留的 task-generation 扩展点。 |
 | [`src/domain/bunch_compilation`](src/domain/bunch_compilation/README_ch.md) | `gantt-scheduling-domain-bunch-compilation-context` | task bunch 的 column-generation master problem、slot-based compilation、迭代列和 bunch solution。 |
 | [`src/domain/bunch_generation`](src/domain/bunch_generation/README_ch.md) | `gantt-scheduling-domain-bunch-generation-context` | pricing graph、label-setting search、feasibility policy 和 slot-based bunch generation。 |
@@ -60,7 +60,7 @@
 | `domain::task::{TaskStepGraph, TaskStepTrait, BasicTaskStep, StepRelation}` | multi-step task dependency model。 | migration |
 | `domain::task::{Cost, BunchCostPolicy, CostBreakdown, DefaultBunchCostPolicy}` | cost 与 reduced-cost policy surface。 | migration |
 | `domain::task::{SolverValueAdapter, F64SolverValueAdapter}` | 泛型 solver value conversion 和 `f64` 边界。 | migration |
-| `domain::task_compilation::{BasicTaskCompilationContext, IterativeTaskCompilationContext, Switch, SwitchCostMinimization, SwitchTimeMinimization}` | task compilation context 和 switch objective pipeline。 | migration |
+| `domain::task_compilation::{BasicTaskCompilationContext, IterativeTaskCompilationContext, NoOverlapConstraintProgrammingComponent, NoOverlapTask, Switch, SwitchCostMinimization, SwitchTimeMinimization}` | task compilation context、生产 CP assignment/NoOverlap snapshot 和 switch objective pipeline。 | migration |
 | `domain::capacity_scheduling::{CapacityCompilation, CapacityOrderCompilation, CapacityColumn, CapacityColumnAggregation, CapacitySchedulingSolution}` | capacity scheduling 注册和提取。 | migration |
 | `domain::bunch_compilation::{BasicBunchCompilationContext, IterativeBunchCompilationContext, BasicSlotBasedBunchCompilationContext, SlotBasedBunchCompilationContext, SlotBasedCapacityPreSolver, BunchEntry, BunchSolution}` | bunch master problem 和 slot-based column lifecycle。 | migration |
 | `domain::bunch_generation::{SlotBasedBunchGenerator, BunchFeasibilityPolicy, BunchTaskCandidate, CapacityIntermediateValues}` | pricing 与 feasibility 扩展面。 | migration |
@@ -93,6 +93,19 @@
 ## 泛型数值边界
 
 domain API 通过 `SolverValueAdapter` 使用泛型 solver-value 抽象。`F64SolverValueAdapter` 标记当前 `f64` solver 边界。solver conversion 集中在 context registration、application solver call 和 result extraction，不应散落在 domain logic 中。
+
+## CP/NoOverlap 生产边界
+
+`domain::task_compilation::NoOverlapConstraintProgrammingComponent` 是生产 CP model component。
+`from_compilation` 入口接收 task/executor identity 和显式 `i64` 持续时长，在 immutable core
+snapshot 中构造 assignment `ExactlyOne`、start variable，以及每个 `(task, executor)` 的
+optional fixed-duration interval。每个 interval 使用对应 assignment literal 作为 presence，
+并为每个 executor 建立独立的 `NoOverlap` constraint；它不选择或调用 solver。
+
+该 snapshot 可由 offline exact solver 或 Gurobi/SCIP MIP-backed `ExactLowering` facade 求解。
+原生 optional/variable-duration interval binding 仍为 `Unsupported`，Cumulative raw-handler
+路径仍为 `Conditional`。Gantt differential 门禁通过生产 `from_compilation` snapshot 与对应
+有限 MILP formulation 穷举比较，并覆盖不同 executor 上的并行 assignment；不再在测试中手写 CP model。
 
 ## 物理量边界
 
@@ -148,6 +161,10 @@ cargo check -p ospf-rust-framework-gantt-scheduling --features serde
 7. complex shift calendar 和 custom cost formula 已通过标准 policy extension point 支持，并有最小测试覆盖。
 
 详细迁移目标、清单和验收标准应与本节当前边界清单以及 Kotlin Gantt Scheduling README 保持一致。
+
+Branch-and-price 精确门禁消费共享 `SolveReport` 与 certificate helper。limit 返回的 incumbent 只能作为
+候选解保留，不能关闭 node bound。详见[统一求解合同](../../docs/solve-contract_ch.md)和
+[native 矩阵](../../docs/solver-native-matrix_ch.md)。
 
 ## 相关模块
 

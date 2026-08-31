@@ -34,6 +34,7 @@
 | [`ospf-rust-framework-bpp3d`](ospf-rust-framework-bpp3d/README_ch.md) | `ospf-kotlin-framework-bpp3d` | 可复用三维装箱框架，包括 BPP3D context、层生成/分配、packing、CSV fixture 和 renderer DTO。 |
 | [`ospf-rust-framework-csp1d`](ospf-rust-framework-csp1d/README_ch.md) | `ospf-kotlin-framework-csp1d` | 可复用一维分切框架，包括 material、generation、produce、yield、waste、length 和 application flow。 |
 | [`ospf-rust-framework-gantt-scheduling`](ospf-rust-framework-gantt-scheduling/README_ch.md) | `ospf-kotlin-framework-gantt-scheduling` | 可复用 Gantt 排程框架，包括 task、bunch、capacity、resource、produce 和 branch-and-price flow。 |
+| [`ospf-rust-framework-network-scheduling`](ospf-rust-framework-network-scheduling/README_ch.md) | `ospf-kotlin-framework-network-scheduling` | 通用 network flow、VRPTW、ESPPRC 定价、路线编译和 Branch-and-Price 框架。 |
 | [`ospf-rust-example`](ospf-rust-example/README_ch.md) | `ospf-kotlin-example` | 可运行示例和迁移兼容 demo。 |
 
 ## 架构概览
@@ -47,6 +48,19 @@ workspace 采用分层结构：
 5. `example` 展示当前 public flow 与迁移兼容路径。
 
 framework 领域 crate 应把优化语义放在 context / aggregation / model component / pipeline 层。application service 负责 solver 选择、生命周期、trace/KPI/render 组装和 recovery 边界。
+
+## 约束规划边界
+
+`ospf-rust-core` 提供精确 `i64` 约束规划模型，包含 immutable snapshot、稳定 ID、源模型复验和统一
+`SolveReport<i64>`。通用 MIP lowerer 在内部使用 checked `i128`，只有当整数系数、边界和生成的 Big-M
+都能无损表示时才跨过现有 `f64` solver 边界；当前数值门禁为 `2^53`。
+
+SCIP CP 入口是 feature-gated 的严格有限 MIP-backed facade，不是 native SCIP/CIP CP backend。CP
+声明能力范围已经完成：通用 MIP lowering 对已支持的有限子集返回经过复验的 `ExactLowering`，
+对 `Cumulative`、`Circuit`、`Automaton` 和 `Reservoir` 明确返回结构化 `Unsupported`；cumulative
+raw FFI 是 `Conditional` 研究探针，真实增量 CP session 仍是 `Unsupported`。snapshot-rebuild
+session 是正确但可能较慢的重建路径，不得描述为 native incremental resume。fake CP solver
+仅用于合同测试和小型穷举 oracle，不是生产级搜索器。
 
 ## 文档模板
 
@@ -73,6 +87,7 @@ ospf-rust-framework = { path = "../ospf-rust-framework" }
 [dependencies]
 ospf-rust-framework-csp1d = { path = "../ospf-rust-framework-csp1d" }
 ospf-rust-framework-gantt-scheduling = { path = "../ospf-rust-framework-gantt-scheduling" }
+ospf-rust-framework-network-scheduling = { path = "../ospf-rust-framework-network-scheduling" }
 ```
 
 ## 本地验证
@@ -94,6 +109,8 @@ solver-backed 测试需要对应 Cargo feature 和本地 solver 安装或 bundle
 ## 当前边界
 
 本仓库正在把 Kotlin framework 能力迁移到 Rust。部分领域 crate 已暴露 Kotlin 对齐 public surface，但生命周期中的一些阶段仍使用 Rust 侧确定性、fake 或 feature-gated solver 路径。每个领域 crate README 会记录自身覆盖范围与已知差距。
+
+`ospf-rust-framework-network-scheduling` 已接入 workspace，`99/99` 迁移全部完成，并具备 graph/flow、VRPTW、ESPPRC、路线编译和 Branch-and-Price 的离线覆盖。其 Gurobi/SCIP Demo5 验证仍由 feature 控制并依赖本机 native solver 环境；长期数值、正确性与 E2E 边界记录在 crate README 中。
 
 ## 相关模块
 

@@ -1,10 +1,10 @@
 //! Kaplan-Yorke 映射。
 //! Kaplan-Yorke map.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point2};
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use super::helpers::{default_float, one_point2};
+use num_traits::Float;
 
 point2_system!(
     /// Kaplan-Yorke 映射。
@@ -45,7 +45,11 @@ pub fn kaplan_yorke_map<S: Field + Float>(a: S, four_pi: S) -> KaplanYorkeMap<S>
 
 /// 创建 Kaplan-Yorke 映射生成器。
 /// Create a Kaplan-Yorke map generator.
-pub fn kaplan_yorke_map_generator<S: Field + Float>(a: S, four_pi: S, x: Point2<S>) -> KaplanYorkeMapGenerator<S> {
+pub fn kaplan_yorke_map_generator<S: Field + Float>(
+    a: S,
+    four_pi: S,
+    x: Point2<S>,
+) -> KaplanYorkeMapGenerator<S> {
     KaplanYorkeMapGenerator::new(KaplanYorkeMap::new(a, four_pi), x)
 }
 

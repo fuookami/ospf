@@ -71,9 +71,8 @@ where
         F: Fn(usize, &S::VectorType) -> Sym,
     {
         let group_id = new_group_id();
-        let symbols = MultiArrayBuilder::new_by(shape, |index, vector| {
-            Arc::new(ctor(index, vector))
-        });
+        let symbols =
+            MultiArrayBuilder::new_by(shape, |index, vector| Arc::new(ctor(index, vector)));
         Self {
             symbols,
             group_id,
@@ -242,12 +241,7 @@ where
             ndim - 1,
             fixed_indices.len()
         );
-        assert!(
-            dim < ndim,
-            "dim {} out of range (ndim = {})",
-            dim,
-            ndim
-        );
+        assert!(dim < ndim, "dim {} out of range (ndim = {})", dim, ndim);
 
         use crate::symbol::flatten::Linear as ModelLinear;
 
@@ -359,20 +353,16 @@ where
 use crate::symbol::LinearExpressionSymbol;
 
 /// 一维线性表达式符号组合 / 1D Linear Expression Symbol Combination
-pub type LinearExpressionSymbols1<V> =
-    SymbolCombination<V, LinearExpressionSymbol<V>, Shape<1>>;
+pub type LinearExpressionSymbols1<V> = SymbolCombination<V, LinearExpressionSymbol<V>, Shape<1>>;
 
 /// 二维线性表达式符号组合 / 2D Linear Expression Symbol Combination
-pub type LinearExpressionSymbols2<V> =
-    SymbolCombination<V, LinearExpressionSymbol<V>, Shape<2>>;
+pub type LinearExpressionSymbols2<V> = SymbolCombination<V, LinearExpressionSymbol<V>, Shape<2>>;
 
 /// 三维线性表达式符号组合 / 3D Linear Expression Symbol Combination
-pub type LinearExpressionSymbols3<V> =
-    SymbolCombination<V, LinearExpressionSymbol<V>, Shape<3>>;
+pub type LinearExpressionSymbols3<V> = SymbolCombination<V, LinearExpressionSymbol<V>, Shape<3>>;
 
 /// 四维线性表达式符号组合 / 4D Linear Expression Symbol Combination
-pub type LinearExpressionSymbols4<V> =
-    SymbolCombination<V, LinearExpressionSymbol<V>, Shape<4>>;
+pub type LinearExpressionSymbols4<V> = SymbolCombination<V, LinearExpressionSymbol<V>, Shape<4>>;
 
 // ============================================================================
 // 测试 / Tests
@@ -425,12 +415,7 @@ mod tests {
     fn test_2d_vector_index() {
         let combo: LinearExpressionSymbols2<f64> =
             SymbolCombination::new(Shape::new([2, 3]), "matrix", |index, _vec| {
-                LinearExpressionSymbol::new(
-                    index as u64 + 1,
-                    &format!("m_{}", index),
-                    vec![],
-                    0.0,
-                )
+                LinearExpressionSymbol::new(index as u64 + 1, &format!("m_{}", index), vec![], 0.0)
             });
 
         assert_eq!(combo.len(), 6);
@@ -465,8 +450,7 @@ mod tests {
                 )
             });
 
-        let arc_syms: Vec<Arc<dyn IntermediateSymbol<f64>>> =
-            combo.iter_arc().collect();
+        let arc_syms: Vec<Arc<dyn IntermediateSymbol<f64>>> = combo.iter_arc().collect();
         assert_eq!(arc_syms.len(), 3);
         assert_eq!(arc_syms[0].id().id, 1);
         assert_eq!(arc_syms[2].id().id, 3);
@@ -474,16 +458,14 @@ mod tests {
 
     #[test]
     fn test_binaryzation_function_in_symbol_combination() {
-        use crate::symbol::functions::BinaryzationFunction;
         use crate::symbol::flatten::LinearMonomial;
+        use crate::symbol::functions::BinaryzationFunction;
 
         // Verify BinaryzationFunction can be used in SymbolCombination
         let combo: SymbolCombination<f64, BinaryzationFunction<f64>, Shape<1>> =
             SymbolCombination::new(Shape::new([2]), "bin", |index, _vec| {
-                let input = crate::symbol::flatten::Linear::new(
-                    vec![LinearMonomial::new(1.0, index)],
-                    0.0,
-                );
+                let input =
+                    crate::symbol::flatten::Linear::new(vec![LinearMonomial::new(1.0, index)], 0.0);
                 BinaryzationFunction::with_big_m(
                     index as u64 + 1000,
                     &format!("bin_{}", index),
@@ -499,9 +481,9 @@ mod tests {
 
     #[test]
     fn test_add_symbol_combination_with_binaryzation_function() {
-        use crate::symbol::functions::BinaryzationFunction;
-        use crate::symbol::flatten::LinearMonomial;
         use crate::model::MetaModel;
+        use crate::symbol::flatten::LinearMonomial;
+        use crate::symbol::functions::BinaryzationFunction;
 
         let mut model = MetaModel::<f64>::new("test_binaryzation_combo");
 
@@ -514,10 +496,8 @@ mod tests {
         // Create SymbolCombination with BinaryzationFunction
         let combo: SymbolCombination<f64, BinaryzationFunction<f64>, Shape<1>> =
             SymbolCombination::new(Shape::new([2]), "bin", |index, _vec| {
-                let input = crate::symbol::flatten::Linear::new(
-                    vec![LinearMonomial::new(1.0, index)],
-                    0.0,
-                );
+                let input =
+                    crate::symbol::flatten::Linear::new(vec![LinearMonomial::new(1.0, index)], 0.0);
                 BinaryzationFunction::with_big_m(
                     index as u64 + 2000,
                     &format!("bin_{}", index),

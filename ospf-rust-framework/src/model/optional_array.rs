@@ -13,8 +13,8 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::variable::{VariableTypeTrait, VariableRange};
 use ospf_rust_core::token::IntoValue;
+use ospf_rust_core::variable::{VariableRange, VariableTypeTrait};
 
 // ============================================================================
 // OptionalIndexedVariableArray - 稀疏索引变量数组

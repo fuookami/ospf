@@ -1,10 +1,10 @@
 //! Lorenz 84 模型。
 //! Lorenz 84 model.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Lorenz 84 模型的一阶欧拉步进模型。
@@ -53,7 +53,12 @@ pub fn lorenz84_model<S: Field + Float>(a: S, b: S, f: S, g: S, h: S) -> Lorenz8
 /// 创建 Lorenz 84 模型生成器。
 /// Create a Lorenz 84 model generator.
 pub fn lorenz84_model_generator<S: Field + Float>(
-    a: S, b: S, f: S, g: S, h: S, x: Point3<S>,
+    a: S,
+    b: S,
+    f: S,
+    g: S,
+    h: S,
+    x: Point3<S>,
 ) -> Lorenz84ModelGenerator<S> {
     Lorenz84ModelGenerator::new(Lorenz84Model::new(a, b, f, g, h), x)
 }

@@ -10,14 +10,12 @@ use ospf_rust_core::model::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::functions::slack::SlackFunction;
 
-
-use crate::domain::task_compilation::adapter::{
-    next_gantt_symbol_id, symbols_to_indexed_1d,
-    IndexedLinearExpressionSymbols1,
-};
-use crate::domain::resource::model::capacity::ResourceCapacity;
-use crate::GanttResult;
 use crate::GanttError;
+use crate::GanttResult;
+use crate::domain::resource::model::capacity::ResourceCapacity;
+use crate::domain::task_compilation::adapter::{
+    IndexedLinearExpressionSymbols1, next_gantt_symbol_id, symbols_to_indexed_1d,
+};
 
 /// 资源使用量 / Resource usage
 ///
@@ -95,7 +93,12 @@ impl ResourceUsage {
     /// - `x_model_index` — 分配变量在模型中的 solver index / Assignment variable's solver index
     /// - `contribution` — 任务在该时隙的消耗系数 / Task consumption coefficient at this slot
     pub fn add_task_contribution(&mut self, slot: usize, x_model_index: usize, contribution: f64) {
-        assert!(slot < self.slot_count, "slot index {} out of range (max {})", slot, self.slot_count);
+        assert!(
+            slot < self.slot_count,
+            "slot index {} out of range (max {})",
+            slot,
+            self.slot_count
+        );
         if contribution != 0.0 {
             self.builder_buffer[slot].push(LinearMonomial::new(contribution, x_model_index));
         }
@@ -117,9 +120,13 @@ impl ResourceUsage {
         capacities: &[ResourceCapacity],
         model: &mut MetaModel<f64>,
     ) -> GanttResult<()> {
-        assert_eq!(capacities.len(), self.slot_count,
+        assert_eq!(
+            capacities.len(),
+            self.slot_count,
             "capacities length ({}) must match slot_count ({})",
-            capacities.len(), self.slot_count);
+            capacities.len(),
+            self.slot_count
+        );
 
         self.quantity_symbols.clear();
 
@@ -133,11 +140,15 @@ impl ResourceUsage {
                 quantity_id,
                 &format!("{}_quantity_{}", self.name, slot_idx),
                 monomials,
-                capacity.lower_bound,  // 初始量作为常数项
+                capacity.lower_bound, // 初始量作为常数项
             ));
-            model.add_symbol(quantity_symbol.clone())
+            model
+                .add_symbol(quantity_symbol.clone())
                 .map_err(|e| GanttError::Calculation {
-                    message: format!("Failed to register {}_quantity_{}: {:?}", self.name, slot_idx, e),
+                    message: format!(
+                        "Failed to register {}_quantity_{}: {:?}",
+                        self.name, slot_idx, e
+                    ),
                 })?;
             self.quantity_symbols.push(quantity_symbol);
 
@@ -145,28 +156,31 @@ impl ResourceUsage {
             // SlackFunction: quantity_poly <= ub_poly + slack
             // 即 sum(contribution * x[idx]) + initial <= upper_bound + over_slack
             if self.over_enabled && capacity.over_enabled() {
-                let quantity_poly = Linear::new(
-                    self.builder_buffer[slot_idx].clone(),
-                    capacity.lower_bound,
-                );
-                let ub_poly = Linear::new(
-                    vec![],
-                    capacity.upper_bound,
-                );
+                let quantity_poly =
+                    Linear::new(self.builder_buffer[slot_idx].clone(), capacity.lower_bound);
+                let ub_poly = Linear::new(vec![], capacity.upper_bound);
                 let over_slack = Arc::new(SlackFunction::named(
-                    &format!("{}_over_quantity_{}", self.name, slot_idx),
+                    format!("{}_over_quantity_{}", self.name, slot_idx),
                     quantity_poly,
                     ub_poly,
                 ));
-                model.add_symbol(over_slack.clone())
+                model
+                    .add_symbol(over_slack.clone())
                     .map_err(|e| GanttError::Calculation {
-                        message: format!("Failed to register {}_over_quantity_{}: {:?}", self.name, slot_idx, e),
+                        message: format!(
+                            "Failed to register {}_over_quantity_{}: {:?}",
+                            self.name, slot_idx, e
+                        ),
                     })?;
                 let var_id = over_slack.result_variable().id();
-                let solver_idx = model.find_token(var_id)
+                let solver_idx = model
+                    .find_token(var_id)
                     .map(|t| t.solver_index)
                     .ok_or_else(|| GanttError::Calculation {
-                        message: format!("{}_over_quantity_{} result variable not found", self.name, slot_idx),
+                        message: format!(
+                            "{}_over_quantity_{} result variable not found",
+                            self.name, slot_idx
+                        ),
                     })?;
                 self.over_quantity_indices[slot_idx] = Some(solver_idx);
             }
@@ -175,28 +189,31 @@ impl ResourceUsage {
             // SlackFunction: lb_poly <= quantity_poly + slack
             // 即 lower_bound - less_slack <= sum(contribution * x[idx]) + initial
             if self.less_enabled && capacity.less_enabled() {
-                let lb_poly = Linear::new(
-                    vec![],
-                    capacity.lower_bound,
-                );
-                let quantity_poly = Linear::new(
-                    self.builder_buffer[slot_idx].clone(),
-                    capacity.lower_bound,
-                );
+                let lb_poly = Linear::new(vec![], capacity.lower_bound);
+                let quantity_poly =
+                    Linear::new(self.builder_buffer[slot_idx].clone(), capacity.lower_bound);
                 let less_slack = Arc::new(SlackFunction::named(
-                    &format!("{}_less_quantity_{}", self.name, slot_idx),
+                    format!("{}_less_quantity_{}", self.name, slot_idx),
                     lb_poly,
                     quantity_poly,
                 ));
-                model.add_symbol(less_slack.clone())
+                model
+                    .add_symbol(less_slack.clone())
                     .map_err(|e| GanttError::Calculation {
-                        message: format!("Failed to register {}_less_quantity_{}: {:?}", self.name, slot_idx, e),
+                        message: format!(
+                            "Failed to register {}_less_quantity_{}: {:?}",
+                            self.name, slot_idx, e
+                        ),
                     })?;
                 let var_id = less_slack.result_variable().id();
-                let solver_idx = model.find_token(var_id)
+                let solver_idx = model
+                    .find_token(var_id)
                     .map(|t| t.solver_index)
                     .ok_or_else(|| GanttError::Calculation {
-                        message: format!("{}_less_quantity_{} result variable not found", self.name, slot_idx),
+                        message: format!(
+                            "{}_less_quantity_{} result variable not found",
+                            self.name, slot_idx
+                        ),
                     })?;
                 self.less_quantity_indices[slot_idx] = Some(solver_idx);
             }
@@ -205,7 +222,9 @@ impl ResourceUsage {
         // 构建索引符号组合 / Build indexed symbol combinations
         let slot_keys: Vec<usize> = (0..self.slot_count).collect();
         self.quantity_indexed = Some(symbols_to_indexed_1d(
-            &format!("{}_quantity", self.name), &slot_keys, &self.quantity_symbols,
+            &format!("{}_quantity", self.name),
+            &slot_keys,
+            &self.quantity_symbols,
         ));
 
         Ok(())
@@ -250,9 +269,7 @@ mod tests {
     fn test_resource_usage_no_slack() {
         let mut model = MetaModel::<f64>::new("test_resource_no_slack");
 
-        let capacities = vec![
-            ResourceCapacity::new(test_time_range(), 0.0, 100.0),
-        ];
+        let capacities = vec![ResourceCapacity::new(test_time_range(), 0.0, 100.0)];
 
         let mut usage = ResourceUsage::new("machine", 1, false, false);
         usage.register(&capacities, &mut model).unwrap();
@@ -269,15 +286,15 @@ mod tests {
         // 只有第一个时隙有 over slack，第二个时隙没有
         let capacities = vec![
             ResourceCapacity::with_slack(test_time_range(), 0.0, 100.0, None, Some(20.0)),
-            ResourceCapacity::new(test_time_range(), 0.0, 50.0),  // no slack
+            ResourceCapacity::new(test_time_range(), 0.0, 50.0), // no slack
         ];
 
         let mut usage = ResourceUsage::new("machine", 2, true, false);
         usage.register(&capacities, &mut model).unwrap();
 
-        assert!(usage.over_quantity_indices[0].is_some());  // has over slack
-        assert!(usage.over_quantity_indices[1].is_none());  // capacity.over_enabled() is false
-        assert!(usage.less_quantity_indices[0].is_none());  // less_enabled is false
+        assert!(usage.over_quantity_indices[0].is_some()); // has over slack
+        assert!(usage.over_quantity_indices[1].is_none()); // capacity.over_enabled() is false
+        assert!(usage.less_quantity_indices[0].is_none()); // less_enabled is false
         assert!(usage.less_quantity_indices[1].is_none());
     }
 }

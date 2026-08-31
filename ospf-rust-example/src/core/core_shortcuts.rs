@@ -1,11 +1,11 @@
 //! Core Shortcuts 模块 / Core Shortcuts module
 use std::error::Error;
 
-use ospf_rust_multiarray::{MultiArray, Shape};
 use ospf_rust_core::model::object::ObjectiveCategory;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol, flat_map1_indexed};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination, flat_map1_indexed};
 use ospf_rust_core::variable::{Binary, VariableCombination2D};
+use ospf_rust_multiarray::{MultiArray, Shape};
 
 use super::common::{
     add_constraint_with_metadata, linear_expr_from_indices, read_solution_value,
@@ -82,15 +82,26 @@ fn build_low_level_model(
             objective_terms.push((idx[w][t], data.costs[w][t]));
         }
     }
-    set_linear_objective_from_sparse_terms(&mut model, &objective_terms, ObjectiveCategory::Minimum);
+    set_linear_objective_from_sparse_terms(
+        &mut model,
+        &objective_terms,
+        ObjectiveCategory::Minimum,
+    );
 
     // 工人容量约束
     for (w, worker) in data.workers.iter().enumerate() {
         let indices: Vec<usize> = (0..data.tasks.len()).map(|t| idx[w][t]).collect();
         let coefficients = linear_expr_from_indices(&indices, 1.0);
         add_constraint_with_metadata(
-            &mut model, &coefficients, ConstraintRelation::LessEqual, 1.0,
-            &format!("worker_capacity_{}", worker.name), None, false, 0, None,
+            &mut model,
+            &coefficients,
+            ConstraintRelation::LessEqual,
+            1.0,
+            &format!("worker_capacity_{}", worker.name),
+            None,
+            false,
+            0,
+            None,
         )?;
     }
 
@@ -99,16 +110,29 @@ fn build_low_level_model(
         let indices: Vec<usize> = (0..data.workers.len()).map(|w| idx[w][t]).collect();
         let coefficients = linear_expr_from_indices(&indices, 1.0);
         add_constraint_with_metadata(
-            &mut model, &coefficients, ConstraintRelation::Equal, 1.0,
-            &format!("task_partition_{}", task.name), None, false, 0, None,
+            &mut model,
+            &coefficients,
+            ConstraintRelation::Equal,
+            1.0,
+            &format!("task_partition_{}", task.name),
+            None,
+            false,
+            0,
+            None,
         )?;
     }
 
     // 偏好约束
     add_constraint_with_metadata(
-        &mut model, &[(idx[0][0], 1.0), (idx[1][1], 1.0)],
-        ConstraintRelation::GreaterEqual, 1.0,
-        "prefer_diagonal_low_level", None, false, 0, None,
+        &mut model,
+        &[(idx[0][0], 1.0), (idx[1][1], 1.0)],
+        ConstraintRelation::GreaterEqual,
+        1.0,
+        "prefer_diagonal_low_level",
+        None,
+        false,
+        0,
+        None,
     )?;
 
     Ok((model, idx))
@@ -135,62 +159,117 @@ fn build_shortcut_model(
     // 2. 成本符号组合
     let costs_ref = &data.costs;
     let x_idx_ref = &x_idx;
-    let cost = flat_map1_indexed("cost", &data.workers, |w_idx, _w| {
-        let monomials: Vec<_> = (0..data.tasks.len()).map(|t| {
-            ospf_rust_core::symbol::flatten::LinearMonomial::new(costs_ref[w_idx][t], x_idx_ref[&[w_idx, t]])
-        }).collect();
-        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-    }, |_, w| w.name.clone());
+    let cost = flat_map1_indexed(
+        "cost",
+        &data.workers,
+        |w_idx, _w| {
+            let monomials: Vec<_> = (0..data.tasks.len())
+                .map(|t| {
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        costs_ref[w_idx][t],
+                        x_idx_ref[&[w_idx, t]],
+                    )
+                })
+                .collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        },
+        |_, w| w.name.clone(),
+    );
     model.add_symbol_combination(&cost)?;
 
     // 3. 工人容量符号组合（每工人 sum(x[w,*]) <= 1）
-    let worker_cap = flat_map1_indexed("worker_cap", &data.workers, |w_idx, _w| {
-        let monomials: Vec<_> = (0..data.tasks.len()).map(|t| {
-            ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[w_idx, t]])
-        }).collect();
-        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-    }, |_, w| w.name.clone());
+    let worker_cap = flat_map1_indexed(
+        "worker_cap",
+        &data.workers,
+        |w_idx, _w| {
+            let monomials: Vec<_> = (0..data.tasks.len())
+                .map(|t| {
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        1.0,
+                        x_idx_ref[&[w_idx, t]],
+                    )
+                })
+                .collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        },
+        |_, w| w.name.clone(),
+    );
     model.add_symbol_combination(&worker_cap)?;
 
     // 4. 任务分配符号组合（每任务 sum(x[*][t]) = 1）
-    let task_part = flat_map1_indexed("task_part", &data.tasks, |t_idx, _t| {
-        let monomials: Vec<_> = (0..data.workers.len()).map(|w| {
-            ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[w, t_idx]])
-        }).collect();
-        ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-    }, |_, t| t.name.clone());
+    let task_part = flat_map1_indexed(
+        "task_part",
+        &data.tasks,
+        |t_idx, _t| {
+            let monomials: Vec<_> = (0..data.workers.len())
+                .map(|w| {
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        1.0,
+                        x_idx_ref[&[w, t_idx]],
+                    )
+                })
+                .collect();
+            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+        },
+        |_, t| t.name.clone(),
+    );
     model.add_symbol_combination(&task_part)?;
 
     // 5. 目标: 最小化总成本
     let cost_poly = cost.symbol_polynomial(0);
-    let cost_coeffs: Vec<_> = cost_poly.monomials().iter().map(|m| (m.var_index(), *m.coefficient())).collect();
+    let cost_coeffs: Vec<_> = cost_poly
+        .monomials()
+        .iter()
+        .map(|m| (m.var_index(), *m.coefficient()))
+        .collect();
     model.add_linear_objective(&cost_coeffs, "cost");
     model.set_objective_category(ObjectiveCategory::Minimum);
 
     // 6. 工人容量约束
     for (w, worker) in data.workers.iter().enumerate() {
         let poly = worker_cap.symbol_polynomial(w);
-        let coeffs: Vec<_> = poly.monomials().iter().map(|m| (m.var_index(), *m.coefficient())).collect();
+        let coeffs: Vec<_> = poly
+            .monomials()
+            .iter()
+            .map(|m| (m.var_index(), *m.coefficient()))
+            .collect();
         model.add_le_constraint_with_metadata(
-            &coeffs, 1.0, &format!("worker_capacity_{}", worker.name),
-            None, false, 1, Some("{\"kind\":\"worker-cap\"}".to_string()),
+            &coeffs,
+            1.0,
+            &format!("worker_capacity_{}", worker.name),
+            None,
+            false,
+            1,
+            Some("{\"kind\":\"worker-cap\"}".to_string()),
         )?;
     }
 
     // 7. 任务分配约束
     for (t, task) in data.tasks.iter().enumerate() {
         let poly = task_part.symbol_polynomial(t);
-        let coeffs: Vec<_> = poly.monomials().iter().map(|m| (m.var_index(), *m.coefficient())).collect();
+        let coeffs: Vec<_> = poly
+            .monomials()
+            .iter()
+            .map(|m| (m.var_index(), *m.coefficient()))
+            .collect();
         model.partition_linear_coefficients_with_metadata(
-            &coeffs, &format!("task_partition_{}", task.name),
-            None, false, 1, Some("{\"kind\":\"task-partition\"}".to_string()),
+            &coeffs,
+            &format!("task_partition_{}", task.name),
+            None,
+            false,
+            1,
+            Some("{\"kind\":\"task-partition\"}".to_string()),
         )?;
     }
 
     // 8. 偏好约束
     model.add_ge_constraint_with_metadata(
         &[(x_idx[&[0, 0]], 1.0), (x_idx[&[1, 1]], 1.0)],
-        1.0, "prefer_diagonal_shortcut", None, false, 2,
+        1.0,
+        "prefer_diagonal_shortcut",
+        None,
+        false,
+        2,
         Some("{\"kind\":\"preference\"}".to_string()),
     )?;
 
@@ -198,7 +277,12 @@ fn build_shortcut_model(
 }
 
 /// 打印解决方案（MultiArray 版本）/ Print solution (MultiArray version)
-fn print_solution(title: &str, data: &AssignmentData, idx: &MultiArray<usize, Shape<2>>, solution: &[f64]) {
+fn print_solution(
+    title: &str,
+    data: &AssignmentData,
+    idx: &MultiArray<usize, Shape<2>>,
+    solution: &[f64],
+) {
     println!("{}", title);
     for (w, worker) in data.workers.iter().enumerate() {
         for (t, task) in data.tasks.iter().enumerate() {
@@ -251,7 +335,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
 
     print_solution_vec("low-level assignment:", &data, &low_idx, low_solution);
-    print_solution("shortcut assignment:", &data, &shortcut_idx, shortcut_solution);
+    print_solution(
+        "shortcut assignment:",
+        &data,
+        &shortcut_idx,
+        shortcut_solution,
+    );
 
     Ok(())
 }

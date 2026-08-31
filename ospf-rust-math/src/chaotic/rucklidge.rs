@@ -1,10 +1,10 @@
 //! Rucklidge 吸引子。
 //! Rucklidge attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Rucklidge 吸引子的一阶欧拉步进模型。
@@ -51,7 +51,10 @@ pub fn rucklidge_attractor<S: Field + Float>(alpha: S, kappa: S, h: S) -> Ruckli
 /// 创建 Rucklidge 吸引子生成器。
 /// Create a Rucklidge attractor generator.
 pub fn rucklidge_attractor_generator<S: Field + Float>(
-    alpha: S, kappa: S, h: S, x: Point3<S>,
+    alpha: S,
+    kappa: S,
+    h: S,
+    x: Point3<S>,
 ) -> RucklidgeAttractorGenerator<S> {
     RucklidgeAttractorGenerator::new(RucklidgeAttractor::new(alpha, kappa, h), x)
 }

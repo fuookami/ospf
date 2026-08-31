@@ -1,10 +1,10 @@
 //! Hindmarsh-Rose 神经元模型。
 //! Hindmarsh-Rose neuron model.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Hindmarsh-Rose 神经元模型的一阶欧拉步进模型。
@@ -53,7 +53,15 @@ impl<S: Field + Float> Default for HindmarshRoseModelGenerator<S> {
 /// 创建 Hindmarsh-Rose 神经元模型。
 /// Create a Hindmarsh-Rose neuron model.
 pub fn hindmarsh_rose_model<S: Field + Float>(
-    a: S, b: S, c: S, d: S, s: S, r: S, xr: S, i: S, h: S,
+    a: S,
+    b: S,
+    c: S,
+    d: S,
+    s: S,
+    r: S,
+    xr: S,
+    i: S,
+    h: S,
 ) -> HindmarshRoseModel<S> {
     HindmarshRoseModel::new(a, b, c, d, s, r, xr, i, h)
 }
@@ -61,7 +69,16 @@ pub fn hindmarsh_rose_model<S: Field + Float>(
 /// 创建 Hindmarsh-Rose 神经元模型生成器。
 /// Create a Hindmarsh-Rose neuron model generator.
 pub fn hindmarsh_rose_model_generator<S: Field + Float>(
-    a: S, b: S, c: S, d: S, s: S, r: S, xr: S, i: S, h: S, x: Point3<S>,
+    a: S,
+    b: S,
+    c: S,
+    d: S,
+    s: S,
+    r: S,
+    xr: S,
+    i: S,
+    h: S,
+    x: Point3<S>,
 ) -> HindmarshRoseModelGenerator<S> {
     HindmarshRoseModelGenerator::new(HindmarshRoseModel::new(a, b, c, d, s, r, xr, i, h), x)
 }

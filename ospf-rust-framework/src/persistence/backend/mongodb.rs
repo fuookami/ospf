@@ -1,14 +1,13 @@
 //! MongoDB 持久化后端
 //! MongoDB persistence backend
 
-use std::fmt::{Display, Formatter};
 use ospf_rust_math::Trivalent;
 use ospf_rust_math::symbol::{
-
     BooleanExpression, ComparisonOperator, ExpressionValue, NullCheckType, PatternMatchMode,
     ScalarExpression,
 };
 use serde_json::{Map, Number, Value, json};
+use std::fmt::{Display, Formatter};
 
 use crate::persistence::{
     PersistenceFieldResolver, UnsupportedPredicatePolicy, UpdateAssignment, UpdateAssignments,

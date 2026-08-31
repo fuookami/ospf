@@ -1,10 +1,10 @@
 //! 二次四角模型
 //! Quadratic Tetrad Model
 
-use crate::model::object::ObjectiveCategory;
-use crate::variable::VariableType;
 use super::super::mechanism::QuadraticInequality;
 use super::{BasicQuadraticTetradModel, QuadraticElasticBuilder, SparseMatrix};
+use crate::model::object::ObjectiveCategory;
+use crate::variable::VariableType;
 
 /// 二次四角模型 / Quadratic Tetrad Model
 ///
@@ -110,6 +110,7 @@ impl QuadraticTetradModel {
     }
 
     /// 添加带元数据的二次约束。 / Add quadratic constraint with metadata.
+    #[allow(clippy::too_many_arguments)]
     pub fn add_quadratic_constraint_with_metadata(
         &mut self,
         inequality: QuadraticInequality<f64>,

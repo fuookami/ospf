@@ -1,9 +1,9 @@
 //! 二维投影形状。
 //! Two-dimensional projection shapes.
 
-use num_traits::{Float, FloatConst};
 use crate::algebra::Field;
 use crate::geometry::{Axis2, AxisPermutation2, Circle2, Quadrilateral2};
+use num_traits::{Float, FloatConst};
 
 /// 二维投影形状 trait。
 /// Trait for two-dimensional projection shapes.

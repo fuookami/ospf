@@ -1,23 +1,22 @@
 //! 绝对值函数符号 / Abs function symbol
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
+};
+use super::big_m::{BigMPolicy, infer_linear_abs_bound_from_tokens};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
-};
-use super::big_m::{BigMPolicy, infer_linear_abs_bound_from_tokens};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -121,14 +120,17 @@ where
         Self::new(id, &name, input)
     }
 
+    /// 获取输入线性多项式 / Get the input linear polynomial.
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
+    /// 获取绝对值结果变量 / Get the absolute-value result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取符号辅助变量 / Get the sign auxiliary variable.
     pub fn side_variable(&self) -> &BinaryVariableItem {
         &self.side_var
     }

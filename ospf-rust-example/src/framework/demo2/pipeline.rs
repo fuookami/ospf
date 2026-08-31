@@ -1,7 +1,7 @@
 //! 管线入口 / Pipeline entry point
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::infrastructure::dto::Demo2Request;
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 /// Demo2 流水线模式类型别名 / Demo2 pipeline mode type alias
 #[allow(dead_code)]
@@ -21,7 +21,13 @@ pub fn apply_domain_pipeline(
     loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
     crate::framework::demo2::domain::service::domain_pipeline::apply_domain_pipeline(
-        mode, model, request, x_idx, z,
-        estimate_load_weight_idx, estimate_loaded_idx, loaded_idx,
+        mode,
+        model,
+        request,
+        x_idx,
+        z,
+        estimate_load_weight_idx,
+        estimate_loaded_idx,
+        loaded_idx,
     )
 }

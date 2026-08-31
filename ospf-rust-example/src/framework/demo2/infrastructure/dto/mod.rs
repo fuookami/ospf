@@ -282,7 +282,10 @@ impl Demo2Request {
             target_longitudinal_moment: 0.0,
             max_longitudinal_moment_deviation: 20.0,
             max_lateral_imbalance: 12.0,
-            adjacent_positions: vec![PositionPair { first: 0, second: 1 }],
+            adjacent_positions: vec![PositionPair {
+                first: 0,
+                second: 1,
+            }],
         }
     }
 }

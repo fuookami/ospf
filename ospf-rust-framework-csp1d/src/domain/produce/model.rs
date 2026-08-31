@@ -20,7 +20,7 @@ use ospf_rust_core::variable::UContinuous;
 use ospf_rust_framework::model::AppendableVariablePool;
 
 use crate::domain::material::{
-    to_f64, CuttingPlan, Material, Machine, MaterialId, ProductDemand, ProductId, MachineId,
+    CuttingPlan, Machine, MachineId, Material, MaterialId, ProductDemand, ProductId, to_f64,
 };
 
 /// 封装 [`AppendableVariablePool<usize, UContinuous>`] 的计划使用量变量池。 / Plan usage variable pool wrapping [`AppendableVariablePool<usize, UContinuous>`].
@@ -222,8 +222,12 @@ impl DerivedPlanExpressionSymbols {
                             })
                             .filter_map(|c| to_f64(&c.quantity.value))
                             .sum();
-                        (coefficient != 0.0)
-                            .then_some(ospf_rust_core::symbol::flatten::LinearMonomial::new(coefficient, var_index))
+                        (coefficient != 0.0).then_some(
+                            ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                                coefficient,
+                                var_index,
+                            ),
+                        )
                     })
                     .collect();
                 ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
@@ -245,8 +249,9 @@ impl DerivedPlanExpressionSymbols {
                             return None;
                         }
                         let var_index = variable_pool.plan_variable_index(plan_index)?;
-                        (plan.material.id == material.id)
-                            .then_some(ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, var_index))
+                        (plan.material.id == material.id).then_some(
+                            ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, var_index),
+                        )
                     })
                     .collect();
                 ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
@@ -268,8 +273,9 @@ impl DerivedPlanExpressionSymbols {
                             return None;
                         }
                         let var_index = variable_pool.plan_variable_index(plan_index)?;
-                        (plan.machine_id.as_deref() == Some(machine.id.as_str()))
-                            .then_some(ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, var_index))
+                        (plan.machine_id.as_deref() == Some(machine.id.as_str())).then_some(
+                            ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, var_index),
+                        )
                     })
                     .collect();
                 ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
@@ -299,8 +305,12 @@ impl DerivedPlanExpressionSymbols {
                             return None;
                         }
                         let coefficient = to_f64(&consumption.value)?;
-                        (coefficient != 0.0)
-                            .then_some(ospf_rust_core::symbol::flatten::LinearMonomial::new(coefficient, var_index))
+                        (coefficient != 0.0).then_some(
+                            ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                                coefficient,
+                                var_index,
+                            ),
+                        )
                     })
                     .collect();
                 ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)

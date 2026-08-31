@@ -8,9 +8,9 @@ use ospf_rust_core::solver::value::SolveValueConversionPolicy;
 use ospf_rust_quantities::dimension::derived_quantity::{DerivedQuantity, QuantityDomain};
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::scale::Scale;
+use ospf_rust_quantities::unit::CTUnit;
 use ospf_rust_quantities::unit::Unit;
 use ospf_rust_quantities::unit::derived::Kilogram;
-use ospf_rust_quantities::unit::CTUnit;
 
 use crate::infrastructure::dto::{
     RenderCuttingPlanDTO, RenderCuttingPlanProductionDTO, RenderProductionType, RenderSchemaDTO,
@@ -446,10 +446,9 @@ impl<V: SolveValue> Product<V> {
                 value,
                 unit: unit.clone(),
             }),
-            max_over_produce_length: input.max_over_produce_length.map(|value| Csp1dQuantity {
-                value,
-                unit,
-            }),
+            max_over_produce_length: input
+                .max_over_produce_length
+                .map(|value| Csp1dQuantity { value, unit }),
             dynamic_length: false,
         }
     }
@@ -484,16 +483,13 @@ impl<V: SolveValue> Product<V> {
 
     /// 最大幅宽 / Maximum width
     pub fn max_width(&self) -> Option<Csp1dQuantity<V>> {
-        self.width
-            .iter()
-            .cloned()
-            .max_by(|lhs, rhs| {
-                let lhs_value = to_f64(&lhs.value).unwrap_or(f64::NEG_INFINITY);
-                let rhs_value = to_f64(&rhs.value).unwrap_or(f64::NEG_INFINITY);
-                lhs_value
-                    .partial_cmp(&rhs_value)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+        self.width.iter().cloned().max_by(|lhs, rhs| {
+            let lhs_value = to_f64(&lhs.value).unwrap_or(f64::NEG_INFINITY);
+            let rhs_value = to_f64(&rhs.value).unwrap_or(f64::NEG_INFINITY);
+            lhs_value
+                .partial_cmp(&rhs_value)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     }
 
     /// 指定宽度和长度下的重量 / Weight for the given width and length
@@ -590,15 +586,14 @@ impl<V: SolveValue> ProductDemand<V> {
     }
 
     /// legacy 卷数输入转换（指定单位） / Legacy roll-amount input adapter with unit
-    pub fn legacy_roll_with_unit(
-        product: Product<V>,
-        roll_amount: V,
-        unit: Unit,
-    ) -> Self {
-        Self::roll(product, Csp1dQuantity {
-            value: roll_amount,
-            unit,
-        })
+    pub fn legacy_roll_with_unit(product: Product<V>, roll_amount: V, unit: Unit) -> Self {
+        Self::roll(
+            product,
+            Csp1dQuantity {
+                value: roll_amount,
+                unit,
+            },
+        )
     }
 
     /// legacy 重量输入转换 / Legacy weight-amount input adapter
@@ -607,15 +602,14 @@ impl<V: SolveValue> ProductDemand<V> {
     }
 
     /// legacy 重量输入转换（指定单位） / Legacy weight-amount input adapter with unit
-    pub fn legacy_weight_with_unit(
-        product: Product<V>,
-        weight_amount: V,
-        unit: Unit,
-    ) -> Self {
-        Self::weight(product, Csp1dQuantity {
-            value: weight_amount,
-            unit,
-        })
+    pub fn legacy_weight_with_unit(product: Product<V>, weight_amount: V, unit: Unit) -> Self {
+        Self::weight(
+            product,
+            Csp1dQuantity {
+                value: weight_amount,
+                unit,
+            },
+        )
     }
 
     /// legacy 张数输入转换 / Legacy sheet-amount input adapter
@@ -624,15 +618,14 @@ impl<V: SolveValue> ProductDemand<V> {
     }
 
     /// legacy 张数输入转换（指定单位） / Legacy sheet-amount input adapter with unit
-    pub fn legacy_sheet_with_unit(
-        product: Product<V>,
-        sheet_amount: V,
-        unit: Unit,
-    ) -> Self {
-        Self::sheet(product, Csp1dQuantity {
-            value: sheet_amount,
-            unit,
-        })
+    pub fn legacy_sheet_with_unit(product: Product<V>, sheet_amount: V, unit: Unit) -> Self {
+        Self::sheet(
+            product,
+            Csp1dQuantity {
+                value: sheet_amount,
+                unit,
+            },
+        )
     }
 
     /// 是否离散需求 / Whether demand is discrete
@@ -856,8 +849,8 @@ impl<V: SolveValue> CuttingPlan<V> {
     /// 规范化 key / Canonical key
     pub fn canonical_key(&self) -> String {
         let slices = canonical_slice_keys(&self.slices).join(",");
-        let demand_contributions = canonical_demand_contribution_keys(&self.demand_contributions)
-            .join(",");
+        let demand_contributions =
+            canonical_demand_contribution_keys(&self.demand_contributions).join(",");
         let capacity_consumption = self
             .capacity_consumption
             .as_ref()
@@ -951,14 +944,16 @@ fn canonical_demand_contribution_keys<V: SolveValue>(
     }
     grouped
         .into_iter()
-        .map(|((product_id, unit), quantity)| {
-            format!("{product_id}:{unit}:{quantity:?}")
-        })
+        .map(|((product_id, unit), quantity)| format!("{product_id}:{unit}:{quantity:?}"))
         .collect()
 }
 
 fn canonical_quantity_key<V: SolveValue>(quantity: &Csp1dQuantity<V>) -> String {
-    format!("{:?}:{}", quantity.value, canonical_unit_key(&quantity.unit))
+    format!(
+        "{:?}:{}",
+        quantity.value,
+        canonical_unit_key(&quantity.unit)
+    )
 }
 
 fn canonical_unit_key(unit: &Unit) -> String {
@@ -1059,7 +1054,10 @@ pub fn shadow_price_key_to_string(key: &Csp1dShadowPriceKey) -> String {
             format!("machine-capacity:{}", key.machine_id)
         }
         Csp1dShadowPriceKey::YieldOverProductionBound(key) => {
-            format!("yield-over-production-bound:{}:{}", key.product_id, key.unit_symbol)
+            format!(
+                "yield-over-production-bound:{}:{}",
+                key.product_id, key.unit_symbol
+            )
         }
     }
 }
@@ -1169,7 +1167,9 @@ pub fn to_render_production_dto<V: SolveValue>(
         x: x.to_string(),
         id: production.id().to_string(),
         width: format!("{:?}", width.value),
-        unit_length: production.length().map(|length| format!("{:?}", length.value)),
+        unit_length: production
+            .length()
+            .map(|length| format!("{:?}", length.value)),
         production_type: production.render_type(),
         amount,
         info,
@@ -1190,12 +1190,7 @@ pub fn render_cutting_plan<V: SolveValue>(
             if let Some(width) = to_f64(&slice.width.value) {
                 cursor += width;
             }
-            to_render_production_dto(
-                &slice.production,
-                x,
-                slice.width.clone(),
-                slice.amount,
-            )
+            to_render_production_dto(&slice.production, x, slice.width.clone(), slice.amount)
         })
         .collect();
     let rest_width = plan.rest_width();
@@ -1230,6 +1225,9 @@ pub fn render_cutting_plan<V: SolveValue>(
 pub fn render_schema<V: SolveValue>(plans: &[CuttingPlan<V>]) -> RenderSchemaDTO {
     RenderSchemaDTO {
         kpi: BTreeMap::new(),
-        cutting_plans: plans.iter().map(|plan| render_cutting_plan(plan, 1)).collect(),
+        cutting_plans: plans
+            .iter()
+            .map(|plan| render_cutting_plan(plan, 1))
+            .collect(),
     }
 }

@@ -9,12 +9,12 @@ pub mod limits {
     //! 实现束级编译约束、任务级约束和成本目标。
     //! Implements bunch-level compilation constraints, task-level constraints, and cost objectives.
 
+    use ospf_rust_core::error::Result;
     use ospf_rust_core::model::MetaModel;
-    use ospf_rust_core::model::object::SubObjective;
     use ospf_rust_core::model::flatten::{Linear, LinearMonomial};
     use ospf_rust_core::model::mechanism::constraint_group::ConstraintGroup;
+    use ospf_rust_core::model::object::SubObjective;
     use ospf_rust_framework::model::pipeline::Pipeline;
-    use ospf_rust_core::error::Result;
 
     use crate::domain::bunch_compilation::model::BunchCompilation;
     use crate::domain::bunch_compilation::slot_based::SlotBasedBunchCompilationContext;
@@ -64,10 +64,10 @@ pub mod limits {
                 for (iter_idx, x_indices) in compilation.x_indices.iter().enumerate() {
                     let bunches = compilation.aggregation.bunches_for_iteration(iter_idx);
                     for (local_idx, bunch) in bunches.iter().enumerate() {
-                        if bunch.task_indices.contains(&ti) {
-                            if let Some(&x_idx) = x_indices.get(local_idx) {
-                                terms.push((x_idx, 1.0));
-                            }
+                        if bunch.task_indices.contains(&ti)
+                            && let Some(&x_idx) = x_indices.get(local_idx)
+                        {
+                            terms.push((x_idx, 1.0));
                         }
                     }
                 }
@@ -84,16 +84,18 @@ pub mod limits {
     }
 
     impl Pipeline<MetaModel<f64>> for BunchTaskCompilationConstraint {
-        fn name(&self) -> &str { &self.name }
-        fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn constraint_group(&self) -> Option<&ConstraintGroup> {
+            self.group.as_ref()
+        }
 
         fn register(&self, model: &mut MetaModel<f64>) {
             for (ti, terms) in self.task_polynomials.iter().enumerate() {
-                if let Err(e) = model.add_eq_constraint(
-                    terms,
-                    1.0,
-                    &format!("{}_{}", self.name, ti),
-                ) {
+                if let Err(e) =
+                    model.add_eq_constraint(terms, 1.0, &format!("{}_{}", self.name, ti))
+                {
                     log::warn!("Failed to register {}_{}: {:?}", self.name, ti, e);
                 }
             }
@@ -145,10 +147,10 @@ pub mod limits {
                 for (iter_idx, x_indices) in compilation.x_indices.iter().enumerate() {
                     let bunches = compilation.aggregation.bunches_for_iteration(iter_idx);
                     for (local_idx, bunch) in bunches.iter().enumerate() {
-                        if bunch.executor_id == compilation.executor_ids[ei] {
-                            if let Some(&x_idx) = x_indices.get(local_idx) {
-                                terms.push((x_idx, 1.0));
-                            }
+                        if bunch.executor_id == compilation.executor_ids[ei]
+                            && let Some(&x_idx) = x_indices.get(local_idx)
+                        {
+                            terms.push((x_idx, 1.0));
                         }
                     }
                 }
@@ -165,16 +167,18 @@ pub mod limits {
     }
 
     impl Pipeline<MetaModel<f64>> for BunchExecutorCompilationConstraint {
-        fn name(&self) -> &str { &self.name }
-        fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn constraint_group(&self) -> Option<&ConstraintGroup> {
+            self.group.as_ref()
+        }
 
         fn register(&self, model: &mut MetaModel<f64>) {
             for (ei, terms) in self.executor_polynomials.iter().enumerate() {
-                if let Err(e) = model.add_eq_constraint(
-                    terms,
-                    1.0,
-                    &format!("{}_{}", self.name, ei),
-                ) {
+                if let Err(e) =
+                    model.add_eq_constraint(terms, 1.0, &format!("{}_{}", self.name, ei))
+                {
                     log::warn!("Failed to register {}_{}: {:?}", self.name, ei, e);
                 }
             }
@@ -199,6 +203,7 @@ pub mod limits {
         name: String,
         group: Option<ConstraintGroup>,
         /// 执行器-时隙线性项 / Executor-slot linear terms
+        #[allow(clippy::type_complexity)]
         pub executor_slot_polynomials: Vec<(I, usize, Vec<(usize, f64)>)>,
     }
 
@@ -223,11 +228,8 @@ pub mod limits {
                     )
                 })
                 .collect::<Vec<_>>();
-            executor_slot_polynomials.sort_by(|lhs, rhs| {
-                lhs.0
-                    .cmp(&rhs.0)
-                    .then_with(|| lhs.1.cmp(&rhs.1))
-            });
+            executor_slot_polynomials
+                .sort_by(|lhs, rhs| lhs.0.cmp(&rhs.0).then_with(|| lhs.1.cmp(&rhs.1)));
             Self {
                 name: "executor_slot_compilation".to_string(),
                 group: None,
@@ -268,8 +270,12 @@ pub mod limits {
     where
         I: ExecutorIdTrait,
     {
-        fn name(&self) -> &str { &self.name }
-        fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn constraint_group(&self) -> Option<&ConstraintGroup> {
+            self.group.as_ref()
+        }
 
         fn register(&self, model: &mut MetaModel<f64>) {
             for (executor_id, slot_index, terms) in &self.executor_slot_polynomials {
@@ -317,10 +323,10 @@ pub mod limits {
             for (iter_idx, x_indices) in compilation.x_indices.iter().enumerate() {
                 let bunches = compilation.aggregation.bunches_for_iteration(iter_idx);
                 for (local_idx, bunch) in bunches.iter().enumerate() {
-                    if bunch.cost != 0.0 {
-                        if let Some(&x_idx) = x_indices.get(local_idx) {
-                            cost_terms.push((x_idx, bunch.cost));
-                        }
+                    if bunch.cost != 0.0
+                        && let Some(&x_idx) = x_indices.get(local_idx)
+                    {
+                        cost_terms.push((x_idx, bunch.cost));
                     }
                 }
             }
@@ -333,14 +339,20 @@ pub mod limits {
     }
 
     impl Pipeline<MetaModel<f64>> for BunchCostMinimization {
-        fn name(&self) -> &str { &self.name }
-        fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn constraint_group(&self) -> Option<&ConstraintGroup> {
+            None
+        }
 
         fn register(&self, model: &mut MetaModel<f64>) {
             if self.cost_terms.is_empty() {
                 return;
             }
-            let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+            let monomials: Vec<LinearMonomial<f64>> = self
+                .cost_terms
+                .iter()
                 .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
                 .collect();
             let polynomial = Linear::new(monomials, 0.0);
@@ -374,7 +386,9 @@ pub mod limits {
         struct TestSlot(TimeRange);
 
         impl TimeSlot for TestSlot {
-            fn time(&self) -> &TimeRange { &self.0 }
+            fn time(&self) -> &TimeRange {
+                &self.0
+            }
 
             fn sub_of(&self, sub_time: &TimeRange) -> Option<Self> {
                 self.0.intersection(sub_time).map(Self)
@@ -396,7 +410,10 @@ pub mod limits {
             let executor = BasicExecutor::new("exec_1", "Executor 1");
             let values = CapacityIntermediateValues::new(
                 slots.clone(),
-                HashMap::from([(0, SlotConstraints::default()), (1, SlotConstraints::default())]),
+                HashMap::from([
+                    (0, SlotConstraints::default()),
+                    (1, SlotConstraints::default()),
+                ]),
             );
             let mut context = BasicSlotBasedBunchCompilationContext::new(
                 BasicBunchCompilationContext::new(0, vec![executor.id.clone()], false),
@@ -430,7 +447,8 @@ pub mod limits {
                 )
                 .unwrap();
 
-            let constraint = ExecutorSlotCompilationConstraint::from_context::<TestSlot, _>(&context);
+            let constraint =
+                ExecutorSlotCompilationConstraint::from_context::<TestSlot, _>(&context);
             constraint.register(&mut model);
             assert_eq!(constraint.executor_slot_polynomials.len(), 2);
             assert_eq!(model.num_constraints(), 2);
@@ -448,16 +466,14 @@ pub mod limits {
             compilation.register(&mut model).unwrap();
 
             // 添加初始列
-            let bunches = vec![
-                BunchEntry {
-                    index: 0,
-                    executor_id: "exec_1".into(),
-                    task_indices: vec![0, 1],
-                    cost: 10.0,
-                    iteration: 0,
-                    slot_index: None,
-                },
-            ];
+            let bunches = vec![BunchEntry {
+                index: 0,
+                executor_id: "exec_1".into(),
+                task_indices: vec![0, 1],
+                cost: 10.0,
+                iteration: 0,
+                slot_index: None,
+            }];
             compilation.add_columns(0, bunches, &mut model).unwrap();
 
             let constraint = BunchTaskCompilationConstraint::from_compilation(&compilation);
@@ -470,23 +486,17 @@ pub mod limits {
         fn test_bunch_executor_compilation_constraint() {
             let mut model = MetaModel::<f64>::new("test_bunch_exec_constraint");
 
-            let mut compilation = BunchCompilation::new(
-                2,
-                vec!["exec_1".to_string()],
-                true,
-            );
+            let mut compilation = BunchCompilation::new(2, vec!["exec_1".to_string()], true);
             compilation.register(&mut model).unwrap();
 
-            let bunches = vec![
-                BunchEntry {
-                    index: 0,
-                    executor_id: "exec_1".into(),
-                    task_indices: vec![0],
-                    cost: 5.0,
-                    iteration: 0,
-                    slot_index: None,
-                },
-            ];
+            let bunches = vec![BunchEntry {
+                index: 0,
+                executor_id: "exec_1".into(),
+                task_indices: vec![0],
+                cost: 5.0,
+                iteration: 0,
+                slot_index: None,
+            }];
             compilation.add_columns(0, bunches, &mut model).unwrap();
 
             let constraint = BunchExecutorCompilationConstraint::from_compilation(&compilation);
@@ -499,11 +509,7 @@ pub mod limits {
         fn test_bunch_cost_minimization() {
             let mut model = MetaModel::<f64>::new("test_bunch_cost");
 
-            let mut compilation = BunchCompilation::new(
-                2,
-                vec!["exec_1".to_string()],
-                true,
-            );
+            let mut compilation = BunchCompilation::new(2, vec!["exec_1".to_string()], true);
             compilation.register(&mut model).unwrap();
 
             let bunches = vec![

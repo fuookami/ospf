@@ -1,8 +1,8 @@
 //! 启发式策略接口
 //! Heuristic Policy Interface
 
-use std::time::Duration;
 use super::Iteration;
+use std::time::Duration;
 
 /// 启发式策略抽象 / Abstract heuristic policy
 pub trait AbstractHeuristicPolicy: Send + Sync {

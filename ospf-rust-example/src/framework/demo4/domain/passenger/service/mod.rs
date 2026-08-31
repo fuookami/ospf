@@ -2,9 +2,9 @@
 /// 旅客约束模块 / Passenger constraints module
 pub mod limits;
 
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use super::Aggregation;
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 /// 旅客管道列表生成器 / Passenger pipeline list generator
 /// 对齐 Kotlin passenger PipelineListGenerator / Aligned with Kotlin passenger PipelineListGenerator

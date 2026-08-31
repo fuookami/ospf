@@ -1,8 +1,8 @@
 //! 编制结果模型模块 / Compilation result model module
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 编译结果 / Compilation
 /// 对齐 Kotlin Compilation (BunchCompilation)

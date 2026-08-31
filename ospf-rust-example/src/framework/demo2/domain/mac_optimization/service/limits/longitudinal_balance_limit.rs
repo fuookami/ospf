@@ -1,12 +1,12 @@
 //! 纵向平衡限制 / Longitudinal balance limits
-use std::error::Error;
-use std::sync::Arc;
-use ospf_rust_core::model::{ConstraintRelation, LinearObjectiveInput, MetaModel};
-use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
-use ospf_rust_core::symbol::function::SlackFunction;
 use crate::framework::demo2::domain::mac_optimization::aggregation::MacOptimizationAggregation;
 use crate::framework::demo2::domain::mac_optimization::context::MacOptimizationContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, LinearObjectiveInput, MetaModel};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::function::SlackFunction;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 纵向平衡限制 / Longitudinal balance limit
 /// 对齐 Kotlin LongitudinalBalanceLimit
@@ -31,7 +31,8 @@ pub fn apply_longitudinal_balance_limits(
         sym.to_linear_polynomial()
     } else {
         // 回退: 从裸系数构建
-        let monomials: Vec<LinearMonomial<f64>> = aggregation.long_moment
+        let monomials: Vec<LinearMonomial<f64>> = aggregation
+            .long_moment
             .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
@@ -50,9 +51,11 @@ pub fn apply_longitudinal_balance_limits(
     model.add_symbol(Arc::new(slack_fn))?;
 
     // 最小化 long_balance_slack
-    let obj = LinearObjectiveInput::minimize(
-        &format!("longitudinal_balance_{}", mode_name(context.mode)),
-    ).terms(std::iter::once((slack_idx, 1.0)));
+    let obj = LinearObjectiveInput::minimize(&format!(
+        "longitudinal_balance_{}",
+        mode_name(context.mode)
+    ))
+    .terms(std::iter::once((slack_idx, 1.0)));
     model.add_linear_objective_input(obj);
 
     // 载荷偏差约束 (仅 Predistribution/WeightRecommendation)

@@ -1,18 +1,17 @@
 //! 表达式符号类型 / Expression symbol types.
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use super::{
-
     Category, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     QuadraticIntermediateSymbol,
 };
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 use crate::token::TokenList;
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 /// 通用表达式符号 / Generic expression symbol.
 #[derive(Debug, Clone)]

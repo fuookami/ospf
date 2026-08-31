@@ -29,7 +29,7 @@
 | `model` | `framework/model` | `Pipeline`、`CGPipeline`、`HAPipeline`、shadow-price map、dynamic column state 和 dynamic model lifecycle。 |
 | `solver` | `framework/solver` | column generation、Benders、组合求解器、framework solve options、dual solution 和 backend extension wrapper。 |
 | `solver::remote` | `framework/solver.remote` | remote solver client、domain model、port、adapter、HTTP task client 和 model serialization。 |
-| `persistence` | `framework/persistence` | persistence DTO、repository contract、expression schema、sort/update descriptor 和 backend feature boundary。 |
+| `persistence` | `framework/persistence` | persistence DTO、repository contract、expression schema、关系查询计划、sort/update descriptor 和 backend feature boundary。 |
 | `network` | `framework/network` | HTTP/network helper contract。 |
 | `running_heart_beat` | `framework heartbeat` | progress、running 和 finish heartbeat 数据结构。 |
 
@@ -64,6 +64,9 @@ application 代码通常应使用统一的 `solve(...)` 和 `solve_with_options(
 | `FrameworkSolveOptions` | 统一 solve options。 | migration |
 | `RemoteSolverClient`、`RemoteLinearSolver`、`RemoteQuadraticSolver` | feature-gated remote solver 编排。 | migration |
 | `ExpressionRepository`、`RepositoryQuery`、`SortBy`、`UpdateAssignments` | persistence expression contract。 | migration |
+| `RelationalQueryPlan`、`JoinSpec`、`ProjectionSpec` | 与数据库无关的关系查询计划、校验和规范化审计摘要。 | migration |
+| `DiagnosticPersistenceFieldResolver`、`PersistenceFieldResolution` | 保留字段缺失、歧义和非法配置诊断。 | migration |
+| `SqlxRelationalQueryCompiler` | 将白名单关系计划编译为参数化 SQLx SQL，并提供执行统计。 | feature-gated |
 
 ## 建模扩展点
 
@@ -133,22 +136,38 @@ fn run_column_generation<S: ColumnGenerationSolver>(
 
 ## Remote Solver 边界
 
+共享的 report、proof、取消合同见 [`../docs/solve-contract_ch.md`](../docs/solve-contract_ch.md)。
+
+Remote checkpoint recovery 保留旧的 `CheckpointResumeExpectation` 和 `validate_resume` 兼容投影。
+精确恢复必须使用 `CheckpointResumeExpectationWithAttempt`、`load_checkpoint_artifact_from` 和
+`validate_resume_from`，这些入口会校验源 attempt、调用方期望的 parent、solver provenance
+与取消链。携带 checkpoint 的版本化报告还必须匹配 model/configuration/solver fingerprint
+和 provenance，不能只匹配 run 与 attempt。Backend 证据遵循
+[native 矩阵](../docs/solver-native-matrix_ch.md)，Kotlin source 覆盖见
+[traceability 表](../docs/solver-traceability_ch.md)。
+
 remote solver 支持遵循 Cargo feature，不按 Maven-style backend module 拆分。公共 feature 提供 `RemoteSolverClient`、`RemoteLinearSolver`、`RemoteQuadraticSolver`、async `SolverExecutionPort` 与 `ObjectStoragePort`、`RemoteSolverHttpClient`、`LocalFileObjectStoragePort` 和 `OspfRemoteModelSerializer`。
 
-在 current-thread Tokio runtime 内，建议使用 `solve_remote(...)` / `solve_remote_with_options(...)`，因为同步 trait 入口会主动拒绝阻塞该 runtime flavor。
+在 current-thread Tokio runtime 内，建议使用 `solve_remote(...)` / `solve_remote_with_options(...)`，因为同步 trait 入口会主动拒绝阻塞该 runtime flavor。需要读取终态语义的新代码应使用 `solve_remote_report(...)` 或 core 的 `solve_linear_report` / `solve_quadratic_report` 入口。版本化 remote report 保留 core `SolveReport`、run/attempt identity 和 artifact digest；旧 `SolveResult` 与 `SerializedSolution` 仍支持兼容读取，但未知 report schema version 会被拒绝。
 
 ## Persistence 边界
 
 persistence backend 遵循 Cargo feature。公共层包含 `ExpressionRepository`、`RepositoryQuery`、`SortBy`、`UpdateAssignments`、`PredicateSchema`、`FieldPath` 和 request/response DTO/record 类型。
 
+`RelationalQueryPlan` 是数据源、别名、Join、谓词、投影、分组、排序、分页和可选根键的数据库无关计划边界。计划会在边界递归快照拥有型表达式树和动态符号元数据，在编译前校验 Join 关联，并提供 `canonical()` 与 SHA-256 `canonical_hash()` 审计摘要。canonical 会规范化嵌套布尔表达式和成员候选集合，同时保留字面量类型形状而省略字面量原值。计划有意不包含权限、预算、物理表名、数据库连接和行映射类型。
+
+当适配器需要区分字段缺失、映射歧义和非法配置时，应实现 `DiagnosticPersistenceFieldResolver`；`PredicateSchema<String>` 已为注册的字符串字段映射提供该诊断行为。
+
 后端边界：
 
-1. SQLx 构建参数化 SQL 语句。
+1. SQLx 通过 `SqlxRelationalQueryCompiler` 构建参数化 SQL 语句，支持 `Inner`、`Left` 和相关 `Exists` Join；隐式投影必须使用显式字段白名单，一对多关系的 `COUNT(DISTINCT root_key)` 保持根粒度。`compile_count` 保留兼容的 `SqlxSql` 结果，`compile_count_typed` 则保留参数类型及顺序，供审计或适配器进行类型感知绑定。
 2. SeaORM 把表达式翻译成 SeaQuery/SeaORM 类型，并提供 async repository adapter。
 3. Rbatis 在 Rbatis-facing 名称下复用参数化 SQL builder。
 4. Diesel 和 Toasty 通过 planning helper 保持 typed ORM 边界。
 5. Cornucopia 绑定生成查询函数名。
 6. MongoDB 和 Redis 提供 JSON/document 与命令 helper，不要求具体 client 类型。
+
+SQLx 编译器返回 `SqlxCompiledQuery`，其中包含 SQL 模板、参数值、参数类型摘要、方言和复制后的计划。`execute_with` 有意接收外部执行器，因为连接所有权和行映射属于应用或 SQLx adapter；该方法只补充返回行数、耗时和截断统计。需要结构化执行分类的 adapter 应使用 `execute_with_classifier`，显式把执行器错误映射为 `Timeout`、`UnsupportedDialect` 或 `Database`；通用层不会根据错误文本推断分类。未知数据源、未知或歧义字段、非法 Join、不支持的谓词和错误白名单均以结构化 `RelationalQueryFailure` 返回。
 
 ## Solver Backend 说明
 
@@ -192,7 +211,7 @@ cargo test -p ospf-rust-framework --features "scip-bundled async"
 - `parking_lot`
 - `log`
 - `async-trait` 可选
-- `tokio`、`serde`、`serde_json`、`sha2`、`reqwest` 和 `sea-orm` 按 feature 可选
+- `tokio`、`serde`、`serde_json`、`reqwest` 和 `sea-orm` 按 feature 可选；`sha2` 用于查询审计摘要并为必需依赖
 
 ## 相关模块
 

@@ -1,10 +1,10 @@
 //! 范德波尔系统。
 //! Van der Pol system.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point2};
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use super::helpers::{default_float, one_point2};
+use num_traits::Float;
 
 point2_system!(
     /// 范德波尔系统的一阶欧拉步进模型。
@@ -45,7 +45,11 @@ pub fn van_der_pol_system<S: Field + Float>(a: S, h: S) -> VanDerPolSystem<S> {
 
 /// 创建范德波尔系统生成器。
 /// Create a Van der Pol system generator.
-pub fn van_der_pol_system_generator<S: Field + Float>(a: S, h: S, x: Point2<S>) -> VanDerPolSystemGenerator<S> {
+pub fn van_der_pol_system_generator<S: Field + Float>(
+    a: S,
+    h: S,
+    x: Point2<S>,
+) -> VanDerPolSystemGenerator<S> {
     VanDerPolSystemGenerator::new(VanDerPolSystem::new(a, h), x)
 }
 

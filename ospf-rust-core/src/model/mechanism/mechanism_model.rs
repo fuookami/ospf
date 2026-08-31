@@ -30,7 +30,11 @@ pub enum BendersCutRequest {
     /// 生成可行性割（无需目标变量）/ Generate feasibility cut (objective variable not required)
     Feasibility,
     /// 生成最优性割（需要目标变量）/ Generate optimality cut (objective variable required)
-    Optimality { objective_variable: VariableId },
+    /// 最优性割 / Optimality cut
+    Optimality {
+        /// 最优性割所关联的目标变量 / Objective variable associated with the optimality cut
+        objective_variable: VariableId,
+    },
 }
 
 /// 机理模型 / Mechanism Model
@@ -132,6 +136,7 @@ impl MechanismModel<f64> {
         Ok(normalized)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn push_feasibility_cut_row(
         &self,
         coefficients: impl Iterator<Item = (usize, f64)>,
@@ -208,6 +213,7 @@ impl MechanismModel<f64> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn push_optimal_quadratic_cut_row(
         &self,
         coefficients: impl Iterator<Item = (usize, Option<usize>, f64)>,
@@ -1227,6 +1233,7 @@ impl MechanismModel<f64> {
             })
     }
 
+    /// 带建模状态回调地转换为线性模型 / Convert to a linear model with a build-status callback.
     pub fn try_into_linear_triad_model_with_status_callback(
         self,
         callback: Option<&ModelBuildingStatusCallback>,
@@ -1402,6 +1409,7 @@ impl MechanismModel<f64> {
         Ok(linear_model)
     }
 
+    /// 转换为二次模型 / Convert into a quadratic model.
     pub fn into_quadratic_tetrad_model(self) -> QuadraticTetradModel {
         self.try_into_quadratic_tetrad_model_with_status_callback(None)
             .unwrap_or_else(|err| {
@@ -1412,6 +1420,7 @@ impl MechanismModel<f64> {
             })
     }
 
+    /// 带建模状态回调地转换为二次模型 / Convert to a quadratic model with a build-status callback.
     pub fn try_into_quadratic_tetrad_model_with_status_callback(
         self,
         callback: Option<&ModelBuildingStatusCallback>,

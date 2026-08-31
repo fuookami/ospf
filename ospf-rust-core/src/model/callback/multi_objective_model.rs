@@ -73,6 +73,7 @@ pub struct MulObj<V> {
     pub locations: Vec<MultiObjectLocation>,
     /// 帕累托前沿 / Pareto front
     pub pareto_front: Vec<SolutionWithStatus<V>>,
+    /// 每个帕累托解对应的目标快照 / Objective snapshot for each Pareto solution
     pub pareto_objectives: Vec<Option<Vec<(usize, V)>>>,
 }
 
@@ -199,6 +200,7 @@ impl<V> MulObj<V> {
         has_comparable_dimension && strictly_better
     }
 
+    /// 添加帕累托解并保存当前目标快照 / Add a Pareto solution and save its objective snapshot.
     pub fn add_pareto_solution(&mut self, solution: SolutionWithStatus<V>)
     where
         V: Clone,
@@ -286,10 +288,10 @@ impl<V> MulObj<V> {
         }
 
         for pareto_solution in &self.pareto_front {
-            if let Some(pareto_obj) = pareto_solution.objective_value.as_ref() {
-                if pareto_obj <= &candidate_weighted {
-                    return true;
-                }
+            if let Some(pareto_obj) = pareto_solution.objective_value.as_ref()
+                && pareto_obj <= &candidate_weighted
+            {
+                return true;
             }
         }
         false

@@ -1,10 +1,10 @@
 //! Dequan Li 吸引子。
 //! Dequan Li attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Dequan Li 吸引子的一阶欧拉步进模型。
@@ -49,7 +49,13 @@ impl<S: Field + Float> Default for DequanLiAttractorGenerator<S> {
 /// 创建 Dequan Li 吸引子。
 /// Create a Dequan Li attractor.
 pub fn dequan_li_attractor<S: Field + Float>(
-    alpha: S, beta: S, delta: S, epsilon: S, zeta: S, rho: S, h: S,
+    alpha: S,
+    beta: S,
+    delta: S,
+    epsilon: S,
+    zeta: S,
+    rho: S,
+    h: S,
 ) -> DequanLiAttractor<S> {
     DequanLiAttractor::new(alpha, beta, delta, epsilon, zeta, rho, h)
 }
@@ -57,9 +63,19 @@ pub fn dequan_li_attractor<S: Field + Float>(
 /// 创建 Dequan Li 吸引子生成器。
 /// Create a Dequan Li attractor generator.
 pub fn dequan_li_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, delta: S, epsilon: S, zeta: S, rho: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    delta: S,
+    epsilon: S,
+    zeta: S,
+    rho: S,
+    h: S,
+    x: Point3<S>,
 ) -> DequanLiAttractorGenerator<S> {
-    DequanLiAttractorGenerator::new(DequanLiAttractor::new(alpha, beta, delta, epsilon, zeta, rho, h), x)
+    DequanLiAttractorGenerator::new(
+        DequanLiAttractor::new(alpha, beta, delta, epsilon, zeta, rho, h),
+        x,
+    )
 }
 
 #[cfg(test)]
@@ -67,7 +83,10 @@ mod tests {
     use super::*;
 
     fn assert_close(actual: f64, expected: f64) {
-        assert!((actual - expected).abs() < 1e-12, "actual={actual}, expected={expected}");
+        assert!(
+            (actual - expected).abs() < 1e-12,
+            "actual={actual}, expected={expected}"
+        );
     }
 
     #[test]

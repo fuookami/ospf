@@ -3,21 +3,20 @@
 //! `ProductFunction` 建模两个线性多项式的乘积：`y = left * right` / `ProductFunction` models the product of two linear polynomials: `y = left * right`
 //! 该符号本身是二次的，即使不需要线性化机理约束，也可以在表达式/求值流水线中使用 / The symbol itself is quadratic and can be used in expression/evaluation pipelines even when no linearized mechanism constraints are required
 
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, QuadraticIntermediateSymbol,
+};
+use crate::error::Result;
+use crate::model::LinearConstraint;
+use crate::symbol::flatten::{Linear, Quadratic, QuadraticMonomial};
+use crate::token::{Token, TokenList};
+use num_traits::Zero;
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;
 use std::collections::HashSet;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, Mul};
 use std::sync::Arc;
-use num_traits::Zero;
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-use crate::error::Result;
-use crate::model::LinearConstraint;
-use crate::symbol::flatten::{Linear, Quadratic, QuadraticMonomial};
-use crate::token::{Token, TokenList};
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, QuadraticIntermediateSymbol,
-};
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,

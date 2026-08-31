@@ -1,20 +1,19 @@
 //! 平衡三值变量函数符号 / Balanced ternary variable function symbol
 
-use std::any::Any;
-use std::collections::HashSet;
-use std::fmt::{Debug, Display, Formatter};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-};
+use num_traits::{FromPrimitive, ToPrimitive};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::HashSet;
+use std::fmt::{Debug, Display, Formatter};
+use std::sync::Arc;
 
 fn to_f64<V>(value: &V) -> Option<f64>
 where
@@ -61,6 +60,7 @@ impl<V> BalanceTernaryzationFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建三值平衡函数 / Create a ternary-balancing function.
     pub fn new(id: u64, name: &str) -> Self {
         let group_id = new_group_id();
         let result_var = ContinuousVariableItem::create(VariableId::new(group_id, 0), name);
@@ -81,19 +81,23 @@ where
         }
     }
 
+    /// 设置声明的依赖符号 ID / Set declared dependency symbol IDs.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取正方向指示变量 / Get the positive-direction indicator variable.
     pub fn positive_variable(&self) -> &BinaryVariableItem {
         &self.positive_var
     }
 
+    /// 获取负方向指示变量 / Get the negative-direction indicator variable.
     pub fn negative_variable(&self) -> &BinaryVariableItem {
         &self.negative_var
     }

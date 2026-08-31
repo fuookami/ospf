@@ -1,9 +1,9 @@
 //! 顺序装载模型 / Sequential loading model
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::IfFunction;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 顺序装载 / Sequential loading (对齐 Kotlin SequentialLoading)
 #[derive(Debug, Clone)]
@@ -50,10 +50,7 @@ impl SequentialLoading {
         next_id: &mut u64,
     ) -> Result<SequentialLoadingVariables, Box<dyn Error>> {
         // condition: loaded[item] (nonzero when item is loaded at any position)
-        let condition = Linear::new(
-            vec![LinearMonomial::new(1.0, loaded_idx[item_idx])],
-            0.0,
-        );
+        let condition = Linear::new(vec![LinearMonomial::new(1.0, loaded_idx[item_idx])], 0.0);
         // then_expr: 1.0 (loaded)
         let then_expr = Linear::new(Vec::new(), 1.0);
         // else_expr: 0.0 (not loaded)

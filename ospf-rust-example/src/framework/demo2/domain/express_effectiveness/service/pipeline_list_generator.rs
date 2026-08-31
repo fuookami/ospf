@@ -1,12 +1,12 @@
 //! 快递效能流水线步骤生成器 / Express effectiveness pipeline step generator
 
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::express_effectiveness::aggregation::ExpressEffectivenessAggregation;
 use crate::framework::demo2::domain::express_effectiveness::context::ExpressEffectivenessContext;
 use crate::framework::demo2::domain::express_effectiveness::service::policy;
 use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 use crate::framework::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 /// 快递效能流水线步骤类型 / Express effectiveness pipeline step type
 pub type ExpressEffectivenessPipelineStep = fn(

@@ -1,9 +1,9 @@
 //! 包围盒形状枚举。
 //! Bounding-box shape enums.
 
-use num_traits::{Float, FloatConst};
 use crate::algebra::Field;
 use crate::geometry::{Circle2, Cuboid3, Cylinder3, Projection2, Rectangle2, Shape3};
+use num_traits::{Float, FloatConst};
 
 /// 可用于二维包围盒的形状。
 /// Shape that can be used by a two-dimensional bounding box.

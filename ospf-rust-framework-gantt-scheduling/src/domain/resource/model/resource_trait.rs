@@ -3,10 +3,10 @@
 //! 定义三类资源的核心接口：执行资源、存储资源、连接资源。
 //! Defines core interfaces for three resource types: execution, storage, and connection.
 
-use std::fmt::Debug;
 use super::capacity::ResourceCapacity;
 use crate::domain::common::{ResourceId, ResourceIdTrait};
 use crate::infrastructure::TimeRange;
+use std::fmt::Debug;
 
 /// 资源 trait / Resource trait
 ///
@@ -59,7 +59,12 @@ pub trait StorageResourceTrait: ResourceTrait {
 /// Inter-task connection resource. Consumption depends on the connection between two tasks.
 pub trait ConnectionResourceTrait: ResourceTrait {
     /// 计算前后任务间连接消耗量 / Compute connection consumption between tasks
-    fn used_by(&self, prev_task_index: Option<usize>, task_index: Option<usize>, time_range: &TimeRange) -> f64;
+    fn used_by(
+        &self,
+        prev_task_index: Option<usize>,
+        task_index: Option<usize>,
+        time_range: &TimeRange,
+    ) -> f64;
 }
 
 /// 基础执行资源 / Basic execution resource
@@ -76,6 +81,7 @@ pub struct BasicExecutionResource {
     /// 初始量 / Initial quantity
     pub initial_quantity: f64,
     /// 任务消耗计算回调 / Task consumption callback
+    #[allow(clippy::type_complexity)]
     pub used_by_fn: Arc<dyn Fn(usize, &TimeRange) -> f64 + Send + Sync>,
 }
 
@@ -94,10 +100,18 @@ use std::sync::Arc;
 impl ResourceTrait for BasicExecutionResource {
     type Id = ResourceId;
 
-    fn id(&self) -> &Self::Id { &self.id }
-    fn name(&self) -> &str { &self.name }
-    fn capacities(&self) -> &[ResourceCapacity] { &self.capacities }
-    fn initial_quantity(&self) -> f64 { self.initial_quantity }
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn capacities(&self) -> &[ResourceCapacity] {
+        &self.capacities
+    }
+    fn initial_quantity(&self) -> f64 {
+        self.initial_quantity
+    }
 }
 
 impl ExecutionResourceTrait for BasicExecutionResource {
@@ -142,10 +156,18 @@ impl std::fmt::Debug for BasicStorageResource {
 impl ResourceTrait for BasicStorageResource {
     type Id = ResourceId;
 
-    fn id(&self) -> &Self::Id { &self.id }
-    fn name(&self) -> &str { &self.name }
-    fn capacities(&self) -> &[ResourceCapacity] { &self.capacities }
-    fn initial_quantity(&self) -> f64 { self.initial_quantity }
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn capacities(&self) -> &[ResourceCapacity] {
+        &self.capacities
+    }
+    fn initial_quantity(&self) -> f64 {
+        self.initial_quantity
+    }
 }
 
 impl StorageResourceTrait for BasicStorageResource {
@@ -180,6 +202,7 @@ pub struct BasicConnectionResource {
     /// 初始量 / Initial quantity
     pub initial_quantity: f64,
     /// 连接消耗计算回调 / Connection consumption callback
+    #[allow(clippy::type_complexity)]
     pub used_by_fn: Arc<dyn Fn(Option<usize>, Option<usize>, &TimeRange) -> f64 + Send + Sync>,
 }
 
@@ -196,14 +219,27 @@ impl std::fmt::Debug for BasicConnectionResource {
 impl ResourceTrait for BasicConnectionResource {
     type Id = ResourceId;
 
-    fn id(&self) -> &Self::Id { &self.id }
-    fn name(&self) -> &str { &self.name }
-    fn capacities(&self) -> &[ResourceCapacity] { &self.capacities }
-    fn initial_quantity(&self) -> f64 { self.initial_quantity }
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn capacities(&self) -> &[ResourceCapacity] {
+        &self.capacities
+    }
+    fn initial_quantity(&self) -> f64 {
+        self.initial_quantity
+    }
 }
 
 impl ConnectionResourceTrait for BasicConnectionResource {
-    fn used_by(&self, prev_task_index: Option<usize>, task_index: Option<usize>, time_range: &TimeRange) -> f64 {
+    fn used_by(
+        &self,
+        prev_task_index: Option<usize>,
+        task_index: Option<usize>,
+        time_range: &TimeRange,
+    ) -> f64 {
         (self.used_by_fn)(prev_task_index, task_index, time_range)
     }
 }
@@ -263,11 +299,9 @@ mod tests {
             name: "Transport 1".to_string(),
             capacities: vec![ResourceCapacity::new(test_time_range(), 0.0, 100.0)],
             initial_quantity: 0.0,
-            used_by_fn: Arc::new(|prev, next, _time| {
-                match (prev, next) {
-                    (Some(_), Some(_)) => 1.0,
-                    _ => 0.0,
-                }
+            used_by_fn: Arc::new(|prev, next, _time| match (prev, next) {
+                (Some(_), Some(_)) => 1.0,
+                _ => 0.0,
             }),
         };
         assert_eq!(resource.id(), "transport_1");

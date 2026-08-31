@@ -1,22 +1,29 @@
 //! 二次最小值函数 / Quadratic min function
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    QuadraticFunctionSymbol,
+};
+use super::MinFunction;
+use super::big_m::infer_big_m_for_quadratic_polynomials;
+use super::quadratic_linear::*;
 use crate::error::{ModelError, Result};
 use crate::model::{LinearConstraint, QuadraticConstraint};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::ContinuousVariableItem;
-use super::super::{Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol, QuadraticFunctionSymbol};
-use super::big_m::infer_big_m_for_quadratic_polynomials;
-use super::MinFunction;
-use super::quadratic_linear::*;
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
+/// 二次表达式最小值函数 / Quadratic minimum function
+///
+/// 通过线性化桥接变量在多个二次表达式中选择最小值。
+/// Selects the minimum of multiple quadratic expressions through linearization bridges.
 #[derive(Debug, Clone)]
 pub struct QuadraticMinFunction<V = f64>
 where
@@ -33,6 +40,8 @@ impl<V> QuadraticMinFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建二次表达式最小值函数。
+    /// Create a quadratic minimum function.
     pub fn new(id: u64, name: &str, inputs: Vec<Quadratic<V>>, exact: bool) -> Self {
         let bridges: Vec<QuadraticLinearFunction<V>> = inputs
             .iter()
@@ -68,11 +77,15 @@ where
         }
     }
 
+    /// 声明该函数依赖的模型元素 ID。
+    /// Declare the model element IDs consumed by this function.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回结果变量。
+    /// Return the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }

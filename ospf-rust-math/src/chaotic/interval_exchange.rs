@@ -1,8 +1,8 @@
 //! 区间交换变换。
 //! Interval exchange transformation.
 
-use num_traits::Float;
 use crate::algebra::Field;
+use num_traits::Float;
 /// 区间交换变换。
 /// Interval exchange transformation.
 #[derive(Clone, Debug, PartialEq)]
@@ -13,12 +13,20 @@ pub struct IntervalExchangeTransformation<S: Field + Float = f64> {
 
 impl<S: Field + Float> IntervalExchangeTransformation<S> {
     pub fn new(lambda: Vec<S>, pi: Vec<usize>) -> Self {
-        assert_eq!(lambda.len(), pi.len(), "lambda and pi must have the same size");
+        assert_eq!(
+            lambda.len(),
+            pi.len(),
+            "lambda and pi must have the same size"
+        );
         Self { lambda, pi }
     }
 
-    pub fn lambda(&self) -> &[S] { &self.lambda }
-    pub fn pi(&self) -> &[usize] { &self.pi }
+    pub fn lambda(&self) -> &[S] {
+        &self.lambda
+    }
+    pub fn pi(&self) -> &[usize] {
+        &self.pi
+    }
 
     /// 执行一次区间交换变换。
     /// Execute one interval exchange transformation.
@@ -64,8 +72,12 @@ impl<S: Field + Float> IntervalExchangeTransformationGenerator<S> {
         Self { map, x }
     }
 
-    pub fn map(&self) -> &IntervalExchangeTransformation<S> { &self.map }
-    pub fn x(&self) -> S { self.x }
+    pub fn map(&self) -> &IntervalExchangeTransformation<S> {
+        &self.map
+    }
+    pub fn x(&self) -> S {
+        self.x
+    }
 
     pub fn next_value(&mut self) -> S {
         let x = self.x;
@@ -85,7 +97,8 @@ impl<S: Field + Float> Iterator for IntervalExchangeTransformationGenerator<S> {
 /// 创建区间交换变换。
 /// Create an interval exchange transformation.
 pub fn interval_exchange_transformation<S: Field + Float>(
-    lambda: Vec<S>, pi: Vec<usize>,
+    lambda: Vec<S>,
+    pi: Vec<usize>,
 ) -> IntervalExchangeTransformation<S> {
     IntervalExchangeTransformation::new(lambda, pi)
 }
@@ -93,7 +106,9 @@ pub fn interval_exchange_transformation<S: Field + Float>(
 /// 创建区间交换变换生成器。
 /// Create an interval exchange transformation generator.
 pub fn interval_exchange_transformation_generator<S: Field + Float>(
-    lambda: Vec<S>, pi: Vec<usize>, x: S,
+    lambda: Vec<S>,
+    pi: Vec<usize>,
+    x: S,
 ) -> IntervalExchangeTransformationGenerator<S> {
     IntervalExchangeTransformationGenerator::new(IntervalExchangeTransformation::new(lambda, pi), x)
 }

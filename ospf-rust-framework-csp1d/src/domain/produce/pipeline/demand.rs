@@ -7,8 +7,8 @@ use ospf_rust_core::solver::SolveValue;
 use ospf_rust_framework::model::Pipeline;
 
 use crate::domain::material::{
-    shadow_price_unit_symbol, shadow_price_key_to_string, to_f64,
-    Csp1dShadowPriceKey, ProductDemandShadowPriceKey,
+    Csp1dShadowPriceKey, ProductDemandShadowPriceKey, shadow_price_key_to_string,
+    shadow_price_unit_symbol, to_f64,
 };
 
 use super::super::aggregation::ProduceAggregation;
@@ -27,10 +27,7 @@ impl<V: SolveValue> DemandConstraintPipeline<V> {
     pub fn new(produce: ProduceAggregation<V>) -> Self {
         Self {
             name: "demand_constraint".to_string(),
-            group: Some(ConstraintGroup::new(
-                10_001,
-                "csp1d_demand_constraint",
-            )),
+            group: Some(ConstraintGroup::new(10_001, "csp1d_demand_constraint")),
             produce,
         }
     }
@@ -53,7 +50,10 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for DemandConstraintPipeline<V> {
         for (demand_index, demand) in self.produce.demands.iter().enumerate() {
             let terms = symbols.demand_terms(&demand.product.id, &demand.quantity.unit.symbol());
             let Some(rhs) = to_f64(&demand.quantity.value) else {
-                log::warn!("Skip demand constraint {} due to non-convertible rhs", demand_index);
+                log::warn!(
+                    "Skip demand constraint {} due to non-convertible rhs",
+                    demand_index
+                );
                 continue;
             };
             let key = Csp1dShadowPriceKey::ProductDemand(ProductDemandShadowPriceKey {
@@ -70,7 +70,11 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for DemandConstraintPipeline<V> {
                 0,
                 Some(shadow_price_key_to_string(&key)),
             ) {
-                log::warn!("Failed to register demand constraint {}: {:?}", demand_index, error);
+                log::warn!(
+                    "Failed to register demand constraint {}: {:?}",
+                    demand_index,
+                    error
+                );
             }
         }
     }

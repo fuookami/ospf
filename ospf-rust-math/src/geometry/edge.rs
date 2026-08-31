@@ -26,12 +26,12 @@
 //! assert!(x_diff.abs() < 1e-10);
 //! ```
 
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use num_traits::Float;
-use crate::algebra::{Epsilon, Field, InnerProductSpace, NormedSpace};
 use super::distance::Distance;
 use super::point::Point;
 use super::vector::Vector;
+use crate::algebra::{Epsilon, Field, InnerProductSpace, NormedSpace};
+use num_traits::Float;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 // ============================================================================
 // Edge - 泛型边

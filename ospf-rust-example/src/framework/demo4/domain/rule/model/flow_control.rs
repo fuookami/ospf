@@ -70,6 +70,8 @@ pub struct FlowControl {
 impl FlowControl {
     /// 获取剩余可用容量 / Get remaining available capacity
     pub fn available(&self) -> u64 {
-        self.capacity.max_capacity.saturating_sub(self.capacity.current_usage)
+        self.capacity
+            .max_capacity
+            .saturating_sub(self.capacity.current_usage)
     }
 }

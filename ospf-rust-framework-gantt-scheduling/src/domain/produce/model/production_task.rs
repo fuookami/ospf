@@ -3,7 +3,7 @@
 //! 扩展 TaskTrait 以支持产出和消耗数量查询。
 //! Extends TaskTrait to support produce and consumption quantity queries.
 
-use crate::domain::task::{ExecutorTrait, AssignmentPolicyTrait, TaskTrait};
+use crate::domain::task::{AssignmentPolicyTrait, ExecutorTrait, TaskTrait};
 
 /// 生产任务 trait / Production task trait
 ///

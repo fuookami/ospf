@@ -1,7 +1,7 @@
 //! 编组编制约束限制 / Bunch compilation constraint limits.
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use std::error::Error;
 use std::sync::Arc;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 
 /// 机队平衡限制 / Fleet balance limit
 /// 对齐 Kotlin FleetBalanceLimit
@@ -30,11 +30,13 @@ pub fn apply_fleet_balance_limit(
         }
 
         // 添加 minimize 目标: sum(slack)
-        let objective_terms: Vec<(usize, f64)> = slack_indices.iter()
-            .map(|&idx| (idx, 1.0))
-            .collect();
+        let objective_terms: Vec<(usize, f64)> =
+            slack_indices.iter().map(|&idx| (idx, 1.0)).collect();
         if !objective_terms.is_empty() {
-            model.add_linear_objective(&objective_terms, &format!("fleet_balance_{}", balance.aircraft_type));
+            model.add_linear_objective(
+                &objective_terms,
+                &format!("fleet_balance_{}", balance.aircraft_type),
+            );
         }
     }
 

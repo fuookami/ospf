@@ -38,7 +38,9 @@ pub mod token;
 pub mod variable;
 
 pub use error::*;
+#[allow(ambiguous_glob_reexports)]
 pub use model::*;
+#[allow(ambiguous_glob_reexports)]
 pub use solver::*;
 pub use symbol::expression_symbol::*;
 pub use symbol::function::*;

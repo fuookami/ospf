@@ -1,10 +1,10 @@
 //! ELD 邻接限制 / ELD adjacent limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;
 use crate::framework::demo2::domain::stowage::context::StowageContext;
 use crate::framework::demo2::domain::stowage::model::stowage::StowageVariables;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// ELD 邻接限制: 电子设备不能与特定货物相邻
 /// 对齐 Kotlin ELDAdjacentLimit

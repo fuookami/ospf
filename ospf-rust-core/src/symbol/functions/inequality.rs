@@ -1,23 +1,22 @@
 //! 不等式函数符号 / Inequality function symbol
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
+};
+use super::big_m::infer_linear_shifted_abs_bound_from_tokens;
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
-};
-use super::big_m::infer_linear_shifted_abs_bound_from_tokens;
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 const MIN_BIG_M: f64 = 1.0;
 const INDICATOR_TOLERANCE: f64 = 1.0e-10;
@@ -224,6 +223,7 @@ where
         Self::greater_equal(id, &name, left, right, big_m)
     }
 
+    /// 设置声明的依赖符号 ID / Set declared dependency symbol IDs.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -241,22 +241,27 @@ where
         cloned
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &BinaryVariableItem {
         &self.result_var
     }
 
+    /// 获取左侧多项式 / Get the left-hand polynomial.
     pub fn left_polynomial(&self) -> &Linear<V> {
         &self.left
     }
 
+    /// 获取右侧值 / Get the right-hand value.
     pub fn right_value(&self) -> &V {
         &self.right
     }
 
+    /// 获取不等式类型 / Get the inequality kind.
     pub fn inequality_kind(&self) -> InequalityKind {
         self.kind
     }
 
+    /// 获取 Big-M 值 / Get the Big-M value.
     pub fn big_m(&self) -> &V {
         &self.big_m
     }

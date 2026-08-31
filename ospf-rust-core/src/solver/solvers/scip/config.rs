@@ -48,6 +48,8 @@ pub struct SCIPConfig {
     pub log_file: Option<String>,
     /// 节点数限制 / Node limit
     pub node_limit: Option<i64>,
+    /// 解数量限制 / Solution limit
+    pub solution_limit: Option<i64>,
     /// 内存限制（MB）/ Memory limit (MB)
     pub mem_limit: Option<f64>,
     /// 显示频率 / Display frequency
@@ -58,6 +60,10 @@ pub struct SCIPConfig {
     pub heuristics_priority: Option<i32>,
     /// 无改进提前停止阈值（秒）/ No-improvement early-stop threshold (seconds)
     pub no_improvement_time_limit: Option<f64>,
+    /// 可中断时间（秒），达到前不触发无改进提前停止 / Interruptible time (seconds) before which no-improvement early-stop is suppressed
+    pub interruptible_time: Option<f64>,
+    /// 可中断绝对 gap，绝对 gap 未低于此值时不触发无改进提前停止 / Interruptible absolute gap below which no-improvement early-stop is allowed
+    pub interruptible_gap: Option<f64>,
     /// 改进判定阈值 / Improvement tolerance threshold
     pub improvement_tolerance: Option<f64>,
     /// 遥测最小发送间隔（秒）/ Minimum telemetry emit interval (seconds)
@@ -90,11 +96,14 @@ impl std::fmt::Debug for SCIPConfig {
             .field("feasibility_tolerance", &self.feasibility_tolerance)
             .field("log_file", &self.log_file)
             .field("node_limit", &self.node_limit)
+            .field("solution_limit", &self.solution_limit)
             .field("mem_limit", &self.mem_limit)
             .field("display_freq", &self.display_freq)
             .field("presolving", &self.presolving)
             .field("heuristics_priority", &self.heuristics_priority)
             .field("no_improvement_time_limit", &self.no_improvement_time_limit)
+            .field("interruptible_time", &self.interruptible_time)
+            .field("interruptible_gap", &self.interruptible_gap)
             .field("improvement_tolerance", &self.improvement_tolerance)
             .field("telemetry_min_interval", &self.telemetry_min_interval)
             .field("native_event_mask", &self.native_event_mask)
@@ -126,11 +135,14 @@ impl Default for SCIPConfig {
             feasibility_tolerance: None,
             log_file: None,
             node_limit: None,
+            solution_limit: None,
             mem_limit: None,
             display_freq: None,
             presolving: None,
             heuristics_priority: None,
             no_improvement_time_limit: None,
+            interruptible_time: None,
+            interruptible_gap: None,
             improvement_tolerance: None,
             telemetry_min_interval: None,
             native_event_mask: Self::default_native_event_mask(),
@@ -161,10 +173,17 @@ impl From<&SolverConfig> for SCIPConfig {
         scip_config.node_limit = config
             .node_limit
             .map(|limit| limit.min(i64::MAX as usize) as i64);
+        scip_config.solution_limit = config
+            .solution_limit
+            .map(|limit| limit.min(i64::MAX as usize) as i64);
         scip_config.mem_limit = config.memory_limit.map(|limit_mb| limit_mb as f64);
         scip_config.no_improvement_time_limit = config
             .no_improvement_time_limit
             .map(|duration| duration.as_secs_f64());
+        scip_config.interruptible_time = config
+            .interruptible_time
+            .map(|duration| duration.as_secs_f64());
+        scip_config.interruptible_gap = config.interruptible_gap;
         scip_config.improvement_tolerance = config.improve_threshold;
         scip_config
     }
@@ -252,8 +271,7 @@ impl SCIPConfig {
 
     /// 设置最优性容差 / Set optimality tolerance
     pub fn with_optimality_tolerance(mut self, tolerance: f64) -> Self {
-        self.optimality_tolerance =
-            (tolerance.is_finite() && tolerance > 0.0).then_some(tolerance);
+        self.optimality_tolerance = (tolerance.is_finite() && tolerance > 0.0).then_some(tolerance);
         self
     }
 
@@ -279,6 +297,12 @@ impl SCIPConfig {
     /// 设置节点数限制 / Set node limit
     pub fn with_node_limit(mut self, node_limit: i64) -> Self {
         self.node_limit = Some(node_limit);
+        self
+    }
+
+    /// 设置解数量限制 / Set solution limit
+    pub fn with_solution_limit(mut self, solution_limit: i64) -> Self {
+        self.solution_limit = Some(solution_limit);
         self
     }
 
@@ -313,6 +337,18 @@ impl SCIPConfig {
     /// 设置无改进提前停止阈值（秒）/ Set no-improvement time limit (seconds)
     pub fn with_no_improvement_time_limit(mut self, seconds: f64) -> Self {
         self.no_improvement_time_limit = (seconds > 0.0).then_some(seconds);
+        self
+    }
+
+    /// 设置可中断时间（秒）/ Set interruptible time (seconds)
+    pub fn with_interruptible_time(mut self, seconds: f64) -> Self {
+        self.interruptible_time = (seconds >= 0.0).then_some(seconds);
+        self
+    }
+
+    /// 设置可中断绝对 gap / Set interruptible absolute gap
+    pub fn with_interruptible_gap(mut self, gap: f64) -> Self {
+        self.interruptible_gap = (gap >= 0.0).then_some(gap);
         self
     }
 

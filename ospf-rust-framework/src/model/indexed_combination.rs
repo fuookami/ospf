@@ -12,9 +12,9 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
-use ospf_rust_core::variable::{VariableCombination, VariableTypeTrait, VariableRange};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination};
 use ospf_rust_core::token::IntoValue;
+use ospf_rust_core::variable::{VariableCombination, VariableRange, VariableTypeTrait};
 use ospf_rust_multiarray::{MultiArray, Shape};
 
 // ============================================================================
@@ -207,12 +207,8 @@ where
         let combination = VariableCombination::with_name_and_range_generator(
             Shape::new([keys1.len(), keys2.len()]),
             prefix,
-            |_index, vector| {
-                name_gen(&keys1_ref[vector[0]], &keys2_ref[vector[1]])
-            },
-            |_index, vector| {
-                range_gen(&keys1_ref[vector[0]], &keys2_ref[vector[1]])
-            },
+            |_index, vector| name_gen(&keys1_ref[vector[0]], &keys2_ref[vector[1]]),
+            |_index, vector| range_gen(&keys1_ref[vector[0]], &keys2_ref[vector[1]]),
         );
 
         let model_indices = model.register_combination(&combination)?;
@@ -272,6 +268,11 @@ where
     /// Get number of variables
     pub fn len(&self) -> usize {
         self.combination.len()
+    }
+
+    /// 判断变量组合是否为空 / Check whether the variable combination is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -334,14 +335,20 @@ where
 
     /// 获取领域键对应的符号多项式
     /// Get symbol polynomial for domain key
-    pub fn symbol_polynomial(&self, key: &K) -> Option<ospf_rust_core::symbol::flatten::Linear<f64>> {
+    pub fn symbol_polynomial(
+        &self,
+        key: &K,
+    ) -> Option<ospf_rust_core::symbol::flatten::Linear<f64>> {
         let &i = self.key_map.get(key)?;
         Some(self.combination.symbol_polynomial(i))
     }
 
     /// 获取领域键对应的符号多项式（无检查）
     /// Get symbol polynomial for domain key (unchecked)
-    pub fn symbol_polynomial_unchecked(&self, key: &K) -> ospf_rust_core::symbol::flatten::Linear<f64> {
+    pub fn symbol_polynomial_unchecked(
+        &self,
+        key: &K,
+    ) -> ospf_rust_core::symbol::flatten::Linear<f64> {
         let i = self.key_map[key];
         self.combination.symbol_polynomial(i)
     }
@@ -378,6 +385,11 @@ where
     /// Get number of symbols
     pub fn len(&self) -> usize {
         self.combination.len()
+    }
+
+    /// 判断符号组合是否为空 / Check whether the symbol combination is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -438,7 +450,11 @@ where
 
     /// 获取领域键对对应的符号多项式
     /// Get symbol polynomial for domain key pair
-    pub fn symbol_polynomial(&self, k1: &K1, k2: &K2) -> Option<ospf_rust_core::symbol::flatten::Linear<f64>> {
+    pub fn symbol_polynomial(
+        &self,
+        k1: &K1,
+        k2: &K2,
+    ) -> Option<ospf_rust_core::symbol::flatten::Linear<f64>> {
         let &i = self.key_map.get(&(k1.clone(), k2.clone()))?;
         let row = i / self.combination.as_array().shape[1];
         let col = i % self.combination.as_array().shape[1];
@@ -477,5 +493,10 @@ where
     /// Get number of symbols
     pub fn len(&self) -> usize {
         self.combination.len()
+    }
+
+    /// 判断符号组合是否为空 / Check whether the symbol combination is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }

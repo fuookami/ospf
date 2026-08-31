@@ -1,10 +1,10 @@
 //! Rossler 吸引子。
 //! Rossler attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Rossler 吸引子的一阶欧拉步进模型。
@@ -45,14 +45,23 @@ impl<S: Field + Float> Default for RosslerAttractorGenerator<S> {
 
 /// 创建 Rossler 吸引子。
 /// Create a Rossler attractor.
-pub fn rossler_attractor<S: Field + Float>(alpha: S, beta: S, zeta: S, h: S) -> RosslerAttractor<S> {
+pub fn rossler_attractor<S: Field + Float>(
+    alpha: S,
+    beta: S,
+    zeta: S,
+    h: S,
+) -> RosslerAttractor<S> {
     RosslerAttractor::new(alpha, beta, zeta, h)
 }
 
 /// 创建 Rossler 吸引子生成器。
 /// Create a Rossler attractor generator.
 pub fn rossler_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, zeta: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    zeta: S,
+    h: S,
+    x: Point3<S>,
 ) -> RosslerAttractorGenerator<S> {
     RosslerAttractorGenerator::new(RosslerAttractor::new(alpha, beta, zeta, h), x)
 }

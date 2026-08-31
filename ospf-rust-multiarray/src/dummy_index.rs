@@ -32,18 +32,17 @@
 //! let arr: DummyIndex = DummyIndex::try_from(&[1isize, 3, 5][..]).unwrap();  // 索引数组 / Index array
 //! ```
 
-use std::alloc::Allocator;
-use std::convert::Into;
-use std::fmt::{Debug, Display};
+use super::concept::{AccessOrder, AccessOrderTrait, ColumnMajor, RowMajor, StorageOrderTrait};
+use super::index_value::TryIntoIndexValue;
+use super::shape::AbstractShape;
 use cc_traits::{Collection, Len};
 use dyn_clone::{DynClone, clone_trait_object};
 use ospf_rust_base::collection::Indices;
 use ospf_rust_base::error::*;
-use super::concept::{AccessOrder, AccessOrderTrait, ColumnMajor, RowMajor, StorageOrderTrait};
-use super::index_value::TryIntoIndexValue;
-use super::shape::AbstractShape;
+use std::alloc::Allocator;
+use std::convert::Into;
+use std::fmt::{Debug, Display};
 use std::ops::{
-
     Bound, Index, IndexMut, Range, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo,
     RangeToInclusive,
 };
@@ -276,9 +275,12 @@ impl DummyIndex {
             DummyIndex::Range(range) => {
                 let (lower_bound, upper_bound) = Self::bound_of(range, shape, dimension);
                 if lower_bound.is_some() && upper_bound.is_some() {
-                    upper_bound.expect("upper bound should be valid in len_of") - lower_bound.expect("lower bound should be valid in len_of")
+                    upper_bound.expect("upper bound should be valid in len_of")
+                        - lower_bound.expect("lower bound should be valid in len_of")
                 } else {
-                    shape.len_of_dimension(dimension).expect("dimension should be valid in len_of")
+                    shape
+                        .len_of_dimension(dimension)
+                        .expect("dimension should be valid in len_of")
                 }
             }
             DummyIndex::IndexArray(indexes) => indexes.len(),
@@ -346,7 +348,9 @@ impl DummyIndex {
         shape: &S,
         dimension: usize,
     ) -> (Option<usize>, Option<usize>) {
-        let len = shape.len_of_dimension(dimension).expect("dimension should be valid in bound_of");
+        let len = shape
+            .len_of_dimension(dimension)
+            .expect("dimension should be valid in bound_of");
         let len_isize = len as isize;
         let lower_bound = match range.start() {
             Bound::Included(value) => shape.actual_index(dimension, *value),

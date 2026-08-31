@@ -4,11 +4,11 @@
 //! 提供爱因斯坦求和的核心 trait 和错误类型。
 //! Provides core traits and error types for Einstein summation.
 
-use std::ops::{Add, AddAssign, Mul};
-use num_traits::Zero;
-use crate::{AbstractShape, DynShape, MultiArray};
 use super::indices::{IndexList, find_common_indices};
 use super::tensor_expr::TensorExpr;
+use crate::{AbstractShape, DynShape, MultiArray};
+use num_traits::Zero;
+use std::ops::{Add, AddAssign, Mul};
 
 // ============================================================================
 // EinsumError - 爱因斯坦求和错误

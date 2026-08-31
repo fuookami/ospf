@@ -1,10 +1,10 @@
 //! 金融吸引子。
 //! Finance attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// 金融吸引子的一阶欧拉步进模型。
@@ -46,14 +46,23 @@ impl<S: Field + Float> Default for FinanceAttractorGenerator<S> {
 
 /// 创建金融吸引子。
 /// Create a Finance attractor.
-pub fn finance_attractor<S: Field + Float>(alpha: S, beta: S, zeta: S, h: S) -> FinanceAttractor<S> {
+pub fn finance_attractor<S: Field + Float>(
+    alpha: S,
+    beta: S,
+    zeta: S,
+    h: S,
+) -> FinanceAttractor<S> {
     FinanceAttractor::new(alpha, beta, zeta, h)
 }
 
 /// 创建金融吸引子生成器。
 /// Create a Finance attractor generator.
 pub fn finance_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, zeta: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    zeta: S,
+    h: S,
+    x: Point3<S>,
 ) -> FinanceAttractorGenerator<S> {
     FinanceAttractorGenerator::new(FinanceAttractor::new(alpha, beta, zeta, h), x)
 }
@@ -63,7 +72,10 @@ mod tests {
     use super::*;
 
     fn assert_close(actual: f64, expected: f64) {
-        assert!((actual - expected).abs() < 1e-12, "actual={actual}, expected={expected}");
+        assert!(
+            (actual - expected).abs() < 1e-12,
+            "actual={actual}, expected={expected}"
+        );
     }
 
     #[test]

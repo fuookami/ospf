@@ -1,10 +1,10 @@
 //! 达芬方程。
 //! Duffing equation.
 
-use num_traits::Float;
+use super::helpers::default_float;
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::default_float;
+use num_traits::Float;
 
 point3_system!(
     /// 达芬方程的一阶欧拉步进模型。
@@ -43,14 +43,22 @@ impl<S: Field + Float> Default for DuffingEquation<S> {
 
 impl<S: Field + Float> Default for DuffingEquationGenerator<S> {
     fn default() -> Self {
-        Self::new(DuffingEquation::default(), Point3::new(S::zero(), S::zero(), S::zero()))
+        Self::new(
+            DuffingEquation::default(),
+            Point3::new(S::zero(), S::zero(), S::zero()),
+        )
     }
 }
 
 /// 创建达芬方程。
 /// Create a Duffing equation.
 pub fn duffing_equation<S: Field + Float>(
-    alpha: S, beta: S, gamma: S, delta: S, omega: S, h: S,
+    alpha: S,
+    beta: S,
+    gamma: S,
+    delta: S,
+    omega: S,
+    h: S,
 ) -> DuffingEquation<S> {
     DuffingEquation::new(alpha, beta, gamma, delta, omega, h)
 }
@@ -58,7 +66,13 @@ pub fn duffing_equation<S: Field + Float>(
 /// 创建达芬方程序列生成器。
 /// Create a Duffing equation sequence generator.
 pub fn duffing_equation_generator<S: Field + Float>(
-    alpha: S, beta: S, gamma: S, delta: S, omega: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    gamma: S,
+    delta: S,
+    omega: S,
+    h: S,
+    x: Point3<S>,
 ) -> DuffingEquationGenerator<S> {
     DuffingEquationGenerator::new(DuffingEquation::new(alpha, beta, gamma, delta, omega, h), x)
 }

@@ -1,13 +1,12 @@
 //! Demo12 模块 / Demo12 module
 use std::error::Error;
 
-use ospf_rust_multiarray::{MultiArray, Shape};
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
+use ospf_rust_core::model::{ConstraintRelation, MetaModel, ObjectiveCategory};
 use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol,
-    BinaryzationFunction, MaxFunction, flat_map1_indexed,
+    BinaryzationFunction, LinearExpressionSymbol, MaxFunction, SymbolCombination, flat_map1_indexed,
 };
 use ospf_rust_core::variable::{UInteger, VariableCombination1D};
+use ospf_rust_multiarray::{MultiArray, Shape};
 
 use super::common::{read_solution_value, solve_typed};
 
@@ -91,50 +90,48 @@ impl PortfolioModel {
 
         // Function symbol: assignment[i] = Binaryzation(x[i]) via Big-M
         // Mechanism constraints (x_i - M*a_i <= 0, x_i >= eps*a_i) are auto-generated.
-        let assignment_fn = SymbolCombination::new(
-            Shape::new([n]), "assignment",
-            |i, _| {
-                BinaryzationFunction::with_big_m(
-                    i as u64 + 100,
-                    &products[i].name,
-                    ospf_rust_core::symbol::flatten::Linear::new(
-                        vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[i])],
-                        0.0,
-                    ),
-                    funds,
-                )
-            },
-        );
+        let assignment_fn = SymbolCombination::new(Shape::new([n]), "assignment", |i, _| {
+            BinaryzationFunction::with_big_m(
+                i as u64 + 100,
+                &products[i].name,
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        1.0, x_idx[i],
+                    )],
+                    0.0,
+                ),
+                funds,
+            )
+        });
         model.add_symbol_combination(&assignment_fn)?;
 
         // Function symbol: premium[i] = max(premium_rate_i * x_i, min_premium_i * a_i)
         // a_i is the binary result variable from assignment_fn[i].
         // MaxFunction lower-bound constraints are auto-generated.
-        let premium_fn = SymbolCombination::new(
-            Shape::new([n]), "premium",
-            |i, _| {
-                let assign_result_idx = assignment_fn.symbol_polynomial(i).monomials()[0].var_index();
-                MaxFunction::new(
-                    i as u64 + 200,
-                    &products[i].name,
-                    vec![
-                        ospf_rust_core::symbol::flatten::Linear::new(
-                            vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                                products[i].premium_rate, x_idx[i],
-                            )],
-                            0.0,
-                        ),
-                        ospf_rust_core::symbol::flatten::Linear::new(
-                            vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                                products[i].min_premium, assign_result_idx,
-                            )],
-                            0.0,
-                        ),
-                    ],
-                    false,
-                )
-            },
-        );
+        let premium_fn = SymbolCombination::new(Shape::new([n]), "premium", |i, _| {
+            let assign_result_idx = assignment_fn.symbol_polynomial(i).monomials()[0].var_index();
+            MaxFunction::new(
+                i as u64 + 200,
+                &products[i].name,
+                vec![
+                    ospf_rust_core::symbol::flatten::Linear::new(
+                        vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            products[i].premium_rate,
+                            x_idx[i],
+                        )],
+                        0.0,
+                    ),
+                    ospf_rust_core::symbol::flatten::Linear::new(
+                        vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            products[i].min_premium,
+                            assign_result_idx,
+                        )],
+                        0.0,
+                    ),
+                ],
+                false,
+            )
+        });
         model.add_symbol_combination(&premium_fn)?;
 
         // Compute result variable indices from function symbols
@@ -143,44 +140,77 @@ impl PortfolioModel {
             .collect();
 
         // Objective: yield = sum(yield_rate_i * x_i - premium_i)
-        let yield_expr = flat_map1_indexed("yield", products, |i, product| {
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(product.yield_rate, x_idx[i]),
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(-1.0, premium_fn_idx[i]),
-                ],
-                0.0,
-            )
-        }, |_, product| product.name.clone());
+        let yield_expr = flat_map1_indexed(
+            "yield",
+            products,
+            |i, product| {
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            product.yield_rate,
+                            x_idx[i],
+                        ),
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            -1.0,
+                            premium_fn_idx[i],
+                        ),
+                    ],
+                    0.0,
+                )
+            },
+            |_, product| product.name.clone(),
+        );
         model.add_symbol_combination(&yield_expr)?;
 
         // Constraint: funds = sum(x_i + premium_i)
-        let funds_expr = flat_map1_indexed("funds", products, |i, _product| {
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[i]),
-                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, premium_fn_idx[i]),
-                ],
-                0.0,
-            )
-        }, |_, product| product.name.clone());
+        let funds_expr = flat_map1_indexed(
+            "funds",
+            products,
+            |i, _product| {
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[i]),
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            1.0,
+                            premium_fn_idx[i],
+                        ),
+                    ],
+                    0.0,
+                )
+            },
+            |_, product| product.name.clone(),
+        );
         model.add_symbol_combination(&funds_expr)?;
 
         // Constraint: risk = sum(risk_rate_i / funds * x_i) <= max_risk
-        let risk_expr = flat_map1_indexed("risk", products, |i, product| {
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                    if funds.abs() < 1e-10 { 0.0 } else { product.risk_rate / funds }, x_idx[i],
-                )],
-                0.0,
-            )
-        }, |_, product| product.name.clone());
+        let risk_expr = flat_map1_indexed(
+            "risk",
+            products,
+            |i, product| {
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        if funds.abs() < 1e-10 {
+                            0.0
+                        } else {
+                            product.risk_rate / funds
+                        },
+                        x_idx[i],
+                    )],
+                    0.0,
+                )
+            },
+            |_, product| product.name.clone(),
+        );
         model.add_symbol_combination(&risk_expr)?;
 
         Ok(PortfolioModel {
-            x, x_idx,
-            assignment_fn, premium_fn,
-            yield_expr, funds_expr, risk_expr,
+            x,
+            x_idx,
+            assignment_fn,
+            premium_fn,
+            yield_expr,
+            funds_expr,
+            risk_expr,
         })
     }
 
@@ -220,7 +250,12 @@ impl PortfolioModel {
                 risk_coeffs.push((m.var_index(), *m.coefficient()));
             }
         }
-        model.add_linear_constraint(&risk_coeffs, ConstraintRelation::LessEqual, max_risk, "risk")?;
+        model.add_linear_constraint(
+            &risk_coeffs,
+            ConstraintRelation::LessEqual,
+            max_risk,
+            "risk",
+        )?;
 
         // Binaryzation and Max mechanism constraints are auto-generated by
         // BinaryzationFunction and MaxFunction during model conversion.
@@ -252,7 +287,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     for i in 0..product_count {
         let amount = read_solution_value(&solution, portfolio.x_idx[i]);
         if amount > 0.0 {
-            let premium_result_idx = portfolio.premium_fn.symbol_polynomial(i).monomials()[0].var_index();
+            let premium_result_idx =
+                portfolio.premium_fn.symbol_polynomial(i).monomials()[0].var_index();
             let premium = read_solution_value(&solution, premium_result_idx);
             println!(
                 "product {} amount {:.2}, premium {:.2}",

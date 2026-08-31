@@ -1,12 +1,12 @@
 //! 压舱物模型 / Ballast model
-use super::position::Position;
 use super::load::LoadVariables;
-use std::error::Error;
-use std::sync::Arc;
+use super::position::Position;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::LinearMonomial;
 use ospf_rust_core::variable::UContinuousVariableItem;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 压舱物变量索引 / Ballast variable indices
 #[derive(Debug, Clone)]
@@ -44,7 +44,11 @@ impl Ballast {
 
         Ok(BallastVariables {
             ballast_weight: ballast_weight_idx,
-            ballast_positions: self.ballast_positions.iter().map(|p| p.max_load_amount as usize).collect(),
+            ballast_positions: self
+                .ballast_positions
+                .iter()
+                .map(|p| p.max_load_amount as usize)
+                .collect(),
         })
     }
 }

@@ -34,12 +34,12 @@ impl ResourceSlack {
 
     /// 是否允许不足量 / Whether less slack is enabled
     pub fn less_enabled(&self) -> bool {
-        self.less_slack_limit.map_or(false, |v| v > 0.0)
+        self.less_slack_limit.is_some_and(|v| v > 0.0)
     }
 
     /// 是否允许过量 / Whether over slack is enabled
     pub fn over_enabled(&self) -> bool {
-        self.over_slack_limit.map_or(false, |v| v > 0.0)
+        self.over_slack_limit.is_some_and(|v| v > 0.0)
     }
 }
 

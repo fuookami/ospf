@@ -14,13 +14,6 @@
 //! 本文件中剩余的 14 个 Quadratic* 类型是 Rust 扩展 / The remaining 14 Quadratic* types in this file are Rust extensions
 //! 它们将二次多项式视图与基础函数符号组合在一起，为了便利和向后兼容而保留在此 / that combine quadratic polynomial views with base function symbols, kept here for convenience and backward compatibility
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use crate::error::{ModelError, Result};
 use crate::model::{LinearConstraint, QuadraticConstraint};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
@@ -28,6 +21,13 @@ use crate::token::{IntoValue, Token, TokenList};
 #[cfg(test)]
 use crate::variable::VariableId;
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
@@ -38,13 +38,13 @@ use super::big_m::{
     infer_quadratic_difference_abs_bound_from_tokens,
     infer_quadratic_shifted_abs_bound_from_tokens,
 };
+use super::quadratic_linear::*;
 use super::{
     BinaryzationFunction, BinaryzationMethod, BivariateLinearPiecewiseFunction, CosFunction,
-    InequalityFunction, InequalityKind, MaskingFunction, MaxFunction, ModFunction,
-    Point2, Point3, RoundingFunction, RoundingKind, SigmoidFunction, SigmoidPrecision, SinFunction,
-    SlackFunction, SlackRangeFunction, UnivariateLinearPiecewiseFunction,
+    InequalityFunction, InequalityKind, MaskingFunction, MaxFunction, ModFunction, Point2, Point3,
+    RoundingFunction, RoundingKind, SigmoidFunction, SigmoidPrecision, SinFunction, SlackFunction,
+    SlackRangeFunction, UnivariateLinearPiecewiseFunction,
 };
-use super::quadratic_linear::*;
 
 /// 二次输入的二值化函数符号 / Quadratic-input binaryzation function symbol
 #[derive(Debug, Clone)]
@@ -3985,7 +3985,6 @@ macro_rules! impl_quadratic_function_symbol {
     };
 }
 
-
 impl_quadratic_function_symbol!(
     QuadraticBinaryzationFunction,
     QuadraticInequalityFunction,
@@ -4005,10 +4004,10 @@ impl_quadratic_function_symbol!(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::{
-        QuadraticMaskingRangeFunction, QuadraticMinFunction, QuadraticInStepRangeFunction,
+        QuadraticInStepRangeFunction, QuadraticMaskingRangeFunction, QuadraticMinFunction,
     };
+    use super::*;
     use crate::symbol::flatten::QuadraticMonomial;
     use crate::token::{MutableTokenList, VecTokenList};
     use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableRange};

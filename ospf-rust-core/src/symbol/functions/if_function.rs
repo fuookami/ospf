@@ -1,22 +1,22 @@
 //! If 函数符号 / If function symbol
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-use crate::error::{ModelError, Result};
-use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
-use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
-use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
 use super::big_m::{BigMPolicy, infer_linear_abs_bound_from_tokens};
+use crate::error::{ModelError, Result};
+use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
+use crate::token::{IntoValue, Token, TokenList};
+use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -113,10 +113,8 @@ where
             VariableId::new(group_id, 0),
             &format!("{}_if_result", name),
         );
-        let condition_indicator = BinaryVariableItem::create(
-            VariableId::new(group_id, 1),
-            &format!("{}_if_cond", name),
-        );
+        let condition_indicator =
+            BinaryVariableItem::create(VariableId::new(group_id, 1), &format!("{}_if_cond", name));
 
         Self {
             id: IntermediateSymbolId::new(id, name),
@@ -170,14 +168,17 @@ where
         &self.then_expr
     }
 
+    /// 获取 else 分支多项式 / Get the else-branch polynomial.
     pub fn else_polynomial(&self) -> &Linear<V> {
         &self.else_expr
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取条件指示变量 / Get the condition indicator variable.
     pub fn condition_indicator_variable(&self) -> &BinaryVariableItem {
         &self.condition_indicator
     }
@@ -711,12 +712,9 @@ mod tests {
         tx.set_result(5.0_f32);
         tokens.add_token(tx);
 
-        let condition: Linear<f32> =
-            Linear::new(vec![LinearMonomial::new(1.0_f32, 0)], -2.0_f32);
-        let then_expr: Linear<f32> =
-            Linear::new(vec![LinearMonomial::new(2.0_f32, 0)], 1.0_f32);
-        let else_expr: Linear<f32> =
-            Linear::new(vec![LinearMonomial::new(1.0_f32, 0)], 3.0_f32);
+        let condition: Linear<f32> = Linear::new(vec![LinearMonomial::new(1.0_f32, 0)], -2.0_f32);
+        let then_expr: Linear<f32> = Linear::new(vec![LinearMonomial::new(2.0_f32, 0)], 1.0_f32);
+        let else_expr: Linear<f32> = Linear::new(vec![LinearMonomial::new(1.0_f32, 0)], 3.0_f32);
 
         let if_func: IfFunction<f32> =
             IfFunction::new(203, "if_f32", condition, then_expr, else_expr);
@@ -745,32 +743,34 @@ mod tests {
         let result_id = if_func.result_variable().id().unique_id() as usize;
         let indicator_id = if_func.condition_indicator_variable().id().unique_id() as usize;
         let symbol_to_index = HashMap::from([(result_id, 1usize), (indicator_id, 2usize)]);
-        let constraints = if_func
-            .mechanism_constraints(&symbol_to_index)
-            .unwrap();
+        let constraints = if_func.mechanism_constraints(&symbol_to_index).unwrap();
 
         // 2 binaryzation + 4 branching = 6 constraints
         assert_eq!(constraints.len(), 6);
 
         // Verify constraint names
-        assert!(constraints
-            .iter()
-            .any(|c| c.name == "if_test_if_bin_lower"));
-        assert!(constraints
-            .iter()
-            .any(|c| c.name == "if_test_if_bin_upper"));
-        assert!(constraints
-            .iter()
-            .any(|c| c.name == "if_test_if_branch_le_then"));
-        assert!(constraints
-            .iter()
-            .any(|c| c.name == "if_test_if_branch_ge_then"));
-        assert!(constraints
-            .iter()
-            .any(|c| c.name == "if_test_if_branch_le_else"));
-        assert!(constraints
-            .iter()
-            .any(|c| c.name == "if_test_if_branch_ge_else"));
+        assert!(constraints.iter().any(|c| c.name == "if_test_if_bin_lower"));
+        assert!(constraints.iter().any(|c| c.name == "if_test_if_bin_upper"));
+        assert!(
+            constraints
+                .iter()
+                .any(|c| c.name == "if_test_if_branch_le_then")
+        );
+        assert!(
+            constraints
+                .iter()
+                .any(|c| c.name == "if_test_if_branch_ge_then")
+        );
+        assert!(
+            constraints
+                .iter()
+                .any(|c| c.name == "if_test_if_branch_le_else")
+        );
+        assert!(
+            constraints
+                .iter()
+                .any(|c| c.name == "if_test_if_branch_ge_else")
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ospf_rust_core::solver::SolveValue;
 
-use crate::domain::material::{from_f64, to_f64, Csp1dQuantity, ProductId};
+use crate::domain::material::{Csp1dQuantity, ProductId, from_f64, to_f64};
 
 pub mod model;
 
@@ -111,17 +111,20 @@ impl<V: SolveValue> LengthSlackAggregation<V> {
     ) -> bool {
         let product_id = &demand.product.id;
         self.config.is_dynamic_product(&demand.product)
-            && (self.config.assigned_length_lower_bound.contains_key(product_id)
-                || self.config.assigned_length_upper_bound.contains_key(product_id)
+            && (self
+                .config
+                .assigned_length_lower_bound
+                .contains_key(product_id)
+                || self
+                    .config
+                    .assigned_length_upper_bound
+                    .contains_key(product_id)
                 || self.config.total_length_penalty.is_some()
                 || self.config.over_length_penalty.contains_key(product_id))
     }
 
     /// 是否需要超长变量 / Whether over-length variable is needed
-    pub fn needs_over_length(
-        &self,
-        demand: &crate::domain::material::ProductDemand<V>,
-    ) -> bool {
+    pub fn needs_over_length(&self, demand: &crate::domain::material::ProductDemand<V>) -> bool {
         let product_id = &demand.product.id;
         self.config.is_dynamic_product(&demand.product)
             && (self.config.over_length_upper_bound.contains_key(product_id)
@@ -214,9 +217,7 @@ impl<V: SolveValue, D: LengthDerivation<V>> LengthAssignmentContext<V, D> {
             if let Some(max_length) = &product.max_over_produce_length {
                 let assigned_value = to_f64(&assigned_length.value);
                 let max_value = to_f64(&max_length.value);
-                if max_length.unit == assigned_length.unit
-                    && assigned_value > max_value
-                {
+                if max_length.unit == assigned_length.unit && assigned_value > max_value {
                     let Some(value) = assigned_value
                         .zip(max_value)
                         .and_then(|(assigned, max)| from_f64::<V>(assigned - max))

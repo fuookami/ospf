@@ -1,8 +1,8 @@
 //! 服务成本目标 / Service cost objective
 
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use crate::framework::demo1::route_context::model::{Assignment, Service};
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 /// 服务成本目标函数 / Service cost objective function
 ///

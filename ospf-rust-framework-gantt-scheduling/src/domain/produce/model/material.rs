@@ -40,7 +40,10 @@ where
 {
     /// 创建新产品 / Create new product
     pub fn new(id: impl Into<I>, name: impl Into<String>) -> Self {
-        Self { id: id.into(), name: name.into() }
+        Self {
+            id: id.into(),
+            name: name.into(),
+        }
     }
 }
 
@@ -50,8 +53,12 @@ where
 {
     type Id = I;
 
-    fn id(&self) -> &Self::Id { &self.id }
-    fn name(&self) -> &str { &self.name }
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 /// 半成品 / Semi-product
@@ -75,7 +82,10 @@ where
 {
     /// 创建新半成品 / Create new semi-product
     pub fn new(id: impl Into<I>, name: impl Into<String>) -> Self {
-        Self { id: id.into(), name: name.into() }
+        Self {
+            id: id.into(),
+            name: name.into(),
+        }
     }
 }
 
@@ -85,8 +95,12 @@ where
 {
     type Id = I;
 
-    fn id(&self) -> &Self::Id { &self.id }
-    fn name(&self) -> &str { &self.name }
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 /// 原材料 / Raw material
@@ -110,7 +124,10 @@ where
 {
     /// 创建新原材料 / Create new raw material
     pub fn new(id: impl Into<I>, name: impl Into<String>) -> Self {
-        Self { id: id.into(), name: name.into() }
+        Self {
+            id: id.into(),
+            name: name.into(),
+        }
     }
 }
 
@@ -120,6 +137,10 @@ where
 {
     type Id = I;
 
-    fn id(&self) -> &Self::Id { &self.id }
-    fn name(&self) -> &str { &self.name }
+    fn id(&self) -> &Self::Id {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
 }

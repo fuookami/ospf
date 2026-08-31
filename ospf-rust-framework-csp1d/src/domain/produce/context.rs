@@ -3,44 +3,37 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use ospf_rust_core::model::{
-    LinearObjectiveInput, MetaModel, ObjectiveCategory,
-};
+use ospf_rust_core::model::{LinearObjectiveInput, MetaModel, ObjectiveCategory};
 use ospf_rust_core::solver::SolveValue;
 use ospf_rust_framework::model::Pipeline;
 
-use crate::domain::material::{
-    from_f64, to_f64, Csp1dQuantity, CuttingPlan, MaterialId,
-    Material, Machine, ProductDemand,
-};
 use crate::domain::length_assignment::{
     DefaultLengthDerivation, LengthAssignment, LengthAssignmentContext, LengthAssignmentInput,
     LengthAssignmentModelingConfig, LengthAssignmentResult, LengthSlackAggregation,
     OverLengthRecord,
 };
-use crate::domain::r#yield::{
-    ModeledOverProduction, ModeledUnderProduction, YieldAnalysis,
-    YieldModelingConfig, YieldModelingResult, YieldSlackAggregation,
+use crate::domain::material::{
+    Csp1dQuantity, CuttingPlan, Machine, Material, MaterialId, ProductDemand, from_f64, to_f64,
 };
 use crate::domain::wasting_minimization::{
-    ModeledMaterialCost, WasteAggregation, WasteAnalysis,
-    WasteMinimizationConfig, WasteMinimizationResult,
+    ModeledMaterialCost, WasteAggregation, WasteAnalysis, WasteMinimizationConfig,
+    WasteMinimizationResult,
+};
+use crate::domain::r#yield::{
+    ModeledOverProduction, ModeledUnderProduction, YieldAnalysis, YieldModelingConfig,
+    YieldModelingResult, YieldSlackAggregation,
 };
 
 use super::aggregation::ProduceAggregation;
 use super::pipeline::{
-    Csp1dCGPipeline, Csp1dIncrementalPipeline, LengthObjectivePipeline,
-    YieldObjectivePipeline, WasteObjectivePipeline,
-    DemandConstraintPipeline, MaterialConstraintPipeline,
-    MachineConstraintPipeline, YieldConstraintPipeline,
-    LengthConstraintPipeline,
+    Csp1dCGPipeline, Csp1dIncrementalPipeline, DemandConstraintPipeline, LengthConstraintPipeline,
+    LengthObjectivePipeline, MachineConstraintPipeline, MaterialConstraintPipeline,
+    WasteObjectivePipeline, YieldConstraintPipeline, YieldObjectivePipeline,
 };
 use super::shadow_price::Csp1dShadowPriceLifecycle;
 use super::{
-    CuttingPlanUsage, MachineCapacityUsage, MaterialUsage, Produce,
-    Csp1dModelingContext,
-    Csp1dModelingMode, Csp1dObjectivePolicy,
-    SimpleDomainCalculationContext,
+    Csp1dModelingContext, Csp1dModelingMode, Csp1dObjectivePolicy, CuttingPlanUsage,
+    MachineCapacityUsage, MaterialUsage, Produce, SimpleDomainCalculationContext,
 };
 
 const DEMAND_CONSTRAINT_GROUP_ID: u64 = 10_001;
@@ -188,15 +181,22 @@ impl<V: SolveValue> Csp1dModelContext<V> for Csp1dProduceContext<V> {
         Self::register_constraint_pipelines(model, &self.constraint_pipelines)?;
         for pipeline in &self.extra_pipelines {
             pipeline.register(model);
-            pipeline.invoke(model).map_err(|error| crate::Csp1dError::Calculation {
-                message: format!("invoke extra pipeline {} failed: {error}", pipeline.name()),
-            })?;
+            pipeline
+                .invoke(model)
+                .map_err(|error| crate::Csp1dError::Calculation {
+                    message: format!("invoke extra pipeline {} failed: {error}", pipeline.name()),
+                })?;
         }
         for pipeline in &self.incremental_pipelines {
             pipeline.register(model);
-            pipeline.invoke(model).map_err(|error| crate::Csp1dError::Calculation {
-                message: format!("invoke incremental pipeline {} failed: {error}", pipeline.name()),
-            })?;
+            pipeline
+                .invoke(model)
+                .map_err(|error| crate::Csp1dError::Calculation {
+                    message: format!(
+                        "invoke incremental pipeline {} failed: {error}",
+                        pipeline.name()
+                    ),
+                })?;
         }
         self.set_objective(model);
         if self.mode == Csp1dModelingMode::MILP && !self.warm_start_plan_usages.is_empty() {
@@ -319,20 +319,22 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
         self.constraint_pipelines.clear();
         self.cg_pipelines.clear();
         let demand_pipeline = DemandConstraintPipeline::new(self.produce.clone());
-        self.constraint_pipelines.push(Arc::new(demand_pipeline.clone()));
+        self.constraint_pipelines
+            .push(Arc::new(demand_pipeline.clone()));
         self.cg_pipelines.push(Arc::new(demand_pipeline));
         let material_pipeline = MaterialConstraintPipeline::new(self.produce.clone());
-        self.constraint_pipelines.push(Arc::new(material_pipeline.clone()));
+        self.constraint_pipelines
+            .push(Arc::new(material_pipeline.clone()));
         self.cg_pipelines.push(Arc::new(material_pipeline));
         let machine_pipeline = MachineConstraintPipeline::new(self.produce.clone());
-        self.constraint_pipelines.push(Arc::new(machine_pipeline.clone()));
+        self.constraint_pipelines
+            .push(Arc::new(machine_pipeline.clone()));
         self.cg_pipelines.push(Arc::new(machine_pipeline));
         if let Some(r#yield) = &self.r#yield {
-            let yield_pipeline = YieldConstraintPipeline::new(
-                self.produce.clone(),
-                r#yield.clone(),
-            );
-            self.constraint_pipelines.push(Arc::new(yield_pipeline.clone()));
+            let yield_pipeline =
+                YieldConstraintPipeline::new(self.produce.clone(), r#yield.clone());
+            self.constraint_pipelines
+                .push(Arc::new(yield_pipeline.clone()));
             self.cg_pipelines.push(Arc::new(yield_pipeline));
         }
         if let Some(length) = &self.length {
@@ -347,14 +349,19 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
     ) -> crate::Csp1dResult<()> {
         for pipeline in pipelines {
             pipeline.register(model);
-            pipeline.invoke(model).map_err(|error| crate::Csp1dError::Calculation {
-                message: format!("invoke pipeline {} failed: {error}", pipeline.name()),
-            })?;
+            pipeline
+                .invoke(model)
+                .map_err(|error| crate::Csp1dError::Calculation {
+                    message: format!("invoke pipeline {} failed: {error}", pipeline.name()),
+                })?;
         }
         Ok(())
     }
 
-    fn refresh_builtin_constraints(&mut self, model: &mut MetaModel<f64>) -> crate::Csp1dResult<()> {
+    fn refresh_builtin_constraints(
+        &mut self,
+        model: &mut MetaModel<f64>,
+    ) -> crate::Csp1dResult<()> {
         for group_id in BUILTIN_CONSTRAINT_GROUP_IDS {
             model.remove_constraints_by_group_id(group_id);
         }
@@ -426,10 +433,8 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
     }
 
     fn set_objective(&self, model: &mut MetaModel<f64>) {
-        let mut terms = self.objective_terms_for_plans(
-            self.produce.cutting_plans.iter().enumerate(),
-            0,
-        );
+        let mut terms =
+            self.objective_terms_for_plans(self.produce.cutting_plans.iter().enumerate(), 0);
         if let Some(r#yield) = &self.r#yield {
             terms.extend(YieldObjectivePipeline::new(r#yield.clone()).objective_terms());
         }
@@ -561,7 +566,10 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
             .collect()
     }
 
-    fn extract_unmet_demands(&self, selected_plans: &[CuttingPlanUsage<V>]) -> Vec<ProductDemand<V>> {
+    fn extract_unmet_demands(
+        &self,
+        selected_plans: &[CuttingPlanUsage<V>],
+    ) -> Vec<ProductDemand<V>> {
         self.produce
             .demands
             .iter()
@@ -569,15 +577,21 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
                 let supplied = selected_plans
                     .iter()
                     .flat_map(|usage| {
-                        usage.plan.demand_contributions.iter().filter_map(|contribution| {
-                            if contribution.product.id == demand.product.id
-                                && contribution.quantity.unit == demand.quantity.unit
-                            {
-                                Some(to_f64(&contribution.quantity.value)? * usage.amount as f64)
-                            } else {
-                                None
-                            }
-                        })
+                        usage
+                            .plan
+                            .demand_contributions
+                            .iter()
+                            .filter_map(|contribution| {
+                                if contribution.product.id == demand.product.id
+                                    && contribution.quantity.unit == demand.quantity.unit
+                                {
+                                    Some(
+                                        to_f64(&contribution.quantity.value)? * usage.amount as f64,
+                                    )
+                                } else {
+                                    None
+                                }
+                            })
                     })
                     .sum::<f64>();
                 let required = to_f64(&demand.quantity.value).unwrap_or(f64::INFINITY);
@@ -594,13 +608,14 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
         let analysis = self
             .extract_modeled_yield_analysis(model, &produce)
             .unwrap_or_else(|| super::extraction::analyze_yield(&produce, &self.produce.demands));
-        Some(YieldModelingResult {
-            analysis,
-        })
+        Some(YieldModelingResult { analysis })
     }
 
     /// 提取 waste 结果 / Extract waste result
-    pub fn extract_waste_result(&self, model: &MetaModel<f64>) -> Option<WasteMinimizationResult<V>> {
+    pub fn extract_waste_result(
+        &self,
+        model: &MetaModel<f64>,
+    ) -> Option<WasteMinimizationResult<V>> {
         let config = self.waste_config.as_ref()?;
         let produce = self.extract_solution(model).ok()?;
         let yield_analysis = super::extraction::analyze_yield(&produce, &self.produce.demands);
@@ -668,7 +683,10 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
             metrics.insert("overProductionArea".to_string(), value);
         }
         for cost in &material_costs {
-            metrics.insert(format!("materialCost.{}", cost.material_id), cost.cost.clone());
+            metrics.insert(
+                format!("materialCost.{}", cost.material_id),
+                cost.cost.clone(),
+            );
         }
         Some(WasteMinimizationResult {
             total_trim_width: from_f64(total_trim_width),
@@ -677,14 +695,15 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
             total_rest_material: from_f64(total_rest_material),
             over_production_area_measure: config.over_production_area_measure,
             rest_material_measure: config.rest_material_measure,
-            analysis: WasteAnalysis {
-                metrics,
-            },
+            analysis: WasteAnalysis { metrics },
         })
     }
 
     /// 提取 length 结果 / Extract length result
-    pub fn extract_length_result(&self, model: &MetaModel<f64>) -> Option<LengthAssignmentResult<V>> {
+    pub fn extract_length_result(
+        &self,
+        model: &MetaModel<f64>,
+    ) -> Option<LengthAssignmentResult<V>> {
         let config = self.length_config.as_ref()?;
         if !config.enabled {
             return None;
@@ -741,10 +760,7 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
                 .and_then(|variable| model.tokens().get(variable))
                 .and_then(|token| token.get_result());
             has_solver_value |= under_value.is_some();
-            if let Some(value) = under_value
-                .filter(|value| *value > 0.0)
-                .and_then(from_f64)
-            {
+            if let Some(value) = under_value.filter(|value| *value > 0.0).and_then(from_f64) {
                 under_productions.push(ModeledUnderProduction {
                     demand: demand.clone(),
                     shortfall: Csp1dQuantity {
@@ -759,10 +775,7 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
                 .and_then(|variable| model.tokens().get(variable))
                 .and_then(|token| token.get_result());
             has_solver_value |= over_value.is_some();
-            if let Some(value) = over_value
-                .filter(|value| *value > 0.0)
-                .and_then(from_f64)
-            {
+            if let Some(value) = over_value.filter(|value| *value > 0.0).and_then(from_f64) {
                 over_productions.push(ModeledOverProduction {
                     demand: demand.clone(),
                     surplus: Csp1dQuantity {
@@ -785,7 +798,10 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
         })
     }
 
-    fn extract_modeled_length_result(&self, model: &MetaModel<f64>) -> Option<ModeledLengthExtraction<V>> {
+    fn extract_modeled_length_result(
+        &self,
+        model: &MetaModel<f64>,
+    ) -> Option<ModeledLengthExtraction<V>> {
         let length = self.length.as_ref()?;
         if !length.has_any() {
             return None;
@@ -820,10 +836,7 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
                 .and_then(|variable| model.tokens().get(variable))
                 .and_then(|token| token.get_result());
             has_over_values |= over_value.is_some();
-            if let Some(value) = over_value
-                .filter(|value| *value > 0.0)
-                .and_then(from_f64)
-            {
+            if let Some(value) = over_value.filter(|value| *value > 0.0).and_then(from_f64) {
                 over_length_records.push(OverLengthRecord {
                     product: demand.product.clone(),
                     over_length: Csp1dQuantity {

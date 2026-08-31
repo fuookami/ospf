@@ -1,13 +1,13 @@
 //! 不宜空舱限制 / Empty hated limits
-use std::error::Error;
-use std::sync::Arc;
+use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAggregation;
+use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::LinearMonomial;
 use ospf_rust_core::variable::UContinuousVariableItem;
-use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAggregation;
-use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 空舱厌恶限制: 目标函数中惩罚空舱位 / Empty hated limit: penalize empty positions in objective
 /// 对齐 Kotlin EmptyHatedLimit

@@ -1,9 +1,9 @@
 //! 求解边界转换入口 / Solver boundary conversion entry point
 
-use crate::error::Result;
 use super::conversion_context::SolveValueConversionContext;
 use super::validation::ensure_finite;
 use super::{SolveValue, SolveValueConversionPolicy};
+use crate::error::Result;
 
 /// 将求解值转换为后端 f64 / Convert solve value to backend f64
 ///

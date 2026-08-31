@@ -1,10 +1,10 @@
 //! 快递效能领域服务 / Express effectiveness domain service.
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::express_effectiveness::aggregation::ExpressEffectivenessAggregation;
 use crate::framework::demo2::domain::express_effectiveness::context::ExpressEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 use crate::framework::demo2::infrastructure::dto::Demo2Request;
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 mod limits;
 pub(crate) mod pipeline_list_generator;

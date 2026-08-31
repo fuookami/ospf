@@ -1,8 +1,8 @@
 //! Gauss 映射。
 //! Gauss map.
 
-use num_traits::Float;
 use crate::algebra::Field;
+use num_traits::Float;
 
 scalar_map!(
     /// Gauss 映射。

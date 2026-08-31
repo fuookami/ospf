@@ -3,12 +3,12 @@
 //! 定义块、空间和物品视图等核心域模型。
 //! Defines core domain models including blocks, spaces, and item views.
 
-use std::fmt::Debug;
 use ospf_rust_math::algebra::Field;
 use ospf_rust_math::geometry::Axis3;
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::concept::UnitTrait;
 use ospf_rust_quantities::unit::physical_unit::CTUnit;
+use std::fmt::Debug;
 
 use crate::infrastructure::geometry::{MetricPoint3, MetricSize3};
 use crate::infrastructure::orientation::Orientation;
@@ -338,9 +338,9 @@ mod tests {
         assert_eq!(block.ny, 3);
         assert_eq!(block.nz, 1);
         assert_eq!(block.item_count, 6);
-        assert_eq!(block.width.value, 4.0);  // 2 * 2.0
+        assert_eq!(block.width.value, 4.0); // 2 * 2.0
         assert_eq!(block.height.value, 9.0); // 3 * 3.0
-        assert_eq!(block.depth.value, 4.0);  // 1 * 4.0
+        assert_eq!(block.depth.value, 4.0); // 1 * 4.0
         assert_eq!(block.weight.value, 6.0); // 6 * 1.0
     }
 
@@ -366,8 +366,16 @@ mod tests {
     #[test]
     fn space_fits_block() {
         let space = Space::new(
-            MetricPoint3 { x: meters(0.0), y: meters(0.0), z: meters(0.0) },
-            MetricSize3 { width: meters(10.0), height: meters(10.0), depth: meters(10.0) },
+            MetricPoint3 {
+                x: meters(0.0),
+                y: meters(0.0),
+                z: meters(0.0),
+            },
+            MetricSize3 {
+                width: meters(10.0),
+                height: meters(10.0),
+                depth: meters(10.0),
+            },
         );
 
         let item_view = ItemView {
@@ -386,8 +394,16 @@ mod tests {
     #[test]
     fn space_does_not_fit_block() {
         let space = Space::new(
-            MetricPoint3 { x: meters(0.0), y: meters(0.0), z: meters(0.0) },
-            MetricSize3 { width: meters(3.0), height: meters(10.0), depth: meters(10.0) },
+            MetricPoint3 {
+                x: meters(0.0),
+                y: meters(0.0),
+                z: meters(0.0),
+            },
+            MetricSize3 {
+                width: meters(3.0),
+                height: meters(10.0),
+                depth: meters(10.0),
+            },
         );
 
         let item_view = ItemView {
@@ -406,8 +422,16 @@ mod tests {
     #[test]
     fn space_place_block_subspaces() {
         let space = Space::new(
-            MetricPoint3 { x: meters(0.0), y: meters(0.0), z: meters(0.0) },
-            MetricSize3 { width: meters(10.0), height: meters(10.0), depth: meters(10.0) },
+            MetricPoint3 {
+                x: meters(0.0),
+                y: meters(0.0),
+                z: meters(0.0),
+            },
+            MetricSize3 {
+                width: meters(10.0),
+                height: meters(10.0),
+                depth: meters(10.0),
+            },
         );
 
         let item_view = ItemView {
@@ -441,8 +465,16 @@ mod tests {
     #[test]
     fn space_place_block_exact_fit() {
         let space = Space::new(
-            MetricPoint3 { x: meters(0.0), y: meters(0.0), z: meters(0.0) },
-            MetricSize3 { width: meters(5.0), height: meters(5.0), depth: meters(5.0) },
+            MetricPoint3 {
+                x: meters(0.0),
+                y: meters(0.0),
+                z: meters(0.0),
+            },
+            MetricSize3 {
+                width: meters(5.0),
+                height: meters(5.0),
+                depth: meters(5.0),
+            },
         );
 
         let item_view = ItemView {

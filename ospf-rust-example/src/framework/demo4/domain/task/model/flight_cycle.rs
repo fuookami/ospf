@@ -11,7 +11,9 @@ pub struct FlightHour {
 
 impl FlightHour {
     /// 零值 / Zero value
-    pub const ZERO: Self = Self { hours: Duration::ZERO };
+    pub const ZERO: Self = Self {
+        hours: Duration::ZERO,
+    };
 
     /// 创建新的飞行小时 / Create a new flight hour
     pub fn new(hours: Duration) -> Self {
@@ -22,14 +24,18 @@ impl FlightHour {
 impl std::ops::Add for FlightHour {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
-        Self { hours: self.hours + rhs.hours }
+        Self {
+            hours: self.hours + rhs.hours,
+        }
     }
 }
 
 impl std::ops::Sub for FlightHour {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self {
-        Self { hours: self.hours - rhs.hours }
+        Self {
+            hours: self.hours - rhs.hours,
+        }
     }
 }
 
@@ -53,14 +59,18 @@ impl FlightCycle {
 impl std::ops::Add for FlightCycle {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
-        Self { cycles: self.cycles + rhs.cycles }
+        Self {
+            cycles: self.cycles + rhs.cycles,
+        }
     }
 }
 
 impl std::ops::Sub for FlightCycle {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self {
-        Self { cycles: self.cycles.saturating_sub(rhs.cycles) }
+        Self {
+            cycles: self.cycles.saturating_sub(rhs.cycles),
+        }
     }
 }
 

@@ -1,10 +1,10 @@
 //! 域 trait
 //! Field trait
 
-use std::ops::Div;
 use super::CommutativeRing;
 use super::CommutativeRingRef;
 use super::MultiplicativeGroupRef;
+use std::ops::Div;
 
 // ============================================================================
 // Field Trait - 域

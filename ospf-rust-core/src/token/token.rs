@@ -1,4 +1,4 @@
-﻿//! Token 核心定义
+//! Token 核心定义
 //! Token Core Definitions
 
 use std::fmt::Debug;
@@ -6,9 +6,7 @@ use std::sync::RwLock;
 
 use num_traits::{FromPrimitive, ToPrimitive};
 
-use crate::variable::{
-    VariableItem, VariableId, VariableRange, VariableType, VariableTypeTrait,
-};
+use crate::variable::{VariableId, VariableItem, VariableRange, VariableType, VariableTypeTrait};
 
 // ============================================================================
 // IntoValue - 值类型转换 Trait
@@ -172,8 +170,8 @@ where
     where
         V: PartialOrd,
     {
-        let lower_ok = self.lower_bound.as_ref().map_or(true, |lb| value >= lb);
-        let upper_ok = self.upper_bound.as_ref().map_or(true, |ub| value <= ub);
+        let lower_ok = self.lower_bound.as_ref().is_none_or(|lb| value >= lb);
+        let upper_ok = self.upper_bound.as_ref().is_none_or(|ub| value <= ub);
         lower_ok && upper_ok
     }
 

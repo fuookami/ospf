@@ -1,9 +1,9 @@
 //! 元约束定义
 //! Meta Constraint Definition
 
-use std::sync::Arc;
-use crate::model::basic::ConstraintPriority;
 use super::{ConstraintGroup, LinearInequality, QuadraticInequality};
+use crate::model::basic::ConstraintPriority;
+use std::sync::Arc;
 
 /// 不等式 trait / Inequality Trait
 pub trait InequalityTrait: Clone + Send + Sync + 'static {}
@@ -27,6 +27,7 @@ pub struct MetaConstraint<I: InequalityTrait> {
     pub lazy: bool,
     /// 优先级 / Priority
     pub priority: u32,
+    /// 可选的结构化参数文本 / Optional structured argument text
     pub args: Option<String>,
 }
 
@@ -73,6 +74,7 @@ impl<I: InequalityTrait> MetaConstraint<I> {
         self
     }
 
+    /// 设置结构化参数文本 / Set structured argument text.
     pub fn with_args(mut self, args: impl Into<String>) -> Self {
         self.args = Some(args.into());
         self

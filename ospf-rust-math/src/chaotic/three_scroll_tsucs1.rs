@@ -1,10 +1,10 @@
 //! 三涡卷统一混沌系统 TSUCS1。
 //! Three-Scroll Unified Chaotic System TSUCS1.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// 三涡卷统一混沌系统 TSUCS1 的一阶欧拉步进模型。
@@ -42,14 +42,23 @@ impl<S: Field + Float> Default for ThreeScrollUnifiedChaoticSystemTsucs1Attracto
 
 impl<S: Field + Float> Default for ThreeScrollUnifiedChaoticSystemTsucs1AttractorGenerator<S> {
     fn default() -> Self {
-        Self::new(ThreeScrollUnifiedChaoticSystemTsucs1Attractor::default(), one_point3())
+        Self::new(
+            ThreeScrollUnifiedChaoticSystemTsucs1Attractor::default(),
+            one_point3(),
+        )
     }
 }
 
 /// 创建三涡卷统一混沌系统 TSUCS1。
 /// Create a Three-Scroll Unified Chaotic System TSUCS1.
 pub fn three_scroll_tsucs1_attractor<S: Field + Float>(
-    alpha: S, beta: S, delta: S, epsilon: S, zeta: S, rho: S, h: S,
+    alpha: S,
+    beta: S,
+    delta: S,
+    epsilon: S,
+    zeta: S,
+    rho: S,
+    h: S,
 ) -> ThreeScrollUnifiedChaoticSystemTsucs1Attractor<S> {
     ThreeScrollUnifiedChaoticSystemTsucs1Attractor::new(alpha, beta, delta, epsilon, zeta, rho, h)
 }
@@ -57,10 +66,19 @@ pub fn three_scroll_tsucs1_attractor<S: Field + Float>(
 /// 创建三涡卷统一混沌系统 TSUCS1 生成器。
 /// Create a Three-Scroll Unified Chaotic System TSUCS1 generator.
 pub fn three_scroll_tsucs1_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, delta: S, epsilon: S, zeta: S, rho: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    delta: S,
+    epsilon: S,
+    zeta: S,
+    rho: S,
+    h: S,
+    x: Point3<S>,
 ) -> ThreeScrollUnifiedChaoticSystemTsucs1AttractorGenerator<S> {
     ThreeScrollUnifiedChaoticSystemTsucs1AttractorGenerator::new(
-        ThreeScrollUnifiedChaoticSystemTsucs1Attractor::new(alpha, beta, delta, epsilon, zeta, rho, h),
+        ThreeScrollUnifiedChaoticSystemTsucs1Attractor::new(
+            alpha, beta, delta, epsilon, zeta, rho, h,
+        ),
         x,
     )
 }

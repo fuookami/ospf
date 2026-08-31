@@ -3,16 +3,16 @@
 //! 实现产出/消耗约束和松弛量最小化 Pipeline。
 //! Implements produce/consumption constraint and slack minimization pipelines.
 
+use ospf_rust_core::error::Result;
 use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::model::object::SubObjective;
 use ospf_rust_core::model::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::model::mechanism::constraint_group::ConstraintGroup;
-use ospf_rust_framework::model::pipeline::Pipeline;
-use ospf_rust_core::error::Result;
+use ospf_rust_core::model::object::SubObjective;
 use ospf_rust_core::symbol::LinearIntermediateSymbol;
+use ospf_rust_framework::model::pipeline::Pipeline;
 
-use crate::domain::produce::model::usage::{ProduceUsage, ConsumptionUsage};
 use crate::domain::produce::model::demand::{MaterialDemand, MaterialReserves};
+use crate::domain::produce::model::usage::{ConsumptionUsage, ProduceUsage};
 
 // ============================================================================
 // 约束型 Pipeline / Constraint Pipelines
@@ -55,31 +55,45 @@ impl ProduceQuantityConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for ProduceQuantityConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (product_idx, demand) in self.demands.iter().enumerate() {
             // 当 over slack 未启用时，添加上界约束
-            if !self.over_enabled || !demand.over_enabled() {
-                if let Err(e) = model.add_le_constraint(
+            if (!self.over_enabled || !demand.over_enabled())
+                && let Err(e) = model.add_le_constraint(
                     &[],
                     demand.upper_bound,
                     &format!("{}_ub_{}", self.name, product_idx),
-                ) {
-                    log::warn!("Failed to register {}_ub_{}: {:?}", self.name, product_idx, e);
-                }
+                )
+            {
+                log::warn!(
+                    "Failed to register {}_ub_{}: {:?}",
+                    self.name,
+                    product_idx,
+                    e
+                );
             }
 
             // 当 less slack 未启用时，添加下界约束
-            if !self.less_enabled || !demand.less_enabled() {
-                if let Err(e) = model.add_ge_constraint(
+            if (!self.less_enabled || !demand.less_enabled())
+                && let Err(e) = model.add_ge_constraint(
                     &[],
                     demand.lower_bound,
                     &format!("{}_lb_{}", self.name, product_idx),
-                ) {
-                    log::warn!("Failed to register {}_lb_{}: {:?}", self.name, product_idx, e);
-                }
+                )
+            {
+                log::warn!(
+                    "Failed to register {}_lb_{}: {:?}",
+                    self.name,
+                    product_idx,
+                    e
+                );
             }
         }
     }
@@ -122,29 +136,43 @@ impl ConsumptionQuantityConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for ConsumptionQuantityConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (material_idx, reserve) in self.reserves.iter().enumerate() {
-            if !self.over_enabled || !reserve.over_enabled() {
-                if let Err(e) = model.add_le_constraint(
+            if (!self.over_enabled || !reserve.over_enabled())
+                && let Err(e) = model.add_le_constraint(
                     &[],
                     reserve.upper_bound,
                     &format!("{}_ub_{}", self.name, material_idx),
-                ) {
-                    log::warn!("Failed to register {}_ub_{}: {:?}", self.name, material_idx, e);
-                }
+                )
+            {
+                log::warn!(
+                    "Failed to register {}_ub_{}: {:?}",
+                    self.name,
+                    material_idx,
+                    e
+                );
             }
 
-            if !self.less_enabled || !reserve.less_enabled() {
-                if let Err(e) = model.add_ge_constraint(
+            if (!self.less_enabled || !reserve.less_enabled())
+                && let Err(e) = model.add_ge_constraint(
                     &[],
                     reserve.lower_bound,
                     &format!("{}_lb_{}", self.name, material_idx),
-                ) {
-                    log::warn!("Failed to register {}_lb_{}: {:?}", self.name, material_idx, e);
-                }
+                )
+            {
+                log::warn!(
+                    "Failed to register {}_lb_{}: {:?}",
+                    self.name,
+                    material_idx,
+                    e
+                );
             }
         }
     }
@@ -172,7 +200,9 @@ pub struct ProduceOverQuantityMinimization {
 impl ProduceOverQuantityMinimization {
     /// 从 ProduceUsage 创建产出过量最小化 / Create from ProduceUsage
     pub fn from_usage(usage: &ProduceUsage, coefficient: f64) -> Self {
-        let cost_terms: Vec<(usize, f64)> = usage.over_quantity_indices.iter()
+        let cost_terms: Vec<(usize, f64)> = usage
+            .over_quantity_indices
+            .iter()
             .filter_map(|idx| idx.map(|i| (i, coefficient)))
             .collect();
         Self {
@@ -183,14 +213,20 @@ impl ProduceOverQuantityMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for ProduceOverQuantityMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -214,7 +250,9 @@ pub struct ProduceLessQuantityMinimization {
 impl ProduceLessQuantityMinimization {
     /// 从 ProduceUsage 创建产出不足最小化 / Create from ProduceUsage
     pub fn from_usage(usage: &ProduceUsage, coefficient: f64) -> Self {
-        let cost_terms: Vec<(usize, f64)> = usage.less_quantity_indices.iter()
+        let cost_terms: Vec<(usize, f64)> = usage
+            .less_quantity_indices
+            .iter()
             .filter_map(|idx| idx.map(|i| (i, coefficient)))
             .collect();
         Self {
@@ -225,14 +263,20 @@ impl ProduceLessQuantityMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for ProduceLessQuantityMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -267,7 +311,9 @@ impl ProduceQuantityMaximization {
     /// When the expression has monomials, their variable indices are used;
     /// otherwise, falls back to over_quantity slack variable indices.
     pub fn from_usage(usage: &ProduceUsage, coefficient: f64) -> Self {
-        let cost_terms: Vec<(usize, f64)> = usage.quantity_symbols.iter()
+        let cost_terms: Vec<(usize, f64)> = usage
+            .quantity_symbols
+            .iter()
             .enumerate()
             .filter_map(|(idx, sym)| {
                 let poly = sym.as_ref().to_linear_polynomial();
@@ -288,14 +334,20 @@ impl ProduceQuantityMaximization {
 }
 
 impl Pipeline<MetaModel<f64>> for ProduceQuantityMaximization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -323,7 +375,9 @@ impl ProduceQuantityMinimization {
     /// 当中间表达式有 monomials 时，使用其变量索引；
     /// 否则回退到 less_quantity slack 变量索引。
     pub fn from_usage(usage: &ProduceUsage, coefficient: f64) -> Self {
-        let cost_terms: Vec<(usize, f64)> = usage.quantity_symbols.iter()
+        let cost_terms: Vec<(usize, f64)> = usage
+            .quantity_symbols
+            .iter()
             .enumerate()
             .filter_map(|(idx, sym)| {
                 let poly = sym.as_ref().to_linear_polynomial();
@@ -344,14 +398,20 @@ impl ProduceQuantityMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for ProduceQuantityMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -375,7 +435,9 @@ pub struct ConsumptionOverQuantityMinimization {
 impl ConsumptionOverQuantityMinimization {
     /// 从 ConsumptionUsage 创建消耗过量最小化 / Create from ConsumptionUsage
     pub fn from_usage(usage: &ConsumptionUsage, coefficient: f64) -> Self {
-        let cost_terms: Vec<(usize, f64)> = usage.over_quantity_indices.iter()
+        let cost_terms: Vec<(usize, f64)> = usage
+            .over_quantity_indices
+            .iter()
             .filter_map(|idx| idx.map(|i| (i, coefficient)))
             .collect();
         Self {
@@ -386,14 +448,20 @@ impl ConsumptionOverQuantityMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for ConsumptionOverQuantityMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -417,7 +485,9 @@ pub struct ConsumptionLessQuantityMinimization {
 impl ConsumptionLessQuantityMinimization {
     /// 从 ConsumptionUsage 创建消耗不足最小化 / Create from ConsumptionUsage
     pub fn from_usage(usage: &ConsumptionUsage, coefficient: f64) -> Self {
-        let cost_terms: Vec<(usize, f64)> = usage.less_quantity_indices.iter()
+        let cost_terms: Vec<(usize, f64)> = usage
+            .less_quantity_indices
+            .iter()
             .filter_map(|idx| idx.map(|i| (i, coefficient)))
             .collect();
         Self {
@@ -428,14 +498,20 @@ impl ConsumptionLessQuantityMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for ConsumptionLessQuantityMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -463,7 +539,9 @@ impl ConsumptionQuantityMaximization {
     /// 当中间表达式有 monomials 时，使用其变量索引；
     /// 否则回退到 over_quantity slack 变量索引。
     pub fn from_usage(usage: &ConsumptionUsage, coefficient: f64) -> Self {
-        let cost_terms: Vec<(usize, f64)> = usage.quantity_symbols.iter()
+        let cost_terms: Vec<(usize, f64)> = usage
+            .quantity_symbols
+            .iter()
             .enumerate()
             .filter_map(|(idx, sym)| {
                 let poly = sym.as_ref().to_linear_polynomial();
@@ -484,14 +562,20 @@ impl ConsumptionQuantityMaximization {
 }
 
 impl Pipeline<MetaModel<f64>> for ConsumptionQuantityMaximization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -519,7 +603,9 @@ impl ConsumptionQuantityMinimization {
     /// 当中间表达式有 monomials 时，使用其变量索引；
     /// 否则回退到 less_quantity slack 变量索引。
     pub fn from_usage(usage: &ConsumptionUsage, coefficient: f64) -> Self {
-        let cost_terms: Vec<(usize, f64)> = usage.quantity_symbols.iter()
+        let cost_terms: Vec<(usize, f64)> = usage
+            .quantity_symbols
+            .iter()
             .enumerate()
             .filter_map(|(idx, sym)| {
                 let poly = sym.as_ref().to_linear_polynomial();
@@ -540,14 +626,20 @@ impl ConsumptionQuantityMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for ConsumptionQuantityMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -572,9 +664,13 @@ mod tests {
     fn test_produce_over_quantity_minimization() {
         let mut model = MetaModel::<f64>::new("test_produce_over_obj");
 
-        let demands = vec![
-            MaterialDemand::with_slack("product_a", 10.0, 100.0, Some(5.0), Some(20.0)),
-        ];
+        let demands = vec![MaterialDemand::with_slack(
+            "product_a",
+            10.0,
+            100.0,
+            Some(5.0),
+            Some(20.0),
+        )];
 
         let mut usage = ProduceUsage::new("produce", 1, true, false);
         usage.register(&demands, &mut model).unwrap();
@@ -589,9 +685,13 @@ mod tests {
     fn test_consumption_less_quantity_minimization() {
         let mut model = MetaModel::<f64>::new("test_consumption_less_obj");
 
-        let reserves = vec![
-            MaterialReserves::with_slack("raw_1", 0.0, 200.0, Some(10.0), None),
-        ];
+        let reserves = vec![MaterialReserves::with_slack(
+            "raw_1",
+            0.0,
+            200.0,
+            Some(10.0),
+            None,
+        )];
 
         let mut usage = ConsumptionUsage::new("consumption", 1, false, true);
         usage.register(&reserves, &mut model).unwrap();
@@ -640,9 +740,13 @@ mod tests {
     fn test_produce_less_quantity_minimization() {
         let mut model = MetaModel::<f64>::new("test_produce_less_obj");
 
-        let demands = vec![
-            MaterialDemand::with_slack("product_a", 10.0, 100.0, Some(5.0), Some(20.0)),
-        ];
+        let demands = vec![MaterialDemand::with_slack(
+            "product_a",
+            10.0,
+            100.0,
+            Some(5.0),
+            Some(20.0),
+        )];
 
         let mut usage = ProduceUsage::new("produce", 1, true, true);
         usage.register(&demands, &mut model).unwrap();
@@ -657,9 +761,13 @@ mod tests {
     fn test_consumption_over_quantity_minimization() {
         let mut model = MetaModel::<f64>::new("test_consumption_over_obj");
 
-        let reserves = vec![
-            MaterialReserves::with_slack("raw_1", 0.0, 200.0, None, Some(30.0)),
-        ];
+        let reserves = vec![MaterialReserves::with_slack(
+            "raw_1",
+            0.0,
+            200.0,
+            None,
+            Some(30.0),
+        )];
 
         let mut usage = ConsumptionUsage::new("consumption", 1, true, false);
         usage.register(&reserves, &mut model).unwrap();

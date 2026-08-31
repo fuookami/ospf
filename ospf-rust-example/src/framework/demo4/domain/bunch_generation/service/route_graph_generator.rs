@@ -1,8 +1,8 @@
 //! 路线图生成器模块 / Route graph generator module
+use super::super::model::{Edge, FlightTaskReverse, Graph, Node};
+use super::operator::FeasibilityJudger;
 use std::collections::{HashMap, HashSet};
 use time::OffsetDateTime;
-use super::super::model::{Graph, Node, Edge, FlightTaskReverse};
-use super::operator::FeasibilityJudger;
 
 /// 路线图生成器配置 / Route graph generator configuration
 #[derive(Debug, Clone)]
@@ -13,7 +13,9 @@ pub struct RouteGraphGeneratorConfig {
 
 impl Default for RouteGraphGeneratorConfig {
     fn default() -> Self {
-        Self { with_order_change: false }
+        Self {
+            with_order_change: false,
+        }
     }
 }
 
@@ -31,7 +33,11 @@ impl RouteGraphGenerator {
         config: RouteGraphGeneratorConfig,
         feasibility_judger: FeasibilityJudger,
     ) -> Self {
-        Self { reverse, config, feasibility_judger }
+        Self {
+            reverse,
+            config,
+            feasibility_judger,
+        }
     }
 
     /// 为指定飞机生成路线图 / Generate route graph for aircraft
@@ -67,7 +73,10 @@ impl RouteGraphGenerator {
 
                     // 对换检查
                     if self.config.with_order_change {
-                        if let Node::Task { task_id: prev_id, .. } = &node {
+                        if let Node::Task {
+                            task_id: prev_id, ..
+                        } = &node
+                        {
                             if self.reverse.contains(&task.id, prev_id)
                                 && self.check_feasibility(aircraft_id, &node, task)
                             {
@@ -141,8 +150,8 @@ pub struct FlightTaskInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use time::macros::datetime;
     use time::Duration;
+    use time::macros::datetime;
 
     fn task(id: &str, dep: &str, arr: &str) -> FlightTaskInfo {
         FlightTaskInfo {
@@ -196,7 +205,9 @@ mod tests {
             &[],
             Duration::hours(5),
         );
-        let config = RouteGraphGeneratorConfig { with_order_change: true };
+        let config = RouteGraphGeneratorConfig {
+            with_order_change: true,
+        };
         // Use a judger that rejects reverse connections to avoid infinite loops
         let judger: FeasibilityJudger = Box::new(|_aircraft, prev, task| {
             prev.is_none() || task == "T2" // Only allow Root->T1 and T1->T2

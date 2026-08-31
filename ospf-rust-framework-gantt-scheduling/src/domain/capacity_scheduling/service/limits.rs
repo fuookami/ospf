@@ -6,10 +6,10 @@
 use std::collections::HashMap;
 
 use ospf_rust_core::error::Result;
+use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::model::mechanism::constraint_group::ConstraintGroup;
 use ospf_rust_core::model::object::SubObjective;
-use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearIntermediateSymbol;
 use ospf_rust_framework::model::pipeline::Pipeline;
 use ospf_rust_framework::solver::column_generation_solver::LinearDualSolution;
@@ -86,7 +86,7 @@ impl Pipeline<MetaModel<f64>> for ExecutorCapacityConstraint {
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (idx, (cap_idx, limit)) in self.constraints.iter().enumerate() {
-            let terms = vec![LinearMonomial::new(1.0, *cap_idx)];
+            let terms = [LinearMonomial::new(1.0, *cap_idx)];
             if let Err(e) = model.add_le_constraint(
                 &terms
                     .iter()
@@ -120,6 +120,7 @@ where
     name: String,
     group: Option<ConstraintGroup>,
     /// 执行器-时隙选列项 / Executor-slot column-selection terms
+    #[allow(clippy::type_complexity)]
     pub selection_polynomials: Vec<(I, usize, Vec<(usize, f64)>)>,
 }
 

@@ -20,13 +20,11 @@
 //! 3. `add_symbol_combination` 批量注册中间符号
 //! 4. 约束和目标从显式 `LinearExpressionSymbol` 提取多项式
 
-use ospf_rust_multiarray::{MultiArray, Shape};
+use super::common::{extract_coeffs, solve_typed};
 use ospf_rust_core::model::{MetaModel, ObjectiveCategory};
-use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1,
-};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination, flat_map1};
 use ospf_rust_core::variable::{Binary, VariableCombination1D};
-use super::common::{solve_typed, extract_coeffs};
+use ospf_rust_multiarray::{MultiArray, Shape};
 
 /// 公司数据结构 / Company data structure
 #[derive(Debug, Clone)]
@@ -105,10 +103,7 @@ impl PortfolioModel {
         companies: &[Company],
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // 1. 创建并注册变量组合
-        let select = VariableCombination1D::new(
-            Shape::new([companies.len()]),
-            "select",
-        );
+        let select = VariableCombination1D::new(Shape::new([companies.len()]), "select");
         let select_idx = model.register_combination(&select)?;
 
         // 2. 从变量组合派生符号组合
@@ -193,10 +188,21 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     // 注册模型：变量组合 + 符号组合
     let portfolio = PortfolioModel::register(&mut meta_model, &companies)?;
 
-    println!("Step 1: Registered variable combination: select ({} vars)", portfolio.select.len());
-    println!("Step 2: Registered symbol combination: metrics ({} symbols)", portfolio.metrics.len());
+    println!(
+        "Step 1: Registered variable combination: select ({} vars)",
+        portfolio.select.len()
+    );
+    println!(
+        "Step 2: Registered symbol combination: metrics ({} symbols)",
+        portfolio.metrics.len()
+    );
     for i in 0..portfolio.metrics.len() {
-        println!("  metrics[{}] = {} (ID: {})", i, portfolio.metrics.symbol_name(i), portfolio.metrics.symbol_id(i));
+        println!(
+            "  metrics[{}] = {} (ID: {})",
+            i,
+            portfolio.metrics.symbol_name(i),
+            portfolio.metrics.symbol_id(i)
+        );
     }
     println!();
 
@@ -211,12 +217,18 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     // 模型转换
     println!("Step 4: Model transformation chain");
     let mechanism_model = meta_model.try_to_mechanism_model()?;
-    println!("  MechanismModel: {} variables, {} constraints",
-        mechanism_model.num_variables(), mechanism_model.num_constraints());
+    println!(
+        "  MechanismModel: {} variables, {} constraints",
+        mechanism_model.num_variables(),
+        mechanism_model.num_constraints()
+    );
 
     let linear_model = mechanism_model.into_linear_triad_model();
-    println!("  LinearTriadModel: {} variables, {} constraints",
-        linear_model.num_variables(), linear_model.num_constraints());
+    println!(
+        "  LinearTriadModel: {} variables, {} constraints",
+        linear_model.num_variables(),
+        linear_model.num_constraints()
+    );
     println!();
 
     // 求解
@@ -246,8 +258,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n=== Results ===");
     println!("Selected companies: {:?}", selected);
-    println!("Total capital: {:.2} (required >= {:.2})", total_capital, min_capital);
-    println!("Total liability: {:.2} (required <= {:.2})", total_liability, max_liability);
+    println!(
+        "Total capital: {:.2} (required >= {:.2})",
+        total_capital, min_capital
+    );
+    println!(
+        "Total liability: {:.2} (required <= {:.2})",
+        total_liability, max_liability
+    );
 
     // 验证
     println!("\n=== Constraint Verification ===");

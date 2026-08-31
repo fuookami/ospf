@@ -1,10 +1,10 @@
 //! Wimol-Banlue 吸引子。
 //! Wimol-Banlue attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Wimol-Banlue 吸引子的一阶欧拉步进模型。
@@ -50,7 +50,9 @@ pub fn wimol_banlue_attractor<S: Field + Float>(alpha: S, h: S) -> WimolBanlueAt
 /// 创建 Wimol-Banlue 吸引子生成器。
 /// Create a Wimol-Banlue attractor generator.
 pub fn wimol_banlue_attractor_generator<S: Field + Float>(
-    alpha: S, h: S, x: Point3<S>,
+    alpha: S,
+    h: S,
+    x: Point3<S>,
 ) -> WimolBanlueAttractorGenerator<S> {
     WimolBanlueAttractorGenerator::new(WimolBanlueAttractor::new(alpha, h), x)
 }

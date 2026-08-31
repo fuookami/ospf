@@ -106,7 +106,12 @@ impl<V: Clone, U: CTUnit + Default + Clone> PackingShape3<V, U> {
 // ============================================================================
 
 /// 从长方体几何构造包装形状 / Construct packing shape from cuboid geometry
-pub fn cuboid_packing_shape<V, U>(width: Quantity<V, U>, height: Quantity<V, U>, depth: Quantity<V, U>, weight: Quantity<V, U>) -> PackingShape3<V, U>
+pub fn cuboid_packing_shape<V, U>(
+    width: Quantity<V, U>,
+    height: Quantity<V, U>,
+    depth: Quantity<V, U>,
+    weight: Quantity<V, U>,
+) -> PackingShape3<V, U>
 where
     U: CTUnit + Default + Clone,
     V: Field + Clone,
@@ -137,7 +142,8 @@ where
     V: Field + Clone + num_traits::FloatConst,
 {
     let pi = V::PI();
-    let actual_volume = Quantity::new_ct(pi * radius.value.clone() * radius.value.clone() * height.value.clone());
+    let actual_volume =
+        Quantity::new_ct(pi * radius.value.clone() * radius.value.clone() * height.value.clone());
 
     let diameter = Quantity::new_ct(radius.value.clone() + radius.value.clone());
 
@@ -177,7 +183,10 @@ mod tests {
     fn cuboid_packing_shape_has_rectangle_footprint() {
         let shape = cuboid_packing_shape(meters(2.0), meters(3.0), meters(4.0), meters(1.0));
         assert_eq!(shape.shape_type, PackingShapeType::Cuboid);
-        assert_eq!(shape.algorithm_shape_type, PackingAlgorithmShapeType::Cuboid);
+        assert_eq!(
+            shape.algorithm_shape_type,
+            PackingAlgorithmShapeType::Cuboid
+        );
 
         let footprint = shape.footprint();
         match footprint {
@@ -193,7 +202,10 @@ mod tests {
     fn vertical_cylinder_packing_shape_has_circle_footprint() {
         let shape = cylinder_packing_shape(meters(2.0), meters(5.0), Axis3::Y, meters(1.0));
         assert_eq!(shape.shape_type, PackingShapeType::Cylinder);
-        assert_eq!(shape.algorithm_shape_type, PackingAlgorithmShapeType::VerticalCylinder);
+        assert_eq!(
+            shape.algorithm_shape_type,
+            PackingAlgorithmShapeType::VerticalCylinder
+        );
         assert_eq!(shape.axis, Some(Axis3::Y));
 
         // 包围盒应为直径 x 高度 x 直径
@@ -213,7 +225,10 @@ mod tests {
     #[test]
     fn horizontal_cylinder_x_axis_shape_type() {
         let shape = cylinder_packing_shape(meters(2.0), meters(5.0), Axis3::X, meters(1.0));
-        assert_eq!(shape.algorithm_shape_type, PackingAlgorithmShapeType::HorizontalCylinderX);
+        assert_eq!(
+            shape.algorithm_shape_type,
+            PackingAlgorithmShapeType::HorizontalCylinderX
+        );
         assert_eq!(shape.bounding_width.value, 5.0); // height along X
         assert_eq!(shape.bounding_height.value, 4.0); // diameter along Y
         assert_eq!(shape.bounding_depth.value, 4.0); // diameter along Z
@@ -222,6 +237,9 @@ mod tests {
     #[test]
     fn horizontal_cylinder_z_axis_shape_type() {
         let shape = cylinder_packing_shape(meters(2.0), meters(5.0), Axis3::Z, meters(1.0));
-        assert_eq!(shape.algorithm_shape_type, PackingAlgorithmShapeType::HorizontalCylinderZ);
+        assert_eq!(
+            shape.algorithm_shape_type,
+            PackingAlgorithmShapeType::HorizontalCylinderZ
+        );
     }
 }

@@ -1,16 +1,15 @@
 //! 变量项定义
 //! Variable Item Definitions
 
+use super::variable_type::{
+    BalancedTernary, Binary, Continuous, Integer, Percentage, Ternary, UContinuous, UInteger,
+};
+use super::{VariableId, VariableRange, VariableType, VariableTypeTrait, new_standalone_id};
+use ospf_rust_math::symbol::{DynSymbol, SymbolDynId};
 use std::any::Any;
 use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use ospf_rust_math::symbol::{DynSymbol, SymbolDynId};
-use super::variable_type::{
-
-    BalancedTernary, Binary, Continuous, Integer, Percentage, Ternary, UContinuous, UInteger,
-};
-use super::{VariableId, VariableRange, VariableType, VariableTypeTrait, new_standalone_id};
 
 // ============================================================================
 // VariableData - 泛型变量数据
@@ -205,11 +204,7 @@ impl<VT: VariableTypeTrait> VariableItem<VT> {
 
     /// 自动创建带范围的变量项（使用全局递增 ID）/ Auto-create ranged variable item with global incremental ID
     pub fn auto_with_range(name: &str, range: VariableRange<VT::Value>) -> Self {
-        Self::new(VariableData::with_range(
-            new_standalone_id(),
-            name,
-            range,
-        ))
+        Self::new(VariableData::with_range(new_standalone_id(), name, range))
     }
 
     /// 获取变量 ID / Get variable ID

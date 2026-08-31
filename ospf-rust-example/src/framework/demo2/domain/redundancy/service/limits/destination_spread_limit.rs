@@ -1,9 +1,9 @@
 //! 目的地分散限制 / Destination spread limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::redundancy::aggregation::RedundancyAggregation;
 use crate::framework::demo2::domain::redundancy::context::RedundancyContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 目的地分散限制 / Destination spread limit
 ///

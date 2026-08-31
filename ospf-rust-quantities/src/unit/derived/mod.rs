@@ -10,13 +10,13 @@
 //! - 电磁学量：电荷、电压、电阻、电容、电感
 //! - 光学量：光通量、照度、亮度
 
-use bigdecimal::BigDecimal;
-use once_cell::sync::Lazy;
+use super::concept::UnitTrait;
+use super::physical_unit::CTUnit;
 use crate::dimension::derived::DimLess;
 use crate::dimension::derived_quantity::CTDerivedQuantity;
 use crate::scale::Scale;
-use super::concept::UnitTrait;
-use super::physical_unit::CTUnit;
+use bigdecimal::BigDecimal;
+use once_cell::sync::Lazy;
 
 #[macro_use]
 mod macros;

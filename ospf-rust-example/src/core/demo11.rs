@@ -1,16 +1,14 @@
 //! Demo11 模块 / Demo11 module
 use std::error::Error;
 
-use ospf_rust_multiarray::Shape;
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
-use ospf_rust_core::symbol::{
-    LinearExpressionSymbol, flat_map1_indexed,
-};
+use ospf_rust_core::model::{ConstraintRelation, MetaModel, ObjectiveCategory};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, flat_map1_indexed};
 use ospf_rust_core::variable::{
     UInteger, VariableCombination1D, VariableCombination2D, VariableRange,
 };
+use ospf_rust_multiarray::Shape;
 
-use super::common::{read_solution_value, solve_typed, extract_coeffs};
+use super::common::{extract_coeffs, read_solution_value, solve_typed};
 
 /// Node data structure
 #[derive(Debug, Clone)]
@@ -94,10 +92,7 @@ struct NetworkFlowModel {
 
 impl NetworkFlowModel {
     /// 注册模型 / Register model
-    fn register(
-        model: &mut MetaModel<f64>,
-        data: &MaxFlowData,
-    ) -> Result<Self, Box<dyn Error>> {
+    fn register(model: &mut MetaModel<f64>, data: &MaxFlowData) -> Result<Self, Box<dyn Error>> {
         let node_count = data.nodes.len();
 
         // Register 2D arc variables with capacity bounds
@@ -124,21 +119,41 @@ impl NetworkFlowModel {
         model.set_objective_category(ObjectiveCategory::Maximum);
 
         // Flow out from each node: sum_j x[node][j]
-        let flow_out = flat_map1_indexed("flow_out", &data.nodes, |node, _n| {
-            let monomials: Vec<_> = (0..node_count)
-                .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, arc_idx[&[node, j]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |i, _| format!("{}", i));
+        let flow_out = flat_map1_indexed(
+            "flow_out",
+            &data.nodes,
+            |node, _n| {
+                let monomials: Vec<_> = (0..node_count)
+                    .map(|j| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            1.0,
+                            arc_idx[&[node, j]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |i, _| format!("{}", i),
+        );
         model.add_symbol_combination(&flow_out)?;
 
         // Flow in to each node: sum_i x[i][node]
-        let flow_in = flat_map1_indexed("flow_in", &data.nodes, |node, _n| {
-            let monomials: Vec<_> = (0..node_count)
-                .map(|i| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, arc_idx[&[i, node]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |i, _| format!("{}", i));
+        let flow_in = flat_map1_indexed(
+            "flow_in",
+            &data.nodes,
+            |node, _n| {
+                let monomials: Vec<_> = (0..node_count)
+                    .map(|i| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            1.0,
+                            arc_idx[&[i, node]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |i, _| format!("{}", i),
+        );
         model.add_symbol_combination(&flow_in)?;
 
         Ok(NetworkFlowModel {
@@ -172,12 +187,27 @@ impl NetworkFlowModel {
 
             if node == data.root {
                 coeffs.push((self.flow_idx[0], -1.0));
-                model.add_linear_constraint(&coeffs, ConstraintRelation::Equal, 0.0, "root_balance")?;
+                model.add_linear_constraint(
+                    &coeffs,
+                    ConstraintRelation::Equal,
+                    0.0,
+                    "root_balance",
+                )?;
             } else if node == data.end {
                 coeffs.push((self.flow_idx[0], 1.0));
-                model.add_linear_constraint(&coeffs, ConstraintRelation::Equal, 0.0, "end_balance")?;
+                model.add_linear_constraint(
+                    &coeffs,
+                    ConstraintRelation::Equal,
+                    0.0,
+                    "end_balance",
+                )?;
             } else {
-                model.add_linear_constraint(&coeffs, ConstraintRelation::Equal, 0.0, &format!("balance_{}", node))?;
+                model.add_linear_constraint(
+                    &coeffs,
+                    ConstraintRelation::Equal,
+                    0.0,
+                    &format!("balance_{}", node),
+                )?;
             }
         }
 
@@ -199,7 +229,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 
     println!("=== Demo11 ===");
     println!("status: {:?}", output.status);
-    println!("max flow: {:.2}", read_solution_value(&solution, network.flow_idx[0]));
+    println!(
+        "max flow: {:.2}",
+        read_solution_value(&solution, network.flow_idx[0])
+    );
     for arc in &data.capacities {
         let value = read_solution_value(&solution, network.arc_idx[&[arc.from, arc.to]]);
         if value > 0.0 {

@@ -27,6 +27,7 @@
 | `src/framework/demo2` | Adaptive Benders / MILP fallback 行为契约示例。 |
 | `src/framework/demo3` | CSP1D-facing demo scaffold。 |
 | `src/framework/demo4` | Gantt-scheduling-facing scaffold 与 domain layout experiment。 |
+| `src/framework/demo5` | Solomon parser/adapter 与 VRPTW Branch-and-Price solver wiring。 |
 
 ## Public API
 
@@ -42,6 +43,7 @@
 | `framework:demo2` | Adaptive Benders 和 MILP fallback demo。 | Gurobi feature |
 | `framework:demo3` | CSP1D scaffold 入口。 | Gurobi feature |
 | `framework:demo4` | Gantt scaffold 入口。 | Gurobi feature |
+| `framework:demo5` | VRPTW Branch-and-Price demo。 | `demo5-gurobi-bp` 或 `demo5-scip-bp` |
 
 ## 命令说明
 
@@ -64,17 +66,32 @@ cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo1
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo2
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo3
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo4
+cargo run -p ospf-rust-example --features demo5-gurobi-bp -- framework:demo5
+cargo run -p ospf-rust-example --features demo5-scip-bp -- framework:demo5
 ```
 
 后端 build-only 验证：
 
 ```powershell
 cargo test -p ospf-rust-example --features backend-gurobi --no-run
+cargo check -p ospf-rust-example --features demo5-gurobi-bp
+cargo check -p ospf-rust-example --features demo5-scip-bp
 ```
 
 未启用 backend feature 时，运行后端 demo 会返回提示 `rerun with --features backend-gurobi`。
 
 `framework:demo4` 当前保持为 scaffold 命令入口。Gantt-scheduling parity 明确暂缓，不标记为已完成功能。
+
+`framework:demo5` 使用 inline Solomon fixture，验证 parser、adapter、route generation、restricted master 和 Branch-and-Price wiring。integration target 只覆盖 target 自身的夹具/parser 检查；下面的库内门禁命令才会执行 25 客户 direct-MIP 交叉验证、5 客户全路线 master oracle、100 客户 smoke、strict-proof fixture 和 SCIP 合法终态：
+
+```powershell
+cargo test -p ospf-rust-example --features demo5-gurobi-bp --lib demo17_25_branch_and_price_matches_direct_mip_objective -- --include-ignored
+cargo test -p ospf-rust-example --features demo5-gurobi-bp --lib demo17_100_branch_and_price_smoke_respects_limits -- --include-ignored
+cargo test -p ospf-rust-example --features demo5-gurobi-bp --lib proof_100_customer_fixture_closes_direct_mip_and_branch_and_price_bounds -- --include-ignored
+cargo test -p ospf-rust-example --features demo5-scip-bp --lib demo17_25_scip_branch_and_price_returns_legal_terminal -- --include-ignored
+```
+
+solver 和 pricing 失败路径由 network crate 的离线测试覆盖。缺少 native runtime 或许可证时，门禁必须失败，不能计为通过。
 
 ## Demo2 的 Benders 行为契约
 

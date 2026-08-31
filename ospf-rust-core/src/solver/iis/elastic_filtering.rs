@@ -5,10 +5,11 @@ use super::deletion_filtering::{
     ActiveSources, compute_iis_deletion_with_active, is_active_model_feasible_with_tolerance,
     is_basic_model_feasible_with_tolerance, solve_linear_model,
 };
-use super::{ConstraintSource, IISConfig, LinearIISModel, LinearTriadModelIISSource};
+use super::{ConstraintSource, IISAnalysis, IISConfig, LinearIISModel, LinearTriadModelIISSource};
 use crate::error::Result;
 use crate::model::ObjectiveCategory;
 use crate::model::intermediate::{BasicLinearTriadModel, LinearTriadModel, SparseVector};
+use crate::solver::ProofCompleteness;
 use crate::token::Token;
 use crate::variable::{UContinuousVariableItem, VariableId};
 
@@ -167,6 +168,7 @@ where
 
     if is_basic_model_feasible_with_tolerance(model, config.tolerance)? {
         let mut iis = LinearIISModel::new(model.num_constraints(), model.num_variables());
+        iis.set_analysis(IISAnalysis::elastic_filtering(true));
         iis.set_computation_time(start.elapsed());
         return Ok(iis);
     }
@@ -175,14 +177,14 @@ where
     let relaxed_output = solve_linear_model(&relaxed_model)?;
 
     let mut active = ActiveSources::default();
-    if relaxed_output.status.is_feasible() {
-        if let Some(solution) = &relaxed_output.solution {
-            for (slack_offset, source) in slack_sources.iter().enumerate() {
-                let slack_index = slack_start_index + slack_offset;
-                let slack_value = solution.get(slack_index).copied().unwrap_or(0.0);
-                if slack_value > config.tolerance {
-                    active.insert(*source);
-                }
+    if relaxed_output.status.is_feasible()
+        && let Some(solution) = &relaxed_output.solution
+    {
+        for (slack_offset, source) in slack_sources.iter().enumerate() {
+            let slack_index = slack_start_index + slack_offset;
+            let slack_value = solution.get(slack_index).copied().unwrap_or(0.0);
+            if slack_value > config.tolerance {
+                active.insert(*source);
             }
         }
     }
@@ -194,6 +196,8 @@ where
     }
 
     let mut iis = compute_iis_deletion_with_active(model, config, active)?;
+    let completed = iis.analysis().completeness == ProofCompleteness::Complete;
+    iis.set_analysis(IISAnalysis::elastic_filtering(completed));
     iis.set_computation_time(start.elapsed());
 
     if config.verbose {

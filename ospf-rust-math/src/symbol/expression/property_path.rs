@@ -1,10 +1,10 @@
 //! 属性路径与路径符号
 //! Property path and path symbol
 
+use crate::symbol::{DynSymbol, OwnedSymbol, Symbol, SymbolDynId};
 use std::any::Any;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
-use crate::symbol::{DynSymbol, OwnedSymbol, Symbol, SymbolDynId};
 
 /// 属性路径解析错误。
 /// Property path parse error.

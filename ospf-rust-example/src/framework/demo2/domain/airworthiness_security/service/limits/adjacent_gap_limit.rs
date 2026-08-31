@@ -1,9 +1,9 @@
 //! 相邻位置载荷间隙限制 / Adjacent position load gap limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;
 use crate::framework::demo2::domain::airworthiness_security::context::AirworthinessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 相邻位置载荷间隙限制
 /// 对齐 Kotlin AdjacentGapLimit

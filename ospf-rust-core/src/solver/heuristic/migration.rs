@@ -154,9 +154,8 @@ impl RingMigration {
 
         // 执行环形迁移：每个种群将个体迁移到下一个种群
         // Perform ring migration: each population migrates to the next
-        for i in 0..n {
+        for (i, migrant_list) in migrants.iter().enumerate() {
             let next_i = (i + 1) % n;
-            let migrant_list = &migrants[i];
 
             for migrant in migrant_list {
                 populations[next_i].add(migrant.clone());

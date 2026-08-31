@@ -5,11 +5,12 @@
 //!
 //! # 核心模块 / Core Modules
 //!
-//! - [`adapter`]: 建模适配器（变量集合、表达式构建、结果提取）
-//! - [`model`]: 编译组件（Compilation、TaskTime、Makespan、Switch、Solution）
+//! - [`adapter`][]: 建模适配器（变量集合、表达式构建、结果提取）
+//! - [`model`][]: 编译组件（Compilation、TaskTime、Makespan、Switch、Solution）
 //! - [`service`]: 服务与限制（SolutionAnalyzer、Limits Pipeline）
 
 pub mod adapter;
+pub mod constraint_programming;
 pub mod context;
 pub mod iterative;
 pub mod model;
@@ -20,82 +21,43 @@ pub mod service;
 // ========================================================================
 
 pub use adapter::{
-    IndexedVariableArray1,
-    IndexedVariableArray2,
-    IndexedVariableArray3,
-    ModelComponent,
-    extract_value,
-    extract_binary,
-    extract_binary_values_1,
-    extract_binary_values_2,
-    extract_values_1,
-    extract_values_2,
-    sum_to_linear,
-    build_linear_expression_symbol,
-    symbols_to_indexed_1d,
-    symbols_to_indexed_2d,
-    optional_symbols_to_indexed,
-    IndexedVariableCombination1,
-    IndexedVariableCombination2,
-    IndexedLinearExpressionSymbols1,
-    IndexedLinearExpressionSymbols2,
-    OptionalIndexedLinearExpressionSymbols,
+    IndexedLinearExpressionSymbols1, IndexedLinearExpressionSymbols2, IndexedVariableArray1,
+    IndexedVariableArray2, IndexedVariableArray3, IndexedVariableCombination1,
+    IndexedVariableCombination2, ModelComponent, OptionalIndexedLinearExpressionSymbols,
+    build_linear_expression_symbol, extract_binary, extract_binary_values_1,
+    extract_binary_values_2, extract_value, extract_values_1, extract_values_2,
+    optional_symbols_to_indexed, sum_to_linear, symbols_to_indexed_1d, symbols_to_indexed_2d,
 };
 
 pub use model::{
-    Compilation,
-    TaskTime,
-    Makespan,
-    Switch,
-    TaskSolution,
-    TaskSolutionSummary,
-    TaskTimeInfo,
+    Compilation, Makespan, Switch, TaskSolution, TaskSolutionSummary, TaskTime, TaskTimeInfo,
 };
 
-pub use service::{
-    SolutionAnalyzer,
-};
+pub use service::SolutionAnalyzer;
 
-pub use iterative::{
-    IterativeTaskCompilation,
-    AddedTaskColumn,
-};
+pub use iterative::{AddedTaskColumn, IterativeTaskCompilation};
 
-pub use context::{
-    IterativeTaskCompilationContext,
-    BasicTaskCompilationContext,
-};
+pub use constraint_programming::{NoOverlapConstraintProgrammingComponent, NoOverlapTask};
+pub use context::{BasicTaskCompilationContext, IterativeTaskCompilationContext};
 
 pub use service::limits::{
-    TaskCompilationConstraint,
-    ExecutorCompilationConstraint,
-    TaskConflictConstraint,
+    ExecutorCompilationConstraint, ExecutorCostMinimization, ExecutorLeisureMinimization,
+    MakespanMinimization, SwitchCostMinimization, SwitchTimeMinimization,
+    TaskAdvanceEarliestEndTimeConstraint, TaskAdvanceTimeConstraint, TaskAdvanceTimeMinimization,
+    TaskCompilationConstraint, TaskConflictConstraint, TaskCostMinimization,
+    TaskDelayLastEndTimeConstraint, TaskDelayTimeConstraint, TaskDelayTimeMinimization,
+    TaskExecutorCostMinimization, TaskOverMaxAdvanceTimeConstraint, TaskOverMaxDelayTimeConstraint,
     TaskTimeConflictConstraint,
-    TaskDelayTimeConstraint,
-    TaskAdvanceTimeConstraint,
-    TaskOverMaxDelayTimeConstraint,
-    TaskOverMaxAdvanceTimeConstraint,
-    TaskDelayLastEndTimeConstraint,
-    TaskAdvanceEarliestEndTimeConstraint,
-    TaskExecutorCostMinimization,
-    TaskCostMinimization,
-    MakespanMinimization,
-    SwitchCostMinimization,
-    SwitchTimeMinimization,
-    TaskDelayTimeMinimization,
-    TaskAdvanceTimeMinimization,
-    ExecutorCostMinimization,
-    ExecutorLeisureMinimization,
 };
 
 // ============================================================================
 // Aggregation 类型 / Aggregation Types
 // ============================================================================
 
-use std::marker::PhantomData;
-use ospf_rust_core::model::MetaModel;
-use crate::domain::task::{ExecutorTrait, TaskTrait, AssignmentPolicyTrait};
 use crate::GanttResult;
+use crate::domain::task::{AssignmentPolicyTrait, ExecutorTrait, TaskTrait};
+use ospf_rust_core::model::MetaModel;
+use std::marker::PhantomData;
 
 /// 任务编译聚合 / Task compilation aggregation
 ///
@@ -136,6 +98,7 @@ where
     T: TaskTrait<E, A>,
 {
     /// 创建新的任务编译聚合 / Create new task compilation aggregation
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         tasks: Vec<T>,
         executors: Vec<E>,
@@ -144,7 +107,12 @@ where
         switch_enabled: bool,
     ) -> Self {
         Self {
-            compilation: Compilation::new(tasks, executors, task_cancel_enabled, with_executor_leisure),
+            compilation: Compilation::new(
+                tasks,
+                executors,
+                task_cancel_enabled,
+                with_executor_leisure,
+            ),
             switch: Switch::new(switch_enabled),
             _marker: PhantomData,
         }
@@ -153,7 +121,8 @@ where
     /// 注册所有组件到模型 / Register all components to model
     pub fn register(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
         self.compilation.register(model)?;
-        self.switch.register_with_compilation(&self.compilation, model)?;
+        self.switch
+            .register_with_compilation(&self.compilation, model)?;
         Ok(())
     }
 }
@@ -203,6 +172,7 @@ where
     T: TaskTrait<E, A>,
 {
     /// 创建新的带时间的任务编译聚合 / Create new task compilation aggregation with time
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         tasks: Vec<T>,
         executors: Vec<E>,
@@ -216,9 +186,19 @@ where
         makespan_extra: bool,
     ) -> Self {
         Self {
-            compilation: Compilation::new(tasks, executors, task_cancel_enabled, with_executor_leisure),
+            compilation: Compilation::new(
+                tasks,
+                executors,
+                task_cancel_enabled,
+                with_executor_leisure,
+            ),
             switch: Switch::new(switch_enabled),
-            task_time: TaskTime::new(delay_enabled, over_max_delay_enabled, advance_enabled, over_max_advance_enabled),
+            task_time: TaskTime::new(
+                delay_enabled,
+                over_max_delay_enabled,
+                advance_enabled,
+                over_max_advance_enabled,
+            ),
             makespan: Makespan::new(makespan_extra),
             _marker: PhantomData,
         }
@@ -241,7 +221,8 @@ where
             durations,
             model,
         )?;
-        self.switch.register_with_task_time(&self.compilation, &self.task_time, model)?;
+        self.switch
+            .register_with_task_time(&self.compilation, &self.task_time, model)?;
         self.makespan.register(&self.task_time, model)?;
         Ok(())
     }

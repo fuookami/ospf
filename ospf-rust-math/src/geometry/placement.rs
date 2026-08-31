@@ -1,9 +1,9 @@
 //! 几何放置。
 //! Geometric placements.
 
-use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::{Box2, Box2Shape, Box3, Point2, Point3, Shape3Kind};
+use num_traits::Float;
 
 /// 二维放置。
 /// Two-dimensional placement.

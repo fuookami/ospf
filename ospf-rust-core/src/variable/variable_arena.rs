@@ -1,13 +1,11 @@
 //! 变量 Arena 定义
 //! Variable Arena Definitions
 
+use super::{VariableData, VariableItem, VariableRange, VariableTypeTrait, new_standalone_id};
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use typed_arena::Arena;
-use super::{
-    VariableData, VariableItem, VariableRange, VariableTypeTrait, new_standalone_id,
-};
 
 // ============================================================================
 // Flt64VariableArena - 变量 Arena
@@ -128,7 +126,10 @@ impl Flt64VariableArena {
     ///
     /// 使用 Arena 分配器批量创建变量，性能更优。
     /// Batch create variables using arena allocator for better performance.
-    pub fn alloc_iter<I: IntoIterator<Item = Flt64VariableData>>(&self, iter: I) -> Vec<Flt64VariableItem> {
+    pub fn alloc_iter<I: IntoIterator<Item = Flt64VariableData>>(
+        &self,
+        iter: I,
+    ) -> Vec<Flt64VariableItem> {
         iter.into_iter().map(|data| self.alloc(data)).collect()
     }
 
@@ -260,19 +261,11 @@ impl<VT: VariableTypeTrait> VariableArena<VT> {
         name: &str,
         range: VariableRange<VT::Value>,
     ) -> VariableItem<VT> {
-        self.alloc(VariableData::with_range(
-            new_standalone_id(),
-            name,
-            range,
-        ))
+        self.alloc(VariableData::with_range(new_standalone_id(), name, range))
     }
 
     /// 自动分配带显示名称的独立变量（使用全局递增 ID）/ Auto-allocate standalone variable with display name and global incremental ID
-    pub fn alloc_auto_with_display_name(
-        &self,
-        name: &str,
-        display_name: &str,
-    ) -> VariableItem<VT> {
+    pub fn alloc_auto_with_display_name(&self, name: &str, display_name: &str) -> VariableItem<VT> {
         self.alloc(VariableData::with_display_name(
             new_standalone_id(),
             name,
@@ -353,7 +346,10 @@ impl ConcurrentVariableArena {
     }
 
     /// 批量分配变量 / Batch allocate variables
-    pub fn alloc_iter<I: IntoIterator<Item = Flt64VariableData>>(&self, iter: I) -> Vec<Flt64VariableItem> {
+    pub fn alloc_iter<I: IntoIterator<Item = Flt64VariableData>>(
+        &self,
+        iter: I,
+    ) -> Vec<Flt64VariableItem> {
         iter.into_iter().map(|data| self.alloc(data)).collect()
     }
 }

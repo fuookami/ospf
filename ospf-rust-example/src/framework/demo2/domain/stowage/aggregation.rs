@@ -1,7 +1,7 @@
 //! 装载聚合 / Stowage aggregation
-use ospf_rust_core::model::ConstraintRelation;
 use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 use crate::framework::demo2::domain::stowage::context::StowageContext;
+use ospf_rust_core::model::ConstraintRelation;
 
 /// 装载聚合参数 / Stowage aggregation parameters
 pub struct StowageAggregation {

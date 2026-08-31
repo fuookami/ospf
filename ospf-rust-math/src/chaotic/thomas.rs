@@ -1,10 +1,10 @@
 //! Thomas 吸引子。
 //! Thomas attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Thomas 吸引子的一阶欧拉步进模型。
@@ -49,7 +49,11 @@ pub fn thomas_attractor<S: Field + Float>(beta: S, h: S) -> ThomasAttractor<S> {
 
 /// 创建 Thomas 吸引子生成器。
 /// Create a Thomas attractor generator.
-pub fn thomas_attractor_generator<S: Field + Float>(beta: S, h: S, x: Point3<S>) -> ThomasAttractorGenerator<S> {
+pub fn thomas_attractor_generator<S: Field + Float>(
+    beta: S,
+    h: S,
+    x: Point3<S>,
+) -> ThomasAttractorGenerator<S> {
     ThomasAttractorGenerator::new(ThomasAttractor::new(beta, h), x)
 }
 

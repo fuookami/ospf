@@ -25,11 +25,7 @@ pub struct ResourceCapacity {
 
 impl ResourceCapacity {
     /// 创建新的资源容量 / Create new resource capacity
-    pub fn new(
-        time_range: TimeRange,
-        lower_bound: f64,
-        upper_bound: f64,
-    ) -> Self {
+    pub fn new(time_range: TimeRange, lower_bound: f64, upper_bound: f64) -> Self {
         Self {
             time_range,
             lower_bound,
@@ -58,12 +54,12 @@ impl ResourceCapacity {
 
     /// 是否允许不足量 / Whether less slack is enabled
     pub fn less_enabled(&self) -> bool {
-        self.less_slack_limit.map_or(false, |v| v > 0.0)
+        self.less_slack_limit.is_some_and(|v| v > 0.0)
     }
 
     /// 是否允许过量 / Whether over slack is enabled
     pub fn over_enabled(&self) -> bool {
-        self.over_slack_limit.map_or(false, |v| v > 0.0)
+        self.over_slack_limit.is_some_and(|v| v > 0.0)
     }
 }
 
@@ -91,10 +87,8 @@ mod tests {
 
     #[test]
     fn test_resource_capacity_with_slack() {
-        let cap = ResourceCapacity::with_slack(
-            test_time_range(), 5.0, 100.0,
-            Some(10.0), Some(20.0),
-        );
+        let cap =
+            ResourceCapacity::with_slack(test_time_range(), 5.0, 100.0, Some(10.0), Some(20.0));
         assert!(cap.less_enabled());
         assert!(cap.over_enabled());
         assert_eq!(cap.less_slack_limit, Some(10.0));

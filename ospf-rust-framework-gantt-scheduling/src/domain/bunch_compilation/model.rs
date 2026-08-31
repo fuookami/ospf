@@ -14,10 +14,10 @@ use ospf_rust_core::model::flatten::LinearMonomial;
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::variable::Binary;
 
-use crate::domain::common::{ExecutorId, ExecutorIdTrait};
-use crate::domain::task_compilation::adapter::next_gantt_symbol_id;
 use crate::GanttError;
 use crate::GanttResult;
+use crate::domain::common::{ExecutorId, ExecutorIdTrait};
+use crate::domain::task_compilation::adapter::next_gantt_symbol_id;
 
 // ============================================================================
 // 任务束聚合 / Bunch Aggregation
@@ -90,11 +90,7 @@ where
     }
 
     /// 添加新束（去重）/ Add new bunches (with deduplication)
-    pub fn add_bunches(
-        &mut self,
-        iteration: usize,
-        new_bunches: Vec<BunchEntry<I>>,
-    ) -> Vec<usize> {
+    pub fn add_bunches(&mut self, iteration: usize, new_bunches: Vec<BunchEntry<I>>) -> Vec<usize> {
         let mut added = Vec::new();
         for bunch in new_bunches {
             // 执行器、时隙和任务集合共同确定束的去重键。
@@ -123,16 +119,19 @@ where
 
     /// 获取所有活跃束 / Get all active bunches
     pub fn bunches(&self) -> Vec<&BunchEntry<I>> {
-        self.bunches.iter()
+        self.bunches
+            .iter()
             .filter(|b| !self.removed.contains(&b.index))
             .collect()
     }
 
     /// 获取指定迭代的束 / Get bunches for a specific iteration
     pub fn bunches_for_iteration(&self, iteration: usize) -> Vec<&BunchEntry<I>> {
-        self.bunches_by_iteration.get(iteration)
+        self.bunches_by_iteration
+            .get(iteration)
             .map(|indices| {
-                indices.iter()
+                indices
+                    .iter()
                     .filter_map(|&idx| self.bunches.get(idx))
                     .filter(|b| !self.removed.contains(&b.index))
                     .collect()
@@ -275,13 +274,17 @@ where
             let var_name = format!("y_{}", ti);
             let var_item: ospf_rust_core::variable::VariableItem<Binary> =
                 ospf_rust_core::variable::VariableItem::create(
-                    ospf_rust_core::variable::VariableId::standalone(next_gantt_symbol_id() as usize),
+                    ospf_rust_core::variable::VariableId::standalone(
+                        next_gantt_symbol_id() as usize
+                    ),
                     &var_name,
                 );
-            let model_idx = model.register_variable(var_item)
-                .map_err(|e| GanttError::Calculation {
-                    message: format!("Failed to register variable {}: {:?}", var_name, e),
-                })?;
+            let model_idx =
+                model
+                    .register_variable(var_item)
+                    .map_err(|e| GanttError::Calculation {
+                        message: format!("Failed to register variable {}: {:?}", var_name, e),
+                    })?;
             self.y_indices.push(model_idx);
         }
 
@@ -292,13 +295,17 @@ where
                 let var_name = format!("z_{}", exec_id);
                 let var_item: ospf_rust_core::variable::VariableItem<Binary> =
                     ospf_rust_core::variable::VariableItem::create(
-                        ospf_rust_core::variable::VariableId::standalone(next_gantt_symbol_id() as usize),
+                        ospf_rust_core::variable::VariableId::standalone(
+                            next_gantt_symbol_id() as usize
+                        ),
                         &var_name,
                     );
-                let model_idx = model.register_variable(var_item)
-                    .map_err(|e| GanttError::Calculation {
-                        message: format!("Failed to register variable {}: {:?}", var_name, e),
-                    })?;
+                let model_idx =
+                    model
+                        .register_variable(var_item)
+                        .map_err(|e| GanttError::Calculation {
+                            message: format!("Failed to register variable {}: {:?}", var_name, e),
+                        })?;
                 self.z_indices.push(model_idx);
             }
         }
@@ -311,7 +318,8 @@ where
             vec![],
             0.0,
         ));
-        model.add_symbol(cost_symbol.clone())
+        model
+            .add_symbol(cost_symbol.clone())
             .map_err(|e| GanttError::Calculation {
                 message: format!("Failed to register bunch_cost: {:?}", e),
             })?;
@@ -330,7 +338,8 @@ where
                 terms,
                 0.0,
             ));
-            model.add_symbol(symbol.clone())
+            model
+                .add_symbol(symbol.clone())
                 .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to register task_compilation_{}: {:?}", ti, e),
                 })?;
@@ -352,9 +361,13 @@ where
                 terms,
                 0.0,
             ));
-            model.add_symbol(symbol.clone())
+            model
+                .add_symbol(symbol.clone())
                 .map_err(|e| GanttError::Calculation {
-                    message: format!("Failed to register executor_compilation_{}: {:?}", exec_id, e),
+                    message: format!(
+                        "Failed to register executor_compilation_{}: {:?}",
+                        exec_id, e
+                    ),
                 })?;
             self.executor_compilation_symbols.push(symbol);
         }
@@ -379,18 +392,24 @@ where
         // 为每个新束注册 x 变量
         let mut iteration_x_indices = Vec::with_capacity(deduped.len());
         for &bunch_idx in &deduped {
-            let _entry = self.aggregation.get_bunch(bunch_idx)
+            let _entry = self
+                .aggregation
+                .get_bunch(bunch_idx)
                 .expect("bunch entry must exist after add_bunches");
             let var_name = format!("x_{}_{}", iteration, bunch_idx);
             let var_item: ospf_rust_core::variable::VariableItem<Binary> =
                 ospf_rust_core::variable::VariableItem::create(
-                    ospf_rust_core::variable::VariableId::standalone(next_gantt_symbol_id() as usize),
+                    ospf_rust_core::variable::VariableId::standalone(
+                        next_gantt_symbol_id() as usize
+                    ),
                     &var_name,
                 );
-            let model_idx = model.register_variable(var_item)
-                .map_err(|e| GanttError::Calculation {
-                    message: format!("Failed to register variable {}: {:?}", var_name, e),
-                })?;
+            let model_idx =
+                model
+                    .register_variable(var_item)
+                    .map_err(|e| GanttError::Calculation {
+                        message: format!("Failed to register variable {}: {:?}", var_name, e),
+                    })?;
             iteration_x_indices.push(model_idx);
         }
 

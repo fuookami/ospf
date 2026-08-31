@@ -29,7 +29,7 @@ Explicit non-goals:
 | `model` | `framework/model` | `Pipeline`, `CGPipeline`, `HAPipeline`, shadow-price maps, dynamic column state, and dynamic model lifecycle. |
 | `solver` | `framework/solver` | Column generation, Benders, combinatorial solvers, framework solve options, dual solutions, and backend extension wrappers. |
 | `solver::remote` | `framework/solver.remote` | Remote solver client, domain models, ports, adapters, HTTP task client, and model serialization. |
-| `persistence` | `framework/persistence` | Persistence DTOs, repository contracts, expression schema, sort/update descriptors, and backend feature boundaries. |
+| `persistence` | `framework/persistence` | Persistence DTOs, repository contracts, expression schema, relational query plans, sort/update descriptors, and backend feature boundaries. |
 | `network` | `framework/network` | HTTP/network helper contracts. |
 | `running_heart_beat` | `framework heartbeat` | Progress, running, and finish heartbeat data structures. |
 
@@ -64,6 +64,9 @@ Application code should generally use unified `solve(...)` and `solve_with_optio
 | `FrameworkSolveOptions` | Unified solve options. | migration |
 | `RemoteSolverClient`, `RemoteLinearSolver`, `RemoteQuadraticSolver` | Remote solver orchestration when feature-gated. | migration |
 | `ExpressionRepository`, `RepositoryQuery`, `SortBy`, `UpdateAssignments` | Persistence expression contracts. | migration |
+| `RelationalQueryPlan`, `JoinSpec`, `ProjectionSpec` | Database-independent relational query planning with validation and canonical audit summaries. | migration |
+| `DiagnosticPersistenceFieldResolver`, `PersistenceFieldResolution` | Preserve missing, ambiguous, and invalid field mapping diagnostics. | migration |
+| `SqlxRelationalQueryCompiler` | Compile allowlisted relational plans into parameterized SQLx SQL and execution statistics. | feature-gated |
 
 ## Modeling Extensions
 
@@ -133,22 +136,41 @@ The same pattern is available for linear/quadratic MetaModel solver extensions a
 
 ## Remote Solver Boundary
 
+The shared report/proof/cancellation contract is documented in
+[`../docs/solve-contract.md`](../docs/solve-contract.md).
+
+Remote checkpoint recovery keeps the legacy `CheckpointResumeExpectation` and
+`validate_resume` compatibility projections. Exact resume must use
+`CheckpointResumeExpectationWithAttempt`, `load_checkpoint_artifact_from`, and
+`validate_resume_from`, which validate the source attempt, expected parent,
+solver provenance, and cancellation chain. A versioned report carrying a
+checkpoint must also match its model/configuration/solver fingerprints and
+provenance; matching only run and attempt IDs is insufficient.
+Use the [native matrix](../docs/solver-native-matrix.md) for backend evidence and
+the [traceability table](../docs/solver-traceability.md) for Kotlin source coverage.
+
 Remote solver support follows Cargo features instead of Maven-style backend modules. The common feature provides `RemoteSolverClient`, `RemoteLinearSolver`, `RemoteQuadraticSolver`, async `SolverExecutionPort` and `ObjectStoragePort`, `RemoteSolverHttpClient`, `LocalFileObjectStoragePort`, and `OspfRemoteModelSerializer`.
 
-Inside a current-thread Tokio runtime, prefer `solve_remote(...)` / `solve_remote_with_options(...)` because the synchronous trait entry intentionally refuses to block that runtime flavor.
+Inside a current-thread Tokio runtime, prefer `solve_remote(...)` / `solve_remote_with_options(...)` because the synchronous trait entry intentionally refuses to block that runtime flavor. New code that needs terminal semantics should use `solve_remote_report(...)` or the core `solve_linear_report` / `solve_quadratic_report` entries. Versioned remote reports preserve the core `SolveReport` together with run/attempt identity and artifact digest; legacy `SolveResult` and `SerializedSolution` remain read-compatible, while unknown report schema versions are rejected.
 
 ## Persistence Boundary
 
 Persistence backends follow Cargo features. The public common layer contains `ExpressionRepository`, `RepositoryQuery`, `SortBy`, `UpdateAssignments`, `PredicateSchema`, `FieldPath`, and request/response DTO/record types.
 
+`RelationalQueryPlan` is the database-independent planning boundary for sources, aliases, joins, predicates, projections, grouping, ordering, pagination, and optional root keys. Plans recursively snapshot owned expression trees and dynamic symbol metadata at the plan boundary, validate join correlations before compilation, and expose `canonical()` plus a SHA-256 `canonical_hash()` for audit correlation. Canonical keys normalize nested boolean expressions and membership candidates while retaining literal type shape rather than literal values. The plan remains intentionally independent of permissions, budgets, physical table names, database connections, and row-mapping types.
+
+Field mappings should implement `DiagnosticPersistenceFieldResolver` when the adapter must distinguish a missing field from an ambiguous mapping or invalid configuration. `PredicateSchema<String>` supplies this behavior for registered string mappings.
+
 Backend scope:
 
-1. SQLx builds parameterized SQL statements.
+1. SQLx builds parameterized SQL statements through `SqlxRelationalQueryCompiler`. `Inner`, `Left`, and correlated `Exists` joins are supported; implicit projections use an explicit source allowlist, and `COUNT(DISTINCT root_key)` preserves root granularity for one-to-many relationships. `compile_count` keeps the compatibility `SqlxSql` result, while `compile_count_typed` preserves parameter types and ordering for audit or adapter-side typed binding.
 2. SeaORM translates expressions into SeaQuery/SeaORM types and provides an async repository adapter.
 3. Rbatis reuses the parameterized SQL builder under Rbatis-facing names.
 4. Diesel and Toasty keep typed ORM boundaries explicit through planning helpers.
 5. Cornucopia binds generated query function names.
 6. MongoDB and Redis provide JSON/document and command helpers without requiring a concrete client type.
+
+The SQLx compiler returns `SqlxCompiledQuery` with a SQL template, parameter values, parameter type summary, dialect, and the copied plan. `execute_with` deliberately accepts an external executor because connection ownership and row mapping belong to the application or SQLx adapter; it only adds returned-row, duration, and truncation statistics. Adapters that need structured execution categories should use `execute_with_classifier` and explicitly map executor errors to `Timeout`, `UnsupportedDialect`, or `Database`; the generic layer does not infer categories from error text. Unknown sources, unknown or ambiguous columns, invalid joins, unsupported predicates, and malformed allowlists are returned as structured `RelationalQueryFailure` values.
 
 ## Solver Backend Notes
 
@@ -192,7 +214,7 @@ cargo test -p ospf-rust-framework --features "scip-bundled async"
 - `parking_lot`
 - `log`
 - `async-trait` optional
-- `tokio`, `serde`, `serde_json`, `sha2`, `reqwest`, and `sea-orm` optional by feature
+- `tokio`, `serde`, `serde_json`, `reqwest`, and `sea-orm` optional by feature; `sha2` is required for query audit hashes
 
 ## Related Modules
 

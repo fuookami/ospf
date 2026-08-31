@@ -1,14 +1,14 @@
 //! Demo10 模块 / Demo10 module
 use std::error::Error;
 
-use ospf_rust_multiarray::Shape;
 use ospf_rust_core::model::{ConstraintRelation, LinearObjectiveInput, MetaModel};
-use ospf_rust_core::symbol::{
-    LinearExpressionSymbol, flat_map1_indexed, flat_map2_indexed,
+use ospf_rust_core::symbol::{LinearExpressionSymbol, flat_map1_indexed, flat_map2_indexed};
+use ospf_rust_core::variable::{
+    Binary, Integer, VariableCombination1D, VariableCombination2D, VariableRange,
 };
-use ospf_rust_core::variable::{Binary, Integer, VariableCombination1D, VariableCombination2D, VariableRange};
+use ospf_rust_multiarray::Shape;
 
-use super::common::{read_solution_value, solve_typed, extract_coeffs};
+use super::common::{extract_coeffs, read_solution_value, solve_typed};
 
 /// 城市数据结构 / City data structure
 #[derive(Debug, Clone)]
@@ -108,10 +108,7 @@ struct TspModel {
 
 impl TspModel {
     /// 注册模型 / Register model
-    fn register(
-        model: &mut MetaModel<f64>,
-        data: &TspData,
-    ) -> Result<Self, Box<dyn Error>> {
+    fn register(model: &mut MetaModel<f64>, data: &TspData) -> Result<Self, Box<dyn Error>> {
         let n = data.cities.len() as f64;
         let city_count = data.cities.len();
 
@@ -148,43 +145,71 @@ impl TspModel {
         let u_idx = model.register_combination(&u_vars)?;
 
         // 距离目标符号 / Distance objective symbol
-        let distance = flat_map1_indexed("distance", &data.cities, |i, _city| {
-            let monomials: Vec<_> = (0..city_count)
-                .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                    data.distances.get(i, j), x_idx[&[i, j]],
-                ))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, city| city.name.clone());
+        let distance = flat_map1_indexed(
+            "distance",
+            &data.cities,
+            |i, _city| {
+                let monomials: Vec<_> = (0..city_count)
+                    .map(|j| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            data.distances.get(i, j),
+                            x_idx[&[i, j]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, city| city.name.clone(),
+        );
         model.add_symbol_combination(&distance)?;
 
         // 出发约束符号 / Depart constraint symbol
-        let depart = flat_map1_indexed("depart", &data.cities, |i, _city| {
-            let monomials: Vec<_> = (0..city_count)
-                .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[i, j]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, city| city.name.clone());
+        let depart = flat_map1_indexed(
+            "depart",
+            &data.cities,
+            |i, _city| {
+                let monomials: Vec<_> = (0..city_count)
+                    .map(|j| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[i, j]])
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, city| city.name.clone(),
+        );
         model.add_symbol_combination(&depart)?;
 
         // 到达约束符号 / Arrive constraint symbol
-        let reached = flat_map1_indexed("reached", &data.cities, |j, _city| {
-            let monomials: Vec<_> = (0..city_count)
-                .map(|i| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[i, j]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, city| city.name.clone());
+        let reached = flat_map1_indexed(
+            "reached",
+            &data.cities,
+            |j, _city| {
+                let monomials: Vec<_> = (0..city_count)
+                    .map(|i| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[i, j]])
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, city| city.name.clone(),
+        );
         model.add_symbol_combination(&reached)?;
 
         // MTZ 子回路消除符号 / MTZ subtour elimination symbol
-        let mtz = flat_map2_indexed("mtz", &data.cities, &data.cities, |i, _city_i, j, _city_j| {
-            let monomials: Vec<_> = vec![
-                ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, u_idx[&[i]]),
-                ospf_rust_core::symbol::flatten::LinearMonomial::new(-1.0, u_idx[&[j]]),
-                ospf_rust_core::symbol::flatten::LinearMonomial::new(n, x_idx[&[i, j]]),
-            ];
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, city_i, _, city_j| format!("{}_{}", city_i.name, city_j.name));
+        let mtz = flat_map2_indexed(
+            "mtz",
+            &data.cities,
+            &data.cities,
+            |i, _city_i, j, _city_j| {
+                let monomials: Vec<_> = vec![
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, u_idx[&[i]]),
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(-1.0, u_idx[&[j]]),
+                    ospf_rust_core::symbol::flatten::LinearMonomial::new(n, x_idx[&[i, j]]),
+                ];
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, city_i, _, city_j| format!("{}_{}", city_i.name, city_j.name),
+        );
         model.add_symbol_combination(&mtz)?;
 
         Ok(TspModel {
@@ -216,20 +241,30 @@ impl TspModel {
                 dist_coeffs.push((m.var_index(), *m.coefficient()));
             }
         }
-        let distance_input = LinearObjectiveInput::minimize("distance")
-            .terms(dist_coeffs.into_iter());
+        let distance_input =
+            LinearObjectiveInput::minimize("distance").terms(dist_coeffs.into_iter());
         model.set_linear_objective_input(distance_input);
 
         // 每城市出发约束 / Depart constraint per city
         for i in 0..city_count {
             let coeffs = extract_coeffs(&self.depart[i]);
-            model.add_linear_constraint(&coeffs, ConstraintRelation::Equal, 1.0, &format!("depart_{}", i))?;
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::Equal,
+                1.0,
+                &format!("depart_{}", i),
+            )?;
         }
 
         // 每城市到达约束 / Arrive constraint per city
         for j in 0..city_count {
             let coeffs = extract_coeffs(&self.reached[j]);
-            model.add_linear_constraint(&coeffs, ConstraintRelation::Equal, 1.0, &format!("arrive_{}", j))?;
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::Equal,
+                1.0,
+                &format!("arrive_{}", j),
+            )?;
         }
 
         // MTZ 子回路消除约束 / MTZ subtour elimination constraints

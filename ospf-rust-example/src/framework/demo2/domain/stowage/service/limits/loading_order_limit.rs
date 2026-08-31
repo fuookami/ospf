@@ -1,10 +1,10 @@
 //! 装载顺序限制 / Loading order limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;
 use crate::framework::demo2::domain::stowage::context::StowageContext;
 use crate::framework::demo2::domain::stowage::model::stowage::StowageVariables;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 装载顺序限制: 装载顺序靠前的舱位应优先装载
 /// 对齐 Kotlin LoadingOrderLimit
@@ -48,11 +48,7 @@ pub fn apply_loading_order_limits(
                 &coefficients,
                 ConstraintRelation::GreaterEqual,
                 0.0,
-                &format!(
-                    "{}_loading_order_{}_{}",
-                    mode_name(context.mode),
-                    j1, j2
-                ),
+                &format!("{}_loading_order_{}_{}", mode_name(context.mode), j1, j2),
             )?;
         }
     }

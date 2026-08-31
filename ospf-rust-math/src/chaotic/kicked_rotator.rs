@@ -1,10 +1,10 @@
 //! 受击转子。
 //! Kicked rotator.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point2};
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use super::helpers::{default_float, one_point2};
+use num_traits::Float;
 
 point2_system!(
     /// 受击转子。

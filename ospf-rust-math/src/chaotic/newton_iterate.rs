@@ -4,9 +4,9 @@
 //! 求解 z^3 = 1 的 Newton 法迭代。
 //! Newton's method iteration for solving z^3 = 1.
 
-use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point2;
+use num_traits::Float;
 
 /// Newton 迭代。
 /// Newton iterate.
@@ -20,7 +20,9 @@ pub struct NewtonIterate<S: Field + Float = f64> {
 
 impl<S: Field + Float> NewtonIterate<S> {
     pub fn new() -> Self {
-        Self { _phantom: std::marker::PhantomData }
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
     }
 
     /// 执行一次 Newton 迭代。
@@ -70,8 +72,12 @@ impl<S: Field + Float> NewtonIterateGenerator<S> {
         Self { map, x }
     }
 
-    pub fn map(&self) -> &NewtonIterate<S> { &self.map }
-    pub fn x(&self) -> &Point2<S> { &self.x }
+    pub fn map(&self) -> &NewtonIterate<S> {
+        &self.map
+    }
+    pub fn x(&self) -> &Point2<S> {
+        &self.x
+    }
 
     pub fn next_point(&mut self) -> Point2<S> {
         let x = self.x.clone();

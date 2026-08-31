@@ -1,13 +1,13 @@
 //! HashMap / MultiMap 对 MultiArray 值的便捷访问与修改扩展。
 //! Convenience access and mutation extensions for HashMap / MultiMap values of MultiArray.
 
-use std::collections::HashMap;
-use std::hash::Hash;
 use crate::error::MappingIndexError;
 use crate::multi_array::{MultiArray, MultiArrayCollection, MultiArrayToView};
 use crate::multi_array_view::MultiArrayView;
 use crate::multimap::{MultiMap2, MultiMap3, MultiMap4};
 use crate::shape::AbstractShape;
+use std::collections::HashMap;
+use std::hash::Hash;
 
 /// Map 全值访问扩展 / Get all values extension for HashMap.
 pub trait MapAllValuesExt<V> {

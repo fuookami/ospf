@@ -1,11 +1,11 @@
 //! 普通散货目的地分配限制 / Normal bulk destination assignment limits
-use std::error::Error;
-use std::collections::BTreeMap;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;
 use crate::framework::demo2::domain::stowage::context::StowageContext;
 use crate::framework::demo2::domain::stowage::model::stowage::StowageVariables;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::collections::BTreeMap;
+use std::error::Error;
 
 /// 普通散货目的地分配限制: 同一舱位的货物必须来自同一目的地
 /// 对齐 Kotlin NormalBulkDestinationAssignmentLimit

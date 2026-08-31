@@ -3,8 +3,5 @@
 mod render_task_dto;
 
 pub use render_task_dto::{
-    GanttRenderTaskCategory,
-    GanttRenderSubTaskDto,
-    GanttRenderTaskDto,
-    GanttRenderSchemaDto,
+    GanttRenderSchemaDto, GanttRenderSubTaskDto, GanttRenderTaskCategory, GanttRenderTaskDto,
 };

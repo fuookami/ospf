@@ -1,11 +1,11 @@
 //! 回调模型接口 Trait
 //! Callback Model Interface Trait
 
-use std::collections::HashMap;
-use async_trait::async_trait;
+use super::solution::{Solution, SolutionStatus, SolutionWithStatus};
 use crate::solver::SolverOutput;
 use crate::variable::VariableId;
-use super::solution::{Solution, SolutionStatus, SolutionWithStatus};
+use async_trait::async_trait;
+use std::collections::HashMap;
 
 /// 回调模型接口 / Callback Model Interface
 ///

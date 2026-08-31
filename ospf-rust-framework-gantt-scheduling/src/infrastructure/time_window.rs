@@ -10,7 +10,7 @@ use time::{Duration, OffsetDateTime};
 use ospf_rust_core::solver::value::SolveValue;
 use ospf_rust_core::solver::value::SolveValueConversionPolicy;
 
-use crate::infrastructure::{merge, TimeRange};
+use crate::infrastructure::{TimeRange, merge};
 use crate::{GanttError, GanttResult};
 
 /// 持续时间单位 / Duration unit
@@ -212,9 +212,17 @@ impl<V: SolveValue> TimeWindow<V> {
     /// - `continues`: 是否连续 / Whether continuous
     /// - `interval`: 时间间隔（秒）/ Time interval (seconds)
     pub fn seconds(window: TimeRange, date_offset: V, continues: bool, interval: V) -> Self {
-        let date_offset_dur = DurationUnit::Seconds.from_value(GanttValueAdapter::<V>::to_f64(&date_offset));
-        let interval_dur = DurationUnit::Seconds.from_value(GanttValueAdapter::<V>::to_f64(&interval));
-        Self::new(window, continues, DurationUnit::Seconds, date_offset_dur, interval_dur)
+        let date_offset_dur =
+            DurationUnit::Seconds.from_value(GanttValueAdapter::<V>::to_f64(&date_offset));
+        let interval_dur =
+            DurationUnit::Seconds.from_value(GanttValueAdapter::<V>::to_f64(&interval));
+        Self::new(
+            window,
+            continues,
+            DurationUnit::Seconds,
+            date_offset_dur,
+            interval_dur,
+        )
     }
 
     /// 创建经过校验的秒级时间窗口 / Create a validated seconds-level time window
@@ -228,10 +236,8 @@ impl<V: SolveValue> TimeWindow<V> {
             window,
             continues,
             DurationUnit::Seconds,
-            DurationUnit::Seconds
-                .try_from_value(GanttValueAdapter::<V>::to_f64(&date_offset))?,
-            DurationUnit::Seconds
-                .try_from_value(GanttValueAdapter::<V>::to_f64(&interval))?,
+            DurationUnit::Seconds.try_from_value(GanttValueAdapter::<V>::to_f64(&date_offset))?,
+            DurationUnit::Seconds.try_from_value(GanttValueAdapter::<V>::to_f64(&interval))?,
         )
     }
 
@@ -244,9 +250,17 @@ impl<V: SolveValue> TimeWindow<V> {
     /// - `continues`: 是否连续 / Whether continuous
     /// - `interval`: 时间间隔（分钟）/ Time interval (minutes)
     pub fn minutes(window: TimeRange, date_offset: V, continues: bool, interval: V) -> Self {
-        let date_offset_dur = DurationUnit::Minutes.from_value(GanttValueAdapter::<V>::to_f64(&date_offset));
-        let interval_dur = DurationUnit::Minutes.from_value(GanttValueAdapter::<V>::to_f64(&interval));
-        Self::new(window, continues, DurationUnit::Minutes, date_offset_dur, interval_dur)
+        let date_offset_dur =
+            DurationUnit::Minutes.from_value(GanttValueAdapter::<V>::to_f64(&date_offset));
+        let interval_dur =
+            DurationUnit::Minutes.from_value(GanttValueAdapter::<V>::to_f64(&interval));
+        Self::new(
+            window,
+            continues,
+            DurationUnit::Minutes,
+            date_offset_dur,
+            interval_dur,
+        )
     }
 
     /// 创建经过校验的分钟级时间窗口 / Create a validated minutes-level time window
@@ -260,10 +274,8 @@ impl<V: SolveValue> TimeWindow<V> {
             window,
             continues,
             DurationUnit::Minutes,
-            DurationUnit::Minutes
-                .try_from_value(GanttValueAdapter::<V>::to_f64(&date_offset))?,
-            DurationUnit::Minutes
-                .try_from_value(GanttValueAdapter::<V>::to_f64(&interval))?,
+            DurationUnit::Minutes.try_from_value(GanttValueAdapter::<V>::to_f64(&date_offset))?,
+            DurationUnit::Minutes.try_from_value(GanttValueAdapter::<V>::to_f64(&interval))?,
         )
     }
 
@@ -276,9 +288,17 @@ impl<V: SolveValue> TimeWindow<V> {
     /// - `continues`: 是否连续 / Whether continuous
     /// - `interval`: 时间间隔（小时）/ Time interval (hours)
     pub fn hours(window: TimeRange, date_offset: V, continues: bool, interval: V) -> Self {
-        let date_offset_dur = DurationUnit::Hours.from_value(GanttValueAdapter::<V>::to_f64(&date_offset));
-        let interval_dur = DurationUnit::Hours.from_value(GanttValueAdapter::<V>::to_f64(&interval));
-        Self::new(window, continues, DurationUnit::Hours, date_offset_dur, interval_dur)
+        let date_offset_dur =
+            DurationUnit::Hours.from_value(GanttValueAdapter::<V>::to_f64(&date_offset));
+        let interval_dur =
+            DurationUnit::Hours.from_value(GanttValueAdapter::<V>::to_f64(&interval));
+        Self::new(
+            window,
+            continues,
+            DurationUnit::Hours,
+            date_offset_dur,
+            interval_dur,
+        )
     }
 
     /// 创建经过校验的小时级时间窗口 / Create a validated hours-level time window
@@ -292,10 +312,8 @@ impl<V: SolveValue> TimeWindow<V> {
             window,
             continues,
             DurationUnit::Hours,
-            DurationUnit::Hours
-                .try_from_value(GanttValueAdapter::<V>::to_f64(&date_offset))?,
-            DurationUnit::Hours
-                .try_from_value(GanttValueAdapter::<V>::to_f64(&interval))?,
+            DurationUnit::Hours.try_from_value(GanttValueAdapter::<V>::to_f64(&date_offset))?,
+            DurationUnit::Hours.try_from_value(GanttValueAdapter::<V>::to_f64(&interval))?,
         )
     }
 
@@ -635,77 +653,51 @@ mod tests {
 
     #[test]
     fn test_value_of_duration() {
-        let window: TimeWindow<f64> = TimeWindow::hours(
-            TimeRange::new(h(8), h(12)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window: TimeWindow<f64> =
+            TimeWindow::hours(TimeRange::new(h(8), h(12)), 0.0, true, 1.0);
         let val = window.value_of_duration(Duration::hours(2));
         assert!((val - 2.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_value_of_instant() {
-        let window: TimeWindow<f64> = TimeWindow::hours(
-            TimeRange::new(h(8), h(12)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window: TimeWindow<f64> =
+            TimeWindow::hours(TimeRange::new(h(8), h(12)), 0.0, true, 1.0);
         let val = window.value_of_instant(h(11));
         assert!((val - 3.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_minutes_value_of() {
-        let window: TimeWindow<f64> = TimeWindow::minutes(
-            TimeRange::new(h(8), h(12)),
-            0.0,
-            true,
-            15.0,
-        );
+        let window: TimeWindow<f64> =
+            TimeWindow::minutes(TimeRange::new(h(8), h(12)), 0.0, true, 15.0);
         let val = window.value_of_duration(Duration::minutes(30));
         assert!((val - 30.0).abs() < 1e-10);
 
-        let instant_val = window.value_of_instant(
-            datetime!(2020-08-30 08:45 UTC),
-        );
+        let instant_val = window.value_of_instant(datetime!(2020-08-30 08:45 UTC));
         assert!((instant_val - 45.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_duration_of() {
-        let window: TimeWindow<f64> = TimeWindow::minutes(
-            TimeRange::new(h(8), h(12)),
-            0.0,
-            true,
-            15.0,
-        );
+        let window: TimeWindow<f64> =
+            TimeWindow::minutes(TimeRange::new(h(8), h(12)), 0.0, true, 15.0);
         let dur = window.duration_of(30.0);
         assert_eq!(dur, Duration::minutes(30));
     }
 
     #[test]
     fn test_instant_of() {
-        let window: TimeWindow<f64> = TimeWindow::minutes(
-            TimeRange::new(h(8), h(12)),
-            0.0,
-            true,
-            15.0,
-        );
+        let window: TimeWindow<f64> =
+            TimeWindow::minutes(TimeRange::new(h(8), h(12)), 0.0, true, 15.0);
         let instant = window.instant_of(45.0);
         assert_eq!(instant, datetime!(2020-08-30 08:45 UTC));
     }
 
     #[test]
     fn test_time_slots() {
-        let window: TimeWindow<f64> = TimeWindow::hours(
-            TimeRange::new(h(8), h(12)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window: TimeWindow<f64> =
+            TimeWindow::hours(TimeRange::new(h(8), h(12)), 0.0, true, 1.0);
         let slots = window.time_slots();
         assert_eq!(slots.len(), 4);
         assert_eq!(slots[0], TimeRange::new(h(8), h(9)));
@@ -714,30 +706,23 @@ mod tests {
 
     #[test]
     fn test_fractional_hour_time_slots_preserve_boundaries() {
-        let window: TimeWindow<f64> = TimeWindow::try_hours(
-            TimeRange::new(h(8), h(10)),
-            0.0,
-            true,
-            0.5,
-        )
-        .unwrap();
+        let window: TimeWindow<f64> =
+            TimeWindow::try_hours(TimeRange::new(h(8), h(10)), 0.0, true, 0.5).unwrap();
 
         let slots = window.try_time_slots().unwrap();
 
         assert_eq!(slots.len(), 4);
         assert_eq!(slots[0], TimeRange::new(h(8), h(8) + Duration::minutes(30)));
-        assert_eq!(slots[3], TimeRange::new(h(9) + Duration::minutes(30), h(10)));
+        assert_eq!(
+            slots[3],
+            TimeRange::new(h(9) + Duration::minutes(30), h(10))
+        );
     }
 
     #[test]
     fn test_time_slots_keep_short_final_slot() {
-        let window: TimeWindow<f64> = TimeWindow::try_minutes(
-            TimeRange::new(h(8), h(9)),
-            0.0,
-            true,
-            40.0,
-        )
-        .unwrap();
+        let window: TimeWindow<f64> =
+            TimeWindow::try_minutes(TimeRange::new(h(8), h(9)), 0.0, true, 40.0).unwrap();
 
         let slots = window.try_time_slots().unwrap();
 
@@ -748,20 +733,10 @@ mod tests {
 
     #[test]
     fn test_invalid_interval_is_rejected_without_looping() {
-        let result = TimeWindow::<f64>::try_hours(
-            TimeRange::new(h(8), h(10)),
-            0.0,
-            true,
-            0.0,
-        );
+        let result = TimeWindow::<f64>::try_hours(TimeRange::new(h(8), h(10)), 0.0, true, 0.0);
         assert!(matches!(result, Err(GanttError::InvalidDuration { .. })));
 
-        let unchecked = TimeWindow::<f64>::hours(
-            TimeRange::new(h(8), h(10)),
-            0.0,
-            true,
-            0.0,
-        );
+        let unchecked = TimeWindow::<f64>::hours(TimeRange::new(h(8), h(10)), 0.0, true, 0.0);
         assert!(unchecked.time_slots().is_empty());
     }
 
@@ -773,12 +748,8 @@ mod tests {
 
     #[test]
     fn test_round_time_slots_with_excluded_times() {
-        let window: TimeWindow<f64> = TimeWindow::hours(
-            TimeRange::new(h(8), h(12)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window: TimeWindow<f64> =
+            TimeWindow::hours(TimeRange::new(h(8), h(12)), 0.0, true, 1.0);
         let excluded = vec![TimeRange::new(h(9), h(10))];
         let slots = window.round_time_slots_of(Duration::hours(1), &excluded);
 
@@ -789,12 +760,8 @@ mod tests {
 
     #[test]
     fn test_round_time_slots_all_excluded() {
-        let window: TimeWindow<f64> = TimeWindow::hours(
-            TimeRange::new(h(8), h(12)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window: TimeWindow<f64> =
+            TimeWindow::hours(TimeRange::new(h(8), h(12)), 0.0, true, 1.0);
         let excluded = vec![TimeRange::new(h(8), h(12))];
         let slots = window.round_time_slots_of(Duration::hours(1), &excluded);
         assert!(slots.is_empty());
@@ -802,12 +769,8 @@ mod tests {
 
     #[test]
     fn test_round_time_slots_adjacent_excluded() {
-        let window: TimeWindow<f64> = TimeWindow::hours(
-            TimeRange::new(h(8), h(12)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window: TimeWindow<f64> =
+            TimeWindow::hours(TimeRange::new(h(8), h(12)), 0.0, true, 1.0);
         let excluded = vec![TimeRange::new(h(9), h(10)), TimeRange::new(h(10), h(11))];
         let slots = window.round_time_slots_of(Duration::hours(1), &excluded);
         assert_eq!(slots.len(), 2);
@@ -817,19 +780,21 @@ mod tests {
 
     #[test]
     fn test_upper_interval() {
-        assert_eq!(DurationUnit::Seconds.upper_interval(), Some(Duration::minutes(1)));
-        assert_eq!(DurationUnit::Minutes.upper_interval(), Some(Duration::hours(1)));
+        assert_eq!(
+            DurationUnit::Seconds.upper_interval(),
+            Some(Duration::minutes(1))
+        );
+        assert_eq!(
+            DurationUnit::Minutes.upper_interval(),
+            Some(Duration::hours(1))
+        );
         assert_eq!(DurationUnit::Hours.upper_interval(), None);
     }
 
     #[test]
     fn test_round_duration() {
-        let window: TimeWindow<f64> = TimeWindow::minutes(
-            TimeRange::new(h(8), h(12)),
-            0.0,
-            true,
-            15.0,
-        );
+        let window: TimeWindow<f64> =
+            TimeWindow::minutes(TimeRange::new(h(8), h(12)), 0.0, true, 15.0);
         let rounded = window.round_duration(Duration::minutes(47));
         // 47 rounds to 47 in whole minutes (already integral)
         assert_eq!(rounded, Duration::minutes(47));

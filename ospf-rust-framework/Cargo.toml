@@ -18,7 +18,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"], optiona
 # 序列化 / Serialization
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
-sha2 = { version = "0.10", optional = true }
+sha2 = "0.10"
 
 # 错误处理 / Error handling
 thiserror = "1"
@@ -49,7 +49,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 
 [features]
 default = []
-serde = ["dep:serde"]
+serde = ["dep:serde", "dep:serde_json", "ospf-rust-core/serde"]
+experiment = ["serde", "dep:serde_json"]
 async = ["dep:tokio"]
 nightly = ["ospf-rust-core/nightly"]
 big-rational = ["ospf-rust-core/big-rational"]
@@ -101,7 +102,7 @@ persistence-mongodb = ["persistence", "serde", "dep:serde_json"]
 persistence-redis = ["persistence", "serde", "dep:serde_json"]
 
 # 远程求解客户端 / Remote solver client
-remote-solver = ["async", "serde", "dep:serde_json", "dep:sha2"]
+remote-solver = ["async", "serde", "dep:serde_json"]
 remote-solver-http-reqwest = ["remote-solver", "dep:reqwest"]
 
 [dev-dependencies]

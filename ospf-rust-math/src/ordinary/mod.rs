@@ -1,4 +1,3 @@
-
 //! Ordinary - 常规数学函数
 //! Ordinary - Ordinary mathematical functions
 

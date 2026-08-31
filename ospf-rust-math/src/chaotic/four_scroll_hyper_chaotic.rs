@@ -1,10 +1,10 @@
 //! 四涡卷超混沌吸引子。
 //! Four-scroll hyper-chaotic attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point4};
 use crate::algebra::Field;
 use crate::geometry::Point4;
-use super::helpers::{default_float, one_point4};
+use num_traits::Float;
 
 point4_system!(
     /// 四涡卷超混沌吸引子的一阶欧拉步进模型。
@@ -49,7 +49,11 @@ impl<S: Field + Float> Default for FourScrollHyperChaoticAttractorGenerator<S> {
 /// 创建四涡卷超混沌吸引子。
 /// Create a four-scroll hyper-chaotic attractor.
 pub fn four_scroll_hyper_chaotic_attractor<S: Field + Float>(
-    a: S, b: S, c: S, d: S, h: S,
+    a: S,
+    b: S,
+    c: S,
+    d: S,
+    h: S,
 ) -> FourScrollHyperChaoticAttractor<S> {
     FourScrollHyperChaoticAttractor::new(a, b, c, d, h)
 }
@@ -57,9 +61,17 @@ pub fn four_scroll_hyper_chaotic_attractor<S: Field + Float>(
 /// 创建四涡卷超混沌吸引子生成器。
 /// Create a four-scroll hyper-chaotic attractor generator.
 pub fn four_scroll_hyper_chaotic_attractor_generator<S: Field + Float>(
-    a: S, b: S, c: S, d: S, h: S, x: Point4<S>,
+    a: S,
+    b: S,
+    c: S,
+    d: S,
+    h: S,
+    x: Point4<S>,
 ) -> FourScrollHyperChaoticAttractorGenerator<S> {
-    FourScrollHyperChaoticAttractorGenerator::new(FourScrollHyperChaoticAttractor::new(a, b, c, d, h), x)
+    FourScrollHyperChaoticAttractorGenerator::new(
+        FourScrollHyperChaoticAttractor::new(a, b, c, d, h),
+        x,
+    )
 }
 
 #[cfg(test)]

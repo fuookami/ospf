@@ -97,22 +97,22 @@ impl SCIPSolver {
             // Extract non-zero entries from the quadratic objective matrix Q
             for (i, row) in model.Q.rows.iter().enumerate() {
                 if i >= scip_vars.len() {
-                    return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+                    return Err(CoreError::solver_modeling(format!(
                         "quadratic objective row index {} out of bounds for {} variables",
                         i,
                         scip_vars.len()
-                    ))));
+                    )));
                 }
                 for &(j, qval) in row.entries.iter() {
                     if qval.abs() <= f64::EPSILON {
                         continue;
                     }
                     if j >= scip_vars.len() {
-                        return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+                        return Err(CoreError::solver_modeling(format!(
                             "quadratic objective column index {} out of bounds for {} variables",
                             j,
                             scip_vars.len()
-                        ))));
+                        )));
                     }
                     quad_vars_1.push(&scip_vars[i]);
                     quad_vars_2.push(&scip_vars[j]);
@@ -150,10 +150,10 @@ impl SCIPSolver {
             for monomial in constraint.polynomial.monomials() {
                 let var_index1 = monomial.var_index1();
                 if var_index1 >= scip_vars.len() {
-                    return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+                    return Err(CoreError::solver_modeling(format!(
                         "quadratic constraint {} references invalid variable index {}",
                         i, var_index1
-                    ))));
+                    )));
                 }
                 let coefficient = *monomial.coefficient();
                 if coefficient.abs() <= f64::EPSILON {
@@ -163,10 +163,10 @@ impl SCIPSolver {
                     // 二次项：c * xᵢ * xⱼ
                     // Quadratic term: c * xᵢ * xⱼ
                     if var_index2 >= scip_vars.len() {
-                        return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+                        return Err(CoreError::solver_modeling(format!(
                             "quadratic constraint {} references invalid variable index {}",
                             i, var_index2
-                        ))));
+                        )));
                     }
                     quad_vars_1.push(&scip_vars[var_index1]);
                     quad_vars_2.push(&scip_vars[var_index2]);
@@ -263,6 +263,7 @@ impl SCIPSolver {
         let mut output = SolverOutput::new(solver_status);
         output.node_count = Some(solved.n_nodes());
         output.iterations = Some(solved.n_lp_iterations());
+        output.solution_count = Some(solved.n_sols());
 
         // 提取最优边界（若有限）
         // Extract the best bound (if finite)
@@ -273,7 +274,9 @@ impl SCIPSolver {
 
         // 提取原始解和目标值
         // Extract the primal solution and objective value
-        if let Some(solution) = solution {
+        if solver_status.is_feasible()
+            && let Some(solution) = solution
+        {
             let objective_value = solution.obj_val();
             output.objective_value = Some(objective_value);
             output.solution = Some(scip_vars.iter().map(|var| solution.val(var)).collect());
@@ -287,8 +290,12 @@ impl SCIPSolver {
         // 在最优解时提取线性对偶乘子（尽力获取）
         // Extract linear dual multipliers when optimal (best effort)
         if matches!(solver_status, SolverStatus::Optimal) {
-            let dual_solution = Self::collect_dual_solution(&linear_constraints);
-            if !dual_solution.is_empty() {
+            if let Some(dual_solution) = Self::collect_dual_solution(
+                &linear_constraints,
+                model.objective_category,
+            )
+                && !dual_solution.is_empty()
+            {
                 output.dual_solution = Some(dual_solution);
             }
         }
@@ -296,8 +303,9 @@ impl SCIPSolver {
         // 在不可行时提取 Farkas 证明作为对偶信息
         // Extract Farkas proof as dual information when infeasible
         if solver_status.is_infeasible() {
-            let farkas_solution = Self::collect_farkas_solution(&linear_constraints);
-            if !farkas_solution.is_empty() {
+            if let Some(farkas_solution) = Self::collect_farkas_solution(&linear_constraints)
+                && !farkas_solution.is_empty()
+            {
                 output.dual_solution = Some(farkas_solution);
             }
         }

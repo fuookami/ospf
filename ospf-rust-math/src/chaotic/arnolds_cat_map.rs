@@ -1,11 +1,11 @@
 //! Arnold 猫映射。
 //! Arnold's cat map.
 
-use std::marker::PhantomData;
-use num_traits::Float;
+use super::helpers::{mod_one, one_point2};
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use super::helpers::{mod_one, one_point2};
+use num_traits::Float;
+use std::marker::PhantomData;
 
 /// Arnold 猫映射。
 /// Arnold's cat map.

@@ -1,5 +1,5 @@
 //! 机组成员模型模块 / Crew member model module.
-use crate::framework::demo4::infrastructure::{WorkerNo, CrewManRankNo};
+use crate::framework::demo4::infrastructure::{CrewManRankNo, WorkerNo};
 
 /// 机组成员等级 / Crew member rank
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -22,6 +22,8 @@ pub struct CrewMan {
 }
 
 impl PartialEq for CrewMan {
-    fn eq(&self, other: &Self) -> bool { self.worker_no == other.worker_no }
+    fn eq(&self, other: &Self) -> bool {
+        self.worker_no == other.worker_no
+    }
 }
 impl Eq for CrewMan {}

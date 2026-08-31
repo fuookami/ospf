@@ -1,8 +1,8 @@
 //! 机队平衡模型模块 / Fleet balance model module
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 机队平衡检查点 / Fleet balance checkpoint
 #[derive(Debug, Clone)]

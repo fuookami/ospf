@@ -3,9 +3,9 @@
 //! 管理不可用时间段，计算实际工作时间和有效时间范围。
 //! Manages unavailable time periods, computes actual working times and valid time ranges.
 
-use time::{Duration, OffsetDateTime};
+use crate::infrastructure::{DurationRange, TimeRange, TimeWindow, distant_future, merge};
 use ospf_rust_core::solver::value::SolveValue;
-use crate::infrastructure::{TimeRange, DurationRange, TimeWindow, merge, distant_future};
+use time::{Duration, OffsetDateTime};
 
 /// 实际时间结果 / Actual time result
 ///
@@ -134,8 +134,12 @@ impl<V: SolveValue> WorkingCalendar<V> {
             return time;
         }
 
-        let before_lb = before_connection_time.map(|ct| ct.lower).unwrap_or(Duration::ZERO);
-        let after_lb = after_connection_time.map(|ct| ct.lower).unwrap_or(Duration::ZERO);
+        let before_lb = before_connection_time
+            .map(|ct| ct.lower)
+            .unwrap_or(Duration::ZERO);
+        let after_lb = after_connection_time
+            .map(|ct| ct.lower)
+            .unwrap_or(Duration::ZERO);
 
         let mut current_time = time;
 
@@ -185,12 +189,18 @@ impl<V: SolveValue> WorkingCalendar<V> {
         // No unavailable times
         if merged.is_empty() {
             return if let Some((unit, bt)) = break_time {
-                let split = time.split_by_duration(&unit, Duration::ZERO, Some(time.duration()), Some(bt));
+                let split =
+                    time.split_by_duration(&unit, Duration::ZERO, Some(time.duration()), Some(bt));
                 ActualTime {
                     time: TimeRange::new(
                         time.start,
-                        time.start + split.times.iter().map(|t| t.duration()).sum::<Duration>()
-                            + split.break_times.iter().map(|t| t.duration()).sum::<Duration>(),
+                        time.start
+                            + split.times.iter().map(|t| t.duration()).sum::<Duration>()
+                            + split
+                                .break_times
+                                .iter()
+                                .map(|t| t.duration())
+                                .sum::<Duration>(),
                     ),
                     working_times: split.times,
                     break_times: split.break_times,
@@ -213,10 +223,18 @@ impl<V: SolveValue> WorkingCalendar<V> {
         let mut total_duration = Duration::ZERO;
         let target_duration = time.duration();
 
-        let before_lb = before_connection_time.map(|ct| ct.lower).unwrap_or(Duration::ZERO);
-        let before_ub = before_connection_time.map(|ct| ct.upper).unwrap_or(Duration::ZERO);
-        let after_lb = after_connection_time.map(|ct| ct.lower).unwrap_or(Duration::ZERO);
-        let after_ub = after_connection_time.map(|ct| ct.upper).unwrap_or(Duration::ZERO);
+        let before_lb = before_connection_time
+            .map(|ct| ct.lower)
+            .unwrap_or(Duration::ZERO);
+        let before_ub = before_connection_time
+            .map(|ct| ct.upper)
+            .unwrap_or(Duration::ZERO);
+        let after_lb = after_connection_time
+            .map(|ct| ct.lower)
+            .unwrap_or(Duration::ZERO);
+        let after_ub = after_connection_time
+            .map(|ct| ct.upper)
+            .unwrap_or(Duration::ZERO);
 
         // Find starting index: last unavailable period that ended before or at current_time
         let mut last_idx = find_last_ended_before_or_at(&merged, current_time);
@@ -230,12 +248,12 @@ impl<V: SolveValue> WorkingCalendar<V> {
 
         while total_duration < target_duration {
             // Check if we're inside an unavailable period
-            if let Some(ni) = next_idx(last_idx) {
-                if merged[ni].contains_instant(current_time) {
-                    current_time = merged[ni].end;
-                    last_idx = Some(ni);
-                    continue;
-                }
+            if let Some(ni) = next_idx(last_idx)
+                && merged[ni].contains_instant(current_time)
+            {
+                current_time = merged[ni].end;
+                last_idx = Some(ni);
+                continue;
             }
 
             // Terminal condition
@@ -255,13 +273,14 @@ impl<V: SolveValue> WorkingCalendar<V> {
             };
 
             // Add after-connection time if needed
-            if let Some(li) = last_idx {
-                if after_lb > Duration::ZERO && current_time <= merged[li].end {
-                    let conn_end = current_time.saturating_add(after_ub);
-                    let conn = TimeRange::new(current_time, conn_end);
-                    connection_times.push(conn);
-                    current_time = conn_end;
-                }
+            if let Some(li) = last_idx
+                && after_lb > Duration::ZERO
+                && current_time <= merged[li].end
+            {
+                let conn_end = current_time.saturating_add(after_ub);
+                let conn = TimeRange::new(current_time, conn_end);
+                connection_times.push(conn);
+                current_time = conn_end;
             }
 
             // Create base time for this segment
@@ -282,7 +301,7 @@ impl<V: SolveValue> WorkingCalendar<V> {
 
             // Process working time within this segment
             if let Some((unit, bt)) = break_time {
-                let offset = if current_time == time.start { Duration::ZERO } else { Duration::ZERO };
+                let offset = Duration::ZERO;
                 let max_dur = target_duration - total_duration;
                 let split = base_time.split_by_duration(&unit, offset, Some(max_dur), Some(bt));
 
@@ -293,7 +312,9 @@ impl<V: SolveValue> WorkingCalendar<V> {
                 break_times.extend(split.break_times);
 
                 // Update current_time to the end of the last working/break segment
-                let max_end = working_times.iter().chain(break_times.iter())
+                let max_end = working_times
+                    .iter()
+                    .chain(break_times.iter())
                     .map(|t| t.end)
                     .max()
                     .unwrap_or(current_time);
@@ -310,12 +331,13 @@ impl<V: SolveValue> WorkingCalendar<V> {
             }
 
             // Add before-connection time if there's more work to do
-            if total_duration < target_duration && before_lb > Duration::ZERO {
-                if let Some(_ni) = next_idx(last_idx) {
-                    let conn_end = this_end_time.saturating_add(before_ub);
-                    let conn = TimeRange::new(this_end_time, conn_end);
-                    connection_times.push(conn);
-                }
+            if total_duration < target_duration
+                && before_lb > Duration::ZERO
+                && let Some(_ni) = next_idx(last_idx)
+            {
+                let conn_end = this_end_time.saturating_add(before_ub);
+                let conn = TimeRange::new(this_end_time, conn_end);
+                connection_times.push(conn);
             }
 
             // Advance past the unavailable period
@@ -329,7 +351,10 @@ impl<V: SolveValue> WorkingCalendar<V> {
             }
         }
 
-        let actual_end = working_times.iter().chain(break_times.iter()).chain(connection_times.iter())
+        let actual_end = working_times
+            .iter()
+            .chain(break_times.iter())
+            .chain(connection_times.iter())
             .map(|t| t.end)
             .max()
             .unwrap_or(time.end);
@@ -366,7 +391,8 @@ impl<V: SolveValue> WorkingCalendar<V> {
             };
 
             return if let Some((unit, bt)) = break_time {
-                let split = effective_time.split_by_duration(&unit, Duration::ZERO, max_duration, Some(bt));
+                let split =
+                    effective_time.split_by_duration(&unit, Duration::ZERO, max_duration, Some(bt));
                 ValidTimes {
                     times: split.times,
                     break_times: split.break_times,
@@ -386,8 +412,12 @@ impl<V: SolveValue> WorkingCalendar<V> {
         let mut connection_times = Vec::new();
         let mut current_time = time.start;
 
-        let before_ub = before_connection_time.map(|ct| ct.upper).unwrap_or(Duration::ZERO);
-        let after_ub = after_connection_time.map(|ct| ct.upper).unwrap_or(Duration::ZERO);
+        let before_ub = before_connection_time
+            .map(|ct| ct.upper)
+            .unwrap_or(Duration::ZERO);
+        let after_ub = after_connection_time
+            .map(|ct| ct.upper)
+            .unwrap_or(Duration::ZERO);
 
         let mut last_idx = find_last_ended_before_or_at(&merged, current_time);
         let mut total_duration = Duration::ZERO;
@@ -402,12 +432,12 @@ impl<V: SolveValue> WorkingCalendar<V> {
 
         while current_time < time.end {
             // Check if inside an unavailable period
-            if let Some(ni) = next_idx(last_idx) {
-                if merged[ni].contains_instant(current_time) {
-                    current_time = merged[ni].end;
-                    last_idx = Some(ni);
-                    continue;
-                }
+            if let Some(ni) = next_idx(last_idx)
+                && merged[ni].contains_instant(current_time)
+            {
+                current_time = merged[ni].end;
+                last_idx = Some(ni);
+                continue;
             }
 
             // Terminal condition
@@ -429,13 +459,14 @@ impl<V: SolveValue> WorkingCalendar<V> {
             let this_end = this_end.min(time.end);
 
             // Add after-connection time
-            if let Some(li) = last_idx {
-                if after_ub > Duration::ZERO && current_time <= merged[li].end {
-                    let conn_end = current_time.saturating_add(after_ub);
-                    let conn = TimeRange::new(current_time, conn_end);
-                    connection_times.push(conn);
-                    current_time = conn_end;
-                }
+            if let Some(li) = last_idx
+                && after_ub > Duration::ZERO
+                && current_time <= merged[li].end
+            {
+                let conn_end = current_time.saturating_add(after_ub);
+                let conn = TimeRange::new(current_time, conn_end);
+                connection_times.push(conn);
+                current_time = conn_end;
             }
 
             if current_time >= this_end {
@@ -468,7 +499,12 @@ impl<V: SolveValue> WorkingCalendar<V> {
 
             // Process segment
             if let Some((unit, bt)) = break_time {
-                let split = base_time.split_by_duration(&unit, Duration::ZERO, max_duration.map(|md| md - total_duration), Some(bt));
+                let split = base_time.split_by_duration(
+                    &unit,
+                    Duration::ZERO,
+                    max_duration.map(|md| md - total_duration),
+                    Some(bt),
+                );
                 total_duration += split.times.iter().map(|t| t.duration()).sum::<Duration>();
                 valid.extend(split.times);
                 break_times.extend(split.break_times);
@@ -478,18 +514,18 @@ impl<V: SolveValue> WorkingCalendar<V> {
             }
 
             // Check max_duration completion
-            if let Some(max_d) = max_duration {
-                if total_duration >= max_d {
-                    break;
-                }
+            if let Some(max_d) = max_duration
+                && total_duration >= max_d
+            {
+                break;
             }
 
             // Add before-connection time
-            if before_ub > Duration::ZERO {
-                if let Some(_ni) = next_idx(last_idx) {
-                    let conn_end = this_end.saturating_add(before_ub);
-                    connection_times.push(TimeRange::new(this_end, conn_end));
-                }
+            if before_ub > Duration::ZERO
+                && let Some(_ni) = next_idx(last_idx)
+            {
+                let conn_end = this_end.saturating_add(before_ub);
+                connection_times.push(TimeRange::new(this_end, conn_end));
             }
 
             // Advance
@@ -540,12 +576,7 @@ mod tests {
 
     #[test]
     fn test_actual_time_at_no_unavailable() {
-        let window = TimeWindow::hours(
-            TimeRange::new(h(0, 8), h(0, 18)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window = TimeWindow::hours(TimeRange::new(h(0, 8), h(0, 18)), 0.0, true, 1.0);
         let calendar = TestCalendar::new(window, vec![]);
         let result = calendar.actual_time_at(h(0, 10), &[], None, None);
         assert_eq!(result, h(0, 10));
@@ -553,12 +584,7 @@ mod tests {
 
     #[test]
     fn test_actual_time_at_with_unavailable() {
-        let window = TimeWindow::hours(
-            TimeRange::new(h(0, 8), h(0, 18)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window = TimeWindow::hours(TimeRange::new(h(0, 8), h(0, 18)), 0.0, true, 1.0);
         let unavail = vec![TimeRange::new(h(0, 10), h(0, 12))];
         let calendar = TestCalendar::new(window, unavail);
         // 09:00 is before unavailable, should return 09:00
@@ -572,12 +598,7 @@ mod tests {
 
     #[test]
     fn test_actual_time_at_with_connection_time() {
-        let window = TimeWindow::hours(
-            TimeRange::new(h(0, 8), h(0, 18)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window = TimeWindow::hours(TimeRange::new(h(0, 8), h(0, 18)), 0.0, true, 1.0);
         let unavail = vec![TimeRange::new(h(0, 10), h(0, 12))];
         let calendar = TestCalendar::new(window, unavail);
 
@@ -590,12 +611,7 @@ mod tests {
 
     #[test]
     fn test_actual_time_range_no_unavailable() {
-        let window = TimeWindow::hours(
-            TimeRange::new(h(0, 8), h(0, 18)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window = TimeWindow::hours(TimeRange::new(h(0, 8), h(0, 18)), 0.0, true, 1.0);
         let calendar = TestCalendar::new(window, vec![]);
         let time = TimeRange::new(h(0, 8), h(0, 12));
         let result = calendar.actual_time_range(&time, &[], None, None, None);
@@ -606,12 +622,7 @@ mod tests {
 
     #[test]
     fn test_actual_time_range_with_unavailable() {
-        let window = TimeWindow::hours(
-            TimeRange::new(h(0, 8), h(0, 18)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window = TimeWindow::hours(TimeRange::new(h(0, 8), h(0, 18)), 0.0, true, 1.0);
         let unavail = vec![TimeRange::new(h(0, 10), h(0, 11))];
         let calendar = TestCalendar::new(window, unavail);
         let time = TimeRange::new(h(0, 8), h(0, 12));
@@ -625,12 +636,7 @@ mod tests {
 
     #[test]
     fn test_valid_times_no_unavailable() {
-        let window = TimeWindow::hours(
-            TimeRange::new(h(0, 8), h(0, 18)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window = TimeWindow::hours(TimeRange::new(h(0, 8), h(0, 18)), 0.0, true, 1.0);
         let calendar = TestCalendar::new(window, vec![]);
         let time = TimeRange::new(h(0, 8), h(0, 12));
         let result = calendar.valid_times(&time, &[], None, None, None, None);
@@ -641,12 +647,7 @@ mod tests {
 
     #[test]
     fn test_valid_times_with_unavailable() {
-        let window = TimeWindow::hours(
-            TimeRange::new(h(0, 8), h(0, 18)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window = TimeWindow::hours(TimeRange::new(h(0, 8), h(0, 18)), 0.0, true, 1.0);
         let unavail = vec![TimeRange::new(h(0, 10), h(0, 11))];
         let calendar = TestCalendar::new(window, unavail);
         let time = TimeRange::new(h(0, 8), h(0, 12));
@@ -659,12 +660,7 @@ mod tests {
 
     #[test]
     fn test_valid_times_with_max_duration() {
-        let window = TimeWindow::hours(
-            TimeRange::new(h(0, 8), h(0, 18)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window = TimeWindow::hours(TimeRange::new(h(0, 8), h(0, 18)), 0.0, true, 1.0);
         let calendar = TestCalendar::new(window, vec![]);
         let time = TimeRange::new(h(0, 8), h(0, 12));
         let result = calendar.valid_times(&time, &[], None, None, Some(Duration::hours(2)), None);
@@ -678,12 +674,7 @@ mod tests {
 
     #[test]
     fn test_valid_times_all_unavailable() {
-        let window = TimeWindow::hours(
-            TimeRange::new(h(0, 8), h(0, 18)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window = TimeWindow::hours(TimeRange::new(h(0, 8), h(0, 18)), 0.0, true, 1.0);
         let unavail = vec![TimeRange::new(h(0, 8), h(0, 18))];
         let calendar = TestCalendar::new(window, unavail);
         let time = TimeRange::new(h(0, 8), h(0, 18));
@@ -693,12 +684,7 @@ mod tests {
 
     #[test]
     fn test_actual_time_at_before_all_unavailable() {
-        let window = TimeWindow::hours(
-            TimeRange::new(h(0, 8), h(0, 18)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window = TimeWindow::hours(TimeRange::new(h(0, 8), h(0, 18)), 0.0, true, 1.0);
         let unavail = vec![TimeRange::new(h(0, 12), h(0, 14))];
         let calendar = TestCalendar::new(window, unavail);
         // 09:00 is before the unavailable period
@@ -708,12 +694,7 @@ mod tests {
 
     #[test]
     fn test_actual_time_at_after_all_unavailable() {
-        let window = TimeWindow::hours(
-            TimeRange::new(h(0, 8), h(0, 18)),
-            0.0,
-            true,
-            1.0,
-        );
+        let window = TimeWindow::hours(TimeRange::new(h(0, 8), h(0, 18)), 0.0, true, 1.0);
         let unavail = vec![TimeRange::new(h(0, 10), h(0, 12))];
         let calendar = TestCalendar::new(window, unavail);
         // 15:00 is after the unavailable period

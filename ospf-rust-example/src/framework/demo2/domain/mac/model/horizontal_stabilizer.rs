@@ -1,9 +1,9 @@
 //! 水平安定面模型 / Horizontal stabilizer model
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::{AbsFunction, SlackFunction};
+use std::error::Error;
+use std::sync::Arc;
 
 /// 水平安定面变量索引 / Horizontal stabilizer variable indices
 #[derive(Debug, Clone)]
@@ -83,11 +83,7 @@ impl HorizontalStabilizer {
         // Kotlin: val hsTrim = AbsFunction(trim)
         // result = |trim|
         let trim_linear = Linear::new(vec![LinearMonomial::new(1.0, trim_idx)], 0.0);
-        let abs_fn = AbsFunction::new(
-            next_id + 1,
-            &format!("hs_trim_{}", self.key),
-            trim_linear,
-        );
+        let abs_fn = AbsFunction::new(next_id + 1, &format!("hs_trim_{}", self.key), trim_linear);
         let abs_result_idx = abs_fn.result_variable().index();
         model.add_symbol(Arc::new(abs_fn))?;
 

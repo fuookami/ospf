@@ -4,11 +4,19 @@
 //! 本模块提供串行执行的组合二次求解器。
 //! This module provides serial-executing combinatorial quadratic solvers.
 
-use std::sync::Arc;
+use super::column_generation_solver::{
+    CombinatorialFallbackPolicy, CombinatorialSelection,
+    aggregate_combinatorial_reports_with_metadata, preserve_cancelled_attempts,
+};
+use super::framework_solve_options::child_cancellation_handle;
+use super::parallel_combinatorial_quadratic_solver::QuadraticSolver;
+use super::{FeasibleSolution, FrameworkSolveOptions, legacy_cancellation_error};
 use ospf_rust_core::error::{CoreError, Result, SolverError, SolverNotFoundError};
 use ospf_rust_core::model::intermediate::QuadraticTetradModel;
-use super::parallel_combinatorial_quadratic_solver::QuadraticSolver;
-use super::{FeasibleSolution, FrameworkSolveOptions};
+use ospf_rust_core::solver::{
+    CombinatorialSolveReport, SolveReport, SolverProvenance, cancelled_solve_report,
+};
+use std::sync::Arc;
 
 /// 串行组合二次求解器 / Serial Combinatorial Quadratic Solver
 ///
@@ -35,10 +43,57 @@ impl SerialCombinatorialQuadraticSolver {
     }
 
     fn should_stop_on_error(error: &CoreError) -> bool {
-        matches!(
-            error,
-            CoreError::Solver(SolverError::Infeasible | SolverError::Unbounded)
-        )
+        Self::should_stop_on_error_with_policy(error, &CombinatorialFallbackPolicy::default())
+    }
+
+    fn should_stop_on_error_with_policy(
+        error: &CoreError,
+        policy: &CombinatorialFallbackPolicy,
+    ) -> bool {
+        policy.should_stop_on_error(error)
+    }
+
+    fn should_stop_on_report_with_policy(
+        report: &SolveReport<f64>,
+        policy: &CombinatorialFallbackPolicy,
+    ) -> bool {
+        policy.should_stop_on_report(report)
+    }
+
+    fn cancellation_requested(options: &FrameworkSolveOptions) -> bool {
+        options
+            .cancellation_handle
+            .as_ref()
+            .is_some_and(|handle| handle.is_cancelled())
+    }
+
+    fn should_stop_on_legacy_error(error: &CoreError, options: &FrameworkSolveOptions) -> bool {
+        Self::should_stop_on_error_with_policy(error, &options.fallback_policy)
+            || Self::cancellation_requested(options)
+    }
+
+    fn pre_cancelled_report(
+        &self,
+        options: &FrameworkSolveOptions,
+    ) -> Result<Option<CombinatorialSolveReport<f64>>> {
+        let Some(handle) = options.cancellation_handle.as_ref() else {
+            return Ok(None);
+        };
+        if !handle.is_cancelled() {
+            return Ok(None);
+        }
+        let report = cancelled_solve_report(
+            SolverProvenance {
+                solver_id: self.name.clone(),
+                backend_name: "framework-combinatorial".to_owned(),
+                ..SolverProvenance::default()
+            },
+            handle,
+        )?;
+        Ok(Some(CombinatorialSolveReport::single(
+            report,
+            format!("{}#0", self.name),
+        )))
     }
 }
 
@@ -47,6 +102,49 @@ impl SerialCombinatorialQuadraticSolver {
 impl QuadraticSolver for SerialCombinatorialQuadraticSolver {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    async fn solve_combinatorial_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<CombinatorialSolveReport<f64>> {
+        if let Some(report) = self.pre_cancelled_report(&options)? {
+            return Ok(report);
+        }
+        let mut attempts = Vec::new();
+        let mut child_handles = Vec::new();
+        for (solver_index, solver) in self.solvers.iter().enumerate() {
+            let solver_name = solver.name().to_owned();
+            let child_handle = child_cancellation_handle(&options);
+            let attempt_options = options
+                .clone()
+                .with_cancellation_handle(Some(child_handle.clone()));
+            let result = solver
+                .solve_report_with_options(model, attempt_options)
+                .await;
+            child_handle.mark_completed();
+            let should_stop = child_handle.cancellation_preceded_completion()
+                || match &result {
+                    Ok(report) => {
+                        Self::should_stop_on_report_with_policy(report, &options.fallback_policy)
+                    }
+                    Err(error) => {
+                        Self::should_stop_on_error_with_policy(error, &options.fallback_policy)
+                            || Self::cancellation_requested(&options)
+                    }
+                };
+            child_handles.push(child_handle);
+            attempts.push((solver_index, solver_name, result));
+            if should_stop {
+                break;
+            }
+        }
+        aggregate_combinatorial_reports_with_metadata(
+            self.name(),
+            CombinatorialSelection::First,
+            preserve_cancelled_attempts(attempts, &child_handles),
+        )
     }
 
     async fn solve(&self, model: &QuadraticTetradModel) -> Result<FeasibleSolution> {
@@ -69,6 +167,36 @@ impl QuadraticSolver for SerialCombinatorialQuadraticSolver {
         )))
     }
 
+    fn solve_with_options<'a>(
+        &'a self,
+        model: &'a QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            if Self::cancellation_requested(&options) {
+                return Err(legacy_cancellation_error(&options));
+            }
+            for solver in &self.solvers {
+                match solver.solve_with_options(model, options.clone()).await {
+                    Ok(solution) => {
+                        log::info!("Solver {} found a solution.", solver.name());
+                        return Ok(solution);
+                    }
+                    Err(error) => {
+                        if Self::should_stop_on_legacy_error(&error, &options) {
+                            return Err(error);
+                        }
+                        log::warn!("Solver {} failed with error: {}", solver.name(), error);
+                    }
+                }
+            }
+            Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+                "No solver valid.",
+            )))
+        })
+    }
+
     fn solve_multi_with_options<'a>(
         &'a self,
         model: &'a QuadraticTetradModel,
@@ -79,6 +207,9 @@ impl QuadraticSolver for SerialCombinatorialQuadraticSolver {
         >,
     > {
         Box::pin(async move {
+            if Self::cancellation_requested(&options) {
+                return Err(legacy_cancellation_error(&options));
+            }
             for solver in &self.solvers {
                 match solver
                     .solve_multi_with_options(model, options.clone())
@@ -89,7 +220,7 @@ impl QuadraticSolver for SerialCombinatorialQuadraticSolver {
                         return Ok(result);
                     }
                     Err(e) => {
-                        if Self::should_stop_on_error(&e) {
+                        if Self::should_stop_on_legacy_error(&e, &options) {
                             return Err(e);
                         }
                         log::warn!("Solver {} failed with error: {}", solver.name(), e);
@@ -107,6 +238,47 @@ impl QuadraticSolver for SerialCombinatorialQuadraticSolver {
 impl QuadraticSolver for SerialCombinatorialQuadraticSolver {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn solve_combinatorial_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<CombinatorialSolveReport<f64>> {
+        if let Some(report) = self.pre_cancelled_report(&options)? {
+            return Ok(report);
+        }
+        let mut attempts = Vec::new();
+        let mut child_handles = Vec::new();
+        for (solver_index, solver) in self.solvers.iter().enumerate() {
+            let solver_name = solver.name().to_owned();
+            let child_handle = child_cancellation_handle(&options);
+            let attempt_options = options
+                .clone()
+                .with_cancellation_handle(Some(child_handle.clone()));
+            let result = solver.solve_report_with_options(model, attempt_options);
+            child_handle.mark_completed();
+            let should_stop = child_handle.cancellation_preceded_completion()
+                || match &result {
+                    Ok(report) => {
+                        Self::should_stop_on_report_with_policy(report, &options.fallback_policy)
+                    }
+                    Err(error) => {
+                        Self::should_stop_on_error_with_policy(error, &options.fallback_policy)
+                            || Self::cancellation_requested(&options)
+                    }
+                };
+            child_handles.push(child_handle);
+            attempts.push((solver_index, solver_name, result));
+            if should_stop {
+                break;
+            }
+        }
+        aggregate_combinatorial_reports_with_metadata(
+            self.name(),
+            CombinatorialSelection::First,
+            preserve_cancelled_attempts(attempts, &child_handles),
+        )
     }
 
     fn solve(&self, model: &QuadraticTetradModel) -> Result<FeasibleSolution> {
@@ -129,11 +301,41 @@ impl QuadraticSolver for SerialCombinatorialQuadraticSolver {
         )))
     }
 
+    fn solve_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<FeasibleSolution> {
+        if Self::cancellation_requested(&options) {
+            return Err(legacy_cancellation_error(&options));
+        }
+        for solver in &self.solvers {
+            match solver.solve_with_options(model, options.clone()) {
+                Ok(solution) => {
+                    log::info!("Solver {} found a solution.", solver.name());
+                    return Ok(solution);
+                }
+                Err(error) => {
+                    if Self::should_stop_on_legacy_error(&error, &options) {
+                        return Err(error);
+                    }
+                    log::warn!("Solver {} failed with error: {}", solver.name(), error);
+                }
+            }
+        }
+        Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+            "No solver valid.",
+        )))
+    }
+
     fn solve_multi_with_options(
         &self,
         model: &QuadraticTetradModel,
         options: FrameworkSolveOptions,
     ) -> Result<(FeasibleSolution, Vec<Vec<f64>>)> {
+        if Self::cancellation_requested(&options) {
+            return Err(legacy_cancellation_error(&options));
+        }
         for solver in &self.solvers {
             match solver.solve_multi_with_options(model, options.clone()) {
                 Ok(result) => {
@@ -141,7 +343,7 @@ impl QuadraticSolver for SerialCombinatorialQuadraticSolver {
                     return Ok(result);
                 }
                 Err(e) => {
-                    if Self::should_stop_on_error(&e) {
+                    if Self::should_stop_on_legacy_error(&e, &options) {
                         return Err(e);
                     }
                     log::warn!("Solver {} failed with error: {}", solver.name(), e);
@@ -161,9 +363,9 @@ mod tests {
     use crate::solver::parallel_combinatorial_quadratic_solver::QuadraticMetaModelSolverExt;
     #[cfg(not(feature = "async"))]
     use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+    use ospf_rust_core::solver::{ProblemStatus, SolveReport, TerminationReason};
     #[cfg(not(feature = "async"))]
     use ospf_rust_core::variable::ContinuousVariableItem;
-    #[cfg(not(feature = "async"))]
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct MockSolver {
@@ -228,6 +430,94 @@ mod tests {
         }
     }
 
+    struct CancelledReportMockSolver {
+        name: String,
+        calls: Arc<AtomicUsize>,
+        cancelled: bool,
+        cancel_on_success: bool,
+    }
+
+    fn cancelled_report() -> SolveReport<f64> {
+        SolveReport::builder(ProblemStatus::Unknown, TerminationReason::Cancelled)
+            .build()
+            .expect("cancelled report should be valid")
+    }
+
+    #[test]
+    fn terminal_errors_stop_the_quadratic_fallback_chain() {
+        for error in [
+            CoreError::Solver(SolverError::Cancelled("backend".to_owned())),
+            CoreError::Solver(SolverError::Interrupted("external".to_owned())),
+            CoreError::Solver(SolverError::Timeout(std::time::Duration::from_secs(1))),
+        ] {
+            assert!(SerialCombinatorialQuadraticSolver::should_stop_on_error(
+                &error
+            ));
+        }
+        assert!(!SerialCombinatorialQuadraticSolver::should_stop_on_error(
+            &CoreError::Solver(SolverError::SolveFailed("fallback".to_owned()))
+        ));
+    }
+
+    #[cfg_attr(feature = "async", async_trait::async_trait)]
+    impl QuadraticSolver for CancelledReportMockSolver {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve(&self, _model: &QuadraticTetradModel) -> Result<FeasibleSolution> {
+            Ok(FeasibleSolution::new(1.0, vec![1.0]))
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve(&self, _model: &QuadraticTetradModel) -> Result<FeasibleSolution> {
+            Ok(FeasibleSolution::new(1.0, vec![1.0]))
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve_report_with_options(
+            &self,
+            _model: &QuadraticTetradModel,
+            options: FrameworkSolveOptions,
+        ) -> Result<SolveReport<f64>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.cancelled {
+                Ok(cancelled_report())
+            } else {
+                if self.cancel_on_success {
+                    let handle = options
+                        .cancellation_handle
+                        .as_ref()
+                        .expect("serial attempt should receive a child cancellation handle");
+                    assert!(handle.cancel(ospf_rust_core::solver::CancellationOrigin::Callback));
+                }
+                FeasibleSolution::new(1.0, vec![1.0]).to_solve_report(&self.name)
+            }
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_report_with_options(
+            &self,
+            _model: &QuadraticTetradModel,
+            options: FrameworkSolveOptions,
+        ) -> Result<SolveReport<f64>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if self.cancelled {
+                Ok(cancelled_report())
+            } else {
+                if self.cancel_on_success {
+                    let handle = options
+                        .cancellation_handle
+                        .as_ref()
+                        .expect("serial attempt should receive a child cancellation handle");
+                    assert!(handle.cancel(ospf_rust_core::solver::CancellationOrigin::Callback));
+                }
+                FeasibleSolution::new(1.0, vec![1.0]).to_solve_report(&self.name)
+            }
+        }
+    }
+
     #[test]
     fn test_serial_combinatorial_quadratic_solver() {
         let solvers: Vec<Arc<dyn QuadraticSolver>> = vec![
@@ -244,6 +534,160 @@ mod tests {
         let solver = SerialCombinatorialQuadraticSolver::new(solvers);
         assert!(solver.name().contains("solver1"));
         assert!(solver.name().contains("solver2"));
+    }
+
+    #[cfg(not(feature = "async"))]
+    #[test]
+    fn report_cancellation_stops_the_fallback_chain() {
+        let first_calls = Arc::new(AtomicUsize::new(0));
+        let second_calls = Arc::new(AtomicUsize::new(0));
+        let solver = SerialCombinatorialQuadraticSolver::new(vec![
+            Arc::new(CancelledReportMockSolver {
+                name: "cancelled".to_owned(),
+                calls: Arc::clone(&first_calls),
+                cancelled: true,
+                cancel_on_success: false,
+            }),
+            Arc::new(CancelledReportMockSolver {
+                name: "fallback".to_owned(),
+                calls: Arc::clone(&second_calls),
+                cancelled: false,
+                cancel_on_success: false,
+            }),
+        ]);
+
+        let aggregate = solver
+            .solve_combinatorial_report_with_options(
+                &QuadraticTetradModel::new("serial_cancelled_report"),
+                FrameworkSolveOptions::default(),
+            )
+            .expect("cancelled report should be aggregated");
+        assert_eq!(
+            aggregate.report.termination_reason,
+            TerminationReason::Cancelled
+        );
+        assert_eq!(aggregate.attempts.len(), 1);
+        assert_eq!(first_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(second_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn report_cancellation_stops_the_fallback_chain() {
+        let first_calls = Arc::new(AtomicUsize::new(0));
+        let second_calls = Arc::new(AtomicUsize::new(0));
+        let solver = SerialCombinatorialQuadraticSolver::new(vec![
+            Arc::new(CancelledReportMockSolver {
+                name: "cancelled".to_owned(),
+                calls: Arc::clone(&first_calls),
+                cancelled: true,
+                cancel_on_success: false,
+            }),
+            Arc::new(CancelledReportMockSolver {
+                name: "fallback".to_owned(),
+                calls: Arc::clone(&second_calls),
+                cancelled: false,
+                cancel_on_success: false,
+            }),
+        ]);
+
+        let aggregate = solver
+            .solve_combinatorial_report_with_options(
+                &QuadraticTetradModel::new("serial_cancelled_report"),
+                FrameworkSolveOptions::default(),
+            )
+            .await
+            .expect("cancelled report should be aggregated");
+        assert_eq!(
+            aggregate.report.termination_reason,
+            TerminationReason::Cancelled
+        );
+        assert_eq!(aggregate.attempts.len(), 1);
+        assert_eq!(first_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(second_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[cfg(not(feature = "async"))]
+    #[test]
+    fn report_success_after_attempt_cancellation_is_not_selected() {
+        let first_calls = Arc::new(AtomicUsize::new(0));
+        let second_calls = Arc::new(AtomicUsize::new(0));
+        let solver = SerialCombinatorialQuadraticSolver::new(vec![
+            Arc::new(CancelledReportMockSolver {
+                name: "cancel-after-start".to_owned(),
+                calls: Arc::clone(&first_calls),
+                cancelled: false,
+                cancel_on_success: true,
+            }),
+            Arc::new(CancelledReportMockSolver {
+                name: "must-not-run".to_owned(),
+                calls: Arc::clone(&second_calls),
+                cancelled: false,
+                cancel_on_success: false,
+            }),
+        ]);
+
+        let aggregate = solver
+            .solve_combinatorial_report_with_options(
+                &QuadraticTetradModel::new("serial_cancel_after_start"),
+                FrameworkSolveOptions::default(),
+            )
+            .expect("cancelled attempt should produce a structured report");
+
+        assert_eq!(
+            aggregate.report.termination_reason,
+            TerminationReason::Cancelled
+        );
+        assert!(!aggregate.report.has_incumbent());
+        assert_eq!(aggregate.attempts.len(), 1);
+        assert_eq!(first_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(second_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            aggregate.attempts[0].cancellation_reason.as_deref(),
+            Some("CALLBACK")
+        );
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn report_success_after_attempt_cancellation_is_not_selected() {
+        let first_calls = Arc::new(AtomicUsize::new(0));
+        let second_calls = Arc::new(AtomicUsize::new(0));
+        let solver = SerialCombinatorialQuadraticSolver::new(vec![
+            Arc::new(CancelledReportMockSolver {
+                name: "cancel-after-start".to_owned(),
+                calls: Arc::clone(&first_calls),
+                cancelled: false,
+                cancel_on_success: true,
+            }),
+            Arc::new(CancelledReportMockSolver {
+                name: "must-not-run".to_owned(),
+                calls: Arc::clone(&second_calls),
+                cancelled: false,
+                cancel_on_success: false,
+            }),
+        ]);
+
+        let aggregate = solver
+            .solve_combinatorial_report_with_options(
+                &QuadraticTetradModel::new("serial_cancel_after_start"),
+                FrameworkSolveOptions::default(),
+            )
+            .await
+            .expect("cancelled attempt should produce a structured report");
+
+        assert_eq!(
+            aggregate.report.termination_reason,
+            TerminationReason::Cancelled
+        );
+        assert!(!aggregate.report.has_incumbent());
+        assert_eq!(aggregate.attempts.len(), 1);
+        assert_eq!(first_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(second_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            aggregate.attempts[0].cancellation_reason.as_deref(),
+            Some("CALLBACK")
+        );
     }
 
     #[cfg(not(feature = "async"))]

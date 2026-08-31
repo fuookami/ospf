@@ -1,15 +1,14 @@
 //! 带宽管道列表生成器模块 / Bandwidth pipeline list generator module
 
-use std::error::Error;
+use super::super::aggregation::Aggregation;
+use super::limits::{
+    apply_bandwidth_cost_objective, apply_demand_constraints, apply_edge_bandwidth_constraints,
+    apply_service_capacity_constraints, apply_transfer_node_bandwidth_constraints,
+};
+use crate::framework::demo1::route_context::model::{Edge, Node, Service};
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_multiarray::{MultiArray, Shape};
-use super::super::aggregation::Aggregation;
-use crate::framework::demo1::route_context::model::{Edge, Node, Service};
-use super::limits::{
-    apply_bandwidth_cost_objective, apply_demand_constraints,
-    apply_edge_bandwidth_constraints, apply_service_capacity_constraints,
-    apply_transfer_node_bandwidth_constraints,
-};
+use std::error::Error;
 
 /// 带宽管道列表生成器 / Bandwidth pipeline list generator
 ///
@@ -40,17 +39,34 @@ pub fn generate_pipelines(
     let y_idx = &aggregation.edge_bandwidth.y_idx;
 
     apply_edge_bandwidth_constraints(
-        model, edges, services, nodes,
-        bandwidth, service_assignment, y_idx,
+        model,
+        edges,
+        services,
+        nodes,
+        bandwidth,
+        service_assignment,
+        y_idx,
     )?;
     apply_demand_constraints(model, nodes, edges, services, bandwidth)?;
     apply_service_capacity_constraints(
-        model, nodes, edges, services,
-        bandwidth, node_assignment, y_idx, normal_node_indices,
+        model,
+        nodes,
+        edges,
+        services,
+        bandwidth,
+        node_assignment,
+        y_idx,
+        normal_node_indices,
     )?;
     apply_transfer_node_bandwidth_constraints(
-        model, nodes, edges, services,
-        bandwidth, node_assignment, y_idx, normal_node_indices,
+        model,
+        nodes,
+        edges,
+        services,
+        bandwidth,
+        node_assignment,
+        y_idx,
+        normal_node_indices,
     )?;
     apply_bandwidth_cost_objective(model, edges, nodes, services, bandwidth)?;
 

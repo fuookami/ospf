@@ -1,10 +1,10 @@
 //! 耦合 Lorenz 吸引子。
 //! Coupled Lorenz attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoupledLorenzAttractor<S: Field + Float = f64> {

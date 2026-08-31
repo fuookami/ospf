@@ -1,9 +1,9 @@
 //! 三维平面坐标框架。
 //! Three-dimensional plane coordinate frames.
 
-use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::{Axis3, AxisPlane3, Cuboid3, Point2, Point3, Rectangle2, Vector3};
+use num_traits::Float;
 
 /// 平面二维点兼容命名。
 /// Compatibility name for two-dimensional points in a plane frame.

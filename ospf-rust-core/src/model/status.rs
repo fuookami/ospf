@@ -1,7 +1,7 @@
 //! 模型构建状态 / Model building status
 
-use std::sync::Arc;
 use crate::error::Result;
+use std::sync::Arc;
 
 /// 模型阶段 / Model stage
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

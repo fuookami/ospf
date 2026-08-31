@@ -5,11 +5,11 @@
 //!
 //! # 核心模块 / Core Modules
 //!
-//! - [`model`]: 物料类型、需求/储备、生产任务和使用量组件
+//! - [`model`][]: 物料类型、需求/储备、生产任务和使用量组件
 //! - [`service`]: 产出/消耗限制和目标 Pipeline
 
-use ospf_rust_core::model::MetaModel;
 use crate::GanttResult;
+use ospf_rust_core::model::MetaModel;
 
 pub mod model;
 pub mod service;
@@ -19,28 +19,16 @@ pub mod service;
 // ========================================================================
 
 pub use model::{
-    MaterialTrait,
-    Product,
-    SemiProduct,
-    RawMaterial,
-    MaterialDemand,
-    MaterialReserves,
-    ProductionTaskTrait,
-    ProduceUsage,
-    ConsumptionUsage,
+    ConsumptionUsage, MaterialDemand, MaterialReserves, MaterialTrait, ProduceUsage, Product,
+    ProductionTaskTrait, RawMaterial, SemiProduct,
 };
 
 pub use service::{
-    ProduceQuantityConstraint,
-    ConsumptionQuantityConstraint,
-    ProduceOverQuantityMinimization,
-    ProduceLessQuantityMinimization,
-    ProduceQuantityMaximization,
+    ConsumptionLessQuantityMinimization, ConsumptionOverQuantityMinimization,
+    ConsumptionQuantityConstraint, ConsumptionQuantityMaximization,
+    ConsumptionQuantityMinimization, ProduceLessQuantityMinimization,
+    ProduceOverQuantityMinimization, ProduceQuantityConstraint, ProduceQuantityMaximization,
     ProduceQuantityMinimization,
-    ConsumptionOverQuantityMinimization,
-    ConsumptionLessQuantityMinimization,
-    ConsumptionQuantityMaximization,
-    ConsumptionQuantityMinimization,
 };
 
 // ========================================================================

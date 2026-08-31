@@ -32,6 +32,12 @@ pub struct IISConfig {
     /// 时间限制 / Time limit
     pub time_limit: Option<Duration>,
 
+    /// 无改进提前终止阈值 / No-improvement early-stop threshold
+    pub no_improvement_time_limit: Option<Duration>,
+
+    /// 可中断时间，达到前不触发无改进提前终止 / Interruptible time before which no-improvement early-stop is suppressed
+    pub interruptible_time: Option<Duration>,
+
     /// 是否包含变量边界 / Whether to include variable bounds
     pub include_bounds: bool,
 
@@ -51,6 +57,8 @@ impl Default for IISConfig {
             algorithm: IISAlgorithm::default(),
             max_iterations: 1000,
             time_limit: None,
+            no_improvement_time_limit: None,
+            interruptible_time: None,
             include_bounds: true,
             verbose: false,
             elastic_penalty: 1000.0,
@@ -86,6 +94,18 @@ impl IISConfig {
     /// 设置时间限制 / Set time limit
     pub fn with_time_limit(mut self, duration: Duration) -> Self {
         self.time_limit = Some(duration);
+        self
+    }
+
+    /// 设置无改进提前终止阈值 / Set no-improvement early-stop threshold
+    pub fn with_no_improvement_time_limit(mut self, duration: Duration) -> Self {
+        self.no_improvement_time_limit = Some(duration);
+        self
+    }
+
+    /// 设置可中断时间 / Set interruptible time
+    pub fn with_interruptible_time(mut self, duration: Duration) -> Self {
+        self.interruptible_time = Some(duration);
         self
     }
 
@@ -149,5 +169,27 @@ impl ConstraintSource {
             ConstraintSource::LowerBound(i) => *i,
             ConstraintSource::UpperBound(i) => *i,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IISConfig;
+    use std::time::Duration;
+
+    #[test]
+    fn interruptible_time_configuration_defaults_and_setters() {
+        let default_config = IISConfig::default();
+        assert_eq!(default_config.no_improvement_time_limit, None);
+        assert_eq!(default_config.interruptible_time, None);
+
+        let config = IISConfig::new()
+            .with_no_improvement_time_limit(Duration::from_secs(10))
+            .with_interruptible_time(Duration::from_secs(60));
+        assert_eq!(
+            config.no_improvement_time_limit,
+            Some(Duration::from_secs(10))
+        );
+        assert_eq!(config.interruptible_time, Some(Duration::from_secs(60)));
     }
 }

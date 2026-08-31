@@ -1,10 +1,10 @@
 //! Qi 吸引子（四维超混沌）。
 //! Qi attractor (4D hyperchaotic).
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point4};
 use crate::algebra::Field;
 use crate::geometry::Point4;
-use super::helpers::{default_float, one_point4};
+use num_traits::Float;
 
 point4_system!(
     /// Qi 吸引子的一阶欧拉步进模型。
@@ -48,14 +48,25 @@ impl<S: Field + Float> Default for QiAttractorGenerator<S> {
 
 /// 创建 Qi 吸引子。
 /// Create a Qi attractor.
-pub fn qi_attractor<S: Field + Float>(alpha: S, beta: S, delta: S, zeta: S, h: S) -> QiAttractor<S> {
+pub fn qi_attractor<S: Field + Float>(
+    alpha: S,
+    beta: S,
+    delta: S,
+    zeta: S,
+    h: S,
+) -> QiAttractor<S> {
     QiAttractor::new(alpha, beta, delta, zeta, h)
 }
 
 /// 创建 Qi 吸引子生成器。
 /// Create a Qi attractor generator.
 pub fn qi_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, delta: S, zeta: S, h: S, x: Point4<S>,
+    alpha: S,
+    beta: S,
+    delta: S,
+    zeta: S,
+    h: S,
+    x: Point4<S>,
 ) -> QiAttractorGenerator<S> {
     QiAttractorGenerator::new(QiAttractor::new(alpha, beta, delta, zeta, h), x)
 }

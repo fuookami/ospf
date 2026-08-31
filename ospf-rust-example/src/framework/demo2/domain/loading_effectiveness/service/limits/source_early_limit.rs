@@ -1,9 +1,9 @@
 //! 出发地提前限制 / Source early limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 来源早期限制: 同来源的货物应尽早装载 / Source early limit: same-source cargos should load at early positions
 /// 对齐 Kotlin SourceEarlyLimit

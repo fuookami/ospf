@@ -3,9 +3,9 @@
 //!
 //! 公式: x_{n+1} = 2.3 * x^(2*sin(pi*x))
 
-use num_traits::Float;
-use crate::algebra::Field;
 use super::helpers::default_float;
+use crate::algebra::Field;
+use num_traits::Float;
 
 scalar_map!(
     /// Sinus 映射。
@@ -34,7 +34,10 @@ impl<S: Field + Float> Default for SinusMap<S> {
 
 impl<S: Field + Float> Default for SinusMapGenerator<S> {
     fn default() -> Self {
-        Self::new(SinusMap::default(), S::from(0.5).expect("0.5 must be representable"))
+        Self::new(
+            SinusMap::default(),
+            S::from(0.5).expect("0.5 must be representable"),
+        )
     }
 }
 

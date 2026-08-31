@@ -9,21 +9,21 @@
 
 use std::sync::Arc;
 
-use ospf_rust_core::model::flatten::LinearMonomial;
 use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
+use ospf_rust_core::model::flatten::LinearMonomial;
 use ospf_rust_core::symbol::LinearIntermediateSymbol;
+use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::variable::{Binary, UInteger, VariableRange};
 
+use crate::GanttError;
+use crate::GanttResult;
 use crate::domain::common::{
     ExecutorId, ExecutorIdTrait, ProductionActionId, ProductionActionIdTrait,
 };
 use crate::domain::task_compilation::adapter::{
-    next_gantt_symbol_id, symbols_to_indexed_1d, IndexedLinearExpressionSymbols1,
-    IndexedVariableArray2, IndexedVariableArray3,
+    IndexedLinearExpressionSymbols1, IndexedVariableArray2, IndexedVariableArray3,
+    next_gantt_symbol_id, symbols_to_indexed_1d,
 };
-use crate::GanttError;
-use crate::GanttResult;
 
 fn rounded_positive_amount(value: f64) -> Option<u64> {
     if !value.is_finite() {

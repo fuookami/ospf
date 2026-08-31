@@ -1,10 +1,10 @@
 //! 装载限制 / Stowage limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 use crate::framework::demo2::domain::stowage::aggregation::StowageAggregation;
 use crate::framework::demo2::domain::stowage::context::StowageContext;
 use crate::framework::demo2::domain::stowage::model::stowage::StowageVariables;
-use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 装载限制: 不兼容的 item-position 对强制 stowage[i][j] = 0
 /// 对齐 Kotlin StowageLimit
@@ -24,12 +24,7 @@ pub fn apply_stowage_limits(
                     &[(stowage_vars.x[c][p], 1.0)],
                     ConstraintRelation::Equal,
                     0.0,
-                    &format!(
-                        "stowage_forbidden_{}_{}_{}",
-                        mode_name(context.mode),
-                        c,
-                        p
-                    ),
+                    &format!("stowage_forbidden_{}_{}_{}", mode_name(context.mode), c, p),
                 )?;
             }
         }

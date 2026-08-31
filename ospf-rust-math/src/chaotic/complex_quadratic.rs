@@ -1,10 +1,10 @@
 //! 复二次多项式。
 //! Complex quadratic polynomial.
 
-use num_traits::Float;
+use super::helpers::one_point2;
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use super::helpers::one_point2;
+use num_traits::Float;
 
 /// 复二次多项式的一阶欧拉步进模型。
 /// First-order Euler step model for the complex quadratic polynomial.

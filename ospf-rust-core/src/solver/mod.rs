@@ -15,8 +15,8 @@
 //!
 //! # 支持的求解器 / Supported Solvers
 //!
-//! - [`solvers::GurobiSolver`] - Gurobi 求解器（需要 `gurobi` feature）
-//! - [`solvers::SCIPSolver`] - SCIP 求解器（需要 `scip` feature）
+//! - `solvers::gurobi::GurobiSolver` - Gurobi 求解器（需要 `gurobi` feature）
+//! - `solvers::scip::SCIPSolver` - SCIP 求解器（需要 `scip` feature）
 //!
 //! # IIS 计算 / IIS Computation
 //!
@@ -29,11 +29,19 @@
 //! - [`heuristic::Individual`] - 个体 trait
 //! - [`heuristic::Population`] - 种群
 
+pub mod audit;
 pub mod backend;
+pub mod cancellation;
+pub mod checkpoint;
 pub mod config;
+pub mod constraint_programming;
+pub mod fingerprint;
 pub mod heuristic;
 pub mod iis;
 pub mod output;
+pub mod progress;
+pub mod report;
+#[allow(clippy::module_inception)]
 pub mod solver;
 #[doc(hidden)]
 pub mod solver_config;
@@ -43,8 +51,15 @@ pub mod solver_output;
 pub mod solvers;
 pub mod value;
 
+pub use audit::*;
+pub use cancellation::*;
+pub use checkpoint::*;
 pub use config::*;
+pub use constraint_programming::*;
+pub use fingerprint::*;
 pub use output::*;
+pub use progress::*;
+pub use report::*;
 pub use solver::*;
 pub use solver_ext::*;
 pub use value::*;

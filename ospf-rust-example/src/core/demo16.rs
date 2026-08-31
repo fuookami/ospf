@@ -1,14 +1,12 @@
 //! Demo16 模块 / Demo16 module
 use std::error::Error;
 
-use ospf_rust_multiarray::Shape;
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
-use ospf_rust_core::symbol::{
-    LinearExpressionSymbol, flat_map1_indexed,
-};
+use ospf_rust_core::model::{ConstraintRelation, MetaModel, ObjectiveCategory};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, flat_map1_indexed};
 use ospf_rust_core::variable::{UInteger, VariableCombination2D};
+use ospf_rust_multiarray::Shape;
 
-use super::common::{read_solution_value, solve_typed, extract_coeffs};
+use super::common::{extract_coeffs, read_solution_value, solve_typed};
 
 /// Monthly plan data structure
 #[derive(Debug, Clone)]
@@ -52,11 +50,14 @@ struct ProductionModel {
     /// 供应符号 / Supply symbol
     supply: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
     /// 生产成本符号 / Produce cost symbol
-    produce_cost: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    produce_cost:
+        ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
     /// 存储成本符号 / Storage cost symbol
-    storage_cost: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    storage_cost:
+        ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
     /// 延迟交付成本符号 / Delay delivery cost symbol
-    delay_cost: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    delay_cost:
+        ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
 }
 
 impl ProductionModel {
@@ -79,60 +80,95 @@ impl ProductionModel {
         let x_idx = model.register_combination(&x_vars)?;
 
         // produce cost = product_price * sum(x[i][j])
-        let produce_cost = flat_map1_indexed("produce_cost", plans, |i, _plan| {
-            let monomials: Vec<_> = (0..n)
-                .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                    product_price,
-                    x_idx[&[i, j]],
-                ))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, plan| format!("{}", plan.month));
+        let produce_cost = flat_map1_indexed(
+            "produce_cost",
+            plans,
+            |i, _plan| {
+                let monomials: Vec<_> = (0..n)
+                    .map(|j| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            product_price,
+                            x_idx[&[i, j]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, plan| format!("{}", plan.month),
+        );
         model.add_symbol_combination(&produce_cost)?;
 
         // storage cost = sum((j-i) * storage_price * x[i][j]) for i < j
-        let storage_cost = flat_map1_indexed("storage_cost", plans, |i, _plan| {
-            let monomials: Vec<_> = (0..n)
-                .filter(|&j| i < j)
-                .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                    (j - i) as f64 * storage_price,
-                    x_idx[&[i, j]],
-                ))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, plan| format!("{}", plan.month));
+        let storage_cost = flat_map1_indexed(
+            "storage_cost",
+            plans,
+            |i, _plan| {
+                let monomials: Vec<_> = (0..n)
+                    .filter(|&j| i < j)
+                    .map(|j| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            (j - i) as f64 * storage_price,
+                            x_idx[&[i, j]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, plan| format!("{}", plan.month),
+        );
         model.add_symbol_combination(&storage_cost)?;
 
         // delay delivery cost = sum((j-i)^2 * delay_price * x[j][i]) for i < j
         // Note: x[j][i] means produce in month j (later) for demand in month i (earlier)
-        let delay_cost = flat_map1_indexed("delay_cost", plans, |i, _plan| {
-            let monomials: Vec<_> = (0..n)
-                .filter(|&j| i < j)
-                .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                    ((j - i) * (j - i)) as f64 * delay_price,
-                    x_idx[&[j, i]],
-                ))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, plan| format!("{}", plan.month));
+        let delay_cost = flat_map1_indexed(
+            "delay_cost",
+            plans,
+            |i, _plan| {
+                let monomials: Vec<_> = (0..n)
+                    .filter(|&j| i < j)
+                    .map(|j| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            ((j - i) * (j - i)) as f64 * delay_price,
+                            x_idx[&[j, i]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, plan| format!("{}", plan.month),
+        );
         model.add_symbol_combination(&delay_cost)?;
 
         // Supply constraints per demand month: sum_i x[i][j] >= demand[j]
-        let supply = flat_map1_indexed("supply", plans, |j, _plan| {
-            let monomials: Vec<_> = (0..n)
-                .map(|i| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[i, j]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, plan| format!("{}", plan.month));
+        let supply = flat_map1_indexed(
+            "supply",
+            plans,
+            |j, _plan| {
+                let monomials: Vec<_> = (0..n)
+                    .map(|i| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[i, j]])
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, plan| format!("{}", plan.month),
+        );
         model.add_symbol_combination(&supply)?;
 
         // Productivity constraints per produce month: sum_j x[i][j] <= productivity[i]
-        let produce = flat_map1_indexed("produce", plans, |i, _plan| {
-            let monomials: Vec<_> = (0..n)
-                .map(|j| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[i, j]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, plan| format!("{}", plan.month));
+        let produce = flat_map1_indexed(
+            "produce",
+            plans,
+            |i, _plan| {
+                let monomials: Vec<_> = (0..n)
+                    .map(|j| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[i, j]])
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, plan| format!("{}", plan.month),
+        );
         model.add_symbol_combination(&produce)?;
 
         Ok(ProductionModel {
@@ -201,7 +237,13 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let storage_price = 0.5;
 
     let mut model = MetaModel::<f64>::new("demo16");
-    let production = ProductionModel::register(&mut model, &plans, product_price, delay_price, storage_price)?;
+    let production = ProductionModel::register(
+        &mut model,
+        &plans,
+        product_price,
+        delay_price,
+        storage_price,
+    )?;
 
     production.add_constraints(&mut model, &plans)?;
 

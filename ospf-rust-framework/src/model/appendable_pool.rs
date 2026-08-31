@@ -12,8 +12,8 @@ use std::fmt::Debug;
 use std::hash::Hash;
 
 use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::variable::{VariableTypeTrait, VariableRange};
 use ospf_rust_core::token::IntoValue;
+use ospf_rust_core::variable::{VariableRange, VariableTypeTrait};
 
 // ============================================================================
 // AppendableVariablePool - 可追加变量池
@@ -74,7 +74,7 @@ where
         name_gen: impl Fn(&K, usize) -> String,
         range_gen: impl Fn(&K) -> VariableRange<VT::Value>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        for (_i, key) in keys.iter().enumerate() {
+        for key in keys {
             let name = name_gen(key, self.iteration);
             let range = range_gen(key);
             let var = ospf_rust_core::variable::VariableItem::<VT>::auto_with_range(&name, range);

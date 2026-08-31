@@ -1,13 +1,9 @@
 //! 基本模型 / Basic Model
 
-use std::collections::{HashMap, HashSet};
-use std::fmt::Debug;
-use std::sync::Arc;
 use super::configuration::BasicModelConfiguration;
 use super::flatten::{FlattenContextTrait, LazyLinearFlattenContext};
 use super::mechanism::{ConstraintGroup, LinearInequality, MetaConstraint};
 use super::{
-
     LazyRangeCacheContext, LazyValueCacheContext, RangeCacheContextTrait, ValueCacheContextTrait,
 };
 use crate::error::{ModelError, Result, VariableError};
@@ -17,9 +13,10 @@ use crate::symbol::{
 use crate::token::{
     AnyVariable, IntoValue, MutableTokenList, Token, TokenList, TokenVariableData, VecTokenList,
 };
-use crate::variable::{
-    VariableItem, VariableId, VariableRange, VariableTypeTrait,
-};
+use crate::variable::{VariableId, VariableItem, VariableRange, VariableTypeTrait};
+use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
+use std::sync::Arc;
 
 /// 基本模型 / Basic Model
 ///
@@ -51,6 +48,29 @@ where
     config: BasicModelConfiguration,
 }
 
+/// 用于 `MetaModel` 事务回滚的基础模型状态。
+///
+/// 有意不保存缓存上下文；恢复 token 表后重新建立上下文，避免失败的结构修改留下指向
+/// 失败操作中新注册 token 的过期引用。
+/// Basic-model state used by `MetaModel` transaction rollback.
+///
+/// The cache contexts are intentionally omitted. They are rebuilt from the
+/// restored token table so a failed structural mutation cannot retain stale
+/// references to tokens that were registered during the failed operation.
+pub(crate) struct BasicModelSnapshot<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    name: String,
+    tokens: Vec<Token<V>>,
+    token_index: HashMap<VariableId, usize>,
+    symbols: Vec<Arc<dyn IntermediateSymbol<V>>>,
+    symbol_dependencies: HashMap<u64, HashSet<u64>>,
+    constraints: Vec<MetaConstraint<LinearInequality<V>>>,
+    constraint_groups: HashMap<u64, Arc<ConstraintGroup>>,
+    config: BasicModelConfiguration,
+}
+
 impl<V> BasicModel<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
@@ -70,6 +90,35 @@ where
             range_cache_ctx: LazyRangeCacheContext::new(),
             config: BasicModelConfiguration::default(),
         }
+    }
+
+    /// 捕获可变模型状态，供事务使用。
+    /// Capture the mutable model state for a transaction.
+    pub(crate) fn snapshot(&self) -> BasicModelSnapshot<V> {
+        BasicModelSnapshot {
+            name: self.name.clone(),
+            tokens: self.tokens.clone(),
+            token_index: self.token_index.clone(),
+            symbols: self.symbols.clone(),
+            symbol_dependencies: self.symbol_dependencies.clone(),
+            constraints: self.constraints.clone(),
+            constraint_groups: self.constraint_groups.clone(),
+            config: self.config.clone(),
+        }
+    }
+
+    /// 恢复此前捕获的状态并重建结构缓存。
+    /// Restore a previously captured state and rebuild structural caches.
+    pub(crate) fn restore(&mut self, snapshot: BasicModelSnapshot<V>) {
+        self.name = snapshot.name;
+        self.tokens = snapshot.tokens;
+        self.token_index = snapshot.token_index;
+        self.symbols = snapshot.symbols;
+        self.symbol_dependencies = snapshot.symbol_dependencies;
+        self.constraints = snapshot.constraints;
+        self.constraint_groups = snapshot.constraint_groups;
+        self.config = snapshot.config;
+        self.rebind_contexts();
     }
 
     /// 生成当前 token 快照 / Build token snapshot
@@ -199,25 +248,24 @@ where
     }
 
     /// 添加变量 / Add variable
-    pub fn add_variable<VT: VariableTypeTrait>(&mut self, variable: VariableItem<VT>) -> Result<usize>
+    pub fn add_variable<VT: VariableTypeTrait>(
+        &mut self,
+        variable: VariableItem<VT>,
+    ) -> Result<usize>
     where
         V: IntoValue<f64>,
         VT::Value: IntoValue<V>,
     {
         let var_id = variable.id();
         let range = variable.range();
-        let lower_bound = match &range.lower_bound {
-            Some(v) => {
-                Some(v.clone().into_value())
-            }
-            None => None,
-        };
-        let upper_bound = match &range.upper_bound {
-            Some(v) => {
-                Some(v.clone().into_value())
-            }
-            None => None,
-        };
+        let lower_bound = range
+            .lower_bound
+            .as_ref()
+            .map(|value| value.clone().into_value());
+        let upper_bound = range
+            .upper_bound
+            .as_ref()
+            .map(|value| value.clone().into_value());
         let var_data = TokenVariableData::<V> {
             id: var_id,
             index: variable.index(),
@@ -474,7 +522,7 @@ where
 
         self.symbol_dependencies
             .entry(symbol_id)
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(dependency_id);
         self.invalidate_solution_caches();
         Ok(())
@@ -615,11 +663,9 @@ where
         range: VariableRange<V>,
     ) -> Result<()> {
         let Some(token) = self.tokens.get_mut(index) else {
-            return Err(ModelError::InvalidConstraint(format!(
-                "token index {} not found",
-                index
-            ))
-            .into());
+            return Err(
+                ModelError::InvalidConstraint(format!("token index {} not found", index)).into(),
+            );
         };
         token.set_range(range);
         self.rebind_contexts();
@@ -1093,17 +1139,11 @@ mod tests {
         let mut model = BasicModel::<f64>::new("dynamic_lifecycle");
         let idx_x = model.register_auto_variable::<Binary>("x").unwrap();
         let idx_y = model
-            .register_auto_variable_with_range::<Continuous>(
-                "y",
-                VariableRange::bounded(-1.0, 2.0),
-            )
+            .register_auto_variable_with_range::<Continuous>("y", VariableRange::bounded(-1.0, 2.0))
             .unwrap();
 
         model.set_solution_by_solver_order(&[0.0, 1.5]);
-        assert_eq!(
-            model.solution_by_solver_order(),
-            vec![Some(0.0), Some(1.5)]
-        );
+        assert_eq!(model.solution_by_solver_order(), vec![Some(0.0), Some(1.5)]);
         assert!(model.has_solution());
 
         model.set_solution_by_solver_order(&[1.0]);

@@ -21,7 +21,9 @@ pub struct ShadowPriceMap {
 impl ShadowPriceMap {
     /// 创建空的影子价格映射 / Create an empty shadow price map
     pub fn new() -> Self {
-        Self { prices: HashMap::new() }
+        Self {
+            prices: HashMap::new(),
+        }
     }
 
     /// 获取指定参数的影子价格 / Get shadow price for given arguments

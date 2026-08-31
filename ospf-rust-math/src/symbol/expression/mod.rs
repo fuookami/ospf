@@ -1,28 +1,30 @@
 //! 运行时表达式系统
 //! Runtime expression system
 
-mod property_path;
-mod operators;
-mod value;
-mod scalar;
 mod boolean;
 mod dsl;
 mod evaluation;
-mod normalize;
 mod math_functions;
+mod normalize;
+mod operators;
+mod property_path;
+mod scalar;
+mod transform;
+mod value;
 
 #[cfg(feature = "parser")]
 mod scalar_parser;
 
-pub use property_path::*;
-pub use operators::*;
-pub use value::*;
-pub use scalar::*;
 pub use boolean::*;
 pub use dsl::*;
 pub use evaluation::*;
-pub use normalize::*;
 pub use math_functions::*;
+pub use normalize::*;
+pub use operators::*;
+pub use property_path::*;
+pub use scalar::*;
+pub use transform::*;
+pub use value::*;
 
 #[cfg(feature = "parser")]
 mod parser_support {
@@ -583,7 +585,9 @@ mod parser_support {
                     self.parse_in_expression(path, false)
                 }
                 token_type if token_type.is_pattern_operator() => {
-                    let mode = token_type.pattern_match_mode().expect("token is pattern operator / token 是模式操作符");
+                    let mode = token_type
+                        .pattern_match_mode()
+                        .expect("token is pattern operator / token 是模式操作符");
                     self.advance();
                     self.parse_pattern_match(path, mode, false)
                 }
@@ -815,14 +819,16 @@ pub use parser_support::{
 
 #[cfg(feature = "serde")]
 mod serde_support {
+    use super::property_path::{
+        PropertyPath, path_owned_symbol, path_symbol_id, stable_path_symbol_hash,
+    };
     use super::*;
-    use std::any::Any;
-    use std::fmt::{Display, Formatter};
     use crate::Trivalent;
     use crate::symbol::{DynSymbol, OwnedSymbol, SymbolDynId};
-    use super::property_path::{PropertyPath, path_symbol_id, path_owned_symbol, stable_path_symbol_hash};
     use serde::de::DeserializeOwned;
     use serde::{Deserialize, Serialize};
+    use std::any::Any;
+    use std::fmt::{Display, Formatter};
 
     /// 表达式 JSON 错误。
     /// Expression JSON error.
@@ -944,9 +950,7 @@ mod serde_support {
             else_branch: Box<ScalarExpressionData<T>>,
         },
         #[serde(rename = "Boolean")]
-        Boolean {
-            expr: Box<BooleanExpressionData<T>>,
-        },
+        Boolean { expr: Box<BooleanExpressionData<T>> },
     }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1100,9 +1104,9 @@ mod serde_support {
                     then_branch: Box::new(ScalarExpression::try_from(*then_branch)?),
                     else_branch: Box::new(ScalarExpression::try_from(*else_branch)?),
                 }),
-                ScalarExpressionData::Boolean { expr } => Ok(Self::Boolean(
-                    Box::new(BooleanExpression::try_from(*expr)?),
-                )),
+                ScalarExpressionData::Boolean { expr } => {
+                    Ok(Self::Boolean(Box::new(BooleanExpression::try_from(*expr)?)))
+                }
             }
         }
     }

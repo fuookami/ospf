@@ -3,22 +3,22 @@
 //! 对 [`SatisfiedAmountFunction`] 的薄包装，暴露与 Kotlin 代码库对齐的不同类型名称 / Thin wrappers around [`SatisfiedAmountFunction`] that expose distinct type names aligned with the Kotlin codebase
 //! 每个结构体将所有 trait 行为委托给其内部的 `SatisfiedAmountFunction` / Each struct delegates all trait behaviour to its inner `SatisfiedAmountFunction`
 
-use std::any::Any;
-use std::collections::HashSet;
-use std::fmt::{Debug, Display, Formatter};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
+};
+use super::satisfied_amount::SatisfiedAmountFunction;
 use crate::error::Result;
 use crate::model::LinearConstraint;
 use crate::symbol::flatten::{Linear, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem};
-use super::satisfied_amount::SatisfiedAmountFunction;
-use super::super::{
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
-};
+use num_traits::{FromPrimitive, ToPrimitive};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::HashSet;
+use std::fmt::{Debug, Display, Formatter};
+use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
 // Helper macros – reduce boilerplate across the five wrapper structs
@@ -191,6 +191,8 @@ impl<V> AnyFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建至少一个 indicator 满足的函数。
+    /// Create a function requiring at least one satisfied indicator.
     pub fn new(id: u64, name: &str, indicators: Vec<BinaryVariableItem>) -> Self {
         Self {
             id: IntermediateSymbolId::new(id, name),
@@ -215,19 +217,27 @@ where
         Self::new(id, &name, indicators)
     }
 
+    /// 声明该函数依赖的模型元素 ID。
+    /// Declare the model element IDs consumed by this function.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回结果变量。
+    /// Return the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
 
+    /// 返回 indicator 二值变量。
+    /// Return the indicator binary variables.
     pub fn indicator_variables(&self) -> &[BinaryVariableItem] {
         self.inner.indicator_variables()
     }
 
+    /// 返回满足数量范围。
+    /// Return the satisfied-count range.
     pub fn amount_range(&self) -> (Option<usize>, Option<usize>) {
         self.inner.amount_range()
     }
@@ -259,6 +269,8 @@ impl<V> AllFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建全部 indicator 满足的函数。
+    /// Create a function requiring all indicators to be satisfied.
     pub fn new(id: u64, name: &str, indicators: Vec<BinaryVariableItem>) -> Self {
         Self {
             id: IntermediateSymbolId::new(id, name),
@@ -283,19 +295,27 @@ where
         Self::new(id, &name, indicators)
     }
 
+    /// 声明该函数依赖的模型元素 ID。
+    /// Declare the model element IDs consumed by this function.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回结果变量。
+    /// Return the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
 
+    /// 返回 indicator 二值变量。
+    /// Return the indicator binary variables.
     pub fn indicator_variables(&self) -> &[BinaryVariableItem] {
         self.inner.indicator_variables()
     }
 
+    /// 返回满足数量范围。
+    /// Return the satisfied-count range.
     pub fn amount_range(&self) -> (Option<usize>, Option<usize>) {
         self.inner.amount_range()
     }
@@ -327,12 +347,9 @@ impl<V> AtLeastInequalityFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
-    pub fn new(
-        id: u64,
-        name: &str,
-        indicators: Vec<BinaryVariableItem>,
-        amount: usize,
-    ) -> Self {
+    /// 创建至少指定数量 indicator 满足的函数。
+    /// Create a function requiring at least the specified number of satisfied indicators.
+    pub fn new(id: u64, name: &str, indicators: Vec<BinaryVariableItem>, amount: usize) -> Self {
         Self {
             id: IntermediateSymbolId::new(id, name),
             inner: SatisfiedAmountFunction::at_least(indicators, amount),
@@ -361,19 +378,27 @@ where
         Self::new(id, &name, indicators, amount)
     }
 
+    /// 声明该函数依赖的模型元素 ID。
+    /// Declare the model element IDs consumed by this function.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回结果变量。
+    /// Return the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
 
+    /// 返回 indicator 二值变量。
+    /// Return the indicator binary variables.
     pub fn indicator_variables(&self) -> &[BinaryVariableItem] {
         self.inner.indicator_variables()
     }
 
+    /// 返回满足数量范围。
+    /// Return the satisfied-count range.
     pub fn amount_range(&self) -> (Option<usize>, Option<usize>) {
         self.inner.amount_range()
     }
@@ -405,6 +430,8 @@ impl<V> NotAllFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建不是全部 indicator 满足的函数。
+    /// Create a function requiring at least one unsatisfied indicator.
     pub fn new(id: u64, name: &str, indicators: Vec<BinaryVariableItem>) -> Self {
         Self {
             id: IntermediateSymbolId::new(id, name),
@@ -429,19 +456,27 @@ where
         Self::new(id, &name, indicators)
     }
 
+    /// 声明该函数依赖的模型元素 ID。
+    /// Declare the model element IDs consumed by this function.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回结果变量。
+    /// Return the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
 
+    /// 返回 indicator 二值变量。
+    /// Return the indicator binary variables.
     pub fn indicator_variables(&self) -> &[BinaryVariableItem] {
         self.inner.indicator_variables()
     }
 
+    /// 返回满足数量范围。
+    /// Return the satisfied-count range.
     pub fn amount_range(&self) -> (Option<usize>, Option<usize>) {
         self.inner.amount_range()
     }
@@ -473,6 +508,8 @@ impl<V> NumerableFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建满足数量位于指定闭区间内的函数。
+    /// Create a function whose satisfied count lies within the specified interval.
     pub fn new(
         id: u64,
         name: &str,
@@ -510,19 +547,27 @@ where
         Self::new(id, &name, indicators, lower, upper)
     }
 
+    /// 声明该函数依赖的模型元素 ID。
+    /// Declare the model element IDs consumed by this function.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回结果变量。
+    /// Return the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
     }
 
+    /// 返回 indicator 二值变量。
+    /// Return the indicator binary variables.
     pub fn indicator_variables(&self) -> &[BinaryVariableItem] {
         self.inner.indicator_variables()
     }
 
+    /// 返回满足数量范围。
+    /// Return the satisfied-count range.
     pub fn amount_range(&self) -> (Option<usize>, Option<usize>) {
         self.inner.amount_range()
     }
@@ -571,8 +616,9 @@ mod tests {
         let b2 = binary_token(&mut tokens, 30_002, 2, "any_b2", 0.0);
 
         let function = AnyFunction::new(9300, "test_any", vec![b0, b1, b2]);
-        let value = <AnyFunction as FunctionSymbol<f64>>::calculate_value(&function, &tokens, false)
-            .expect("any function should evaluate");
+        let value =
+            <AnyFunction as FunctionSymbol<f64>>::calculate_value(&function, &tokens, false)
+                .expect("any function should evaluate");
 
         // one indicator is non-zero => count = 1.0
         assert_eq!(value, 1.0);
@@ -585,8 +631,9 @@ mod tests {
         let b1 = binary_token(&mut tokens, 30_011, 1, "any_zero_b1", 0.0);
 
         let function = AnyFunction::new(9301, "test_any_zero", vec![b0, b1]);
-        let value = <AnyFunction as FunctionSymbol<f64>>::calculate_value(&function, &tokens, false)
-            .expect("any function should evaluate");
+        let value =
+            <AnyFunction as FunctionSymbol<f64>>::calculate_value(&function, &tokens, false)
+                .expect("any function should evaluate");
 
         assert_eq!(value, 0.0);
     }
@@ -617,8 +664,9 @@ mod tests {
         let b2 = binary_token(&mut tokens, 30_022, 2, "all_b2", 0.5);
 
         let function = AllFunction::new(9310, "test_all", vec![b0, b1, b2]);
-        let value = <AllFunction as FunctionSymbol<f64>>::calculate_value(&function, &tokens, false)
-            .expect("all function should evaluate");
+        let value =
+            <AllFunction as FunctionSymbol<f64>>::calculate_value(&function, &tokens, false)
+                .expect("all function should evaluate");
 
         // all three indicators are non-zero => count = 3.0
         assert_eq!(value, 3.0);
@@ -631,8 +679,9 @@ mod tests {
         let b1 = binary_token(&mut tokens, 30_031, 1, "all_part_b1", 0.0);
 
         let function = AllFunction::new(9311, "test_all_partial", vec![b0, b1]);
-        let value = <AllFunction as FunctionSymbol<f64>>::calculate_value(&function, &tokens, false)
-            .expect("all function should evaluate");
+        let value =
+            <AllFunction as FunctionSymbol<f64>>::calculate_value(&function, &tokens, false)
+                .expect("all function should evaluate");
 
         // only one of two is non-zero
         assert_eq!(value, 1.0);
@@ -668,11 +717,10 @@ mod tests {
         let b2 = binary_token(&mut tokens, 30_052, 2, "atleast_b2", -1.0);
 
         let function = AtLeastInequalityFunction::new(9320, "test_atleast", vec![b0, b1, b2], 2);
-        let value =
-            <AtLeastInequalityFunction as FunctionSymbol<f64>>::calculate_value(
-                &function, &tokens, false,
-            )
-            .expect("at_least function should evaluate");
+        let value = <AtLeastInequalityFunction as FunctionSymbol<f64>>::calculate_value(
+            &function, &tokens, false,
+        )
+        .expect("at_least function should evaluate");
 
         // two of three are non-zero => count = 2.0
         assert_eq!(value, 2.0);
@@ -680,12 +728,7 @@ mod tests {
 
     #[test]
     fn at_least_inequality_function_delegates_amount_range() {
-        let function = AtLeastInequalityFunction::<f64>::new(
-            9321,
-            "atleast_range",
-            vec![],
-            5,
-        );
+        let function = AtLeastInequalityFunction::<f64>::new(9321, "atleast_range", vec![], 5);
         let (lower, upper) = function.amount_range();
         assert_eq!(lower, Some(5));
         assert_eq!(upper, None);
@@ -693,12 +736,7 @@ mod tests {
 
     #[test]
     fn at_least_inequality_function_display() {
-        let function = AtLeastInequalityFunction::<f64>::new(
-            9322,
-            "my_atleast",
-            vec![],
-            2,
-        );
+        let function = AtLeastInequalityFunction::<f64>::new(9322, "my_atleast", vec![], 2);
         assert_eq!(
             format!("{}", function),
             "at_least_inequality_function(my_atleast)"
@@ -789,8 +827,7 @@ mod tests {
         let all_fn = AllFunction::<f64>::named("custom_all", vec![]);
         assert_eq!(all_fn.id.name, "custom_all");
 
-        let atleast_fn =
-            AtLeastInequalityFunction::<f64>::named("custom_atleast", vec![], 3);
+        let atleast_fn = AtLeastInequalityFunction::<f64>::named("custom_atleast", vec![], 3);
         assert_eq!(atleast_fn.id.name, "custom_atleast");
 
         let notall_fn = NotAllFunction::<f64>::named("custom_notall", vec![]);
@@ -826,12 +863,12 @@ mod tests {
     fn with_declared_dependencies_stores_ids() {
         let deps = vec![100, 200, 300];
 
-        let any_fn =
-            AnyFunction::<f64>::new(9350, "dep_any", vec![]).with_declared_dependencies(deps.clone());
+        let any_fn = AnyFunction::<f64>::new(9350, "dep_any", vec![])
+            .with_declared_dependencies(deps.clone());
         assert_eq!(any_fn.declared_dependency_ids, deps);
 
-        let all_fn =
-            AllFunction::<f64>::new(9351, "dep_all", vec![]).with_declared_dependencies(deps.clone());
+        let all_fn = AllFunction::<f64>::new(9351, "dep_all", vec![])
+            .with_declared_dependencies(deps.clone());
         assert_eq!(all_fn.declared_dependency_ids, deps);
 
         let atleast_fn = AtLeastInequalityFunction::<f64>::new(9352, "dep_atleast", vec![], 2)
@@ -859,8 +896,7 @@ mod tests {
         let all_fn = AllFunction::<f64>::new(9361, "cat_all", vec![]);
         assert!(matches!(all_fn.category(), Category::Linear));
 
-        let atleast_fn =
-            AtLeastInequalityFunction::<f64>::new(9362, "cat_atleast", vec![], 1);
+        let atleast_fn = AtLeastInequalityFunction::<f64>::new(9362, "cat_atleast", vec![], 1);
         assert!(matches!(atleast_fn.category(), Category::Linear));
 
         let notall_fn = NotAllFunction::<f64>::new(9363, "cat_notall", vec![]);

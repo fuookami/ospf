@@ -13,13 +13,8 @@ pub mod usage;
 pub use capacity::ResourceCapacity;
 pub use connection_usage::ConnectionResourceUsage;
 pub use resource_trait::{
-    ResourceTrait,
-    ExecutionResourceTrait,
-    StorageResourceTrait,
-    ConnectionResourceTrait,
-    BasicExecutionResource,
-    BasicStorageResource,
-    BasicConnectionResource,
+    BasicConnectionResource, BasicExecutionResource, BasicStorageResource, ConnectionResourceTrait,
+    ExecutionResourceTrait, ResourceTrait, StorageResourceTrait,
 };
 pub use slack::ResourceSlack;
 pub use storage_usage::StorageResourceUsage;

@@ -12,8 +12,8 @@
 //! - `DISTANT_PAST` / `DISTANT_FUTURE`：表示无限远的时间边界
 //! - `DISTANT_PAST` / `DISTANT_FUTURE`: represents infinitely distant time boundaries
 
-use time::{Duration, OffsetDateTime, Date, Time, Month};
 use crate::infrastructure::DurationRange;
+use time::{Date, Duration, Month, OffsetDateTime, Time};
 
 /// 遥远的过去 / Distant past
 ///
@@ -281,10 +281,8 @@ impl TimeRange {
         }
 
         // Collect and merge intersections with this range
-        let mut intersections: Vec<TimeRange> = others
-            .iter()
-            .filter_map(|o| self.intersection(o))
-            .collect();
+        let mut intersections: Vec<TimeRange> =
+            others.iter().filter_map(|o| self.intersection(o)).collect();
 
         if intersections.is_empty() {
             return vec![*self];
@@ -408,15 +406,15 @@ impl TimeRange {
 
             if target.is_zero() && accumulated >= unit.lower {
                 // Already accumulated enough, check if we need a break
-                if let Some(bt) = break_time {
-                    if accumulated >= unit.upper {
-                        // Insert break and reset
-                        break_times.push(TimeRange::new(pos, pos + bt));
-                        pos += bt;
-                        remaining = remaining.saturating_sub(bt);
-                        accumulated = zero;
-                        continue;
-                    }
+                if let Some(bt) = break_time
+                    && accumulated >= unit.upper
+                {
+                    // Insert break and reset
+                    break_times.push(TimeRange::new(pos, pos + bt));
+                    pos += bt;
+                    remaining = remaining.saturating_sub(bt);
+                    accumulated = zero;
+                    continue;
                 }
 
                 // Remaining fits within upper bound
@@ -465,13 +463,14 @@ impl TimeRange {
             accumulated += segment;
 
             // Insert break if configured and more work remains
-            if let Some(bt) = break_time {
-                if remaining > zero && accumulated >= unit.lower {
-                    break_times.push(TimeRange::new(pos, pos + bt));
-                    pos += bt;
-                    remaining = remaining.saturating_sub(bt);
-                    accumulated = zero;
-                }
+            if let Some(bt) = break_time
+                && remaining > zero
+                && accumulated >= unit.lower
+            {
+                break_times.push(TimeRange::new(pos, pos + bt));
+                pos += bt;
+                remaining = remaining.saturating_sub(bt);
+                accumulated = zero;
             }
         }
 
@@ -920,10 +919,7 @@ mod tests {
 
     #[test]
     fn test_merge_adjacent() {
-        let ranges = vec![
-            TimeRange::new(h(8), h(10)),
-            TimeRange::new(h(10), h(12)),
-        ];
+        let ranges = vec![TimeRange::new(h(8), h(10)), TimeRange::new(h(10), h(12))];
         let result = merge(&ranges);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], TimeRange::new(h(8), h(12)));
@@ -983,10 +979,7 @@ mod tests {
 
     #[test]
     fn test_front_at_and_back_at() {
-        let ranges = vec![
-            TimeRange::new(h(8), h(12)),
-            TimeRange::new(h(14), h(18)),
-        ];
+        let ranges = vec![TimeRange::new(h(8), h(12)), TimeRange::new(h(14), h(18))];
         // frontAt(1) = gap between ranges[0] and ranges[1]
         let front = front_at(&ranges, 1);
         assert_eq!(front, Some(TimeRange::new(h(12), h(14))));

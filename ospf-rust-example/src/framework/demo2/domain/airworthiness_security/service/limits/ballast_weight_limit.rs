@@ -1,9 +1,9 @@
 //! 压舱物重量限制 / Ballast weight limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;
 use crate::framework::demo2::domain::airworthiness_security::context::AirworthinessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 压舱物重量限制: ballastWeight >= minBallastWeight
 /// 对齐 Kotlin BallastWeightLimit
@@ -19,7 +19,10 @@ pub fn apply_ballast_weight_limits(
             &[(ballast_idx, 1.0)],
             ConstraintRelation::GreaterEqual,
             min_ballast,
-            &format!("airworthiness_security_ballast_weight_min_{}", mode_name(context.mode)),
+            &format!(
+                "airworthiness_security_ballast_weight_min_{}",
+                mode_name(context.mode)
+            ),
         )?;
     }
     Ok(())

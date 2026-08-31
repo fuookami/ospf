@@ -1,8 +1,8 @@
 //! 二进制变换。
 //! Dyadic transformation.
 
-use num_traits::Float;
 use crate::algebra::Field;
+use num_traits::Float;
 
 /// 二进制变换。
 /// Dyadic transformation.
@@ -15,7 +15,9 @@ pub struct DyadicTransformation<S: Field + Float = f64> {
 
 impl<S: Field + Float> DyadicTransformation<S> {
     pub fn new() -> Self {
-        Self { _phantom: std::marker::PhantomData }
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
     }
 
     pub fn step(&self, x: S) -> S {
@@ -48,8 +50,12 @@ impl<S: Field + Float> DyadicTransformationGenerator<S> {
         Self { map, x }
     }
 
-    pub fn map(&self) -> &DyadicTransformation<S> { &self.map }
-    pub fn x(&self) -> S { self.x }
+    pub fn map(&self) -> &DyadicTransformation<S> {
+        &self.map
+    }
+    pub fn x(&self) -> S {
+        self.x
+    }
 
     pub fn next_value(&mut self) -> S {
         let x = self.x;
@@ -60,7 +66,10 @@ impl<S: Field + Float> DyadicTransformationGenerator<S> {
 
 impl<S: Field + Float> Default for DyadicTransformationGenerator<S> {
     fn default() -> Self {
-        Self::new(DyadicTransformation::default(), S::from(0.5).expect("0.5 must be representable"))
+        Self::new(
+            DyadicTransformation::default(),
+            S::from(0.5).expect("0.5 must be representable"),
+        )
     }
 }
 

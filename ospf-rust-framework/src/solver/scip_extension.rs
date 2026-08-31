@@ -24,6 +24,7 @@ use super::linear_benders_decomposition_solver::{
 use super::quadratic_benders_decomposition_solver::{
     QuadraticBendersDecompositionSolver, QuadraticCut, QuadraticSubResult,
 };
+use ospf_rust_core::solver::SolveReport;
 
 /// SCIP 列生成求解器 / SCIP column generation solver
 #[derive(Debug)]
@@ -231,6 +232,26 @@ impl ColumnGenerationSolver for ScipColumnGenerationSolver {
     ) -> ospf_rust_core::error::Result<LPResult> {
         self.inner.solve_lp_with_options(model, options).await
     }
+
+    async fn solve_milp_report_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        options: FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<SolveReport<f64>> {
+        self.inner
+            .solve_milp_report_with_options(model, options)
+            .await
+    }
+
+    async fn solve_lp_report_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        options: FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<SolveReport<f64>> {
+        self.inner
+            .solve_lp_report_with_options(model, options)
+            .await
+    }
 }
 
 #[cfg(not(feature = "async"))]
@@ -253,6 +274,22 @@ impl ColumnGenerationSolver for ScipColumnGenerationSolver {
         options: FrameworkSolveOptions,
     ) -> ospf_rust_core::error::Result<LPResult> {
         self.inner.solve_lp_with_options(model, options)
+    }
+
+    fn solve_milp_report_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        options: FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<SolveReport<f64>> {
+        self.inner.solve_milp_report_with_options(model, options)
+    }
+
+    fn solve_lp_report_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        options: FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<SolveReport<f64>> {
+        self.inner.solve_lp_report_with_options(model, options)
     }
 }
 
@@ -471,12 +508,42 @@ impl LinearBendersDecompositionSolver for ScipLinearBendersDecompositionSolver {
         self.inner.solve_master(model, cuts).await
     }
 
+    async fn solve_master_report(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        cuts: &[LinearCut],
+    ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolveReport<f64>> {
+        self.inner.solve_master_report(model, cuts).await
+    }
+
+    async fn solve_master_report_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        cuts: &[LinearCut],
+        options: &FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolveReport<f64>> {
+        self.inner
+            .solve_master_report_with_options(model, cuts, options)
+            .await
+    }
+
     async fn solve_sub(
         &self,
         model: &ospf_rust_core::model::intermediate::LinearTriadModel,
         master_solution: &[f64],
     ) -> ospf_rust_core::error::Result<LinearSubResult> {
         self.inner.solve_sub(model, master_solution).await
+    }
+
+    async fn solve_sub_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        master_solution: &[f64],
+        options: &FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<LinearSubResult> {
+        self.inner
+            .solve_sub_with_options(model, master_solution, options)
+            .await
     }
 }
 
@@ -494,12 +561,40 @@ impl LinearBendersDecompositionSolver for ScipLinearBendersDecompositionSolver {
         self.inner.solve_master(model, cuts)
     }
 
+    fn solve_master_report(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        cuts: &[LinearCut],
+    ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolveReport<f64>> {
+        self.inner.solve_master_report(model, cuts)
+    }
+
+    fn solve_master_report_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        cuts: &[LinearCut],
+        options: &FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolveReport<f64>> {
+        self.inner
+            .solve_master_report_with_options(model, cuts, options)
+    }
+
     fn solve_sub(
         &self,
         model: &ospf_rust_core::model::intermediate::LinearTriadModel,
         master_solution: &[f64],
     ) -> ospf_rust_core::error::Result<LinearSubResult> {
         self.inner.solve_sub(model, master_solution)
+    }
+
+    fn solve_sub_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        master_solution: &[f64],
+        options: &FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<LinearSubResult> {
+        self.inner
+            .solve_sub_with_options(model, master_solution, options)
     }
 }
 
@@ -733,12 +828,42 @@ impl LinearBendersDecompositionSolver for ScipQuadraticBendersDecompositionSolve
         self.linear.solve_master(model, cuts).await
     }
 
+    async fn solve_master_report(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        cuts: &[LinearCut],
+    ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolveReport<f64>> {
+        self.linear.solve_master_report(model, cuts).await
+    }
+
+    async fn solve_master_report_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        cuts: &[LinearCut],
+        options: &FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolveReport<f64>> {
+        self.linear
+            .solve_master_report_with_options(model, cuts, options)
+            .await
+    }
+
     async fn solve_sub(
         &self,
         model: &ospf_rust_core::model::intermediate::LinearTriadModel,
         master_solution: &[f64],
     ) -> ospf_rust_core::error::Result<LinearSubResult> {
         self.linear.solve_sub(model, master_solution).await
+    }
+
+    async fn solve_sub_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        master_solution: &[f64],
+        options: &FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<LinearSubResult> {
+        self.linear
+            .solve_sub_with_options(model, master_solution, options)
+            .await
     }
 }
 
@@ -756,12 +881,40 @@ impl LinearBendersDecompositionSolver for ScipQuadraticBendersDecompositionSolve
         self.linear.solve_master(model, cuts)
     }
 
+    fn solve_master_report(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        cuts: &[LinearCut],
+    ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolveReport<f64>> {
+        self.linear.solve_master_report(model, cuts)
+    }
+
+    fn solve_master_report_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        cuts: &[LinearCut],
+        options: &FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolveReport<f64>> {
+        self.linear
+            .solve_master_report_with_options(model, cuts, options)
+    }
+
     fn solve_sub(
         &self,
         model: &ospf_rust_core::model::intermediate::LinearTriadModel,
         master_solution: &[f64],
     ) -> ospf_rust_core::error::Result<LinearSubResult> {
         self.linear.solve_sub(model, master_solution)
+    }
+
+    fn solve_sub_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+        master_solution: &[f64],
+        options: &FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<LinearSubResult> {
+        self.linear
+            .solve_sub_with_options(model, master_solution, options)
     }
 }
 
@@ -779,6 +932,29 @@ impl QuadraticBendersDecompositionSolver for ScipQuadraticBendersDecompositionSo
             .await
     }
 
+    async fn solve_master_quadratic_report(
+        &self,
+        model: &ospf_rust_core::model::intermediate::QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+    ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolveReport<f64>> {
+        self.quadratic
+            .solve_master_quadratic_report(model, linear_cuts, quadratic_cuts)
+            .await
+    }
+
+    async fn solve_master_quadratic_report_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+        options: &FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolveReport<f64>> {
+        self.quadratic
+            .solve_master_quadratic_report_with_options(model, linear_cuts, quadratic_cuts, options)
+            .await
+    }
+
     async fn solve_sub_quadratic(
         &self,
         model: &ospf_rust_core::model::intermediate::QuadraticTetradModel,
@@ -786,6 +962,17 @@ impl QuadraticBendersDecompositionSolver for ScipQuadraticBendersDecompositionSo
     ) -> ospf_rust_core::error::Result<QuadraticSubResult> {
         self.quadratic
             .solve_sub_quadratic(model, master_solution)
+            .await
+    }
+
+    async fn solve_sub_quadratic_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::QuadraticTetradModel,
+        master_solution: &[f64],
+        options: &FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<QuadraticSubResult> {
+        self.quadratic
+            .solve_sub_quadratic_with_options(model, master_solution, options)
             .await
     }
 }
@@ -802,12 +989,47 @@ impl QuadraticBendersDecompositionSolver for ScipQuadraticBendersDecompositionSo
             .solve_master_quadratic(model, linear_cuts, quadratic_cuts)
     }
 
+    fn solve_master_quadratic_report(
+        &self,
+        model: &ospf_rust_core::model::intermediate::QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+    ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolveReport<f64>> {
+        self.quadratic
+            .solve_master_quadratic_report(model, linear_cuts, quadratic_cuts)
+    }
+
+    fn solve_master_quadratic_report_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::QuadraticTetradModel,
+        linear_cuts: &[LinearCut],
+        quadratic_cuts: &[QuadraticCut],
+        options: &FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<ospf_rust_core::solver::SolveReport<f64>> {
+        self.quadratic.solve_master_quadratic_report_with_options(
+            model,
+            linear_cuts,
+            quadratic_cuts,
+            options,
+        )
+    }
+
     fn solve_sub_quadratic(
         &self,
         model: &ospf_rust_core::model::intermediate::QuadraticTetradModel,
         master_solution: &[f64],
     ) -> ospf_rust_core::error::Result<QuadraticSubResult> {
         self.quadratic.solve_sub_quadratic(model, master_solution)
+    }
+
+    fn solve_sub_quadratic_with_options(
+        &self,
+        model: &ospf_rust_core::model::intermediate::QuadraticTetradModel,
+        master_solution: &[f64],
+        options: &FrameworkSolveOptions,
+    ) -> ospf_rust_core::error::Result<QuadraticSubResult> {
+        self.quadratic
+            .solve_sub_quadratic_with_options(model, master_solution, options)
     }
 }
 

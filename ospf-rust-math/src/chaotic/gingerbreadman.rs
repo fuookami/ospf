@@ -1,9 +1,9 @@
 //! 姜饼人映射。
 //! Gingerbreadman map.
 
-use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point2;
+use num_traits::Float;
 
 /// 姜饼人映射。
 /// Gingerbreadman map.
@@ -14,7 +14,9 @@ pub struct GingerbreadmanMap<S: Field + Float = f64> {
 
 impl<S: Field + Float> GingerbreadmanMap<S> {
     pub fn new() -> Self {
-        Self { _phantom: std::marker::PhantomData }
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
     }
 
     pub fn step(&self, x: Point2<S>) -> Point2<S> {
@@ -46,8 +48,12 @@ impl<S: Field + Float> GingerbreadmanMapGenerator<S> {
         Self { map, x }
     }
 
-    pub fn map(&self) -> &GingerbreadmanMap<S> { &self.map }
-    pub fn x(&self) -> &Point2<S> { &self.x }
+    pub fn map(&self) -> &GingerbreadmanMap<S> {
+        &self.map
+    }
+    pub fn x(&self) -> &Point2<S> {
+        &self.x
+    }
 
     pub fn next_point(&mut self) -> Point2<S> {
         let x = self.x.clone();
@@ -79,7 +85,9 @@ pub fn gingerbreadman_map<S: Field + Float>() -> GingerbreadmanMap<S> {
 
 /// 创建姜饼人映射生成器。
 /// Create a Gingerbreadman map generator.
-pub fn gingerbreadman_map_generator<S: Field + Float>(x: Point2<S>) -> GingerbreadmanMapGenerator<S> {
+pub fn gingerbreadman_map_generator<S: Field + Float>(
+    x: Point2<S>,
+) -> GingerbreadmanMapGenerator<S> {
     GingerbreadmanMapGenerator::new(GingerbreadmanMap::new(), x)
 }
 

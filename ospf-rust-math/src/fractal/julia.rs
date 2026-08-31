@@ -1,9 +1,9 @@
 //! Julia 集。
 //! Julia set.
 
-use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point2;
+use num_traits::Float;
 
 /// Julia 集迭代函数 `z -> z^2 + c`。
 /// Julia set iteration function `z -> z^2 + c`.
@@ -138,7 +138,11 @@ pub fn julia_set_from_parts<S: Field + Float>(real: S, imag: S) -> JuliaSet<S> {
 
 /// 使用实部、虚部和初始值创建 Julia 集序列生成器。
 /// Create a Julia set sequence generator from real and imaginary parts plus an initial value.
-pub fn julia_set_generator<S: Field + Float>(real: S, imag: S, z: Point2<S>) -> JuliaSetGenerator<S> {
+pub fn julia_set_generator<S: Field + Float>(
+    real: S,
+    imag: S,
+    z: Point2<S>,
+) -> JuliaSetGenerator<S> {
     JuliaSetGenerator::from_parts(real, imag, z)
 }
 
@@ -159,8 +163,12 @@ impl<S: Field + Float> MultiJuliaSet<S> {
         Self::new(Point2::new(real, imag), n)
     }
 
-    pub fn c(&self) -> &Point2<S> { &self.c }
-    pub fn n(&self) -> S { self.n }
+    pub fn c(&self) -> &Point2<S> {
+        &self.c
+    }
+    pub fn n(&self) -> S {
+        self.n
+    }
 
     /// 执行一次多重 Julia 集迭代。
     /// Execute one multi Julia set iteration.
@@ -171,7 +179,10 @@ impl<S: Field + Float> MultiJuliaSet<S> {
         let r_n = r2.powf(half_n);
         let theta = z.y().atan2(z.x());
         let n_theta = self.n * theta;
-        Point2::new(r_n * n_theta.cos() + self.c.x(), r_n * n_theta.sin() + self.c.y())
+        Point2::new(
+            r_n * n_theta.cos() + self.c.x(),
+            r_n * n_theta.sin() + self.c.y(),
+        )
     }
 
     pub fn generator(self, z: Point2<S>) -> MultiJuliaSetGenerator<S> {
@@ -202,8 +213,12 @@ impl<S: Field + Float> MultiJuliaSetGenerator<S> {
         Self { multi_julia_set, z }
     }
 
-    pub fn multi_julia_set(&self) -> &MultiJuliaSet<S> { &self.multi_julia_set }
-    pub fn z(&self) -> &Point2<S> { &self.z }
+    pub fn multi_julia_set(&self) -> &MultiJuliaSet<S> {
+        &self.multi_julia_set
+    }
+    pub fn z(&self) -> &Point2<S> {
+        &self.z
+    }
 
     pub fn next_point(&mut self) -> Point2<S> {
         let z = self.z.clone();

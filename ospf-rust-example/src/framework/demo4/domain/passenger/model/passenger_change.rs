@@ -1,13 +1,13 @@
 //! 旅客变更模型模块 / Passenger change model module.
-use std::error::Error;
-use std::sync::Arc;
+use super::passenger::Passenger;
+use crate::framework::demo4::infrastructure::PassengerClass;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::IfFunction;
 use ospf_rust_core::variable::BinaryVariableItem;
-use super::passenger::Passenger;
-use crate::framework::demo4::infrastructure::PassengerClass;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 旅客变更注册的变量索引 / Passenger change registered variable indices
 #[derive(Debug, Clone)]
@@ -64,7 +64,10 @@ impl PassengerChange {
         // 1. 舱位变更符号
         let class_change_symbol = LinearExpressionSymbol::new(
             *next_id,
-            &format!("passenger_class_change_{}_{}", self.passenger.id, self.from_flight),
+            &format!(
+                "passenger_class_change_{}_{}",
+                self.passenger.id, self.from_flight
+            ),
             Vec::new(),
             0.0,
         );
@@ -75,7 +78,10 @@ impl PassengerChange {
         // 2. 航班变更符号
         let flight_change_symbol = LinearExpressionSymbol::new(
             *next_id,
-            &format!("passenger_flight_change_{}_{}", self.passenger.id, self.from_flight),
+            &format!(
+                "passenger_flight_change_{}_{}",
+                self.passenger.id, self.from_flight
+            ),
             Vec::new(),
             0.0,
         );
@@ -84,15 +90,17 @@ impl PassengerChange {
         *next_id += 1;
 
         // 3. 舱位变更决策二元变量
-        let class_change_decision = BinaryVariableItem::auto(
-            &format!("class_change_decision_{}_{}", self.passenger.id, self.from_flight),
-        );
+        let class_change_decision = BinaryVariableItem::auto(&format!(
+            "class_change_decision_{}_{}",
+            self.passenger.id, self.from_flight
+        ));
         let class_change_decision_idx = model.register_variable(class_change_decision)?;
 
         // 4. 航班变更决策二元变量
-        let flight_change_decision = BinaryVariableItem::auto(
-            &format!("flight_change_decision_{}_{}", self.passenger.id, self.from_flight),
-        );
+        let flight_change_decision = BinaryVariableItem::auto(&format!(
+            "flight_change_decision_{}_{}",
+            self.passenger.id, self.from_flight
+        ));
         let flight_change_decision_idx = model.register_variable(flight_change_decision)?;
 
         // 5. 舱位变更 IfFunction
@@ -105,7 +113,10 @@ impl PassengerChange {
         let class_else = Linear::new(Vec::new(), 0.0);
         let class_change_if = IfFunction::new(
             *next_id,
-            &format!("passenger_class_change_if_{}_{}", self.passenger.id, self.from_flight),
+            &format!(
+                "passenger_class_change_if_{}_{}",
+                self.passenger.id, self.from_flight
+            ),
             class_condition,
             class_then,
             class_else,
@@ -124,7 +135,10 @@ impl PassengerChange {
         let flight_else = Linear::new(Vec::new(), 0.0);
         let flight_change_if = IfFunction::new(
             *next_id,
-            &format!("passenger_flight_change_if_{}_{}", self.passenger.id, self.from_flight),
+            &format!(
+                "passenger_flight_change_if_{}_{}",
+                self.passenger.id, self.from_flight
+            ),
             flight_condition,
             flight_then,
             flight_else,

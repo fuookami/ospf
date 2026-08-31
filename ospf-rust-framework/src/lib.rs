@@ -47,6 +47,10 @@ pub use solver::{
     SerialCombinatorialColumnGenerationSolver, SerialCombinatorialLinearSolver,
     SerialCombinatorialQuadraticSolver, SolveOptions, SolvingStatus,
 };
+pub use solver::{
+    ExperimentCase, ExperimentError, ExperimentMetadata, ExperimentResult, ExperimentRunner,
+    SolveObservation, observe_report,
+};
 
 #[cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
 pub use solver::{

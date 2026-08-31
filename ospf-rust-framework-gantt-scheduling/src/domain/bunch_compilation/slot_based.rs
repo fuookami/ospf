@@ -15,8 +15,8 @@ use crate::domain::bunch_compilation::context::{
 use crate::domain::bunch_compilation::model::{BunchEntry, SlotBasedBunchEntry};
 use crate::domain::bunch_generation::{CapacityIntermediateValues, SlotConstraints};
 use crate::domain::common::{
-    ConstraintIndexKey, ConstraintIndexMap, ExecutorId, ExecutorIdTrait, GanttDynamicModelLifecycle,
-    GanttModelStateFacade,
+    ConstraintIndexKey, ConstraintIndexMap, ExecutorId, ExecutorIdTrait,
+    GanttDynamicModelLifecycle, GanttModelStateFacade,
 };
 use crate::infrastructure::TimeSlot;
 use crate::{GanttError, GanttResult};
@@ -68,7 +68,9 @@ where
 {
     /// 创建静态预求解器 / Create static pre-solver
     pub fn new(intermediate_values: CapacityIntermediateValues<S, I>) -> Self {
-        Self { intermediate_values }
+        Self {
+            intermediate_values,
+        }
     }
 }
 
@@ -95,9 +97,7 @@ where
     fn slots(&self) -> &[S];
 
     /// 获取产能中间值 / Get capacity intermediate values
-    fn intermediate_values(
-        &self,
-    ) -> Option<&CapacityIntermediateValues<S, Self::ExecutorId>>;
+    fn intermediate_values(&self) -> Option<&CapacityIntermediateValues<S, Self::ExecutorId>>;
 
     /// 执行产能预求解 / Execute capacity pre-solving
     fn pre_solve_capacity(
@@ -107,10 +107,7 @@ where
     ) -> GanttResult<&CapacityIntermediateValues<S, Self::ExecutorId>>;
 
     /// 获取指定时隙约束 / Get constraints for specified slot
-    fn slot_constraints(
-        &self,
-        slot_index: usize,
-    ) -> Option<&SlotConstraints<Self::ExecutorId>>;
+    fn slot_constraints(&self, slot_index: usize) -> Option<&SlotConstraints<Self::ExecutorId>>;
 
     /// 获取所有时隙约束 / Get all slot constraints
     fn all_slot_constraints(&self) -> HashMap<usize, SlotConstraints<Self::ExecutorId>>;
@@ -124,10 +121,7 @@ where
     ) -> GanttResult<HashMap<usize, Vec<usize>>>;
 
     /// 获取指定时隙的束 / Get bunches for specified slot
-    fn bunches_in_slot(
-        &self,
-        slot_index: usize,
-    ) -> Vec<SlotBasedBunchEntry<Self::ExecutorId>>;
+    fn bunches_in_slot(&self, slot_index: usize) -> Vec<SlotBasedBunchEntry<Self::ExecutorId>>;
 
     /// 获取时隙到模型变量索引的完整映射 / Get complete slot-to-model-variable mapping
     fn x_by_slot(&self) -> HashMap<usize, Vec<usize>>;
@@ -172,7 +166,8 @@ where
             .iter()
             .cloned()
             .flat_map(|executor_id| {
-                (0..slots.len()).map(move |slot_index| ((executor_id.clone(), slot_index), Vec::new()))
+                (0..slots.len())
+                    .map(move |slot_index| ((executor_id.clone(), slot_index), Vec::new()))
             })
             .collect();
         Self {
@@ -232,13 +227,12 @@ where
                 Ok(SlotBasedBunchEntry { bunch, slot_index })
             })
             .collect::<GanttResult<Vec<_>>>()?;
-        let added_by_slot =
-            SlotBasedBunchCompilationContext::add_columns_by_slot(
-                self,
-                iteration,
-                slot_bunches,
-                model,
-            )?;
+        let added_by_slot = SlotBasedBunchCompilationContext::add_columns_by_slot(
+            self,
+            iteration,
+            slot_bunches,
+            model,
+        )?;
         let mut slots = added_by_slot.into_iter().collect::<Vec<_>>();
         slots.sort_by_key(|(slot_index, _)| *slot_index);
         Ok(slots
@@ -289,13 +283,8 @@ where
         current_fixed: &HashSet<usize>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<HashSet<usize>> {
-        self.base.locally_fix_in_model(
-            iteration,
-            threshold,
-            solution,
-            current_fixed,
-            model,
-        )
+        self.base
+            .locally_fix_in_model(iteration, threshold, solution, current_fixed, model)
     }
 
     fn restore_non_removed_ranges_in_model(
@@ -326,7 +315,9 @@ where
         &self,
         constraint_name_to_index: &HashMap<String, usize>,
     ) -> ConstraintIndexMap {
-        let mut map = self.base.build_constraint_index_map(constraint_name_to_index);
+        let mut map = self
+            .base
+            .build_constraint_index_map(constraint_name_to_index);
         map.register_executor_slot_compilation_constraints(
             self.base.compilation.base.executor_ids.iter(),
             self.slots.len(),
@@ -347,7 +338,9 @@ where
                     executor_id.to_string(),
                     slot_index,
                 );
-                if let Some(price) = constraint_index_map.dual_value(&key, &dual_solution.constraints) {
+                if let Some(price) =
+                    constraint_index_map.dual_value(&key, &dual_solution.constraints)
+                {
                     prices.insert((executor_id.clone(), slot_index), price);
                 }
             }
@@ -371,7 +364,10 @@ where
         self.base.extract_hidden_executors(solution)
     }
 
-    fn analyze_solution(&self, solution: &[f64]) -> crate::domain::bunch_compilation::BunchSolution {
+    fn analyze_solution(
+        &self,
+        solution: &[f64],
+    ) -> crate::domain::bunch_compilation::BunchSolution {
         self.base.analyze_solution(solution)
     }
 
@@ -413,7 +409,10 @@ where
         let values = self.capacity_pre_solver.solve(model, &self.slots, solver)?;
         self.intermediate_values = Some(values);
         self.refresh_slot_constraints();
-        Ok(self.intermediate_values.as_ref().expect("intermediate values must exist"))
+        Ok(self
+            .intermediate_values
+            .as_ref()
+            .expect("intermediate values must exist"))
     }
 
     fn slot_constraints(&self, slot_index: usize) -> Option<&SlotConstraints<I>> {
@@ -459,7 +458,10 @@ where
             let bunches: Vec<BunchEntry<I>> =
                 entries.iter().map(|entry| entry.bunch.clone()).collect();
             let added = self.base.add_columns(iteration, bunches, model)?;
-            let added_set = added.iter().copied().collect::<std::collections::HashSet<_>>();
+            let added_set = added
+                .iter()
+                .copied()
+                .collect::<std::collections::HashSet<_>>();
             let added_entries = entries
                 .into_iter()
                 .filter(|entry| added_set.contains(&entry.bunch.index));
@@ -508,8 +510,8 @@ mod tests {
     use crate::domain::bunch_generation::SlotConstraints;
     use crate::domain::task::BasicExecutor;
     use crate::infrastructure::TimeRange;
-    use time::macros::datetime;
     use time::Duration;
+    use time::macros::datetime;
 
     #[derive(Debug, Clone)]
     struct TestSlot {

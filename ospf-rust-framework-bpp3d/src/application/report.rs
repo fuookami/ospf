@@ -13,7 +13,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::time::Duration;
 
-
 include!("report/status.rs");
 include!("report/fixture.rs");
 include!("report/suite_summary.rs");

@@ -1,7 +1,7 @@
 //! 最早起飞时间计算器 / Earliest departure time calculator
 
-use time::OffsetDateTime;
 use super::super::model::Link;
+use time::OffsetDateTime;
 
 /// 最小出发时间计算器 / Minimum departure time calculator
 /// 对齐 Kotlin MinimumDepartureTimeCalculator

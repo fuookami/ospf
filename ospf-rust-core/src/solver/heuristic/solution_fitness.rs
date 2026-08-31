@@ -1,8 +1,8 @@
 //! 带适应度的解
 //! Solution with Fitness
 
-use std::fmt::Debug;
 use super::Individual;
+use std::fmt::Debug;
 
 /// 带适应度的解 / Solution with Fitness
 ///

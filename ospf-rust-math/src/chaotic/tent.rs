@@ -1,9 +1,9 @@
 //! 帐篷映射。
 //! Tent map.
 
-use num_traits::Float;
-use crate::algebra::Field;
 use super::helpers::default_float;
+use crate::algebra::Field;
+use num_traits::Float;
 
 scalar_map!(
     /// 帐篷映射。
@@ -32,7 +32,10 @@ impl<S: Field + Float> Default for TentMap<S> {
 
 impl<S: Field + Float> Default for TentMapGenerator<S> {
     fn default() -> Self {
-        Self::new(TentMap::default(), S::from(0.5).expect("0.5 must be representable"))
+        Self::new(
+            TentMap::default(),
+            S::from(0.5).expect("0.5 must be representable"),
+        )
     }
 }
 

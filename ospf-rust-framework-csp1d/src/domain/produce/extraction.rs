@@ -5,8 +5,7 @@ use std::collections::BTreeMap;
 use ospf_rust_core::solver::SolveValue;
 
 use crate::domain::material::{
-    from_f64, shadow_price_unit_symbol, to_f64, Csp1dQuantity,
-    ProductDemand, ProductId,
+    Csp1dQuantity, ProductDemand, ProductId, from_f64, shadow_price_unit_symbol, to_f64,
 };
 use crate::domain::r#yield::{
     ModeledOverProduction, ModeledUnderProduction, ProductOutput, YieldAnalysis,

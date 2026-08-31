@@ -20,9 +20,10 @@ pub enum NullsOrder {
 }
 
 /// 空值排序支持策略 / Null ordering support policy
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum NullsOrderSupport {
     /// 自动，由后端决定 / Auto, decided by the backend
+    #[default]
     Auto,
     /// 始终支持 / Always supported
     Always,
@@ -41,12 +42,6 @@ impl NullsOrderSupport {
             Self::Never => false,
             Self::OnlyAsc => matches!(item.direction, SortDirection::Asc),
         }
-    }
-}
-
-impl Default for NullsOrderSupport {
-    fn default() -> Self {
-        Self::Auto
     }
 }
 

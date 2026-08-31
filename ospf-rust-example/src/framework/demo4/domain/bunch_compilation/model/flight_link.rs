@@ -1,8 +1,8 @@
 //! 航班链接模型模块 / Flight link model module
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 航班链接 / Flight link
 /// 对齐 Kotlin FlightLink

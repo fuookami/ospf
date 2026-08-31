@@ -1,10 +1,10 @@
 //! Martin 迭代。
 //! Martin iterate.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point2};
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use super::helpers::{default_float, one_point2};
+use num_traits::Float;
 
 point2_system!(
     /// Martin 迭代。
@@ -51,7 +51,12 @@ pub fn martin_iterate<S: Field + Float>(a: S, b: S, c: S) -> MartinIterate<S> {
 
 /// 创建 Martin 迭代生成器。
 /// Create a Martin iterate generator.
-pub fn martin_iterate_generator<S: Field + Float>(a: S, b: S, c: S, x: Point2<S>) -> MartinIterateGenerator<S> {
+pub fn martin_iterate_generator<S: Field + Float>(
+    a: S,
+    b: S,
+    c: S,
+    x: Point2<S>,
+) -> MartinIterateGenerator<S> {
     MartinIterateGenerator::new(MartinIterate::new(a, b, c), x)
 }
 

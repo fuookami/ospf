@@ -28,13 +28,12 @@
 //! | `MetricPlacement2<V, U, S>` | 类型化二维放置 |
 //! | `MetricPlacement3<V, U, S>` | 类型化三维放置 |
 
-use std::ops::{Add, Sub};
 use num_traits::Zero;
 use ospf_rust_math::geometry::{Axis3, Cuboid3, Point2, Point3};
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::concept::UnitTrait;
 use ospf_rust_quantities::unit::physical_unit::CTUnit;
-
+use std::ops::{Add, Sub};
 
 include!("geometry/types.rs");
 include!("geometry/constructors.rs");

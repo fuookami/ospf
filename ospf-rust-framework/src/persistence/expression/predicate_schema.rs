@@ -1,15 +1,16 @@
 //! 谓词 schema
 //! Predicate schema
 
-use std::collections::HashMap;
-use std::marker::PhantomData;
 use ospf_rust_math::symbol::{
-
     BooleanExpression, ComparisonOperator, ExpressionValue, PathBuilder, PatternMatchMode,
     PropertyPath, ScalarExpression,
 };
+use std::collections::HashMap;
+use std::marker::PhantomData;
 
-use super::PersistenceFieldResolver;
+use super::{
+    DiagnosticPersistenceFieldResolver, PersistenceFieldResolution, PersistenceFieldResolver,
+};
 
 /// 字段路径。
 /// Field path.
@@ -333,6 +334,29 @@ where
     }
 }
 
+impl DiagnosticPersistenceFieldResolver<String> for PredicateSchema<String> {
+    fn resolve_detailed(&self, path: &PropertyPath) -> PersistenceFieldResolution<String> {
+        let mappings = self
+            .fields
+            .iter()
+            .filter(|mapping| mapping.path == *path)
+            .collect::<Vec<_>>();
+        match mappings.as_slice() {
+            [] => PersistenceFieldResolution::Missing {
+                path: path.value().to_string(),
+            },
+            [mapping] => PersistenceFieldResolution::Resolved(mapping.backend_field.clone()),
+            mappings => PersistenceFieldResolution::Ambiguous {
+                path: path.value().to_string(),
+                candidates: mappings
+                    .iter()
+                    .map(|mapping| mapping.backend_field.clone())
+                    .collect(),
+            },
+        }
+    }
+}
+
 /// 谓词 schema 构建器。
 /// Predicate schema builder.
 pub type PredicateSchemaBuilder<C = String> = PredicateSchema<C>;
@@ -396,9 +420,22 @@ mod tests {
         let schema = PredicateSchema::new("Users").with_field_name("status", "user_status");
 
         assert_eq!(
-            schema.resolve_field(&PropertyPath::parse("status")),
+            PersistenceFieldResolver::resolve_field(&schema, &PropertyPath::parse("status")),
             Some("user_status".to_string())
         );
+    }
+
+    #[test]
+    fn predicate_schema_diagnoses_duplicate_field_mappings() {
+        let schema = PredicateSchema::new("Users")
+            .with_field_name("id", "user_id")
+            .with_field_name("id", "legacy_id");
+
+        assert!(matches!(
+            schema.resolve_detailed(&PropertyPath::parse("id")),
+            PersistenceFieldResolution::Ambiguous { candidates, .. }
+                if candidates == vec!["user_id".to_string(), "legacy_id".to_string()]
+        ));
     }
 
     #[test]

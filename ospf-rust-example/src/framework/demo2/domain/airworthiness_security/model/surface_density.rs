@@ -11,6 +11,10 @@ pub struct SurfaceDensity {
 impl SurfaceDensity {
     /// 计算表面密度（重量/面积） / Compute surface density (weight / area)
     pub fn density(&self) -> f64 {
-        if self.area > 0.0 { self.weight / self.area } else { 0.0 }
+        if self.area > 0.0 {
+            self.weight / self.area
+        } else {
+            0.0
+        }
     }
 }

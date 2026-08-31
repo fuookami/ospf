@@ -1,12 +1,12 @@
 //! 装载模型 / Stowage model
 use super::item::{Item, ItemStatus};
 use super::position::Position;
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::LinearMonomial;
 use ospf_rust_core::variable::{BinaryVariableItem, UContinuousVariableItem};
+use std::error::Error;
+use std::sync::Arc;
 
 /// 装载模式 / Stowage mode (对齐 Kotlin StowageMode)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -22,7 +22,10 @@ pub enum StowageMode {
 impl StowageMode {
     /// 是否启用 MAC 优化 / Whether MAC optimization is enabled
     pub fn with_mac_optimization(&self) -> bool {
-        matches!(self, StowageMode::FullLoad | StowageMode::WeightRecommendation)
+        matches!(
+            self,
+            StowageMode::FullLoad | StowageMode::WeightRecommendation
+        )
     }
 }
 

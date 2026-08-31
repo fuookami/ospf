@@ -1,9 +1,11 @@
 //! 聚合初始化器模块 / Aggregation initializer module
-use std::collections::HashMap;
 use super::super::model::{FlightTaskReverse, Graph};
-use super::route_graph_generator::{FlightTaskInfo, RouteGraphGenerator, RouteGraphGeneratorConfig};
 use super::initial_flight_task_bunch_generator::InitialFlightTaskBunchGenerator;
 use super::operator::FeasibilityJudger;
+use super::route_graph_generator::{
+    FlightTaskInfo, RouteGraphGenerator, RouteGraphGeneratorConfig,
+};
+use std::collections::HashMap;
 
 /// 聚合初始化器 / Aggregation initializer
 /// 对齐 FSRA AggregationInitializer

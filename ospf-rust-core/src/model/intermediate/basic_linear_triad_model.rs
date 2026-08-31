@@ -1,9 +1,9 @@
 //! 基本线性三角模型
 //! Basic Linear Triad Model
 
-use std::collections::HashMap;
 use crate::token::Token;
 use crate::variable::{VariableId, VariableType};
+use std::collections::HashMap;
 
 /// 稀疏向量 / Sparse Vector
 ///
@@ -176,6 +176,7 @@ impl BasicLinearTriadModel {
     }
 
     /// 添加带元数据的约束行。 / Add constraint row with metadata.
+    #[allow(clippy::too_many_arguments)]
     pub fn add_constraint_with_metadata(
         &mut self,
         row: SparseVector<f64>,

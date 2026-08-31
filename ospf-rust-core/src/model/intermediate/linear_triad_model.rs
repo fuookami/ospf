@@ -1,10 +1,10 @@
 //! 线性三角模型
 //! Linear Triad Model
 
-use crate::token::Token;
-use crate::variable::{ContinuousVariableItem, VariableId, VariableType};
 use super::super::object::ObjectiveCategory;
 use super::{BasicLinearTriadModel, LinearElasticBuilder, SparseVector};
+use crate::token::Token;
+use crate::variable::{ContinuousVariableItem, VariableId, VariableType};
 
 /// 线性三角模型 / Linear Triad Model
 ///
@@ -322,7 +322,7 @@ impl LinearTriadModel {
             }
         }
 
-        for col_index in 0..n {
+        for (col_index, stationarity_row) in stationarity_rows.iter_mut().enumerate() {
             let lower = self
                 .basic
                 .lb
@@ -350,7 +350,7 @@ impl LinearTriadModel {
                                 0.0,
                                 lower,
                             );
-                            stationarity_rows[col_index].add(lb_dual_index, 1.0);
+                            stationarity_row.add(lb_dual_index, 1.0);
                         }
                         if upper.is_finite() {
                             let ub_dual_index = add_dual_variable(
@@ -362,7 +362,7 @@ impl LinearTriadModel {
                                 f64::INFINITY,
                                 upper,
                             );
-                            stationarity_rows[col_index].add(ub_dual_index, 1.0);
+                            stationarity_row.add(ub_dual_index, 1.0);
                         }
                     }
                     ObjectiveCategory::Minimum => {
@@ -376,7 +376,7 @@ impl LinearTriadModel {
                                 f64::INFINITY,
                                 lower,
                             );
-                            stationarity_rows[col_index].add(lb_dual_index, 1.0);
+                            stationarity_row.add(lb_dual_index, 1.0);
                         }
                         if upper.is_finite() {
                             let ub_dual_index = add_dual_variable(
@@ -388,7 +388,7 @@ impl LinearTriadModel {
                                 0.0,
                                 upper,
                             );
-                            stationarity_rows[col_index].add(ub_dual_index, 1.0);
+                            stationarity_row.add(ub_dual_index, 1.0);
                         }
                     }
                 }
@@ -539,7 +539,7 @@ impl LinearTriadModel {
             }
         }
 
-        for var_index in 0..n {
+        for (var_index, stationarity_row) in stationarity_rows.iter_mut().enumerate() {
             let lower = self
                 .basic
                 .lb
@@ -568,7 +568,7 @@ impl LinearTriadModel {
                         0.0,
                         0.0,
                     );
-                    stationarity_rows[var_index].add(lb_dual_index, 1.0);
+                    stationarity_row.add(lb_dual_index, 1.0);
                     normalization_row.add(lb_dual_index, lower);
                 }
                 BoundKind::NegativeFree => {
@@ -581,7 +581,7 @@ impl LinearTriadModel {
                         f64::INFINITY,
                         0.0,
                     );
-                    stationarity_rows[var_index].add(ub_dual_index, 1.0);
+                    stationarity_row.add(ub_dual_index, 1.0);
                     normalization_row.add(ub_dual_index, upper);
                 }
                 BoundKind::Bounded => {
@@ -595,7 +595,7 @@ impl LinearTriadModel {
                             0.0,
                             0.0,
                         );
-                        stationarity_rows[var_index].add(lb_dual_index, 1.0);
+                        stationarity_row.add(lb_dual_index, 1.0);
                         normalization_row.add(lb_dual_index, lower);
                     }
                     if upper.is_finite() {
@@ -608,7 +608,7 @@ impl LinearTriadModel {
                             f64::INFINITY,
                             0.0,
                         );
-                        stationarity_rows[var_index].add(ub_dual_index, 1.0);
+                        stationarity_row.add(ub_dual_index, 1.0);
                         normalization_row.add(ub_dual_index, upper);
                     }
                 }

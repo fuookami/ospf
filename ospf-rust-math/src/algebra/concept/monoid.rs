@@ -1,10 +1,10 @@
 //! 幺半群 trait
 //! Monoid trait
 
-use num_traits::Zero;
-use crate::operator::ZeroRef;
 use super::Semigroup;
 use super::SemigroupRef;
+use crate::operator::ZeroRef;
+use num_traits::Zero;
 
 // ============================================================================
 // Monoid Trait - 幺半群

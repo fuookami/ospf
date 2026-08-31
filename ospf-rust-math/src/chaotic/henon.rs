@@ -1,10 +1,10 @@
 //! 埃农映射。
 //! Henon map.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point2};
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use super::helpers::{default_float, one_point2};
+use num_traits::Float;
 
 point2_system!(
     /// 埃农映射。

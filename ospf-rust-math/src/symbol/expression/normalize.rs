@@ -1,14 +1,14 @@
 //! 布尔表达式规范化与结构键
 //! Boolean expression normalization and structural keys
 
+use super::boolean::{BooleanExpression, ParsedBooleanExpression};
+use super::operators::*;
+use super::property_path::PropertyPath;
+use super::scalar::{ParsedScalarExpression, ScalarExpression};
+use super::value::ExpressionValue;
+use crate::Trivalent;
 use std::collections::HashSet;
 use std::fmt::Display;
-use crate::Trivalent;
-use super::property_path::PropertyPath;
-use super::operators::*;
-use super::value::ExpressionValue;
-use super::scalar::{ScalarExpression, ParsedScalarExpression};
-use super::boolean::{BooleanExpression, ParsedBooleanExpression};
 
 #[derive(Debug, Clone, Copy)]
 pub struct NormalizeConfig {
@@ -138,7 +138,10 @@ where
                 .collect::<Vec<_>>();
             match filtered.len() {
                 0 => BooleanExpression::Constant(Trivalent::True),
-                1 => filtered.into_iter().next().expect("filtered has exactly one element / filtered 恰好有一个元素"),
+                1 => filtered
+                    .into_iter()
+                    .next()
+                    .expect("filtered has exactly one element / filtered 恰好有一个元素"),
                 _ => BooleanExpression::And(filtered),
             }
         }
@@ -159,7 +162,10 @@ where
                 .collect::<Vec<_>>();
             match filtered.len() {
                 0 => BooleanExpression::Constant(Trivalent::False),
-                1 => filtered.into_iter().next().expect("filtered has exactly one element / filtered 恰好有一个元素"),
+                1 => filtered
+                    .into_iter()
+                    .next()
+                    .expect("filtered has exactly one element / filtered 恰好有一个元素"),
                 _ => BooleanExpression::Or(filtered),
             }
         }

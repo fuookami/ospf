@@ -1,16 +1,15 @@
 //! 懒加载平展上下文
 //! Lazy Flatten Context
 
-use std::collections::HashMap;
-use std::marker::PhantomData;
-use std::sync::{Arc, OnceLock};
 use super::{
-
     Canonical, CanonicalFlattenContext, CanonicalMonomial, FlattenContextTrait, FlattenedMonomial,
     FlattenedPolynomial, FlattenedSymbol, Linear, LinearFlattenContext, LinearMonomial, Quadratic,
     QuadraticFlattenContext, QuadraticMonomial,
 };
 use crate::token::TokenList;
+use std::collections::HashMap;
+use std::marker::PhantomData;
+use std::sync::{Arc, OnceLock};
 
 // ============================================================================
 // 懒加载线性平展上下文

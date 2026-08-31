@@ -4,22 +4,35 @@
 //! 此模块仅在启用 `scip` feature 时可用。
 //! This module is only available when the `scip` feature is enabled.
 
-use std::time::{Duration, Instant};
 use crate::error::{CoreError, Result, SolverError};
 use crate::model::ConstraintRelation;
 use crate::model::ObjectiveCategory;
 use crate::model::intermediate::{LinearTriadModel, QuadraticTetradModel};
+use crate::solver::solver::{emit_progress_start, emit_progress_terminal};
 use crate::solver::{
-    LinearSolver, QuadraticSolver, SolverCapability, SolverInfo, SolverOutput, SolverStatus,
+    CapabilitySupport, LinearSolver, QuadraticSolver, SolveHandle, SolveOptions, SolveReport,
+    SolveWarning, SolverCapabilities, SolverCapability, SolverDescriptor, SolverInfo, SolverOutput,
+    SolverProvenance, SolverStatus, SolvingStatus, attach_linear_solution_audit,
+    attach_quadratic_model_mapping, cancelled_solve_report, linear_dual_certificate_is_valid,
+    solver_output_to_report_with_cancellation, solver_output_to_report_with_provenance,
+    validate_per_solve_limits, verify_native_terminal_proof,
+};
+use crate::solver::{
+    configuration_fingerprint, linear_model_fingerprint, quadratic_model_fingerprint,
+    solver_provenance_fingerprint,
 };
 use crate::token::Token;
 use crate::variable::VariableType;
 #[cfg(feature = "scip")]
 use russcip::{
     Constraint, Event, EventMask, Eventhdlr, Model, ParamSetting, ProblemCreated, ProblemOrSolving,
-    SCIPEventhdlr, Solving, Status as SCIPStatus, Unsolved, VarType, Variable, WithSolutions,
-    WithSolvingStats,
+    Retcode, SCIPEventhdlr, Solving, Status as SCIPStatus, Unsolved, VarType, Variable,
+    WithSolutions, WithSolvingStats,
 };
+use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 mod callbacks;
 mod config;
@@ -40,6 +53,8 @@ struct SCIPTelemetryRuntime {
     objective_category: ObjectiveCategory,
     scip_vars: Vec<Variable>,
     no_improvement_time_limit: Option<f64>,
+    interruptible_time: Option<f64>,
+    interruptible_gap: Option<f64>,
     improvement_tolerance: f64,
     telemetry_min_interval: Option<f64>,
     native_event_mask: EventMask,
@@ -47,6 +62,10 @@ struct SCIPTelemetryRuntime {
     snapshot_observers: Vec<SCIPSnapshotObserver>,
     native_callback: Option<SCIPNativeCallback>,
     native_observers: Vec<SCIPNativeObserver>,
+    cancellation_handle: Option<SolveHandle>,
+    max_iterations: Option<i64>,
+    iteration_limit_reached: Arc<AtomicBool>,
+    callback_error: Arc<Mutex<Option<CoreError>>>,
 }
 
 #[cfg(feature = "scip")]
@@ -57,6 +76,8 @@ impl SCIPTelemetryRuntime {
             || !self.snapshot_observers.is_empty()
             || self.native_callback.is_some()
             || !self.native_observers.is_empty()
+            || self.cancellation_handle.is_some()
+            || self.max_iterations.is_some()
     }
 }
 
@@ -203,24 +224,92 @@ impl Eventhdlr for SCIPTelemetryEventHandler {
         };
         self.check_improvement(snapshot.objective_value);
 
-        if let Some(callback) = self.runtime.telemetry_callback.as_ref() {
-            if self.should_emit_telemetry() {
-                let _ = callback(&snapshot);
-                self.last_telemetry_emit = Some(Instant::now());
+        let iteration_limit_reached = if let Some(limit) = self.runtime.max_iterations
+            && let Some(iterations) = snapshot.iterations
+            && u128::try_from(limit).ok().is_some_and(|limit| {
+                u128::try_from(iterations)
+                    .ok()
+                    .is_some_and(|iterations| iterations >= limit)
+            }) {
+            self.runtime
+                .iteration_limit_reached
+                .store(true, Ordering::SeqCst);
+            true
+        } else {
+            false
+        };
+
+        if let Some(callback) = self.runtime.telemetry_callback.as_ref()
+            && self.should_emit_telemetry()
+        {
+            if let Err(error) = callback(&snapshot) {
+                let mut callback_error = self
+                    .runtime
+                    .callback_error
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if callback_error.is_none() {
+                    *callback_error = Some(CoreError::callback_error(format!(
+                        "SCIP telemetry callback error: {}",
+                        error
+                    )));
+                }
+                unsafe {
+                    russcip::ffi::SCIPinterruptSolve(model.inner());
+                }
+                return;
             }
+            self.last_telemetry_emit = Some(Instant::now());
         }
 
-        let mut request_interrupt = false;
+        let mut request_interrupt = iteration_limit_reached
+            || self
+                .runtime
+                .cancellation_handle
+                .as_ref()
+                .is_some_and(SolveHandle::is_cancelled);
         for observer in &self.runtime.snapshot_observers {
-            if let Ok(control) = observer(&snapshot) {
-                if matches!(control, SCIPSnapshotControl::Interrupt) {
+            match observer(&snapshot) {
+                Ok(control) => {
+                    if matches!(control, SCIPSnapshotControl::Interrupt) {
+                        request_interrupt = true;
+                    }
+                }
+                Err(error) => {
+                    let mut callback_error = self
+                        .runtime
+                        .callback_error
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    if callback_error.is_none() {
+                        *callback_error = Some(CoreError::callback_error(format!(
+                            "SCIP snapshot observer error: {}",
+                            error
+                        )));
+                    }
                     request_interrupt = true;
                 }
             }
         }
         for observer in &self.runtime.native_observers {
-            if let Ok(control) = observer(&native_snapshot) {
-                if matches!(control, SCIPNativeControl::Interrupt) {
+            match observer(&native_snapshot) {
+                Ok(control) => {
+                    if matches!(control, SCIPNativeControl::Interrupt) {
+                        request_interrupt = true;
+                    }
+                }
+                Err(error) => {
+                    let mut callback_error = self
+                        .runtime
+                        .callback_error
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    if callback_error.is_none() {
+                        *callback_error = Some(CoreError::callback_error(format!(
+                            "SCIP native observer error: {}",
+                            error
+                        )));
+                    }
                     request_interrupt = true;
                 }
             }
@@ -232,14 +321,45 @@ impl Eventhdlr for SCIPTelemetryEventHandler {
                         request_interrupt = true;
                     }
                 }
-                Err(_) => {
+                Err(error) => {
+                    let mut callback_error = self
+                        .runtime
+                        .callback_error
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    if callback_error.is_none() {
+                        *callback_error = Some(CoreError::callback_error(format!(
+                            "SCIP native callback error: {}",
+                            error
+                        )));
+                    }
                     request_interrupt = true;
                 }
             }
         }
 
         if let Some(limit_seconds) = self.runtime.no_improvement_time_limit {
-            if self.last_improvement.elapsed().as_secs_f64() >= limit_seconds {
+            let time_reached = self
+                .runtime
+                .interruptible_time
+                .map(|minimum| snapshot.solve_time.as_secs_f64() >= minimum)
+                .unwrap_or(true);
+            let gap_reached = self
+                .runtime
+                .interruptible_gap
+                .map(|threshold| {
+                    snapshot
+                        .objective_value
+                        .zip(snapshot.best_bound)
+                        .is_some_and(|(objective_value, best_bound)| {
+                            (objective_value - best_bound).abs() < threshold
+                        })
+                })
+                .unwrap_or(true);
+            if self.last_improvement.elapsed().as_secs_f64() >= limit_seconds
+                && time_reached
+                && gap_reached
+            {
                 request_interrupt = true;
             }
         }
@@ -326,24 +446,28 @@ impl SCIPSolver {
             SCIPStatus::Inforunbd => SolverStatus::InfeasibleOrUnbounded,
             SCIPStatus::Unbounded => SolverStatus::Unbounded,
             SCIPStatus::TimeLimit => SolverStatus::TimeLimit,
-            SCIPStatus::NodeLimit
-            | SCIPStatus::TotalNodeLimit
-            | SCIPStatus::StallNodeLimit
-            | SCIPStatus::GapLimit
-            | SCIPStatus::SolutionLimit
-            | SCIPStatus::BestSolutionLimit
-            | SCIPStatus::RestartLimit => SolverStatus::IterationLimit,
-            SCIPStatus::MemoryLimit => SolverStatus::NumericError,
+            SCIPStatus::NodeLimit => SolverStatus::NodeLimit,
+            SCIPStatus::TotalNodeLimit => SolverStatus::TotalNodeLimit,
+            SCIPStatus::StallNodeLimit => SolverStatus::StallNodeLimit,
+            SCIPStatus::GapLimit => SolverStatus::GapLimit,
+            SCIPStatus::SolutionLimit => SolverStatus::SolutionLimit,
+            SCIPStatus::BestSolutionLimit => SolverStatus::BestSolutionLimit,
+            SCIPStatus::RestartLimit => SolverStatus::RestartLimit,
+            SCIPStatus::MemoryLimit => SolverStatus::MemoryLimit,
             SCIPStatus::UserInterrupt => SolverStatus::UserInterrupt,
+            SCIPStatus::Terminate => SolverStatus::UserInterrupt,
             _ => SolverStatus::Unknown,
         }
     }
 
     fn refine_status_with_solution(status: SolverStatus, has_solution: bool) -> SolverStatus {
-        if has_solution && matches!(status, SolverStatus::Unknown) {
-            return SolverStatus::Feasible;
+        if matches!(status, SolverStatus::Optimal) && !has_solution {
+            SolverStatus::Unknown
+        } else if has_solution && matches!(status, SolverStatus::Unknown) {
+            SolverStatus::Feasible
+        } else {
+            status
         }
-        status
     }
 
     fn map_presolving_mode(mode: PresolvingMode) -> ParamSetting {
@@ -371,18 +495,32 @@ impl SCIPSolver {
         &self,
         objective_category: ObjectiveCategory,
         scip_vars: &[Variable],
+        cancellation_handle: Option<&SolveHandle>,
+        callback_error: Arc<Mutex<Option<CoreError>>>,
     ) -> SCIPTelemetryRuntime {
+        let native_event_mask =
+            if cancellation_handle.is_some() || self.config.max_iterations.is_some() {
+                self.config.native_event_mask | EventMask::NODE_EVENT | EventMask::LP_EVENT
+            } else {
+                self.config.native_event_mask
+            };
         SCIPTelemetryRuntime {
             objective_category,
             scip_vars: scip_vars.to_vec(),
             no_improvement_time_limit: self.config.no_improvement_time_limit,
+            interruptible_time: self.config.interruptible_time,
+            interruptible_gap: self.config.interruptible_gap,
             improvement_tolerance: self.config.improvement_tolerance.unwrap_or(1e-9),
             telemetry_min_interval: self.config.telemetry_min_interval,
-            native_event_mask: self.config.native_event_mask,
+            native_event_mask,
             telemetry_callback: self.config.telemetry_callback.clone(),
             snapshot_observers: self.config.snapshot_observers.clone(),
             native_callback: self.config.native_callback.clone(),
             native_observers: self.config.native_observers.clone(),
+            cancellation_handle: cancellation_handle.cloned(),
+            max_iterations: self.config.max_iterations,
+            iteration_limit_reached: Arc::new(AtomicBool::new(false)),
+            callback_error,
         }
     }
 
@@ -391,16 +529,25 @@ impl SCIPSolver {
         scip: &mut Model<ProblemCreated>,
         objective_category: ObjectiveCategory,
         scip_vars: &[Variable],
-    ) {
-        let runtime = self.build_telemetry_runtime(objective_category, scip_vars);
+        cancellation_handle: Option<&SolveHandle>,
+        callback_error: Arc<Mutex<Option<CoreError>>>,
+    ) -> Arc<AtomicBool> {
+        let runtime = self.build_telemetry_runtime(
+            objective_category,
+            scip_vars,
+            cancellation_handle,
+            callback_error,
+        );
+        let iteration_limit_reached = Arc::clone(&runtime.iteration_limit_reached);
         if !runtime.enabled() {
-            return;
+            return iteration_limit_reached;
         }
         scip.include_eventhdlr(
             "__ospf_scip_telemetry",
             "OSPF SCIP telemetry callback bridge",
             Box::new(SCIPTelemetryEventHandler::new(runtime)),
         );
+        iteration_limit_reached
     }
 
     fn emit_stage_status(
@@ -425,11 +572,36 @@ impl SCIPSolver {
         Ok(())
     }
 
-    fn map_scip_error(context: &str, error: impl std::fmt::Debug) -> CoreError {
-        CoreError::Solver(SolverError::SolveFailed(format!(
-            "SCIP {} error: {:?}",
-            context, error
-        )))
+    fn map_scip_error(context: &str, error: Retcode) -> CoreError {
+        let message = format!("SCIP {} error: {:?}", context, error);
+        match error {
+            Retcode::ParameterUnknown
+            | Retcode::ParameterWrongType
+            | Retcode::ParameterWrongVal => {
+                CoreError::Solver(crate::error::SolverError::InvalidInput(message))
+            }
+            Retcode::InvalidData
+            | Retcode::InvalidCall
+            | Retcode::NoProblem
+            | Retcode::KeyAlreadyExisting => CoreError::solver_modeling(message),
+            Retcode::PluginNotFound
+            | Retcode::NoMemory
+            | Retcode::ReadError
+            | Retcode::WriteError
+            | Retcode::NoFile
+            | Retcode::FileCreateError => CoreError::solver_environment(message),
+            Retcode::LpError => CoreError::solver_backend(message),
+            Retcode::InvalidResult => CoreError::parsing_error(message),
+            Retcode::NotImplemented => CoreError::NotImplemented(message),
+            Retcode::MaxDepthLevel
+            | Retcode::BranchError
+            | Retcode::Error
+            | Retcode::Unknown(_) => CoreError::solver_backend(message),
+            Retcode::Okay => CoreError::contract_error(format!(
+                "SCIP returned success where an error was expected in {}",
+                context
+            )),
+        }
     }
 
     fn apply_unsolved_config(&self, mut model: Model<Unsolved>) -> Result<Model<Unsolved>> {
@@ -446,14 +618,20 @@ impl SCIPSolver {
                 .set_real_param("limits/gap", gap)
                 .map_err(|e| Self::map_scip_error("set param", e))?;
         }
-        if let Some(iterations) = self.config.max_iterations {
-            model = model
-                .set_longint_param("lp/iterlim", iterations)
-                .map_err(|e| Self::map_scip_error("set param", e))?;
-        }
         if let Some(nodes) = self.config.node_limit {
             model = model
                 .set_longint_param("limits/nodes", nodes)
+                .map_err(|e| Self::map_scip_error("set param", e))?;
+        }
+        if let Some(solution_limit) = self.config.solution_limit {
+            let solution_limit = i32::try_from(solution_limit).map_err(|_| {
+                CoreError::Solver(crate::error::SolverError::InvalidInput(format!(
+                    "SCIP solution limit {} exceeds the native int parameter range",
+                    solution_limit
+                )))
+            })?;
+            model = model
+                .set_int_param("limits/solutions", solution_limit)
                 .map_err(|e| Self::map_scip_error("set param", e))?;
         }
         if let Some(mem_limit) = self.config.mem_limit {
@@ -519,30 +697,118 @@ impl SCIPSolver {
         })
     }
 
-    fn collect_dual_solution(constraints: &[Constraint]) -> Vec<f64> {
-        constraints
-            .iter()
-            .map(|constraint: &Constraint| {
-                constraint
-                    .transformed()
-                    .and_then(|transformed| transformed.dual_sol())
-                    .or_else(|| constraint.dual_sol())
-                    .unwrap_or(0.0)
-            })
-            .collect()
+    fn apply_per_solve_limits(
+        mut model: Model<ProblemCreated>,
+        options: &SolveOptions<'_>,
+    ) -> Result<Model<ProblemCreated>> {
+        if let Some(time_limit) = options.time_limit {
+            model = model
+                .set_real_param("limits/time", time_limit.as_secs_f64())
+                .map_err(|error| Self::map_scip_error("set per-solve time limit", error))?;
+        }
+        if let Some(node_limit) = options.node_limit {
+            let node_limit = i64::try_from(node_limit).map_err(|_| {
+                CoreError::Solver(SolverError::InvalidInput(
+                    "SCIP per-solve node limit exceeds the native int range".to_owned(),
+                ))
+            })?;
+            model = model
+                .set_longint_param("limits/nodes", node_limit)
+                .map_err(|error| Self::map_scip_error("set per-solve node limit", error))?;
+        }
+        if let Some(solution_limit) = options.solution_limit {
+            let solution_limit = i32::try_from(solution_limit).map_err(|_| {
+                CoreError::Solver(SolverError::InvalidInput(
+                    "SCIP per-solve solution limit exceeds the native int range".to_owned(),
+                ))
+            })?;
+            model = model
+                .set_int_param("limits/solutions", solution_limit)
+                .map_err(|error| Self::map_scip_error("set per-solve solution limit", error))?;
+        }
+        Ok(model)
     }
 
-    fn collect_farkas_solution(constraints: &[Constraint]) -> Vec<f64> {
-        constraints
-            .iter()
-            .map(|constraint: &Constraint| {
-                constraint
-                    .transformed()
-                    .and_then(|transformed| transformed.farkas_dual_sol())
-                    .or_else(|| constraint.farkas_dual_sol())
-                    .unwrap_or(0.0)
-            })
-            .collect()
+    fn collect_dual_solution(
+        constraints: &[Constraint],
+        objective_category: ObjectiveCategory,
+    ) -> Option<Vec<f64>> {
+        let mut duals = Vec::with_capacity(constraints.len());
+        for constraint in constraints {
+            let transformed = constraint.transformed();
+            let row_dual = transformed
+                .as_ref()
+                .and_then(|transformed| transformed.row().map(|row| row.dual()))
+                .or_else(|| constraint.row().map(|row| row.dual()));
+            // SCIP 约束层可能返回表示“当前不可用”的超大哨兵值；优先读取 LP row 对偶，避免把哨兵当作证书。
+            let dual = row_dual
+                .filter(|value| value.is_finite() && value.abs() < 1e90)
+                .or_else(|| {
+                    transformed
+                        .as_ref()
+                        .and_then(|transformed| transformed.dual_sol())
+                        .filter(|value| value.is_finite() && value.abs() < 1e90)
+                })
+                .or_else(|| {
+                    constraint
+                        .dual_sol()
+                        .filter(|value| value.is_finite() && value.abs() < 1e90)
+                })?;
+            // SCIP 对最大化模型返回相反方向的 LP 行对偶；统一报告采用原模型方向。
+            // SCIP returns the opposite LP-row dual orientation for maximization; unified reports use the original model orientation.
+            duals.push(match objective_category {
+                ObjectiveCategory::Maximum => -dual,
+                ObjectiveCategory::Minimum => dual,
+            });
+        }
+        Some(duals)
+    }
+
+    fn collect_farkas_solution(constraints: &[Constraint]) -> Option<Vec<f64>> {
+        let mut duals = Vec::with_capacity(constraints.len());
+        for constraint in constraints {
+            let dual = constraint
+                .transformed()
+                .and_then(|transformed| transformed.farkas_dual_sol())
+                .or_else(|| constraint.farkas_dual_sol())?;
+            duals.push(dual);
+        }
+        Some(duals)
+    }
+
+    fn resolve_verified_linear_dual(
+        &self,
+        model: &LinearTriadModel,
+        primal_values: &[f64],
+        native_dual: Option<Vec<f64>>,
+    ) -> Option<Vec<f64>> {
+        if let Some(dual) = native_dual
+            && linear_dual_certificate_is_valid(model, primal_values, &dual)
+        {
+            return Some(dual);
+        }
+        if model.has_integer_variables() || model.num_constraints() == 0 {
+            return None;
+        }
+
+        // 原生 dual 不可用时求解显式对偶，并用原模型证书重新校验。
+        // Solve the explicit dual when native multipliers are unavailable, then revalidate them against the primal model.
+        let dual_model = model.to_dual();
+        let Ok((dual_output, _)) =
+            self.solve_linear_internal(&dual_model, 1, false, None, false, None)
+        else {
+            return None;
+        };
+        if !matches!(dual_output.status, SolverStatus::Optimal) {
+            return None;
+        }
+        let dual_values = dual_output.solution?;
+        let row_count = model.num_constraints();
+        if dual_values.len() < row_count {
+            return None;
+        }
+        let candidate = dual_values[..row_count].to_vec();
+        linear_dual_certificate_is_valid(model, primal_values, &candidate).then_some(candidate)
     }
 
     fn relative_gap(objective_value: f64, best_bound: f64) -> Option<f64> {
@@ -633,6 +899,13 @@ impl SCIPSolver {
         "SCIP"
     }
 
+    fn native_version() -> String {
+        let major = unsafe { russcip::ffi::SCIPmajorVersion() };
+        let minor = unsafe { russcip::ffi::SCIPminorVersion() };
+        let technical = unsafe { russcip::ffi::SCIPtechVersion() };
+        format!("{}.{}.{}", major, minor, technical)
+    }
+
     fn capabilities(&self) -> Vec<SolverCapability> {
         vec![
             SolverCapability::Linear,
@@ -646,8 +919,142 @@ impl SCIPSolver {
         ]
     }
 
+    pub(super) fn provenance(&self) -> SolverProvenance {
+        let mut configuration = BTreeMap::new();
+        configuration.insert(
+            "time_limit".to_owned(),
+            format!("{:?}", self.config.time_limit),
+        );
+        configuration.insert("mip_gap".to_owned(), format!("{:?}", self.config.mip_gap));
+        configuration.insert(
+            "no_improvement_time_limit".to_owned(),
+            format!("{:?}", self.config.no_improvement_time_limit),
+        );
+        configuration.insert(
+            "interruptible_time".to_owned(),
+            format!("{:?}", self.config.interruptible_time),
+        );
+        configuration.insert(
+            "interruptible_gap".to_owned(),
+            format!("{:?}", self.config.interruptible_gap),
+        );
+        configuration.insert(
+            "improve_threshold".to_owned(),
+            format!("{:?}", self.config.improvement_tolerance),
+        );
+        configuration.insert(
+            "max_iterations".to_owned(),
+            format!("{:?}", self.config.max_iterations),
+        );
+        configuration.insert("threads".to_owned(), format!("{:?}", self.config.threads));
+        configuration.insert("seed".to_owned(), format!("{:?}", self.config.seed));
+        configuration.insert(
+            "node_limit".to_owned(),
+            format!("{:?}", self.config.node_limit),
+        );
+        configuration.insert(
+            "solution_limit".to_owned(),
+            format!("{:?}", self.config.solution_limit),
+        );
+        configuration.insert(
+            "mem_limit".to_owned(),
+            format!("{:?}", self.config.mem_limit),
+        );
+        configuration.insert(
+            "presolving".to_owned(),
+            format!("{:?}", self.config.presolving),
+        );
+        configuration.insert(
+            "heuristics_priority".to_owned(),
+            format!("{:?}", self.config.heuristics_priority),
+        );
+        configuration.insert(
+            "output_flag".to_owned(),
+            self.config.output_flag.to_string(),
+        );
+        configuration.insert(
+            "native_callback_registered".to_owned(),
+            self.config.native_callback.is_some().to_string(),
+        );
+        configuration.insert(
+            "telemetry_callback_registered".to_owned(),
+            self.config.telemetry_callback.is_some().to_string(),
+        );
+        let native_version = Self::native_version();
+        let mut environment_summary = BTreeMap::new();
+        environment_summary.insert("binding".to_owned(), "russcip-0.9.1".to_owned());
+        environment_summary.insert("native_version".to_owned(), native_version.clone());
+        SolverProvenance {
+            solver_id: format!("scip/{}", native_version),
+            backend_name: "SCIP".to_owned(),
+            backend_version: Some(native_version),
+            plugin_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+            requested_configuration: configuration.clone(),
+            effective_configuration: configuration,
+            thread_count: self.config.threads.map(|value| value.max(0) as usize),
+            random_seed: self.config.seed.map(|value| value.max(0) as u64),
+            deterministic: self.config.seed.map(|_| self.config.threads == Some(1)),
+            environment_summary,
+        }
+    }
+
+    pub(super) fn report_from_output(
+        &self,
+        output: SolverOutput,
+        cancellation_handle: Option<&SolveHandle>,
+    ) -> Result<SolveReport<f64>> {
+        let native_status = output.status;
+        if let Some(handle) = cancellation_handle {
+            handle.mark_completed();
+        }
+        let mut report = match cancellation_handle {
+            Some(handle) => {
+                solver_output_to_report_with_cancellation(output, self.provenance(), handle)
+            }
+            None => solver_output_to_report_with_provenance(output, self.provenance()),
+        }?;
+        verify_native_terminal_proof(&mut report, native_status)?;
+        let provenance = self.provenance();
+        report.fingerprints.configuration = Some(configuration_fingerprint(
+            &provenance.effective_configuration,
+        ));
+        report.fingerprints.solver = Some(solver_provenance_fingerprint(&provenance));
+        if self.has_non_replayable_callback() {
+            report.warnings.push(SolveWarning::new(
+                "NonReplayableCallback",
+                "backend callbacks are execution-only and are not included in replay identity",
+            ));
+        }
+        Ok(report)
+    }
+
+    fn has_non_replayable_callback(&self) -> bool {
+        self.config.stage_callback.is_some()
+            || self.config.telemetry_callback.is_some()
+            || self.config.native_callback.is_some()
+            || !self.config.native_observers.is_empty()
+    }
+
+    fn attach_model_fingerprint(
+        &self,
+        mut report: SolveReport<f64>,
+        model: &LinearTriadModel,
+    ) -> Result<SolveReport<f64>> {
+        report.fingerprints.model = Some(linear_model_fingerprint(model)?);
+        attach_linear_solution_audit(report, model)
+    }
+
+    fn attach_quadratic_model_fingerprint(
+        &self,
+        mut report: SolveReport<f64>,
+        model: &QuadraticTetradModel,
+    ) -> Result<SolveReport<f64>> {
+        report.fingerprints.model = Some(quadratic_model_fingerprint(model)?);
+        attach_quadratic_model_mapping(report, model)
+    }
+
     fn solve_linear(&self, model: &LinearTriadModel) -> Result<SolverOutput> {
-        let (output, _) = self.solve_linear_internal(model, 1, false)?;
+        let (output, _) = self.solve_linear_internal(model, 1, false, None, true, None)?;
         Ok(output)
     }
 
@@ -656,7 +1063,24 @@ impl SCIPSolver {
         model: &LinearTriadModel,
         solution_amount: usize,
     ) -> Result<(SolverOutput, Vec<Vec<f64>>)> {
-        self.solve_linear_internal(model, solution_amount.max(1), true)
+        self.solve_linear_internal(model, solution_amount.max(1), true, None, true, None)
+    }
+
+    fn solve_linear_with_options(
+        &self,
+        model: &LinearTriadModel,
+        options: &SolveOptions<'_>,
+    ) -> Result<SolverOutput> {
+        validate_per_solve_limits(options)?;
+        let (output, _) = self.solve_linear_internal(
+            model,
+            1,
+            false,
+            options.cancellation_handle,
+            true,
+            Some(options),
+        )?;
+        Ok(output)
     }
 
     fn solve_linear_internal(
@@ -664,7 +1088,11 @@ impl SCIPSolver {
         model: &LinearTriadModel,
         solution_amount: usize,
         collect_solution_pool: bool,
+        cancellation_handle: Option<&SolveHandle>,
+        allow_explicit_dual_fallback: bool,
+        per_solve_options: Option<&SolveOptions<'_>>,
     ) -> Result<(SolverOutput, Vec<Vec<f64>>)> {
+        crate::solver::audit::validate_linear_model_for_backend(model)?;
         let start_time = Instant::now();
 
         let mut scip = self.create_problem(model.objective_category)?;
@@ -672,6 +1100,9 @@ impl SCIPSolver {
             scip = scip
                 .set_int_param("limits/solutions", solution_amount as i32)
                 .map_err(|e| Self::map_scip_error("set param", e))?;
+        }
+        if let Some(options) = per_solve_options {
+            scip = Self::apply_per_solve_limits(scip, options)?;
         }
 
         // 添加变量
@@ -696,7 +1127,7 @@ impl SCIPSolver {
             };
 
             let obj = model.c.get(i).copied().unwrap_or(0.0);
-            let var = scip.add_var(lb, ub, obj, &token.variable.name(), vtype);
+            let var = scip.add_var(lb, ub, obj, token.variable.name(), vtype);
 
             scip_vars.push(var);
         }
@@ -727,30 +1158,53 @@ impl SCIPSolver {
                 model.b[i],
                 &format!("c{}", i),
             );
+            scip.set_cons_removable(&constraint, false);
             linear_constraints.push(constraint);
         }
 
         self.emit_stage_status(SCIPStage::AfterModeling, None, start_time.elapsed(), None)?;
-        self.install_telemetry_handler(&mut scip, model.objective_category, &scip_vars);
+        let callback_error = Arc::new(Mutex::new(None::<CoreError>));
+        let iteration_limit_reached = self.install_telemetry_handler(
+            &mut scip,
+            model.objective_category,
+            &scip_vars,
+            cancellation_handle,
+            Arc::clone(&callback_error),
+        );
         self.emit_stage_status(SCIPStage::Configuration, None, start_time.elapsed(), None)?;
 
         let solved = scip.solve();
+        if let Some(error) = callback_error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+        {
+            return Err(error);
+        }
         let solution = solved.best_sol();
-        let solver_status = Self::refine_status_with_solution(
+        let mut solver_status = Self::refine_status_with_solution(
             Self::convert_status(solved.status()),
             solution.is_some(),
         );
+        if iteration_limit_reached.load(Ordering::SeqCst)
+            && !cancellation_handle.is_some_and(SolveHandle::is_cancelled)
+        {
+            solver_status = SolverStatus::IterationLimit;
+        }
 
         let mut output = SolverOutput::new(solver_status);
         output.node_count = Some(solved.n_nodes());
         output.iterations = Some(solved.n_lp_iterations());
+        output.solution_count = Some(solved.n_sols());
 
         let best_bound = solved.best_bound();
         if best_bound.is_finite() {
             output.best_bound = Some(best_bound);
         }
 
-        if let Some(solution) = solution {
+        if solver_status.is_feasible()
+            && let Some(solution) = solution
+        {
             let objective_value = solution.obj_val();
             output.objective_value = Some(objective_value);
             output.solution = Some(scip_vars.iter().map(|var| solution.val(var)).collect());
@@ -761,9 +1215,18 @@ impl SCIPSolver {
 
         // 线性对偶乘子（尽力获取）
         // Linear dual multipliers (best effort).
-        if matches!(solver_status, SolverStatus::Optimal) {
-            let dual_solution = Self::collect_dual_solution(&linear_constraints);
-            if !dual_solution.is_empty() {
+        if allow_explicit_dual_fallback
+            && matches!(solver_status, SolverStatus::Optimal)
+            && let Some(primal_values) = output.solution.as_deref()
+        {
+            let dual_solution = self.resolve_verified_linear_dual(
+                model,
+                primal_values,
+                Self::collect_dual_solution(&linear_constraints, model.objective_category),
+            );
+            if let Some(dual_solution) = dual_solution
+                && !dual_solution.is_empty()
+            {
                 output.dual_solution = Some(dual_solution);
             }
         }
@@ -795,8 +1258,24 @@ impl SCIPSolver {
     }
 
     fn solve_quadratic(&self, model: &QuadraticTetradModel) -> Result<SolverOutput> {
-        let (output, _) = self.solve_quadratic_internal(model, 1, false)?;
+        let (output, _) = self.solve_quadratic_internal(model, 1, false, None, None)?;
         Ok(output)
+    }
+
+    /// 求解线性模型并返回统一报告 / Solve a linear model as a unified report
+    pub fn solve_linear_report(&self, model: &LinearTriadModel) -> Result<SolveReport<f64>> {
+        self.attach_model_fingerprint(
+            self.report_from_output(self.solve_linear(model)?, None)?,
+            model,
+        )
+    }
+
+    /// 求解二次模型并返回统一报告 / Solve a quadratic model as a unified report
+    pub fn solve_quadratic_report(&self, model: &QuadraticTetradModel) -> Result<SolveReport<f64>> {
+        self.attach_quadratic_model_fingerprint(
+            self.report_from_output(self.solve_quadratic(model)?, None)?,
+            model,
+        )
     }
 
     fn solve_quadratic_with_solution_pool_internal(
@@ -804,7 +1283,23 @@ impl SCIPSolver {
         model: &QuadraticTetradModel,
         solution_amount: usize,
     ) -> Result<(SolverOutput, Vec<Vec<f64>>)> {
-        self.solve_quadratic_internal(model, solution_amount.max(1), true)
+        self.solve_quadratic_internal(model, solution_amount.max(1), true, None, None)
+    }
+
+    fn solve_quadratic_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: &SolveOptions<'_>,
+    ) -> Result<SolverOutput> {
+        validate_per_solve_limits(options)?;
+        let (output, _) = self.solve_quadratic_internal(
+            model,
+            1,
+            false,
+            options.cancellation_handle,
+            Some(options),
+        )?;
+        Ok(output)
     }
 
     fn solve_quadratic_internal(
@@ -812,7 +1307,10 @@ impl SCIPSolver {
         model: &QuadraticTetradModel,
         solution_amount: usize,
         collect_solution_pool: bool,
+        cancellation_handle: Option<&SolveHandle>,
+        per_solve_options: Option<&SolveOptions<'_>>,
     ) -> Result<(SolverOutput, Vec<Vec<f64>>)> {
+        crate::solver::audit::validate_quadratic_model_for_backend(model)?;
         let start_time = Instant::now();
 
         let mut scip = self.create_problem(model.objective_category)?;
@@ -820,6 +1318,9 @@ impl SCIPSolver {
             scip = scip
                 .set_int_param("limits/solutions", solution_amount as i32)
                 .map_err(|e| Self::map_scip_error("set param", e))?;
+        }
+        if let Some(options) = per_solve_options {
+            scip = Self::apply_per_solve_limits(scip, options)?;
         }
 
         // 添加变量
@@ -845,7 +1346,7 @@ impl SCIPSolver {
             };
 
             let obj = model.c.get(i).copied().unwrap_or(0.0);
-            let var = scip.add_var(lb, ub, obj, &token.variable.name(), vtype);
+            let var = scip.add_var(lb, ub, obj, token.variable.name(), vtype);
 
             scip_vars.push(var);
         }
@@ -874,22 +1375,22 @@ impl SCIPSolver {
 
             for (i, row) in model.Q.rows.iter().enumerate() {
                 if i >= scip_vars.len() {
-                    return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+                    return Err(CoreError::solver_modeling(format!(
                         "quadratic objective row index {} out of bounds for {} variables",
                         i,
                         scip_vars.len()
-                    ))));
+                    )));
                 }
                 for &(j, qval) in row.entries.iter() {
                     if qval.abs() <= f64::EPSILON {
                         continue;
                     }
                     if j >= scip_vars.len() {
-                        return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+                        return Err(CoreError::solver_modeling(format!(
                             "quadratic objective column index {} out of bounds for {} variables",
                             j,
                             scip_vars.len()
-                        ))));
+                        )));
                     }
                     quad_vars_1.push(&scip_vars[i]);
                     quad_vars_2.push(&scip_vars[j]);
@@ -923,10 +1424,10 @@ impl SCIPSolver {
             for monomial in constraint.polynomial.monomials() {
                 let var_index1 = monomial.var_index1();
                 if var_index1 >= scip_vars.len() {
-                    return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+                    return Err(CoreError::solver_modeling(format!(
                         "quadratic constraint {} references invalid variable index {}",
                         i, var_index1
-                    ))));
+                    )));
                 }
                 let coefficient = *monomial.coefficient();
                 if coefficient.abs() <= f64::EPSILON {
@@ -934,10 +1435,10 @@ impl SCIPSolver {
                 }
                 if let Some(var_index2) = monomial.var_index2() {
                     if var_index2 >= scip_vars.len() {
-                        return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+                        return Err(CoreError::solver_modeling(format!(
                             "quadratic constraint {} references invalid variable index {}",
                             i, var_index2
-                        ))));
+                        )));
                     }
                     quad_vars_1.push(&scip_vars[var_index1]);
                     quad_vars_2.push(&scip_vars[var_index2]);
@@ -995,30 +1496,53 @@ impl SCIPSolver {
                 model.linear.b[i],
                 &format!("c{}", i),
             );
+            scip.set_cons_removable(&constraint, false);
             linear_constraints.push(constraint);
         }
 
         self.emit_stage_status(SCIPStage::AfterModeling, None, start_time.elapsed(), None)?;
-        self.install_telemetry_handler(&mut scip, model.objective_category, &scip_vars);
+        let callback_error = Arc::new(Mutex::new(None::<CoreError>));
+        let iteration_limit_reached = self.install_telemetry_handler(
+            &mut scip,
+            model.objective_category,
+            &scip_vars,
+            cancellation_handle,
+            Arc::clone(&callback_error),
+        );
         self.emit_stage_status(SCIPStage::Configuration, None, start_time.elapsed(), None)?;
 
         let solved = scip.solve();
+        if let Some(error) = callback_error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+        {
+            return Err(error);
+        }
         let solution = solved.best_sol();
-        let solver_status = Self::refine_status_with_solution(
+        let mut solver_status = Self::refine_status_with_solution(
             Self::convert_status(solved.status()),
             solution.is_some(),
         );
+        if iteration_limit_reached.load(Ordering::SeqCst)
+            && !cancellation_handle.is_some_and(SolveHandle::is_cancelled)
+        {
+            solver_status = SolverStatus::IterationLimit;
+        }
 
         let mut output = SolverOutput::new(solver_status);
         output.node_count = Some(solved.n_nodes());
         output.iterations = Some(solved.n_lp_iterations());
+        output.solution_count = Some(solved.n_sols());
 
         let best_bound = solved.best_bound();
         if best_bound.is_finite() {
             output.best_bound = Some(best_bound);
         }
 
-        if let Some(solution) = solution {
+        if solver_status.is_feasible()
+            && let Some(solution) = solution
+        {
             let objective_value = solution.obj_val();
             output.objective_value = Some(objective_value);
             output.solution = Some(scip_vars.iter().map(|var| solution.val(var)).collect());
@@ -1029,18 +1553,20 @@ impl SCIPSolver {
 
         // 线性约束对偶值（用于二次子问题最优性 cut）
         // Linear-row duals for quadratic-subproblem optimality cuts.
-        if matches!(solver_status, SolverStatus::Optimal) {
-            let dual_solution = Self::collect_dual_solution(&linear_constraints);
-            if !dual_solution.is_empty() {
-                output.dual_solution = Some(dual_solution);
-            }
+        if matches!(solver_status, SolverStatus::Optimal)
+            && let Some(dual_solution) =
+                Self::collect_dual_solution(&linear_constraints, model.objective_category)
+            && !dual_solution.is_empty()
+        {
+            output.dual_solution = Some(dual_solution);
         }
 
         if solver_status.is_infeasible() {
             // 线性约束 Farkas 乘子（用于二次子问题可行性 cut）
             // Linear-row Farkas duals for quadratic-subproblem feasibility cuts.
-            let farkas_solution = Self::collect_farkas_solution(&linear_constraints);
-            if !farkas_solution.is_empty() {
+            if let Some(farkas_solution) = Self::collect_farkas_solution(&linear_constraints)
+                && !farkas_solution.is_empty()
+            {
                 output.dual_solution = Some(farkas_solution);
             }
         }
@@ -1081,12 +1607,92 @@ impl SolverInfo for SCIPSolver {
     fn capabilities(&self) -> Vec<SolverCapability> {
         SCIPSolver::capabilities(self)
     }
+
+    fn descriptor(&self) -> SolverDescriptor {
+        let provenance = self.provenance();
+        let capabilities = SolverCapabilities::from_legacy(&SCIPSolver::capabilities(self))
+            .with("solution_pool", CapabilitySupport::Supported)
+            .with("primal", CapabilitySupport::Supported)
+            .with("dual", CapabilitySupport::Conditional)
+            .with("farkas", CapabilitySupport::Conditional)
+            .with("external_interrupt", CapabilitySupport::Supported);
+        SolverDescriptor {
+            solver_id: provenance.solver_id,
+            display_name: "SCIP".to_owned(),
+            backend_name: provenance.backend_name,
+            backend_version: provenance.backend_version,
+            runtime_available: None,
+            capabilities,
+            warnings: vec![
+                "native runtime availability is confirmed when a solve starts".to_owned(),
+                "dual and Farkas support depends on the active SCIP problem type".to_owned(),
+            ],
+        }
+    }
 }
 
 #[cfg(feature = "scip")]
 impl LinearSolver for SCIPSolver {
     fn solve_linear(&self, model: &LinearTriadModel) -> Result<SolverOutput> {
         SCIPSolver::solve_linear(self, model)
+    }
+
+    fn solve_linear_report(&self, model: &LinearTriadModel) -> Result<SolveReport<f64>> {
+        SCIPSolver::solve_linear_report(self, model)
+    }
+
+    fn solve_linear_report_with_options(
+        &self,
+        model: &LinearTriadModel,
+        options: &crate::solver::SolveOptions<'_>,
+    ) -> Result<SolveReport<f64>> {
+        validate_per_solve_limits(options)?;
+        emit_progress_start(options.progress_reporter, self.name())?;
+        if let Some(handle) = options.cancellation_handle
+            && handle.is_cancelled()
+        {
+            let report = cancelled_solve_report(self.provenance(), handle)?;
+            emit_progress_terminal(options.progress_reporter, self.name(), &report)?;
+            return Ok(report);
+        }
+        if let Some(callback) = options.solving_status_callback {
+            callback(&SolvingStatus::solving(self.name()))?;
+        }
+        if options.solution_amount > 1
+            && let Some((output, pool)) = Some(self.solve_linear_internal(
+                model,
+                options.solution_amount,
+                true,
+                options.cancellation_handle,
+                true,
+                Some(options),
+            )?)
+        {
+            let final_status = SolvingStatus::from_output(self.name(), &output);
+            let mut report = self.attach_model_fingerprint(
+                self.report_from_output(output, options.cancellation_handle)?,
+                model,
+            )?;
+            if let Some(solution) = report.solution.as_mut() {
+                solution.pool = pool;
+            }
+            if let Some(callback) = options.solving_status_callback {
+                callback(&final_status)?;
+            }
+            emit_progress_terminal(options.progress_reporter, self.name(), &report)?;
+            return Ok(report);
+        }
+        let output = self.solve_linear_with_options(model, options)?;
+        let final_status = SolvingStatus::from_output(self.name(), &output);
+        let report = self.attach_model_fingerprint(
+            self.report_from_output(output, options.cancellation_handle)?,
+            model,
+        )?;
+        if let Some(callback) = options.solving_status_callback {
+            callback(&final_status)?;
+        }
+        emit_progress_terminal(options.progress_reporter, self.name(), &report)?;
+        Ok(report)
     }
 
     fn solve_linear_with_solution_pool(
@@ -1102,12 +1708,89 @@ impl LinearSolver for SCIPSolver {
             solution_amount,
         )?))
     }
+
+    fn solve_linear_with_solution_pool_with_options(
+        &self,
+        model: &LinearTriadModel,
+        solution_amount: usize,
+        options: &crate::solver::SolveOptions<'_>,
+    ) -> Result<Option<(SolverOutput, Vec<Vec<f64>>)>> {
+        validate_per_solve_limits(options)?;
+        if solution_amount <= 1 {
+            return Ok(None);
+        }
+        Ok(Some(self.solve_linear_internal(
+            model,
+            solution_amount,
+            true,
+            options.cancellation_handle,
+            true,
+            Some(options),
+        )?))
+    }
 }
 
 #[cfg(feature = "scip")]
 impl QuadraticSolver for SCIPSolver {
     fn solve_quadratic(&self, model: &QuadraticTetradModel) -> Result<SolverOutput> {
         SCIPSolver::solve_quadratic(self, model)
+    }
+
+    fn solve_quadratic_report(&self, model: &QuadraticTetradModel) -> Result<SolveReport<f64>> {
+        SCIPSolver::solve_quadratic_report(self, model)
+    }
+
+    fn solve_quadratic_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: &crate::solver::SolveOptions<'_>,
+    ) -> Result<SolveReport<f64>> {
+        validate_per_solve_limits(options)?;
+        emit_progress_start(options.progress_reporter, self.name())?;
+        if let Some(handle) = options.cancellation_handle
+            && handle.is_cancelled()
+        {
+            let report = cancelled_solve_report(self.provenance(), handle)?;
+            emit_progress_terminal(options.progress_reporter, self.name(), &report)?;
+            return Ok(report);
+        }
+        if let Some(callback) = options.solving_status_callback {
+            callback(&SolvingStatus::solving(self.name()))?;
+        }
+        if options.solution_amount > 1
+            && let Some((output, pool)) = Some(self.solve_quadratic_internal(
+                model,
+                options.solution_amount,
+                true,
+                options.cancellation_handle,
+                Some(options),
+            )?)
+        {
+            let final_status = SolvingStatus::from_output(self.name(), &output);
+            let mut report = self.attach_quadratic_model_fingerprint(
+                self.report_from_output(output, options.cancellation_handle)?,
+                model,
+            )?;
+            if let Some(solution) = report.solution.as_mut() {
+                solution.pool = pool;
+            }
+            if let Some(callback) = options.solving_status_callback {
+                callback(&final_status)?;
+            }
+            emit_progress_terminal(options.progress_reporter, self.name(), &report)?;
+            return Ok(report);
+        }
+        let output = self.solve_quadratic_with_options(model, options)?;
+        let final_status = SolvingStatus::from_output(self.name(), &output);
+        let report = self.attach_quadratic_model_fingerprint(
+            self.report_from_output(output, options.cancellation_handle)?,
+            model,
+        )?;
+        if let Some(callback) = options.solving_status_callback {
+            callback(&final_status)?;
+        }
+        emit_progress_terminal(options.progress_reporter, self.name(), &report)?;
+        Ok(report)
     }
 
     fn solve_quadratic_with_solution_pool(
@@ -1123,6 +1806,25 @@ impl QuadraticSolver for SCIPSolver {
             solution_amount,
         )?))
     }
+
+    fn solve_quadratic_with_solution_pool_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        solution_amount: usize,
+        options: &crate::solver::SolveOptions<'_>,
+    ) -> Result<Option<(SolverOutput, Vec<Vec<f64>>)>> {
+        validate_per_solve_limits(options)?;
+        if solution_amount <= 1 {
+            return Ok(None);
+        }
+        Ok(Some(self.solve_quadratic_internal(
+            model,
+            solution_amount,
+            true,
+            options.cancellation_handle,
+            Some(options),
+        )?))
+    }
 }
 
 /// Rust-style alias for [`SCIPSolver`].
@@ -1133,6 +1835,7 @@ pub type ScipSolver = SCIPSolver;
 #[cfg(all(test, feature = "scip"))]
 mod tests {
     use super::*;
+    use crate::error::SolverErrorClass;
     use crate::model::intermediate::{BasicQuadraticTetradModel, SparseMatrix, SparseVector};
     use crate::model::{ConstraintRelation, ObjectiveCategory};
     use crate::symbol::flatten::{Quadratic, QuadraticMonomial};
@@ -1181,6 +1884,8 @@ mod tests {
             .with_display_freq(10)
             .with_heuristics_priority(3)
             .with_no_improvement_time_limit(30.0)
+            .with_interruptible_time(60.0)
+            .with_interruptible_gap(0.05)
             .with_improvement_tolerance(1e-6)
             .with_seed(42)
             .with_optimality_tolerance(1e-8)
@@ -1196,6 +1901,8 @@ mod tests {
         assert_eq!(config.display_freq, Some(10));
         assert_eq!(config.heuristics_priority, Some(3));
         assert_eq!(config.no_improvement_time_limit, Some(30.0));
+        assert_eq!(config.interruptible_time, Some(60.0));
+        assert_eq!(config.interruptible_gap, Some(0.05));
         assert_eq!(config.improvement_tolerance, Some(1e-6));
         assert_eq!(config.seed, Some(42));
         assert_eq!(config.optimality_tolerance, Some(1e-8));
@@ -1204,17 +1911,89 @@ mod tests {
     }
 
     #[test]
+    fn test_scip_retcode_mapping_preserves_error_boundaries() {
+        let cases = [
+            (Retcode::ParameterUnknown, SolverErrorClass::Input),
+            (Retcode::ParameterWrongType, SolverErrorClass::Input),
+            (Retcode::ParameterWrongVal, SolverErrorClass::Input),
+            (Retcode::InvalidData, SolverErrorClass::Modeling),
+            (Retcode::InvalidCall, SolverErrorClass::Modeling),
+            (Retcode::NoProblem, SolverErrorClass::Modeling),
+            (Retcode::KeyAlreadyExisting, SolverErrorClass::Modeling),
+            (Retcode::PluginNotFound, SolverErrorClass::Environment),
+            (Retcode::NoMemory, SolverErrorClass::Environment),
+            (Retcode::ReadError, SolverErrorClass::Environment),
+            (Retcode::WriteError, SolverErrorClass::Environment),
+            (Retcode::NoFile, SolverErrorClass::Environment),
+            (Retcode::FileCreateError, SolverErrorClass::Environment),
+            (Retcode::LpError, SolverErrorClass::Backend),
+            (Retcode::InvalidResult, SolverErrorClass::Parsing),
+            (Retcode::NotImplemented, SolverErrorClass::Unsupported),
+            (Retcode::MaxDepthLevel, SolverErrorClass::Backend),
+            (Retcode::BranchError, SolverErrorClass::Backend),
+            (Retcode::Error, SolverErrorClass::Backend),
+            (Retcode::Okay, SolverErrorClass::InternalContract),
+        ];
+
+        for (retcode, expected) in cases {
+            let error = SCIPSolver::map_scip_error("test", retcode);
+            assert_eq!(error.solver_error_class(), expected, "{retcode:?}");
+            assert!(!error.is_terminal_projection(), "{retcode:?}");
+        }
+    }
+
+    #[test]
+    fn test_scip_provenance_separates_native_product_from_rust_binding() {
+        let provenance = SCIPSolver::new().provenance();
+        let native_version = provenance
+            .environment_summary
+            .get("native_version")
+            .expect("native SCIP version");
+        assert_eq!(
+            provenance.backend_version.as_deref(),
+            Some(native_version.as_str())
+        );
+        assert_eq!(provenance.solver_id, format!("scip/{}", native_version));
+        assert_eq!(
+            provenance
+                .environment_summary
+                .get("binding")
+                .map(String::as_str),
+            Some("russcip-0.9.1")
+        );
+        assert_ne!(native_version, "russcip-0.9.1");
+    }
+
+    #[test]
+    fn test_scip_callback_report_is_marked_non_replayable() {
+        let config = SCIPConfig::new().add_configuration_callback(Arc::new(|_| Ok(())));
+        let report = SCIPSolver::with_config(config)
+            .report_from_output(SolverOutput::optimal(1.0, vec![1.0]), None)
+            .expect("callback report should be valid");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "NonReplayableCallback")
+        );
+    }
+
+    #[test]
     fn test_common_config_preserves_deterministic_parameters() {
         let common = crate::solver::SolverConfig::new("scip")
             .with_seed(42)
             .with_optimality_tolerance(1e-8)
-            .with_feasibility_tolerance(1e-7);
+            .with_feasibility_tolerance(1e-7)
+            .with_interruptible_time(std::time::Duration::from_secs(60))
+            .with_interruptible_gap(0.05);
 
         let config = SCIPConfig::from(&common);
 
         assert_eq!(config.seed, Some(42));
         assert_eq!(config.optimality_tolerance, Some(1e-8));
         assert_eq!(config.feasibility_tolerance, Some(1e-7));
+        assert_eq!(config.interruptible_time, Some(60.0));
+        assert_eq!(config.interruptible_gap, Some(0.05));
     }
 
     #[test]
@@ -1290,6 +2069,22 @@ mod tests {
         assert_eq!(
             SCIPSolver::convert_status(SCIPStatus::Inforunbd),
             SolverStatus::InfeasibleOrUnbounded
+        );
+    }
+
+    #[test]
+    fn optimal_status_without_solution_is_unknown() {
+        assert_eq!(
+            SCIPSolver::refine_status_with_solution(SolverStatus::Optimal, false),
+            SolverStatus::Unknown
+        );
+        assert_eq!(
+            SCIPSolver::refine_status_with_solution(SolverStatus::Optimal, true),
+            SolverStatus::Optimal
+        );
+        assert_eq!(
+            SCIPSolver::refine_status_with_solution(SolverStatus::Unknown, true),
+            SolverStatus::Feasible
         );
     }
 

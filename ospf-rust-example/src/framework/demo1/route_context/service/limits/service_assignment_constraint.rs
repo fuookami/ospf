@@ -1,8 +1,8 @@
 //! 服务分配约束 / Service assignment constraint
 
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo1::route_context::model::Assignment;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 服务分配约束：每个服务最多被一个普通节点使用 / Service assignment constraint: each service is used by at most one normal node
 ///

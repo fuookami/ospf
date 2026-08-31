@@ -524,10 +524,11 @@ impl DynamicModelLifecycle {
         columns: impl IntoIterator<Item = usize>,
     ) {
         for column in columns {
-            if !self.original_column_ranges.contains_key(&column) {
-                if let Some(range) = model.variable_range_by_index(column) {
-                    self.original_column_ranges.insert(column, range);
-                }
+            if let std::collections::hash_map::Entry::Vacant(entry) =
+                self.original_column_ranges.entry(column)
+                && let Some(range) = model.variable_range_by_index(column)
+            {
+                entry.insert(range);
             }
         }
     }
@@ -654,7 +655,10 @@ pub trait DynamicColumnContext {
                 if !lifecycle.state().is_selectable(model_index) {
                     return None;
                 }
-                solution.get(model_index).copied().map(|value| (column, value))
+                solution
+                    .get(model_index)
+                    .copied()
+                    .map(|value| (column, value))
             })
             .collect()
     }
@@ -731,10 +735,7 @@ mod tests {
             .unwrap();
         let y = model
             .as_basic_mut()
-            .register_auto_variable_with_range::<Continuous>(
-                "y",
-                VariableRange::bounded(-2.0, 3.0),
-            )
+            .register_auto_variable_with_range::<Continuous>("y", VariableRange::bounded(-2.0, 3.0))
             .unwrap();
         let mut lifecycle = DynamicModelLifecycle::new();
 
@@ -798,17 +799,11 @@ mod tests {
         lifecycle.set_solution(vec![0.0, 1.0]);
         lifecycle.apply_solution_to_model(&mut model);
 
-        assert_eq!(
-            model.solution_by_solver_order(),
-            vec![Some(0.0), Some(1.0)]
-        );
+        assert_eq!(model.solution_by_solver_order(), vec![Some(0.0), Some(1.0)]);
 
         lifecycle.clear_solution();
         lifecycle.apply_solution_to_model(&mut model);
-        assert_eq!(
-            model.solution_by_solver_order(),
-            vec![Some(0.0), Some(1.0)]
-        );
+        assert_eq!(model.solution_by_solver_order(), vec![Some(0.0), Some(1.0)]);
 
         lifecycle.clear_solution_in_model(&mut model);
         assert_eq!(model.solution_by_solver_order(), vec![None, None]);

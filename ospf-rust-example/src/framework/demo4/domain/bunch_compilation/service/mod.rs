@@ -30,10 +30,6 @@ pub fn generate_pipelines(
         &aggregation.compilations,
         &aggregation.fleet_balances,
     )?;
-    limits::apply_flight_link_limit(
-        model,
-        &aggregation.compilations,
-        &aggregation.flight_links,
-    )?;
+    limits::apply_flight_link_limit(model, &aggregation.compilations, &aggregation.flight_links)?;
     Ok(())
 }

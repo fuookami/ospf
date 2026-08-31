@@ -1,10 +1,10 @@
 //! Lorenz 吸引子（物理参数命名别名）。
 //! Lorenz attractor (physics parameter naming alias).
 
-use num_traits::Float;
+use super::lorenz::LorenzSystem;
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::lorenz::LorenzSystem;
+use num_traits::Float;
 
 /// Lorenz 吸引子，使用物理参数命名（sigma, rho, beta）。
 /// Lorenz attractor with physics parameter naming (sigma, rho, beta).
@@ -31,10 +31,18 @@ impl<S: Field + Float> LorenzAttractor<S> {
         }
     }
 
-    pub fn sigma(&self) -> S { self.sigma }
-    pub fn rho(&self) -> S { self.rho }
-    pub fn beta(&self) -> S { self.beta }
-    pub fn h(&self) -> S { self.h }
+    pub fn sigma(&self) -> S {
+        self.sigma
+    }
+    pub fn rho(&self) -> S {
+        self.rho
+    }
+    pub fn beta(&self) -> S {
+        self.beta
+    }
+    pub fn h(&self) -> S {
+        self.h
+    }
 
     pub fn step(&self, x: Point3<S>) -> Point3<S> {
         self.inner.step(x)
@@ -69,8 +77,12 @@ impl<S: Field + Float> LorenzAttractorGenerator<S> {
         Self { attractor, x }
     }
 
-    pub fn attractor(&self) -> &LorenzAttractor<S> { &self.attractor }
-    pub fn x(&self) -> &Point3<S> { &self.x }
+    pub fn attractor(&self) -> &LorenzAttractor<S> {
+        &self.attractor
+    }
+    pub fn x(&self) -> &Point3<S> {
+        &self.x
+    }
 
     pub fn next_point(&mut self) -> Point3<S> {
         let x = self.x.clone();
@@ -103,7 +115,11 @@ pub fn lorenz_attractor<S: Field + Float>(sigma: S, rho: S, beta: S, h: S) -> Lo
 /// 创建 Lorenz 吸引子生成器。
 /// Create a Lorenz attractor generator.
 pub fn lorenz_attractor_generator<S: Field + Float>(
-    sigma: S, rho: S, beta: S, h: S, x: Point3<S>,
+    sigma: S,
+    rho: S,
+    beta: S,
+    h: S,
+    x: Point3<S>,
 ) -> LorenzAttractorGenerator<S> {
     LorenzAttractorGenerator::new(LorenzAttractor::new(sigma, rho, beta, h), x)
 }

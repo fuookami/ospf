@@ -1,23 +1,22 @@
 //! 逻辑函数符号 / Logic function symbols
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    LogicFunctionSymbol, auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
+};
+use super::big_m::{BigMPolicy, infer_big_m_for_polynomials, infer_linear_abs_bound_from_tokens};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-    LogicFunctionSymbol, auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
-};
-use super::big_m::{BigMPolicy, infer_big_m_for_polynomials, infer_linear_abs_bound_from_tokens};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -235,6 +234,7 @@ impl<V> AndFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建逻辑与函数 / Create a logical AND function.
     pub fn new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> Self {
         let n = polynomials.len();
         let group_id = new_group_id();
@@ -284,18 +284,22 @@ where
         Self::new(id, &name, polynomials)
     }
 
+    /// 获取输入多项式 / Get the input polynomials.
     pub fn polynomials(&self) -> &[Linear<V>] {
         &self.polynomials
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &BinaryVariableItem {
         &self.result_var
     }
 
+    /// 获取非零指示变量 / Get the nonzero indicator variables.
     pub fn indicator_variables(&self) -> &[BinaryVariableItem] {
         &self.indicator_vars
     }
 
+    /// 获取符号辅助变量 / Get the sign auxiliary variables.
     pub fn side_variables(&self) -> &[BinaryVariableItem] {
         &self.side_vars
     }
@@ -667,6 +671,7 @@ impl<V> OrFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建逻辑或函数 / Create a logical OR function.
     pub fn new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> Self {
         let n = polynomials.len();
         let group_id = new_group_id();
@@ -716,18 +721,22 @@ where
         Self::new(id, &name, polynomials)
     }
 
+    /// 获取输入多项式 / Get the input polynomials.
     pub fn polynomials(&self) -> &[Linear<V>] {
         &self.polynomials
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &BinaryVariableItem {
         &self.result_var
     }
 
+    /// 获取非零指示变量 / Get the nonzero indicator variables.
     pub fn indicator_variables(&self) -> &[BinaryVariableItem] {
         &self.indicator_vars
     }
 
+    /// 获取符号辅助变量 / Get the sign auxiliary variables.
     pub fn side_variables(&self) -> &[BinaryVariableItem] {
         &self.side_vars
     }
@@ -1099,6 +1108,7 @@ impl<V> NotFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建逻辑非函数 / Create a logical NOT function.
     pub fn new(id: u64, name: &str, polynomial: Linear<V>) -> Self {
         let group_id = new_group_id();
         let result_var =
@@ -1135,18 +1145,22 @@ where
         Self::new(id, &name, polynomial)
     }
 
+    /// 获取输入多项式 / Get the input polynomial.
     pub fn polynomial(&self) -> &Linear<V> {
         &self.polynomial
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &BinaryVariableItem {
         &self.result_var
     }
 
+    /// 获取非零指示变量 / Get the nonzero indicator variable.
     pub fn indicator_variable(&self) -> &BinaryVariableItem {
         &self.indicator_var
     }
 
+    /// 获取符号辅助变量 / Get the sign auxiliary variable.
     pub fn side_variable(&self) -> &BinaryVariableItem {
         &self.side_var
     }
@@ -1459,6 +1473,7 @@ impl<V> XorFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建逻辑异或函数 / Create a logical XOR function.
     pub fn new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> Self {
         assert!(
             polynomials.len() >= 2,
@@ -1512,18 +1527,22 @@ where
         Self::new(id, &name, polynomials)
     }
 
+    /// 获取输入多项式 / Get the input polynomials.
     pub fn polynomials(&self) -> &[Linear<V>] {
         &self.polynomials
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &BinaryVariableItem {
         &self.result_var
     }
 
+    /// 获取非零指示变量 / Get the nonzero indicator variables.
     pub fn indicator_variables(&self) -> &[BinaryVariableItem] {
         &self.indicator_vars
     }
 
+    /// 获取符号辅助变量 / Get the sign auxiliary variables.
     pub fn side_variables(&self) -> &[BinaryVariableItem] {
         &self.side_vars
     }

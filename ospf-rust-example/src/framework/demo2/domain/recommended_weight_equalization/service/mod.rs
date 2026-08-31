@@ -1,9 +1,9 @@
 //! 推荐重量均衡领域服务 / Recommended weight equalization domain service.
 pub mod limits;
 
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::stowage::model::{LoadVariables, Position};
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 /// 生成推荐重量均衡管线 / Generate recommended weight equalization pipelines
 pub fn generate_pipelines(

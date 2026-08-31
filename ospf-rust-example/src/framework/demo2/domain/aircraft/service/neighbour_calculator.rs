@@ -16,8 +16,11 @@ impl NeighbourCalculator {
                 // 如果两个位置在同一甲板且距离较近，则为物理邻接
                 let pos_i = &positions[i];
                 let pos_j = &positions[j];
-                let long_diff = (pos_i.coordinate.longitudinal_arm() - pos_j.coordinate.longitudinal_arm()).abs();
-                let lat_diff = (pos_i.coordinate.lateral_arm() - pos_j.coordinate.lateral_arm()).abs();
+                let long_diff = (pos_i.coordinate.longitudinal_arm()
+                    - pos_j.coordinate.longitudinal_arm())
+                .abs();
+                let lat_diff =
+                    (pos_i.coordinate.lateral_arm() - pos_j.coordinate.lateral_arm()).abs();
                 if long_diff < 2.0 && lat_diff < 2.0 {
                     neighbours.push(Neighbour {
                         from: pos_i.id.clone(),
@@ -77,9 +80,12 @@ impl NeighbourCalculator {
                 let pos_i = &positions[i];
                 let pos_j = &positions[j];
                 // 如果位置在同一行（lateral_arm 相近），则按 longitudinal_arm 排序
-                let lat_diff = (pos_i.coordinate.lateral_arm() - pos_j.coordinate.lateral_arm()).abs();
+                let lat_diff =
+                    (pos_i.coordinate.lateral_arm() - pos_j.coordinate.lateral_arm()).abs();
                 if lat_diff < 0.5 {
-                    let (from, to) = if pos_i.coordinate.longitudinal_arm() < pos_j.coordinate.longitudinal_arm() {
+                    let (from, to) = if pos_i.coordinate.longitudinal_arm()
+                        < pos_j.coordinate.longitudinal_arm()
+                    {
                         (pos_i.id.clone(), pos_j.id.clone())
                     } else {
                         (pos_j.id.clone(), pos_i.id.clone())

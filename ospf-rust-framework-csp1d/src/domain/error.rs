@@ -1,10 +1,10 @@
 //! CSP1D 领域错误类型
 //! CSP1D domain error types
 
-use std::fmt::{Debug, Display, Formatter};
-use ospf_rust_base::error::{ErrorCode, Error, ErrorPosition, WithErrorPosition};
-use ospf_rust_base::error_type;
+use ospf_rust_base::error::{Error, ErrorCode, ErrorPosition, WithErrorPosition};
 use ospf_rust_base::error_enum;
+use ospf_rust_base::error_type;
+use std::fmt::{Debug, Display, Formatter};
 
 // ============================================================================
 // CSP1D 领域错误
@@ -15,7 +15,7 @@ error_type!(
     #[derive(Clone, Debug)]
     pub struct Csp1dLifecycleError {
         /// 错误详情 / Error detail
-        pub detail: Option<String>
+        pub detail: Option<String>,
     }
 );
 
@@ -29,8 +29,12 @@ impl Display for Csp1dLifecycleError {
 }
 
 impl Error for Csp1dLifecycleError {
-    fn code(&self) -> ErrorCode { ErrorCode::ApplicationError }
-    fn msg(&self) -> String { format!("{}", self) }
+    fn code(&self) -> ErrorCode {
+        ErrorCode::ApplicationError
+    }
+    fn msg(&self) -> String {
+        format!("{}", self)
+    }
 }
 
 // CSP1D 类型错误 / CSP1D type error
@@ -38,7 +42,7 @@ error_type!(
     #[derive(Clone, Debug)]
     pub struct Csp1dTypeError {
         /// 错误详情 / Error detail
-        pub detail: Option<String>
+        pub detail: Option<String>,
     }
 );
 
@@ -52,8 +56,12 @@ impl Display for Csp1dTypeError {
 }
 
 impl Error for Csp1dTypeError {
-    fn code(&self) -> ErrorCode { ErrorCode::IllegalArgument }
-    fn msg(&self) -> String { format!("{}", self) }
+    fn code(&self) -> ErrorCode {
+        ErrorCode::IllegalArgument
+    }
+    fn msg(&self) -> String {
+        format!("{}", self)
+    }
 }
 
 // CSP1D 求解错误 / CSP1D solving error
@@ -61,7 +69,7 @@ error_type!(
     #[derive(Clone, Debug)]
     pub struct Csp1dSolvingError {
         /// 错误详情 / Error detail
-        pub detail: Option<String>
+        pub detail: Option<String>,
     }
 );
 
@@ -75,8 +83,12 @@ impl Display for Csp1dSolvingError {
 }
 
 impl Error for Csp1dSolvingError {
-    fn code(&self) -> ErrorCode { ErrorCode::ApplicationFailed }
-    fn msg(&self) -> String { format!("{}", self) }
+    fn code(&self) -> ErrorCode {
+        ErrorCode::ApplicationFailed
+    }
+    fn msg(&self) -> String {
+        format!("{}", self)
+    }
 }
 
 // CSP1D 能力错误 / CSP1D capability error
@@ -84,7 +96,7 @@ error_type!(
     #[derive(Clone, Debug)]
     pub struct Csp1dCapabilityError {
         /// 错误详情 / Error detail
-        pub detail: Option<String>
+        pub detail: Option<String>,
     }
 );
 
@@ -98,8 +110,12 @@ impl Display for Csp1dCapabilityError {
 }
 
 impl Error for Csp1dCapabilityError {
-    fn code(&self) -> ErrorCode { ErrorCode::IllegalArgument }
-    fn msg(&self) -> String { format!("{}", self) }
+    fn code(&self) -> ErrorCode {
+        ErrorCode::IllegalArgument
+    }
+    fn msg(&self) -> String {
+        format!("{}", self)
+    }
 }
 
 // CSP1D 统一错误枚举 / CSP1D unified error enum

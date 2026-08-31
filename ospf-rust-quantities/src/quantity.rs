@@ -13,21 +13,21 @@
 //! - 运行时单位转换（Unit）
 //! - 类型安全的算术运算
 
-use std::cmp::Ordering;
-use std::ops::{Add, Div, Mul, Neg, Sub};
+use crate::dimension::DerivedQuantity;
+use crate::dimension::derived_quantity::{CTDerivedQuantity, SameDerivedDimension};
+use crate::error::{DimensionMismatchError, UnitConversionError};
+use crate::unit::concept::UnitTrait;
+use crate::unit::conversion_value::{UnitConversionCalculation, UnitConversionValue};
+use crate::unit::{
+    CTUnit, CTUnitDiv, CTUnitMul, CTUnitReciprocal, Unit, UnitConversionRule, UnitSystem,
+};
 use bigdecimal::BigDecimal;
 use ospf_rust_base::{ErrorPosition, Ret, error};
 use ospf_rust_math::operator::abs::Abs;
 use ospf_rust_math::operator::reciprocal::Reciprocal;
 use ospf_rust_math::operator::tolerance::{Tolerance, TolerancedEq, TolerancedOrd};
-use crate::dimension::DerivedQuantity;
-use crate::dimension::derived_quantity::{CTDerivedQuantity, SameDerivedDimension};
-use crate::error::{DimensionMismatchError, UnitConversionError};
-use crate::unit::concept::UnitTrait;
-use crate::unit::{
-    CTUnit, CTUnitDiv, CTUnitMul, CTUnitReciprocal, Unit, UnitConversionRule, UnitSystem,
-};
-use crate::unit::conversion_value::{UnitConversionCalculation, UnitConversionValue};
+use std::cmp::Ordering;
+use std::ops::{Add, Div, Mul, Neg, Sub};
 
 // ============================================================================
 // Quantity - 统一的物理量结构体 / Unified quantity struct
@@ -261,8 +261,9 @@ where
     where
         <U as CTUnit>::Dimension: SameDerivedDimension<<Target as CTUnit>::Dimension>,
     {
-        let value = U::convert_value_to::<V, Target>(self.value)
-            .expect("无法转换不同量纲的物理量 / Cannot convert quantities with different dimensions");
+        let value = U::convert_value_to::<V, Target>(self.value).expect(
+            "无法转换不同量纲的物理量 / Cannot convert quantities with different dimensions",
+        );
         Quantity::new_ct(value)
     }
 }
@@ -567,8 +568,9 @@ where
     type Output = Quantity<V, Unit>;
 
     fn add(self, other: Self) -> Self::Output {
-        self.checked_add(&other)
-            .expect("无法对不同量纲的物理量进行加法运算 / Cannot add quantities with different dimensions")
+        self.checked_add(&other).expect(
+            "无法对不同量纲的物理量进行加法运算 / Cannot add quantities with different dimensions",
+        )
     }
 }
 
@@ -815,8 +817,9 @@ where
     type Output = Quantity<V, Unit>;
 
     fn add(self, other: &Quantity<V, Unit>) -> Self::Output {
-        self.checked_add(other)
-            .expect("无法对不同量纲的物理量进行加法运算 / Cannot add quantities with different dimensions")
+        self.checked_add(other).expect(
+            "无法对不同量纲的物理量进行加法运算 / Cannot add quantities with different dimensions",
+        )
     }
 }
 

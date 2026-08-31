@@ -55,7 +55,10 @@ where
 {
     /// 创建新的任务键 / Create new task key
     pub fn new(id: impl Into<I>, type_: TaskType) -> Self {
-        Self { id: id.into(), type_ }
+        Self {
+            id: id.into(),
+            type_,
+        }
     }
 }
 

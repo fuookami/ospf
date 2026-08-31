@@ -13,14 +13,12 @@ use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::flatten::LinearMonomial;
 use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 
+use crate::GanttError;
+use crate::GanttResult;
 use crate::domain::task::Cost;
 use crate::domain::task_compilation::adapter::{
-    extract_value, next_gantt_symbol_id,
-    symbols_to_indexed_1d,
-    IndexedLinearExpressionSymbols1,
+    IndexedLinearExpressionSymbols1, extract_value, next_gantt_symbol_id, symbols_to_indexed_1d,
 };
-use crate::GanttResult;
-use crate::GanttError;
 
 /// 添加的任务列 / Added task column
 ///
@@ -70,7 +68,6 @@ pub struct IterativeTaskCompilation {
 
     // ---- 累积项源（Option C：分开存储，按需重建）----
     // Accumulated term sources (Option C: store separately, rebuild on demand)
-
     /// task_assignment[task] 项 / task_assignment terms per task
     pub task_assignment_terms: Vec<Vec<(usize, f64)>>,
     /// task_compilation[task] 项 / task_compilation terms per task
@@ -129,14 +126,20 @@ impl IterativeTaskCompilation {
             self.y_indices.clear();
             for ti in 0..self.n_tasks {
                 let var_name = format!("y_{}", ti);
-                let var_item = ospf_rust_core::variable::VariableItem::<ospf_rust_core::variable::Binary>::create(
-                    ospf_rust_core::variable::VariableId::standalone(next_gantt_symbol_id() as usize),
+                let var_item = ospf_rust_core::variable::VariableItem::<
+                    ospf_rust_core::variable::Binary,
+                >::create(
+                    ospf_rust_core::variable::VariableId::standalone(
+                        next_gantt_symbol_id() as usize
+                    ),
                     &var_name,
                 );
-                let model_idx = model.register_variable(var_item)
-                    .map_err(|e| GanttError::Calculation {
-                        message: format!("Failed to register variable {}: {:?}", var_name, e),
-                    })?;
+                let model_idx =
+                    model
+                        .register_variable(var_item)
+                        .map_err(|e| GanttError::Calculation {
+                            message: format!("Failed to register variable {}: {:?}", var_name, e),
+                        })?;
                 self.y_indices.push(model_idx);
             }
 
@@ -151,14 +154,20 @@ impl IterativeTaskCompilation {
             self.z_indices.clear();
             for ei in 0..self.n_executors {
                 let var_name = format!("z_{}", ei);
-                let var_item = ospf_rust_core::variable::VariableItem::<ospf_rust_core::variable::Binary>::create(
-                    ospf_rust_core::variable::VariableId::standalone(next_gantt_symbol_id() as usize),
+                let var_item = ospf_rust_core::variable::VariableItem::<
+                    ospf_rust_core::variable::Binary,
+                >::create(
+                    ospf_rust_core::variable::VariableId::standalone(
+                        next_gantt_symbol_id() as usize
+                    ),
                     &var_name,
                 );
-                let model_idx = model.register_variable(var_item)
-                    .map_err(|e| GanttError::Calculation {
-                        message: format!("Failed to register variable {}: {:?}", var_name, e),
-                    })?;
+                let model_idx =
+                    model
+                        .register_variable(var_item)
+                        .map_err(|e| GanttError::Calculation {
+                            message: format!("Failed to register variable {}: {:?}", var_name, e),
+                        })?;
                 self.z_indices.push(model_idx);
             }
 
@@ -196,14 +205,19 @@ impl IterativeTaskCompilation {
 
             // 注册 x 变量
             let var_name = format!("x_add_{}_{}_{}", iteration, task_idx, executor_idx);
-            let var_item = ospf_rust_core::variable::VariableItem::<ospf_rust_core::variable::Binary>::create(
-                ospf_rust_core::variable::VariableId::standalone(next_gantt_symbol_id() as usize),
-                &var_name,
-            );
-            let x_model_idx = model.register_variable(var_item)
-                .map_err(|e| GanttError::Calculation {
-                    message: format!("Failed to register variable {}: {:?}", var_name, e),
-                })?;
+            let var_item =
+                ospf_rust_core::variable::VariableItem::<ospf_rust_core::variable::Binary>::create(
+                    ospf_rust_core::variable::VariableId::standalone(
+                        next_gantt_symbol_id() as usize
+                    ),
+                    &var_name,
+                );
+            let x_model_idx =
+                model
+                    .register_variable(var_item)
+                    .map_err(|e| GanttError::Calculation {
+                        message: format!("Failed to register variable {}: {:?}", var_name, e),
+                    })?;
 
             let col_idx = self.column_counter;
             self.column_counter += 1;
@@ -257,7 +271,8 @@ impl IterativeTaskCompilation {
                     self.task_compilation_terms[col.task_index].retain(|(idx, _)| *idx != x_idx);
                 }
                 if col.executor_index < self.executor_compilation_terms.len() {
-                    self.executor_compilation_terms[col.executor_index].retain(|(idx, _)| *idx != x_idx);
+                    self.executor_compilation_terms[col.executor_index]
+                        .retain(|(idx, _)| *idx != x_idx);
                 }
             }
         }
@@ -271,7 +286,8 @@ impl IterativeTaskCompilation {
         // 重建 task_assignment_symbols
         let mut task_assignment_symbols = Vec::with_capacity(self.n_tasks);
         for ti in 0..self.n_tasks {
-            let terms: Vec<LinearMonomial<f64>> = self.task_assignment_terms[ti].iter()
+            let terms: Vec<LinearMonomial<f64>> = self.task_assignment_terms[ti]
+                .iter()
                 .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
                 .collect();
             let sym_id = next_gantt_symbol_id();
@@ -281,7 +297,8 @@ impl IterativeTaskCompilation {
                 terms,
                 0.0,
             ));
-            model.add_symbol(symbol.clone())
+            model
+                .add_symbol(symbol.clone())
                 .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to rebuild task_assignment_{}: {:?}", ti, e),
                 })?;
@@ -291,7 +308,8 @@ impl IterativeTaskCompilation {
         // 重建 task_compilation_symbols
         let mut task_compilation_symbols = Vec::with_capacity(self.n_tasks);
         for ti in 0..self.n_tasks {
-            let terms: Vec<LinearMonomial<f64>> = self.task_compilation_terms[ti].iter()
+            let terms: Vec<LinearMonomial<f64>> = self.task_compilation_terms[ti]
+                .iter()
                 .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
                 .collect();
             let sym_id = next_gantt_symbol_id();
@@ -301,7 +319,8 @@ impl IterativeTaskCompilation {
                 terms,
                 0.0,
             ));
-            model.add_symbol(symbol.clone())
+            model
+                .add_symbol(symbol.clone())
                 .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to rebuild task_compilation_{}: {:?}", ti, e),
                 })?;
@@ -311,7 +330,8 @@ impl IterativeTaskCompilation {
         // 重建 executor_compilation_symbols
         let mut executor_compilation_symbols = Vec::with_capacity(self.n_executors);
         for ei in 0..self.n_executors {
-            let terms: Vec<LinearMonomial<f64>> = self.executor_compilation_terms[ei].iter()
+            let terms: Vec<LinearMonomial<f64>> = self.executor_compilation_terms[ei]
+                .iter()
                 .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
                 .collect();
             let sym_id = next_gantt_symbol_id();
@@ -321,7 +341,8 @@ impl IterativeTaskCompilation {
                 terms,
                 0.0,
             ));
-            model.add_symbol(symbol.clone())
+            model
+                .add_symbol(symbol.clone())
                 .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to rebuild executor_compilation_{}: {:?}", ei, e),
                 })?;
@@ -338,6 +359,7 @@ impl IterativeTaskCompilation {
     ///
     /// 用于约束层在列操作后获取最新的符号引用。
     /// Used by constraint layer to get latest symbol references after column operations.
+    #[allow(clippy::type_complexity)]
     pub fn refresh_symbols(
         &mut self,
         model: &mut MetaModel<f64>,
@@ -357,10 +379,7 @@ impl IterativeTaskCompilation {
     ///
     /// 用于完全重建场景（如 warm start 后）。
     /// Used for full rebuild scenarios (e.g., after warm start).
-    pub fn replace_symbol_pool(
-        &mut self,
-        model: &mut MetaModel<f64>,
-    ) -> GanttResult<()> {
+    pub fn replace_symbol_pool(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
         self.rebuild_intermediate_symbols(model)
     }
 
@@ -371,6 +390,7 @@ impl IterativeTaskCompilation {
     ///
     /// 返回值为 (task_assignment, task_compilation, executor_compilation)。
     /// Return value is (task_assignment, task_compilation, executor_compilation).
+    #[allow(clippy::type_complexity)]
     pub fn active_symbols(
         &self,
     ) -> (
@@ -383,10 +403,16 @@ impl IterativeTaskCompilation {
 
         // 重建临时 Vec 用于构建索引（rebuild_intermediate_symbols 不保存符号到 self）
         // 从 term 累积器重建符号以构建索引
-        let task_assignment_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> =
-            self.task_assignment_terms.iter().enumerate().map(|(ti, terms)| {
-                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms.iter()
-                    .map(|&(idx, coeff)| ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx))
+        let task_assignment_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> = self
+            .task_assignment_terms
+            .iter()
+            .enumerate()
+            .map(|(ti, terms)| {
+                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms
+                    .iter()
+                    .map(|&(idx, coeff)| {
+                        ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx)
+                    })
                     .collect();
                 Arc::new(LinearExpressionSymbol::new(
                     0, // placeholder ID
@@ -394,12 +420,19 @@ impl IterativeTaskCompilation {
                     monomials,
                     0.0,
                 ))
-            }).collect();
+            })
+            .collect();
 
-        let task_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> =
-            self.task_compilation_terms.iter().enumerate().map(|(ti, terms)| {
-                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms.iter()
-                    .map(|&(idx, coeff)| ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx))
+        let task_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> = self
+            .task_compilation_terms
+            .iter()
+            .enumerate()
+            .map(|(ti, terms)| {
+                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms
+                    .iter()
+                    .map(|&(idx, coeff)| {
+                        ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx)
+                    })
                     .collect();
                 Arc::new(LinearExpressionSymbol::new(
                     0,
@@ -407,12 +440,19 @@ impl IterativeTaskCompilation {
                     monomials,
                     0.0,
                 ))
-            }).collect();
+            })
+            .collect();
 
-        let executor_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> =
-            self.executor_compilation_terms.iter().enumerate().map(|(ei, terms)| {
-                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms.iter()
-                    .map(|&(idx, coeff)| ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx))
+        let executor_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>> = self
+            .executor_compilation_terms
+            .iter()
+            .enumerate()
+            .map(|(ei, terms)| {
+                let monomials: Vec<ospf_rust_core::model::flatten::LinearMonomial<f64>> = terms
+                    .iter()
+                    .map(|&(idx, coeff)| {
+                        ospf_rust_core::model::flatten::LinearMonomial::new(coeff, idx)
+                    })
                     .collect();
                 Arc::new(LinearExpressionSymbol::new(
                     0,
@@ -420,25 +460,42 @@ impl IterativeTaskCompilation {
                     monomials,
                     0.0,
                 ))
-            }).collect();
+            })
+            .collect();
 
         let task_assignment_indexed = if !task_assignment_symbols.is_empty() {
-            Some(symbols_to_indexed_1d("task_assignment", &task_keys, &task_assignment_symbols))
+            Some(symbols_to_indexed_1d(
+                "task_assignment",
+                &task_keys,
+                &task_assignment_symbols,
+            ))
         } else {
             None
         };
         let task_compilation_indexed = if !task_compilation_symbols.is_empty() {
-            Some(symbols_to_indexed_1d("task_compilation", &task_keys, &task_compilation_symbols))
+            Some(symbols_to_indexed_1d(
+                "task_compilation",
+                &task_keys,
+                &task_compilation_symbols,
+            ))
         } else {
             None
         };
         let executor_compilation_indexed = if !executor_compilation_symbols.is_empty() {
-            Some(symbols_to_indexed_1d("executor_compilation", &executor_keys, &executor_compilation_symbols))
+            Some(symbols_to_indexed_1d(
+                "executor_compilation",
+                &executor_keys,
+                &executor_compilation_symbols,
+            ))
         } else {
             None
         };
 
-        (task_assignment_indexed, task_compilation_indexed, executor_compilation_indexed)
+        (
+            task_assignment_indexed,
+            task_compilation_indexed,
+            executor_compilation_indexed,
+        )
     }
 
     /// 全局固定 / Globally fix
@@ -455,25 +512,20 @@ impl IterativeTaskCompilation {
     ///
     /// 将解值超过阈值的列标记为固定。
     /// Marks columns with solution value above threshold as fixed.
-    pub fn locally_fix(
-        &mut self,
-        threshold: f64,
-        solution: &[f64],
-    ) -> HashSet<usize> {
+    pub fn locally_fix(&mut self, threshold: f64, solution: &[f64]) -> HashSet<usize> {
         let mut newly_fixed = HashSet::new();
 
         for col in &self.columns {
-            if self.removed_columns.contains(&col.index)
-                || self.fixed_columns.contains(&col.index)
+            if self.removed_columns.contains(&col.index) || self.fixed_columns.contains(&col.index)
             {
                 continue;
             }
 
-            if let Some(value) = extract_value(solution, col.x_model_index) {
-                if value >= threshold {
-                    self.fixed_columns.insert(col.index);
-                    newly_fixed.insert(col.index);
-                }
+            if let Some(value) = extract_value(solution, col.x_model_index)
+                && value >= threshold
+            {
+                self.fixed_columns.insert(col.index);
+                newly_fixed.insert(col.index);
             }
         }
 
@@ -495,10 +547,10 @@ impl IterativeTaskCompilation {
             if self.removed_columns.contains(&col.index) {
                 continue;
             }
-            if let Some(value) = extract_value(solution, col.x_model_index) {
-                if value > 0.5 {
-                    fixed.insert(col.index);
-                }
+            if let Some(value) = extract_value(solution, col.x_model_index)
+                && value > 0.5
+            {
+                fixed.insert(col.index);
             }
         }
         fixed
@@ -511,10 +563,10 @@ impl IterativeTaskCompilation {
             if self.removed_columns.contains(&col.index) {
                 continue;
             }
-            if let Some(value) = extract_value(solution, col.x_model_index) {
-                if value > 1e-6 {
-                    kept.insert(col.index);
-                }
+            if let Some(value) = extract_value(solution, col.x_model_index)
+                && value > 1e-6
+            {
+                kept.insert(col.index);
             }
         }
         kept
@@ -527,20 +579,18 @@ impl IterativeTaskCompilation {
 
     /// 获取每个任务的列 / Get columns per task
     pub fn columns_for_task(&self, task_index: usize) -> Vec<&AddedTaskColumn> {
-        self.columns.iter()
-            .filter(|c| {
-                c.task_index == task_index
-                    && !self.removed_columns.contains(&c.index)
-            })
+        self.columns
+            .iter()
+            .filter(|c| c.task_index == task_index && !self.removed_columns.contains(&c.index))
             .collect()
     }
 
     /// 获取每个执行器的列 / Get columns per executor
     pub fn columns_for_executor(&self, executor_index: usize) -> Vec<&AddedTaskColumn> {
-        self.columns.iter()
+        self.columns
+            .iter()
             .filter(|c| {
-                c.executor_index == executor_index
-                    && !self.removed_columns.contains(&c.index)
+                c.executor_index == executor_index && !self.removed_columns.contains(&c.index)
             })
             .collect()
     }
@@ -557,8 +607,7 @@ mod tests {
         let mut compilation = IterativeTaskCompilation::new(
             3, // 3 tasks
             2, // 2 executors
-            true,
-            true,
+            true, true,
         );
         compilation.register(&mut model).unwrap();
 
@@ -570,13 +619,19 @@ mod tests {
         // y 项应在 task_compilation_terms 中
         for ti in 0..3 {
             assert_eq!(compilation.task_compilation_terms[ti].len(), 1);
-            assert_eq!(compilation.task_compilation_terms[ti][0].0, compilation.y_indices[ti]);
+            assert_eq!(
+                compilation.task_compilation_terms[ti][0].0,
+                compilation.y_indices[ti]
+            );
         }
 
         // z 项应在 executor_compilation_terms 中
         for ei in 0..2 {
             assert_eq!(compilation.executor_compilation_terms[ei].len(), 1);
-            assert_eq!(compilation.executor_compilation_terms[ei][0].0, compilation.z_indices[ei]);
+            assert_eq!(
+                compilation.executor_compilation_terms[ei][0].0,
+                compilation.z_indices[ei]
+            );
         }
     }
 
@@ -587,8 +642,7 @@ mod tests {
         let mut compilation = IterativeTaskCompilation::new(
             2, // 2 tasks
             1, // 1 executor
-            false,
-            false,
+            false, false,
         );
         compilation.register(&mut model).unwrap();
 
@@ -632,8 +686,7 @@ mod tests {
         let mut compilation = IterativeTaskCompilation::new(
             2, // 2 tasks
             1, // 1 executor
-            false,
-            false,
+            false, false,
         );
         compilation.register(&mut model).unwrap();
 

@@ -6,7 +6,7 @@ use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::solver::SolveValue;
 
 use crate::domain::material::{
-    from_f64, shadow_price_key_from_string, Csp1dShadowPriceKey, ShadowPriceMap,
+    Csp1dShadowPriceKey, ShadowPriceMap, from_f64, shadow_price_key_from_string,
 };
 
 use super::pipeline::Csp1dCGPipeline;
@@ -61,7 +61,10 @@ impl<V: SolveValue> std::fmt::Debug for Csp1dShadowPriceLifecycle<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Csp1dShadowPriceLifecycle")
             .field("domain_value_sample", &self.domain_value_sample)
-            .field("framework_shadow_price_map", &self.framework_shadow_price_map)
+            .field(
+                "framework_shadow_price_map",
+                &self.framework_shadow_price_map,
+            )
             .field("cg_pipelines", &self.cg_pipelines.len())
             .field("extractors", &self.extractors.len())
             .finish()

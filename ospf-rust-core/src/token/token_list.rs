@@ -1,11 +1,11 @@
 //! Token 列表 Trait 和实现
 //! Token List Trait and Implementations
 
+use super::{AnyVariable, Token};
+use crate::variable::VariableId;
+use ospf_rust_base::{read_unwrap, write_unwrap};
 use std::collections::HashMap;
 use std::sync::RwLock;
-use ospf_rust_base::{read_unwrap, write_unwrap};
-use crate::variable::VariableId;
-use super::{AnyVariable, Token};
 
 // ============================================================================
 // TokenList - Token 列表 Trait
@@ -371,7 +371,7 @@ pub type ConcurrentTokenListF64 = ConcurrentTokenList<f64>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::variable::{Binary, Continuous, VariableItem, VariableId};
+    use crate::variable::{Binary, Continuous, VariableId, VariableItem};
 
     #[test]
     fn test_vec_token_list() {

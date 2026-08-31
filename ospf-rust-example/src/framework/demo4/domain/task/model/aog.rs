@@ -1,9 +1,9 @@
 //! AOG（飞机停场）模型模块 / AOG (Aircraft on Ground) model module
 
-use time::{Duration, OffsetDateTime};
 use super::aircraft::Aircraft;
 use super::airport::Airport;
 use super::flight_task::{FlightTaskAssignment, FlightTaskStatus};
+use time::{Duration, OffsetDateTime};
 
 /// AOG 计划 / AOG plan
 #[derive(Debug, Clone)]
@@ -36,12 +36,18 @@ pub struct Aog {
 impl Aog {
     /// 创建新的 AOG / Create a new AOG
     pub fn new(plan: AogPlan) -> Self {
-        Self { plan, recovery_aircraft: None, recovery_time: None }
+        Self {
+            plan,
+            recovery_aircraft: None,
+            recovery_time: None,
+        }
     }
 
     /// 获取当前执行飞机 / Get the current aircraft (recovery or original)
     pub fn aircraft(&self) -> &Aircraft {
-        self.recovery_aircraft.as_ref().unwrap_or(&self.plan.aircraft)
+        self.recovery_aircraft
+            .as_ref()
+            .unwrap_or(&self.plan.aircraft)
     }
 
     /// 是否已恢复 / Check if recovered

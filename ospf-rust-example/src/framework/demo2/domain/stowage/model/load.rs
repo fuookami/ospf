@@ -1,10 +1,8 @@
 //! 装载量模型 / Load model
+use super::super::super::shared::units::{quantity_value_in_unit, weight_unit};
 use super::item::Item;
 use super::position::Position;
 use super::stowage::{Stowage, StowageVariables};
-use super::super::super::shared::units::{quantity_value_in_unit, weight_unit};
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
@@ -12,6 +10,8 @@ use ospf_rust_core::symbol::function::{
     BinaryzationFunction, IfFunction, OrFunction, SameAsFunction, SlackFunction,
 };
 use ospf_rust_core::variable::{UContinuousVariableItem, UIntegerVariableItem, VariableRange};
+use std::error::Error;
+use std::sync::Arc;
 
 /// 装载量变量索引 / Load variable indices
 #[derive(Debug, Clone)]
@@ -139,10 +139,8 @@ impl Load {
         let mut full_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
             let mla = position.max_load_amount as f64;
-            let load_amount_linear = Linear::new(
-                vec![LinearMonomial::new(1.0, load_amount_idx[j])],
-                0.0,
-            );
+            let load_amount_linear =
+                Linear::new(vec![LinearMonomial::new(1.0, load_amount_idx[j])], 0.0);
             let bin_fn = BinaryzationFunction::with_threshold(
                 next_id,
                 &format!("full_{}", position.id),
@@ -228,19 +226,13 @@ impl Load {
                     )) as Box<dyn std::error::Error>
                 })?;
 
-                let left = Linear::new(
-                    vec![LinearMonomial::new(1.0, y_idx[j])],
-                    0.0,
-                );
+                let left = Linear::new(vec![LinearMonomial::new(1.0, y_idx[j])], 0.0);
 
                 let right = if position.max_load_amount == 1
                     && (position.status.stowage_needed || position.status.adjustment_needed)
                 {
                     // Slack(y[j], loadAmount[j] * plw_min)
-                    Linear::new(
-                        vec![LinearMonomial::new(plw_min, load_amount_idx[j])],
-                        0.0,
-                    )
+                    Linear::new(vec![LinearMonomial::new(plw_min, load_amount_idx[j])], 0.0)
                 } else {
                     // Slack(y[j], plw_min)
                     Linear::new(Vec::new(), plw_min)
@@ -270,8 +262,13 @@ impl Load {
                     vec![LinearMonomial::new(1.0, actual_load_weight_idx[j])],
                     0.0,
                 );
-                let same_as_fn =
-                    SameAsFunction::new(next_id, &format!("y_same_as_{}", position.id), first, second, 0.0);
+                let same_as_fn = SameAsFunction::new(
+                    next_id,
+                    &format!("y_same_as_{}", position.id),
+                    first,
+                    second,
+                    0.0,
+                );
                 let result_idx = same_as_fn.result_variable().index();
                 model.add_symbol(Arc::new(same_as_fn))?;
                 y_same_as_idx[j] = result_idx;
@@ -289,8 +286,13 @@ impl Load {
                     vec![LinearMonomial::new(1.0, estimate_load_weight_idx[j])],
                     0.0,
                 );
-                let same_as_fn =
-                    SameAsFunction::new(next_id, &format!("z_same_as_{}", position.id), first, second, 0.0);
+                let same_as_fn = SameAsFunction::new(
+                    next_id,
+                    &format!("z_same_as_{}", position.id),
+                    first,
+                    second,
+                    0.0,
+                );
                 let result_idx = same_as_fn.result_variable().index();
                 model.add_symbol(Arc::new(same_as_fn))?;
                 z_same_as_idx[j] = result_idx;
@@ -303,26 +305,21 @@ impl Load {
         let mut y_if_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
             if position.status.predicate_weight_needed {
-                let condition = Linear::new(
-                    vec![LinearMonomial::new(1.0, load_amount_idx[j])],
-                    -1.0,
-                );
-                let then_expr = Linear::new(
-                    vec![LinearMonomial::new(1.0, y_same_as_idx[j])],
-                    0.0,
-                );
+                let condition =
+                    Linear::new(vec![LinearMonomial::new(1.0, load_amount_idx[j])], -1.0);
+                let then_expr = Linear::new(vec![LinearMonomial::new(1.0, y_same_as_idx[j])], 0.0);
                 let else_expr = Linear::new(vec![LinearMonomial::new(1.0, y_idx[j])], 0.0);
                 let if_fn = IfFunction::new(
                     next_id,
                     &format!("y_if_{}", position.id),
-                condition,
-                then_expr,
-                else_expr,
-            );
-            let result_idx = if_fn.result_variable().index();
-            model.add_symbol(Arc::new(if_fn))?;
-            y_if_idx[j] = result_idx;
-            next_id += 1;
+                    condition,
+                    then_expr,
+                    else_expr,
+                );
+                let result_idx = if_fn.result_variable().index();
+                model.add_symbol(Arc::new(if_fn))?;
+                y_if_idx[j] = result_idx;
+                next_id += 1;
             }
         }
 
@@ -331,14 +328,9 @@ impl Load {
         let mut z_if_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
             if position.status.recommended_weight_needed {
-                let condition = Linear::new(
-                    vec![LinearMonomial::new(1.0, load_amount_idx[j])],
-                    -1.0,
-                );
-                let then_expr = Linear::new(
-                    vec![LinearMonomial::new(1.0, z_same_as_idx[j])],
-                    0.0,
-                );
+                let condition =
+                    Linear::new(vec![LinearMonomial::new(1.0, load_amount_idx[j])], -1.0);
+                let then_expr = Linear::new(vec![LinearMonomial::new(1.0, z_same_as_idx[j])], 0.0);
                 let else_expr = Linear::new(vec![LinearMonomial::new(1.0, z_idx[j])], 0.0);
                 let if_fn = IfFunction::new(
                     next_id,
@@ -364,10 +356,8 @@ impl Load {
             // loadedItem = Binaryzation(loadAmount >= 1)
             // Kotlin: loadedItem = Binaryzation(loadAmount[j])
             // threshold = 1.0 means position is loaded when loadAmount >= 1
-            let load_amount_linear = Linear::new(
-                vec![LinearMonomial::new(1.0, load_amount_idx[j])],
-                0.0,
-            );
+            let load_amount_linear =
+                Linear::new(vec![LinearMonomial::new(1.0, load_amount_idx[j])], 0.0);
             let loaded_fn = BinaryzationFunction::with_threshold(
                 next_id,
                 &format!("loaded_item_{}", position.id),
@@ -379,10 +369,7 @@ impl Load {
             next_id += 1;
 
             let mut or_inputs: Vec<Linear<f64>> = Vec::new();
-            or_inputs.push(Linear::new(
-                vec![LinearMonomial::new(1.0, loaded_idx)],
-                0.0,
-            ));
+            or_inputs.push(Linear::new(vec![LinearMonomial::new(1.0, loaded_idx)], 0.0));
 
             // y_if: only when predicate_weight_needed
             if position.status.predicate_weight_needed {
@@ -415,10 +402,8 @@ impl Load {
         // Kotlin: actualLoaded = loadedItem = Binaryzation(loadAmount)
         let mut actual_loaded_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
-            let load_amount_linear = Linear::new(
-                vec![LinearMonomial::new(1.0, load_amount_idx[j])],
-                0.0,
-            );
+            let load_amount_linear =
+                Linear::new(vec![LinearMonomial::new(1.0, load_amount_idx[j])], 0.0);
             // actualLoaded = Binaryzation(loadAmount >= 1)
             // threshold = 1.0 means position is loaded when loadAmount >= 1
             let actual_fn = BinaryzationFunction::with_threshold(

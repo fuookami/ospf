@@ -1,11 +1,11 @@
 //! 同目的地邻接限制 / Same destination adjacent limits
-use std::error::Error;
-use std::sync::Arc;
+use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
+use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::IfFunction;
-use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
-use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 同目的地邻接限制: 最大化同目的地货物的邻接性 / Same-destination adjacent limit: maximize same-destination cargo adjacency
 ///

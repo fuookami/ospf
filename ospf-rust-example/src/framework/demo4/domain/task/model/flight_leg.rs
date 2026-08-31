@@ -1,10 +1,12 @@
 //! 航段模型模块 / Flight leg model module
 
-use time::{Duration, OffsetDateTime};
-use crate::framework::demo4::infrastructure::AircraftRegisterNumber;
 use super::aircraft::Aircraft;
 use super::airport::Airport;
-use super::flight_task::{FlightTaskAssignment, FlightTaskStatus, FlightTaskType, FlightTaskCategory};
+use super::flight_task::{
+    FlightTaskAssignment, FlightTaskCategory, FlightTaskStatus, FlightTaskType,
+};
+use crate::framework::demo4::infrastructure::AircraftRegisterNumber;
+use time::{Duration, OffsetDateTime};
 
 /// 航班计划 / Flight leg plan
 #[derive(Debug, Clone)]
@@ -82,7 +84,9 @@ impl FlightLeg {
 
     /// 获取当前执行飞机（恢复或原计划） / Get current aircraft (recovery or planned)
     pub fn aircraft(&self) -> &Aircraft {
-        self.recovery_aircraft.as_ref().unwrap_or(&self.plan.aircraft)
+        self.recovery_aircraft
+            .as_ref()
+            .unwrap_or(&self.plan.aircraft)
     }
 
     /// 获取有效时间（恢复或计划） / Get effective time (recovery or planned)

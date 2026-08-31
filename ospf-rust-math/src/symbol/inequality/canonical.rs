@@ -4,10 +4,10 @@
 //! 形式：lhs op rhs
 //! Form: lhs op rhs
 
-use std::fmt;
-use num_traits::Zero;
 use crate::operator::{Exponent, NegOneRef, OneRef, ZeroRef};
 use crate::symbol::{Canonical, Comparison};
+use num_traits::Zero;
+use std::fmt;
 
 // ============================================================================
 // CanonicalInequality - 标准不等式

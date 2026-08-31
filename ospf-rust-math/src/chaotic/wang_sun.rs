@@ -1,10 +1,10 @@
 //! Wang-Sun 吸引子。
 //! Wang-Sun attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Wang-Sun 吸引子的一阶欧拉步进模型。
@@ -49,7 +49,13 @@ impl<S: Field + Float> Default for WangSunAttractorGenerator<S> {
 /// 创建 Wang-Sun 吸引子。
 /// Create a Wang-Sun attractor.
 pub fn wang_sun_attractor<S: Field + Float>(
-    alpha: S, beta: S, delta: S, epsilon: S, zeta: S, xi: S, h: S,
+    alpha: S,
+    beta: S,
+    delta: S,
+    epsilon: S,
+    zeta: S,
+    xi: S,
+    h: S,
 ) -> WangSunAttractor<S> {
     WangSunAttractor::new(alpha, beta, delta, epsilon, zeta, xi, h)
 }
@@ -57,9 +63,19 @@ pub fn wang_sun_attractor<S: Field + Float>(
 /// 创建 Wang-Sun 吸引子生成器。
 /// Create a Wang-Sun attractor generator.
 pub fn wang_sun_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, delta: S, epsilon: S, zeta: S, xi: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    delta: S,
+    epsilon: S,
+    zeta: S,
+    xi: S,
+    h: S,
+    x: Point3<S>,
 ) -> WangSunAttractorGenerator<S> {
-    WangSunAttractorGenerator::new(WangSunAttractor::new(alpha, beta, delta, epsilon, zeta, xi, h), x)
+    WangSunAttractorGenerator::new(
+        WangSunAttractor::new(alpha, beta, delta, epsilon, zeta, xi, h),
+        x,
+    )
 }
 
 #[cfg(test)]

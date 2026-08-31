@@ -1,14 +1,16 @@
 //! 带宽上下文：注册与构建带宽相关变量、符号和约束 / Bandwidth context: register and construct bandwidth-related variables, symbols, and constraints
 
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
-use ospf_rust_core::symbol::flatten::{Linear as ModelLinear, LinearMonomial as ModelLinearMonomial};
-use ospf_rust_core::symbol::next_auto_intermediate_symbol_id;
-use ospf_rust_multiarray::Shape;
-use crate::framework::demo1::route_context::RouteContext;
 use super::aggregation::Aggregation;
 use super::model::{EdgeBandwidth, NodeBandwidth, ServiceBandwidth};
+use crate::framework::demo1::route_context::RouteContext;
+use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::symbol::flatten::{
+    Linear as ModelLinear, LinearMonomial as ModelLinearMonomial,
+};
+use ospf_rust_core::symbol::next_auto_intermediate_symbol_id;
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination};
+use ospf_rust_multiarray::Shape;
+use std::error::Error;
 
 /// 带宽上下文 / Bandwidth context
 pub struct BandwidthContext {
@@ -46,14 +48,18 @@ impl BandwidthContext {
 
         // 2. 构建 ServiceBandwidth (入度/出度/出流 per node per service)
         let service_bandwidth = build_service_bandwidth(
-            model, edges, nodes, services, normal_node_indices,
-            &edge_bandwidth.bandwidth, y_idx,
+            model,
+            edges,
+            nodes,
+            services,
+            normal_node_indices,
+            &edge_bandwidth.bandwidth,
+            y_idx,
         )?;
 
         // 3. 构建 NodeBandwidth (入度/出度/出流 per node)
-        let node_bandwidth = build_node_bandwidth(
-            model, services, normal_node_indices, &service_bandwidth,
-        )?;
+        let node_bandwidth =
+            build_node_bandwidth(model, services, normal_node_indices, &service_bandwidth)?;
 
         self.aggregation = Some(Aggregation::new(
             edge_bandwidth,
@@ -206,7 +212,11 @@ fn build_service_bandwidth(
     });
     model.add_symbol_combination(&out_flow)?;
 
-    Ok(ServiceBandwidth { in_degree, out_degree, out_flow })
+    Ok(ServiceBandwidth {
+        in_degree,
+        out_degree,
+        out_flow,
+    })
 }
 
 /// 构建 NodeBandwidth 符号组合 / Build NodeBandwidth symbol combination
@@ -235,12 +245,7 @@ fn build_node_bandwidth(
             monomials.extend_from_slice(poly.monomials());
         }
         let id = next_auto_intermediate_symbol_id();
-        LinearExpressionSymbol::new(
-            id,
-            &format!("node_bw_in_{}", node_idx),
-            monomials,
-            0.0,
-        )
+        LinearExpressionSymbol::new(id, &format!("node_bw_in_{}", node_idx), monomials, 0.0)
     });
     model.add_symbol_combination(&in_degree)?;
 
@@ -253,12 +258,7 @@ fn build_node_bandwidth(
             monomials.extend_from_slice(poly.monomials());
         }
         let id = next_auto_intermediate_symbol_id();
-        LinearExpressionSymbol::new(
-            id,
-            &format!("node_bw_out_{}", node_idx),
-            monomials,
-            0.0,
-        )
+        LinearExpressionSymbol::new(id, &format!("node_bw_out_{}", node_idx), monomials, 0.0)
     });
     model.add_symbol_combination(&out_degree)?;
 
@@ -271,16 +271,15 @@ fn build_node_bandwidth(
             monomials.extend_from_slice(poly.monomials());
         }
         let id = next_auto_intermediate_symbol_id();
-        LinearExpressionSymbol::new(
-            id,
-            &format!("node_bw_flow_{}", node_idx),
-            monomials,
-            0.0,
-        )
+        LinearExpressionSymbol::new(id, &format!("node_bw_flow_{}", node_idx), monomials, 0.0)
     });
     model.add_symbol_combination(&out_flow)?;
 
-    Ok(NodeBandwidth { in_degree, out_degree, out_flow })
+    Ok(NodeBandwidth {
+        in_degree,
+        out_degree,
+        out_flow,
+    })
 }
 
 /// 从 bandwidth[e] 的多项式中提取指定 service s 的系数 / Extract coefficient for specified service s from bandwidth[e] polynomial

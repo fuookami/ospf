@@ -1,13 +1,13 @@
 //! ValueRange - 值空间/区间
 //! ValueRange - Value range / interval
 
-use std::fmt;
-use crate::algebra::concept::{Bounded, Fixed};
-use crate::operator::Contains;
-use crate::operator::tolerance::{Tolerance, TolerancedEq, TolerancedOrd};
 use super::bound::Bound;
 use super::interval::{Closed, Interval, IntervalTrait, Open};
 use super::value_wrapper::ValueWrapper;
+use crate::algebra::concept::{Bounded, Fixed};
+use crate::operator::Contains;
+use crate::operator::tolerance::{Tolerance, TolerancedEq, TolerancedOrd};
+use std::fmt;
 
 // ============================================================================
 // ValueRange<T, IL, IU> - 值空间/区间

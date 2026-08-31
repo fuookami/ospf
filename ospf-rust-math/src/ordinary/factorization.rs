@@ -3,8 +3,8 @@
 //! 提供整数因式分解功能。
 //! Provides integer factorization functionality.
 
-use std::vec::Vec;
 use super::prime::get_primes;
+use std::vec::Vec;
 
 /// 对整数进行因式分解
 /// Factorize an integer

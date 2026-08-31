@@ -7,6 +7,7 @@ pub mod backend;
 pub mod expression;
 pub mod log_record;
 pub mod persistence_api_controller;
+pub mod query;
 pub mod request;
 pub mod request_record;
 mod response;
@@ -17,6 +18,13 @@ pub use backend::*;
 pub use expression::*;
 pub use log_record::*;
 pub use persistence_api_controller::*;
+pub use query::{
+    ColumnRef, JoinCardinality, JoinSpec, JoinType, NullsOrder as QueryNullsOrder, OrderSpec,
+    PageSpec, ProjectionSpec, QueryAuditSummary, QueryExecutionErrorCategory, QueryExecutionResult,
+    QueryExecutionStats, QuerySource, RelationalQueryFailure, RelationalQueryLimits,
+    RelationalQueryPlan, RelationalQueryValidationError, SortDirection as QuerySortDirection,
+    contains_exact_column_correlation,
+};
 pub use request::*;
 pub use request_record::*;
 pub use response::*;

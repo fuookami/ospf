@@ -1,10 +1,10 @@
 //! Chua 吸引子的一阶欧拉步进模型。
 //! First-order Euler step model for the Chua attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 /// Chua 吸引子的一阶欧拉步进模型。
 /// First-order Euler step model for the Chua attractor.
@@ -180,7 +180,10 @@ mod tests {
     fn chua_attractor_generator_semantics() {
         let mut attractor_generator =
             ChuaAttractorGenerator::new(ChuaAttractor::default(), Point3::new(1.0, 1.0, 1.0));
-        assert_point3_close(attractor_generator.next_point(), Point3::new(1.312, 1.01, 0.7442));
+        assert_point3_close(
+            attractor_generator.next_point(),
+            Point3::new(1.312, 1.01, 0.7442),
+        );
         assert_point3_close(
             attractor_generator.x().clone(),
             Point3::new(1.312, 1.01, 0.7442),

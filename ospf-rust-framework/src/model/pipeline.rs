@@ -8,11 +8,19 @@
 //! - [`CGPipeline`] - 列生成管道，支持 Shadow Price 管理 / Column generation pipeline with Shadow Price management
 //! - [`HAPipeline`] - 启发式算法管道，用于解的评估 / Heuristic algorithm pipeline for solution evaluation
 
+use ospf_rust_core::error::{CoreError, ModelError, Result, SolverError};
+use ospf_rust_core::model::mechanism::ConstraintGroup;
 use std::any::Any;
 use std::fmt::Debug;
 use std::sync::Arc;
-use ospf_rust_core::error::{CoreError, ModelError, Result, SolverError};
-use ospf_rust_core::model::mechanism::ConstraintGroup;
+
+impl ConstraintGroupRegistrar
+    for ospf_rust_core::model::constraint_programming::ConstraintProgrammingModel
+{
+    fn ensure_constraint_group(&mut self, group: &ConstraintGroup) -> Result<()> {
+        self.ensure_constraint_group(group.id, group.name.clone())
+    }
+}
 
 /// 基础管道 trait / Basic Pipeline Trait
 ///
@@ -219,14 +227,14 @@ pub trait HAPipeline<M>: Pipeline<M> {
     fn check(&self, model: &M, solution: &[f64]) -> Result<()> {
         self.calculate(model, solution)?
             .map(|_| ())
-            .ok_or_else(|| CoreError::Solver(SolverError::NoSolution))
+            .ok_or(CoreError::Solver(SolverError::NoSolution))
     }
 
     /// 执行管道并返回目标值 / Execute pipeline and return objective value
     fn invoke_with_solution(&self, model: &M, solution: &[f64]) -> Result<HAPipelineObj> {
         let value = self
             .calculate(model, solution)?
-            .ok_or_else(|| CoreError::Solver(SolverError::NoSolution))?;
+            .ok_or(CoreError::Solver(SolverError::NoSolution))?;
         Ok(HAPipelineObj::new(self.name(), value))
     }
 }
@@ -249,6 +257,7 @@ impl<M> HAPipelineList<M> for Vec<Arc<dyn HAPipeline<M>>> {
 mod tests {
     use super::*;
     use ospf_rust_core::model::MetaModel;
+    use ospf_rust_core::model::constraint_programming::ConstraintProgrammingModel;
     use std::sync::{Arc, Mutex};
 
     struct TestModel;
@@ -356,6 +365,20 @@ mod tests {
         }
     }
 
+    impl Pipeline<ConstraintProgrammingModel> for TestPipeline {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        fn constraint_group(&self) -> Option<&ConstraintGroup> {
+            self.group.as_ref()
+        }
+
+        fn invoke(&self, _model: &ConstraintProgrammingModel) -> Result<()> {
+            Ok(())
+        }
+    }
+
     #[test]
     fn test_pipeline_list_auto_registers_constraint_group_for_meta_model() {
         let group = ConstraintGroup::new(1001, "auto_registered_group");
@@ -373,5 +396,27 @@ mod tests {
             model.create_constraint_group(group.id, &group.name),
             Err(CoreError::Model(ModelError::ConstraintConflict(_)))
         ));
+    }
+
+    #[test]
+    fn test_pipeline_list_auto_registers_constraint_group_for_cp_model() {
+        let group = ConstraintGroup::new(1002, "cp_auto_registered_group");
+        let pipelines: Vec<Arc<dyn Pipeline<ConstraintProgrammingModel>>> =
+            vec![Arc::new(TestPipeline {
+                name: "cp_pipeline".to_owned(),
+                group: Some(group.clone()),
+            })];
+        let mut model = ConstraintProgrammingModel::new("cp_pipeline_model");
+        pipelines
+            .invoke_all_with_group_registration(&mut model)
+            .expect("CP pipeline group registration");
+        let snapshot = model.freeze().expect("CP snapshot");
+        assert_eq!(
+            snapshot
+                .constraint_groups
+                .get(&group.id)
+                .map(String::as_str),
+            Some("cp_auto_registered_group")
+        );
     }
 }

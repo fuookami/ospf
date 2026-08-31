@@ -1,9 +1,9 @@
 //! 优先级排序限制 / Priority order limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 优先级顺序限制: 高优先级货物应在低优先级之前装载 / Priority order limit: higher-priority cargos should load before lower-priority ones
 /// 对齐 Kotlin PriorityOrderLimit

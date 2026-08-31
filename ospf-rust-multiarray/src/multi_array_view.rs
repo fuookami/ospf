@@ -302,7 +302,12 @@ where
         let view_shape = calculate_view_shape(&array.shape, &map_vector)?;
         let len = map_vector.indices().fold(1, |acc, i| match &map_vector[i] {
             MapIndex::Dummy(dummy) => acc * dummy.len_of(&array.shape, i),
-            MapIndex::Map(_) => acc * array.shape.len_of_dimension(i).expect("dimension should be valid in new_by_map"),
+            MapIndex::Map(_) => {
+                acc * array
+                    .shape
+                    .len_of_dimension(i)
+                    .expect("dimension should be valid in new_by_map")
+            }
         });
 
         Ok(Self {
@@ -387,7 +392,13 @@ where
             .indices()
             .fold(1, |acc, i| match &new_map_vector[i] {
                 MapIndex::Dummy(dummy) => acc * dummy.len_of(&self.array.shape, i),
-                MapIndex::Map(_) => acc * self.array.shape.len_of_dimension(i).expect("dimension should be valid in view_by_dummy"),
+                MapIndex::Map(_) => {
+                    acc * self
+                        .array
+                        .shape
+                        .len_of_dimension(i)
+                        .expect("dimension should be valid in view_by_dummy")
+                }
             });
 
         Ok(Self {
@@ -445,7 +456,13 @@ where
             .indices()
             .fold(1, |acc, i| match &new_map_vector[i] {
                 MapIndex::Dummy(dummy) => acc * dummy.len_of(&self.array.shape, i),
-                MapIndex::Map(_) => acc * self.array.shape.len_of_dimension(i).expect("dimension should be valid in view_by_map"),
+                MapIndex::Map(_) => {
+                    acc * self
+                        .array
+                        .shape
+                        .len_of_dimension(i)
+                        .expect("dimension should be valid in view_by_map")
+                }
             });
 
         Ok(Self {
@@ -876,7 +893,11 @@ where
                     MapIndex::Dummy(dummy) => match dummy {
                         DummyIndex::Index(val) => {
                             let actual_index = if *val < 0 {
-                                let dim_len = self.array.shape.len_of_dimension(i).expect("dimension should be valid in Index<usize>");
+                                let dim_len = self
+                                    .array
+                                    .shape
+                                    .len_of_dimension(i)
+                                    .expect("dimension should be valid in Index<usize>");
                                 (dim_len as isize + val) as usize
                             } else {
                                 *val as usize
@@ -894,7 +915,11 @@ where
                 }
             }
 
-            let flat_idx = self.array.shape.index_of(&vector).expect("vector index should be valid in Index<usize>");
+            let flat_idx = self
+                .array
+                .shape
+                .index_of(&vector)
+                .expect("vector index should be valid in Index<usize>");
             &self.array[flat_idx]
         } else {
             panic!(

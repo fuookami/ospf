@@ -6,10 +6,10 @@
 pub mod model;
 pub mod service;
 
-pub use model::{Block, SimpleBlock, ComplexBlock, ItemView, Space, BlockPlacement};
+pub use model::{Block, BlockPlacement, ComplexBlock, ItemView, SimpleBlock, Space};
 
 pub use service::{
     ComplexBlockGenerator, ComplexBlockGeneratorConfig, DepthFirstSearchAlgorithm,
-    DepthFirstSearchConfig, MultiLayerHeuristicSearchAlgorithm,
-    MultiLayerHeuristicSearchConfig, SimpleBlockGenerator, SimpleBlockGeneratorConfig,
+    DepthFirstSearchConfig, MultiLayerHeuristicSearchAlgorithm, MultiLayerHeuristicSearchConfig,
+    SimpleBlockGenerator, SimpleBlockGeneratorConfig,
 };

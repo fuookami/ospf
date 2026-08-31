@@ -1,6 +1,6 @@
 //! 机组模型模块 / Crew model module.
-use super::pilot::{Pilot, PilotRank};
 use super::crew_man::{CrewMan, CrewManRank};
+use super::pilot::{Pilot, PilotRank};
 
 /// 机组成员类型 / Crew type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

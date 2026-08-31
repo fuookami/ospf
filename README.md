@@ -34,6 +34,7 @@ Explicit non-goals:
 | [`ospf-rust-framework-bpp3d`](ospf-rust-framework-bpp3d/README.md) | `ospf-kotlin-framework-bpp3d` | Reusable 3D bin-packing framework with BPP3D contexts, layer generation/assignment, packing, CSV fixtures, and renderer DTOs. |
 | [`ospf-rust-framework-csp1d`](ospf-rust-framework-csp1d/README.md) | `ospf-kotlin-framework-csp1d` | Reusable one-dimensional cutting-stock framework with material, generation, produce, yield, waste, length, and application flows. |
 | [`ospf-rust-framework-gantt-scheduling`](ospf-rust-framework-gantt-scheduling/README.md) | `ospf-kotlin-framework-gantt-scheduling` | Reusable Gantt scheduling framework with task, bunch, capacity, resource, produce, and branch-and-price flows. |
+| [`ospf-rust-framework-network-scheduling`](ospf-rust-framework-network-scheduling/README.md) | `ospf-kotlin-framework-network-scheduling` | Generic network flow, VRPTW, ESPPRC pricing, route compilation, and Branch-and-Price framework. |
 | [`ospf-rust-example`](ospf-rust-example/README.md) | `ospf-kotlin-example` | Runnable examples and migration compatibility demos. |
 
 ## Architecture Overview
@@ -47,6 +48,21 @@ The workspace follows a layered shape:
 5. `example` demonstrates current public flows and migration compatibility paths.
 
 Framework domain crates should keep optimization semantics in context / aggregation / model component / pipeline layers. Application services coordinate solver selection, lifecycle, trace/KPI/render assembly, and recovery boundaries.
+
+## Constraint Programming Boundary
+
+`ospf-rust-core` exposes an exact `i64` constraint-programming model with immutable snapshots,
+stable IDs, source verification, and a unified `SolveReport<i64>`. The generic MIP lowerer uses
+checked `i128` internally and only crosses the existing `f64` solver boundary when every integer
+coefficient, bound, and generated Big-M is exactly representable; the current gate is `2^53`.
+
+The SCIP CP entry point is a feature-gated, strict finite MIP-backed facade. It is not a native
+SCIP/CIP CP backend. The declared CP capability scope is complete: generic MIP lowering returns
+verified `ExactLowering` for the supported finite subset and structured `Unsupported` for
+`Cumulative`, `Circuit`, `Automaton`, and `Reservoir`; raw cumulative FFI is a `Conditional`
+research probe, and true incremental CP sessions remain `Unsupported`. Snapshot-rebuild sessions
+are correct but must not be described as native incremental resume. The fake CP solver is for
+contract tests and small exhaustive oracles, not production search.
 
 ## Documentation Templates
 
@@ -73,6 +89,7 @@ Domain frameworks can be enabled directly:
 [dependencies]
 ospf-rust-framework-csp1d = { path = "../ospf-rust-framework-csp1d" }
 ospf-rust-framework-gantt-scheduling = { path = "../ospf-rust-framework-gantt-scheduling" }
+ospf-rust-framework-network-scheduling = { path = "../ospf-rust-framework-network-scheduling" }
 ```
 
 ## Local Validation
@@ -94,6 +111,8 @@ Solver-backed tests require the corresponding Cargo feature and local solver ins
 ## Current Boundaries
 
 This repository is actively migrating Kotlin framework capabilities into Rust. Some domain crates expose Kotlin-aligned public surfaces while still using Rust-side deterministic, fake, or feature-gated solver paths for parts of the lifecycle. Each domain crate README records its own current coverage and known gaps.
+
+`ospf-rust-framework-network-scheduling` is wired into the workspace and its `99/99` migration is complete, with offline graph/flow, VRPTW, ESPPRC, route-compilation, and Branch-and-Price coverage. Its Gurobi/SCIP Demo5 validation remains feature-gated and depends on the local native solver environment; the crate README records the long-lived numeric, correctness, and E2E boundaries.
 
 ## Related Modules
 

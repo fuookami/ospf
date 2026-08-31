@@ -1,10 +1,10 @@
 //! 拖车绕行限制 / Trailer circling limits
-use std::error::Error;
-use std::collections::BTreeSet;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::collections::BTreeSet;
+use std::error::Error;
 
 /// 拖车循环限制: 最小化拖车循环 / Trailer circling limit: minimize trailer circling
 /// 对齐 Kotlin TrailerCirclingLimit
@@ -63,16 +63,16 @@ pub fn apply_trailer_circling_limits(
                         // 非相邻位置: 不允许同时装载
                         // Non-adjacent positions: not allowed to load both
                         model.add_linear_constraint(
-                            &[
-                                (context.x_idx[c1][p1], 1.0),
-                                (context.x_idx[c2][p2], 1.0),
-                            ],
+                            &[(context.x_idx[c1][p1], 1.0), (context.x_idx[c2][p2], 1.0)],
                             ConstraintRelation::LessEqual,
                             1.0,
                             &format!(
                                 "loading_trailer_circling_{}_{}_{}_{}_{}",
                                 mode_name(context.mode),
-                                c1, c2, p1, p2
+                                c1,
+                                c2,
+                                p1,
+                                p2
                             ),
                         )?;
                     }

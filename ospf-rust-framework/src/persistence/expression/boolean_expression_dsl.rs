@@ -395,7 +395,9 @@ pub fn and_scope(
 
 /// 构造类型化 lambda 风格的 AND 组合表达式。
 /// Build a typed AND expression with a closure scope.
-pub fn typed_and_scope<T>(init: impl FnOnce(&mut BooleanExpressionScope<T>)) -> BooleanExpression<T> {
+pub fn typed_and_scope<T>(
+    init: impl FnOnce(&mut BooleanExpressionScope<T>),
+) -> BooleanExpression<T> {
     let mut scope = BooleanExpressionScope::new();
     init(&mut scope);
     scope.build_and()
@@ -431,7 +433,9 @@ pub fn or_scope(
 
 /// 构造类型化 lambda 风格的 OR 组合表达式。
 /// Build a typed OR expression with a closure scope.
-pub fn typed_or_scope<T>(init: impl FnOnce(&mut BooleanExpressionScope<T>)) -> BooleanExpression<T> {
+pub fn typed_or_scope<T>(
+    init: impl FnOnce(&mut BooleanExpressionScope<T>),
+) -> BooleanExpression<T> {
     let mut scope = BooleanExpressionScope::new();
     init(&mut scope);
     scope.build_or()

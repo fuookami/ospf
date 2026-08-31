@@ -1,14 +1,13 @@
 //! 启发式算法通用接口
 //! Generic Heuristic Algorithm Interface
 
-use std::cmp::Ordering;
-use async_trait::async_trait;
 use crate::error::Result;
 use crate::model::callback::{
-
     AbstractCallBackModel, AbstractCallBackModelInterface, CallBackModelInterface,
     MultiObjectiveCallBackModel, Solution, SolutionStatus,
 };
+use async_trait::async_trait;
+use std::cmp::Ordering;
 
 use super::{AbstractHeuristicPolicy, Iteration};
 
@@ -297,7 +296,7 @@ where
                 better,
                 population.first(),
                 &population,
-                &[population.clone()],
+                std::slice::from_ref(&population),
                 model,
             );
             policy.update(&iteration, better);
@@ -431,18 +430,17 @@ where
             best_individual.is_some(),
             best_individual.as_ref(),
             &good_individuals,
-            &[initial_population.clone()],
+            std::slice::from_ref(&initial_population),
             model,
         );
 
-        if best_individual.is_none() {
-            if let (Some(solution), Some(objective)) =
+        if best_individual.is_none()
+            && let (Some(solution), Some(objective)) =
                 (model.get_solution().cloned(), model.get_objective_value())
-            {
-                let fallback = HeuristicIndividual::new(solution, objective);
-                best_individual = Some(fallback.clone());
-                good_individuals.push(fallback);
-            }
+        {
+            let fallback = HeuristicIndividual::new(solution, objective);
+            best_individual = Some(fallback.clone());
+            good_individuals.push(fallback);
         }
 
         while !policy.finished(&iteration) {

@@ -22,12 +22,12 @@
 //! 支持类型级别的量纲乘法、除法、幂次和倒数运算。
 //! Supports type-level dimension multiplication, division, power, and reciprocal operations.
 
+use once_cell::sync::Lazy;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::{Add, Mul, Neg, Sub};
 use std::sync::Arc;
-use once_cell::sync::Lazy;
 use typenum::{Integer, N2, P1, P2, P3, Z0};
 
 // ============================================================================

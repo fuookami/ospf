@@ -1,9 +1,9 @@
 //! 包络线模型 / Envelope model
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::{Point2, UnivariateLinearPiecewiseFunction};
+use std::error::Error;
+use std::sync::Arc;
 
 /// 包络线 / Envelope (对齐 Kotlin airworthiness_security Envelope)
 ///

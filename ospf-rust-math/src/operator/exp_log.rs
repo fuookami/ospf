@@ -1,8 +1,8 @@
 //! 指数与对数运算 traits
 //! Exponential and logarithm operation traits
 
-use bigdecimal::{BigDecimal, FromPrimitive};
 use crate::ordinary::big_decimal_pow;
+use bigdecimal::{BigDecimal, FromPrimitive};
 
 /// 自然指数运算。
 /// Natural exponential operation.

@@ -10,9 +10,10 @@ pub mod task_column_generation;
 
 pub use branch_and_price::{
     BranchAndPriceTreeSearch, BranchCutAction, BranchCutCallback, BranchDecision, BranchDirection,
-    BranchNode, BranchNodeCallback, BranchNodeSolveOutput, BranchNodeStatus, BranchSearchConfig,
-    BranchSearchHooks, BranchSearchOrder, BranchSearchResult, NoopBranchCutCallback,
-    NoopBranchNodeCallback, NoopStrongBranching, StrongBranchCandidate, StrongBranchingStrategy,
+    BranchNode, BranchNodeCallback, BranchNodeConclusion, BranchNodeSolveOutput, BranchNodeStatus,
+    BranchSearchConfig, BranchSearchHooks, BranchSearchOrder, BranchSearchResult,
+    NoopBranchCutCallback, NoopBranchNodeCallback, NoopStrongBranching, StrongBranchCandidate,
+    StrongBranchingStrategy,
 };
 pub use bunch_column_generation::{
     BranchGroup, BranchGroupTracker, BunchBranchAndPriceAlgorithm, BunchCGPolicy,

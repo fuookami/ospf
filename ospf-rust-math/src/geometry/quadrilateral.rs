@@ -23,12 +23,12 @@
 //! assert!(area_diff.abs() < 1e-10);
 //! ```
 
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use num_traits::Float;
-use crate::algebra::{Epsilon, Field, InnerProductSpace};
 use super::edge::Edge;
 use super::point::Point;
 use super::triangle::Triangle;
+use crate::algebra::{Epsilon, Field, InnerProductSpace};
+use num_traits::Float;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 // ============================================================================
 // Quadrilateral - 泛型四边形

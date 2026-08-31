@@ -1,9 +1,9 @@
 //! 冗余模型 / Redundancy model
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::SlackFunction;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 冗余 / Redundancy (对齐 Kotlin Redundancy)
 ///

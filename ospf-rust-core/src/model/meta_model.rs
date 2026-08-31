@@ -1,15 +1,10 @@
 //! 元模型。
 //! Meta model.
 
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::ops::Add;
-use std::sync::Arc;
 use super::basic::ConstraintPriority;
 use super::flatten::{Linear, LinearMonomial};
 use super::intermediate::{LinearTriadModel, QuadraticTetradModel};
 use super::mechanism::{
-
     BasicMechanismModel, Constraint, ConstraintGroup, ConstraintRelation, LinearInequality,
     MechanismModel, MetaConstraint, SymbolicLinearConstraint, SymbolicLinearInequality,
     SymbolicQuadraticConstraint, SymbolicQuadraticInequality,
@@ -20,15 +15,22 @@ use super::{
 };
 use crate::error::{ModelError, Result};
 use crate::symbol::IntermediateSymbol;
+use crate::symbol::SymbolCombination;
+use crate::token::IntoValue;
 use crate::token::Token;
 use crate::variable::{VariableCombination, VariableId, VariableRange, VariableTypeTrait};
-use crate::token::IntoValue;
-use crate::symbol::SymbolCombination;
-use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder};
 use num_traits::{One, Zero};
 use ospf_rust_math::symbol::{
     Comparison, Linear as MathLinear, LinearInequality as MathLinearInequality,
 };
+use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder};
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::ops::Add;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_META_MODEL_ID: AtomicU64 = AtomicU64::new(1);
 
 /// 线性表达式构建器。
 /// Linear expression builder.
@@ -372,6 +374,7 @@ pub struct MetaModel<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    model_identity: u64,
     basic: BasicModel<V>,
     objective: Objective<V>,
     config: MetaModelConfiguration,
@@ -397,6 +400,7 @@ where
     /// Create a new meta model.
     pub fn new(name: &str) -> Self {
         Self {
+            model_identity: NEXT_META_MODEL_ID.fetch_add(1, Ordering::Relaxed),
             basic: BasicModel::new(name),
             objective: Objective::default(),
             config: MetaModelConfiguration::default(),
@@ -409,11 +413,49 @@ where
     /// Create meta model from basic model.
     pub fn from_basic(basic: BasicModel<V>) -> Self {
         Self {
+            model_identity: NEXT_META_MODEL_ID.fetch_add(1, Ordering::Relaxed),
             basic,
             objective: Objective::default(),
             config: MetaModelConfiguration::default(),
             symbolic_constraints: Vec::new(),
             symbolic_quadratic_constraints: Vec::new(),
+        }
+    }
+
+    /// 获取模型生命周期身份；移动模型不会改变该身份。
+    /// Get the model-lifecycle identity; moving the model does not change it.
+    pub fn model_identity(&self) -> u64 {
+        self.model_identity
+    }
+
+    /// 原子执行模型修改；操作失败时恢复变量、约束、符号、目标、配置和缓存。
+    ///
+    /// 用于可能在完成多次结构修改后失败的生命周期 hook。
+    /// Execute a model mutation atomically and restore it when the operation fails.
+    ///
+    /// The transaction covers variables, constraints, symbols, objective,
+    /// configuration, and model caches. It is intended for lifecycle hooks
+    /// that may fail after several structural changes have already been made.
+    pub fn transaction<T, E, F>(&mut self, operation: F) -> std::result::Result<T, E>
+    where
+        F: FnOnce(&mut Self) -> std::result::Result<T, E>,
+    {
+        let basic_snapshot = self.basic.snapshot();
+        let objective = self.objective.clone();
+        let config = self.config.clone();
+        let symbolic_constraints = self.symbolic_constraints.clone();
+        let symbolic_quadratic_constraints = self.symbolic_quadratic_constraints.clone();
+
+        match operation(self) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.basic.restore(basic_snapshot);
+                self.objective = objective;
+                self.config = config;
+                self.symbolic_constraints = symbolic_constraints;
+                self.symbolic_quadratic_constraints = symbolic_quadratic_constraints;
+                Err(error)
+            }
         }
     }
 
@@ -762,8 +804,7 @@ where
                     ))
                 })?;
             if let Some(position) = monomial_positions.get(&var_index) {
-                let coefficient =
-                    monomials[*position].coefficient().clone() + monomial.coefficient;
+                let coefficient = monomials[*position].coefficient().clone() + monomial.coefficient;
                 monomials[*position].set_coefficient(coefficient);
             } else {
                 monomial_positions.insert(var_index, monomials.len());
@@ -1301,6 +1342,29 @@ impl MetaModel<f64> {
         solver.solve_with_options(self, options)
     }
 
+    /// 一步完成"MetaModel -> 自动判型 -> 统一报告求解"。
+    /// One-step "MetaModel -> automatic model selection -> unified-report solve".
+    pub fn solve_report<S>(&self, solver: &S) -> Result<crate::solver::SolveReport<f64>>
+    where
+        S: crate::solver::Solver + ?Sized,
+    {
+        self.solve_report_with_options(solver, &crate::solver::SolveOptions::default())
+    }
+
+    /// 一步完成"MetaModel -> 自动判型 -> 统一报告求解（参数对象）"。
+    /// One-step "MetaModel -> automatic model selection -> unified-report solve with options".
+    pub fn solve_report_with_options<S>(
+        &self,
+        solver: &S,
+        options: &crate::solver::SolveOptions<'_>,
+    ) -> Result<crate::solver::SolveReport<f64>>
+    where
+        S: crate::solver::Solver + ?Sized,
+    {
+        use crate::solver::SolverExt;
+        solver.solve_report_with_options(self, options)
+    }
+
     /// 一步完成"MetaModel -> 线性模型 -> 求解"。
     /// One-step "MetaModel -> linear model -> solve".
     pub fn solve_linear_with<S>(self, solver: &S) -> Result<crate::solver::SolverOutput>
@@ -1325,6 +1389,31 @@ impl MetaModel<f64> {
             options.model_building_status_callback,
         )?;
         solver.solve_linear_with_options(&linear_model, options)
+    }
+
+    /// 一步完成"MetaModel -> 线性模型 -> 统一报告求解"。
+    /// One-step "MetaModel -> linear model -> unified-report solve".
+    pub fn solve_linear_report_with<S>(self, solver: &S) -> Result<crate::solver::SolveReport<f64>>
+    where
+        S: crate::solver::LinearSolver,
+    {
+        self.solve_linear_report_with_options(solver, &crate::solver::SolveOptions::default())
+    }
+
+    /// 一步完成"MetaModel -> 线性模型 -> 统一报告求解（参数对象）"。
+    /// One-step "MetaModel -> linear model -> unified-report solve with options".
+    pub fn solve_linear_report_with_options<S>(
+        self,
+        solver: &S,
+        options: &crate::solver::SolveOptions<'_>,
+    ) -> Result<crate::solver::SolveReport<f64>>
+    where
+        S: crate::solver::LinearSolver,
+    {
+        let linear_model = self.try_into_linear_triad_model_with_status_callback(
+            options.model_building_status_callback,
+        )?;
+        solver.solve_linear_report_with_options(&linear_model, options)
     }
 
     /// 尝试转换为二次四元组模型。
@@ -1401,6 +1490,34 @@ impl MetaModel<f64> {
         solver.solve_quadratic_with_options(&quadratic_model, options)
     }
 
+    /// 一步完成"MetaModel -> 二次模型 -> 统一报告求解"。
+    /// One-step "MetaModel -> quadratic model -> unified-report solve".
+    pub fn solve_quadratic_report_with<S>(
+        self,
+        solver: &S,
+    ) -> Result<crate::solver::SolveReport<f64>>
+    where
+        S: crate::solver::QuadraticSolver,
+    {
+        self.solve_quadratic_report_with_options(solver, &crate::solver::SolveOptions::default())
+    }
+
+    /// 一步完成"MetaModel -> 二次模型 -> 统一报告求解（参数对象）"。
+    /// One-step "MetaModel -> quadratic model -> unified-report solve with options".
+    pub fn solve_quadratic_report_with_options<S>(
+        self,
+        solver: &S,
+        options: &crate::solver::SolveOptions<'_>,
+    ) -> Result<crate::solver::SolveReport<f64>>
+    where
+        S: crate::solver::QuadraticSolver,
+    {
+        let quadratic_model = self.try_into_quadratic_tetrad_model_with_status_callback(
+            options.model_building_status_callback,
+        )?;
+        solver.solve_quadratic_report_with_options(&quadratic_model, options)
+    }
+
     /// 添加线性目标。
     /// Add a linear objective.
     pub fn add_linear_objective(&mut self, coefficients: &[(usize, f64)], name: &str) {
@@ -1461,6 +1578,7 @@ impl MetaModel<f64> {
 
     /// 添加带元数据的线性约束。
     /// Add a linear constraint with metadata.
+    #[allow(clippy::too_many_arguments)]
     pub fn add_linear_constraint_with_metadata(
         &mut self,
         coefficients: &[(usize, f64)],
@@ -1547,6 +1665,7 @@ impl MetaModel<f64> {
 
     /// 添加带元数据的小于等于约束。
     /// Add a less-than-or-equal constraint with metadata.
+    #[allow(clippy::too_many_arguments)]
     pub fn add_le_constraint_with_metadata(
         &mut self,
         coefficients: &[(usize, f64)],
@@ -1571,6 +1690,7 @@ impl MetaModel<f64> {
 
     /// 添加带元数据的大于等于约束。
     /// Add a greater-than-or-equal constraint with metadata.
+    #[allow(clippy::too_many_arguments)]
     pub fn add_ge_constraint_with_metadata(
         &mut self,
         coefficients: &[(usize, f64)],
@@ -1595,6 +1715,7 @@ impl MetaModel<f64> {
 
     /// 添加带元数据的等于约束。
     /// Add an equal constraint with metadata.
+    #[allow(clippy::too_many_arguments)]
     pub fn add_eq_constraint_with_metadata(
         &mut self,
         coefficients: &[(usize, f64)],
@@ -1718,8 +1839,8 @@ mod tests {
     };
     use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, VariableRange};
     use ospf_rust_math::symbol::{
-        Linear as MathLinear, LinearMonomial as MathLinearMonomial,
-        Quadratic as MathQuadratic, QuadraticMonomial as MathQuadraticMonomial, Symbol,
+        Linear as MathLinear, LinearMonomial as MathLinearMonomial, Quadratic as MathQuadratic,
+        QuadraticMonomial as MathQuadraticMonomial, Symbol,
     };
 
     use super::{LinearConstraintInput, LinearExpressionBuilder, LinearObjectiveInput, MetaModel};
@@ -3327,16 +3448,8 @@ mod tests {
 
         let polynomial = MathQuadratic::new(
             vec![
-                MathQuadraticMonomial::quadratic(
-                    1.0,
-                    x.to_owned_symbol(),
-                    y.to_owned_symbol(),
-                ),
-                MathQuadraticMonomial::quadratic(
-                    2.0,
-                    y.to_owned_symbol(),
-                    x.to_owned_symbol(),
-                ),
+                MathQuadraticMonomial::quadratic(1.0, x.to_owned_symbol(), y.to_owned_symbol()),
+                MathQuadraticMonomial::quadratic(2.0, y.to_owned_symbol(), x.to_owned_symbol()),
                 MathQuadraticMonomial::linear(5.0, x.to_owned_symbol()),
                 MathQuadraticMonomial::linear(-1.0, x.to_owned_symbol()),
             ],
@@ -4267,16 +4380,8 @@ mod tests {
 
         assert!(output.status.is_optimal());
         let model_statuses = model_statuses.lock().unwrap();
-        assert!(
-            model_statuses
-                .iter()
-                .any(|stage| *stage == ModelBuildingStage::RegisterTokens)
-        );
-        assert!(
-            model_statuses
-                .iter()
-                .any(|stage| *stage == ModelBuildingStage::FlattenLinearModel)
-        );
+        assert!(model_statuses.contains(&ModelBuildingStage::RegisterTokens));
+        assert!(model_statuses.contains(&ModelBuildingStage::FlattenLinearModel));
 
         let solving_statuses = solving_statuses.lock().unwrap();
         assert_eq!(solving_statuses.len(), 2);
@@ -4347,16 +4452,8 @@ mod tests {
         assert!(output.status.is_optimal());
 
         let model_stages = model_stages.lock().unwrap();
-        assert!(
-            model_stages
-                .iter()
-                .any(|stage| *stage == ModelBuildingStage::RegisterTokens)
-        );
-        assert!(
-            model_stages
-                .iter()
-                .any(|stage| *stage == ModelBuildingStage::FlattenLinearModel)
-        );
+        assert!(model_stages.contains(&ModelBuildingStage::RegisterTokens));
+        assert!(model_stages.contains(&ModelBuildingStage::FlattenLinearModel));
 
         let solving_statuses = solving_statuses.lock().unwrap();
         assert_eq!(solving_statuses.len(), 2);

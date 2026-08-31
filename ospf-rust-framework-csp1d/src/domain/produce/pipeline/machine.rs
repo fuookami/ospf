@@ -7,8 +7,8 @@ use ospf_rust_core::solver::SolveValue;
 use ospf_rust_framework::model::Pipeline;
 
 use crate::domain::material::{
-    shadow_price_key_to_string, to_f64, Csp1dShadowPriceKey,
-    MachineBatchShadowPriceKey, MachineCapacityShadowPriceKey,
+    Csp1dShadowPriceKey, MachineBatchShadowPriceKey, MachineCapacityShadowPriceKey,
+    shadow_price_key_to_string, to_f64,
 };
 
 use super::super::aggregation::ProduceAggregation;
@@ -27,10 +27,7 @@ impl<V: SolveValue> MachineConstraintPipeline<V> {
     pub fn new(produce: ProduceAggregation<V>) -> Self {
         Self {
             name: "machine_constraint".to_string(),
-            group: Some(ConstraintGroup::new(
-                10_003,
-                "csp1d_machine_constraint",
-            )),
+            group: Some(ConstraintGroup::new(10_003, "csp1d_machine_constraint")),
             produce,
         }
     }
@@ -66,7 +63,11 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for MachineConstraintPipeline<V> {
                     0,
                     Some(shadow_price_key_to_string(&key)),
                 ) {
-                    log::warn!("Failed to register machine batch constraint {}: {:?}", machine_index, error);
+                    log::warn!(
+                        "Failed to register machine batch constraint {}: {:?}",
+                        machine_index,
+                        error
+                    );
                 }
             }
 
@@ -93,7 +94,11 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for MachineConstraintPipeline<V> {
                 0,
                 Some(shadow_price_key_to_string(&key)),
             ) {
-                log::warn!("Failed to register machine capacity constraint {}: {:?}", machine_index, error);
+                log::warn!(
+                    "Failed to register machine capacity constraint {}: {:?}",
+                    machine_index,
+                    error
+                );
             }
         }
     }
@@ -115,9 +120,10 @@ impl<V: SolveValue> Csp1dCGPipeline<V> for MachineConstraintPipeline<V> {
             let batch_key = Csp1dShadowPriceKey::MachineBatch(MachineBatchShadowPriceKey {
                 machine_id: machine_id.into(),
             });
-            let capacity_key = Csp1dShadowPriceKey::MachineCapacity(MachineCapacityShadowPriceKey {
-                machine_id: machine_id.into(),
-            });
+            let capacity_key =
+                Csp1dShadowPriceKey::MachineCapacity(MachineCapacityShadowPriceKey {
+                    machine_id: machine_id.into(),
+                });
             let capacity_consumption = plan
                 .capacity_consumption
                 .as_ref()

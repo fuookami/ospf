@@ -19,8 +19,9 @@
 use std::collections::{HashMap, HashSet};
 
 use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::solver::{SolveReport, require_optimal_lp_certificate};
 use ospf_rust_framework::solver::column_generation_solver::{
-    ColumnGenerationSolver, FeasibleSolution, LPResult,
+    ColumnGenerationSolver, FeasibleSolution, LPResult, LinearDualSolution,
 };
 use ospf_rust_framework::solver::framework_solve_options::FrameworkSolveOptions;
 
@@ -125,12 +126,13 @@ where
         let Some(groups) = self.groups_by_executor.get(executor_id) else {
             return false;
         };
-        !groups.is_empty() && groups.iter().all(|slot_index| {
-            self.fixed_groups.contains(&BranchGroup {
-                executor_id: executor_id.clone(),
-                slot_index: *slot_index,
+        !groups.is_empty()
+            && groups.iter().all(|slot_index| {
+                self.fixed_groups.contains(&BranchGroup {
+                    executor_id: executor_id.clone(),
+                    slot_index: *slot_index,
+                })
             })
-        })
     }
 
     /// 返回所有固定 group / Return all fixed groups
@@ -249,6 +251,12 @@ where
     pub best_solution: Option<BunchSolution>,
     /// 最佳目标值 / Best objective value
     pub best_obj: f64,
+    /// 当前节点的 MILP 报告 / Current node MILP report
+    last_milp_report: Option<SolveReport<f64>>,
+    /// 本节点所有 LP 定价是否均有可靠最优证书 / Whether every node LP has a reliable proof
+    last_pricing_complete: bool,
+    /// 当前节点可继承的认证下界 / Certified bound available for the current node
+    last_certified_bound: Option<f64>,
 
     /// 列索引计数器 / Column index counter
     bunch_index_counter: usize,
@@ -286,6 +294,12 @@ where
     best_solution: Option<BunchSolution>,
     /// 最佳目标值 / Best objective value
     best_obj: f64,
+    /// 当前节点的 MILP 报告 / Current node MILP report
+    last_milp_report: Option<SolveReport<f64>>,
+    /// 本节点所有 LP 定价是否均有可靠最优证书 / Whether every node LP has a reliable proof
+    last_pricing_complete: bool,
+    /// 当前节点可继承的认证下界 / Certified bound available for the current node
+    last_certified_bound: Option<f64>,
     /// 列索引计数器 / Column index counter
     bunch_index_counter: usize,
 }
@@ -356,6 +370,9 @@ where
             constraint_name_to_index: HashMap::new(),
             best_solution: None,
             best_obj: f64::NEG_INFINITY,
+            last_milp_report: None,
+            last_pricing_complete: false,
+            last_certified_bound: None,
             bunch_index_counter: 0,
         }
     }
@@ -374,6 +391,9 @@ where
     /// 3. Fix/keep bunches from initial solution
     /// 4. Main loop (global CG + local CG + final MILP)
     pub fn run(&mut self, model: &mut MetaModel<f64>) -> GanttResult<BunchSolution> {
+        self.last_milp_report = None;
+        self.last_pricing_complete = true;
+        self.last_certified_bound = None;
         // 1. 注册 + 添加初始列
         self.context.register(model)?;
 
@@ -418,10 +438,11 @@ where
             && self.iteration.elapsed() < self.configuration.time_limit
         {
             // ---- 全局列生成 ----
-        self.shadow_prices = match self.solve_rmp_lp(model) {
-            Ok(lp_result) => {
-                self.executor_slot_shadow_prices = self.extract_executor_slot_shadow_prices(&lp_result);
-                if self.iteration.record_lp(lp_result.result.obj) {
+            self.shadow_prices = match self.solve_rmp_lp(model) {
+                Ok(lp_result) => {
+                    self.executor_slot_shadow_prices =
+                        self.extract_executor_slot_shadow_prices(&lp_result);
+                    if self.iteration.record_lp(lp_result.result.obj) {
                         self.kept_bunches
                             .extend(self.context.extract_kept(&lp_result.result.solution));
                     }
@@ -447,7 +468,8 @@ where
                             .extend(self.context.extract_kept(&lp_result.result.solution));
                     }
                     self.shadow_prices = self.extract_shadow_prices(&lp_result);
-                    self.executor_slot_shadow_prices = self.extract_executor_slot_shadow_prices(&lp_result);
+                    self.executor_slot_shadow_prices =
+                        self.extract_executor_slot_shadow_prices(&lp_result);
                 }
 
                 // 列移除
@@ -466,7 +488,8 @@ where
             loop {
                 self.shadow_prices = match self.solve_rmp_lp(model) {
                     Ok(lp_result) => {
-                        self.executor_slot_shadow_prices = self.extract_executor_slot_shadow_prices(&lp_result);
+                        self.executor_slot_shadow_prices =
+                            self.extract_executor_slot_shadow_prices(&lp_result);
                         self.iteration.record_lp(lp_result.result.obj);
                         self.extract_shadow_prices(&lp_result)
                     }
@@ -546,19 +569,15 @@ where
         &mut self,
         node: &BranchNode,
         model: &mut MetaModel<f64>,
-    ) -> BranchNodeSolveOutput<BunchSolution> {
+    ) -> GanttResult<BranchNodeSolveOutput<BunchSolution>> {
         let snapshot = self.snapshot();
         self.apply_branch_node(node);
-        let output = match self.run(model) {
-            Ok(solution) => BranchNodeSolveOutput {
-                lower_bound: self.iteration.lower_bound,
-                branch_target: self.next_branch_target_for_solution(&solution),
-                solution: Some(solution),
-                objective: Some(self.best_obj),
-                infeasible: false,
-            },
-            Err(_) => BranchNodeSolveOutput::infeasible(),
-        };
+        let output = self.run(model).and_then(|solution| {
+            self.branch_node_output(solution)
+                .map_err(|error| GanttError::Calculation {
+                    message: format!("branch node report construction failed: {:?}", error),
+                })
+        });
         self.restore(snapshot);
         output
     }
@@ -577,7 +596,7 @@ where
         &mut self,
         node: &BranchNode,
         mut build_model: F,
-    ) -> BranchNodeSolveOutput<BunchSolution>
+    ) -> GanttResult<BranchNodeSolveOutput<BunchSolution>>
     where
         C: Clone,
         F: FnMut() -> MetaModel<f64>,
@@ -585,18 +604,39 @@ where
         let snapshot = self.isolated_snapshot();
         let mut model = build_model();
         self.apply_branch_node(node);
-        let output = match self.run(&mut model) {
-            Ok(solution) => BranchNodeSolveOutput {
-                lower_bound: self.iteration.lower_bound,
-                branch_target: self.next_branch_target_for_solution(&solution),
-                solution: Some(solution),
-                objective: Some(self.best_obj),
-                infeasible: false,
-            },
-            Err(_) => BranchNodeSolveOutput::infeasible(),
-        };
+        let output = self.run(&mut model).and_then(|solution| {
+            self.branch_node_output(solution)
+                .map_err(|error| GanttError::Calculation {
+                    message: format!("branch node report construction failed: {:?}", error),
+                })
+        });
         self.restore_isolated(snapshot);
         output
+    }
+
+    fn branch_node_output(
+        &self,
+        solution: BunchSolution,
+    ) -> ospf_rust_core::error::Result<BranchNodeSolveOutput<BunchSolution>> {
+        let report = if let Some(report) = self.last_milp_report.clone() {
+            report
+        } else {
+            let mut feasible = FeasibleSolution::new(self.best_obj, Vec::new());
+            if self.iteration.lower_bound.is_finite() {
+                feasible.possible_best_obj = Some(self.iteration.lower_bound);
+            }
+            feasible.to_solve_report(self.solver.name())?
+        };
+        BranchNodeSolveOutput::from_report(
+            report,
+            Some(solution.clone()),
+            Some(self.best_obj),
+            self.next_branch_target_for_solution(&solution),
+            self.last_pricing_complete,
+            self.last_pricing_complete
+                .then_some(self.last_certified_bound)
+                .flatten(),
+        )
     }
 
     // ---- 内部方法 / Internal methods ----
@@ -615,6 +655,9 @@ where
             lifecycle: self.lifecycle.clone(),
             best_solution: self.best_solution.clone(),
             best_obj: self.best_obj,
+            last_milp_report: self.last_milp_report.clone(),
+            last_pricing_complete: self.last_pricing_complete,
+            last_certified_bound: self.last_certified_bound,
             bunch_index_counter: self.bunch_index_counter,
         }
     }
@@ -643,6 +686,9 @@ where
         self.lifecycle = snapshot.lifecycle;
         self.best_solution = snapshot.best_solution;
         self.best_obj = snapshot.best_obj;
+        self.last_milp_report = snapshot.last_milp_report;
+        self.last_pricing_complete = snapshot.last_pricing_complete;
+        self.last_certified_bound = snapshot.last_certified_bound;
         self.bunch_index_counter = snapshot.bunch_index_counter;
     }
 
@@ -689,19 +735,27 @@ where
     }
 
     /// 求解 MILP / Solve MILP
-    fn solve_milp(&self, model: &mut MetaModel<f64>) -> GanttResult<FeasibleSolution> {
+    fn solve_milp(&mut self, model: &mut MetaModel<f64>) -> GanttResult<FeasibleSolution> {
         self.lifecycle.apply_solution_to_model(model);
         let options = FrameworkSolveOptions::new();
-        solve_with_options_sync(&self.solver, model, options).map_err(|e| GanttError::Calculation {
-            message: format!("MILP solve failed: {:?}", e),
-        })
+        let report = solve_report_with_options_sync(&self.solver, model, options).map_err(|e| {
+            GanttError::Calculation {
+                message: format!("MILP solve failed: {:?}", e),
+            }
+        })?;
+        let solution =
+            FeasibleSolution::try_from_report(&report).map_err(|e| GanttError::Calculation {
+                message: format!("MILP report has no usable incumbent: {:?}", e),
+            })?;
+        self.last_milp_report = Some(report);
+        Ok(solution)
     }
 
     /// 求解 RMP LP / Solve RMP LP
     fn solve_rmp_lp(&mut self, model: &mut MetaModel<f64>) -> GanttResult<LPResult> {
         let options = FrameworkSolveOptions::new();
         let triad_model =
-                model
+            model
                 .try_to_linear_triad_model()
                 .map_err(|e| GanttError::Calculation {
                     message: format!("Failed to convert model: {:?}", e),
@@ -722,11 +776,35 @@ where
             .context
             .build_constraint_index_map(&self.constraint_name_to_index);
 
-        let result = solve_lp_with_options_sync(&self.solver, &triad_model, options).map_err(|e| {
-            GanttError::Calculation {
+        let report = solve_lp_report_with_options_sync(&self.solver, &triad_model, options)
+            .map_err(|e| GanttError::Calculation {
                 message: format!("LP solve failed: {:?}", e),
-            }
-        })?;
+            })?;
+        let result = {
+            let feasible = FeasibleSolution::try_from_report(&report).map_err(|e| {
+                GanttError::Calculation {
+                    message: format!("LP report has no usable incumbent: {:?}", e),
+                }
+            })?;
+            let dual = report
+                .solution
+                .as_ref()
+                .and_then(|solution| solution.dual_solution.clone())
+                .unwrap_or_default();
+            LPResult::new(feasible, LinearDualSolution::new(dual, Vec::new()))
+                .with_report(report.clone())
+        };
+        let report =
+            result
+                .to_solve_report(self.solver.name())
+                .map_err(|e| GanttError::Calculation {
+                    message: format!("LP report conversion failed: {:?}", e),
+                })?;
+        if require_optimal_lp_certificate(&report).is_err() {
+            self.last_pricing_complete = false;
+        } else if let Some(bound) = report.statistics.best_bound_value {
+            self.last_certified_bound = Some(bound);
+        }
         model.set_solution(&result.result.solution);
         Ok(result)
     }
@@ -751,20 +829,23 @@ where
         let offset = self.bunch_index_counter;
         let mut updated_bunches = Vec::with_capacity(new_bunches.len());
         for mut bunch in new_bunches {
-            bunch.index = offset + bunch.index;
+            bunch.index += offset;
             bunch.iteration = iteration;
             updated_bunches.push(bunch);
         }
         self.bunch_index_counter += updated_bunches.len();
 
-        let added = self.context.add_columns(iteration, updated_bunches, model)?;
+        let added = self
+            .context
+            .add_columns(iteration, updated_bunches, model)?;
         self.refresh_branch_groups();
         Ok(added)
     }
 
     /// MILP 求解后刷新生命周期 / Refresh lifecycle after MILP solve
     fn after_milp_solve(&mut self, model: &mut MetaModel<f64>, solution: &[f64]) {
-        self.lifecycle.set_solution_to_model(model, solution.to_vec());
+        self.lifecycle
+            .set_solution_to_model(model, solution.to_vec());
         self.lifecycle
             .set_warm_start_from_solution(self.configuration.local_fix_threshold);
         self.sync_model_state_from_lifecycle();
@@ -811,9 +892,11 @@ where
             .iter()
             .copied()
             .filter(|bunch_index| {
-                self.context.get_bunch_entry(*bunch_index).map_or(true, |entry| {
-                    entry.slot_index.is_some() || !free_set.contains(&entry.executor_id)
-                })
+                self.context
+                    .get_bunch_entry(*bunch_index)
+                    .is_none_or(|entry| {
+                        entry.slot_index.is_some() || !free_set.contains(&entry.executor_id)
+                    })
             })
             .collect::<HashSet<_>>();
 
@@ -865,7 +948,9 @@ where
                 }
                 self.context
                     .get_bunch_entry(*bunch_index)
-                    .map(|entry| self.policy.reduced_cost(_shadow_prices, &entry) >= maximum_reduced_cost)
+                    .map(|entry| {
+                        self.policy.reduced_cost(_shadow_prices, &entry) >= maximum_reduced_cost
+                    })
                     .unwrap_or(false)
             })
             .collect::<Vec<_>>();
@@ -897,7 +982,8 @@ where
         self.context.flush();
         self.context.apply_lifecycle(&mut self.lifecycle);
         self.context.restore_non_removed_ranges_in_model(model)?;
-        self.context.hide_bunches_in_model(&self.lifecycle.state().removed_columns(), model)?;
+        self.context
+            .hide_bunches_in_model(&self.lifecycle.state().removed_columns(), model)?;
         self.sync_model_state_from_lifecycle();
         Ok(())
     }
@@ -918,16 +1004,17 @@ where
             .filter_map(|bunch_index| self.context.get_bunch_entry(*bunch_index))
             .map(|bunch| BranchGroup::from(&bunch))
             .collect();
-        self.policy.generate_bunches_with_request(&BunchPricingRequest {
-            iteration: self.iteration.iteration,
-            executor_ids: executor_ids.to_vec(),
-            shadow_prices: self.shadow_prices.clone(),
-            executor_slot_shadow_prices: self.executor_slot_shadow_prices.clone(),
-            fixed_groups: self.branch_groups.fixed_groups().clone(),
-            kept_groups,
-            hidden_executors: self.hidden_executors.clone(),
-            min_column_amount_per_executor: self.configuration.min_column_amount_per_executor,
-        })
+        self.policy
+            .generate_bunches_with_request(&BunchPricingRequest {
+                iteration: self.iteration.iteration,
+                executor_ids: executor_ids.to_vec(),
+                shadow_prices: self.shadow_prices.clone(),
+                executor_slot_shadow_prices: self.executor_slot_shadow_prices.clone(),
+                fixed_groups: self.branch_groups.fixed_groups().clone(),
+                kept_groups,
+                hidden_executors: self.hidden_executors.clone(),
+                min_column_amount_per_executor: self.configuration.min_column_amount_per_executor,
+            })
     }
 
     /// 根据当前固定列重建分支 group 状态 / Rebuild branch groups from current fixed columns
@@ -947,51 +1034,53 @@ where
 }
 
 #[cfg(feature = "async")]
-fn solve_lp_with_options_sync<S>(
+fn solve_report_with_options_sync<S>(
     solver: &S,
-    model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+    model: &MetaModel<f64>,
     options: FrameworkSolveOptions,
-) -> ospf_rust_core::error::Result<LPResult>
+) -> ospf_rust_core::error::Result<SolveReport<f64>>
 where
     S: ColumnGenerationSolver,
 {
-    futures::executor::block_on(solver.solve_lp_with_options(model, options))
+    let triad_model = model.try_to_linear_triad_model()?;
+    futures::executor::block_on(solver.solve_milp_report_with_options(&triad_model, options))
 }
 
 #[cfg(not(feature = "async"))]
-fn solve_lp_with_options_sync<S>(
+fn solve_report_with_options_sync<S>(
     solver: &S,
-    model: &ospf_rust_core::model::intermediate::LinearTriadModel,
+    model: &MetaModel<f64>,
     options: FrameworkSolveOptions,
-) -> ospf_rust_core::error::Result<LPResult>
+) -> ospf_rust_core::error::Result<SolveReport<f64>>
 where
     S: ColumnGenerationSolver,
 {
-    solver.solve_lp_with_options(model, options)
+    let triad_model = model.try_to_linear_triad_model()?;
+    solver.solve_milp_report_with_options(&triad_model, options)
 }
 
 #[cfg(feature = "async")]
-fn solve_with_options_sync<S>(
+fn solve_lp_report_with_options_sync<S>(
     solver: &S,
-    model: &MetaModel<f64>,
+    model: &ospf_rust_core::model::intermediate::LinearTriadModel,
     options: FrameworkSolveOptions,
-) -> ospf_rust_core::error::Result<FeasibleSolution>
+) -> ospf_rust_core::error::Result<SolveReport<f64>>
 where
     S: ColumnGenerationSolver,
 {
-    futures::executor::block_on(solver.solve_with_options(model, options))
+    futures::executor::block_on(solver.solve_lp_report_with_options(model, options))
 }
 
 #[cfg(not(feature = "async"))]
-fn solve_with_options_sync<S>(
+fn solve_lp_report_with_options_sync<S>(
     solver: &S,
-    model: &MetaModel<f64>,
+    model: &ospf_rust_core::model::intermediate::LinearTriadModel,
     options: FrameworkSolveOptions,
-) -> ospf_rust_core::error::Result<FeasibleSolution>
+) -> ospf_rust_core::error::Result<SolveReport<f64>>
 where
     S: ColumnGenerationSolver,
 {
-    solver.solve_with_options(model, options)
+    solver.solve_lp_report_with_options(model, options)
 }
 
 #[cfg(test)]
@@ -1167,7 +1256,10 @@ mod tests {
         let solution = algorithm.run(&mut model).unwrap();
 
         assert!(solution.selected_bunches.is_empty());
-        assert_eq!(algorithm.context.compilation.base.executor_ids, vec![executor_id]);
+        assert_eq!(
+            algorithm.context.compilation.base.executor_ids,
+            vec![executor_id]
+        );
     }
 
     #[derive(Debug, Clone)]
@@ -1247,6 +1339,7 @@ mod tests {
                 ),
             ],
             lower_bound: 0.0,
+            certified_bound: None,
             upper_bound: None,
             status: crate::application::algorithm::BranchNodeStatus::Pending,
         };
@@ -1298,6 +1391,7 @@ mod tests {
                 crate::application::algorithm::BranchDirection::Left,
             )],
             lower_bound: 0.0,
+            certified_bound: None,
             upper_bound: None,
             status: crate::application::algorithm::BranchNodeStatus::Pending,
         };
@@ -1310,6 +1404,7 @@ mod tests {
                 crate::application::algorithm::BranchDirection::Right,
             )],
             lower_bound: 0.0,
+            certified_bound: None,
             upper_bound: None,
             status: crate::application::algorithm::BranchNodeStatus::Pending,
         };
@@ -1394,6 +1489,7 @@ mod tests {
                 crate::application::algorithm::BranchDirection::Left,
             )],
             lower_bound: 0.0,
+            certified_bound: None,
             upper_bound: None,
             status: crate::application::algorithm::BranchNodeStatus::Pending,
         };
@@ -1401,7 +1497,7 @@ mod tests {
 
         let output = algorithm.solve_branch_node(&node, &mut model);
 
-        assert!(output.infeasible);
+        assert!(output.is_err());
         assert!(!algorithm.model_state.is_hidden(1));
         assert!(algorithm.kept_bunches.contains(&1));
         assert_eq!(algorithm.shadow_prices.get(&0), Some(&2.0));
@@ -1454,8 +1550,10 @@ mod tests {
             vec!["exec_1".to_string()],
             false,
         );
-        let mut configuration = ColumnGenerationPolicy::default();
-        configuration.max_column_amount = 0;
+        let configuration = ColumnGenerationPolicy {
+            max_column_amount: 0,
+            ..Default::default()
+        };
         let mut algorithm = BunchBranchAndPriceAlgorithm::new(
             context,
             MockColumnGenerationSolver,
@@ -1473,15 +1571,18 @@ mod tests {
                 crate::application::algorithm::BranchDirection::Left,
             )],
             lower_bound: 0.0,
+            certified_bound: None,
             upper_bound: None,
             status: crate::application::algorithm::BranchNodeStatus::Pending,
         };
 
-        let output = algorithm.solve_branch_node_with_fresh_model(&node, || {
-            MetaModel::<f64>::new("test_fresh_branch_node")
-        });
+        let output = algorithm
+            .solve_branch_node_with_fresh_model(&node, || {
+                MetaModel::<f64>::new("test_fresh_branch_node")
+            })
+            .expect("fresh branch node should solve");
 
-        assert!(!output.infeasible);
+        assert!(!output.is_infeasible());
         assert_eq!(output.objective, Some(0.0));
         assert_eq!(algorithm.context.column_count(), 0);
         assert!(algorithm.context.compilation.base.y_indices.is_empty());
@@ -1525,6 +1626,7 @@ mod tests {
                 crate::application::algorithm::BranchDirection::Left,
             )],
             lower_bound: 0.0,
+            certified_bound: None,
             upper_bound: None,
             status: crate::application::algorithm::BranchNodeStatus::Pending,
         };
@@ -1537,19 +1639,24 @@ mod tests {
                 crate::application::algorithm::BranchDirection::Right,
             )],
             lower_bound: 0.0,
+            certified_bound: None,
             upper_bound: None,
             status: crate::application::algorithm::BranchNodeStatus::Pending,
         };
 
-        let left = algorithm.solve_branch_node_with_fresh_model(&left_node, || {
-            MetaModel::<f64>::new("test_lifecycle_left_node")
-        });
-        let right = algorithm.solve_branch_node_with_fresh_model(&right_node, || {
-            MetaModel::<f64>::new("test_lifecycle_right_node")
-        });
+        let left = algorithm
+            .solve_branch_node_with_fresh_model(&left_node, || {
+                MetaModel::<f64>::new("test_lifecycle_left_node")
+            })
+            .expect("left branch node should solve");
+        let right = algorithm
+            .solve_branch_node_with_fresh_model(&right_node, || {
+                MetaModel::<f64>::new("test_lifecycle_right_node")
+            })
+            .expect("right branch node should solve");
 
-        assert!(!left.infeasible);
-        assert!(!right.infeasible);
+        assert!(!left.is_infeasible());
+        assert!(!right.is_infeasible());
         assert_eq!(algorithm.lifecycle.solution(), snapshot.solution.as_deref());
         assert_eq!(
             algorithm.lifecycle.warm_start_columns(),

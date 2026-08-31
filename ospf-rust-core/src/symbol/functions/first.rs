@@ -1,22 +1,21 @@
 //! 首个满足条件函数符号 / First-satisfying function symbol
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+};
+use super::big_m::{BigMPolicy, infer_big_m_for_polynomials};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, new_standalone_id};
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-};
-use super::big_m::{BigMPolicy, infer_big_m_for_polynomials};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -79,8 +78,8 @@ const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
 /// Return the first expression value whose condition is true.
 ///
 /// 数学形式 / Mathematical Form:
-/// - result = polynomials[i]，其中 conditions[i] 为首个为真的条件
-/// - result = polynomials[i] where conditions[i] is the first true condition
+/// - `result = polynomials[i]`，其中 `conditions[i]` 为首个为真的条件
+/// - `result = polynomials[i]` where `conditions[i]` is the first true condition
 #[derive(Debug, Clone)]
 pub struct FirstFunction<V = f64>
 where

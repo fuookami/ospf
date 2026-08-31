@@ -1,5 +1,5 @@
 //! 飞行员模型模块 / Pilot model module.
-use crate::framework::demo4::infrastructure::{WorkerNo, PilotRankNo, PilotCode};
+use crate::framework::demo4::infrastructure::{PilotCode, PilotRankNo, WorkerNo};
 
 /// 飞行员等级 / Pilot rank
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -24,6 +24,8 @@ pub struct Pilot {
 }
 
 impl PartialEq for Pilot {
-    fn eq(&self, other: &Self) -> bool { self.worker_no == other.worker_no }
+    fn eq(&self, other: &Self) -> bool {
+        self.worker_no == other.worker_no
+    }
 }
 impl Eq for Pilot {}

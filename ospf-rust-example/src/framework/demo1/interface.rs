@@ -1,8 +1,8 @@
 //! 接口层：框架示例1 入口与数据解析 / Interface layer: framework demo1 entry point and data parsing
 
-use std::error::Error;
 use crate::framework::demo1::application::Ssp;
 use crate::framework::demo1::infrastructure::dto::{ClientNodeDTO, EdgeDTO, Input};
+use std::error::Error;
 
 const DATA: &str = r#"28 45 12
 100

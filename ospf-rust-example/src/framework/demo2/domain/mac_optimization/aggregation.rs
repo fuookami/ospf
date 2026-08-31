@@ -1,10 +1,10 @@
 //! 重心优化聚合 / MAC optimization aggregation
-use std::sync::Arc;
+use crate::framework::demo2::domain::mac_optimization::context::MacOptimizationContext;
+use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::LinearMonomial;
-use crate::framework::demo2::domain::mac_optimization::context::MacOptimizationContext;
-use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
+use std::sync::Arc;
 
 /// MAC 优化聚合 / MAC optimization aggregation
 ///
@@ -108,7 +108,10 @@ impl MacOptimizationAggregation {
         let long_moment_sym = LinearExpressionSymbol::new(
             *next_id,
             "long_moment",
-            self.long_moment.iter().map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx)).collect(),
+            self.long_moment
+                .iter()
+                .map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx))
+                .collect(),
             0.0,
         );
         self.long_moment_symbol = Some(Arc::new(long_moment_sym));
@@ -118,7 +121,10 @@ impl MacOptimizationAggregation {
         let neg_long_moment_sym = LinearExpressionSymbol::new(
             *next_id,
             "neg_long_moment",
-            self.neg_long_moment.iter().map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx)).collect(),
+            self.neg_long_moment
+                .iter()
+                .map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx))
+                .collect(),
             0.0,
         );
         self.neg_long_moment_symbol = Some(Arc::new(neg_long_moment_sym));
@@ -128,7 +134,10 @@ impl MacOptimizationAggregation {
         let lat_moment_sym = LinearExpressionSymbol::new(
             *next_id,
             "lat_moment",
-            self.lat_moment.iter().map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx)).collect(),
+            self.lat_moment
+                .iter()
+                .map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx))
+                .collect(),
             0.0,
         );
         self.lat_moment_symbol = Some(Arc::new(lat_moment_sym));
@@ -138,7 +147,10 @@ impl MacOptimizationAggregation {
         let neg_lat_moment_sym = LinearExpressionSymbol::new(
             *next_id,
             "neg_lat_moment",
-            self.neg_lat_moment.iter().map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx)).collect(),
+            self.neg_lat_moment
+                .iter()
+                .map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx))
+                .collect(),
             0.0,
         );
         self.neg_lat_moment_symbol = Some(Arc::new(neg_lat_moment_sym));

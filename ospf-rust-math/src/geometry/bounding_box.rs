@@ -1,10 +1,10 @@
 //! 轴对齐包围盒。
 //! Axis-aligned bounding boxes.
 
-use std::ops::Add;
-use num_traits::{Float, Zero};
 use crate::algebra::Field;
 use crate::geometry::{Box2Shape, Cuboid3, Point2, Point3, Rectangle2};
+use num_traits::{Float, Zero};
+use std::ops::Add;
 
 /// 二维包围盒。
 /// Two-dimensional bounding box.

@@ -1,8 +1,8 @@
 //! 错误处理模块。
 //! Error handling module.
 
-use std::fmt::{Debug, Display, Formatter};
 use paste::paste;
+use std::fmt::{Debug, Display, Formatter};
 use strum::{Display, EnumString};
 
 /// 错误码枚举。
@@ -626,8 +626,10 @@ impl<C: Send + Sync> Error for LazyExErr<C> {
 macro_rules! error_type {
     ($(#[$attr:meta])* $vis:vis struct $name:ident $(< $( $param:tt ),* >)? { $( $(#[$fieldMeta:meta])* $fieldVis:vis $field:ident: $type:ty ),* $(,)? }) => {
         $(#[$attr])*
+        #[doc = "带来源位置的错误结构体 / Error structure carrying source position"]
         $vis struct $name $(< $( $param ),* >)? {
             $( $(#[$fieldMeta])* $fieldVis $field: $type, )*
+            /// 错误创建位置 / Error creation position
             pub position: ErrorPosition
         }
 
@@ -855,9 +857,8 @@ mod tests {
     #[test]
     #[allow(deprecated)]
     fn test_ex_result_fetal_alias_compat() {
-        let result: ExResult<u32, TestError> = ExResult::fetal(vec![
-            error!(TestError { message: "fatal-1" }),
-        ]);
+        let result: ExResult<u32, TestError> =
+            ExResult::fetal(vec![error!(TestError { message: "fatal-1" })]);
 
         assert!(result.is_fetal());
 

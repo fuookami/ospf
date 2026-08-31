@@ -1,9 +1,9 @@
 //! 建议装载数量限制 / Advice load amount limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 建议装载数量限制: 每个舱位的装载数量建议 / Advice load amount limit: recommended load count per position
 /// 对齐 Kotlin AdviceLoadAmountLimit (目标函数: 最小化偏离建议数量)

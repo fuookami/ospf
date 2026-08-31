@@ -1,10 +1,12 @@
 //! Demo15 模块 / Demo15 module
 use std::error::Error;
 
+use ospf_rust_core::model::{ConstraintRelation, MetaModel, ObjectiveCategory};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination};
+use ospf_rust_core::variable::{
+    UInteger, VariableCombination1D, VariableCombination3D, VariableRange,
+};
 use ospf_rust_multiarray::{MultiArray, Shape};
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
-use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
-use ospf_rust_core::variable::{UInteger, VariableCombination1D, VariableCombination3D, VariableRange};
 
 use super::common::{read_solution_value, solve_typed};
 
@@ -239,56 +241,84 @@ impl DistributionModel {
         // 3. 构建成本符号
         let mfrs = manufacturers;
         let x_idx_ref = &x_idx;
-        let cost: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>> = SymbolCombination::new(Shape::new([1]), "cost", |_idx, _vec| {
-            let mut terms = Vec::new();
-            for m in 0..mfrs.len() {
-                for d in 0..centers.len() {
-                    for c in 0..car_models.len() {
-                        terms.push(ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                            mfrs[m].logistics_cost_to_centers[d],
-                            x_idx_ref[&[m, d, c]],
-                        ));
+        let cost: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>> =
+            SymbolCombination::new(Shape::new([1]), "cost", |_idx, _vec| {
+                let mut terms = Vec::new();
+                for m in 0..mfrs.len() {
+                    for d in 0..centers.len() {
+                        for c in 0..car_models.len() {
+                            terms.push(ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                                mfrs[m].logistics_cost_to_centers[d],
+                                x_idx_ref[&[m, d, c]],
+                            ));
+                        }
                     }
                 }
-            }
-            let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
-            let id = ospf_rust_core::symbol::next_auto_intermediate_symbol_id();
-            LinearExpressionSymbol::new(id, "total_cost", poly.monomials().to_vec(), *poly.constant_term())
-        });
+                let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
+                let id = ospf_rust_core::symbol::next_auto_intermediate_symbol_id();
+                LinearExpressionSymbol::new(
+                    id,
+                    "total_cost",
+                    poly.monomials().to_vec(),
+                    *poly.constant_term(),
+                )
+            });
         model.add_symbol_combination(&cost)?;
 
         // 4. 构建运输量符号 (manufacturer x car_model)
-        let trans: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<2>> = SymbolCombination::new(
-            Shape::new([manufacturers.len(), car_models.len()]),
-            "trans",
-            |_idx, vec| {
-                let m = vec[0];
-                let c = vec[1];
-                let terms: Vec<_> = (0..centers.len())
-                    .map(|d| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[m, d, c]]))
-                    .collect();
-                let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
-                let id = ospf_rust_core::symbol::next_auto_intermediate_symbol_id();
-                LinearExpressionSymbol::new(id, &format!("trans_{}_{}", m, c), poly.monomials().to_vec(), *poly.constant_term())
-            },
-        );
+        let trans: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<2>> =
+            SymbolCombination::new(
+                Shape::new([manufacturers.len(), car_models.len()]),
+                "trans",
+                |_idx, vec| {
+                    let m = vec[0];
+                    let c = vec[1];
+                    let terms: Vec<_> = (0..centers.len())
+                        .map(|d| {
+                            ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                                1.0,
+                                x_idx_ref[&[m, d, c]],
+                            )
+                        })
+                        .collect();
+                    let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
+                    let id = ospf_rust_core::symbol::next_auto_intermediate_symbol_id();
+                    LinearExpressionSymbol::new(
+                        id,
+                        &format!("trans_{}_{}", m, c),
+                        poly.monomials().to_vec(),
+                        *poly.constant_term(),
+                    )
+                },
+            );
         model.add_symbol_combination(&trans)?;
 
         // 5. 构建接收量符号 (center x car_model)
-        let receive: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<2>> = SymbolCombination::new(
-            Shape::new([centers.len(), car_models.len()]),
-            "receive",
-            |_idx, vec| {
-                let d = vec[0];
-                let c = vec[1];
-                let terms: Vec<_> = (0..manufacturers.len())
-                    .map(|m| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx_ref[&[m, d, c]]))
-                    .collect();
-                let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
-                let id = ospf_rust_core::symbol::next_auto_intermediate_symbol_id();
-                LinearExpressionSymbol::new(id, &format!("recv_{}_{}", d, c), poly.monomials().to_vec(), *poly.constant_term())
-            },
-        );
+        let receive: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<2>> =
+            SymbolCombination::new(
+                Shape::new([centers.len(), car_models.len()]),
+                "receive",
+                |_idx, vec| {
+                    let d = vec[0];
+                    let c = vec[1];
+                    let terms: Vec<_> = (0..manufacturers.len())
+                        .map(|m| {
+                            ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                                1.0,
+                                x_idx_ref[&[m, d, c]],
+                            )
+                        })
+                        .collect();
+                    let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
+                    let id = ospf_rust_core::symbol::next_auto_intermediate_symbol_id();
+                    LinearExpressionSymbol::new(
+                        id,
+                        &format!("recv_{}_{}", d, c),
+                        poly.monomials().to_vec(),
+                        *poly.constant_term(),
+                    )
+                },
+            );
         model.add_symbol_combination(&receive)?;
 
         // 6. 构建需求替换符号 (center x car_model)
@@ -307,34 +337,40 @@ impl DistributionModel {
         //   from==c: +demands[from]*y  (positive delta = reduces required shipment)
         //   to==c:   -demands[from]*y  (negative delta = increases required shipment)
         let y_idx_ref = &y_idx;
-        let demand: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<2>> = SymbolCombination::new(
-            Shape::new([centers.len(), car_models.len()]),
-            "demand",
-            |_idx, vec| {
-                let d = vec[0];
-                let c = vec[1];
-                let mut terms = Vec::new();
-                for (r_idx, replacement) in centers[d].replacements.iter().enumerate() {
-                    if replacement.from == c {
-                        // replacedDemand: model c's demand is partially fulfilled by another model
-                        terms.push(ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                            centers[d].demands[replacement.from],
-                            y_idx_ref[d][r_idx],
-                        ));
+        let demand: SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<2>> =
+            SymbolCombination::new(
+                Shape::new([centers.len(), car_models.len()]),
+                "demand",
+                |_idx, vec| {
+                    let d = vec[0];
+                    let c = vec[1];
+                    let mut terms = Vec::new();
+                    for (r_idx, replacement) in centers[d].replacements.iter().enumerate() {
+                        if replacement.from == c {
+                            // replacedDemand: model c's demand is partially fulfilled by another model
+                            terms.push(ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                                centers[d].demands[replacement.from],
+                                y_idx_ref[d][r_idx],
+                            ));
+                        }
+                        if replacement.to == c {
+                            // replacedToDemand: model c absorbs demand from another model
+                            terms.push(ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                                -centers[d].demands[replacement.from],
+                                y_idx_ref[d][r_idx],
+                            ));
+                        }
                     }
-                    if replacement.to == c {
-                        // replacedToDemand: model c absorbs demand from another model
-                        terms.push(ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                            -centers[d].demands[replacement.from],
-                            y_idx_ref[d][r_idx],
-                        ));
-                    }
-                }
-                let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
-                let id = ospf_rust_core::symbol::next_auto_intermediate_symbol_id();
-                LinearExpressionSymbol::new(id, &format!("demand_{}_{}", d, c), poly.monomials().to_vec(), *poly.constant_term())
-            },
-        );
+                    let poly = ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0);
+                    let id = ospf_rust_core::symbol::next_auto_intermediate_symbol_id();
+                    LinearExpressionSymbol::new(
+                        id,
+                        &format!("demand_{}_{}", d, c),
+                        poly.monomials().to_vec(),
+                        *poly.constant_term(),
+                    )
+                },
+            );
         model.add_symbol_combination(&demand)?;
 
         Ok(DistributionModel {
@@ -359,7 +395,11 @@ impl DistributionModel {
     ) -> Result<(), Box<dyn Error>> {
         // 7. 目标: 最小化成本
         let cost_poly = self.cost.symbol_polynomial(0);
-        let cost_coeffs: Vec<_> = cost_poly.monomials().iter().map(|m| (m.var_index(), *m.coefficient())).collect();
+        let cost_coeffs: Vec<_> = cost_poly
+            .monomials()
+            .iter()
+            .map(|m| (m.var_index(), *m.coefficient()))
+            .collect();
         model.add_linear_objective(&cost_coeffs, "cost");
         model.set_objective_category(ObjectiveCategory::Minimum);
 
@@ -368,12 +408,20 @@ impl DistributionModel {
             for c in 0..car_models.len() {
                 let recv_poly = self.receive.symbol_polynomial_at(&[d, c]);
                 let dem_poly = self.demand.symbol_polynomial_at(&[d, c]);
-                let mut coeffs: Vec<(usize, f64)> = recv_poly.monomials().iter()
-                    .map(|m| (m.var_index(), *m.coefficient())).collect();
+                let mut coeffs: Vec<(usize, f64)> = recv_poly
+                    .monomials()
+                    .iter()
+                    .map(|m| (m.var_index(), *m.coefficient()))
+                    .collect();
                 for m in dem_poly.monomials() {
                     coeffs.push((m.var_index(), *m.coefficient()));
                 }
-                model.add_linear_constraint(&coeffs, ConstraintRelation::GreaterEqual, centers[d].demands[c], &format!("demand_{}_{}", d, c))?;
+                model.add_linear_constraint(
+                    &coeffs,
+                    ConstraintRelation::GreaterEqual,
+                    centers[d].demands[c],
+                    &format!("demand_{}_{}", d, c),
+                )?;
             }
         }
 
@@ -382,8 +430,17 @@ impl DistributionModel {
             for c in 0..car_models.len() {
                 if let Some(cap) = manufacturers[m].productivity_by_model[c] {
                     let poly = self.trans.symbol_polynomial_at(&[m, c]);
-                    let coeffs: Vec<_> = poly.monomials().iter().map(|m| (m.var_index(), *m.coefficient())).collect();
-                    model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, cap, &format!("capacity_{}_{}", m, c))?;
+                    let coeffs: Vec<_> = poly
+                        .monomials()
+                        .iter()
+                        .map(|m| (m.var_index(), *m.coefficient()))
+                        .collect();
+                    model.add_linear_constraint(
+                        &coeffs,
+                        ConstraintRelation::LessEqual,
+                        cap,
+                        &format!("capacity_{}_{}", m, c),
+                    )?;
                 }
             }
         }
@@ -399,7 +456,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let manufacturers = build_manufacturers();
 
     let mut model = MetaModel::<f64>::new("demo15");
-    let distribution = DistributionModel::register(&mut model, &manufacturers, &centers, &car_models)?;
+    let distribution =
+        DistributionModel::register(&mut model, &manufacturers, &centers, &car_models)?;
 
     distribution.add_constraints(&mut model, &manufacturers, &centers, &car_models)?;
 

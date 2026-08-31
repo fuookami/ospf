@@ -1,14 +1,14 @@
 //! 约束定义。 / Constraint definitions.
 
-use std::collections::HashMap;
-use std::ops::Add;
-use std::sync::Arc;
-use ospf_rust_math::symbol::{Linear as SymbolicLinear, Quadratic as SymbolicQuadratic};
+use super::ConstraintGroup;
 use crate::error::{ModelError, Result};
 use crate::model::basic::ConstraintPriority;
 use crate::symbol::IntermediateSymbol;
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
-use super::ConstraintGroup;
+use ospf_rust_math::symbol::{Linear as SymbolicLinear, Quadratic as SymbolicQuadratic};
+use std::collections::HashMap;
+use std::ops::Add;
+use std::sync::Arc;
 
 /// 约束关系。 / Constraint relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

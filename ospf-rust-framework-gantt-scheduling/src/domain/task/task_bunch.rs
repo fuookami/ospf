@@ -3,10 +3,10 @@
 //! 表示分配给同一执行者的有序任务组。
 //! Represents an ordered group of tasks assigned to the same executor.
 
-use time::{Duration, OffsetDateTime};
-use ospf_rust_core::solver::value::SolveValue;
-use super::{ExecutorTrait, AssignmentPolicyTrait, TaskTrait, Cost};
+use super::{AssignmentPolicyTrait, Cost, ExecutorTrait, TaskTrait};
 use crate::infrastructure::TimeRange;
+use ospf_rust_core::solver::value::SolveValue;
+use time::{Duration, OffsetDateTime};
 
 /// 任务束 / Task bunch
 ///
@@ -35,13 +35,7 @@ where
     E: ExecutorTrait,
 {
     /// 创建新的任务束 / Create new task bunch
-    pub fn new(
-        executor: E,
-        time: TimeRange,
-        tasks: Vec<T>,
-        cost: Cost<V>,
-        iteration: i64,
-    ) -> Self {
+    pub fn new(executor: E, time: TimeRange, tasks: Vec<T>, cost: Cost<V>, iteration: i64) -> Self {
         Self {
             executor,
             time,

@@ -1,10 +1,10 @@
 //! Lorenz 修正 1 吸引子。
 //! Lorenz Mod 1 attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Lorenz 修正 1 吸引子的一阶欧拉步进模型。
@@ -48,7 +48,11 @@ impl<S: Field + Float> Default for LorenzMod1AttractorGenerator<S> {
 /// 创建 Lorenz 修正 1 吸引子。
 /// Create a Lorenz Mod 1 attractor.
 pub fn lorenz_mod1_attractor<S: Field + Float>(
-    alpha: S, beta: S, delta: S, zeta: S, h: S,
+    alpha: S,
+    beta: S,
+    delta: S,
+    zeta: S,
+    h: S,
 ) -> LorenzMod1Attractor<S> {
     LorenzMod1Attractor::new(alpha, beta, delta, zeta, h)
 }
@@ -56,7 +60,12 @@ pub fn lorenz_mod1_attractor<S: Field + Float>(
 /// 创建 Lorenz 修正 1 吸引子生成器。
 /// Create a Lorenz Mod 1 attractor generator.
 pub fn lorenz_mod1_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, delta: S, zeta: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    delta: S,
+    zeta: S,
+    h: S,
+    x: Point3<S>,
 ) -> LorenzMod1AttractorGenerator<S> {
     LorenzMod1AttractorGenerator::new(LorenzMod1Attractor::new(alpha, beta, delta, zeta, h), x)
 }

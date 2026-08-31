@@ -1,10 +1,10 @@
 //! 乘法幺半群 trait
 //! Multiplicative monoid trait
 
-use num_traits::One;
-use crate::operator::OneRef;
 use super::MultiplicativeSemigroup;
 use super::MultiplicativeSemigroupRef;
+use crate::operator::OneRef;
+use num_traits::One;
 
 // ============================================================================
 // MultiplicativeMonoid Trait - 乘法幺半群

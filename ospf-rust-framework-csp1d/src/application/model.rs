@@ -11,17 +11,17 @@ use ospf_rust_core::solver::SolveValue;
 use ospf_rust_core::variable::{UInteger, VariableRange};
 use ospf_rust_framework::model::Pipeline;
 
+use crate::domain::length_assignment::LengthAssignmentResult;
 use crate::domain::material::{
-    render_cutting_plan, Costar, CuttingPlan, Machine, Material, Product, ProductDemand,
+    Costar, CuttingPlan, Machine, Material, Product, ProductDemand, render_cutting_plan,
 };
 use crate::domain::produce::{
     Csp1dDomainPolicy, Csp1dExtensionMode, Csp1dExtensionSet, Csp1dExtractionPolicy,
     Csp1dFlowPolicy, Csp1dGenerationStrategy, Csp1dModelingContext, Csp1dModelingExtension,
     Csp1dObjectivePolicy, Csp1dPricingPolicy, Produce,
 };
-use crate::domain::r#yield::YieldModelingConfig;
-use crate::domain::length_assignment::LengthAssignmentResult;
 use crate::domain::wasting_minimization::WasteMinimizationConfig;
+use crate::domain::r#yield::YieldModelingConfig;
 use crate::infrastructure::dto::RenderSchemaDTO;
 
 /// CSP1D 解状态 / CSP1D solution status
@@ -116,7 +116,8 @@ impl Csp1dKpiKeys {
     /// 失败信息 / Failure message
     pub const FailureMessage: &'static str = "failureMessage";
     /// 列生成终止原因 / Column generation termination reason
-    pub const ColumnGenerationTerminationReason: &'static str = "columnGeneration.terminationReason";
+    pub const ColumnGenerationTerminationReason: &'static str =
+        "columnGeneration.terminationReason";
     /// 列生成迭代次数 / Column generation iteration count
     pub const ColumnGenerationIterationCount: &'static str = "columnGeneration.iterationCount";
     /// 列生成定价方案数 / Column generation priced plan count
@@ -128,37 +129,52 @@ impl Csp1dKpiKeys {
     /// 初始生成访问节点数 / Initial generation visited nodes
     pub const InitialGenerationVisitedNodes: &'static str = "initialGeneration.visitedNodes";
     /// 初始生成候选数 / Initial generation generated candidates
-    pub const InitialGenerationGeneratedCandidates: &'static str = "initialGeneration.generatedCandidates";
+    pub const InitialGenerationGeneratedCandidates: &'static str =
+        "initialGeneration.generatedCandidates";
     /// 初始生成接受方案数 / Initial generation accepted plans
     pub const InitialGenerationAcceptedPlans: &'static str = "initialGeneration.acceptedPlans";
     /// 初始生成不可行候选数 / Initial generation infeasible candidates
-    pub const InitialGenerationInfeasibleCandidates: &'static str = "initialGeneration.infeasibleCandidates";
+    pub const InitialGenerationInfeasibleCandidates: &'static str =
+        "initialGeneration.infeasibleCandidates";
     /// 初始生成重复候选数 / Initial generation duplicate candidates
-    pub const InitialGenerationDuplicateCandidates: &'static str = "initialGeneration.duplicateCandidates";
+    pub const InitialGenerationDuplicateCandidates: &'static str =
+        "initialGeneration.duplicateCandidates";
     /// 初始生成被支配候选数 / Initial generation dominated candidates
-    pub const InitialGenerationDominatedCandidates: &'static str = "initialGeneration.dominatedCandidates";
+    pub const InitialGenerationDominatedCandidates: &'static str =
+        "initialGeneration.dominatedCandidates";
     /// 初始生成宽度剪枝节点数 / Initial generation width-bound pruned nodes
-    pub const InitialGenerationWidthBoundPrunedNodes: &'static str = "initialGeneration.widthBoundPrunedNodes";
+    pub const InitialGenerationWidthBoundPrunedNodes: &'static str =
+        "initialGeneration.widthBoundPrunedNodes";
     /// 初始生成刀数剪枝节点数 / Initial generation knife-bound pruned nodes
-    pub const InitialGenerationKnifeBoundPrunedNodes: &'static str = "initialGeneration.knifeBoundPrunedNodes";
+    pub const InitialGenerationKnifeBoundPrunedNodes: &'static str =
+        "initialGeneration.knifeBoundPrunedNodes";
     /// 初始生成长度剪枝条目数 / Initial generation length-bound pruned entries
-    pub const InitialGenerationLengthBoundPrunedEntries: &'static str = "initialGeneration.lengthBoundPrunedEntries";
+    pub const InitialGenerationLengthBoundPrunedEntries: &'static str =
+        "initialGeneration.lengthBoundPrunedEntries";
     /// 初始生成物料宽度索引缓存命中数 / Initial generation material width index cache hits
-    pub const InitialGenerationMaterialWidthIndexCacheHits: &'static str = "initialGeneration.materialWidthIndexCacheHits";
+    pub const InitialGenerationMaterialWidthIndexCacheHits: &'static str =
+        "initialGeneration.materialWidthIndexCacheHits";
     /// 初始生成物料切片模板缓存命中数 / Initial generation material slice template cache hits
-    pub const InitialGenerationMaterialSliceTemplateCacheHits: &'static str = "initialGeneration.materialSliceTemplateCacheHits";
+    pub const InitialGenerationMaterialSliceTemplateCacheHits: &'static str =
+        "initialGeneration.materialSliceTemplateCacheHits";
     /// 初始生成数量缓存命中数 / Initial generation quantity cache hits
-    pub const InitialGenerationQuantityCacheHits: &'static str = "initialGeneration.quantityCacheHits";
+    pub const InitialGenerationQuantityCacheHits: &'static str =
+        "initialGeneration.quantityCacheHits";
     /// 初始生成数量缓存未命中数 / Initial generation quantity cache misses
-    pub const InitialGenerationQuantityCacheMisses: &'static str = "initialGeneration.quantityCacheMisses";
+    pub const InitialGenerationQuantityCacheMisses: &'static str =
+        "initialGeneration.quantityCacheMisses";
     /// 初始生成物料切片模板缓存未命中数 / Initial generation material slice template cache misses
-    pub const InitialGenerationMaterialSliceTemplateCacheMisses: &'static str = "initialGeneration.materialSliceTemplateCacheMisses";
+    pub const InitialGenerationMaterialSliceTemplateCacheMisses: &'static str =
+        "initialGeneration.materialSliceTemplateCacheMisses";
     /// 初始生成跨工作线程重复候选数 / Initial generation cross-worker duplicate candidates
-    pub const InitialGenerationCrossWorkerDuplicateCandidates: &'static str = "initialGeneration.crossWorkerDuplicateCandidates";
+    pub const InitialGenerationCrossWorkerDuplicateCandidates: &'static str =
+        "initialGeneration.crossWorkerDuplicateCandidates";
     /// 初始生成跨贡献被支配数 / Initial generation cross-contribution dominated
-    pub const InitialGenerationCrossContributionDominated: &'static str = "initialGeneration.crossContributionDominated";
+    pub const InitialGenerationCrossContributionDominated: &'static str =
+        "initialGeneration.crossContributionDominated";
     /// 初始生成耗时（毫秒） / Initial generation elapsed milliseconds
-    pub const InitialGenerationElapsedMilliseconds: &'static str = "initialGeneration.elapsedMilliseconds";
+    pub const InitialGenerationElapsedMilliseconds: &'static str =
+        "initialGeneration.elapsedMilliseconds";
     /// 初始生成停止原因 / Initial generation stop reason
     pub const InitialGenerationStopReason: &'static str = "initialGeneration.stopReason";
     /// 初始访问节点数（渲染用） / Initial visited nodes (for rendering)
@@ -180,11 +196,14 @@ impl Csp1dKpiKeys {
     /// 初始长度剪枝条目数（渲染用） / Initial length-bound pruned entries (for rendering)
     pub const InitialLengthBoundPrunedEntries: &'static str = "initialLengthBoundPrunedEntries";
     /// 初始物料宽度索引缓存命中数（渲染用） / Initial material width index cache hits (for rendering)
-    pub const InitialMaterialWidthIndexCacheHits: &'static str = "initialMaterialWidthIndexCacheHits";
+    pub const InitialMaterialWidthIndexCacheHits: &'static str =
+        "initialMaterialWidthIndexCacheHits";
     /// 初始物料切片模板缓存命中数（渲染用） / Initial material slice template cache hits (for rendering)
-    pub const InitialMaterialSliceTemplateCacheHits: &'static str = "initialMaterialSliceTemplateCacheHits";
+    pub const InitialMaterialSliceTemplateCacheHits: &'static str =
+        "initialMaterialSliceTemplateCacheHits";
     /// 初始生成耗时毫秒（渲染用） / Initial generation elapsed milliseconds (for rendering)
-    pub const InitialGenerationElapsedMillisecondsRender: &'static str = "initialGenerationElapsedMilliseconds";
+    pub const InitialGenerationElapsedMillisecondsRender: &'static str =
+        "initialGenerationElapsedMilliseconds";
     /// 初始生成停止原因（渲染用） / Initial generation stop reason (for rendering)
     pub const InitialGenerationStopReasonRender: &'static str = "initialGenerationStopReason";
     /// 定价生成访问节点数 / Pricing generation visited nodes
@@ -519,7 +538,10 @@ impl<V: SolveValue> Csp1dSolveConfig<V> {
     pub fn all_extensions(&self) -> Vec<Csp1dModelingExtension<V>> {
         let mut extensions = self.extensions.clone();
         for extension in &self.extension_set.modeling_extensions {
-            if !extensions.iter().any(|existing| same_extension(existing, extension)) {
+            if !extensions
+                .iter()
+                .any(|existing| same_extension(existing, extension))
+            {
                 extensions.push(extension.clone());
             }
         }
@@ -688,7 +710,8 @@ impl<V: SolveValue> Csp1dSolveConfigBuilder<V> {
         pipeline: Arc<dyn Pipeline<MetaModel<f64>> + Send + Sync>,
         mode: Csp1dExtensionMode,
     ) -> &mut Self {
-        self.extensions.push(Csp1dModelingExtension::with_mode(pipeline, mode));
+        self.extensions
+            .push(Csp1dModelingExtension::with_mode(pipeline, mode));
         self
     }
 
@@ -718,7 +741,10 @@ impl<V: SolveValue> Csp1dSolveConfigBuilder<V> {
             + 'static,
     {
         self.extensions
-            .push(Csp1dModelingExtension::context_aware_with_mode(Arc::new(factory), mode));
+            .push(Csp1dModelingExtension::context_aware_with_mode(
+                Arc::new(factory),
+                mode,
+            ));
         self
     }
 
@@ -735,7 +761,10 @@ impl<V: SolveValue> Csp1dSolveConfigBuilder<V> {
     }
 
     /// 追加生成策略 / Add a generation strategy
-    pub fn generation_strategy(&mut self, strategy: Arc<dyn Csp1dGenerationStrategy<V>>) -> &mut Self {
+    pub fn generation_strategy(
+        &mut self,
+        strategy: Arc<dyn Csp1dGenerationStrategy<V>>,
+    ) -> &mut Self {
         self.generation_strategies.push(strategy);
         self
     }
@@ -857,7 +886,8 @@ impl<V: SolveValue> Csp1dSolutionAnalyzer<V> for DefaultCsp1dSolutionAnalyzer {
         let satisfied_demand_count = problem
             .demands
             .len()
-            .saturating_sub(produce.unmet_demands.len()) as u64;
+            .saturating_sub(produce.unmet_demands.len())
+            as u64;
         let mut kpi = Csp1dKpi {
             selected_plan_count: produce.cutting_plans.len() as u64,
             selected_batch_count,
@@ -873,17 +903,50 @@ impl<V: SolveValue> Csp1dSolutionAnalyzer<V> for DefaultCsp1dSolutionAnalyzer {
             details: BTreeMap::new(),
         };
         let mut kpi_map = BTreeMap::new();
-        kpi_map.insert(Csp1dKpiKeys::SelectedPlanCount.to_string(), kpi.selected_plan_count.to_string());
-        kpi_map.insert(Csp1dKpiKeys::SelectedBatchCount.to_string(), kpi.selected_batch_count.to_string());
-        kpi_map.insert(Csp1dKpiKeys::SatisfiedDemandCount.to_string(), kpi.satisfied_demand_count.to_string());
-        kpi_map.insert(Csp1dKpiKeys::UnmetDemandCount.to_string(), kpi.unmet_demand_count.to_string());
-        kpi_map.insert(Csp1dKpiKeys::MaterialUsageCount.to_string(), kpi.material_usage_count.to_string());
-        kpi_map.insert(Csp1dKpiKeys::MachineUsageCount.to_string(), kpi.machine_usage_count.to_string());
-        kpi_map.insert(Csp1dKpiKeys::GeneratedPlanCount.to_string(), kpi.generated_plan_count.to_string());
-        kpi_map.insert(Csp1dKpiKeys::TopPlanCount.to_string(), kpi.top_plan_count.to_string());
-        kpi_map.insert(Csp1dKpiKeys::YieldMetricCount.to_string(), kpi.yield_metric_count.to_string());
-        kpi_map.insert(Csp1dKpiKeys::WasteMetricCount.to_string(), kpi.waste_metric_count.to_string());
-        kpi_map.insert(Csp1dKpiKeys::LengthMetricCount.to_string(), kpi.length_metric_count.to_string());
+        kpi_map.insert(
+            Csp1dKpiKeys::SelectedPlanCount.to_string(),
+            kpi.selected_plan_count.to_string(),
+        );
+        kpi_map.insert(
+            Csp1dKpiKeys::SelectedBatchCount.to_string(),
+            kpi.selected_batch_count.to_string(),
+        );
+        kpi_map.insert(
+            Csp1dKpiKeys::SatisfiedDemandCount.to_string(),
+            kpi.satisfied_demand_count.to_string(),
+        );
+        kpi_map.insert(
+            Csp1dKpiKeys::UnmetDemandCount.to_string(),
+            kpi.unmet_demand_count.to_string(),
+        );
+        kpi_map.insert(
+            Csp1dKpiKeys::MaterialUsageCount.to_string(),
+            kpi.material_usage_count.to_string(),
+        );
+        kpi_map.insert(
+            Csp1dKpiKeys::MachineUsageCount.to_string(),
+            kpi.machine_usage_count.to_string(),
+        );
+        kpi_map.insert(
+            Csp1dKpiKeys::GeneratedPlanCount.to_string(),
+            kpi.generated_plan_count.to_string(),
+        );
+        kpi_map.insert(
+            Csp1dKpiKeys::TopPlanCount.to_string(),
+            kpi.top_plan_count.to_string(),
+        );
+        kpi_map.insert(
+            Csp1dKpiKeys::YieldMetricCount.to_string(),
+            kpi.yield_metric_count.to_string(),
+        );
+        kpi_map.insert(
+            Csp1dKpiKeys::WasteMetricCount.to_string(),
+            kpi.waste_metric_count.to_string(),
+        );
+        kpi_map.insert(
+            Csp1dKpiKeys::LengthMetricCount.to_string(),
+            kpi.length_metric_count.to_string(),
+        );
         kpi.details = kpi_map.clone();
         let render = RenderSchemaDTO {
             kpi: kpi_map,

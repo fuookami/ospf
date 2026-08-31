@@ -1,9 +1,9 @@
 //! 陈氏系统的一阶欧拉步进模型。
 //! First-order Euler step model for the Chen system.
 
-use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point3;
+use num_traits::Float;
 
 /// 陈氏系统的一阶欧拉步进模型。
 /// First-order Euler step model for the Chen system.

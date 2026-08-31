@@ -1,10 +1,10 @@
 //! 三涡卷统一混沌系统 TSUCS2。
 //! Three-Scroll Unified Chaotic System TSUCS2.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// 三涡卷统一混沌系统 TSUCS2 的一阶欧拉步进模型。
@@ -42,14 +42,22 @@ impl<S: Field + Float> Default for ThreeScrollUnifiedChaoticSystemTsucs2Attracto
 
 impl<S: Field + Float> Default for ThreeScrollUnifiedChaoticSystemTsucs2AttractorGenerator<S> {
     fn default() -> Self {
-        Self::new(ThreeScrollUnifiedChaoticSystemTsucs2Attractor::default(), one_point3())
+        Self::new(
+            ThreeScrollUnifiedChaoticSystemTsucs2Attractor::default(),
+            one_point3(),
+        )
     }
 }
 
 /// 创建三涡卷统一混沌系统 TSUCS2。
 /// Create a Three-Scroll Unified Chaotic System TSUCS2.
 pub fn three_scroll_tsucs2_attractor<S: Field + Float>(
-    alpha: S, beta: S, delta: S, zeta: S, rho: S, h: S,
+    alpha: S,
+    beta: S,
+    delta: S,
+    zeta: S,
+    rho: S,
+    h: S,
 ) -> ThreeScrollUnifiedChaoticSystemTsucs2Attractor<S> {
     ThreeScrollUnifiedChaoticSystemTsucs2Attractor::new(alpha, beta, delta, zeta, rho, h)
 }
@@ -57,7 +65,13 @@ pub fn three_scroll_tsucs2_attractor<S: Field + Float>(
 /// 创建三涡卷统一混沌系统 TSUCS2 生成器。
 /// Create a Three-Scroll Unified Chaotic System TSUCS2 generator.
 pub fn three_scroll_tsucs2_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, delta: S, zeta: S, rho: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    delta: S,
+    zeta: S,
+    rho: S,
+    h: S,
+    x: Point3<S>,
 ) -> ThreeScrollUnifiedChaoticSystemTsucs2AttractorGenerator<S> {
     ThreeScrollUnifiedChaoticSystemTsucs2AttractorGenerator::new(
         ThreeScrollUnifiedChaoticSystemTsucs2Attractor::new(alpha, beta, delta, zeta, rho, h),

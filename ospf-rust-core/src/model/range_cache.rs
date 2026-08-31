@@ -1,13 +1,13 @@
 //! 范围缓存上下文
 //! Range Cache Context
 
+use crate::symbol::flatten::Cacheable;
+use crate::token::TokenList;
+use crate::variable::VariableRange;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::{Arc, OnceLock};
-use crate::symbol::flatten::Cacheable;
-use crate::token::TokenList;
-use crate::variable::VariableRange;
 
 /// 范围缓存 Key / Range cache key
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -42,6 +42,7 @@ where
 
     /// 获取缓存映射 / Get cache map
     fn cache(&self) -> &HashMap<RangeCacheKey, VariableRange<V>>;
+    /// 获取可变缓存映射 / Get the mutable cache map.
     fn cache_mut(&mut self) -> &mut HashMap<RangeCacheKey, VariableRange<V>>;
 
     /// 获取缓存范围 / Get cached range

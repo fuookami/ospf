@@ -13,10 +13,10 @@
 //! - `QuadraticFunctionSymbol`: quadratic function symbol, extending linear function symbol
 //! - `LogicFunctionSymbol`: logic function symbol, extending linear function symbol
 
-use std::fmt::Debug;
+use super::{IntermediateSymbol, LinearIntermediateSymbol};
 use crate::error::Result;
 use crate::token::{Token, TokenList};
-use super::{IntermediateSymbol, LinearIntermediateSymbol};
+use std::fmt::Debug;
 
 /// 函数符号抽象特征
 /// Function symbol abstraction trait

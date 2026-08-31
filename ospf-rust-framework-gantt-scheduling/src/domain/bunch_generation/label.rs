@@ -250,21 +250,9 @@ mod tests {
     fn test_label_dominance() {
         let task_node = Node::Task(super::super::model::TaskNode::new(0, 1, 100.0));
 
-        let label_a = Label::task(
-            Label::root(),
-            task_node.clone(),
-            0,
-            test_cost(5.0),
-            3.0,
-        );
+        let label_a = Label::task(Label::root(), task_node.clone(), 0, test_cost(5.0), 3.0);
 
-        let label_b = Label::task(
-            Label::root(),
-            task_node.clone(),
-            0,
-            test_cost(8.0),
-            2.0,
-        );
+        let label_b = Label::task(Label::root(), task_node.clone(), 0, test_cost(8.0), 2.0);
 
         // a: cost=5, shadow=3; b: cost=8, shadow=2
         // a has lower cost and higher shadow price

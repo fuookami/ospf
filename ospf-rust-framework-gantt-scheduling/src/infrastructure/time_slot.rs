@@ -3,8 +3,8 @@
 //! 表示具有时间范围的可切片对象。
 //! Represents a sliceable object with a time range.
 
-use time::{Duration, OffsetDateTime};
 use super::TimeRange;
+use time::{Duration, OffsetDateTime};
 
 /// 时间槽接口 / Time slot interface
 ///

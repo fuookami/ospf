@@ -5,23 +5,15 @@ use std::sync::Arc;
 use ospf_rust_core::solver::SolveValue;
 use ospf_rust_framework::model::Pipeline;
 
+use crate::domain::length_assignment::{LengthAssignmentModelingConfig, LengthSlackAggregation};
+use crate::domain::wasting_minimization::{WasteAggregation, WasteMinimizationConfig};
+use crate::domain::r#yield::{YieldModelingConfig, YieldSlackAggregation};
 use ospf_rust_core::model::MetaModel;
-use crate::domain::r#yield::{
-    YieldModelingConfig, YieldSlackAggregation,
-};
-use crate::domain::length_assignment::{
-    LengthAssignmentModelingConfig, LengthSlackAggregation,
-};
-use crate::domain::wasting_minimization::{
-    WasteAggregation, WasteMinimizationConfig,
-};
 
 use super::aggregation::ProduceAggregation;
 use super::context::Csp1dProduceContext;
 use super::pipeline::Csp1dIncrementalPipeline;
-use super::{
-    Csp1dModelingExtension, Csp1dModelingMode, Csp1dObjectivePolicy, ProduceInput,
-};
+use super::{Csp1dModelingExtension, Csp1dModelingMode, Csp1dObjectivePolicy, ProduceInput};
 
 /// CSP1D 产出上下文 builder / CSP1D produce context builder
 #[derive(Clone)]
@@ -144,13 +136,12 @@ impl<V: SolveValue> Csp1dProduceContextBuilder<V> {
 
     /// 构建上下文 / Build context
     pub fn build(&self) -> crate::Csp1dResult<Csp1dProduceContext<V>> {
-        let domain_value_sample = resolve_domain_value_sample(
-            &self.input,
-            self.yield_config.as_ref(),
-        )
-        .ok_or_else(|| crate::Csp1dError::InvalidInput {
-            message: "Cannot derive domain value sample from ProduceInput".into(),
-        })?;
+        let domain_value_sample =
+            resolve_domain_value_sample(&self.input, self.yield_config.as_ref()).ok_or_else(
+                || crate::Csp1dError::InvalidInput {
+                    message: "Cannot derive domain value sample from ProduceInput".into(),
+                },
+            )?;
         let produce = ProduceAggregation::new(
             self.input.cutting_plans.clone(),
             self.input.demands.clone(),
@@ -177,9 +168,7 @@ impl<V: SolveValue> Csp1dProduceContextBuilder<V> {
                     )
                 }),
             waste: if self.mode == Csp1dModelingMode::MILP && self.waste_config.is_some() {
-                Some(WasteAggregation {
-                    analysis: None,
-                })
+                Some(WasteAggregation { analysis: None })
             } else {
                 None
             },
@@ -236,7 +225,6 @@ fn resolve_domain_value_sample<V: SolveValue>(
                 .map(|width| width.value)
         })
         .or_else(|| {
-            yield_config
-                .and_then(|config| config.under_production_penalty.values().next().cloned())
+            yield_config.and_then(|config| config.under_production_penalty.values().next().cloned())
         })
 }

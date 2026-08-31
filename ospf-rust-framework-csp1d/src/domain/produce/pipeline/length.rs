@@ -6,8 +6,8 @@ use ospf_rust_core::model::{ConstraintGroup, ConstraintRelation, MetaModel};
 use ospf_rust_core::solver::SolveValue;
 use ospf_rust_framework::model::Pipeline;
 
-use crate::domain::material::to_f64;
 use crate::domain::length_assignment::LengthSlackAggregation;
+use crate::domain::material::to_f64;
 
 /// 长度建模约束管线 / Length modeling constraint pipeline
 #[derive(Debug, Clone)]
@@ -22,10 +22,7 @@ impl<V: SolveValue> LengthConstraintPipeline<V> {
     pub fn new(length: LengthSlackAggregation<V>) -> Self {
         Self {
             name: "length_constraint".to_string(),
-            group: Some(ConstraintGroup::new(
-                10_005,
-                "csp1d_length_constraint",
-            )),
+            group: Some(ConstraintGroup::new(10_005, "csp1d_length_constraint")),
             length,
         }
     }
@@ -66,7 +63,11 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for LengthConstraintPipeline<V> {
                     0,
                     None,
                 ) {
-                    log::warn!("Failed to register assigned length lower bound {}: {:?}", demand_index, error);
+                    log::warn!(
+                        "Failed to register assigned length lower bound {}: {:?}",
+                        demand_index,
+                        error
+                    );
                 }
             }
             if let (Some(variable), Some(bound)) = (
@@ -87,7 +88,11 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for LengthConstraintPipeline<V> {
                     0,
                     None,
                 ) {
-                    log::warn!("Failed to register assigned length upper bound {}: {:?}", demand_index, error);
+                    log::warn!(
+                        "Failed to register assigned length upper bound {}: {:?}",
+                        demand_index,
+                        error
+                    );
                 }
             }
             if let (Some(variable), Some(bound)) = (
@@ -108,7 +113,11 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for LengthConstraintPipeline<V> {
                     0,
                     None,
                 ) {
-                    log::warn!("Failed to register over length bound {}: {:?}", demand_index, error);
+                    log::warn!(
+                        "Failed to register over length bound {}: {:?}",
+                        demand_index,
+                        error
+                    );
                 }
             }
             let Some(max_over_length) = demand
@@ -119,7 +128,8 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for LengthConstraintPipeline<V> {
             else {
                 continue;
             };
-            let (Some(assigned_variable), Some(over_variable)) = (assigned_variable, over_variable) else {
+            let (Some(assigned_variable), Some(over_variable)) = (assigned_variable, over_variable)
+            else {
                 continue;
             };
             if let Err(error) = model.add_linear_constraint_with_metadata(
@@ -132,7 +142,11 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for LengthConstraintPipeline<V> {
                 0,
                 None,
             ) {
-                log::warn!("Failed to register assigned-over length link {}: {:?}", demand_index, error);
+                log::warn!(
+                    "Failed to register assigned-over length link {}: {:?}",
+                    demand_index,
+                    error
+                );
             }
         }
     }
@@ -172,8 +186,20 @@ impl<V: SolveValue> LengthObjectivePipeline<V> {
     /// 目标项 / Objective terms
     pub fn objective_terms(&self) -> Vec<(usize, f64)> {
         let mut terms = Vec::new();
-        if let Some(penalty) = self.length.config.total_length_penalty.as_ref().and_then(to_f64) {
-            for variable in self.length.variables.assigned_length().iter().filter_map(|value| *value) {
+        if let Some(penalty) = self
+            .length
+            .config
+            .total_length_penalty
+            .as_ref()
+            .and_then(to_f64)
+        {
+            for variable in self
+                .length
+                .variables
+                .assigned_length()
+                .iter()
+                .filter_map(|value| *value)
+            {
                 terms.push((variable, penalty));
             }
         }

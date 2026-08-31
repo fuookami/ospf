@@ -1,9 +1,9 @@
 //! 旅客取消模型模块 / Passenger cancel model module.
-use std::error::Error;
-use std::sync::Arc;
+use super::passenger::Passenger;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
-use super::passenger::Passenger;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 旅客取消 / Passenger cancel
 /// 对齐 Kotlin PassengerCancel / Aligned with Kotlin PassengerCancel

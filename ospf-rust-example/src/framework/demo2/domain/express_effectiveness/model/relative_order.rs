@@ -1,10 +1,10 @@
 //! 相对顺序模型 / Relative order model
-use std::collections::HashMap;
-use std::error::Error;
-use std::sync::Arc;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::IfFunction;
+use std::collections::HashMap;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 相对顺序 / Relative order (对齐 Kotlin RelativeOrder)
 #[derive(Debug, Clone)]
@@ -48,10 +48,7 @@ impl RelativeOrder {
         next_id: &mut u64,
     ) -> Result<RelativeOrderVariables, Box<dyn Error>> {
         // condition: loaded[item] (nonzero when item is loaded)
-        let condition = Linear::new(
-            vec![LinearMonomial::new(1.0, loaded_idx[item_idx])],
-            0.0,
-        );
+        let condition = Linear::new(vec![LinearMonomial::new(1.0, loaded_idx[item_idx])], 0.0);
         // then_expr: 1.0 (item participates in ordering)
         let then_expr = Linear::new(Vec::new(), 1.0);
         // else_expr: 0.0 (item does not participate)

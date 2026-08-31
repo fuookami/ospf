@@ -7,6 +7,13 @@
 `ospf-rust-core` uses `russcip/scip-sys` under the `scip` feature.  
 You must make SCIP headers and libraries discoverable before running tests.
 
+## CP Boundary
+
+The Gantt task-compilation component owns CP snapshot construction. SCIP consumes the
+feature-gated MIP-backed `ExactLowering` facade for the declared exact subset; it is not exposed as
+a native CP backend. Optional/variable-duration interval bindings remain `Unsupported`, and
+Cumulative raw-handler work remains `Conditional` until its safety contract is independently met.
+
 ## Environment Setup
 
 ### Windows (PowerShell)
@@ -131,3 +138,9 @@ $env:GITHUB_TOKEN = "<token-with-actions-write>"
 ```
 
 Optional: use `-TargetOS linux` when Linux self-hosted runner is available.
+
+The shared native contract distinguishes real SCIP execution from feature-only
+compilation and compares report identity, bounds, solutions, and residuals. A
+missing or unloadable SCIP installation is `unsupported` only when the matrix does
+not request native execution; a requested native gate fails explicitly.
+See [`docs/solver-native-matrix.md`](../../../../docs/solver-native-matrix.md).

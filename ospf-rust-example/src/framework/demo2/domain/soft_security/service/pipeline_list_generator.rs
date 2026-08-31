@@ -1,11 +1,11 @@
 //! 软性安全管线步骤生成器 / Soft security pipeline step generator
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 use crate::framework::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
 use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAggregation;
 use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
 use crate::framework::demo2::domain::soft_security::service::policy;
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 /// 软安全管线步骤函数类型 / Soft security pipeline step function type
 pub type SoftSecurityPipelineStep = fn(

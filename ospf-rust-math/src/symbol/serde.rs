@@ -11,16 +11,15 @@
 //! Since `OwnedSymbol` contains `Box<dyn DynSymbol>`, it cannot be directly serialized.
 //! Therefore, we use the `SymbolExpr` enum format to support recursively nested expressions.
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 use crate::symbol::inequality::{
-
     CanonicalInequality, Comparison, LinearInequality, QuadraticInequality,
 };
 use crate::symbol::{
     Canonical, CanonicalMonomial, DynSymbol, Linear, LinearMonomial, OwnedSymbol, Quadratic,
     QuadraticMonomial, SymbolDynId,
 };
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
 use std::error::Error;

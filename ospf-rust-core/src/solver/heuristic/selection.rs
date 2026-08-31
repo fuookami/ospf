@@ -110,11 +110,11 @@ where
         let mut best_fitness = f64::NEG_INFINITY;
 
         for i in 0..tournament_count {
-            if let Some(fitness) = population.get(i).and_then(|ind| ind.fitness()) {
-                if self.comparator.is_better(fitness, best_fitness) {
-                    best_idx = i;
-                    best_fitness = fitness;
-                }
+            if let Some(fitness) = population.get(i).and_then(|ind| ind.fitness())
+                && self.comparator.is_better(fitness, best_fitness)
+            {
+                best_idx = i;
+                best_fitness = fitness;
             }
         }
 
@@ -229,11 +229,11 @@ where
         let mut best_fitness = f64::NEG_INFINITY;
 
         for (i, ind) in population.individuals().iter().enumerate() {
-            if let Some(fitness) = ind.fitness() {
-                if self.comparator.is_better(fitness, best_fitness) {
-                    best_idx = i;
-                    best_fitness = fitness;
-                }
+            if let Some(fitness) = ind.fitness()
+                && self.comparator.is_better(fitness, best_fitness)
+            {
+                best_idx = i;
+                best_fitness = fitness;
             }
         }
 
@@ -308,11 +308,11 @@ where
         let mut best_fitness = f64::NEG_INFINITY;
 
         for (i, ind) in population.individuals().iter().enumerate() {
-            if let Some(fitness) = ind.fitness() {
-                if self.comparator.is_better(fitness, best_fitness) {
-                    best_idx = i;
-                    best_fitness = fitness;
-                }
+            if let Some(fitness) = ind.fitness()
+                && self.comparator.is_better(fitness, best_fitness)
+            {
+                best_idx = i;
+                best_fitness = fitness;
             }
         }
 

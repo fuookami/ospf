@@ -1,11 +1,11 @@
 //! 边带宽模型：定义边-服务维度的带宽变量与符号 / Edge bandwidth model: defines edge-service dimension bandwidth variables and symbols
 
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol, flat_map1};
-use ospf_rust_core::variable::{VariableCombination, UInteger};
-use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder, Shape};
 use crate::framework::demo1::route_context::model::{Edge, Node, NodeKind, Service};
+use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination, flat_map1};
+use ospf_rust_core::variable::{UInteger, VariableCombination};
+use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder, Shape};
+use std::error::Error;
 
 /// 二维连续变量组合类型别名 / 2D continuous variable combination type alias
 type YCombination = VariableCombination<UInteger, Shape<2>>;
@@ -30,7 +30,11 @@ impl EdgeBandwidth {
         let bandwidth = SymbolCombination::new(Shape::new([0]), "bandwidth", |_, _| {
             LinearExpressionSymbol::new(0, "dummy", vec![], 0.0)
         });
-        Self { y, y_idx, bandwidth }
+        Self {
+            y,
+            y_idx,
+            bandwidth,
+        }
     }
 
     /// 注册边带宽变量和符号到模型 / Register edge bandwidth variables and symbols into the model

@@ -1,9 +1,9 @@
 //! 正弦平方映射。
 //! Sinusoidal map.
 
-use num_traits::Float;
-use crate::algebra::Field;
 use super::helpers::default_float;
+use crate::algebra::Field;
+use num_traits::Float;
 
 scalar_map!(
     /// 正弦平方映射。
@@ -27,7 +27,10 @@ impl<S: Field + Float> Default for SinusoidalMap<S> {
 
 impl<S: Field + Float> Default for SinusoidalMapGenerator<S> {
     fn default() -> Self {
-        Self::new(SinusoidalMap::default(), S::from(0.5).expect("0.5 must be representable"))
+        Self::new(
+            SinusoidalMap::default(),
+            S::from(0.5).expect("0.5 must be representable"),
+        )
     }
 }
 

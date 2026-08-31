@@ -1,10 +1,10 @@
 //! 路由上下文 / Route context
 
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
-use crate::framework::demo1::infrastructure::dto::Input;
 use super::aggregation::Aggregation;
 use super::model::{Assignment, Edge, Graph, Node, NodeKind, Service};
+use crate::framework::demo1::infrastructure::dto::Input;
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 /// 路由上下文 / Route context
 pub struct RouteContext {

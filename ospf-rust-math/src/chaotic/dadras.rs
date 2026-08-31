@@ -1,10 +1,10 @@
 //! 达德拉斯吸引子。
 //! Dadras attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// 达德拉斯吸引子的一阶欧拉步进模型。
@@ -48,7 +48,12 @@ impl<S: Field + Float> Default for DadrasAttractorGenerator<S> {
 /// 创建达德拉斯吸引子。
 /// Create a Dadras attractor.
 pub fn dadras_attractor<S: Field + Float>(
-    gamma: S, epsilon: S, zeta: S, rho: S, sigma: S, h: S,
+    gamma: S,
+    epsilon: S,
+    zeta: S,
+    rho: S,
+    sigma: S,
+    h: S,
 ) -> DadrasAttractor<S> {
     DadrasAttractor::new(gamma, epsilon, zeta, rho, sigma, h)
 }
@@ -56,7 +61,13 @@ pub fn dadras_attractor<S: Field + Float>(
 /// 创建达德拉斯吸引子生成器。
 /// Create a Dadras attractor generator.
 pub fn dadras_attractor_generator<S: Field + Float>(
-    gamma: S, epsilon: S, zeta: S, rho: S, sigma: S, h: S, x: Point3<S>,
+    gamma: S,
+    epsilon: S,
+    zeta: S,
+    rho: S,
+    sigma: S,
+    h: S,
+    x: Point3<S>,
 ) -> DadrasAttractorGenerator<S> {
     DadrasAttractorGenerator::new(DadrasAttractor::new(gamma, epsilon, zeta, rho, sigma, h), x)
 }
@@ -66,7 +77,10 @@ mod tests {
     use super::*;
 
     fn assert_close(actual: f64, expected: f64) {
-        assert!((actual - expected).abs() < 1e-12, "actual={actual}, expected={expected}");
+        assert!(
+            (actual - expected).abs() < 1e-12,
+            "actual={actual}, expected={expected}"
+        );
     }
 
     #[test]

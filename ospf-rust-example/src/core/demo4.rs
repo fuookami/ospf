@@ -1,14 +1,12 @@
 //! Demo4 模块 / Demo4 module
 use std::error::Error;
 
-use ospf_rust_multiarray::{MultiArray, Shape};
-use ospf_rust_core::model::{MetaModel, ObjectiveCategory, ConstraintRelation};
-use ospf_rust_core::symbol::{
-    SymbolCombination, LinearExpressionSymbol, flat_map1_indexed,
-};
+use ospf_rust_core::model::{ConstraintRelation, MetaModel, ObjectiveCategory};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination, flat_map1_indexed};
 use ospf_rust_core::variable::{UContinuous, VariableCombination1D, VariableRange};
+use ospf_rust_multiarray::{MultiArray, Shape};
 
-use super::common::{read_solution_value, solve_typed, extract_coeffs};
+use super::common::{extract_coeffs, read_solution_value, solve_typed};
 
 /// 材料数据结构 / Material data structure
 #[derive(Debug, Clone)]
@@ -19,7 +17,10 @@ struct Material {
 
 impl Material {
     fn new(name: &str, available: f64) -> Self {
-        Self { name: name.to_string(), available }
+        Self {
+            name: name.to_string(),
+            available,
+        }
     }
 }
 
@@ -34,7 +35,12 @@ struct Product {
 
 impl Product {
     fn new(name: &str, max_yield: f64, profit: f64, usage_by_material: Vec<f64>) -> Self {
-        Self { name: name.to_string(), max_yield, profit, usage_by_material }
+        Self {
+            name: name.to_string(),
+            max_yield,
+            profit,
+            usage_by_material,
+        }
     }
 }
 
@@ -72,24 +78,48 @@ impl ProductionModel {
         let x_idx = model.register_combination(&x)?;
 
         // 2. 利润符号
-        let profit = flat_map1_indexed("profit", products, |i, p| {
-            ospf_rust_core::symbol::flatten::Linear::new(
-                vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(p.profit, x_idx[i])],
-                0.0,
-            )
-        }, |_, p| p.name.clone());
+        let profit = flat_map1_indexed(
+            "profit",
+            products,
+            |i, p| {
+                ospf_rust_core::symbol::flatten::Linear::new(
+                    vec![ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                        p.profit, x_idx[i],
+                    )],
+                    0.0,
+                )
+            },
+            |_, p| p.name.clone(),
+        );
         model.add_symbol_combination(&profit)?;
 
         // 3. 材料用量符号
-        let r#use = flat_map1_indexed("usage", materials, |m, mat| {
-            let monomials: Vec<_> = products.iter().enumerate().map(|(p_idx, p)| {
-                ospf_rust_core::symbol::flatten::LinearMonomial::new(p.usage_by_material[m], x_idx[p_idx])
-            }).collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, m| m.name.clone());
+        let r#use = flat_map1_indexed(
+            "usage",
+            materials,
+            |m, mat| {
+                let monomials: Vec<_> = products
+                    .iter()
+                    .enumerate()
+                    .map(|(p_idx, p)| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            p.usage_by_material[m],
+                            x_idx[p_idx],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, m| m.name.clone(),
+        );
         model.add_symbol_combination(&r#use)?;
 
-        Ok(ProductionModel { x, x_idx, profit, r#use })
+        Ok(ProductionModel {
+            x,
+            x_idx,
+            profit,
+            r#use,
+        })
     }
 
     fn add_constraints(
@@ -106,18 +136,27 @@ impl ProductionModel {
         // 材料约束
         for (m, mat) in materials.iter().enumerate() {
             let coeffs = extract_coeffs(&self.r#use[m]);
-            model.add_linear_constraint(&coeffs, ConstraintRelation::LessEqual, mat.available, &format!("material_{}_{}", m, mat.name))?;
+            model.add_linear_constraint(
+                &coeffs,
+                ConstraintRelation::LessEqual,
+                mat.available,
+                &format!("material_{}_{}", m, mat.name),
+            )?;
         }
 
         // 产品差异约束: x[p1] - x[p2] <= 1.0
         for p1 in 0..products.len() {
             for p2 in 0..products.len() {
-                if p1 == p2 { continue; }
-                let coefficients = vec![
-                    (self.x_idx[p1], 1.0),
-                    (self.x_idx[p2], -1.0),
-                ];
-                model.add_linear_constraint(&coefficients, ConstraintRelation::LessEqual, 1.0, &format!("diff_{}_{}", p1, p2))?;
+                if p1 == p2 {
+                    continue;
+                }
+                let coefficients = vec![(self.x_idx[p1], 1.0), (self.x_idx[p2], -1.0)];
+                model.add_linear_constraint(
+                    &coefficients,
+                    ConstraintRelation::LessEqual,
+                    1.0,
+                    &format!("diff_{}_{}", p1, p2),
+                )?;
             }
         }
         Ok(())
@@ -141,7 +180,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         println!("profit: {:.2}", obj);
     }
     for (p, product) in products.iter().enumerate() {
-        println!("{}: {:.4}", product.name, read_solution_value(&solution, prod.x_idx[p]));
+        println!(
+            "{}: {:.4}",
+            product.name,
+            read_solution_value(&solution, prod.x_idx[p])
+        );
     }
     Ok(())
 }
@@ -150,5 +193,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 mod tests {
     use super::*;
     #[test]
-    fn test_demo4() { assert!(run().is_ok()); }
+    fn test_demo4() {
+        assert!(run().is_ok());
+    }
 }

@@ -3,12 +3,12 @@
 //! 定义求解值的统一 trait 约束及转换策略，为泛型值类型接入后端数值域转换提供统一精度语义。
 //! Defines the unified trait constraint for solve values and conversion policies, providing unified precision semantics for connecting generic value types into backend numeric conversion.
 
-use std::fmt::Debug;
-use std::str::FromStr;
+use crate::error::{CoreError, Result, SolverError};
 use bigdecimal::BigDecimal;
 use num_rational::BigRational;
 use num_traits::{FromPrimitive, ToPrimitive};
-use crate::error::{CoreError, Result, SolverError};
+use std::fmt::Debug;
+use std::str::FromStr;
 
 /// 求解值转换策略 / Solve value conversion policy
 ///
@@ -58,6 +58,25 @@ pub trait SolveValue: Clone + Debug + PartialOrd + Send + Sync + 'static {
     /// # 参数 / Parameters
     /// - `policy`: 转换策略 / Conversion policy
     fn to_f64_with_policy(&self, policy: SolveValueConversionPolicy) -> Result<f64>;
+
+    /// 提取非负整数枚举上界；实现应在原数值域内向下取整。
+    /// Extract a non-negative integral enumeration upper bound, flooring in the native value domain.
+    fn to_nonnegative_integral_upper_bound(&self) -> Result<i64> {
+        let value = self.to_f64_with_policy(SolveValueConversionPolicy::AllowRounding)?;
+        if value < 0.0 {
+            return Err(CoreError::Solver(SolverError::NumericalError(format!(
+                "integral upper bound cannot be negative: {}",
+                value
+            ))));
+        }
+        if value >= 2_f64.powi(63) {
+            return Err(overflow_error(
+                Self::type_name(),
+                "integral upper bound exceeds i64",
+            ));
+        }
+        Ok(value.floor() as i64)
+    }
 }
 
 /// 构造非有限值错误 / Construct non-finite value error
@@ -156,6 +175,16 @@ impl SolveValue for BigRational {
         }
         Ok(value)
     }
+
+    fn to_nonnegative_integral_upper_bound(&self) -> Result<i64> {
+        if self < &BigRational::from_integer(0.into()) {
+            return Err(CoreError::Solver(SolverError::NumericalError(
+                "integral upper bound cannot be negative".to_owned(),
+            )));
+        }
+        self.to_i64()
+            .ok_or_else(|| overflow_error(Self::type_name(), "integral upper bound exceeds i64"))
+    }
 }
 
 impl SolveValue for BigDecimal {
@@ -200,6 +229,16 @@ impl SolveValue for BigDecimal {
             }
         }
         Ok(value)
+    }
+
+    fn to_nonnegative_integral_upper_bound(&self) -> Result<i64> {
+        if self < &BigDecimal::from(0) {
+            return Err(CoreError::Solver(SolverError::NumericalError(
+                "integral upper bound cannot be negative".to_owned(),
+            )));
+        }
+        self.to_i64()
+            .ok_or_else(|| overflow_error(Self::type_name(), "integral upper bound exceeds i64"))
     }
 }
 
@@ -248,5 +287,26 @@ mod tests {
             .to_f64_with_policy(SolveValueConversionPolicy::AllowRounding)
             .expect("rounding mode should allow conversion");
         assert!(converted > 0.0);
+    }
+
+    #[test]
+    fn integral_upper_bound_is_extracted_without_f64_rounding() {
+        let decimal = BigDecimal::from_str("3.9").expect("create decimal");
+        assert_eq!(
+            decimal
+                .to_nonnegative_integral_upper_bound()
+                .expect("decimal integral upper bound"),
+            3
+        );
+        let too_large =
+            BigDecimal::from_str("100000000000000000000").expect("create large decimal");
+        assert!(too_large.to_nonnegative_integral_upper_bound().is_err());
+        let rational = BigRational::new(7.into(), 2.into());
+        assert_eq!(
+            rational
+                .to_nonnegative_integral_upper_bound()
+                .expect("rational integral upper bound"),
+            3
+        );
     }
 }

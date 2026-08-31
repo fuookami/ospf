@@ -26,8 +26,8 @@
 //! 8. 逻辑或 `||`, `or`
 //! 9. 三元条件 `? :`, `if/then/else/fi`
 
-use super::*;
 use super::parser_support::ExpressionParseError;
+use super::*;
 
 // ============================================================================
 // ScalarTokenType - 标量表达式词法单元类型
@@ -518,15 +518,17 @@ impl ScalarParser {
     /// 创建标量表达式语法分析器。
     /// Create a scalar expression parser.
     pub fn new(tokens: Vec<ScalarToken>) -> Self {
-        Self { tokens, position: 0 }
+        Self {
+            tokens,
+            position: 0,
+        }
     }
 
     /// 解析标量表达式。
     /// Parse scalar expression.
     pub fn parse(&mut self) -> Result<ParsedScalarExpression, ExpressionParseError> {
         if self.tokens.is_empty()
-            || (self.tokens.len() == 1
-                && self.current_token().token_type == ScalarTokenType::Eof)
+            || (self.tokens.len() == 1 && self.current_token().token_type == ScalarTokenType::Eof)
         {
             return Err(ExpressionParseError::new("empty expression", 0));
         }
@@ -590,9 +592,11 @@ impl ScalarParser {
         // 条件解析到逻辑或层（允许 && 和 ||）
         // Condition parsed at logical OR level (allows && and ||)
         let condition_expr = self.parse_logical_or()?;
-        let condition = self.extract_boolean_condition(&condition_expr).ok_or_else(|| {
-            ExpressionParseError::new("if condition must be a boolean expression", if_pos)
-        })?;
+        let condition = self
+            .extract_boolean_condition(&condition_expr)
+            .ok_or_else(|| {
+                ExpressionParseError::new("if condition must be a boolean expression", if_pos)
+            })?;
 
         self.expect(ScalarTokenType::Then, "expected 'then' after if condition")?;
         let then_branch = self.parse_ternary()?;
@@ -669,7 +673,11 @@ impl ScalarParser {
         let mut left = self.parse_additive()?;
 
         if self.current_token().token_type.is_comparison_operator() {
-            let operator = self.current_token().token_type.comparison_operator().unwrap();
+            let operator = self
+                .current_token()
+                .token_type
+                .comparison_operator()
+                .unwrap();
             self.advance();
             let right = self.parse_additive()?;
             left = ScalarExpression::Boolean(Box::new(BooleanExpression::Comparison {
@@ -780,7 +788,11 @@ impl ScalarParser {
             // 右结合：右操作数允许一元负号（如 x^-2），递归调用自身
             // Right-associative: right operand allows unary minus (e.g., x^-2), recursive call
             let exponent = self.parse_unary_for_operand()?;
-            return Ok(ScalarExpression::binary(BinaryOperator::Power, base, exponent));
+            return Ok(ScalarExpression::binary(
+                BinaryOperator::Power,
+                base,
+                exponent,
+            ));
         }
 
         Ok(base)
@@ -884,10 +896,14 @@ impl ScalarParser {
 
         // 检查 math.PI 和 math.E 常量 / Check math.PI and math.E constants
         if identifier == "math.PI" {
-            return Ok(ScalarExpression::constant(ExpressionValue::Number(std::f64::consts::PI)));
+            return Ok(ScalarExpression::constant(ExpressionValue::Number(
+                std::f64::consts::PI,
+            )));
         }
         if identifier == "math.E" {
-            return Ok(ScalarExpression::constant(ExpressionValue::Number(std::f64::consts::E)));
+            return Ok(ScalarExpression::constant(ExpressionValue::Number(
+                std::f64::consts::E,
+            )));
         }
 
         // 检查函数调用 / Check function call
@@ -909,13 +925,18 @@ impl ScalarParser {
                     arguments.push(self.parse_ternary()?);
                 }
             }
-            self.expect(ScalarTokenType::RParen, "expected ')' after function arguments")?;
+            self.expect(
+                ScalarTokenType::RParen,
+                "expected ')' after function arguments",
+            )?;
 
             return Ok(ScalarExpression::function(function_name, arguments));
         }
 
         // 普通引用 / Simple reference
-        Ok(ScalarExpression::reference(PropertyPath::parse(&identifier)))
+        Ok(ScalarExpression::reference(PropertyPath::parse(
+            &identifier,
+        )))
     }
 
     // ========== 辅助方法 / Helper Methods ==========
@@ -949,7 +970,10 @@ impl ScalarParser {
 
     /// 从 ScalarExpression 中提取 BooleanExpression（如果是 ScalarBoolean 包装）。
     /// Extract BooleanExpression from ScalarExpression (if it's a ScalarBoolean wrapper).
-    fn extract_boolean_condition(&self, expr: &ParsedScalarExpression) -> Option<ParsedBooleanExpression> {
+    fn extract_boolean_condition(
+        &self,
+        expr: &ParsedScalarExpression,
+    ) -> Option<ParsedBooleanExpression> {
         match expr {
             ScalarExpression::Boolean(inner) => Some((**inner).clone()),
             _ => None,
@@ -1016,7 +1040,9 @@ fn merge_and(
 ///
 /// let expr = parse_scalar_expression("x + y * 2").unwrap();
 /// ```
-pub fn parse_scalar_expression(input: &str) -> Result<ParsedScalarExpression, ExpressionParseError> {
+pub fn parse_scalar_expression(
+    input: &str,
+) -> Result<ParsedScalarExpression, ExpressionParseError> {
     let tokens = ScalarLexer::new(input).tokenize();
     ScalarParser::new(tokens).parse()
 }
@@ -1029,8 +1055,8 @@ pub fn parse_scalar_expression_or_none(input: &str) -> Option<ParsedScalarExpres
 
 #[cfg(test)]
 mod tests {
+    use super::super::{MapEvaluationContext, MathFunctionEvaluator, evaluate_scalar_expression};
     use super::*;
-    use super::super::{evaluate_scalar_expression, MathFunctionEvaluator, MapEvaluationContext};
 
     fn context() -> MapEvaluationContext {
         MapEvaluationContext::from_string_map([
@@ -1171,14 +1197,20 @@ mod tests {
     fn test_math_pi() {
         let ctx = MapEvaluationContext::from_string_map::<_, &str>([]);
         let expr = parse_scalar_expression("math.PI").unwrap();
-        assert!(matches!(expr, ScalarExpression::Constant(ExpressionValue::Number(_))));
+        assert!(matches!(
+            expr,
+            ScalarExpression::Constant(ExpressionValue::Number(_))
+        ));
     }
 
     #[test]
     fn test_math_e() {
         let ctx = MapEvaluationContext::from_string_map::<_, &str>([]);
         let expr = parse_scalar_expression("math.E").unwrap();
-        assert!(matches!(expr, ScalarExpression::Constant(ExpressionValue::Number(_))));
+        assert!(matches!(
+            expr,
+            ScalarExpression::Constant(ExpressionValue::Number(_))
+        ));
     }
 
     // ========== 条件测试 / Conditional Tests ==========
@@ -1303,15 +1335,21 @@ mod tests {
     fn test_unary_minus_power_ast() {
         // -x^2 should be Negate(Power(x, 2))
         let expr = parse_scalar_expression("-x ^ 2").unwrap();
-        assert!(matches!(expr, ScalarExpression::Unary {
-            operator: UnaryOperator::Negate,
-            operand: _,
-        }));
+        assert!(matches!(
+            expr,
+            ScalarExpression::Unary {
+                operator: UnaryOperator::Negate,
+                operand: _,
+            }
+        ));
         if let ScalarExpression::Unary { operand, .. } = &expr {
-            assert!(matches!(operand.as_ref(), ScalarExpression::Binary {
-                operator: BinaryOperator::Power,
-                ..
-            }));
+            assert!(matches!(
+                operand.as_ref(),
+                ScalarExpression::Binary {
+                    operator: BinaryOperator::Power,
+                    ..
+                }
+            ));
         }
     }
 
@@ -1320,7 +1358,10 @@ mod tests {
         let expr = parse_scalar_expression("if x > 0 then x else y fi").unwrap();
         assert!(matches!(expr, ScalarExpression::Conditional { .. }));
         if let ScalarExpression::Conditional { condition, .. } = &expr {
-            assert!(matches!(condition.as_ref(), BooleanExpression::Comparison { .. }));
+            assert!(matches!(
+                condition.as_ref(),
+                BooleanExpression::Comparison { .. }
+            ));
         }
     }
 
@@ -1389,9 +1430,7 @@ mod tests {
     fn test_math_function_in_boolean_condition() {
         // math.sqrt(x) > 2 应通过 MathFunctionEvaluator 求值
         // math.sqrt(x) > 2 should evaluate via MathFunctionEvaluator
-        let ctx = MapEvaluationContext::from_string_map([
-            ("x", ExpressionValue::Number(16.0)),
-        ]);
+        let ctx = MapEvaluationContext::from_string_map([("x", ExpressionValue::Number(16.0))]);
         let expr = parse_scalar_expression("math.sqrt(x) > 2").unwrap();
         let result = eval(&expr, &ctx);
         assert_eq!(result, Some(ExpressionValue::Boolean(true)));
@@ -1400,9 +1439,7 @@ mod tests {
     #[test]
     fn test_math_function_in_conditional() {
         // if math.sqrt(x) > 2 then x else 0 fi
-        let ctx = MapEvaluationContext::from_string_map([
-            ("x", ExpressionValue::Number(16.0)),
-        ]);
+        let ctx = MapEvaluationContext::from_string_map([("x", ExpressionValue::Number(16.0))]);
         let expr = parse_scalar_expression("if math.sqrt(x) > 2 then x else 0 fi").unwrap();
         let result = eval(&expr, &ctx);
         assert_eq!(result, Some(ExpressionValue::Number(16.0)));
@@ -1463,7 +1500,11 @@ mod tests {
         let ctx = MapEvaluationContext::from_string_map::<_, &str>([]);
         let result = MathFunctionEvaluator.evaluate(
             "pow",
-            &[Some(ExpressionValue::Number(2.0)), Some(ExpressionValue::Number(3.0)), Some(ExpressionValue::Number(4.0))],
+            &[
+                Some(ExpressionValue::Number(2.0)),
+                Some(ExpressionValue::Number(3.0)),
+                Some(ExpressionValue::Number(4.0)),
+            ],
         );
         assert_eq!(result, None);
     }
@@ -1474,7 +1515,10 @@ mod tests {
         // math.sqrt(4, 2) should return None (too many arguments)
         let result = MathFunctionEvaluator.evaluate(
             "sqrt",
-            &[Some(ExpressionValue::Number(4.0)), Some(ExpressionValue::Number(2.0))],
+            &[
+                Some(ExpressionValue::Number(4.0)),
+                Some(ExpressionValue::Number(2.0)),
+            ],
         );
         assert_eq!(result, None);
     }

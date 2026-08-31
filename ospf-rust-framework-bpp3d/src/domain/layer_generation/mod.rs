@@ -24,18 +24,18 @@ use ospf_rust_quantities::unit::physical_unit::CTUnit;
 
 use crate::domain::bla::BottomUpLeftJustifiedAlgorithm;
 use crate::domain::bla::service::{BlaConfig, BlaProjection};
+use crate::domain::block_loading::{
+    Block, BlockPlacement, ComplexBlockGenerator, DepthFirstSearchAlgorithm,
+    MultiLayerHeuristicSearchAlgorithm, SimpleBlockGenerator, SimpleBlockGeneratorConfig,
+};
 use crate::domain::item::{
-    ActualItem, BinLayer, BinType, Bpp3dDemandKey, Bpp3dDemandMode, ItemId,
-    Bpp3dLayerDemandCoverage, CylinderShapeContract, PackageAttribute, PackageOrientationRuleInput,
+    ActualItem, BinLayer, BinType, Bpp3dDemandKey, Bpp3dDemandMode, Bpp3dLayerDemandCoverage,
+    CylinderShapeContract, ItemId, PackageAttribute, PackageOrientationRuleInput,
     PackagePlacementBottomContext, PackagePlacementStackingInput, PackageShapeSpec,
     PackageStackingInput, PatternConfig, PatternNextPointPolicy, PatternProjectionOrientation,
     PatternStep,
 };
 use crate::domain::layer_assignment::DemandShadowPriceKey;
-use crate::domain::block_loading::{
-    Block, BlockPlacement, ComplexBlockGenerator, DepthFirstSearchAlgorithm,
-    MultiLayerHeuristicSearchAlgorithm, SimpleBlockGenerator, SimpleBlockGeneratorConfig,
-};
 use crate::infrastructure::geometry::{MetricPoint3, MetricSize3};
 use crate::infrastructure::orientation::Orientation;
 

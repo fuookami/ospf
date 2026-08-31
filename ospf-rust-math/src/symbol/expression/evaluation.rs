@@ -1,15 +1,15 @@
 //! 表达式求值
 //! Expression evaluation
 
-use std::collections::HashMap;
-use crate::Trivalent;
-use super::property_path::PropertyPath;
-use super::operators::*;
-use super::value::ExpressionValue;
-use super::scalar::{ScalarExpression, ParsedScalarExpression};
 use super::boolean::{BooleanExpression, ParsedBooleanExpression};
-use super::math_functions::{ScalarFunctionEvaluator, DefaultScalarFunctionEvaluator};
+use super::math_functions::{DefaultScalarFunctionEvaluator, ScalarFunctionEvaluator};
+use super::operators::*;
+use super::property_path::PropertyPath;
 use super::property_path_from_owned_symbol;
+use super::scalar::{ParsedScalarExpression, ScalarExpression};
+use super::value::ExpressionValue;
+use crate::Trivalent;
+use std::collections::HashMap;
 
 pub trait EvaluationContext {
     /// 获取指定属性路径的值。
@@ -259,7 +259,8 @@ pub fn evaluate_boolean_with_evaluator(
             let Some(value) = evaluate_scalar_expression(value, context, function_evaluator) else {
                 return Trivalent::Unknown;
             };
-            let Some(pattern) = evaluate_scalar_expression(pattern, context, function_evaluator) else {
+            let Some(pattern) = evaluate_scalar_expression(pattern, context, function_evaluator)
+            else {
                 return Trivalent::Unknown;
             };
             let Some(matches) = evaluate_pattern_match(&value, &pattern, *mode) else {
@@ -485,14 +486,18 @@ pub fn evaluate_scalar_expression(
             else_branch,
         } => match evaluate_boolean_with_evaluator(condition, context, function_evaluator) {
             Trivalent::True => evaluate_scalar_expression(then_branch, context, function_evaluator),
-            Trivalent::False => evaluate_scalar_expression(else_branch, context, function_evaluator),
+            Trivalent::False => {
+                evaluate_scalar_expression(else_branch, context, function_evaluator)
+            }
             Trivalent::Unknown => None,
         },
-        ScalarExpression::Boolean(expr) => match evaluate_boolean_with_evaluator(expr, context, function_evaluator) {
-            Trivalent::True => Some(ExpressionValue::Boolean(true)),
-            Trivalent::False => Some(ExpressionValue::Boolean(false)),
-            Trivalent::Unknown => None,
-        },
+        ScalarExpression::Boolean(expr) => {
+            match evaluate_boolean_with_evaluator(expr, context, function_evaluator) {
+                Trivalent::True => Some(ExpressionValue::Boolean(true)),
+                Trivalent::False => Some(ExpressionValue::Boolean(false)),
+                Trivalent::Unknown => None,
+            }
+        }
         ScalarExpression::Custom { .. } => None,
     }
 }

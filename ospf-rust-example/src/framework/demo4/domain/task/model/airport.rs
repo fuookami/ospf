@@ -1,8 +1,8 @@
 //! 机场模型模块 / Airport model module
 
+use crate::framework::demo4::infrastructure::Icao;
 use std::collections::HashMap;
 use time::Duration;
-use crate::framework::demo4::infrastructure::Icao;
 
 /// 机场类型 / Airport type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

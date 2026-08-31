@@ -1,9 +1,9 @@
 //! 符号因式分解。
 //! Symbolic factorization.
 
-use std::ops::AddAssign;
-use num_traits::{Float, Zero};
 use crate::symbol::{OwnedSymbol, Quadratic, QuadraticMonomial};
+use num_traits::{Float, Zero};
+use std::ops::AddAssign;
 
 /// 一元二次多项式系数。
 /// Coefficients of a univariate quadratic polynomial.

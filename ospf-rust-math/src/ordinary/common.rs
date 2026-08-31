@@ -1,8 +1,8 @@
 //! 常规数学小工具
 //! Common mathematical utilities
 
-use std::ops::Mul;
 use num_traits::{Float, One};
+use std::ops::Mul;
 
 /// 将值限制在闭区间内。
 /// Clamp a value into a closed interval.

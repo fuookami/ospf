@@ -13,6 +13,9 @@ pub struct BendersSolver {
 impl BendersSolver {
     /// 创建新的 Benders 求解器 / Create a new Benders solver
     pub fn new(max_iterations: usize, tolerance: f64) -> Self {
-        Self { max_iterations, tolerance }
+        Self {
+            max_iterations,
+            tolerance,
+        }
     }
 }

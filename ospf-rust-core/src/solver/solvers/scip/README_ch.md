@@ -7,6 +7,13 @@
 `ospf-rust-core` 在 `scip` feature 下通过 `russcip/scip-sys` 绑定 SCIP。  
 运行测试前，必须让构建系统能找到 SCIP 头文件与库文件。
 
+## CP 边界
+
+Gantt task-compilation component 负责构造 CP snapshot。SCIP 只为声明的精确子集消费 feature-gated
+MIP-backed `ExactLowering` facade，不作为 native CP backend 暴露。optional/variable-duration
+interval binding 仍为 `Unsupported`，Cumulative raw-handler 路径在独立安全合同满足前仍为
+`Conditional`。
+
 ## 环境配置
 
 ### Windows（PowerShell）
@@ -131,3 +138,7 @@ $env:GITHUB_TOKEN = "<具备 actions write 权限的 token>"
 ```
 
 若存在 Linux self-hosted runner，可改为 `-TargetOS linux`。
+
+共享 native contract 会区分真实 SCIP 执行与仅 feature 编译，并比较 report identity、bound、solution
+和 residual。未请求原生执行时，缺少或无法加载 SCIP 安装只能标记为 `unsupported`；请求的 native gate
+失败时必须显式失败。详见 [`docs/solver-native-matrix_ch.md`](../../../../docs/solver-native-matrix_ch.md)。

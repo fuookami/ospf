@@ -1,11 +1,11 @@
 //! 飞机模型模块 / Aircraft model module
 
-use time::{Duration, OffsetDateTime};
-use ospf_rust_framework_gantt_scheduling::domain::task::ExecutorTrait;
-use crate::framework::demo4::infrastructure::{AircraftRegisterNumber, PassengerClass};
 use super::aircraft_type::AircraftMinorType;
 use super::airport::Airport;
 use super::flight_cycle::FlightCyclePeriod;
+use crate::framework::demo4::infrastructure::{AircraftRegisterNumber, PassengerClass};
+use ospf_rust_framework_gantt_scheduling::domain::task::ExecutorTrait;
+use time::{Duration, OffsetDateTime};
 
 /// 飞机容量 / Aircraft capacity
 #[derive(Debug, Clone)]

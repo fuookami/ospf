@@ -4,13 +4,10 @@
 //! - 当 `m = 1` 时返回 `x` / `x`, when `m = 1`
 //! - 当 `m = 0` 时返回 `0` / `0`, when `m = 0`
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+};
+use super::big_m::infer_linear_abs_bound_from_tokens;
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
@@ -18,11 +15,13 @@ use crate::token::{IntoValue, Token, TokenList};
 #[cfg(test)]
 use crate::variable::VariableId;
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, new_standalone_id};
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-};
-use super::big_m::infer_linear_abs_bound_from_tokens;
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 const DEFAULT_BIG_M: f64 = 1_000_000.0;
 const MIN_BIG_M: f64 = 1.0;
@@ -96,6 +95,7 @@ impl<V> MaskingFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建掩码函数 / Create a masking function.
     pub fn new(id: u64, name: &str, input: Linear<V>, mask_var: BinaryVariableItem) -> Self {
         Self::with_big_m(
             id,
@@ -106,6 +106,7 @@ where
         )
     }
 
+    /// 使用指定 Big-M 创建掩码函数 / Create a masking function with an explicit Big-M.
     pub fn with_big_m(
         id: u64,
         name: &str,
@@ -125,6 +126,7 @@ where
         }
     }
 
+    /// 设置声明的依赖符号 ID / Set declared dependency symbol IDs.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
@@ -142,18 +144,22 @@ where
         cloned
     }
 
+    /// 获取输入多项式 / Get the input polynomial.
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
+    /// 获取掩码变量 / Get the mask variable.
     pub fn mask_variable(&self) -> &BinaryVariableItem {
         &self.mask_var
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取 Big-M 值 / Get the Big-M value.
     pub fn big_m(&self) -> &V {
         &self.big_m
     }
@@ -527,6 +533,7 @@ impl<V> MaskingRangeFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 创建线性掩码范围函数 / Create a linear masking-range function.
     pub fn new(id: u64, name: &str, mask: Linear<V>, lower: V, upper: V) -> Self {
         let result_var =
             ContinuousVariableItem::create(new_standalone_id(), &format!("{}_mask_range", name));
@@ -540,23 +547,28 @@ where
         }
     }
 
+    /// 设置声明的依赖符号 ID / Set declared dependency symbol IDs.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取掩码多项式 / Get the mask polynomial.
     pub fn mask_polynomial(&self) -> &Linear<V> {
         &self.mask
     }
 
+    /// 获取下界 / Get the lower bound.
     pub fn lower_bound(&self) -> &V {
         &self.lower
     }
 
+    /// 获取上界 / Get the upper bound.
     pub fn upper_bound(&self) -> &V {
         &self.upper
     }
@@ -1016,6 +1028,7 @@ impl<V> MaskingWithPolyMaskFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
 {
+    /// 创建多项式掩码函数 / Create a polynomial-mask function.
     pub fn new(id: u64, name: &str, input: Linear<V>, mask: Linear<V>) -> Self {
         Self::with_big_m(
             id,
@@ -1026,13 +1039,8 @@ where
         )
     }
 
-    pub fn with_big_m(
-        id: u64,
-        name: &str,
-        input: Linear<V>,
-        mask: Linear<V>,
-        big_m: V,
-    ) -> Self {
+    /// 使用指定 Big-M 创建多项式掩码函数 / Create a polynomial-mask function with an explicit Big-M.
+    pub fn with_big_m(id: u64, name: &str, input: Linear<V>, mask: Linear<V>, big_m: V) -> Self {
         let mask_bridge_var =
             BinaryVariableItem::create(new_standalone_id(), &format!("{}_mask_bridge", name));
         let result_var =
@@ -1048,27 +1056,33 @@ where
         }
     }
 
+    /// 设置声明的依赖符号 ID / Set declared dependency symbol IDs.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取输入多项式 / Get the input polynomial.
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
+    /// 获取掩码多项式 / Get the mask polynomial.
     pub fn mask_polynomial(&self) -> &Linear<V> {
         &self.mask
     }
 
+    /// 获取掩码桥接变量 / Get the mask bridge variable.
     pub fn mask_bridge_variable(&self) -> &BinaryVariableItem {
         &self.mask_bridge_var
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取 Big-M 值 / Get the Big-M value.
     pub fn big_m(&self) -> &V {
         &self.big_m
     }
@@ -1212,15 +1226,16 @@ where
         );
 
         // Constraint 3: y <= big_M * bridge
-        let mut c3_monomials = Vec::with_capacity(2);
-        c3_monomials.push(LinearMonomial::new(
-            convert_f64_to_v::<V>(1.0, "masking_poly c3 y coefficient")?,
-            result_index,
-        ));
-        c3_monomials.push(LinearMonomial::new(
-            convert_f64_to_v::<V>(-big_m, "masking_poly c3 bridge coefficient")?,
-            bridge_index,
-        ));
+        let c3_monomials = vec![
+            LinearMonomial::new(
+                convert_f64_to_v::<V>(1.0, "masking_poly c3 y coefficient")?,
+                result_index,
+            ),
+            LinearMonomial::new(
+                convert_f64_to_v::<V>(-big_m, "masking_poly c3 bridge coefficient")?,
+                bridge_index,
+            ),
+        ];
         let c3 = LinearConstraint::from_symbol(
             LinearInequality::new(
                 Linear::new(
@@ -1235,15 +1250,16 @@ where
         );
 
         // Constraint 4: y >= -big_M * bridge
-        let mut c4_monomials = Vec::with_capacity(2);
-        c4_monomials.push(LinearMonomial::new(
-            convert_f64_to_v::<V>(1.0, "masking_poly c4 y coefficient")?,
-            result_index,
-        ));
-        c4_monomials.push(LinearMonomial::new(
-            convert_f64_to_v::<V>(big_m, "masking_poly c4 bridge coefficient")?,
-            bridge_index,
-        ));
+        let c4_monomials = vec![
+            LinearMonomial::new(
+                convert_f64_to_v::<V>(1.0, "masking_poly c4 y coefficient")?,
+                result_index,
+            ),
+            LinearMonomial::new(
+                convert_f64_to_v::<V>(big_m, "masking_poly c4 bridge coefficient")?,
+                bridge_index,
+            ),
+        ];
         let c4 = LinearConstraint::from_symbol(
             LinearInequality::new(
                 Linear::new(
@@ -1421,8 +1437,7 @@ where
                     .unwrap_or_else(|_| V::zero()),
                 self.result_var.index(),
             )],
-            convert_f64_to_v::<V>(0.0, "masking_poly constant")
-                .unwrap_or_else(|_| V::zero()),
+            convert_f64_to_v::<V>(0.0, "masking_poly constant").unwrap_or_else(|_| V::zero()),
         )
     }
 

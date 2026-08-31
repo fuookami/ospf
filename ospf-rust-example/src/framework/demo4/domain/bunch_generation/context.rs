@@ -1,10 +1,9 @@
 //! 编组生成上下文模块 / Bunch generation context module
-use std::collections::HashMap;
 use super::model::{FlightTaskReverse, Graph};
 use super::service::{
-    AggregationInitializer, FlightTaskBunchGenerator, GeneratedBunch,
-    RouteGraphGeneratorConfig,
+    AggregationInitializer, FlightTaskBunchGenerator, GeneratedBunch, RouteGraphGeneratorConfig,
 };
+use std::collections::HashMap;
 
 /// Bunch 生成上下文 / Bunch generation context
 /// 对齐 FSRA BunchGenerationContext
@@ -70,7 +69,13 @@ impl BunchGenerationContext {
         cost_calculator: &dyn Fn(&str, Option<&str>, &str) -> f64,
         connection_time_calculator: &dyn Fn(&str, &str) -> f64,
     ) -> Vec<GeneratedBunch> {
-        let generator = FlightTaskBunchGenerator::new(self.max_bunches, self.reduced_cost_threshold);
-        generator.generate(graph, shadow_prices, cost_calculator, connection_time_calculator)
+        let generator =
+            FlightTaskBunchGenerator::new(self.max_bunches, self.reduced_cost_threshold);
+        generator.generate(
+            graph,
+            shadow_prices,
+            cost_calculator,
+            connection_time_calculator,
+        )
     }
 }

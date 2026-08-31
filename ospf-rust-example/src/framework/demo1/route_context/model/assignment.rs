@@ -1,8 +1,8 @@
 //! 分配模型 / Assignment model
 
 use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
-use ospf_rust_core::variable::{VariableCombination, Binary};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination};
+use ospf_rust_core::variable::{Binary, VariableCombination};
 use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder, Shape};
 
 /// 二维二值变量组合类型别名 / 2D binary variable combination type alias

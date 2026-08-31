@@ -4,15 +4,7 @@
 
 /// 甘特领域 ID / Gantt domain id
 pub trait GanttId:
-    Clone
-    + std::fmt::Debug
-    + Eq
-    + std::hash::Hash
-    + Ord
-    + std::fmt::Display
-    + Send
-    + Sync
-    + 'static
+    Clone + std::fmt::Debug + Eq + std::hash::Hash + Ord + std::fmt::Display + Send + Sync + 'static
 {
     /// ID 是否为空 / Whether the id is empty
     fn is_empty(&self) -> bool {
@@ -154,7 +146,11 @@ string_id_type!(TaskStepId, "任务步骤 ID", "Task step id");
 string_id_type!(TaskPlanId, "任务计划 ID", "Task plan id");
 string_id_type!(ResourceId, "资源 ID", "Resource id");
 string_id_type!(ProductionActionId, "生产动作 ID", "Production action id");
-string_id_type!(ProductionMaterialId, "生产物料 ID", "Production material id");
+string_id_type!(
+    ProductionMaterialId,
+    "生产物料 ID",
+    "Production material id"
+);
 
 impl TaskIdTrait for TaskId {}
 impl ExecutorIdTrait for ExecutorId {}

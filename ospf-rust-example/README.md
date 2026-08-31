@@ -27,6 +27,7 @@ Explicit non-goals:
 | `src/framework/demo2` | Adaptive Benders / MILP fallback behavior contract example. |
 | `src/framework/demo3` | CSP1D-facing demo scaffold. |
 | `src/framework/demo4` | Gantt-scheduling-facing scaffold and domain layout experiment. |
+| `src/framework/demo5` | Solomon parser/adapter and VRPTW Branch-and-Price solver wiring. |
 
 ## Public API
 
@@ -42,6 +43,7 @@ The crate is primarily executable. The stable surface is its command names and d
 | `framework:demo2` | Adaptive Benders and MILP fallback demo. | Gurobi feature |
 | `framework:demo3` | CSP1D scaffold entry. | Gurobi feature |
 | `framework:demo4` | Gantt scaffold entry. | Gurobi feature |
+| `framework:demo5` | VRPTW Branch-and-Price demo. | `demo5-gurobi-bp` or `demo5-scip-bp` |
 
 ## Commands
 
@@ -64,17 +66,32 @@ cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo1
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo2
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo3
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo4
+cargo run -p ospf-rust-example --features demo5-gurobi-bp -- framework:demo5
+cargo run -p ospf-rust-example --features demo5-scip-bp -- framework:demo5
 ```
 
 Backend build-only verification:
 
 ```powershell
 cargo test -p ospf-rust-example --features backend-gurobi --no-run
+cargo check -p ospf-rust-example --features demo5-gurobi-bp
+cargo check -p ospf-rust-example --features demo5-scip-bp
 ```
 
 When backend feature is not enabled, running backend demos returns the hint `rerun with --features backend-gurobi`.
 
 `framework:demo4` currently stays as a scaffold command entry. Gantt-scheduling parity is intentionally postponed and not marked as completed functionality.
+
+`framework:demo5` uses an inline Solomon fixture and exercises parser, adapter, route generation, restricted master, and Branch-and-Price wiring. The integration targets cover target-level fixtures/parser checks; the library gates below are the commands that execute the direct-MIP cross-check, five-customer full-route master oracle, 100-customer smoke, and strict-proof fixture:
+
+```powershell
+cargo test -p ospf-rust-example --features demo5-gurobi-bp --lib demo17_25_branch_and_price_matches_direct_mip_objective -- --include-ignored
+cargo test -p ospf-rust-example --features demo5-gurobi-bp --lib demo17_100_branch_and_price_smoke_respects_limits -- --include-ignored
+cargo test -p ospf-rust-example --features demo5-gurobi-bp --lib proof_100_customer_fixture_closes_direct_mip_and_branch_and_price_bounds -- --include-ignored
+cargo test -p ospf-rust-example --features demo5-scip-bp --lib demo17_25_scip_branch_and_price_returns_legal_terminal -- --include-ignored
+```
+
+Solver and pricing failure paths are covered by the network crate's offline tests. Missing native runtime or license is a failed gate, not a pass.
 
 ## Demo2 Benders Behavior Contract
 

@@ -14,13 +14,13 @@ use ospf_rust_framework::model::shadow_price::{
 };
 use ospf_rust_framework::solver::column_generation_solver::LinearDualSolution;
 
+use crate::GanttResult;
 use crate::domain::bunch_compilation::iterative::IterativeBunchCompilation;
 use crate::domain::bunch_compilation::model::{BunchEntry, BunchSolution};
 use crate::domain::common::{
     ConstraintIndexMap, ExecutorId, ExecutorIdTrait, GanttDynamicModelLifecycle,
     GanttModelStateFacade,
 };
-use crate::GanttResult;
 
 // ============================================================================
 // 束编译上下文 trait / Bunch Compilation Context Trait
@@ -83,7 +83,10 @@ pub trait IterativeBunchCompilationContext: Send + Sync {
     }
 
     /// 恢复非移除束范围 / Restore non-removed bunch ranges
-    fn restore_non_removed_ranges_in_model(&mut self, _model: &mut MetaModel<f64>) -> GanttResult<()> {
+    fn restore_non_removed_ranges_in_model(
+        &mut self,
+        _model: &mut MetaModel<f64>,
+    ) -> GanttResult<()> {
         Ok(())
     }
 
@@ -279,7 +282,8 @@ where
         bunch_indices: &[usize],
         model: &mut MetaModel<f64>,
     ) -> GanttResult<()> {
-        self.compilation.hide_bunches(bunch_indices.iter().copied(), model)
+        self.compilation
+            .hide_bunches(bunch_indices.iter().copied(), model)
     }
 
     fn globally_fix_in_model(
@@ -302,7 +306,10 @@ where
             .locally_fix(iteration, threshold, solution, current_fixed, model)
     }
 
-    fn restore_non_removed_ranges_in_model(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
+    fn restore_non_removed_ranges_in_model(
+        &mut self,
+        model: &mut MetaModel<f64>,
+    ) -> GanttResult<()> {
         self.compilation.restore_non_removed_ranges(model)
     }
 
@@ -328,12 +335,12 @@ where
         // Extract shadow prices from dual values of taskCompilation constraints
         for ti in 0..self.compilation.base.n_tasks {
             let constraint_name = format!("task_compilation_{}", ti);
-            if let Some(&idx) = constraint_name_to_index.get(&constraint_name) {
-                if idx < dual_solution.constraints.len() {
-                    let price = dual_solution.constraints[idx];
-                    if price.abs() > f64::EPSILON {
-                        shadow_prices.insert(ti, price);
-                    }
+            if let Some(&idx) = constraint_name_to_index.get(&constraint_name)
+                && idx < dual_solution.constraints.len()
+            {
+                let price = dual_solution.constraints[idx];
+                if price.abs() > f64::EPSILON {
+                    shadow_prices.insert(ti, price);
                 }
             }
         }
@@ -365,10 +372,7 @@ where
         self.compilation.active_bunch_count()
     }
 
-    fn get_bunch_entry(
-        &self,
-        bunch_index: usize,
-    ) -> Option<BunchEntry<Self::ExecutorId>> {
+    fn get_bunch_entry(&self, bunch_index: usize) -> Option<BunchEntry<Self::ExecutorId>> {
         self.compilation.get_bunch_entry(bunch_index)
     }
 }

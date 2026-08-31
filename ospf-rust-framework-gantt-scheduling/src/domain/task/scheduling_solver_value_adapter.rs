@@ -10,7 +10,10 @@ use ospf_rust_core::solver::value::SolveValueConversionPolicy;
 ///
 /// 提供求解器数值和泛型数值之间的转换能力。
 /// Provides conversion between solver numeric values and generic numeric values.
-pub trait SchedulingSolverValueAdapter<V: SolveValue>: Send + Sync + std::fmt::Debug + 'static {
+#[allow(clippy::wrong_self_convention)]
+pub trait SchedulingSolverValueAdapter<V: SolveValue>:
+    Send + Sync + std::fmt::Debug + 'static
+{
     /// 从 f64 转换为 V / Convert from f64 to V
     fn into_value(&self, value: f64) -> V;
 

@@ -29,7 +29,7 @@ pub mod task_trait;
 // ========================================================================
 
 pub use crate::domain::common::{
-    executor_id, task_id, task_plan_id, task_step_id, ExecutorId, TaskId, TaskPlanId, TaskStepId,
+    ExecutorId, TaskId, TaskPlanId, TaskStepId, executor_id, task_id, task_plan_id, task_step_id,
 };
 
 pub use executor::{BasicExecutor, ExecutorInitialUsability, ExecutorTrait};

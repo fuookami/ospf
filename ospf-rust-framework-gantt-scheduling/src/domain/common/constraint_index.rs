@@ -60,10 +60,7 @@ impl ConstraintIndexKey {
     }
 
     /// 创建执行器-时隙编译 key / Create executor-slot compilation key
-    pub fn executor_slot_compilation(
-        executor_id: impl Into<String>,
-        slot_index: usize,
-    ) -> Self {
+    pub fn executor_slot_compilation(executor_id: impl Into<String>, slot_index: usize) -> Self {
         Self::ExecutorSlotCompilation {
             executor_id: executor_id.into(),
             slot_index,
@@ -71,10 +68,7 @@ impl ConstraintIndexKey {
     }
 
     /// 创建产能列选择 key / Create capacity-column selection key
-    pub fn capacity_column_selection(
-        executor_id: impl Into<String>,
-        slot_index: usize,
-    ) -> Self {
+    pub fn capacity_column_selection(executor_id: impl Into<String>, slot_index: usize) -> Self {
         Self::CapacityColumnSelection {
             executor_id: executor_id.into(),
             slot_index,
@@ -155,19 +149,15 @@ impl ConstraintIndexMap {
         executor_ids: I,
         slot_count: usize,
         constraint_name_to_index: &HashMap<String, usize>,
-    )
-    where
+    ) where
         I: IntoIterator,
         I::Item: std::fmt::Display,
     {
         for executor_id in executor_ids {
             let executor_id = executor_id.to_string();
             for slot_index in 0..slot_count {
-                let constraint_name = format!(
-                    "executor_slot_compilation_{}_{}",
-                    executor_id,
-                    slot_index,
-                );
+                let constraint_name =
+                    format!("executor_slot_compilation_{}_{}", executor_id, slot_index,);
                 if let Some(&dual_index) = constraint_name_to_index.get(&constraint_name) {
                     self.register(
                         ConstraintIndexKey::executor_slot_compilation(
@@ -189,9 +179,7 @@ impl ConstraintIndexMap {
 
     /// 通过约束名称查找条目 / Find entry by constraint name
     pub fn get_by_name(&self, name: &str) -> Option<&ConstraintIndexEntry> {
-        self.by_name
-            .get(name)
-            .and_then(|key| self.by_key.get(key))
+        self.by_name.get(name).and_then(|key| self.by_key.get(key))
     }
 
     /// 通过业务 key 提取对偶值 / Extract dual value by business key
@@ -209,10 +197,10 @@ impl ConstraintIndexMap {
         let mut prices = HashMap::new();
         for task_index in 0..n_tasks {
             let key = ConstraintIndexKey::task_compilation(task_index);
-            if let Some(price) = self.dual_value(&key, dual_values) {
-                if price.abs() > f64::EPSILON {
-                    prices.insert(task_index, price);
-                }
+            if let Some(price) = self.dual_value(&key, dual_values)
+                && price.abs() > f64::EPSILON
+            {
+                prices.insert(task_index, price);
             }
         }
         prices
@@ -243,14 +231,25 @@ mod tests {
         assert_eq!(map.len(), 1);
         assert_eq!(map.get(&key).unwrap().dual_index, 5);
         assert_eq!(map.get_by_name("task_compilation_2").unwrap().key, key);
-        assert_eq!(map.dual_value(&key, &[0.0, 1.0, 2.0, 3.0, 4.0, 9.0]), Some(9.0));
+        assert_eq!(
+            map.dual_value(&key, &[0.0, 1.0, 2.0, 3.0, 4.0, 9.0]),
+            Some(9.0)
+        );
     }
 
     #[test]
     fn test_constraint_index_map_extract_task_shadow_prices() {
         let mut map = ConstraintIndexMap::new();
-        map.register(ConstraintIndexKey::task_compilation(0), "task_compilation_0", 2);
-        map.register(ConstraintIndexKey::task_compilation(1), "task_compilation_1", 3);
+        map.register(
+            ConstraintIndexKey::task_compilation(0),
+            "task_compilation_0",
+            2,
+        );
+        map.register(
+            ConstraintIndexKey::task_compilation(1),
+            "task_compilation_1",
+            3,
+        );
 
         let prices = map.extract_task_shadow_prices(3, &[0.0, 0.0, 4.0, 0.0]);
 
@@ -278,10 +277,7 @@ mod tests {
             Some(1.5),
         );
         assert!(map.get(&ConstraintIndexKey::task_compilation(1)).is_none());
-        assert_eq!(
-            map.get_by_name("task_compilation_2").unwrap().dual_index,
-            6,
-        );
+        assert_eq!(map.get_by_name("task_compilation_2").unwrap().dual_index, 6,);
     }
 
     #[test]

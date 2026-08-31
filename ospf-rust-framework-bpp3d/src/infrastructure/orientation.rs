@@ -48,7 +48,10 @@ impl Orientation {
 
     /// 是否为旋转变体 / Whether this is a rotated variant
     pub fn is_rotated(self) -> bool {
-        matches!(self, Self::UprightRotated | Self::SideRotated | Self::LieRotated)
+        matches!(
+            self,
+            Self::UprightRotated | Self::SideRotated | Self::LieRotated
+        )
     }
 
     /// 获取对应的旋转变体 / Get the corresponding rotated variant
@@ -106,8 +109,14 @@ mod tests {
 
     #[test]
     fn orientation_category_matches() {
-        assert_eq!(Orientation::Upright.category(), OrientationCategory::Upright);
-        assert_eq!(Orientation::UprightRotated.category(), OrientationCategory::Upright);
+        assert_eq!(
+            Orientation::Upright.category(),
+            OrientationCategory::Upright
+        );
+        assert_eq!(
+            Orientation::UprightRotated.category(),
+            OrientationCategory::Upright
+        );
         assert_eq!(Orientation::Side.category(), OrientationCategory::Side);
         assert_eq!(Orientation::Lie.category(), OrientationCategory::Lie);
     }
@@ -133,6 +142,9 @@ mod tests {
     #[test]
     fn orientation_axis_permutation_identity() {
         // Upright 应为恒等置换
-        assert_eq!(Orientation::Upright.to_axis_permutation(), AxisPermutation3::XYZ);
+        assert_eq!(
+            Orientation::Upright.to_axis_permutation(),
+            AxisPermutation3::XYZ
+        );
     }
 }

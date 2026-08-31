@@ -1,10 +1,10 @@
 //! Lorenz-Stenflo 吸引子（四维）。
 //! Lorenz-Stenflo attractor (4D).
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point4};
 use crate::algebra::Field;
 use crate::geometry::Point4;
-use super::helpers::{default_float, one_point4};
+use num_traits::Float;
 
 point4_system!(
     /// Lorenz-Stenflo 吸引子的一阶欧拉步进模型。
@@ -49,7 +49,11 @@ impl<S: Field + Float> Default for LorenzStenfloAttractorGenerator<S> {
 /// 创建 Lorenz-Stenflo 吸引子。
 /// Create a Lorenz-Stenflo attractor.
 pub fn lorenz_stenflo_attractor<S: Field + Float>(
-    alpha: S, beta: S, delta: S, zeta: S, h: S,
+    alpha: S,
+    beta: S,
+    delta: S,
+    zeta: S,
+    h: S,
 ) -> LorenzStenfloAttractor<S> {
     LorenzStenfloAttractor::new(alpha, beta, delta, zeta, h)
 }
@@ -57,9 +61,17 @@ pub fn lorenz_stenflo_attractor<S: Field + Float>(
 /// 创建 Lorenz-Stenflo 吸引子生成器。
 /// Create a Lorenz-Stenflo attractor generator.
 pub fn lorenz_stenflo_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, delta: S, zeta: S, h: S, x: Point4<S>,
+    alpha: S,
+    beta: S,
+    delta: S,
+    zeta: S,
+    h: S,
+    x: Point4<S>,
 ) -> LorenzStenfloAttractorGenerator<S> {
-    LorenzStenfloAttractorGenerator::new(LorenzStenfloAttractor::new(alpha, beta, delta, zeta, h), x)
+    LorenzStenfloAttractorGenerator::new(
+        LorenzStenfloAttractor::new(alpha, beta, delta, zeta, h),
+        x,
+    )
 }
 
 #[cfg(test)]

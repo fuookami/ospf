@@ -17,6 +17,7 @@ expression/
 ├── dsl.rs           # DSL trait + PathBuilder + 便捷构造函数
 ├── evaluation.rs    # EvaluationContext 求值上下文 + 求值函数
 ├── normalize.rs     # 布尔表达式规范化 + structural_key
+├── transform.rs     # 标量/布尔 AST 后序变换
 ├── math_functions.rs # ScalarFunctionEvaluator trait + MathFunctionEvaluator（17 个 math.* 函数）
 └── scalar_parser.rs # 标量表达式解析器（可选，需要 "parser" feature）
 ```
@@ -84,6 +85,30 @@ expression/
 | `evaluate_scalar_expression(expr, ctx, evaluator)` | 求值标量表达式（带函数求值器） |
 
 `MathFunctionEvaluator` 内置 17 个 math.* 函数：`sqrt`、`pow`、`log`、`log10`、`exp`、`sin`、`cos`、`tan`、`asin`、`acos`、`atan`、`floor`、`ceil`、`round`、`max`、`min`、`abs`。
+
+## 结构保持的表达式变换
+
+`ScalarExpressionTransform` 和 `BooleanExpressionTransform` 提供结构保持的后序重写。使用 `transform_scalars` 改写布尔树中的标量节点，使用 `transform_booleans` 改写布尔节点。回调接收子节点重建后的当前节点，包括 `Conditional` 和 `Boolean` 标量分支中的子树。
+
+```rust
+use ospf_rust_math::symbol::expression::{
+    BooleanExpressionTransform, ExpressionValue, ScalarExpression,
+};
+
+let predicate = BooleanExpression::eq(
+    ScalarExpression::reference("age"),
+    ScalarExpression::constant(ExpressionValue::from(18)),
+);
+
+let rewritten = predicate.transform_scalars(|scalar| match scalar {
+    ScalarExpression::Constant(ExpressionValue::Number(value)) => {
+        ScalarExpression::constant(ExpressionValue::Number(value + 1.0))
+    }
+    scalar => scalar,
+});
+```
+
+这些工具只重建共享 AST，不求值，也不修改原表达式。`transform_scalar_expression` 还会遍历标量条件表达式和布尔包装表达式中嵌套的布尔分支。
 
 ## 布尔规范化
 

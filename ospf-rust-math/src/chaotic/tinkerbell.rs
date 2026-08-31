@@ -1,10 +1,10 @@
 //! 丁克贝尔映射。
 //! Tinkerbell map.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point2};
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use super::helpers::{default_float, one_point2};
+use num_traits::Float;
 
 point2_system!(
     /// 丁克贝尔映射。
@@ -48,7 +48,13 @@ pub fn tinkerbell_map<S: Field + Float>(a: S, b: S, c: S, d: S) -> TinkerbellMap
 
 /// 创建丁克贝尔映射生成器。
 /// Create a Tinkerbell map generator.
-pub fn tinkerbell_map_generator<S: Field + Float>(a: S, b: S, c: S, d: S, x: Point2<S>) -> TinkerbellMapGenerator<S> {
+pub fn tinkerbell_map_generator<S: Field + Float>(
+    a: S,
+    b: S,
+    c: S,
+    d: S,
+    x: Point2<S>,
+) -> TinkerbellMapGenerator<S> {
     TinkerbellMapGenerator::new(TinkerbellMap::new(a, b, c, d), x)
 }
 

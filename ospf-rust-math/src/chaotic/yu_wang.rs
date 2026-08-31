@@ -1,10 +1,10 @@
 //! Yu-Wang 吸引子。
 //! Yu-Wang attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Yu-Wang 吸引子的一阶欧拉步进模型。
@@ -46,14 +46,25 @@ impl<S: Field + Float> Default for YuWangAttractorGenerator<S> {
 
 /// 创建 Yu-Wang 吸引子。
 /// Create a Yu-Wang attractor.
-pub fn yu_wang_attractor<S: Field + Float>(alpha: S, beta: S, delta: S, zeta: S, h: S) -> YuWangAttractor<S> {
+pub fn yu_wang_attractor<S: Field + Float>(
+    alpha: S,
+    beta: S,
+    delta: S,
+    zeta: S,
+    h: S,
+) -> YuWangAttractor<S> {
     YuWangAttractor::new(alpha, beta, delta, zeta, h)
 }
 
 /// 创建 Yu-Wang 吸引子生成器。
 /// Create a Yu-Wang attractor generator.
 pub fn yu_wang_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, delta: S, zeta: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    delta: S,
+    zeta: S,
+    h: S,
+    x: Point3<S>,
 ) -> YuWangAttractorGenerator<S> {
     YuWangAttractorGenerator::new(YuWangAttractor::new(alpha, beta, delta, zeta, h), x)
 }

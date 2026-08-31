@@ -1,10 +1,10 @@
 //! 旅客模型模块 / Passenger model module.
-use std::error::Error;
-use std::sync::Arc;
+use crate::framework::demo4::infrastructure::PassengerClass;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::LinearMonomial;
-use crate::framework::demo4::infrastructure::PassengerClass;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 旅客 / Passenger
 /// 对齐 Kotlin Passenger / Aligned with Kotlin Passenger
@@ -34,4 +34,3 @@ impl Passenger {
         self.flights.len() > 1
     }
 }
-

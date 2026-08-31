@@ -1,22 +1,21 @@
 //! MaxMin/MinMax 函数符号 / MaxMin/MinMax function symbols
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+};
+use super::max::{MaxFunction, MinFunction};
 use crate::error::Result;
 use crate::model::LinearConstraint;
 use crate::symbol::flatten::{Linear, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::ContinuousVariableItem;
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-};
-use super::max::{MaxFunction, MinFunction};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 /// 多项式集合的精确最小值（对应 Kotlin `MaxMinFunction`）。
 /// Exact minimum of a polynomial set (Kotlin `MaxMinFunction`).

@@ -34,10 +34,10 @@
 //! let gradient = grad_fn(&[2.0_f64, 3.0_f64]); // [2.0, 3.0]
 //! ```
 
-use std::collections::HashMap;
-use std::rc::Rc;
 use crate::symbol::operation::Differentiate;
 use crate::symbol::{Linear, OwnedSymbol, Quadratic};
+use std::collections::HashMap;
+use std::rc::Rc;
 
 // ============================================================================
 // CompileEval trait - 编译求值 trait

@@ -1,12 +1,12 @@
 //! 舱位模型 / Position model (stowage)
-use super::item::{Item, ItemLocationTag, ItemStatus};
 use super::super::super::shared::units;
-use std::error::Error;
-use std::sync::Arc;
+use super::item::{Item, ItemLocationTag, ItemStatus};
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::flatten::Linear;
-use ospf_rust_core::symbol::function::{Point2, UnivariateLinearPiecewiseFunction};
 use ospf_rust_core::symbol::flatten::LinearMonomial;
+use ospf_rust_core::symbol::function::{Point2, UnivariateLinearPiecewiseFunction};
+use std::error::Error;
+use std::sync::Arc;
 
 /// 舱位状态代码 / Position status code (对齐 Kotlin PositionStatusCode)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

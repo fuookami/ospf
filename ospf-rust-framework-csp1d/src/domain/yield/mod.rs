@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use ospf_rust_core::solver::SolveValue;
 
 use crate::domain::material::{
-    shadow_price_unit_symbol, Csp1dQuantity, Product, ProductDemand,
-    ProductDemandShadowPriceKey, ProductId,
+    Csp1dQuantity, Product, ProductDemand, ProductDemandShadowPriceKey, ProductId,
+    shadow_price_unit_symbol,
 };
 
 pub mod model;
@@ -71,7 +71,8 @@ pub struct YieldModelingConfig<V: SolveValue> {
     /// 超产惩罚权重 / Over-production penalty weights
     pub over_production_penalty: BTreeMap<crate::domain::material::ProductDemandShadowPriceKey, V>,
     /// 超产上界 / Over-production upper bounds
-    pub over_production_upper_bound: BTreeMap<crate::domain::material::ProductDemandShadowPriceKey, V>,
+    pub over_production_upper_bound:
+        BTreeMap<crate::domain::material::ProductDemandShadowPriceKey, V>,
 }
 
 /// Yield 建模结果 / Yield modeling result

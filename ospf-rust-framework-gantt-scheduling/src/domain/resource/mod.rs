@@ -8,8 +8,8 @@
 //! - [`model`]: 资源容量、资源 trait、使用量组件和松弛配置
 //! - [`service`]: 资源限制和目标 Pipeline
 
-use ospf_rust_core::model::MetaModel;
 use crate::GanttResult;
+use ospf_rust_core::model::MetaModel;
 
 pub mod model;
 pub mod service;
@@ -19,24 +19,13 @@ pub mod service;
 // ========================================================================
 
 pub use model::{
-    ResourceCapacity,
-    ResourceSlack,
-    ResourceTrait,
-    ExecutionResourceTrait,
-    StorageResourceTrait,
-    ConnectionResourceTrait,
-    BasicExecutionResource,
-    BasicStorageResource,
-    BasicConnectionResource,
-    ResourceUsage,
-    StorageResourceUsage,
-    ConnectionResourceUsage,
+    BasicConnectionResource, BasicExecutionResource, BasicStorageResource, ConnectionResourceTrait,
+    ConnectionResourceUsage, ExecutionResourceTrait, ResourceCapacity, ResourceSlack,
+    ResourceTrait, ResourceUsage, StorageResourceTrait, StorageResourceUsage,
 };
 
 pub use service::{
-    ResourceCapacityConstraint,
-    ResourceOverQuantityMinimization,
-    ResourceLessQuantityMinimization,
+    ResourceCapacityConstraint, ResourceLessQuantityMinimization, ResourceOverQuantityMinimization,
 };
 
 // ========================================================================

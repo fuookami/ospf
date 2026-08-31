@@ -1,7 +1,7 @@
 //! 航段连接时间计算器 / Flight connection time calculator
 
-use time::Duration;
 use super::super::model::Link;
+use time::Duration;
 
 /// 连接时间计算器 / Connection time calculator
 /// 对齐 Kotlin ConnectionTimeCalculator
@@ -13,7 +13,11 @@ impl ConnectionTimeCalculator {
         links
             .iter()
             .map(|link| {
-                (link.from_task.clone(), link.to_task.clone(), link.min_connection_time())
+                (
+                    link.from_task.clone(),
+                    link.to_task.clone(),
+                    link.min_connection_time(),
+                )
             })
             .collect()
     }

@@ -9,21 +9,21 @@ use ospf_rust_core::variable::VariableId;
 
 use crate::application::model::{
     Csp1dConfiguration, Csp1dKpiKeys, Csp1dProblem, Csp1dSolution, Csp1dSolutionAnalyzer,
-    Csp1dSolveConfig, Csp1dSolutionStatus,
+    Csp1dSolutionStatus, Csp1dSolveConfig,
 };
 use crate::domain::cutting_plan_generation::{
     Csp1dInitialCuttingPlanGenerator, Csp1dPricingGenerator, Csp1dPricingInput,
     Csp1dPricingObjectiveConfig, CuttingPlanGenerationInput, CuttingPlanGenerationReport,
-    CuttingPlanGenerationStatistics, ReducedCostPricingGenerator, SimpleInitialCuttingPlanGenerator,
-    width_feasibility_check_from_policies,
+    CuttingPlanGenerationStatistics, ReducedCostPricingGenerator,
+    SimpleInitialCuttingPlanGenerator, width_feasibility_check_from_policies,
 };
-use crate::domain::material::{from_f64, render_cutting_plan, to_f64, CuttingPlan, MaterialId};
+use crate::domain::material::{CuttingPlan, MaterialId, from_f64, render_cutting_plan, to_f64};
 use crate::domain::produce::{
-    accept_partial_by_policies, allow_recovery_fallback_by_policies,
+    Csp1dDefaultShadowPriceMap, Csp1dFlowContext, Csp1dIterativeContext, Csp1dModelContext,
+    Csp1dModelingMode, Csp1dProduceContext, Csp1dProduceContextBuilder, CuttingPlanUsage, Produce,
+    ProduceInput, accept_partial_by_policies, allow_recovery_fallback_by_policies,
     filter_initial_plans_by_policies_with_context, is_equivalent_by_policies,
-    select_termination_by_policies_with_default, should_stop_by_policies, Csp1dFlowContext,
-    Csp1dDefaultShadowPriceMap, Csp1dIterativeContext, Csp1dModelContext, Csp1dModelingMode,
-    Csp1dProduceContext, Csp1dProduceContextBuilder, CuttingPlanUsage, Produce, ProduceInput,
+    select_termination_by_policies_with_default, should_stop_by_policies,
 };
 
 /// 列生成终止原因 / Column generation termination reason
@@ -236,7 +236,8 @@ impl<V: SolveValue> Default for Csp1dWarmStartAdapterInput<V> {
 /// warm start adapter 结果 / Warm start adapter result
 pub struct Csp1dWarmStartAdapterResult<V: SolveValue> {
     /// 初始生成器 / Initial generator
-    pub initial_generator: Option<Box<dyn Fn(&CuttingPlanGenerationInput<V>) -> Vec<CuttingPlan<V>> + Send + Sync>>,
+    pub initial_generator:
+        Option<Box<dyn Fn(&CuttingPlanGenerationInput<V>) -> Vec<CuttingPlan<V>> + Send + Sync>>,
     /// 初始方案使用量 / Initial plan usages
     pub initial_plan_usages: Vec<crate::domain::produce::CuttingPlanUsage<V>>,
     /// 已应用方案数 / Applied plan count
@@ -470,7 +471,9 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
         &self,
         problem: Csp1dProblem<V>,
         solve_config: Option<Csp1dSolveConfig<V>>,
-        initial_generator: Option<&(dyn Fn(&CuttingPlanGenerationInput<V>) -> Vec<CuttingPlan<V>> + Send + Sync)>,
+        initial_generator: Option<
+            &(dyn Fn(&CuttingPlanGenerationInput<V>) -> Vec<CuttingPlan<V>> + Send + Sync),
+        >,
         warm_start_plan_usages: &[crate::domain::produce::CuttingPlanUsage<V>],
     ) -> Csp1dColumnGenerationResult<V> {
         let resolved_config = self.resolve_solve_config(&problem, solve_config);
@@ -505,7 +508,8 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
                 },
             }
         } else {
-            self.initial_generator.generate_with_report(&generation_input)
+            self.initial_generator
+                .generate_with_report(&generation_input)
         };
         let flow_context = BasicFlowContext {
             iteration: 0,
@@ -528,11 +532,9 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
 
         if current_plans.is_empty() {
             let failure_message = "No initial cutting plans generated".to_string();
-            let base_solution = self.analyzer.analyze(
-                &problem,
-                empty_produce(&problem),
-                Vec::new(),
-            );
+            let base_solution =
+                self.analyzer
+                    .analyze(&problem, empty_produce(&problem), Vec::new());
             let solution = enrich_solution(
                 base_solution,
                 EnrichmentInput {
@@ -594,7 +596,8 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
                 pricing_policies: resolved_config.extension_set.pricing_policies.clone(),
             };
             let pricing_report = self.pricing_generator.generate_with_report(&pricing_input);
-            pricing_statistics = merge_generation_statistics(pricing_statistics, pricing_report.statistics.clone());
+            pricing_statistics =
+                merge_generation_statistics(pricing_statistics, pricing_report.statistics.clone());
             let plan_count_before = current_plans.len();
             let flow_context = BasicFlowContext {
                 iteration: iteration as u64,
@@ -683,11 +686,9 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
             warm_start_plan_usages,
         );
         let top_plans = top_cutting_plans(&current_plans, resolved_config.top_k_plan_limit);
-        let mut base_solution = self.analyzer.analyze(
-            &problem,
-            final_result.produce,
-            current_plans.clone(),
-        );
+        let mut base_solution =
+            self.analyzer
+                .analyze(&problem, final_result.produce, current_plans.clone());
         base_solution.yield_result = final_result.yield_result;
         base_solution.waste_result = final_result.waste_result;
         base_solution.length_result = final_result.length_result;
@@ -776,10 +777,13 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
         solve_config: Option<Csp1dSolveConfig<V>>,
     ) -> Csp1dSolveConfig<V> {
         let mut config = solve_config.unwrap_or_else(|| {
-            problem.solve_config.clone().unwrap_or_else(|| Csp1dSolveConfig {
-                column_generation: problem.configuration,
-                ..Csp1dSolveConfig::default()
-            })
+            problem
+                .solve_config
+                .clone()
+                .unwrap_or_else(|| Csp1dSolveConfig {
+                    column_generation: problem.configuration,
+                    ..Csp1dSolveConfig::default()
+                })
         });
         if config.yield_config.is_none() {
             config.yield_config = self.yield_config.clone();
@@ -940,7 +944,8 @@ impl<V: SolveValue> Csp1dMilp<V> {
                 statistics: CuttingPlanGenerationStatistics::default(),
             }
         } else {
-            self.initial_generator.generate_with_report(&generation_input)
+            self.initial_generator
+                .generate_with_report(&generation_input)
         };
         let flow_context = BasicFlowContext {
             iteration: 0,
@@ -961,11 +966,9 @@ impl<V: SolveValue> Csp1dMilp<V> {
         generated_plans.truncate(resolved_config.column_generation.max_initial_plans as usize);
         if generated_plans.is_empty() {
             let failure_message = "No initial cutting plans generated".to_string();
-            let base_solution = self.analyzer.analyze(
-                &problem,
-                empty_produce(&problem),
-                Vec::new(),
-            );
+            let base_solution =
+                self.analyzer
+                    .analyze(&problem, empty_produce(&problem), Vec::new());
             let solution = enrich_solution(
                 base_solution,
                 EnrichmentInput {
@@ -1012,11 +1015,9 @@ impl<V: SolveValue> Csp1dMilp<V> {
             false,
         );
         let top_plans = top_cutting_plans(&generated_plans, resolved_config.top_k_plan_limit);
-        let mut base_solution = self.analyzer.analyze(
-            &problem,
-            milp_result.produce,
-            generated_plans.clone(),
-        );
+        let mut base_solution =
+            self.analyzer
+                .analyze(&problem, milp_result.produce, generated_plans.clone());
         base_solution.yield_result = milp_result.yield_result;
         base_solution.waste_result = milp_result.waste_result;
         base_solution.length_result = milp_result.length_result;
@@ -1072,10 +1073,13 @@ impl<V: SolveValue> Csp1dMilp<V> {
         solve_config: Option<Csp1dSolveConfig<V>>,
     ) -> Csp1dSolveConfig<V> {
         let mut config = solve_config.unwrap_or_else(|| {
-            problem.solve_config.clone().unwrap_or_else(|| Csp1dSolveConfig {
-                column_generation: problem.configuration,
-                ..Csp1dSolveConfig::default()
-            })
+            problem
+                .solve_config
+                .clone()
+                .unwrap_or_else(|| Csp1dSolveConfig {
+                    column_generation: problem.configuration,
+                    ..Csp1dSolveConfig::default()
+                })
         });
         if config.yield_config.is_none() {
             config.yield_config = self.yield_config.clone();
@@ -1137,7 +1141,10 @@ impl<V: SolveValue> std::fmt::Debug for Csp1dLpSolveResult<V> {
             .field("shadow_prices", &self.shadow_prices)
             .field("model_constraint_count", &self.model.constraints().len())
             .field("dual_solution", &self.dual_solution)
-            .field("framework_shadow_price_map", &self.framework_shadow_price_map)
+            .field(
+                "framework_shadow_price_map",
+                &self.framework_shadow_price_map,
+            )
             .finish()
     }
 }
@@ -1160,7 +1167,9 @@ impl Csp1dMilpSolver {
         waste_config: Option<crate::domain::wasting_minimization::WasteMinimizationConfig<V>>,
         length_config: Option<crate::domain::length_assignment::LengthAssignmentModelingConfig<V>>,
         extensions: Vec<crate::domain::produce::Csp1dModelingExtension<V>>,
-        objective_policies: Vec<std::sync::Arc<dyn crate::domain::produce::Csp1dObjectivePolicy<V>>>,
+        objective_policies: Vec<
+            std::sync::Arc<dyn crate::domain::produce::Csp1dObjectivePolicy<V>>,
+        >,
         is_final_milp: bool,
     ) -> Option<Csp1dMilpSolveResult<V>> {
         solve_milp_input_heuristic(
@@ -1305,9 +1314,12 @@ fn solve_recovery_with_trace<V: SolveValue>(
     warm_start_adapter: &dyn Csp1dWarmStartAdapter<V>,
     input: Csp1dRecoveryInput<V>,
 ) -> crate::Csp1dResult<Csp1dRecoveryResult<V>> {
-    let problem = input.problem.clone().ok_or_else(|| crate::Csp1dError::InvalidInput {
-        message: "Csp1dRecoveryInput.problem is required".into(),
-    })?;
+    let problem = input
+        .problem
+        .clone()
+        .ok_or_else(|| crate::Csp1dError::InvalidInput {
+            message: "Csp1dRecoveryInput.problem is required".into(),
+        })?;
     let warm_start_resolution = resolve_warm_start(&input, warm_start_adapter);
     let fallback_required = requires_fallback(warm_start_resolution.status);
     let allow_fallback = allow_recovery_fallback(&input, &warm_start_resolution);
@@ -1380,10 +1392,12 @@ fn allow_recovery_fallback<V: SolveValue>(
     if !requires_fallback(warm_start_resolution.status) {
         return input.options.retry_without_warm_start;
     }
-    let solve_config_for_policy = input
-        .solve_config
-        .as_ref()
-        .or_else(|| input.problem.as_ref().and_then(|problem| problem.solve_config.as_ref()));
+    let solve_config_for_policy = input.solve_config.as_ref().or_else(|| {
+        input
+            .problem
+            .as_ref()
+            .and_then(|problem| problem.solve_config.as_ref())
+    });
     let Some(solve_config) = solve_config_for_policy else {
         return input.options.retry_without_warm_start;
     };
@@ -1539,7 +1553,10 @@ fn is_warm_start_plan_compatible<V: SolveValue>(
     }
     if let Some(machine_id) = &plan.machine_id {
         if !problem.machines.is_empty()
-            && !problem.machines.iter().any(|machine| machine.id == *machine_id)
+            && !problem
+                .machines
+                .iter()
+                .any(|machine| machine.id == *machine_id)
         {
             return false;
         }
@@ -1573,10 +1590,7 @@ fn warm_start_message(status: Csp1dWarmStartStatus) -> Option<String> {
     }
 }
 
-fn fallback_disabled_trace(
-    status: Csp1dWarmStartStatus,
-    plan_count: i64,
-) -> Csp1dRecoveryTrace {
+fn fallback_disabled_trace(status: Csp1dWarmStartStatus, plan_count: i64) -> Csp1dRecoveryTrace {
     Csp1dRecoveryTrace {
         status: Csp1dRecoveryStatus::FallbackDisabled,
         warm_start_status: status,
@@ -1668,7 +1682,9 @@ fn solve_milp_input_heuristic<V: SolveValue>(
     let selected = input.warm_start_plan_usages.clone();
     let resolved_length_config = resolve_default_length_bounds(&input, length_config);
     let mut builder = Csp1dProduceContextBuilder::new(input);
-    builder.mode(Csp1dModelingMode::MILP).is_final_milp(is_final_milp);
+    builder
+        .mode(Csp1dModelingMode::MILP)
+        .is_final_milp(is_final_milp);
     if let Some(config) = yield_config {
         builder.yield_config(config);
     }
@@ -1691,7 +1707,9 @@ fn solve_milp_input_heuristic<V: SolveValue>(
         "csp1d_milp_heuristic"
     };
     let mut model = ospf_rust_core::model::MetaModel::<f64>::new(model_name);
-    context.register(&mut model).map_err(|error| error.to_string())?;
+    context
+        .register(&mut model)
+        .map_err(|error| error.to_string())?;
     let mut solution_by_id = std::collections::HashMap::new();
     let usage_by_key = selected
         .iter()
@@ -1740,13 +1758,10 @@ fn resolve_default_length_bounds<V: SolveValue>(
     if config.dynamic_product_ids.is_empty() {
         return Some(config);
     }
-    let needs_derivation = config
-        .dynamic_product_ids
-        .iter()
-        .any(|product_id| {
-            !config.assigned_length_lower_bound.contains_key(product_id)
-                || !config.assigned_length_upper_bound.contains_key(product_id)
-        });
+    let needs_derivation = config.dynamic_product_ids.iter().any(|product_id| {
+        !config.assigned_length_lower_bound.contains_key(product_id)
+            || !config.assigned_length_upper_bound.contains_key(product_id)
+    });
     if !needs_derivation {
         return Some(config);
     }
@@ -1781,8 +1796,8 @@ fn resolve_default_length_bounds<V: SolveValue>(
             let product = demand
                 .map(|demand| &demand.product)
                 .or_else(|| contribution.map(|contribution| &contribution.product));
-            if let Some(max_over_length) = product
-                .and_then(|product| product.max_over_produce_length.as_ref())
+            if let Some(max_over_length) =
+                product.and_then(|product| product.max_over_produce_length.as_ref())
             {
                 config
                     .assigned_length_upper_bound
@@ -1817,7 +1832,9 @@ fn solve_lp_input_heuristic<V: SolveValue>(
                 .and_then(|plan| plan.rest_width())
                 .map(|width| width.value)
         })
-        .ok_or_else(|| "Cannot derive V sample from ProduceInput for shadow price extraction".to_string())?;
+        .ok_or_else(|| {
+            "Cannot derive V sample from ProduceInput for shadow price extraction".to_string()
+        })?;
     let mut builder = Csp1dProduceContextBuilder::new(input.clone());
     builder.mode(Csp1dModelingMode::LP);
     for extension in extensions {
@@ -1825,7 +1842,9 @@ fn solve_lp_input_heuristic<V: SolveValue>(
     }
     let mut context = builder.build().map_err(|error| error.to_string())?;
     let mut model = ospf_rust_core::model::MetaModel::<f64>::new("csp1d_produce_lp");
-    context.register(&mut model).map_err(|error| error.to_string())?;
+    context
+        .register(&mut model)
+        .map_err(|error| error.to_string())?;
     let dual_solution = optimistic_dual_solution_for_demands(&input.demands, &model);
     let mut lifecycle = crate::domain::produce::Csp1dShadowPriceLifecycle::with_pipelines(
         domain_value_sample,
@@ -1924,7 +1943,8 @@ struct EnrichmentInput<'a, V: SolveValue> {
     pricing_statistics: Option<CuttingPlanGenerationStatistics>,
     lp_failure_message: Option<String>,
     iteration_records: Vec<Csp1dIterationRecord>,
-    extraction_policies: &'a [std::sync::Arc<dyn crate::domain::produce::Csp1dExtractionPolicy<V>>],
+    extraction_policies:
+        &'a [std::sync::Arc<dyn crate::domain::produce::Csp1dExtractionPolicy<V>>],
     demands: &'a [crate::domain::material::ProductDemand<V>],
     materials: &'a [crate::domain::material::Material<V>],
     machines: &'a [crate::domain::material::Machine<V>],
@@ -2008,7 +2028,10 @@ fn select_termination_reason_by_policies<V: SolveValue>(
         termination_reason_name(default_reason).to_string(),
         default_message,
     );
-    (parse_termination_reason(&reason).unwrap_or(default_reason), message)
+    (
+        parse_termination_reason(&reason).unwrap_or(default_reason),
+        message,
+    )
 }
 
 fn termination_reason_name(reason: Csp1dTerminationReason) -> &'static str {
@@ -2045,7 +2068,9 @@ fn optimistic_shadow_prices<V: SolveValue>(
                 crate::domain::material::Csp1dShadowPriceKey::ProductDemand(
                     crate::domain::material::ProductDemandShadowPriceKey {
                         product_id: demand.product.id.clone(),
-                        unit_symbol: crate::domain::material::shadow_price_unit_symbol(&demand.quantity.unit),
+                        unit_symbol: crate::domain::material::shadow_price_unit_symbol(
+                            &demand.quantity.unit,
+                        ),
                     },
                 ),
                 from_f64(1.0)?,
@@ -2072,7 +2097,9 @@ fn optimistic_dual_solution_for_demands<V: SolveValue>(
                 &crate::domain::material::Csp1dShadowPriceKey::ProductDemand(
                     crate::domain::material::ProductDemandShadowPriceKey {
                         product_id: demand.product.id.clone(),
-                        unit_symbol: crate::domain::material::shadow_price_unit_symbol(&demand.quantity.unit),
+                        unit_symbol: crate::domain::material::shadow_price_unit_symbol(
+                            &demand.quantity.unit,
+                        ),
                     },
                 ),
             )
@@ -2115,8 +2142,10 @@ fn merge_generation_statistics(
             infeasible_candidates: left.infeasible_candidates + right.infeasible_candidates,
             duplicate_candidates: left.duplicate_candidates + right.duplicate_candidates,
             dominated_candidates: left.dominated_candidates + right.dominated_candidates,
-            width_bound_pruned_nodes: left.width_bound_pruned_nodes + right.width_bound_pruned_nodes,
-            knife_bound_pruned_nodes: left.knife_bound_pruned_nodes + right.knife_bound_pruned_nodes,
+            width_bound_pruned_nodes: left.width_bound_pruned_nodes
+                + right.width_bound_pruned_nodes,
+            knife_bound_pruned_nodes: left.knife_bound_pruned_nodes
+                + right.knife_bound_pruned_nodes,
             length_bound_pruned_entries: left.length_bound_pruned_entries
                 + right.length_bound_pruned_entries,
             material_width_index_cache_hits: left.material_width_index_cache_hits
@@ -2146,21 +2175,35 @@ fn select_plans_heuristically<V: SolveValue>(
     let mut supplied = problem
         .demands
         .iter()
-        .map(|demand| ((demand.product.id.clone(), demand.quantity.unit.symbol().to_string()), 0.0))
+        .map(|demand| {
+            (
+                (
+                    demand.product.id.clone(),
+                    demand.quantity.unit.symbol().to_string(),
+                ),
+                0.0,
+            )
+        })
         .collect::<std::collections::BTreeMap<_, _>>();
     let required = problem
         .demands
         .iter()
         .filter_map(|demand| {
             Some((
-                (demand.product.id.clone(), demand.quantity.unit.symbol().to_string()),
+                (
+                    demand.product.id.clone(),
+                    demand.quantity.unit.symbol().to_string(),
+                ),
                 to_f64(&demand.quantity.value)?,
             ))
         })
         .collect::<std::collections::BTreeMap<_, _>>();
     let mut material_usage = std::collections::BTreeMap::<MaterialId, u64>::new();
     for demand in &problem.demands {
-        let key = (demand.product.id.clone(), demand.quantity.unit.symbol().to_string());
+        let key = (
+            demand.product.id.clone(),
+            demand.quantity.unit.symbol().to_string(),
+        );
         let target = *required.get(&key).unwrap_or(&0.0);
         while *supplied.get(&key).unwrap_or(&0.0) + f64::EPSILON < target {
             let Some(plan) = cutting_plans.iter().find(|plan| {
@@ -2241,15 +2284,19 @@ fn insert_domain_slack_solution<V: SolveValue>(
             let supplied = selected
                 .iter()
                 .flat_map(|usage| {
-                    usage.plan.demand_contributions.iter().filter_map(|contribution| {
-                        if contribution.product.id == demand.product.id
-                            && contribution.quantity.unit == demand.quantity.unit
-                        {
-                            Some(to_f64(&contribution.quantity.value)? * usage.amount as f64)
-                        } else {
-                            None
-                        }
-                    })
+                    usage
+                        .plan
+                        .demand_contributions
+                        .iter()
+                        .filter_map(|contribution| {
+                            if contribution.product.id == demand.product.id
+                                && contribution.quantity.unit == demand.quantity.unit
+                            {
+                                Some(to_f64(&contribution.quantity.value)? * usage.amount as f64)
+                            } else {
+                                None
+                            }
+                        })
                 })
                 .sum::<f64>();
             let Some(required) = to_f64(&demand.quantity.value) else {
@@ -2372,9 +2419,19 @@ fn enrich_solution<V: SolveValue>(
         Csp1dKpiKeys::LengthMetricCount,
         solution.kpi.length_metric_count.to_string(),
     );
-    insert_detail(&mut details, &mut render_kpi, Csp1dKpiKeys::SolutionStatus, format!("{:?}", input.status));
+    insert_detail(
+        &mut details,
+        &mut render_kpi,
+        Csp1dKpiKeys::SolutionStatus,
+        format!("{:?}", input.status),
+    );
     if let Some(reason) = input.termination_reason {
-        insert_detail(&mut details, &mut render_kpi, Csp1dKpiKeys::TerminationReason, format!("{:?}", reason));
+        insert_detail(
+            &mut details,
+            &mut render_kpi,
+            Csp1dKpiKeys::TerminationReason,
+            format!("{:?}", reason),
+        );
         insert_detail(
             &mut details,
             &mut render_kpi,
@@ -2395,10 +2452,20 @@ fn enrich_solution<V: SolveValue>(
         input.partial_solution_available.to_string(),
     );
     if let Some(message) = &input.failure_message {
-        insert_detail(&mut details, &mut render_kpi, Csp1dKpiKeys::FailureMessage, message.clone());
+        insert_detail(
+            &mut details,
+            &mut render_kpi,
+            Csp1dKpiKeys::FailureMessage,
+            message.clone(),
+        );
     }
     if let Some(message) = &input.lp_failure_message {
-        insert_detail(&mut details, &mut render_kpi, Csp1dKpiKeys::LpFailureMessage, message.clone());
+        insert_detail(
+            &mut details,
+            &mut render_kpi,
+            Csp1dKpiKeys::LpFailureMessage,
+            message.clone(),
+        );
     }
     insert_detail(
         &mut details,
@@ -2420,10 +2487,9 @@ fn enrich_solution<V: SolveValue>(
             last.plan_count_after.to_string(),
         );
     }
-    let priced_total = input
-        .iteration_records
-        .iter()
-        .fold(0_u64, |acc, record| acc.saturating_add(record.priced_plan_count));
+    let priced_total = input.iteration_records.iter().fold(0_u64, |acc, record| {
+        acc.saturating_add(record.priced_plan_count)
+    });
     insert_detail(
         &mut details,
         &mut render_kpi,

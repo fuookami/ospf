@@ -5,8 +5,22 @@ edition = "2024"
 license.workspace = true
 
 [features]
-default = []
-backend-gurobi = ["ospf-rust-core/gurobi10", "ospf-rust-framework/gurobi10"]
+default = ["demo5-offline"]
+demo5-offline = ["dep:ospf-rust-framework-network-scheduling"]
+backend-gurobi = [
+    "demo5-offline",
+    "ospf-rust-core/gurobi10",
+    "ospf-rust-framework/gurobi10",
+    "ospf-rust-framework-network-scheduling/gurobi10",
+]
+demo5-gurobi-bp = [
+    "demo5-offline",
+    "ospf-rust-framework-network-scheduling/gurobi10",
+]
+demo5-scip-bp = [
+    "demo5-offline",
+    "ospf-rust-framework-network-scheduling/scip",
+]
 
 [dependencies]
 ospf-rust-core = { path = "../ospf-rust-core" }
@@ -17,4 +31,5 @@ ospf-rust-multiarray = { path = "../ospf-rust-multiarray" }
 ospf-rust-framework-csp1d = { path = "../ospf-rust-framework-csp1d" }
 ospf-rust-framework-gantt-scheduling = { path = "../ospf-rust-framework-gantt-scheduling" }
 ospf-rust-quantities = { path = "../ospf-rust-quantities" }
+ospf-rust-framework-network-scheduling = { path = "../ospf-rust-framework-network-scheduling", optional = true }
 time = { version = "0.3", features = ["std", "macros"] }

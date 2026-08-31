@@ -15,6 +15,7 @@ This directory contains task-compilation model components, context wrappers, and
 
 - `adapter.rs`: variable array helpers and expression builders.
 - `context.rs`: task compilation contexts and aggregation wrappers.
+- `constraint_programming.rs`: production CP assignment/NoOverlap model component.
 - `iterative.rs`: iterative compilation state.
 - `model.rs`: compilation, task time, makespan, switch, and solution models.
 - `service/limits.rs`: constraint and objective pipelines.
@@ -23,6 +24,8 @@ This directory contains task-compilation model components, context wrappers, and
 ## Public API
 
 - `Compilation`
+- `NoOverlapConstraintProgrammingComponent`
+- `NoOverlapTask`
 - `TaskTime`
 - `Makespan`
 - `Switch`
@@ -57,9 +60,18 @@ This directory contains task-compilation model components, context wrappers, and
 
 Add task-compilation behavior through compilation contexts, iterative compilation state, solution analyzers, and limit pipelines for assignment, conflict, time, cost, makespan, or switch behavior. Keep task vocabulary in `task` and bunch-level columns in `bunch_compilation`.
 
+The CP component is a separate model-component boundary: `from_compilation` converts task and
+executor identities plus explicit `i64` durations into an immutable core snapshot containing
+assignment `ExactlyOne`, fixed-duration intervals, and `NoOverlap`. Solver selection and
+`ExactLowering` remain outside this domain module; native optional/variable-duration interval
+support is `Unsupported`, and Cumulative raw handlers are `Conditional`.
+
 ## Lifecycle and Data Flow
 
 Compilation contexts register assignment, timing, switch, and makespan variables into `MetaModel`; iterative contexts maintain dynamic compilation state; limit pipelines add constraints and objectives; analyzers convert solver values into task solutions and summaries.
+
+The CP path follows the same ownership boundary: the task-compilation component builds the
+snapshot, while application code supplies the CP solver and consumes the unified `SolveReport`.
 
 ## Verification
 

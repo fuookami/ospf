@@ -5,12 +5,48 @@
 //! This module provides parallel-executing combinatorial quadratic solvers.
 
 use super::{
-    FeasibleSolution, FrameworkSolveOptions, ObjectiveCategory, ParallelCombinatorialMode,
+    CombinatorialSelection, FeasibleSolution, FrameworkSolveOptions, ObjectiveCategory,
+    ParallelCombinatorialMode, aggregate_combinatorial_reports_with_metadata,
+    column_generation_solver::{preserve_cancelled_attempts, report_is_selectable},
+    framework_solve_options::{child_cancellation_handle, legacy_cancellation_error},
 };
 use ospf_rust_core::error::{CoreError, Result, SolverError, SolverNotFoundError};
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::intermediate::QuadraticTetradModel;
+use ospf_rust_core::solver::{
+    CombinatorialSolveReport, SolveReport, SolverProvenance, cancelled_solve_report,
+};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+
+#[cfg(feature = "async")]
+type AsyncQuadraticMultiSolution<'a> =
+    Pin<Box<dyn Future<Output = Result<(FeasibleSolution, Vec<Vec<f64>>)>> + Send + 'a>>;
+
+fn pre_cancelled_report(
+    solver_name: &str,
+    options: &FrameworkSolveOptions,
+) -> Result<Option<CombinatorialSolveReport<f64>>> {
+    let Some(handle) = options.cancellation_handle.as_ref() else {
+        return Ok(None);
+    };
+    if !handle.is_cancelled() {
+        return Ok(None);
+    }
+    let report = cancelled_solve_report(
+        SolverProvenance {
+            solver_id: solver_name.to_owned(),
+            backend_name: "framework-combinatorial".to_owned(),
+            ..SolverProvenance::default()
+        },
+        handle,
+    )?;
+    Ok(Some(CombinatorialSolveReport::single(
+        report,
+        format!("{}#0", solver_name),
+    )))
+}
 
 /// 二次求解器 trait / Quadratic Solver Trait
 ///
@@ -36,6 +72,36 @@ pub trait QuadraticSolver: Send + Sync {
         Box::pin(async move { self.solve(model).await })
     }
 
+    /// 以统一组合报告求解二次模型 / Solve a quadratic model as a combinatorial unified report.
+    #[cfg(feature = "async")]
+    async fn solve_combinatorial_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<CombinatorialSolveReport<f64>> {
+        if let Some(report) = pre_cancelled_report(self.name(), &options)? {
+            return Ok(report);
+        }
+        let solution = self.solve_with_options(model, options).await?;
+        let report = solution.to_solve_report(self.name())?;
+        Ok(CombinatorialSolveReport::single(
+            report,
+            format!("{}#0", self.name()),
+        ))
+    }
+
+    /// 以统一报告求解二次模型 / Solve a quadratic model as a unified report.
+    #[cfg(feature = "async")]
+    async fn solve_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_combinatorial_report_with_options(model, options)
+            .await
+            .map(|aggregate| aggregate.report)
+    }
+
     /// 求解二次模型（同步）/ Solve quadratic model (synchronous)
     #[cfg(not(feature = "async"))]
     fn solve(&self, model: &QuadraticTetradModel) -> Result<FeasibleSolution>;
@@ -50,6 +116,35 @@ pub trait QuadraticSolver: Send + Sync {
         self.solve(model)
     }
 
+    /// 以统一组合报告求解二次模型 / Solve a quadratic model as a combinatorial unified report.
+    #[cfg(not(feature = "async"))]
+    fn solve_combinatorial_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<CombinatorialSolveReport<f64>> {
+        if let Some(report) = pre_cancelled_report(self.name(), &options)? {
+            return Ok(report);
+        }
+        let solution = self.solve_with_options(model, options)?;
+        let report = solution.to_solve_report(self.name())?;
+        Ok(CombinatorialSolveReport::single(
+            report,
+            format!("{}#0", self.name()),
+        ))
+    }
+
+    /// 以统一报告求解二次模型 / Solve a quadratic model as a unified report.
+    #[cfg(not(feature = "async"))]
+    fn solve_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>> {
+        self.solve_combinatorial_report_with_options(model, options)
+            .map(|aggregate| aggregate.report)
+    }
+
     /// 求解二次模型并返回多个解（参数对象）/
     /// Solve quadratic model and return multiple solutions with options object
     #[cfg(feature = "async")]
@@ -57,11 +152,7 @@ pub trait QuadraticSolver: Send + Sync {
         &'a self,
         model: &'a QuadraticTetradModel,
         options: FrameworkSolveOptions,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<Output = Result<(FeasibleSolution, Vec<Vec<f64>>)>> + Send + 'a,
-        >,
-    > {
+    ) -> AsyncQuadraticMultiSolution<'a> {
         Box::pin(async move {
             let result = self.solve_with_options(model, options).await?;
             Ok((result.clone(), vec![result.solution]))
@@ -130,6 +221,49 @@ pub trait QuadraticMetaModelSolverExt: QuadraticSolver {
         };
         Box::pin(async move { self.solve_with_options(&tetrad_model, options).await })
     }
+
+    /// 使用 MetaModel 返回统一报告 / Solve a MetaModel and return a unified report.
+    fn solve_meta_report<'a, V>(
+        &'a self,
+        meta_model: &'a MetaModel<V>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<SolveReport<f64>>> + Send + 'a>>
+    where
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
+    {
+        self.solve_meta_report_with_options(meta_model, FrameworkSolveOptions::default())
+    }
+
+    /// 使用 MetaModel 和参数返回统一报告 / Solve a MetaModel with options and return a unified report.
+    fn solve_meta_report_with_options<'a, V>(
+        &'a self,
+        meta_model: &'a MetaModel<V>,
+        options: FrameworkSolveOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<SolveReport<f64>>> + Send + 'a>>
+    where
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
+    {
+        let mechanism_model = match meta_model.try_to_mechanism_model_with_status_callback(
+            options.model_building_status_callback.as_ref(),
+        ) {
+            Ok(model) => model,
+            Err(error) => return Box::pin(std::future::ready(Err(error))),
+        };
+        let mechanism_model = match ospf_rust_core::solver::convert_mechanism_model_to_f64(
+            &mechanism_model,
+            options.value_conversion_policy,
+        ) {
+            Ok(model) => model,
+            Err(error) => return Box::pin(std::future::ready(Err(error))),
+        };
+        let tetrad_model = match mechanism_model
+            .try_into_quadratic_tetrad_model_with_status_callback(
+                options.model_building_status_callback.as_ref(),
+            ) {
+            Ok(model) => model,
+            Err(error) => return Box::pin(std::future::ready(Err(error))),
+        };
+        Box::pin(async move { self.solve_report_with_options(&tetrad_model, options).await })
+    }
 }
 
 #[cfg(feature = "async")]
@@ -170,6 +304,36 @@ pub trait QuadraticMetaModelSolverExt: QuadraticSolver {
             options.model_building_status_callback.as_ref(),
         )?;
         self.solve_with_options(&tetrad_model, options)
+    }
+
+    /// 使用 MetaModel 返回统一报告 / Solve a MetaModel and return a unified report.
+    fn solve_meta_report<V>(&self, meta_model: &MetaModel<V>) -> Result<SolveReport<f64>>
+    where
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
+    {
+        self.solve_meta_report_with_options(meta_model, FrameworkSolveOptions::default())
+    }
+
+    /// 使用 MetaModel 和参数返回统一报告 / Solve a MetaModel with options and return a unified report.
+    fn solve_meta_report_with_options<V>(
+        &self,
+        meta_model: &MetaModel<V>,
+        options: FrameworkSolveOptions,
+    ) -> Result<SolveReport<f64>>
+    where
+        V: ospf_rust_core::solver::SolveValue + std::ops::Add<Output = V>,
+    {
+        let mechanism_model = meta_model.try_to_mechanism_model_with_status_callback(
+            options.model_building_status_callback.as_ref(),
+        )?;
+        let mechanism_model = ospf_rust_core::solver::convert_mechanism_model_to_f64(
+            &mechanism_model,
+            options.value_conversion_policy,
+        )?;
+        let tetrad_model = mechanism_model.try_into_quadratic_tetrad_model_with_status_callback(
+            options.model_building_status_callback.as_ref(),
+        )?;
+        self.solve_report_with_options(&tetrad_model, options)
     }
 }
 
@@ -254,69 +418,181 @@ impl QuadraticSolver for ParallelCombinatorialQuadraticSolver {
         &self.name
     }
 
-    async fn solve(&self, model: &QuadraticTetradModel) -> Result<FeasibleSolution> {
+    async fn solve_combinatorial_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<CombinatorialSolveReport<f64>> {
+        if let Some(report) = pre_cancelled_report(self.name(), &options)? {
+            return Ok(report);
+        }
         use tokio::task::JoinSet;
 
-        match self.mode {
-            ParallelCombinatorialMode::First => {
-                let mut tasks: JoinSet<Result<FeasibleSolution>> = JoinSet::new();
-
-                for solver in &self.solvers {
-                    let solver = Arc::clone(solver);
-                    let model = model.clone();
-                    tasks.spawn(async move { solver.solve(&model).await });
-                }
-
-                while let Some(result) = tasks.join_next().await {
-                    match result {
-                        Ok(Ok(solution)) => {
-                            tasks.shutdown().await;
-                            return Ok(solution);
-                        }
-                        Ok(Err(e)) => {
-                            log::warn!("Solver failed: {}", e);
-                        }
-                        Err(e) => {
-                            log::warn!("Task panicked: {}", e);
-                        }
-                    }
-                }
-
-                Err(CoreError::SolverNotFound(SolverNotFoundError::new(
-                    "No solver valid",
-                )))
-            }
-
-            ParallelCombinatorialMode::Best => {
-                let mut tasks: JoinSet<Result<FeasibleSolution>> = JoinSet::new();
-
-                for solver in &self.solvers {
-                    let solver = Arc::clone(solver);
-                    let model = model.clone();
-                    tasks.spawn(async move { solver.solve(&model).await });
-                }
-
-                let mut solutions = Vec::new();
-                while let Some(result) = tasks.join_next().await {
-                    match result {
-                        Ok(Ok(solution)) => {
-                            log::info!("Solver found a solution");
-                            solutions.push(solution);
-                        }
-                        Ok(Err(e)) => {
-                            log::warn!("Solver failed: {}", e);
-                        }
-                        Err(e) => {
-                            log::warn!("Task panicked: {}", e);
-                        }
-                    }
-                }
-
-                Self::select_best(solutions, Self::objective_category(model)).ok_or_else(|| {
-                    CoreError::SolverNotFound(SolverNotFoundError::none())
+        let mut tasks: JoinSet<(usize, String, Result<SolveReport<f64>>)> = JoinSet::new();
+        let mut task_workers = std::collections::HashMap::new();
+        let mut child_handles = Vec::with_capacity(self.solvers.len());
+        for (solver_index, solver) in self.solvers.iter().enumerate() {
+            let solver = Arc::clone(solver);
+            let solver_name = solver.name().to_owned();
+            let model = model.clone();
+            let child_handle = child_cancellation_handle(&options);
+            child_handles.push(child_handle.clone());
+            let worker_handle = child_handle.clone();
+            let options = options.clone().with_cancellation_handle(Some(child_handle));
+            let worker_name = solver_name.clone();
+            let task_id = tasks
+                .spawn(async move {
+                    let result = solver.solve_report_with_options(&model, options).await;
+                    worker_handle.mark_completed();
+                    (solver_index, worker_name, result)
                 })
+                .id();
+            task_workers.insert(task_id, (solver_index, solver_name));
+        }
+
+        let mut attempts = Vec::with_capacity(self.solvers.len());
+        let mut loser_cancelled = false;
+        let mut first_selected_index = None;
+        while let Some(result) = tasks.join_next_with_id().await {
+            match result {
+                Ok((_, attempt)) => {
+                    task_workers.retain(|_, (index, _)| *index != attempt.0);
+                    if matches!(self.mode, ParallelCombinatorialMode::First)
+                        && !loser_cancelled
+                        && attempt.2.as_ref().is_ok_and(report_is_selectable)
+                    {
+                        first_selected_index = Some(attempt.0);
+                        for (index, handle) in child_handles.iter().enumerate() {
+                            if index != attempt.0 {
+                                handle.cancel(
+                                    ospf_rust_core::solver::CancellationOrigin::FrameworkLoser,
+                                );
+                            }
+                        }
+                        loser_cancelled = true;
+                    }
+                    attempts.push(attempt)
+                }
+                Err(error) => {
+                    let (solver_index, solver_name) = task_workers
+                        .remove(&error.id())
+                        .unwrap_or_else(|| (usize::MAX, format!("task-{:?}", error.id())));
+                    attempts.push((
+                        solver_index,
+                        solver_name,
+                        Err(CoreError::Internal(
+                            "quadratic combinatorial worker panicked".to_owned(),
+                        )),
+                    ));
+                }
             }
         }
+
+        aggregate_combinatorial_reports_with_metadata(
+            self.name(),
+            match self.mode {
+                ParallelCombinatorialMode::First => first_selected_index.map_or(
+                    CombinatorialSelection::First,
+                    CombinatorialSelection::FirstCompleted,
+                ),
+                ParallelCombinatorialMode::Best => {
+                    CombinatorialSelection::Best(Self::objective_category(model))
+                }
+            },
+            preserve_cancelled_attempts(attempts, &child_handles),
+        )
+    }
+
+    async fn solve(&self, model: &QuadraticTetradModel) -> Result<FeasibleSolution> {
+        self.solve_with_options(model, FrameworkSolveOptions::default())
+            .await
+    }
+
+    fn solve_with_options<'a>(
+        &'a self,
+        model: &'a QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            if options
+                .cancellation_handle
+                .as_ref()
+                .is_some_and(ospf_rust_core::solver::SolveHandle::is_cancelled)
+            {
+                return Err(legacy_cancellation_error(&options));
+            }
+
+            use tokio::task::JoinSet;
+
+            let mut tasks: JoinSet<(usize, Result<FeasibleSolution>)> = JoinSet::new();
+            let mut child_handles = Vec::with_capacity(self.solvers.len());
+            for (solver_index, solver) in self.solvers.iter().enumerate() {
+                let solver = Arc::clone(solver);
+                let model = model.clone();
+                let child_handle = child_cancellation_handle(&options);
+                child_handles.push(child_handle.clone());
+                let child_options = options.clone().with_cancellation_handle(Some(child_handle));
+                tasks.spawn(async move {
+                    let result = solver.solve_with_options(&model, child_options).await;
+                    (solver_index, result)
+                });
+            }
+
+            let mut first_solution = None;
+            let mut solutions = Vec::new();
+            let mut loser_cancelled = false;
+            while let Some(result) = tasks.join_next().await {
+                match result {
+                    Ok((solver_index, Ok(solution))) => {
+                        if matches!(self.mode, ParallelCombinatorialMode::First) {
+                            if first_solution.is_none() {
+                                first_solution = Some(solution.clone());
+                            }
+                            if !loser_cancelled {
+                                for (index, handle) in child_handles.iter().enumerate() {
+                                    if index != solver_index {
+                                        handle.cancel(
+                                            ospf_rust_core::solver::CancellationOrigin::FrameworkLoser,
+                                        );
+                                    }
+                                }
+                                loser_cancelled = true;
+                            }
+                        } else {
+                            solutions.push(solution);
+                        }
+                    }
+                    Ok((_, Err(error))) => {
+                        log::warn!("Solver failed: {}", error);
+                    }
+                    Err(error) => {
+                        log::warn!("Solver task failed: {}", error);
+                    }
+                }
+            }
+
+            if matches!(self.mode, ParallelCombinatorialMode::First) {
+                if let Some(solution) = first_solution {
+                    return Ok(solution);
+                }
+            } else if let Some(solution) =
+                Self::select_best(solutions, Self::objective_category(model))
+            {
+                return Ok(solution);
+            }
+
+            if options
+                .cancellation_handle
+                .as_ref()
+                .is_some_and(ospf_rust_core::solver::SolveHandle::is_cancelled)
+            {
+                return Err(legacy_cancellation_error(&options));
+            }
+            Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+                "No solver valid",
+            )))
+        })
     }
 
     fn solve_multi_with_options<'a>(
@@ -341,62 +617,178 @@ impl QuadraticSolver for ParallelCombinatorialQuadraticSolver {
         &self.name
     }
 
-    fn solve(&self, model: &QuadraticTetradModel) -> Result<FeasibleSolution> {
+    fn solve_combinatorial_report_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<CombinatorialSolveReport<f64>> {
+        if let Some(report) = pre_cancelled_report(self.name(), &options)? {
+            return Ok(report);
+        }
         use std::thread;
 
-        match self.mode {
-            ParallelCombinatorialMode::First => {
-                let handles: Vec<_> = self
-                    .solvers
-                    .iter()
-                    .map(|solver| {
-                        let solver = Arc::clone(solver);
-                        let model = model.clone();
-                        thread::spawn(move || solver.solve(&model))
-                    })
-                    .collect();
+        let mut child_handles = Vec::with_capacity(self.solvers.len());
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let mut handles = Vec::with_capacity(self.solvers.len());
+        for (solver_index, solver) in self.solvers.iter().enumerate() {
+            let solver = Arc::clone(solver);
+            let solver_name = solver.name().to_owned();
+            let model = model.clone();
+            let child_handle = child_cancellation_handle(&options);
+            child_handles.push(child_handle.clone());
+            let worker_handle = child_handle.clone();
+            let options = options.clone().with_cancellation_handle(Some(child_handle));
+            let sender = sender.clone();
+            handles.push((
+                solver_index,
+                solver_name.clone(),
+                thread::spawn(move || {
+                    let result = solver.solve_report_with_options(&model, options);
+                    worker_handle.mark_completed();
+                    let _ = sender.send((solver_index, solver_name, result));
+                }),
+            ));
+        }
+        drop(sender);
 
-                for handle in handles {
-                    match handle.join() {
-                        Ok(Ok(solution)) => return Ok(solution),
-                        Ok(Err(e)) => log::warn!("Solver failed: {}", e),
-                        Err(_) => log::warn!("Thread panicked"),
+        let mut attempts = Vec::with_capacity(handles.len());
+        let mut loser_cancelled = false;
+        let mut first_selected_index = None;
+        while let Ok(attempt) = receiver.recv() {
+            if matches!(self.mode, ParallelCombinatorialMode::First)
+                && !loser_cancelled
+                && attempt.2.as_ref().is_ok_and(report_is_selectable)
+            {
+                first_selected_index = Some(attempt.0);
+                for (index, child_handle) in child_handles.iter().enumerate() {
+                    if index != attempt.0 {
+                        child_handle
+                            .cancel(ospf_rust_core::solver::CancellationOrigin::FrameworkLoser);
                     }
                 }
-
-                Err(CoreError::SolverNotFound(SolverNotFoundError::new(
-                    "No solver valid",
-                )))
+                loser_cancelled = true;
             }
-
-            ParallelCombinatorialMode::Best => {
-                let handles: Vec<_> = self
-                    .solvers
-                    .iter()
-                    .map(|solver| {
-                        let solver = Arc::clone(solver);
-                        let model = model.clone();
-                        thread::spawn(move || solver.solve(&model))
-                    })
-                    .collect();
-
-                let mut solutions = Vec::new();
-                for handle in handles {
-                    match handle.join() {
-                        Ok(Ok(solution)) => {
-                            log::info!("Solver found a solution");
-                            solutions.push(solution);
-                        }
-                        Ok(Err(e)) => log::warn!("Solver failed: {}", e),
-                        Err(_) => log::warn!("Thread panicked"),
-                    }
-                }
-
-                Self::select_best(solutions, Self::objective_category(model)).ok_or_else(|| {
-                    CoreError::SolverNotFound(SolverNotFoundError::none())
-                })
+            attempts.push(attempt);
+        }
+        let completed = attempts
+            .iter()
+            .map(|(index, _, _)| *index)
+            .collect::<std::collections::BTreeSet<_>>();
+        for (index, solver_name, handle) in handles {
+            if handle.join().is_err() && !completed.contains(&index) {
+                attempts.push((
+                    index,
+                    solver_name,
+                    Err(CoreError::Internal(
+                        "quadratic combinatorial worker panicked".to_owned(),
+                    )),
+                ));
             }
         }
+
+        aggregate_combinatorial_reports_with_metadata(
+            self.name(),
+            match self.mode {
+                ParallelCombinatorialMode::First => first_selected_index.map_or(
+                    CombinatorialSelection::First,
+                    CombinatorialSelection::FirstCompleted,
+                ),
+                ParallelCombinatorialMode::Best => {
+                    CombinatorialSelection::Best(Self::objective_category(model))
+                }
+            },
+            preserve_cancelled_attempts(attempts, &child_handles),
+        )
+    }
+
+    fn solve(&self, model: &QuadraticTetradModel) -> Result<FeasibleSolution> {
+        self.solve_with_options(model, FrameworkSolveOptions::default())
+    }
+
+    fn solve_with_options(
+        &self,
+        model: &QuadraticTetradModel,
+        options: FrameworkSolveOptions,
+    ) -> Result<FeasibleSolution> {
+        if options
+            .cancellation_handle
+            .as_ref()
+            .is_some_and(ospf_rust_core::solver::SolveHandle::is_cancelled)
+        {
+            return Err(legacy_cancellation_error(&options));
+        }
+
+        use std::thread;
+        let mut child_handles = Vec::with_capacity(self.solvers.len());
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let mut handles = Vec::with_capacity(self.solvers.len());
+        for (solver_index, solver) in self.solvers.iter().enumerate() {
+            let solver = Arc::clone(solver);
+            let model = model.clone();
+            let child_handle = child_cancellation_handle(&options);
+            child_handles.push(child_handle.clone());
+            let child_options = options.clone().with_cancellation_handle(Some(child_handle));
+            let sender = sender.clone();
+            handles.push(thread::spawn(move || {
+                let result = solver.solve_with_options(&model, child_options);
+                let _ = sender.send((solver_index, result));
+            }));
+        }
+        drop(sender);
+
+        let mut first_solution = None;
+        let mut solutions = Vec::new();
+        let mut loser_cancelled = false;
+        while let Ok((solver_index, result)) = receiver.recv() {
+            match result {
+                Ok(solution) => {
+                    if matches!(self.mode, ParallelCombinatorialMode::First) {
+                        if first_solution.is_none() {
+                            first_solution = Some(solution);
+                        }
+                        if !loser_cancelled {
+                            for (index, handle) in child_handles.iter().enumerate() {
+                                if index != solver_index {
+                                    handle.cancel(
+                                        ospf_rust_core::solver::CancellationOrigin::FrameworkLoser,
+                                    );
+                                }
+                            }
+                            loser_cancelled = true;
+                        }
+                    } else {
+                        solutions.push(solution);
+                    }
+                }
+                Err(error) => log::warn!("Solver failed: {}", error),
+            }
+        }
+
+        for handle in handles {
+            if handle.join().is_err() {
+                log::warn!("Solver thread panicked");
+            }
+        }
+
+        if matches!(self.mode, ParallelCombinatorialMode::First) {
+            if let Some(solution) = first_solution {
+                return Ok(solution);
+            }
+        } else if let Some(solution) = Self::select_best(solutions, Self::objective_category(model))
+        {
+            return Ok(solution);
+        }
+
+        if options
+            .cancellation_handle
+            .as_ref()
+            .is_some_and(ospf_rust_core::solver::SolveHandle::is_cancelled)
+        {
+            return Err(legacy_cancellation_error(&options));
+        }
+        Err(CoreError::SolverNotFound(SolverNotFoundError::new(
+            "No solver valid",
+        )))
     }
 
     fn solve_multi_with_options(
@@ -423,10 +815,107 @@ mod tests {
     use ospf_rust_core::variable::ContinuousVariableItem;
     #[cfg(not(feature = "async"))]
     use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+    #[cfg(not(feature = "async"))]
+    use std::time::Instant;
 
     struct MockSolver {
         name: String,
         result: f64,
+    }
+
+    struct LegacyCancellationAwareMockSolver {
+        name: String,
+        result: f64,
+        wait_for_cancel: bool,
+    }
+
+    #[cfg_attr(feature = "async", async_trait::async_trait)]
+    impl QuadraticSolver for LegacyCancellationAwareMockSolver {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        #[cfg(feature = "async")]
+        async fn solve(&self, _model: &QuadraticTetradModel) -> Result<FeasibleSolution> {
+            Ok(FeasibleSolution::new(self.result, vec![self.result]))
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve(&self, _model: &QuadraticTetradModel) -> Result<FeasibleSolution> {
+            Ok(FeasibleSolution::new(self.result, vec![self.result]))
+        }
+
+        #[cfg(feature = "async")]
+        fn solve_with_options<'a>(
+            &'a self,
+            _model: &'a QuadraticTetradModel,
+            options: FrameworkSolveOptions,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<FeasibleSolution>> + Send + 'a>,
+        > {
+            let wait_for_cancel = self.wait_for_cancel;
+            let result = self.result;
+            Box::pin(async move {
+                let Some(handle) = options.cancellation_handle.as_ref() else {
+                    return Err(CoreError::contract_error(
+                        "cancellation-aware worker requires a cancellation handle",
+                    ));
+                };
+                if wait_for_cancel {
+                    let cancelled = tokio::time::timeout(Duration::from_secs(2), async {
+                        while !handle.is_cancelled() {
+                            tokio::task::yield_now().await;
+                        }
+                    })
+                    .await
+                    .is_ok();
+                    if !cancelled {
+                        return Err(CoreError::Internal(
+                            "parallel First did not cancel the in-flight legacy loser".to_owned(),
+                        ));
+                    }
+                    return Err(CoreError::cancelled(
+                        handle
+                            .cancellation()
+                            .map(|record| record.origin.to_string())
+                            .unwrap_or_else(|| "UNKNOWN".to_owned()),
+                    ));
+                }
+                Ok(FeasibleSolution::new(result, vec![result]))
+            })
+        }
+
+        #[cfg(not(feature = "async"))]
+        fn solve_with_options(
+            &self,
+            _model: &QuadraticTetradModel,
+            options: FrameworkSolveOptions,
+        ) -> Result<FeasibleSolution> {
+            let Some(handle) = options.cancellation_handle.as_ref() else {
+                return Err(CoreError::contract_error(
+                    "cancellation-aware worker requires a cancellation handle",
+                ));
+            };
+            if self.wait_for_cancel {
+                let deadline = Instant::now() + Duration::from_secs(2);
+                while !handle.is_cancelled() && Instant::now() < deadline {
+                    std::thread::yield_now();
+                }
+                if !handle.is_cancelled() {
+                    return Err(CoreError::Internal(
+                        "parallel First did not cancel the in-flight legacy loser".to_owned(),
+                    ));
+                }
+                return Err(CoreError::cancelled(
+                    handle
+                        .cancellation()
+                        .map(|record| record.origin.to_string())
+                        .unwrap_or_else(|| "UNKNOWN".to_owned()),
+                ));
+            }
+            Ok(FeasibleSolution::new(self.result, vec![self.result]))
+        }
     }
 
     #[cfg_attr(feature = "async", async_trait::async_trait)]
@@ -544,6 +1033,59 @@ mod tests {
 
     #[cfg(not(feature = "async"))]
     #[test]
+    fn legacy_first_mode_cancels_in_flight_loser_before_returning() {
+        let solvers: Vec<Arc<dyn QuadraticSolver>> = vec![
+            Arc::new(LegacyCancellationAwareMockSolver {
+                name: "legacy-winner".to_owned(),
+                result: 1.0,
+                wait_for_cancel: false,
+            }),
+            Arc::new(LegacyCancellationAwareMockSolver {
+                name: "legacy-loser".to_owned(),
+                result: 2.0,
+                wait_for_cancel: true,
+            }),
+        ];
+        let solver =
+            ParallelCombinatorialQuadraticSolver::new(solvers, ParallelCombinatorialMode::First);
+        let solution = solver
+            .solve_with_options(
+                &QuadraticTetradModel::new("parallel_quadratic_legacy_cancellation"),
+                FrameworkSolveOptions::default(),
+            )
+            .expect("legacy First should return the winner after cancelling the loser");
+        assert!((solution.obj - 1.0).abs() <= 1e-9);
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn legacy_first_mode_cancels_in_flight_loser_before_returning() {
+        let solvers: Vec<Arc<dyn QuadraticSolver>> = vec![
+            Arc::new(LegacyCancellationAwareMockSolver {
+                name: "legacy-winner".to_owned(),
+                result: 1.0,
+                wait_for_cancel: false,
+            }),
+            Arc::new(LegacyCancellationAwareMockSolver {
+                name: "legacy-loser".to_owned(),
+                result: 2.0,
+                wait_for_cancel: true,
+            }),
+        ];
+        let solver =
+            ParallelCombinatorialQuadraticSolver::new(solvers, ParallelCombinatorialMode::First);
+        let solution = solver
+            .solve_with_options(
+                &QuadraticTetradModel::new("parallel_quadratic_legacy_cancellation"),
+                FrameworkSolveOptions::default(),
+            )
+            .await
+            .expect("legacy First should return the winner after cancelling the loser");
+        assert!((solution.obj - 1.0).abs() <= 1e-9);
+    }
+
+    #[cfg(not(feature = "async"))]
+    #[test]
     fn test_meta_model_shortcut_builds_and_solves() {
         let solver = MockSolver {
             name: "quadratic_meta_shortcut_solver".to_string(),
@@ -575,16 +1117,8 @@ mod tests {
         assert!((result.obj - 6.0).abs() <= 1e-9);
 
         let stages = stages.lock().unwrap();
-        assert!(
-            stages
-                .iter()
-                .any(|stage| *stage == ModelBuildingStage::RegisterTokens)
-        );
-        assert!(
-            stages
-                .iter()
-                .any(|stage| *stage == ModelBuildingStage::FlattenQuadraticModel)
-        );
+        assert!(stages.contains(&ModelBuildingStage::RegisterTokens));
+        assert!(stages.contains(&ModelBuildingStage::FlattenQuadraticModel));
     }
 
     #[cfg(not(feature = "async"))]

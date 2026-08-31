@@ -8,11 +8,10 @@ pub mod id;
 
 pub use constraint_index::{ConstraintIndexEntry, ConstraintIndexKey, ConstraintIndexMap};
 pub use id::{
-    executor_id, production_action_id, production_material_id, resource_id, task_id,
-    task_plan_id, task_step_id, ExecutorId, ExecutorIdTrait, GanttId, ProductionActionId,
-    ProductionActionIdTrait, ProductionMaterialId, ProductionMaterialIdTrait, ResourceId,
-    ResourceIdTrait, TaskId, TaskIdTrait, TaskPlanId, TaskPlanIdTrait, TaskStepId,
-    TaskStepIdTrait,
+    ExecutorId, ExecutorIdTrait, GanttId, ProductionActionId, ProductionActionIdTrait,
+    ProductionMaterialId, ProductionMaterialIdTrait, ResourceId, ResourceIdTrait, TaskId,
+    TaskIdTrait, TaskPlanId, TaskPlanIdTrait, TaskStepId, TaskStepIdTrait, executor_id,
+    production_action_id, production_material_id, resource_id, task_id, task_plan_id, task_step_id,
 };
 pub use ospf_rust_framework::model::{
     ColumnRange, ColumnState, DynamicModelLifecycle as GanttDynamicModelLifecycle,

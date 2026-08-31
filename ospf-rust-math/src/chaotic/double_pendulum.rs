@@ -1,10 +1,10 @@
 //! 双摆系统。
 //! Double pendulum system.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point2};
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use super::helpers::{default_float, one_point2};
+use num_traits::Float;
 
 /// 双摆系统的一阶欧拉步进模型。
 /// First-order Euler step model for the double pendulum system.

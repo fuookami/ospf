@@ -1,0 +1,37 @@
+[package]
+name = "ospf-rust-framework-network-scheduling"
+version = "0.1.0"
+edition = "2024"
+description = "Generic network flow and VRPTW branch-and-price scheduling framework"
+authors = ["fuookami <wfuookami@gmail.com>"]
+license.workspace = true
+
+[features]
+default = []
+serde = ["dep:serde", "ospf-rust-core/serde", "ospf-rust-framework/serde", "ospf-rust-framework-gantt-scheduling/serde"]
+async = ["dep:tokio", "ospf-rust-framework/async", "ospf-rust-framework-gantt-scheduling/async"]
+big-rational = ["ospf-rust-core/big-rational", "ospf-rust-framework/big-rational", "ospf-rust-framework-gantt-scheduling/big-rational"]
+big-decimal = ["dep:bigdecimal", "ospf-rust-core/big-decimal", "ospf-rust-framework/big-decimal", "ospf-rust-framework-gantt-scheduling/big-decimal"]
+gurobi10 = ["ospf-rust-core/gurobi10", "ospf-rust-framework/gurobi10", "ospf-rust-framework-gantt-scheduling/gurobi10"]
+gurobi11 = ["ospf-rust-core/gurobi11", "ospf-rust-framework/gurobi11", "ospf-rust-framework-gantt-scheduling/gurobi11"]
+gurobi12 = ["ospf-rust-core/gurobi12", "ospf-rust-framework/gurobi12", "ospf-rust-framework-gantt-scheduling/gurobi12"]
+scip = ["ospf-rust-core/scip", "ospf-rust-framework/scip", "ospf-rust-framework-gantt-scheduling/scip"]
+scip-bundled = ["scip", "ospf-rust-core/scip-bundled", "ospf-rust-framework/scip-bundled", "ospf-rust-framework-gantt-scheduling/scip-bundled"]
+scip-from-source = ["scip", "ospf-rust-core/scip-from-source", "ospf-rust-framework/scip-from-source", "ospf-rust-framework-gantt-scheduling/scip-from-source"]
+scip-quadratic = ["scip", "ospf-rust-core/scip-quadratic", "ospf-rust-framework/scip-quadratic"]
+
+[dependencies]
+ospf-rust-base = { path = "../ospf-rust-base" }
+ospf-rust-math = { path = "../ospf-rust-math" }
+ospf-rust-quantities = { path = "../ospf-rust-quantities" }
+ospf-rust-core = { path = "../ospf-rust-core" }
+ospf-rust-framework = { path = "../ospf-rust-framework" }
+ospf-rust-framework-gantt-scheduling = { path = "../ospf-rust-framework-gantt-scheduling" }
+
+serde = { version = "1", features = ["derive"], optional = true }
+bigdecimal = { version = "0.4", optional = true }
+thiserror = "1"
+time = { version = "0.3", features = ["std", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"], optional = true }
+
+[dev-dependencies]

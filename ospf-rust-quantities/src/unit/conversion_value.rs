@@ -8,10 +8,10 @@
 //! - 替代 `BigDecimal: Into<V>` 约束，使 `f64` 等类型可参与运行时单位转换。
 //! - Replaces `BigDecimal: Into<V>` bound, enabling `f64` and other types to participate in runtime unit conversion.
 
-use std::ops::{Add, Div, Mul, Sub};
 use bigdecimal::{BigDecimal, ToPrimitive};
 use num_bigint::BigInt;
 use num_rational::BigRational;
+use std::ops::{Add, Div, Mul, Sub};
 
 use crate::unit::physical_unit::UnitConversionRule;
 
@@ -27,11 +27,7 @@ use crate::unit::physical_unit::UnitConversionRule;
 /// Provides the ability to construct target numeric types from `BigDecimal`.
 /// Implementations should guarantee conversion semantics: lossless or explicitly approximate.
 pub trait UnitConversionValue:
-    Clone
-    + Add<Output = Self>
-    + Sub<Output = Self>
-    + Mul<Output = Self>
-    + Div<Output = Self>
+    Clone + Add<Output = Self> + Sub<Output = Self> + Mul<Output = Self> + Div<Output = Self>
 {
     /// 从 BigDecimal 构造目标数值类型
     /// Construct target numeric type from BigDecimal
@@ -65,11 +61,7 @@ impl UnitConversionValue for f64 {
     /// Returns `None` if the value cannot be represented or is non-finite.
     fn from_decimal(value: &BigDecimal) -> Option<Self> {
         let v = value.to_f64()?;
-        if v.is_finite() {
-            Some(v)
-        } else {
-            None
-        }
+        if v.is_finite() { Some(v) } else { None }
     }
 }
 

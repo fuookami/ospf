@@ -1,14 +1,13 @@
 //! 远程求解端口
 //! Remote solver ports
 
+use super::domain::{
+    ExecutionHandle, NodeId, ObjectPath, ObjectRef, RemoteSolverResult, SliceId, SliceResult,
+    SolvePayload, SolveResult, StopAcknowledgement, TaskId, TenantId,
+};
+use async_trait::async_trait;
 use std::collections::BTreeMap;
 use std::time::Duration;
-use async_trait::async_trait;
-use super::domain::{
-
-    ExecutionHandle, NodeId, ObjectPath, ObjectRef, RemoteSolverResult, SliceId, SliceResult,
-    SolvePayload, SolveResult, TaskId, TenantId,
-};
 
 /// 求解器执行端口。
 /// Solver execution port.
@@ -61,7 +60,12 @@ pub trait SolverExecutionPort: Send + Sync {
 
     /// 停止执行。
     /// Stop execution.
-    async fn stop(&self, handle: &ExecutionHandle) -> RemoteSolverResult<bool>;
+    async fn stop(&self, handle: &ExecutionHandle) -> RemoteSolverResult<StopAcknowledgement>;
+
+    /// 兼容旧布尔停止入口 / Compatibility facade for the legacy boolean stop entry.
+    async fn stop_legacy(&self, handle: &ExecutionHandle) -> RemoteSolverResult<bool> {
+        Ok(self.stop(handle).await?.accepted)
+    }
 }
 
 /// 对象存储端口。

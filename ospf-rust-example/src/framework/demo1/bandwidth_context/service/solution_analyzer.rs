@@ -1,8 +1,10 @@
 //! 求解结果分析器模块 / Solution analyzer module
 
-use std::collections::HashMap;
-use crate::framework::demo1::route_context::model::{Assignment, Edge, Graph, Node, NodeKind, Service};
 use super::super::aggregation::Aggregation;
+use crate::framework::demo1::route_context::model::{
+    Assignment, Edge, Graph, Node, NodeKind, Service,
+};
+use std::collections::HashMap;
 
 /// 求解结果分析器：从求解结果中提取服务路径（DFS 追踪） / Solution analyzer: extract service paths from solution (DFS tracing)
 ///
@@ -26,7 +28,12 @@ impl<'a> SolutionAnalyzer<'a> {
         assignment: &'a Assignment,
         aggregation: &'a Aggregation,
     ) -> Self {
-        Self { graph, services, assignment, aggregation }
+        Self {
+            graph,
+            services,
+            assignment,
+            aggregation,
+        }
     }
 
     /// 分析求解结果，返回服务路径列表 / Analyze the solution and return service path list
@@ -86,7 +93,8 @@ impl<'a> SolutionAnalyzer<'a> {
             if let Some(edges) = edge_solution.get(&service_idx) {
                 for &(from, to) in edges {
                     if from == first_node {
-                        let mut link = vec![self.graph.nodes[first_node].id, self.graph.nodes[to].id];
+                        let mut link =
+                            vec![self.graph.nodes[first_node].id, self.graph.nodes[to].id];
                         self.find_link(edges, to, &mut link, &mut all_links);
                     }
                 }

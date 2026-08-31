@@ -5,9 +5,9 @@
 
 pub mod limits;
 
-use crate::domain::task_compilation::model::Compilation;
-use crate::domain::task_compilation::adapter::{extract_binary, extract_value};
 use crate::domain::task::{AssignmentPolicyTrait, ExecutorTrait, TaskTrait};
+use crate::domain::task_compilation::adapter::{extract_binary, extract_value};
+use crate::domain::task_compilation::model::Compilation;
 
 // ============================================================================
 // SolutionAnalyzer / 解分析器
@@ -43,21 +43,24 @@ impl SolutionAnalyzer {
             for ti in 0..n_tasks {
                 let mut found_executor = None;
                 for ei in 0..n_executors {
-                    if let Some(idx) = x.model_index(&ti, &ei) {
-                        if extract_binary(solution, idx).unwrap_or(false) {
-                            found_executor = Some(ei);
-                            break;
-                        }
+                    if let Some(idx) = x.model_index(&ti, &ei)
+                        && extract_binary(solution, idx).unwrap_or(false)
+                    {
+                        found_executor = Some(ei);
+                        break;
                     }
                 }
 
                 if let Some(ei) = found_executor {
-                    assigned.push(TaskAssignment { task_index: ti, executor_index: ei });
+                    assigned.push(TaskAssignment {
+                        task_index: ti,
+                        executor_index: ei,
+                    });
                 } else if let Some(ref y) = compilation.y {
-                    if let Some(idx) = y.model_index(&ti) {
-                        if extract_binary(solution, idx).unwrap_or(false) {
-                            canceled.push(ti);
-                        }
+                    if let Some(idx) = y.model_index(&ti)
+                        && extract_binary(solution, idx).unwrap_or(false)
+                    {
+                        canceled.push(ti);
                     }
                 } else {
                     // 无取消变量且无分配 → 任务未分配
@@ -99,15 +102,18 @@ impl SolutionAnalyzer {
         let mut time_infos = Vec::new();
         for assignment in &basic.assigned {
             let ti = assignment.task_index;
-            let est_value = est_indices.get(ti)
+            let est_value = est_indices
+                .get(ti)
                 .and_then(|idx| idx.and_then(|i| extract_value(solution, i)))
                 .unwrap_or(0.0);
             let duration = durations.get(ti).copied().unwrap_or(0.0);
 
-            let delay_time = delay_time_indices.get(ti)
+            let delay_time = delay_time_indices
+                .get(ti)
                 .and_then(|idx| idx.and_then(|i| extract_value(solution, i)))
                 .unwrap_or(0.0);
-            let advance_time = advance_time_indices.get(ti)
+            let advance_time = advance_time_indices
+                .get(ti)
                 .and_then(|idx| idx.and_then(|i| extract_value(solution, i)))
                 .unwrap_or(0.0);
 
@@ -120,10 +126,7 @@ impl SolutionAnalyzer {
             });
         }
 
-        TaskAssignmentResultWithTime {
-            basic,
-            time_infos,
-        }
+        TaskAssignmentResultWithTime { basic, time_infos }
     }
 }
 
@@ -161,7 +164,9 @@ pub struct TaskAssignmentResultWithTime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::task::{BasicExecutor, BasicAssignmentPolicy, ExecutorTrait, AssignmentPolicyTrait, TaskTrait};
+    use crate::domain::task::{
+        AssignmentPolicyTrait, BasicAssignmentPolicy, BasicExecutor, ExecutorTrait, TaskTrait,
+    };
     use crate::domain::task_compilation::model::Compilation;
     use ospf_rust_core::model::MetaModel;
     use ospf_rust_core::variable::Binary;
@@ -175,23 +180,27 @@ mod tests {
 
     impl TestTask {
         fn new(id: &str, name: &str) -> Self {
-            Self { id: id.into(), name: name.to_string() }
+            Self {
+                id: id.into(),
+                name: name.to_string(),
+            }
         }
     }
 
     impl<E: ExecutorTrait, A: AssignmentPolicyTrait<E>> TaskTrait<E, A> for TestTask {
         type Id = String;
 
-        fn id(&self) -> &Self::Id { &self.id }
-        fn name(&self) -> &str { &self.name }
+        fn id(&self) -> &Self::Id {
+            &self.id
+        }
+        fn name(&self) -> &str {
+            &self.name
+        }
     }
 
     #[test]
     fn test_solution_analyzer_basic() {
-        let tasks = vec![
-            TestTask::new("t0", "Task 0"),
-            TestTask::new("t1", "Task 1"),
-        ];
+        let tasks = vec![TestTask::new("t0", "Task 0"), TestTask::new("t1", "Task 1")];
         let executors = vec![
             BasicExecutor::new("e0", "Executor 0"),
             BasicExecutor::new("e1", "Executor 1"),
@@ -199,8 +208,11 @@ mod tests {
 
         let mut model = MetaModel::<f64>::new("test_analyzer");
 
-        let mut compilation: Compilation<TestTask, BasicExecutor, BasicAssignmentPolicy<BasicExecutor>> =
-            Compilation::new(tasks, executors, true, false);
+        let mut compilation: Compilation<
+            TestTask,
+            BasicExecutor,
+            BasicAssignmentPolicy<BasicExecutor>,
+        > = Compilation::new(tasks, executors, true, false);
         compilation.register(&mut model).unwrap();
 
         // 构造模拟解：t0 分配给 e0，t1 取消
@@ -209,16 +221,16 @@ mod tests {
         let mut solution = vec![0.0; n_vars];
 
         // 设置 x[0,0] = 1.0 (t0 -> e0)
-        if let Some(ref x) = compilation.x {
-            if let Some(idx) = x.model_index(&0, &0) {
-                solution[idx] = 1.0;
-            }
+        if let Some(ref x) = compilation.x
+            && let Some(idx) = x.model_index(&0, &0)
+        {
+            solution[idx] = 1.0;
         }
         // 设置 y[1] = 1.0 (t1 canceled)
-        if let Some(ref y) = compilation.y {
-            if let Some(idx) = y.model_index(&1) {
-                solution[idx] = 1.0;
-            }
+        if let Some(ref y) = compilation.y
+            && let Some(idx) = y.model_index(&1)
+        {
+            solution[idx] = 1.0;
         }
 
         let result = SolutionAnalyzer::analyze(&compilation, &solution);
@@ -233,22 +245,24 @@ mod tests {
 
     #[test]
     fn test_solution_analyzer_with_time() {
-        let tasks = vec![
-            TestTask::new("t0", "Task 0"),
-        ];
-        let executors = vec![
-            BasicExecutor::new("e0", "Executor 0"),
-        ];
+        let tasks = vec![TestTask::new("t0", "Task 0")];
+        let executors = vec![BasicExecutor::new("e0", "Executor 0")];
 
         let mut model = MetaModel::<f64>::new("test_analyzer_time");
 
-        let mut compilation: Compilation<TestTask, BasicExecutor, BasicAssignmentPolicy<BasicExecutor>> =
-            Compilation::new(tasks, executors, false, false);
+        let mut compilation: Compilation<
+            TestTask,
+            BasicExecutor,
+            BasicAssignmentPolicy<BasicExecutor>,
+        > = Compilation::new(tasks, executors, false, false);
         compilation.register(&mut model).unwrap();
 
         // 注册 est 变量
-        let mut task_time = crate::domain::task_compilation::model::TaskTime::new(true, false, true, false);
-        task_time.register(1, vec![Some(10.0)], vec![5.0], &mut model).unwrap();
+        let mut task_time =
+            crate::domain::task_compilation::model::TaskTime::new(true, false, true, false);
+        task_time
+            .register(1, vec![Some(10.0)], vec![5.0], &mut model)
+            .unwrap();
 
         // 获取各变量的模型索引
         let est_indices = task_time.est_model_indices();
@@ -311,7 +325,12 @@ mod tests {
             &solution,
         );
 
-        assert_eq!(result.basic.assigned.len(), 1, "Should have 1 assigned task, got {}", result.basic.assigned.len());
+        assert_eq!(
+            result.basic.assigned.len(),
+            1,
+            "Should have 1 assigned task, got {}",
+            result.basic.assigned.len()
+        );
         assert_eq!(result.time_infos.len(), 1);
         let info = &result.time_infos[0];
         assert_eq!(info.task_index, 0);

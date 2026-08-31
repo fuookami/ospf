@@ -1,14 +1,12 @@
 //! Demo2 模块 / Demo2 module
 use std::error::Error;
 
-use ospf_rust_multiarray::Shape;
 use ospf_rust_core::model::{ConstraintRelation, LinearObjectiveInput, MetaModel};
-use ospf_rust_core::symbol::{
-    LinearExpressionSymbol, flat_map1_indexed,
-};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, flat_map1_indexed};
 use ospf_rust_core::variable::{Binary, VariableCombination2D};
+use ospf_rust_multiarray::Shape;
 
-use super::common::{read_solution_value, solve_typed, extract_coeffs};
+use super::common::{extract_coeffs, read_solution_value, solve_typed};
 
 /// 产品数据结构 / Product data structure
 #[derive(Debug, Clone)]
@@ -80,9 +78,11 @@ struct TransportModel {
     /// 成本符号 / Cost symbol
     cost: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
     /// 每公司分配符号 / Per-company assignment symbol
-    assignment_company: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    assignment_company:
+        ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
     /// 每产品分配符号 / Per-product assignment symbol
-    assignment_product: ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
+    assignment_product:
+        ospf_rust_core::symbol::SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>,
 }
 
 impl TransportModel {
@@ -100,32 +100,60 @@ impl TransportModel {
         let x_idx = model.register_combination(&x_vars)?;
 
         // 成本符号 / Cost symbol
-        let cost = flat_map1_indexed("cost", companies, |c, company| {
-            let monomials: Vec<_> = products.iter().enumerate()
-                .map(|(p, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                    company.cost_of(p), x_idx[&[c, p]],
-                ))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, company| company.name.clone());
+        let cost = flat_map1_indexed(
+            "cost",
+            companies,
+            |c, company| {
+                let monomials: Vec<_> = products
+                    .iter()
+                    .enumerate()
+                    .map(|(p, _)| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            company.cost_of(p),
+                            x_idx[&[c, p]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, company| company.name.clone(),
+        );
         model.add_symbol_combination(&cost)?;
 
         // 每公司分配符号 / Per-company assignment symbol
-        let assignment_company = flat_map1_indexed("assign_company", companies, |c, _company| {
-            let monomials: Vec<_> = products.iter().enumerate()
-                .map(|(p, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[c, p]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, company| company.name.clone());
+        let assignment_company = flat_map1_indexed(
+            "assign_company",
+            companies,
+            |c, _company| {
+                let monomials: Vec<_> = products
+                    .iter()
+                    .enumerate()
+                    .map(|(p, _)| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[c, p]])
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, company| company.name.clone(),
+        );
         model.add_symbol_combination(&assignment_company)?;
 
         // 每产品分配符号 / Per-product assignment symbol
-        let assignment_product = flat_map1_indexed("assign_product", products, |p, _product| {
-            let monomials: Vec<_> = companies.iter().enumerate()
-                .map(|(c, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[c, p]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, product| product.name.clone());
+        let assignment_product = flat_map1_indexed(
+            "assign_product",
+            products,
+            |p, _product| {
+                let monomials: Vec<_> = companies
+                    .iter()
+                    .enumerate()
+                    .map(|(c, _)| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[c, p]])
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, product| product.name.clone(),
+        );
         model.add_symbol_combination(&assignment_product)?;
 
         Ok(TransportModel {
@@ -152,8 +180,7 @@ impl TransportModel {
                 cost_coeffs.push((m.var_index(), *m.coefficient()));
             }
         }
-        let cost_input = LinearObjectiveInput::minimize("cost")
-            .terms(cost_coeffs.into_iter());
+        let cost_input = LinearObjectiveInput::minimize("cost").terms(cost_coeffs.into_iter());
         model.set_linear_objective_input(cost_input);
 
         // 每公司最多分配1个产品 / Each company assigned at most 1 product

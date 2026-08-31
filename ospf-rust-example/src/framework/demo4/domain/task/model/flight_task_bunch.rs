@@ -1,8 +1,8 @@
 //! 飞行任务束模块 / Flight task bunch module
 
-use time::{Duration, OffsetDateTime};
 use super::aircraft::Aircraft;
 use super::airport::Airport;
+use time::{Duration, OffsetDateTime};
 
 /// 飞行任务束 / Flight task bunch
 /// 对齐 Kotlin FlightTaskBunch - 列生成的核心类型
@@ -52,7 +52,11 @@ impl FlightTaskBunch {
     }
 
     /// 是否在指定时间从某机场出发 / Check if departed from the given airport within the time range
-    pub fn departed_when(&self, airport: &Airport, time: &(OffsetDateTime, OffsetDateTime)) -> bool {
+    pub fn departed_when(
+        &self,
+        airport: &Airport,
+        time: &(OffsetDateTime, OffsetDateTime),
+    ) -> bool {
         &self.dep == airport && self.start_time >= time.0 && self.start_time <= time.1
     }
 }

@@ -176,6 +176,7 @@ impl<A: ProductionActionTrait> IterativeCapacityCompilation<A> {
     }
 
     /// 执行器-时隙选列项 / Executor-slot selection terms
+    #[allow(clippy::type_complexity)]
     pub fn executor_slot_terms(&self) -> HashMap<(A::ExecutorId, usize), Vec<(usize, f64)>> {
         let mut terms = HashMap::new();
         for executor_id in &self.executor_ids {
@@ -214,6 +215,7 @@ impl<A: ProductionActionTrait> IterativeCapacityCompilation<A> {
     }
 
     /// 执行器-时隙产能项 / Executor-slot capacity terms
+    #[allow(clippy::type_complexity)]
     pub fn capacity_terms(&self) -> HashMap<(A::ExecutorId, usize), Vec<(usize, f64)>> {
         let mut terms = self.executor_slot_terms();
         for values in terms.values_mut() {

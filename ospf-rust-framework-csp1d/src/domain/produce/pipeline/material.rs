@@ -7,7 +7,7 @@ use ospf_rust_core::solver::SolveValue;
 use ospf_rust_framework::model::Pipeline;
 
 use crate::domain::material::{
-    shadow_price_key_to_string, Csp1dShadowPriceKey, MaterialUsageShadowPriceKey,
+    Csp1dShadowPriceKey, MaterialUsageShadowPriceKey, shadow_price_key_to_string,
 };
 
 use super::super::aggregation::ProduceAggregation;
@@ -26,10 +26,7 @@ impl<V: SolveValue> MaterialConstraintPipeline<V> {
     pub fn new(produce: ProduceAggregation<V>) -> Self {
         Self {
             name: "material_constraint".to_string(),
-            group: Some(ConstraintGroup::new(
-                10_002,
-                "csp1d_material_constraint",
-            )),
+            group: Some(ConstraintGroup::new(10_002, "csp1d_material_constraint")),
             produce,
         }
     }
@@ -67,7 +64,11 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for MaterialConstraintPipeline<V> {
                 0,
                 Some(shadow_price_key_to_string(&key)),
             ) {
-                log::warn!("Failed to register material constraint {}: {:?}", material_index, error);
+                log::warn!(
+                    "Failed to register material constraint {}: {:?}",
+                    material_index,
+                    error
+                );
             }
         }
     }

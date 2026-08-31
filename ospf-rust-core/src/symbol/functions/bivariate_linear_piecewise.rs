@@ -1,21 +1,20 @@
 //! 二元线性分段插值函数符号 / Bivariate linear piecewise interpolation function symbol
 
-use std::any::Any;
-use std::collections::HashSet;
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{ContinuousVariableItem, VariableId, VariableRange, new_group_id};
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::HashSet;
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn to_f64<V>(value: &V) -> Option<f64>
 where
@@ -45,13 +44,18 @@ where
 }
 
 #[derive(Debug, Clone)]
+/// 三维插值点 / Three-dimensional interpolation point.
 pub struct Point3<V> {
+    /// 横坐标 / X coordinate.
     pub x: V,
+    /// 纵坐标 / Y coordinate.
     pub y: V,
+    /// 函数值 / Function value.
     pub z: V,
 }
 
 impl<V> Point3<V> {
+    /// 创建插值点 / Create an interpolation point.
     pub fn new(x: V, y: V, z: V) -> Self {
         Self { x, y, z }
     }

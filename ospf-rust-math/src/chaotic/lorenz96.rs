@@ -4,9 +4,9 @@
 //! N 维混沌系统，状态为变长 `Vec<S>`。
 //! N-dimensional chaotic system with variable-length `Vec<S>` state.
 
-use num_traits::Float;
-use crate::algebra::Field;
 use super::helpers::default_float;
+use crate::algebra::Field;
+use num_traits::Float;
 
 /// Lorenz 96 模型。
 /// Lorenz 96 model.
@@ -24,8 +24,12 @@ impl<S: Field + Float> Lorenz96Model<S> {
         Self { a, h }
     }
 
-    pub fn a(&self) -> S { self.a }
-    pub fn h(&self) -> S { self.h }
+    pub fn a(&self) -> S {
+        self.a
+    }
+    pub fn h(&self) -> S {
+        self.h
+    }
 
     /// 执行一次 Lorenz 96 步进。
     /// Execute one Lorenz 96 step.
@@ -70,8 +74,12 @@ impl<S: Field + Float> Lorenz96ModelGenerator<S> {
         Self { model, state }
     }
 
-    pub fn model(&self) -> &Lorenz96Model<S> { &self.model }
-    pub fn state(&self) -> &[S] { &self.state }
+    pub fn model(&self) -> &Lorenz96Model<S> {
+        &self.model
+    }
+    pub fn state(&self) -> &[S] {
+        &self.state
+    }
 
     pub fn next_state(&mut self) -> Vec<S> {
         let current = self.state.clone();
@@ -96,7 +104,11 @@ pub fn lorenz96_model<S: Field + Float>(a: S, h: S) -> Lorenz96Model<S> {
 
 /// 创建 Lorenz 96 模型生成器。
 /// Create a Lorenz 96 model generator.
-pub fn lorenz96_model_generator<S: Field + Float>(a: S, h: S, state: Vec<S>) -> Lorenz96ModelGenerator<S> {
+pub fn lorenz96_model_generator<S: Field + Float>(
+    a: S,
+    h: S,
+    state: Vec<S>,
+) -> Lorenz96ModelGenerator<S> {
     Lorenz96ModelGenerator::new(Lorenz96Model::new(a, h), state)
 }
 

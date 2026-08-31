@@ -11,6 +11,10 @@ pub struct LinearDensity {
 impl LinearDensity {
     /// 计算线密度（重量/长度） / Compute linear density (weight / length)
     pub fn density(&self) -> f64 {
-        if self.length > 0.0 { self.weight / self.length } else { 0.0 }
+        if self.length > 0.0 {
+            self.weight / self.length
+        } else {
+            0.0
+        }
     }
 }

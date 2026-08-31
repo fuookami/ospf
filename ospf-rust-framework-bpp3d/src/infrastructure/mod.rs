@@ -19,13 +19,13 @@ pub mod renderer;
 
 pub use geometry::{
     MetricAabb2, MetricAabb3, MetricPlacement2, MetricPlacement3, MetricPoint2, MetricPoint3,
-    MetricSize2, MetricSize3, MetricVector2, MetricVector3,
-    scalar_cuboid3_to_typed_size, scalar_point2_to_typed, scalar_point3_to_typed,
-    typed_point2_to_scalar, typed_point3_to_scalar, typed_size3_to_scalar_cuboid,
+    MetricSize2, MetricSize3, MetricVector2, MetricVector3, scalar_cuboid3_to_typed_size,
+    scalar_point2_to_typed, scalar_point3_to_typed, typed_point2_to_scalar, typed_point3_to_scalar,
+    typed_size3_to_scalar_cuboid,
 };
 pub use orientation::{Orientation, OrientationCategory};
 pub use packing_shape::{
-    PackingShapeType as PackingShapeTypeInfra, ShapeFootprint2, PackingShape3,
+    PackingShape3, PackingShapeType as PackingShapeTypeInfra, ShapeFootprint2,
     cuboid_packing_shape, cylinder_packing_shape,
 };
 pub use pwl_approximation::{

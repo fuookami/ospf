@@ -1,9 +1,9 @@
 //! Arnold 舌映射。
 //! Arnold tongue map.
 
-use num_traits::Float;
-use crate::algebra::Field;
 use super::helpers::default_float;
+use crate::algebra::Field;
+use num_traits::Float;
 
 scalar_map!(
     /// Arnold 舌映射的一阶欧拉步进模型。

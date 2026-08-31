@@ -1,8 +1,8 @@
 //! 变量类型定义
 //! Variable Type Definitions
 
-use std::fmt::Debug;
 use super::VariableRange;
+use std::fmt::Debug;
 
 // ============================================================================
 // VariableType - 变量类型枚举
@@ -146,8 +146,8 @@ pub trait VariableTypeTrait: Clone + Debug + Default + Send + Sync + 'static {
     /// Checks if value is within allowed range.
     fn is_valid_value(value: &Self::Value) -> bool {
         let range = Self::default_range();
-        let lower_ok = range.lower_bound.as_ref().map_or(true, |lb| value >= lb);
-        let upper_ok = range.upper_bound.as_ref().map_or(true, |ub| value <= ub);
+        let lower_ok = range.lower_bound.as_ref().is_none_or(|lb| value >= lb);
+        let upper_ok = range.upper_bound.as_ref().is_none_or(|ub| value <= ub);
         lower_ok && upper_ok
     }
 

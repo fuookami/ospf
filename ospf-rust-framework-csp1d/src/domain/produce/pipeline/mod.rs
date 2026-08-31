@@ -12,9 +12,7 @@ use ospf_rust_core::model::{ConstraintGroup, MetaModel};
 use ospf_rust_core::solver::SolveValue;
 use ospf_rust_framework::model::Pipeline;
 
-use crate::domain::material::{
-    shadow_price_key_from_string, to_f64, CuttingPlan,
-};
+use crate::domain::material::{CuttingPlan, shadow_price_key_from_string, to_f64};
 use crate::domain::wasting_minimization::RestMaterialMeasure;
 
 use super::shadow_price::Csp1dDefaultShadowPriceMap;

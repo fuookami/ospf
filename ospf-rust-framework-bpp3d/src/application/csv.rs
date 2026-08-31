@@ -62,40 +62,19 @@ const BIN_REQUIRED_COLUMNS: &[&str] = &[
     "capacity",
 ];
 
-const BIN_OPTIONAL_COLUMNS: &[&str] = &[
-    "is_main",
-    "batch_no",
-];
+const BIN_OPTIONAL_COLUMNS: &[&str] = &["is_main", "batch_no"];
 
-const LAYER_REQUIRED_COLUMNS: &[&str] = &[
-    "layer_id",
-    "bin_id",
-    "depth",
-];
+const LAYER_REQUIRED_COLUMNS: &[&str] = &["layer_id", "bin_id", "depth"];
 
-const LAYER_OPTIONAL_COLUMNS: &[&str] = &[
-    "iteration",
-    "from",
-    "z",
-];
+const LAYER_OPTIONAL_COLUMNS: &[&str] = &["iteration", "from", "z"];
 
-const DEPTH_POLICY_REQUIRED_COLUMNS: &[&str] = &[
-    "field",
-    "values",
-];
+const DEPTH_POLICY_REQUIRED_COLUMNS: &[&str] = &["field", "values"];
 
 const DEPTH_POLICY_OPTIONAL_COLUMNS: &[&str] = &[];
 
-const RADIUS_WEIGHT_FUNCTION_REQUIRED_COLUMNS: &[&str] = &[
-    "key",
-    "radius_squared_coefficient",
-];
+const RADIUS_WEIGHT_FUNCTION_REQUIRED_COLUMNS: &[&str] = &["key", "radius_squared_coefficient"];
 
-const RADIUS_WEIGHT_FUNCTION_OPTIONAL_COLUMNS: &[&str] = &[
-    "intercept",
-    "objective_weight",
-];
-
+const RADIUS_WEIGHT_FUNCTION_OPTIONAL_COLUMNS: &[&str] = &["intercept", "objective_weight"];
 
 include!("csv/error.rs");
 include!("csv/records.rs");

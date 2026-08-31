@@ -1,9 +1,9 @@
 //! 逻辑斯蒂映射。
 //! Logistic map.
 
-use num_traits::Float;
-use crate::algebra::Field;
 use super::helpers::default_float;
+use crate::algebra::Field;
+use num_traits::Float;
 
 scalar_map!(
     /// 逻辑斯蒂映射。
@@ -27,7 +27,10 @@ impl<S: Field + Float> Default for LogisticMap<S> {
 
 impl<S: Field + Float> Default for LogisticMapGenerator<S> {
     fn default() -> Self {
-        Self::new(LogisticMap::default(), S::from(0.5).expect("0.5 must be representable"))
+        Self::new(
+            LogisticMap::default(),
+            S::from(0.5).expect("0.5 must be representable"),
+        )
     }
 }
 

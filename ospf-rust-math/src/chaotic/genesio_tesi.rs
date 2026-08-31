@@ -1,10 +1,10 @@
 //! Genesio-Tesi 吸引子。
 //! Genesio-Tesi attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Genesio-Tesi 吸引子的一阶欧拉步进模型。
@@ -46,14 +46,23 @@ impl<S: Field + Float> Default for GenesioTesiAttractorGenerator<S> {
 
 /// 创建 Genesio-Tesi 吸引子。
 /// Create a Genesio-Tesi attractor.
-pub fn genesio_tesi_attractor<S: Field + Float>(alpha: S, beta: S, delta: S, h: S) -> GenesioTesiAttractor<S> {
+pub fn genesio_tesi_attractor<S: Field + Float>(
+    alpha: S,
+    beta: S,
+    delta: S,
+    h: S,
+) -> GenesioTesiAttractor<S> {
     GenesioTesiAttractor::new(alpha, beta, delta, h)
 }
 
 /// 创建 Genesio-Tesi 吸引子生成器。
 /// Create a Genesio-Tesi attractor generator.
 pub fn genesio_tesi_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, delta: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    delta: S,
+    h: S,
+    x: Point3<S>,
 ) -> GenesioTesiAttractorGenerator<S> {
     GenesioTesiAttractorGenerator::new(GenesioTesiAttractor::new(alpha, beta, delta, h), x)
 }

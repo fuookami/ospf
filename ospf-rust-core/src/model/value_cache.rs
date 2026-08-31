@@ -1,13 +1,13 @@
 //! 求值缓存上下文
 //! Value Cache Context
 
+use crate::symbol::flatten::Cacheable;
+use crate::token::{Token, TokenList};
+use crate::variable::VariableId;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::{Arc, OnceLock};
-use crate::symbol::flatten::Cacheable;
-use crate::token::{Token, TokenList};
-use crate::variable::VariableId;
 
 /// 计算值缓存 Key / Computed value cache key
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -65,6 +65,7 @@ where
 
     /// 获取缓存映射 / Get cache map
     fn cache(&self) -> &HashMap<ValueCacheKey, V>;
+    /// 获取可变缓存映射 / Get the mutable cache map.
     fn cache_mut(&mut self) -> &mut HashMap<ValueCacheKey, V>;
 
     /// 获取缓存值 / Get cached value

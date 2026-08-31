@@ -1,9 +1,9 @@
 //! 飞机类型模块 / Aircraft type module
 
+use super::airport::{Airport, Route};
+use crate::framework::demo4::infrastructure::{AircraftMinorTypeCode, AircraftTypeCode};
 use std::collections::HashMap;
 use time::Duration;
-use crate::framework::demo4::infrastructure::{AircraftTypeCode, AircraftMinorTypeCode};
-use super::airport::{Airport, Route};
 
 /// 飞机类型 / Aircraft type
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -32,12 +32,20 @@ pub struct AircraftMinorType {
 impl AircraftMinorType {
     /// 获取最长航线飞行时间 / Get maximum route flight time
     pub fn max_route_fly_time(&self) -> Duration {
-        self.route_fly_time.values().copied().max().unwrap_or(Duration::ZERO)
+        self.route_fly_time
+            .values()
+            .copied()
+            .max()
+            .unwrap_or(Duration::ZERO)
     }
 
     /// 获取最长过站时间 / Get maximum connection time
     pub fn max_connection_time(&self) -> Duration {
-        self.connection_time.values().copied().max().unwrap_or(Duration::ZERO)
+        self.connection_time
+            .values()
+            .copied()
+            .max()
+            .unwrap_or(Duration::ZERO)
     }
 }
 

@@ -37,12 +37,8 @@ impl FlightTaskReverse {
         let mut right_mapper: HashMap<String, Vec<ReversiblePair>> = HashMap::new();
 
         for (prev_id, succ_id) in &pairs {
-            let symmetrical = Self::check_symmetrical(
-                origin_bunches,
-                prev_id,
-                succ_id,
-                locked_tasks,
-            );
+            let symmetrical =
+                Self::check_symmetrical(origin_bunches, prev_id, succ_id, locked_tasks);
             let pair = ReversiblePair {
                 prev_task_id: prev_id.clone(),
                 succ_task_id: succ_id.clone(),
@@ -78,7 +74,9 @@ impl FlightTaskReverse {
         _locked_tasks: &[String],
     ) -> bool {
         origin_bunches.iter().any(|bunch| {
-            bunch.windows(2).any(|w| w[0] == *prev_id && w[1] == *succ_id)
+            bunch
+                .windows(2)
+                .any(|w| w[0] == *prev_id && w[1] == *succ_id)
         })
     }
 

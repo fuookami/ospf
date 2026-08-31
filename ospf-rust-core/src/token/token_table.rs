@@ -1,12 +1,12 @@
 //! Token 表 Trait 和实现
 //! Token Table Trait and Implementations
 
-use std::collections::HashMap;
-use std::sync::RwLock;
-use ospf_rust_base::{read_unwrap, write_unwrap};
+use super::{MutableTokenList, Token, TokenList, VecTokenList};
 use crate::error::{Result, VariableError};
 use crate::variable::{VariableId, VariableType};
-use super::{MutableTokenList, Token, TokenList, VecTokenList};
+use ospf_rust_base::{read_unwrap, write_unwrap};
+use std::collections::HashMap;
+use std::sync::RwLock;
 
 // ============================================================================
 // TokenTable - Token 表 Trait
@@ -352,7 +352,7 @@ pub type ConcurrentTokenTableF64 = ConcurrentTokenTable<f64>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::variable::{Binary, Continuous, VariableItem, Integer};
+    use crate::variable::{Binary, Continuous, Integer, VariableItem};
 
     #[test]
     fn test_vec_token_table() {

@@ -1,16 +1,19 @@
 //! 模型视图 trait（Kotlin 对齐）
 //! Model view traits (Kotlin-aligned)
 
-use std::fmt::Debug;
 use crate::model::{BasicModel, MechanismModel};
+use std::fmt::Debug;
 
 /// 基础模型视图 / Basic model view
 pub trait BasicModelView<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 获取模型名称 / Get the model name.
     fn name(&self) -> &str;
+    /// 获取 token 数量 / Get the number of tokens.
     fn num_tokens(&self) -> usize;
+    /// 获取约束数量 / Get the number of constraints.
     fn num_constraints(&self) -> usize;
 }
 
@@ -19,6 +22,7 @@ pub trait ModelView<V>: BasicModelView<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 获取变量数量 / Get the number of variables.
     fn num_variables(&self) -> usize;
 }
 

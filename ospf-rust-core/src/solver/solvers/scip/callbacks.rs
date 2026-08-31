@@ -1,11 +1,11 @@
 //! SCIP 回调类型定义
 //! SCIP Callback Type Definitions
 
-use std::sync::Arc;
-use std::time::Duration;
 use crate::error::Result;
 use crate::model::ObjectiveCategory;
 use crate::solver::SolverStatus;
+use std::sync::Arc;
+use std::time::Duration;
 
 /// SCIP 阶段回调点 / SCIP staged callback points
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

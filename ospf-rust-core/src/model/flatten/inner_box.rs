@@ -1,8 +1,8 @@
 //! Inner Box 设计 - 多项式内部类型
 //! Inner Box Design - Polynomial Internal Types
 
-use std::collections::HashMap;
 use super::{CacheKey, Cacheable};
+use std::collections::HashMap;
 
 // ============================================================================
 // 线性单项式 Inner Box 设计

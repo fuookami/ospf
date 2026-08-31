@@ -11,7 +11,7 @@
 //! - 每个组合内的变量共享相同的组 ID，通过索引区分
 //!   Variables within a combination share the same group ID, distinguished by index
 
-use super::{VariableItem, VariableId, VariableRange, VariableTypeTrait, new_group_id};
+use super::{VariableId, VariableItem, VariableRange, VariableTypeTrait, new_group_id};
 use ospf_rust_multiarray::{
     MultiArray, MultiArrayBuilder,
     shape::{AbstractShape, Shape},
@@ -310,14 +310,11 @@ impl<VT: VariableTypeTrait, S: AbstractShape> VariableCombination<VT, S> {
             ndim - 1,
             fixed_indices.len()
         );
-        assert!(
-            dim < ndim,
-            "dim {} out of range (ndim = {})",
-            dim,
-            ndim
-        );
+        assert!(dim < ndim, "dim {} out of range (ndim = {})", dim, ndim);
 
-        use crate::symbol::flatten::{Linear as ModelLinear, LinearMonomial as ModelLinearMonomial};
+        use crate::symbol::flatten::{
+            Linear as ModelLinear, LinearMonomial as ModelLinearMonomial,
+        };
 
         let mut monomials = Vec::new();
         for (linear, vector, _item) in self.variables.enumerate() {
@@ -658,8 +655,8 @@ mod tests {
 
         // 所有变量应该有不同的索引 / All variables should have different indices
         let indices: Vec<usize> = vars.iter().map(|v| v.id().index_in_group).collect();
-        for i in 0..5 {
-            assert_eq!(indices[i], i);
+        for (i, index) in indices.iter().enumerate() {
+            assert_eq!(*index, i);
         }
     }
 

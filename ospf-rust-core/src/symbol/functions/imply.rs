@@ -1,23 +1,22 @@
 //! 逻辑蕴含函数符号 / Logical implication function symbol
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
+};
+use super::{InequalityFunction, InequalityKind};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::BinaryVariableItem;
-use super::super::{
-
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
-};
-use super::{InequalityFunction, InequalityKind};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -212,18 +211,22 @@ where
         &self.result_var
     }
 
+    /// 获取前提指示变量 / Get the premise indicator variable.
     pub fn premise_indicator_variable(&self) -> &BinaryVariableItem {
         self.premise_indicator.result_variable()
     }
 
+    /// 获取结论指示变量 / Get the consequence indicator variable.
     pub fn consequence_indicator_variable(&self) -> &BinaryVariableItem {
         self.consequence_indicator.result_variable()
     }
 
+    /// 获取前提不等式 / Get the premise inequality.
     pub fn premise(&self) -> &LinearInequality<V> {
         &self.premise
     }
 
+    /// 获取结论不等式 / Get the consequence inequality.
     pub fn consequence(&self) -> &LinearInequality<V> {
         &self.consequence
     }
@@ -363,7 +366,10 @@ where
                             result_index,
                         ),
                         LinearMonomial::new(
-                            convert_f64_to_v::<V>(1.0, "imply value premise lower two coefficient")?,
+                            convert_f64_to_v::<V>(
+                                1.0,
+                                "imply value premise lower two coefficient",
+                            )?,
                             premise_index,
                         ),
                     ],

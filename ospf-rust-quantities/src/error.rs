@@ -1,7 +1,7 @@
 //! 量的错误类型 / Error types for quantities.
 
-use std::fmt::{Debug, Display, Formatter};
 use ospf_rust_base::{Error, ErrorCode, ErrorPosition, WithErrorPosition, error_type};
+use std::fmt::{Debug, Display, Formatter};
 
 error_type!(
     /// 量纲不匹配错误 / Dimension mismatch error

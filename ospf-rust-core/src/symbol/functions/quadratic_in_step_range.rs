@@ -1,21 +1,28 @@
 //! 二次步进范围函数 / Quadratic in-step-range function
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    QuadraticFunctionSymbol,
+};
+use super::RoundingFunction;
+use super::quadratic_linear::*;
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality, QuadraticConstraint};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{ContinuousVariableItem, new_standalone_id};
-use super::super::{Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol, QuadraticFunctionSymbol};
-use super::RoundingFunction;
-use super::quadratic_linear::*;
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
+/// 二次表达式步进范围函数 / Quadratic in-step-range function
+///
+/// 将二次上下界之间的差值映射为步进范围结果。
+/// Maps the difference between quadratic bounds to a stepped range result.
 #[derive(Debug, Clone)]
 pub struct QuadraticInStepRangeFunction<V = f64>
 where
@@ -44,6 +51,8 @@ where
         Self::with_quadratic_bounds_and_cap(id, name, lower_poly, input, step, Some(upper))
     }
 
+    /// 使用二次表达式上下界创建步进范围函数。
+    /// Create a stepped range function with quadratic lower and upper bounds.
     pub fn with_quadratic_bounds(
         id: u64,
         name: &str,
@@ -112,11 +121,15 @@ where
         }
     }
 
+    /// 声明该函数依赖的模型元素 ID。
+    /// Declare the model element IDs consumed by this function.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 返回结果变量。
+    /// Return the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }

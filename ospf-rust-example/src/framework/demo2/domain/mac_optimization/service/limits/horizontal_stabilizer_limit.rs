@@ -1,9 +1,9 @@
 //! 水平安定面限制 / Horizontal stabilizer limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::mac_optimization::aggregation::MacOptimizationAggregation;
 use crate::framework::demo2::domain::mac_optimization::context::MacOptimizationContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 水平安定面限制: MAC 值必须在安全范围内
 /// 对齐 Kotlin mac_optimization HorizontalStabilizerLimit

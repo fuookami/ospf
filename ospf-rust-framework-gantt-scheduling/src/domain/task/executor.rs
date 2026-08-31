@@ -12,7 +12,9 @@ use crate::domain::common::{ExecutorId, ExecutorIdTrait};
 /// 定义可以执行任务的实体接口，如工人、机器、产线等。
 /// Defines the interface for entities that can execute tasks,
 /// such as workers, machines, production lines, etc.
-pub trait ExecutorTrait: Send + Sync + std::fmt::Debug + Clone + PartialEq + Eq + std::hash::Hash + 'static {
+pub trait ExecutorTrait:
+    Send + Sync + std::fmt::Debug + Clone + PartialEq + Eq + std::hash::Hash + 'static
+{
     /// 执行者 ID 类型 / Executor id type
     type Id: ExecutorIdTrait;
 

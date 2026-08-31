@@ -9,21 +9,20 @@
 //! - This implementation lives under `solver/solvers` as a built-in core heuristic solver;
 //! - It reuses callback + heuristic generic interfaces and does not bind to a specific MILP/QP backend.
 
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::fmt::{Debug, Formatter};
-use std::sync::Arc;
-use async_trait::async_trait;
-use num_traits::{Float, FromPrimitive};
 use crate::error::Result;
 use crate::model::callback::{Solution, SolutionStatus};
 use crate::solver::heuristic::{
-
     AbstractHeuristicPolicy, HeuristicAlgorithm, HeuristicCallBackModelInterface,
     HeuristicIndividual, HeuristicResult, HeuristicRuntimePolicy, Iteration,
     refresh_good_individuals,
 };
 use crate::variable::VariableId;
+use async_trait::async_trait;
+use num_traits::{Float, FromPrimitive};
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
 
 /// 随机数发生器 / Random number generator
 pub type RandomGenerator = Arc<dyn Fn() -> f64 + Send + Sync>;
@@ -195,15 +194,13 @@ where
         }
         if self.solve_on_objective_miss {
             model.set_initial_solution(solution);
-            if let Ok(output) = model.solve().await {
-                if output.status.is_feasible() {
-                    if let Some(value) = model
-                        .get_objective_value()
-                        .or_else(|| output.objective_value.and_then(V::from_f64))
-                    {
-                        return Some(value);
-                    }
-                }
+            if let Ok(output) = model.solve().await
+                && output.status.is_feasible()
+                && let Some(value) = model
+                    .get_objective_value()
+                    .or_else(|| output.objective_value.and_then(V::from_f64))
+            {
+                return Some(value);
             }
         }
         model.default_objective()
@@ -364,16 +361,14 @@ where
 
         if particles.is_empty() {
             let output = model.solve().await?;
-            if output.status.is_feasible() {
-                let fallback_objective = model
+            if output.status.is_feasible()
+                && let Some(fitness) = model
                     .get_objective_value()
                     .or_else(|| output.objective_value.and_then(V::from_f64))
-                    .or_else(|| model.default_objective());
-                if let Some(solution) = model.get_solution().cloned() {
-                    if let Some(fitness) = fallback_objective {
-                        particles.push(self.build_particle_from_solution(solution, fitness));
-                    }
-                }
+                    .or_else(|| model.default_objective())
+                && let Some(solution) = model.get_solution().cloned()
+            {
+                particles.push(self.build_particle_from_solution(solution, fitness));
             }
         }
 
@@ -403,13 +398,12 @@ where
             new_particles.sort_by(|lhs, rhs| model.compare_objective(&lhs.fitness, &rhs.fitness));
 
             let mut global_better = false;
-            if let Some(new_best_particle) = new_particles.first() {
-                if model.compare_objective(&new_best_particle.fitness, &best_particle.fitness)
+            if let Some(new_best_particle) = new_particles.first()
+                && model.compare_objective(&new_best_particle.fitness, &best_particle.fitness)
                     == Ordering::Less
-                {
-                    best_particle = new_best_particle.clone();
-                    global_better = true;
-                }
+            {
+                best_particle = new_best_particle.clone();
+                global_better = true;
             }
 
             let new_individuals: Vec<HeuristicIndividual<V>> =

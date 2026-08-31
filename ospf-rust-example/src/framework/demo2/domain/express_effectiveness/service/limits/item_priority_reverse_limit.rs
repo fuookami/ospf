@@ -1,12 +1,12 @@
 //! 物品优先级反向限制 / Item priority reverse limits
-use std::error::Error;
-use std::sync::Arc;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
-use ospf_rust_core::symbol::LinearExpressionSymbol;
-use ospf_rust_core::symbol::flatten::LinearMonomial;
 use crate::framework::demo2::domain::express_effectiveness::aggregation::ExpressEffectivenessAggregation;
 use crate::framework::demo2::domain::express_effectiveness::context::ExpressEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use ospf_rust_core::symbol::LinearExpressionSymbol;
+use ospf_rust_core::symbol::flatten::LinearMonomial;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 物品优先级反转限制: 低优先级货物不能在高优先级之前装载 / Item priority reverse limit: lower-priority cargos cannot load before higher-priority ones
 /// 对齐 Kotlin ItemPriorityReverseLimit
@@ -32,11 +32,7 @@ pub fn apply_item_priority_reverse_limits(
             .collect();
         let symbol = LinearExpressionSymbol::new(
             next_id,
-            &format!(
-                "priority_reverse_loaded_{}_{}",
-                mode_name(context.mode),
-                c
-            ),
+            &format!("priority_reverse_loaded_{}_{}", mode_name(context.mode), c),
             monomials,
             0.0,
         );

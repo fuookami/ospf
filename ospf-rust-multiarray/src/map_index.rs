@@ -32,10 +32,10 @@
 //! let idx2 = MapIndex::Map(_1);  // 第二个映射维度
 //! ```
 
-use std::alloc::Allocator;
-use std::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
 use super::dummy_index::DummyIndex;
 use super::index_value::TryIntoIndexValue;
+use std::alloc::Allocator;
+use std::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
 
 /// 占位符结构体
 /// Placeholder struct

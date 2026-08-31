@@ -1,10 +1,10 @@
 //! Zaslavskii 映射。
 //! Zaslavskii map.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point2};
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use super::helpers::{default_float, one_point2};
+use num_traits::Float;
 
 point2_system!(
     /// Zaslavskii 映射。
@@ -48,14 +48,25 @@ impl<S: Field + Float> Default for ZaslavskiiMapGenerator<S> {
 
 /// 创建 Zaslavskii 映射。
 /// Create a Zaslavskii map.
-pub fn zaslavskii_map<S: Field + Float>(epsilon: S, upsilon: S, r: S, mu: S, two_pi: S) -> ZaslavskiiMap<S> {
+pub fn zaslavskii_map<S: Field + Float>(
+    epsilon: S,
+    upsilon: S,
+    r: S,
+    mu: S,
+    two_pi: S,
+) -> ZaslavskiiMap<S> {
     ZaslavskiiMap::new(epsilon, upsilon, r, mu, two_pi)
 }
 
 /// 创建 Zaslavskii 映射生成器。
 /// Create a Zaslavskii map generator.
 pub fn zaslavskii_map_generator<S: Field + Float>(
-    epsilon: S, upsilon: S, r: S, mu: S, two_pi: S, x: Point2<S>,
+    epsilon: S,
+    upsilon: S,
+    r: S,
+    mu: S,
+    two_pi: S,
+    x: Point2<S>,
 ) -> ZaslavskiiMapGenerator<S> {
     ZaslavskiiMapGenerator::new(ZaslavskiiMap::new(epsilon, upsilon, r, mu, two_pi), x)
 }

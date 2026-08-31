@@ -1,10 +1,10 @@
 //! Sakarya 吸引子。
 //! Sakarya attractor.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point3};
 use crate::algebra::Field;
 use crate::geometry::Point3;
-use super::helpers::{default_float, one_point3};
+use num_traits::Float;
 
 point3_system!(
     /// Sakarya 吸引子的一阶欧拉步进模型。
@@ -51,7 +51,10 @@ pub fn sakarya_attractor<S: Field + Float>(alpha: S, beta: S, h: S) -> SakaryaAt
 /// 创建 Sakarya 吸引子生成器。
 /// Create a Sakarya attractor generator.
 pub fn sakarya_attractor_generator<S: Field + Float>(
-    alpha: S, beta: S, h: S, x: Point3<S>,
+    alpha: S,
+    beta: S,
+    h: S,
+    x: Point3<S>,
 ) -> SakaryaAttractorGenerator<S> {
     SakaryaAttractorGenerator::new(SakaryaAttractor::new(alpha, beta, h), x)
 }

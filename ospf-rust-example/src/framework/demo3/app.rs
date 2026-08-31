@@ -1,14 +1,13 @@
 use std::error::Error;
 
+use ospf_rust_framework_csp1d::{
+    Csp1dColumnGeneration, Csp1dConfiguration, Csp1dSolutionStatus, DefaultQuantityArithmetic,
+    FullSumGenerator, GenerationConstraints, Material, NSameGenerator, Product, ProductDemand,
+    ProductLegacyInput, ReducedCostPricingGenerator, WidthRange, csp1d_problem,
+};
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::CTUnit;
 use ospf_rust_quantities::unit::derived::Meter;
-use ospf_rust_framework_csp1d::{
-    csp1d_problem, Csp1dColumnGeneration, Csp1dConfiguration, Csp1dSolutionStatus,
-    DefaultQuantityArithmetic, FullSumGenerator, GenerationConstraints,
-    Material, NSameGenerator, Product, ProductDemand, ProductLegacyInput,
-    ReducedCostPricingGenerator, WidthRange,
-};
 
 fn quantity(value: f64) -> Quantity<f64, ospf_rust_quantities::unit::Unit> {
     Quantity::new(value, Meter::INSTANT.clone())
@@ -23,10 +22,22 @@ struct RawProduct {
 pub fn run() -> Result<(), Box<dyn Error>> {
     let raw_length = 1000.0_f64;
     let raw_products = vec![
-        RawProduct { width: 450.0, demand: 97.0 },
-        RawProduct { width: 360.0, demand: 610.0 },
-        RawProduct { width: 310.0, demand: 395.0 },
-        RawProduct { width: 140.0, demand: 211.0 },
+        RawProduct {
+            width: 450.0,
+            demand: 97.0,
+        },
+        RawProduct {
+            width: 360.0,
+            demand: 610.0,
+        },
+        RawProduct {
+            width: 310.0,
+            demand: 395.0,
+        },
+        RawProduct {
+            width: 140.0,
+            demand: 211.0,
+        },
     ];
 
     let products: Vec<Product<f64>> = raw_products
@@ -59,9 +70,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let demands: Vec<ProductDemand<f64>> = raw_products
         .iter()
         .enumerate()
-        .map(|(index, raw)| {
-            ProductDemand::legacy_roll(products[index].clone(), raw.demand)
-        })
+        .map(|(index, raw)| ProductDemand::legacy_roll(products[index].clone(), raw.demand))
         .collect();
 
     let problem = csp1d_problem::<f64, _>(|builder| {

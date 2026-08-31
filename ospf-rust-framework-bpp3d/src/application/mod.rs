@@ -8,51 +8,46 @@ pub mod csv;
 pub mod report;
 pub mod service;
 
+pub use crate::domain::packing::{KnownCoordinatePlacement, LayerPlacementAdapter};
 #[cfg(feature = "serde")]
 pub use csv::{
     CsvApplicationMaterializer, CsvApplicationRequestDraft, CsvBinRecord, CsvDataset,
-    CsvDatasetError, CsvDatasetLoader, CsvDepthBoundaryPolicy,
-    CsvDepthBoundaryPolicyRecord, CsvItemRecord, CsvLayerRecord,
-    CsvMaterializedApplicationRequest, CsvSchemaGuard, CsvShapeType,
-};
-pub use report::{
-    Bpp3dDemandCoverageReport, Bpp3dErrorCategory, Bpp3dFixtureReport,
-    Bpp3dFixtureStatus, Bpp3dPackedBinReport, Bpp3dRunReport,
-    Bpp3dRunReportComparison, Bpp3dRunReportDifference,
-    Bpp3dRunReportDifferenceSeverity, Bpp3dSelectedLayerReport,
-    Bpp3dSolverAvailability, Bpp3dSolverFailure, Bpp3dSolverModelStatus,
-    Bpp3dSuiteSummary, FixtureFilter,
+    CsvDatasetError, CsvDatasetLoader, CsvDepthBoundaryPolicy, CsvDepthBoundaryPolicyRecord,
+    CsvItemRecord, CsvLayerRecord, CsvMaterializedApplicationRequest, CsvSchemaGuard, CsvShapeType,
 };
 #[cfg(feature = "serde")]
 pub use report::Bpp3dRunReportIoError;
+pub use report::{
+    Bpp3dDemandCoverageReport, Bpp3dErrorCategory, Bpp3dFixtureReport, Bpp3dFixtureStatus,
+    Bpp3dPackedBinReport, Bpp3dRunReport, Bpp3dRunReportComparison, Bpp3dRunReportDifference,
+    Bpp3dRunReportDifferenceSeverity, Bpp3dSelectedLayerReport, Bpp3dSolverAvailability,
+    Bpp3dSolverFailure, Bpp3dSolverModelStatus, Bpp3dSuiteSummary, FixtureFilter,
+};
+#[cfg(not(feature = "async"))]
+pub use service::ColumnGenerationSolverMetaModelBackend;
+pub use service::SolverBackendSurveyReport;
 pub use service::{
     ColumnGenerationAlgorithm, ColumnGenerationApplicationFlowResult,
-    ColumnGenerationApplicationService, ColumnGenerationApplicationState,
-    ColumnGenerationConfig, ColumnGenerationFinalExecution, ColumnGenerationFinalExecutor,
+    ColumnGenerationApplicationService, ColumnGenerationApplicationState, ColumnGenerationConfig,
     ColumnGenerationExecutionError, ColumnGenerationFailure, ColumnGenerationFailureAnalyzer,
-    ColumnGenerationFailureStage, ColumnGenerationFinalModelExtension,
-    ColumnGenerationRmpModelExtension,
-    ColumnGenerationPackingAnalysis, ColumnGenerationPackingAnalyzer,
-    ColumnGenerationResult, ColumnGenerationRmpExecution, ColumnGenerationRmpExecutor,
+    ColumnGenerationFailureStage, ColumnGenerationFinalExecution, ColumnGenerationFinalExecutor,
+    ColumnGenerationFinalModelExtension, ColumnGenerationPackingAnalysis,
+    ColumnGenerationPackingAnalyzer, ColumnGenerationResult, ColumnGenerationRmpExecution,
+    ColumnGenerationRmpExecutor, ColumnGenerationRmpModelExtension,
     ColumnGenerationStandardExecutors, ColumnGenerationState, ColumnGenerationStatus,
     DepthBoundaryLayerOrientationPolicy, DepthBoundaryValidationStage,
     MetaModelExecutionDiagnostics, MetaModelExecutorSolveResult, MetaModelFinalExecutor,
-    MetaModelFinalExecutorConfig,
-    MetaModelRmpExecutor, MetaModelRmpExecutorConfig, MetaModelSolverBackend,
-    MockColumnGenerationFinalExecutor, MockColumnGenerationRmpExecutor,
+    MetaModelFinalExecutorConfig, MetaModelRmpExecutor, MetaModelRmpExecutorConfig,
+    MetaModelSolverBackend, MockColumnGenerationFinalExecutor, MockColumnGenerationRmpExecutor,
     NoopMetaModelSolverBackend, ObjectiveSense, SolverBackedMetaModelFinalExecutor,
     SolverBackedMetaModelRmpExecutor,
 };
 #[cfg(feature = "serde")]
 pub use service::{
-    SolverDatasetFixture, SolverDatasetFixtureManifest, SolverDatasetFixtureManifestEntry,
-    SolverDatasetFixtureRunResult, SolverDatasetFixtureSuite, SolverDatasetSuiteRunResult,
     LayerGenerationFixtureQualityReport, LayerGenerationQualityComparison,
     LayerGenerationQualityDifference, LayerGenerationQualityDifferenceSeverity,
-    LayerGenerationSourceQualityReport, LayerGenerationSuiteQualityReport,
+    LayerGenerationSourceQualityReport, LayerGenerationSuiteQualityReport, SolverDatasetFixture,
+    SolverDatasetFixtureManifest, SolverDatasetFixtureManifestEntry, SolverDatasetFixtureRunResult,
+    SolverDatasetFixtureSuite, SolverDatasetSuiteRunResult,
 };
 pub use service::{SolverDatasetSuiteDiagnostics, SolverFeatureMatrixDiagnostics};
-pub use service::SolverBackendSurveyReport;
-pub use crate::domain::packing::{KnownCoordinatePlacement, LayerPlacementAdapter};
-#[cfg(not(feature = "async"))]
-pub use service::ColumnGenerationSolverMetaModelBackend;

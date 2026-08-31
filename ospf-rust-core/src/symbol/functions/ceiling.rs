@@ -1,24 +1,22 @@
 //! 向上取整函数符号 / Ceiling function symbol
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, One, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-use crate::error::{ModelError, Result};
-use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
-use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
-use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{
-    ContinuousVariableItem, IntegerVariableItem, VariableId, new_group_id,
-};
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
 use super::big_m::{BigMPolicy, infer_linear_abs_bound_from_tokens};
+use crate::error::{ModelError, Result};
+use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
+use crate::token::{IntoValue, Token, TokenList};
+use crate::variable::{ContinuousVariableItem, IntegerVariableItem, VariableId, new_group_id};
+use num_traits::{FromPrimitive, One, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -144,6 +142,7 @@ where
         &self.result_var
     }
 
+    /// 获取整数结果变量 / Get the integer result variable.
     pub fn integer_variable(&self) -> &IntegerVariableItem {
         &self.integer_var
     }
@@ -603,7 +602,10 @@ mod tests {
             .iter()
             .find(|c| c.name == "ceil_struct_ceil_lb")
             .expect("ceil_lb constraint should exist");
-        assert_eq!(ceil_lb.inequality.relation, ConstraintRelation::GreaterEqual);
+        assert_eq!(
+            ceil_lb.inequality.relation,
+            ConstraintRelation::GreaterEqual
+        );
         assert!((ceil_lb.inequality.rhs - (-1.0 + ROUNDING_EPSILON)).abs() <= 1e-9);
     }
 

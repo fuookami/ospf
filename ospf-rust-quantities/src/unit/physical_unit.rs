@@ -108,12 +108,7 @@ pub struct Unit {
 
 impl Unit {
     /// 创建单位 / Create unit
-    pub fn new(
-        name: String,
-        symbol: String,
-        dimension: DerivedQuantity,
-        scale: Scale,
-    ) -> Self {
+    pub fn new(name: String, symbol: String, dimension: DerivedQuantity, scale: Scale) -> Self {
         let domain = dimension.domain();
         Self::new_with_conversion_and_domain(
             name,

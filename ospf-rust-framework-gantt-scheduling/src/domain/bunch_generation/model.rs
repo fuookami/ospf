@@ -43,7 +43,11 @@ pub struct TaskNode {
 impl TaskNode {
     /// 创建新的任务节点 / Create new task node
     pub fn new(task_index: usize, node_index: NodeIndex, time: f64) -> Self {
-        Self { task_index, node_index, time }
+        Self {
+            task_index,
+            node_index,
+            time,
+        }
     }
 }
 
@@ -148,7 +152,10 @@ impl std::fmt::Debug for Graph {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Graph")
             .field("node_count", &self.nodes.len())
-            .field("edge_count", &self.edges.values().map(|v| v.len()).sum::<usize>())
+            .field(
+                "edge_count",
+                &self.edges.values().map(|v| v.len()).sum::<usize>(),
+            )
             .finish()
     }
 }
@@ -200,7 +207,9 @@ impl Graph {
 
     /// 获取终止节点 / Get end node
     pub fn end(&self) -> &Node {
-        self.nodes.get(&NodeIndex::MAX).expect("End node always exists")
+        self.nodes
+            .get(&NodeIndex::MAX)
+            .expect("End node always exists")
     }
 
     /// 节点数量 / Number of nodes
@@ -223,7 +232,7 @@ impl Graph {
         for node in self.nodes.values() {
             match node {
                 Node::Root => {} // 已存在为 End
-                Node::End => {}   // 已存在为 Root
+                Node::End => {}  // 已存在为 Root
                 Node::Task(_) => reversed.add_node(node.clone()),
             }
         }

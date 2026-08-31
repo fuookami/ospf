@@ -1,9 +1,9 @@
 //! N 体系统。
 //! N-body system.
 
-use num_traits::Float;
 use crate::algebra::Field;
 use crate::geometry::Point3;
+use num_traits::Float;
 /// N 体系统。
 /// N-body system.
 ///
@@ -20,9 +20,15 @@ impl<S: Field + Float> NBodySystem<S> {
         Self { m, g, h }
     }
 
-    pub fn m(&self) -> &[S] { &self.m }
-    pub fn g(&self) -> S { self.g }
-    pub fn h(&self) -> S { self.h }
+    pub fn m(&self) -> &[S] {
+        &self.m
+    }
+    pub fn g(&self) -> S {
+        self.g
+    }
+    pub fn h(&self) -> S {
+        self.h
+    }
 
     /// 执行一次 N 体步进。
     /// Execute one N-body step.
@@ -86,8 +92,12 @@ impl<S: Field + Float> NBodySystemGenerator<S> {
         Self { system, state }
     }
 
-    pub fn system(&self) -> &NBodySystem<S> { &self.system }
-    pub fn state(&self) -> &[(Point3<S>, Point3<S>)] { &self.state }
+    pub fn system(&self) -> &NBodySystem<S> {
+        &self.system
+    }
+    pub fn state(&self) -> &[(Point3<S>, Point3<S>)] {
+        &self.state
+    }
 
     pub fn next_state(&mut self) -> Vec<(Point3<S>, Point3<S>)> {
         let current = self.state.clone();
@@ -113,7 +123,10 @@ pub fn n_body_system<S: Field + Float>(m: Vec<S>, g: S, h: S) -> NBodySystem<S> 
 /// 创建 N 体系统生成器。
 /// Create an N-body system generator.
 pub fn n_body_system_generator<S: Field + Float>(
-    m: Vec<S>, g: S, h: S, state: Vec<(Point3<S>, Point3<S>)>,
+    m: Vec<S>,
+    g: S,
+    h: S,
+    state: Vec<(Point3<S>, Point3<S>)>,
 ) -> NBodySystemGenerator<S> {
     NBodySystemGenerator::new(NBodySystem::new(m, g, h), state)
 }

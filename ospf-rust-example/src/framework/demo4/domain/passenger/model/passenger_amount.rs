@@ -1,9 +1,9 @@
 //! 旅客数量模型模块 / Passenger amount model module.
-use std::error::Error;
-use std::sync::Arc;
+use super::passenger::Passenger;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
-use super::passenger::Passenger;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 旅客数量 / Passenger amount
 /// 对齐 Kotlin PassengerAmount / Aligned with Kotlin PassengerAmount

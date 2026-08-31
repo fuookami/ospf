@@ -1,14 +1,12 @@
 //! Demo7 模块 / Demo7 module
 use std::error::Error;
 
-use ospf_rust_multiarray::Shape;
 use ospf_rust_core::model::{ConstraintRelation, LinearObjectiveInput, MetaModel};
-use ospf_rust_core::symbol::{
-    LinearExpressionSymbol, flat_map1_indexed,
-};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, flat_map1_indexed};
 use ospf_rust_core::variable::{UInteger, VariableCombination2D};
+use ospf_rust_multiarray::Shape;
 
-use super::common::{read_solution_value, solve_typed, extract_coeffs};
+use super::common::{extract_coeffs, read_solution_value, solve_typed};
 
 /// 仓库数据结构 / Warehouse data structure
 #[derive(Debug, Clone)]
@@ -105,32 +103,60 @@ impl InventoryModel {
         let x_idx = model.register_combination(&x_vars)?;
 
         // 成本符号 / Cost symbol
-        let cost = flat_map1_indexed("cost", warehouses, |w, warehouse| {
-            let monomials: Vec<_> = stores.iter().enumerate()
-                .map(|(s, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(
-                    warehouse.cost_to(s), x_idx[&[w, s]],
-                ))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, warehouse| warehouse.name.clone());
+        let cost = flat_map1_indexed(
+            "cost",
+            warehouses,
+            |w, warehouse| {
+                let monomials: Vec<_> = stores
+                    .iter()
+                    .enumerate()
+                    .map(|(s, _)| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(
+                            warehouse.cost_to(s),
+                            x_idx[&[w, s]],
+                        )
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, warehouse| warehouse.name.clone(),
+        );
         model.add_symbol_combination(&cost)?;
 
         // 每仓库发货符号 / Per-warehouse shipment symbol
-        let shipment = flat_map1_indexed("shipment", warehouses, |w, _warehouse| {
-            let monomials: Vec<_> = stores.iter().enumerate()
-                .map(|(s, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[w, s]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, warehouse| warehouse.name.clone());
+        let shipment = flat_map1_indexed(
+            "shipment",
+            warehouses,
+            |w, _warehouse| {
+                let monomials: Vec<_> = stores
+                    .iter()
+                    .enumerate()
+                    .map(|(s, _)| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[w, s]])
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, warehouse| warehouse.name.clone(),
+        );
         model.add_symbol_combination(&shipment)?;
 
         // 每商店采购符号 / Per-store purchase symbol
-        let purchase = flat_map1_indexed("purchase", stores, |s, _store| {
-            let monomials: Vec<_> = warehouses.iter().enumerate()
-                .map(|(w, _)| ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[w, s]]))
-                .collect();
-            ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
-        }, |_, store| store.name.clone());
+        let purchase = flat_map1_indexed(
+            "purchase",
+            stores,
+            |s, _store| {
+                let monomials: Vec<_> = warehouses
+                    .iter()
+                    .enumerate()
+                    .map(|(w, _)| {
+                        ospf_rust_core::symbol::flatten::LinearMonomial::new(1.0, x_idx[&[w, s]])
+                    })
+                    .collect();
+                ospf_rust_core::symbol::flatten::Linear::new(monomials, 0.0)
+            },
+            |_, store| store.name.clone(),
+        );
         model.add_symbol_combination(&purchase)?;
 
         Ok(InventoryModel {
@@ -157,8 +183,7 @@ impl InventoryModel {
                 cost_coeffs.push((m.var_index(), *m.coefficient()));
             }
         }
-        let cost_input = LinearObjectiveInput::minimize("cost")
-            .terms(cost_coeffs.into_iter());
+        let cost_input = LinearObjectiveInput::minimize("cost").terms(cost_coeffs.into_iter());
         model.set_linear_objective_input(cost_input);
 
         // 仓库容量约束 / Warehouse capacity constraints

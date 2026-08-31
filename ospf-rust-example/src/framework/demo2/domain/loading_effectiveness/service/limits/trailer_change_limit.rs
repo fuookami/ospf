@@ -1,8 +1,8 @@
 //! 拖车更换限制 / Trailer change limits
-use std::error::Error;
-use ospf_rust_core::model::{MetaModel, LinearObjectiveInput};
 use crate::framework::demo2::domain::loading_effectiveness::model::TrailerChangeVariables;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{LinearObjectiveInput, MetaModel};
+use std::error::Error;
 
 /// 拖车更换限制: 最小化拖车更换次数 / Trailer change limit: minimize trailer change count
 /// 对齐 Kotlin TrailerChangeLimit
@@ -33,10 +33,9 @@ pub fn apply_trailer_change_limits(
     }
 
     if !objective_terms.is_empty() {
-        let obj_input = LinearObjectiveInput::minimize(
-            &format!("loading_trailer_change_{}", mode_name_str),
-        )
-        .terms(objective_terms.iter().copied());
+        let obj_input =
+            LinearObjectiveInput::minimize(&format!("loading_trailer_change_{}", mode_name_str))
+                .terms(objective_terms.iter().copied());
         model.add_linear_objective_input(obj_input);
     }
 

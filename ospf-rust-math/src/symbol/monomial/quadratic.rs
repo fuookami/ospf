@@ -312,7 +312,9 @@ impl<T: Debug + fmt::Display + Zero + PartialEq + OneRef + NegOneRef + 'static> 
                     "{}*{}*{}",
                     self.coefficient,
                     self.symbol1,
-                    self.symbol2.as_ref().expect("symbol2 is checked as Some / symbol2 已确认为 Some")
+                    self.symbol2
+                        .as_ref()
+                        .expect("symbol2 is checked as Some / symbol2 已确认为 Some")
                 )
             } else {
                 write!(f, "{}*{}", self.coefficient, self.symbol1)
@@ -381,21 +383,29 @@ impl<T: Clone> Evaluate<T> for QuadraticMonomial<T> {
                         // 符号设为同一个，调用者在多项式层面处理
                         // Both symbols have values, compute product and multiply into coefficient
                         // Symbol set to same one, caller handles at polynomial level
-                        let s1_value = values.get(&self.symbol1).expect("s1_has_value is true / s1_has_value 为 true");
-                        let s2_value = values.get(symbol2).expect("s2_has_value is true / s2_has_value 为 true");
+                        let s1_value = values
+                            .get(&self.symbol1)
+                            .expect("s1_has_value is true / s1_has_value 为 true");
+                        let s2_value = values
+                            .get(symbol2)
+                            .expect("s2_has_value is true / s2_has_value 为 true");
                         let temp = T::mul_ref(&self.coefficient, s1_value);
                         Self::linear(T::mul_ref(&temp, s2_value), self.symbol1.clone())
                     }
                     (true, false) => {
                         // S1 有值，变成线性项
                         // S1 has value, becomes linear term
-                        let s1_value = values.get(&self.symbol1).expect("s1_has_value is true / s1_has_value 为 true");
+                        let s1_value = values
+                            .get(&self.symbol1)
+                            .expect("s1_has_value is true / s1_has_value 为 true");
                         Self::linear(T::mul_ref(&self.coefficient, s1_value), symbol2.clone())
                     }
                     (false, true) => {
                         // S2 有值，变成线性项
                         // S2 has value, becomes linear term
-                        let s2_value = values.get(symbol2).expect("s2_has_value is true / s2_has_value 为 true");
+                        let s2_value = values
+                            .get(symbol2)
+                            .expect("s2_has_value is true / s2_has_value 为 true");
                         Self::linear(
                             T::mul_ref(&self.coefficient, s2_value),
                             self.symbol1.clone(),
@@ -412,7 +422,9 @@ impl<T: Clone> Evaluate<T> for QuadraticMonomial<T> {
                 // 线性项: c * S1
                 // Linear term: c * S1
                 if s1_has_value {
-                    let s1_value = values.get(&self.symbol1).expect("s1_has_value is true / s1_has_value 为 true");
+                    let s1_value = values
+                        .get(&self.symbol1)
+                        .expect("s1_has_value is true / s1_has_value 为 true");
                     Self::linear(
                         T::mul_ref(&self.coefficient, s1_value),
                         self.symbol1.clone(),

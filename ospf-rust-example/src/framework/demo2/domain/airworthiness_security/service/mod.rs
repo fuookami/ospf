@@ -3,12 +3,12 @@
 //! 提供适航性约束的应用管道，包括各种限制条件的注册和执行。
 //! Provides the airworthiness constraint application pipeline,
 //! including registration and execution of various limit conditions.
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;
 use crate::framework::demo2::domain::airworthiness_security::context::AirworthinessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 use crate::framework::demo2::infrastructure::dto::Demo2Request;
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 mod limits;
 pub(crate) mod pipeline_list_generator;
@@ -30,7 +30,13 @@ pub fn apply_airworthiness_security_pipeline(
     let context = AirworthinessContext::new(request, x_idx, mode);
     let aggregation = AirworthinessAggregation::from_context(&context);
     for step in pipeline_list_generator::pipeline_steps(context.mode) {
-        step(model, &context, &aggregation, estimate_load_weight_idx, estimate_loaded_idx)?;
+        step(
+            model,
+            &context,
+            &aggregation,
+            estimate_load_weight_idx,
+            estimate_loaded_idx,
+        )?;
     }
     Ok(())
 }

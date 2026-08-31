@@ -7,11 +7,10 @@ use ospf_rust_core::solver::SolveValue;
 use ospf_rust_framework::model::Pipeline;
 
 use crate::domain::material::{
-    shadow_price_key_to_string, to_f64,
-    Csp1dShadowPriceKey, YieldOverProductionBoundShadowPriceKey,
+    Csp1dShadowPriceKey, YieldOverProductionBoundShadowPriceKey, shadow_price_key_to_string, to_f64,
 };
-use crate::domain::r#yield::YieldSlackAggregation;
 use crate::domain::wasting_minimization::WasteMinimizationConfig;
+use crate::domain::r#yield::YieldSlackAggregation;
 
 use super::super::aggregation::ProduceAggregation;
 use super::{Csp1dCGPipeline, Csp1dShadowPriceExtractor, rest_material_value};
@@ -30,10 +29,7 @@ impl<V: SolveValue> YieldConstraintPipeline<V> {
     pub fn new(produce: ProduceAggregation<V>, r#yield: YieldSlackAggregation<V>) -> Self {
         Self {
             name: "yield_constraint".to_string(),
-            group: Some(ConstraintGroup::new(
-                10_004,
-                "csp1d_yield_constraint",
-            )),
+            group: Some(ConstraintGroup::new(10_004, "csp1d_yield_constraint")),
             produce,
             r#yield,
         }
@@ -95,7 +91,11 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for YieldConstraintPipeline<V> {
                         0,
                         None,
                     ) {
-                        log::warn!("Failed to register yield balance constraint {}: {:?}", demand_index, error);
+                        log::warn!(
+                            "Failed to register yield balance constraint {}: {:?}",
+                            demand_index,
+                            error
+                        );
                     }
                 }
             }
@@ -127,7 +127,11 @@ impl<V: SolveValue> Pipeline<MetaModel<f64>> for YieldConstraintPipeline<V> {
                 0,
                 Some(shadow_price_key_to_string(&key)),
             ) {
-                log::warn!("Failed to register over-production bound {}: {:?}", demand_index, error);
+                log::warn!(
+                    "Failed to register over-production bound {}: {:?}",
+                    demand_index,
+                    error
+                );
             }
         }
     }
@@ -242,15 +246,20 @@ impl<V: SolveValue> WasteObjectivePipeline<V> {
                 }
                 let variable_index = self.produce.plan_variable_index(plan_index)?;
                 let mut coefficient = 0.0;
-                if let Some(trim_penalty) = self.config.trim_width_penalty.as_ref().and_then(to_f64) {
+                if let Some(trim_penalty) = self.config.trim_width_penalty.as_ref().and_then(to_f64)
+                {
                     let rest_width = plan
                         .rest_width()
                         .and_then(|width| to_f64(&width.value))
                         .unwrap_or(0.0);
                     coefficient += rest_width * trim_penalty;
                 }
-                if let Some(rest_penalty) = self.config.rest_material_penalty.as_ref().and_then(to_f64) {
-                    if let Some(rest_material) = rest_material_value(plan, self.config.rest_material_measure) {
+                if let Some(rest_penalty) =
+                    self.config.rest_material_penalty.as_ref().and_then(to_f64)
+                {
+                    if let Some(rest_material) =
+                        rest_material_value(plan, self.config.rest_material_measure)
+                    {
                         coefficient += rest_material * rest_penalty;
                     }
                 }
@@ -269,7 +278,12 @@ impl<V: SolveValue> WasteObjectivePipeline<V> {
 
     /// 超产面积目标项 / Over-production area objective terms
     pub fn over_production_area_objective_terms(&self) -> Vec<(usize, f64)> {
-        let Some(area_penalty) = self.config.over_production_area_penalty.as_ref().and_then(to_f64) else {
+        let Some(area_penalty) = self
+            .config
+            .over_production_area_penalty
+            .as_ref()
+            .and_then(to_f64)
+        else {
             return Vec::new();
         };
         let Some(r#yield) = &self.r#yield else {

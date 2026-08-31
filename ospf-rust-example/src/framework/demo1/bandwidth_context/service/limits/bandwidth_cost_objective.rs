@@ -1,10 +1,10 @@
 //! 带宽成本目标函数模块 / Bandwidth cost objective function module
 
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
-use ospf_rust_multiarray::Shape;
 use crate::framework::demo1::route_context::model::{Edge, Node, Service};
+use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination};
+use ospf_rust_multiarray::Shape;
+use std::error::Error;
 
 /// 一维线性表达式符号组合类型别名 / 1D linear expression symbol combination type alias
 type Symbols1D = SymbolCombination<f64, LinearExpressionSymbol<f64>, Shape<1>>;

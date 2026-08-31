@@ -49,4 +49,3 @@ pub struct RenderSchemaDTO {
     pub kpi: BTreeMap<String, String>,
     pub cutting_plans: Vec<RenderCuttingPlanDTO>,
 }
-

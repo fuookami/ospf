@@ -1,6 +1,6 @@
 //! 飞行任务束生成器模块 / Flight task bunch generator module
-use std::collections::{HashMap, HashSet};
 use super::super::model::{Graph, Node};
+use std::collections::{HashMap, HashSet};
 
 /// Label 状态 / Label state (对齐 FSRA FlightTaskBunchGenerator label)
 #[derive(Debug, Clone)]
@@ -66,7 +66,10 @@ pub struct FlightTaskBunchGenerator {
 impl FlightTaskBunchGenerator {
     /// 创建新的飞行任务束生成器 / Create new flight task bunch generator
     pub fn new(max_bunches: usize, reduced_cost_threshold: f64) -> Self {
-        Self { max_bunches, reduced_cost_threshold }
+        Self {
+            max_bunches,
+            reduced_cost_threshold,
+        }
     }
 
     /// 生成飞行任务束 / Generate flight task bunches
@@ -112,11 +115,7 @@ impl FlightTaskBunchGenerator {
             // 扩展
             for edge in graph.get_edges(&label.current_node) {
                 if let Node::Task { task_id, .. } = &edge.to {
-                    let cost = cost_calculator(
-                        task_id,
-                        label.current_node.task_id(),
-                        task_id,
-                    );
+                    let cost = cost_calculator(task_id, label.current_node.task_id(), task_id);
                     let shadow = shadow_prices.get(task_id).copied().unwrap_or(0.0);
                     let conn_time = if let Some(prev_id) = label.current_node.task_id() {
                         connection_time_calculator(prev_id, task_id)
@@ -146,7 +145,10 @@ impl FlightTaskBunchGenerator {
             other.current_node == label.current_node
                 && other.visited_tasks.len() >= label.visited_tasks.len()
                 && other.reduced_cost <= label.reduced_cost
-                && label.visited_tasks.iter().all(|t| other.visited_tasks.contains(t))
+                && label
+                    .visited_tasks
+                    .iter()
+                    .all(|t| other.visited_tasks.contains(t))
         })
     }
 }
@@ -164,8 +166,8 @@ pub struct GeneratedBunch {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::super::model::{Graph, Node};
+    use super::*;
     use time::macros::datetime;
 
     fn task_node(id: &str, index: u64) -> Node {

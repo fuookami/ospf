@@ -1,8 +1,7 @@
 //! 删除过滤算法
 //! Deletion Filtering Algorithm
 
-use std::collections::BTreeSet;
-use std::time::Instant;
+use super::{ConstraintSource, IISAnalysis, IISConfig, LinearIISModel, LinearTriadModelIISSource};
 use crate::error::Result;
 #[cfg(not(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12")))]
 use crate::error::{CoreError, SolverNotFoundError};
@@ -10,7 +9,8 @@ use crate::model::intermediate::{BasicLinearTriadModel, LinearTriadModel};
 use crate::solver::SolverOutput;
 #[cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
 use crate::solver::solvers::{GurobiSolver, gurobi::GurobiConfig};
-use super::{ConstraintSource, IISConfig, LinearIISModel, LinearTriadModelIISSource};
+use std::collections::BTreeSet;
+use std::time::Instant;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ActiveSources {
@@ -388,35 +388,41 @@ where
 
     if is_basic_model_feasible_with_tolerance(model, config.tolerance)? {
         let mut iis = LinearIISModel::new(model.num_constraints(), model.num_variables());
+        iis.set_analysis(IISAnalysis::deletion_filtering(true));
         iis.set_computation_time(start.elapsed());
         return Ok(iis);
     }
 
     let mut attempts = 0usize;
+    let mut completed = false;
     loop {
         if attempts >= config.max_iterations {
             break;
         }
-        if let Some(limit) = config.time_limit {
-            if start.elapsed() >= limit {
-                break;
-            }
+        if let Some(limit) = config.time_limit
+            && start.elapsed() >= limit
+        {
+            break;
         }
 
         let mut removed_any = false;
+        let mut scanned_all_sources = true;
         let sources = active.ordered_sources();
         if sources.is_empty() {
+            completed = true;
             break;
         }
 
         for source in sources {
             if attempts >= config.max_iterations {
+                scanned_all_sources = false;
                 break;
             }
-            if let Some(limit) = config.time_limit {
-                if start.elapsed() >= limit {
-                    break;
-                }
+            if let Some(limit) = config.time_limit
+                && start.elapsed() >= limit
+            {
+                scanned_all_sources = false;
+                break;
             }
 
             active.remove(source);
@@ -431,12 +437,17 @@ where
             }
         }
 
-        if !removed_any {
+        if scanned_all_sources && !removed_any {
+            completed = true;
+            break;
+        }
+        if !scanned_all_sources {
             break;
         }
     }
 
     let mut iis = active.to_iis_model(model.num_constraints(), model.num_variables());
+    iis.set_analysis(IISAnalysis::deletion_filtering(completed));
     iis.set_computation_time(start.elapsed());
 
     if config.verbose {
@@ -468,4 +479,58 @@ where
 {
     let active = ActiveSources::from_model(model, config.include_bounds);
     compute_iis_deletion_with_active(model, config, active)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::intermediate::BasicLinearTriadModel;
+    use crate::solver::{InfeasibilityMinimality, ProofCompleteness, ProofReliability};
+    use crate::token::Token;
+    use crate::variable::{ContinuousVariableItem, VariableId, VariableType};
+
+    fn bound_conflict_model() -> BasicLinearTriadModel {
+        let mut model = BasicLinearTriadModel::new("legacy-iis-bound-conflict");
+        let variable = ContinuousVariableItem::create(VariableId::standalone(9101), "x");
+        model.add_variable_with_bounds(
+            Token::from_generic(variable, 0),
+            1.0,
+            0.0,
+            VariableType::Continuous,
+        );
+        model
+    }
+
+    #[test]
+    fn deletion_filtering_marks_complete_result_reliable_and_irreducible() {
+        let result = compute_iis_deletion(
+            &bound_conflict_model(),
+            &IISConfig::new().with_bounds(true).with_max_iterations(16),
+        )
+        .expect("quick bound conflict should not require a native solver");
+
+        assert_eq!(result.analysis().reliability, ProofReliability::Reliable);
+        assert_eq!(result.analysis().completeness, ProofCompleteness::Complete);
+        assert_eq!(
+            result.analysis().minimality,
+            InfeasibilityMinimality::Irreducible
+        );
+        assert_eq!(result.num_bounds(), 2);
+    }
+
+    #[test]
+    fn deletion_filtering_marks_budget_exhaustion_partial() {
+        let result = compute_iis_deletion(
+            &bound_conflict_model(),
+            &IISConfig::new().with_bounds(true).with_max_iterations(1),
+        )
+        .expect("partial bound conflict should still return evidence");
+
+        assert_eq!(result.analysis().reliability, ProofReliability::Reliable);
+        assert_eq!(result.analysis().completeness, ProofCompleteness::Partial);
+        assert_eq!(
+            result.analysis().minimality,
+            InfeasibilityMinimality::Partial
+        );
+    }
 }

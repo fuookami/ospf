@@ -1,12 +1,12 @@
 //! 装载效能流水线步骤生成器 / Loading effectiveness pipeline step generator
 
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use crate::framework::demo2::domain::loading_effectiveness::service::policy;
 use crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode;
 use crate::framework::demo2::domain::shared::pipeline_policy::collect_pipeline_steps;
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 /// 装载效能流水线步骤类型 / Loading effectiveness pipeline step type
 pub type LoadingEffectivenessPipelineStep = fn(

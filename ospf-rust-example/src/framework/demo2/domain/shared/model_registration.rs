@@ -3,13 +3,13 @@
 //! 提供变量注册和目标构造的共享逻辑，供 Application 层调用。
 //! Provides shared logic for variable registration and objective construction, called by the Application layer.
 
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::model::object::ObjectiveCategory;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::variable::{BinaryVariableItem, UContinuousVariableItem, VariableId};
+use std::error::Error;
 
-use crate::framework::demo2::infrastructure::dto::Demo2Request;
 use super::pipeline_mode::Demo2PipelineMode;
+use crate::framework::demo2::infrastructure::dto::Demo2Request;
 
 /// 变量注册结果 / Variable registration result
 ///
@@ -109,9 +109,7 @@ pub fn register_derived_variables(
         )))?;
         let mut terms = Vec::with_capacity(cargo_count + 1);
         terms.push((index, 1.0));
-        terms.extend(
-            (0..cargo_count).map(|c| (x_idx[c][p], -request.cargos[c].weight)),
-        );
+        terms.extend((0..cargo_count).map(|c| (x_idx[c][p], -request.cargos[c].weight)));
         model.add_linear_constraint(
             &terms,
             ConstraintRelation::Equal,
@@ -143,10 +141,8 @@ pub fn register_derived_variables(
     // loaded[c] = sum(x[c][p])
     let mut loaded_idx = vec![0usize; cargo_count];
     for c in 0..cargo_count {
-        let index = model.register_variable(UContinuousVariableItem::auto(&format!(
-            "loaded_{}",
-            c
-        )))?;
+        let index =
+            model.register_variable(UContinuousVariableItem::auto(&format!("loaded_{}", c)))?;
         let mut terms = Vec::with_capacity(pos_count + 1);
         terms.push((index, 1.0));
         terms.extend((0..pos_count).map(|p| (x_idx[c][p], -1.0)));
@@ -234,10 +230,8 @@ pub fn register_benders_variables(
         for p in 0..request.positions.len() {
             let master_var = BinaryVariableItem::auto(&format!("{}_bm_{}_{}", var_prefix, c, p));
             let shared_id = master_var.id();
-            let sub_var = BinaryVariableItem::create(
-                shared_id,
-                &format!("{}_bs_{}_{}", var_prefix, c, p),
-            );
+            let sub_var =
+                BinaryVariableItem::create(shared_id, &format!("{}_bs_{}_{}", var_prefix, c, p));
             x_idx_master[c][p] = master_model.register_variable(master_var)?;
             x_idx_sub[c][p] = sub_model.register_variable(sub_var)?;
             fixed_variable_ids.push(shared_id);
@@ -255,13 +249,9 @@ mod tests {
     fn derived_variable_indices_are_valid_solver_columns() {
         let request = Demo2Request::sample();
         let mut model = MetaModel::<f64>::new("demo2_derived_variable_indices");
-        let registration = register_variables(
-            &request,
-            &mut model,
-            "x",
-            Demo2PipelineMode::FullLoad,
-        )
-        .expect("derived variables should register");
+        let registration =
+            register_variables(&request, &mut model, "x", Demo2PipelineMode::FullLoad)
+                .expect("derived variables should register");
         let variable_count = model.num_tokens();
 
         assert!(

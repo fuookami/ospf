@@ -1,7 +1,7 @@
 //! 旅客约束限制 / Passenger constraint limits.
-use std::error::Error;
-use ospf_rust_core::model::MetaModel;
 use super::super::model::{Passenger, PassengerAmount, PassengerCancel, PassengerChange};
+use ospf_rust_core::model::MetaModel;
+use std::error::Error;
 
 /// 旅客航班容量约束 / Passenger flight capacity constraint
 /// 对齐 Kotlin PassengerFlightCapacityConstraint / Aligned with Kotlin PassengerFlightCapacityConstraint

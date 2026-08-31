@@ -2,9 +2,36 @@
 /// 货物代码 / Cargo code (对齐 Kotlin CargoCode)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CargoCode {
-    BAL, ELD, FKI, CCD, ICE, AVI, AOG, ELI, ELM, MAG, HUB, PER, YYI, MAT, RRM,
-    BIG, OHG, RFG, RFL, RFS, ROX, YYE, HWJ, RRY, RRW, CVV,
-    Crush, Stiff, Empty, Virtual,
+    BAL,
+    ELD,
+    FKI,
+    CCD,
+    ICE,
+    AVI,
+    AOG,
+    ELI,
+    ELM,
+    MAG,
+    HUB,
+    PER,
+    YYI,
+    MAT,
+    RRM,
+    BIG,
+    OHG,
+    RFG,
+    RFL,
+    RFS,
+    ROX,
+    YYE,
+    HWJ,
+    RRY,
+    RRW,
+    CVV,
+    Crush,
+    Stiff,
+    Empty,
+    Virtual,
 }
 
 impl CargoCode {
@@ -26,12 +53,18 @@ pub struct CargoType {
 impl CargoType {
     /// 从货物代码创建 / Create from cargo code
     pub fn from_code(code: CargoCode) -> Self {
-        Self { code: Some(code), type_name: format!("{:?}", code) }
+        Self {
+            code: Some(code),
+            type_name: format!("{:?}", code),
+        }
     }
 
     /// 从名称创建 / Create from name
     pub fn from_name(name: &str) -> Self {
-        Self { code: None, type_name: name.to_string() }
+        Self {
+            code: None,
+            type_name: name.to_string(),
+        }
     }
 }
 

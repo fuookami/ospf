@@ -1,8 +1,8 @@
 //! Interval - 开闭性质抽象
 //! Interval - Openness abstraction
 
-use std::fmt;
 use crate::operator::tolerance::{Tolerance, TolerancedEq, TolerancedOrd};
+use std::fmt;
 
 // ============================================================================
 // IntervalKind Trait - 开闭性质抽象

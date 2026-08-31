@@ -1,10 +1,10 @@
 //! Lotka-Volterra 系统（捕食者-猎物模型）。
 //! Lotka-Volterra system (predator-prey model).
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point2};
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use super::helpers::{default_float, one_point2};
+use num_traits::Float;
 
 point2_system!(
     /// Lotka-Volterra 系统的一阶欧拉步进模型。
@@ -41,14 +41,25 @@ impl<S: Field + Float> Default for LotkaVolterraSystemGenerator<S> {
 
 /// 创建 Lotka-Volterra 系统。
 /// Create a Lotka-Volterra system.
-pub fn lotka_volterra_system<S: Field + Float>(a: S, b: S, c: S, d: S, h: S) -> LotkaVolterraSystem<S> {
+pub fn lotka_volterra_system<S: Field + Float>(
+    a: S,
+    b: S,
+    c: S,
+    d: S,
+    h: S,
+) -> LotkaVolterraSystem<S> {
     LotkaVolterraSystem::new(a, b, c, d, h)
 }
 
 /// 创建 Lotka-Volterra 系统生成器。
 /// Create a Lotka-Volterra system generator.
 pub fn lotka_volterra_system_generator<S: Field + Float>(
-    a: S, b: S, c: S, d: S, h: S, x: Point2<S>,
+    a: S,
+    b: S,
+    c: S,
+    d: S,
+    h: S,
+    x: Point2<S>,
 ) -> LotkaVolterraSystemGenerator<S> {
     LotkaVolterraSystemGenerator::new(LotkaVolterraSystem::new(a, b, c, d, h), x)
 }

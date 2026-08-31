@@ -17,6 +17,7 @@ expression/
 ├── dsl.rs           # DSL traits + PathBuilder + convenience constructors
 ├── evaluation.rs    # EvaluationContext + evaluation functions
 ├── normalize.rs     # Boolean normalization + structural_key
+├── transform.rs     # Post-order scalar/boolean AST transforms
 ├── math_functions.rs # ScalarFunctionEvaluator trait + MathFunctionEvaluator (17 math.* functions)
 └── scalar_parser.rs # Scalar expression parser (optional, requires "parser" feature)
 ```
@@ -84,6 +85,30 @@ Evaluation is driven by `EvaluationContext`, which provides values for property 
 | `evaluate_scalar_expression(expr, ctx, evaluator)` | Evaluate a scalar expression (with function evaluator) |
 
 `MathFunctionEvaluator` ships 17 math.* functions: `sqrt`, `pow`, `log`, `log10`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `floor`, `ceil`, `round`, `max`, `min`, `abs`.
+
+## Structural Expression Transforms
+
+`ScalarExpressionTransform` and `BooleanExpressionTransform` provide structure-preserving, post-order rewrites. Use `transform_scalars` to rewrite scalar nodes inside a boolean tree and `transform_booleans` to rewrite boolean nodes. The callbacks receive rebuilt child nodes, including branches inside `Conditional` and `Boolean` scalar variants.
+
+```rust
+use ospf_rust_math::symbol::expression::{
+    BooleanExpressionTransform, ExpressionValue, ScalarExpression,
+};
+
+let predicate = BooleanExpression::eq(
+    ScalarExpression::reference("age"),
+    ScalarExpression::constant(ExpressionValue::from(18)),
+);
+
+let rewritten = predicate.transform_scalars(|scalar| match scalar {
+    ScalarExpression::Constant(ExpressionValue::Number(value)) => {
+        ScalarExpression::constant(ExpressionValue::Number(value + 1.0))
+    }
+    scalar => scalar,
+});
+```
+
+The helpers rebuild the shared AST without evaluating or mutating the original expression. `transform_scalar_expression` also traverses boolean branches nested in scalar conditionals and boolean wrappers.
 
 ## Boolean Normalization
 

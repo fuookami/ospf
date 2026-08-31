@@ -1,9 +1,9 @@
 //! 三维尺寸形状。
 //! Three-dimensional dimensional shapes.
 
-use num_traits::{Float, FloatConst};
 use crate::algebra::Field;
 use crate::geometry::{Axis3, AxisPermutation3, AxisPlane3, Circle2, Point2, Rectangle2};
+use num_traits::{Float, FloatConst};
 
 /// 三维形状 trait。
 /// Trait for three-dimensional shapes.

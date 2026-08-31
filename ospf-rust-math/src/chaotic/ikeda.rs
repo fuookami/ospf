@@ -1,10 +1,10 @@
 //! 池田映射。
 //! Ikeda map.
 
-use num_traits::Float;
+use super::helpers::{default_float, one_point2};
 use crate::algebra::Field;
 use crate::geometry::Point2;
-use super::helpers::{default_float, one_point2};
+use num_traits::Float;
 
 point2_system!(
     /// 池田映射。
@@ -50,7 +50,12 @@ pub fn ikeda_map<S: Field + Float>(u: S, t0: S, t1: S) -> IkedaMap<S> {
 
 /// 创建池田映射生成器。
 /// Create an Ikeda map generator.
-pub fn ikeda_map_generator<S: Field + Float>(u: S, t0: S, t1: S, x: Point2<S>) -> IkedaMapGenerator<S> {
+pub fn ikeda_map_generator<S: Field + Float>(
+    u: S,
+    t0: S,
+    t1: S,
+    x: Point2<S>,
+) -> IkedaMapGenerator<S> {
     IkedaMapGenerator::new(IkedaMap::new(u, t0, t1), x)
 }
 

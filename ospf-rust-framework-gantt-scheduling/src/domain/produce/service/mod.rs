@@ -6,14 +6,9 @@
 pub mod limits;
 
 pub use limits::{
-    ProduceQuantityConstraint,
-    ConsumptionQuantityConstraint,
-    ProduceOverQuantityMinimization,
-    ProduceLessQuantityMinimization,
-    ProduceQuantityMaximization,
+    ConsumptionLessQuantityMinimization, ConsumptionOverQuantityMinimization,
+    ConsumptionQuantityConstraint, ConsumptionQuantityMaximization,
+    ConsumptionQuantityMinimization, ProduceLessQuantityMinimization,
+    ProduceOverQuantityMinimization, ProduceQuantityConstraint, ProduceQuantityMaximization,
     ProduceQuantityMinimization,
-    ConsumptionOverQuantityMinimization,
-    ConsumptionLessQuantityMinimization,
-    ConsumptionQuantityMaximization,
-    ConsumptionQuantityMinimization,
 };

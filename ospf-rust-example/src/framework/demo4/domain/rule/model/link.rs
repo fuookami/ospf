@@ -28,7 +28,9 @@ impl Link {
     /// 获取最小连接时间 / Get minimum connection time
     pub fn min_connection_time(&self) -> Duration {
         match &self.link_type {
-            LinkType::Connecting { min_connection_time } => *min_connection_time,
+            LinkType::Connecting {
+                min_connection_time,
+            } => *min_connection_time,
             LinkType::Stopover { stopover_time } => *stopover_time,
             LinkType::ConnectionTimeIgnoring => Duration::ZERO,
         }
@@ -45,7 +47,10 @@ pub struct LinkMap {
 impl LinkMap {
     /// 获取指定任务之后的链接 / Get links after the specified task
     pub fn links_after(&self, task_id: &str) -> Vec<&Link> {
-        self.links.iter().filter(|l| l.from_task == task_id).collect()
+        self.links
+            .iter()
+            .filter(|l| l.from_task == task_id)
+            .collect()
     }
 
     /// 获取指定任务之前的链接 / Get links before the specified task

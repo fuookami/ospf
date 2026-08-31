@@ -1,8 +1,68 @@
 //! IIS 模型定义 / IIS Model Definition
 
-use std::collections::HashSet;
+use super::{ConstraintSource, IISAlgorithm};
 use crate::model::intermediate::{BasicLinearTriadModel, LinearTriadModel, LinearTriadModelView};
-use super::ConstraintSource;
+use crate::solver::audit::LinearModelMapping;
+use crate::solver::{
+    InfeasibilityEvidence, InfeasibilityEvidenceMember, InfeasibilityEvidenceSource,
+    InfeasibilityMinimality, ProofCompleteness, ProofReliability,
+};
+use std::collections::HashSet;
+
+/// legacy IIS 分析证据等级 / Legacy IIS analysis evidence level.
+///
+/// 该类型明确区分算法可靠性和执行完整度；它不把 legacy 过滤结果伪装成
+/// native exact IIS。/ This type separates algorithm reliability from execution
+/// completeness; it never presents a legacy filtering result as a native exact IIS.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IISAnalysis {
+    /// 使用的 legacy 算法 / Legacy algorithm used.
+    pub algorithm: IISAlgorithm,
+    /// 证据可靠性 / Evidence reliability.
+    pub reliability: ProofReliability,
+    /// 执行完整度 / Execution completeness.
+    pub completeness: ProofCompleteness,
+    /// 冲突集合最小性 / Conflict-set minimality.
+    pub minimality: InfeasibilityMinimality,
+}
+
+impl IISAnalysis {
+    /// 创建删除过滤分析结果 / Create a deletion-filtering analysis result.
+    pub fn deletion_filtering(completed: bool) -> Self {
+        Self {
+            algorithm: IISAlgorithm::DeletionFiltering,
+            reliability: ProofReliability::Reliable,
+            completeness: if completed {
+                ProofCompleteness::Complete
+            } else {
+                ProofCompleteness::Partial
+            },
+            minimality: if completed {
+                InfeasibilityMinimality::Irreducible
+            } else {
+                InfeasibilityMinimality::Partial
+            },
+        }
+    }
+
+    /// 创建弹性过滤分析结果 / Create an elastic-filtering analysis result.
+    pub fn elastic_filtering(completed: bool) -> Self {
+        let mut analysis = Self::deletion_filtering(completed);
+        analysis.algorithm = IISAlgorithm::ElasticFiltering;
+        analysis.reliability = ProofReliability::Heuristic;
+        analysis
+    }
+
+    /// 创建默认的未知分析结果 / Create an unknown analysis result.
+    pub fn unknown() -> Self {
+        Self {
+            algorithm: IISAlgorithm::DeletionFiltering,
+            reliability: ProofReliability::Unknown,
+            completeness: ProofCompleteness::Unavailable,
+            minimality: InfeasibilityMinimality::NotChecked,
+        }
+    }
+}
 
 /// 线性 IIS 模型 / Linear IIS Model
 ///
@@ -24,6 +84,8 @@ pub struct LinearIISModel {
     pub original_num_variables: usize,
     /// 计算时间 / Computation time
     pub computation_time: std::time::Duration,
+    /// legacy 分析证据等级 / Legacy analysis evidence level.
+    pub analysis: IISAnalysis,
 }
 
 impl LinearIISModel {
@@ -37,6 +99,7 @@ impl LinearIISModel {
             original_num_constraints: num_constraints,
             original_num_variables: num_variables,
             computation_time: std::time::Duration::ZERO,
+            analysis: IISAnalysis::unknown(),
         }
     }
 
@@ -97,6 +160,66 @@ impl LinearIISModel {
     /// 设置计算时间 / Set computation time
     pub fn set_computation_time(&mut self, duration: std::time::Duration) {
         self.computation_time = duration;
+    }
+
+    /// 设置分析证据等级 / Set the analysis evidence level.
+    pub fn set_analysis(&mut self, analysis: IISAnalysis) {
+        self.analysis = analysis;
+    }
+
+    /// 获取分析证据等级 / Get the analysis evidence level.
+    pub fn analysis(&self) -> &IISAnalysis {
+        &self.analysis
+    }
+
+    /// 转换为带准确等级的统一不可行证据 / Convert to a uniformly typed infeasibility evidence record.
+    ///
+    /// 删除过滤是可靠但可能部分完成的 legacy 证据，弹性过滤始终标为启发式。/ Deletion
+    /// filtering is reliable but may be partial, while elastic filtering is always heuristic.
+    pub fn to_infeasibility_evidence(
+        &self,
+        mapping: Option<&LinearModelMapping>,
+    ) -> InfeasibilityEvidence {
+        let mut constraint_ids = std::collections::BTreeSet::new();
+        let mut members = std::collections::BTreeSet::new();
+        for index in &self.constraint_indices {
+            let id = mapping
+                .and_then(|mapping| mapping.stable_constraint(*index))
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| format!("c{index}"));
+            constraint_ids.insert(id.clone());
+            members.insert(InfeasibilityEvidenceMember::Constraint(id));
+        }
+        for index in &self.lower_bound_indices {
+            let id = mapping
+                .and_then(|mapping| mapping.stable_variable(*index))
+                .map(|variable| format!("{}::lower-bound", variable.0))
+                .unwrap_or_else(|| format!("lb{index}"));
+            constraint_ids.insert(id.clone());
+            members.insert(InfeasibilityEvidenceMember::LowerBound(id));
+        }
+        for index in &self.upper_bound_indices {
+            let id = mapping
+                .and_then(|mapping| mapping.stable_variable(*index))
+                .map(|variable| format!("{}::upper-bound", variable.0))
+                .unwrap_or_else(|| format!("ub{index}"));
+            constraint_ids.insert(id.clone());
+            members.insert(InfeasibilityEvidenceMember::UpperBound(id));
+        }
+        let source = match self.analysis.algorithm {
+            IISAlgorithm::DeletionFiltering => InfeasibilityEvidenceSource::DeletionFilter,
+            IISAlgorithm::ElasticFiltering => InfeasibilityEvidenceSource::ElasticFilter,
+        };
+        InfeasibilityEvidence {
+            source,
+            reliability: self.analysis.reliability,
+            completeness: self.analysis.completeness,
+            constraint_ids,
+            members,
+            minimality: self.analysis.minimality,
+            computation_time: self.computation_time,
+            unavailable_reason: None,
+        }
     }
 
     /// 合并另一个 IIS 模型 / Merge another IIS model
@@ -210,3 +333,45 @@ impl<T> BasicLinearTriadModelView for T where T: LinearTriadModelIISView {}
 // 类型别名 / Type aliases
 /// f64 精度的线性 IIS 模型（默认）/ Linear IIS model with f64 precision (default)
 pub type LinearIISModelF64 = LinearIISModel;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_deletion_analysis_projects_typed_evidence_members() {
+        let mut iis = LinearIISModel::new(2, 1);
+        iis.add_constraint(1);
+        iis.add_lower_bound(0);
+        iis.set_analysis(IISAnalysis::deletion_filtering(true));
+
+        let evidence = iis.to_infeasibility_evidence(None);
+
+        assert_eq!(evidence.source, InfeasibilityEvidenceSource::DeletionFilter);
+        assert_eq!(evidence.reliability, ProofReliability::Reliable);
+        assert_eq!(evidence.completeness, ProofCompleteness::Complete);
+        assert_eq!(evidence.minimality, InfeasibilityMinimality::Irreducible);
+        assert!(
+            evidence
+                .members
+                .contains(&InfeasibilityEvidenceMember::Constraint("c1".to_owned()))
+        );
+        assert!(
+            evidence
+                .members
+                .contains(&InfeasibilityEvidenceMember::LowerBound("lb0".to_owned()))
+        );
+    }
+
+    #[test]
+    fn legacy_elastic_analysis_remains_heuristic_even_when_complete() {
+        let mut iis = LinearIISModel::new(0, 0);
+        iis.set_analysis(IISAnalysis::elastic_filtering(true));
+
+        let evidence = iis.to_infeasibility_evidence(None);
+
+        assert_eq!(evidence.source, InfeasibilityEvidenceSource::ElasticFilter);
+        assert_eq!(evidence.reliability, ProofReliability::Heuristic);
+        assert_eq!(evidence.completeness, ProofCompleteness::Complete);
+    }
+}

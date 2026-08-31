@@ -3,7 +3,11 @@
 mod core;
 #[cfg(feature = "backend-gurobi")]
 mod example_modeling;
-#[cfg(feature = "backend-gurobi")]
+#[cfg(any(
+    feature = "backend-gurobi",
+    feature = "demo5-gurobi-bp",
+    feature = "demo5-scip-bp"
+))]
 mod framework;
 
 #[cfg(feature = "backend-gurobi")]
@@ -51,6 +55,7 @@ fn print_usage() {
     println!("  ospf-rust-example framework:demo2");
     println!("  ospf-rust-example framework:demo3");
     println!("  ospf-rust-example framework:demo4");
+    println!("  ospf-rust-example framework:demo5");
 }
 
 #[cfg(feature = "backend-gurobi")]
@@ -63,6 +68,7 @@ fn run_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
         "framework:demo2" => framework::run_demo2(),
         "framework:demo3" => framework::run_demo3(),
         "framework:demo4" => framework::run_demo4(),
+        "framework:demo5" => framework::run_demo5(),
         _ if command.starts_with("core:demo") => {
             let id = command.trim_start_matches("core:demo").parse::<usize>();
             match id {
@@ -84,7 +90,24 @@ fn run_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-#[cfg(not(feature = "backend-gurobi"))]
+#[cfg(all(
+    not(feature = "backend-gurobi"),
+    any(feature = "demo5-gurobi-bp", feature = "demo5-scip-bp")
+))]
+fn run_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
+    match command {
+        "framework:demo5" => framework::run_demo5(),
+        _ => {
+            print_usage();
+            Err(format!("unknown command: {}", command).into())
+        }
+    }
+}
+
+#[cfg(all(
+    not(feature = "backend-gurobi"),
+    not(any(feature = "demo5-gurobi-bp", feature = "demo5-scip-bp"))
+))]
 fn run_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
     let _ = command;
     print_usage();

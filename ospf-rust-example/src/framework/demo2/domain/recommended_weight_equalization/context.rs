@@ -40,6 +40,14 @@ impl RecommendedWeightEqualizationContext {
         load_vars: &LoadVariables,
         positions: &[Position],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        super::service::generate_pipelines(model, x_idx, cargo_weights, cargo_priorities, position_count, load_vars, positions)
+        super::service::generate_pipelines(
+            model,
+            x_idx,
+            cargo_weights,
+            cargo_priorities,
+            position_count,
+            load_vars,
+            positions,
+        )
     }
 }

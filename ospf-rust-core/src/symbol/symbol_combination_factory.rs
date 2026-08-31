@@ -429,12 +429,7 @@ mod tests {
     #[test]
     fn test_map1() {
         let values = vec![10.0, 20.0, 30.0];
-        let combo = map1(
-            "capacity",
-            &values,
-            |v| *v,
-            |i, _v| format!("{}", i),
-        );
+        let combo = map1("capacity", &values, |v| *v, |i, _v| format!("{}", i));
 
         assert_eq!(combo.len(), 3);
         // map1 创建的符号只有常数项 / map1 symbols have only constant term

@@ -16,8 +16,7 @@ use ospf_rust_core::solver::SolveValue;
 use ospf_rust_framework::model::Pipeline;
 
 use crate::domain::material::{
-    from_f64, to_f64, CuttingPlan, Material, Machine, ProductDemand, ProductId,
-    Csp1dQuantity,
+    Csp1dQuantity, CuttingPlan, Machine, Material, ProductDemand, ProductId, from_f64, to_f64,
 };
 
 pub use aggregation::*;
@@ -117,7 +116,8 @@ impl<V: SolveValue> Produce<V> {
     /// 按贡献键聚合需求贡献 / Aggregate demand contributions by contribution key
     pub fn contributions(
         &self,
-    ) -> BTreeMap<ContributionKey, Vec<crate::domain::material::CuttingPlanDemandContribution<V>>> {
+    ) -> BTreeMap<ContributionKey, Vec<crate::domain::material::CuttingPlanDemandContribution<V>>>
+    {
         let mut contributions = BTreeMap::new();
         for usage in &self.cutting_plans {
             for contribution in &usage.plan.demand_contributions {
@@ -125,7 +125,10 @@ impl<V: SolveValue> Produce<V> {
                     product_id: contribution.product.id.clone(),
                     unit_symbol: String::new(),
                 };
-                contributions.entry(key).or_insert_with(Vec::new).push(contribution.clone());
+                contributions
+                    .entry(key)
+                    .or_insert_with(Vec::new)
+                    .push(contribution.clone());
             }
         }
         contributions
@@ -175,7 +178,13 @@ pub struct Csp1dModelingExtension<V: SolveValue> {
     /// 适用模式 / Applicable mode
     pub mode: Csp1dExtensionMode,
     /// 上下文感知管线工厂 / Context-aware pipeline factory
-    pub context_aware_pipeline: Option<Arc<dyn Fn(&dyn Csp1dModelingContext<V>) -> Arc<dyn Pipeline<MetaModel<f64>> + Send + Sync> + Send + Sync>>,
+    pub context_aware_pipeline: Option<
+        Arc<
+            dyn Fn(&dyn Csp1dModelingContext<V>) -> Arc<dyn Pipeline<MetaModel<f64>> + Send + Sync>
+                + Send
+                + Sync,
+        >,
+    >,
 }
 
 impl<V: SolveValue> Csp1dModelingExtension<V> {
@@ -202,7 +211,11 @@ impl<V: SolveValue> Csp1dModelingExtension<V> {
 
     /// 创建全模式上下文感知扩展 / Create a context-aware extension for all modes
     pub fn context_aware(
-        context_aware_pipeline: Arc<dyn Fn(&dyn Csp1dModelingContext<V>) -> Arc<dyn Pipeline<MetaModel<f64>> + Send + Sync> + Send + Sync>,
+        context_aware_pipeline: Arc<
+            dyn Fn(&dyn Csp1dModelingContext<V>) -> Arc<dyn Pipeline<MetaModel<f64>> + Send + Sync>
+                + Send
+                + Sync,
+        >,
     ) -> Self {
         Self {
             pipeline: None,
@@ -213,7 +226,11 @@ impl<V: SolveValue> Csp1dModelingExtension<V> {
 
     /// 创建指定模式上下文感知扩展 / Create a context-aware extension with a specific mode
     pub fn context_aware_with_mode(
-        context_aware_pipeline: Arc<dyn Fn(&dyn Csp1dModelingContext<V>) -> Arc<dyn Pipeline<MetaModel<f64>> + Send + Sync> + Send + Sync>,
+        context_aware_pipeline: Arc<
+            dyn Fn(&dyn Csp1dModelingContext<V>) -> Arc<dyn Pipeline<MetaModel<f64>> + Send + Sync>
+                + Send
+                + Sync,
+        >,
         mode: Csp1dExtensionMode,
     ) -> Self {
         Self {
@@ -241,7 +258,10 @@ impl<V: SolveValue> std::fmt::Debug for Csp1dModelingExtension<V> {
         f.debug_struct("Csp1dModelingExtension")
             .field("has_pipeline", &self.pipeline.is_some())
             .field("mode", &self.mode)
-            .field("has_context_aware_pipeline", &self.context_aware_pipeline.is_some())
+            .field(
+                "has_context_aware_pipeline",
+                &self.context_aware_pipeline.is_some(),
+            )
             .finish()
     }
 }
@@ -296,9 +316,7 @@ pub trait Csp1dDomainCalculationContext<V: SolveValue> {
     }
 
     /// 获取需求贡献列表 / Get demand contributions
-    fn demand_contributions(
-        &self,
-    ) -> &[crate::domain::material::CuttingPlanDemandContribution<V>] {
+    fn demand_contributions(&self) -> &[crate::domain::material::CuttingPlanDemandContribution<V>] {
         &self.plan().demand_contributions
     }
 
@@ -413,12 +431,7 @@ pub trait Csp1dPricingPolicy<V: SolveValue>: Send + Sync {
     }
 
     /// 判断定价是否改善 / Check whether pricing is improving
-    fn is_improving(
-        &self,
-        _candidate: &CuttingPlan<V>,
-        _benefit: &V,
-        _cost: &V,
-    ) -> Option<bool> {
+    fn is_improving(&self, _candidate: &CuttingPlan<V>, _benefit: &V, _cost: &V) -> Option<bool> {
         None
     }
 }
@@ -443,7 +456,9 @@ pub trait Csp1dFlowContext<V: SolveValue> {
     }
 
     /// 获取定价统计 / Get pricing statistics
-    fn pricing_statistics(&self) -> Option<&crate::domain::cutting_plan_generation::CuttingPlanGenerationStatistics> {
+    fn pricing_statistics(
+        &self,
+    ) -> Option<&crate::domain::cutting_plan_generation::CuttingPlanGenerationStatistics> {
         None
     }
 
@@ -503,11 +518,7 @@ pub trait Csp1dFlowPolicy<V: SolveValue>: Send + Sync {
     }
 
     /// 是否接受部分解 / Whether to accept partial solution
-    fn accept_partial(
-        &self,
-        _context: &dyn Csp1dFlowContext<V>,
-        default_decision: bool,
-    ) -> bool {
+    fn accept_partial(&self, _context: &dyn Csp1dFlowContext<V>, default_decision: bool) -> bool {
         default_decision
     }
 
@@ -539,7 +550,9 @@ pub trait Csp1dExtractionPolicy<V: SolveValue>: Send + Sync {
         _iteration_count: u64,
         _termination_reason: Option<&str>,
         _final_milp_status: Option<&str>,
-        _pricing_statistics: Option<&crate::domain::cutting_plan_generation::CuttingPlanGenerationStatistics>,
+        _pricing_statistics: Option<
+            &crate::domain::cutting_plan_generation::CuttingPlanGenerationStatistics,
+        >,
     ) {
     }
 }
@@ -608,9 +621,9 @@ pub fn filter_initial_plans_by_policies_with_context<V: SolveValue>(
     policies: &[Arc<dyn Csp1dFlowPolicy<V>>],
     context: &dyn Csp1dFlowContext<V>,
 ) -> Vec<CuttingPlan<V>> {
-    policies
-        .iter()
-        .fold(plans, |plans, policy| policy.filter_initial_plans(context, plans))
+    policies.iter().fold(plans, |plans, policy| {
+        policy.filter_initial_plans(context, plans)
+    })
 }
 
 /// 按策略判断方案等价性 / Check plan equivalence by policies
@@ -643,10 +656,11 @@ pub fn select_termination_by_policies<V: SolveValue>(
     context: &dyn Csp1dFlowContext<V>,
     policies: &[Arc<dyn Csp1dFlowPolicy<V>>],
 ) -> (String, Option<String>) {
-    policies.iter().fold(
-        (String::new(), None),
-        |(reason, message), policy| policy.select_termination(context, reason, message),
-    )
+    policies
+        .iter()
+        .fold((String::new(), None), |(reason, message), policy| {
+            policy.select_termination(context, reason, message)
+        })
 }
 
 /// 按策略选择终止原因（带默认值）/ Select termination reason by policies with default
@@ -667,9 +681,9 @@ pub fn accept_partial_by_policies<V: SolveValue>(
     context: &dyn Csp1dFlowContext<V>,
     policies: &[Arc<dyn Csp1dFlowPolicy<V>>],
 ) -> bool {
-    policies
-        .iter()
-        .fold(true, |decision, policy| policy.accept_partial(context, decision))
+    policies.iter().fold(true, |decision, policy| {
+        policy.accept_partial(context, decision)
+    })
 }
 
 /// 按策略判断是否允许恢复回退 / Check whether to allow recovery fallback by policies

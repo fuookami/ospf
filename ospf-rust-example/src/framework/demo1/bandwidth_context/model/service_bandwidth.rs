@@ -1,6 +1,6 @@
 //! 服务带宽模型：跟踪每个服务的带宽使用 / Service bandwidth model: tracks per-service bandwidth usage
 
-use ospf_rust_core::symbol::{SymbolCombination, LinearExpressionSymbol};
+use ospf_rust_core::symbol::{LinearExpressionSymbol, SymbolCombination};
 use ospf_rust_multiarray::Shape;
 
 /// 二维线性表达式符号组合类型别名 / 2D linear expression symbol combination type alias

@@ -1,9 +1,9 @@
 //! 适航性安全聚合 / Airworthiness security aggregation
-use std::sync::Arc;
+use crate::framework::demo2::domain::airworthiness_security::context::AirworthinessContext;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::LinearMonomial;
-use crate::framework::demo2::domain::airworthiness_security::context::AirworthinessContext;
+use std::sync::Arc;
 
 /// 适航性安全聚合 / Airworthiness security aggregation
 ///
@@ -41,8 +41,7 @@ impl AirworthinessAggregation {
         let mut total_payload_monomials = Vec::new();
         let mut envelope_monomials = Vec::new();
         let mut lateral_monomials = Vec::new();
-        let mut per_position_monomials: Vec<Vec<LinearMonomial<f64>>> =
-            vec![Vec::new(); pos_count];
+        let mut per_position_monomials: Vec<Vec<LinearMonomial<f64>>> = vec![Vec::new(); pos_count];
 
         // 向后兼容的裸系数 / Backward-compatible raw coefficients
         let mut total_payload_coefficients: Vec<(usize, f64)> = Vec::new();
@@ -73,10 +72,8 @@ impl AirworthinessAggregation {
                     var_idx,
                     weight * context.request.positions[p].longitudinal_arm,
                 ));
-                lateral_moment_coefficients.push((
-                    var_idx,
-                    weight * context.request.positions[p].lateral_arm,
-                ));
+                lateral_moment_coefficients
+                    .push((var_idx, weight * context.request.positions[p].lateral_arm));
                 per_position_weight_coefficients[p].push((var_idx, weight));
             }
         }
@@ -103,7 +100,10 @@ impl AirworthinessAggregation {
         let symbol = LinearExpressionSymbol::new(
             *next_id,
             "total_payload",
-            self.total_payload_coefficients.iter().map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx)).collect(),
+            self.total_payload_coefficients
+                .iter()
+                .map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx))
+                .collect(),
             0.0,
         );
         self.total_payload_symbol = Some(Arc::new(symbol));
@@ -114,18 +114,29 @@ impl AirworthinessAggregation {
         let symbol = LinearExpressionSymbol::new(
             *next_id,
             "envelope_longitudinal_moment",
-            self.envelope_longitudinal_moment_coefficients.iter().map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx)).collect(),
+            self.envelope_longitudinal_moment_coefficients
+                .iter()
+                .map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx))
+                .collect(),
             0.0,
         );
         self.envelope_longitudinal_moment_symbol = Some(Arc::new(symbol));
-        model.add_symbol(self.envelope_longitudinal_moment_symbol.as_ref().unwrap().clone())?;
+        model.add_symbol(
+            self.envelope_longitudinal_moment_symbol
+                .as_ref()
+                .unwrap()
+                .clone(),
+        )?;
         *next_id += 1;
 
         // 横向力矩符号
         let symbol = LinearExpressionSymbol::new(
             *next_id,
             "lateral_moment",
-            self.lateral_moment_coefficients.iter().map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx)).collect(),
+            self.lateral_moment_coefficients
+                .iter()
+                .map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx))
+                .collect(),
             0.0,
         );
         self.lateral_moment_symbol = Some(Arc::new(symbol));
@@ -137,11 +148,19 @@ impl AirworthinessAggregation {
             let symbol = LinearExpressionSymbol::new(
                 *next_id,
                 &format!("per_position_weight_{}", p),
-                coeffs.iter().map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx)).collect(),
+                coeffs
+                    .iter()
+                    .map(|(idx, coeff)| LinearMonomial::new(*coeff, *idx))
+                    .collect(),
                 0.0,
             );
             self.per_position_weight_symbols[p] = Some(Arc::new(symbol));
-            model.add_symbol(self.per_position_weight_symbols[p].as_ref().unwrap().clone())?;
+            model.add_symbol(
+                self.per_position_weight_symbols[p]
+                    .as_ref()
+                    .unwrap()
+                    .clone(),
+            )?;
             *next_id += 1;
         }
 

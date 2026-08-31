@@ -1,6 +1,6 @@
 //! 物品模型 / Item model
-use super::cargo::Cargo;
 use super::super::super::shared::units;
+use super::cargo::Cargo;
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::Unit;
 
@@ -28,41 +28,67 @@ pub struct ItemLocation {
 
 impl ItemLocation {
     /// 是否在主舱 / Whether on main deck
-    pub fn main(&self) -> bool { self.tags.contains(&ItemLocationTag::Main) }
+    pub fn main(&self) -> bool {
+        self.tags.contains(&ItemLocationTag::Main)
+    }
     /// 是否在下舱 / Whether on lower deck
-    pub fn low(&self) -> bool { self.tags.contains(&ItemLocationTag::Low) }
+    pub fn low(&self) -> bool {
+        self.tags.contains(&ItemLocationTag::Low)
+    }
     /// 是否在散货舱 / Whether in bulk compartment
-    pub fn bulk(&self) -> bool { self.tags.contains(&ItemLocationTag::Bulk) }
+    pub fn bulk(&self) -> bool {
+        self.tags.contains(&ItemLocationTag::Bulk)
+    }
     /// 是否在前舱 / Whether in head compartment
-    pub fn head(&self) -> bool { self.tags.contains(&ItemLocationTag::Head) }
+    pub fn head(&self) -> bool {
+        self.tags.contains(&ItemLocationTag::Head)
+    }
     /// 是否在后舱 / Whether in tail compartment
-    pub fn tail(&self) -> bool { self.tags.contains(&ItemLocationTag::Tail) }
+    pub fn tail(&self) -> bool {
+        self.tags.contains(&ItemLocationTag::Tail)
+    }
     /// 是否为普通主舱位置 / Whether in normal main deck position
-    pub fn normal_main(&self) -> bool { self.main() && !self.head() && !self.tail() }
+    pub fn normal_main(&self) -> bool {
+        self.main() && !self.head() && !self.tail()
+    }
     /// 是否为特殊主舱位置 / Whether in special main deck position
-    pub fn special_main(&self) -> bool { self.head() || self.tail() }
+    pub fn special_main(&self) -> bool {
+        self.head() || self.tail()
+    }
     /// 是否为下舱非散货位置 / Whether in lower deck non-bulk position
-    pub fn low_not_bulk(&self) -> bool { self.low() && !self.bulk() }
+    pub fn low_not_bulk(&self) -> bool {
+        self.low() && !self.bulk()
+    }
 
     /// 前舱位置 / Head location
     pub fn head_location() -> Self {
-        Self { tags: vec![ItemLocationTag::Main, ItemLocationTag::Head] }
+        Self {
+            tags: vec![ItemLocationTag::Main, ItemLocationTag::Head],
+        }
     }
     /// 后舱位置 / Tail location
     pub fn tail_location() -> Self {
-        Self { tags: vec![ItemLocationTag::Main, ItemLocationTag::Tail] }
+        Self {
+            tags: vec![ItemLocationTag::Main, ItemLocationTag::Tail],
+        }
     }
     /// 普通主舱位置 / Normal main deck location
     pub fn normal_main_location() -> Self {
-        Self { tags: vec![ItemLocationTag::Main] }
+        Self {
+            tags: vec![ItemLocationTag::Main],
+        }
     }
     /// 下舱散货位置 / Lower deck bulk location
     pub fn low_bulk_location() -> Self {
-        Self { tags: vec![ItemLocationTag::Low, ItemLocationTag::Bulk] }
+        Self {
+            tags: vec![ItemLocationTag::Low, ItemLocationTag::Bulk],
+        }
     }
     /// 下舱非散货位置 / Lower deck non-bulk location
     pub fn low_not_bulk_location() -> Self {
-        Self { tags: vec![ItemLocationTag::Low] }
+        Self {
+            tags: vec![ItemLocationTag::Low],
+        }
     }
 }
 
@@ -84,7 +110,13 @@ pub enum ItemStatus {
 impl ItemStatus {
     /// 是否需要装载 / Whether stowage is needed
     pub fn stowage_needed(&self) -> bool {
-        matches!(self, ItemStatus::Optional | ItemStatus::Preassigned | ItemStatus::Loaded | ItemStatus::AdjustmentNeeded)
+        matches!(
+            self,
+            ItemStatus::Optional
+                | ItemStatus::Preassigned
+                | ItemStatus::Loaded
+                | ItemStatus::AdjustmentNeeded
+        )
     }
 
     /// 是否需要调整 / Whether adjustment is needed

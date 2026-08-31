@@ -1,9 +1,9 @@
 //! 物品需重新称重限制 / Item reweigh-needed limits
-use std::error::Error;
-use ospf_rust_core::model::{MetaModel, LinearObjectiveInput};
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{LinearObjectiveInput, MetaModel};
+use std::error::Error;
 
 /// 物品重新称重限制: 需要重新称重的物品应尽量不装载 / Item reweigh needed limit: items needing reweigh should be loaded as little as possible
 /// 对齐 Kotlin ItemReweighNeededLimit
@@ -19,16 +19,14 @@ pub fn apply_item_reweigh_needed_limits(
     // Heavy items (weight >= 8) need reweighing, minimize their loading
     let objective_terms: Vec<(usize, f64)> = (0..context.request.cargos.len())
         .filter(|&c| context.request.cargos[c].weight >= 8.0)
-        .flat_map(|c| {
-            (0..context.request.positions.len())
-                .map(move |p| (context.x_idx[c][p], 1.0))
-        })
+        .flat_map(|c| (0..context.request.positions.len()).map(move |p| (context.x_idx[c][p], 1.0)))
         .collect();
 
     if !objective_terms.is_empty() {
-        let obj_input = LinearObjectiveInput::minimize(
-            &format!("item_reweigh_needed_{}", mode_name(context.mode)),
-        )
+        let obj_input = LinearObjectiveInput::minimize(&format!(
+            "item_reweigh_needed_{}",
+            mode_name(context.mode)
+        ))
         .terms(objective_terms.iter().copied());
         model.add_linear_objective_input(obj_input);
     }

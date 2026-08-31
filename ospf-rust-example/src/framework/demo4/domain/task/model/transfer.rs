@@ -1,9 +1,9 @@
 //! 调机任务模块 / Transfer flight module
 
-use time::{Duration, OffsetDateTime};
 use super::aircraft::Aircraft;
 use super::airport::Airport;
 use super::flight_task::{FlightTaskAssignment, FlightTaskStatus};
+use time::{Duration, OffsetDateTime};
 
 /// 调机计划 / Transfer plan
 #[derive(Debug, Clone)]
@@ -38,19 +38,29 @@ pub struct Transfer {
 impl Transfer {
     /// 创建新的调机任务 / Create a new transfer flight
     pub fn new(plan: TransferPlan) -> Self {
-        Self { plan, recovery_aircraft: None, recovery_time: None }
+        Self {
+            plan,
+            recovery_aircraft: None,
+            recovery_time: None,
+        }
     }
 
     /// 获取当前执行飞机（恢复或原计划） / Get current aircraft (recovery or planned)
     pub fn aircraft(&self) -> &Aircraft {
-        self.recovery_aircraft.as_ref().unwrap_or(&self.plan.aircraft)
+        self.recovery_aircraft
+            .as_ref()
+            .unwrap_or(&self.plan.aircraft)
     }
 
     /// 获取出发机场 / Get departure airport
-    pub fn dep(&self) -> &Airport { &self.plan.dep }
+    pub fn dep(&self) -> &Airport {
+        &self.plan.dep
+    }
 
     /// 获取到达机场 / Get arrival airport
-    pub fn arr(&self) -> &Airport { &self.plan.arr }
+    pub fn arr(&self) -> &Airport {
+        &self.plan.arr
+    }
 
     /// 是否已恢复 / Check if recovered
     pub fn recovered(&self) -> bool {

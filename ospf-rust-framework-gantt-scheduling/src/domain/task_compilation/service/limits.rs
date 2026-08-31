@@ -7,17 +7,17 @@
 //! Since `Pipeline::invoke` receives `&M` (immutable reference),
 //! constraint and objective registration is done in `register(&mut M)`.
 
-use std::sync::Arc;
 use ospf_rust_core::error::Result;
+use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::flatten::Linear;
 use ospf_rust_core::model::flatten::LinearMonomial;
 use ospf_rust_core::model::mechanism::constraint_group::ConstraintGroup;
-use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::model::object::SubObjective;
-use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::LinearIntermediateSymbol;
+use ospf_rust_core::symbol::expression_symbol::LinearExpressionSymbol;
 use ospf_rust_core::variable::UContinuous;
 use ospf_rust_framework::model::pipeline::Pipeline;
+use std::sync::Arc;
 
 use super::super::model::{Compilation, Switch};
 use crate::domain::task::{AssignmentPolicyTrait, ExecutorTrait, TaskTrait};
@@ -33,12 +33,18 @@ use crate::domain::task::{AssignmentPolicyTrait, ExecutorTrait, TaskTrait};
 ///
 /// Each symbol's `to_linear_polynomial()` returns `Linear<f64>`,
 /// expanded to `Vec<(usize, f64)>` i.e. `(var_index, coefficient)` pair list.
-fn expand_symbols_to_polynomials(symbols: &[Arc<LinearExpressionSymbol<f64>>]) -> Vec<Vec<(usize, f64)>> {
-    symbols.iter()
+fn expand_symbols_to_polynomials(
+    symbols: &[Arc<LinearExpressionSymbol<f64>>],
+) -> Vec<Vec<(usize, f64)>> {
+    symbols
+        .iter()
         .map(|s| {
             let poly = s.as_ref().to_linear_polynomial();
-            poly.monomials().iter()
-                .map(|m: &ospf_rust_core::model::flatten::LinearMonomial<f64>| (m.var_index(), *m.coefficient()))
+            poly.monomials()
+                .iter()
+                .map(|m: &ospf_rust_core::model::flatten::LinearMonomial<f64>| {
+                    (m.var_index(), *m.coefficient())
+                })
                 .collect()
         })
         .collect()
@@ -100,21 +106,29 @@ impl TaskCompilationConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskCompilationConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (ti, terms) in self.task_compilation_polynomials.iter().enumerate() {
             if terms.is_empty() {
-                log::warn!("Task {} has empty compilation polynomial, skipping constraint", ti);
+                log::warn!(
+                    "Task {} has empty compilation polynomial, skipping constraint",
+                    ti
+                );
                 continue;
             }
-            if let Err(e) = model.add_eq_constraint(
-                terms,
-                1.0,
-                &format!("{}_{}", self.name, ti),
-            ) {
-                log::warn!("Failed to register constraint {}: {:?}", format!("{}_{}", self.name, ti), e);
+            if let Err(e) = model.add_eq_constraint(terms, 1.0, &format!("{}_{}", self.name, ti)) {
+                log::warn!(
+                    "Failed to register constraint {}_{}: {:?}",
+                    self.name,
+                    ti,
+                    e
+                );
             }
         }
     }
@@ -167,21 +181,29 @@ impl ExecutorCompilationConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for ExecutorCompilationConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (ei, terms) in self.executor_compilation_polynomials.iter().enumerate() {
             if terms.is_empty() {
-                log::warn!("Executor {} has empty compilation polynomial, skipping constraint", ei);
+                log::warn!(
+                    "Executor {} has empty compilation polynomial, skipping constraint",
+                    ei
+                );
                 continue;
             }
-            if let Err(e) = model.add_eq_constraint(
-                terms,
-                1.0,
-                &format!("{}_{}", self.name, ei),
-            ) {
-                log::warn!("Failed to register constraint {}: {:?}", format!("{}_{}", self.name, ei), e);
+            if let Err(e) = model.add_eq_constraint(terms, 1.0, &format!("{}_{}", self.name, ei)) {
+                log::warn!(
+                    "Failed to register constraint {}_{}: {:?}",
+                    self.name,
+                    ei,
+                    e
+                );
             }
         }
     }
@@ -226,20 +248,25 @@ impl TaskConflictConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskConflictConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for &(ti, tj, ei) in &self.conflict_pairs {
             let idx_i = (self.x_model_index)(ti, ei);
             let idx_j = (self.x_model_index)(tj, ei);
-            if let (Some(i), Some(j)) = (idx_i, idx_j) {
-                if let Err(e) = model.add_le_constraint(
-                    &[(i, 1.0), (j, 1.0)], 1.0,
+            if let (Some(i), Some(j)) = (idx_i, idx_j)
+                && let Err(e) = model.add_le_constraint(
+                    &[(i, 1.0), (j, 1.0)],
+                    1.0,
                     &format!("{}_{}_{}_{}", self.name, ti, tj, ei),
-                ) {
-                    log::warn!("Failed to register constraint: {:?}", e);
-                }
+                )
+            {
+                log::warn!("Failed to register constraint: {:?}", e);
             }
         }
     }
@@ -284,20 +311,25 @@ impl TaskTimeConflictConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskTimeConflictConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for &(ti, tj, ei) in &self.overlap_pairs {
             let idx_i = (self.x_model_index)(ti, ei);
             let idx_j = (self.x_model_index)(tj, ei);
-            if let (Some(i), Some(j)) = (idx_i, idx_j) {
-                if let Err(e) = model.add_le_constraint(
-                    &[(i, 1.0), (j, 1.0)], 1.0,
+            if let (Some(i), Some(j)) = (idx_i, idx_j)
+                && let Err(e) = model.add_le_constraint(
+                    &[(i, 1.0), (j, 1.0)],
+                    1.0,
                     &format!("{}_{}_{}_{}", self.name, ti, tj, ei),
-                ) {
-                    log::warn!("Failed to register constraint: {:?}", e);
-                }
+                )
+            {
+                log::warn!("Failed to register constraint: {:?}", e);
             }
         }
     }
@@ -330,13 +362,18 @@ impl TaskDelayTimeConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskDelayTimeConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (i, &(est_idx, scheduled_start)) in self.constraints.iter().enumerate() {
             if let Err(e) = model.add_le_constraint(
-                &[(est_idx, 1.0)], scheduled_start,
+                &[(est_idx, 1.0)],
+                scheduled_start,
                 &format!("{}_{}", self.name, i),
             ) {
                 log::warn!("Failed to register constraint: {:?}", e);
@@ -372,13 +409,18 @@ impl TaskAdvanceTimeConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskAdvanceTimeConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (i, &(est_idx, scheduled_start)) in self.constraints.iter().enumerate() {
             if let Err(e) = model.add_ge_constraint(
-                &[(est_idx, 1.0)], scheduled_start,
+                &[(est_idx, 1.0)],
+                scheduled_start,
                 &format!("{}_{}", self.name, i),
             ) {
                 log::warn!("Failed to register constraint: {:?}", e);
@@ -416,14 +458,20 @@ impl TaskExecutorCostMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskExecutorCostMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, cost)| LinearMonomial::new(cost, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -457,14 +505,20 @@ impl TaskCostMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskCostMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, cost)| LinearMonomial::new(cost, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -501,12 +555,19 @@ impl MakespanMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for MakespanMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         let polynomial = Linear::new(
-            vec![LinearMonomial::new(self.coefficient, self.makespan_model_index)],
+            vec![LinearMonomial::new(
+                self.coefficient,
+                self.makespan_model_index,
+            )],
             0.0,
         );
         let sub_obj = SubObjective::minimize(polynomial, &self.name);
@@ -540,7 +601,9 @@ impl SwitchCostMinimization {
 
     /// 从 Switch 组件创建目标 / Create objective from Switch component
     pub fn from_switch(switch: &Switch, coefficient: f64) -> Self {
-        let cost_terms = switch.switch_model_indices.iter()
+        let cost_terms = switch
+            .switch_model_indices
+            .iter()
             .filter_map(|index| index.map(|idx| (idx, coefficient)))
             .collect();
         Self::new(cost_terms)
@@ -548,14 +611,20 @@ impl SwitchCostMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for SwitchCostMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -598,11 +667,7 @@ impl SwitchTimeMinimization {
     ///
     /// 当阈值大于零时，目标最小化 `max(0, switch_time - threshold)`。
     /// When threshold is positive, minimizes `max(0, switch_time - threshold)`.
-    pub fn with_threshold(
-        polynomial: Linear<f64>,
-        threshold: f64,
-        coefficient: f64,
-    ) -> Self {
+    pub fn with_threshold(polynomial: Linear<f64>, threshold: f64, coefficient: f64) -> Self {
         Self {
             name: "switch_time_minimization".to_string(),
             polynomial,
@@ -629,11 +694,7 @@ impl SwitchTimeMinimization {
     }
 
     /// 从 Switch 组件创建带阈值目标 / Create threshold objective from Switch component
-    pub fn from_switch_with_threshold(
-        switch: &Switch,
-        threshold: f64,
-        coefficient: f64,
-    ) -> Self {
+    pub fn from_switch_with_threshold(switch: &Switch, threshold: f64, coefficient: f64) -> Self {
         let mut objective = Self::from_switch(switch, 1.0);
         objective.threshold = threshold;
         objective.threshold_coefficient = coefficient;
@@ -642,8 +703,12 @@ impl SwitchTimeMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for SwitchTimeMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.polynomial.monomials().is_empty()
@@ -667,7 +732,9 @@ impl Pipeline<MetaModel<f64>> for SwitchTimeMinimization {
                 return;
             }
         };
-        let mut terms: Vec<(usize, f64)> = self.polynomial.monomials()
+        let mut terms: Vec<(usize, f64)> = self
+            .polynomial
+            .monomials()
             .iter()
             .map(|monomial| (monomial.var_index(), -*monomial.coefficient()))
             .collect();
@@ -677,7 +744,11 @@ impl Pipeline<MetaModel<f64>> for SwitchTimeMinimization {
             *self.polynomial.constant_term() - self.threshold,
             &format!("{}_threshold", self.name),
         ) {
-            log::warn!("Failed to register {} threshold constraint: {:?}", self.name, e);
+            log::warn!(
+                "Failed to register {} threshold constraint: {:?}",
+                self.name,
+                e
+            );
             return;
         }
 
@@ -696,7 +767,9 @@ impl Pipeline<MetaModel<f64>> for SwitchTimeMinimization {
 
 impl SwitchTimeMinimization {
     fn scaled_polynomial(&self) -> Linear<f64> {
-        let monomials = self.polynomial.monomials()
+        let monomials = self
+            .polynomial
+            .monomials()
             .iter()
             .map(|monomial| {
                 LinearMonomial::new(
@@ -733,14 +806,20 @@ impl TaskDelayTimeMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskDelayTimeMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -774,14 +853,20 @@ impl TaskAdvanceTimeMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskAdvanceTimeMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, coeff)| LinearMonomial::new(coeff, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -819,7 +904,8 @@ impl TaskOverMaxDelayTimeConstraint {
         delay_time_model_indices: &[Option<usize>],
         max_delay_values: &[Option<f64>],
     ) -> Self {
-        let constraints: Vec<(usize, f64)> = delay_time_model_indices.iter()
+        let constraints: Vec<(usize, f64)> = delay_time_model_indices
+            .iter()
             .zip(max_delay_values.iter())
             .filter_map(|(idx, max_delay)| {
                 if let (Some(i), Some(m)) = (idx, max_delay) {
@@ -838,13 +924,18 @@ impl TaskOverMaxDelayTimeConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskOverMaxDelayTimeConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (i, &(delay_idx, max_delay)) in self.constraints.iter().enumerate() {
             if let Err(e) = model.add_le_constraint(
-                &[(delay_idx, 1.0)], max_delay,
+                &[(delay_idx, 1.0)],
+                max_delay,
                 &format!("{}_{}", self.name, i),
             ) {
                 log::warn!("Failed to register constraint: {:?}", e);
@@ -875,7 +966,8 @@ impl TaskOverMaxAdvanceTimeConstraint {
         advance_time_model_indices: &[Option<usize>],
         max_advance_values: &[Option<f64>],
     ) -> Self {
-        let constraints: Vec<(usize, f64)> = advance_time_model_indices.iter()
+        let constraints: Vec<(usize, f64)> = advance_time_model_indices
+            .iter()
             .zip(max_advance_values.iter())
             .filter_map(|(idx, max_advance)| {
                 if let (Some(i), Some(m)) = (idx, max_advance) {
@@ -894,13 +986,18 @@ impl TaskOverMaxAdvanceTimeConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskOverMaxAdvanceTimeConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (i, &(advance_idx, max_advance)) in self.constraints.iter().enumerate() {
             if let Err(e) = model.add_le_constraint(
-                &[(advance_idx, 1.0)], max_advance,
+                &[(advance_idx, 1.0)],
+                max_advance,
                 &format!("{}_{}", self.name, i),
             ) {
                 log::warn!("Failed to register constraint: {:?}", e);
@@ -942,7 +1039,8 @@ impl TaskDelayLastEndTimeConstraint {
         last_end_time_values: &[Option<f64>],
         durations: &[f64],
     ) -> Self {
-        let constraints: Vec<(usize, f64)> = est_model_indices.iter()
+        let constraints: Vec<(usize, f64)> = est_model_indices
+            .iter()
             .zip(last_end_time_values.iter())
             .zip(durations.iter())
             .filter_map(|((idx, last_end), duration)| {
@@ -962,13 +1060,18 @@ impl TaskDelayLastEndTimeConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskDelayLastEndTimeConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (i, &(end_idx, last_end)) in self.constraints.iter().enumerate() {
             if let Err(e) = model.add_le_constraint(
-                &[(end_idx, 1.0)], last_end,
+                &[(end_idx, 1.0)],
+                last_end,
                 &format!("{}_{}", self.name, i),
             ) {
                 log::warn!("Failed to register constraint: {:?}", e);
@@ -1007,7 +1110,8 @@ impl TaskAdvanceEarliestEndTimeConstraint {
         earliest_end_time_values: &[Option<f64>],
         durations: &[f64],
     ) -> Self {
-        let constraints: Vec<(usize, f64)> = est_model_indices.iter()
+        let constraints: Vec<(usize, f64)> = est_model_indices
+            .iter()
             .zip(earliest_end_time_values.iter())
             .zip(durations.iter())
             .filter_map(|((idx, earliest_end), duration)| {
@@ -1027,13 +1131,18 @@ impl TaskAdvanceEarliestEndTimeConstraint {
 }
 
 impl Pipeline<MetaModel<f64>> for TaskAdvanceEarliestEndTimeConstraint {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { self.group.as_ref() }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        self.group.as_ref()
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         for (i, &(end_idx, earliest_end)) in self.constraints.iter().enumerate() {
             if let Err(e) = model.add_ge_constraint(
-                &[(end_idx, 1.0)], earliest_end,
+                &[(end_idx, 1.0)],
+                earliest_end,
                 &format!("{}_{}", self.name, i),
             ) {
                 log::warn!("Failed to register constraint: {:?}", e);
@@ -1068,14 +1177,20 @@ impl ExecutorCostMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for ExecutorCostMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.cost_terms.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.cost_terms.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .cost_terms
+            .iter()
             .map(|&(idx, cost)| LinearMonomial::new(cost, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -1110,14 +1225,20 @@ impl ExecutorLeisureMinimization {
 }
 
 impl Pipeline<MetaModel<f64>> for ExecutorLeisureMinimization {
-    fn name(&self) -> &str { &self.name }
-    fn constraint_group(&self) -> Option<&ConstraintGroup> { None }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn constraint_group(&self) -> Option<&ConstraintGroup> {
+        None
+    }
 
     fn register(&self, model: &mut MetaModel<f64>) {
         if self.leisure_indices.is_empty() {
             return;
         }
-        let monomials: Vec<LinearMonomial<f64>> = self.leisure_indices.iter()
+        let monomials: Vec<LinearMonomial<f64>> = self
+            .leisure_indices
+            .iter()
             .map(|&idx| LinearMonomial::new(1.0, idx))
             .collect();
         let polynomial = Linear::new(monomials, 0.0);
@@ -1137,8 +1258,8 @@ impl Pipeline<MetaModel<f64>> for ExecutorLeisureMinimization {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ospf_rust_core::variable::{Binary, UContinuous};
     use crate::domain::task_compilation::adapter::IndexedVariableArray1;
+    use ospf_rust_core::variable::{Binary, UContinuous};
 
     #[test]
     fn test_task_compilation_constraint_from_symbols() {
@@ -1147,10 +1268,17 @@ mod tests {
         let executor_indices: Vec<usize> = vec![0, 1];
 
         // 注册 x[task, executor] 二维变量
-        let x: crate::domain::task_compilation::adapter::IndexedVariableArray2<usize, usize, Binary> =
-            crate::domain::task_compilation::adapter::IndexedVariableArray2::new(
-                "x", &task_indices, &executor_indices, &mut model,
-            ).unwrap();
+        let x: crate::domain::task_compilation::adapter::IndexedVariableArray2<
+            usize,
+            usize,
+            Binary,
+        > = crate::domain::task_compilation::adapter::IndexedVariableArray2::new(
+            "x",
+            &task_indices,
+            &executor_indices,
+            &mut model,
+        )
+        .unwrap();
 
         // 注册 y[task] 一维变量
         let y: IndexedVariableArray1<usize, Binary> =
@@ -1169,7 +1297,9 @@ mod tests {
                 terms.push((idx, 1.0));
             }
             let symbol = crate::domain::task_compilation::adapter::build_linear_expression_symbol(
-                &format!("task_compilation_{}", ti), &terms, 0.0,
+                &format!("task_compilation_{}", ti),
+                &terms,
+                0.0,
             );
             symbols.push(symbol);
         }
@@ -1199,10 +1329,17 @@ mod tests {
         let task_indices: Vec<usize> = vec![0, 1];
         let executor_indices: Vec<usize> = vec![0, 1];
 
-        let x: crate::domain::task_compilation::adapter::IndexedVariableArray2<usize, usize, Binary> =
-            crate::domain::task_compilation::adapter::IndexedVariableArray2::new(
-                "x", &task_indices, &executor_indices, &mut model,
-            ).unwrap();
+        let x: crate::domain::task_compilation::adapter::IndexedVariableArray2<
+            usize,
+            usize,
+            Binary,
+        > = crate::domain::task_compilation::adapter::IndexedVariableArray2::new(
+            "x",
+            &task_indices,
+            &executor_indices,
+            &mut model,
+        )
+        .unwrap();
 
         let z: IndexedVariableArray1<usize, Binary> =
             IndexedVariableArray1::new("z", &executor_indices, &mut model).unwrap();
@@ -1220,7 +1357,9 @@ mod tests {
                 terms.push((idx, 1.0));
             }
             let symbol = crate::domain::task_compilation::adapter::build_linear_expression_symbol(
-                &format!("executor_compilation_{}", ei), &terms, 0.0,
+                &format!("executor_compilation_{}", ei),
+                &terms,
+                0.0,
             );
             symbols.push(symbol);
         }
@@ -1240,7 +1379,9 @@ mod tests {
     #[test]
     fn test_makespan_minimization() {
         let mut model = MetaModel::<f64>::new("test_obj");
-        let makespan_idx = model.register_auto_variable::<UContinuous>("makespan").unwrap();
+        let makespan_idx = model
+            .register_auto_variable::<UContinuous>("makespan")
+            .unwrap();
 
         let pipeline = MakespanMinimization::new(makespan_idx, 1.0);
         pipeline.register(&mut model);
@@ -1251,28 +1392,36 @@ mod tests {
     fn test_switch_objective_pipelines_register_objectives() {
         let mut model = MetaModel::<f64>::new("test_switch_objectives");
         let switch_idx = model.register_auto_variable::<Binary>("switch").unwrap();
-        let time_idx = model.register_auto_variable::<UContinuous>("switch_time").unwrap();
+        let time_idx = model
+            .register_auto_variable::<UContinuous>("switch_time")
+            .unwrap();
 
         let cost_pipeline = SwitchCostMinimization::new(vec![(switch_idx, 2.0)]);
         cost_pipeline.register(&mut model);
         cost_pipeline.invoke(&model).unwrap();
 
-        let time_pipeline = SwitchTimeMinimization::new(Linear::new(
-            vec![LinearMonomial::new(3.0, time_idx)],
-            0.0,
-        ));
+        let time_pipeline =
+            SwitchTimeMinimization::new(Linear::new(vec![LinearMonomial::new(3.0, time_idx)], 0.0));
         time_pipeline.register(&mut model);
         time_pipeline.invoke(&model).unwrap();
 
         assert_eq!(model.objective().sub_objectives.len(), 2);
-        assert_eq!(model.objective().sub_objectives[0].name, "switch_cost_minimization");
-        assert_eq!(model.objective().sub_objectives[1].name, "switch_time_minimization");
+        assert_eq!(
+            model.objective().sub_objectives[0].name,
+            "switch_cost_minimization"
+        );
+        assert_eq!(
+            model.objective().sub_objectives[1].name,
+            "switch_time_minimization"
+        );
     }
 
     #[test]
     fn test_switch_time_minimization_with_threshold_registers_slack() {
         let mut model = MetaModel::<f64>::new("test_switch_time_threshold");
-        let time_idx = model.register_auto_variable::<UContinuous>("switch_time").unwrap();
+        let time_idx = model
+            .register_auto_variable::<UContinuous>("switch_time")
+            .unwrap();
         let pipeline = SwitchTimeMinimization::with_threshold(
             Linear::new(vec![LinearMonomial::new(1.0, time_idx)], 0.0),
             3.0,
@@ -1285,7 +1434,10 @@ mod tests {
         let mechanism = model.try_to_mechanism_model().unwrap();
         assert!(mechanism.as_basic().num_constraints() >= 1);
         assert_eq!(model.objective().sub_objectives.len(), 1);
-        assert_eq!(model.objective().sub_objectives[0].name, "switch_time_minimization");
+        assert_eq!(
+            model.objective().sub_objectives[0].name,
+            "switch_time_minimization"
+        );
     }
 
     #[test]
@@ -1306,7 +1458,8 @@ mod tests {
         let last_end_times: Vec<Option<f64>> = vec![Some(100.0), None];
         let durations: Vec<f64> = vec![10.0, 20.0];
 
-        let constraint = TaskDelayLastEndTimeConstraint::new(&est_indices, &last_end_times, &durations);
+        let constraint =
+            TaskDelayLastEndTimeConstraint::new(&est_indices, &last_end_times, &durations);
 
         // 只有 task 0 有 last_end_time
         assert_eq!(constraint.constraints.len(), 1);
@@ -1327,25 +1480,34 @@ mod tests {
 
     impl IntegrationTestTask {
         fn new(id: &str, name: &str) -> Self {
-            Self { id: id.into(), name: name.to_string() }
+            Self {
+                id: id.into(),
+                name: name.to_string(),
+            }
         }
     }
 
     use crate::domain::task::{BasicAssignmentPolicy, BasicExecutor};
 
-    impl<E: crate::domain::task::ExecutorTrait, A: crate::domain::task::AssignmentPolicyTrait<E>> TaskTrait<E, A> for IntegrationTestTask {
+    impl<E: crate::domain::task::ExecutorTrait, A: crate::domain::task::AssignmentPolicyTrait<E>>
+        TaskTrait<E, A> for IntegrationTestTask
+    {
         type Id = String;
 
-        fn id(&self) -> &Self::Id { &self.id }
-        fn name(&self) -> &str { &self.name }
+        fn id(&self) -> &Self::Id {
+            &self.id
+        }
+        fn name(&self) -> &str {
+            &self.name
+        }
     }
 
     /// 端到端测试：from_compilation 创建约束并注册到模型
     /// End-to-end test: from_compilation creates constraints and registers to model
     #[test]
     fn test_from_compilation_constraint_pipeline() {
-        use crate::domain::task_compilation::model::Compilation;
         use crate::domain::task_compilation::SolutionAnalyzer;
+        use crate::domain::task_compilation::model::Compilation;
 
         let tasks = vec![
             IntegrationTestTask::new("t0", "Task 0"),
@@ -1359,8 +1521,11 @@ mod tests {
         let mut model = MetaModel::<f64>::new("test_from_compilation");
 
         // 注册 Compilation 组件
-        let mut compilation: Compilation<IntegrationTestTask, BasicExecutor, BasicAssignmentPolicy<BasicExecutor>> =
-            Compilation::new(tasks, executors, true, false);
+        let mut compilation: Compilation<
+            IntegrationTestTask,
+            BasicExecutor,
+            BasicAssignmentPolicy<BasicExecutor>,
+        > = Compilation::new(tasks, executors, true, false);
         compilation.register(&mut model).unwrap();
 
         // 使用 from_compilation 创建约束
@@ -1375,7 +1540,10 @@ mod tests {
         }
 
         // executor_compilation: 2 executors, 每个有 2 个 x 项（无 z，因为 leisure=false）
-        assert_eq!(executor_constraint.executor_compilation_polynomials.len(), 2);
+        assert_eq!(
+            executor_constraint.executor_compilation_polynomials.len(),
+            2
+        );
         for poly in &executor_constraint.executor_compilation_polynomials {
             assert_eq!(poly.len(), 2); // 2 tasks, no leisure var
         }
@@ -1390,11 +1558,15 @@ mod tests {
         let n_vars = model.register_auto_variable::<Binary>("padding").unwrap() + 1;
         let mut solution = vec![0.0; n_vars];
         // t0 -> e1, t1 canceled
-        if let Some(ref x) = compilation.x {
-            if let Some(idx) = x.model_index(&0, &1) { solution[idx] = 1.0; }
+        if let Some(ref x) = compilation.x
+            && let Some(idx) = x.model_index(&0, &1)
+        {
+            solution[idx] = 1.0;
         }
-        if let Some(ref y) = compilation.y {
-            if let Some(idx) = y.model_index(&1) { solution[idx] = 1.0; }
+        if let Some(ref y) = compilation.y
+            && let Some(idx) = y.model_index(&1)
+        {
+            solution[idx] = 1.0;
         }
 
         let result = SolutionAnalyzer::analyze(&compilation, &solution);
@@ -1410,9 +1582,7 @@ mod tests {
     fn test_from_compilation_with_leisure() {
         use crate::domain::task_compilation::model::Compilation;
 
-        let tasks = vec![
-            IntegrationTestTask::new("t0", "Task 0"),
-        ];
+        let tasks = vec![IntegrationTestTask::new("t0", "Task 0")];
         let executors = vec![
             BasicExecutor::new("e0", "Executor 0"),
             BasicExecutor::new("e1", "Executor 1"),
@@ -1420,14 +1590,20 @@ mod tests {
 
         let mut model = MetaModel::<f64>::new("test_from_compilation_leisure");
 
-        let mut compilation: Compilation<IntegrationTestTask, BasicExecutor, BasicAssignmentPolicy<BasicExecutor>> =
-            Compilation::new(tasks, executors, false, true);
+        let mut compilation: Compilation<
+            IntegrationTestTask,
+            BasicExecutor,
+            BasicAssignmentPolicy<BasicExecutor>,
+        > = Compilation::new(tasks, executors, false, true);
         compilation.register(&mut model).unwrap();
 
         let executor_constraint = ExecutorCompilationConstraint::from_compilation(&compilation);
 
         // executor_compilation: 2 executors, 每个有 1 个 x 项 + 1 个 z 项
-        assert_eq!(executor_constraint.executor_compilation_polynomials.len(), 2);
+        assert_eq!(
+            executor_constraint.executor_compilation_polynomials.len(),
+            2
+        );
         for poly in &executor_constraint.executor_compilation_polynomials {
             assert_eq!(poly.len(), 2); // 1 task x var + 1 leisure z var
         }

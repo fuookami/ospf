@@ -1,8 +1,8 @@
 //! 冗余管线规格 / Redundancy pipeline specifications
-use crate::framework::demo2::domain::shared::mode_switch::ModeSelector;
-use crate::framework::demo2::domain::shared::pipeline_policy::PipelineSpec;
 use crate::framework::demo2::domain::redundancy::service::limits;
 use crate::framework::demo2::domain::redundancy::service::pipeline_list_generator::RedundancyPipelineStep;
+use crate::framework::demo2::domain::shared::mode_switch::ModeSelector;
+use crate::framework::demo2::domain::shared::pipeline_policy::PipelineSpec;
 
 /// 冗余管线规格列表 / Redundancy pipeline specification list
 ///

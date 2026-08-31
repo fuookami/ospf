@@ -1,16 +1,16 @@
 //! 载荷模型 / Payload model
-use super::item::Item;
-use super::position::Position;
-use super::load::LoadVariables;
-use super::stowage::{StowageMode, StowageVariables};
 use super::super::super::shared::units;
-use std::error::Error;
-use std::sync::Arc;
+use super::item::Item;
+use super::load::LoadVariables;
+use super::position::Position;
+use super::stowage::{StowageMode, StowageVariables};
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::LinearMonomial;
 use ospf_rust_quantities::quantity::Quantity;
 use ospf_rust_quantities::unit::Unit;
+use std::error::Error;
+use std::sync::Arc;
 
 /// 载荷变量索引 / Payload variable indices (对齐 Kotlin Payload)
 #[derive(Debug, Clone)]
@@ -207,7 +207,9 @@ impl Payload {
                 // Aligned with Kotlin: (computedPayload ?: plannedPayload).to(weightUnit).value
                 let estimate_value = match &self.computed_payload {
                     Some(cp) => units::quantity_value_in_unit(cp, &wu).unwrap_or(0.0),
-                    None => units::quantity_value_in_unit(&self.planned_payload, &wu).unwrap_or(0.0),
+                    None => {
+                        units::quantity_value_in_unit(&self.planned_payload, &wu).unwrap_or(0.0)
+                    }
                 };
                 let estimate_symbol = LinearExpressionSymbol::new(
                     next_id,
@@ -261,12 +263,8 @@ impl Payload {
                     actual_monomials
                         .push(LinearMonomial::new(1.0, load_vars.actual_load_weight[j]));
                 }
-                let actual_symbol = LinearExpressionSymbol::new(
-                    next_id,
-                    "actual_payload",
-                    actual_monomials,
-                    0.0,
-                );
+                let actual_symbol =
+                    LinearExpressionSymbol::new(next_id, "actual_payload", actual_monomials, 0.0);
                 model.add_symbol(Arc::new(actual_symbol))?;
                 let actual_payload = next_id as usize;
 
@@ -376,12 +374,8 @@ impl Payload {
                     actual_monomials
                         .push(LinearMonomial::new(1.0, load_vars.actual_load_weight[j]));
                 }
-                let actual_symbol = LinearExpressionSymbol::new(
-                    next_id,
-                    "actual_payload",
-                    actual_monomials,
-                    0.0,
-                );
+                let actual_symbol =
+                    LinearExpressionSymbol::new(next_id, "actual_payload", actual_monomials, 0.0);
                 model.add_symbol(Arc::new(actual_symbol))?;
                 let actual_payload = next_id as usize;
 

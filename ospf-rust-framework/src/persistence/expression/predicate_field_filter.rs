@@ -534,8 +534,14 @@ mod tests {
         let filters = expression
             .field_filters()
             .expect("field filters should parse");
-        assert_eq!(filters.get("age").and_then(|filter| filter.ge.as_ref()), Some(&ExpressionValue::Number(18.0)));
-        assert_eq!(filters.get("age").and_then(|filter| filter.le.as_ref()), Some(&ExpressionValue::Number(65.0)));
+        assert_eq!(
+            filters.get("age").and_then(|filter| filter.ge.as_ref()),
+            Some(&ExpressionValue::Number(18.0))
+        );
+        assert_eq!(
+            filters.get("age").and_then(|filter| filter.le.as_ref()),
+            Some(&ExpressionValue::Number(65.0))
+        );
         assert_eq!(
             filters
                 .get("status")
@@ -562,7 +568,10 @@ mod tests {
         let filters = expression
             .field_filters()
             .expect("field filters should parse");
-        assert_eq!(filters.get("age").and_then(|filter| filter.ge.as_ref()), Some(&ExpressionValue::Number(18.0)));
+        assert_eq!(
+            filters.get("age").and_then(|filter| filter.ge.as_ref()),
+            Some(&ExpressionValue::Number(18.0))
+        );
     }
 
     #[test]
@@ -576,14 +585,21 @@ mod tests {
             filters.get("deleted_at").and_then(|filter| filter.is_null),
             Some(true)
         );
-        assert_eq!(filters.get("deleted_at").and_then(|filter| filter.eq.as_ref()), None);
+        assert_eq!(
+            filters
+                .get("deleted_at")
+                .and_then(|filter| filter.eq.as_ref()),
+            None
+        );
     }
 
     #[test]
     fn field_filters_reject_non_constant_in_candidates() {
         let expression = BooleanExpression::in_expr(
             ScalarExpression::<ExpressionValue>::reference("status"),
-            vec![ScalarExpression::<ExpressionValue>::reference("other_status")],
+            vec![ScalarExpression::<ExpressionValue>::reference(
+                "other_status",
+            )],
             false,
         );
 

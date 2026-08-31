@@ -1,14 +1,14 @@
 //! 求解结果定义
 //! Solver Output Definitions
 
-use std::sync::Arc;
-use std::time::Duration;
 use crate::error::Result;
 use crate::error::{CoreError, SolverError};
 use crate::solver::iis::LinearIISModel;
 use crate::solver::value::boundary::value_from_backend_f64;
 use crate::solver::value::conversion_context::SolveValueConversionContext;
 use crate::solver::value::{SolveValue, SolveValueConversionPolicy};
+use std::sync::Arc;
+use std::time::Duration;
 
 /// 求解状态 / Solver Status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,8 +25,32 @@ pub enum SolverStatus {
     Unbounded,
     /// 达到迭代上限 / Iteration limit
     IterationLimit,
+    /// 达到节点上限 / Node limit
+    NodeLimit,
+    /// 达到总节点上限 / Total node limit
+    TotalNodeLimit,
+    /// 达到停滞节点上限 / Stall-node limit
+    StallNodeLimit,
     /// 达到时间上限 / Time limit
     TimeLimit,
+    /// 达到解数量上限 / Solution limit
+    SolutionLimit,
+    /// 达到最优解改进上限 / Best-solution limit
+    BestSolutionLimit,
+    /// 达到 gap 上限 / Gap limit
+    GapLimit,
+    /// 达到内存上限 / Memory limit
+    MemoryLimit,
+    /// 达到工作量上限 / Work limit
+    WorkLimit,
+    /// 达到目标界限 / Objective limit
+    ObjectiveLimit,
+    /// 达到 cutoff / Cutoff reached
+    Cutoff,
+    /// 达到重启上限 / Restart limit
+    RestartLimit,
+    /// 求解器返回次优解 / Suboptimal solution
+    Suboptimal,
     /// 数值错误 / Numeric error
     NumericError,
     /// 未开始 / Not started
@@ -52,7 +76,18 @@ impl SolverStatus {
             SolverStatus::Optimal
                 | SolverStatus::Feasible
                 | SolverStatus::IterationLimit
+                | SolverStatus::NodeLimit
+                | SolverStatus::TotalNodeLimit
+                | SolverStatus::StallNodeLimit
                 | SolverStatus::TimeLimit
+                | SolverStatus::SolutionLimit
+                | SolverStatus::BestSolutionLimit
+                | SolverStatus::GapLimit
+                | SolverStatus::MemoryLimit
+                | SolverStatus::WorkLimit
+                | SolverStatus::ObjectiveLimit
+                | SolverStatus::RestartLimit
+                | SolverStatus::Suboptimal
         )
     }
 
@@ -93,6 +128,8 @@ pub struct SolverOutput {
     pub mip_gap: Option<f64>,
     /// 最优下界（MIP）/ Best bound (MIP)
     pub best_bound: Option<f64>,
+    /// solver 报告的解数量 / Number of solutions reported by the solver
+    pub solution_count: Option<usize>,
 }
 
 impl SolverOutput {
@@ -109,6 +146,7 @@ impl SolverOutput {
             node_count: None,
             mip_gap: None,
             best_bound: None,
+            solution_count: None,
         }
     }
 
@@ -125,6 +163,7 @@ impl SolverOutput {
             node_count: None,
             mip_gap: None,
             best_bound: None,
+            solution_count: None,
         }
     }
 
@@ -174,6 +213,12 @@ impl SolverOutput {
         self
     }
 
+    /// 设置 solver 解数量 / Set solver solution count
+    pub fn with_solution_count(mut self, solution_count: usize) -> Self {
+        self.solution_count = Some(solution_count);
+        self
+    }
+
     /// 检查是否有解 / Check if has solution
     pub fn has_solution(&self) -> bool {
         self.solution.is_some()
@@ -192,10 +237,11 @@ impl SolverOutput {
     where
         V: SolveValue,
     {
-        if !self.status.is_feasible() {
-            return Err(CoreError::Solver(SolverError::SolveFailed(format!(
-                "status {:?} is not feasible",
-                self.status
+        let report = self.clone().try_into_solve_report()?;
+        if !report.has_incumbent() {
+            return Err(CoreError::Solver(SolverError::ContractViolation(format!(
+                "status {:?} has no incumbent",
+                report.problem_status
             ))));
         }
         let solution = self
@@ -248,7 +294,7 @@ impl SolverOutput {
     /// 转换为线性不可行输出 / Convert into linear infeasible output
     pub fn try_into_linear_infeasible(self) -> Result<LinearInfeasibleSolverOutput> {
         if !self.status.is_infeasible() {
-            return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+            return Err(CoreError::Solver(SolverError::ContractViolation(format!(
                 "status {:?} is not infeasible",
                 self.status
             ))));
@@ -266,7 +312,7 @@ impl SolverOutput {
     /// 转换为二次不可行输出 / Convert into quadratic infeasible output
     pub fn try_into_quadratic_infeasible(self) -> Result<QuadraticInfeasibleSolverOutput> {
         if !self.status.is_infeasible() {
-            return Err(CoreError::Solver(SolverError::SolveFailed(format!(
+            return Err(CoreError::Solver(SolverError::ContractViolation(format!(
                 "status {:?} is not infeasible",
                 self.status
             ))));
@@ -351,6 +397,9 @@ pub struct SolverOutputWithIIS<IIS = LinearIISModel> {
     pub output: SolverOutput,
     /// IIS 结果（仅不可行时）/ IIS result (only when infeasible)
     pub iis: Option<IIS>,
+    /// 同一次求解的统一报告（兼容 facade 之外的诊断和 proof）/
+    /// Unified report from the same solve, including diagnostics and proof metadata.
+    pub report: Option<crate::solver::SolveReport<f64>>,
 }
 
 /// 求解状态快照 / Solving status snapshot

@@ -1,9 +1,9 @@
 //! 物品预留限制 / Item reserve limits
-use std::error::Error;
-use ospf_rust_core::model::{MetaModel, LinearObjectiveInput};
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{LinearObjectiveInput, MetaModel};
+use std::error::Error;
 
 /// 物品保留限制: 最大化装载量，低优先级物品不强制装载 / Item reserve limit: maximize loading, low-priority items not forced
 /// 对齐 Kotlin ItemReserveLimit
@@ -21,16 +21,14 @@ pub fn apply_item_reserve_limits(
     // Maximize loading: minimize negative loaded variables
     let objective_terms: Vec<(usize, f64)> = (0..context.request.cargos.len())
         .flat_map(|i| {
-            (0..context.request.positions.len())
-                .map(move |p| (context.x_idx[i][p], -1.0))
+            (0..context.request.positions.len()).map(move |p| (context.x_idx[i][p], -1.0))
         })
         .collect();
 
     if !objective_terms.is_empty() {
-        let obj_input = LinearObjectiveInput::minimize(
-            &format!("item_reserve_{}", mode_name(context.mode)),
-        )
-        .terms(objective_terms.iter().copied());
+        let obj_input =
+            LinearObjectiveInput::minimize(&format!("item_reserve_{}", mode_name(context.mode)))
+                .terms(objective_terms.iter().copied());
         model.add_linear_objective_input(obj_input);
     }
 

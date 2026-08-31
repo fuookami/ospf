@@ -1,9 +1,9 @@
 //! 物品优先级限制 / Item priority limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::express_effectiveness::aggregation::ExpressEffectivenessAggregation;
 use crate::framework::demo2::domain::express_effectiveness::context::ExpressEffectivenessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 物品优先级限制: 高优先级货物必须装载 / Item priority limit: high-priority cargos must be loaded
 /// 对齐 Kotlin ItemPriorityLimit
@@ -21,11 +21,7 @@ pub fn apply_item_priority_limits(
             &coefficients,
             ConstraintRelation::Equal,
             1.0,
-            &format!(
-                "express_item_priority_{}_{}",
-                mode_name(context.mode),
-                c
-            ),
+            &format!("express_item_priority_{}_{}", mode_name(context.mode), c),
         )?;
     }
     Ok(())

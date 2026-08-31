@@ -1,22 +1,22 @@
 //! 向下取整函数符号 / Floor function symbol
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, One, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-use crate::error::{ModelError, Result};
-use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
-use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
-use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{ContinuousVariableItem, IntegerVariableItem, VariableId, new_group_id};
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
 use super::big_m::{BigMPolicy, infer_linear_abs_bound_from_tokens};
+use crate::error::{ModelError, Result};
+use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
+use crate::token::{IntoValue, Token, TokenList};
+use crate::variable::{ContinuousVariableItem, IntegerVariableItem, VariableId, new_group_id};
+use num_traits::{FromPrimitive, One, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -131,19 +131,23 @@ where
         Self::new(id, &name, input)
     }
 
+    /// 设置声明的依赖符号 ID / Set declared dependency symbol IDs.
     pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
         self.declared_dependency_ids = dependency_ids;
         self
     }
 
+    /// 获取输入多项式 / Get the input polynomial.
     pub fn input_polynomial(&self) -> &Linear<V> {
         &self.input
     }
 
+    /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         &self.result_var
     }
 
+    /// 获取整数结果变量 / Get the integer result variable.
     pub fn integer_variable(&self) -> &IntegerVariableItem {
         &self.integer_var
     }
@@ -737,8 +741,7 @@ mod tests {
         )
         .with_declared_dependencies(vec![10, 20, 30]);
 
-        let deps =
-            <FloorFunction<f64> as IntermediateSymbol<f64>>::declared_dependency_ids(&floor);
+        let deps = <FloorFunction<f64> as IntermediateSymbol<f64>>::declared_dependency_ids(&floor);
         assert_eq!(deps, vec![10, 20, 30]);
     }
 

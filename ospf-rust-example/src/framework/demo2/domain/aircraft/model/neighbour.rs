@@ -15,7 +15,10 @@ pub enum NeighbourType {
 impl NeighbourType {
     /// 是否为有序邻接类型 / Whether this is an ordered neighbour type
     pub fn ordered(&self) -> bool {
-        matches!(self, NeighbourType::LinearLoadingOrder | NeighbourType::TopologicalLoadingOrder)
+        matches!(
+            self,
+            NeighbourType::LinearLoadingOrder | NeighbourType::TopologicalLoadingOrder
+        )
     }
 }
 

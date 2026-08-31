@@ -116,20 +116,10 @@ where
     A: AssignmentPolicyTrait<E>,
 {
     /// 判断任务是否可用于当前执行器 / Check whether a task is feasible for the executor
-    fn allow_task(
-        &self,
-        executor: &E,
-        task: &T,
-        slot: &TimeRange,
-    ) -> bool;
+    fn allow_task(&self, executor: &E, task: &T, slot: &TimeRange) -> bool;
 
     /// 判断候选束是否可行 / Check whether a candidate bunch is feasible
-    fn allow_bunch(
-        &self,
-        executor: &E,
-        bunch: &BunchEntry<E::Id>,
-        slot: &TimeRange,
-    ) -> bool;
+    fn allow_bunch(&self, executor: &E, bunch: &BunchEntry<E::Id>, slot: &TimeRange) -> bool;
 
     /// 判断携带完整定价上下文的候选束是否可行 / Check a bunch with complete pricing context
     fn allow_bunch_with_pricing_request<S>(
@@ -159,12 +149,7 @@ where
         true
     }
 
-    fn allow_bunch(
-        &self,
-        _executor: &E,
-        _bunch: &BunchEntry<E::Id>,
-        _slot: &TimeRange,
-    ) -> bool {
+    fn allow_bunch(&self, _executor: &E, _bunch: &BunchEntry<E::Id>, _slot: &TimeRange) -> bool {
         true
     }
 }
@@ -189,10 +174,10 @@ where
             return false;
         }
 
-        if let Some(max_tasks) = self.max_tasks_per_bunch {
-            if bunch.task_indices.len() > max_tasks {
-                return false;
-            }
+        if let Some(max_tasks) = self.max_tasks_per_bunch
+            && bunch.task_indices.len() > max_tasks
+        {
+            return false;
         }
 
         self.required_task_indices
@@ -224,10 +209,7 @@ where
     I: ExecutorIdTrait,
 {
     /// 创建产能中间值 / Create capacity intermediate values
-    pub fn new(
-        slots: Vec<S>,
-        slot_constraints: HashMap<usize, SlotConstraints<I>>,
-    ) -> Self {
+    pub fn new(slots: Vec<S>, slot_constraints: HashMap<usize, SlotConstraints<I>>) -> Self {
         Self {
             slots,
             slot_constraints,
@@ -363,6 +345,7 @@ where
     }
 
     /// 使用可行性策略生成指定时隙的束 / Generate bunches for a slot with feasibility policy
+    #[allow(clippy::too_many_arguments)]
     pub fn generate_with_policy<T, A, S, P>(
         &self,
         iteration: usize,
@@ -379,13 +362,8 @@ where
         S: TimeSlot,
         P: BunchFeasibilityPolicy<E, T, A>,
     {
-        let request = SlotBunchPricingRequest::new(
-            iteration,
-            slot_index,
-            slot,
-            constraints,
-            shadow_prices,
-        );
+        let request =
+            SlotBunchPricingRequest::new(iteration, slot_index, slot, constraints, shadow_prices);
         self.generate_with_pricing_request_and_policy(&request, candidates, feasibility_policy)
     }
 
@@ -442,7 +420,8 @@ where
             let mut pricing = BunchPricingProblem::new_with_id(executor.id().clone(), graph);
             pricing.set_shadow_prices(request.shadow_prices.clone());
 
-            let max_tasks = request.constraints
+            let max_tasks = request
+                .constraints
                 .max_tasks_per_bunch
                 .unwrap_or(self.config.max_tasks_per_bunch);
             let mut generated: Vec<BunchEntry<E::Id>> = pricing
@@ -451,11 +430,8 @@ where
                 .filter(|bunch| {
                     bunch.task_indices.len() <= max_tasks
                         && request.constraints.accepts_bunch(bunch)
-                        && feasibility_policy.allow_bunch_with_pricing_request(
-                            request,
-                            executor,
-                            bunch,
-                        )
+                        && feasibility_policy
+                            .allow_bunch_with_pricing_request(request, executor, bunch)
                 })
                 .take(self.config.max_columns_per_executor)
                 .map(|mut bunch| {
@@ -712,26 +688,26 @@ where
     }
 }
 
-fn task_available_for_slot<T, E, A>(
-    task: &T,
-    executor: &E,
-    slot_time: &TimeRange,
-) -> bool
+fn task_available_for_slot<T, E, A>(task: &T, executor: &E, slot_time: &TimeRange) -> bool
 where
     T: TaskTrait<E, A>,
     E: ExecutorTrait,
     A: AssignmentPolicyTrait<E>,
 {
     if !task.enabled_executors().is_empty()
-        && !task.enabled_executors().iter().any(|item| item.id() == executor.id())
+        && !task
+            .enabled_executors()
+            .iter()
+            .any(|item| item.id() == executor.id())
     {
         return false;
     }
 
-    if let Some(assigned_executor) = task.executor() {
-        if assigned_executor.id() != executor.id() && !task.executor_change_enabled() {
-            return false;
-        }
+    if let Some(assigned_executor) = task.executor()
+        && assigned_executor.id() != executor.id()
+        && !task.executor_change_enabled()
+    {
+        return false;
     }
 
     if let Some(time) = task.time().or_else(|| task.scheduled_time()) {
@@ -880,12 +856,16 @@ mod tests {
 
         assert!(!bunches.is_empty());
         assert!(bunches.iter().all(|entry| entry.slot_index == 0));
-        assert!(bunches
-            .iter()
-            .all(|entry| entry.bunch.executor_id == "exec_1"));
-        assert!(bunches
-            .iter()
-            .all(|entry| entry.bunch.task_indices.len() <= 2));
+        assert!(
+            bunches
+                .iter()
+                .all(|entry| entry.bunch.executor_id == "exec_1")
+        );
+        assert!(
+            bunches
+                .iter()
+                .all(|entry| entry.bunch.task_indices.len() <= 2)
+        );
     }
 
     #[test]
@@ -908,15 +888,9 @@ mod tests {
         let constraints = SlotConstraints::default();
         let shadow_prices = HashMap::from([(0, 2.0)]);
         let entry_state = "entry_state".to_string();
-        let request = SlotBunchPricingRequest::new(
-            2,
-            0,
-            &slot,
-            &constraints,
-            &shadow_prices,
-        )
-        .with_entry_state(&entry_state)
-        .with_branch_restrictions(["branch_a".to_string()]);
+        let request = SlotBunchPricingRequest::new(2, 0, &slot, &constraints, &shadow_prices)
+            .with_entry_state(&entry_state)
+            .with_branch_restrictions(["branch_a".to_string()]);
 
         assert!(request.entry_state.is_some());
         assert!(request.branch_restrictions.contains("branch_a"));
@@ -967,21 +941,23 @@ mod tests {
             .generate(1, 0, &slot, &constraints, &candidates, &shadow_prices)
             .unwrap();
 
-        assert!(planned
-            .iter()
-            .all(|entry| entry.bunch.task_indices == vec![0]));
-        assert!(unplanned
-            .iter()
-            .all(|entry| entry.bunch.task_indices == vec![1]));
+        assert!(
+            planned
+                .iter()
+                .all(|entry| entry.bunch.task_indices == vec![0])
+        );
+        assert!(
+            unplanned
+                .iter()
+                .all(|entry| entry.bunch.task_indices == vec![1])
+        );
     }
 
     #[test]
     fn test_generate_all_uses_slot_constraints() {
         let executor = BasicExecutor::new("exec_1", "Executor 1");
-        let generator = SlotBasedBunchGenerator::new(
-            vec![executor],
-            BunchGenerationConfig::default(),
-        );
+        let generator =
+            SlotBasedBunchGenerator::new(vec![executor], BunchGenerationConfig::default());
         let slots = vec![
             TestSlot {
                 time: TimeRange::new(h(8), h(12)),
@@ -1117,10 +1093,8 @@ mod tests {
     #[test]
     fn test_feasibility_policy_can_block_generation() {
         let executor = BasicExecutor::new("exec_1", "Executor 1");
-        let generator = SlotBasedBunchGenerator::new(
-            vec![executor],
-            BunchGenerationConfig::default(),
-        );
+        let generator =
+            SlotBasedBunchGenerator::new(vec![executor], BunchGenerationConfig::default());
         let slot = TestSlot {
             time: TimeRange::new(h(8), h(18)),
         };
@@ -1188,12 +1162,16 @@ mod tests {
             .unwrap();
 
         assert!(!bunches.is_empty());
-        assert!(bunches
-            .iter()
-            .all(|entry| !entry.bunch.task_indices.contains(&0)));
-        assert!(bunches
-            .iter()
-            .any(|entry| entry.bunch.task_indices == vec![1]));
+        assert!(
+            bunches
+                .iter()
+                .all(|entry| !entry.bunch.task_indices.contains(&0))
+        );
+        assert!(
+            bunches
+                .iter()
+                .any(|entry| entry.bunch.task_indices == vec![1])
+        );
     }
 
     #[test]
@@ -1241,12 +1219,16 @@ mod tests {
             .unwrap();
 
         assert!(!bunches.is_empty());
-        assert!(bunches
-            .iter()
-            .all(|entry| !entry.bunch.task_indices.contains(&0)));
-        assert!(bunches
-            .iter()
-            .any(|entry| entry.bunch.task_indices == vec![1]));
+        assert!(
+            bunches
+                .iter()
+                .all(|entry| !entry.bunch.task_indices.contains(&0))
+        );
+        assert!(
+            bunches
+                .iter()
+                .any(|entry| entry.bunch.task_indices == vec![1])
+        );
     }
 
     #[test]

@@ -1,9 +1,9 @@
 //! 幂运算 traits
 //! Power operation traits
 
+use crate::ordinary::big_decimal_pow;
 use bigdecimal::BigDecimal;
 use num_traits::One;
-use crate::ordinary::big_decimal_pow;
 
 /// 整数幂运算。
 /// Integer power operation.

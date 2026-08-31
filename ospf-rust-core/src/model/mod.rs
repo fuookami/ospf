@@ -20,6 +20,7 @@ pub mod value_cache;
 
 pub mod basic;
 pub mod callback;
+pub mod constraint_programming;
 pub mod flatten;
 pub mod intermediate;
 pub mod mechanism;

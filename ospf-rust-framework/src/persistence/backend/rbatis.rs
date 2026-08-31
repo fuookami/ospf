@@ -1,13 +1,12 @@
 //! Rbatis 持久化后端
 //! Rbatis persistence backend
 
-use ospf_rust_math::symbol::{BooleanExpression, ExpressionValue};
-use crate::persistence::{PersistenceFieldResolver, RepositoryQuery, UpdateAssignments};
 use super::sqlx::{
-
     SqlxDialect, SqlxRepositoryStatementBuilder, SqlxSql, SqlxTranslationError,
     SqlxTranslatorConfig,
 };
+use crate::persistence::{PersistenceFieldResolver, RepositoryQuery, UpdateAssignments};
+use ospf_rust_math::symbol::{BooleanExpression, ExpressionValue};
 
 /// Rbatis 后端标记类型。
 /// Rbatis backend marker type.

@@ -4,9 +4,9 @@
 //! 提供带编译期索引标记的张量包装类型。
 //! Provides tensor wrapper types with compile-time index labels.
 
-use std::marker::PhantomData;
-use crate::{AbstractShape, DynShape, MultiArray};
 use super::indices::IndexList;
+use crate::{AbstractShape, DynShape, MultiArray};
+use std::marker::PhantomData;
 
 // ============================================================================
 // TensorExpr - 带索引的张量表达式

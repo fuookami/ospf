@@ -70,7 +70,11 @@ impl Aggregation {
     }
 
     /// 判断飞机在指定时间段是否可用 / Check if an aircraft is enabled within the given time range
-    pub fn enabled(&self, aircraft: &Aircraft, time: &(time::OffsetDateTime, time::OffsetDateTime)) -> bool {
+    pub fn enabled(
+        &self,
+        aircraft: &Aircraft,
+        time: &(time::OffsetDateTime, time::OffsetDateTime),
+    ) -> bool {
         self.aircraft_usability
             .iter()
             .find(|(a, _)| a == aircraft)

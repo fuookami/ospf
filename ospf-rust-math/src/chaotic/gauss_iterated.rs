@@ -1,9 +1,9 @@
 //! 高斯迭代映射。
 //! Gauss iterated map.
 
-use num_traits::Float;
-use crate::algebra::Field;
 use super::helpers::default_float;
+use crate::algebra::Field;
+use num_traits::Float;
 
 scalar_map!(
     /// 高斯迭代映射。
@@ -29,7 +29,10 @@ impl<S: Field + Float> Default for GaussIteratedMap<S> {
 
 impl<S: Field + Float> Default for GaussIteratedMapGenerator<S> {
     fn default() -> Self {
-        Self::new(GaussIteratedMap::default(), S::from(0.5).expect("0.5 must be representable"))
+        Self::new(
+            GaussIteratedMap::default(),
+            S::from(0.5).expect("0.5 must be representable"),
+        )
     }
 }
 
@@ -41,7 +44,11 @@ pub fn gauss_iterated_map<S: Field + Float>(a: S, b: S) -> GaussIteratedMap<S> {
 
 /// 创建高斯迭代映射生成器。
 /// Create a Gauss iterated map generator.
-pub fn gauss_iterated_map_generator<S: Field + Float>(a: S, b: S, x: S) -> GaussIteratedMapGenerator<S> {
+pub fn gauss_iterated_map_generator<S: Field + Float>(
+    a: S,
+    b: S,
+    x: S,
+) -> GaussIteratedMapGenerator<S> {
     GaussIteratedMapGenerator::new(GaussIteratedMap::new(a, b), x)
 }
 

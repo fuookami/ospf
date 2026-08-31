@@ -6,10 +6,10 @@ use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::solver::SolveValue;
 use ospf_rust_core::variable::{Continuous, UInteger, VariableRange};
 
-use crate::domain::material::{CuttingPlan, CuttingPlanId, Material, Machine, ProductDemand};
+use crate::domain::material::{CuttingPlan, CuttingPlanId, Machine, Material, ProductDemand};
 
-use super::model::{DerivedPlanExpressionSymbols, PlanUsageVariablePool};
 use super::CuttingPlanUsage;
+use super::model::{DerivedPlanExpressionSymbols, PlanUsageVariablePool};
 
 /// 产出聚合 / Produce aggregation
 #[derive(Debug, Clone)]
@@ -156,10 +156,9 @@ impl<V: SolveValue> ProduceAggregation<V> {
         self.lp_relaxation = lp_relaxation;
         self.variable_pool.clear();
         let plans = self.cutting_plans.clone();
-        self.register_plan_variables(model, &plans)
-            .map(|indices| {
-                self.variable_pool.set_initial_indices(indices);
-            })?;
+        self.register_plan_variables(model, &plans).map(|indices| {
+            self.variable_pool.set_initial_indices(indices);
+        })?;
 
         // Build and register expression symbols to the model
         let symbols = DerivedPlanExpressionSymbols::build(
@@ -170,11 +169,11 @@ impl<V: SolveValue> ProduceAggregation<V> {
             &self.machines,
             |plan_index| self.is_plan_active(plan_index),
         );
-        symbols.register_symbols(model).map_err(|error| {
-            crate::Csp1dError::Calculation {
+        symbols
+            .register_symbols(model)
+            .map_err(|error| crate::Csp1dError::Calculation {
                 message: format!("register expression symbols failed: {error}"),
-            }
-        })?;
+            })?;
         self.batch_symbols = Some(symbols);
 
         Ok(())

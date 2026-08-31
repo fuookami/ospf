@@ -2,11 +2,11 @@
 //!
 //! 提供力量纲的 SI 单位定义，包括牛顿、千牛、兆牛、千克力等 / Provides SI unit definitions for force dimension, including newton, kilonewton, meganewton, kilogram-force, etc
 
+use super::acceleration::MeterPerSecondSquared;
+use super::mass::Kilogram;
 use crate::dimension::derived::Force;
 use crate::scale::{KILO, MEGA, Scale};
 use crate::unit::{CTUnit, CTUnitMul};
-use super::acceleration::MeterPerSecondSquared;
-use super::mass::Kilogram;
 
 // ============================================================================
 // SI 力单位 / SI force units

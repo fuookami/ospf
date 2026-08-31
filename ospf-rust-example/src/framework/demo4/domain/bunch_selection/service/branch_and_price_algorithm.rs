@@ -11,7 +11,10 @@ pub struct BranchAndPriceAlgorithm {
 impl BranchAndPriceAlgorithm {
     /// 创建新的分支定价算法 / Create new branch and price algorithm
     pub fn new(max_iterations: usize, tolerance: f64) -> Self {
-        Self { max_iterations, tolerance }
+        Self {
+            max_iterations,
+            tolerance,
+        }
     }
 
     /// 求解 / Solve

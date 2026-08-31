@@ -1,9 +1,9 @@
 //! 总重限制 / Total weight limits
-use std::error::Error;
-use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use crate::framework::demo2::domain::airworthiness_security::aggregation::AirworthinessAggregation;
 use crate::framework::demo2::domain::airworthiness_security::context::AirworthinessContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
+use ospf_rust_core::model::{ConstraintRelation, MetaModel};
+use std::error::Error;
 
 /// 总重限制 / Total weight limit
 /// 对齐 Kotlin TotalWeightLimit: 每个舱位的载荷不超过最大载荷限制
