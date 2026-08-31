@@ -1,34 +1,32 @@
 //! 元模型。
 //! Meta model.
 
-use super::basic::ConstraintPriority;
-use super::flatten::{Linear, LinearMonomial};
-use super::intermediate::{LinearTriadModel, QuadraticTetradModel};
-use super::mechanism::{
-    BasicMechanismModel, Constraint, ConstraintGroup, ConstraintRelation, LinearInequality,
-    MechanismModel, MetaConstraint, SymbolicLinearConstraint, SymbolicLinearInequality,
-    SymbolicQuadraticConstraint, SymbolicQuadraticInequality,
-};
-use super::{
-    BasicModel, MetaModelConfiguration, ModelBuildingStage, ModelBuildingStatus,
-    ModelBuildingStatusCallback, Objective, ObjectiveCategory, SubObjective,
-};
-use crate::error::{ModelError, Result};
-use crate::symbol::IntermediateSymbol;
-use crate::symbol::SymbolCombination;
-use crate::token::IntoValue;
-use crate::token::Token;
-use crate::variable::{VariableCombination, VariableId, VariableRange, VariableTypeTrait};
-use num_traits::{One, Zero};
-use ospf_rust_math::symbol::{
-    Comparison, Linear as MathLinear, LinearInequality as MathLinearInequality,
-};
-use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Add;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use num_traits::{One, Zero};
+use ospf_rust_math::symbol::{
+    Comparison, Linear as MathLinear, LinearInequality as MathLinearInequality,
+};
+use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder};
+use crate::error::{ModelError, Result};
+use crate::model::basic::ConstraintPriority;
+use crate::model::flatten::{Linear, LinearMonomial};
+use crate::model::intermediate::{LinearTriadModel, QuadraticTetradModel};
+use crate::model::mechanism::{
+    BasicMechanismModel, Constraint, ConstraintGroup, ConstraintRelation, LinearInequality,
+    MechanismModel, MetaConstraint, SymbolicLinearConstraint, SymbolicLinearInequality,
+    SymbolicQuadraticConstraint, SymbolicQuadraticInequality,
+};
+use crate::model::{
+    BasicModel, MetaModelConfiguration, ModelBuildingStage, ModelBuildingStatus,
+    ModelBuildingStatusCallback, Objective, ObjectiveCategory, SubObjective,
+};
+use crate::symbol::{IntermediateSymbol, SymbolCombination};
+use crate::token::{IntoValue, Token};
+use crate::variable::{VariableCombination, VariableId, VariableRange, VariableTypeTrait};
 
 static NEXT_META_MODEL_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -821,10 +819,12 @@ where
     where
         I: IntoIterator<Item = std::sync::Arc<dyn IntermediateSymbol<V>>>,
     {
-        for symbol in symbols {
-            self.basic.add_symbol(symbol)?;
-        }
-        Ok(())
+        self.transaction(|model| {
+            for symbol in symbols {
+                model.basic.add_symbol(symbol)?;
+            }
+            Ok(())
+        })
     }
 
     /// 批量注册变量组合，返回索引数组。
@@ -867,11 +867,13 @@ where
         S: ospf_rust_multiarray::shape::AbstractShape + Clone,
     {
         let shape = combination.shape().clone();
-        let indices: Vec<usize> = combination
-            .iter()
-            .map(|var| self.basic.register_variable(var.clone()))
-            .collect::<Result<Vec<_>>>()?;
-        Ok(MultiArrayBuilder::from_list(shape, indices))
+        self.transaction(|model| {
+            let indices: Vec<usize> = combination
+                .iter()
+                .map(|var| model.basic.register_variable(var.clone()))
+                .collect::<Result<Vec<_>>>()?;
+            Ok(MultiArrayBuilder::from_list(shape, indices))
+        })
     }
 
     /// 批量注册符号组合。
@@ -1818,7 +1820,6 @@ where
 mod tests {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
-
     use crate::error::Result;
     use crate::model::intermediate::{LinearTriadModel, QuadraticTetradModel};
     use crate::model::{

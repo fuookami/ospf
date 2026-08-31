@@ -1,22 +1,26 @@
 //! 逻辑蕴含函数符号 / Logical implication function symbol
 
-use super::super::{
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
-};
-use super::{InequalityFunction, InequalityKind};
-use crate::error::{ModelError, Result};
-use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
-use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
-use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::BinaryVariableItem;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, Mul};
 use std::sync::Arc;
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use crate::error::{ModelError, Result};
+use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
+use crate::token::{IntoValue, Token, TokenList};
+use crate::variable::BinaryVariableItem;
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
+};
+use super::conditional::{
+    ConditionBounds, ConditionRelation, ConditionalIfFunction, TruthValue, branch_coverage,
+    classify as classify_condition, relation_indicator_constraints,
+};
+use super::{ConditionalIndicatorFunction, InequalityFunction, InequalityKind};
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -109,6 +113,17 @@ where
         ConstraintRelation::Equal => (left - right).abs() <= eps,
         ConstraintRelation::GreaterEqual => left + eps >= right,
     })
+}
+
+fn condition_relation(relation: ConstraintRelation) -> Result<ConditionRelation> {
+    match relation {
+        ConstraintRelation::LessEqual => Ok(ConditionRelation::LessEqual),
+        ConstraintRelation::GreaterEqual => Ok(ConditionRelation::GreaterEqual),
+        ConstraintRelation::Equal => Err(ModelError::InvalidConstraint(
+            "three-valued implication does not support equality relations".to_string(),
+        )
+        .into()),
+    }
 }
 
 /// 表示逻辑蕴含关系 `premise => consequence`。
@@ -229,6 +244,92 @@ where
     /// 获取结论不等式 / Get the consequence inequality.
     pub fn consequence(&self) -> &LinearInequality<V> {
         &self.consequence
+    }
+}
+
+impl<V> ImplyFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    /// 合并前件和后件的三值结果 / Combine premise and consequence truth values
+    ///
+    /// 前件为假时短路为真；前件为真时返回后件；前件未定义时结果也未定义。
+    /// A false premise short-circuits to true; a true premise returns the
+    /// consequence; an undefined premise produces an undefined implication.
+    pub fn combine_truth_values(premise: TruthValue, consequence: TruthValue) -> TruthValue {
+        match premise {
+            TruthValue::False => TruthValue::True,
+            TruthValue::True => consequence,
+            TruthValue::Undefined => TruthValue::Undefined,
+        }
+    }
+
+    /// 对前件和后件差值执行安全三值分类 / Safely classify premise and consequence differences
+    ///
+    /// 差值均按构造函数中的不等式关系解释为 `lhs - rhs`，严格边界隔离连续的
+    /// 未定义区间。Equality 关系没有安全的一元三值指示语义，因此会返回错误。
+    /// Differences are interpreted as `lhs - rhs`; the strict boundary separates
+    /// the continuous undefined gap. Equality has no safe unary three-valued
+    /// indicator semantics and therefore returns an error.
+    pub fn classify(
+        &self,
+        premise_difference: &V,
+        consequence_difference: &V,
+        strict_boundary: &V,
+    ) -> Result<TruthValue> {
+        let premise_relation = condition_relation(self.premise.relation)?;
+        let premise = classify_condition(premise_difference, premise_relation, strict_boundary)?;
+        if premise == TruthValue::False {
+            return Ok(TruthValue::True);
+        }
+        if premise == TruthValue::Undefined {
+            return Ok(TruthValue::Undefined);
+        }
+
+        let consequence_relation = condition_relation(self.consequence.relation)?;
+        let consequence = classify_condition(
+            consequence_difference,
+            consequence_relation,
+            strict_boundary,
+        )?;
+        Ok(Self::combine_truth_values(premise, consequence))
+    }
+
+    /// 对差值求值，Undefined 映射为 None / Evaluate differences, mapping Undefined to None
+    pub fn evaluate(
+        &self,
+        premise_difference: &V,
+        consequence_difference: &V,
+        strict_boundary: &V,
+    ) -> Result<Option<V>> {
+        Self::evaluate_truth_value(self.classify(
+            premise_difference,
+            consequence_difference,
+            strict_boundary,
+        )?)
+    }
+
+    /// 将已分类的蕴含结果映射为二值模型值 / Map a classified implication to a binary model value
+    pub fn evaluate_truth_value(value: TruthValue) -> Result<Option<V>> {
+        match value {
+            TruthValue::True => V::from_f64(1.0)
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "failed to convert implication true value".to_string(),
+                    )
+                    .into()
+                })
+                .map(Some),
+            TruthValue::False => V::from_f64(0.0)
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "failed to convert implication false value".to_string(),
+                    )
+                    .into()
+                })
+                .map(Some),
+            TruthValue::Undefined => Ok(None),
+        }
     }
 }
 
@@ -532,12 +633,14 @@ where
     f64: IntoValue<V>,
 {
     fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
-        self.premise_indicator.register_tokens(tokens)?;
-        self.consequence_indicator.register_tokens(tokens)?;
-        tokens.push(Token::from_generic(
-            self.result_var.clone(),
-            self.result_var.index(),
-        ));
+        let mut staged = Vec::new();
+        self.premise_indicator.register_tokens(&mut staged)?;
+        self.consequence_indicator.register_tokens(&mut staged)?;
+        staged.push(Token::from_generic(self.result_var.clone(), usize::MAX));
+        for token in &mut staged {
+            token.solver_index = usize::MAX;
+        }
+        tokens.extend(staged);
         Ok(())
     }
 
@@ -577,10 +680,918 @@ where
     }
 }
 
+/// 范围驱动的安全蕴含函数 / Range-driven safe implication function.
+///
+/// `premise` 为假时，后件的关系约束全部由前件指示变量松弛，因此后件处于
+/// `Undefined` 区间不会使模型不可行。两个条件都必须通过显式的关系、严格边界
+/// 和有限范围描述器创建；旧的 `ImplyFunction` 仍保留 Big-M 注册语义。
+/// When `premise` is false, every consequent relation row is relaxed by the
+/// premise indicator, so an undefined consequent cannot make the model
+/// infeasible. Both conditions are created from explicit relation, strict
+/// boundary, and finite-bound descriptors; legacy `ImplyFunction` keeps its
+/// Big-M registration semantics.
+#[derive(Debug, Clone)]
+pub struct ConditionalImplyFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    id: IntermediateSymbolId,
+    premise: ConditionalIndicatorFunction<V>,
+    consequence: ConditionalIndicatorFunction<V>,
+    result_var: BinaryVariableItem,
+    declared_dependency_ids: Vec<u64>,
+}
+
+fn finite_imply_value<V>(value: &V, label: &str) -> Result<f64>
+where
+    V: ToPrimitive,
+{
+    let value = value.to_f64().ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "conditional implication `{label}` cannot be converted to f64"
+        ))
+    })?;
+    if !value.is_finite() {
+        return Err(ModelError::InvalidConstraint(format!(
+            "conditional implication `{label}` must be finite"
+        ))
+        .into());
+    }
+    Ok(value)
+}
+
+fn add_finite_imply_values(left: f64, right: f64, label: &str) -> Result<f64> {
+    let value = left + right;
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(ModelError::InvalidConstraint(format!(
+            "conditional implication `{label}` overflows f64"
+        ))
+        .into())
+    }
+}
+
+fn sub_finite_imply_values(left: f64, right: f64, label: &str) -> Result<f64> {
+    let value = left - right;
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(ModelError::InvalidConstraint(format!(
+            "conditional implication `{label}` overflows f64"
+        ))
+        .into())
+    }
+}
+
+fn shifted_condition<V>(inequality: &LinearInequality<V>, label: &str) -> Result<Linear<V>>
+where
+    V: Clone + Debug + ToPrimitive + FromPrimitive,
+{
+    let constant = finite_imply_value(inequality.polynomial.constant_term(), label)?;
+    let rhs = finite_imply_value(&inequality.rhs, label)?;
+    let shifted = sub_finite_imply_values(constant, rhs, label)?;
+    let shifted = V::from_f64(shifted).ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "conditional implication `{label}` difference cannot be represented"
+        ))
+    })?;
+    Ok(Linear::new(
+        inequality.polynomial.monomials().to_vec(),
+        shifted,
+    ))
+}
+
+fn validate_imply_linearization<V>(indicator: &ConditionalIndicatorFunction<V>) -> Result<()>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    let rows = relation_indicator_constraints(
+        indicator.condition_polynomial(),
+        0,
+        indicator.relation(),
+        indicator.condition_bounds(),
+        indicator.strict_boundary(),
+    )?;
+    for row in &rows {
+        finite_imply_value(row.polynomial.constant_term(), "linearization constant")?;
+        finite_imply_value(&row.rhs, "linearization rhs")?;
+        for monomial in row.polynomial.monomials() {
+            finite_imply_value(monomial.coefficient(), "linearization coefficient")?;
+        }
+    }
+    Ok(())
+}
+
+fn gated_row_parameters<V>(
+    row: &LinearInequality<V>,
+    consequence_indicator_index: usize,
+    bounds: &ConditionBounds<V>,
+) -> Result<(f64, f64)>
+where
+    V: ToPrimitive,
+{
+    let lower = finite_imply_value(&bounds.lower, "consequence lower bound")?;
+    let upper = finite_imply_value(&bounds.upper, "consequence upper bound")?;
+    let rhs = finite_imply_value(&row.rhs, "consequence row rhs")?;
+    let indicator_coefficient = row
+        .polynomial
+        .monomials()
+        .iter()
+        .filter(|monomial| monomial.var_index() == consequence_indicator_index)
+        .try_fold(0.0_f64, |total, monomial| {
+            let coefficient =
+                finite_imply_value(monomial.coefficient(), "consequence indicator coefficient")?;
+            add_finite_imply_values(total, coefficient, "consequence indicator coefficient")
+        })?;
+
+    let relaxation = match row.relation {
+        ConstraintRelation::GreaterEqual => {
+            let minimum = add_finite_imply_values(
+                lower,
+                indicator_coefficient.min(0.0),
+                "lower relaxation minimum",
+            )?;
+            sub_finite_imply_values(rhs, minimum, "lower relaxation")?.max(0.0)
+        }
+        ConstraintRelation::LessEqual => {
+            let maximum = add_finite_imply_values(
+                upper,
+                indicator_coefficient.max(0.0),
+                "upper relaxation maximum",
+            )?;
+            sub_finite_imply_values(maximum, rhs, "upper relaxation")?.max(0.0)
+        }
+        ConstraintRelation::Equal => {
+            return Err(ModelError::InvalidConstraint(
+                "conditional implication cannot gate an equality consequence".to_string(),
+            )
+            .into());
+        }
+    };
+    if !relaxation.is_finite() {
+        return Err(ModelError::InvalidConstraint(
+            "conditional implication relaxation must be finite".to_string(),
+        )
+        .into());
+    }
+    let premise_coefficient = match row.relation {
+        ConstraintRelation::GreaterEqual => -relaxation,
+        ConstraintRelation::LessEqual => relaxation,
+        ConstraintRelation::Equal => unreachable!(),
+    };
+    let adjusted_rhs = match row.relation {
+        ConstraintRelation::GreaterEqual => {
+            sub_finite_imply_values(rhs, relaxation, "conditional implication gated rhs")?
+        }
+        ConstraintRelation::LessEqual => {
+            add_finite_imply_values(rhs, relaxation, "conditional implication gated rhs")?
+        }
+        ConstraintRelation::Equal => unreachable!(),
+    };
+    if !adjusted_rhs.is_finite() || !premise_coefficient.is_finite() {
+        return Err(ModelError::InvalidConstraint(
+            "conditional implication gated row contains a non-finite value".to_string(),
+        )
+        .into());
+    }
+    Ok((premise_coefficient, adjusted_rhs))
+}
+
+impl<V> ConditionalImplyFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    /// 从两个显式条件描述器创建安全蕴含函数 / Create a safe implication from two explicit conditions.
+    pub fn new(
+        id: u64,
+        name: &str,
+        premise: ConditionalIfFunction<V>,
+        consequence: ConditionalIfFunction<V>,
+    ) -> Result<Self> {
+        let premise_indicator = ConditionalIndicatorFunction::new(
+            auxiliary_id(id, 21),
+            &format!("{name}_premise"),
+            premise.condition.clone(),
+            premise.relation,
+            premise.strict_boundary.clone(),
+            premise.bounds.clone(),
+        )?;
+        let consequence_indicator = ConditionalIndicatorFunction::new(
+            auxiliary_id(id, 22),
+            &format!("{name}_consequence"),
+            consequence.condition.clone(),
+            consequence.relation,
+            consequence.strict_boundary.clone(),
+            consequence.bounds.clone(),
+        )?;
+        validate_imply_linearization(&premise_indicator)?;
+        validate_imply_linearization(&consequence_indicator)?;
+        let result_var = BinaryVariableItem::auto(&format!("{name}_imply"));
+        let function = Self {
+            id: IntermediateSymbolId::new(id, name),
+            premise: premise_indicator,
+            consequence: consequence_indicator,
+            result_var,
+            declared_dependency_ids: Vec::new(),
+        };
+        function.validate_gated_rows()?;
+        Ok(function)
+    }
+
+    /// 使用明确的线性条件部分创建安全蕴含函数 / Create a safe implication from explicit linear condition parts.
+    pub fn from_parts(
+        id: u64,
+        name: &str,
+        premise: Linear<V>,
+        premise_relation: ConditionRelation,
+        premise_strict_boundary: V,
+        premise_bounds: ConditionBounds<V>,
+        consequence: Linear<V>,
+        consequence_relation: ConditionRelation,
+        consequence_strict_boundary: V,
+        consequence_bounds: ConditionBounds<V>,
+    ) -> Result<Self> {
+        Self::new(
+            id,
+            name,
+            ConditionalIfFunction::new(
+                premise,
+                premise_relation,
+                premise_strict_boundary,
+                premise_bounds,
+            )?,
+            ConditionalIfFunction::new(
+                consequence,
+                consequence_relation,
+                consequence_strict_boundary,
+                consequence_bounds,
+            )?,
+        )
+    }
+
+    /// 从两个显式条件部分使用自动 ID 创建安全蕴含函数 / Create a named safe implication with an auto ID.
+    pub fn named(
+        name: impl AsRef<str>,
+        premise: ConditionalIfFunction<V>,
+        consequence: ConditionalIfFunction<V>,
+    ) -> Result<Self> {
+        let id = next_auto_intermediate_symbol_id();
+        Self::new(id, name.as_ref(), premise, consequence)
+    }
+
+    /// 从两个显式条件描述器创建自动命名安全蕴含函数 / Create an auto-named safe implication.
+    pub fn auto(
+        premise: ConditionalIfFunction<V>,
+        consequence: ConditionalIfFunction<V>,
+    ) -> Result<Self> {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("conditional_imply", id);
+        Self::new(id, &name, premise, consequence)
+    }
+
+    /// 从核心不等式创建安全蕴含函数，范围和边界仍必须显式提供。
+    /// Create a safe implication from core inequalities; bounds and boundary remain explicit.
+    pub fn from_inequalities(
+        id: u64,
+        name: &str,
+        premise: LinearInequality<V>,
+        premise_bounds: ConditionBounds<V>,
+        consequence: LinearInequality<V>,
+        consequence_bounds: ConditionBounds<V>,
+        strict_boundary: V,
+    ) -> Result<Self> {
+        let premise_relation = condition_relation(premise.relation)?;
+        let consequence_relation = condition_relation(consequence.relation)?;
+        Self::from_parts(
+            id,
+            name,
+            shifted_condition(&premise, "premise")?,
+            premise_relation,
+            strict_boundary.clone(),
+            premise_bounds,
+            shifted_condition(&consequence, "consequence")?,
+            consequence_relation,
+            strict_boundary,
+            consequence_bounds,
+        )
+    }
+
+    /// 设置声明的依赖符号 ID / Set declared dependency symbol IDs.
+    pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
+        self.declared_dependency_ids = dependency_ids;
+        self
+    }
+
+    /// 获取结果变量 / Get the implication result variable.
+    pub fn result_variable(&self) -> &BinaryVariableItem {
+        &self.result_var
+    }
+
+    /// 获取前件指示器 / Get the premise indicator.
+    pub fn premise_indicator(&self) -> &ConditionalIndicatorFunction<V> {
+        &self.premise
+    }
+
+    /// 获取后件指示器 / Get the consequence indicator.
+    pub fn consequence_indicator(&self) -> &ConditionalIndicatorFunction<V> {
+        &self.consequence
+    }
+
+    /// 获取前件结果变量 / Get the premise result variable.
+    pub fn premise_indicator_variable(&self) -> &BinaryVariableItem {
+        self.premise.result_variable()
+    }
+
+    /// 获取后件结果变量 / Get the consequence result variable.
+    pub fn consequence_indicator_variable(&self) -> &BinaryVariableItem {
+        self.consequence.result_variable()
+    }
+
+    /// 获取所有内部辅助变量，不含公开结果变量。
+    /// Get all internal helper variables, excluding the public result variable.
+    pub fn helper_variables(&self) -> [&BinaryVariableItem; 4] {
+        [
+            self.premise.result_variable(),
+            self.premise.condition_indicator_variable(),
+            self.consequence.result_variable(),
+            self.consequence.condition_indicator_variable(),
+        ]
+    }
+
+    /// 获取稳定的结果多项式 / Get the stable result polynomial.
+    pub fn result_polynomial(&self) -> Linear<V>
+    where
+        V: Add<Output = V> + Mul<Output = V> + Zero,
+        f64: IntoValue<V>,
+    {
+        Linear::new(
+            vec![LinearMonomial::new(
+                convert_f64_to_v(1.0, "conditional implication result coefficient")
+                    .expect("one is representable for a registered value type"),
+                self.result_var.index(),
+            )],
+            convert_f64_to_v(0.0, "conditional implication result constant")
+                .expect("zero is representable for a registered value type"),
+        )
+    }
+
+    /// 对两个条件差值执行三值蕴含分类 / Classify implication from two condition differences.
+    pub fn classify(
+        &self,
+        premise_difference: &V,
+        consequence_difference: &V,
+    ) -> Result<TruthValue> {
+        let premise = self.premise.classify(premise_difference)?;
+        if premise == TruthValue::False {
+            return Ok(TruthValue::True);
+        }
+        if premise == TruthValue::Undefined {
+            return Ok(TruthValue::Undefined);
+        }
+        Ok(Self::combine_truth_values(
+            premise,
+            self.consequence.classify(consequence_difference)?,
+        ))
+    }
+
+    /// 三值求值，Undefined 映射为 None / Evaluate with Undefined mapped to None.
+    pub fn evaluate(
+        &self,
+        premise_difference: &V,
+        consequence_difference: &V,
+    ) -> Result<Option<V>> {
+        match self.classify(premise_difference, consequence_difference)? {
+            TruthValue::True => V::from_f64(1.0)
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "failed to convert conditional implication true value".to_string(),
+                    )
+                    .into()
+                })
+                .map(Some),
+            TruthValue::False => V::from_f64(0.0)
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "failed to convert conditional implication false value".to_string(),
+                    )
+                    .into()
+                })
+                .map(Some),
+            TruthValue::Undefined => Ok(None),
+        }
+    }
+
+    fn validate_gated_rows(&self) -> Result<()> {
+        let rows = relation_indicator_constraints(
+            self.consequence.condition_polynomial(),
+            usize::MAX,
+            self.consequence.relation(),
+            self.consequence.condition_bounds(),
+            self.consequence.strict_boundary(),
+        )?;
+        for row in &rows {
+            gated_row_parameters(row, usize::MAX, self.consequence.condition_bounds())?;
+        }
+        Ok(())
+    }
+
+    fn validate(&self) -> Result<()> {
+        validate_imply_linearization(&self.premise)?;
+        validate_imply_linearization(&self.consequence)?;
+        self.validate_gated_rows()
+    }
+
+    fn evaluate_tokens(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V>
+    where
+        V: Add<Output = V> + Mul<Output = V> + Zero,
+    {
+        let premise_difference = evaluate_linear(
+            self.premise.condition_polynomial(),
+            token_table,
+            zero_if_none,
+        )?;
+        let premise = self.premise.classify(&premise_difference).ok()?;
+        if premise == TruthValue::False {
+            return V::from_f64(1.0);
+        }
+        if premise == TruthValue::Undefined {
+            return None;
+        }
+        let consequence_difference = evaluate_linear(
+            self.consequence.condition_polynomial(),
+            token_table,
+            zero_if_none,
+        )?;
+        self.evaluate(&premise_difference, &consequence_difference)
+            .ok()
+            .flatten()
+    }
+
+    fn index_of(
+        symbol_to_index: &HashMap<usize, usize>,
+        variable: &BinaryVariableItem,
+        role: &str,
+    ) -> Result<usize> {
+        symbol_to_index
+            .get(&(variable.id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "conditional implication {role} variable id {}",
+                    variable.id().unique_id()
+                ))
+                .into()
+            })
+    }
+
+    fn fixed_constraint(
+        variable_index: usize,
+        value: f64,
+        name: &str,
+        source: &Arc<dyn IntermediateSymbol<V>>,
+    ) -> Result<LinearConstraint<V>>
+    where
+        V: Add<Output = V> + Mul<Output = V> + Zero,
+        f64: IntoValue<V>,
+    {
+        Ok(LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(
+                    vec![LinearMonomial::new(
+                        convert_f64_to_v(1.0, "conditional implication fixed coefficient")?,
+                        variable_index,
+                    )],
+                    convert_f64_to_v(0.0, "conditional implication fixed constant")?,
+                ),
+                ConstraintRelation::Equal,
+                convert_f64_to_v(value, "conditional implication fixed value")?,
+            ),
+            name,
+            source.clone(),
+        ))
+    }
+
+    fn gated_constraint(
+        row: LinearInequality<V>,
+        premise_index: usize,
+        consequence_indicator_index: usize,
+        bounds: &ConditionBounds<V>,
+        name: &str,
+        source: &Arc<dyn IntermediateSymbol<V>>,
+    ) -> Result<LinearConstraint<V>>
+    where
+        V: Add<Output = V> + Mul<Output = V> + Zero,
+        f64: IntoValue<V>,
+    {
+        let (premise_coefficient, adjusted_rhs) =
+            gated_row_parameters(&row, consequence_indicator_index, bounds)?;
+        let mut monomials = row.polynomial.monomials().to_vec();
+        monomials.push(LinearMonomial::new(
+            convert_f64_to_v(
+                premise_coefficient,
+                "conditional implication premise gate coefficient",
+            )?,
+            premise_index,
+        ));
+        Ok(LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(monomials, row.polynomial.constant_term().clone()),
+                row.relation,
+                convert_f64_to_v(adjusted_rhs, "conditional implication gated rhs")?,
+            ),
+            name,
+            source.clone(),
+        ))
+    }
+
+    fn build_mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>>
+    where
+        V: Add<Output = V> + Mul<Output = V> + Zero,
+        f64: IntoValue<V>,
+    {
+        self.validate()?;
+        let premise_index = Self::index_of(symbol_to_index, self.premise.result_variable(), "premise")?;
+        let consequence_index = Self::index_of(
+            symbol_to_index,
+            self.consequence.result_variable(),
+            "consequence",
+        )?;
+        let consequence_indicator_index = Self::index_of(
+            symbol_to_index,
+            self.consequence.condition_indicator_variable(),
+            "consequence helper",
+        )?;
+        let result_index = Self::index_of(symbol_to_index, &self.result_var, "result")?;
+        let source: Arc<dyn IntermediateSymbol<V>> = Arc::new(self.clone());
+        let mut constraints = self.premise.mechanism_constraints(symbol_to_index)?;
+
+        let consequence_coverage = branch_coverage(
+            self.consequence.condition_bounds(),
+            self.consequence.relation(),
+            self.consequence.strict_boundary(),
+        )?;
+        if let Some(coverage) = consequence_coverage {
+            let value = match coverage {
+                TruthValue::True => 1.0,
+                TruthValue::False => 0.0,
+                TruthValue::Undefined => unreachable!(),
+            };
+            constraints.push(Self::fixed_constraint(
+                consequence_indicator_index,
+                value,
+                &format!("{}_imply_fold_consequence_helper", self.id.name),
+                &source,
+            )?);
+            constraints.push(Self::fixed_constraint(
+                consequence_index,
+                value,
+                &format!("{}_imply_fold_consequence", self.id.name),
+                &source,
+            )?);
+        } else {
+            let rows = relation_indicator_constraints(
+                self.consequence.condition_polynomial(),
+                consequence_indicator_index,
+                self.consequence.relation(),
+                self.consequence.condition_bounds(),
+                self.consequence.strict_boundary(),
+            )?;
+            for (index, row) in rows.into_iter().enumerate() {
+                constraints.push(Self::gated_constraint(
+                    row,
+                    premise_index,
+                    consequence_indicator_index,
+                    self.consequence.condition_bounds(),
+                    &format!("{}_imply_consequence_gate_{index}", self.id.name),
+                    &source,
+                )?);
+            }
+            constraints.push(LinearConstraint::from_symbol(
+                LinearInequality::new(
+                    Linear::new(
+                        vec![
+                            LinearMonomial::new(
+                                convert_f64_to_v(
+                                    1.0,
+                                    "conditional implication consequence result coefficient",
+                                )?,
+                                consequence_index,
+                            ),
+                            LinearMonomial::new(
+                                convert_f64_to_v(
+                                    -1.0,
+                                    "conditional implication consequence helper coefficient",
+                                )?,
+                                consequence_indicator_index,
+                            ),
+                        ],
+                        convert_f64_to_v(0.0, "conditional implication consequence link constant")?,
+                    ),
+                    ConstraintRelation::Equal,
+                    convert_f64_to_v(0.0, "conditional implication consequence link rhs")?,
+                ),
+                &format!("{}_imply_consequence_link", self.id.name),
+                source.clone(),
+            ));
+        }
+
+        constraints.push(LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(
+                    vec![
+                        LinearMonomial::new(
+                            convert_f64_to_v(
+                                1.0,
+                                "conditional implication result lower coefficient",
+                            )?,
+                            result_index,
+                        ),
+                        LinearMonomial::new(
+                            convert_f64_to_v(
+                                -1.0,
+                                "conditional implication consequence lower coefficient",
+                            )?,
+                            consequence_index,
+                        ),
+                    ],
+                    convert_f64_to_v(0.0, "conditional implication result lower constant")?,
+                ),
+                ConstraintRelation::GreaterEqual,
+                convert_f64_to_v(0.0, "conditional implication result lower rhs")?,
+            ),
+            &format!("{}_imply_result_lb_consequence", self.id.name),
+            source.clone(),
+        ));
+        constraints.push(LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(
+                    vec![
+                        LinearMonomial::new(
+                            convert_f64_to_v(
+                                1.0,
+                                "conditional implication result lower premise coefficient",
+                            )?,
+                            result_index,
+                        ),
+                        LinearMonomial::new(
+                            convert_f64_to_v(1.0, "conditional implication premise coefficient")?,
+                            premise_index,
+                        ),
+                    ],
+                    convert_f64_to_v(0.0, "conditional implication premise link constant")?,
+                ),
+                ConstraintRelation::GreaterEqual,
+                convert_f64_to_v(1.0, "conditional implication premise link rhs")?,
+            ),
+            &format!("{}_imply_result_lb_premise", self.id.name),
+            source.clone(),
+        ));
+        constraints.push(LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(
+                    vec![
+                        LinearMonomial::new(
+                            convert_f64_to_v(
+                                1.0,
+                                "conditional implication result upper coefficient",
+                            )?,
+                            result_index,
+                        ),
+                        LinearMonomial::new(
+                            convert_f64_to_v(
+                                1.0,
+                                "conditional implication premise upper coefficient",
+                            )?,
+                            premise_index,
+                        ),
+                        LinearMonomial::new(
+                            convert_f64_to_v(
+                                -1.0,
+                                "conditional implication consequence upper coefficient",
+                            )?,
+                            consequence_index,
+                        ),
+                    ],
+                    convert_f64_to_v(0.0, "conditional implication result upper constant")?,
+                ),
+                ConstraintRelation::LessEqual,
+                convert_f64_to_v(1.0, "conditional implication result upper rhs")?,
+            ),
+            &format!("{}_imply_result_ub", self.id.name),
+            source.clone(),
+        ));
+        Ok(constraints)
+    }
+}
+
+impl<V> ConditionalImplyFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    fn combine_truth_values(premise: TruthValue, consequence: TruthValue) -> TruthValue {
+        match premise {
+            TruthValue::False => TruthValue::True,
+            TruthValue::True => consequence,
+            TruthValue::Undefined => TruthValue::Undefined,
+        }
+    }
+}
+
+impl<V> Display for ConditionalImplyFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "conditional_imply({})", self.id.name)
+    }
+}
+
+impl<V> DynSymbol for ConditionalImplyFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn display_name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn dyn_id(&self) -> SymbolDynId<'_> {
+        SymbolDynId::standalone(self.id.id as usize)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl<V> Symbol for ConditionalImplyFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    type Id = IntermediateSymbolId;
+
+    fn id(&self) -> Self::Id {
+        self.id.clone()
+    }
+}
+
+impl<V> IntermediateSymbol<V> for ConditionalImplyFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn category(&self) -> Category {
+        Category::Linear
+    }
+
+    fn cached(&self) -> bool {
+        false
+    }
+
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
+        HashSet::new()
+    }
+
+    fn declared_dependency_ids(&self) -> Vec<u64> {
+        self.declared_dependency_ids.clone()
+    }
+
+    fn flush(&self, _force: bool) {}
+
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        self.validate()?;
+        let variables = [
+            self.premise.result_variable(),
+            self.premise.condition_indicator_variable(),
+            self.consequence.result_variable(),
+            self.consequence.condition_indicator_variable(),
+            &self.result_var,
+        ];
+        let candidates = variables
+            .iter()
+            .map(|variable| Token::from_generic((*variable).clone(), usize::MAX))
+            .collect::<Vec<_>>();
+        let duplicate = candidates.iter().enumerate().any(|(index, candidate)| {
+            candidates[..index]
+                .iter()
+                .any(|existing| existing.id() == candidate.id())
+                || tokens
+                    .iter()
+                    .any(|existing| existing.id() == candidate.id())
+        });
+        if duplicate {
+            return Err(ModelError::ConstraintConflict(format!(
+                "conditional implication `{}` helper token already exists",
+                self.id.name
+            ))
+            .into());
+        }
+        tokens.extend(candidates);
+        Ok(())
+    }
+
+    fn mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        self.build_mechanism_constraints(symbol_to_index)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        _tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        self.build_mechanism_constraints(symbol_to_index)
+    }
+
+    fn evaluate_from_tokens(
+        &self,
+        token_table: &dyn TokenList<V>,
+        zero_if_none: bool,
+    ) -> Option<V> {
+        self.evaluate_tokens(token_table, zero_if_none)
+    }
+
+    fn prepare(&self, values: &HashMap<usize, V>) -> Option<V> {
+        values.get(&self.result_var.index()).cloned()
+    }
+
+    fn to_raw_string(&self, _unfold: u64) -> String {
+        format!("conditional_imply({})", self.id.name)
+    }
+}
+
+impl<V> FunctionSymbol<V> for ConditionalImplyFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as IntermediateSymbol<V>>::register_auxiliary_tokens(self, tokens)
+    }
+
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
+        self.evaluate_tokens(token_table, zero_if_none)
+    }
+}
+
+impl<V> LinearIntermediateSymbol<V> for ConditionalImplyFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        self.result_polynomial()
+    }
+
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
+        Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
+/// 安全范围蕴含函数的兼容别名 / Compatibility alias for the safe range implication.
+pub type RangeImplyFunction<V> = ConditionalImplyFunction<V>;
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::token::{MutableTokenList, VecTokenList};
+    use crate::symbol::functions::conditional::TruthValue;
+    use crate::token::{MutableTokenList, TokenList, VecTokenList};
     use crate::variable::{ContinuousVariableItem, VariableId, VariableRange};
 
     fn token_index_map<V>(tokens: &[Token<V>]) -> HashMap<usize, usize>
@@ -717,5 +1728,231 @@ mod tests {
 
         assert!((upper.inequality.rhs - 5.0).abs() <= 1e-9);
         assert!((coefficient_for_index(upper, premise_index) - 5.0).abs() <= 1e-9);
+    }
+
+    #[test]
+    fn imply_three_valued_classification_short_circuits_false_premise() {
+        let premise = LinearInequality::greater_equal(Linear::constant(0.0), 0.0);
+        let consequence = LinearInequality::greater_equal(Linear::constant(0.0), 0.0);
+        let imply = ImplyFunction::new(32014, "imply_three_valued", premise, consequence, 10.0);
+
+        assert_eq!(
+            imply.classify(&-1.0, &f64::NAN, &0.1).unwrap(),
+            TruthValue::True
+        );
+        assert_eq!(
+            imply.classify(&0.0, &-1.0, &0.1).unwrap(),
+            TruthValue::False
+        );
+        assert_eq!(
+            imply.classify(&0.0, &-0.05, &0.1).unwrap(),
+            TruthValue::Undefined
+        );
+        assert_eq!(
+            imply.classify(&-0.05, &0.0, &0.1).unwrap(),
+            TruthValue::Undefined
+        );
+        assert_eq!(imply.evaluate(&-1.0, &f64::NAN, &0.1).unwrap(), Some(1.0));
+    }
+
+    #[test]
+    fn imply_three_valued_rejects_equality_when_it_is_reached() {
+        let premise = LinearInequality::greater_equal(Linear::constant(0.0), 0.0);
+        let consequence = LinearInequality::equal(Linear::constant(0.0), 0.0);
+        let imply = ImplyFunction::new(32015, "imply_equal", premise, consequence, 10.0);
+
+        assert!(imply.classify(&0.0, &0.0, &0.1).is_err());
+        assert_eq!(
+            imply.classify(&-1.0, &f64::NAN, &0.1).unwrap(),
+            TruthValue::True
+        );
+    }
+
+    fn safe_condition(
+        variable_index: usize,
+        relation: ConditionRelation,
+    ) -> ConditionalIfFunction<f64> {
+        ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(1.0, variable_index)], 0.0),
+            relation,
+            0.1,
+            ConditionBounds {
+                lower: -1.0,
+                upper: 1.0,
+            },
+        )
+        .expect("test condition should pass explicit finite preflight")
+    }
+
+    fn safe_imply() -> ConditionalImplyFunction<f64> {
+        ConditionalImplyFunction::new(
+            32016,
+            "safe_imply",
+            safe_condition(0, ConditionRelation::GreaterEqual),
+            safe_condition(1, ConditionRelation::GreaterEqual),
+        )
+        .expect("safe implication should pass explicit range preflight")
+    }
+
+    #[test]
+    fn conditional_imply_uses_three_valued_short_circuit_semantics() {
+        let imply = safe_imply();
+
+        assert_eq!(imply.classify(&-1.0, &f64::NAN).unwrap(), TruthValue::True);
+        assert_eq!(imply.classify(&0.0, &-1.0).unwrap(), TruthValue::False);
+        assert_eq!(imply.classify(&0.0, &-0.05).unwrap(), TruthValue::Undefined);
+        assert_eq!(imply.classify(&-0.05, &0.0).unwrap(), TruthValue::Undefined);
+        assert_eq!(imply.evaluate(&-1.0, &f64::NAN).unwrap(), Some(1.0));
+        assert_eq!(imply.evaluate(&0.0, &-0.05).unwrap(), None);
+    }
+
+    #[test]
+    fn conditional_imply_does_not_require_consequence_tokens_when_premise_is_false() {
+        let imply = safe_imply();
+        let x = ContinuousVariableItem::create(VariableId::standalone(32016), "safe_x");
+        let token = Token::from_generic(x, 0);
+        token.set_result(-1.0);
+        let mut tokens = VecTokenList::new();
+        tokens.add_token(token);
+
+        assert_eq!(imply.evaluate_from_tokens(&tokens, false), Some(1.0));
+    }
+
+    #[test]
+    fn conditional_imply_gates_consequence_rows_by_premise_indicator() {
+        let imply = safe_imply();
+        let mut tokens = Vec::new();
+        imply
+            .register_auxiliary_tokens(&mut tokens)
+            .expect("safe implication tokens should register atomically");
+        let indexes = tokens
+            .iter()
+            .enumerate()
+            .map(|(index, token)| (token.id().unique_id() as usize, index + 2))
+            .collect::<HashMap<_, _>>();
+        let constraints = imply
+            .mechanism_constraints(&indexes)
+            .expect("safe implication constraints should be generated");
+
+        let gate_rows = constraints
+            .iter()
+            .filter(|constraint| {
+                constraint
+                    .name
+                    .starts_with("safe_imply_imply_consequence_gate_")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(gate_rows.len(), 2);
+        let premise_index =
+            indexes[&(imply.premise_indicator_variable().id().unique_id() as usize)];
+        assert!(gate_rows.iter().all(|constraint| {
+            constraint
+                .inequality
+                .polynomial
+                .monomials()
+                .iter()
+                .any(|monomial| monomial.var_index() == premise_index)
+        }));
+
+        let mut p_zero_is_feasible = true;
+        for row in gate_rows {
+            let lhs = row
+                .inequality
+                .polynomial
+                .monomials()
+                .iter()
+                .filter(|monomial| monomial.var_index() != premise_index)
+                .map(|monomial| *monomial.coefficient())
+                .sum::<f64>()
+                + *row.inequality.polynomial.constant_term();
+            match row.inequality.relation {
+                ConstraintRelation::GreaterEqual => {
+                    p_zero_is_feasible &= lhs + 1e-9 >= row.inequality.rhs;
+                }
+                ConstraintRelation::LessEqual => {
+                    p_zero_is_feasible &= lhs <= row.inequality.rhs + 1e-9;
+                }
+                ConstraintRelation::Equal => p_zero_is_feasible = false,
+            }
+        }
+        assert!(p_zero_is_feasible);
+    }
+
+    #[test]
+    fn conditional_imply_allows_a_violated_branch_to_report_false() {
+        let imply = safe_imply();
+        let mut tokens = Vec::new();
+        imply.register_auxiliary_tokens(&mut tokens).unwrap();
+        let indexes = tokens
+            .iter()
+            .enumerate()
+            .map(|(index, token)| (token.id().unique_id() as usize, index))
+            .collect::<HashMap<_, _>>();
+        let constraints = imply.mechanism_constraints(&indexes).unwrap();
+        let result_rows = constraints
+            .iter()
+            .filter(|constraint| constraint.name.starts_with("safe_imply_imply_result_"))
+            .collect::<Vec<_>>();
+        assert_eq!(result_rows.len(), 3);
+
+        let premise = indexes[&(imply.premise_indicator_variable().id().unique_id() as usize)];
+        let consequence =
+            indexes[&(imply.consequence_indicator_variable().id().unique_id() as usize)];
+        let result = indexes[&(imply.result_variable().id().unique_id() as usize)];
+        let values = HashMap::from([(premise, 1.0), (consequence, 0.0), (result, 0.0)]);
+
+        for row in result_rows {
+            let mut lhs = *row.inequality.polynomial.constant_term();
+            for monomial in row.inequality.polynomial.monomials() {
+                lhs += *monomial.coefficient() * values[&monomial.var_index()];
+            }
+            let satisfied = match row.inequality.relation {
+                ConstraintRelation::GreaterEqual => lhs + 1e-9 >= row.inequality.rhs,
+                ConstraintRelation::LessEqual => lhs <= row.inequality.rhs + 1e-9,
+                ConstraintRelation::Equal => (lhs - row.inequality.rhs).abs() <= 1e-9,
+            };
+            assert!(satisfied, "row {} lhs={lhs}", row.name);
+        }
+    }
+
+    #[test]
+    fn conditional_imply_rejects_duplicate_registration_without_partial_tokens() {
+        let imply = safe_imply();
+        let mut tokens = vec![Token::from_generic(
+            imply.premise_indicator_variable().clone(),
+            imply.premise_indicator_variable().index(),
+        )];
+        let before = tokens.iter().map(|token| token.id()).collect::<Vec<_>>();
+        assert!(imply.register_auxiliary_tokens(&mut tokens).is_err());
+        assert_eq!(
+            tokens.iter().map(|token| token.id()).collect::<Vec<_>>(),
+            before
+        );
+    }
+
+    #[test]
+    fn conditional_imply_tokens_are_unassigned_until_added_to_a_list() {
+        let imply = safe_imply();
+        let mut staged = Vec::new();
+        imply.register_auxiliary_tokens(&mut staged).unwrap();
+        let ids = staged.iter().map(|token| token.id()).collect::<Vec<_>>();
+        assert_eq!(staged.len(), 5);
+        assert!(staged.iter().all(|token| token.solver_index == usize::MAX));
+
+        let mut token_list = VecTokenList::<f64>::new();
+        token_list.try_add_tokens(staged.clone()).unwrap();
+        assert_eq!(token_list.len(), 5);
+        assert_eq!(
+            token_list
+                .tokens()
+                .iter()
+                .map(|token| token.id())
+                .collect::<Vec<_>>(),
+            ids
+        );
+        assert!(token_list
+            .tokens()
+            .iter()
+            .all(|token| token.solver_index == usize::MAX));
     }
 }

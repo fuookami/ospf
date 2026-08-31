@@ -1,7 +1,8 @@
 //! 转移邻接装载模型 / Transfer adjacent loading model
+//! 条件只提供已有的 x solver 索引，缺少可证明的有限范围，暂保留旧的非零语义 / Conditions only receive an existing x solver index, without a provable finite range; retain the legacy nonzero semantics for now.
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
-use ospf_rust_core::symbol::function::IfFunction;
+use ospf_rust_core::symbol::function::IfFunction as LegacyIfFunction;
 use std::error::Error;
 use std::sync::Arc;
 
@@ -62,7 +63,7 @@ impl TransferAdjacentLoading {
         // else_expr: 0.0 (item not loaded at adjacent position)
         let else_expr = Linear::new(Vec::new(), 0.0);
 
-        let if_fn = IfFunction::new(
+        let if_fn = LegacyIfFunction::new(
             *next_id,
             &format!(
                 "transfer_adjacent_loading_if_{}_{}",
@@ -72,8 +73,20 @@ impl TransferAdjacentLoading {
             then_expr,
             else_expr,
         );
-        let result_idx = if_fn.result_variable().index();
+        let result_id = if_fn.result_variable().id();
         model.add_symbol(Arc::new(if_fn))?;
+        let result_idx = model
+            .find_token(result_id)
+            .map(|token| token.solver_index)
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "transfer adjacent loading result token {} was not registered",
+                        result_id
+                    ),
+                )
+            })?;
         *next_id += 1;
 
         Ok(TransferAdjacentLoadingVariables {

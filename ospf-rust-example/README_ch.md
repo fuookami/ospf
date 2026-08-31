@@ -45,6 +45,20 @@
 | `framework:demo4` | Gantt scaffold 入口。 | Gurobi feature |
 | `framework:demo5` | VRPTW Branch-and-Price demo。 | `demo5-gurobi-bp` 或 `demo5-scip-bp` |
 
+## 条件函数迁移说明
+
+示例中的条件建模必须区分三种语义，不能仅依据类型名称替换：
+
+1. `IfFunction` 是迁移兼容入口，表示基于连续条件多项式非零与否选择 `then`/`else`。它不是带比较关系的条件指示器；已有 demo2/demo4 调用暂时保留在兼容路径，待 core 导出稳定的关系条件构造器后再逐点迁移。
+2. `IfElseFunction` 接收已经注册的二值条件变量，用于二值变量驱动的 `then`/`else` 结果。需要关系判断时，应先使用显式关系和有限 `ConditionBounds` 生成二值条件，再交给该函数。
+3. `IfInFunction` 继续表示离散集合成员判断；闭区间判断使用独立的 range API。`IfThenFunction` 继续表示不等式蕴含约束，不应拿来替代条件值函数。
+
+关系条件调用必须由业务提供可证明的有限范围（`lower <= upper`），不能把任意 `big_m` 当作范围证明，也不能通过放大 `big_m` 掩盖缺失范围。严格关系的边界和离散步长应由条件 API 的参数明确给出。
+
+条件求值的兼容 `evaluate` 接口返回 `None` 时，可能表示输入 token 缺失，也可能表示条件落在严格边界的 `Undefined` 区间；调用方不应把 `None` 静默解释为 `False`。需要区分三值结果时，应使用关系条件 API 的结构化 `classify` 结果并处理 `True`、`False`、`Undefined`。
+
+当前示例没有直接构造 `IfThenFunction` 或 `IfInFunction`；新增示例应沿用上述语义边界，并在注册前完成关系、范围和单位校验。
+
 ## 命令说明
 
 默认构建/测试路径，不依赖商业后端：

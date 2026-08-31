@@ -102,25 +102,62 @@ fn prelude_exposes_auto_and_named_function_constructors() {
 #[test]
 fn prelude_exposes_semantic_function_helpers() {
     let condition = Linear::constant(1.0);
+    let condition_bounds = ConditionBounds {
+        lower: -1.0,
+        upper: 2.0,
+    };
 
-    let if_symbol = if_named("condition_flag", condition.clone());
-    let auto_if_symbol = if_(condition.clone());
+    let if_symbol = if_named(
+        "condition_flag",
+        condition.clone(),
+        ConditionRelation::GreaterEqual,
+        0.1,
+        condition_bounds.clone(),
+    )
+    .expect("explicit conditional indicator");
+    let auto_if_symbol = if_(
+        condition.clone(),
+        ConditionRelation::GreaterEqual,
+        0.1,
+        condition_bounds.clone(),
+    )
+    .expect("auto explicit conditional indicator");
     assert_eq!(if_symbol.name(), "condition_flag");
-    assert!(auto_if_symbol.name().starts_with("binaryzation_"));
-    assert_eq!(if_symbol.method(), BinaryzationMethod::Threshold);
+    assert!(auto_if_symbol.name().starts_with("conditional_indicator_"));
+
+    let legacy_if_symbol = if_named_legacy("legacy_condition_flag", condition.clone());
+    assert_eq!(legacy_if_symbol.name(), "legacy_condition_flag");
+    assert_eq!(legacy_if_symbol.method(), BinaryzationMethod::Threshold);
 
     let premise = LinearInequality::greater_equal(condition.clone(), 0.0);
     let consequence = LinearInequality::less_equal(condition.clone(), 2.0);
+    let premise_descriptor = conditional_descriptor(
+        condition.clone(),
+        ConditionRelation::GreaterEqual,
+        0.1,
+        condition_bounds.clone(),
+    )
+    .expect("explicit premise descriptor");
+    let consequence_descriptor = conditional_descriptor(
+        condition.clone(),
+        ConditionRelation::LessEqual,
+        0.1,
+        condition_bounds,
+    )
+    .expect("explicit consequence descriptor");
     let implication = imply_named(
         "bounded_if_positive",
-        premise.clone(),
-        consequence.clone(),
-        100.0,
-    );
-    let auto_implication = imply(premise, consequence, 100.0);
+        premise_descriptor.clone(),
+        consequence_descriptor.clone(),
+    )
+    .expect("named conditional implication");
+    let auto_implication =
+        imply(premise_descriptor, consequence_descriptor).expect("auto conditional implication");
     assert_eq!(implication.name(), "bounded_if_positive");
-    assert!(auto_implication.name().starts_with("if_then_"));
-    assert!(implication.is_constraint_mode());
+    assert!(auto_implication.name().starts_with("conditional_imply_"));
+
+    let legacy_implication = imply_constraint(premise, consequence, 100.0);
+    assert!(legacy_implication.name().starts_with("imply_"));
 
     let branch = if_else_named(
         "choose_branch",

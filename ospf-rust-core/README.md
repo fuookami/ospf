@@ -166,6 +166,12 @@ async fn solve_in_background<S: Solver + 'static>(
 }
 ```
 
+### Conditional Function Contract
+
+The conditional-function names, three-valued relation semantics, explicit-bound requirement,
+and legacy compatibility boundary are documented in
+[`docs/conditional-function-contract.md`](../docs/conditional-function-contract.md).
+
 ### MetaModel Shortcut APIs
 
 `MetaModel` provides shortcut APIs for high-frequency modeling paths:

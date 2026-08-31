@@ -121,6 +121,27 @@ where
         self.rebind_contexts();
     }
 
+    /// 原子执行基础模型修改 / Execute a basic-model mutation atomically.
+    ///
+    /// 操作返回错误时恢复所有结构状态和缓存上下文。该方法也支持嵌套调用：
+    /// 内层成功只提交到当前对象，外层失败仍会恢复到外层快照。
+    /// On error, all structural state and cache contexts are restored. Nested
+    /// calls are supported: an inner success is committed to the current
+    /// object, while an outer failure still restores the outer snapshot.
+    pub(crate) fn transaction<T, E, F>(&mut self, operation: F) -> std::result::Result<T, E>
+    where
+        F: FnOnce(&mut Self) -> std::result::Result<T, E>,
+    {
+        let snapshot = self.snapshot();
+        match operation(self) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                self.restore(snapshot);
+                Err(error)
+            }
+        }
+    }
+
     /// 生成当前 token 快照 / Build token snapshot
     fn build_token_snapshot(&self) -> Arc<VecTokenList<V>> {
         let mut snapshot = VecTokenList::with_capacity(self.tokens.len());
@@ -290,11 +311,13 @@ where
         V: IntoValue<f64>,
         VT::Value: IntoValue<V>,
     {
-        let mut indices = Vec::new();
-        for var in variables {
-            indices.push(self.add_variable(var)?);
-        }
-        Ok(indices)
+        self.transaction(|model| {
+            let mut indices = Vec::new();
+            for var in variables {
+                indices.push(model.add_variable(var)?);
+            }
+            Ok(indices)
+        })
     }
 
     /// 注册泛型变量 / Register generic variable
@@ -361,15 +384,21 @@ where
         VT::Value: IntoValue<V>,
         I: IntoIterator<Item = VariableItem<VT>>,
     {
-        let mut indices = Vec::new();
-        for var in variables {
-            indices.push(self.register_variable(var)?);
-        }
-        Ok(indices)
+        self.transaction(|model| {
+            let mut indices = Vec::new();
+            for var in variables {
+                indices.push(model.register_variable(var)?);
+            }
+            Ok(indices)
+        })
     }
 
     /// 添加中间符号 / Add intermediate symbol
     pub fn add_symbol(&mut self, symbol: Arc<dyn IntermediateSymbol<V>>) -> Result<()> {
+        self.transaction(|model| model.add_symbol_inner(symbol))
+    }
+
+    fn add_symbol_inner(&mut self, symbol: Arc<dyn IntermediateSymbol<V>>) -> Result<()> {
         let symbol_id = symbol.id().id;
         if self.symbols.iter().any(|s| s.id().id == symbol_id) {
             return Err(ModelError::ConstraintConflict(format!(
@@ -461,10 +490,12 @@ where
         Sym: crate::symbol::IntermediateSymbol<V> + 'static,
         S: ospf_rust_multiarray::shape::AbstractShape,
     {
-        for symbol in combination.iter_arc() {
-            self.add_symbol(symbol)?;
-        }
-        Ok(())
+        self.transaction(|model| {
+            for symbol in combination.iter_arc() {
+                model.add_symbol(symbol)?;
+            }
+            Ok(())
+        })
     }
 
     /// 添加符号并声明其依赖（一次调用） / Add a symbol and declare its dependencies in one call.
@@ -495,8 +526,10 @@ where
             }
         }
 
-        self.add_symbol(symbol)?;
-        self.add_symbol_dependencies(symbol_id, dependency_ids)
+        self.transaction(|model| {
+            model.add_symbol(symbol)?;
+            model.add_symbol_dependencies(symbol_id, dependency_ids)
+        })
     }
 
     /// 添加一条符号依赖边：`symbol_id` 依赖于 `dependency_id` / Add one declared symbol dependency edge: `symbol_id` depends on `dependency_id`.
@@ -533,10 +566,12 @@ where
     where
         I: IntoIterator<Item = u64>,
     {
-        for dependency_id in dependency_ids {
-            self.add_symbol_dependency(symbol_id, dependency_id)?;
-        }
-        Ok(())
+        self.transaction(|model| {
+            for dependency_id in dependency_ids {
+                model.add_symbol_dependency(symbol_id, dependency_id)?;
+            }
+            Ok(())
+        })
     }
 
     /// 获取一个符号的声明依赖 ID 列表 / Get declared dependency ids of one symbol.

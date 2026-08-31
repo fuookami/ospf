@@ -16,8 +16,14 @@ pub mod binaryzation;
 pub mod bivariate_linear_piecewise;
 #[path = "../functions/ceiling.rs"]
 pub mod ceiling;
+#[path = "../functions/conditional.rs"]
+pub mod conditional;
+#[path = "../functions/conditional_indicator.rs"]
+pub mod conditional_indicator;
 #[path = "../functions/cos.rs"]
 pub mod cos;
+#[path = "../functions/discrete_condition.rs"]
+pub mod discrete_condition;
 #[path = "../functions/first.rs"]
 pub mod first;
 #[path = "../functions/floor.rs"]
@@ -85,7 +91,10 @@ pub use balance_ternaryzation::*;
 pub use binaryzation::*;
 pub use bivariate_linear_piecewise::*;
 pub use ceiling::*;
+pub use conditional::*;
+pub use conditional_indicator::*;
 pub use cos::*;
+pub use discrete_condition::*;
 pub use first::*;
 pub use floor::*;
 pub use if_function::*;

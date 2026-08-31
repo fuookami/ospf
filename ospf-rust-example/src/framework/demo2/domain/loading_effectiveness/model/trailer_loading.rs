@@ -1,7 +1,8 @@
 //! 拖车装载模型 / Trailer loading model
+//! 条件只提供线性差值或已有 solver 索引，缺少可证明的有限范围，暂保留旧的非零语义 / Conditions only receive linear differences or existing solver indices, without a provable finite range; retain the legacy nonzero semantics for now.
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
-use ospf_rust_core::symbol::function::IfFunction;
+use ospf_rust_core::symbol::function::IfFunction as LegacyIfFunction;
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
@@ -76,15 +77,27 @@ impl TrailerLoading {
         let else_expr = Linear::new(Vec::new(), 0.0);
 
         let safe_name = trailer_name.replace(' ', "_").to_lowercase();
-        let if_fn = IfFunction::new(
+        let if_fn = LegacyIfFunction::new(
             *next_id,
             &format!("trailer_loading_if_{}", safe_name),
             condition,
             then_expr,
             else_expr,
         );
-        let result_idx = if_fn.result_variable().index();
+        let result_id = if_fn.result_variable().id();
         model.add_symbol(Arc::new(if_fn))?;
+        let result_idx = model
+            .find_token(result_id)
+            .map(|token| token.solver_index)
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "trailer loading result token {} was not registered",
+                        result_id
+                    ),
+                )
+            })?;
         *next_id += 1;
 
         Ok(TrailerLoadingVariables {
@@ -184,15 +197,27 @@ impl TrailerLoading {
 
                 let safe_t1 = trailer1.name.replace(' ', "_").to_lowercase();
                 let safe_t2 = trailer2.name.replace(' ', "_").to_lowercase();
-                let if_fn = IfFunction::new(
+                let if_fn = LegacyIfFunction::new(
                     *next_id,
                     &format!("trailer_change_{}_{}_{}_{}", safe_t1, safe_t2, j1, j2),
                     condition,
                     then_expr,
                     else_expr,
                 );
-                let result_idx = if_fn.result_variable().index();
+                let result_id = if_fn.result_variable().id();
                 model.add_symbol(Arc::new(if_fn))?;
+                let result_idx = model
+                    .find_token(result_id)
+                    .map(|token| token.solver_index)
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!(
+                                "trailer change result token {} was not registered",
+                                result_id
+                            ),
+                        )
+                    })?;
                 *next_id += 1;
 
                 change_row.push(result_idx);

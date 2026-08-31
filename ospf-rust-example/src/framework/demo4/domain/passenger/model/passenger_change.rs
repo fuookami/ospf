@@ -3,8 +3,8 @@ use super::passenger::Passenger;
 use crate::framework::demo4::infrastructure::PassengerClass;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
-use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
-use ospf_rust_core::symbol::function::IfFunction;
+use ospf_rust_core::symbol::flatten::Linear;
+use ospf_rust_core::symbol::function::IfElseFunction;
 use ospf_rust_core::variable::BinaryVariableItem;
 use std::error::Error;
 use std::sync::Arc;
@@ -16,12 +16,12 @@ pub struct PassengerChangeVariables {
     pub class_change_symbol_idx: usize,
     /// flight_change_symbol_idx = LinearExpressionSymbol 的 solver 索引 / solver index for LinearExpressionSymbol
     pub flight_change_symbol_idx: usize,
-    /// class_change_if_idx = IfFunction(class_change_decision, then=1, else=0) 的结果变量 solver 索引
-    /// / solver index for IfFunction result variable; value is 1 when class change is active, 0 otherwise
+    /// class_change_if_idx = IfElseFunction(class_change_decision, then=1, else=0) 的结果变量 solver 索引
+    /// Solver index for the IfElseFunction result; value is 1 when class change is active, 0 otherwise
     /// 当舱位变更生效时值为 1，否则为 0
     pub class_change_if_idx: usize,
-    /// flight_change_if_idx = IfFunction(flight_change_decision, then=1, else=0) 的结果变量 solver 索引
-    /// / solver index for IfFunction result variable; value is 1 when flight change is active, 0 otherwise
+    /// flight_change_if_idx = IfElseFunction(flight_change_decision, then=1, else=0) 的结果变量 solver 索引
+    /// Solver index for the IfElseFunction result; value is 1 when flight change is active, 0 otherwise
     /// 当航班变更生效时值为 1，否则为 0
     pub flight_change_if_idx: usize,
 }
@@ -50,8 +50,8 @@ impl PassengerChange {
     /// 2. 注册航班变更 LinearExpressionSymbol / Register flight change LinearExpressionSymbol
     /// 3. 注册舱位变更决策二元变量 / Register class change decision binary variable
     /// 4. 注册航班变更决策二元变量 / Register flight change decision binary variable
-    /// 5. 创建舱位变更 IfFunction (class_change_if) / Create class change IfFunction
-    /// 6. 创建航班变更 IfFunction (flight_change_if) / Create flight change IfFunction
+    /// 5. 创建舱位变更 IfElseFunction (class_change_if) / Create class change IfElseFunction
+    /// 6. 创建航班变更 IfElseFunction (flight_change_if) / Create flight change IfElseFunction
     ///
     /// # Arguments / 参数
     /// * `model` - 模型实例 / Model instance
@@ -94,57 +94,73 @@ impl PassengerChange {
             "class_change_decision_{}_{}",
             self.passenger.id, self.from_flight
         ));
-        let class_change_decision_idx = model.register_variable(class_change_decision)?;
+        model.register_variable(class_change_decision.clone())?;
 
         // 4. 航班变更决策二元变量
         let flight_change_decision = BinaryVariableItem::auto(&format!(
             "flight_change_decision_{}_{}",
             self.passenger.id, self.from_flight
         ));
-        let flight_change_decision_idx = model.register_variable(flight_change_decision)?;
+        model.register_variable(flight_change_decision.clone())?;
 
-        // 5. 舱位变更 IfFunction
+        // 5. 舱位变更 IfElseFunction / Class-change IfElseFunction
         // 对齐 Kotlin: classChangeIf = IfFunction(condition=classChangeDecision, then=1, else=0)
-        let class_condition = Linear::new(
-            vec![LinearMonomial::new(1.0, class_change_decision_idx)],
-            0.0,
-        );
         let class_then = Linear::new(Vec::new(), 1.0);
         let class_else = Linear::new(Vec::new(), 0.0);
-        let class_change_if = IfFunction::new(
+        let class_change_if = IfElseFunction::new(
             *next_id,
             &format!(
                 "passenger_class_change_if_{}_{}",
                 self.passenger.id, self.from_flight
             ),
-            class_condition,
+            class_change_decision.clone(),
             class_then,
             class_else,
         );
-        let class_change_if_idx = class_change_if.result_variable().index();
+        let class_change_if_id = class_change_if.result_variable().id();
         model.add_symbol(Arc::new(class_change_if))?;
+        let class_change_if_idx = model
+            .find_token(class_change_if_id)
+            .map(|token| token.solver_index)
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "passenger class-change result token {} was not registered",
+                        class_change_if_id
+                    ),
+                )
+            })?;
         *next_id += 1;
 
-        // 6. 航班变更 IfFunction
+        // 6. 航班变更 IfElseFunction / Flight-change IfElseFunction
         // 对齐 Kotlin: flightChangeIf = IfFunction(condition=flightChangeDecision, then=1, else=0)
-        let flight_condition = Linear::new(
-            vec![LinearMonomial::new(1.0, flight_change_decision_idx)],
-            0.0,
-        );
         let flight_then = Linear::new(Vec::new(), 1.0);
         let flight_else = Linear::new(Vec::new(), 0.0);
-        let flight_change_if = IfFunction::new(
+        let flight_change_if = IfElseFunction::new(
             *next_id,
             &format!(
                 "passenger_flight_change_if_{}_{}",
                 self.passenger.id, self.from_flight
             ),
-            flight_condition,
+            flight_change_decision.clone(),
             flight_then,
             flight_else,
         );
-        let flight_change_if_idx = flight_change_if.result_variable().index();
+        let flight_change_if_id = flight_change_if.result_variable().id();
         model.add_symbol(Arc::new(flight_change_if))?;
+        let flight_change_if_idx = model
+            .find_token(flight_change_if_id)
+            .map(|token| token.solver_index)
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "passenger flight-change result token {} was not registered",
+                        flight_change_if_id
+                    ),
+                )
+            })?;
         *next_id += 1;
 
         Ok(PassengerChangeVariables {

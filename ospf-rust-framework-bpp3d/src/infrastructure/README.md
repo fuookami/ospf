@@ -13,7 +13,7 @@ Infrastructure contains typed geometry, orientation, packing-shape, PWL approxim
 - `geometry.rs` exposes typed points, vectors, sizes, AABBs, placements, and scalar conversion helpers; fragments live under `geometry/`.
 - `orientation.rs` defines orientation categories and rotation semantics.
 - `packing_shape.rs` defines cuboid/cylinder packing shapes and axis-aware bounding dimensions.
-- `pwl_approximation.rs` contains radius and radius-squared PWL support used by continuous cylinder radius modeling.
+- `pwl_approximation.rs` contains radius and radius-squared PWL support used by continuous cylinder radius modeling. The `ErrorDriven` stopping condition and `max_relative_error` use the true maximum relative error of each segment rather than midpoint sampling. Configure it with `PwlRadiusApproximationConfig` and call `try_from_radius_interval` to receive validation errors; custom breakpoints must be finite, positive, strictly increasing, endpoint-matching (within tolerance), and within `max_segments`. The deprecated `from_radius_interval` compatibility entry may panic on invalid input and is not for model registration.
 - `renderer.rs` contains render DTOs and shape/axis enums for application output.
 
 ## Public API
@@ -28,6 +28,9 @@ Infrastructure contains typed geometry, orientation, packing-shape, PWL approxim
 - `MetricPlacement3`
 - `Orientation`
 - `PackingShape3`
+- `PwlBreakpointStrategy`
+- `PwlRadiusApproximationConfig`
+- `PwlApproximationError`
 - `PwlRadiusSquaredApproximation`
 - `ConservativeRadiusEnvelope`
 - `RenderLoadingPlanDto`

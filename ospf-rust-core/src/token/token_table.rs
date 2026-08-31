@@ -1,12 +1,47 @@
 //! Token 表 Trait 和实现
 //! Token Table Trait and Implementations
 
-use super::{MutableTokenList, Token, TokenList, VecTokenList};
-use crate::error::{Result, VariableError};
-use crate::variable::{VariableId, VariableType};
-use ospf_rust_base::{read_unwrap, write_unwrap};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
+use ospf_rust_base::{read_unwrap, write_unwrap};
+use crate::error::{ModelError, Result, VariableError};
+use crate::token::{MutableTokenList, Token, TokenList, TokenListSnapshot, VecTokenList};
+use crate::variable::{VariableId, VariableType};
+
+/// Token 表的可恢复状态 / Restorable token-table state.
+///
+/// 快照同时保存 Token 列表和下一个求解器索引，避免回滚后新注册变量复用错误索引。
+/// The snapshot stores both the token list and the next solver index so a
+/// rollback cannot accidentally reuse an index from the failed registration.
+#[derive(Debug, Clone)]
+pub struct TokenTableSnapshot<V>
+where
+    V: Clone + std::fmt::Debug + Send + Sync + 'static,
+{
+    inner: TokenListSnapshot<V>,
+    next_solver_index: usize,
+}
+
+impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> TokenTableSnapshot<V> {
+    /// 获取快照中的 Token 数量 / Get the number of tokens in the snapshot.
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// 检查快照是否为空 / Check whether the snapshot is empty
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// 获取下一个求解器索引 / Get the next solver index.
+    pub fn next_solver_index(&self) -> usize {
+        self.next_solver_index
+    }
+
+    fn into_parts(self) -> (TokenListSnapshot<V>, usize) {
+        (self.inner, self.next_solver_index)
+    }
+}
 
 // ============================================================================
 // TokenTable - Token 表 Trait
@@ -84,15 +119,13 @@ where
     /// Returns the assigned solver index.
     fn register(&mut self, token: Token<V>) -> Result<usize>;
 
-    /// 批量注册变量 / Register variables in batch
-    fn register_batch(&mut self, tokens: Vec<Token<V>>) -> Result<Vec<usize>> {
-        let mut indices = Vec::with_capacity(tokens.len());
-        for token in tokens {
-            let idx = self.register(token)?;
-            indices.push(idx);
-        }
-        Ok(indices)
-    }
+    /// 批量注册变量，失败时必须保持表状态不变 / Register variables in batch; failures must leave the table unchanged
+    ///
+    /// 实现必须自行提供覆盖 Token、名称、求解器索引及其他内部状态的原子事务；trait 不提供逐项注册的默认实现。
+    /// Implementations must provide an atomic transaction covering tokens, names,
+    /// solver indices, and any other internal state; the trait intentionally has
+    /// no default implementation that registers items one by one.
+    fn register_batch(&mut self, tokens: Vec<Token<V>>) -> Result<Vec<usize>>;
 
     /// 注销变量 / Unregister variable
     fn unregister(&mut self, id: VariableId) -> Result<Token<V>> {
@@ -135,6 +168,21 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> VecTokenTable<V> {
             next_solver_index: 0,
         }
     }
+
+    /// 捕获表状态 / Capture table state.
+    pub fn snapshot(&self) -> TokenTableSnapshot<V> {
+        TokenTableSnapshot {
+            inner: self.inner.snapshot(),
+            next_solver_index: self.next_solver_index,
+        }
+    }
+
+    /// 恢复表状态 / Restore table state.
+    pub fn restore(&mut self, snapshot: TokenTableSnapshot<V>) {
+        let (inner, next_solver_index) = snapshot.into_parts();
+        self.inner.restore_state(inner);
+        self.next_solver_index = next_solver_index;
+    }
 }
 
 impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> Default for VecTokenTable<V> {
@@ -155,7 +203,18 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> TokenList<V> for VecTok
 
 impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> MutableTokenList<V> for VecTokenTable<V> {
     fn add_token(&mut self, token: Token<V>) {
+        let solver_index = token.solver_index;
         self.inner.add_token(token);
+        self.advance_solver_index(solver_index);
+    }
+
+    fn try_add_tokens<I: IntoIterator<Item = Token<V>>>(&mut self, tokens: I) -> Result<()> {
+        let staged = tokens.into_iter().collect::<Vec<_>>();
+        self.inner.try_add_tokens(staged.clone())?;
+        for token in staged {
+            self.advance_solver_index(token.solver_index);
+        }
+        Ok(())
     }
 
     fn remove_token(&mut self, id: VariableId) -> Option<Token<V>> {
@@ -165,6 +224,17 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> MutableTokenList<V> for
     fn clear(&mut self) {
         self.inner.clear();
         self.next_solver_index = 0;
+    }
+}
+
+impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> VecTokenTable<V> {
+    fn advance_solver_index(&mut self, solver_index: usize) {
+        if solver_index == usize::MAX {
+            return;
+        }
+        self.next_solver_index = self
+            .next_solver_index
+            .max(solver_index.saturating_add(1));
     }
 }
 
@@ -183,9 +253,25 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> MutableTokenTable<V> fo
         if self.find_by_id(token.variable.id()).is_some() {
             return Err(VariableError::AlreadyExists(token.variable.id()).into());
         }
+        if self.find_by_name(token.name()).is_some() {
+            return Err(VariableError::NameConflict(token.name().to_string()).into());
+        }
 
         // 分配求解器索引 / Assign solver index
         let solver_index = self.next_solver_index;
+        if solver_index == usize::MAX {
+            return Err(ModelError::InvalidConstraint(
+                "solver index allocation overflow".to_string(),
+            )
+            .into());
+        }
+        if self.find_by_index(solver_index).is_some() {
+            return Err(ModelError::InvalidConstraint(format!(
+                "solver index {} is already assigned to another token",
+                solver_index
+            ))
+            .into());
+        }
         token.solver_index = solver_index;
         self.next_solver_index += 1;
 
@@ -193,6 +279,51 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> MutableTokenTable<V> fo
         self.add_token(token);
 
         Ok(solver_index)
+    }
+
+    fn register_batch(&mut self, tokens: Vec<Token<V>>) -> Result<Vec<usize>> {
+        let snapshot = self.snapshot();
+        let mut ids = HashSet::with_capacity(tokens.len());
+        let mut names = HashSet::with_capacity(tokens.len());
+        let mut solver_indices = HashSet::with_capacity(tokens.len());
+        for token in &tokens {
+            let id = token.id();
+            if self.find_by_id(id).is_some() || !ids.insert(id) {
+                return Err(VariableError::AlreadyExists(id).into());
+            }
+            let name = token.name().to_string();
+            if self.find_by_name(&name).is_some() || !names.insert(name.clone()) {
+                return Err(VariableError::NameConflict(name).into());
+            }
+        }
+        for offset in 0..tokens.len() {
+            let solver_index = self
+                .next_solver_index
+                .checked_add(offset)
+                .filter(|&index| index < usize::MAX)
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint("solver index allocation overflow".to_string())
+                })?;
+            if self.find_by_index(solver_index).is_some() || !solver_indices.insert(solver_index) {
+                return Err(ModelError::InvalidConstraint(format!(
+                    "solver index {} is already assigned to another token",
+                    solver_index
+                ))
+                .into());
+            }
+        }
+
+        let mut indices = Vec::with_capacity(tokens.len());
+        for token in tokens {
+            match self.register(token) {
+                Ok(index) => indices.push(index),
+                Err(error) => {
+                    self.restore(snapshot);
+                    return Err(error);
+                }
+            }
+        }
+        Ok(indices)
     }
 }
 
@@ -214,9 +345,6 @@ where
     V: Clone + std::fmt::Debug + Send + Sync + 'static,
 {
     inner: RwLock<VecTokenTable<V>>,
-    // 受限接口回退视图：并发容器无法安全返回借用到锁内数据
-    // Restricted fallback view: concurrent container cannot safely return refs into locked data
-    empty_tokens: Vec<Token<V>>,
 }
 
 impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> ConcurrentTokenTable<V> {
@@ -224,7 +352,6 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> ConcurrentTokenTable<V>
     pub fn new() -> Self {
         Self {
             inner: RwLock::new(VecTokenTable::new()),
-            empty_tokens: Vec::new(),
         }
     }
 
@@ -232,7 +359,6 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> ConcurrentTokenTable<V>
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             inner: RwLock::new(VecTokenTable::with_capacity(capacity)),
-            empty_tokens: Vec::new(),
         }
     }
 
@@ -244,6 +370,16 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> ConcurrentTokenTable<V>
     /// 批量注册变量 / Register variables in batch
     pub fn register_batch(&self, tokens: Vec<Token<V>>) -> Result<Vec<usize>> {
         write_unwrap!(self.inner).register_batch(tokens)
+    }
+
+    /// 捕获表状态 / Capture table state.
+    pub fn snapshot(&self) -> TokenTableSnapshot<V> {
+        read_unwrap!(self.inner).snapshot()
+    }
+
+    /// 恢复表状态 / Restore table state.
+    pub fn restore(&self, snapshot: TokenTableSnapshot<V>) {
+        write_unwrap!(self.inner).restore(snapshot);
     }
 
     /// 获取 Token 数量 / Get token count
@@ -292,49 +428,6 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> Default for ConcurrentT
     }
 }
 
-impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> TokenList<V> for ConcurrentTokenTable<V> {
-    fn tokens(&self) -> &Vec<Token<V>> {
-        // 并发容器不暴露锁内借用，请使用 `read()` 或 `tokens_snapshot()`
-        // Concurrent container does not expose borrowed lock data. Use `read()` or `tokens_snapshot()`.
-        &self.empty_tokens
-    }
-
-    fn set_solution(&self, solution: &[V])
-    where
-        V: Clone,
-    {
-        let inner = read_unwrap!(self.inner);
-        for token in inner.tokens() {
-            if token.solver_index < solution.len() {
-                token.set_result(solution[token.solver_index].clone());
-            }
-        }
-    }
-
-    fn clear_solution(&self) {
-        let inner = read_unwrap!(self.inner);
-        for token in inner.tokens() {
-            token.clear_result();
-        }
-    }
-
-    fn len(&self) -> usize {
-        read_unwrap!(self.inner).len()
-    }
-
-    fn is_empty(&self) -> bool {
-        read_unwrap!(self.inner).is_empty()
-    }
-}
-
-impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> TokenTable<V> for ConcurrentTokenTable<V> {
-    fn tokens_by_type(&self, _var_type: VariableType) -> Vec<&Token<V>> {
-        // 并发容器不暴露锁内借用，请使用 `read()` 或 `tokens_by_type_cloned()`
-        // Concurrent container does not expose borrowed lock data. Use `read()` or `tokens_by_type_cloned()`.
-        Vec::new()
-    }
-}
-
 // ============================================================================
 // 类型别名 / Type Aliases
 // ============================================================================
@@ -352,7 +445,15 @@ pub type ConcurrentTokenTableF64 = ConcurrentTokenTable<f64>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::variable::{Binary, Continuous, Integer, VariableItem};
+    use crate::error::CoreError;
+    use crate::variable::{Binary, Continuous, Integer, VariableId, VariableItem};
+
+    fn test_token(id: usize, name: &str, solver_index: usize) -> Token<f64> {
+        Token::from_generic(
+            VariableItem::<Continuous>::create(VariableId::standalone(id), name),
+            solver_index,
+        )
+    }
 
     #[test]
     fn test_vec_token_table() {
@@ -383,6 +484,158 @@ mod tests {
         // 重复注册应该失败 / Duplicate registration should fail
         let result = table.register(Token::from_generic(var, 0));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn token_table_register_rejects_name_conflicts() {
+        let mut table = VecTokenTableF64::new();
+        let existing = test_token(90_009, "existing", 0);
+        existing.set_result(42.0);
+        table.register(existing).unwrap();
+        let before = table.snapshot();
+
+        let error = table
+            .register(test_token(90_010, "existing", 0))
+            .expect_err("a duplicate name must reject direct registration");
+        assert!(matches!(
+            error,
+            CoreError::Variable(VariableError::NameConflict(name)) if name == "existing"
+        ));
+        assert_eq!(table.len(), 1);
+        assert_eq!(table.tokens()[0].get_result(), Some(42.0));
+        assert_eq!(
+            table.snapshot().next_solver_index(),
+            before.next_solver_index()
+        );
+    }
+
+    #[test]
+    fn token_table_register_rejects_solver_index_overflow() {
+        let mut table = VecTokenTableF64::new();
+        table.next_solver_index = usize::MAX;
+        let before = table.snapshot();
+
+        let error = table
+            .register(test_token(90_011, "overflow", 0))
+            .expect_err("solver index allocation must reject usize::MAX");
+        assert!(matches!(
+            error,
+            CoreError::Model(ModelError::InvalidConstraint(message))
+                if message.contains("solver index allocation overflow")
+        ));
+        assert!(table.is_empty());
+        assert_eq!(
+            table.snapshot().next_solver_index(),
+            before.next_solver_index()
+        );
+    }
+
+    #[test]
+    fn token_table_batch_registration_rejects_name_conflicts_atomically() {
+        let mut table = VecTokenTableF64::new();
+        let existing = test_token(90_001, "existing", 0);
+        existing.set_result(42.0);
+        table.register(existing).unwrap();
+        let before = table.snapshot();
+
+        let error = table
+            .register_batch(vec![
+                test_token(90_002, "first_new", 0),
+                test_token(90_003, "existing", 0),
+            ])
+            .expect_err("a duplicate name must reject the whole batch");
+        assert!(matches!(
+            error,
+            CoreError::Variable(VariableError::NameConflict(name)) if name == "existing"
+        ));
+        assert_eq!(table.len(), 1);
+        assert_eq!(table.tokens()[0].name(), "existing");
+        assert_eq!(table.tokens()[0].get_result(), Some(42.0));
+        assert_eq!(
+            table.snapshot().next_solver_index(),
+            before.next_solver_index()
+        );
+
+        let next_index = table
+            .register(test_token(90_004, "after_failure", 0))
+            .unwrap();
+        assert_eq!(next_index, 1);
+    }
+
+    #[test]
+    fn token_table_batch_registration_respects_explicit_index_cursor() {
+        let mut table = VecTokenTableF64::new();
+        let occupied = test_token(90_005, "occupied", 0);
+        occupied.set_result(24.0);
+        table.add_token(occupied);
+        let indices = table
+            .register_batch(vec![test_token(90_006, "new", 0)])
+            .expect("the next batch item should use the advanced cursor");
+        assert_eq!(indices, vec![1]);
+        assert_eq!(table.len(), 2);
+        assert_eq!(table.tokens()[0].name(), "occupied");
+        assert_eq!(table.tokens()[0].get_result(), Some(24.0));
+        assert_eq!(table.tokens()[1].solver_index, 1);
+    }
+
+    #[test]
+    fn token_table_try_add_tokens_is_atomic_and_preserves_registration_cursor() {
+        let mut table = VecTokenTableF64::new();
+        let existing = test_token(90_012, "existing", 0);
+        existing.set_result(42.0);
+        table.register(existing).unwrap();
+        let before = table.snapshot();
+
+        let error = table
+            .try_add_tokens(vec![
+                test_token(90_013, "first_new", 1),
+                test_token(90_014, "second_new", 1),
+            ])
+            .expect_err("a batch solver-index conflict must reject atomically");
+        assert!(matches!(
+            error,
+            CoreError::Model(ModelError::InvalidConstraint(message))
+                if message.contains("solver index 1")
+        ));
+        assert_eq!(table.len(), 1);
+        assert_eq!(table.tokens()[0].id(), VariableId::standalone(90_012));
+        assert_eq!(table.tokens()[0].get_result(), Some(42.0));
+        assert_eq!(
+            table.snapshot().next_solver_index(),
+            before.next_solver_index()
+        );
+    }
+
+    #[test]
+    fn token_table_explicit_indices_advance_registration_cursor() {
+        let mut table = VecTokenTableF64::new();
+        table.add_token(test_token(90_016, "explicit_zero", 0));
+        assert_eq!(table.register(test_token(90_017, "after_zero", 0)).unwrap(), 1);
+
+        table
+            .try_add_tokens(vec![test_token(90_018, "explicit_high", 7)])
+            .unwrap();
+        assert_eq!(table.register(test_token(90_019, "after_high", 0)).unwrap(), 8);
+    }
+
+    #[test]
+    fn token_table_explicit_index_sentinel_and_overflow_are_handled() {
+        let mut table = VecTokenTableF64::new();
+        table.add_token(test_token(90_020, "unassigned", usize::MAX));
+        assert_eq!(table.register(test_token(90_021, "after_unassigned", 0)).unwrap(), 0);
+
+        table.add_token(test_token(90_022, "last_index", usize::MAX - 1));
+        assert_eq!(table.snapshot().next_solver_index(), usize::MAX);
+        assert!(table.try_get_solution().is_err());
+        assert!(table.get_solution().is_empty());
+        let error = table
+            .register(test_token(90_023, "after_last_index", 0))
+            .expect_err("the cursor after usize::MAX - 1 must reject overflow");
+        assert!(matches!(
+            error,
+            CoreError::Model(ModelError::InvalidConstraint(message))
+                if message.contains("solver index allocation overflow")
+        ));
     }
 
     #[test]
@@ -429,15 +682,105 @@ mod tests {
         let table = ConcurrentTokenTableF64::new();
 
         let var = VariableItem::<Binary>::auto("x");
+        let var_id = var.id();
         let idx = table.register(Token::from_generic(var, 0)).unwrap();
 
         assert_eq!(idx, 0);
         assert_eq!(table.len(), 1);
+        assert_eq!(table.tokens_snapshot().len(), 1);
+        assert_eq!(table.tokens_by_type_cloned(VariableType::Binary).len(), 1);
+        assert_eq!(table.find_by_id_cloned(var_id).unwrap().name(), "x");
 
         {
             let guard = table.read();
             let found = guard.find_by_name("x");
             assert!(found.is_some());
         }
+
+        assert!(
+            table
+                .register_batch(vec![
+                    test_token(90_007, "new", 0),
+                    test_token(90_008, "x", 0),
+                ])
+                .is_err()
+        );
+        assert_eq!(table.tokens_snapshot().len(), 1);
+    }
+
+    #[test]
+    fn concurrent_token_table_read_guard_exposes_live_token_table() {
+        let table = ConcurrentTokenTableF64::new();
+        table
+            .register(Token::from_generic(
+                VariableItem::<Binary>::auto("first"),
+                0,
+            ))
+            .unwrap();
+
+        {
+            let guard = table.read();
+            let view: &dyn TokenTable<f64> = &*guard;
+            assert_eq!(view.len(), 1);
+            assert_eq!(view.count_by_type(VariableType::Binary), 1);
+            assert_eq!(view.find_by_name("first").unwrap().name(), "first");
+        }
+
+        table
+            .register(Token::from_generic(
+                VariableItem::<Continuous>::auto("second"),
+                0,
+            ))
+            .unwrap();
+
+        {
+            let guard = table.read();
+            let view: &dyn TokenTable<f64> = &*guard;
+            assert_eq!(view.len(), 2);
+            assert_eq!(view.count_by_type(VariableType::Binary), 1);
+            assert_eq!(view.count_by_type(VariableType::Continuous), 1);
+            assert_eq!(view.find_by_name("second").unwrap().name(), "second");
+        }
+    }
+
+    #[test]
+    fn concurrent_token_table_explicit_indices_advance_registration_cursor() {
+        let table = ConcurrentTokenTableF64::new();
+        {
+            let mut guard = table.write();
+            guard.add_token(test_token(90_024, "explicit_zero", 0));
+        }
+        assert_eq!(
+            table
+                .register(test_token(90_025, "after_zero", 0))
+                .unwrap(),
+            1
+        );
+
+        {
+            let mut guard = table.write();
+            guard
+                .try_add_tokens(vec![test_token(90_026, "explicit_high", 7)])
+                .unwrap();
+        }
+        assert_eq!(
+            table
+                .register(test_token(90_027, "after_high", 0))
+                .unwrap(),
+            8
+        );
+    }
+
+    #[test]
+    fn concurrent_token_table_rejects_unrepresentable_solution_vector() {
+        let table = ConcurrentTokenTableF64::new();
+        {
+            let mut guard = table.write();
+            guard.add_token(test_token(90_028, "last_index", usize::MAX - 1));
+        }
+
+        let guard = table.read();
+        assert!(guard.try_get_solution().is_err());
+        assert!(guard.get_solution().is_empty());
     }
 }

@@ -1,9 +1,10 @@
 //! 同目的地邻接限制 / Same destination adjacent limits
+//! 条件是聚合装载量差值；调用方未提供可证明的有限范围，暂保留旧的非零语义 / Conditions use aggregate load differences; callers do not provide a provable finite range, so retain the legacy nonzero semantics for now.
 use crate::framework::demo2::domain::loading_effectiveness::aggregation::LoadingEffectivenessAggregation;
 use crate::framework::demo2::domain::loading_effectiveness::context::LoadingEffectivenessContext;
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
-use ospf_rust_core::symbol::function::IfFunction;
+use ospf_rust_core::symbol::function::IfFunction as LegacyIfFunction;
 use std::error::Error;
 use std::sync::Arc;
 
@@ -71,7 +72,7 @@ pub fn apply_same_destination_adjacent_limits(
             let then_expr = Linear::new(Vec::new(), 1.0);
             let else_expr = Linear::new(Vec::new(), 0.0);
 
-            let if_fn = IfFunction::new(
+            let if_fn = LegacyIfFunction::new(
                 next_id,
                 &format!(
                     "same_destination_adjacent_{}_{}_{}",
@@ -81,8 +82,20 @@ pub fn apply_same_destination_adjacent_limits(
                 then_expr,
                 else_expr,
             );
-            let result_idx = if_fn.result_variable().index();
+            let result_id = if_fn.result_variable().id();
             model.add_symbol(Arc::new(if_fn))?;
+            let result_idx = model
+                .find_token(result_id)
+                .map(|token| token.solver_index)
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!(
+                            "same destination adjacent result token {} was not registered",
+                            result_id
+                        ),
+                    )
+                })?;
             objective_terms.push((result_idx, 1.0));
             next_id += 1;
         }

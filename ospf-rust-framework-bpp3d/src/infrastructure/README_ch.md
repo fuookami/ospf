@@ -13,7 +13,7 @@ infrastructure 包含 domain 与 application 共享的 typed geometry、orientat
 - `geometry.rs` 暴露类型化点、向量、尺寸、AABB、放置和标量转换 helper，具体片段在 `geometry/` 下。
 - `orientation.rs` 定义朝向类别和旋转语义。
 - `packing_shape.rs` 定义长方体/圆柱装箱形状和轴感知外接尺寸。
-- `pwl_approximation.rs` 提供连续圆柱半径建模使用的半径与半径平方 PWL 支持。
+- `pwl_approximation.rs` 提供连续圆柱半径建模使用的半径与半径平方 PWL 支持；`ErrorDriven` 停止条件和 `max_relative_error` 使用每段真实最大相对误差，而不是中点采样值。使用 `PwlRadiusApproximationConfig` 配置，并调用 `try_from_radius_interval` 获取参数错误；自定义断点必须有限、为正、严格递增、与区间端点一致（允许容差），且不超过 `max_segments`。已弃用的 `from_radius_interval` 兼容入口对非法输入仍可能 panic，不用于模型注册。
 - `renderer.rs` 包含 application 输出使用的 render DTO、shape 和 axis enum。
 
 ## Public API
@@ -28,6 +28,9 @@ infrastructure 包含 domain 与 application 共享的 typed geometry、orientat
 - `MetricPlacement3`
 - `Orientation`
 - `PackingShape3`
+- `PwlBreakpointStrategy`
+- `PwlRadiusApproximationConfig`
+- `PwlApproximationError`
 - `PwlRadiusSquaredApproximation`
 - `ConservativeRadiusEnvelope`
 - `RenderLoadingPlanDto`

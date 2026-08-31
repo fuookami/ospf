@@ -337,6 +337,48 @@ where
     pub result: RwLock<Option<V>>,
 }
 
+/// Token 的可恢复状态 / Restorable token state.
+///
+/// 快照保留变量身份、求解器索引和当前求解结果，使事务回滚不会丢失
+/// 已绑定的结果缓存。
+/// The snapshot preserves variable identity, solver index, and the current
+/// solution cache so transaction rollback does not lose an existing binding.
+#[derive(Debug, Clone)]
+pub struct TokenSnapshot<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    variable: AnyVariable<V>,
+    solver_index: usize,
+    result: Option<V>,
+}
+
+impl<V: Clone + Debug + Send + Sync + 'static> TokenSnapshot<V> {
+    /// 获取变量 ID / Get variable ID.
+    pub fn id(&self) -> VariableId {
+        self.variable.id()
+    }
+
+    /// 获取求解器索引 / Get solver index.
+    pub fn solver_index(&self) -> usize {
+        self.solver_index
+    }
+
+    /// 获取已缓存的求解结果 / Get the cached solution result.
+    pub fn result(&self) -> Option<V> {
+        self.result.clone()
+    }
+
+    /// 将快照恢复为 Token / Rebuild a token from this snapshot.
+    pub(crate) fn into_token(self) -> Token<V> {
+        Token {
+            variable: self.variable,
+            solver_index: self.solver_index,
+            result: RwLock::new(self.result),
+        }
+    }
+}
+
 impl<V: Clone + Debug + Send + Sync + 'static> Token<V> {
     /// 创建新 Token / Create new token
     pub fn new(variable: AnyVariable<V>, solver_index: usize) -> Self {
@@ -369,6 +411,22 @@ impl<V: Clone + Debug + Send + Sync + 'static> Token<V> {
     /// 清除求解结果 / Clear solution result
     pub fn clear_result(&self) {
         *ospf_rust_base::write_unwrap!(&self.result) = None;
+    }
+
+    /// 捕获 Token 状态 / Capture token state.
+    pub fn snapshot(&self) -> TokenSnapshot<V> {
+        TokenSnapshot {
+            variable: self.variable.clone(),
+            solver_index: self.solver_index,
+            result: self.get_result(),
+        }
+    }
+
+    /// 恢复 Token 状态 / Restore token state.
+    pub fn restore(&mut self, snapshot: TokenSnapshot<V>) {
+        self.variable = snapshot.variable;
+        self.solver_index = snapshot.solver_index;
+        *ospf_rust_base::write_unwrap!(&self.result) = snapshot.result;
     }
 
     /// 获取变量类型 / Get variable type

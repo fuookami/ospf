@@ -1,11 +1,12 @@
 //! 分散空舱装载限制 / Divide empty loading limits
+//! 条件是仅提供索引的聚合线性差值，缺少可证明的有限范围，暂保留旧的非零语义 / Conditions use aggregate linear differences supplied only as indices, without a provable finite range; retain the legacy nonzero semantics for now.
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 use crate::framework::demo2::domain::soft_security::aggregation::SoftSecurityAggregation;
 use crate::framework::demo2::domain::soft_security::context::SoftSecurityContext;
 use crate::framework::demo2::domain::stowage::model::cargo::CargoCode;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
-use ospf_rust_core::symbol::function::IfFunction;
+use ospf_rust_core::symbol::function::IfFunction as LegacyIfFunction;
 use std::error::Error;
 use std::sync::Arc;
 
@@ -111,7 +112,7 @@ pub fn register_divide_empty_loading_symbols(
         let then_expr = Linear::new(Vec::new(), 1.0); // true branch: 1
         let else_expr = Linear::new(Vec::new(), 0.0); // false branch: 0
 
-        let if_fn = IfFunction::new(
+        let if_fn = LegacyIfFunction::new(
             next_id,
             &format!(
                 "soft_security_empty_between_cargo_{}_{}",
@@ -122,8 +123,20 @@ pub fn register_divide_empty_loading_symbols(
             then_expr,
             else_expr,
         );
-        empty_between_cargo_idx[pair_idx] = if_fn.result_variable().index();
+        let result_id = if_fn.result_variable().id();
         model.add_symbol(Arc::new(if_fn))?;
+        empty_between_cargo_idx[pair_idx] = model
+            .find_token(result_id)
+            .map(|token| token.solver_index)
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "empty between cargo result token {} was not registered",
+                        result_id
+                    ),
+                )
+            })?;
         next_id += 1;
     }
 
@@ -148,7 +161,7 @@ pub fn register_divide_empty_loading_symbols(
         let then_expr = Linear::new(Vec::new(), 1.0);
         let else_expr = Linear::new(Vec::new(), 0.0);
 
-        let if_fn = IfFunction::new(
+        let if_fn = LegacyIfFunction::new(
             next_id,
             &format!(
                 "soft_security_empty_cargo_between_cargo_{}_{}",
@@ -159,8 +172,20 @@ pub fn register_divide_empty_loading_symbols(
             then_expr,
             else_expr,
         );
-        empty_cargo_between_cargo_idx[pair_idx] = if_fn.result_variable().index();
+        let result_id = if_fn.result_variable().id();
         model.add_symbol(Arc::new(if_fn))?;
+        empty_cargo_between_cargo_idx[pair_idx] = model
+            .find_token(result_id)
+            .map(|token| token.solver_index)
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "empty cargo between cargo result token {} was not registered",
+                        result_id
+                    ),
+                )
+            })?;
         next_id += 1;
     }
 
@@ -185,7 +210,7 @@ pub fn register_divide_empty_loading_symbols(
         let then_expr = Linear::new(Vec::new(), 1.0);
         let else_expr = Linear::new(Vec::new(), 0.0);
 
-        let if_fn = IfFunction::new(
+        let if_fn = LegacyIfFunction::new(
             next_id,
             &format!(
                 "soft_security_empty_between_empty_cargo_{}_{}",
@@ -196,8 +221,20 @@ pub fn register_divide_empty_loading_symbols(
             then_expr,
             else_expr,
         );
-        empty_between_empty_cargo_idx[pair_idx] = if_fn.result_variable().index();
+        let result_id = if_fn.result_variable().id();
         model.add_symbol(Arc::new(if_fn))?;
+        empty_between_empty_cargo_idx[pair_idx] = model
+            .find_token(result_id)
+            .map(|token| token.solver_index)
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "empty between empty cargo result token {} was not registered",
+                        result_id
+                    ),
+                )
+            })?;
         next_id += 1;
     }
 

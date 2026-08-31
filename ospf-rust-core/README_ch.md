@@ -163,6 +163,11 @@ async fn solve_in_background<S: Solver + 'static>(
 }
 ```
 
+### 条件函数契约
+
+条件函数的命名、三值关系语义、显式范围要求和旧 API 兼容边界见
+[`docs/conditional-function-contract_ch.md`](../docs/conditional-function-contract_ch.md)。
+
 ### MetaModel 快捷接口
 
 `MetaModel` 提供高频建模快捷入口：

@@ -3,12 +3,16 @@
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
 };
+use super::ConditionalIndicatorFunction;
+use super::conditional::{ConditionBounds, ConditionRelation, ConditionalIfFunction, TruthValue};
 use super::{Point2, UnivariateLinearPiecewiseFunction};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
+use crate::variable::{
+    BinaryVariableItem, ContinuousVariableItem, VariableId, VariableRange, new_group_id,
+};
 use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;
@@ -76,6 +80,320 @@ pub enum SigmoidPrecision {
     Half,
 }
 
+/// 关系阶跃 Sigmoid 的纯语义入口 / Pure semantic entry for a relation-step sigmoid
+///
+/// 该入口复用统一条件分类器，不改变 `SigmoidFunction` 现有的连续 PWL 语义。
+/// This entry reuses the shared condition classifier without changing the existing
+/// continuous PWL semantics of `SigmoidFunction`.
+#[derive(Debug, Clone)]
+pub struct SigmoidStepFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 关系条件描述 / Relation-condition descriptor
+    pub condition: ConditionalIfFunction<V>,
+    /// 关系指示器 / Relation indicator
+    condition_indicator: ConditionalIndicatorFunction<V>,
+    /// 中间符号标识符 / Intermediate symbol identifier
+    id: IntermediateSymbolId,
+    /// 声明的依赖 ID 列表 / Declared dependency IDs
+    declared_dependency_ids: Vec<u64>,
+}
+
+impl<V> SigmoidStepFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    /// 创建关系阶跃入口 / Create a relation-step entry
+    pub fn new(condition: ConditionalIfFunction<V>) -> Result<Self> {
+        let id = super::super::next_auto_intermediate_symbol_id();
+        let name = super::super::auto_intermediate_symbol_name("sigmoid_step", id);
+        Self::with_parts(id, name, condition)
+    }
+
+    /// 使用调用方名称创建关系阶跃入口 / Create a relation-step entry with a caller name
+    pub fn named(name: impl AsRef<str>, condition: ConditionalIfFunction<V>) -> Result<Self> {
+        Self::with_parts(
+            super::super::next_auto_intermediate_symbol_id(),
+            name,
+            condition,
+        )
+    }
+
+    fn with_parts(
+        id: u64,
+        name: impl AsRef<str>,
+        condition: ConditionalIfFunction<V>,
+    ) -> Result<Self> {
+        condition.bounds.validate()?;
+        condition.classify(&condition.bounds.lower)?;
+        let name = name.as_ref();
+        let condition_indicator = ConditionalIndicatorFunction::new(
+            auxiliary_symbol_id(id, 1),
+            &format!("{name}_condition"),
+            condition.condition.clone(),
+            condition.relation,
+            condition.strict_boundary.clone(),
+            condition.bounds.clone(),
+        )?;
+        Ok(Self {
+            condition,
+            condition_indicator,
+            id: IntermediateSymbolId::new(id, name),
+            declared_dependency_ids: Vec::new(),
+        })
+    }
+
+    /// 从关系和显式范围创建阶跃入口 / Create a step entry from a relation and explicit bounds
+    pub fn from_parts(
+        condition: Linear<V>,
+        relation: ConditionRelation,
+        strict_boundary: V,
+        bounds: ConditionBounds<V>,
+    ) -> Result<Self> {
+        Self::new(ConditionalIfFunction::new(
+            condition,
+            relation,
+            strict_boundary,
+            bounds,
+        )?)
+    }
+
+    /// 对条件差值进行三值分类 / Classify a condition difference using three-valued semantics
+    pub fn classify(&self, difference: &V) -> Result<TruthValue> {
+        self.condition.classify(difference)
+    }
+
+    /// 对条件差值求阶跃值，Undefined 映射为 None。
+    /// Evaluate the step value, mapping Undefined to None.
+    pub fn evaluate(&self, difference: &V) -> Result<Option<V>> {
+        match self.classify(difference)? {
+            TruthValue::True => V::from_f64(1.0)
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "failed to convert sigmoid step true value".to_string(),
+                    )
+                    .into()
+                })
+                .map(Some),
+            TruthValue::False => V::from_f64(0.0)
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "failed to convert sigmoid step false value".to_string(),
+                    )
+                    .into()
+                })
+                .map(Some),
+            TruthValue::Undefined => Ok(None),
+        }
+    }
+
+    /// 获取关系指示器 / Get the relation indicator
+    pub fn condition_indicator(&self) -> &ConditionalIndicatorFunction<V> {
+        &self.condition_indicator
+    }
+
+    /// 获取结果变量 / Get the result variable
+    pub fn result_variable(&self) -> &BinaryVariableItem {
+        self.condition_indicator.result_variable()
+    }
+
+    /// 获取关系指示器的辅助变量 / Get relation-indicator helper variables
+    pub fn helper_variables(&self) -> [&BinaryVariableItem; 2] {
+        self.condition_indicator.helper_variables()
+    }
+
+    /// 设置声明的依赖 ID 列表 / Set declared dependency IDs
+    pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
+        self.declared_dependency_ids = dependency_ids;
+        self
+    }
+
+    /// 获取稳定的结果多项式 / Get the stable result polynomial
+    pub fn result_polynomial(&self) -> Linear<V>
+    where
+        V: FromPrimitive,
+    {
+        self.condition_indicator.result_polynomial()
+    }
+}
+
+fn auxiliary_symbol_id(base: u64, salt: u64) -> u64 {
+    base.wrapping_mul(0x9e37_79b9_7f4a_7c15)
+        .wrapping_add(salt.wrapping_mul(0x517c_c1b7_2722_0a95))
+}
+
+impl<V> Display for SigmoidStepFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "sigmoid_step({})", self.id.name)
+    }
+}
+
+impl<V> DynSymbol for SigmoidStepFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn display_name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn dyn_id(&self) -> SymbolDynId<'_> {
+        SymbolDynId::standalone(self.id.id as usize)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl<V> Symbol for SigmoidStepFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    type Id = IntermediateSymbolId;
+
+    fn id(&self) -> Self::Id {
+        self.id.clone()
+    }
+}
+
+impl<V> IntermediateSymbol<V> for SigmoidStepFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn category(&self) -> Category {
+        Category::Linear
+    }
+
+    fn cached(&self) -> bool {
+        false
+    }
+
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
+        HashSet::new()
+    }
+
+    fn declared_dependency_ids(&self) -> Vec<u64> {
+        self.declared_dependency_ids.clone()
+    }
+
+    fn flush(&self, _force: bool) {}
+
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        self.condition_indicator.register_tokens(tokens)
+    }
+
+    fn mechanism_constraints(
+        &self,
+        symbol_to_index: &std::collections::HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        self.condition_indicator
+            .mechanism_constraints(symbol_to_index)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &std::collections::HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        self.condition_indicator
+            .mechanism_constraints_with_tokens(symbol_to_index, tokens)
+    }
+
+    fn evaluate_from_tokens(
+        &self,
+        token_table: &dyn TokenList<V>,
+        zero_if_none: bool,
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
+    }
+
+    fn prepare(&self, values: &std::collections::HashMap<usize, V>) -> Option<V> {
+        values.get(&self.result_variable().index()).cloned()
+    }
+
+    fn range(&self) -> Option<VariableRange<V>> {
+        Some(VariableRange::bounded(
+            from_f64(0.0).expect("convert sigmoid step lower range"),
+            from_f64(1.0).expect("convert sigmoid step upper range"),
+        ))
+    }
+
+    fn to_raw_string(&self, _unfold: u64) -> String {
+        format!("sigmoid_step({})", self.id.name)
+    }
+}
+
+impl<V> FunctionSymbol<V> for SigmoidStepFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        self.condition_indicator.register_tokens(tokens)
+    }
+
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
+        self.condition_indicator
+            .calculate_value(token_table, zero_if_none)
+    }
+}
+
+impl<V> LinearIntermediateSymbol<V> for SigmoidStepFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        self.condition_indicator.result_polynomial()
+    }
+
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
+        Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
+/// 关系阶跃入口的语义别名 / Semantic alias for the relation-step entry
+pub type SigmoidRelationFunction<V> = SigmoidStepFunction<V>;
+
+/// 条件 Sigmoid 纯入口的语义别名 / Semantic alias for the conditional sigmoid entry
+pub type ConditionalSigmoidFunction<V> = SigmoidStepFunction<V>;
+
 /// 分段线性 Sigmoid 函数符号，支持精确值求值。
 /// Piecewise-linear sigmoid function symbol with exact-value evaluator.
 #[derive(Debug, Clone)]
@@ -94,6 +412,26 @@ impl<V> SigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive + ToPrimitive,
 {
+    /// 创建关系阶跃 Sigmoid 纯入口 / Create a pure relation-step sigmoid entry
+    pub fn step(
+        condition: Linear<V>,
+        relation: ConditionRelation,
+        strict_boundary: V,
+        bounds: ConditionBounds<V>,
+    ) -> Result<SigmoidStepFunction<V>> {
+        SigmoidStepFunction::from_parts(condition, relation, strict_boundary, bounds)
+    }
+
+    /// 创建关系阶跃 Sigmoid 的兼容命名入口 / Compatibility-named relation-step constructor
+    pub fn relation(
+        condition: Linear<V>,
+        relation: ConditionRelation,
+        strict_boundary: V,
+        bounds: ConditionBounds<V>,
+    ) -> Result<SigmoidStepFunction<V>> {
+        Self::step(condition, relation, strict_boundary, bounds)
+    }
+
     /// 创建新的 Sigmoid 函数（默认完整精度）/ Create a new sigmoid function (default full precision)
     pub fn new(id: u64, name: &str, input: Linear<V>) -> Self {
         Self::with_precision(id, name, input, SigmoidPrecision::Full)
@@ -553,6 +891,7 @@ where
 mod tests {
     use super::*;
     use crate::symbol::flatten::LinearMonomial;
+    use crate::symbol::functions::conditional::TruthValue;
     use crate::token::{MutableTokenList, Token, VecTokenList};
     use crate::variable::{ContinuousVariableItem, VariableId};
 
@@ -576,5 +915,70 @@ mod tests {
     fn sigmoid_sampling_points_full_has_expected_count() {
         let points = SigmoidFunction::<f64>::sampling_points(SigmoidPrecision::Full, 1e-5);
         assert_eq!(points.len(), 11);
+    }
+
+    #[test]
+    fn sigmoid_step_reuses_three_valued_condition_semantics() {
+        let step = SigmoidStepFunction::from_parts(
+            Linear::constant(0.0),
+            ConditionRelation::Greater,
+            0.1,
+            ConditionBounds {
+                lower: -1.0,
+                upper: 1.0,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(step.classify(&0.1).unwrap(), TruthValue::True);
+        assert_eq!(step.evaluate(&0.1).unwrap(), Some(1.0));
+        assert_eq!(step.evaluate(&-0.1).unwrap(), Some(0.0));
+        assert_eq!(step.evaluate(&0.05).unwrap(), None);
+    }
+
+    #[test]
+    fn sigmoid_step_rejects_invalid_boundary() {
+        assert!(
+            SigmoidStepFunction::from_parts(
+                Linear::constant(0.0),
+                ConditionRelation::Greater,
+                0.0,
+                ConditionBounds {
+                    lower: -1.0,
+                    upper: 1.0,
+                },
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn sigmoid_step_registers_shared_conditional_indicator_constraints() {
+        let step = SigmoidStepFunction::named(
+            "step_registered",
+            ConditionalIfFunction::new(
+                Linear::constant(0.0),
+                ConditionRelation::Greater,
+                0.1,
+                ConditionBounds {
+                    lower: -1.0,
+                    upper: 1.0,
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mut tokens = Vec::new();
+        step.register_tokens(&mut tokens).unwrap();
+        assert_eq!(tokens.len(), 2);
+        let symbol_to_index = tokens
+            .iter()
+            .enumerate()
+            .map(|(index, token)| (token.id().unique_id() as usize, index + 1))
+            .collect::<std::collections::HashMap<_, _>>();
+        let constraints = step.mechanism_constraints(&symbol_to_index).unwrap();
+        assert_eq!(constraints.len(), 3);
+        assert_eq!(step.to_linear_polynomial().monomials().len(), 1);
+        assert_eq!(step.evaluate(&0.1).unwrap(), Some(1.0));
     }
 }

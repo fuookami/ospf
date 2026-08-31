@@ -1,4 +1,5 @@
 //! 装载量模型 / Load model
+//! 装载量由二进制装载变量求和得到；在此处用非零语义表达“至少装载一个” / Load amount is a sum of binary stowage variables, so nonzero semantics express “at least one loaded item” here.
 use super::super::super::shared::units::{quantity_value_in_unit, weight_unit};
 use super::item::Item;
 use super::position::Position;
@@ -7,7 +8,7 @@ use ospf_rust_core::model::MetaModel;
 use ospf_rust_core::symbol::LinearExpressionSymbol;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::{
-    BinaryzationFunction, IfFunction, OrFunction, SameAsFunction, SlackFunction,
+    BinaryzationFunction, IfFunction as LegacyIfFunction, OrFunction, SameAsFunction, SlackFunction,
 };
 use ospf_rust_core::variable::{UContinuousVariableItem, UIntegerVariableItem, VariableRange};
 use std::error::Error;
@@ -74,8 +75,8 @@ impl Load {
     /// - `loadedItem[j]`               -> `BinaryzationFunction(loadAmount >= 1)`
     /// - `y_same_as[j]`                -> `SameAsFunction(y, actualLoadWeight)`
     /// - `z_same_as[j]`                -> `SameAsFunction(z, estimateLoadWeight)`
-    /// - `y_if[j]`                     -> `IfFunction(loadAmount >= 1, y_same_as, y)`
-    /// - `z_if[j]`                     -> `IfFunction(loadAmount >= 1, z_same_as, z)`
+    /// - `y_if[j]`                     -> `IfFunction(loadAmount != 0, y_same_as, y)`；loadAmount 为非负整数时等价于 `>= 1` / loadAmount is nonnegative and integral, so this is equivalent to `>= 1`
+    /// - `z_if[j]`                     -> `IfFunction(loadAmount != 0, z_same_as, z)`；loadAmount 为非负整数时等价于 `>= 1` / loadAmount is nonnegative and integral, so this is equivalent to `>= 1`
     /// - `estimateLoaded[j]`           -> `OrFunction(full[j], y_if[j])`
     /// - `actualLoaded[j]`             -> `OrFunction(full[j], z_if[j])`
     pub fn register(
@@ -147,8 +148,17 @@ impl Load {
                 load_amount_linear,
                 mla,
             );
-            let result_idx = bin_fn.result_variable().index();
+            let result_id = bin_fn.result_variable().id();
             model.add_symbol(Arc::new(bin_fn))?;
+            let result_idx = model
+                .find_token(result_id)
+                .map(|token| token.solver_index)
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("full result token {} was not registered", result_id),
+                    )
+                })?;
             full_idx[j] = result_idx;
             next_id += 1;
         }
@@ -244,8 +254,20 @@ impl Load {
                     left,
                     right,
                 );
-                let result_idx = slack_fn.result_variable().index();
+                let result_id = slack_fn.result_variable().id();
                 model.add_symbol(Arc::new(slack_fn))?;
+                let result_idx = model
+                    .find_token(result_id)
+                    .map(|token| token.solver_index)
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!(
+                                "predicate load-weight slack result token {} was not registered",
+                                result_id
+                            ),
+                        )
+                    })?;
                 slack_idx[j] = result_idx;
                 next_id += 1;
             }
@@ -269,8 +291,17 @@ impl Load {
                     second,
                     0.0,
                 );
-                let result_idx = same_as_fn.result_variable().index();
+                let result_id = same_as_fn.result_variable().id();
                 model.add_symbol(Arc::new(same_as_fn))?;
+                let result_idx = model
+                    .find_token(result_id)
+                    .map(|token| token.solver_index)
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!("y same-as result token {} was not registered", result_id),
+                        )
+                    })?;
                 y_same_as_idx[j] = result_idx;
                 next_id += 1;
             }
@@ -293,8 +324,17 @@ impl Load {
                     second,
                     0.0,
                 );
-                let result_idx = same_as_fn.result_variable().index();
+                let result_id = same_as_fn.result_variable().id();
                 model.add_symbol(Arc::new(same_as_fn))?;
+                let result_idx = model
+                    .find_token(result_id)
+                    .map(|token| token.solver_index)
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!("z same-as result token {} was not registered", result_id),
+                        )
+                    })?;
                 z_same_as_idx[j] = result_idx;
                 next_id += 1;
             }
@@ -305,19 +345,29 @@ impl Load {
         let mut y_if_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
             if position.status.predicate_weight_needed {
+                // loadAmount 是二进制装载变量之和；非零与 >= 1 等价 / loadAmount is a sum of binary stowage variables, so nonzero is equivalent to >= 1.
                 let condition =
-                    Linear::new(vec![LinearMonomial::new(1.0, load_amount_idx[j])], -1.0);
+                    Linear::new(vec![LinearMonomial::new(1.0, load_amount_idx[j])], 0.0);
                 let then_expr = Linear::new(vec![LinearMonomial::new(1.0, y_same_as_idx[j])], 0.0);
                 let else_expr = Linear::new(vec![LinearMonomial::new(1.0, y_idx[j])], 0.0);
-                let if_fn = IfFunction::new(
+                let if_fn = LegacyIfFunction::new(
                     next_id,
                     &format!("y_if_{}", position.id),
                     condition,
                     then_expr,
                     else_expr,
                 );
-                let result_idx = if_fn.result_variable().index();
+                let result_id = if_fn.result_variable().id();
                 model.add_symbol(Arc::new(if_fn))?;
+                let result_idx = model
+                    .find_token(result_id)
+                    .map(|token| token.solver_index)
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!("y-if result token {} was not registered", result_id),
+                        )
+                    })?;
                 y_if_idx[j] = result_idx;
                 next_id += 1;
             }
@@ -328,19 +378,29 @@ impl Load {
         let mut z_if_idx = vec![0usize; position_count];
         for (j, position) in self.positions.iter().enumerate() {
             if position.status.recommended_weight_needed {
+                // loadAmount 是二进制装载变量之和；非零与 >= 1 等价 / loadAmount is a sum of binary stowage variables, so nonzero is equivalent to >= 1.
                 let condition =
-                    Linear::new(vec![LinearMonomial::new(1.0, load_amount_idx[j])], -1.0);
+                    Linear::new(vec![LinearMonomial::new(1.0, load_amount_idx[j])], 0.0);
                 let then_expr = Linear::new(vec![LinearMonomial::new(1.0, z_same_as_idx[j])], 0.0);
                 let else_expr = Linear::new(vec![LinearMonomial::new(1.0, z_idx[j])], 0.0);
-                let if_fn = IfFunction::new(
+                let if_fn = LegacyIfFunction::new(
                     next_id,
                     &format!("z_if_{}", position.id),
                     condition,
                     then_expr,
                     else_expr,
                 );
-                let result_idx = if_fn.result_variable().index();
+                let result_id = if_fn.result_variable().id();
                 model.add_symbol(Arc::new(if_fn))?;
+                let result_idx = model
+                    .find_token(result_id)
+                    .map(|token| token.solver_index)
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!("z-if result token {} was not registered", result_id),
+                        )
+                    })?;
                 z_if_idx[j] = result_idx;
                 next_id += 1;
             }
@@ -364,8 +424,17 @@ impl Load {
                 load_amount_linear,
                 1.0,
             );
-            let loaded_idx = loaded_fn.result_variable().index();
+            let loaded_id = loaded_fn.result_variable().id();
             model.add_symbol(Arc::new(loaded_fn))?;
+            let loaded_idx = model
+                .find_token(loaded_id)
+                .map(|token| token.solver_index)
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("loaded-item result token {} was not registered", loaded_id),
+                    )
+                })?;
             next_id += 1;
 
             let mut or_inputs: Vec<Linear<f64>> = Vec::new();
@@ -392,8 +461,20 @@ impl Load {
                 &format!("estimate_loaded_{}", position.id),
                 or_inputs,
             );
-            let result_idx = or_fn.result_variable().index();
+            let result_id = or_fn.result_variable().id();
             model.add_symbol(Arc::new(or_fn))?;
+            let result_idx = model
+                .find_token(result_id)
+                .map(|token| token.solver_index)
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!(
+                            "estimate-loaded result token {} was not registered",
+                            result_id
+                        ),
+                    )
+                })?;
             estimate_loaded_idx[j] = result_idx;
             next_id += 1;
         }
@@ -412,8 +493,20 @@ impl Load {
                 load_amount_linear,
                 1.0,
             );
-            let result_idx = actual_fn.result_variable().index();
+            let result_id = actual_fn.result_variable().id();
             model.add_symbol(Arc::new(actual_fn))?;
+            let result_idx = model
+                .find_token(result_id)
+                .map(|token| token.solver_index)
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!(
+                            "actual-loaded result token {} was not registered",
+                            result_id
+                        ),
+                    )
+                })?;
             actual_loaded_idx[j] = result_idx;
             next_id += 1;
         }

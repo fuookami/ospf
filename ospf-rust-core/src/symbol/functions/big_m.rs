@@ -1,11 +1,11 @@
 //! Big-M 约束策略与多项式界推断工具 / Big-M constraint policy and polynomial bound inference utilities
 
+use std::fmt::Debug;
+use num_traits::{FromPrimitive, ToPrimitive};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::Token;
-use num_traits::{FromPrimitive, ToPrimitive};
-use std::fmt::Debug;
 
 /// Big-M 策略配置，包含回退值与最小值。
 /// Big-M policy configuration with fallback and minimum values.
@@ -34,10 +34,29 @@ impl BigMPolicy {
         self.min
     }
 
-    /// 解析推断的 Big-M 值，若无推断值则使用回退值，并确保不低于最小值。
-    /// Resolves the inferred Big-M value, falling back if none, and clamping to the minimum.
+    /// 解析推断的 Big-M 值，并拒绝非法策略输入穿透到约束生成。
+    /// Resolve an inferred Big-M value without allowing invalid policy input to reach constraints.
+    ///
+    /// 公共构造函数保持 `const` 和兼容的返回类型，因此非法 fallback、min 或 inferred
+    /// 会在此处退回到安全默认值，而不是返回 NaN、无穷或非正数。
+    /// The public constructor remains `const` with its compatible return type, so invalid
+    /// fallback, minimum, or inferred values are replaced here with safe defaults instead of
+    /// returning NaN, infinity, or a non-positive value.
     pub fn resolve(&self, inferred: Option<f64>) -> f64 {
-        inferred.unwrap_or(self.fallback).max(self.min)
+        let fallback = if self.fallback.is_finite() && self.fallback > 0.0 {
+            self.fallback
+        } else {
+            DEFAULT_BIG_M
+        };
+        let minimum = if self.min.is_finite() && self.min > 0.0 {
+            self.min
+        } else {
+            MIN_BIG_M
+        };
+        inferred
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .unwrap_or(fallback)
+            .max(minimum)
     }
 }
 
@@ -97,8 +116,8 @@ where
     pub fn from_polynomial(poly: &Linear<V>, tokens: &[Token<V>]) -> Option<Self> {
         let (lower, upper) = infer_linear_bounds_from_tokens(poly, tokens)?;
         Some(Self {
-            lower: Some(V::from_f64(lower)?),
-            upper: Some(V::from_f64(upper)?),
+            lower: Some(convert_f64_to_v(lower, "linear lower bound").ok()?),
+            upper: Some(convert_f64_to_v(upper, "linear upper bound").ok()?),
         })
     }
 
@@ -146,15 +165,22 @@ pub fn default_big_m() -> f64 {
 
 /// 确保 Big-M 值为正且至少为 [`MIN_BIG_M`]。
 ///
-/// 若 `m` 小于 [`MIN_BIG_M`]，则返回 [`MIN_BIG_M`]。
-/// 这可防止推断界过小时产生退化约束。
+/// 非有限值、零和负值会返回错误；若正数 `m` 小于 [`MIN_BIG_M`]，
+/// 则返回 [`MIN_BIG_M`]，以防止推断界过小时产生退化约束。
 ///
 /// Ensures the big M value is positive and at least [`MIN_BIG_M`].
 ///
-/// If `m` is less than [`MIN_BIG_M`], returns [`MIN_BIG_M`] instead.
-/// This prevents degenerate constraints when inferred bounds are very small.
-pub fn ensure_positive_big_m(m: f64) -> f64 {
-    m.max(MIN_BIG_M)
+/// Non-finite, zero, and negative values return an error. If a positive `m` is
+/// less than [`MIN_BIG_M`], returns [`MIN_BIG_M`] instead. This prevents
+/// degenerate constraints when inferred bounds are very small.
+pub fn ensure_positive_big_m(m: f64) -> Result<f64> {
+    if !m.is_finite() || m <= 0.0 {
+        return Err(ModelError::InvalidConstraint(format!(
+            "big M must be finite and positive, got {m}"
+        ))
+        .into());
+    }
+    Ok(m.max(MIN_BIG_M))
 }
 
 // ============================================================================
@@ -170,15 +196,48 @@ where
 
 fn convert_f64_to_v<V>(value: f64, context: &str) -> Result<V>
 where
-    V: FromPrimitive,
+    V: FromPrimitive + ToPrimitive,
 {
-    from_f64(value).ok_or_else(|| {
+    if !value.is_finite() {
+        return Err(ModelError::InvalidConstraint(format!(
+            "`{context}` value must be finite, got {value}"
+        ))
+        .into());
+    }
+    let converted: V = from_f64(value).ok_or_else(|| {
         ModelError::InvalidConstraint(format!(
             "failed to convert `{}` value {} from f64 into model value type",
             context, value
         ))
-        .into()
-    })
+    })?;
+    let roundtrip = converted.to_f64().ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "failed to inspect converted `{context}` value {value}"
+        ))
+    })?;
+    if !roundtrip.is_finite() {
+        return Err(ModelError::InvalidConstraint(format!(
+            "converted `{context}` value must be finite, got {roundtrip}"
+        ))
+        .into());
+    }
+    Ok(converted)
+}
+
+fn checked_to_f64<V>(value: &V, context: &str) -> Result<f64>
+where
+    V: ToPrimitive,
+{
+    let converted = value.to_f64().ok_or_else(|| {
+        ModelError::InvalidConstraint(format!("failed to convert `{context}` into f64"))
+    })?;
+    if !converted.is_finite() {
+        return Err(ModelError::InvalidConstraint(format!(
+            "`{context}` value must be finite, got {converted}"
+        ))
+        .into());
+    }
+    Ok(converted)
 }
 
 /// Extracts base monomial data (coefficient as f64, var_index) from a polynomial.
@@ -194,6 +253,13 @@ where
                 name_prefix
             ))
         })?;
+        if !coefficient.is_finite() {
+            return Err(ModelError::InvalidConstraint(format!(
+                "logic `{}` input coefficient must be finite",
+                name_prefix
+            ))
+            .into());
+        }
         base.push((coefficient, monomial.var_index()));
     }
     Ok(base)
@@ -204,12 +270,20 @@ fn extract_constant<V>(polynomial: &Linear<V>, name_prefix: &str) -> Result<f64>
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
 {
-    Ok(polynomial.constant_term().to_f64().ok_or_else(|| {
+    let constant = polynomial.constant_term().to_f64().ok_or_else(|| {
         ModelError::InvalidConstraint(format!(
             "logic `{}` input constant cannot be converted to f64",
             name_prefix
         ))
-    })?)
+    })?;
+    if !constant.is_finite() {
+        return Err(ModelError::InvalidConstraint(format!(
+            "logic `{}` input constant must be finite",
+            name_prefix
+        ))
+        .into());
+    }
+    Ok(constant)
 }
 
 // ============================================================================
@@ -238,6 +312,7 @@ pub fn positive_indicator_constraints<V>(
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
 {
+    let big_m = ensure_positive_big_m(big_m)?;
     let base_monomials = extract_base_monomials(polynomial, name_prefix)?;
     let constant = extract_constant(polynomial, name_prefix)?;
     let mut constraints = Vec::with_capacity(2);
@@ -415,6 +490,7 @@ pub fn nonnegative_indicator_constraints<V>(
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
 {
+    let big_m = ensure_positive_big_m(big_m)?;
     let base_monomials = extract_base_monomials(polynomial, name_prefix)?;
     let constant = extract_constant(polynomial, name_prefix)?;
     let mut constraints = Vec::with_capacity(2);
@@ -496,6 +572,7 @@ pub fn negative_indicator_constraints<V>(
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
 {
+    let big_m = ensure_positive_big_m(big_m)?;
     let base_monomials = extract_base_monomials(polynomial, name_prefix)?;
     let constant = extract_constant(polynomial, name_prefix)?;
     let mut constraints = Vec::with_capacity(2);
@@ -583,6 +660,7 @@ pub fn nonzero_indicator_constraints<V>(
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
 {
+    let big_m = ensure_positive_big_m(big_m)?;
     let base_monomials = extract_base_monomials(polynomial, name_prefix)?;
     let constant = extract_constant(polynomial, name_prefix)?;
     let mut constraints = Vec::with_capacity(4);
@@ -725,18 +803,22 @@ pub fn infer_linear_bounds_from_tokens<V>(
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
 {
-    let mut lower = poly.constant_term().to_f64()?;
+    infer_linear_bounds_from_tokens_checked(poly, tokens).ok()
+}
+
+fn infer_linear_bounds_from_tokens_checked<V>(
+    poly: &Linear<V>,
+    tokens: &[Token<V>],
+) -> Result<(f64, f64)>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let mut lower = checked_to_f64(poly.constant_term(), "linear polynomial constant")?;
     let mut upper = lower;
 
     for monomial in poly.monomials() {
-        let token = tokens.get(monomial.var_index())?;
-        let var_lower = token.variable.lower_bound()?.to_f64()?;
-        let var_upper = token.variable.upper_bound()?.to_f64()?;
-        if !var_lower.is_finite() || !var_upper.is_finite() {
-            return None;
-        }
-
-        let coefficient = monomial.coefficient().to_f64()?;
+        let (var_lower, var_upper) = variable_bounds_from_tokens(tokens, monomial.var_index())?;
+        let coefficient = checked_to_f64(monomial.coefficient(), "linear polynomial coefficient")?;
         if coefficient >= 0.0 {
             lower += coefficient * var_lower;
             upper += coefficient * var_upper;
@@ -747,9 +829,12 @@ where
     }
 
     if !lower.is_finite() || !upper.is_finite() {
-        return None;
+        return Err(ModelError::InvalidConstraint(
+            "linear polynomial bounds are not finite".to_string(),
+        )
+        .into());
     }
-    Some((lower, upper))
+    Ok((lower, upper))
 }
 
 /// 从线性多项式及其变量列表推断绝对界（|下界| 和 |上界| 的最大值）。
@@ -833,18 +918,37 @@ where
     Some(lower.abs().max(upper.abs()))
 }
 
-#[allow(dead_code)]
-fn variable_bounds_from_tokens<V>(tokens: &[Token<V>], index: usize) -> Option<(f64, f64)>
+fn variable_bounds_from_tokens<V>(tokens: &[Token<V>], solver_index: usize) -> Result<(f64, f64)>
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
 {
-    let token = tokens.get(index)?;
-    let lower = token.variable.lower_bound()?.to_f64()?;
-    let upper = token.variable.upper_bound()?.to_f64()?;
-    if !lower.is_finite() || !upper.is_finite() {
-        return None;
-    }
-    Some((lower, upper))
+    let token = tokens
+        .iter()
+        .find(|token| token.solver_index == solver_index)
+        .ok_or_else(|| {
+            ModelError::InvalidConstraint(format!(
+                "token with solver index {solver_index} is missing"
+            ))
+        })?;
+    let lower = token.variable.lower_bound().ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "token with solver index {solver_index} has no lower bound"
+        ))
+    })?;
+    let upper = token.variable.upper_bound().ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "token with solver index {solver_index} has no upper bound"
+        ))
+    })?;
+    let lower = checked_to_f64(
+        &lower,
+        &format!("lower bound for solver index {solver_index}"),
+    )?;
+    let upper = checked_to_f64(
+        &upper,
+        &format!("upper bound for solver index {solver_index}"),
+    )?;
+    Ok((lower, upper))
 }
 
 #[allow(dead_code)]
@@ -888,11 +992,22 @@ pub fn infer_quadratic_bounds_from_tokens<V>(
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
 {
-    let mut lower = poly.constant().to_f64()?;
+    infer_quadratic_bounds_from_tokens_checked(poly, tokens).ok()
+}
+
+fn infer_quadratic_bounds_from_tokens_checked<V>(
+    poly: &Quadratic<V>,
+    tokens: &[Token<V>],
+) -> Result<(f64, f64)>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let mut lower = checked_to_f64(poly.constant(), "quadratic polynomial constant")?;
     let mut upper = lower;
 
     for monomial in poly.monomials() {
-        let coefficient = monomial.coefficient().to_f64()?;
+        let coefficient =
+            checked_to_f64(monomial.coefficient(), "quadratic polynomial coefficient")?;
         let (term_lower, term_upper) = if let Some(var_index2) = monomial.var_index2() {
             let var_index1 = monomial.var_index1();
             let (raw_lower, raw_upper) = if var_index1 == var_index2 {
@@ -923,9 +1038,12 @@ where
     }
 
     if !lower.is_finite() || !upper.is_finite() {
-        return None;
+        return Err(ModelError::InvalidConstraint(
+            "quadratic polynomial bounds are not finite".to_string(),
+        )
+        .into());
     }
-    Some((lower, upper))
+    Ok((lower, upper))
 }
 
 #[allow(dead_code)]
@@ -1016,7 +1134,7 @@ pub fn infer_big_m_for_polynomials<V>(
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
 {
-    let mut big_m = min_big_m;
+    let mut big_m = ensure_positive_big_m(min_big_m).ok()?;
     for polynomial in polynomials {
         let bound = infer_linear_abs_bound_from_tokens(polynomial, tokens)?;
         big_m = big_m.max(bound);
@@ -1034,7 +1152,7 @@ pub fn infer_big_m_for_quadratic_polynomials<V>(
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
 {
-    let mut big_m = min_big_m;
+    let mut big_m = ensure_positive_big_m(min_big_m).ok()?;
     for polynomial in polynomials {
         let bound = infer_quadratic_abs_bound_from_tokens(polynomial, tokens)?;
         big_m = big_m.max(bound);
@@ -1091,6 +1209,44 @@ mod tests {
     }
 
     #[test]
+    fn bounds_follow_solver_index_when_tokens_are_reordered() {
+        let tokens = vec![token("y", 1, -2.0, 4.0), token("x", 0, 1.0, 3.0)];
+        let linear = Linear::new(
+            vec![LinearMonomial::new(2.0, 0), LinearMonomial::new(-1.0, 1)],
+            5.0,
+        );
+        let quadratic = Quadratic::new(
+            vec![
+                QuadraticMonomial::new_quadratic(1.0, 0, 0),
+                QuadraticMonomial::new_quadratic(1.0, 0, 1),
+                QuadraticMonomial::new_linear(1.0, 1),
+            ],
+            0.0,
+        );
+
+        assert_eq!(
+            infer_linear_bounds_from_tokens(&linear, &tokens),
+            Some((3.0, 13.0))
+        );
+        assert_eq!(
+            infer_quadratic_bounds_from_tokens(&quadratic, &tokens),
+            Some((-7.0, 25.0))
+        );
+    }
+
+    #[test]
+    fn missing_solver_index_returns_structured_error() {
+        let tokens = vec![token("x", 0, 1.0, 3.0)];
+        let error = variable_bounds_from_tokens(&tokens, 1).unwrap_err();
+
+        assert!(matches!(
+            error,
+            crate::error::CoreError::Model(crate::error::ModelError::InvalidConstraint(message))
+                if message.contains("solver index 1")
+        ));
+    }
+
+    #[test]
     fn quadratic_bounds_handle_linear_bilinear_and_square_terms() {
         let tokens = vec![token("x", 0, -1.0, 2.0), token("y", 1, 3.0, 5.0)];
         let poly = Quadratic::new(
@@ -1136,6 +1292,16 @@ mod tests {
         );
     }
 
+    #[test]
+    fn big_m_inference_rejects_invalid_minimum_values() {
+        let linear = vec![Linear::constant(0.0)];
+        let quadratic = vec![Quadratic::from_constant(0.0)];
+        for minimum in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(infer_big_m_for_polynomials(&linear, &[], minimum).is_none());
+            assert!(infer_big_m_for_quadratic_polynomials(&quadratic, &[], minimum).is_none());
+        }
+    }
+
     // ========================================================================
     // Tests for new public API
     // ========================================================================
@@ -1147,15 +1313,75 @@ mod tests {
 
     #[test]
     fn ensure_positive_big_m_clamps_small_values() {
-        assert_eq!(ensure_positive_big_m(0.0), MIN_BIG_M);
-        assert_eq!(ensure_positive_big_m(-5.0), MIN_BIG_M);
-        assert_eq!(ensure_positive_big_m(0.5), MIN_BIG_M);
+        assert_eq!(ensure_positive_big_m(0.5).unwrap(), MIN_BIG_M);
     }
 
     #[test]
     fn ensure_positive_big_m_preserves_large_values() {
-        assert_eq!(ensure_positive_big_m(100.0), 100.0);
-        assert_eq!(ensure_positive_big_m(1_000_000.0), 1_000_000.0);
+        assert_eq!(ensure_positive_big_m(100.0).unwrap(), 100.0);
+        assert_eq!(ensure_positive_big_m(1_000_000.0).unwrap(), 1_000_000.0);
+    }
+
+    #[test]
+    fn ensure_positive_big_m_rejects_illegal_values() {
+        for big_m in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(ensure_positive_big_m(big_m).is_err(), "{big_m}");
+        }
+    }
+
+    #[test]
+    fn big_m_policy_resolve_never_returns_an_invalid_value() {
+        let policy = BigMPolicy::new(f64::NAN, f64::NEG_INFINITY);
+        for inferred in [
+            None,
+            Some(0.0),
+            Some(-1.0),
+            Some(f64::NAN),
+            Some(f64::INFINITY),
+        ] {
+            let resolved = policy.resolve(inferred);
+            assert!(resolved.is_finite());
+            assert!(resolved > 0.0);
+        }
+
+        let policy = BigMPolicy::new(2.0, 3.0);
+        assert_eq!(policy.resolve(Some(f64::NAN)), 3.0);
+        assert_eq!(policy.resolve(Some(4.0)), 4.0);
+    }
+
+    #[test]
+    fn indicator_constraint_builders_reject_illegal_big_m_values() {
+        let polynomial = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
+        for big_m in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(
+                positive_indicator_constraints(&polynomial, 1, big_m, "test").is_err(),
+                "{big_m}"
+            );
+            assert!(
+                nonnegative_indicator_constraints(&polynomial, 1, big_m, "test").is_err(),
+                "{big_m}"
+            );
+            assert!(
+                negative_indicator_constraints(&polynomial, 1, big_m, "test").is_err(),
+                "{big_m}"
+            );
+            assert!(
+                nonzero_indicator_constraints(&polynomial, 1, 2, big_m, "test").is_err(),
+                "{big_m}"
+            );
+        }
+    }
+
+    #[test]
+    fn indicator_constraint_builders_reject_non_finite_polynomial_values() {
+        let invalid_coeff = Linear::new(vec![LinearMonomial::new(f64::NAN, 0)], 0.0);
+        let invalid_constant = Linear::new(vec![LinearMonomial::new(1.0, 0)], f64::INFINITY);
+
+        assert!(positive_indicator_constraints(&invalid_coeff, 1, 10.0, "test").is_err());
+        assert!(nonnegative_indicator_constraints(&invalid_coeff, 1, 10.0, "test").is_err());
+        assert!(negative_indicator_constraints(&invalid_coeff, 1, 10.0, "test").is_err());
+        assert!(nonzero_indicator_constraints(&invalid_coeff, 1, 2, 10.0, "test").is_err());
+        assert!(positive_indicator_constraints(&invalid_constant, 1, 10.0, "test").is_err());
     }
 
     #[test]
@@ -1172,6 +1398,26 @@ mod tests {
         assert_eq!(bounds.lower, Some(3.0));
         assert_eq!(bounds.upper, Some(13.0));
         assert_eq!(bounds.abs_bound(), Some(13.0));
+    }
+
+    #[test]
+    fn f32_bounds_reject_overflow_and_non_finite_conversions() {
+        let tokens: Vec<Token<f32>> = vec![Token::from_generic(
+            ContinuousVariableItem::auto_with_range(
+                "x",
+                VariableRange::bounded(1.0e20_f64, 2.0e20_f64),
+            ),
+            0,
+        )];
+        let poly: Linear<f32> = Linear::new(vec![LinearMonomial::new(1.0e20_f32, 0)], 0.0_f32);
+
+        let inferred = infer_linear_bounds_from_tokens(&poly, &tokens).unwrap();
+        assert!(inferred.0.is_finite() && inferred.1.is_finite());
+        assert!(LinearPolynomialBounds::<f32>::from_polynomial(&poly, &tokens).is_none());
+
+        for value in [f64::NAN, f64::INFINITY, f64::MAX] {
+            assert!(convert_f64_to_v::<f32>(value, "test bound").is_err());
+        }
     }
 
     #[test]

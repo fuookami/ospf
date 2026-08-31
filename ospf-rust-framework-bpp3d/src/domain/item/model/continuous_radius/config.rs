@@ -186,7 +186,13 @@ pub struct ContinuousRadiusVariableRegistration {
 
 impl ContinuousRadiusVariableRegistration {
     /// 转换为显式字段结构体 / Convert to explicit field structs
-    pub fn to_explicit_fields(&self) -> (ContinuousRadiusVariables, ContinuousRadiusPiecewiseVariables, ContinuousRadiusSymbols) {
+    pub fn to_explicit_fields(
+        &self,
+    ) -> (
+        ContinuousRadiusVariables,
+        ContinuousRadiusPiecewiseVariables,
+        ContinuousRadiusSymbols,
+    ) {
         let variables = ContinuousRadiusVariables {
             variable_name: self.variable_name.clone(),
             radius_index: self.radius_index,
@@ -211,45 +217,104 @@ impl ContinuousRadiusVariableRegistration {
 impl ContinuousRadiusVariableRegistration {
     /// 根据求解解向量提取选中分段 / Extract selected segment from solver solution vector
     pub fn selected_segment_index(&self, solution: &[f64]) -> Option<usize> {
-        self.segment_indices
-            .iter()
-            .enumerate()
-            .filter_map(|(segment_index, &model_index)| {
-                solution
-                    .get(model_index)
-                    .copied()
-                    .filter(|value| *value > 0.5)
-                    .map(|value| (segment_index, value))
-            })
-            .max_by(|(_, lhs), (_, rhs)| lhs.partial_cmp(rhs).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(segment_index, _)| segment_index)
+        self.selected_segment_index_checked(solution).ok().flatten()
+    }
+
+    /// 校验并提取选中分段 / Validate and extract the selected segment
+    pub fn selected_segment_index_checked(
+        &self,
+        solution: &[f64],
+    ) -> Result<Option<usize>, String> {
+        if self.breakpoints.is_empty() {
+            return Err("continuous radius registration has no PWL breakpoints".to_string());
+        }
+        let expected_segments = self.breakpoints.len().saturating_sub(1);
+        if self.segment_indices.len() != expected_segments
+            || self.left_lambda_indices.len() != expected_segments
+            || self.right_lambda_indices.len() != expected_segments
+        {
+            return Err(format!(
+                "continuous radius registration has inconsistent PWL layout: {} breakpoints, {} segments",
+                self.breakpoints.len(),
+                self.segment_indices.len(),
+            ));
+        }
+        if self.breakpoints.iter().any(|value| !value.is_finite())
+            || self
+                .breakpoints
+                .windows(2)
+                .any(|window| window[0] >= window[1])
+        {
+            return Err("continuous radius registration has invalid PWL breakpoints".to_string());
+        }
+        let mut selected = None;
+        let mut selected_value = f64::NEG_INFINITY;
+        for (segment_index, &model_index) in self.segment_indices.iter().enumerate() {
+            let value = solution.get(model_index).copied().ok_or_else(|| {
+                format!(
+                    "continuous radius segment {} references missing solver value at index {}",
+                    segment_index, model_index,
+                )
+            })?;
+            if !value.is_finite() {
+                return Err(format!(
+                    "continuous radius segment {} has non-finite solver value {}",
+                    segment_index, value,
+                ));
+            }
+            if value > 0.5 && value > selected_value {
+                selected = Some(segment_index);
+                selected_value = value;
+            }
+        }
+        Ok(selected)
+    }
+
+    /// 检查分段索引是否属于已注册 PWL / Check whether a segment index belongs to the registered PWL
+    pub fn accepts_segment_index(&self, segment_index: usize) -> bool {
+        segment_index < self.segment_indices.len()
     }
 
     /// 评估注册 PWL 的半径平方 / Evaluate registered PWL radius squared
     pub fn evaluate_radius_squared(&self, radius: f64) -> Option<f64> {
-        if self.breakpoints.is_empty() {
+        if !radius.is_finite()
+            || self.breakpoints.is_empty()
+            || self.breakpoints.iter().any(|value| !value.is_finite())
+            || self
+                .breakpoints
+                .windows(2)
+                .any(|window| window[0] >= window[1])
+        {
             return None;
         }
         if self.breakpoints.len() == 1 {
-            return Some(self.breakpoints[0] * self.breakpoints[0]);
+            return finite_square(self.breakpoints[0]);
         }
         if radius <= self.breakpoints[0] {
-            return Some(self.breakpoints[0] * self.breakpoints[0]);
+            return finite_square(self.breakpoints[0]);
         }
         for window in self.breakpoints.windows(2) {
             let left = window[0];
             let right = window[1];
             if radius <= right {
                 let width = right - left;
-                if width.abs() <= f64::EPSILON {
-                    return Some(right * right);
+                if width <= 0.0 {
+                    return None;
                 }
                 let ratio = (radius - left) / width;
-                return Some(left * left + ratio * (right * right - left * left));
+                let result = left * left + ratio * (right * right - left * left);
+                return result.is_finite().then_some(result);
             }
         }
-        self.breakpoints.last().map(|value| value * value)
+        self.breakpoints
+            .last()
+            .and_then(|value| finite_square(*value))
     }
+}
+
+fn finite_square(value: f64) -> Option<f64> {
+    let squared = value * value;
+    squared.is_finite().then_some(squared)
 }
 
 /// 连续半径建模注册结果 / Continuous radius model registration result
@@ -288,4 +353,3 @@ impl ContinuousRadiusModelRegistration {
         self.variables.len()
     }
 }
-

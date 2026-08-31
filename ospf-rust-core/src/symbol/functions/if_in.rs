@@ -1,22 +1,24 @@
 //! If-in 函数符号 / If-in function symbol
 
-use super::super::{
-    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
-    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
-};
-use super::big_m::infer_linear_bounds_from_tokens;
-use crate::error::{ModelError, Result};
-use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
-use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
-use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, Mul};
 use std::sync::Arc;
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use crate::error::{ModelError, Result};
+use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
+use crate::token::{IntoValue, Token, TokenList};
+use crate::variable::{BinaryVariableItem, VariableId, VariableRange, new_group_id};
+use super::super::{
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
+};
+use super::ConditionalIndicatorFunction;
+use super::big_m::infer_linear_bounds_from_tokens;
+use super::conditional::{IfInRangeFunction, TruthValue};
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -57,19 +59,622 @@ where
 
 fn convert_f64_to_v<V>(value: f64, context: &str) -> Result<V>
 where
-    V: FromPrimitive,
+    V: FromPrimitive + ToPrimitive,
 {
-    from_f64(value).ok_or_else(|| {
+    if !value.is_finite() {
+        return Err(ModelError::InvalidConstraint(format!(
+            "`{context}` value must be finite, got {value}"
+        ))
+        .into());
+    }
+    let converted = from_f64(value).ok_or_else(|| {
         ModelError::InvalidConstraint(format!(
             "failed to convert `{}` value {} from f64 into model value type",
             context, value
         ))
-        .into()
-    })
+    })?;
+    let roundtrip = to_f64(&converted).ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "failed to inspect converted `{context}` value {value}"
+        ))
+    })?;
+    if !roundtrip.is_finite() {
+        return Err(ModelError::InvalidConstraint(format!(
+            "converted `{context}` value must be finite, got {roundtrip}"
+        ))
+        .into());
+    }
+    Ok(converted)
 }
 
 const MIN_BIG_M: f64 = 1.0;
 const STEP_EPSILON: f64 = 1e-8;
+const STRICT_BOUNDARY: f64 = STEP_EPSILON + STEP_EPSILON;
+
+fn next_up_finite(value: f64) -> Option<f64> {
+    if !value.is_finite() || value < 0.0 {
+        return None;
+    }
+    let next = if value == 0.0 {
+        f64::from_bits(1)
+    } else {
+        f64::from_bits(value.to_bits() + 1)
+    };
+    next.is_finite().then_some(next)
+}
+
+fn expand_big_m_with_strict_boundary(max_difference: f64) -> Result<f64> {
+    if !max_difference.is_finite() || max_difference < 0.0 {
+        return Err(ModelError::InvalidConstraint(
+            "if_in inferred maximum difference is not finite and non-negative".to_string(),
+        )
+        .into());
+    }
+
+    // 先尝试直接加严格余量；若被舍入吞掉，则按 ULP 向上扩张并重新验证实际差值。
+    // Try the direct margin first; if rounding removes it, expand by ULPs and verify the actual gap.
+    let mut expanded = max_difference + STRICT_BOUNDARY;
+    if !expanded.is_finite() || expanded - max_difference < STRICT_BOUNDARY {
+        expanded = next_up_finite(max_difference).ok_or_else(|| {
+            ModelError::InvalidConstraint(format!(
+                "if_in inferred Big-M cannot exceed maximum difference {max_difference} while preserving strict boundary"
+            ))
+        })?;
+        while expanded - max_difference < STRICT_BOUNDARY {
+            expanded = next_up_finite(expanded).ok_or_else(|| {
+                ModelError::InvalidConstraint(format!(
+                    "if_in inferred Big-M cannot represent strict boundary above maximum difference {max_difference}"
+                ))
+            })?;
+        }
+    }
+
+    let expanded = expanded.max(MIN_BIG_M);
+    if expanded - max_difference < STRICT_BOUNDARY {
+        return Err(ModelError::InvalidConstraint(format!(
+            "if_in inferred Big-M {expanded} does not preserve strict boundary {STRICT_BOUNDARY} above maximum difference {max_difference}"
+        ))
+        .into());
+    }
+    Ok(expanded)
+}
+
+impl<V> IfInRangeFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    /// 校验闭区间两侧关系和有限边界 / Validate both relations and finite bounds of a closed interval
+    ///
+    /// `IfInRangeFunction` 只接受 `x >= lower` 与 `upper >= x` 两个闭区间关系。
+    /// `IfInRangeFunction` accepts only `x >= lower` and `upper >= x` for a closed interval.
+    pub fn validate(&self) -> Result<()> {
+        super::conditional::validate_if_in_range(&self.lower, &self.upper)
+    }
+
+    /// 使用校验后的描述器创建闭区间条件 / Create a closed-interval condition after validation
+    pub fn try_new(
+        lower: super::conditional::ConditionalIfFunction<V>,
+        upper: super::conditional::ConditionalIfFunction<V>,
+    ) -> Result<Self> {
+        Self::new(lower, upper)
+    }
+
+    /// 创建可注册的闭区间函数 / Create a registerable closed-interval function
+    ///
+    /// 纯描述器保留在 `IfInRangeFunction` 中；需要模型变量、辅助令牌和约束时，
+    /// 使用该入口生成 `RegisterableIfInRangeFunction`。
+    /// The descriptor remains pure; use this entry point when model variables,
+    /// helper tokens, and constraints are required.
+    pub fn registerable(
+        self,
+        id: u64,
+        name: impl AsRef<str>,
+    ) -> Result<RegisterableIfInRangeFunction<V>> {
+        RegisterableIfInRangeFunction::new(id, name, self)
+    }
+
+    /// 使用自动 ID 和调用方名称创建可注册函数 / Create a registerable function with an auto ID
+    pub fn named_registerable(
+        self,
+        name: impl AsRef<str>,
+    ) -> Result<RegisterableIfInRangeFunction<V>> {
+        RegisterableIfInRangeFunction::named(name, self)
+    }
+
+    /// 使用自动 ID 和自动名称创建可注册函数 / Create a registerable function with an auto name
+    pub fn auto_registerable(self) -> Result<RegisterableIfInRangeFunction<V>> {
+        RegisterableIfInRangeFunction::auto(self)
+    }
+
+    /// 将两侧三值结果合并为闭区间结果 / Combine both three-valued sides into the interval result
+    pub fn classify_checked(
+        &self,
+        lower_difference: &V,
+        upper_difference: &V,
+    ) -> Result<TruthValue> {
+        self.validate()?;
+        self.classify(lower_difference, upper_difference)
+    }
+
+    /// 求值闭区间条件，Undefined 映射为 None / Evaluate the interval, mapping Undefined to None
+    pub fn evaluate(&self, lower_difference: &V, upper_difference: &V) -> Result<Option<V>> {
+        match self.classify_checked(lower_difference, upper_difference)? {
+            TruthValue::True => V::from_f64(1.0)
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "failed to convert if_in_range true value".to_string(),
+                    )
+                    .into()
+                })
+                .map(Some),
+            TruthValue::False => V::from_f64(0.0)
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "failed to convert if_in_range false value".to_string(),
+                    )
+                    .into()
+                })
+                .map(Some),
+            TruthValue::Undefined => Ok(None),
+        }
+    }
+}
+
+/// 可注册的闭区间条件函数 / Registerable closed-interval condition function
+///
+/// 该包装器为闭区间的两侧关系分别创建范围驱动指示器，再以三个线性 AND
+/// 约束生成最终结果。`IfInRangeFunction` 本身仍是纯语义描述器，以保持旧调用方兼容。
+/// This wrapper creates a range-driven indicator for each side of the interval and
+/// combines them with three linear AND constraints. The descriptor itself remains
+/// pure to preserve compatibility for existing callers.
+#[derive(Debug, Clone)]
+pub struct RegisterableIfInRangeFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 中间符号标识符 / Intermediate symbol identifier
+    id: IntermediateSymbolId,
+    /// 闭区间描述器 / Closed-interval descriptor
+    range: IfInRangeFunction<V>,
+    /// 下侧关系指示器 / Lower-side relation indicator
+    lower_indicator: ConditionalIndicatorFunction<V>,
+    /// 上侧关系指示器 / Upper-side relation indicator
+    upper_indicator: ConditionalIndicatorFunction<V>,
+    /// AND 结果变量 / AND result variable
+    result_var: BinaryVariableItem,
+    /// 声明的依赖 ID 列表 / Declared dependency IDs
+    declared_dependency_ids: Vec<u64>,
+}
+
+impl<V> RegisterableIfInRangeFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    /// 创建可注册闭区间函数 / Create a registerable closed-interval function
+    pub fn new(id: u64, name: impl AsRef<str>, range: IfInRangeFunction<V>) -> Result<Self> {
+        range.validate()?;
+        let name = name.as_ref();
+        let lower_indicator = ConditionalIndicatorFunction::new(
+            auxiliary_symbol_id(id, 1),
+            &format!("{name}_lower"),
+            range.lower.condition.clone(),
+            range.lower.relation,
+            range.lower.strict_boundary.clone(),
+            range.lower.bounds.clone(),
+        )?;
+        let upper_indicator = ConditionalIndicatorFunction::new(
+            auxiliary_symbol_id(id, 2),
+            &format!("{name}_upper"),
+            range.upper.condition.clone(),
+            range.upper.relation,
+            range.upper.strict_boundary.clone(),
+            range.upper.bounds.clone(),
+        )?;
+        let result_var = BinaryVariableItem::create(
+            VariableId::new(new_group_id(), 0),
+            &format!("{name}_if_in_range"),
+        );
+        Ok(Self {
+            id: IntermediateSymbolId::new(id, name),
+            range,
+            lower_indicator,
+            upper_indicator,
+            result_var,
+            declared_dependency_ids: Vec::new(),
+        })
+    }
+
+    /// 使用自动 ID 和调用方名称创建函数 / Create with an auto ID and caller name
+    pub fn named(name: impl AsRef<str>, range: IfInRangeFunction<V>) -> Result<Self> {
+        Self::new(next_auto_intermediate_symbol_id(), name, range)
+    }
+
+    /// 使用自动 ID 和自动名称创建函数 / Create with an auto ID and generated name
+    pub fn auto(range: IfInRangeFunction<V>) -> Result<Self> {
+        let id = next_auto_intermediate_symbol_id();
+        let name = auto_intermediate_symbol_name("if_in_range", id);
+        Self::new(id, name, range)
+    }
+
+    /// 从两侧条件创建函数 / Create from the two side conditions
+    pub fn from_parts(
+        id: u64,
+        name: impl AsRef<str>,
+        lower: super::conditional::ConditionalIfFunction<V>,
+        upper: super::conditional::ConditionalIfFunction<V>,
+    ) -> Result<Self> {
+        Self::new(id, name, IfInRangeFunction::try_new(lower, upper)?)
+    }
+
+    /// 设置声明的依赖 ID 列表 / Set declared dependency IDs
+    pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
+        self.declared_dependency_ids = dependency_ids;
+        self
+    }
+
+    /// 获取闭区间描述器 / Get the interval descriptor
+    pub fn condition_descriptor(&self) -> &IfInRangeFunction<V> {
+        &self.range
+    }
+
+    /// 获取结果变量 / Get the result variable
+    pub fn result_variable(&self) -> &BinaryVariableItem {
+        &self.result_var
+    }
+
+    /// 获取下侧指示器 / Get the lower-side indicator
+    pub fn lower_indicator(&self) -> &ConditionalIndicatorFunction<V> {
+        &self.lower_indicator
+    }
+
+    /// 获取上侧指示器 / Get the upper-side indicator
+    pub fn upper_indicator(&self) -> &ConditionalIndicatorFunction<V> {
+        &self.upper_indicator
+    }
+
+    /// 获取两个侧面和结果的辅助变量 / Get side and result helper variables
+    pub fn helper_variables(&self) -> Vec<&BinaryVariableItem> {
+        vec![
+            self.lower_indicator.result_variable(),
+            self.upper_indicator.result_variable(),
+            &self.result_var,
+        ]
+    }
+
+    /// 校验闭区间函数 / Validate the closed-interval function
+    pub fn validate(&self) -> Result<()> {
+        self.range.validate()
+    }
+
+    /// 对两侧条件进行三值分类 / Classify both side conditions
+    pub fn classify(&self, lower_difference: &V, upper_difference: &V) -> Result<TruthValue> {
+        self.validate()?;
+        self.range.classify(lower_difference, upper_difference)
+    }
+
+    /// 求值闭区间函数 / Evaluate the closed-interval function
+    pub fn evaluate(&self, lower_difference: &V, upper_difference: &V) -> Result<Option<V>> {
+        self.classify(lower_difference, upper_difference)?;
+        self.range.evaluate(lower_difference, upper_difference)
+    }
+
+    /// 从令牌求值两侧条件 / Evaluate both side conditions from tokens
+    pub fn evaluate_with_tokens(
+        &self,
+        token_table: &dyn TokenList<V>,
+        zero_if_none: bool,
+    ) -> Result<Option<V>>
+    where
+        V: Add<Output = V> + Mul<Output = V> + Zero,
+    {
+        let lower = match evaluate_linear(&self.range.lower.condition, token_table, zero_if_none) {
+            Some(value) => value,
+            None => return Ok(None),
+        };
+        let upper = match evaluate_linear(&self.range.upper.condition, token_table, zero_if_none) {
+            Some(value) => value,
+            None => return Ok(None),
+        };
+        self.evaluate(&lower, &upper)
+    }
+
+    fn variable_index(
+        symbol_to_index: &HashMap<usize, usize>,
+        variable: &BinaryVariableItem,
+        role: &str,
+    ) -> Result<usize> {
+        symbol_to_index
+            .get(&(variable.id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "if_in_range {role} variable id {}",
+                    variable.id().unique_id()
+                ))
+                .into()
+            })
+    }
+
+    fn append_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()>
+    where
+        V: Add<Output = V> + Mul<Output = V> + Zero,
+        f64: IntoValue<V>,
+    {
+        let mut staged = Vec::new();
+        self.lower_indicator.register_tokens(&mut staged)?;
+        self.upper_indicator.register_tokens(&mut staged)?;
+        staged.push(Token::from_generic(self.result_var.clone(), usize::MAX));
+        for token in &mut staged {
+            token.solver_index = usize::MAX;
+        }
+
+        let mut ids = HashSet::with_capacity(staged.len());
+        for token in &staged {
+            if !ids.insert(token.id()) || tokens.iter().any(|existing| existing.id() == token.id())
+            {
+                return Err(ModelError::ConstraintConflict(format!(
+                    "if_in_range `{}` helper token already exists",
+                    self.id.name
+                ))
+                .into());
+            }
+        }
+        tokens.extend(staged);
+        Ok(())
+    }
+
+    fn build_mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>>
+    where
+        V: Add<Output = V> + Mul<Output = V> + Zero,
+        f64: IntoValue<V>,
+    {
+        self.validate()?;
+        let mut constraints = self
+            .lower_indicator
+            .mechanism_constraints(symbol_to_index)?;
+        constraints.extend(
+            self.upper_indicator
+                .mechanism_constraints(symbol_to_index)?,
+        );
+
+        let lower_index = Self::variable_index(
+            symbol_to_index,
+            self.lower_indicator.result_variable(),
+            "lower indicator",
+        )?;
+        let upper_index = Self::variable_index(
+            symbol_to_index,
+            self.upper_indicator.result_variable(),
+            "upper indicator",
+        )?;
+        let result_index = Self::variable_index(symbol_to_index, &self.result_var, "result")?;
+        let source: Arc<dyn IntermediateSymbol<V>> = Arc::new(self.clone());
+        let one = convert_f64_to_v::<V>(1.0, "if_in_range coefficient")?;
+        let neg_one = convert_f64_to_v::<V>(-1.0, "if_in_range coefficient")?;
+        let zero = convert_f64_to_v::<V>(0.0, "if_in_range rhs")?;
+        let neg_one_rhs = convert_f64_to_v::<V>(-1.0, "if_in_range rhs")?;
+
+        let link = |name: String,
+                    monomials: Vec<LinearMonomial<V>>,
+                    relation: ConstraintRelation,
+                    rhs: V| {
+            LinearConstraint::from_symbol(
+                LinearInequality::new(Linear::new(monomials, zero.clone()), relation, rhs),
+                &name,
+                source.clone(),
+            )
+        };
+        constraints.push(link(
+            format!("{}_and_lower_ub", self.id.name),
+            vec![
+                LinearMonomial::new(one.clone(), result_index),
+                LinearMonomial::new(neg_one.clone(), lower_index),
+            ],
+            ConstraintRelation::LessEqual,
+            zero.clone(),
+        ));
+        constraints.push(link(
+            format!("{}_and_upper_ub", self.id.name),
+            vec![
+                LinearMonomial::new(one.clone(), result_index),
+                LinearMonomial::new(neg_one.clone(), upper_index),
+            ],
+            ConstraintRelation::LessEqual,
+            zero.clone(),
+        ));
+        constraints.push(link(
+            format!("{}_and_lb", self.id.name),
+            vec![
+                LinearMonomial::new(one, result_index),
+                LinearMonomial::new(neg_one.clone(), lower_index),
+                LinearMonomial::new(neg_one, upper_index),
+            ],
+            ConstraintRelation::GreaterEqual,
+            neg_one_rhs,
+        ));
+        Ok(constraints)
+    }
+}
+
+fn auxiliary_symbol_id(base: u64, salt: u64) -> u64 {
+    base.wrapping_mul(0x9e37_79b9_7f4a_7c15)
+        .wrapping_add(salt.wrapping_mul(0x517c_c1b7_2722_0a95))
+}
+
+impl<V> Display for RegisterableIfInRangeFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "if_in_range({})", self.id.name)
+    }
+}
+
+impl<V> DynSymbol for RegisterableIfInRangeFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn display_name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn dyn_id(&self) -> SymbolDynId<'_> {
+        SymbolDynId::standalone(self.id.id as usize)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl<V> Symbol for RegisterableIfInRangeFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    type Id = IntermediateSymbolId;
+
+    fn id(&self) -> Self::Id {
+        self.id.clone()
+    }
+}
+
+impl<V> IntermediateSymbol<V> for RegisterableIfInRangeFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn category(&self) -> Category {
+        Category::Linear
+    }
+
+    fn cached(&self) -> bool {
+        false
+    }
+
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
+        HashSet::new()
+    }
+
+    fn declared_dependency_ids(&self) -> Vec<u64> {
+        self.declared_dependency_ids.clone()
+    }
+
+    fn flush(&self, _force: bool) {}
+
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        self.append_tokens(tokens)
+    }
+
+    fn mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        self.build_mechanism_constraints(symbol_to_index)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        _tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        self.build_mechanism_constraints(symbol_to_index)
+    }
+
+    fn evaluate_from_tokens(
+        &self,
+        token_table: &dyn TokenList<V>,
+        zero_if_none: bool,
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
+    }
+
+    fn prepare(&self, values: &HashMap<usize, V>) -> Option<V> {
+        values.get(&self.result_var.index()).cloned()
+    }
+
+    fn range(&self) -> Option<VariableRange<V>> {
+        Some(VariableRange::bounded(
+            convert_f64_to_v::<V>(0.0, "if_in_range lower bound")
+                .expect("zero is representable for a registered value type"),
+            convert_f64_to_v::<V>(1.0, "if_in_range upper bound")
+                .expect("one is representable for a registered value type"),
+        ))
+    }
+
+    fn to_raw_string(&self, _unfold: u64) -> String {
+        format!("if_in_range({})", self.id.name)
+    }
+}
+
+impl<V> FunctionSymbol<V> for RegisterableIfInRangeFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        self.append_tokens(tokens)
+    }
+
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
+        self.evaluate_with_tokens(token_table, zero_if_none)
+            .ok()
+            .flatten()
+    }
+}
+
+impl<V> LinearIntermediateSymbol<V> for RegisterableIfInRangeFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                self.result_var.index(),
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        )
+    }
+
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
+        Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
 
 /// 检查输入值是否属于离散值集合。
 /// Checks whether an input value belongs to a discrete set of values.
@@ -197,6 +802,25 @@ where
         + FromPrimitive,
     f64: IntoValue<V>,
 {
+    fn validate_set_values(&self) -> Result<()> {
+        for (index, value) in self.values.iter().enumerate() {
+            let value_f = to_f64(value).ok_or_else(|| {
+                ModelError::InvalidConstraint(format!(
+                    "if_in `{}` value at index {} cannot be converted to f64",
+                    self.id.name, index
+                ))
+            })?;
+            if !value_f.is_finite() {
+                return Err(ModelError::InvalidConstraint(format!(
+                    "if_in `{}` contains a non-finite set value at index {}",
+                    self.id.name, index
+                ))
+                .into());
+            }
+        }
+        Ok(())
+    }
+
     fn configured_big_m(&self) -> Result<f64> {
         let big_m = to_f64(&self.big_m).ok_or_else(|| {
             ModelError::InvalidConstraint(format!(
@@ -214,16 +838,37 @@ where
         Ok(big_m)
     }
 
-    fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
-        let (input_lower, input_upper) = infer_linear_bounds_from_tokens(&self.input, tokens)?;
-        let mut inferred = MIN_BIG_M;
+    fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Result<Option<f64>> {
+        self.validate_set_values()?;
+        let (input_lower, input_upper) = match infer_linear_bounds_from_tokens(&self.input, tokens) {
+            Some(bounds) => bounds,
+            None => return Ok(None),
+        };
+        let mut max_difference: f64 = 0.0;
         for value in &self.values {
-            let value_f = to_f64(value)?;
+            let value_f = match to_f64(value) {
+                Some(value) => value,
+                None => return Ok(None),
+            };
+            if !value_f.is_finite() {
+                return Err(ModelError::InvalidConstraint(format!(
+                    "if_in `{}` contains a non-finite set value",
+                    self.id.name
+                ))
+                .into());
+            }
             let lower_diff = (input_lower - value_f).abs();
             let upper_diff = (input_upper - value_f).abs();
-            inferred = inferred.max(lower_diff.max(upper_diff));
+            if !lower_diff.is_finite() || !upper_diff.is_finite() {
+                return Err(ModelError::InvalidConstraint(format!(
+                    "if_in `{}` inferred difference is not finite",
+                    self.id.name
+                ))
+                .into());
+            }
+            max_difference = max_difference.max(lower_diff.max(upper_diff));
         }
-        Some(inferred.max(MIN_BIG_M))
+        Ok(Some(expand_big_m_with_strict_boundary(max_difference)?))
     }
 
     fn build_mechanism_constraints(
@@ -231,6 +876,7 @@ where
         symbol_to_index: &HashMap<usize, usize>,
         big_m: f64,
     ) -> Result<Vec<LinearConstraint<V>>> {
+        self.validate_set_values()?;
         let result_index = symbol_to_index
             .get(&(self.result_var.id().unique_id() as usize))
             .copied()
@@ -266,9 +912,10 @@ where
             ))
             .into());
         }
+        convert_f64_to_v::<V>(big_m, "if_in Big-M")?;
 
         let tolerance = STEP_EPSILON;
-        let strict_boundary = tolerance + STEP_EPSILON;
+        let strict_boundary = STRICT_BOUNDARY;
         let source = Arc::new(self.clone());
 
         let mut base_monomials = Vec::with_capacity(self.input.monomials().len());
@@ -538,7 +1185,7 @@ where
         symbol_to_index: &HashMap<usize, usize>,
         tokens: &[Token<V>],
     ) -> Result<Vec<LinearConstraint<V>>> {
-        let big_m = match self.infer_big_m_from_tokens(tokens) {
+        let big_m = match self.infer_big_m_from_tokens(tokens)? {
             Some(inferred) => inferred,
             None => self.configured_big_m()?,
         };
@@ -577,26 +1224,22 @@ where
     f64: IntoValue<V>,
 {
     fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
-        tokens.push(Token::from_generic(
-            self.result_var.clone(),
-            self.result_var.index(),
-        ));
+        self.validate_set_values()?;
+        tokens.push(Token::from_generic(self.result_var.clone(), usize::MAX));
         let count = self.values.len();
         for i in 0..count {
             let indicator_var = self.value_indicator_variable(i);
-            tokens.push(Token::from_generic(
-                indicator_var.clone(),
-                indicator_var.index(),
-            ));
+            tokens.push(Token::from_generic(indicator_var.clone(), usize::MAX));
         }
         for i in 0..count {
             let side_var = self.value_side_variable(count, i);
-            tokens.push(Token::from_generic(side_var.clone(), side_var.index()));
+            tokens.push(Token::from_generic(side_var.clone(), usize::MAX));
         }
         Ok(())
     }
 
     fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
+        self.validate_set_values().ok()?;
         let value = to_f64(&evaluate_linear(&self.input, token_table, zero_if_none)?)?;
         let eps = STEP_EPSILON;
 
@@ -641,12 +1284,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
     use crate::model::{ConstraintRelation, LinearConstraint};
-    use crate::token::{MutableTokenList, Token, VecTokenList};
+    use crate::symbol::functions::conditional::{
+        ConditionBounds, ConditionRelation, ConditionalIfFunction,
+    };
+    use crate::token::{MutableTokenList, Token, TokenList, VecTokenList};
     use crate::variable::{ContinuousVariableItem, VariableRange};
+    use std::collections::HashMap;
 
     fn constraint_lhs(constraint: &LinearConstraint<f64>, values: &HashMap<usize, f64>) -> f64 {
         let mut lhs = *constraint.inequality.polynomial.constant_term();
@@ -666,6 +1311,18 @@ mod tests {
             ConstraintRelation::LessEqual => lhs <= constraint.inequality.rhs + 1e-6,
             ConstraintRelation::Equal => (lhs - constraint.inequality.rhs).abs() <= 1e-6,
             ConstraintRelation::GreaterEqual => lhs + 1e-6 >= constraint.inequality.rhs,
+        }
+    }
+
+    fn satisfies_at_precision(
+        constraint: &LinearConstraint<f64>,
+        values: &HashMap<usize, f64>,
+    ) -> bool {
+        let lhs = constraint_lhs(constraint, values);
+        match constraint.inequality.relation {
+            ConstraintRelation::LessEqual => lhs <= constraint.inequality.rhs + 1e-12,
+            ConstraintRelation::Equal => (lhs - constraint.inequality.rhs).abs() <= 1e-12,
+            ConstraintRelation::GreaterEqual => lhs + 1e-12 >= constraint.inequality.rhs,
         }
     }
 
@@ -705,6 +1362,31 @@ mod tests {
         );
         let value = <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
         assert_eq!(value, Some(0.0));
+    }
+
+    #[test]
+    fn if_in_function_calculate_value_rejects_non_finite_set_values() {
+        let x = ContinuousVariableItem::create(VariableId::standalone(90_015), "x");
+        let mut tokens = VecTokenList::new();
+        let tx = Token::from_generic(x, 0);
+        tx.set_result(1.0);
+        tokens.add_token(tx);
+
+        for (index, invalid_value) in
+            [f64::NAN, f64::INFINITY, f64::NEG_INFINITY].into_iter().enumerate()
+        {
+            let f: IfInFunction<f64> = IfInFunction::new(
+                90015 + index as u64,
+                "ifin_non_finite_calculate",
+                Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+                vec![invalid_value],
+                100.0,
+            );
+            let value = <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
+
+            assert_eq!(value, None);
+            assert_ne!(value, Some(0.0));
+        }
     }
 
     #[test]
@@ -783,7 +1465,8 @@ mod tests {
         // |lower - 1| = 4, |upper - 1| = 6 => max 6
         // |lower - 3| = 6, |upper - 3| = 4 => max 6
         // |lower - 5| = 8, |upper - 5| = 2 => max 8
-        // inferred M = 8
+        // 最大偏差为 8，推断 M = 8 + 严格边界。
+        // Maximum difference is 8, so inferred M = 8 + strict boundary.
         let f: IfInFunction<f64> = IfInFunction::new(
             9005,
             "ifin_bound",
@@ -818,11 +1501,205 @@ mod tests {
             .find(|monomial| monomial.var_index() == 4)
             .expect("indicator term should exist");
 
-        // inferred M = 8 for value=5.0 (the third value, pt2)
-        let expected_m = 8.0;
+        // value=5.0（第三个值 pt2）时，推断 M = 8 + 严格边界。
+        // For value=5.0 (the third value, pt2), inferred M = 8 + strict boundary.
+        let expected_m = 8.0 + STRICT_BOUNDARY;
         let expected_rhs = expected_m + STEP_EPSILON;
         assert!((band_ub.inequality.rhs - expected_rhs).abs() <= 1e-9);
         assert!((*indicator_term.coefficient() - expected_m).abs() <= 1e-9);
+    }
+
+    #[test]
+    fn if_in_function_inferred_big_m_keeps_upper_endpoint_non_member_feasible() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(90_045),
+            "x",
+            VariableRange::bounded(0.0, 1.0),
+        );
+        let f: IfInFunction<f64> = IfInFunction::new(
+            9011,
+            "ifin_endpoint",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            vec![0.0],
+            100.0,
+        );
+
+        let result_id = f.result_variable().id().unique_id() as usize;
+        let indicator = f.value_indicator_variable(0);
+        let side = f.value_side_variable(1, 0);
+        let symbol_to_index = HashMap::from([
+            (result_id, 1usize),
+            (indicator.id().unique_id() as usize, 2usize),
+            (side.id().unique_id() as usize, 3usize),
+        ]);
+        let tokens = vec![Token::from_generic(x, 0)];
+        let constraints = f
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("if_in endpoint constraints should be generated");
+
+        let band_ub = constraints
+            .iter()
+            .find(|constraint| constraint.name == "ifin_endpoint_pt0_band_ub")
+            .expect("endpoint upper-band constraint should exist");
+        let indicator_term = band_ub
+            .inequality
+            .polynomial
+            .monomials()
+            .iter()
+            .find(|monomial| monomial.var_index() == 2)
+            .expect("endpoint indicator term should exist");
+        let expected_m = 1.0 + STRICT_BOUNDARY;
+        assert!((*indicator_term.coefficient() - expected_m).abs() <= 1e-12);
+
+        // x=0 命中集合下端点，x=1 是合法非成员上端点。
+        // x=0 hits the set endpoint, while x=1 is a valid non-member endpoint.
+        let member_at_lower_endpoint = HashMap::from([
+            (0usize, 0.0_f64),
+            (1usize, 1.0),
+            (2usize, 1.0),
+            (3usize, 0.0),
+        ]);
+        assert!(constraints
+            .iter()
+            .all(|constraint| satisfies_at_precision(constraint, &member_at_lower_endpoint)));
+
+        let non_member_at_upper_endpoint = HashMap::from([
+            (0usize, 1.0_f64),
+            (1usize, 0.0),
+            (2usize, 0.0),
+            (3usize, 1.0),
+        ]);
+        assert!(constraints
+            .iter()
+            .all(|constraint| satisfies_at_precision(constraint, &non_member_at_upper_endpoint)));
+    }
+
+    #[test]
+    fn if_in_function_inferred_big_m_uses_ulp_for_large_endpoint_gaps() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(90_046),
+            "large_x",
+            VariableRange::bounded(0.0, 1e16),
+        );
+        let f: IfInFunction<f64> = IfInFunction::new(
+            9012,
+            "ifin_large_endpoint",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            vec![0.0],
+            100.0,
+        );
+        let result_id = f.result_variable().id().unique_id() as usize;
+        let indicator = f.value_indicator_variable(0);
+        let side = f.value_side_variable(1, 0);
+        let symbol_to_index = HashMap::from([
+            (result_id, 1usize),
+            (indicator.id().unique_id() as usize, 2usize),
+            (side.id().unique_id() as usize, 3usize),
+        ]);
+        let tokens = vec![Token::from_generic(x, 0)];
+        let constraints = f
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("large-scale if_in constraints should be generated");
+        let band_ub = constraints
+            .iter()
+            .find(|constraint| constraint.name == "ifin_large_endpoint_pt0_band_ub")
+            .expect("large-scale upper-band constraint should exist");
+        let inferred_m = *band_ub
+            .inequality
+            .polynomial
+            .monomials()
+            .iter()
+            .find(|monomial| monomial.var_index() == 2)
+            .expect("large-scale indicator term should exist")
+            .coefficient();
+        assert!(inferred_m > 1e16);
+        assert!(inferred_m - 1e16 >= STRICT_BOUNDARY);
+
+        // x=1e16 是集合外上端点，正差值侧变量取 1。
+        // x=1e16 is the out-of-set upper endpoint, so the positive side variable is 1.
+        let non_member_at_upper_endpoint = HashMap::from([
+            (0usize, 1e16_f64),
+            (1usize, 0.0),
+            (2usize, 0.0),
+            (3usize, 1.0),
+        ]);
+        assert!(constraints
+            .iter()
+            .all(|constraint| satisfies_at_precision(constraint, &non_member_at_upper_endpoint)));
+
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(90_047),
+            "large_symmetric_x",
+            VariableRange::bounded(0.0, 1e16),
+        );
+        let f: IfInFunction<f64> = IfInFunction::new(
+            9013,
+            "ifin_large_symmetric_endpoint",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            vec![1e16],
+            100.0,
+        );
+        let result_id = f.result_variable().id().unique_id() as usize;
+        let indicator = f.value_indicator_variable(0);
+        let side = f.value_side_variable(1, 0);
+        let symbol_to_index = HashMap::from([
+            (result_id, 1usize),
+            (indicator.id().unique_id() as usize, 2usize),
+            (side.id().unique_id() as usize, 3usize),
+        ]);
+        let tokens = vec![Token::from_generic(x, 0)];
+        let constraints = f
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("symmetric large-scale if_in constraints should be generated");
+        let band_ub = constraints
+            .iter()
+            .find(|constraint| constraint.name == "ifin_large_symmetric_endpoint_pt0_band_ub")
+            .expect("symmetric upper-band constraint should exist");
+        let inferred_m = *band_ub
+            .inequality
+            .polynomial
+            .monomials()
+            .iter()
+            .find(|monomial| monomial.var_index() == 2)
+            .expect("symmetric indicator term should exist")
+            .coefficient();
+        assert!(inferred_m > 1e16);
+        assert!(inferred_m - 1e16 >= STRICT_BOUNDARY);
+
+        // x=0 是集合外下端点，负差值侧变量取 0。
+        // x=0 is the out-of-set lower endpoint, so the negative side variable is 0.
+        let non_member_at_lower_endpoint = HashMap::from([
+            (0usize, 0.0_f64),
+            (1usize, 0.0),
+            (2usize, 0.0),
+            (3usize, 0.0),
+        ]);
+        assert!(constraints
+            .iter()
+            .all(|constraint| satisfies_at_precision(constraint, &non_member_at_lower_endpoint)));
+    }
+
+    #[test]
+    fn if_in_function_rejects_inferred_big_m_without_a_finite_next_up() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(90_048),
+            "max_x",
+            VariableRange::bounded(0.0, f64::MAX),
+        );
+        let f: IfInFunction<f64> = IfInFunction::new(
+            9014,
+            "ifin_max_endpoint",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            vec![0.0],
+            100.0,
+        );
+        let tokens = vec![Token::from_generic(x, 0)];
+        let error = f
+            .infer_big_m_from_tokens(&tokens)
+            .expect_err("an unsafe inferred Big-M should be rejected");
+        assert!(error
+            .to_string()
+            .contains("preserving strict boundary"));
     }
 
     #[test]
@@ -864,6 +1741,79 @@ mod tests {
 
         assert!((band_ub.inequality.rhs - (13.0 + STEP_EPSILON)).abs() <= 1e-9);
         assert!((*indicator_term.coefficient() - 13.0).abs() <= 1e-9);
+    }
+
+    #[test]
+    fn if_in_function_rejects_non_finite_set_value_without_partial_registration() {
+        let x = ContinuousVariableItem::create(VariableId::standalone(90_051), "x");
+        let f: IfInFunction<f64> = IfInFunction::new(
+            9015,
+            "ifin_non_finite_value",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            vec![f64::NAN],
+            13.0,
+        );
+
+        let mut registered_tokens = Vec::new();
+        let registration_error = f
+            .register_tokens(&mut registered_tokens)
+            .expect_err("non-finite set values must be rejected before registration");
+        assert!(matches!(
+            registration_error,
+            crate::error::CoreError::Model(crate::error::ModelError::InvalidConstraint(message))
+                if message.contains("non-finite set value")
+        ));
+        assert!(registered_tokens.is_empty());
+
+        let result_id = f.result_variable().id().unique_id() as usize;
+        let symbol_to_index = HashMap::from([(result_id, 1usize)]);
+        let input_tokens = vec![Token::from_generic(x, 0)];
+        let constraint_error = f
+            .mechanism_constraints_with_tokens(&symbol_to_index, &input_tokens)
+            .expect_err("non-finite set values must not use configured Big-M fallback");
+        assert!(matches!(
+            constraint_error,
+            crate::error::CoreError::Model(crate::error::ModelError::InvalidConstraint(message))
+                if message.contains("non-finite set value")
+        ));
+    }
+
+    #[test]
+    fn if_in_function_rejects_f32_big_m_overflow_before_constraints() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(90_052),
+            "f32_x",
+            VariableRange::bounded(1.0e20_f64, 2.0e20_f64),
+        );
+        let f: IfInFunction<f32> = IfInFunction::new(
+            9016,
+            "ifin_f32_big_m",
+            Linear::new(
+                vec![LinearMonomial::new(1.0e20_f32, 0)],
+                0.0_f32,
+            ),
+            vec![0.0_f32],
+            100.0_f32,
+        );
+
+        let result_id = f.result_variable().id().unique_id() as usize;
+        let indicator = f.value_indicator_variable(0);
+        let side = f.value_side_variable(1, 0);
+        let symbol_to_index = HashMap::from([
+            (result_id, 1usize),
+            (indicator.id().unique_id() as usize, 2usize),
+            (side.id().unique_id() as usize, 3usize),
+        ]);
+        let input_tokens = vec![Token::from_generic(x, 0)];
+        let error = f
+            .mechanism_constraints_with_tokens(&symbol_to_index, &input_tokens)
+            .expect_err("an inferred Big-M outside f32 must be rejected");
+
+        assert!(matches!(
+            error,
+            crate::error::CoreError::Model(crate::error::ModelError::InvalidConstraint(message))
+                if message.contains("if_in Big-M") && message.contains("finite")
+        ));
     }
 
     #[test]
@@ -1078,5 +2028,299 @@ mod tests {
                 .all(|constraint| satisfies(constraint, &assignment)),
             "constraints should be violated when x=2, result=1, all indicators=0"
         );
+    }
+
+    #[test]
+    fn if_in_range_keeps_closed_interval_three_valued_semantics() {
+        let bounds = ConditionBounds {
+            lower: -2.0,
+            upper: 2.0,
+        };
+        let lower = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            bounds.clone(),
+        )
+        .unwrap();
+        let upper = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(-1.0, 0)], 1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            bounds,
+        )
+        .unwrap();
+        let range = IfInRangeFunction::try_new(lower, upper).unwrap();
+
+        assert_eq!(range.classify(&0.0, &0.0).unwrap(), TruthValue::True);
+        assert_eq!(range.classify(&-0.05, &0.0).unwrap(), TruthValue::Undefined);
+        assert_eq!(range.classify(&-0.2, &0.0).unwrap(), TruthValue::False);
+        assert_eq!(range.evaluate(&0.0, &0.0).unwrap(), Some(1.0));
+        assert_eq!(range.evaluate(&-0.05, &0.0).unwrap(), None);
+    }
+
+    #[test]
+    fn if_in_range_rejects_non_closed_side_relations() {
+        let bounds = ConditionBounds {
+            lower: -1.0,
+            upper: 1.0,
+        };
+        let lower = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 1.0),
+            ConditionRelation::Greater,
+            0.1,
+            bounds.clone(),
+        )
+        .unwrap();
+        let upper = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(-1.0, 0)], 1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            bounds,
+        )
+        .unwrap();
+        assert!(IfInRangeFunction::try_new(lower, upper).is_err());
+    }
+
+    #[test]
+    fn if_in_range_constructor_validates_relations_and_endpoint_order() {
+        let bounds = ConditionBounds {
+            lower: -2.0,
+            upper: 2.0,
+        };
+        let strict_lower = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            ConditionRelation::Greater,
+            0.1,
+            bounds.clone(),
+        )
+        .unwrap();
+        let upper = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(-1.0, 0)], 1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            bounds.clone(),
+        )
+        .unwrap();
+        assert!(IfInRangeFunction::new(strict_lower, upper.clone()).is_err());
+
+        let lower = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], -2.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            bounds,
+        )
+        .unwrap();
+        assert!(IfInRangeFunction::new(lower, upper).is_err());
+    }
+
+    #[test]
+    fn if_in_range_constructor_rejects_unrepresentable_side_conditions() {
+        let bounds = ConditionBounds {
+            lower: -2.0,
+            upper: 2.0,
+        };
+        let upper = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(-1.0, 0)], 1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            bounds.clone(),
+        )
+        .unwrap();
+
+        let polynomial_lower = ConditionalIfFunction::new(
+            Linear::new(
+                vec![LinearMonomial::new(1.0, 0), LinearMonomial::new(1.0, 1)],
+                1.0,
+            ),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            bounds.clone(),
+        )
+        .unwrap();
+        assert!(IfInRangeFunction::new(polynomial_lower, upper.clone()).is_err());
+
+        let different_variable_upper = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(-1.0, 1)], 1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            bounds.clone(),
+        )
+        .unwrap();
+        let lower = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            bounds.clone(),
+        )
+        .unwrap();
+        assert!(IfInRangeFunction::new(lower.clone(), different_variable_upper).is_err());
+
+        let wrong_sign_lower = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(-1.0, 0)], -1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            bounds.clone(),
+        )
+        .unwrap();
+        assert!(IfInRangeFunction::new(wrong_sign_lower, upper.clone()).is_err());
+
+        let wrong_sign_upper = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], -1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            bounds.clone(),
+        )
+        .unwrap();
+        assert!(IfInRangeFunction::new(lower.clone(), wrong_sign_upper).is_err());
+
+        let manually_constructed = IfInRangeFunction {
+            lower,
+            upper: ConditionalIfFunction::new(
+                Linear::new(vec![LinearMonomial::new(1.0, 0)], -1.0),
+                ConditionRelation::GreaterEqual,
+                0.1,
+                bounds,
+            )
+            .unwrap(),
+        };
+        assert!(manually_constructed.validate().is_err());
+    }
+
+    #[test]
+    fn registerable_if_in_range_builds_two_indicators_and_an_and_result() {
+        let lower = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            ConditionBounds {
+                lower: -1.0,
+                upper: 1.0,
+            },
+        )
+        .unwrap();
+        let upper = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(-1.0, 0)], 1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            ConditionBounds {
+                lower: -1.0,
+                upper: 1.0,
+            },
+        )
+        .unwrap();
+        let range = IfInRangeFunction::try_new(lower, upper)
+            .unwrap()
+            .registerable(93_001, "range")
+            .unwrap();
+
+        let mut tokens = Vec::new();
+        range.register_tokens(&mut tokens).unwrap();
+        assert_eq!(tokens.len(), 5);
+        let symbol_to_index = tokens
+            .iter()
+            .enumerate()
+            .map(|(index, token)| (token.id().unique_id() as usize, index + 1))
+            .collect::<HashMap<_, _>>();
+        let constraints = range.mechanism_constraints(&symbol_to_index).unwrap();
+        assert_eq!(constraints.len(), 9);
+        assert!(constraints
+            .iter()
+            .any(|constraint| constraint.name.ends_with("_and_lower_ub")));
+        assert!(constraints
+            .iter()
+            .any(|constraint| constraint.name.ends_with("_and_upper_ub")));
+        assert!(constraints
+            .iter()
+            .any(|constraint| constraint.name.ends_with("_and_lb")));
+        assert_eq!(range.evaluate(&0.0, &0.0).unwrap(), Some(1.0));
+    }
+
+    #[test]
+    fn registerable_if_in_range_token_registration_is_atomic() {
+        let lower = || {
+            ConditionalIfFunction::new(
+                Linear::new(vec![LinearMonomial::new(1.0, 0)], 1.0),
+                ConditionRelation::GreaterEqual,
+                0.1,
+                ConditionBounds {
+                    lower: -1.0,
+                    upper: 1.0,
+                },
+            )
+            .unwrap()
+        };
+        let upper = || {
+            ConditionalIfFunction::new(
+                Linear::new(vec![LinearMonomial::new(-1.0, 0)], 1.0),
+                ConditionRelation::GreaterEqual,
+                0.1,
+                ConditionBounds {
+                    lower: -1.0,
+                    upper: 1.0,
+                },
+            )
+            .unwrap()
+        };
+        let range = IfInRangeFunction::try_new(lower(), upper())
+            .unwrap()
+            .registerable(93_002, "range_atomic")
+            .unwrap();
+        let mut tokens = vec![Token::from_generic(
+            range.lower_indicator().result_variable().clone(),
+            range.lower_indicator().result_variable().index(),
+        )];
+        assert!(range.register_tokens(&mut tokens).is_err());
+        assert_eq!(tokens.len(), 1);
+    }
+
+    #[test]
+    fn registerable_if_in_range_tokens_are_unassigned_until_added_to_a_list() {
+        let lower = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            ConditionBounds {
+                lower: -1.0,
+                upper: 1.0,
+            },
+        )
+        .unwrap();
+        let upper = ConditionalIfFunction::new(
+            Linear::new(vec![LinearMonomial::new(-1.0, 0)], 1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            ConditionBounds {
+                lower: -1.0,
+                upper: 1.0,
+            },
+        )
+        .unwrap();
+        let range = IfInRangeFunction::try_new(lower, upper)
+            .unwrap()
+            .registerable(93_003, "range_unassigned")
+            .unwrap();
+
+        let mut staged = Vec::new();
+        range.register_tokens(&mut staged).unwrap();
+        let ids = staged.iter().map(|token| token.id()).collect::<Vec<_>>();
+        assert_eq!(staged.len(), 5);
+        assert!(staged.iter().all(|token| token.solver_index == usize::MAX));
+
+        let mut token_list = VecTokenList::<f64>::new();
+        token_list.try_add_tokens(staged.clone()).unwrap();
+        assert_eq!(token_list.len(), 5);
+        assert_eq!(
+            token_list
+                .tokens()
+                .iter()
+                .map(|token| token.id())
+                .collect::<Vec<_>>(),
+            ids
+        );
+        assert!(token_list
+            .tokens()
+            .iter()
+            .all(|token| token.solver_index == usize::MAX));
     }
 }

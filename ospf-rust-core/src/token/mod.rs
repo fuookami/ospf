@@ -18,7 +18,8 @@ pub mod token_list;
 pub mod token_table;
 
 pub use token::{
-    AnyVariable, AnyVariableF64, IntoValue, Token, TokenF64, VariableData as TokenVariableData,
+    AnyVariable, AnyVariableF64, IntoValue, Token, TokenF64, TokenSnapshot,
+    VariableData as TokenVariableData,
 };
 pub use token_list::*;
 pub use token_table::*;
