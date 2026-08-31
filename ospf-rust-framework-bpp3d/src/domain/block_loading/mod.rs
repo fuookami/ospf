@@ -6,6 +6,9 @@
 pub mod model;
 pub mod service;
 
-/// 块装载上下文占位 / Block loading context placeholder
-#[derive(Debug, Clone, Default)]
-pub struct BlockLoadingContext;
+pub use model::{Block, SimpleBlock, ComplexBlock, ItemView, Space, BlockPlacement};
+
+pub use service::{
+    SimpleBlockGenerator, SimpleBlockGeneratorConfig,
+    ComplexBlockGenerator, DepthFirstSearchAlgorithm, MultiLayerHeuristicSearchAlgorithm,
+};

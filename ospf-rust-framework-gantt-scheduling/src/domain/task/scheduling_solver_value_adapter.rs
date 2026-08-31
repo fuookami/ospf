@@ -73,17 +73,17 @@ impl SchedulingSolverValueAdapter<f64> for F64SolverValueAdapter {
     }
 }
 
-/// 泛型适配器 / Generic adapter
+/// 求解器值适配器 / Solver value adapter
 ///
-/// 使用 SolveValue trait 进行泛型数值转换。
-/// Uses SolveValue trait for generic numeric conversion.
+/// 使用 `SolveValue` trait 进行数值转换。
+/// Uses the `SolveValue` trait for numeric conversion.
 #[derive(Debug)]
-pub struct GenericSolverValueAdapter<V: SolveValue> {
+pub struct SolverValueAdapter<V: SolveValue> {
     _marker: std::marker::PhantomData<V>,
 }
 
-impl<V: SolveValue> GenericSolverValueAdapter<V> {
-    /// 创建新的泛型适配器 / Create new generic adapter
+impl<V: SolveValue> SolverValueAdapter<V> {
+    /// 创建新的求解器值适配器 / Create a new solver value adapter
     pub fn new() -> Self {
         Self {
             _marker: std::marker::PhantomData,
@@ -91,22 +91,22 @@ impl<V: SolveValue> GenericSolverValueAdapter<V> {
     }
 }
 
-impl<V: SolveValue> Default for GenericSolverValueAdapter<V> {
+impl<V: SolveValue> Default for SolverValueAdapter<V> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<V: SolveValue> SchedulingSolverValueAdapter<V> for GenericSolverValueAdapter<V> {
+impl<V: SolveValue> SchedulingSolverValueAdapter<V> for SolverValueAdapter<V> {
     fn into_value(&self, value: f64) -> V {
         V::from_f64_with_policy(value, SolveValueConversionPolicy::AllowRounding)
-            .expect("GenericSolverValueAdapter::into_value failed")
+            .expect("SolverValueAdapter::into_value failed")
     }
 
     fn from_value(&self, value: &V) -> f64 {
         value
             .to_f64_with_policy(SolveValueConversionPolicy::AllowRounding)
-            .expect("GenericSolverValueAdapter::from_value failed")
+            .expect("SolverValueAdapter::from_value failed")
     }
 
     fn round_solution(&self, value: f64) -> V {

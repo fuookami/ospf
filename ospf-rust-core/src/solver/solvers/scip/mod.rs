@@ -10,9 +10,9 @@ use crate::model::ConstraintRelation;
 use crate::model::ObjectiveCategory;
 use crate::model::intermediate::{LinearTriadModel, QuadraticTetradModel};
 use crate::solver::{
-
     LinearSolver, QuadraticSolver, SolverCapability, SolverInfo, SolverOutput, SolverStatus,
 };
+use crate::token::Token;
 use crate::variable::VariableType;
 #[cfg(feature = "scip")]
 use russcip::{
@@ -42,6 +42,7 @@ struct SCIPTelemetryRuntime {
     no_improvement_time_limit: Option<f64>,
     improvement_tolerance: f64,
     telemetry_min_interval: Option<f64>,
+    native_event_mask: EventMask,
     telemetry_callback: Option<SCIPTelemetryCallback>,
     snapshot_observers: Vec<SCIPSnapshotObserver>,
     native_callback: Option<SCIPNativeCallback>,
@@ -179,7 +180,7 @@ impl SCIPTelemetryEventHandler {
 #[cfg(feature = "scip")]
 impl Eventhdlr for SCIPTelemetryEventHandler {
     fn get_type(&self) -> EventMask {
-        EventMask::NODE_EVENT | EventMask::LP_EVENT | EventMask::SOL_EVENT
+        self.runtime.native_event_mask
     }
 
     fn execute(&mut self, model: Model<Solving>, eventhdlr: SCIPEventhdlr, event: Event) {
@@ -225,8 +226,13 @@ impl Eventhdlr for SCIPTelemetryEventHandler {
             }
         }
         if let Some(callback) = self.runtime.native_callback.as_ref() {
-            if let Ok(control) = callback(&native_snapshot) {
-                if matches!(control, SCIPNativeControl::Interrupt) {
+            match callback(&native_snapshot) {
+                Ok(control) => {
+                    if matches!(control, SCIPNativeControl::Interrupt) {
+                        request_interrupt = true;
+                    }
+                }
+                Err(_) => {
                     request_interrupt = true;
                 }
             }
@@ -372,6 +378,7 @@ impl SCIPSolver {
             no_improvement_time_limit: self.config.no_improvement_time_limit,
             improvement_tolerance: self.config.improvement_tolerance.unwrap_or(1e-9),
             telemetry_min_interval: self.config.telemetry_min_interval,
+            native_event_mask: self.config.native_event_mask,
             telemetry_callback: self.config.telemetry_callback.clone(),
             snapshot_observers: self.config.snapshot_observers.clone(),
             native_callback: self.config.native_callback.clone(),
@@ -574,6 +581,33 @@ impl SCIPSolver {
 
 #[cfg(feature = "scip")]
 impl SCIPSolver {
+    /// 收集按变量索引排列的初始解 / Collect indexed initial solution values
+    fn collect_initial_solution(tokens: &[Token<f64>]) -> Vec<(usize, f64)> {
+        tokens
+            .iter()
+            .enumerate()
+            .filter_map(|(index, token)| token.get_result().map(|value| (index, value)))
+            .collect()
+    }
+
+    /// 写入 SCIP 初始解 / Inject SCIP initial solution
+    fn inject_initial_solution(
+        scip: &Model<ProblemCreated>,
+        scip_vars: &[Variable],
+        initial_solution: &[(usize, f64)],
+    ) {
+        if initial_solution.is_empty() {
+            return;
+        }
+        let solution = scip.create_orig_sol();
+        for &(index, value) in initial_solution {
+            if let Some(var) = scip_vars.get(index) {
+                solution.set_val(var, value);
+            }
+        }
+        let _ = scip.add_sol(solution);
+    }
+
     fn name(&self) -> &str {
         "SCIP"
     }
@@ -622,6 +656,7 @@ impl SCIPSolver {
         // 添加变量
         // Add variables.
         let mut scip_vars = Vec::with_capacity(model.num_variables());
+        let initial_solution = Self::collect_initial_solution(&model.variables);
         for (i, token) in model.variables.iter().enumerate() {
             let lb = model.lb[i];
             let ub = model.ub[i];
@@ -644,6 +679,7 @@ impl SCIPSolver {
 
             scip_vars.push(var);
         }
+        Self::inject_initial_solution(&scip, &scip_vars, &initial_solution);
 
         // 添加约束：Ax <= b
         // Add constraints: Ax <= b.
@@ -768,6 +804,7 @@ impl SCIPSolver {
         // 添加变量
         // Add variables.
         let mut scip_vars = Vec::with_capacity(model.num_variables());
+        let initial_solution = Self::collect_initial_solution(&model.linear.variables);
         for (i, token) in model.linear.variables.iter().enumerate() {
             let lb = model.linear.lb[i];
             let ub = model.linear.ub[i];
@@ -791,6 +828,7 @@ impl SCIPSolver {
 
             scip_vars.push(var);
         }
+        Self::inject_initial_solution(&scip, &scip_vars, &initial_solution);
 
         // 通过引入辅助变量，将二次目标转换为二次约束。
         // Transform quadratic objective through auxiliary-variable quadratic constraints.
@@ -1078,7 +1116,7 @@ mod tests {
     use crate::model::{ConstraintRelation, ObjectiveCategory};
     use crate::symbol::flatten::{Quadratic, QuadraticMonomial};
     use crate::token::Token;
-    use crate::variable::UContinuousVariableItem;
+    use crate::variable::{BinaryVariableItem, UContinuousVariableItem};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -1095,6 +1133,19 @@ mod tests {
         q.add_row(SparseVector::new());
         model.set_objective(vec![1.0], q, ObjectiveCategory::Maximum);
         model
+    }
+
+    #[test]
+    fn test_collect_initial_solution_keeps_solver_indices() {
+        let x = Token::from_generic(BinaryVariableItem::auto("x"), 0);
+        let y = Token::from_generic(UContinuousVariableItem::auto("y"), 1);
+        let z = Token::from_generic(UContinuousVariableItem::auto("z"), 2);
+        x.set_result(1.0);
+        z.set_result(3.5);
+
+        let initial_solution = SCIPSolver::collect_initial_solution(&[x, y, z]);
+
+        assert_eq!(initial_solution, vec![(0, 1.0), (2, 3.5)]);
     }
 
     #[test]
@@ -1138,6 +1189,24 @@ mod tests {
 
         let config = config.with_memory_limit_mb(512.0);
         assert_eq!(config.mem_limit, Some(512.0));
+    }
+
+    #[test]
+    fn test_scip_config_native_event_mask_defaults_and_setters() {
+        let config = SCIPConfig::new();
+        assert!(
+            config.native_event_mask == SCIPConfig::default_native_event_mask(),
+            "default native event mask should match Kotlin wrapper default"
+        );
+
+        let custom_mask = EventMask::LP_EVENT | EventMask::NODE_EVENT;
+        let config = config.with_native_event_mask(custom_mask);
+        assert!(config.native_event_mask == custom_mask);
+
+        let callback: SCIPNativeCallback = Arc::new(|_| Ok(SCIPNativeControl::Continue));
+        let config = SCIPConfig::new().with_native_callback_with_event_mask(custom_mask, callback);
+        assert!(config.native_event_mask == custom_mask);
+        assert!(config.native_callback.is_some());
     }
 
     #[test]

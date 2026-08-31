@@ -194,6 +194,12 @@ where
             upper_bound: self.upper_bound.clone(),
         }
     }
+
+    /// 设置变量范围 / Set variable range
+    pub fn set_range(&mut self, range: VariableRange<V>) {
+        self.lower_bound = range.lower_bound;
+        self.upper_bound = range.upper_bound;
+    }
 }
 
 // ============================================================================
@@ -280,6 +286,11 @@ impl<V: Clone + Debug + Send + Sync + 'static> AnyVariable<V> {
             lower_bound: self.lower_bound(),
             upper_bound: self.upper_bound(),
         }
+    }
+
+    /// 设置变量范围 / Set variable range
+    pub fn set_range(&mut self, range: VariableRange<V>) {
+        self.data.set_range(range);
     }
 
     /// 获取内部数据引用 / Get inner data reference
@@ -380,6 +391,16 @@ impl<V: Clone + Debug + Send + Sync + 'static> Token<V> {
     /// 检查是否有结果 / Check if has result
     pub fn has_result(&self) -> bool {
         ospf_rust_base::read_unwrap!(&self.result).is_some()
+    }
+
+    /// 获取变量范围 / Get variable range
+    pub fn range(&self) -> VariableRange<V> {
+        self.variable.range()
+    }
+
+    /// 设置变量范围 / Set variable range
+    pub fn set_range(&mut self, range: VariableRange<V>) {
+        self.variable.set_range(range);
     }
 }
 

@@ -6,10 +6,11 @@
 pub mod model;
 pub mod service;
 
-/// 货物上下文占位 / Item context placeholder
-#[derive(Debug, Clone, Default)]
-pub struct ItemContext;
-
-/// 货物聚合占位 / Item aggregation placeholder
-#[derive(Debug, Clone, Default)]
-pub struct Aggregation;
+pub use model::{
+    ActualItem, Bin, BinLayer, BinType, Bpp3dDemandKey, Bpp3dDemandMode, Bpp3dDemandValue,
+    Bpp3dLayerDemandCoverage, ContinuousCylinderRadiusSolverPrototype,
+    ContinuousRadiusModelComponent, ContinuousRadiusRegistrationPlan, CylinderShapeContract,
+    CylinderCapabilityStatus, DemandStatistics, Material, MaterialKey, MaterialType, Package,
+    PackageAttribute, PackageShape, PackageShapeSpec, PackingProgram, PatternedItem,
+    PatternedItemKey,
+};

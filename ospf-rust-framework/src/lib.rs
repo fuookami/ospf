@@ -25,7 +25,8 @@ pub mod solver;
 
 // 重导出常用类型 / Re-export common types
 pub use model::{
-    BasicShadowPriceMap, CGPipeline, HAPipeline, HAPipelineObj, Pipeline, PipelineList,
+    BasicShadowPriceMap, CGPipeline, ColumnRange, ColumnState, DynamicModelLifecycle,
+    DynamicModelSnapshot, DynamicModelState, HAPipeline, HAPipelineObj, Pipeline, PipelineList,
     ShadowPrice, ShadowPriceKey, ShadowPriceMap,
 };
 pub use network::*;

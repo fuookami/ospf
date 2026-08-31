@@ -3,6 +3,8 @@
 //! 映射 Kotlin `gantt-scheduling-application` 子模块。
 //! Maps the Kotlin `gantt-scheduling-application` submodule.
 
+pub mod algorithm;
+pub mod iteration;
 pub mod model;
 pub mod service;
 
@@ -17,3 +19,11 @@ pub struct MPS;
 /// 批次排序计划入口标记 / Lot scheduling planning entry marker
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LSP;
+
+pub use iteration::{Iteration, IterationSnapshot};
+pub use algorithm::{
+    ColumnGenerationPolicy,
+    TaskColumnGenerationAlgorithm,
+    BunchBranchAndPriceAlgorithm,
+    BunchCGPolicy,
+};

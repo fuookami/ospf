@@ -7,6 +7,4 @@
 pub mod bunch;
 pub mod task;
 
-/// 迭代快照占位 / Iteration snapshot placeholder
-#[derive(Debug, Clone, Default)]
-pub struct IterationSnapshot;
+pub use crate::application::iteration::{Iteration, IterationSnapshot};

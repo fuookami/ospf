@@ -12,8 +12,10 @@
 //! - [`ShadowPrice`] - Shadow Price 数据结构
 //! - [`ShadowPriceMap`] - Shadow Price 映射表
 
+pub mod dynamic_lifecycle;
 pub mod pipeline;
 pub mod shadow_price;
 
+pub use dynamic_lifecycle::*;
 pub use pipeline::*;
 pub use shadow_price::*;

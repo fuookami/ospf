@@ -19,53 +19,39 @@
 //! - [`find_from`]: 查找从给定时间点开始的范围 / Find ranges from an instant
 //! - [`find_until`]: 查找直到给定时间点的范围 / Find ranges until an instant
 
-mod time_range;
-mod time_window;
-mod time_slot;
-mod duration_range;
-mod working_calendar;
-mod local_date_offset;
+mod calendar_policy;
 pub mod dto;
+mod duration_range;
+mod local_date_offset;
+mod time_range;
+mod time_slot;
+mod time_window;
+mod working_calendar;
 
 // ========================================================================
 // 公共重导出 / Public re-exports
 // ========================================================================
 
 pub use time_range::{
-    TimeRange,
-    SplitTimeRanges,
-    distant_past,
-    distant_future,
-    merge,
-    find,
-    find_from,
-    find_until,
-    front_at,
-    back_at,
+    SplitTimeRanges, TimeRange, back_at, distant_future, distant_past, find, find_from, find_until,
+    front_at, merge,
 };
 
-pub use time_window::{
-    DurationUnit,
-    GanttValueAdapter,
-    TimeWindow,
-};
+pub use time_window::{DurationUnit, GanttValueAdapter, TimeWindow};
 
 pub use time_slot::TimeSlot;
 
 pub use duration_range::DurationRange;
 
-pub use working_calendar::{
-    ActualTime,
-    ValidTimes,
-    WorkingCalendar,
+pub use calendar_policy::{
+    CalendarPolicy, CalendarQuery, CompositeCalendarPolicy, DefaultCalendarPolicy,
 };
+
+pub use working_calendar::{ActualTime, ValidTimes, WorkingCalendar};
 
 pub use local_date_offset::LocalDateOffset;
 
 // DTO 重导出 / DTO re-exports
 pub use dto::{
-    GanttRenderTaskCategory,
-    GanttRenderSubTaskDto,
-    GanttRenderTaskDto,
-    GanttRenderSchemaDto,
+    GanttRenderSchemaDto, GanttRenderSubTaskDto, GanttRenderTaskCategory, GanttRenderTaskDto,
 };

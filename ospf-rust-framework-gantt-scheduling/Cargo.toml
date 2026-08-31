@@ -9,7 +9,7 @@ license.workspace = true
 [features]
 default = []
 serde = ["dep:serde", "ospf-rust-framework/serde", "time/serde"]
-async = ["ospf-rust-framework/async"]
+async = ["ospf-rust-framework/async", "dep:futures"]
 nightly = ["ospf-rust-framework/nightly"]
 big-rational = ["ospf-rust-framework/big-rational"]
 big-decimal = ["ospf-rust-framework/big-decimal"]
@@ -30,6 +30,7 @@ ospf-rust-core = { path = "../ospf-rust-core" }
 ospf-rust-framework = { path = "../ospf-rust-framework" }
 
 serde = { version = "1", features = ["derive"], optional = true }
+futures = { version = "0.3", optional = true }
 thiserror = "1"
 log = "0.4"
 time = { version = "0.3", features = ["std", "macros"] }

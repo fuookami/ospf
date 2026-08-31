@@ -8,7 +8,7 @@ license.workspace = true
 
 [features]
 default = []
-serde = ["dep:serde", "ospf-rust-framework/serde"]
+serde = ["dep:csv", "dep:serde", "dep:serde_json", "ospf-rust-framework/serde"]
 async = ["ospf-rust-framework/async"]
 nightly = ["ospf-rust-framework/nightly"]
 big-rational = ["ospf-rust-framework/big-rational"]
@@ -20,6 +20,7 @@ scip = ["ospf-rust-framework/scip"]
 scip-bundled = ["ospf-rust-framework/scip-bundled"]
 scip-from-source = ["ospf-rust-framework/scip-from-source"]
 scip-quadratic = ["ospf-rust-framework/scip-quadratic"]
+serde_json = ["dep:serde_json"]
 
 [dependencies]
 ospf-rust-base = { path = "../ospf-rust-base" }
@@ -30,8 +31,11 @@ ospf-rust-core = { path = "../ospf-rust-core" }
 ospf-rust-framework = { path = "../ospf-rust-framework" }
 
 serde = { version = "1", features = ["derive"], optional = true }
+csv = { version = "1.4.0", optional = true }
 thiserror = "1"
 log = "0.4"
+num-traits = "0.2.19"
+serde_json = { version = "1.0.150", optional = true }
 
 [dev-dependencies]
 ospf-rust-framework = { path = "../ospf-rust-framework" }

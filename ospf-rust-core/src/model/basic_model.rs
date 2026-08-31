@@ -534,6 +534,13 @@ where
         &self.tokens
     }
 
+    /// 按求解器顺序获取所有 Token / Get all tokens in solver order
+    pub fn tokens_in_solver_order(&self) -> Vec<&Token<V>> {
+        let mut tokens = self.tokens.iter().collect::<Vec<_>>();
+        tokens.sort_by_key(|token| token.solver_index);
+        tokens
+    }
+
     /// 获取所有约束 / Get all constraints
     pub fn constraints(&self) -> &[MetaConstraint<LinearInequality<V>>] {
         &self.constraints
@@ -549,8 +556,61 @@ where
         self.token_index.get(&id).map(|&idx| &self.tokens[idx])
     }
 
-    /// 设置求解结果 / Set solution
+    /// 查询变量范围 / Get variable range
+    pub fn variable_range_by_index(&self, index: usize) -> Option<VariableRange<V>> {
+        self.tokens.get(index).map(Token::range)
+    }
+
+    /// 通过变量 ID 查询变量范围 / Get variable range by variable id
+    pub fn variable_range_by_id(&self, id: VariableId) -> Option<VariableRange<V>> {
+        self.find_token(id).map(Token::range)
+    }
+
+    /// 设置变量范围 / Set variable range
+    pub fn set_variable_range_by_index(
+        &mut self,
+        index: usize,
+        range: VariableRange<V>,
+    ) -> Result<()> {
+        let Some(token) = self.tokens.get_mut(index) else {
+            return Err(ModelError::InvalidConstraint(format!(
+                "token index {} not found",
+                index
+            ))
+            .into());
+        };
+        token.set_range(range);
+        self.rebind_contexts();
+        Ok(())
+    }
+
+    /// 通过变量 ID 设置变量范围 / Set variable range by variable id
+    pub fn set_variable_range_by_id(
+        &mut self,
+        id: VariableId,
+        range: VariableRange<V>,
+    ) -> Result<()> {
+        let Some(index) = self.token_index.get(&id).copied() else {
+            return Err(VariableError::NotFound(id).into());
+        };
+        self.set_variable_range_by_index(index, range)
+    }
+
+    /// 固定变量取值 / Fix variable value
+    pub fn fix_variable_by_index(&mut self, index: usize, value: V) -> Result<()> {
+        self.set_variable_range_by_index(index, VariableRange::fixed(value))
+    }
+
+    /// 通过变量 ID 固定变量取值 / Fix variable value by variable id
+    pub fn fix_variable_by_id(&mut self, id: VariableId, value: V) -> Result<()> {
+        self.set_variable_range_by_id(id, VariableRange::fixed(value))
+    }
+
+    /// 设置按变量 ID 映射的求解结果 / Set solution mapped by variable id
     pub fn set_solution(&mut self, solution: &HashMap<VariableId, V>) {
+        for token in &self.tokens {
+            token.clear_result();
+        }
         for (id, value) in solution {
             if let Some(idx) = self.token_index.get(id) {
                 self.tokens[*idx].set_result(value.clone());
@@ -559,13 +619,63 @@ where
         self.invalidate_solution_caches();
     }
 
+    /// 按求解器顺序设置求解结果 / Set solution in solver order
+    pub fn set_solution_by_solver_order(&mut self, solution: &[V]) {
+        for token in &self.tokens {
+            token.clear_result();
+        }
+        for token in &self.tokens {
+            if let Some(value) = solution.get(token.solver_index) {
+                token.set_result(value.clone());
+            }
+        }
+        self.invalidate_solution_caches();
+    }
+
+    /// 当前是否包含求解结果 / Whether current model has solution values
+    pub fn has_solution(&self) -> bool {
+        self.tokens.iter().any(Token::has_result)
+    }
+
+    /// 按求解器顺序导出求解结果 / Export solution in solver order
+    pub fn solution_by_solver_order(&self) -> Vec<Option<V>> {
+        let len = self
+            .tokens
+            .iter()
+            .map(|token| token.solver_index)
+            .max()
+            .map_or(0, |index| index + 1);
+        let mut solution = vec![None; len];
+        for token in &self.tokens {
+            if token.solver_index < solution.len() {
+                solution[token.solver_index] = token.get_result();
+            }
+        }
+        solution
+    }
+
     /// 清除求解结果 / Clear solution
-    /// ?????????????????/ Build index-value map from current solution
     pub fn clear_solution(&mut self) {
         for token in &self.tokens {
             token.clear_result();
         }
         self.invalidate_solution_caches();
+    }
+
+    /// 刷新动态模型状态 / Flush dynamic model state
+    ///
+    /// 与 Kotlin 可变 `TokenTable.flush()` 对齐：刷新会清除当前解、重建 token
+    /// 上下文并刷新中间符号缓存。
+    /// Aligns with Kotlin mutable `TokenTable.flush()`: flushing clears the current
+    /// solution, rebuilds token contexts, and flushes intermediate-symbol caches.
+    pub fn flush(&mut self, force: bool) {
+        for token in &self.tokens {
+            token.clear_result();
+        }
+        self.rebind_contexts();
+        for symbol in &self.symbols {
+            symbol.flush(force);
+        }
     }
 
     fn current_solution_values(&self) -> HashMap<usize, V> {
@@ -936,5 +1046,47 @@ mod tests {
         assert_eq!(model.tokens()[1].name(), "y");
         assert_eq!(model.tokens()[1].variable.lower_bound(), Some(-1.0));
         assert_eq!(model.tokens()[1].variable.upper_bound(), Some(2.0));
+    }
+
+    #[test]
+    fn dynamic_solution_range_and_flush_follow_solver_order() {
+        let mut model = BasicModel::<f64>::new("dynamic_lifecycle");
+        let idx_x = model.register_auto_variable::<Binary>("x").unwrap();
+        let idx_y = model
+            .register_auto_variable_with_range::<Continuous>(
+                "y",
+                VariableRange::bounded(-1.0, 2.0),
+            )
+            .unwrap();
+
+        model.set_solution_by_solver_order(&[0.0, 1.5]);
+        assert_eq!(
+            model.solution_by_solver_order(),
+            vec![Some(0.0), Some(1.5)]
+        );
+        assert!(model.has_solution());
+
+        model.set_solution_by_solver_order(&[1.0]);
+        assert_eq!(model.solution_by_solver_order(), vec![Some(1.0), None]);
+
+        model
+            .set_variable_range_by_index(idx_x, VariableRange::fixed(1.0))
+            .unwrap();
+        assert_eq!(
+            model.variable_range_by_index(idx_x),
+            Some(VariableRange::fixed(1.0))
+        );
+
+        model.flush(false);
+
+        assert_eq!(model.solution_by_solver_order(), vec![None, None]);
+        assert_eq!(
+            model.variable_range_by_index(idx_x),
+            Some(VariableRange::fixed(1.0))
+        );
+        assert_eq!(
+            model.variable_range_by_index(idx_y),
+            Some(VariableRange::bounded(-1.0, 2.0))
+        );
     }
 }

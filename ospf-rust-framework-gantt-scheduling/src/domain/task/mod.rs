@@ -13,59 +13,47 @@
 //! - [`Cost`]: 成本 / Cost
 //! - [`SchedulingSolverValueAdapter`]: 求解器值适配器 / Solver value adapter
 
-pub mod executor;
 pub mod assignment;
-pub mod task_trait;
-pub mod task_plan;
-pub mod task_bunch;
 pub mod cost;
+pub mod cost_policy;
+pub mod executor;
 pub mod scheduling_solver_value_adapter;
 pub mod shadow_price;
+pub mod task_bunch;
+pub mod task_plan;
+pub mod task_step_graph;
+pub mod task_trait;
 
 // ========================================================================
 // 公共重导出 / Public re-exports
 // ========================================================================
 
-pub use executor::{
-    ExecutorTrait,
-    ExecutorInitialUsability,
-    BasicExecutor,
-};
+pub use executor::{BasicExecutor, ExecutorInitialUsability, ExecutorTrait};
 
-pub use assignment::{
-    AssignmentPolicyTrait,
-    BasicAssignmentPolicy,
-    ExecutorChange,
-};
+pub use assignment::{AssignmentPolicyTrait, BasicAssignmentPolicy, ExecutorChange};
 
-pub use task_trait::{
-    TaskTrait,
-    TaskType,
-    TaskKey,
-};
+pub use task_trait::{TaskKey, TaskTrait, TaskType};
 
-pub use task_plan::{
-    TaskStatus,
-    TaskPlanTrait,
-    SingleStepTaskPlan,
+pub use task_plan::{SingleStepTaskPlan, TaskPlanTrait, TaskStatus};
+
+pub use task_step_graph::{
+    BackwardTaskStepVector, BasicTaskStep, ForwardTaskStepVector, StartSteps, StepRelation,
+    TaskStepGraph, TaskStepGraphBuilder, TaskStepTrait,
 };
 
 pub use task_bunch::TaskBunch;
 
-pub use cost::{
-    CostItem,
-    Cost,
-    MutableCost,
+pub use cost::{Cost, CostItem, MutableCost};
+
+pub use cost_policy::{
+    BunchCostPolicy, CostBreakdown, DefaultBunchCostPolicy, FunctionalBunchCostPolicy,
 };
 
 pub use scheduling_solver_value_adapter::{
-    SchedulingSolverValueAdapter,
-    F64SolverValueAdapter,
-    GenericSolverValueAdapter,
+    F64SolverValueAdapter, SchedulingSolverValueAdapter, SolverValueAdapter,
 };
 
 pub use shadow_price::{
-    GanttSchedulingShadowPriceArguments,
-    BunchGanttSchedulingShadowPriceArguments,
+    BunchGanttSchedulingShadowPriceArguments, GanttSchedulingShadowPriceArguments,
     GanttShadowPriceKey,
 };

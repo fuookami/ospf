@@ -1,0 +1,40 @@
+{
+  "suite_name": "bpp3d-regression",
+  "entries": [
+    {
+      "name": "cuboid-pattern-package.csv",
+      "path": "cuboid-pattern-package.csv",
+      "group": "rust-regression",
+      "tags": ["cuboid", "patterned-item", "package-attribute"],
+      "backend_smoke": true
+    },
+    {
+      "name": "vertical-cylinder.csv",
+      "path": "vertical-cylinder.csv",
+      "group": "rust-regression",
+      "tags": ["cylinder", "axis-y"],
+      "backend_smoke": true
+    },
+    {
+      "name": "pwl-radius.csv",
+      "path": "pwl-radius.csv",
+      "group": "rust-regression",
+      "tags": ["cylinder", "pwl-radius"],
+      "backend_smoke": true
+    },
+    {
+      "name": "kotlin-grouped-layer-pwl-mixed-shape-sample.csv",
+      "path": "kotlin-grouped-layer-pwl-mixed-shape-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "pwl-radius", "mixed-shape"],
+      "backend_smoke": false
+    },
+    {
+      "name": "kotlin-material-width-amount-cylinder-sample.csv",
+      "path": "kotlin-material-width-amount-cylinder-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "material-width-amount", "axis-enum", "mixed-shape"],
+      "backend_smoke": false
+    }
+  ]
+}

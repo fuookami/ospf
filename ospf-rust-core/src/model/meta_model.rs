@@ -19,7 +19,8 @@ use super::{
 };
 use crate::error::{ModelError, Result};
 use crate::symbol::IntermediateSymbol;
-use crate::variable::VariableRange;
+use crate::token::Token;
+use crate::variable::{VariableId, VariableRange};
 use num_traits::{One, Zero};
 use ospf_rust_math::symbol::{
     Comparison, Linear as MathLinear, LinearInequality as MathLinearInequality,
@@ -385,6 +386,114 @@ where
     /// Ensure range cache context is initialized.
     pub fn ensure_range_cache_context(&mut self) {
         self.basic.ensure_range_cache_context();
+    }
+
+    /// 获取所有 Token。
+    /// Get all tokens.
+    pub fn tokens(&self) -> &[Token<V>] {
+        self.basic.tokens()
+    }
+
+    /// 按求解器顺序获取所有 Token。
+    /// Get all tokens in solver order.
+    pub fn tokens_in_solver_order(&self) -> Vec<&Token<V>> {
+        self.basic.tokens_in_solver_order()
+    }
+
+    /// 获取所有中间符号。
+    /// Get all intermediate symbols.
+    pub fn symbols(&self) -> &[Arc<dyn IntermediateSymbol<V>>] {
+        self.basic.symbols()
+    }
+
+    /// 通过变量 ID 查找 Token。
+    /// Find token by variable id.
+    pub fn find_token(&self, id: VariableId) -> Option<&Token<V>> {
+        self.basic.find_token(id)
+    }
+
+    /// 查询变量范围。
+    /// Get variable range.
+    pub fn variable_range_by_index(&self, index: usize) -> Option<VariableRange<V>> {
+        self.basic.variable_range_by_index(index)
+    }
+
+    /// 通过变量 ID 查询变量范围。
+    /// Get variable range by variable id.
+    pub fn variable_range_by_id(&self, id: VariableId) -> Option<VariableRange<V>> {
+        self.basic.variable_range_by_id(id)
+    }
+
+    /// 设置变量范围。
+    /// Set variable range.
+    pub fn set_variable_range_by_index(
+        &mut self,
+        index: usize,
+        range: VariableRange<V>,
+    ) -> Result<()> {
+        self.basic.set_variable_range_by_index(index, range)
+    }
+
+    /// 通过变量 ID 设置变量范围。
+    /// Set variable range by variable id.
+    pub fn set_variable_range_by_id(
+        &mut self,
+        id: VariableId,
+        range: VariableRange<V>,
+    ) -> Result<()> {
+        self.basic.set_variable_range_by_id(id, range)
+    }
+
+    /// 固定变量取值。
+    /// Fix variable value.
+    pub fn fix_variable_by_index(&mut self, index: usize, value: V) -> Result<()> {
+        self.basic.fix_variable_by_index(index, value)
+    }
+
+    /// 通过变量 ID 固定变量取值。
+    /// Fix variable value by variable id.
+    pub fn fix_variable_by_id(&mut self, id: VariableId, value: V) -> Result<()> {
+        self.basic.fix_variable_by_id(id, value)
+    }
+
+    /// 按求解器顺序设置求解结果。
+    /// Set solution in solver order.
+    pub fn set_solution(&mut self, solution: &[V]) {
+        self.basic.set_solution_by_solver_order(solution);
+    }
+
+    /// 设置按变量 ID 映射的求解结果。
+    /// Set solution mapped by variable id.
+    pub fn set_solution_by_id(&mut self, solution: &HashMap<VariableId, V>) {
+        self.basic.set_solution(solution);
+    }
+
+    /// 当前是否包含求解结果。
+    /// Whether current model has solution values.
+    pub fn has_solution(&self) -> bool {
+        self.basic.has_solution()
+    }
+
+    /// 按求解器顺序导出求解结果。
+    /// Export solution in solver order.
+    pub fn solution_by_solver_order(&self) -> Vec<Option<V>> {
+        self.basic.solution_by_solver_order()
+    }
+
+    /// 清除求解结果。
+    /// Clear solution.
+    pub fn clear_solution(&mut self) {
+        self.basic.clear_solution();
+    }
+
+    /// 刷新动态模型状态。
+    ///
+    /// 与 Kotlin `MetaModel.flush(force)` 对齐，清除当前解、刷新 token
+    /// 上下文并将 flush 传播到中间符号。
+    /// Aligns with Kotlin `MetaModel.flush(force)`, clearing the current solution,
+    /// refreshing token contexts, and propagating flush to intermediate symbols.
+    pub fn flush(&mut self, force: bool) {
+        self.basic.flush(force);
     }
 
     /// 获取模型配置。

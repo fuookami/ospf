@@ -6,14 +6,25 @@
 pub mod model;
 pub mod service;
 
-/// 层分配上下文占位 / Layer assignment context placeholder
-#[derive(Debug, Clone, Default)]
-pub struct LayerAssignmentContext;
+pub use model::{
+    Bpp3dModelComponent, ExpressionArray1, SolutionExtractor, VariableArray1, VariableArray2,
+};
 
-/// 不精确聚合占位 / Imprecise aggregation placeholder
-#[derive(Debug, Clone, Default)]
-pub struct ImpreciseAggregation;
+pub use service::{
+    Bpp3dSolverValueAdapter, Bpp3dSolverValueAdapterKind,
+    DefaultBpp3dSolverValueAdapter, ScaledBpp3dSolverValueAdapter,
+    ImpreciseAssignment, PreciseAssignment,
+    Load, Capacity, PreciseLoadCapacity,
+    Bpp3dDemandEntry, DemandShadowPriceKey,
+    LayerAggregation, LayerAssignmentAggregation, LayerAssignmentContext,
+    SolutionAnalyzer,
+};
 
-/// 精确聚合占位 / Precise aggregation placeholder
-#[derive(Debug, Clone, Default)]
-pub struct PreciseAggregation;
+pub use service::limits::{
+    DemandConstraint, DemandAssignmentRef,
+    BinCapacityConstraint, BinDepthConstraint,
+    BinAmountMinimization, VolumeMinimization, BetterLayerMaximization,
+    PreciseAssignmentActivationConstraint, TailBinAssignmentConstraint,
+    RestAmountMinimization, TailBinLoadingRateMinimization,
+    BinLoadingOrderConstraint, DeferredRegistrationPlan,
+};

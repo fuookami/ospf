@@ -1,7 +1,7 @@
 use std::sync::Arc;
+use russcip::EventMask;
 use crate::solver::SolverConfig;
 use super::{
-
     SCIPNativeCallback, SCIPNativeObserver, SCIPSnapshotObserver, SCIPStage, SCIPStageCallback,
     SCIPTelemetryCallback,
 };
@@ -50,6 +50,8 @@ pub struct SCIPConfig {
     pub improvement_tolerance: Option<f64>,
     /// Minimum telemetry emit interval (seconds).
     pub telemetry_min_interval: Option<f64>,
+    /// 原生事件掩码 / Native event mask.
+    pub native_event_mask: EventMask,
     /// Staged callback.
     pub stage_callback: Option<SCIPStageCallback>,
     /// Telemetry callback.
@@ -80,6 +82,7 @@ impl std::fmt::Debug for SCIPConfig {
             .field("no_improvement_time_limit", &self.no_improvement_time_limit)
             .field("improvement_tolerance", &self.improvement_tolerance)
             .field("telemetry_min_interval", &self.telemetry_min_interval)
+            .field("native_event_mask", &self.native_event_mask)
             .field("stage_callback_registered", &self.stage_callback.is_some())
             .field(
                 "telemetry_callback_registered",
@@ -112,6 +115,7 @@ impl Default for SCIPConfig {
             no_improvement_time_limit: None,
             improvement_tolerance: None,
             telemetry_min_interval: None,
+            native_event_mask: Self::default_native_event_mask(),
             stage_callback: None,
             telemetry_callback: None,
             snapshot_observers: Vec::new(),
@@ -154,6 +158,11 @@ impl From<SolverConfig> for SCIPConfig {
 impl SCIPConfig {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// 默认原生事件掩码 / Default native event mask.
+    pub fn default_native_event_mask() -> EventMask {
+        EventMask::NODE_EVENT | EventMask::LP_EVENT | EventMask::SOL_EVENT
     }
 
     /// 推荐 LP/子问题配置 / Recommended LP/subproblem configuration.
@@ -269,6 +278,12 @@ impl SCIPConfig {
         self
     }
 
+    /// 设置原生事件掩码 / Set native event mask.
+    pub fn with_native_event_mask(mut self, event_mask: EventMask) -> Self {
+        self.native_event_mask = event_mask;
+        self
+    }
+
     pub fn with_stage_callback(mut self, callback: Option<SCIPStageCallback>) -> Self {
         self.stage_callback = callback;
         self
@@ -340,6 +355,17 @@ impl SCIPConfig {
     /// 设置原生回调（覆盖语义）/ Set native callback (override semantics).
     pub fn with_native_callback(mut self, callback: Option<SCIPNativeCallback>) -> Self {
         self.native_callback = callback;
+        self
+    }
+
+    /// 设置原生回调和事件掩码 / Set native callback and event mask.
+    pub fn with_native_callback_with_event_mask(
+        mut self,
+        event_mask: EventMask,
+        callback: SCIPNativeCallback,
+    ) -> Self {
+        self.native_event_mask = event_mask;
+        self.native_callback = Some(callback);
         self
     }
 
