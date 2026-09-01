@@ -60,6 +60,7 @@ application 代码通常应使用统一的 `solve(...)` 和 `solve_with_options(
 | `DynamicModelLifecycle`、`DynamicColumnContext`、`ColumnState` | dynamic column lifecycle 和 warm-start state。 | migration |
 | `ColumnGenerationSolver` | framework column-generation solver trait。 | migration |
 | `LinearBendersDecompositionSolver`、`QuadraticBendersDecompositionSolver` | Benders decomposition solver trait。 | migration |
+| `LogicBasedBendersEngine` | 线性 master 与 CP 子问题的 Logic-Based Benders 编排。 | migration |
 | `SerialCombinatorial*`、`ParallelCombinatorial*` | solver combinator。 | migration |
 | `FrameworkSolveOptions` | 统一 solve options。 | migration |
 | `RemoteSolverClient`、`RemoteLinearSolver`、`RemoteQuadraticSolver` | feature-gated remote solver 编排。 | migration |
@@ -79,6 +80,24 @@ framework-level 扩展应表达为：
 5. solver wrapper 或 combinator：backend selection 和 fallback。
 
 领域 crate 应暴露自身 context / aggregation / pipeline 扩展点，并使用 framework 抽象，而不是把领域逻辑加到 application solver 中。
+
+## Logic-Based Benders
+
+`LogicBasedBendersEngine` 通过 `LogicBasedBendersMaster` 和
+`ConstraintProgrammingSubproblemSolver` 组合线性 master 与 constraint-programming 子问题。
+master 返回带稳定变量 ID 的已验证 `SolveReport<f64>`；子问题接收对应的 `MasterAssignment`，并返回
+`ConstraintProgrammingSubproblemResult`。
+
+当结果必须携带全局证明时使用 `LogicBasedBendersMode::Exact`。Exact 模式要求由 snapshot 复验的
+CP 终态、全局有效且已验证的 cut、一致的 objective evaluator，以及已验证的 master 最优解。
+`LogicBasedBendersMode::Heuristic` 可以在证明条件不完整时保留 incumbent，但会清除最优性证明，
+并在 report diagnostics 中记录降级原因。
+
+`DefaultFeasibilityCutOracle` 会生成 assignment no-good cut：二值绑定使用
+`binary_assignment_no_good`，有限整数绑定使用 `bounded_integer_assignment_no_good`；后者返回包含
+完整辅助变量声明的 cut family。实现 `LogicBasedBendersCutOracle` 可以追加 conflict 或 optimality
+cut，并通过 `SolveReport.trace.iteration_snapshots` 检查逐轮诊断。启用可选 `serde` feature 后，
+还可以使用 portable checkpoint capture/resume API。
 
 ## 泛型数值边界
 
@@ -155,6 +174,8 @@ remote solver 支持遵循 Cargo feature，不按 Maven-style backend module 拆
 persistence backend 遵循 Cargo feature。公共层包含 `ExpressionRepository`、`RepositoryQuery`、`SortBy`、`UpdateAssignments`、`PredicateSchema`、`FieldPath` 和 request/response DTO/record 类型。
 
 `RelationalQueryPlan` 是数据源、别名、Join、谓词、投影、分组、排序、分页和可选根键的数据库无关计划边界。计划会在边界递归快照拥有型表达式树和动态符号元数据，在编译前校验 Join 关联，并提供 `canonical()` 与 SHA-256 `canonical_hash()` 审计摘要。canonical 会规范化嵌套布尔表达式和成员候选集合，同时保留字面量类型形状而省略字面量原值。计划有意不包含权限、预算、物理表名、数据库连接和行映射类型。
+
+仓储合同与后端无关：`find` 使用默认 `RepositoryQuery` 选项委托给 `find_with_options`，`count`、`update` 和 `delete` 返回匹配或受影响行数 `u64`，`exists` 委托给 `count`。`eq`、`and_scope`、`in_values`、`is_null` 等 Boolean DSL helper 生成 `BooleanExpression<ExpressionValue>`，可直接传给仓储方法，也可通过 `RelationalQueryPlan::with_predicate` 进入关系计划编译，或交给兼容的 SQLx statement builder。`SortBy` 与 `UpdateAssignments::{set, set_null, set_expr}` 分别提供可组合的排序/分页和更新描述。
 
 当适配器需要区分字段缺失、映射歧义和非法配置时，应实现 `DiagnosticPersistenceFieldResolver`；`PredicateSchema<String>` 已为注册的字符串字段映射提供该诊断行为。
 

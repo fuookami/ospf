@@ -35,6 +35,32 @@
 
 Kotlin `bpp3d-domain-layer-selection-context` 在 Rust 中映射到 application 编排，因为 Rust 把 layer selection 作为围绕可复用 domain context 的 solver 生命周期处理。
 
+
+## 圆柱体几何语义
+
+框架支持轴对齐圆柱体，具有以下语义：
+
+### 垂直圆柱体（Axis3.Y）
+
+- 完整支持圆形填充网格候选和保守长方体支撑堆候选。
+- 底部重叠/支撑检查使用真实足迹几何。
+- 渲染器 DTO 中的 `radius` 和 `diameter` 字段。
+
+### 水平圆柱体（Axis3.X / Axis3.Z）
+
+- **固定/离散半径**：轴感知放置的圆形填充网格路径。
+- **支撑堆**：单全长支撑、重复同形多支撑区间、异构支撑区间。
+- **悬挂候选**：覆盖圆柱轴的单或重复窄长方体支撑线悬挂。
+- **支撑要求**：必须在容器底部或具有覆盖完整圆柱轴和底部支撑线的长方体支撑区间。
+- **层约束**：单个 `BinLayer` 不能混合多个圆柱轴。
+
+### 连续半径建模
+
+- **PWL 近似**：`UnivariateLinearPiecewiseFunction` 符号用于通过 `π·r²·h` 的体积近似。
+- **保守包络**：`rMax` 包络边界用于生产就绪的连续半径变量。
+- **生产就绪路径**：`RealVar` 求解器变量，具有约束边界和目标等式约束。
+- **渲染器输出**：求解器选择的半径应用于 `actualVolume` 和 `radius`/`diameter` DTO 字段。
+- **PWL 诊断**：渲染器项目信息中的 `pwl_volume`、`pwl_error`、`pwl_segments`、`pwl_within_envelope`。
 ## 核心概念
 
 1. `BinLayer` 是 layer assignment 中的被选择列。

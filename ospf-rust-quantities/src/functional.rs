@@ -11,7 +11,9 @@ use crate::unit::concept::UnitTrait;
 use crate::unit::conversion_value::UnitConversionValue;
 use crate::unit::derived::{Day, Hour, Microsecond, Millisecond, Minute, Nanosecond, Second, Year};
 use crate::unit::{CTUnit, Unit};
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::BigDecimal;
+use num_bigint::{BigInt, Sign};
+use num_traits::{ToPrimitive, Zero};
 use ospf_rust_base::{ErrorPosition, Ret, error, read_unwrap, write_unwrap};
 use ospf_rust_math::algebra::value_range::{Bound, IntervalTrait, ValueRange, ValueWrapper};
 use ospf_rust_math::operator::Exponent;
@@ -675,6 +677,252 @@ fn ensure_time_unit(unit: &Unit) -> Ret<()> {
     }
 }
 
+const NANOS_PER_SECOND: u64 = 1_000_000_000;
+
+/// 构造统一的时长互操作错误 / Construct a unified duration interoperability error
+fn duration_conversion_error(
+    from_unit: &str,
+    to_unit: &str,
+    reason: &'static str,
+) -> Box<dyn ospf_rust_base::Error> {
+    Box::new(error!(UnitConversionError {
+        from_unit: from_unit.to_string(),
+        to_unit: to_unit.to_string(),
+        reason: reason
+    }))
+}
+
+/// 检查并构造 `Duration` 的秒和纳秒部分 / Validate and construct `Duration` from seconds and nanoseconds
+fn duration_from_parts(seconds: u64, nanos: u32, from_unit: &str) -> Ret<Duration> {
+    let max = Duration::MAX;
+    if seconds > max.as_secs() || (seconds == max.as_secs() && nanos > max.subsec_nanos()) {
+        return Err(duration_conversion_error(
+            from_unit,
+            "std::time::Duration",
+            "duration is outside the representable range",
+        ));
+    }
+
+    Ok(Duration::new(seconds, nanos))
+}
+
+/// 将秒值的 `BigDecimal` 精确转换为 `Duration` / Convert a decimal seconds value to `Duration` exactly
+fn big_decimal_seconds_to_duration(value: &BigDecimal, from_unit: &str) -> Ret<Duration> {
+    let (mut digits, mut scale) = value.as_bigint_and_exponent();
+
+    if digits.sign() == Sign::Minus {
+        return Err(duration_conversion_error(
+            from_unit,
+            "std::time::Duration",
+            "negative duration is not supported",
+        ));
+    }
+
+    if digits.is_zero() {
+        return Ok(Duration::ZERO);
+    }
+
+    // 统一到最多 9 位小数；超过 9 位时只允许删除尾随零。
+    // Normalize to at most 9 fractional digits; only trailing zeroes may be removed.
+    if scale > 9 {
+        let excess = scale - 9;
+        let (sign, decimal_digits) = digits.to_radix_be(10);
+        let trailing_zeroes = decimal_digits
+            .iter()
+            .rev()
+            .take_while(|digit| **digit == 0)
+            .count();
+        let excess = usize::try_from(excess).map_err(|_| {
+            duration_conversion_error(
+                from_unit,
+                "std::time::Duration",
+                "duration has more than nanosecond precision",
+            )
+        })?;
+
+        if excess > trailing_zeroes {
+            return Err(duration_conversion_error(
+                from_unit,
+                "std::time::Duration",
+                "duration has more than nanosecond precision",
+            ));
+        }
+
+        let kept_len = decimal_digits.len() - excess;
+        digits = BigInt::from_radix_be(sign, &decimal_digits[..kept_len], 10).ok_or_else(|| {
+            duration_conversion_error(
+                from_unit,
+                "std::time::Duration",
+                "duration has invalid decimal precision",
+            )
+        })?;
+        scale = 9;
+    }
+
+    let (seconds, nanos) = if scale <= 0 {
+        let exponent = scale.checked_neg().ok_or_else(|| {
+            duration_conversion_error(
+                from_unit,
+                "std::time::Duration",
+                "duration is outside the representable range",
+            )
+        })?;
+        let exponent = u32::try_from(exponent).map_err(|_| {
+            duration_conversion_error(
+                from_unit,
+                "std::time::Duration",
+                "duration is outside the representable range",
+            )
+        })?;
+        let multiplier = 10_u64.checked_pow(exponent).ok_or_else(|| {
+            duration_conversion_error(
+                from_unit,
+                "std::time::Duration",
+                "duration is outside the representable range",
+            )
+        })?;
+        let whole = digits.to_u64().ok_or_else(|| {
+            duration_conversion_error(
+                from_unit,
+                "std::time::Duration",
+                "duration is outside the representable range",
+            )
+        })?;
+        let seconds = whole.checked_mul(multiplier).ok_or_else(|| {
+            duration_conversion_error(
+                from_unit,
+                "std::time::Duration",
+                "duration is outside the representable range",
+            )
+        })?;
+        (seconds, 0)
+    } else {
+        let scale = u32::try_from(scale).map_err(|_| {
+            duration_conversion_error(
+                from_unit,
+                "std::time::Duration",
+                "duration has invalid decimal precision",
+            )
+        })?;
+        let divisor = BigInt::from(10_u64.pow(scale));
+        let whole = (&digits / &divisor).to_u64().ok_or_else(|| {
+            duration_conversion_error(
+                from_unit,
+                "std::time::Duration",
+                "duration is outside the representable range",
+            )
+        })?;
+        let fraction = (&digits % &divisor).to_u64().ok_or_else(|| {
+            duration_conversion_error(
+                from_unit,
+                "std::time::Duration",
+                "duration has invalid decimal precision",
+            )
+        })?;
+        let nanos = fraction
+            .checked_mul(10_u64.pow(9 - scale))
+            .and_then(|nanos| u32::try_from(nanos).ok())
+            .ok_or_else(|| {
+                duration_conversion_error(
+                    from_unit,
+                    "std::time::Duration",
+                    "duration has invalid nanosecond precision",
+                )
+            })?;
+        (whole, nanos)
+    };
+
+    duration_from_parts(seconds, nanos, from_unit)
+}
+
+/// 将有限 `f64` 秒值转换为 `Duration` / Convert finite `f64` seconds to `Duration`
+fn f64_seconds_to_duration(value: f64, from_unit: &str) -> Ret<Duration> {
+    if !value.is_finite() {
+        return Err(duration_conversion_error(
+            from_unit,
+            "std::time::Duration",
+            "duration value must be finite",
+        ));
+    }
+
+    if value < 0.0 {
+        return Err(duration_conversion_error(
+            from_unit,
+            "std::time::Duration",
+            "negative duration is not supported",
+        ));
+    }
+
+    // `Display` emits the shortest round-tripping decimal, so this preserves the
+    // caller-visible decimal precision while avoiding `Duration::from_secs_f64`'s
+    // implicit nanosecond rounding. / `Display` 输出最短往返十进制表示，保留调用方可见精度，避免
+    // `Duration::from_secs_f64` 隐式进行纳秒舍入。
+    let decimal = value.to_string().parse::<BigDecimal>().map_err(|_| {
+        duration_conversion_error(
+            from_unit,
+            "std::time::Duration",
+            "cannot represent f64 duration as decimal seconds",
+        )
+    })?;
+    big_decimal_seconds_to_duration(&decimal, from_unit)
+}
+
+/// 将 `Duration` 精确构造成秒 `BigDecimal` / Construct exact decimal seconds from `Duration`
+fn duration_to_seconds_big_decimal(duration: &Duration) -> BigDecimal {
+    BigDecimal::from(duration.as_secs()) + BigDecimal::new(duration.subsec_nanos().into(), 9)
+}
+
+/// 将 `Duration` 转换为秒 `f64` / Convert `Duration` to seconds as `f64`
+fn duration_to_seconds_f64(duration: &Duration) -> Ret<f64> {
+    let seconds =
+        duration.as_secs() as f64 + duration.subsec_nanos() as f64 / NANOS_PER_SECOND as f64;
+    if seconds.is_finite() {
+        Ok(seconds)
+    } else {
+        Err(duration_conversion_error(
+            "std::time::Duration",
+            "second",
+            "cannot represent duration as finite f64 seconds",
+        ))
+    }
+}
+
+/// 将时间物理量转换为标准时长 / Convert a time quantity to a standard duration
+pub trait IntoDuration {
+    /// 转换为 `std::time::Duration` / Convert to `std::time::Duration`
+    fn into_duration(&self) -> Ret<Duration>;
+}
+
+/// 从标准时长构造物理量 / Construct a quantity from a standard duration
+pub trait FromDuration: Sized {
+    /// 从 `std::time::Duration` 构造物理量 / Construct this quantity from `std::time::Duration`
+    fn from_duration(duration: Duration) -> Ret<Self>;
+}
+
+impl IntoDuration for Quantity<BigDecimal, Second> {
+    fn into_duration(&self) -> Ret<Duration> {
+        big_decimal_seconds_to_duration(&self.value, Second::SYMBOL)
+    }
+}
+
+impl IntoDuration for Quantity<f64, Second> {
+    fn into_duration(&self) -> Ret<Duration> {
+        f64_seconds_to_duration(self.value, Second::SYMBOL)
+    }
+}
+
+impl FromDuration for Quantity<BigDecimal, Second> {
+    fn from_duration(duration: Duration) -> Ret<Self> {
+        Ok(Quantity::new_ct(duration_to_seconds_big_decimal(&duration)))
+    }
+}
+
+impl FromDuration for Quantity<f64, Second> {
+    fn from_duration(duration: Duration) -> Ret<Self> {
+        Ok(Quantity::new_ct(duration_to_seconds_f64(&duration)?))
+    }
+}
+
 /// 时长物理量扩展，将时间物理量转换为标准时长 / Duration quantity extension, converting a time quantity to a standard Duration
 pub trait DurationQuantityExt {
     /// 转换为 `std::time::Duration`，要求物理量为时间量纲且非负 / Convert to `std::time::Duration`; requires time dimension and non-negative value
@@ -686,23 +934,7 @@ impl DurationQuantityExt for Quantity<BigDecimal, Unit> {
         ensure_time_unit(&self.unit)?;
         let second_unit = Second::INSTANT.clone();
         let seconds_quantity = self.to_unit(&second_unit)?;
-        let seconds = seconds_quantity.value.to_f64().ok_or_else(|| {
-            Box::new(error!(UnitConversionError {
-                from_unit: self.unit.symbol().to_string(),
-                to_unit: "std::time::Duration".to_string(),
-                reason: "cannot represent value as f64 seconds"
-            })) as Box<dyn ospf_rust_base::Error>
-        })?;
-
-        if seconds < 0.0 {
-            return Err(Box::new(error!(UnitConversionError {
-                from_unit: self.unit.symbol().to_string(),
-                to_unit: "std::time::Duration".to_string(),
-                reason: "negative duration is not supported"
-            })));
-        }
-
-        Ok(Duration::from_secs_f64(seconds))
+        big_decimal_seconds_to_duration(&seconds_quantity.value, self.unit.symbol())
     }
 }
 
@@ -734,13 +966,7 @@ pub trait DurationToQuantityExt {
 impl DurationToQuantityExt for Duration {
     fn to_time_quantity(&self, unit: &Unit) -> Ret<Quantity<BigDecimal, Unit>> {
         ensure_time_unit(unit)?;
-        let seconds = BigDecimal::from_f64(self.as_secs_f64()).ok_or_else(|| {
-            Box::new(error!(UnitConversionError {
-                from_unit: "std::time::Duration".to_string(),
-                to_unit: unit.symbol().to_string(),
-                reason: "cannot represent duration as BigDecimal"
-            })) as Box<dyn ospf_rust_base::Error>
-        })?;
+        let seconds = duration_to_seconds_big_decimal(self);
 
         let factor = Second::INSTANT
             .clone()
@@ -964,12 +1190,13 @@ mod tests {
     use super::*;
     use crate::dimension::FundamentalQuantityEnum;
     use crate::unit::CTUnit;
-    use crate::unit::derived::{Kilometer, Meter};
+    use crate::unit::derived::{Kilometer, Meter, Second};
     use ospf_rust_math::algebra::value_range::Closed;
     use ospf_rust_math::symbol::{DynSymbol, LinearMonomial, SymbolDynId};
     use std::any::Any;
     use std::fmt::{Display, Formatter};
     use std::str::FromStr;
+    use std::time::Duration;
 
     #[derive(Debug, Clone)]
     struct TestSymbol {
@@ -1084,6 +1311,79 @@ mod tests {
 
         let quantity = duration.to_time_quantity(&Second::INSTANT.clone()).unwrap();
         assert_eq!(quantity.value, BigDecimal::from(42));
+    }
+
+    #[test]
+    fn test_duration_traits_bigdecimal_exact_subseconds() {
+        let quantity =
+            Quantity::<BigDecimal, Second>::new_ct(BigDecimal::from_str("42.123456789").unwrap());
+        let duration = quantity.into_duration().unwrap();
+        assert_eq!(duration, Duration::new(42, 123_456_789));
+
+        let roundtrip = Quantity::<BigDecimal, Second>::from_duration(duration).unwrap();
+        assert_eq!(
+            roundtrip.value,
+            BigDecimal::from_str("42.123456789").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_duration_traits_bigdecimal_max_is_exact() {
+        let duration = Duration::MAX;
+        let quantity = Quantity::<BigDecimal, Second>::from_duration(duration).unwrap();
+        let expected = BigDecimal::from(duration.as_secs())
+            + BigDecimal::new(duration.subsec_nanos().into(), 9);
+
+        assert_eq!(quantity.value, expected);
+        assert_eq!(quantity.into_duration().unwrap(), duration);
+    }
+
+    #[test]
+    fn test_duration_traits_bigdecimal_reject_negative_and_precision_loss() {
+        let negative = Quantity::<BigDecimal, Second>::new_ct(BigDecimal::from_str("-1").unwrap());
+        assert!(negative.into_duration().is_err());
+
+        let beyond_nanosecond =
+            Quantity::<BigDecimal, Second>::new_ct(BigDecimal::from_str("1.0000000001").unwrap());
+        assert!(beyond_nanosecond.into_duration().is_err());
+    }
+
+    #[test]
+    fn test_duration_traits_bigdecimal_reject_out_of_range() {
+        let out_of_range = Quantity::<BigDecimal, Second>::new_ct(
+            BigDecimal::from(Duration::MAX.as_secs()) + BigDecimal::from(1u8),
+        );
+        assert!(out_of_range.into_duration().is_err());
+    }
+
+    #[test]
+    fn test_duration_traits_f64_roundtrip_and_finite_validation() {
+        let quantity = Quantity::<f64, Second>::new_ct(1.5);
+        assert_eq!(
+            quantity.into_duration().unwrap(),
+            Duration::new(1, 500_000_000)
+        );
+
+        let roundtrip =
+            Quantity::<f64, Second>::from_duration(Duration::new(2, 500_000_000)).unwrap();
+        assert_eq!(roundtrip.value, 2.5);
+
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(
+                Quantity::<f64, Second>::new_ct(value)
+                    .into_duration()
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn test_duration_traits_f64_reject_negative_and_out_of_range() {
+        let negative = Quantity::<f64, Second>::new_ct(-1.0);
+        assert!(negative.into_duration().is_err());
+
+        let out_of_range = Quantity::<f64, Second>::new_ct(Duration::MAX.as_secs() as f64);
+        assert!(out_of_range.into_duration().is_err());
     }
 
     #[test]

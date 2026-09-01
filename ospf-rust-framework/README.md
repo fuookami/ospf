@@ -60,6 +60,7 @@ Application code should generally use unified `solve(...)` and `solve_with_optio
 | `DynamicModelLifecycle`, `DynamicColumnContext`, `ColumnState` | Dynamic column lifecycle and warm-start state. | migration |
 | `ColumnGenerationSolver` | Framework column-generation solver trait. | migration |
 | `LinearBendersDecompositionSolver`, `QuadraticBendersDecompositionSolver` | Benders decomposition solver traits. | migration |
+| `LogicBasedBendersEngine` | Logic-Based Benders orchestration for a linear master and CP subproblem. | migration |
 | `SerialCombinatorial*`, `ParallelCombinatorial*` | Solver combinators. | migration |
 | `FrameworkSolveOptions` | Unified solve options. | migration |
 | `RemoteSolverClient`, `RemoteLinearSolver`, `RemoteQuadraticSolver` | Remote solver orchestration when feature-gated. | migration |
@@ -79,6 +80,26 @@ Framework-level extensions should be expressed as:
 5. solver wrappers or combinators for backend selection and fallback.
 
 Domain crates should expose their own context / aggregation / pipeline extension points and use framework abstractions rather than adding domain logic to application solvers.
+
+## Logic-Based Benders
+
+`LogicBasedBendersEngine` combines a linear master with a constraint-programming subproblem through
+`LogicBasedBendersMaster` and `ConstraintProgrammingSubproblemSolver`. The master returns a verified
+`SolveReport<f64>` with stable variable IDs; the subproblem receives the resulting `MasterAssignment`
+and returns a `ConstraintProgrammingSubproblemResult`.
+
+Use `LogicBasedBendersMode::Exact` when the result must carry a global proof. Exact mode requires a
+snapshot-verified CP terminal result, globally valid verified cuts, a consistent objective evaluator,
+and a verified master optimum. `LogicBasedBendersMode::Heuristic` can retain an incumbent when those
+proof conditions are unavailable, but clears the optimality proof and records the downgrade in the
+report diagnostics.
+
+`DefaultFeasibilityCutOracle` creates assignment no-good cuts. Use `binary_assignment_no_good` for
+binary bindings and `bounded_integer_assignment_no_good` for finite integer bindings; the latter
+returns the complete auxiliary-variable formulation as a cut family. Implement
+`LogicBasedBendersCutOracle` to add conflict or optimality cuts, and inspect
+`SolveReport.trace.iteration_snapshots` for iteration-level diagnostics. The optional
+`serde` feature also exposes portable checkpoint capture and resume APIs.
 
 ## Generic Numeric Boundaries
 
@@ -158,6 +179,8 @@ Inside a current-thread Tokio runtime, prefer `solve_remote(...)` / `solve_remot
 Persistence backends follow Cargo features. The public common layer contains `ExpressionRepository`, `RepositoryQuery`, `SortBy`, `UpdateAssignments`, `PredicateSchema`, `FieldPath`, and request/response DTO/record types.
 
 `RelationalQueryPlan` is the database-independent planning boundary for sources, aliases, joins, predicates, projections, grouping, ordering, pagination, and optional root keys. Plans recursively snapshot owned expression trees and dynamic symbol metadata at the plan boundary, validate join correlations before compilation, and expose `canonical()` plus a SHA-256 `canonical_hash()` for audit correlation. Canonical keys normalize nested boolean expressions and membership candidates while retaining literal type shape rather than literal values. The plan remains intentionally independent of permissions, budgets, physical table names, database connections, and row-mapping types.
+
+The repository contract is backend-neutral: `find` delegates to `find_with_options` with default `RepositoryQuery` options, while `count`, `update`, and `delete` return matching or affected row counts as `u64`; `exists` delegates to `count`. Boolean DSL helpers such as `eq`, `and_scope`, `in_values`, and `is_null` produce `BooleanExpression<ExpressionValue>` values that can be passed to repository methods, attached with `RelationalQueryPlan::with_predicate` for plan-based compilation, or sent directly to the compatibility SQLx statement builder. `SortBy` and `UpdateAssignments::{set, set_null, set_expr}` provide composable ordering, pagination, and update descriptors.
 
 Field mappings should implement `DiagnosticPersistenceFieldResolver` when the adapter must distinguish a missing field from an ambiguous mapping or invalid configuration. `PredicateSchema<String>` supplies this behavior for registered string mappings.
 

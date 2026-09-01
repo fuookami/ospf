@@ -120,6 +120,27 @@ let rt_length: Quantity<BigDecimal, Unit> = ct_length.to_runtime();
 assert_eq!(rt_length.unit.symbol(), "m");
 ```
 
+### `std::time::Duration` 互操作
+
+带类型的秒物理量通过 `IntoDuration` 和 `FromDuration` 支持纳秒边界上的精确转换：
+
+```rust
+use ospf_rust_quantities::{FromDuration, IntoDuration, Quantity};
+use ospf_rust_quantities::unit::derived::Second;
+use bigdecimal::BigDecimal;
+use std::time::Duration;
+
+let seconds: Quantity<BigDecimal, Second> =
+    Quantity::new_ct("42.123456789".parse().unwrap());
+let duration = seconds.into_duration().unwrap();
+assert_eq!(duration, Duration::new(42, 123_456_789));
+
+let restored = Quantity::<BigDecimal, Second>::from_duration(duration).unwrap();
+assert_eq!(restored.value, seconds.value);
+```
+
+`BigDecimal` 路径不会经过 `f64`：值必须非负、在 `Duration` 可表示范围内，并且能精确表示到纳秒（纳秒以外的尾随零可以保留）。`f64` 路径要求值有限且非负，发生精度或范围损失时返回错误。`Duration` 转 `BigDecimal` 使用秒和纳秒组成部分精确构造；`Duration` 转 `f64` 仍受 IEEE-754 精度限制。
+
 ### 单位制 / Unit Systems
 
 ```rust

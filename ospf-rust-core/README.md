@@ -32,6 +32,36 @@ Explicit non-goals:
 | `solver` | `core/solver` | Solver traits, options, backend configs, output types, value conversion, heuristic helpers, IIS diagnostics, and backend adapters. |
 | `error` | `core/error` | Core error and result types. |
 
+
+## Sub-package Overview
+
+### solver/
+
+| Sub-package | Description |
+|-------------|-------------|
+| `config` | Solver-specific configuration (COPT, Gurobi, SCIP). |
+| `heuristic` | Metaheuristic framework (PSO, selection, crossover, mutation). |
+| `iis` | Irreducible Infeasible Subsystem diagnostics. |
+| `output` | Solver output data structures (feasible/infeasible). |
+| `value` | Value type conversion (IntoValue trait). |
+| `backend` | Feature-gated backend adapters (Gurobi, SCIP). |
+
+### model/
+
+| Sub-package | Description |
+|-------------|-------------|
+| `basic` | Foundation interfaces, enums, and view types. |
+| `mechanism` | MetaModel, MechanismModel, constraint/objective DSL. |
+| `intermediate` | Standard form models (triad/tetrad), sparse matrix. |
+| `callback` | Callback model interface for heuristic solvers. |
+
+### symbol/
+
+| Sub-package | Description |
+|-------------|-------------|
+| `function` | 30+ function symbols (Slack, If, Max, Piecewise, etc.). |
+| `flatten` | Expression flattening utilities. |
+
 ## Architecture Overview
 
 `ospf-rust-core` follows the Kotlin-aligned model lifecycle:
@@ -44,6 +74,35 @@ User definition layer  ->  MetaModel<V>
 ```
 
 The crate keeps model construction, expression flattening, solver-order token mapping, and result extraction explicit so higher-level framework crates can compose them without owning low-level modeling internals.
+
+
+## Constraint Programming
+
+The `model::constraint_programming` module provides integer-domain CP models with immutable snapshots, stable IDs, and source verification. Key components:
+
+- **Boolean literals and variables**: `CpBoolVar`, `CpBoolLiteral` for Boolean decision variables.
+- **Intervals**: `CpInterval` for modeling temporal intervals with start/end/duration.
+- **Global constraints**: `AllDifferent`, `Element`, `Table` (support varies by backend).
+- **Immutable snapshots**: `CpSnapshot` captures the complete CP model state for checkpoint/restart.
+- **Identity scope**: Use `scope = "stable"` with a caller-owned `origin` when an ID must survive model rebuilds.
+- **Portable codec**: `ConstraintProgrammingCheckpointCodec` writes portable checkpoint envelopes containing snapshot fingerprint, solver/configuration provenance, and validated incumbent.
+
+### Solver Integration
+
+The `solver::constraint_programming` module provides:
+
+- **Solver/session SPI**: Trait definitions for CP solver backends.
+- **Fake contract solver**: For testing and small exhaustive oracles.
+- **SCIP integration**: Feature-gated SCIP CP backend (finite MIP-backed facade).
+- **MIP-backed lowering**: Exact lowering for finite integer subsets with verified bounds; returns structured errors for unsupported constraints (`Cumulative`, `Circuit`, `Automaton`, `Reservoir`).
+
+### Logic-Based Benders
+
+For Logic-Based Benders decomposition, use `LogicBasedBendersEngine` from `ospf-rust-framework`. The engine combines a linear master with a CP subproblem, with explicit extension points for:
+
+- Variable bindings and conflict/optimality cut oracles.
+- Integer no-good encoding.
+- Iteration traces and `Exact`/`Heuristic` proof gates.
 
 ## Core Concepts
 

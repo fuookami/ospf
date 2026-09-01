@@ -54,6 +54,36 @@ fn approximately_equal(left: f64, right: f64, tolerance: f64) -> bool {
     (left - right).abs() <= tolerance
 }
 
+fn is_better_incumbent(
+    category: ObjectiveCategory,
+    candidate: &SolveReport<f64>,
+    incumbent: Option<&SolveReport<f64>>,
+) -> bool {
+    if incumbent.is_none() {
+        return true;
+    }
+    let Some(candidate_objective) = candidate
+        .solution
+        .as_ref()
+        .and_then(|solution| solution.objective_value.or(solution.objective))
+        .filter(|value| value.is_finite())
+    else {
+        return false;
+    };
+    let incumbent_objective = incumbent
+        .and_then(|report| report.solution.as_ref())
+        .and_then(|solution| solution.objective_value.or(solution.objective))
+        .filter(|value| value.is_finite());
+    let Some(incumbent_objective) = incumbent_objective else {
+        return true;
+    };
+    if category.is_minimum() {
+        candidate_objective < incumbent_objective
+    } else {
+        candidate_objective > incumbent_objective
+    }
+}
+
 fn cp_assignment_fingerprint(assignment: &BTreeMap<StableVariableId, i64>) -> AuditFingerprint {
     let mut bytes = Vec::new();
     bytes.extend_from_slice(&(assignment.len() as u64).to_le_bytes());
@@ -1868,6 +1898,20 @@ pub trait LogicBasedBendersObjectiveEvaluator {
         subproblem: &ConstraintProgrammingSubproblemResult,
         master_report: &SolveReport<f64>,
     ) -> Result<f64>;
+
+    /// 计算可选的原问题目标；满足性问题可以返回 `None` / Evaluate an optional original-problem objective; satisfaction problems may return `None`.
+    ///
+    /// 默认实现保持原有 evaluator 合同，将有限目标包装为 `Some`。
+    /// The default implementation preserves the existing evaluator contract by wrapping its finite objective in `Some`.
+    fn evaluate_optional(
+        &mut self,
+        assignment: &MasterAssignment,
+        subproblem: &ConstraintProgrammingSubproblemResult,
+        master_report: &SolveReport<f64>,
+    ) -> Result<Option<f64>> {
+        self.evaluate(assignment, subproblem, master_report)
+            .map(Some)
+    }
 }
 
 /// 默认 objective evaluator：使用 master objective / Default evaluator using the master objective.
@@ -1887,6 +1931,24 @@ impl LogicBasedBendersObjectiveEvaluator for MasterObjectiveEvaluator {
             .and_then(|solution| solution.objective_value.or(solution.objective))
             .filter(|value| value.is_finite())
             .ok_or_else(|| contract("master optimal report has no finite objective value"))
+    }
+
+    fn evaluate_optional(
+        &mut self,
+        _assignment: &MasterAssignment,
+        _subproblem: &ConstraintProgrammingSubproblemResult,
+        master_report: &SolveReport<f64>,
+    ) -> Result<Option<f64>> {
+        let objective = master_report
+            .solution
+            .as_ref()
+            .and_then(|solution| solution.objective_value.or(solution.objective));
+        if objective.is_some_and(|value| !value.is_finite()) {
+            return Err(contract(
+                "master optimal report has no finite objective value",
+            ));
+        }
+        Ok(objective)
     }
 }
 
@@ -2621,38 +2683,46 @@ impl LogicBasedBendersEngine {
                         );
                     }
                     let objective_value =
-                        objective.evaluate(&assignment, &sub_result, &master_report)?;
-                    if !objective_value.is_finite() {
-                        return Err(contract(
-                            "Logic-Based Benders objective evaluator returned a non-finite value",
-                        ));
-                    }
-                    let master_objective = master_report
-                        .solution
-                        .as_ref()
-                        .and_then(|solution| solution.objective_value.or(solution.objective));
-                    let objective_preserves_master_bound = master_objective
-                        .is_some_and(|value| approximately_equal(value, objective_value, 1e-9));
+                        objective.evaluate_optional(&assignment, &sub_result, &master_report)?;
                     let mut feasible_report = master_report.clone();
-                    if let Some(solution) = feasible_report.solution.as_mut() {
-                        solution.objective = Some(objective_value);
-                        solution.objective_value = Some(objective_value);
-                    }
-                    if !objective_preserves_master_bound {
-                        // A custom evaluator changes the objective semantics. The master bound and
-                        // its optimality proof cannot be reused without an explicit recourse bound.
-                        // 自定义 evaluator 改变目标语义时，不得复用 master bound 或最优性证明。
-                        feasible_report.proof = None;
-                        feasible_report.statistics.best_bound = None;
-                        feasible_report.statistics.best_bound_value = None;
-                        feasible_report.statistics.absolute_gap = None;
-                        feasible_report.statistics.relative_gap = None;
-                        feasible_report.solution_presence =
-                            ospf_rust_core::solver::SolutionPresence::Incumbent;
-                        all_cuts_exact = false;
+                    if let Some(objective_value) = objective_value {
+                        if !objective_value.is_finite() {
+                            return Err(contract(
+                                "Logic-Based Benders objective evaluator returned a non-finite value",
+                            ));
+                        }
+                        let master_objective = master_report
+                            .solution
+                            .as_ref()
+                            .and_then(|solution| solution.objective_value.or(solution.objective));
+                        let objective_preserves_master_bound = master_objective
+                            .is_some_and(|value| approximately_equal(value, objective_value, 1e-9));
+                        if let Some(solution) = feasible_report.solution.as_mut() {
+                            solution.objective = Some(objective_value);
+                            solution.objective_value = Some(objective_value);
+                        }
+                        if !objective_preserves_master_bound {
+                            // A custom evaluator changes the objective semantics. The master bound and
+                            // its optimality proof cannot be reused without an explicit recourse bound.
+                            // 自定义 evaluator 改变目标语义时，不得复用 master bound 或最优性证明。
+                            feasible_report.proof = None;
+                            feasible_report.statistics.best_bound = None;
+                            feasible_report.statistics.best_bound_value = None;
+                            feasible_report.statistics.absolute_gap = None;
+                            feasible_report.statistics.relative_gap = None;
+                            feasible_report.solution_presence =
+                                ospf_rust_core::solver::SolutionPresence::Incumbent;
+                            all_cuts_exact = false;
+                        }
                     }
                     feasible_report.validate()?;
-                    best_feasible = Some(feasible_report);
+                    if is_better_incumbent(
+                        self.objective_category,
+                        &feasible_report,
+                        best_feasible.as_ref(),
+                    ) {
+                        best_feasible = Some(feasible_report);
+                    }
                     let generated = oracle.cuts_for_feasible_with_context(
                         &assignment,
                         &sub_result,
@@ -3685,6 +3755,15 @@ mod tests {
             .expect("master report")
     }
 
+    fn master_report_without_objective(values: &[(StableVariableId, f64)]) -> SolveReport<f64> {
+        let mut report = master_report(values, 0.0);
+        let solution = report.solution.as_mut().expect("master solution");
+        solution.objective = None;
+        solution.objective_value = None;
+        report.validate().expect("master report without objective");
+        report
+    }
+
     fn cp_test_snapshot() -> ConstraintProgrammingSnapshot {
         let variable = IntegerVariable::new("z");
         let mut model = ConstraintProgrammingModel::new("lbb-test-subproblem");
@@ -4449,6 +4528,138 @@ mod tests {
         assert!(report.is_optimal(), "{report:?}");
         assert_eq!(report.trace.total_iterations, 2);
         assert_eq!(report.trace.generated_columns, 1);
+    }
+
+    struct ContinueAfterFirstFeasibleOracle {
+        emitted: bool,
+    }
+
+    impl LogicBasedBendersCutOracle for ContinueAfterFirstFeasibleOracle {
+        fn cuts_for_infeasible(
+            &mut self,
+            _assignment: &MasterAssignment,
+            _result: &ConstraintProgrammingSubproblemResult,
+        ) -> Result<Vec<MasterCut>> {
+            Ok(Vec::new())
+        }
+
+        fn cuts_for_feasible_with_context(
+            &mut self,
+            _assignment: &MasterAssignment,
+            _result: &ConstraintProgrammingSubproblemResult,
+            context: &LogicBasedBendersProofContext,
+        ) -> Result<Vec<MasterCut>> {
+            if self.emitted {
+                return Ok(Vec::new());
+            }
+            self.emitted = true;
+            Ok(vec![MasterCut::verified_global(
+                "continue-after-first-feasible",
+                [(StableVariableId::from("x"), 1.0)],
+                super::super::CutSense::GreaterOrEqual,
+                0.0,
+                context.proof_reference.clone(),
+                "test",
+                "continue after first feasible",
+            )])
+        }
+    }
+
+    #[test]
+    fn engine_retains_best_feasible_incumbent_for_each_objective_direction() {
+        let binding = binding_binary();
+        for (category, first_objective, later_objective) in [
+            (ObjectiveCategory::Minimum, 1.0, 2.0),
+            (ObjectiveCategory::Maximum, 2.0, 1.0),
+        ] {
+            let engine = exact_engine(binding.clone()).with_objective_category(category);
+            let mut master = |cuts: &[MasterCut], _options: &FrameworkSolveOptions| {
+                let (value, objective) = if cuts.is_empty() {
+                    (0.0, first_objective)
+                } else {
+                    (1.0, later_objective)
+                };
+                Ok(master_report(
+                    &[
+                        (StableVariableId::from("x"), value),
+                        (StableVariableId::from("y"), 0.0),
+                    ],
+                    objective,
+                ))
+            };
+            let mut subproblem =
+                |assignment: &MasterAssignment, _options: &FrameworkSolveOptions| {
+                    let snapshot = cp_test_snapshot();
+                    cp_feasible_result_for_master(assignment, &snapshot, "z")
+                };
+            let mut oracle = ContinueAfterFirstFeasibleOracle { emitted: false };
+            let report = engine
+                .solve_with_oracle(
+                    &mut master,
+                    &mut subproblem,
+                    &mut oracle,
+                    &FrameworkSolveOptions::default(),
+                )
+                .expect("engine");
+            let solution = report.solution.as_ref().expect("incumbent");
+            assert_eq!(solution.objective_value, Some(first_objective));
+            assert_eq!(solution.stable_values[&StableVariableId::from("x")], 0.0);
+            assert_eq!(report.trace.total_iterations, 2);
+        }
+    }
+
+    #[test]
+    fn engine_retains_first_feasible_incumbent_without_an_objective() {
+        let binding = binding_binary();
+        let engine = exact_engine(binding);
+        let mut master = |cuts: &[MasterCut], _options: &FrameworkSolveOptions| {
+            let value = if cuts.is_empty() { 0.0 } else { 1.0 };
+            Ok(master_report_without_objective(&[
+                (StableVariableId::from("x"), value),
+                (StableVariableId::from("y"), 0.0),
+            ]))
+        };
+        let mut subproblem = |assignment: &MasterAssignment, _options: &FrameworkSolveOptions| {
+            let snapshot = cp_test_snapshot();
+            cp_feasible_result_for_master(assignment, &snapshot, "z")
+        };
+        let mut oracle = ContinueAfterFirstFeasibleOracle { emitted: false };
+
+        let report = engine
+            .solve_with_oracle(
+                &mut master,
+                &mut subproblem,
+                &mut oracle,
+                &FrameworkSolveOptions::default(),
+            )
+            .expect("engine");
+
+        assert!(report.is_optimal());
+        assert_eq!(report.trace.total_iterations, 2);
+        let solution = report.solution.as_ref().expect("incumbent");
+        assert_eq!(solution.objective, None);
+        assert_eq!(solution.objective_value, None);
+        assert_eq!(solution.stable_values[&StableVariableId::from("x")], 0.0);
+    }
+
+    #[test]
+    fn first_feasible_report_is_retained_without_an_objective_value() {
+        let mut candidate = master_report(
+            &[
+                (StableVariableId::from("x"), 0.0),
+                (StableVariableId::from("y"), 0.0),
+            ],
+            1.0,
+        );
+        let solution = candidate.solution.as_mut().expect("solution");
+        solution.objective_value = None;
+        solution.objective = None;
+
+        assert!(is_better_incumbent(
+            ObjectiveCategory::Minimum,
+            &candidate,
+            None
+        ));
     }
 
     #[cfg(feature = "serde")]

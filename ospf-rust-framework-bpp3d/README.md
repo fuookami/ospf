@@ -35,6 +35,33 @@ The modeling path is centered on `MetaModel`: RMP and final MILP assembly share 
 
 Kotlin `bpp3d-domain-layer-selection-context` is mapped into Rust application orchestration, because Rust keeps layer selection as a solver lifecycle around reusable domain contexts.
 
+
+## Cylinder Geometry Semantics
+
+The framework supports axis-aligned cylinders with the following semantics:
+
+### Vertical Cylinders (Axis3.Y)
+
+- Full support for circle-packing grid candidates and conservative cuboid supported-stack candidates.
+- Bottom overlap/support checks use real footprint geometry.
+- `radius` and `diameter` fields in renderer DTOs.
+
+### Horizontal Cylinders (Axis3.X / Axis3.Z)
+
+- **Fixed/discrete radius**: Circle-packing grid path with axis-aware placement.
+- **Supported stacks**: Single full-length support, repeated same-shape multi-support intervals, heterogeneous support intervals.
+- **Hanging candidates**: Single or repeated narrow cuboid support-line hanging covering the cylinder axis.
+- **Support requirement**: Must be on bin floor or have cuboid support intervals that cover the full cylinder axis and bottom support line.
+- **Layer constraint**: A single `BinLayer` cannot mix multiple cylinder axes.
+
+### Continuous Radius Modeling
+
+- **PWL approximation**: `UnivariateLinearPiecewiseFunction` symbol for volume approximation via `π·r²·h`.
+- **Conservative envelope**: `rMax` envelope bounds for production-ready continuous radius variables.
+- **Production-ready path**: `RealVar` solver variables with constraint-based bounds and target equality constraint.
+- **Renderer output**: Solver-selected radius applied to `actualVolume` and `radius`/`diameter` DTO fields.
+- **PWL diagnostics**: `pwl_volume`, `pwl_error`, `pwl_segments`, `pwl_within_envelope` in renderer item info.
+
 ## Core Concepts
 
 1. `BinLayer` is the selected-column unit in layer assignment.

@@ -16,9 +16,10 @@ use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
 
 use crate::persistence::{
-    NullsOrder, PersistenceFieldResolver, RepositoryQuery, SetFromExpression, SetNull, SetValue,
-    SortBy, SortDirection, SortItem, UnsupportedPredicatePolicy, UpdateAssignment,
-    UpdateAssignments,
+    NullsOrder, OrderSpec, PersistenceFieldResolver, QueryExecutionErrorCategory, QuerySource,
+    RelationalQueryFailure, RelationalQueryPlan, RepositoryQuery, SetFromExpression, SetNull,
+    SetValue, SortBy, SortDirection, SortItem, UnsupportedPredicatePolicy, UpdateAssignment,
+    UpdateAssignments, build_relational_query_plan,
 };
 
 /// SeaORM 后端标记类型。
@@ -94,6 +95,8 @@ impl std::error::Error for SeaOrmTranslationError {}
 pub enum SeaOrmRepositoryError {
     /// 翻译错误 / Translation error
     Translation(SeaOrmTranslationError),
+    /// 关系查询计划错误 / Relational query-plan failure
+    RelationalQuery(RelationalQueryFailure),
     /// 数据库错误 / Database error
     Database(DbErr),
 }
@@ -102,6 +105,7 @@ impl Display for SeaOrmRepositoryError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Translation(error) => write!(f, "{error}"),
+            Self::RelationalQuery(error) => write!(f, "{error}"),
             Self::Database(error) => write!(f, "{error}"),
         }
     }
@@ -111,6 +115,7 @@ impl std::error::Error for SeaOrmRepositoryError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Translation(error) => Some(error),
+            Self::RelationalQuery(error) => Some(error),
             Self::Database(error) => Some(error),
         }
     }
@@ -119,6 +124,12 @@ impl std::error::Error for SeaOrmRepositoryError {
 impl From<SeaOrmTranslationError> for SeaOrmRepositoryError {
     fn from(value: SeaOrmTranslationError) -> Self {
         Self::Translation(value)
+    }
+}
+
+impl From<RelationalQueryFailure> for SeaOrmRepositoryError {
+    fn from(value: RelationalQueryFailure) -> Self {
+        Self::RelationalQuery(value)
     }
 }
 
@@ -238,6 +249,44 @@ impl<E, R, C> SeaOrmRepository<E, R, C> {
     pub fn into_parts(self) -> (C, SeaOrmTranslator<R>) {
         (self.db, self.translator)
     }
+
+    /// 构造并校验 SeaORM 读取使用的关系查询计划。
+    /// Build and validate the relational query plan used by SeaORM reads.
+    ///
+    /// SeaORM 仍在 async 执行边界使用自身 translator；该入口统一承载读取谓词、排序和分页的 RQP 结构校验。
+    /// SeaORM still uses its own translator at the async execution boundary; this entry point centralizes RQP structural validation for read predicates, ordering, and pagination.
+    pub fn relational_query_plan(
+        &self,
+        where_expr: &BooleanExpression<ExpressionValue>,
+        options: &RepositoryQuery,
+    ) -> Result<RelationalQueryPlan, SeaOrmRepositoryError> {
+        build_relational_query_plan(
+            RelationalQueryPlan::new(QuerySource::new(std::any::type_name::<E>())),
+            where_expr,
+            options,
+        )
+        .map_err(|error| {
+            SeaOrmRepositoryError::RelationalQuery(RelationalQueryFailure {
+                category: if error.field.starts_with("joins") {
+                    QueryExecutionErrorCategory::InvalidJoin
+                } else {
+                    QueryExecutionErrorCategory::SqlGeneration
+                },
+                field: Some(error.field),
+                reason: error.reason,
+            })
+        })
+    }
+
+    /// `query_plan` 是关系查询计划入口的简短别名。
+    /// `query_plan` is the short alias for the relational query-plan entry point.
+    pub fn query_plan(
+        &self,
+        where_expr: &BooleanExpression<ExpressionValue>,
+        options: &RepositoryQuery,
+    ) -> Result<RelationalQueryPlan, SeaOrmRepositoryError> {
+        self.relational_query_plan(where_expr, options)
+    }
 }
 
 impl<E, R, C> SeaOrmRepository<E, R, C>
@@ -264,8 +313,12 @@ where
         where_expr: &BooleanExpression<ExpressionValue>,
         options: &RepositoryQuery,
     ) -> Result<Vec<E::Model>, SeaOrmRepositoryError> {
-        let condition = self.translator.translate_boolean(where_expr)?;
-        let select = self.apply_query_options(E::find().filter(condition), options)?;
+        if options.limit == Some(0) {
+            return Ok(Vec::new());
+        }
+        let plan = self.relational_query_plan(where_expr, options)?;
+        let condition = self.plan_condition(&plan)?;
+        let select = self.apply_query_plan_options(E::find().filter(condition), &plan)?;
         Ok(select.all(&self.db).await?)
     }
 
@@ -275,7 +328,8 @@ where
         &self,
         where_expr: &BooleanExpression<ExpressionValue>,
     ) -> Result<u64, SeaOrmRepositoryError> {
-        let condition = self.translator.translate_boolean(where_expr)?;
+        let plan = self.relational_query_plan(where_expr, &RepositoryQuery::default())?;
+        let condition = self.plan_condition(&plan)?;
         Ok(E::find()
             .filter(condition)
             .paginate(&self.db, 1)
@@ -325,23 +379,65 @@ where
         Ok(self.count(where_expr).await? > 0)
     }
 
-    fn apply_query_options(
+    fn plan_condition(
+        &self,
+        plan: &RelationalQueryPlan,
+    ) -> Result<Condition, SeaOrmRepositoryError> {
+        let predicate = plan.predicate().ok_or_else(|| {
+            SeaOrmRepositoryError::RelationalQuery(RelationalQueryFailure {
+                category: QueryExecutionErrorCategory::SqlGeneration,
+                field: Some("predicate".to_string()),
+                reason: "Read query plan must contain a predicate".to_string(),
+            })
+        })?;
+        Ok(self.translator.translate_boolean(predicate)?)
+    }
+
+    fn apply_query_plan_options(
         &self,
         mut select: Select<E>,
-        options: &RepositoryQuery,
+        plan: &RelationalQueryPlan,
     ) -> Result<Select<E>, SeaOrmRepositoryError> {
-        if let Some(sort_by) = &options.sort_by {
-            for order in self.translator.translate_sort_by(sort_by)? {
+        if !plan.order_by().is_empty() {
+            let sort_by = sort_by_from_query_orders(plan.order_by());
+            for order in self.translator.translate_sort_by(&sort_by)? {
                 select = select.order_by(order.expression, order.order);
             }
         }
-        if let Some(limit) = options.limit {
+        if let Some(page) = plan.page() {
+            let limit = page.limit;
             select = select.limit(limit as u64);
-        }
-        if let Some(offset) = options.offset {
+            if page.offset > 0 {
+                select = select.offset(page.offset as u64);
+            }
+        } else if let Some(offset) = plan.offset_without_limit() {
             select = select.offset(offset as u64);
         }
         Ok(select)
+    }
+}
+
+fn sort_by_from_query_orders(orders: &[OrderSpec]) -> SortBy {
+    SortBy {
+        items: orders
+            .iter()
+            .map(|order| {
+                SortItem::new(
+                    order.column.path.clone(),
+                    match order.direction {
+                        crate::persistence::query::SortDirection::Ascending => SortDirection::Asc,
+                        crate::persistence::query::SortDirection::Descending => SortDirection::Desc,
+                    },
+                    match order.nulls {
+                        crate::persistence::query::NullsOrder::First => {
+                            Some(NullsOrder::NullsFirst)
+                        }
+                        crate::persistence::query::NullsOrder::Last => Some(NullsOrder::NullsLast),
+                        crate::persistence::query::NullsOrder::Unspecified => None,
+                    },
+                )
+            })
+            .collect(),
     }
 }
 
@@ -825,7 +921,7 @@ fn expression_value_to_value(value: &ExpressionValue) -> Value {
         ExpressionValue::Null => Value::String(None),
         ExpressionValue::Boolean(value) => Value::Bool(Some(*value)),
         ExpressionValue::Number(value) => Value::Double(Some(*value)),
-        ExpressionValue::String(value) => Value::String(Some(Box::new(value.clone()))),
+        ExpressionValue::String(value) => Value::String(Some(value.clone())),
     }
 }
 
@@ -1010,6 +1106,40 @@ mod tests {
             sql,
             r#"SELECT "user_id" FROM "users" WHERE "user_status" <> 'inactive'"#
         );
+    }
+
+    #[test]
+    fn sea_orm_reads_share_a_validated_relational_query_plan() {
+        let repository = SeaOrmRepository::<user_entity::Entity, _, _>::new(
+            (),
+            PredicateSchema::new("Users")
+                .with_same_field("id")
+                .with_same_field("status")
+                .with_same_field("age")
+                .with_same_field("name")
+                .with_same_field("score"),
+        );
+        let where_expr = runtime_field("status").eq("active");
+        let plan = repository
+            .relational_query_plan(
+                &where_expr,
+                &RepositoryQuery::new()
+                    .with_sort_by(SortBy::desc("score"))
+                    .with_limit(10)
+                    .with_offset(3),
+            )
+            .unwrap();
+
+        assert_eq!(plan.predicate(), Some(&where_expr));
+        assert_eq!(plan.order_by().len(), 1);
+        assert_eq!(plan.page().map(|page| page.limit), Some(10));
+        assert_eq!(plan.page().map(|page| page.offset), Some(3));
+
+        let offset_only = repository
+            .query_plan(&where_expr, &RepositoryQuery::new().with_offset(3))
+            .unwrap();
+        assert_eq!(offset_only.page(), None);
+        assert_eq!(offset_only.offset_without_limit(), Some(3));
     }
 
     #[tokio::test]

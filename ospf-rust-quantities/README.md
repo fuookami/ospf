@@ -113,6 +113,33 @@ let rt_length: Quantity<BigDecimal, Unit> = ct_length.to_runtime();
 assert_eq!(rt_length.unit.symbol(), "m");
 ```
 
+### `std::time::Duration` Interoperability
+
+The typed seconds quantity supports exact nanosecond-boundary conversion through
+`IntoDuration` and `FromDuration`:
+
+```rust
+use ospf_rust_quantities::{FromDuration, IntoDuration, Quantity};
+use ospf_rust_quantities::unit::derived::Second;
+use bigdecimal::BigDecimal;
+use std::time::Duration;
+
+let seconds: Quantity<BigDecimal, Second> =
+    Quantity::new_ct("42.123456789".parse().unwrap());
+let duration = seconds.into_duration().unwrap();
+assert_eq!(duration, Duration::new(42, 123_456_789));
+
+let restored = Quantity::<BigDecimal, Second>::from_duration(duration).unwrap();
+assert_eq!(restored.value, seconds.value);
+```
+
+The `BigDecimal` path does not pass through `f64`: values must be non-negative,
+within `Duration`'s range, and exactly representable to nanosecond precision
+(trailing zeroes beyond nine fractional digits are allowed). The `f64` path
+requires a finite, non-negative value and rejects precision or range loss.
+`Duration` to `BigDecimal` uses its seconds and nanoseconds components exactly;
+`Duration` to `f64` remains subject to IEEE-754 precision limits.
+
 ### Unit Systems
 
 ```rust

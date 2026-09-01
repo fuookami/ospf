@@ -32,6 +32,35 @@
 | `solver` | `core/solver` | solver trait、options、backend config、output type、value conversion、heuristic helper、IIS diagnostics 和 backend adapter。 |
 | `error` | `core/error` | core error 和 result 类型。 |
 
+
+## 子包概览
+
+### solver/
+
+| 子包 | 描述 |
+|------|------|
+| config | 求解器特定配置（COPT、Gurobi、SCIP）。 |
+| heuristic | 元启发式框架（PSO、选择、交叉、变异）。 |
+| iis | 不可约不可行子系统诊断。 |
+| output | 求解器输出数据结构（可行/不可行）。 |
+| alue | 值类型转换（IntoValue trait）。 |
+| ackend | 特性门控后端适配器（Gurobi、SCIP）。 |
+
+### model/
+
+| 子包 | 描述 |
+|------|------|
+| asic | 基础接口、枚举和视图类型。 |
+| mechanism | MetaModel、MechanismModel、约束/目标 DSL。 |
+| intermediate | 标准形式模型（triad/tetrad）、稀疏矩阵。 |
+| callback | 启发式求解器的回调模型接口。 |
+
+### symbol/
+
+| 子包 | 描述 |
+|------|------|
+| unction | 30+ 函数符号（Slack、If、Max、Piecewise 等）。 |
+| latten | 表达式展平工具。 |
 ## 架构概览
 
 `ospf-rust-core` 遵循 Kotlin 对齐的模型生命周期：
@@ -45,6 +74,34 @@
 
 本 crate 显式保留模型构建、表达式展开、solver-order token 映射和结果提取，使上层 framework crate 可以组合它们，而不拥有底层建模细节。
 
+
+## 约束规划
+
+`model::constraint_programming` 模块提供整数域 CP 模型，支持不可变快照、稳定 ID 和来源验证。关键组件：
+
+- **布尔字面量和变量**：`CpBoolVar`、`CpBoolLiteral` 用于布尔决策变量。
+- **区间**：`CpInterval` 用于建模具有开始/结束/持续时间的时间区间。
+- **全局约束**：`AllDifferent`、`Element`、`Table`（支持程度因后端而异）。
+- **不可变快照**：`CpSnapshot` 捕获完整 CP 模型状态用于检查点/重启。
+- **身份作用域**：当 ID 必须在模型重建后存活时，使用 `scope = "stable"`
+- **可移植编解码器**：`ConstraintProgrammingCheckpointCodec` 写入可移植检查点信封。
+
+### 求解器集成
+
+`solver::constraint_programming` 模块提供：
+
+- **求解器/会话 SPI**：CP 求解器后端的 trait 定义。
+- **伪契约求解器**：用于测试和小规模穷举预言机。
+- **SCIP 集成**：特性门控的 SCIP CP 后端（有限 MIP 支持门面）。
+- **MIP 支持的降阶**：有限整数子集的精确降阶，验证边界；对不支持的约束返回结构化错误。
+
+### 基于逻辑的 Benders
+
+对于基于逻辑的 Benders 分解，使用 `ospf-rust-framework` 中的 `LogicBasedBendersEngine`。该引擎组合线性主问题和 CP 子问题，具有显式扩展点：
+
+- 变量绑定和冲突/最优性切割预言机。
+- 整数 no-good 编码。
+- 迭代追踪和 `Exact`/`Heuristic` 证明门控。
 ## 核心概念
 
 1. 变量描述 binary、integer 和 continuous 等 solver decision domain。

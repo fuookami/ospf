@@ -94,6 +94,30 @@ public domain model 在表达可复用物理量语义时使用泛型数值。sol
 
 宽度、长度、物料尺寸、产品尺寸、重量、需求量、产量、余料、修边宽度、assigned length 和 over-length 应通过 `Csp1dQuantity`、`QuantityRange`、`WidthRange` 或明确物理量包装表达。无量纲配置限制、计数、统计和 solver 内部系数可以使用裸数值。
 
+
+## 热启动和恢复
+
+### 热启动
+
+框架支持从先前解热启动：
+
+- **先前解热启动**：接受 `List<CuttingPlanUsage<V>>`，每个元素配对一个 `CuttingPlan` 和使用量。
+- **原生初始值**：热启动使用量作为原生初始赋值写入最终 MILP 模型。
+- **配置**：`Csp1dColumnGeneration` 构造函数中的 `warmStartPlanUsages` 参数。
+
+### 恢复
+
+恢复机制处理解适配：
+
+- **先前解恢复**：`Csp1dRecovery` 将先前解适配到修改后的问题。
+- **兼容子集过滤**：自动过滤在新问题中仍有效的切割方案使用量。
+- **机器容量恢复**：机器容量约束和产出调整的特殊处理。
+- **回退控制**：`retryWithoutWarmStart` 标志控制热启动失败时的行为。
+
+### 错误处理
+
+- `Csp1dRecoveryFallbackDisabledException`：当恢复失败且回退禁用时抛出。
+- `Csp1dRecoverySolveException`：包装求解器失败，含追踪上下文。
 ## 求解生命周期
 
 已测试生命周期：

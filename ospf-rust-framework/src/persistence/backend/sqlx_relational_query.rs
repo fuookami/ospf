@@ -6,9 +6,11 @@ use super::{
     SqlxTranslatorConfig, SqlxTypedSql, SqlxValueType,
 };
 use crate::persistence::{
-    ColumnRef, DiagnosticPersistenceFieldResolver, JoinType, PersistenceFieldResolution,
-    PersistenceFieldResolver, QueryAuditSummary, QueryExecutionErrorCategory, QueryExecutionResult,
-    QueryExecutionStats, QuerySource, RelationalQueryFailure, RelationalQueryPlan,
+    ColumnRef, DiagnosticPersistenceFieldResolver, ExpressionRepository, JoinType,
+    PersistenceFieldResolution, PersistenceFieldResolver, QueryAuditSummary,
+    QueryExecutionErrorCategory, QueryExecutionResult, QueryExecutionStats, QuerySource,
+    RelationalQueryFailure, RelationalQueryPlan, RelationalQueryValidationError, RepositoryQuery,
+    UpdateAssignments, build_relational_query_plan,
 };
 use ospf_rust_math::symbol::{BooleanExpression, ExpressionValue, PropertyPath};
 use std::collections::HashMap;
@@ -260,6 +262,282 @@ impl SqlxCompiledQuery {
     }
 }
 
+/// SQLx 仓储读取执行器 / SQLx repository read executor
+///
+/// 执行器负责把编译后的参数化 SQL 交给具体 SQLx 驱动，并完成行到实体的映射。
+/// The executor hands parameterized SQL to a concrete SQLx driver and maps rows to entities.
+pub type SqlxSelectExecutor<Entity, DatabaseError> =
+    dyn Fn(&SqlxSql) -> Result<Vec<Entity>, DatabaseError> + Send + Sync;
+
+/// SQLx 仓储计数执行器 / SQLx repository count executor
+///
+/// 计数执行器接收带参数类型摘要的 SQL，便于驱动在绑定时使用适配器自己的类型策略。
+/// The count executor receives typed SQL so the adapter can apply its own binding strategy.
+pub type SqlxCountExecutor<DatabaseError> =
+    dyn Fn(&SqlxTypedSql) -> Result<u64, DatabaseError> + Send + Sync;
+
+/// SQLx 仓储错误 / SQLx repository error
+///
+/// 查询计划编译始终通过 RQP 完成；具体数据库错误保留给外部执行器处理。
+/// Query-plan compilation always goes through RQP; concrete database errors remain owned by the external executor.
+#[derive(Debug)]
+pub enum SqlxRepositoryError<DatabaseError> {
+    /// 关系查询计划编译失败 / Relational query-plan compilation failure
+    Query(RelationalQueryFailure),
+    /// 外部 SQLx 执行器失败 / External SQLx executor failure
+    Executor(DatabaseError),
+    /// RQP 尚未支持该仓储操作 / Repository operation not supported by RQP
+    UnsupportedOperation(&'static str),
+}
+
+impl<DatabaseError> From<RelationalQueryFailure> for SqlxRepositoryError<DatabaseError> {
+    fn from(error: RelationalQueryFailure) -> Self {
+        Self::Query(error)
+    }
+}
+
+impl<DatabaseError> From<SqlxQueryExecutionError<DatabaseError>>
+    for SqlxRepositoryError<DatabaseError>
+{
+    fn from(error: SqlxQueryExecutionError<DatabaseError>) -> Self {
+        match error {
+            SqlxQueryExecutionError::InvalidRequest(error) => Self::Query(error),
+            SqlxQueryExecutionError::Executor(error) => Self::Executor(error),
+        }
+    }
+}
+
+impl<DatabaseError> std::fmt::Display for SqlxRepositoryError<DatabaseError>
+where
+    DatabaseError: std::fmt::Display,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Query(error) => write!(formatter, "relational query failed: {error}"),
+            Self::Executor(error) => write!(formatter, "SQLx executor failed: {error}"),
+            Self::UnsupportedOperation(operation) => {
+                write!(formatter, "unsupported repository operation: {operation}")
+            }
+        }
+    }
+}
+
+impl<DatabaseError> std::error::Error for SqlxRepositoryError<DatabaseError>
+where
+    DatabaseError: std::error::Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Query(error) => Some(error),
+            Self::Executor(error) => Some(error),
+            Self::UnsupportedOperation(_) => None,
+        }
+    }
+}
+
+/// 基于关系查询计划的 SQLx 表达式仓储 / SQLx expression repository backed by relational query plans
+///
+/// 该适配器只保存数据库无关的基础计划和外部执行边界。它不会接收或拼接调用方提供的物理表名，
+/// 物理数据源和字段白名单由 `SqlxRelationalQueryCompiler` 的注册表负责。
+/// This adapter stores only a database-independent base plan and external execution boundaries. It does not
+/// accept or concatenate caller-provided physical table names; the compiler registry owns physical sources and field allowlists.
+#[derive(Clone)]
+pub struct SqlxRelationalQueryRepository<Entity, DatabaseError> {
+    compiler: SqlxRelationalQueryCompiler,
+    base_plan: RelationalQueryPlan,
+    root_key: ColumnRef,
+    select_executor: Arc<SqlxSelectExecutor<Entity, DatabaseError>>,
+    count_executor: Arc<SqlxCountExecutor<DatabaseError>>,
+}
+
+/// `SqlxExpressionRepository` 是 SQLx RQP 仓储的兼容命名。
+/// `SqlxExpressionRepository` is the compatibility name for the SQLx RQP repository.
+pub type SqlxExpressionRepository<Entity, DatabaseError> =
+    SqlxRelationalQueryRepository<Entity, DatabaseError>;
+
+impl<Entity, DatabaseError> SqlxRelationalQueryRepository<Entity, DatabaseError>
+where
+    Entity: 'static,
+    DatabaseError: 'static,
+{
+    /// 创建基于 RQP 的 SQLx 仓储。
+    /// Create an RQP-backed SQLx repository.
+    pub fn new<Select, Count>(
+        compiler: SqlxRelationalQueryCompiler,
+        base_plan: RelationalQueryPlan,
+        root_key: ColumnRef,
+        select_executor: Select,
+        count_executor: Count,
+    ) -> Self
+    where
+        Select: Fn(&SqlxSql) -> Result<Vec<Entity>, DatabaseError> + Send + Sync + 'static,
+        Count: Fn(&SqlxTypedSql) -> Result<u64, DatabaseError> + Send + Sync + 'static,
+    {
+        Self {
+            compiler,
+            base_plan,
+            root_key,
+            select_executor: Arc::new(select_executor),
+            count_executor: Arc::new(count_executor),
+        }
+    }
+
+    /// 使用未类型化计数 SQL 执行器创建仓储。
+    /// Create a repository with a count executor that consumes untyped SQL.
+    ///
+    /// 该入口仍然先调用 `compile_count_typed`，只是将类型摘要留在编译边界内，以兼容已有绑定器。
+    /// This entry point still calls `compile_count_typed`; it only discards the type summary at the legacy binding boundary.
+    pub fn with_sql_count_executor<Select, Count>(
+        compiler: SqlxRelationalQueryCompiler,
+        base_plan: RelationalQueryPlan,
+        root_key: ColumnRef,
+        select_executor: Select,
+        count_executor: Count,
+    ) -> Self
+    where
+        Select: Fn(&SqlxSql) -> Result<Vec<Entity>, DatabaseError> + Send + Sync + 'static,
+        Count: Fn(&SqlxSql) -> Result<u64, DatabaseError> + Send + Sync + 'static,
+    {
+        Self::new(
+            compiler,
+            base_plan,
+            root_key,
+            select_executor,
+            move |typed| count_executor(&SqlxSql::new(typed.sql.clone(), typed.params.clone())),
+        )
+    }
+
+    /// 获取内部关系查询编译器。
+    /// Get the inner relational query compiler.
+    pub fn compiler(&self) -> &SqlxRelationalQueryCompiler {
+        &self.compiler
+    }
+
+    /// 获取基础关系查询计划。
+    /// Get the base relational query plan.
+    pub fn base_plan(&self) -> &RelationalQueryPlan {
+        &self.base_plan
+    }
+
+    /// 获取计数使用的根键。
+    /// Get the root key used for counts.
+    pub fn root_key(&self) -> &ColumnRef {
+        &self.root_key
+    }
+
+    /// 编译带仓储选项的读取计划。
+    /// Compile a read plan with repository options.
+    pub fn compile_query(
+        &self,
+        where_expr: &BooleanExpression<ExpressionValue>,
+        options: &RepositoryQuery,
+    ) -> Result<SqlxCompiledQuery, RelationalQueryFailure> {
+        let plan = self.query_plan(where_expr, options)?;
+        self.compiler.compile(&plan)
+    }
+
+    /// 执行带仓储选项的读取并返回统计信息。
+    /// Execute a repository read with options and return execution statistics.
+    pub fn find_with_options_with_stats(
+        &self,
+        where_expr: &BooleanExpression<ExpressionValue>,
+        options: &RepositoryQuery,
+    ) -> Result<QueryExecutionResult<Vec<Entity>>, SqlxRepositoryError<DatabaseError>> {
+        if options.limit == Some(0) {
+            return Ok(QueryExecutionResult {
+                value: Vec::new(),
+                stats: QueryExecutionStats::default(),
+            });
+        }
+        let compiled = self.compile_query(where_expr, options)?;
+        let executor = Arc::clone(&self.select_executor);
+        compiled
+            .execute_with(options.limit, move |statement| executor(statement))
+            .map_err(Into::into)
+    }
+
+    /// 编译根粒度计数查询。
+    /// Compile a root-granularity count query.
+    pub fn compile_count_query(
+        &self,
+        where_expr: &BooleanExpression<ExpressionValue>,
+    ) -> Result<SqlxTypedSql, RelationalQueryFailure> {
+        let plan = build_relational_query_plan(
+            self.base_plan.clone(),
+            where_expr,
+            &RepositoryQuery::default(),
+        )
+        .map_err(repository_plan_failure)?
+        .with_root_key([self.root_key.clone()]);
+        self.compiler.compile_count_typed(&plan)
+    }
+
+    /// 执行根粒度计数。
+    /// Execute a root-granularity count.
+    pub fn count_entities(
+        &self,
+        where_expr: &BooleanExpression<ExpressionValue>,
+    ) -> Result<u64, SqlxRepositoryError<DatabaseError>> {
+        let compiled = self.compile_count_query(where_expr)?;
+        (self.count_executor)(&compiled).map_err(SqlxRepositoryError::Executor)
+    }
+
+    fn query_plan(
+        &self,
+        where_expr: &BooleanExpression<ExpressionValue>,
+        options: &RepositoryQuery,
+    ) -> Result<RelationalQueryPlan, RelationalQueryFailure> {
+        build_relational_query_plan(self.base_plan.clone(), where_expr, options)
+            .map_err(repository_plan_failure)
+    }
+}
+
+impl<Entity, DatabaseError> ExpressionRepository<Entity>
+    for SqlxRelationalQueryRepository<Entity, DatabaseError>
+where
+    Entity: 'static,
+    DatabaseError: 'static,
+{
+    type Error = SqlxRepositoryError<DatabaseError>;
+
+    fn find_with_options(
+        &self,
+        where_expr: &BooleanExpression<ExpressionValue>,
+        options: &RepositoryQuery,
+    ) -> Result<Vec<Entity>, Self::Error> {
+        self.find_with_options_with_stats(where_expr, options)
+            .map(|result| result.value)
+    }
+
+    fn count(&self, where_expr: &BooleanExpression<ExpressionValue>) -> Result<u64, Self::Error> {
+        self.count_entities(where_expr)
+    }
+
+    fn update(
+        &self,
+        _where_expr: &BooleanExpression<ExpressionValue>,
+        _assignments: &UpdateAssignments<ExpressionValue>,
+    ) -> Result<u64, Self::Error> {
+        Err(SqlxRepositoryError::UnsupportedOperation("update"))
+    }
+
+    fn delete(&self, _where_expr: &BooleanExpression<ExpressionValue>) -> Result<u64, Self::Error> {
+        Err(SqlxRepositoryError::UnsupportedOperation("delete"))
+    }
+}
+
+fn repository_plan_failure(error: RelationalQueryValidationError) -> RelationalQueryFailure {
+    RelationalQueryFailure {
+        category: if error.field.starts_with("joins") {
+            QueryExecutionErrorCategory::InvalidJoin
+        } else {
+            QueryExecutionErrorCategory::SqlGeneration
+        },
+        field: Some(error.field),
+        reason: error.reason,
+    }
+}
+
 #[derive(Debug, Clone)]
 struct BoundSource {
     definition: SqlxQuerySource,
@@ -421,6 +699,7 @@ impl SqlxRelationalQueryCompiler {
             statement.sql.push_str(&orders.join(", "));
         }
         self.append_page(&mut statement, plan.page());
+        self.append_offset_without_limit(&mut statement, plan.offset_without_limit());
         Ok(self.compiled(statement, plan, built.root_columns))
     }
 
@@ -719,6 +998,21 @@ impl SqlxRelationalQueryCompiler {
                 statement.sql.push_str(" OFFSET ");
                 statement.sql.push_str(&offset);
             }
+        }
+    }
+
+    fn append_offset_without_limit(&self, statement: &mut SqlFragment, offset: Option<usize>) {
+        if let Some(offset) = offset {
+            if self.config.dialect == SqlxDialect::Sqlite {
+                statement.sql.push_str(" LIMIT -1");
+            } else if self.config.dialect == SqlxDialect::MySql {
+                statement.sql.push_str(" LIMIT 18446744073709551615");
+            }
+            let placeholder = placeholder(self.config.dialect, statement.params.len() + 1);
+            statement.params.push(ExpressionValue::from(offset));
+            statement.parameter_types.push(SqlxValueType::Number);
+            statement.sql.push_str(" OFFSET ");
+            statement.sql.push_str(&placeholder);
         }
     }
 
@@ -1098,7 +1392,7 @@ fn shift_placeholders(sql: &str, dialect: SqlxDialect, offset: usize) -> String 
 mod tests {
     use super::*;
     use crate::persistence::{
-        JoinCardinality, JoinSpec, PredicateSchema, ProjectionSpec, QuerySource,
+        JoinCardinality, JoinSpec, PageSpec, PredicateSchema, ProjectionSpec, QuerySource,
     };
     use ospf_rust_math::symbol::ScalarExpression;
 
@@ -1624,5 +1918,262 @@ mod tests {
         let failure = compiler.compile(&plan).unwrap_err();
         assert_eq!(failure.category, QueryExecutionErrorCategory::UnknownColumn);
         assert_eq!(failure.field.as_deref(), Some("root.default_columns[0]"));
+    }
+
+    #[test]
+    fn offset_only_uses_each_dialects_unbounded_pagination_form() {
+        let cases = [
+            (SqlxDialect::Generic, " OFFSET ?", " OFFSET ?"),
+            (SqlxDialect::Postgres, " OFFSET $1", " OFFSET $1"),
+            (
+                SqlxDialect::Sqlite,
+                " LIMIT -1 OFFSET ?",
+                " LIMIT -1 OFFSET ?",
+            ),
+            (
+                SqlxDialect::MySql,
+                " LIMIT 18446744073709551615 OFFSET ?",
+                " LIMIT 18446744073709551615 OFFSET ?",
+            ),
+        ];
+        for (dialect, expected, _) in cases {
+            let compiler = SqlxRelationalQueryCompiler::with_config(
+                sources(),
+                SqlxTranslatorConfig::default().with_dialect(dialect),
+            );
+            let plan = RelationalQueryPlan::new(QuerySource::new("orders"))
+                .with_projections([ProjectionSpec::new(ColumnRef::new("orders", "id"))])
+                .with_offset_without_limit(7);
+
+            let compiled = compiler.compile(&plan).unwrap();
+
+            assert!(compiled.statement.sql.ends_with(expected));
+            assert_eq!(compiled.statement.params, vec![ExpressionValue::from(7)]);
+            assert_eq!(compiled.audit.parameter_types, vec!["number"]);
+        }
+    }
+
+    #[test]
+    fn count_compilation_ignores_page_and_offset_only_pagination() {
+        let compiler = SqlxRelationalQueryCompiler::with_config(
+            sources(),
+            SqlxTranslatorConfig::default().with_dialect(SqlxDialect::Postgres),
+        );
+        let predicate = BooleanExpression::eq(
+            ScalarExpression::reference("status"),
+            ScalarExpression::constant(ExpressionValue::from("active")),
+        );
+        for plan in [
+            RelationalQueryPlan::new(QuerySource::new("orders"))
+                .with_predicate(predicate.clone())
+                .with_root_key([ColumnRef::new("orders", "id")])
+                .with_page(PageSpec::new(10, 4)),
+            RelationalQueryPlan::new(QuerySource::new("orders"))
+                .with_predicate(predicate.clone())
+                .with_root_key([ColumnRef::new("orders", "id")])
+                .with_offset_without_limit(4),
+        ] {
+            let compiled = compiler.compile_count_typed(&plan).unwrap();
+
+            assert!(!compiled.sql.contains(" LIMIT "));
+            assert!(!compiled.sql.contains(" OFFSET "));
+            assert_eq!(compiled.params, vec![ExpressionValue::from("active")]);
+        }
+    }
+
+    #[test]
+    fn repository_reads_delegate_to_rqp_and_preserve_options() {
+        use std::sync::Mutex;
+
+        let selected = Arc::new(Mutex::new(Vec::<SqlxSql>::new()));
+        let counted = Arc::new(Mutex::new(Vec::<SqlxTypedSql>::new()));
+        let compiler = SqlxRelationalQueryCompiler::new(sources());
+        let repository = SqlxRelationalQueryRepository::new(
+            compiler,
+            RelationalQueryPlan::new(QuerySource::new("orders")),
+            ColumnRef::new("orders", "id"),
+            {
+                let selected = Arc::clone(&selected);
+                move |statement: &SqlxSql| {
+                    selected.lock().unwrap().push(statement.clone());
+                    Ok::<_, ()>(vec![1, 2])
+                }
+            },
+            {
+                let counted = Arc::clone(&counted);
+                move |statement: &SqlxTypedSql| {
+                    counted.lock().unwrap().push(statement.clone());
+                    Ok::<_, ()>(1)
+                }
+            },
+        );
+        let where_expr = BooleanExpression::eq(
+            ScalarExpression::reference("status"),
+            ScalarExpression::constant(ExpressionValue::from("active")),
+        );
+        let options = RepositoryQuery::new()
+            .with_sort_by(crate::persistence::SortBy::desc("status"))
+            .with_limit(1)
+            .with_offset(2);
+
+        let rows = repository.find_with_options(&where_expr, &options).unwrap();
+        assert_eq!(rows, vec![1]);
+        let selected = selected.lock().unwrap();
+        assert!(
+            selected[0]
+                .sql
+                .contains("WHERE (\"orders\".\"status\" = ?)")
+                || selected[0]
+                    .sql
+                    .contains("WHERE (\"orders\".\"status\" = $1)")
+        );
+        assert!(
+            selected[0]
+                .sql
+                .contains("ORDER BY \"orders\".\"status\" DESC")
+        );
+        assert!(
+            selected[0].sql.contains("LIMIT ? OFFSET ?")
+                || selected[0].sql.contains("LIMIT $2 OFFSET $3")
+        );
+        assert_eq!(selected[0].params.len(), 3);
+
+        assert_eq!(repository.count(&where_expr).unwrap(), 1);
+        assert!(repository.exists(&where_expr).unwrap());
+        let counted = counted.lock().unwrap();
+        assert_eq!(counted.len(), 2);
+        assert!(counted[0].sql.contains("COUNT(DISTINCT"));
+        assert_eq!(counted[0].parameter_types, vec![SqlxValueType::String]);
+    }
+
+    #[test]
+    fn repository_find_and_count_preserve_base_predicate_and_parameters() {
+        use std::sync::{Arc, Mutex};
+
+        let orders = PredicateSchema::new("orders")
+            .with_field_name("id", "id")
+            .with_field_name("tenant_id", "tenant_id")
+            .with_field_name("deleted", "deleted")
+            .with_field_name("status", "status");
+        let compiler = SqlxRelationalQueryCompiler::new(HashMap::from([(
+            "orders".to_string(),
+            SqlxQuerySource::new(QuerySource::new("orders"), "orders", orders)
+                .with_default_columns(["id", "tenant_id", "deleted", "status"])
+                .with_field_types([
+                    ("id", SqlxValueType::Number),
+                    ("tenant_id", SqlxValueType::Number),
+                    ("deleted", SqlxValueType::Boolean),
+                    ("status", SqlxValueType::String),
+                ]),
+        )]));
+        let selected = Arc::new(Mutex::new(Vec::<SqlxSql>::new()));
+        let counted = Arc::new(Mutex::new(Vec::<SqlxTypedSql>::new()));
+        let base_predicate = BooleanExpression::and(vec![
+            BooleanExpression::eq(
+                ScalarExpression::reference("tenant_id"),
+                ScalarExpression::constant(ExpressionValue::from(7)),
+            ),
+            BooleanExpression::eq(
+                ScalarExpression::reference("deleted"),
+                ScalarExpression::constant(ExpressionValue::from(false)),
+            ),
+        ]);
+        let repository = SqlxRelationalQueryRepository::new(
+            compiler,
+            RelationalQueryPlan::new(QuerySource::new("orders")).with_predicate(base_predicate),
+            ColumnRef::new("orders", "id"),
+            {
+                let selected = Arc::clone(&selected);
+                move |statement: &SqlxSql| {
+                    assert!(statement.sql.contains("\"orders\".\"tenant_id\" = ?"));
+                    assert!(statement.sql.contains("\"orders\".\"deleted\" = ?"));
+                    assert!(statement.sql.contains("\"orders\".\"status\" = ?"));
+                    assert_eq!(
+                        statement.params,
+                        vec![
+                            ExpressionValue::from(7),
+                            ExpressionValue::from(false),
+                            ExpressionValue::from("active"),
+                        ]
+                    );
+                    selected.lock().unwrap().push(statement.clone());
+                    Ok::<_, ()>(vec![1])
+                }
+            },
+            {
+                let counted = Arc::clone(&counted);
+                move |statement: &SqlxTypedSql| {
+                    assert!(statement.sql.contains("COUNT(DISTINCT"));
+                    assert!(statement.sql.contains("\"orders\".\"tenant_id\" = ?"));
+                    assert!(statement.sql.contains("\"orders\".\"deleted\" = ?"));
+                    assert!(statement.sql.contains("\"orders\".\"status\" = ?"));
+                    assert_eq!(
+                        statement.params,
+                        vec![
+                            ExpressionValue::from(7),
+                            ExpressionValue::from(false),
+                            ExpressionValue::from("active"),
+                        ]
+                    );
+                    assert_eq!(
+                        statement.parameter_types,
+                        vec![
+                            SqlxValueType::Number,
+                            SqlxValueType::Boolean,
+                            SqlxValueType::String,
+                        ]
+                    );
+                    counted.lock().unwrap().push(statement.clone());
+                    Ok::<_, ()>(1)
+                }
+            },
+        );
+        let where_expr = BooleanExpression::eq(
+            ScalarExpression::reference("status"),
+            ScalarExpression::constant(ExpressionValue::from("active")),
+        );
+
+        assert_eq!(repository.find(&where_expr).unwrap(), vec![1]);
+        assert_eq!(repository.count(&where_expr).unwrap(), 1);
+        assert_eq!(selected.lock().unwrap().len(), 1);
+        assert_eq!(counted.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn repository_zero_limit_skips_executor_and_writes_are_explicitly_unsupported() {
+        use std::sync::{Arc, Mutex};
+
+        let selected_calls = Arc::new(Mutex::new(0));
+        let compiler = SqlxRelationalQueryCompiler::new(sources());
+        let repository = SqlxRelationalQueryRepository::new(
+            compiler,
+            RelationalQueryPlan::new(QuerySource::new("orders")),
+            ColumnRef::new("orders", "id"),
+            {
+                let selected_calls = Arc::clone(&selected_calls);
+                move |_: &SqlxSql| {
+                    *selected_calls.lock().unwrap() += 1;
+                    Ok::<_, ()>(vec![1])
+                }
+            },
+            |_: &SqlxTypedSql| Ok::<_, ()>(0),
+        );
+        let where_expr = BooleanExpression::true_constant();
+
+        assert!(
+            repository
+                .find_with_options(&where_expr, &RepositoryQuery::new().with_limit(0))
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(*selected_calls.lock().unwrap(), 0);
+        assert!(matches!(
+            repository.update(&where_expr, &UpdateAssignments::default()),
+            Err(SqlxRepositoryError::UnsupportedOperation("update"))
+        ));
+        assert!(matches!(
+            repository.delete(&where_expr),
+            Err(SqlxRepositoryError::UnsupportedOperation("delete"))
+        ));
     }
 }

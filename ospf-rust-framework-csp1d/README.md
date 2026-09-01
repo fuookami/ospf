@@ -94,6 +94,31 @@ Public domain models use generic numeric values where the quantity semantics are
 
 Widths, lengths, material dimensions, product dimensions, weights, demand amounts, production amounts, rest material, trim width, assigned length, and over-length values should be expressed through `Csp1dQuantity`, `QuantityRange`, `WidthRange`, or explicit quantity wrappers. Bare numeric values are acceptable for dimensionless configuration limits, counts, statistics, and solver-internal coefficients.
 
+
+## Warm Start and Recovery
+
+### Warm Start
+
+The framework supports warm start from previous solutions:
+
+- **Previous solution warm start**: Accepts `List<CuttingPlanUsage<V>>` where each element pairs a `CuttingPlan` with a usage amount.
+- **Native initial values**: Warm start usages are written as native initial assignment values into the final MILP model.
+- **Configuration**: `warmStartPlanUsages` parameter in `Csp1dColumnGeneration` constructor.
+
+### Recovery
+
+The recovery mechanism handles solution adaptation:
+
+- **Previous solution recovery**: `Csp1dRecovery` adapts a previous solution to a modified problem.
+- **Compatible subset filtering**: Automatically filters usages for cutting plans still valid in the new problem.
+- **Machine capacity recovery**: Special handling for machine capacity constraints with yield adjustments.
+- **Fallback control**: `retryWithoutWarmStart` flag controls behavior when warm start fails.
+
+### Error Handling
+
+- `Csp1dRecoveryFallbackDisabledException`: Thrown when recovery fails and fallback is disabled.
+- `Csp1dRecoverySolveException`: Wraps solver failures with trace context.
+
 ## Solve Lifecycle
 
 The tested lifecycle is:

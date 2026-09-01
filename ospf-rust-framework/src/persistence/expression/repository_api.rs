@@ -2,6 +2,10 @@
 //! Repository API
 
 use super::{SortBy, UpdateAssignments};
+use crate::persistence::query::{
+    ColumnRef, NullsOrder as QueryNullsOrder, OrderSpec, PageSpec, RelationalQueryPlan,
+    RelationalQueryValidationError, SortDirection as QuerySortDirection,
+};
 use ospf_rust_math::symbol::{BooleanExpression, ExpressionValue};
 
 /// 仓储查询选项。
@@ -43,6 +47,50 @@ impl RepositoryQuery {
         self.offset = Some(offset);
         self
     }
+}
+
+/// 从仓储查询选项构造并校验关系查询计划。
+/// Build and validate a relational query plan from repository query options.
+///
+/// 该入口由不同数据库后端共享，确保谓词、排序和分页在进入后端 translator 前具有相同的 RQP 语义。
+/// Backends share this entry point so predicates, ordering, and pagination have the same RQP semantics before reaching a backend translator.
+pub fn build_relational_query_plan(
+    base_plan: RelationalQueryPlan,
+    where_expr: &BooleanExpression<ExpressionValue>,
+    options: &RepositoryQuery,
+) -> Result<RelationalQueryPlan, RelationalQueryValidationError> {
+    let predicate = match base_plan.predicate() {
+        Some(base_predicate) => {
+            BooleanExpression::and(vec![base_predicate.clone(), where_expr.clone()])
+        }
+        None => where_expr.clone(),
+    };
+    let mut plan = base_plan.with_predicate(predicate);
+    if let Some(sort_by) = &options.sort_by {
+        let orders = sort_by
+            .items
+            .iter()
+            .map(|item| {
+                OrderSpec::new(ColumnRef::new(plan.root().name.clone(), item.path.value()))
+                    .with_direction(match item.direction {
+                        super::SortDirection::Asc => QuerySortDirection::Ascending,
+                        super::SortDirection::Desc => QuerySortDirection::Descending,
+                    })
+                    .with_nulls(match item.nulls {
+                        Some(super::NullsOrder::NullsFirst) => QueryNullsOrder::First,
+                        Some(super::NullsOrder::NullsLast) => QueryNullsOrder::Last,
+                        None => QueryNullsOrder::Unspecified,
+                    })
+            })
+            .collect::<Vec<_>>();
+        plan = plan.with_order_by(orders);
+    }
+    if let Some(limit) = options.limit {
+        plan = plan.with_page(PageSpec::new(limit, options.offset.unwrap_or(0)));
+    } else if let Some(offset) = options.offset {
+        plan = plan.with_offset_without_limit(offset);
+    }
+    plan.validate().map(|()| plan)
 }
 
 /// 表达式仓储接口。

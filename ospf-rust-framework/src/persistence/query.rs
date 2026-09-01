@@ -410,6 +410,7 @@ pub struct RelationalQueryPlan {
     group_by: Vec<ColumnRef>,
     order_by: Vec<OrderSpec>,
     page: Option<PageSpec>,
+    offset_without_limit: Option<usize>,
     root_key: Vec<ColumnRef>,
 }
 
@@ -426,6 +427,7 @@ impl RelationalQueryPlan {
             group_by: Vec::new(),
             order_by: Vec::new(),
             page: None,
+            offset_without_limit: None,
             root_key: Vec::new(),
         }
     }
@@ -476,6 +478,12 @@ impl RelationalQueryPlan {
     /// Get the pagination specification.
     pub const fn page(&self) -> Option<PageSpec> {
         self.page
+    }
+
+    /// 获取无上限分页的偏移量。
+    /// Get the offset for an unbounded-offset page.
+    pub const fn offset_without_limit(&self) -> Option<usize> {
+        self.offset_without_limit
     }
 
     /// 获取根粒度计数使用的根键。
@@ -542,6 +550,15 @@ impl RelationalQueryPlan {
     /// Set pagination.
     pub const fn with_page(mut self, page: PageSpec) -> Self {
         self.page = Some(page);
+        self.offset_without_limit = None;
+        self
+    }
+
+    /// 设置仅偏移、不限制返回数量的分页。
+    /// Set pagination with an offset and no result limit.
+    pub const fn with_offset_without_limit(mut self, offset: usize) -> Self {
+        self.page = None;
+        self.offset_without_limit = Some(offset);
         self
     }
 
@@ -770,6 +787,8 @@ impl RelationalQueryPlan {
         canonical.push_str("|page=");
         if let Some(page) = self.page {
             canonical.push_str(&format!("{}:{}", page.limit, page.offset));
+        } else if let Some(offset) = self.offset_without_limit {
+            canonical.push_str(&format!("offset:{offset}"));
         }
         canonical.push_str("|rootKey=");
         append_columns(&mut canonical, &self.root_key);
