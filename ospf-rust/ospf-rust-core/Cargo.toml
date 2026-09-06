@@ -1,26 +1,88 @@
-[package]
+﻿[package]
 name = "ospf-rust-core"
-version = "0.1.0"
-authors = ["fuookami <fuookami@163.com>"]
-edition = "2021"
+version = "1.1.0"
+edition = "2024"
+description = "Operations research modeling framework - Core module"
+authors = ["fuookami <wfuookami@gmail.com>"]
+license = "MIT"
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "README.md"
 
 [dependencies]
-libc = "*"
+ospf-rust-base = { path = "../ospf-rust-base", version = "1.1.0" }
+ospf-rust-math = { path = "../ospf-rust-math", version = "1.1.0" }
+ospf-rust-multiarray = { path = "../ospf-rust-multiarray", version = "1.1.0" }
 
-[dependencies.ospf-rust-base]
-path = "../ospf-rust-base"
-version = "0.1.0"
+# 异步运行时 / Async runtime
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "sync"], optional = true }
 
-[dependencies.ospf-rust-math]
-path = "../ospf-rust-math"
-version = "0.1.0"
+# 序列化 / Serialization
+serde = { version = "1.0.229", features = ["derive"], optional = true }
+serde_json = { version = "1.0.151", optional = true }
 
-[dependencies.ospf-rust-multiarray]
-path = "../ospf-rust-multiarray"
-version = "0.1.0"
+# 错误处理 / Error handling
+thiserror = "2.0.20"
 
-[profile.dev]
-opt-level = 0
+# 异步 trait / Async trait
+async-trait = "0.1.92"
 
-[profile.release]
-opt-level = 3
+# 并发 / Concurrency
+parking_lot = "0.12.5"
+
+# 审计指纹 / Audit fingerprints
+sha2 = "0.11.0"
+
+# 类型化 Arena / Typed Arena
+typed-arena = "2.0.2"
+
+# Once cell for lazy initialization
+once_cell = "1.21.4"
+
+# 数值类型 / Numeric types
+bigdecimal = "0.4.10"
+num-traits = "0.2.19"
+num-rational = "0.4.2"
+rand = { version = "0.10.2", optional = true }
+
+# 求解器绑定（可选）/ Solver bindings (optional)
+# 注意：使用 Gurobi 需要安装 Gurobi 软件和有效许可证
+# Note: Using Gurobi requires installing Gurobi software and valid license
+grb = { version = "3.0.1", optional = true }
+
+# SCIP Rust 绑定（兼容 SCIP 9.x）/ SCIP Rust binding (SCIP 9.x compatible)
+russcip = { version = "0.9.1", optional = true }
+
+[features]
+default = []
+serde = ["dep:serde", "dep:serde_json"]
+async = ["dep:tokio"]
+rand = ["dep:rand"]
+nightly = []
+big-rational = []
+big-decimal = []
+
+# 求解器支持 / Solver support
+# 启用 Gurobi 求解器（需要安装 Gurobi 软件和许可证）
+# Enable Gurobi solver (requires Gurobi software and license)
+# 使用 Gurobi 10.x / Use Gurobi 10.x
+gurobi = ["gurobi10"]
+gurobi10 = ["dep:grb", "grb/gurobi10"]
+# 使用 Gurobi 11.x / Use Gurobi 11.x
+gurobi11 = ["dep:grb", "grb/gurobi11"]
+# 使用 Gurobi 12.x / Use Gurobi 12.x
+gurobi12 = ["dep:grb", "grb/gurobi12"]
+
+# 启用 SCIP 求解器 / Enable SCIP solver
+scip = ["dep:russcip"]
+# 启用 bundled SCIP（自动下载预构建 SCIP）/ Enable bundled SCIP (auto-download prebuilt SCIP)
+scip-bundled = ["scip", "russcip/bundled"]
+# 启用 from-source SCIP（本地源码编译 SCIP）/ Enable from-source SCIP (build SCIP locally)
+scip-from-source = ["scip", "russcip/from-source"]
+
+# SCIP 二次规划支持 / SCIP quadratic programming support
+scip-quadratic = ["scip"]
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }
+serde_json = "1.0.151"

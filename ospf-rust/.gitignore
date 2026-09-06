@@ -1,3 +1,9 @@
+# Log file
+*.log
+
+# BlueJ files
+*.ctxt
+
 Cargo.lock
 [Tt]arget/
 [Dd]ebug/
@@ -5,3 +11,9 @@ Cargo.lock
 .vs/
 .idea/
 .vscode/
+/.VSCodeCounter
+htmlReport
+./target-temp
+/.codegraph
+.supergoal/
+*.tmp

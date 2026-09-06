@@ -1,0 +1,45 @@
+[package]
+name = "ospf-rust-framework-gantt-scheduling"
+version = "1.1.0"
+edition = "2024"
+description = "Operations research modeling framework - Gantt scheduling domain module"
+authors = ["fuookami <wfuookami@gmail.com>"]
+license.workspace = true
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "README.md"
+
+[features]
+default = []
+serde = ["dep:serde", "ospf-rust-framework/serde", "time/serde"]
+async = ["ospf-rust-framework/async", "dep:futures"]
+nightly = ["ospf-rust-framework/nightly"]
+big-rational = ["ospf-rust-framework/big-rational"]
+big-decimal = ["ospf-rust-framework/big-decimal"]
+gurobi10 = ["ospf-rust-framework/gurobi10"]
+gurobi11 = ["ospf-rust-framework/gurobi11"]
+gurobi12 = ["ospf-rust-framework/gurobi12"]
+scip = ["ospf-rust-framework/scip"]
+scip-bundled = ["ospf-rust-framework/scip-bundled"]
+scip-from-source = ["ospf-rust-framework/scip-from-source"]
+scip-quadratic = ["ospf-rust-framework/scip-quadratic"]
+
+[dependencies]
+ospf-rust-base = { path = "../ospf-rust-base", version = "1.1.0" }
+ospf-rust-math = { path = "../ospf-rust-math", version = "1.1.0" }
+ospf-rust-multiarray = { path = "../ospf-rust-multiarray", version = "1.1.0" }
+ospf-rust-quantities = { path = "../ospf-rust-quantities", version = "1.1.0" }
+ospf-rust-core = { path = "../ospf-rust-core", version = "1.1.0" }
+ospf-rust-framework = { path = "../ospf-rust-framework", version = "1.1.0" }
+
+serde = { version = "1.0.229", features = ["derive"], optional = true }
+futures = { version = "0.3.34", optional = true }
+thiserror = "2.0.20"
+paste = "1.0.15"
+log = "0.4.34"
+time = { version = "0.3.55", features = ["std", "macros"] }
+rayon = { version = "1.12.0", optional = true }
+
+[dev-dependencies]
+async-trait = "0.1.92"
+ospf-rust-framework = { path = "../ospf-rust-framework", version = "1.1.0" }

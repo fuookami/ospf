@@ -1,0 +1,113 @@
+[package]
+name = "ospf-rust-framework"
+version = "1.1.0"
+edition = "2024"
+description = "Operations research modeling framework - Framework module"
+authors = ["fuookami <wfuookami@gmail.com>"]
+license = "MIT"
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "README.md"
+
+[dependencies]
+ospf-rust-base = { path = "../ospf-rust-base", version = "1.1.0" }
+ospf-rust-math = { path = "../ospf-rust-math", version = "1.1.0" }
+ospf-rust-multiarray = { path = "../ospf-rust-multiarray", version = "1.1.0" }
+ospf-rust-core = { path = "../ospf-rust-core", version = "1.1.0" }
+
+# 异步运行时 / Async runtime
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "sync", "time"], optional = true }
+
+# 序列化 / Serialization
+serde = { version = "1.0.229", features = ["derive"], optional = true }
+serde_json = { version = "1.0.151", optional = true }
+sha2 = "0.11.0"
+
+# 错误处理 / Error handling
+thiserror = "2.0.20"
+
+# 异步 trait / Async trait
+async-trait = "0.1.92"
+
+# 并发 / Concurrency
+parking_lot = "0.12.5"
+
+# 类型化 Arena / Typed Arena
+typed-arena = "2.0.2"
+
+# Once cell for lazy initialization
+once_cell = "1.21.4"
+
+# 数值类型 / Numeric types
+num-traits = "0.2.19"
+
+# 日志 / Logging
+log = "0.4.34"
+
+# SeaORM 持久化后端 / SeaORM persistence backend
+sea-orm = { version = "2.0.2", default-features = false, optional = true }
+
+# HTTP 客户端 / HTTP client
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"], optional = true }
+
+[features]
+default = []
+serde = ["dep:serde", "dep:serde_json", "ospf-rust-core/serde"]
+experiment = ["serde", "dep:serde_json"]
+async = ["dep:tokio"]
+nightly = ["ospf-rust-core/nightly"]
+big-rational = ["ospf-rust-core/big-rational"]
+big-decimal = ["ospf-rust-core/big-decimal"]
+
+# 求解器支持 / Solver support
+# 启用 Gurobi 求解器（需要安装 Gurobi 软件和许可证）
+# Enable Gurobi solver (requires Gurobi software and license)
+gurobi = ["gurobi10"]
+gurobi10 = ["ospf-rust-core/gurobi10"]
+gurobi11 = ["ospf-rust-core/gurobi11"]
+gurobi12 = ["ospf-rust-core/gurobi12"]
+
+# 启用 SCIP 求解器 / Enable SCIP solver
+scip = ["ospf-rust-core/scip"]
+# 启用 bundled SCIP（自动下载预构建 SCIP）/ Enable bundled SCIP (auto-download prebuilt SCIP)
+scip-bundled = ["scip", "ospf-rust-core/scip-bundled"]
+# 启用 from-source SCIP（本地源码编译 SCIP）/ Enable from-source SCIP (build SCIP locally)
+scip-from-source = ["scip", "ospf-rust-core/scip-from-source"]
+
+# SCIP 二次规划支持 / SCIP quadratic programming support
+scip-quadratic = ["scip", "ospf-rust-core/scip-quadratic"]
+
+# 持久化支持 / Persistence support
+persistence = []
+
+# SQLx 持久化后端 / SQLx persistence backend
+persistence-sqlx = ["persistence"]
+persistence-sqlx-postgres = ["persistence-sqlx"]
+persistence-sqlx-mysql = ["persistence-sqlx"]
+persistence-sqlx-sqlite = ["persistence-sqlx"]
+
+# Diesel 持久化后端 / Diesel persistence backend
+persistence-diesel = ["persistence"]
+persistence-diesel-postgres = ["persistence-diesel"]
+persistence-diesel-mysql = ["persistence-diesel"]
+persistence-diesel-sqlite = ["persistence-diesel"]
+
+# SeaORM 持久化后端 / SeaORM persistence backend
+persistence-sea-orm = ["persistence", "dep:sea-orm"]
+
+# 其他 Rust ORM/SQL 框架后端 / Other Rust ORM/SQL framework backends
+persistence-toasty = ["persistence"]
+persistence-rbatis = ["persistence-sqlx"]
+persistence-cornucopia = ["persistence"]
+
+# 非关系型持久化后端 / Non-relational persistence backends
+persistence-mongodb = ["persistence", "serde", "dep:serde_json"]
+persistence-redis = ["persistence", "serde", "dep:serde_json"]
+
+# 远程求解客户端 / Remote solver client
+remote-solver = ["async", "serde", "dep:serde_json"]
+remote-solver-http-reqwest = ["remote-solver", "dep:reqwest"]
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }
+sea-orm = { version = "2.0.2", default-features = false, features = ["macros", "mock"] }

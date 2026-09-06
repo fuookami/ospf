@@ -1,270 +1,97 @@
-use super::*;
-use crate::algebra::operator::{Abs, Cross, Exp, IntDiv, Log, Pow, PowF, RangeTo, Reciprocal};
-use crate::algebra::{IntX, UIntX};
-use std::ops::{Div, Mul, Neg, Rem};
+//! 标量类型标记
+//! Scalar type marker
+//!
+//! 用于区分标量与符号类型，避免运算符冲突。
+//! Used to distinguish scalar types from symbol types, avoiding operator conflicts.
 
-pub trait Scalar: Arithmetic + PlusSemiGroup + TimesSemiGroup + Bounded + Cross + Abs {}
+use std::fmt::Debug;
 
-pub trait RealNumber: Scalar + Precision + Invariant {
-    const TWO: Self;
-    const THREE: Self;
-    const TEN: Self;
+// ============================================================================
+// Scalar - 标量类型标记
+// ============================================================================
 
-    const NAN: Option<Self> = None;
-    const INF: Option<Self> = None;
-    const NEG_INF: Option<Self> = None;
+/// 标量类型标记 / Scalar type marker
+///
+/// 用于区分标量与符号类型，避免运算符冲突。
+/// Used to distinguish scalar types from symbol types, avoiding operator conflicts.
+///
+/// # 设计说明 / Design Notes
+///
+/// - 只有实现了此 trait 的类型才能用于多项式的标量运算
+/// - `OwnedSymbol` 不实现此 trait，从而避免 `Mul<T>` 与 `Mul<OwnedSymbol>` 的冲突
+/// - 用户可以为自定义数值类型（如 `BigDecimal`、`Rational`）实现此 trait
+///
+/// # 示例 / Examples
+///
+/// ```
+/// use ospf_rust_math::algebra::concept::Scalar;
+///
+/// // 检查类型是否为标量
+/// fn is_scalar<T: Scalar>() -> bool { true }
+///
+/// assert!(is_scalar::<f64>());
+/// assert!(is_scalar::<i32>());
+/// ```
+pub trait Scalar: Clone + Debug + 'static {}
 
-    fn is_nan(&self) -> bool {
-        Self::NAN.is_some_and(|nan_value| self == nan_value)
+// ============================================================================
+// 自动实现 / Auto Implementations
+// ============================================================================
+
+// 浮点类型 / Floating-point types
+impl Scalar for f32 {}
+impl Scalar for f64 {}
+
+// 有符号整数 / Signed integers
+impl Scalar for i8 {}
+impl Scalar for i16 {}
+impl Scalar for i32 {}
+impl Scalar for i64 {}
+impl Scalar for i128 {}
+impl Scalar for isize {}
+
+// 无符号整数 / Unsigned integers
+impl Scalar for u8 {}
+impl Scalar for u16 {}
+impl Scalar for u32 {}
+impl Scalar for u64 {}
+impl Scalar for u128 {}
+impl Scalar for usize {}
+
+// ============================================================================
+// 测试 / Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scalar_marker() {
+        // 编译期检查 / Compile-time check
+        fn check_scalar<T: Scalar>() {}
+
+        check_scalar::<f32>();
+        check_scalar::<f64>();
+        check_scalar::<i32>();
+        check_scalar::<i64>();
+        check_scalar::<u32>();
+        check_scalar::<u64>();
     }
 
-    fn is_inf(&self) -> bool {
-        Self::INF.is_some_and(|inf_value| self == inf_value)
+    #[test]
+    fn test_scalar_clone() {
+        // 验证 Scalar 类型可以 clone
+        let a: f64 = 3.14;
+        let b = a.clone();
+        assert_eq!(a, b);
     }
 
-    fn is_neg_inf(&self) -> bool {
-        Self::NEG_INF.is_some_and(|inf_value| self == inf_value)
-    }
-}
-
-pub trait Integer: RealNumber + RangeTo + Log<f64> + PowF<f64> + Exp + Ord + Eq {}
-pub trait IntegerNumber: Integer + Signed + NumberField + Pow {}
-pub trait UIntegerNumber: Integer + Unsigned + NumberField + Pow {}
-
-pub trait RationalNumber<I: Integer + NumberField>:
-    RealNumber + NumberField + Log<f64> + PowF<f64> + Exp + Pow + Ord + Eq
-{
-    fn num(&self) -> &I;
-    fn den(&self) -> &I;
-}
-
-pub trait FloatingNumber: RealNumber + Signed + NumberField + Log + PowF + Exp + Pow {
-    const PI: Self;
-    const E: Self;
-
-    fn floor(&self) -> Self;
-    fn ceil(&self) -> Self;
-    fn round(&self) -> Self;
-    fn trunc(&self) -> Self;
-    fn fract(&self) -> Self;
-}
-
-pub trait NumericIntegerNumber<I: IntegerNumber>:
-    Integer
-    + Signed
-    + PlusGroup
-    + TimesSemiGroup
-    + Reciprocal
-    + Div
-    + IntDiv<Output = Self>
-    + Rem<Output = Self>
-    + Pow
-    + Ord
-    + Eq
-{
-}
-
-pub trait NumericUIntegerNumber<I: UIntegerNumber>:
-    Integer
-    + Unsigned
-    + PlusSemiGroup
-    + TimesSemiGroup
-    + Neg
-    + Mul
-    + Reciprocal
-    + Div
-    + IntDiv<Output = Self>
-    + Rem<Output = Self>
-    + Pow
-    + Ord
-    + Eq
-{
-}
-
-macro_rules! int_real_number_template {
-    ($($type:ty)*) => ($(
-        impl Arithmetic for $type {
-            const ZERO: Self = 0;
-            const ONE: Self = 1;
-        }
-
-        impl Scalar for $type {}
-
-        impl RealNumber for $type {
-            const TWO: Self = 2;
-            const THREE: Self = 3;
-            const TEN: Self = 10;
-        }
-
-        impl Integer for $type {}
-        impl IntegerNumber for $type {}
-    )*)
-}
-int_real_number_template! { i8 i16 i32 i64 i128 }
-
-// impl Arithmetic for IntX {
-//     const ZERO: Self = IntX::from(0);
-//     const ONE: Self = IntX::from(1);
-// }
-
-// impl Scalar for IntX {}
-
-// impl RealNumber for IntX {
-//     const TWO: Self = IntX::from(2);
-//     const THREE: Self = IntX::from(3);
-//     const TEN: Self = IntX::from(10);
-// }
-
-// impl Integer for IntX {}
-// impl IntegerNumber for IntX {}
-
-macro_rules! uint_real_number_template {
-    ($($type:ty)*) => ($(
-        impl Arithmetic for $type {
-            const ZERO: Self = 0;
-            const ONE: Self = 1;
-        }
-
-        impl Scalar for $type {}
-
-        impl RealNumber for $type {
-            const TWO: Self = 2;
-            const THREE: Self = 3;
-            const TEN: Self = 10;
-        }
-
-        impl Integer for $type {}
-        impl UIntegerNumber for $type {}
-    )*)
-}
-uint_real_number_template! { u8 u16 u32 u64 u128 }
-
-// impl Arithmetic for UIntX {
-//     const ZERO: Self = UIntX::from(0);
-//     const ONE: Self = UIntX::from(1);
-// }
-
-// impl Scalar for UIntX {}
-
-// impl RealNumber for UIntX {
-//     const TWO: Self = IntX::from(2);
-//     const THREE: Self = IntX::from(3);
-//     const TEN: Self = IntX::from(10);
-// }
-
-// impl Integer for UIntX {}
-// impl IntegerNumber for UIntX {}
-
-macro_rules! floating_real_number_template {
-    ($($type:ty)*) => ($(
-        impl Arithmetic for $type {
-            const ZERO: Self = 0.;
-            const ONE: Self = 1.;
-        }
-
-        impl Scalar for $type {}
-
-        impl RealNumber for $type {
-            const TWO: Self = 2.;
-            const THREE: Self = 3.;
-            const TEN: Self = 10.;
-
-            const NAN: Option<Self> = Some(<$type>::NAN);
-            const INF: Option<Self> = Some(<$type>::INFINITY);
-            const NEG_INF: Option<Self> = Some(<$type>::NEG_INFINITY);
-        }
-    )*)
-}
-floating_real_number_template! { f32 f64 }
-
-impl FloatingNumber for f32 {
-    const PI: Self = std::f32::consts::PI;
-    const E: Self = std::f32::consts::E;
-
-    fn floor(&self) -> Self {
-        (*self).floor()
-    }
-
-    fn ceil(&self) -> Self {
-        (*self).ceil()
-    }
-
-    fn round(&self) -> Self {
-        (*self).round()
-    }
-
-    fn trunc(&self) -> Self {
-        (*self).trunc()
-    }
-
-    fn fract(&self) -> Self {
-        (*self).fract()
+    #[test]
+    fn test_scalar_debug() {
+        // 验证 Scalar 类型可以 debug
+        let a: f64 = 3.14;
+        let debug_str = format!("{:?}", a);
+        assert!(!debug_str.is_empty());
     }
 }
-
-impl FloatingNumber for f64 {
-    const PI: Self = std::f64::consts::PI;
-    const E: Self = std::f64::consts::E;
-
-    fn floor(&self) -> Self {
-        (*self).floor()
-    }
-
-    fn ceil(&self) -> Self {
-        (*self).ceil()
-    }
-
-    fn round(&self) -> Self {
-        (*self).round()
-    }
-
-    fn trunc(&self) -> Self {
-        (*self).trunc()
-    }
-
-    fn fract(&self) -> Self {
-        (*self).fract()
-    }
-}
-
-// impl Arithmetic for Decimal {
-//     const ZERO: Self = Decimal::ZERO;
-//     const ONE: Self = Decimal::ONE;
-// }
-
-// impl Scalar for Decimal {}
-
-// impl RealNumber for Decimal {
-//     const TWO: Self = Decimal::TWO;
-//     const THREE: Self = Decimal::from_i128(3).unwrap();
-//     const TEN: Self = Decimal::TEN;
-
-//     const NAN: Option<Self> = None;
-//     const INF: Option<Self> = None;
-//     const NEG_INF: Option<Self> = None;
-// }
-
-// impl FloatingNumber for Decimal {
-//     const PI: Self = Decimal::PI;
-//     const E: Self = Decimal::E;
-
-//     fn floor(&self) -> Self {
-//         self.floor()
-//     }
-
-//     fn ceil(&self) -> Self {
-//         self.ceil()
-//     }
-
-//     fn round(&self) -> Self {
-//         self.round()
-//     }
-
-//     fn trunc(&self) -> Self {
-//         self.trunc()
-//     }
-
-//     fn fract(&self) -> Self {
-//         self.fract()
-//     }
-// }

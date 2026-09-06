@@ -1,21 +1,33 @@
 [package]
 name = "ospf-rust-math"
-version = "0.1.1"
-authors = ["fuookami <fuookami@163.com>"]
-edition = "2021"
-description = "A math utils for ospf-rust."
-license = "MIT OR Apache-2.0"
+version = "1.1.0"
+edition = "2024"
+authors = ["fuookami <wfuookami@gmail.com>"]
+description = "Math utils for ospf-rust."
+license = "MIT"
+
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "README.md"
 
 [dependencies]
-num = "*"
-bigdecimal = "*"
+bigdecimal = { version = "0.4.10", features = ["serde"] }
+dyn-clone = "1.0.20"
+num-bigint = { version = "0.4.8", features = ["serde"] }
+num-rational = { version = "0.4.2", features = ["serde"] }
+num-traits = "0.2.19"
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"], optional = true }
+serde_json = { version = "1.0.151", optional = true }
 
-[dependencies.ospf-rust-base]
-path = "../ospf-rust-base"
-version = "0.1.0"
+[features]
+default = []
+serde = ["dep:serde", "dep:serde_json"]
+parser = []
 
-[profile.dev]
-opt-level = 0
+[dev-dependencies]
+criterion = "0.8.2"
 
-[profile.release]
-opt-level = 3
+[[bench]]
+name = "value_range_bench"
+harness = false

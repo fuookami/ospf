@@ -1,17 +1,19 @@
 [package]
 name = "ospf-rust-base"
-version = "0.1.0"
-authors = ["fuookami <fuookami@163.com>"]
-edition = "2021"
+version = "1.1.0"
+edition = "2024"
+authors = ["fuookami <wfuookami@gmail.com>"]
 description = "Base definition for ospf-rust."
-license = "MIT OR Apache-2.0"
+license = "MIT"
+
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "README.md"
 
 [dependencies]
-strum = { version = "*", features = ["derive"] }
-concat-idents = "*"
+strum = { version = "0.28.0", features = ["derive"] }
+paste = "1.0.15"
+arrayvec = { version = "0.7.8", optional = true }
 
-[profile.dev]
-opt-level = 0
-
-[profile.release]
-opt-level = 3
+[features]
+arrayvec = ["dep:arrayvec"]

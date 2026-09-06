@@ -1,596 +1,549 @@
-use super::*;
-use crate::algebra::concept::*;
-use std::ops::{Add, Div, Mul, Sub};
+//! ValueWrapper - 值包装器
+//! ValueWrapper - Value wrapper
 
-pub enum ValueWrapper<T: Arithmetic> {
-    Value(T),
-    Inf,
-    NegInf,
+use crate::algebra::concept::Infinite;
+use num_traits::{One, Zero};
+use std::cmp::Ordering;
+use std::fmt;
+use std::ops::{Add, Div, Mul, Neg, Sub};
+
+// ============================================================================
+// ValueWrapper<T> - 值包装器
+// ============================================================================
+
+/// ValueWrapper - 值包装器
+/// ValueWrapper - Value wrapper
+///
+/// 为任意数值类型添加无穷大支持。
+/// Adds infinity support to any numeric type.
+///
+/// # 类型参数 / Type Parameters
+/// - `T`: 被包装的数值类型
+/// - `T`: The wrapped numeric type
+///
+/// # 示例 / Examples
+/// ```
+/// use ospf_rust_math::algebra::value_range::ValueWrapper;
+///
+/// // 创建有限值
+/// // Create finite value
+/// let finite = ValueWrapper::finite(42_i64);
+/// assert!(finite.is_finite());
+/// assert_eq!(finite.unwrap(), Some(&42));
+///
+/// // 创建正无穷
+/// // Create positive infinity
+/// let pos_inf = ValueWrapper::<i64>::positive_infinity();
+/// assert!(pos_inf.is_positive_infinity());
+///
+/// // 创建负无穷
+/// // Create negative infinity
+/// let neg_inf = ValueWrapper::<i64>::negative_infinity();
+/// assert!(neg_inf.is_negative_infinity());
+/// ```
+#[derive(Clone, Debug)]
+pub enum ValueWrapper<T> {
+    /// 正常值 / Normal value
+    Finite(T),
+    /// 正无穷 / Positive infinity
+    PositiveInfinity,
+    /// 负无穷 / Negative infinity
+    NegativeInfinity,
 }
 
-impl<T: Arithmetic> From<Infinity> for ValueWrapper<T> {
-    fn from(_: Infinity) -> Self {
-        Self::Inf
+impl<T> ValueWrapper<T> {
+    /// 创建有限值
+    /// Create a finite value
+    ///
+    /// # 参数 / Parameters
+    /// - `value`: 有限值
+    /// - `value`: The finite value
+    ///
+    /// # 返回 / Returns
+    /// 包装后的有限值
+    /// The wrapped finite value
+    pub fn finite(value: T) -> Self {
+        ValueWrapper::Finite(value)
     }
-}
 
-impl<T: Arithmetic> From<NegativeInfinity> for ValueWrapper<T> {
-    fn from(_: NegativeInfinity) -> Self {
-        Self::NegInf
+    /// 创建正无穷
+    /// Create positive infinity
+    ///
+    /// # 返回 / Returns
+    /// 表示正无穷的包装值
+    /// The wrapper representing positive infinity
+    pub fn positive_infinity() -> Self {
+        ValueWrapper::PositiveInfinity
     }
-}
 
-default impl<T: Arithmetic> From<T> for ValueWrapper<T> {
-    fn from(value: T) -> Self {
-        Self::Value(value)
+    /// 创建负无穷
+    /// Create negative infinity
+    ///
+    /// # 返回 / Returns
+    /// 表示负无穷的包装值
+    /// The wrapper representing negative infinity
+    pub fn negative_infinity() -> Self {
+        ValueWrapper::NegativeInfinity
     }
-}
 
-impl<T: RealNumber> From<T> for ValueWrapper<T> {
-    fn from(value: T) -> Self {
-        if value.is_inf() {
-            Self::Inf
-        } else if value.is_neg_inf() {
-            Self::NegInf
-        } else if value.is_nan() {
-            panic!("Illegal argument NaN for value range!!!")
-        } else {
-            Self::Value(value)
+    /// 判断是否为有限值
+    /// Check if value is finite
+    ///
+    /// # 返回 / Returns
+    /// 如果为有限值返回 `true`，否则返回 `false`
+    /// Returns `true` if finite, `false` otherwise
+    pub fn is_finite(&self) -> bool {
+        matches!(self, ValueWrapper::Finite(_))
+    }
+
+    /// 判断是否为无穷大（正或负）
+    /// Check if value is infinity (positive or negative)
+    ///
+    /// # 返回 / Returns
+    /// 如果为无穷大返回 `true`，否则返回 `false`
+    /// Returns `true` if infinity, `false` otherwise
+    pub fn is_infinity(&self) -> bool {
+        matches!(
+            self,
+            ValueWrapper::PositiveInfinity | ValueWrapper::NegativeInfinity
+        )
+    }
+
+    /// 判断是否为正无穷
+    /// Check if value is positive infinity
+    ///
+    /// # 返回 / Returns
+    /// 如果为正无穷返回 `true`，否则返回 `false`
+    /// Returns `true` if positive infinity, `false` otherwise
+    pub fn is_positive_infinity(&self) -> bool {
+        matches!(self, ValueWrapper::PositiveInfinity)
+    }
+
+    /// 判断是否为负无穷
+    /// Check if value is negative infinity
+    ///
+    /// # 返回 / Returns
+    /// 如果为负无穷返回 `true`，否则返回 `false`
+    /// Returns `true` if negative infinity, `false` otherwise
+    pub fn is_negative_infinity(&self) -> bool {
+        matches!(self, ValueWrapper::NegativeInfinity)
+    }
+
+    /// 获取内部值（如果是有限值）
+    /// Get the inner value (if finite)
+    ///
+    /// # 返回 / Returns
+    /// 如果为有限值返回 `Some(&value)`，否则返回 `None`
+    /// Returns `Some(&value)` if finite, `None` otherwise
+    pub fn unwrap(&self) -> Option<&T> {
+        match self {
+            ValueWrapper::Finite(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// 映射内部值（如果是有限值）
+    /// Map the inner value (if finite)
+    ///
+    /// # 参数 / Parameters
+    /// - `f`: 映射函数
+    /// - `f`: The mapping function
+    ///
+    /// # 返回 / Returns
+    /// 如果为有限值返回映射后的新值，否则保持无穷大状态
+    /// Returns mapped value if finite, preserves infinity status otherwise
+    pub fn map<U, F>(self, f: F) -> ValueWrapper<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            ValueWrapper::Finite(value) => ValueWrapper::Finite(f(value)),
+            ValueWrapper::PositiveInfinity => ValueWrapper::PositiveInfinity,
+            ValueWrapper::NegativeInfinity => ValueWrapper::NegativeInfinity,
         }
     }
 }
 
-impl<T: Arithmetic + Clone> Clone for ValueWrapper<T> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Value(value) => Ok(ValueWrapper::from(value.clone())),
-            Self::Inf => Ok(ValueWrapper::Inf),
-            Self::NegInf => Ok(ValueWrapper::NegInf),
-        }
-    }
-}
+// ============================================================================
+// PartialEq 实现 / PartialEq implementation
+// ============================================================================
 
-impl<T: Arithmetic + Copy> Copy for ValueWrapper<T> {}
-
-impl<T: Arithmetic + std::fmt::Display> std::fmt::Display for ValueWrapper<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Value(value) => write!(f, "{}", value),
-            Self::Inf => write!(f, "inf"),
-            Self::NegInf => write!(f, "-inf"),
-        }
-    }
-}
-
-impl<T: Arithmetic + std::fmt::Debug> std::fmt::Debug for ValueWrapper<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Value(value) => write!(f, "{}", value),
-            Self::Inf => write!(f, "inf"),
-            Self::NegInf => write!(f, "-inf"),
-        }
-    }
-}
-
-impl<T: Arithmetic> PartialEq for ValueWrapper<T> {
-    fn eq(&self, rhs: &Self) -> bool {
-        match self {
-            ValueWrapper::Value(lhs_value) => match rhs {
-                ValueWrapper::Value(rhs_value) => lhs_value == rhs_value,
-                _ => false,
-            },
-            ValueWrapper::Inf => match rhs {
-                ValueWrapper::Inf => true,
-                _ => false,
-            },
-            ValueWrapper::NegInf => match rhs {
-                ValueWrapper::NegInf => true,
-                _ => false,
-            },
-        }
-    }
-}
-
-impl<T: Arithmetic + Eq> Eq for ValueWrapper<T> {}
-
-impl<T: Arithmetic> PartialEq<T> for ValueWrapper<T> {
-    fn eq(&self, rhs: &T) -> bool {
-        match self {
-            ValueWrapper::Value(lhs_value) => lhs_value == rhs,
+impl<T: PartialEq> PartialEq for ValueWrapper<T> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => a == b,
+            (ValueWrapper::PositiveInfinity, ValueWrapper::PositiveInfinity) => true,
+            (ValueWrapper::NegativeInfinity, ValueWrapper::NegativeInfinity) => true,
             _ => false,
         }
     }
 }
 
-impl<T: RealNumber> PartialEq<T> for ValueWrapper<T> {
-    fn eq(&self, rhs: &T) -> bool {
-        if rhs.is_nan() {
-            false
-        } else if rhs.is_inf() {
-            self == ValueWrapper::Inf
-        } else if rhs.is_neg_inf() {
-            self == ValueWrapper::NegInf
-        } else {
-            if let ValueWrapper::Value(lhs_value) = self {
-                lhs_value == rhs
-            } else {
-                false
+impl<T: Eq> Eq for ValueWrapper<T> {}
+
+// ============================================================================
+// PartialOrd 实现 / PartialOrd implementation
+// ============================================================================
+
+impl<T: PartialOrd> PartialOrd for ValueWrapper<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (ValueWrapper::NegativeInfinity, ValueWrapper::NegativeInfinity) => {
+                Some(Ordering::Equal)
             }
+            (ValueWrapper::NegativeInfinity, _) => Some(Ordering::Less),
+            (_, ValueWrapper::NegativeInfinity) => Some(Ordering::Greater),
+            (ValueWrapper::PositiveInfinity, ValueWrapper::PositiveInfinity) => {
+                Some(Ordering::Equal)
+            }
+            (ValueWrapper::PositiveInfinity, _) => Some(Ordering::Greater),
+            (_, ValueWrapper::PositiveInfinity) => Some(Ordering::Less),
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => a.partial_cmp(b),
         }
     }
 }
 
-impl<T: Arithmetic> PartialOrd for ValueWrapper<T> {
-    fn partial_cmp(&self, rhs: &Self) -> Option<std::cmp::Ordering> {
+// ============================================================================
+// Display 实现 / Display implementation
+// ============================================================================
+
+impl<T: fmt::Display> fmt::Display for ValueWrapper<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ValueWrapper::Value(lhs_value) => match rhs {
-                ValueWrapper::Value(rhs_value) => lhs_value.partial_cmp(rhs_value),
-                ValueWrapper::Inf => Some(std::cmp::Ordering::Less),
-                ValueWrapper::NegInf => Some(std::cmp::Ordering::Greater),
-            },
-            ValueWrapper::Inf => match rhs {
-                ValueWrapper::Value(_) | ValueWrapper::NegInf => Some(std::cmp::Ordering::Greater),
-                ValueWrapper::Inf => Some(std::cmp::Ordering::Equal),
-            },
-            ValueWrapper::NegInf => match rhs {
-                ValueWrapper::Value(_) | ValueWrapper::Inf => Some(std::cmp::Ordering::Less),
-                ValueWrapper::NegInf => Some(std::cmp::Ordering::Equal),
-            },
+            ValueWrapper::Finite(value) => write!(f, "{}", value),
+            ValueWrapper::PositiveInfinity => write!(f, "+∞"),
+            ValueWrapper::NegativeInfinity => write!(f, "-∞"),
         }
     }
 }
 
-impl<T: Arithmetic + Ord> Ord for ValueWrapper<T> {
-    fn cmp(&self, rhs: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(rhs).unwrap()
+// ============================================================================
+// Default 实现 / Default implementation
+// ============================================================================
+
+impl<T: Default> Default for ValueWrapper<T> {
+    fn default() -> Self {
+        ValueWrapper::Finite(T::default())
     }
 }
 
-impl<T: Arithmetic> PartialOrd<T> for ValueWrapper<T> {
-    fn partial_cmp(&self, rhs: &T) -> Option<std::cmp::Ordering> {
-        match self {
-            ValueWrapper::Value(lhs_value) => lhs_value.partial_cmp(rhs),
-            ValueWrapper::Inf => Some(std::cmp::Ordering::Greater),
-            ValueWrapper::NegInf => Some(std::cmp::Ordering::Less),
-        }
+// ============================================================================
+// 从原生类型转换 / From native type conversions
+// ============================================================================
+
+impl<T> From<T> for ValueWrapper<T> {
+    fn from(value: T) -> Self {
+        ValueWrapper::Finite(value)
     }
 }
 
-impl<T: RealNumber> PartialOrd<T> for ValueWrapper<T> {
-    fn partial_cmp(&self, rhs: &T) -> Option<std::cmp::Ordering> {
-        if rhs.is_nan() {
-            None
-        } else {
-            if rhs.is_inf() {
-                match self {
-                    ValueWrapper::Value(_) | ValueWrapper::NegInf => Some(std::cmp::Ordering::Less),
-                    ValueWrapper::Inf => Some(std::cmp::Ordering::Equal),
-                }
-            } else if rhs.is_neg_inf() {
-                match self {
-                    ValueWrapper::Value(_) | ValueWrapper::Inf => Some(std::cmp::Ordering::Greater),
-                    ValueWrapper::NegInf => Some(std::cmp::Ordering::Equal),
-                }
-            } else {
-                match self {
-                    ValueWrapper::Value(lhs_value) => lhs_value.partial_cmp(rhs),
-                    ValueWrapper::Inf => Some(std::cmp::Ordering::Greater),
-                    ValueWrapper::NegInf => Some(std::cmp::Ordering::Less),
-                }
+// ============================================================================
+// Infinite trait 实现 / Infinite trait implementation
+// ============================================================================
+
+impl<T: Infinite> Infinite for ValueWrapper<T> {
+    fn infinity() -> Option<Self> {
+        Some(ValueWrapper::PositiveInfinity)
+    }
+
+    fn negative_infinity() -> Option<Self> {
+        Some(ValueWrapper::NegativeInfinity)
+    }
+
+    fn is_infinity(&self) -> bool {
+        self.is_infinity()
+    }
+
+    fn is_positive_infinity(&self) -> bool {
+        self.is_positive_infinity()
+    }
+
+    fn is_negative_infinity(&self) -> bool {
+        self.is_negative_infinity()
+    }
+}
+
+// ============================================================================
+// 算术运算实现 / Arithmetic Operations Implementation
+// ============================================================================
+
+impl<T: Add<Output = T>> Add for ValueWrapper<T> {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => ValueWrapper::Finite(a + b),
+            (ValueWrapper::PositiveInfinity, ValueWrapper::NegativeInfinity)
+            | (ValueWrapper::NegativeInfinity, ValueWrapper::PositiveInfinity) => {
+                // ∞ + (-∞) 未定义，返回正无穷作为默认行为
+                // ∞ + (-∞) is undefined, return positive infinity as default
+                ValueWrapper::PositiveInfinity
+            }
+            (ValueWrapper::PositiveInfinity, _) | (_, ValueWrapper::PositiveInfinity) => {
+                ValueWrapper::PositiveInfinity
+            }
+            (ValueWrapper::NegativeInfinity, _) | (_, ValueWrapper::NegativeInfinity) => {
+                ValueWrapper::NegativeInfinity
             }
         }
     }
 }
 
-impl<'a, T: Arithmetic> Add<&'a T> for &'a ValueWrapper<T>
-where
-    &'a T: Add<&'a T, Output = T>,
-{
-    type Output = Result<ValueWrapper<T>, IllegalArgumentError>;
+impl<T: Sub<Output = T>> Sub for ValueWrapper<T> {
+    type Output = Self;
 
-    fn add(self, rhs: &'a T) -> Self::Output {
-        match self {
-            ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value + rhs)),
-            ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-            ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
+    fn sub(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => ValueWrapper::Finite(a - b),
+            (ValueWrapper::PositiveInfinity, ValueWrapper::PositiveInfinity)
+            | (ValueWrapper::NegativeInfinity, ValueWrapper::NegativeInfinity) => {
+                // ∞ - ∞ 未定义，返回正无穷作为默认行为
+                // ∞ - ∞ is undefined, return positive infinity as default
+                ValueWrapper::PositiveInfinity
+            }
+            (ValueWrapper::PositiveInfinity, _) => ValueWrapper::PositiveInfinity,
+            (ValueWrapper::NegativeInfinity, _) => ValueWrapper::NegativeInfinity,
+            (_, ValueWrapper::PositiveInfinity) => ValueWrapper::NegativeInfinity,
+            (_, ValueWrapper::NegativeInfinity) => ValueWrapper::PositiveInfinity,
         }
     }
 }
 
-impl<'a, T: RealNumber> Add<&'a T> for ValueWrapper<T>
-where
-    &'a T: Add<&'a T, Output = T>,
-{
-    type Output = Result<ValueWrapper<T>, IllegalArgumentError>;
+impl<T: Mul<Output = T> + Clone + Zero + PartialOrd> Mul for ValueWrapper<T> {
+    type Output = Self;
 
-    fn add(self, rhs: &'a T) -> Self::Output {
-        if rhs.is_nan() {
-            return Err(IllegalArgumentError {
-                msg: String::from("Illegal argument NaN for value range!!!"),
-            });
-        }
-
-        if rhs.is_inf() {
-            match self {
-                ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                ValueWrapper::NegInf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid plus between inf and -inf!!!"),
-                }),
-            }
-        } else if rhs.is_neg_inf() {
-            match self {
-                ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                ValueWrapper::Inf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid plus between inf and -inf!!!"),
-                }),
-            }
-        } else {
-            match self {
-                ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value + rhs)),
-                ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-            }
-        }
-    }
-}
-
-impl<'a, T: Arithmetic> Add for &'a ValueWrapper<T>
-where
-    &'a T: Add<&'a T, Output = T>,
-{
-    type Output = Result<ValueWrapper<T>, IllegalArgumentError>;
-
-    fn add(self, rhs: &'a ValueWrapper<T>) -> Self::Output {
-        match self {
-            ValueWrapper::Value(lhs_value) => match rhs {
-                ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value + rhs_value)),
-                ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-            },
-            ValueWrapper::Inf => match rhs {
-                ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                ValueWrapper::NegInf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid plus between inf and -inf!!!"),
-                }),
-            },
-            ValueWrapper::NegInf => match rhs {
-                ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                ValueWrapper::Inf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid plus between inf and -inf!!!"),
-                }),
-            },
-        }
-    }
-}
-
-impl<'a, T: Arithmetic> Sub<&'a T> for &'a ValueWrapper<T>
-where
-    &'a T: Sub<&'a T, Output = T>,
-{
-    type Output = Result<ValueWrapper<T>, IllegalArgumentError>;
-
-    fn sub(self, rhs: &'a T) -> Self::Output {
-        match self {
-            ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value - rhs)),
-            ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-            ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-        }
-    }
-}
-
-impl<'a, T: RealNumber> Sub<&'a T> for &'a ValueWrapper<T>
-where
-    &'a T: Sub<&'a T, Output = T>,
-{
-    type Output = Result<ValueWrapper<T>, IllegalArgumentError>;
-
-    fn sub(self, rhs: &'a T) -> Self::Output {
-        if rhs.is_nan() {
-            return Err(IllegalArgumentError {
-                msg: String::from("Illegal argument NaN for value range!!!"),
-            });
-        }
-
-        if rhs.is_inf() {
-            match self {
-                ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-                ValueWrapper::Inf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid sub between inf and inf!!!"),
-                }),
-            }
-        } else if rhs.is_neg_inf() {
-            match self {
-                ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                ValueWrapper::NegInf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid sub between -inf and -inf!!!"),
-                }),
-            }
-        } else {
-            match self {
-                ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value - rhs)),
-                ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-            }
-        }
-    }
-}
-
-impl<'a, T: Arithmetic> Sub for &'a ValueWrapper<T>
-where
-    &'a T: Sub<&'a T, Output = T>,
-{
-    type Output = Result<ValueWrapper<T>, IllegalArgumentError>;
-
-    fn sub(self, rhs: &'a ValueWrapper<T>) -> Self::Output {
-        match self {
-            ValueWrapper::Value(lhs_value) => match rhs {
-                ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value - rhs_value)),
-                ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-            },
-            ValueWrapper::Inf => match rhs {
-                ValueWrapper::Value(_) | ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-                ValueWrapper::Inf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid sub between inf and inf!!!"),
-                }),
-            },
-            ValueWrapper::NegInf => match rhs {
-                ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                ValueWrapper::NegInf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid sub between -inf and -inf!!!"),
-                }),
-            },
-        }
-    }
-}
-
-impl<'a, T: Arithmetic> Mul<&'a T> for &'a ValueWrapper<T>
-where
-    &'a T: Mul<&'a T, Output = T>,
-{
-    type Output = Result<ValueWrapper<T>, IllegalArgumentError>;
-
-    fn mul(self, rhs: &'a T) -> Self::Output {
-        match self {
-            ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value * rhs)),
-            ValueWrapper::Inf => {
-                if rhs >= &T::ZERO {
-                    Ok(ValueWrapper::Inf)
+    fn mul(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => ValueWrapper::Finite(a * b),
+            (ValueWrapper::PositiveInfinity, ValueWrapper::Finite(b))
+            | (ValueWrapper::Finite(b), ValueWrapper::PositiveInfinity) => {
+                if b > T::zero() {
+                    ValueWrapper::PositiveInfinity
+                } else if b < T::zero() {
+                    ValueWrapper::NegativeInfinity
                 } else {
-                    Ok(ValueWrapper::NegInf)
+                    // 0 * ∞ = 0
+                    ValueWrapper::Finite(T::zero())
                 }
             }
-            ValueWrapper::NegInf => {
-                if rhs >= &T::ZERO {
-                    Ok(ValueWrapper::NegInf)
+            (ValueWrapper::NegativeInfinity, ValueWrapper::Finite(b))
+            | (ValueWrapper::Finite(b), ValueWrapper::NegativeInfinity) => {
+                if b > T::zero() {
+                    ValueWrapper::NegativeInfinity
+                } else if b < T::zero() {
+                    ValueWrapper::PositiveInfinity
                 } else {
-                    Ok(ValueWrapper::Inf)
+                    // 0 * (-∞) = 0
+                    ValueWrapper::Finite(T::zero())
                 }
+            }
+            (ValueWrapper::PositiveInfinity, ValueWrapper::PositiveInfinity)
+            | (ValueWrapper::NegativeInfinity, ValueWrapper::NegativeInfinity) => {
+                ValueWrapper::PositiveInfinity
+            }
+            (ValueWrapper::PositiveInfinity, ValueWrapper::NegativeInfinity)
+            | (ValueWrapper::NegativeInfinity, ValueWrapper::PositiveInfinity) => {
+                ValueWrapper::NegativeInfinity
             }
         }
     }
 }
 
-impl<'a, T: RealNumber> Mul<&'a T> for &'a ValueWrapper<T>
-where
-    &'a T: Mul<&'a T, Output = T>,
-{
-    type Output = Result<ValueWrapper<T>, IllegalArgumentError>;
+impl<T: Div<Output = T> + Zero + PartialOrd> Div for ValueWrapper<T> {
+    type Output = Self;
 
-    fn mul(self, rhs: &'a T) -> Self::Output {
-        if rhs.is_nan() {
-            return Err(IllegalArgumentError {
-                msg: String::from("Illegal argument NaN for value range!!!"),
-            });
-        }
-
-        if rhs.is_inf() {
-            match self {
-                ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
+    fn div(self, other: Self) -> Self::Output {
+        match (self, other) {
+            (ValueWrapper::Finite(a), ValueWrapper::Finite(b)) => ValueWrapper::Finite(a / b),
+            (ValueWrapper::Finite(_), ValueWrapper::PositiveInfinity)
+            | (ValueWrapper::Finite(_), ValueWrapper::NegativeInfinity) => {
+                // 有限值除以无穷大等于 0
+                // Finite divided by infinity equals zero
+                ValueWrapper::Finite(T::zero())
             }
-        } else if rhs.is_neg_inf() {
-            match self {
-                ValueWrapper::Value(_) | ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-            }
-        } else {
-            match self {
-                ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value * rhs)),
-                ValueWrapper::Inf => {
-                    if rhs >= &T::ZERO {
-                        Ok(ValueWrapper::Inf)
-                    } else {
-                        Ok(ValueWrapper::NegInf)
-                    }
-                }
-                ValueWrapper::NegInf => {
-                    if rhs >= &T::ZERO {
-                        Ok(ValueWrapper::NegInf)
-                    } else {
-                        Ok(ValueWrapper::Inf)
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl<'a, T: RealNumber> Mul for &'a ValueWrapper<T>
-where
-    &'a T: Mul<&'a T, Output = T>,
-{
-    type Output = Result<ValueWrapper<T>, IllegalArgumentError>;
-
-    fn mul(self, rhs: &'a ValueWrapper<T>) -> Self::Output {
-        match self {
-            ValueWrapper::Value(lhs_value) => match rhs {
-                ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value * rhs_value)),
-                ValueWrapper::Inf => {
-                    if lhs_value >= &T::ZERO {
-                        Ok(ValueWrapper::Inf)
-                    } else {
-                        Ok(ValueWrapper::NegInf)
-                    }
-                }
-                ValueWrapper::NegInf => {
-                    if lhs_value >= &T::ZERO {
-                        Ok(ValueWrapper::NegInf)
-                    } else {
-                        Ok(ValueWrapper::Inf)
-                    }
-                }
-            },
-            ValueWrapper::Inf => match rhs {
-                ValueWrapper::Value(rhs_value) => {
-                    if rhs_value >= &T::ZERO {
-                        Ok(ValueWrapper::Inf)
-                    } else {
-                        Ok(ValueWrapper::NegInf)
-                    }
-                }
-                ValueWrapper::Inf => Ok(ValueWrapper::Inf),
-                ValueWrapper::NegInf => Ok(ValueWrapper::NegInf),
-            },
-            ValueWrapper::NegInf => match rhs {
-                ValueWrapper::Value(rhs_value) => {
-                    if rhs >= &T::ZERO {
-                        Ok(ValueWrapper::NegInf)
-                    } else {
-                        Ok(ValueWrapper::Inf)
-                    }
-                }
-                ValueWrapper::Inf => Ok(ValueWrapper::NegInf),
-                ValueWrapper::NegInf => Ok(ValueWrapper::Inf),
-            },
-        }
-    }
-}
-
-impl<'a, T: Arithmetic> Div<&'a T> for &'a ValueWrapper<T>
-where
-    &'a T: Div<&'a T, Output = T>,
-{
-    type Output = Result<ValueWrapper<T>, IllegalArgumentError>;
-
-    fn div(self, rhs: &'a ValueWrapper<T>) -> Self::Output {
-        match self {
-            ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value / rhs)),
-            ValueWrapper::Inf => {
-                if rhs >= &T::ZERO {
-                    Ok(ValueWrapper::Inf)
+            (ValueWrapper::PositiveInfinity, ValueWrapper::Finite(b)) => {
+                if b > T::zero() {
+                    ValueWrapper::PositiveInfinity
+                } else if b < T::zero() {
+                    // 除以负数反转无穷符号
+                    // Dividing by negative flips infinity sign
+                    ValueWrapper::NegativeInfinity
                 } else {
-                    Ok(ValueWrapper::NegInf)
+                    // 除以零，返回正无穷
+                    // Division by zero, return positive infinity
+                    ValueWrapper::PositiveInfinity
                 }
             }
-            ValueWrapper::NegInf => {
-                if rhs >= &T::ZERO {
-                    Ok(ValueWrapper::NegInf)
+            (ValueWrapper::NegativeInfinity, ValueWrapper::Finite(b)) => {
+                if b > T::zero() {
+                    ValueWrapper::NegativeInfinity
+                } else if b < T::zero() {
+                    // 除以负数反转无穷符号
+                    // Dividing by negative flips infinity sign
+                    ValueWrapper::PositiveInfinity
                 } else {
-                    Ok(ValueWrapper::Inf)
+                    // 除以零，返回正无穷
+                    // Division by zero, return positive infinity
+                    ValueWrapper::PositiveInfinity
                 }
+            }
+            _ => {
+                // ∞/∞ 或其他情况未定义，返回正无穷
+                // ∞/∞ or other cases undefined, return positive infinity
+                ValueWrapper::PositiveInfinity
             }
         }
     }
 }
 
-impl<'a, T: RealNumber> Div<&'a T> for &'a ValueWrapper<T>
-where
-    &'a T: Div<&'a T, Output = T>,
-{
-    type Output = Result<ValueWrapper<T>, IllegalArgumentError>;
+impl<T: Neg<Output = T>> Neg for ValueWrapper<T> {
+    type Output = Self;
 
-    fn div(self, rhs: &'a ValueWrapper<T>) -> Self::Output {
-        if rhs.is_nan() {
-            return Err(IllegalArgumentError {
-                msg: String::from("Illegal argument NaN for value range!!!"),
-            });
-        }
-
-        if rhs.is_inf() {
-            match self {
-                ValueWrapper::Value(_) => Ok(ValueWrapper::from(T::ZERO)),
-                ValueWrapper::Inf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid div between inf and inf!!!"),
-                }),
-                ValueWrapper::NegInf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid div between -inf and inf!!!"),
-                }),
-            }
-        } else if rhs.is_neg_inf() {
-            match self {
-                ValueWrapper::Value(_) => Ok(ValueWrapper::from(T::ZERO)),
-                ValueWrapper::Inf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid div between inf and -inf!!!"),
-                }),
-                ValueWrapper::NegInf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid div between -inf and -inf!!!"),
-                }),
-            }
-        } else {
-            match self {
-                ValueWrapper::Value(lhs_value) => Ok(ValueWrapper::from(lhs_value / rhs)),
-                ValueWrapper::Inf => {
-                    if rhs >= &T::ZERO {
-                        Ok(ValueWrapper::Inf)
-                    } else {
-                        Ok(ValueWrapper::NegInf)
-                    }
-                }
-                ValueWrapper::NegInf => {
-                    if rhs >= &T::ZERO {
-                        Ok(ValueWrapper::NegInf)
-                    } else {
-                        Ok(ValueWrapper::Inf)
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl<'a, T: Arithmetic> Div for &'a ValueWrapper<T>
-where
-    &'a T: Div<&'a T, Output = T>,
-{
-    type Output = Result<ValueWrapper<T>, IllegalArgumentError>;
-
-    fn div(self, rhs: &'a ValueWrapper<T>) -> Self::Output {
+    fn neg(self) -> Self::Output {
         match self {
-            ValueWrapper::Value(lhs_value) => match rhs {
-                ValueWrapper::Value(rhs_value) => Ok(ValueWrapper::from(lhs_value / rhs_value)),
-                ValueWrapper::Inf | ValueWrapper::NegInf => Ok(ValueWrapper::from(T::ZERO)),
-            },
-            ValueWrapper::Inf => match rhs {
-                ValueWrapper::Value(rhs_value) => {
-                    if rhs >= &T::ZERO {
-                        Ok(ValueWrapper::Inf)
-                    } else {
-                        Ok(ValueWrapper::NegInf)
-                    }
-                }
-                ValueWrapper::Inf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid div between inf and inf!!!"),
-                }),
-                ValueWrapper::NegInf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid div between inf and -inf!!!"),
-                }),
-            },
-            ValueWrapper::NegInf => match rhs {
-                ValueWrapper::Value(rhs_value) => {
-                    if rhs >= &T::ZERO {
-                        Ok(ValueWrapper::NegInf)
-                    } else {
-                        Ok(ValueWrapper::Inf)
-                    }
-                }
-                ValueWrapper::Inf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid div between -inf and inf!!!"),
-                }),
-                ValueWrapper::NegInf => Err(IllegalArgumentError {
-                    msg: String::from("Invalid div between -inf and -inf!!!"),
-                }),
-            },
+            ValueWrapper::Finite(a) => ValueWrapper::Finite(-a),
+            ValueWrapper::PositiveInfinity => ValueWrapper::NegativeInfinity,
+            ValueWrapper::NegativeInfinity => ValueWrapper::PositiveInfinity,
         }
+    }
+}
+
+// ============================================================================
+// Zero 和 One trait 实现 / Zero and One trait implementations
+// ============================================================================
+
+impl<T: Zero> Zero for ValueWrapper<T> {
+    fn zero() -> Self {
+        ValueWrapper::Finite(T::zero())
+    }
+
+    fn is_zero(&self) -> bool {
+        match self {
+            ValueWrapper::Finite(v) => v.is_zero(),
+            _ => false,
+        }
+    }
+}
+
+impl<T: One + Clone + Zero + PartialOrd + Mul<Output = T>> One for ValueWrapper<T> {
+    fn one() -> Self {
+        ValueWrapper::Finite(T::one())
+    }
+}
+
+// ============================================================================
+// 测试 / Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================
+    // ValueWrapper 测试 / ValueWrapper tests
+    // ========================================================================
+
+    #[test]
+    fn test_value_wrapper_finite() {
+        let wrapper = ValueWrapper::finite(42_i64);
+        assert!(wrapper.is_finite());
+        assert!(!wrapper.is_infinity());
+        assert_eq!(wrapper.unwrap(), Some(&42));
+    }
+
+    #[test]
+    fn test_value_wrapper_positive_infinity() {
+        let wrapper = ValueWrapper::<i64>::positive_infinity();
+        assert!(!wrapper.is_finite());
+        assert!(wrapper.is_infinity());
+        assert!(wrapper.is_positive_infinity());
+        assert!(!wrapper.is_negative_infinity());
+        assert_eq!(wrapper.unwrap(), None);
+    }
+
+    #[test]
+    fn test_value_wrapper_negative_infinity() {
+        let wrapper = ValueWrapper::<i64>::negative_infinity();
+        assert!(!wrapper.is_finite());
+        assert!(wrapper.is_infinity());
+        assert!(!wrapper.is_positive_infinity());
+        assert!(wrapper.is_negative_infinity());
+        assert_eq!(wrapper.unwrap(), None);
+    }
+
+    #[test]
+    fn test_value_wrapper_eq() {
+        let a = ValueWrapper::finite(42_i64);
+        let b = ValueWrapper::finite(42_i64);
+        let c = ValueWrapper::finite(43_i64);
+        let pos_inf = ValueWrapper::<i64>::positive_infinity();
+        let neg_inf = ValueWrapper::<i64>::negative_infinity();
+
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        assert_ne!(a, pos_inf);
+        assert_ne!(pos_inf, neg_inf);
+        assert_eq!(pos_inf, ValueWrapper::<i64>::positive_infinity());
+    }
+
+    #[test]
+    fn test_value_wrapper_ord() {
+        let a = ValueWrapper::finite(42_i64);
+        let b = ValueWrapper::finite(43_i64);
+        let pos_inf = ValueWrapper::<i64>::positive_infinity();
+        let neg_inf = ValueWrapper::<i64>::negative_infinity();
+
+        assert!(a < b);
+        assert!(neg_inf < a);
+        assert!(a < pos_inf);
+        assert!(neg_inf < pos_inf);
+    }
+
+    #[test]
+    fn test_value_wrapper_display() {
+        let finite = ValueWrapper::finite(42_i64);
+        let pos_inf = ValueWrapper::<i64>::positive_infinity();
+        let neg_inf = ValueWrapper::<i64>::negative_infinity();
+
+        assert_eq!(format!("{}", finite), "42");
+        assert_eq!(format!("{}", pos_inf), "+∞");
+        assert_eq!(format!("{}", neg_inf), "-∞");
+    }
+
+    #[test]
+    fn test_value_wrapper_map() {
+        let finite = ValueWrapper::finite(42_i64);
+        let mapped = finite.map(|x| x * 2);
+        assert_eq!(mapped.unwrap(), Some(&84));
+
+        let pos_inf = ValueWrapper::<i64>::positive_infinity();
+        let mapped_inf = pos_inf.map(|x: i64| x * 2);
+        assert!(mapped_inf.is_positive_infinity());
+    }
+
+    #[test]
+    fn test_value_wrapper_from() {
+        let wrapper: ValueWrapper<i64> = ValueWrapper::from(42);
+        assert!(wrapper.is_finite());
+        assert_eq!(wrapper.unwrap(), Some(&42));
+    }
+
+    #[test]
+    fn test_value_wrapper_infinite_trait() {
+        // 测试 Infinite trait 实现
+        // Test Infinite trait implementation
+        // 注意：需要通过 trait 限定语法调用，因为 ValueWrapper 有自己的 negative_infinity() 方法
+        // Note: Need to use trait-qualified syntax because ValueWrapper has its own negative_infinity() method
+        let pos_inf_opt = <ValueWrapper<i64> as Infinite>::infinity();
+        let neg_inf_opt = <ValueWrapper<i64> as Infinite>::negative_infinity();
+
+        assert!(pos_inf_opt.is_some());
+        assert!(neg_inf_opt.is_some());
+
+        let pos_inf = pos_inf_opt.unwrap();
+        let neg_inf = neg_inf_opt.unwrap();
+
+        assert!(pos_inf.is_positive_infinity());
+        assert!(neg_inf.is_negative_infinity());
     }
 }

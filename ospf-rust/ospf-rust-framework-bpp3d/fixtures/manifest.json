@@ -1,0 +1,159 @@
+{
+  "suite_name": "bpp3d-regression",
+  "entries": [
+    {
+      "name": "cuboid-pattern-package.csv",
+      "path": "cuboid-pattern-package.csv",
+      "group": "rust-regression",
+      "tags": ["cuboid", "patterned-item", "package-attribute"],
+      "backend_smoke": true
+    },
+    {
+      "name": "vertical-cylinder.csv",
+      "path": "vertical-cylinder.csv",
+      "group": "rust-regression",
+      "tags": ["cylinder", "axis-y"],
+      "backend_smoke": true
+    },
+    {
+      "name": "pwl-radius.csv",
+      "path": "pwl-radius.csv",
+      "group": "rust-regression",
+      "tags": ["cylinder", "pwl-radius"],
+      "backend_smoke": true
+    },
+    {
+      "name": "production-like-dataset.csv",
+      "path": "production-like-dataset.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "production-like"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-continuous-radius-sample.csv",
+      "path": "grouped-layer-continuous-radius-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "continuous-radius"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-cylinder-mixed-sample.csv",
+      "path": "grouped-layer-cylinder-mixed-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "mixed-shape"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-depth-boundary-sample.csv",
+      "path": "grouped-layer-depth-boundary-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "depth-boundary"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-horizontal-hanging-multisupport-sample.csv",
+      "path": "grouped-layer-horizontal-hanging-multisupport-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "axis-x", "hanging", "multi-support"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-horizontal-multisupport-sample.csv",
+      "path": "grouped-layer-horizontal-multisupport-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "axis-x", "multi-support"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-horizontal-z-hanging-multisupport-sample.csv",
+      "path": "grouped-layer-horizontal-z-hanging-multisupport-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "axis-z", "hanging", "multi-support"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-horizontal-z-multisupport-sample.csv",
+      "path": "grouped-layer-horizontal-z-multisupport-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "axis-z", "multi-support"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-pwl-horizontal-support-sample.csv",
+      "path": "grouped-layer-pwl-horizontal-support-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "pwl-radius", "support"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-pwl-interval-only-sample.csv",
+      "path": "grouped-layer-pwl-interval-only-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "pwl-radius", "interval-only"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-pwl-mixed-shape-sample.csv",
+      "path": "grouped-layer-pwl-mixed-shape-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "pwl-radius", "mixed-shape"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-pwl-multi-interval-sample.csv",
+      "path": "grouped-layer-pwl-multi-interval-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "pwl-radius", "multi-interval"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-pwl-multi-material-sample.csv",
+      "path": "grouped-layer-pwl-multi-material-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "pwl-radius", "multi-material"],
+      "backend_smoke": false
+    },
+    {
+      "name": "grouped-layer-pwl-tight-bin-envelope-sample.csv",
+      "path": "grouped-layer-pwl-tight-bin-envelope-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "grouped-layer", "pwl-radius", "tight-bin"],
+      "backend_smoke": false
+    },
+    {
+      "name": "material-width-amount-continuous-radius-sample.csv",
+      "path": "material-width-amount-continuous-radius-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "material-width-amount", "continuous-radius"],
+      "backend_smoke": false
+    },
+    {
+      "name": "material-width-amount-cylinder-sample.csv",
+      "path": "material-width-amount-cylinder-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "material-width-amount", "axis-enum", "mixed-shape"],
+      "backend_smoke": false
+    },
+    {
+      "name": "material-width-amount-dynamic-diameter-sample.csv",
+      "path": "material-width-amount-dynamic-diameter-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "material-width-amount", "dynamic-diameter"],
+      "backend_smoke": false
+    },
+    {
+      "name": "material-width-amount-pwl-interval-only-sample.csv",
+      "path": "material-width-amount-pwl-interval-only-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "material-width-amount", "pwl-radius", "interval-only"],
+      "backend_smoke": false
+    },
+    {
+      "name": "material-width-amount-pwl-multi-material-sample.csv",
+      "path": "material-width-amount-pwl-multi-material-sample.csv",
+      "group": "kotlin-gurobi",
+      "tags": ["kotlin", "material-width-amount", "pwl-radius", "multi-material"],
+      "backend_smoke": false
+    }
+  ]
+}

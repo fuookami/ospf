@@ -1,2 +1,24 @@
 [workspace]
-members = [ "ospf-rust-base", "ospf-rust-math", "ospf-rust-physics", "ospf-rust-multiarray", "ospf-rust-core"]
+resolver = "3"
+members = [
+    "ospf-rust-base",
+    "ospf-rust-multiarray",
+    "ospf-rust-math",
+    "ospf-rust-quantities",
+    "ospf-rust-core",
+    "ospf-rust-framework",
+    "ospf-rust-framework-bpp3d",
+    "ospf-rust-framework-csp1d",
+    "ospf-rust-framework-gantt-scheduling",
+    "ospf-rust-framework-network-scheduling",
+    "ospf-rust-example"
+]
+
+[workspace.package]
+license = "MIT"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3

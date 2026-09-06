@@ -1,0 +1,39 @@
+[package]
+name = "ospf-rust-example"
+version = "1.1.0"
+edition = "2024"
+license.workspace = true
+description = "Examples for the ospf-rust optimization modeling framework."
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "README.md"
+
+[features]
+default = ["demo5-offline"]
+demo5-offline = ["dep:ospf-rust-framework-network-scheduling"]
+backend-gurobi = [
+    "demo5-offline",
+    "ospf-rust-core/gurobi10",
+    "ospf-rust-framework/gurobi10",
+    "ospf-rust-framework-network-scheduling/gurobi10",
+]
+demo5-gurobi-bp = [
+    "demo5-offline",
+    "ospf-rust-framework-network-scheduling/gurobi10",
+]
+demo5-scip-bp = [
+    "demo5-offline",
+    "ospf-rust-framework-network-scheduling/scip",
+]
+
+[dependencies]
+ospf-rust-core = { path = "../ospf-rust-core", version = "1.1.0" }
+ospf-rust-framework = { path = "../ospf-rust-framework", version = "1.1.0" }
+ospf-rust-base = { path = "../ospf-rust-base", version = "1.1.0" }
+ospf-rust-math = { path = "../ospf-rust-math", version = "1.1.0" }
+ospf-rust-multiarray = { path = "../ospf-rust-multiarray", version = "1.1.0" }
+ospf-rust-framework-csp1d = { path = "../ospf-rust-framework-csp1d", version = "1.1.0" }
+ospf-rust-framework-gantt-scheduling = { path = "../ospf-rust-framework-gantt-scheduling", version = "1.1.0" }
+ospf-rust-quantities = { path = "../ospf-rust-quantities", version = "1.1.0" }
+ospf-rust-framework-network-scheduling = { path = "../ospf-rust-framework-network-scheduling", version = "1.1.0", optional = true }
+time = { version = "0.3.55", features = ["std", "macros"] }

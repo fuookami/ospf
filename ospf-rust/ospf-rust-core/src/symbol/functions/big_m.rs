@@ -1,0 +1,1492 @@
+//! Big-M 约束策略与多项式界推断工具 / Big-M constraint policy and polynomial bound inference utilities
+
+use std::fmt::Debug;
+use num_traits::{FromPrimitive, ToPrimitive};
+use crate::error::{ModelError, Result};
+use crate::model::{ConstraintRelation, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
+use crate::token::Token;
+
+/// Big-M 策略配置，包含回退值与最小值。
+/// Big-M policy configuration with fallback and minimum values.
+#[derive(Debug, Clone, Copy)]
+pub struct BigMPolicy {
+    fallback: f64,
+    min: f64,
+}
+
+impl BigMPolicy {
+    /// 创建新的 Big-M 策略配置。
+    /// Create a new Big-M policy configuration.
+    pub const fn new(fallback: f64, min: f64) -> Self {
+        Self { fallback, min }
+    }
+
+    /// 返回回退 Big-M 值。
+    /// Returns the fallback Big-M value.
+    pub const fn fallback(&self) -> f64 {
+        self.fallback
+    }
+
+    /// 返回最小 Big-M 值。
+    /// Returns the minimum Big-M value.
+    pub const fn min(&self) -> f64 {
+        self.min
+    }
+
+    /// 解析推断的 Big-M 值，并拒绝非法策略输入穿透到约束生成。
+    /// Resolve an inferred Big-M value without allowing invalid policy input to reach constraints.
+    ///
+    /// 公共构造函数保持 `const` 和兼容的返回类型，因此非法 fallback、min 或 inferred
+    /// 会在此处退回到安全默认值，而不是返回 NaN、无穷或非正数。
+    /// The public constructor remains `const` with its compatible return type, so invalid
+    /// fallback, minimum, or inferred values are replaced here with safe defaults instead of
+    /// returning NaN, infinity, or a non-positive value.
+    pub fn resolve(&self, inferred: Option<f64>) -> f64 {
+        let fallback = if self.fallback.is_finite() && self.fallback > 0.0 {
+            self.fallback
+        } else {
+            DEFAULT_BIG_M
+        };
+        let minimum = if self.min.is_finite() && self.min > 0.0 {
+            self.min
+        } else {
+            MIN_BIG_M
+        };
+        inferred
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .unwrap_or(fallback)
+            .max(minimum)
+    }
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/// 无更紧界可用时的默认 Big-M 值。
+/// Default big M value used when no better bound is available.
+pub const DEFAULT_BIG_M: f64 = 1_000_000.0;
+
+/// 保证数值稳定性的最小 Big-M 值。
+/// Minimum big M value to ensure numerical stability.
+pub const MIN_BIG_M: f64 = 1.0;
+
+/// Tolerance for nonzero detection in indicator constraints.
+pub(crate) const NONZERO_TOLERANCE: f64 = f64::EPSILON * 16.0;
+
+/// Strict nonzero boundary used in indicator constraint RHS values.
+pub(crate) const STRICT_NONZERO_BOUNDARY: f64 = NONZERO_TOLERANCE + f64::EPSILON * 16.0;
+
+// ============================================================================
+// LinearPolynomialBounds
+// ============================================================================
+
+/// 线性多项式表达式的界。
+///
+/// 存储线性多项式在一组有界变量上的下界和上界，
+/// 用于 Big-M 推断和约束生成。
+///
+/// Bounds for a linear polynomial expression.
+///
+/// Stores the lower and upper bounds of a linear polynomial over a set
+/// of bounded variables. Used for big M inference and constraint generation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinearPolynomialBounds<V> {
+    /// 下界。
+    /// Lower bound.
+    pub lower: Option<V>,
+    /// 上界。
+    /// Upper bound.
+    pub upper: Option<V>,
+}
+
+impl<V> LinearPolynomialBounds<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    /// 从线性多项式及其变量列表计算界。
+    ///
+    /// 若任何变量无界或计算结果不有限，则返回 `None`。
+    ///
+    /// Compute bounds from a linear polynomial and its token list.
+    ///
+    /// Returns `None` if any variable is unbounded or if the computed
+    /// bounds are not finite.
+    pub fn from_polynomial(poly: &Linear<V>, tokens: &[Token<V>]) -> Option<Self> {
+        let (lower, upper) = infer_linear_bounds_from_tokens(poly, tokens)?;
+        Some(Self {
+            lower: Some(convert_f64_to_v(lower, "linear lower bound").ok()?),
+            upper: Some(convert_f64_to_v(upper, "linear upper bound").ok()?),
+        })
+    }
+
+    /// 计算绝对界（|下界| 和 |上界| 的最大值）。
+    ///
+    /// 若界不可用则返回 `None`。
+    ///
+    /// Compute the absolute bound (max of |lower| and |upper|).
+    ///
+    /// Returns `None` if bounds are not available.
+    pub fn abs_bound(&self) -> Option<f64> {
+        let lower = self.lower.as_ref()?.to_f64()?;
+        let upper = self.upper.as_ref()?.to_f64()?;
+        Some(lower.abs().max(upper.abs()))
+    }
+}
+
+impl LinearPolynomialBounds<f64> {
+    /// 从线性多项式及其变量列表计算界（f64 特化版本）。
+    /// Compute bounds from a linear polynomial and its token list (f64 specialization).
+    pub fn from_polynomial_f64(poly: &Linear<f64>, tokens: &[Token<f64>]) -> Option<Self> {
+        let (lower, upper) = infer_linear_bounds_from_tokens(poly, tokens)?;
+        Some(Self {
+            lower: Some(lower),
+            upper: Some(upper),
+        })
+    }
+}
+
+// ============================================================================
+// Public API: Big M Utilities
+// ============================================================================
+
+/// 返回默认 Big-M 值（1,000,000.0）。
+///
+/// 当无法从变量范围推断更紧的界时使用的回退值。
+///
+/// Returns the default big M value (1,000,000.0).
+///
+/// This is the fallback value used when no tighter bound can be inferred
+/// from variable ranges.
+pub fn default_big_m() -> f64 {
+    DEFAULT_BIG_M
+}
+
+/// 确保 Big-M 值为正且至少为 [`MIN_BIG_M`]。
+///
+/// 非有限值、零和负值会返回错误；若正数 `m` 小于 [`MIN_BIG_M`]，
+/// 则返回 [`MIN_BIG_M`]，以防止推断界过小时产生退化约束。
+///
+/// Ensures the big M value is positive and at least [`MIN_BIG_M`].
+///
+/// Non-finite, zero, and negative values return an error. If a positive `m` is
+/// less than [`MIN_BIG_M`], returns [`MIN_BIG_M`] instead. This prevents
+/// degenerate constraints when inferred bounds are very small.
+pub fn ensure_positive_big_m(m: f64) -> Result<f64> {
+    if !m.is_finite() || m <= 0.0 {
+        return Err(ModelError::InvalidConstraint(format!(
+            "big M must be finite and positive, got {m}"
+        ))
+        .into());
+    }
+    Ok(m.max(MIN_BIG_M))
+}
+
+// ============================================================================
+// Internal Helpers
+// ============================================================================
+
+fn from_f64<V>(value: f64) -> Option<V>
+where
+    V: FromPrimitive,
+{
+    V::from_f64(value)
+}
+
+fn convert_f64_to_v<V>(value: f64, context: &str) -> Result<V>
+where
+    V: FromPrimitive + ToPrimitive,
+{
+    if !value.is_finite() {
+        return Err(ModelError::InvalidConstraint(format!(
+            "`{context}` value must be finite, got {value}"
+        ))
+        .into());
+    }
+    let converted: V = from_f64(value).ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "failed to convert `{}` value {} from f64 into model value type",
+            context, value
+        ))
+    })?;
+    let roundtrip = converted.to_f64().ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "failed to inspect converted `{context}` value {value}"
+        ))
+    })?;
+    if !roundtrip.is_finite() {
+        return Err(ModelError::InvalidConstraint(format!(
+            "converted `{context}` value must be finite, got {roundtrip}"
+        ))
+        .into());
+    }
+    Ok(converted)
+}
+
+fn checked_to_f64<V>(value: &V, context: &str) -> Result<f64>
+where
+    V: ToPrimitive,
+{
+    let converted = value.to_f64().ok_or_else(|| {
+        ModelError::InvalidConstraint(format!("failed to convert `{context}` into f64"))
+    })?;
+    if !converted.is_finite() {
+        return Err(ModelError::InvalidConstraint(format!(
+            "`{context}` value must be finite, got {converted}"
+        ))
+        .into());
+    }
+    Ok(converted)
+}
+
+/// Extracts base monomial data (coefficient as f64, var_index) from a polynomial.
+fn extract_base_monomials<V>(polynomial: &Linear<V>, name_prefix: &str) -> Result<Vec<(f64, usize)>>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    let mut base = Vec::with_capacity(polynomial.monomials().len());
+    for monomial in polynomial.monomials() {
+        let coefficient = monomial.coefficient().to_f64().ok_or_else(|| {
+            ModelError::InvalidConstraint(format!(
+                "logic `{}` input coefficient cannot be converted to f64",
+                name_prefix
+            ))
+        })?;
+        if !coefficient.is_finite() {
+            return Err(ModelError::InvalidConstraint(format!(
+                "logic `{}` input coefficient must be finite",
+                name_prefix
+            ))
+            .into());
+        }
+        base.push((coefficient, monomial.var_index()));
+    }
+    Ok(base)
+}
+
+/// Extracts the constant term as f64 from a polynomial.
+fn extract_constant<V>(polynomial: &Linear<V>, name_prefix: &str) -> Result<f64>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let constant = polynomial.constant_term().to_f64().ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "logic `{}` input constant cannot be converted to f64",
+            name_prefix
+        ))
+    })?;
+    if !constant.is_finite() {
+        return Err(ModelError::InvalidConstraint(format!(
+            "logic `{}` input constant must be finite",
+            name_prefix
+        ))
+        .into());
+    }
+    Ok(constant)
+}
+
+// ============================================================================
+// Public API: Indicator Constraints
+// ============================================================================
+
+/// 生成正指示变量的约束。
+///
+/// 当指示变量为 1 时：多项式 > 0（严格，使用 epsilon 容差）。
+/// 当指示变量为 0 时：多项式 <= 0。
+///
+/// 返回 `(LinearInequality, name)` 对的向量。
+///
+/// Generates constraints for a positive indicator.
+///
+/// When indicator is 1: polynomial > 0 (strict, using epsilon tolerance).
+/// When indicator is 0: polynomial <= 0.
+///
+/// Returns a vector of `(LinearInequality, name)` pairs.
+pub fn positive_indicator_constraints<V>(
+    polynomial: &Linear<V>,
+    indicator_index: usize,
+    big_m: f64,
+    name_prefix: &str,
+) -> Result<Vec<(LinearInequality<V>, String)>>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    let big_m = ensure_positive_big_m(big_m)?;
+    let base_monomials = extract_base_monomials(polynomial, name_prefix)?;
+    let constant = extract_constant(polynomial, name_prefix)?;
+    let mut constraints = Vec::with_capacity(2);
+
+    // polynomial - big_m * indicator <= -epsilon
+    // When y=0: polynomial <= -epsilon (trivially satisfied by big_m relaxation)
+    // When y=1: polynomial <= -epsilon... wait, that's wrong.
+    //
+    // Correct formulation:
+    // polynomial - big_m * indicator <= 0
+    // When y=1: polynomial <= 0 -> but we want polynomial > 0...
+    //
+    // Standard Big-M for "y=1 => f(x) > 0":
+    //   f(x) - big_m * (1 - y) <= -epsilon  ... but we only have indicator y.
+    //
+    // With indicator y (1 = condition holds):
+    //   f(x) + big_m * y <= big_m + 0    (relaxation when y=0)
+    //   f(x) - epsilon >= 0               (when y=1)
+    //
+    // Using the pattern from nonzero:
+    //   f(x) - big_m * y <= -epsilon   => when y=0: f(x) <= -epsilon (wrong)
+    //
+    // Let's use the correct standard form:
+    // y=1 => f(x) > epsilon (positive)
+    // y=0 => f(x) <= 0
+    //
+    // Constraint 1: f(x) - big_m * y <= 0
+    //   y=0: f(x) <= 0 (feasible with big-M)
+    //   y=1: f(x) <= 0 ... but we want f(x) > epsilon!
+    //
+    // We need: y=1 => f(x) > epsilon
+    //          y=0 => f(x) <= 0
+    //
+    // This requires TWO directions:
+    // (a) f(x) - big_m * y <= -epsilon   ... no
+    //
+    // Actually the standard formulation:
+    // "y = 1 iff f(x) > 0" needs:
+    //   f(x) <= big_m * y           (if f(x) > 0 then y must be 1)
+    //   f(x) >= epsilon - big_m*(1-y) (if y=1 then f(x) >= epsilon)
+    //
+    // But with a single binary indicator (not 1-y), we adjust signs:
+    //   f(x) + big_m * y <= big_m     ... when y=0: f(x) <= big_m (relaxation)
+    //                                  ... when y=1: f(x) <= 0 ... wrong again
+    //
+    // Let me think differently. The existing nonzero uses:
+    //   f(x) - big_m * y <= epsilon    (band_ub)
+    //   f(x) + big_m * y >= -epsilon   (band_lb)
+    // These give: when y=0, |f(x)| <= epsilon (i.e. f(x) ≈ 0)
+    //             when y=1, relaxed
+    //
+    // For positive (y=1 => f(x) > 0):
+    //   We want: y=1 => f(x) > epsilon
+    //            y=0 => f(x) <= 0
+    //
+    // Constraint: f(x) + big_m * (1 - y_sign) ... but we have y directly.
+    //
+    // Using single indicator y where y=1 means "positive":
+    //   f(x) + big_m * y <= big_m       -> y=0: f(x) <= big_m (always OK)
+    //                                     -> y=1: f(x) <= 0
+    //   But we want y=1 => f(x) > 0...
+    //
+    // I think the formulation should be:
+    //   f(x) >= epsilon - big_m * (1 - y) = epsilon - big_m + big_m * y
+    //   => f(x) - big_m * y >= epsilon - big_m
+    //   => -f(x) + big_m * y <= big_m - epsilon
+    //   When y=1: -f(x) + big_m <= big_m - epsilon => -f(x) <= -epsilon => f(x) >= epsilon ✓
+    //   When y=0: -f(x) <= big_m - epsilon => f(x) >= epsilon - big_m (relaxation) ✓
+    //
+    //   f(x) <= 0 + big_m * y
+    //   => f(x) - big_m * y <= 0
+    //   When y=1: f(x) - big_m <= 0 => f(x) <= big_m (relaxation) ... no
+    //   When y=0: f(x) <= 0 ✓
+    //
+    // Hmm, we need:
+    //   y=1 => f(x) > 0  :  f(x) >= epsilon - big_m*(1-y)
+    //   y=0 => f(x) <= 0  :  f(x) <= big_m * y ... when y=0: f(x) <= 0 ✓
+    //                                               when y=1: f(x) <= big_m (relaxation) ✓
+    //
+    // So:
+    // Constraint 1 (lb): f(x) - big_m * y >= epsilon - big_m
+    //   => f(x) - big_m * y >= epsilon - big_m
+    // Constraint 2 (ub): f(x) - big_m * y <= 0
+    //   => f(x) - big_m * y <= 0
+    //
+    // When y=1: f(x) - big_m >= epsilon - big_m => f(x) >= epsilon ✓
+    //           f(x) - big_m <= 0 => f(x) <= big_m (relaxation) ✓
+    // When y=0: f(x) >= epsilon - big_m (relaxation) ✓
+    //           f(x) <= 0 ✓
+    //
+    // Great! But wait, we want y=0 to mean "not positive" => f(x) <= 0.
+    // And the ub constraint f(x) - big_m * y <= 0 gives:
+    //   y=0: f(x) <= 0 ✓
+    //   y=1: f(x) <= big_m (relaxation) ✓
+    // And the lb constraint gives:
+    //   y=0: f(x) >= epsilon - big_m (relaxation) ✓
+    //   y=1: f(x) >= epsilon ✓
+    //
+    // Perfect!
+
+    // Constraint: f(x) - big_m * y <= 0
+    //   y=0: f(x) <= 0
+    //   y=1: f(x) <= big_m (relaxation)
+    let mut ub_monomials = Vec::with_capacity(base_monomials.len() + 1);
+    for (coefficient, index) in &base_monomials {
+        ub_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
+        ));
+    }
+    ub_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(-big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
+    constraints.push((
+        LinearInequality::new(
+            Linear::new(
+                ub_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
+            ConstraintRelation::LessEqual,
+            convert_f64_to_v::<V>(0.0, "logic rhs")?,
+        ),
+        format!("{}_ub", name_prefix),
+    ));
+
+    // Constraint: f(x) - big_m * y >= epsilon - big_m
+    //   y=0: f(x) >= epsilon - big_m (relaxation)
+    //   y=1: f(x) >= epsilon
+    let mut lb_monomials = Vec::with_capacity(base_monomials.len() + 1);
+    for (coefficient, index) in &base_monomials {
+        lb_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
+        ));
+    }
+    lb_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(-big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
+    constraints.push((
+        LinearInequality::new(
+            Linear::new(
+                lb_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
+            ConstraintRelation::GreaterEqual,
+            convert_f64_to_v::<V>(f64::EPSILON - big_m, "logic rhs")?,
+        ),
+        format!("{}_lb", name_prefix),
+    ));
+
+    Ok(constraints)
+}
+
+/// 生成非负指示变量的约束。
+///
+/// 当指示变量为 1 时：多项式 >= 0。
+/// 当指示变量为 0 时：多项式 < 0。
+///
+/// 返回 `(LinearInequality, name)` 对的向量。
+///
+/// Generates constraints for a non-negative indicator.
+///
+/// When indicator is 1: polynomial >= 0.
+/// When indicator is 0: polynomial < 0.
+///
+/// Returns a vector of `(LinearInequality, name)` pairs.
+pub fn nonnegative_indicator_constraints<V>(
+    polynomial: &Linear<V>,
+    indicator_index: usize,
+    big_m: f64,
+    name_prefix: &str,
+) -> Result<Vec<(LinearInequality<V>, String)>>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    let big_m = ensure_positive_big_m(big_m)?;
+    let base_monomials = extract_base_monomials(polynomial, name_prefix)?;
+    let constant = extract_constant(polynomial, name_prefix)?;
+    let mut constraints = Vec::with_capacity(2);
+
+    // Constraint: f(x) - big_m * y <= 0
+    //   y=0: f(x) <= 0
+    //   y=1: f(x) <= big_m (relaxation)
+    let mut ub_monomials = Vec::with_capacity(base_monomials.len() + 1);
+    for (coefficient, index) in &base_monomials {
+        ub_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
+        ));
+    }
+    ub_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(-big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
+    constraints.push((
+        LinearInequality::new(
+            Linear::new(
+                ub_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
+            ConstraintRelation::LessEqual,
+            convert_f64_to_v::<V>(0.0, "logic rhs")?,
+        ),
+        format!("{}_ub", name_prefix),
+    ));
+
+    // Constraint: f(x) - big_m * y >= -big_m
+    //   y=0: f(x) >= -big_m (relaxation)
+    //   y=1: f(x) >= 0
+    let mut lb_monomials = Vec::with_capacity(base_monomials.len() + 1);
+    for (coefficient, index) in &base_monomials {
+        lb_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
+        ));
+    }
+    lb_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(-big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
+    constraints.push((
+        LinearInequality::new(
+            Linear::new(
+                lb_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
+            ConstraintRelation::GreaterEqual,
+            convert_f64_to_v::<V>(-big_m, "logic rhs")?,
+        ),
+        format!("{}_lb", name_prefix),
+    ));
+
+    Ok(constraints)
+}
+
+/// 生成负指示变量的约束。
+///
+/// 当指示变量为 1 时：多项式 < 0（严格，使用 epsilon 容差）。
+/// 当指示变量为 0 时：多项式 >= 0。
+///
+/// 返回 `(LinearInequality, name)` 对的向量。
+///
+/// Generates constraints for a negative indicator.
+///
+/// When indicator is 1: polynomial < 0 (strict, using epsilon tolerance).
+/// When indicator is 0: polynomial >= 0.
+///
+/// Returns a vector of `(LinearInequality, name)` pairs.
+pub fn negative_indicator_constraints<V>(
+    polynomial: &Linear<V>,
+    indicator_index: usize,
+    big_m: f64,
+    name_prefix: &str,
+) -> Result<Vec<(LinearInequality<V>, String)>>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    let big_m = ensure_positive_big_m(big_m)?;
+    let base_monomials = extract_base_monomials(polynomial, name_prefix)?;
+    let constant = extract_constant(polynomial, name_prefix)?;
+    let mut constraints = Vec::with_capacity(2);
+
+    // Constraint: f(x) + big_m * y >= 0
+    //   y=0: f(x) >= 0
+    //   y=1: f(x) >= -big_m (relaxation)
+    let mut lb_monomials = Vec::with_capacity(base_monomials.len() + 1);
+    for (coefficient, index) in &base_monomials {
+        lb_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
+        ));
+    }
+    lb_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
+    constraints.push((
+        LinearInequality::new(
+            Linear::new(
+                lb_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
+            ConstraintRelation::GreaterEqual,
+            convert_f64_to_v::<V>(0.0, "logic rhs")?,
+        ),
+        format!("{}_lb", name_prefix),
+    ));
+
+    // Constraint: f(x) + big_m * y <= -epsilon + big_m
+    //   y=0: f(x) <= -epsilon
+    //   y=1: f(x) <= -epsilon + big_m (relaxation)
+    let mut ub_monomials = Vec::with_capacity(base_monomials.len() + 1);
+    for (coefficient, index) in &base_monomials {
+        ub_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
+        ));
+    }
+    ub_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
+    constraints.push((
+        LinearInequality::new(
+            Linear::new(
+                ub_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
+            ConstraintRelation::LessEqual,
+            convert_f64_to_v::<V>(-f64::EPSILON + big_m, "logic rhs")?,
+        ),
+        format!("{}_ub", name_prefix),
+    ));
+
+    Ok(constraints)
+}
+
+/// 生成非零指示变量的约束。
+///
+/// 当指示变量为 1 时：|多项式| > epsilon（多项式非零）。
+/// 当指示变量为 0 时：|多项式| <= epsilon（多项式近似为零）。
+///
+/// 需要 `side_index` 作为辅助二元变量，用于跟踪多项式非零时的符号。
+///
+/// 返回 `(LinearInequality, name)` 对的向量（4 条约束）。
+///
+/// Generates constraints for a non-zero indicator.
+///
+/// When indicator is 1: |polynomial| > epsilon (polynomial is non-zero).
+/// When indicator is 0: |polynomial| <= epsilon (polynomial is approximately zero).
+///
+/// This requires a `side_index` for an auxiliary binary variable that
+/// tracks the sign of the polynomial when it is non-zero.
+///
+/// Returns a vector of `(LinearInequality, name)` pairs (4 constraints).
+pub fn nonzero_indicator_constraints<V>(
+    polynomial: &Linear<V>,
+    indicator_index: usize,
+    side_index: usize,
+    big_m: f64,
+    name_prefix: &str,
+) -> Result<Vec<(LinearInequality<V>, String)>>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    let big_m = ensure_positive_big_m(big_m)?;
+    let base_monomials = extract_base_monomials(polynomial, name_prefix)?;
+    let constant = extract_constant(polynomial, name_prefix)?;
+    let mut constraints = Vec::with_capacity(4);
+
+    // Band upper bound: f(x) - big_m * y <= epsilon
+    // When y=0: f(x) <= epsilon
+    // When y=1: f(x) <= epsilon + big_m (relaxation)
+    let mut ub_monomials = Vec::with_capacity(base_monomials.len() + 1);
+    for (coefficient, index) in &base_monomials {
+        ub_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
+        ));
+    }
+    ub_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(-big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
+    constraints.push((
+        LinearInequality::new(
+            Linear::new(
+                ub_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
+            ConstraintRelation::LessEqual,
+            convert_f64_to_v::<V>(NONZERO_TOLERANCE, "logic rhs")?,
+        ),
+        format!("{}_band_ub", name_prefix),
+    ));
+
+    // Band lower bound: f(x) + big_m * y >= -epsilon
+    // When y=0: f(x) >= -epsilon
+    // When y=1: f(x) >= -epsilon - big_m (relaxation)
+    let mut lb_monomials = Vec::with_capacity(base_monomials.len() + 1);
+    for (coefficient, index) in &base_monomials {
+        lb_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
+        ));
+    }
+    lb_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
+    constraints.push((
+        LinearInequality::new(
+            Linear::new(
+                lb_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
+            ConstraintRelation::GreaterEqual,
+            convert_f64_to_v::<V>(-NONZERO_TOLERANCE, "logic rhs")?,
+        ),
+        format!("{}_band_lb", name_prefix),
+    ));
+
+    // Out lower bound: f(x) - big_m * y - big_m * s >= epsilon - 2*big_m
+    // When y=1, s=0 (positive): f(x) >= epsilon
+    // When y=1, s=1 (negative): f(x) >= epsilon - big_m (relaxation)
+    // When y=0: f(x) >= epsilon - 2*big_m (relaxation)
+    let mut out_lb_monomials = Vec::with_capacity(base_monomials.len() + 2);
+    for (coefficient, index) in &base_monomials {
+        out_lb_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
+        ));
+    }
+    out_lb_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(-big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
+    out_lb_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(-big_m, "logic side coefficient")?,
+        side_index,
+    ));
+    constraints.push((
+        LinearInequality::new(
+            Linear::new(
+                out_lb_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
+            ConstraintRelation::GreaterEqual,
+            convert_f64_to_v::<V>(STRICT_NONZERO_BOUNDARY - 2.0 * big_m, "logic rhs")?,
+        ),
+        format!("{}_out_lb", name_prefix),
+    ));
+
+    // Out upper bound: f(x) + big_m * y - big_m * s <= -epsilon + big_m
+    // When y=1, s=1 (negative): f(x) <= -epsilon
+    // When y=1, s=0 (positive): f(x) <= -epsilon + big_m (relaxation)
+    // When y=0: f(x) <= -epsilon + big_m (relaxation)
+    let mut out_ub_monomials = Vec::with_capacity(base_monomials.len() + 2);
+    for (coefficient, index) in &base_monomials {
+        out_ub_monomials.push(LinearMonomial::new(
+            convert_f64_to_v::<V>(*coefficient, "logic input coefficient")?,
+            *index,
+        ));
+    }
+    out_ub_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(big_m, "logic indicator coefficient")?,
+        indicator_index,
+    ));
+    out_ub_monomials.push(LinearMonomial::new(
+        convert_f64_to_v::<V>(-big_m, "logic side coefficient")?,
+        side_index,
+    ));
+    constraints.push((
+        LinearInequality::new(
+            Linear::new(
+                out_ub_monomials,
+                convert_f64_to_v::<V>(constant, "logic input constant")?,
+            ),
+            ConstraintRelation::LessEqual,
+            convert_f64_to_v::<V>(-STRICT_NONZERO_BOUNDARY + big_m, "logic rhs")?,
+        ),
+        format!("{}_out_ub", name_prefix),
+    ));
+
+    Ok(constraints)
+}
+
+// ============================================================================
+// Bounds Inference (existing functions below)
+// ============================================================================
+
+/// 从线性多项式及其变量列表推断下界和上界。
+///
+/// 遍历每个单项式，根据系数符号和变量范围计算贡献，
+/// 汇总得到多项式的整体值域。若任何变量无界或结果不有限则返回 `None`。
+///
+/// Infer lower and upper bounds from a linear polynomial and its token list.
+///
+/// Iterates over each monomial, computing contributions based on coefficient sign
+/// and variable bounds, then aggregates into the overall polynomial range.
+/// Returns `None` if any variable is unbounded or the result is not finite.
+pub fn infer_linear_bounds_from_tokens<V>(
+    poly: &Linear<V>,
+    tokens: &[Token<V>],
+) -> Option<(f64, f64)>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    infer_linear_bounds_from_tokens_checked(poly, tokens).ok()
+}
+
+fn infer_linear_bounds_from_tokens_checked<V>(
+    poly: &Linear<V>,
+    tokens: &[Token<V>],
+) -> Result<(f64, f64)>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let mut lower = checked_to_f64(poly.constant_term(), "linear polynomial constant")?;
+    let mut upper = lower;
+
+    for monomial in poly.monomials() {
+        let (var_lower, var_upper) = variable_bounds_from_tokens(tokens, monomial.var_index())?;
+        let coefficient = checked_to_f64(monomial.coefficient(), "linear polynomial coefficient")?;
+        if coefficient >= 0.0 {
+            lower += coefficient * var_lower;
+            upper += coefficient * var_upper;
+        } else {
+            lower += coefficient * var_upper;
+            upper += coefficient * var_lower;
+        }
+    }
+
+    if !lower.is_finite() || !upper.is_finite() {
+        return Err(ModelError::InvalidConstraint(
+            "linear polynomial bounds are not finite".to_string(),
+        )
+        .into());
+    }
+    Ok((lower, upper))
+}
+
+/// 从线性多项式及其变量列表推断绝对界（|下界| 和 |上界| 的最大值）。
+///
+/// Infer the absolute bound (max of |lower| and |upper|) from a linear polynomial and its token list.
+pub fn infer_linear_abs_bound_from_tokens<V>(poly: &Linear<V>, tokens: &[Token<V>]) -> Option<f64>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let (lower, upper) = infer_linear_bounds_from_tokens(poly, tokens)?;
+    Some(lower.abs().max(upper.abs()))
+}
+
+/// 从线性多项式及其变量列表推断偏移后的下界和上界（减去右侧值）。
+///
+/// Infer shifted bounds (subtracting right-hand side) from a linear polynomial and its token list.
+#[allow(dead_code)]
+pub fn infer_linear_shifted_bounds_from_tokens<V>(
+    poly: &Linear<V>,
+    right: &V,
+    tokens: &[Token<V>],
+) -> Option<(f64, f64)>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let (lower, upper) = infer_linear_bounds_from_tokens(poly, tokens)?;
+    let right = right.to_f64()?;
+    let lower = lower - right;
+    let upper = upper - right;
+    if !lower.is_finite() || !upper.is_finite() {
+        return None;
+    }
+    Some((lower, upper))
+}
+
+/// 从线性多项式及其变量列表推断偏移后的绝对界（减去右侧值后取 |下界| 和 |上界| 的最大值）。
+///
+/// Infer shifted absolute bound (max of |lower| and |upper| after subtracting right-hand side).
+#[allow(dead_code)]
+pub fn infer_linear_shifted_abs_bound_from_tokens<V>(
+    poly: &Linear<V>,
+    right: &V,
+    tokens: &[Token<V>],
+) -> Option<f64>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let (lower, upper) = infer_linear_shifted_bounds_from_tokens(poly, right, tokens)?;
+    Some(lower.abs().max(upper.abs()))
+}
+
+/// 推断两个线性多项式差值的范围 / Infer bounds for the difference of two linear polynomials.
+pub fn infer_linear_difference_bounds_from_tokens<V>(
+    left: &Linear<V>,
+    right: &Linear<V>,
+    tokens: &[Token<V>],
+) -> Option<(f64, f64)>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let (left_lower, left_upper) = infer_linear_bounds_from_tokens(left, tokens)?;
+    let (right_lower, right_upper) = infer_linear_bounds_from_tokens(right, tokens)?;
+    let lower = left_lower - right_upper;
+    let upper = left_upper - right_lower;
+    if !lower.is_finite() || !upper.is_finite() {
+        return None;
+    }
+    Some((lower, upper))
+}
+
+/// 推断两个线性多项式差值的绝对界 / Infer an absolute bound for the difference of two linear polynomials.
+pub fn infer_linear_difference_abs_bound_from_tokens<V>(
+    left: &Linear<V>,
+    right: &Linear<V>,
+    tokens: &[Token<V>],
+) -> Option<f64>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let (lower, upper) = infer_linear_difference_bounds_from_tokens(left, right, tokens)?;
+    Some(lower.abs().max(upper.abs()))
+}
+
+fn variable_bounds_from_tokens<V>(tokens: &[Token<V>], solver_index: usize) -> Result<(f64, f64)>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let token = tokens
+        .iter()
+        .find(|token| token.solver_index == solver_index)
+        .ok_or_else(|| {
+            ModelError::InvalidConstraint(format!(
+                "token with solver index {solver_index} is missing"
+            ))
+        })?;
+    let lower = token.variable.lower_bound().ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "token with solver index {solver_index} has no lower bound"
+        ))
+    })?;
+    let upper = token.variable.upper_bound().ok_or_else(|| {
+        ModelError::InvalidConstraint(format!(
+            "token with solver index {solver_index} has no upper bound"
+        ))
+    })?;
+    let lower = checked_to_f64(
+        &lower,
+        &format!("lower bound for solver index {solver_index}"),
+    )?;
+    let upper = checked_to_f64(
+        &upper,
+        &format!("upper bound for solver index {solver_index}"),
+    )?;
+    Ok((lower, upper))
+}
+
+#[allow(dead_code)]
+fn square_bounds(lower: f64, upper: f64) -> (f64, f64) {
+    if lower <= 0.0 && upper >= 0.0 {
+        (0.0, lower.abs().max(upper.abs()).powi(2))
+    } else {
+        let lower_square = lower.powi(2);
+        let upper_square = upper.powi(2);
+        (
+            lower_square.min(upper_square),
+            lower_square.max(upper_square),
+        )
+    }
+}
+
+#[allow(dead_code)]
+fn product_bounds(
+    first_lower: f64,
+    first_upper: f64,
+    second_lower: f64,
+    second_upper: f64,
+) -> (f64, f64) {
+    let products = [
+        first_lower * second_lower,
+        first_lower * second_upper,
+        first_upper * second_lower,
+        first_upper * second_upper,
+    ];
+    let lower = products.iter().copied().fold(f64::INFINITY, f64::min);
+    let upper = products.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    (lower, upper)
+}
+
+#[allow(dead_code)]
+/// 推断二次多项式的范围 / Infer bounds for a quadratic polynomial.
+pub fn infer_quadratic_bounds_from_tokens<V>(
+    poly: &Quadratic<V>,
+    tokens: &[Token<V>],
+) -> Option<(f64, f64)>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    infer_quadratic_bounds_from_tokens_checked(poly, tokens).ok()
+}
+
+fn infer_quadratic_bounds_from_tokens_checked<V>(
+    poly: &Quadratic<V>,
+    tokens: &[Token<V>],
+) -> Result<(f64, f64)>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let mut lower = checked_to_f64(poly.constant(), "quadratic polynomial constant")?;
+    let mut upper = lower;
+
+    for monomial in poly.monomials() {
+        let coefficient =
+            checked_to_f64(monomial.coefficient(), "quadratic polynomial coefficient")?;
+        let (term_lower, term_upper) = if let Some(var_index2) = monomial.var_index2() {
+            let var_index1 = monomial.var_index1();
+            let (raw_lower, raw_upper) = if var_index1 == var_index2 {
+                let (var_lower, var_upper) = variable_bounds_from_tokens(tokens, var_index1)?;
+                square_bounds(var_lower, var_upper)
+            } else {
+                let (first_lower, first_upper) = variable_bounds_from_tokens(tokens, var_index1)?;
+                let (second_lower, second_upper) = variable_bounds_from_tokens(tokens, var_index2)?;
+                product_bounds(first_lower, first_upper, second_lower, second_upper)
+            };
+            if coefficient >= 0.0 {
+                (coefficient * raw_lower, coefficient * raw_upper)
+            } else {
+                (coefficient * raw_upper, coefficient * raw_lower)
+            }
+        } else {
+            let (var_lower, var_upper) =
+                variable_bounds_from_tokens(tokens, monomial.var_index1())?;
+            if coefficient >= 0.0 {
+                (coefficient * var_lower, coefficient * var_upper)
+            } else {
+                (coefficient * var_upper, coefficient * var_lower)
+            }
+        };
+
+        lower += term_lower;
+        upper += term_upper;
+    }
+
+    if !lower.is_finite() || !upper.is_finite() {
+        return Err(ModelError::InvalidConstraint(
+            "quadratic polynomial bounds are not finite".to_string(),
+        )
+        .into());
+    }
+    Ok((lower, upper))
+}
+
+#[allow(dead_code)]
+/// 推断二次多项式的绝对界 / Infer an absolute bound for a quadratic polynomial.
+pub fn infer_quadratic_abs_bound_from_tokens<V>(
+    poly: &Quadratic<V>,
+    tokens: &[Token<V>],
+) -> Option<f64>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let (lower, upper) = infer_quadratic_bounds_from_tokens(poly, tokens)?;
+    Some(lower.abs().max(upper.abs()))
+}
+
+#[allow(dead_code)]
+/// 推断减去常数后的二次多项式范围 / Infer bounds for a shifted quadratic polynomial.
+pub fn infer_quadratic_shifted_bounds_from_tokens<V>(
+    poly: &Quadratic<V>,
+    right: &V,
+    tokens: &[Token<V>],
+) -> Option<(f64, f64)>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let (lower, upper) = infer_quadratic_bounds_from_tokens(poly, tokens)?;
+    let right = right.to_f64()?;
+    let lower = lower - right;
+    let upper = upper - right;
+    if !lower.is_finite() || !upper.is_finite() {
+        return None;
+    }
+    Some((lower, upper))
+}
+
+#[allow(dead_code)]
+/// 推断减去常数后的二次多项式绝对界 / Infer an absolute bound for a shifted quadratic polynomial.
+pub fn infer_quadratic_shifted_abs_bound_from_tokens<V>(
+    poly: &Quadratic<V>,
+    right: &V,
+    tokens: &[Token<V>],
+) -> Option<f64>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let (lower, upper) = infer_quadratic_shifted_bounds_from_tokens(poly, right, tokens)?;
+    Some(lower.abs().max(upper.abs()))
+}
+
+/// 推断两个二次多项式差值的范围 / Infer bounds for the difference of two quadratic polynomials.
+pub fn infer_quadratic_difference_bounds_from_tokens<V>(
+    left: &Quadratic<V>,
+    right: &Quadratic<V>,
+    tokens: &[Token<V>],
+) -> Option<(f64, f64)>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let (left_lower, left_upper) = infer_quadratic_bounds_from_tokens(left, tokens)?;
+    let (right_lower, right_upper) = infer_quadratic_bounds_from_tokens(right, tokens)?;
+    let lower = left_lower - right_upper;
+    let upper = left_upper - right_lower;
+    if !lower.is_finite() || !upper.is_finite() {
+        return None;
+    }
+    Some((lower, upper))
+}
+
+/// 推断两个二次多项式差值的绝对界 / Infer an absolute bound for the difference of two quadratic polynomials.
+pub fn infer_quadratic_difference_abs_bound_from_tokens<V>(
+    left: &Quadratic<V>,
+    right: &Quadratic<V>,
+    tokens: &[Token<V>],
+) -> Option<f64>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let (lower, upper) = infer_quadratic_difference_bounds_from_tokens(left, right, tokens)?;
+    Some(lower.abs().max(upper.abs()))
+}
+
+/// 为线性多项式集合推断 Big-M / Infer a Big-M value for linear polynomials.
+pub fn infer_big_m_for_polynomials<V>(
+    polynomials: &[Linear<V>],
+    tokens: &[Token<V>],
+    min_big_m: f64,
+) -> Option<f64>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let mut big_m = ensure_positive_big_m(min_big_m).ok()?;
+    for polynomial in polynomials {
+        let bound = infer_linear_abs_bound_from_tokens(polynomial, tokens)?;
+        big_m = big_m.max(bound);
+    }
+    Some(big_m)
+}
+
+#[allow(dead_code)]
+/// 为二次多项式集合推断 Big-M / Infer a Big-M value for quadratic polynomials.
+pub fn infer_big_m_for_quadratic_polynomials<V>(
+    polynomials: &[Quadratic<V>],
+    tokens: &[Token<V>],
+    min_big_m: f64,
+) -> Option<f64>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    let mut big_m = ensure_positive_big_m(min_big_m).ok()?;
+    for polynomial in polynomials {
+        let bound = infer_quadratic_abs_bound_from_tokens(polynomial, tokens)?;
+        big_m = big_m.max(bound);
+    }
+    Some(big_m)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::symbol::flatten::{LinearMonomial, QuadraticMonomial};
+    use crate::token::Token;
+    use crate::variable::{ContinuousVariableItem, VariableRange};
+
+    fn token(name: &str, index: usize, lower: f64, upper: f64) -> Token<f64> {
+        Token::from_generic(
+            ContinuousVariableItem::auto_with_range(name, VariableRange::bounded(lower, upper)),
+            index,
+        )
+    }
+
+    #[test]
+    fn shifted_linear_bounds_subtract_right_side() {
+        let tokens = vec![token("x", 0, 1.0, 3.0), token("y", 1, -2.0, 4.0)];
+        let poly = Linear::new(
+            vec![LinearMonomial::new(2.0, 0), LinearMonomial::new(-1.0, 1)],
+            5.0,
+        );
+
+        assert_eq!(
+            infer_linear_shifted_bounds_from_tokens(&poly, &4.0, &tokens),
+            Some((-1.0, 9.0))
+        );
+        assert_eq!(
+            infer_linear_shifted_abs_bound_from_tokens(&poly, &4.0, &tokens),
+            Some(9.0)
+        );
+    }
+
+    #[test]
+    fn linear_difference_bounds_subtract_polynomial_ranges() {
+        let tokens = vec![token("x", 0, 1.0, 3.0), token("y", 1, -2.0, 4.0)];
+        let left = Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0);
+        let right = Linear::new(vec![LinearMonomial::new(-1.0, 1)], 3.0);
+
+        assert_eq!(
+            infer_linear_difference_bounds_from_tokens(&left, &right, &tokens),
+            Some((-2.0, 8.0))
+        );
+        assert_eq!(
+            infer_linear_difference_abs_bound_from_tokens(&left, &right, &tokens),
+            Some(8.0)
+        );
+    }
+
+    #[test]
+    fn bounds_follow_solver_index_when_tokens_are_reordered() {
+        let tokens = vec![token("y", 1, -2.0, 4.0), token("x", 0, 1.0, 3.0)];
+        let linear = Linear::new(
+            vec![LinearMonomial::new(2.0, 0), LinearMonomial::new(-1.0, 1)],
+            5.0,
+        );
+        let quadratic = Quadratic::new(
+            vec![
+                QuadraticMonomial::new_quadratic(1.0, 0, 0),
+                QuadraticMonomial::new_quadratic(1.0, 0, 1),
+                QuadraticMonomial::new_linear(1.0, 1),
+            ],
+            0.0,
+        );
+
+        assert_eq!(
+            infer_linear_bounds_from_tokens(&linear, &tokens),
+            Some((3.0, 13.0))
+        );
+        assert_eq!(
+            infer_quadratic_bounds_from_tokens(&quadratic, &tokens),
+            Some((-7.0, 25.0))
+        );
+    }
+
+    #[test]
+    fn missing_solver_index_returns_structured_error() {
+        let tokens = vec![token("x", 0, 1.0, 3.0)];
+        let error = variable_bounds_from_tokens(&tokens, 1).unwrap_err();
+
+        assert!(matches!(
+            error,
+            crate::error::CoreError::Model(crate::error::ModelError::InvalidConstraint(message))
+                if message.contains("solver index 1")
+        ));
+    }
+
+    #[test]
+    fn quadratic_bounds_handle_linear_bilinear_and_square_terms() {
+        let tokens = vec![token("x", 0, -1.0, 2.0), token("y", 1, 3.0, 5.0)];
+        let poly = Quadratic::new(
+            vec![
+                QuadraticMonomial::new_quadratic(2.0, 0, 0),
+                QuadraticMonomial::new_quadratic(-1.0, 0, 1),
+                QuadraticMonomial::new_linear(3.0, 1),
+            ],
+            1.0,
+        );
+
+        assert_eq!(
+            infer_quadratic_bounds_from_tokens(&poly, &tokens),
+            Some((0.0, 29.0))
+        );
+        assert_eq!(
+            infer_quadratic_shifted_bounds_from_tokens(&poly, &6.0, &tokens),
+            Some((-6.0, 23.0))
+        );
+        assert_eq!(
+            infer_quadratic_shifted_abs_bound_from_tokens(&poly, &6.0, &tokens),
+            Some(23.0)
+        );
+    }
+
+    #[test]
+    fn quadratic_bounds_return_none_for_unbounded_variable() {
+        let tokens = vec![token("x", 0, f64::NEG_INFINITY, 2.0)];
+        let poly = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+
+        assert_eq!(infer_quadratic_bounds_from_tokens(&poly, &tokens), None);
+    }
+
+    #[test]
+    fn quadratic_big_m_uses_largest_local_abs_bound() {
+        let tokens = vec![token("x", 0, -2.0, 1.0)];
+        let first = Quadratic::new(vec![QuadraticMonomial::new_quadratic(2.0, 0, 0)], 0.0);
+        let second = Quadratic::new(vec![QuadraticMonomial::new_linear(-3.0, 0)], 1.0);
+
+        assert_eq!(
+            infer_big_m_for_quadratic_polynomials(&[first, second], &tokens, 1.0),
+            Some(8.0)
+        );
+    }
+
+    #[test]
+    fn big_m_inference_rejects_invalid_minimum_values() {
+        let linear = vec![Linear::constant(0.0)];
+        let quadratic = vec![Quadratic::from_constant(0.0)];
+        for minimum in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(infer_big_m_for_polynomials(&linear, &[], minimum).is_none());
+            assert!(infer_big_m_for_quadratic_polynomials(&quadratic, &[], minimum).is_none());
+        }
+    }
+
+    // ========================================================================
+    // Tests for new public API
+    // ========================================================================
+
+    #[test]
+    fn default_big_m_returns_correct_value() {
+        assert_eq!(default_big_m(), 1_000_000.0);
+    }
+
+    #[test]
+    fn ensure_positive_big_m_clamps_small_values() {
+        assert_eq!(ensure_positive_big_m(0.5).unwrap(), MIN_BIG_M);
+    }
+
+    #[test]
+    fn ensure_positive_big_m_preserves_large_values() {
+        assert_eq!(ensure_positive_big_m(100.0).unwrap(), 100.0);
+        assert_eq!(ensure_positive_big_m(1_000_000.0).unwrap(), 1_000_000.0);
+    }
+
+    #[test]
+    fn ensure_positive_big_m_rejects_illegal_values() {
+        for big_m in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(ensure_positive_big_m(big_m).is_err(), "{big_m}");
+        }
+    }
+
+    #[test]
+    fn big_m_policy_resolve_never_returns_an_invalid_value() {
+        let policy = BigMPolicy::new(f64::NAN, f64::NEG_INFINITY);
+        for inferred in [
+            None,
+            Some(0.0),
+            Some(-1.0),
+            Some(f64::NAN),
+            Some(f64::INFINITY),
+        ] {
+            let resolved = policy.resolve(inferred);
+            assert!(resolved.is_finite());
+            assert!(resolved > 0.0);
+        }
+
+        let policy = BigMPolicy::new(2.0, 3.0);
+        assert_eq!(policy.resolve(Some(f64::NAN)), 3.0);
+        assert_eq!(policy.resolve(Some(4.0)), 4.0);
+    }
+
+    #[test]
+    fn indicator_constraint_builders_reject_illegal_big_m_values() {
+        let polynomial = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
+        for big_m in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(
+                positive_indicator_constraints(&polynomial, 1, big_m, "test").is_err(),
+                "{big_m}"
+            );
+            assert!(
+                nonnegative_indicator_constraints(&polynomial, 1, big_m, "test").is_err(),
+                "{big_m}"
+            );
+            assert!(
+                negative_indicator_constraints(&polynomial, 1, big_m, "test").is_err(),
+                "{big_m}"
+            );
+            assert!(
+                nonzero_indicator_constraints(&polynomial, 1, 2, big_m, "test").is_err(),
+                "{big_m}"
+            );
+        }
+    }
+
+    #[test]
+    fn indicator_constraint_builders_reject_non_finite_polynomial_values() {
+        let invalid_coeff = Linear::new(vec![LinearMonomial::new(f64::NAN, 0)], 0.0);
+        let invalid_constant = Linear::new(vec![LinearMonomial::new(1.0, 0)], f64::INFINITY);
+
+        assert!(positive_indicator_constraints(&invalid_coeff, 1, 10.0, "test").is_err());
+        assert!(nonnegative_indicator_constraints(&invalid_coeff, 1, 10.0, "test").is_err());
+        assert!(negative_indicator_constraints(&invalid_coeff, 1, 10.0, "test").is_err());
+        assert!(nonzero_indicator_constraints(&invalid_coeff, 1, 2, 10.0, "test").is_err());
+        assert!(positive_indicator_constraints(&invalid_constant, 1, 10.0, "test").is_err());
+    }
+
+    #[test]
+    fn linear_polynomial_bounds_from_polynomial_computes_correctly() {
+        let tokens = vec![token("x", 0, 1.0, 3.0), token("y", 1, -2.0, 4.0)];
+        let poly = Linear::new(
+            vec![LinearMonomial::new(2.0, 0), LinearMonomial::new(-1.0, 1)],
+            5.0,
+        );
+
+        let bounds = LinearPolynomialBounds::from_polynomial(&poly, &tokens).unwrap();
+        // lower = 5 + 2*1 + (-1)*4 = 5 + 2 - 4 = 3
+        // upper = 5 + 2*3 + (-1)*(-2) = 5 + 6 + 2 = 13
+        assert_eq!(bounds.lower, Some(3.0));
+        assert_eq!(bounds.upper, Some(13.0));
+        assert_eq!(bounds.abs_bound(), Some(13.0));
+    }
+
+    #[test]
+    fn f32_bounds_reject_overflow_and_non_finite_conversions() {
+        let tokens: Vec<Token<f32>> = vec![Token::from_generic(
+            ContinuousVariableItem::auto_with_range(
+                "x",
+                VariableRange::bounded(1.0e20_f64, 2.0e20_f64),
+            ),
+            0,
+        )];
+        let poly: Linear<f32> = Linear::new(vec![LinearMonomial::new(1.0e20_f32, 0)], 0.0_f32);
+
+        let inferred = infer_linear_bounds_from_tokens(&poly, &tokens).unwrap();
+        assert!(inferred.0.is_finite() && inferred.1.is_finite());
+        assert!(LinearPolynomialBounds::<f32>::from_polynomial(&poly, &tokens).is_none());
+
+        for value in [f64::NAN, f64::INFINITY, f64::MAX] {
+            assert!(convert_f64_to_v::<f32>(value, "test bound").is_err());
+        }
+    }
+
+    #[test]
+    fn positive_indicator_constraints_generates_two_constraints() {
+        let poly = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
+        let constraints = positive_indicator_constraints(&poly, 1, 100.0, "test").unwrap();
+        assert_eq!(constraints.len(), 2);
+        assert_eq!(constraints[0].1, "test_ub");
+        assert_eq!(constraints[1].1, "test_lb");
+    }
+
+    #[test]
+    fn nonnegative_indicator_constraints_generates_two_constraints() {
+        let poly = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
+        let constraints = nonnegative_indicator_constraints(&poly, 1, 100.0, "test").unwrap();
+        assert_eq!(constraints.len(), 2);
+        assert_eq!(constraints[0].1, "test_ub");
+        assert_eq!(constraints[1].1, "test_lb");
+    }
+
+    #[test]
+    fn negative_indicator_constraints_generates_two_constraints() {
+        let poly = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
+        let constraints = negative_indicator_constraints(&poly, 1, 100.0, "test").unwrap();
+        assert_eq!(constraints.len(), 2);
+        assert_eq!(constraints[0].1, "test_lb");
+        assert_eq!(constraints[1].1, "test_ub");
+    }
+
+    #[test]
+    fn nonzero_indicator_constraints_generates_four_constraints() {
+        let poly = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
+        let constraints = nonzero_indicator_constraints(&poly, 1, 2, 100.0, "test").unwrap();
+        assert_eq!(constraints.len(), 4);
+        assert_eq!(constraints[0].1, "test_band_ub");
+        assert_eq!(constraints[1].1, "test_band_lb");
+        assert_eq!(constraints[2].1, "test_out_lb");
+        assert_eq!(constraints[3].1, "test_out_ub");
+    }
+
+    #[test]
+    fn nonzero_indicator_constraints_match_existing_implementation() {
+        let poly = Linear::new(
+            vec![LinearMonomial::new(3.0, 0), LinearMonomial::new(-2.0, 1)],
+            1.0,
+        );
+        let big_m = 500.0;
+
+        let new_constraints = nonzero_indicator_constraints(&poly, 5, 6, big_m, "nz").unwrap();
+
+        // Verify the constraints have the expected structure
+        // Band UB: f(x) - big_m * y <= epsilon
+        let band_ub = &new_constraints[0].0;
+        assert_eq!(band_ub.relation, ConstraintRelation::LessEqual);
+        assert_eq!(band_ub.rhs, NONZERO_TOLERANCE);
+
+        // Band LB: f(x) + big_m * y >= -epsilon
+        let band_lb = &new_constraints[1].0;
+        assert_eq!(band_lb.relation, ConstraintRelation::GreaterEqual);
+        assert_eq!(band_lb.rhs, -NONZERO_TOLERANCE);
+
+        // Out LB: f(x) - big_m * y - big_m * s >= epsilon - 2*big_m
+        let out_lb = &new_constraints[2].0;
+        assert_eq!(out_lb.relation, ConstraintRelation::GreaterEqual);
+        assert_eq!(out_lb.rhs, STRICT_NONZERO_BOUNDARY - 2.0 * big_m);
+
+        // Out UB: f(x) + big_m * y - big_m * s <= -epsilon + big_m
+        let out_ub = &new_constraints[3].0;
+        assert_eq!(out_ub.relation, ConstraintRelation::LessEqual);
+        assert_eq!(out_ub.rhs, -STRICT_NONZERO_BOUNDARY + big_m);
+    }
+}

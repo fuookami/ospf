@@ -1,0 +1,9 @@
+# table:items
+item_id,name,shape_type,width,height,depth,weight,amount,pattern_code,allow_mixed_loading,max_stack_layers,package_tags
+i0,Item,cuboid,2,2,1,1,1,PAT-A,false,2,fragile|top
+# table:bins
+bin_id,type_code,width,height,depth,capacity
+b0,BIN,5,5,5,100
+# table:layers
+layer_id,bin_id,depth
+l0,b0,1
