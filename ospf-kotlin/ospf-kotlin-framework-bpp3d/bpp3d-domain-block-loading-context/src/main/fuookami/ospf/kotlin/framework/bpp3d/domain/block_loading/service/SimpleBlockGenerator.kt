@@ -1,15 +1,25 @@
+/**
+ * 简单块生成器。 / Simple block generator.
+*/
 package fuookami.ospf.kotlin.framework.bpp3d.domain.block_loading.service
 
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.math.geometry.*
-import fuookami.ospf.kotlin.utils.math.ordinary.*
 import fuookami.ospf.kotlin.utils.functional.*
+import fuookami.ospf.kotlin.math.algebra.number.*
+import fuookami.ospf.kotlin.math.ordinary.min
 import fuookami.ospf.kotlin.framework.bpp3d.infrastructure.*
 import fuookami.ospf.kotlin.framework.bpp3d.domain.item.model.*
-
+/**
+ * SimpleBlockGenerator class.
+ * SimpleBlockGenerator类。
+*/
 class SimpleBlockGenerator(
     val config: Config
 ) {
+
+/**
+ * Config data class.
+ * Config数据类。
+*/
     data class Config(
         val mergeAsPatternBlock: Boolean = true,
         val withRotation: Boolean = true,
@@ -21,6 +31,14 @@ class SimpleBlockGenerator(
             }
         }
 
+/**
+ * new.
+ * new。
+ * @param mergeAsPatternBlock 是否合并为模式块 / whether to merge as pattern block
+ * @param withRotation 是否考虑旋转姿态 / whether to consider rotated orientations
+ * @param withRemainder 是否生成余数块 / whether to generate remainder blocks
+ * @return 更新后的新配置 / new Config with updated values
+*/
         fun new(
             mergeAsPatternBlock: Boolean? = null,
             withRotation: Boolean? = null,
@@ -33,6 +51,12 @@ class SimpleBlockGenerator(
             )
         }
 
+/**
+ * new.
+ * new。
+ * @param builder 配置构建器 / config builder
+ * @return 更新后的新配置 / new Config with updated values
+*/
         fun new(
             builder: ConfigBuilder
         ): Config {
@@ -44,6 +68,10 @@ class SimpleBlockGenerator(
         }
     }
 
+/**
+ * ConfigBuilder data class.
+ * ConfigBuilder数据类。
+*/
     data class ConfigBuilder(
         var mergeAsPatternBlock: Boolean? = null,
         var withRotation: Boolean? = null,
@@ -63,6 +91,13 @@ class SimpleBlockGenerator(
     }
 
     companion object {
+
+/**
+ * Builds config.
+ * 构建Config。
+ * @param builder 配置构建器 / config builder
+ * @return 应用值后的配置构建器 / ConfigBuilder with applied values
+*/
         fun buildConfig(builder: ConfigBuilder.() -> Unit): ConfigBuilder {
             val config = ConfigBuilder()
             builder(config)
@@ -74,10 +109,17 @@ class SimpleBlockGenerator(
         items: Map<Item, UInt64>,
         space: Container3Shape,
         patterns: List<Pattern>,
-        restWeight: Flt64 = Flt64.infinity
+        restWeight: FltX = FltX.maximum
     ): List<Block> {
         val blocks = ArrayList<Block>()
         for ((item, amount) in items) {
+            if (requireSupportedCylinderItemForSimpleBlock(
+                item = item,
+                path = CylinderCapabilityPath.SimpleBlockCandidate
+            ).failed) {
+                continue
+            }
+
             if (config.mergeAsPatternBlock) {
                 for (pattern in patterns) {
                     for (patternImpl in pattern.patterns) {
@@ -107,7 +149,11 @@ class SimpleBlockGenerator(
                                 }
 
                                 is Failed -> {
-                                    // nothing to do
+                                    // nothing to do / 无需处理
+                                }
+
+                                is Fatal -> {
+                                    // nothing to do / 无需处理
                                 }
                             }
                         }
@@ -119,14 +165,14 @@ class SimpleBlockGenerator(
                 val view = item.view(orientation)
                 val spaceMaxXAmount = (space.width / view.width).floor().toUInt64()
                 val spaceMaxYAmount = (space.height / view.height).floor().toUInt64()
-                val itemMaxYAmount = min(view.maxLayer, (view.maxHeight / view.height).floor().toUInt64())
+                val itemMaxYAmount = min(view.maxLayer, (view.maxHeight / view.height.value).floor().toUInt64())
                 val spaceMaxZAmount = (space.depth / view.depth).floor().toUInt64()
-                val itemMinZAmount = if (view.minDepth eq Flt64.zero) {
+                val itemMinZAmount = if (view.minDepth eq FltX.zero) {
                     UInt64.one
                 } else {
-                    (view.minDepth / view.depth).ceil().toUInt64()
+                    (view.minDepth / view.depth.value).ceil().toUInt64()
                 }
-                val itemMaxZAmount = (view.maxDepth / view.depth).floor().toUInt64()
+                val itemMaxZAmount = (view.maxDepth / view.depth.value).floor().toUInt64()
 
                 blocks.addAll(
                     simpleBlocks(
@@ -148,12 +194,12 @@ class SimpleBlockGenerator(
                     val spaceMaxYAmount = (space.height / view.height).floor().toUInt64()
                     val itemMaxYAmount = item.sideOnTopLayer
                     val spaceMaxZAmount = (space.depth / view.depth).floor().toUInt64()
-                    val itemMinZAmount = if (view.minDepth eq Flt64.zero) {
+                    val itemMinZAmount = if (view.minDepth eq FltX.zero) {
                         UInt64.one
                     } else {
-                        (view.minDepth / view.depth).ceil().toUInt64()
+                        (view.minDepth / view.depth.value).ceil().toUInt64()
                     }
-                    val itemMaxZAmount = (view.maxDepth / view.depth).floor().toUInt64()
+                    val itemMaxZAmount = (view.maxDepth / view.depth.value).floor().toUInt64()
 
                     blocks.addAll(
                         simpleBlocks(
@@ -176,12 +222,12 @@ class SimpleBlockGenerator(
                     val spaceMaxYAmount = (space.height / view.height).floor().toUInt64()
                     val itemMaxYAmount = item.lieOnTopLayer
                     val spaceMaxZAmount = (space.depth / view.depth).floor().toUInt64()
-                    val itemMinZAmount = if (view.minDepth eq Flt64.zero) {
+                    val itemMinZAmount = if (view.minDepth eq FltX.zero) {
                         UInt64.one
                     } else {
-                        (view.minDepth / view.depth).ceil().toUInt64()
+                        (view.minDepth / view.depth.value).ceil().toUInt64()
                     }
-                    val itemMaxZAmount = (view.maxDepth / view.depth).floor().toUInt64()
+                    val itemMaxZAmount = (view.maxDepth / view.depth.value).floor().toUInt64()
 
                     blocks.addAll(
                         simpleBlocks(
@@ -200,6 +246,18 @@ class SimpleBlockGenerator(
         return blocks
     }
 
+/**
+ * simpleBlocks.
+ * simpleBlocks。
+ * @param item 待评估的货物 / item to evaluate
+ * @param amount 可用货物数量 / available item quantity
+ * @param orientation 货物放置姿态 / item placement orientation
+ * @param maxXAmount maximum item count along X / X 方向最大数量
+ * @param maxYAmount maximum item count along Y / Y 方向最大数量
+ * @param minZAmount minimum item count along Z / Z 方向最小数量
+ * @param maxZAmount maximum item count along Z / Z 方向最大数量
+ * @return 生成的块列表 / list of generated blocks
+*/
     private fun simpleBlocks(
         item: Item,
         amount: UInt64,
@@ -217,14 +275,19 @@ class SimpleBlockGenerator(
         for (i in UInt64.one..maxXAmount) {
             for (j in UInt64.one..maxYAmount) {
                 for (k in minZAmount..maxZAmount) {
-                    val placements = ArrayList<Placement3<Item>>()
+                    val placements = ArrayList<QuantityPlacement3<Item, FltX>>()
                     for (p in UInt64.zero until i) {
-                        val x = orientation.width(item) * p.toFlt64()
+                        val x = orientation.width(item) * p.toFltXScalar()
                         for (q in UInt64.zero until j) {
-                            val y = orientation.height(item) * q.toFlt64()
+                            val y = orientation.height(item) * q.toFltXScalar()
                             for (m in UInt64.zero until k) {
-                                val z = orientation.depth(item) * m.toFlt64()
-                                placements.add(Placement3(item.view(orientation), point3(x, y, z)))
+                                val z = orientation.depth(item) * m.toFltXScalar()
+                                placements.add(
+                                    itemPlacement3Of(
+                                        view = item.view(orientation),
+                                        position = point3(x, y, z)
+                                    )
+                                )
                             }
                         }
                     }
@@ -237,25 +300,49 @@ class SimpleBlockGenerator(
             }
         }
         if (config.withRemainder) {
-            val remainder = (minZAmount..maxZAmount).minOf { amount % (maxXAmount * maxYAmount * it) }
+            var remainder = UInt64.maximum
+            for (zAmount in minZAmount..maxZAmount) {
+                val thisRemainder = amount % (maxXAmount * maxYAmount * zAmount)
+                if (thisRemainder < remainder) {
+                    remainder = thisRemainder
+                }
+            }
 
-            if (remainder != UInt64.zero && remainder ls (maxXAmount * maxYAmount) && minZAmount == UInt64.one) {
+            if (remainder != UInt64.zero && remainder < (maxXAmount * maxYAmount) && minZAmount == UInt64.one) {
                 val remainderMaxYAmount = remainder / maxXAmount
-                val placements = ArrayList<Placement3<Item>>()
+                val placements = ArrayList<QuantityPlacement3<Item, FltX>>()
                 if (remainderMaxYAmount != UInt64.zero) {
                     for (i in UInt64.zero until maxXAmount) {
-                        val x = orientation.width(item) * i.toFlt64()
+                        val x = orientation.width(item) * i.toFltXScalar()
                         for (j in UInt64.zero until remainderMaxYAmount) {
-                            val y = orientation.height(item) * j.toFlt64()
-                            placements.add(Placement3(item.view(orientation), point3(x = x, y = y)))
+                            val y = orientation.height(item) * j.toFltXScalar()
+                            placements.add(
+                                itemPlacement3Of(
+                                    view = item.view(orientation),
+                                    position = point3(
+                                        x = x,
+                                        y = y,
+                                        z = FltX.zero * zUnit(item, orientation)
+                                    )
+                                )
+                            )
                         }
                     }
                 }
-                val remainderPlacements = ArrayList<Placement3<Item>>()
+                val remainderPlacements = ArrayList<QuantityPlacement3<Item, FltX>>()
                 if ((remainder % maxXAmount) != UInt64.zero) {
                     for (i in UInt64.zero until (remainder % maxXAmount)) {
-                        val x = orientation.width(item) * i.toFlt64()
-                        remainderPlacements.add(Placement3(item.view(orientation), point3(x = x)))
+                        val x = orientation.width(item) * i.toFltXScalar()
+                        remainderPlacements.add(
+                            itemPlacement3Of(
+                                view = item.view(orientation),
+                                position = point3(
+                                    x = x,
+                                    y = FltX.zero * yUnit(item, orientation),
+                                    z = FltX.zero * zUnit(item, orientation)
+                                )
+                            )
+                        )
                     }
                 }
                 if (placements.isEmpty()) {
@@ -263,61 +350,138 @@ class SimpleBlockGenerator(
                 } else if (remainderPlacements.isEmpty()) {
                     blocks.add(SimpleBlock(placements))
                 } else {
-                    blocks.add(ComplexBlock(
-                        listOf(
-                            Placement3(SimpleBlock(placements).view()!!, point3()),
-                            Placement3(SimpleBlock(remainderPlacements).view()!!, point3(y = orientation.height(item) * remainderMaxYAmount.toFlt64()))
+                    blocks.add(
+                        ComplexBlock(
+                            listOf(
+                                blockPlacement3Of(view = SimpleBlock(placements).view()!!, position = point3FltX()),
+                                blockPlacement3Of(
+                                    view = SimpleBlock(remainderPlacements).view()!!,
+                                    position = point3(
+                                        x = FltX.zero * xUnit(item, orientation),
+                                        y = orientation.height(item) * remainderMaxYAmount.toFltXScalar(),
+                                        z = FltX.zero * zUnit(item, orientation)
+                                    )
+                                )
+                            )
                         )
-                    ))
+                    )
                 }
-            } else if (remainder != UInt64.zero && (remainder / (maxXAmount * maxYAmount)) geq (minZAmount - UInt64.zero)) {
+            } else if (remainder != UInt64.zero && (remainder / (maxXAmount * maxYAmount)) >= (minZAmount - UInt64.zero)) {
                 val remainderMaxZAmount = remainder / (maxXAmount * maxYAmount)
                 val remainderMaxYAmount = (remainder % (maxXAmount * maxYAmount)) / maxXAmount
-                val placements = ArrayList<Placement3<Item>>()
+                val placements = ArrayList<QuantityPlacement3<Item, FltX>>()
                 for (i in UInt64.zero until maxXAmount) {
-                    val x = orientation.width(item) * i.toFlt64()
+                    val x = orientation.width(item) * i.toFltXScalar()
                     for (j in UInt64.zero until maxYAmount) {
-                        val y = orientation.height(item) * j.toFlt64()
+                        val y = orientation.height(item) * j.toFltXScalar()
                         for (k in UInt64.zero until remainderMaxZAmount) {
-                            val z = orientation.depth(item) * k.toFlt64()
-                            placements.add(Placement3(item.view(orientation), point3(x = x, y = y, z = z)))
+                            val z = orientation.depth(item) * k.toFltXScalar()
+                            placements.add(
+                                itemPlacement3Of(
+                                    view = item.view(orientation),
+                                    position = point3(x = x, y = y, z = z)
+                                )
+                            )
                         }
                     }
                 }
-                val remainderPlacements = ArrayList<Placement3<Item>>()
+                val remainderPlacements = ArrayList<QuantityPlacement3<Item, FltX>>()
                 if (remainderMaxYAmount != UInt64.zero) {
                     for (i in UInt64.zero until maxXAmount) {
-                        val x = orientation.width(item) * i.toFlt64()
+                        val x = orientation.width(item) * i.toFltXScalar()
                         for (j in UInt64.zero until remainderMaxYAmount) {
-                            val y = orientation.height(item) * j.toFlt64()
-                            remainderPlacements.add(Placement3(item.view(orientation), point3(x = x, y = y)))
+                            val y = orientation.height(item) * j.toFltXScalar()
+                            remainderPlacements.add(
+                                itemPlacement3Of(
+                                    view = item.view(orientation),
+                                    position = point3(
+                                        x = x,
+                                        y = y,
+                                        z = FltX.zero * zUnit(item, orientation)
+                                    )
+                                )
+                            )
                         }
                     }
                 }
-                val remainderRemainderPlacements = ArrayList<Placement3<Item>>()
+                val remainderRemainderPlacements = ArrayList<QuantityPlacement3<Item, FltX>>()
                 if (((remainder % (maxXAmount * maxYAmount)) % maxXAmount) != UInt64.zero) {
                     for (i in UInt64.zero until ((remainder % (maxXAmount * maxYAmount)) % maxXAmount)) {
-                        val x = orientation.width(item) * i.toFlt64()
-                        remainderRemainderPlacements.add(Placement3(item.view(orientation), point3(x = x)))
+                        val x = orientation.width(item) * i.toFltXScalar()
+                        remainderRemainderPlacements.add(
+                            itemPlacement3Of(
+                                view = item.view(orientation),
+                                position = point3(
+                                    x = x,
+                                    y = FltX.zero * yUnit(item, orientation),
+                                    z = FltX.zero * zUnit(item, orientation)
+                                )
+                            )
+                        )
                     }
                 }
-                val remainderBlocks = ArrayList<BlockPlacement3>()
-                remainderBlocks.add(Placement3(SimpleBlock(placements).view()!!, point3()))
+                val remainderBlocks = ArrayList<QuantityPlacement3<Block, FltX>>()
+                remainderBlocks.add(blockPlacement3Of(view = SimpleBlock(placements).view()!!, position = point3FltX()))
                 if (remainderPlacements.isEmpty()) {
-                    remainderBlocks.add(Placement3(
-                        SimpleBlock(remainderPlacements).view()!!,
-                        point3(z = orientation.depth(item) * remainderMaxZAmount.toFlt64())
-                    ))
+                    remainderBlocks.add(
+                        blockPlacement3Of(
+                            view = SimpleBlock(remainderPlacements).view()!!,
+                            position = point3(
+                                x = FltX.zero * xUnit(item, orientation),
+                                y = FltX.zero * yUnit(item, orientation),
+                                z = orientation.depth(item) * remainderMaxZAmount.toFltXScalar()
+                            )
+                        )
+                    )
                 }
                 if (remainderRemainderPlacements.isEmpty()) {
-                    remainderBlocks.add(Placement3(
-                        SimpleBlock(remainderRemainderPlacements).view()!!,
-                        point3(y = orientation.height(item) * remainderMaxYAmount.toFlt64(), z = orientation.depth(item) * remainderMaxZAmount.toFlt64())
-                    ))
+                    remainderBlocks.add(
+                        blockPlacement3Of(
+                            view = SimpleBlock(remainderRemainderPlacements).view()!!,
+                            position = point3(
+                                x = FltX.zero * xUnit(item, orientation),
+                                y = orientation.height(item) * remainderMaxYAmount.toFltXScalar(),
+                                z = orientation.depth(item) * remainderMaxZAmount.toFltXScalar()
+                            )
+                        )
+                    )
                 }
                 blocks.add(ComplexBlock(remainderBlocks))
             }
         }
         return blocks
     }
+
+/**
+ * UInt64.
+ * UInt64。
+ * @return FltX scalar value / FltX 标量值
+*/
+    private fun UInt64.toFltXScalar(): FltX {
+        return FltX(this.toULong().toDouble())
+    }
+
+/**
+ * xUnit.
+ * xUnit。
+ * @param item 待评估的货物 / item to evaluate
+ * @param orientation 货物放置姿态 / item placement orientation
+*/
+    private fun xUnit(item: Item, orientation: Orientation) = orientation.width(item).unit
+
+/**
+ * yUnit.
+ * yUnit。
+ * @param item 待评估的货物 / item to evaluate
+ * @param orientation 货物放置姿态 / item placement orientation
+*/
+    private fun yUnit(item: Item, orientation: Orientation) = orientation.height(item).unit
+
+/**
+ * zUnit.
+ * zUnit。
+ * @param item 待评估的货物 / item to evaluate
+ * @param orientation 货物放置姿态 / item placement orientation
+*/
+    private fun zUnit(item: Item, orientation: Orientation) = orientation.depth(item).unit
 }

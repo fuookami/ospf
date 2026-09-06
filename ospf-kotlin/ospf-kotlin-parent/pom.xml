@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.github.fuookami.ospf.kotlin</groupId>
         <artifactId>ospf-kotlin</artifactId>
-        <version>1.0.71</version>
+        <version>1.1.0</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -21,12 +21,14 @@
         <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
         <maven-release-plugin.version>3.0.0</maven-release-plugin.version>
         <maven-failsafe-plugin.version>2.22.2</maven-failsafe-plugin.version>
+        <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
         <maven-deploy-plugin.version>3.1.1</maven-deploy-plugin.version>
         <maven-assembly-plugin.version>3.4.2</maven-assembly-plugin.version>
         <maven-source-plugin.version>3.3.0</maven-source-plugin.version>
         <maven-jar-plugin.version>3.3.0</maven-jar-plugin.version>
+        <maven-antrun-plugin.version>3.1.0</maven-antrun-plugin.version>
         <maven-enforcer-plugin.version>3.3.0</maven-enforcer-plugin.version>
-        <maven-dokka-plugin.version>1.9.0</maven-dokka-plugin.version>
+        <maven-dokka-plugin.version>2.2.0</maven-dokka-plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -136,7 +138,7 @@
         </dependency>
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-slf4j-impl</artifactId>
+            <artifactId>log4j-slf4j2-impl</artifactId>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -189,6 +191,9 @@
                         </goals>
                         <configuration>
                             <jvmTarget>${kotlin.compiler.jvmTarget}</jvmTarget>
+                            <args>
+                                <arg>-Xsuppress-version-warnings</arg>
+                            </args>
                         </configuration>
                     </execution>
                     <execution>
@@ -203,6 +208,9 @@
                     <compilerPlugins>
                         <plugin>kotlinx-serialization</plugin>
                     </compilerPlugins>
+                    <args>
+                        <arg>-Xsuppress-version-warnings</arg>
+                    </args>
                 </configuration>
                 <dependencies>
                     <dependency>
@@ -226,6 +234,15 @@
                 <configuration>
                     <source>${kotlin.compiler.jvmTarget}</source>
                     <target>${kotlin.compiler.jvmTarget}</target>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven-surefire-plugin.version}</version>
+                <inherited>true</inherited>
+                <configuration>
+                    <argLine>-XX:-UseJVMCICompiler</argLine>
                 </configuration>
             </plugin>
             <plugin>
@@ -256,6 +273,27 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>${maven-antrun-plugin.version}</version>
+                <inherited>true</inherited>
+                <executions>
+                    <execution>
+                        <id>prepare-javadoc-placeholder</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <mkdir dir="${project.build.directory}/javadoc-placeholder" />
+                                <echo file="${project.build.directory}/javadoc-placeholder/README.md">Javadoc is not generated for this Kotlin module. See https://github.com/fuookami/ospf-kotlin for project documentation.</echo>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>${maven-jar-plugin.version}</version>
                 <inherited>true</inherited>
@@ -266,15 +304,16 @@
                         </goals>
                     </execution>
                     <execution>
-                        <id>dokka-jar</id>
+                        <id>javadoc-jar</id>
                         <phase>package</phase>
                         <goals>
                             <goal>jar</goal>
                         </goals>
                         <configuration>
-                            <classifier>dokka</classifier>
-                            <classesDirectory>${project.build.directory}/dokka</classesDirectory>
-                            <skipIfEmpty>true</skipIfEmpty>
+                            <classifier>javadoc</classifier>
+                            <classesDirectory>${project.build.directory}/javadoc-placeholder</classesDirectory>
+                            <forceCreation>true</forceCreation>
+                            <skipIfEmpty>false</skipIfEmpty>
                         </configuration>
                     </execution>
                 </executions>
@@ -303,6 +342,10 @@
                 <artifactId>dokka-maven-plugin</artifactId>
                 <version>${maven-dokka-plugin.version}</version>
                 <inherited>true</inherited>
+                <configuration>
+                    <skip>true</skip>
+                    <failOnWarning>false</failOnWarning>
+                </configuration>
                 <executions>
                     <execution>
                         <phase>package</phase>
