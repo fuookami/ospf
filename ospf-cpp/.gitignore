@@ -363,3 +363,5 @@ MigrationBackup/
 FodyWeavers.xsd
 /vcpkg_installed
 vcpkg-configuration.json
+.idea/
+.supergoal/
