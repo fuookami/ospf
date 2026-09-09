@@ -1,206 +1,358 @@
-# Example 13: Two-Stage Transportation Problem
+# Example 13: Two-stage transportation with truck counts
 
-## Problem Description
+## 1. Overview
 
-Transport goods from three distribution centers to five dealers. Transportation costs are determined based on the distance from origin to destination, independent of truck load capacity. The summarized distances between distribution centers and dealers, along with corresponding monthly supply and demand, are shown in the following table:
+This bounded context models shipping from three distribution centers to five dealers while respecting center supply, dealer demand, and truck capacity. The source data are:
 
-| Distribution Center | Dealer A | Dealer B | Dealer C | Dealer D | Dealer E | Supply |
-| :-----------------: | :------: | :------: | :------: | :------: | :------: | :----: |
-| 1 | $100\,mile$ | $150\,mile$ | $200\,mile$ | $140\,mile$ | $35\,mile$ | $400\,t$ |
-| 2 | $50\,mile$ | $70\,mile$ | $60\,mile$ | $65\,mile$ | $80\,mile$ | $200\,t$ |
-| 3 | $40\,mile$ | $90\,mile$ | $100\,mile$ | $150\,mile$ | $130\,mile$ | $150\,t$ |
-| Demand | $100\,t$ | $200\,t$ | $150\,t$ | $160\,t$ | $140\,t$ | -- |
+| Distribution center | Dealer 1 | Dealer 2 | Dealer 3 | Dealer 4 | Dealer 5 | Supply |
+| :---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| DC1 | 100 | 150 | 200 | 140 | 35 | 400 |
+| DC2 | 50 | 70 | 60 | 65 | 80 | 200 |
+| DC3 | 40 | 90 | 100 | 150 | 130 | 150 |
+| Dealer demand | 100 | 200 | 150 | 160 | 140 | -- |
 
-The transportation cost per truck per mile is fixed. Determine the optimal transportation plan while satisfying the following conditions:
+The entries are the distances in each distribution center's `distance` map. One truck has capacity $Q=18$ units. All five dealer maps are complete in the current data, and total supply and total demand are both $750$.
 
-1. Transportation volume from distribution centers does not exceed their supply;
-2. Each dealer's demand must be met;
-3. Truck load does not exceed the upper limit of $18t$.
+### 1. Dependent Contexts
 
-## Mathematical Model
+None. The example is a source-local transportation model; dealer, center, distance, and truck-capacity data are supplied directly by `Demo13`.
 
-### Variables
+---
 
-$x_{ij}$: Transportation volume from distribution center $i$ to dealer $j$.
+## 2. Concepts / Entities
 
-$y_{ij}$: Number of trucks used for transportation from distribution center $i$ to dealer $j$.
+### 1. Dealer
 
-### Intermediate Values
+A dealer is a demand point that must receive the required number of units.
 
-#### 1. Total Transportation Volume from Distribution Center
+**$Demand_d$** : integer demand of dealer $d$, measured in shipment units.
+
+### 2. Distribution Center
+
+A distribution center supplies goods and has a distance to each dealer.
+
+**$Supply_c$** : integer supply available at center $c$, measured in shipment units.
+
+**$distance_{cd}$** : integer distance from center $c$ to dealer $d$, used as the cost coefficient for a truck assigned to that pair.
+
+### 3. Truck assignment
+
+A truck assignment records the number of trucks allocated to one center–dealer pair. It is represented by the decision variable $y_{dc}$ rather than by a separate route entity.
+
+---
+
+## 3. Variables
+
+### 1. Decision Variables
+
+**$x_{dc}$** : shipped quantity from center $c$ to dealer $d$, a shipment quantity, domain $\mathbb{Z}_{\ge 0}$, with one integer value for every $(d,c)\in D\times C$.
+
+**$y_{dc}$** : number of trucks assigned from center $c$ to dealer $d$, a dimensionless integer count, domain $\mathbb{Z}_{\ge 0}$, for every $(d,c)\in D\times C$. The source creates both arrays with `UIntVariable2` and indexes them as `[dealer, distributionCenter]`.
+
+### 2. Auxiliary Variables
+
+There are no auxiliary variables. `Trans`, `Receive`, and `Cost` are intermediate expressions, not solver-owned auxiliary decision variables.
+
+---
+
+## 4. Predicates
+
+### 1. Transport participant predicates
+
+**Dealer($d$)** : $d$ is an entity that has a demand value and receives shipments.
+
+**Center($c$)** : $c$ is an entity that has a supply value and sends shipments.
+
+### 2. Route-data predicates
+
+**DistanceDefined($c,d$)** : the source distance map contains the center–dealer pair $(c,d)$ and therefore supplies a cost coefficient. In the current data this predicate is true for every pair in $C\times D$.
+
+---
+
+## 5. Sets
+
+### 1. Dealers and centers
+
+**$D$** : the universal set of the five dealers.
+
+**$C$** : the universal set of the three distribution centers.
+
+### 2. Transport pairs
+
+**$A$** : the set of center–dealer pairs with a defined distance,
 
 $$
-\text{Trans}_{i} = \sum_{j \in D} x_{ij}, \; \forall i \in DC
+A=\{(d,c)\in D\times C\mid DistanceDefined(c,d)\}.
 $$
 
-#### 2. Total Volume Received by Dealer
+For this instance, $A=D\times C$; the source nevertheless uses full two-dimensional variable arrays.
+
+### 3. Entity Pairs / Relations
+
+**$A\subseteq D\times C$** : the directed shipment relation from a distribution center to a dealer. No reverse direction or route sequence is modeled.
+
+---
+
+## 6. Intermediate Values
+
+### 1. Center shipment total
+
+**Description**: `Trans` is the total number of units shipped by center $c$ over all dealer destinations.
 
 $$
-\text{Receive}_{j} = \sum_{i \in DC} x_{ij}, \; \forall j \in D
+Trans_c=\sum_{d:(d,c)\in A}x_{dc},\qquad \forall c\in C.
 $$
 
-#### 3. Total Transportation Cost
+### 2. Dealer receipt total
+
+**Description**: `Receive` is the total number of units received by dealer $d$ from all centers.
 
 $$
-\text{Cost} = \sum_{i \in DC, j \in D} d_{ij} \cdot y_{ij}
+Receive_d=\sum_{c:(d,c)\in A}x_{dc},\qquad \forall d\in D.
 $$
 
-### Objective Function
+### 3. Truck-distance cost
 
-#### 1. Minimize Transportation Cost
-
-$$
-\min \quad \text{Cost}
-$$
-
-### Constraints
-
-#### 1. Transportation Volume Does Not Exceed Distribution Center Supply
+**Description**: `Cost` charges the distance once for every assigned truck. It is therefore a distance-per-truck objective, not a distance-per-shipped-unit objective.
 
 $$
-\text{s.t.} \quad \text{Trans}_{i} \leq \text{Supply}_{i}, \; \forall i \in DC
+Cost=\sum_{(d,c)\in A}distance_{cd}\,y_{dc}.
 $$
 
-#### 2. Meet Dealer Demand
+---
+
+## 7. Assertions
+
+### 1. Flow identity
+
+**Description**: Every unit counted as shipped by a center is counted as received by exactly one dealer.
 
 $$
-\text{s.t.} \quad \text{Receive}_{j} \geq \text{Demand}_{j}, \; \forall j \in D
+\sum_{c\in C}Trans_c=\sum_{d\in D}Receive_d=\sum_{(d,c)\in A}x_{dc}.
 $$
 
-#### 3. Truck Load Does Not Exceed Upper Limit
+### 2. Balanced input data
+
+**Description**: The instance supplies exactly enough total goods to cover all dealer demand.
 
 $$
-\text{s.t.} \quad y_{ij} \cdot \text{Capacity} \geq x_{ij}, \; \forall i \in DC, \; \forall j \in D
+\sum_{c\in C}Supply_c=400+200+150=750=100+200+150+160+140=\sum_{d\in D}Demand_d.
 $$
 
-## Expected Results
+### 3. Complete current distance relation
 
-| Distribution Center | Dealer A | Dealer B | Dealer C | Dealer D | Dealer E |
-| :-----------------: | :------: | :------: | :------: | :------: | :------: |
-| 1 | $100\,t$ | $-$ | $-$ | $160\,t$ | $140\,t$ |
-| 2 | $-$ | $50\,t$ | $150\,t$ | $-$ | $-$ |
-| 3 | $-$ | $150\,t$ | $-$ | $-$ | $-$ |
+**Description**: Every current dealer–center pair has a distance coefficient, so no pair is omitted from the current cost expression.
 
-## Code Implementation
+$$
+A=D\times C,\qquad |D|=5,\qquad |C|=3.
+$$
+
+---
+
+## 8. Constraints
+
+### 1. Supply Capacity [供应能力上限]
+
+**Description**: A distribution center cannot ship more units than its available supply.
+
+$$
+s.t.\quad Trans_c\le Supply_c,\qquad \forall c\in C.
+$$
+
+### 2. Dealer Demand Coverage [经销商需求满足]
+
+**Description**: Every dealer must receive at least its stated demand.
+
+$$
+s.t.\quad Receive_d\ge Demand_d,\qquad \forall d\in D.
+$$
+
+### 3. Truck Capacity Linking [卡车容量联结]
+
+**Description**: The shipment assigned to a pair cannot exceed the capacity of its assigned trucks. The source does not model truck routes or split-load sequencing.
+
+$$
+s.t.\quad x_{dc}\le Qy_{dc},\qquad \forall(d,c)\in A,\qquad Q=18.
+$$
+
+**Corollary**: Because the total supply and total demand are both $750$, the inequality families imply equality in aggregate; with nonnegative flows, every center's supply and every dealer's demand are tight in this instance.
+
+$$
+\sum_{c\in C}Trans_c=\sum_{c\in C}Supply_c=750,
+\qquad
+\sum_{d\in D}Receive_d=\sum_{d\in D}Demand_d=750.
+$$
+
+---
+
+## 9. Objective Function
+
+**Description**: Minimize the sum of center–dealer distances weighted by the number of trucks assigned to each pair.
+
+$$
+\min Cost=\min\sum_{(d,c)\in A}distance_{cd}\,y_{dc}.
+$$
+
+The current source does not replace $y$ with $x$ in this objective; doing so would describe a different model.
+
+---
+
+## 10. Algorithm References
+
+No standalone algorithm document is referenced. The model is built directly in the linked core demo.
+
+| Algorithm Name | File Path | Referenced In | Brief Description |
+|----------------|-----------|---------------|-------------------|
+| None | — | — | Source-local linear transportation expressions and constraints |
+
+---
+
+## 11. Ubiquitous Language
+
+| Term | Symbol | Definition |
+|------|--------|------------|
+| Dealer | $D$ / $d$ | A demand point that receives goods. |
+| Distribution center | $C$ / $c$ | A supply point that dispatches goods. |
+| Shipment | $x_{dc}$ | Units sent from center $c$ to dealer $d$. |
+| Truck count | $y_{dc}$ | Integer trucks assigned to the center–dealer pair. |
+| Truck capacity | $Q$ | Maximum units carried by one truck; $Q=18$. |
+| Distance cost | $Cost$ | Distance-weighted truck count minimized by the model. |
+
+---
+
+## 12. Design Decisions
+
+| Decision | Alternatives | Rationale | Date |
+|----------|--------------|-----------|------|
+| Keep the source array orientation as `[dealer, distributionCenter]` | Use `[center, dealer]` | Documents the actual `UIntVariable2` indexing while keeping $x_{dc}$ semantically center-to-dealer. | 2026-09-08 |
+| Charge distance per truck through $y$ | Charge distance per shipped unit through $x$ | The current `Demo13` objective is defined from `y`; changing it would change the model. | 2026-09-08 |
+| Retain supply and demand inequalities | Replace both by equalities | The inequalities are the constraints actually registered; equal aggregate totals are documented as a corollary. | 2026-09-08 |
+
+---
+
+## 13. Change Log
+
+| Version | Change | Reason |
+|---------|--------|--------|
+| 1.0 | Reorganized the example into the domain-model sections and documented the current Kotlin/Rust core APIs. | Align the page with the domain-model template and preserve implementation-specific semantics. |
+
+---
+
+## Minimal current model-building example
+
+The snippets below are model-building fragments. `dealers`, `distributionCenters`, `carCapacity`, `flt64Converter`, and the Rust data/helper builders are supplied by the linked source files.
 
 ::: code-group
 
-```kotlin
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.concept.*
-import fuookami.ospf.kotlin.utils.functional.*
-import fuookami.ospf.kotlin.utils.multi_array.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import fuookami.ospf.kotlin.multiarray.*
+import fuookami.ospf.kotlin.math.*
+import fuookami.ospf.kotlin.math.algebra.number.*
+import fuookami.ospf.kotlin.math.symbol.operation.*
+import fuookami.ospf.kotlin.core.model.intermediate.*
+import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.scip.*
+import fuookami.ospf.kotlin.core.symbol.*
+import fuookami.ospf.kotlin.core.variable.*
+import fuookami.ospf.kotlin.example.solveLinearMetaModel
 
-data class Dealer(
-    val demand: UInt64
-) : AutoIndexed(Dealer::class)
-
-data class DistributionCenter(
-    val supply: UInt64,
-    val distance: Map<Dealer, UInt64>
-) : AutoIndexed(DistributionCenter::class)
-
-val carCapacity = UInt64(18)
-val dealers: List<Dealer> = ... // Dealer list
-val distributionCenters: List<DistributionCenter> = ... // Distribution center list
-
-// Create model instance
-val metaModel = LinearMetaModel("demo13")
-
-// Define variables
+// Data and flt64Converter come from Demo13.kt.
+val model = LinearMetaModel<Flt64>("demo13", converter = flt64Converter)
 val x = UIntVariable2("x", Shape2(dealers.size, distributionCenters.size))
-metaModel.add(x)
-
 val y = UIntVariable2("y", Shape2(dealers.size, distributionCenters.size))
-metaModel.add(y)
-
-// Define intermediate values
-val trans = LinearIntermediateSymbols1("trans", Shape1(distributionCenters.size)) { i, _ ->
-    val distributionCenter = distributionCenters[i]
-    LinearExpressionSymbol(
-        sum(x[_a, distributionCenter]),
-        "trans_${distributionCenter.index}"
-    )
+val trans = LinearIntermediateSymbols1<Flt64>("trans", Shape1(distributionCenters.size)) { i, _ ->
+    LinearExpressionSymbol(sum(x[_a, distributionCenters[i]]), name = "trans_$i")
 }
-metaModel.add(trans)
-
-val receive = LinearIntermediateSymbols1("receive", Shape1(dealers.size)) { i, _ ->
-    val dealer = dealers[i]
-    LinearExpressionSymbol(
-        sum(x[dealer, _a]),
-        "receive_${dealer.index}"
-    )
+val receive = LinearIntermediateSymbols1<Flt64>("receive", Shape1(dealers.size)) { i, _ ->
+    LinearExpressionSymbol(sum(x[dealers[i], _a]), name = "receive_$i")
 }
-metaModel.add(receive)
-
 val cost = LinearExpressionSymbol(
-    sum(dealers.flatMap { dealer ->
-        distributionCenters.mapNotNull { distributionCenter ->
-            val distance = distributionCenter.distance[dealer] ?: return@mapNotNull null
-            distance * y[dealer, distributionCenter]
-        }
-    }),
-    "cost"
+    sum(dealers.flatMap { dealer -> distributionCenters.mapNotNull { center ->
+        center.distance[dealer]?.let { it * y[dealer, center] }
+    } }),
+    name = "cost"
 )
-metaModel.add(cost)
-
-// Define objective function
-metaModel.minimize(cost, "cost")
-
-// Define constraints
-for (distributionCenter in distributionCenters) {
-    metaModel.addConstraint(
-        trans[distributionCenter] leq distributionCenter.supply,
-        "supply_${distributionCenter.index}"
-    )
+model.add(x); model.add(y); model.add(trans); model.add(receive); model.add(cost)
+model.minimize(cost, "cost")
+for (center in distributionCenters) model.addConstraint(trans[center] leq center.supply)
+for (dealer in dealers) model.addConstraint(receive[dealer] geq dealer.demand)
+for (dealer in dealers) for (center in distributionCenters) {
+    model.addConstraint(x[dealer, center] - carCapacity.toFlt64() * y[dealer, center] leq Flt64.zero)
 }
 
-for (dealer in dealers) {
-    metaModel.addConstraint(
-        receive[dealer] geq dealer.demand,
-        "demand_${dealer.index}"
-    )
-}
+suspend fun solve() = solveLinearMetaModel(ScipLinearSolver(), model)
+```
 
-for (dealer in dealers) {
-    for (distributionCenter in distributionCenters) {
-        metaModel.addConstraint(
-            x[dealer, distributionCenter] leq carCapacity * y[dealer, distributionCenter],
-            "car_limit_${dealer.index}_${distributionCenter.index}"
-        )
-    }
-}
+```rust [Rust]
+use ospf_rust_core::model::{ConstraintRelation, MetaModel, ObjectiveCategory};
+use ospf_rust_core::symbol::flat_map1_indexed;
+use ospf_rust_core::variable::{UInteger, VariableCombination2D};
+use ospf_rust_multiarray::Shape;
 
-// Call solver to solve
-val solver = ScipLinearSolver()
-when (val ret = solver(metaModel)) {
-    is Ok -> {
-        metaModel.tokens.setSolution(ret.value.solution)
-    }
+// build_dealers/build_centers, extract_coeffs, and solve_typed are from demo13.rs.
+let dealers = build_dealers();
+let centers = build_centers();
+let capacity = 18.0;
+let mut model = MetaModel::<f64>::new("demo13");
+let shape = Shape::new([dealers.len(), centers.len()]);
+let x_vars = VariableCombination2D::with_name_generator(shape.clone(), "x", |_i, v| {
+    format!("{}_{}", v[0], v[1])
+});
+let y_vars = VariableCombination2D::with_name_generator(shape, "y", |_i, v| {
+    format!("{}_{}", v[0], v[1])
+});
+let x_idx = model.register_combination(&x_vars)?;
+let y_idx = model.register_combination(&y_vars)?;
 
-    is Failed -> {}
+let cost = flat_map1_indexed("cost", &dealers, |d, dealer| {
+    let terms = (0..centers.len()).map(|c| ospf_rust_core::symbol::flatten::LinearMonomial::new(
+        dealer.distance_to(c), y_idx[&[d, c]])).collect();
+    ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0)
+}, |_, dealer| dealer.name.clone());
+let trans = flat_map1_indexed("trans", &centers, |c, _| {
+    let terms = (0..dealers.len()).map(|d| ospf_rust_core::symbol::flatten::LinearMonomial::new(
+        1.0, x_idx[&[d, c]])).collect();
+    ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0)
+}, |_, center| center.name.clone());
+let receive = flat_map1_indexed("receive", &dealers, |d, _| {
+    let terms = (0..centers.len()).map(|c| ospf_rust_core::symbol::flatten::LinearMonomial::new(
+        1.0, x_idx[&[d, c]])).collect();
+    ospf_rust_core::symbol::flatten::Linear::new(terms, 0.0)
+}, |_, dealer| dealer.name.clone());
+model.add_symbol_combination(&cost)?;
+model.add_symbol_combination(&trans)?;
+model.add_symbol_combination(&receive)?;
+let cost_coeffs = (0..dealers.len()).flat_map(|i| cost.symbol_polynomial(i).monomials().iter()
+    .map(|m| (m.var_index(), *m.coefficient())).collect::<Vec<_>>()).collect::<Vec<_>>();
+model.add_linear_objective(&cost_coeffs, "cost");
+model.set_objective_category(ObjectiveCategory::Minimum);
+for c in 0..centers.len() {
+    model.add_linear_constraint(&extract_coeffs(&trans[c]), ConstraintRelation::LessEqual,
+        centers[c].supply, &format!("supply_{}", c))?;
 }
-
-// Parse results
-val solution: MutableMap<DistributionCenter, MutableMap<Dealer, UInt64>> = hashMapOf()
-for (token in metaModel.tokens.tokens) {
-    if (token.result!! geq Flt64.one && token.variable belongsTo x) {
-        val vector = token.variable.vectorView
-        val dealer = dealers[vector[0]]
-        val distributionCenter = distributionCenters[vector[1]]
-        solution.getOrPut(distributionCenter) { hashMapOf() }[dealer] = token.result!!.round().toUInt64()
-    }
+for d in 0..dealers.len() {
+    model.add_linear_constraint(&extract_coeffs(&receive[d]), ConstraintRelation::GreaterEqual,
+        dealers[d].demand, &format!("demand_{}", d))?;
 }
+for d in 0..dealers.len() { for c in 0..centers.len() {
+    let terms = vec![(x_idx[&[d, c]], 1.0), (y_idx[&[d, c]], -capacity)];
+    model.add_linear_constraint(&terms, ConstraintRelation::LessEqual, 0.0,
+        &format!("truck_{}_{}", d, c))?;
+}}
+let _output = solve_typed(model)?;
 ```
 
 :::
 
-**Complete Implementation Reference:**
+## Source and verification
 
-- [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo13.kt)
+### Kotlin/Rust correspondence
+
+- [Rust counterpart: `src/core/demo13.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-example/src/core/demo13.rs)
+
+The Rust counterpart uses the same five-dealer/three-center data, array orientation, truck-capacity inequality, and distance-per-truck objective. Its `MetaModel`, variable-combination, and symbol-combination APIs are independent of the Kotlin API.
+
+- [Current implementation: `Demo13.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo13.kt)
+- [Core build-structure test: `CoreDemoBuildOnlyStructureTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/core_demo/CoreDemoBuildOnlyStructureTest.kt)
+
+The current core build test checks model structure only; it does not assert a numeric allocation or objective value.

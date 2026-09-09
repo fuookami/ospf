@@ -1,139 +1,166 @@
 # Logical AND
 
-## Function Form
+## Contract
+
+`AndFunction<V>` accepts one or more linear polynomials and exposes a binary result. The result is `1` exactly when every input polynomial is nonzero; it is `0` when at least one input is zero. The current API is generic over `V : RealNumber<V> & NumberField<V>` and is a linear function symbol.
+
+This is a nonzero test, not a Boolean-variable-only operation. A polynomial may be continuous or may contain intermediate symbols.
+
+## Definition and truth table
+
+For input polynomials $p_1,\ldots,p_n$, let $a_i$ denote the nonzero indicator:
 
 $$
-y = \text{And}(x_{1}, \, x_{2}, \, \ldots, \, x_{i}) = \begin{cases}
-1, & \bigwedge_{i} x_{i} \\ \; \\
-0, & \neg \bigwedge_{i} x_{i}
+a_i = \begin{cases}
+1, & p_i \ne 0 \\
+0, & p_i = 0
+\end{cases},
+\qquad
+y = \begin{cases}
+1, & \sum_{i=1}^{n} a_i = n \\
+0, & \text{otherwise}
 \end{cases}
 $$
 
-## Binary Case
+For two inputs, the truth table is:
 
-### Additional Variables
+| $p_1$ nonzero | $p_2$ nonzero | $y$ |
+| --- | --- | --- |
+| no | no | 0 |
+| no | yes | 0 |
+| yes | no | 0 |
+| yes | yes | 1 |
 
-$y^{\prime} \in \{ 0, 1 \}$: logical AND value.
+The constructor requires at least one input polynomial.
 
-### Basic Formula
+## Boundary, tolerance, and Undefined
+
+`evaluate()` compares each evaluated value with exact zero. A missing polynomial input makes the result `null`; it does not return a separate `Undefined` value.
+
+Solver registration uses the shared nonzero-indicator construction. With tolerance $t$, indicator `0` represents the zero band $\lvert p_i\rvert\le t$. With strict boundary $g$, indicator `1` represents either $p_i\ge g$ or $p_i\le-g$. Values in the gap $t<\lvert p_i\rvert<g$ are not assigned to either branch and can make the model infeasible.
+
+The constants in the current source are `NONZERO_TOLERANCE = 1e-10` and `STRICT_BOUNDARY = NONZERO_TOLERANCE * 16 + 16 * 2^-52`. They are not `1e-6` or `0.5`. `bigM` is inferred from each polynomial's finite range when omitted; the range-based helper falls back to `BIG_M_DEFAULT = 1e6` when no usable range is available.
+
+## Current API
+
+### Kotlin
+
+The primary constructor is:
+
+```kotlin
+AndFunction(
+    polynomials: List<LinearPolynomial<V>>,
+    converter: IntoValue<V>,
+    bigM: V? = null,
+    tolerance: V? = null,
+    strictBoundary: V? = null,
+    name: String = "and",
+    displayName: String? = null
+)
+```
+
+The companion `invoke` accepts `polynomials`, `converter`, `bigM`, `name`, and `displayName`. The additional `fromLinearPolynomials` factory accepts `List<ToLinearPolynomial<V>>` and returns a `LinearFunctionSymbolAdapter<V>`.
+
+### Rust
+
+Source: [`and.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/and.rs)
+
+Rust accepts flattened inputs and provides `AndFunction::new(id, name, polynomials)`, `AndFunction::named(name, polynomials)`, and `AndFunction::auto(polynomials)`. The public variables are available through `result_variable()`, `indicator_variables()`, and `side_variables()`. Rust has no public tolerance parameter; its evaluator uses an epsilon-level nonzero test, while mechanism Big-M is inferred from token bounds or falls back to the core default.
+
+```rust
+AndFunction::new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> Self
+AndFunction::named(name: impl AsRef<str>, polynomials: Vec<Linear<V>>) -> Self
+AndFunction::auto(polynomials: Vec<Linear<V>>) -> Self
+```
+
+## Auxiliary variables and registration model
+
+For a function named `name`, the current implementation creates:
+
+- `name_and`: the binary result;
+- `name_and_nz{i}`: one nonzero indicator for each input;
+- `name_and_side{i}`: one sign-side helper for each nonzero indicator.
+
+`helperVariables` contains the result, all nonzero indicators, and all side helpers. Registration first adds these variables through `registerAuxiliaryTokens`; `registerConstraints` adds the shared four-inequality nonzero test for every input, then adds:
 
 $$
-y = y^{\prime}
+\sum_i a_i \ge n y,
+\qquad
+y \le a_i\quad(1\le i\le n).
 $$
 
-### Mathematical Model
+The public `resultPolynomial` is the unit-coefficient polynomial of `name_and`. The implementation is in `And.kt` and uses `AbstractLinearMechanismModel` registration.
 
-$$
-\begin{align}
-\text{s.t.} \quad & y & \leq & \, x_{i}, & \; \forall i \in P \\ \; \\
-& y & \geq & \, \sum_{i \in P} x_{i} - |P| + 1
-\end{align}
-$$
+## `evaluate()` versus the solver model
 
-## Non-Binary Case
+The direct evaluator uses exact `v == 0`/`v != 0` semantics. The solver model deliberately separates a zero band from a strict nonzero branch, so a value that is numerically nonzero but lies between tolerance and strict boundary is accepted by `evaluate()` but has no solver branch. Choose `tolerance` and `strictBoundary` consistently with the value lattice of the model.
 
-### Basic Formula
-
-$$
-y = \text{Bin}(\min(x_{1}, \, x_{2}, \, \ldots, \, x_{i}))
-$$
-
-where $\text{Bin}(x)$ can refer to [Binarization](/guide/linear-functional/bin), and $\min(x)$ can refer to [Minimum Value](/guide/linear-functional/min).
-
-## Code Example
-
-### Binary Case
+## Minimal current example
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.AndFunction
+import fuookami.ospf.kotlin.core.variable.RealVar
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.symbol.Symbol
+import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 
-val x = BinVar("x")
-val y = BinVar("y")
-val and = AndFunction(
-    listOf(x, y),
-    "and"
-)
-val solver = ScipLinearSolver()
+fun main() {
+    val x = RealVar("x")
+    val y = RealVar("y")
+    val xPoly = LinearPolynomial(
+        monomials = listOf(LinearMonomial(Flt64.one, x)),
+        constant = Flt64.zero
+    )
+    val yPoly = LinearPolynomial(
+        monomials = listOf(LinearMonomial(Flt64.one, y)),
+        constant = Flt64.zero
+    )
+    val function = AndFunction(
+        polynomials = listOf(xPoly, yPoly),
+        converter = IntoValue.Identity,
+        name = "and"
+    )
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(y)
-model1.add(and)
-model1.addConstraint(!and)
-model1.maximize(x + y)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.one)
+    check(function.evaluate(mapOf<Symbol, Flt64>(x to Flt64.one, y to Flt64(2.0))) == Flt64.one)
+    check(function.evaluate(mapOf<Symbol, Flt64>(x to Flt64.one, y to Flt64.zero)) == Flt64.zero)
+}
+```
 
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(y)
-model2.add(and)
-model2.addConstraint(and)
-model2.minimize(x + y)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.two)
+```rust [Rust]
+use ospf_rust_core::symbol::flatten::Linear;
+use ospf_rust_core::symbol::function::AndFunction;
+use ospf_rust_core::symbol::FunctionSymbol;
+use ospf_rust_core::token::VecTokenList;
+
+let function = AndFunction::named(
+    "and",
+    vec![Linear::new(vec![], 1.0), Linear::new(vec![], 2.0)],
+);
+let value = <AndFunction as FunctionSymbol>::calculate_value(
+    &function,
+    &VecTokenList::<f64>::new(),
+    false,
+);
+assert_eq!(value, Some(1.0));
 ```
 
 :::
 
-### Non-Binary Case
+## Source and core tests
 
-::: code-group
+- [Implementation: `And.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/And.kt)
+- [Core generic registration test: `FunctionSymbolGenericRegistrationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/FunctionSymbolGenericRegistrationTest.kt)
+- [Complete example: `AndTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/AndTest.kt)
+- [Rust implementation: `and.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/and.rs)
+- [Rust core coverage: `gurobi_linear_function_kotlin_parity.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/gurobi_linear_function_kotlin_parity.rs)
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+## Related pages
 
-val x = UIntVar("x")
-x.range.leq(UInt64.one)
-val y = UIntVar("y")
-y.range.leq(UInt64.two)
-val and = AndFunction(
-    listOf(x, y),
-    "and"
-)
-val solver = ScipLinearSolver()
-
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(y)
-model1.add(and)
-model1.addConstraint(and)
-model1.maximize(x + y)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.three)
-
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(y)
-model2.add(and)
-model2.addConstraint(and)
-model2.minimize(x + y)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.two)
-```
-
-:::
-
-**Complete Implementation Reference:**
-
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/And.kt)
-
-**Complete Example Reference:**
-
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/AndTest.kt)
+- [Logical OR](/guide/linear-functional/or)
+- [Logical NOT](/guide/linear-functional/not)
+- [Exactly-one result (`XorFunction`)](/guide/linear-functional/xor)
+- [Binaryzation](/guide/linear-functional/bin)

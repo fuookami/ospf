@@ -7,6 +7,17 @@ export default withMermaid({
   description: "ospf reference document",
   base: '/ospf/',
 
+  // Mermaid imports the CommonJS fastdom package from its ESM chunks. Pre-bundle
+  // both entry points so Vite exposes the default export during `vitepress dev`.
+  vite: {
+    optimizeDeps: {
+      include: [
+        'fastdom',
+        'fastdom/extensions/fastdom-promised.js'
+      ]
+    }
+  },
+
   markdown: {
     math: true,
     lineNumbers: true,
@@ -51,41 +62,56 @@ export default withMermaid({
               text: 'Advanced Applications',
               items: [
                 { 
-                  text: 'Linear Functional Intermediate Expression', 
+                  text: 'Linear Function Symbols',
                   collapsed: true,
                   items: [
-                    { text: 'Abs', link: '/guide/linear-functional/abs' },
+                    { text: 'Absolute Value', link: '/guide/linear-functional/abs' },
                     { text: 'Slack', link: '/guide/linear-functional/slack' },
                     { text: 'Slack Range', link: '/guide/linear-functional/slack-range' },
                     { text: 'Univariate Linear Piecewise', link: '/guide/linear-functional/ulp' },
                     { text: 'Bivariate Linear Piecewise', link: '/guide/linear-functional/blp' },
-                    { text: 'Semi (Semi Variable)', link: '/guide/linear-functional/semi' },
+                    { text: 'Cosine', link: '/guide/linear-functional/cos' },
+                    { text: 'Sine', link: '/guide/linear-functional/sin' },
+                    { text: 'First Nonzero Index', link: '/guide/linear-functional/first' },
+                    { text: 'Implication', link: '/guide/linear-functional/imply' },
+                    { text: 'Inequality Indicator', link: '/guide/linear-functional/inequality' },
+                    { text: 'In-Step Range', link: '/guide/linear-functional/in-step-range' },
+                    { text: 'Same-As', link: '/guide/linear-functional/same-as' },
+                    { text: 'Satisfied Amount', link: '/guide/linear-functional/satisfied-amount' },
+                    { text: 'Satisfied-Amount Inequality', link: '/guide/linear-functional/satisfied-amount-inequality' },
+                    { text: 'Sigmoid', link: '/guide/linear-functional/sigmoid' },
+                    { text: 'Semi-Continuous Marker', link: '/guide/linear-functional/semi' },
                     { text: 'Masking', link: '/guide/linear-functional/masking' },
                     { text: 'Ceiling', link: '/guide/linear-functional/ceiling' },
                     { text: 'Floor', link: '/guide/linear-functional/floor' },
                     { text: 'Rounding', link: '/guide/linear-functional/rounding' },
-                    { text: 'Mod', link: '/guide/linear-functional/mod' },
-                    { text: 'Min (Lower Bound, Infimum)', link: '/guide/linear-functional/min' },
-                    { text: 'Max (Upper Bound, Supremum)', link: '/guide/linear-functional/max' },
+                    { text: 'Modulo', link: '/guide/linear-functional/mod' },
+                    { text: 'Minimum', link: '/guide/linear-functional/min' },
+                    { text: 'Maximum', link: '/guide/linear-functional/max' },
                     { text: 'Binaryzation', link: '/guide/linear-functional/bin' },
                     { text: 'Balance Ternaryzation', link: '/guide/linear-functional/bter' },
-                    { text: 'And', link: '/guide/linear-functional/and' },
-                    { text: 'Or', link: '/guide/linear-functional/or' },
-                    { text: 'Not', link: '/guide/linear-functional/not' },
-                    { text: 'Xor', link: '/guide/linear-functional/xor' },
-                    { text: 'If', link: '/guide/linear-functional/if' },
-                    { text: 'If In', link: '/guide/linear-functional/if-in' },
-                    { text: 'If Then', link: '/guide/linear-functional/if-then' },
-                    { text: 'One Of', link: '/guide/linear-functional/one-of' }
+                    { text: 'Logical AND', link: '/guide/linear-functional/and' },
+                    { text: 'Logical OR', link: '/guide/linear-functional/or' },
+                    { text: 'Logical NOT', link: '/guide/linear-functional/not' },
+                    { text: 'Logical XOR', link: '/guide/linear-functional/xor' },
+                    { text: 'Conditional IF', link: '/guide/linear-functional/if' },
+                    { text: 'Conditional Interval', link: '/guide/linear-functional/if-in' },
+                    { text: 'Conditional If-Then', link: '/guide/linear-functional/if-then' },
+                    { text: 'One-of Constraint', link: '/guide/linear-functional/one-of' }
                   ]
                 },
                 { 
-                  text: 'Quadratic Functional Intermediate Expression', 
+                  text: 'Quadratic Model Function Symbols',
                   collapsed: true,
                   items: [
-                    { text: 'Slack', link: '/guide/quadratic-functional/slack' },
-                    { text: 'Slack Range', link: '/guide/quadratic-functional/slack-range' },
-                    { text: 'Semi Function (Semi Variable)', link: '/guide/quadratic-functional/semi' },
+                    { text: 'Slack (Linear Expressions)', link: '/guide/quadratic-functional/slack' },
+                    { text: 'Slack Range (Linear Expressions)', link: '/guide/quadratic-functional/slack-range' },
+                    { text: 'Semi-Continuous Marker', link: '/guide/quadratic-functional/semi' },
+                    { text: 'Quadratic Product', link: '/guide/quadratic-functional/product' },
+                    { text: 'Quadratic Linear', link: '/guide/quadratic-functional/quadratic-linear' },
+                    { text: 'Quadratic In-Step Range', link: '/guide/quadratic-functional/quadratic-in-step-range' },
+                    { text: 'Quadratic Masking Range', link: '/guide/quadratic-functional/quadratic-masking-range' },
+                    { text: 'Quadratic Minimum', link: '/guide/quadratic-functional/quadratic-min' },
                   ]
                 },
                 { text: 'Use Domain Driven Design Architecture With Column Generation Algorithm', link: '/guide/use-ddd-architecture-with-column-generation' },
@@ -125,10 +151,49 @@ export default withMermaid({
             {
               text: 'Complex Examples (with DDD Architecture)',
               items: [
-                { text: 'Framework Example 1: Service Placement Problem', link: '/examples/framework-example1' },
-                { text: 'Framework Example 2: Aircraft Cargo Load Planning Problem (with benders decomposition algorithm)', link: '/examples/framework-example2' },
-                { text: 'Framework Example 3: Cutting Stock Problem 1D (with column generation algorithm)', link: '/examples/framework-example3' },
-                { text: 'Framework Example 4: Flight Recovery Problem (with column generation algorithm)', link: '/examples/framework-example4' }
+                { text: 'Framework Example 1: Service Placement Problem', collapsed: true, items: [
+                  { text: 'Overview', link: '/examples/framework-example1' },
+                  { text: 'Route context model', link: '/examples/framework-example1/domain-route/domain-model' },
+                  { text: 'Bandwidth context model', link: '/examples/framework-example1/domain-bandwidth/domain-model' }
+                ] },
+                { text: 'Framework Example 2: Aircraft Cargo Load Planning Problem (with benders decomposition algorithm)', collapsed: true, items: [
+                  { text: 'Overview', link: '/examples/framework-example2' },
+                  { text: 'Context model index', link: '/examples/framework-example2/domain-models' },
+                  { text: 'Aircraft', link: '/examples/framework-example2/domain-aircraft/domain-model' },
+                  { text: 'Stowage', link: '/examples/framework-example2/domain-stowage/domain-model' },
+                  { text: 'MAC', link: '/examples/framework-example2/domain-mac/domain-model' },
+                  { text: 'Airworthiness security', link: '/examples/framework-example2/domain-airworthiness_security/domain-model' },
+                  { text: 'Soft security', link: '/examples/framework-example2/domain-soft_security/domain-model' },
+                  { text: 'MAC optimization', link: '/examples/framework-example2/domain-mac_optimization/domain-model' },
+                  { text: 'Express effectiveness', link: '/examples/framework-example2/domain-express_effectiveness/domain-model' },
+                  { text: 'Loading effectiveness', link: '/examples/framework-example2/domain-loading_effectiveness/domain-model' },
+                  { text: 'Redundancy', link: '/examples/framework-example2/domain-redundancy/domain-model' },
+                  { text: 'Recommended weight equalization', link: '/examples/framework-example2/domain-recommended_weight_equalization/domain-model' },
+                  { text: 'Payload maximization', link: '/examples/framework-example2/domain-payload_maximization/domain-model' }
+                ] },
+                { text: 'Framework Example 3: Cutting Stock Problem 1D (with column generation algorithm)', collapsed: true, items: [
+                  { text: 'Overview', link: '/examples/framework-example3' },
+                  { text: 'Material context model', link: '/examples/framework-example3/domain-material/domain-model' },
+                  { text: 'Produce context model', link: '/examples/framework-example3/domain-produce/domain-model' }
+                ] },
+                { text: 'Framework Example 4: Flight Recovery Problem (with column generation algorithm)', collapsed: true, items: [
+                  { text: 'Overview', link: '/examples/framework-example4' },
+                  { text: 'Context model index', link: '/examples/framework-example4/domain-models' },
+                  { text: 'Task', link: '/examples/framework-example4/domain-task/domain-model' },
+                  { text: 'Rule', link: '/examples/framework-example4/domain-rule/domain-model' },
+                  { text: 'Crew', link: '/examples/framework-example4/domain-crew/domain-model' },
+                  { text: 'Cargo', link: '/examples/framework-example4/domain-cargo/domain-model' },
+                  { text: 'Passenger', link: '/examples/framework-example4/domain-passenger/domain-model' },
+                  { text: 'Bunch generation', link: '/examples/framework-example4/domain-bunch_generation/domain-model' },
+                  { text: 'Bunch compilation', link: '/examples/framework-example4/domain-bunch_compilation/domain-model' },
+                  { text: 'Bunch selection', link: '/examples/framework-example4/domain-bunch_selection/domain-model' }
+                ] },
+                { text: 'Framework Example 5: VRPTW Branch-and-Price', collapsed: true, items: [
+                  { text: 'Overview', link: '/examples/framework-example5' },
+                  { text: 'VRP context model', link: '/examples/framework-example5/domain-vrp/domain-model' },
+                  { text: 'Route generation context model', link: '/examples/framework-example5/domain-route-generation/domain-model' },
+                  { text: 'Route compilation context model', link: '/examples/framework-example5/domain-route-compilation/domain-model' }
+                ] }
               ]
             }
           ]
@@ -167,7 +232,7 @@ export default withMermaid({
               text: '高级应用',
               items: [
                 { 
-                  text: '线性函数中间值', 
+                  text: '线性函数符号',
                   collapsed: true,
                   items: [
                     { text: '绝对值', link: '/zh-cn/guide/linear-functional/abs' },
@@ -175,33 +240,48 @@ export default withMermaid({
                     { text: '松弛（范围）', link: '/zh-cn/guide/linear-functional/slack-range' },
                     { text: '一元分段线性', link: '/zh-cn/guide/linear-functional/ulp' },
                     { text: '二元分段线性', link: '/zh-cn/guide/linear-functional/blp' },
-                    { text: '半函数（半变量）', link: '/zh-cn/guide/linear-functional/semi' },
+                    { text: '余弦', link: '/zh-cn/guide/linear-functional/cos' },
+                    { text: '正弦', link: '/zh-cn/guide/linear-functional/sin' },
+                    { text: '首个非零索引', link: '/zh-cn/guide/linear-functional/first' },
+                    { text: '蕴含', link: '/zh-cn/guide/linear-functional/imply' },
+                    { text: '不等式指示函数', link: '/zh-cn/guide/linear-functional/inequality' },
+                    { text: '步进区间', link: '/zh-cn/guide/linear-functional/in-step-range' },
+                    { text: '同状态', link: '/zh-cn/guide/linear-functional/same-as' },
+                    { text: '满足数量', link: '/zh-cn/guide/linear-functional/satisfied-amount' },
+                    { text: '满足数量不等式', link: '/zh-cn/guide/linear-functional/satisfied-amount-inequality' },
+                    { text: 'Sigmoid', link: '/zh-cn/guide/linear-functional/sigmoid' },
+                    { text: '半连续标记', link: '/zh-cn/guide/linear-functional/semi' },
                     { text: '掩码函数', link: '/zh-cn/guide/linear-functional/masking' },
-                    { text: '整除（向上取整）', link: '/zh-cn/guide/linear-functional/ceiling' },
-                    { text: '整除（向下取整）', link: '/zh-cn/guide/linear-functional/floor' },
-                    { text: '整除（四舍五入）', link: '/zh-cn/guide/linear-functional/rounding' },
-                    { text: '整除（取余）', link: '/zh-cn/guide/linear-functional/mod' },
-                    { text: '最小值（下界、下确界）', link: '/zh-cn/guide/linear-functional/min' },
-                    { text: '最大值（上界、上确界）', link: '/zh-cn/guide/linear-functional/max' },
+                    { text: '向上取整', link: '/zh-cn/guide/linear-functional/ceiling' },
+                    { text: '向下取整', link: '/zh-cn/guide/linear-functional/floor' },
+                    { text: '舍入', link: '/zh-cn/guide/linear-functional/rounding' },
+                    { text: '取模', link: '/zh-cn/guide/linear-functional/mod' },
+                    { text: '最小值', link: '/zh-cn/guide/linear-functional/min' },
+                    { text: '最大值', link: '/zh-cn/guide/linear-functional/max' },
                     { text: '二值化', link: '/zh-cn/guide/linear-functional/bin' },
                     { text: '平衡三值化', link: '/zh-cn/guide/linear-functional/bter' },
                     { text: '逻辑与', link: '/zh-cn/guide/linear-functional/and' },
                     { text: '逻辑或', link: '/zh-cn/guide/linear-functional/or' },
                     { text: '逻辑非', link: '/zh-cn/guide/linear-functional/not' },
                     { text: '逻辑异或', link: '/zh-cn/guide/linear-functional/xor' },
-                    { text: '如果', link: '/zh-cn/guide/linear-functional/if' },
-                    { text: '如果属于', link: '/zh-cn/guide/linear-functional/if-in' },
-                    { text: '蕴含', link: '/zh-cn/guide/linear-functional/if-then' },
-                    { text: '选择', link: '/zh-cn/guide/linear-functional/one-of' }
+                    { text: '条件 IF', link: '/zh-cn/guide/linear-functional/if' },
+                    { text: '条件区间', link: '/zh-cn/guide/linear-functional/if-in' },
+                    { text: '条件 If-Then', link: '/zh-cn/guide/linear-functional/if-then' },
+                    { text: '选一约束', link: '/zh-cn/guide/linear-functional/one-of' }
                   ]
                 },
                 { 
-                  text: '二次型函数中间值', 
+                  text: '二次模型函数符号',
                   collapsed: true,
                   items: [
-                    { text: '松弛', link: '/zh-cn/guide/quadratic-functional/slack' },
-                    { text: '松弛（范围）', link: '/zh-cn/guide/quadratic-functional/slack-range' },
-                    { text: '半函数（半变量）', link: '/zh-cn/guide/quadratic-functional/semi' },
+                    { text: '松弛（仅线性表达式）', link: '/zh-cn/guide/quadratic-functional/slack' },
+                    { text: '松弛范围（仅线性表达式）', link: '/zh-cn/guide/quadratic-functional/slack-range' },
+                    { text: '半连续标记', link: '/zh-cn/guide/quadratic-functional/semi' },
+                    { text: '二次乘积', link: '/zh-cn/guide/quadratic-functional/product' },
+                    { text: '二次线性', link: '/zh-cn/guide/quadratic-functional/quadratic-linear' },
+                    { text: '二次步进区间', link: '/zh-cn/guide/quadratic-functional/quadratic-in-step-range' },
+                    { text: '二次掩码范围', link: '/zh-cn/guide/quadratic-functional/quadratic-masking-range' },
+                    { text: '二次最小值', link: '/zh-cn/guide/quadratic-functional/quadratic-min' },
                   ]
                 },
                 { text: '使用领域驱动设计架构（列生成算法）', link: '/zh-cn/guide/use-ddd-architecture-with-column-generation' },
@@ -239,10 +319,49 @@ export default withMermaid({
             {
               text: '复杂示例（使用领域驱动设计架构）',
               items: [
-                { text: '复杂示例 1：服务器放置问题', link: '/zh-cn/examples/framework-example1' },
-                { text: '复杂示例 2：航空货运装载规划问题（使用 Benders 分解算法）', link: '/zh-cn/examples/framework-example2' },
-                { text: '复杂示例 3：一维分切问题（使用列生成算法）', link: '/zh-cn/examples/framework-example3' },
-                { text: '复杂示例 4：航班恢复问题（使用列生成算法）', link: '/zh-cn/examples/framework-example4' }
+                { text: '复杂示例 1：服务器放置问题', collapsed: true, items: [
+                  { text: '总览', link: '/zh-cn/examples/framework-example1' },
+                  { text: 'Route 上下文模型', link: '/zh-cn/examples/framework-example1/domain-route/domain-model' },
+                  { text: 'Bandwidth 上下文模型', link: '/zh-cn/examples/framework-example1/domain-bandwidth/domain-model' }
+                ] },
+                { text: '复杂示例 2：航空货运装载规划问题（使用 Benders 分解算法）', collapsed: true, items: [
+                  { text: '总览', link: '/zh-cn/examples/framework-example2' },
+                  { text: '上下文模型索引', link: '/zh-cn/examples/framework-example2/domain-models' },
+                  { text: 'Aircraft', link: '/zh-cn/examples/framework-example2/domain-aircraft/domain-model' },
+                  { text: 'Stowage', link: '/zh-cn/examples/framework-example2/domain-stowage/domain-model' },
+                  { text: 'MAC', link: '/zh-cn/examples/framework-example2/domain-mac/domain-model' },
+                  { text: 'Airworthiness security', link: '/zh-cn/examples/framework-example2/domain-airworthiness_security/domain-model' },
+                  { text: 'Soft security', link: '/zh-cn/examples/framework-example2/domain-soft_security/domain-model' },
+                  { text: 'MAC optimization', link: '/zh-cn/examples/framework-example2/domain-mac_optimization/domain-model' },
+                  { text: 'Express effectiveness', link: '/zh-cn/examples/framework-example2/domain-express_effectiveness/domain-model' },
+                  { text: 'Loading effectiveness', link: '/zh-cn/examples/framework-example2/domain-loading_effectiveness/domain-model' },
+                  { text: 'Redundancy', link: '/zh-cn/examples/framework-example2/domain-redundancy/domain-model' },
+                  { text: 'Recommended weight equalization', link: '/zh-cn/examples/framework-example2/domain-recommended_weight_equalization/domain-model' },
+                  { text: 'Payload maximization', link: '/zh-cn/examples/framework-example2/domain-payload_maximization/domain-model' }
+                ] },
+                { text: '复杂示例 3：一维分切问题（使用列生成算法）', collapsed: true, items: [
+                  { text: '总览', link: '/zh-cn/examples/framework-example3' },
+                  { text: 'Material 上下文模型', link: '/zh-cn/examples/framework-example3/domain-material/domain-model' },
+                  { text: 'Produce 上下文模型', link: '/zh-cn/examples/framework-example3/domain-produce/domain-model' }
+                ] },
+                { text: '复杂示例 4：航班恢复问题（使用列生成算法）', collapsed: true, items: [
+                  { text: '总览', link: '/zh-cn/examples/framework-example4' },
+                  { text: '上下文模型索引', link: '/zh-cn/examples/framework-example4/domain-models' },
+                  { text: 'Task', link: '/zh-cn/examples/framework-example4/domain-task/domain-model' },
+                  { text: 'Rule', link: '/zh-cn/examples/framework-example4/domain-rule/domain-model' },
+                  { text: 'Crew', link: '/zh-cn/examples/framework-example4/domain-crew/domain-model' },
+                  { text: 'Cargo', link: '/zh-cn/examples/framework-example4/domain-cargo/domain-model' },
+                  { text: 'Passenger', link: '/zh-cn/examples/framework-example4/domain-passenger/domain-model' },
+                  { text: 'Bunch generation', link: '/zh-cn/examples/framework-example4/domain-bunch_generation/domain-model' },
+                  { text: 'Bunch compilation', link: '/zh-cn/examples/framework-example4/domain-bunch_compilation/domain-model' },
+                  { text: 'Bunch selection', link: '/zh-cn/examples/framework-example4/domain-bunch_selection/domain-model' }
+                ] },
+                { text: '复杂示例 5：VRPTW 分支定价', collapsed: true, items: [
+                  { text: '总览', link: '/zh-cn/examples/framework-example5' },
+                  { text: 'VRP 上下文模型', link: '/zh-cn/examples/framework-example5/domain-vrp/domain-model' },
+                  { text: 'Route generation 上下文模型', link: '/zh-cn/examples/framework-example5/domain-route-generation/domain-model' },
+                  { text: 'Route compilation 上下文模型', link: '/zh-cn/examples/framework-example5/domain-route-compilation/domain-model' }
+                ] }
               ]
             }
           ]

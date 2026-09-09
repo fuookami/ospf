@@ -1,391 +1,52 @@
-# 复杂示例 3：一维分切问题
+# 复杂示例 3：一维分切 — 总览
 
-## 问题描述
+[English](../../examples/framework-example3)
 
-原材料长度为 $1000$ 个单位，需要将原材料切割为以下成品材料，满足每种成品材料对应的需求量，目标是最小化所需原材料的数量：
+## 1. 概述
 
-|        | 长度  | 需求量 |
-| :----: | :---: | :----: |
-| 成品 1 | $450$ |  $97$  |
-| 成品 2 | $360$ | $610$  |
-| 成品 3 | $310$ | $395$  |
-| 成品 4 | $140$ | $211$  |
+本示例使用 csp1d framework API 建立受限主问题并执行列生成。Material 和 Produce 是核心领域上下文，定价和目标策略在其上扩展。
 
-## 数学模型
+## 2. 上下文图与依赖
 
-### RMP
+依赖方向为 `material → produce → cutting-plan-generation`；length assignment 和 wasting minimization 提供可选约束及目标项。应用客户端负责注册和列生成循环。
 
-#### 变量
+## 3. 概念、集合与谓词
 
-$x_{ij} \in \mathbb{N}$：使用第 $i$ 次迭代第 $j$ 个切割方案的数量。
+`P` 是产品集合，`M` 是材料集合，`E` 是机器/资源集合，`K` 是当前切割计划列集合。谓词区分有需求产品、可行计划、有效列和使用某种材料的产品。
 
-#### 中间值
+## 4. 变量与中间值
 
-##### 1. 原材料总使用量
+生产量是非负整数 `x_p`，RMP 列变量是 `lambda_k`。中间值包括材料用量 `u_m`、机器工时 `H_e`、容量 `C_e`、需求贡献 `a_{pk}` 和废料 `w_k`。
 
-$$
-Cost_{i} = Cost_{i - 1} + \sum_{j \in N_{i}} x_{ij}, \; \forall j \in N_{i}
-$$
+## 5. 断言、约束与目标
 
-##### 2. 成品材料生产量
+有效列必须覆盖需求，机器工时不得超过容量，计划废料不得为负，并满足可选长度规则。当前 Produce 与 wasting-minimization Pipeline 注册生产、材料和废料成本目标。
 
-$$
-Output_{ip} = Output_{i - 1, \, p} + \sum_{j \in N_{i}} Amount_{ijp} \cdot x_{ij}, \; \forall j \in N_{i}, \; \forall p \in P
-$$
+## 6. 算法与生命周期
 
-#### 目标函数
+客户端创建初始可行计划，注册 RMP，求解并读取对偶价格，定价新计划，加入改进列，直到不存在负约化成本计划。
 
-##### 1. 原材料使用量最小
+## 7. Register → construct → solve → analyze
 
-$$
-\min \quad \text{Cost}_{i}
-$$
+上下文构建器注册变量和 Pipeline；框架构造 RMP 与定价模型；求解器交替执行主问题和定价迭代；分析阶段输出生产量和废料。
 
-#### 约束
+## 8. 源码与验证
 
-##### 1. 成品材料生产量要满足需求量
+- [Kotlin Demo3 源码](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo3)
+- [Rust Demo3 源码](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/core/demo3.rs)
 
-$$
-\text{s.t.} \quad Output_{ip} \geq Demand_{p}, \; \forall p \in P
-$$
+## 9. Kotlin/Rust 对照与设计决策
 
-### SP
+两个版本共享列生成词汇，但系数名称、数值域和有效目标包装器必须以对应语言源码为准。
 
-#### 变量
+## 10. 上下文模型页面
 
-$y_{p} \in \mathbb{N}$：切割 $p$ 成品材料的数量。
+- [Material 上下文](framework-example3/domain-material/domain-model)
+- [Produce 上下文](framework-example3/domain-produce/domain-model)
 
-#### 中间值
+## 11. 变更记录
 
-##### 1. 原材料使用量
+| 版本 | 变更 | 原因 |
+|---|---|---|
+| 1.0 | 统一总览结构和 RMP 生命周期 | 与上下文页面保持一致 |
 
-$$
-Use = \sum_{p \in P} l_{p} \cdot y_{p}
-$$
-
-#### 目标函数
-
-##### 1. Reduced Cost 最小
-
-$$
-\min \quad 1 - \sum_{p \in P} \lambda_{p} \cdot y_{p}
-$$
-
-#### 约束
-
-##### 1. 原材料使用量不能大于原材料的长度
-
-$$
-\text{s.t.} \quad Use \leq L
-$$
-
-## 代码实现
-
-### Domain
-
-::: code-group
-
-```kotlin
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.concept.*
-import fuookami.ospf.kotlin.framework.model.*
-
-data class Product(
-    val length: UInt64,
-    val demand: UInt64
-) : AutoIndexed(Product::class)
-
-data class CuttingPlan(
-    val products: Map<Product, UInt64>
-) : AutoIndexed(CuttingPlan::class)
-
-class ShadowPriceMap : AbstractShadowPriceMap<Product, ShadowPriceMap>()
-```
-
-:::
-
-### RMP
-
-::: code-group
-
-```kotlin
-import java.util.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.functional.*
-import fuookami.ospf.kotlin.utils.multi_array.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.monomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-import fuookami.ospf.kotlin.framework.model.*
-import fuookami.ospf.kotlin.framework.solver.*
-
-data class ProductDemandShadowPriceKey(
-    val product: Product
-) : ShadowPriceKey(ProductDemandShadowPriceKey::class)
-
-class RMP(
-    private val length: UInt64,
-    private val products: List<Product>,
-    initialCuttingPlans: List<CuttingPlan>
-) {
-    private val cuttingPlans: MutableList<CuttingPlan> = ArrayList()
-    private val x: MutableList<UIntVar> = ArrayList()
-    private val rest = LinearExpressionSymbol(MutableLinearPolynomial(), "rest")
-    private val yield = LinearExpressionSymbols1("output", Shape1(products.size)) { _, v ->
-        LinearExpressionSymbol(MutableLinearPolynomial(), "output_${v[0]}")
-    }
-    private val metaModel = LinearMetaModel("demo1")
-    private val solver: ColumnGenerationSolver = GurobiColumnGenerationSolver()
-
-    // 初始化主问题模型
-    init {
-        metaModel.add(rest)
-        metaModel.add(yield)
-
-        metaModel.minimize(rest)
-        metaModel.registerConstraintGroup("product_demand")
-
-        for (product in products) {
-            metaModel.addConstraint(yield[product] geq product.demand, "product_demand_${product.index}")
-        }
-
-        addColumns(initialCuttingPlans)
-    }
-
-    // 添加列（切割方案）
-    fun addColumn(cuttingPlan: CuttingPlan, flush: Boolean = true): Boolean {
-        if (cuttingPlans.find { it.products == cuttingPlan.products } != null) {
-            return false
-        }
-
-        cuttingPlans.add(cuttingPlan)
-        val x = UIntVar("x_${cuttingPlan.index}")
-        x.range.leq(cuttingPlan.products.maxOf { (product, amount) -> product.demand / amount + UInt64.one })
-        this.x.add(x)
-        metaModel.add(x)
-
-        rest.asMutable() += (length - cuttingPlan.products.sumOf { it.key.length * it.value }) * x
-        rest.flush()
-        for ((product, amount) in cuttingPlan.products) {
-            yield[product].asMutable() += amount * x
-            yield[product].flush()
-        }
-        if (flush) {
-            metaModel.flush()
-        }
-        return true
-    }
-
-    // 添加列（切割方案）
-    fun addColumns(cuttingPlans: List<CuttingPlan>) {
-        for (cuttingPlan in cuttingPlans) {
-            addColumn(cuttingPlan, false)
-        }
-        metaModel.flush()
-    }
-
-    // 求解线性松弛模型
-    suspend operator fun invoke(iteration: UInt64): Ret<ShadowPriceMap> {
-        return when (val result = solver.solveLP("demo1-rmp-$iteration", metaModel)) {
-            is Ok -> {
-                Ok(extractShadowPriceMap(result.value.dualSolution))
-            }
-
-            is Failed -> {
-                Failed(result.error)
-            }
-        }
-    }
-
-    // 求解混合整数模型
-    suspend operator fun invoke(): Ret<Map<CuttingPlan, UInt64>> {
-        return when (val result = solver.solveMILP("demo1-rmp-ip", metaModel)) {
-            is Ok -> {
-                Ok(analyzeSolution(result.value.solution))
-            }
-
-            is Failed -> {
-                Failed(result.error)
-            }
-        }
-    }
-
-    // 提炼影子价格（对偶值）表
-    private fun extractShadowPriceMap(dualResult: List<Flt64>): ShadowPriceMap {
-        val ret = ShadowPriceMap()
-
-        for ((i, j) in metaModel.indicesOfConstraintGroup("product_demand")!!.withIndex()) {
-            ret.put(ShadowPrice(ProductDemandShadowPriceKey(products[i]), dualResult[j]))
-        }
-        ret.put { map, args ->
-            map.map[ProductDemandShadowPriceKey(args)]?.price ?: Flt64.zero
-        }
-
-        return ret
-    }
-
-    private fun analyzeSolution(result: List<Flt64>): Map<CuttingPlan, UInt64> {
-        ...
-    }
-}
-```
-
-:::
-
-### SP
-
-::: code-group
-
-```kotlin
-import java.util.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.functional.*
-import fuookami.ospf.kotlin.utils.multi_array.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.monomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-import fuookami.ospf.kotlin.framework.solver.*
-
-// 初始解生成器
-object InitialSolutionGenerator {
-    operator fun invoke(length: UInt64, products: List<Product>): Ret<List<CuttingPlan>> {
-        val solution = ArrayList<CuttingPlan>()
-        for (product in products) {
-            val amount = length / product.length
-            solution.add(CuttingPlan(mapOf(Pair(product, amount))))
-        }
-        return Ok(solution)
-    }
-}
-
-class SP {
-    private val solver: ColumnGenerationSolver = ScipColumnGenerationSolver()
-
-    // 求解子问题
-    suspend operator fun invoke(
-        iteration: UInt64,
-        length: UInt64,
-        products: List<Product>,
-        shadowPrice: ShadowPriceMap
-    ): Ret<CuttingPlan> {
-        // 构建子问题模型实例
-        val model = LinearMetaModel("demo1-sp-$iteration")
-
-        // 定义变量
-        val y = UIntVariable1("y", Shape1(products.size))
-        for (product in products) {
-            y[product].name = "${y.name}_${product.index}"
-        }
-        model.add(y)
-
-        // 定义中间值
-        val use = LinearExpressionSymbol(sum(products) { p -> p.length * y[p] }, "use")
-        model.add(use)
-
-        // 定义目标函数和约束
-        model.minimize(Flt64.one - sum(products) { p -> shadowPrice(p) * y[p] })
-        model.addConstraint(use leq length, "use")
-
-        // 求解并解析
-        return when (val result = solver.solveMILP("demo1-sp-$iteration", model)) {
-            is Ok -> {
-                Ok(analyze(model, products, result.value.solution))
-            }
-
-            is Failed -> {
-                Failed(result.error)
-            }
-        }
-    }
-
-    private fun analyze(model: LinearMetaModel, products: List<Product>, result: List<Flt64>): CuttingPlan {
-        ...
-    }
-}
-```
-
-:::
-
-### 应用
-
-::: code-group
-
-```kotlin
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.functional.*
-
-class CSP {
-    private val length = UInt64(1000UL)
-    private val products: List<Product> = ... // 产品列表
-
-    suspend operator fun invoke(): Try {
-        // 生成初始解
-        val initialCuttingPlans = InitialSolutionGenerator(length, products)
-        when (initialCuttingPlans) {
-            is Failed -> {
-                return Failed(initialCuttingPlans.error)
-            }
-
-            is Ok -> {}
-        }
-        // 初始化主问题
-        val rmp = RMP(length, products, initialCuttingPlans.value)
-        val sp = SP()
-        var i = UInt64.zero
-        while (true) {
-            // 求解线性松弛主问题获取影子价格表
-            val spm = rmp(i)
-            when (spm) {
-                is Failed -> {
-                    return Failed(spm.error)
-                }
-
-                is Ok -> {}
-            }
-            // 求解子问题生成新的列
-            val newCuttingPlan = sp(i, length, products, spm.value)
-            when (newCuttingPlan) {
-                is Failed -> {
-                    return Failed(newCuttingPlan.error)
-                }
-
-                is Ok -> {}
-            }
-            // 如果生成的列并不能优化主问题，则停止迭代
-            if (reducedCost(newCuttingPlan.value, spm.value) geq Flt64.zero
-                || !rmp.addColumn(newCuttingPlan.value)
-            ) {
-                break
-            }
-            ++i
-        }
-        // 最终求解整数解
-        when (val solution = rmp()) {
-            is Ok -> {}
-
-            is Failed -> {
-                return Failed(solution.error)
-            }
-        }
-        return ok
-    }
-
-    // 计算切割方案的 Reduced Cost
-    private fun reducedCost(cuttingPlan: CuttingPlan, shadowPrices: ShadowPriceMap) = Flt64.one -
-            cuttingPlan.products.sumOf { (shadowPrices(it.key) * it.value.toFlt64()) }
-}
-```
-
-:::
-
-完整实现参考：
-
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo3)

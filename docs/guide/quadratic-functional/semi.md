@@ -1,99 +1,137 @@
-# Semi-Function (Positive Part)
+# Semi-Continuous Marker in a Quadratic Model
 
-## Function Form
+## Availability
 
-$$
-y = \text{semi}(x) = \max(0, \, x) = \begin{cases}
-x, & x > 0 \\ \; \\
-0, & x \leq 0
-\end{cases}
-$$
+Kotlin has no quadratic-specific `SemiFunction` and no overload accepting `QuadraticPolynomial<V>`. Its only class is the marker [`SemiFunction`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Semi.kt#L37-L107). It accepts only bounds and a converter; it has no expression argument. Rust has both a functional generic `SemiFunction` and a direct quadratic-input `QuadraticSemiFunction`; their APIs are documented below.
 
-## Constant Definition
+The quadratic mechanism can fall back to registering a linear `MathFunctionSymbolBase` (`MechanismModel.kt:1350-1355`), but that fact does not turn `SemiFunction` into a quadratic positive-part function. `SemiFunction` has no helper variables or constraints and is not a quadratic expression. It may be constructed and retained as metadata alongside a quadratic model, but adding it does not change that model.
 
-$$
-M = \max(|x|)
-$$
+## Meaning and boundaries
 
-## Additional Variables
-
-$u \in \{ 0, 1 \}$: Indicator for $x > 0$.
-
-$y^{\prime} \in \mathbb{R} - \mathbb{R}^{-}$: Represents $\max(0, x)$.
-
-## Derived Symbol
+The marker describes the intended domain
 
 $$
-y = y^{\prime}
+y = 0 \quad\text{or}\quad lb \le y \le ub.
 $$
 
-## Mathematical Model
+The constructor is:
 
-$$
-\begin{align}
-\text{s.t.} \quad & y \geq x \\ \; \\
-& y \leq x + M \cdot u \\ \; \\
-& y \leq M \cdot (1 - u)
-\end{align}
-$$
+```kotlin
+SemiFunction(
+    lb: V? = null,
+    ub: V? = null,
+    converter: IntoValue<V>,
+    name: String = "semi",
+    displayName: String? = null
+)
+```
 
-## Code Example
+Defaults are `lb = 0` and `ub = 1e6`; `lb <= ub` is required (`Semi.kt:37-50`). `SemiFunction.from(variable, ...)` can infer missing bounds from a variable's finite range (`Semi.kt:89-106`). `helperVariables` is empty, `evaluate` always returns `null`, and registration is a no-op (`Semi.kt:53-65`). It therefore cannot represent `max(0,q)` for a quadratic polynomial `q`.
+
+## Current API
+
+### Kotlin
+
+This is a marker-only construction, matching the current quadratic smoke test:
+
+For a quadratic expression, write the required domain constraints in the `QuadraticMetaModel` explicitly or use a quadratic function class that actually accepts `QuadraticPolynomial`; do not invent or call a quadratic `SemiFunction` overload.
+
+```kotlin
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.core.model.mechanism.QuadraticMetaModel
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.SemiFunction
+
+val model = QuadraticMetaModel<Flt64>(
+    name = "quadratic-model-with-semi-marker",
+    converter = IntoValue.Identity
+)
+val semi = SemiFunction(
+    lb = Flt64.one,
+    ub = Flt64(4.0),
+    converter = IntoValue.Identity,
+    name = "semi"
+)
+check(semi.helperVariables.isEmpty())
+check(semi.evaluate(emptyMap()) == null)
+// Keep `semi` as metadata; it has no quadratic expression or model constraints.
+model.close()
+```
+
+### Rust
+
+Rust's [`QuadraticSemiFunction<V>`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_function.rs) is the direct quadratic counterpart that Kotlin currently lacks:
+
+```rust
+QuadraticSemiFunction::new(
+    id: u64,
+    name: &str,
+    input: Quadratic<V>,
+) -> QuadraticSemiFunction<V>
+```
+
+It bridges `input` through `QuadraticLinearFunction` and an exact two-candidate `MaxFunction(input, 0)`. Direct evaluation is `max(input, 0)`, and `result_variable` returns the inner non-negative result variable. Big-M for selector constraints is inferred from token bounds when possible. Rust also has the separate [`SemiFunction<V>`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/semi.rs), whose `new(id, name, lower, upper)` models a semi-continuous variable with a result variable and an indicator variable; `try_from_variable`/`from_variable` can infer finite bounds. Neither Rust type is the Kotlin marker-only object.
+
+```rust
+use ospf_rust_core::symbol::flatten::{Quadratic, QuadraticMonomial};
+use ospf_rust_core::symbol::function::QuadraticSemiFunction;
+
+let input = Quadratic::new(vec![QuadraticMonomial::new_linear(1.0, 0)], 0.0);
+let semi = QuadraticSemiFunction::new(17, "qsemi", input);
+assert!(semi.result_variable().name().contains("qsemi_max"));
+```
+
+## Examples and tests
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.quadratic_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.core.model.mechanism.QuadraticMetaModel
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.SemiFunction
 
-val x = URealVar("x")
-x.range.leq(Flt64.three)
-val y = URealVar("y")
-y.range.geq(Flt64.two)
-y.range.leq(Flt64.five)
-val z = BTerVar("z")
+val model = QuadraticMetaModel<Flt64>(
+    name = "quadratic-model-with-semi-marker",
+    converter = IntoValue.Identity
+)
 val semi = SemiFunction(
-    z * x - y,
+    lb = Flt64.one,
+    ub = Flt64(4.0),
+    converter = IntoValue.Identity,
     name = "semi"
 )
-val solver = ScipQuadraticSolver()
+check(semi.helperVariables.isEmpty())
+check(semi.evaluate(emptyMap()) == null)
+// Keep `semi` as metadata; it has no quadratic expression or model constraints.
+model.close()
+```
 
-val model1 = QuadraticMetaModel()
-model1.add(x)
-model1.add(y)
-model1.add(z)
-model1.add(semi)
-model1.minimize(semi)
+```rust [Rust]
+use ospf_rust_core::symbol::FunctionSymbol;
+use ospf_rust_core::symbol::flatten::{Quadratic, QuadraticMonomial};
+use ospf_rust_core::symbol::function::QuadraticSemiFunction;
+use ospf_rust_core::token::{MutableTokenList, Token, VecTokenList};
+use ospf_rust_core::variable::{ContinuousVariableItem, VariableId};
 
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.zero)
-assert(result1.value!!.solution[1] geq result1.value!!.solution[2] * result1.value!!.solution[0])
-
-val model2 = QuadraticMetaModel()
-model2.add(x)
-model2.add(y)
-model2.add(z)
-model2.add(semi)
-model2.maximize(semi)
-
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.one)
-assert(result2.value!!.solution[0] eq Flt64.three)
-assert(result2.value!!.solution[1] eq Flt64.two)
-assert(result2.value!!.solution[2] eq Flt64.one)
+let x = ContinuousVariableItem::create(VariableId::standalone(0), "x");
+let input = Quadratic::new(vec![QuadraticMonomial::new_linear(1.0, 0)], 0.0);
+let semi = QuadraticSemiFunction::new(18, "qsemi", input);
+let mut tokens = VecTokenList::<f64>::new();
+let tx = Token::from_generic(x, 0);
+tx.set_result(-1.0);
+tokens.add_token(tx);
+assert_eq!(semi.calculate_value(&tokens, false), Some(0.0));
 ```
 
 :::
 
-**Complete Implementation Reference:**
+- Marker example: [`SemiTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/quadratic_function/SemiTest.kt)
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/quadratic_function/Semi.kt)
+- Rust quadratic implementation and tests: [`quadratic_function.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_function.rs)
 
-**Complete Example Reference:**
+## References
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/quadratic_function/SemiTest.kt)
+- Marker implementation: [`Semi.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Semi.kt)
+- Quadratic fallback dispatch: [`MechanismModel.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/model/mechanism/MechanismModel.kt#L1350-L1355)
+- Marker test: [`SemiTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/quadratic_function/SemiTest.kt)

@@ -1,107 +1,147 @@
-# 最小值（下界、下确界）
+# 最小值
 
-## 函数形式
-
-$$
-y = \min(x_{1}, \, x_{2}, \, \cdots, \, x_{n})
-$$
-
-## 常量定义
+`MinFunction` 表示一个或多个线性多项式的最小值：
 
 $$
-M = \max_{i \in P}(\max(|x_{i}|))
+y=\min(p_1,p_2,\ldots,p_n).
 $$
 
-## 额外变量
+## 契约
 
-$\text{minmax} \in \mathbb{R}$：下界。
+- 输入：非空的 `List<LinearPolynomial<V>>`（`n >= 1`）。
+- 输出：`resultVar`，其类型为 `URealVar`，并通过 `resultPolynomial` 暴露。
+- `evaluate` 求值每个输入并返回最小值；缺少符号值时返回 `null`。
+- `V` 必须实现 `RealNumber<V>` 与 `NumberField<V>`，并传入匹配的 `IntoValue<V>` 转换器。
 
-$u_{i} \in \{0, \, 1 \}$：表示下确界是否是 $x_{i}$ 的标志位。
+## 数学定义
 
-## 导出符号
-
-$$
-y = maxmin
-$$
-
-## 数学模型
+实现使用二进制 `selectorVars` $s_i$ 和对称的精确选择模型：
 
 $$
-\text{s.t.} \quad maxmin \leq x_{i}, \; \forall i \in P
+y\le p_i\quad(i=1,\ldots,n),
 $$
 
-上述模型约束了 $y$ 为 $x_{i}$ 的下界，适用于最大值目标函数。若需在约束条件或最小值目标函数中使用精确的 $y$ 值，需额外追加以下数学模型以确保 $y$ 取到下确界：
-
 $$
-\begin{align}
-\text{s.t.} \quad & maxmin & \geq & \, x_{i} - M \cdot (1 - u_{i}), & \; \forall i \in P \\ \; \\
-& \sum_{i \in P} u_{i} & = & \, 1
-\end{align}
+y-p_i-M_i s_i\ge -M_i,
+\qquad \sum_{i=1}^{n}s_i=1.
 $$
 
-## 代码示例
+当某个候选对应的选择变量为 0 时，该候选被强制等于结果；其余不等式则强制结果不大于每个候选。
+
+## 适用域与边界
+
+solver 结果是 `URealVar`，所以无法表示负的最小值；`evaluate` 仍可以返回负值。只有在可行模型保证最小值非负时才应使用此函数，或者选择带符号的结果建模。与 `MaxFunction` 一样，推导 Big-M 需要候选有限界；否则当前回退值为 $10^6$，显式 `bigM` 必须覆盖所有候选差距。
+
+## 当前 API
+
+### Kotlin
+
+`MinFunction` 与 `MaxFunction` 声明在同一个源码文件中（不存在独立实现文件）：[`Max.kt`（`MinFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Max.kt#L182-L281)
+
+```kotlin
+MinFunction(
+    polynomials: List<LinearPolynomial<V>>,
+    bigM: V? = null,
+    converter: IntoValue<V>,
+    name: String = "min",
+    displayName: String? = null
+)
+```
+
+伴生工厂还提供 `fromSymbols`，面向 `LinearIntermediateSymbol<V>` 候选。
+
+### Rust
+
+Rust 在 [`MinFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/max.rs) 中使用 `flatten::Linear<V>`：
+
+```rust
+MinFunction::new(id: u64, name: &str, polynomials: Vec<Linear<V>>, exact: bool) -> MinFunction<V>
+```
+
+`exact = true` 为每个候选创建一个二值选择器并注册精确选择模型；`exact = false` 只保留不等式包络。与 Kotlin 不同，Rust 构造器没有 `bigM` 或 converter 参数，结果通过 `result_variable()` 暴露。
+
+## 辅助变量与注册模型
+
+`helperVariables` 包含非负的 `resultVar` 和每个候选对应的一个二进制选择变量。约束注册会添加 `result <= p_i`、每个候选的一条 Big-M 下界/等值门控约束，以及 `sum(selectorVars) = 1`。
+
+## `evaluate` 与 solver 的差异
+
+`evaluate` 直接折叠候选值，不施加 `URealVar` 的变量域。solver 注册会施加该域并依赖有效的 Big-M。因此全为负候选时，直接求值可以成功，而 solver 模型可能不可行。
+
+## 示例与测试
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.MinFunction
+import fuookami.ospf.kotlin.core.variable.RealVar
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.symbol.Symbol
+import fuookami.ospf.kotlin.math.symbol.inequality.eq
+import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 
 val x = RealVar("x")
-x.range.leq(Flt64.five)
-x.range.geq(Flt64.three)
 val y = RealVar("y")
-y.range.leq(Flt64.ten)
-y.range.geq(Flt64.two)
-val solver = ScipLinearSolver()
+val xPoly = LinearPolynomial(listOf(LinearMonomial(Flt64.one, x)), Flt64.zero)
+val yPoly = LinearPolynomial(listOf(LinearMonomial(Flt64.one, y)), Flt64.zero)
+val min = MinFunction(
+    polynomials = listOf(xPoly, yPoly),
+    bigM = Flt64(10.0),
+    converter = IntoValue.Identity,
+    name = "min"
+)
+val value = min.evaluate(mapOf<Symbol, Flt64>(x to Flt64.two, y to Flt64(5.0)))
+check(value != null && (value eq Flt64.two))
+```
 
-val maxmin = MaxMinFunction(listOf(x, y), name = "maxmin")
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(y)
-model1.add(maxmin)
-model1.minimize(maxmin)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.two)
+```rust [Rust]
+use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::function::MinFunction;
 
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(y)
-model2.add(maxmin)
-model2.maximize(maxmin)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.five)
-
-val min = MinFunction(listOf(x, y), name = "min")
-val model3 = LinearMetaModel()
-model3.add(x)
-model3.add(y)
-model3.add(min)
-model3.minimize(min)
-val result3 = runBlocking { solver(model3) }
-assert(result3.value!!.obj ls Flt64.zero)       // -inf
-
-val model4 = LinearMetaModel()
-model4.add(x)
-model4.add(y)
-model4.add(min)
-model4.maximize(min)
-val result4 = runBlocking { solver(model4) }
-assert(result4.value!!.obj eq Flt64.five)
+let x = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
+let y = Linear::new(vec![LinearMonomial::new(1.0, 1)], 0.0);
+let min = MinFunction::new(1, "min", vec![x, y], true);
+assert!(min.exact());
+let _result = min.result_variable();
 ```
 
 :::
 
-ĺŽć´ĺŽç°čŻˇĺčďź
+完整示例：[`MinTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/MinTest.kt)
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/Min.kt)
+Core 验证：[`MaxAndMaskingFunctionGenericEvaluateTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/MaxAndMaskingFunctionGenericEvaluateTest.kt)
 
-ĺŽć´ć ˇäžčŻˇĺčďź
+Rust 源码与跨语言回归覆盖：[`max.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/max.rs) 和 [`gurobi_linear_function_kotlin_parity.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/gurobi_linear_function_kotlin_parity.rs)。
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/MinTest.kt)
+## MinMaxFunction 与 MaxMinFunction
+
+$$
+MinMax(p_1,\ldots,p_n)=\max_i p_i,\qquad
+MaxMin(p_1,\ldots,p_n)=\min_i p_i.
+$$
+
+虽然名称容易引起误解，`MinMaxFunction` 实际通过委托给内部 `MaxFunction` 来计算最大值，并转发求值、辅助变量和约束注册。`MaxMinFunction` 通过委托给内部 `MinFunction` 来计算最小值。名称描述的是优化语境下的解释，而不是另一种聚合算法。两个包装器都接收相同的 `polynomials`、可选 `bigM`、`converter`、`name` 和可选 `displayName` 参数。它们的 `fromSymbols` 工厂接收 `List<LinearIntermediateSymbol<V>>`，返回 `LinearFunctionSymbolAdapter`；该适配器仅用于衔接中间符号 API。
+
+源码：[`MinMax.kt`（`MinMaxFunction` 与 `MaxMinFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/MinMax.kt#L40-L196)
+
+```kotlin
+val minMax = MinMaxFunction(
+    polynomials = listOf(xPoly, yPoly),
+    bigM = Flt64(10.0),
+    converter = IntoValue.Identity,
+    name = "min_max"
+)
+val maxMin = MaxMinFunction(
+    polynomials = listOf(xPoly, yPoly),
+    bigM = Flt64(10.0),
+    converter = IntoValue.Identity,
+    name = "max_min"
+)
+```
+
+## 相关页面
+
+- [`max`](./max)：对应的最大值运算。
+- [`masking`](./masking)：二进制选择一个多项式或零。

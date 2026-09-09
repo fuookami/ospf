@@ -1,157 +1,159 @@
-# Bivariate Linear Piecewise Function
+# Bivariate linear piecewise function
 
-## Function Form
+`BivariateLinearPiecewiseFunction` represents a piecewise-linear surface over a list of triangles. Its current model is triangulation plus barycentric interpolation, not a rectangular list of independent points.
 
-$$
-z = \text{Blp}(x, y) = k_{i} x + k^{\prime}_{i} y + b_{i}, \; x \in [a_{i}, b_{i}], \; y \in [a^{\prime}_{i}, b^{\prime}_{i}] \; i = 0, 1, 2, \ldots
-$$
+## Contract
 
-## Constants
+- Inputs: `x` and `y`, each a `LinearPolynomial<V>`.
+- Geometry: a non-empty `List<Triangle<Point<Dim3, Flt64>, Dim3, Flt64>>`; each vertex stores `(x, y, z)`.
+- Output: a linear polynomial formed from barycentric weights and the vertices' z-coordinates.
+- `evaluate` returns the interpolated z value for the first containing, non-degenerate triangle, and `null` when either input is missing, the point is outside every triangle, or every candidate triangle is degenerate.
+- `V` must implement `RealNumber<V>` and `NumberField<V>`; geometric coordinates are `Flt64` and are converted through `IntoValue<V>`.
 
-$$
-M = \max_{t \in T}{({\max{(\max_{x \in \mathbb{R}, \, y \in \mathbb{R}} fu_{t}(x, y), \, \max_{x \in \mathbb{R}, \, y \in \mathbb{R}} fv_{t}(x, y))}})}
-$$
+## Mathematical definition
 
-## Additional Variables
-
-$u_{t} \in [0, 1]$: Weight of vector $\vec{A_{i}B_{i}}$ in the $i$-th triangle.
-
-$v_{t} \in [0, 1]$: Weight of vector $\vec{A_{i}C_{i}}$ in the $i$-th triangle.
-
-$w_{t} \in \{ 0, \, 1\}$: Indicator variable for the $i$-th triangle.
-
-## Derived Symbol
+For a triangle with vertices $P_1=(x_1,y_1,z_1)$, $P_2=(x_2,y_2,z_2)$, and $P_3=(x_3,y_3,z_3)$, a point in the triangle is represented by barycentric weights
 
 $$
-z = \sum_{t \in T} (w_{t} \cdot z_{t, 0} + u_{t} \cdot (z_{t, 1} - z_{t, 0}) + v_{t} \cdot (z_{t, 2} - z_{t, 0}))
+\lambda_1=1-u-v,\qquad \lambda_2=u,\qquad \lambda_3=v,
 $$
 
-## Mathematical Model
+with $u\ge0$, $v\ge0$, and $u+v\le1$. The interpolated value is
 
 $$
-\begin{align}
-\text{s.t.} \quad & u_{t} + M \cdot (1 - w_{t}) & \geq & \; fu_{t}(x, y), & \; \forall t \in T \\ \; \\
-& u_{t} - M \cdot (1 - w_{t}) & \leq & \; fu_{t}(x, y), & \; \forall t \in T \\ \; \\
-& v_{t} + M \cdot (1 - w_{t}) & \geq & \; fv_{t}(x, y), & \; \forall t \in T \\ \; \\
-& v_{t} - M \cdot (1 - w_{t}) & \leq & \; fv_{t}(x, y), & \; \forall t \in T \\ \; \\
-& \sum_{t \in T} w_{t} & = & \; 1 \\
-& u_{t} + v_{t} & \leq & \; w_{t}, & \; \forall t \in T
-\end{align}
+z=\lambda_1z_1+\lambda_2z_2+\lambda_3z_3
+ =z_1+(z_2-z_1)u+(z_3-z_1)v.
 $$
 
-where:
+The implementation computes `u` and `v` from the x/y coordinates and accepts triangle boundaries inclusively.
 
-$$
-\begin{align}
-S_{t} = \frac{1}{2} \cdot (-y_{t, 1} \cdot x_{t, 2} + y_{t, 0} \cdot (-x_{t, 1} + x_{t, 2}) + x_{t, 0} \cdot (y_{t, 1} - y_{t, 2}) + x_{t, 1} \cdot y_{t, 2}), \; \forall t \in T \\
-fu_{t}(x, y) = \frac{1}{2S_{t}} \cdot (y_{t, 0} \cdot x_{t, 2} - x_{t, 0} \cdot y_{t, 2} + (y_{t, 2} - y_{t, 0}) \cdot x + (x_{t, 0} - x_{t, 2}) \cdot y), \; \forall t \in T \\
-fv_{t}(x, y) = \frac{1}{2S_{t}} \cdot (x_{t, 0} \cdot y_{t, 1} - y_{t, 0} \cdot x_{t, 1} + (y_{t, 0} - y_{t, 1}) \cdot x + (x_{t, 1} - x_{t, 0}) \cdot y), \; \forall t \in T
-\end{align}
-$$
+## Domain and boundaries
 
-## Derivation Process
+Construction requires at least one triangle. A triangle whose 2-D determinant has absolute value at most $10^{-12}$ is treated as degenerate and cannot produce an evaluation. Points outside all triangles return `null`. If triangles overlap, evaluation uses the first containing triangle in list order; shared boundaries are therefore order-sensitive when neighboring z values are inconsistent. Solver registration uses exactly one selected triangle and assumes the listed geometry describes the intended domain.
 
-### Fundamental Principle
+## Current API
 
-$$
-(\vec{P_{0}P} = u \cdot \vec{P_{0}P_{1}} + v \cdot \vec{P_{0}P_{2}}) \wedge (u \geq 0) \wedge (v \geq 0) \wedge (u + v \leq 1)) \Rightarrow (P \in \triangle P_{0}P_{1}P_{2})
-$$
+### Kotlin
 
-$$
-(\exists t \in T((P \in t) \wedge (\not \exists t^{\prime} \in T((t \neq t^{\prime}) \wedge (P \in t^{\prime})))))
-$$
+Source: [`BivariateLinearPiecewise.kt` (constructor, barycentric evaluation, and constraints)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/BivariateLinearPiecewise.kt#L58-L264)
 
-### Algebraic Formulation of Fundamental Principle
+```kotlin
+BivariateLinearPiecewiseFunction(
+    x: LinearPolynomial<V>,
+    y: LinearPolynomial<V>,
+    triangles: List<Triangle<Point<Dim3, Flt64>, Dim3, Flt64>>,
+    converter: IntoValue<V>,
+    name: String,
+    displayName: String? = null
+)
+```
 
-$$
-\begin{align}
-S_{t} = \frac{1}{2} \cdot (-y_{t, 1} \cdot x_{t, 2} + y_{t, 0} \cdot (-x_{t, 1} + x_{t, 2}) + x_{t, 0} \cdot (y_{t, 1} - y_{t, 2}) + x_{t, 1} \cdot y_{t, 2}), \; \forall t \in T \\
-fu_{t}(x, y) = \frac{1}{2S_{t}} \cdot (y_{t, 0} \cdot x_{t, 2} - x_{t, 0} \cdot y_{t, 2} + (y_{t, 2} - y_{t, 0}) \cdot x + (x_{t, 0} - x_{t, 2}) \cdot y), \; \forall t \in T \\
-fv_{t}(x, y) = \frac{1}{2S_{t}} \cdot (x_{t, 0} \cdot y_{t, 1} - y_{t, 0} \cdot x_{t, 1} + (y_{t, 0} - y_{t, 1}) \cdot x + (x_{t, 1} - x_{t, 0}) \cdot y), \; \forall t \in T
-\end{align}
-$$
+### Rust
 
-### Logical Properties:
+Source: [`bivariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/bivariate_linear_piecewise.rs)
 
-$$
-\forall t \in T(w_{t} \in \{ 0, 1 \})
-$$
+Rust uses a non-empty list of `Point3<V>` and a convex-combination formulation rather than Kotlin's list of triangles. The primary constructor and accessors are:
 
-$$
-\exists t \in T((w_{t} = 1) \wedge (\not \exists t ^{\prime} \in T((t \neq t^{\prime}) \wedge (w_{t} = 1))))
-$$
+```rust
+Point3::new(x: V, y: V, z: V) -> Point3<V>
+BivariateLinearPiecewiseFunction::new(
+    id: u64,
+    name: &str,
+    x_input: Linear<V>,
+    y_input: Linear<V>,
+    points: Vec<Point3<V>>,
+) -> Self
+```
 
-$$
-\forall t \in T((u_{t} \in ([0, 1] \cap \mathbb{R}_{+})) \wedge (v_{t} \in ([0, 1] \cap \mathbb{R}_{+})))
-$$
+`result_variable()`, `lambda_variables()`, `x_input_polynomial()`, `y_input_polynomial()`, and `points()` expose the registered model pieces. The Rust evaluator reads the lambda-variable values from tokens and returns their z-weighted sum; the x/y geometry is enforced by mechanism constraints.
 
-$$
-\forall t \in T(((w_{t} = 1) \Rightarrow ((u_{t} = fu_{t}(x, y)) \wedge (v_{t} = fv_{t}(x, y)))) \wedge ((w_{t} = 0) \Rightarrow ((u_{t} = 0) \wedge (v_{t} = 0))))
-$$
+## Auxiliary variables and registration
 
-### (Quadratic) Mathematical Model:
+For every triangle, `lambdaVars` is a `PctVariable1` with shape 3 and `zVars` is a `BinVariable1` selector. Registration constrains x and y to the lambda-weighted vertex coordinates, constrains the result to the weighted z coordinates, sets the sum of all lambdas to one, gates each triangle's lambda sum by its selector, and sets the selector sum to one. Percentage variables provide the `[0, 1]` bounds.
 
-$$
-\begin{align}
-\text{s.t.} \quad & u_{t} & = & \; w_{t} \cdot fu_{t}(x, y), & \; \forall t \in T \\ \; \\
-& v_{t} & = & \; w_{t} \cdot fv_{t}(x, y), & \; \forall t \in T \\ \; \\
-& \sum_{t \in T} w_{t} & = & \; 1 \\
-& u_{t} + v_{t} & \leq & \; w_{t}, & \; \forall t \in T
-\end{align}
-$$
+## `evaluate` versus solver
 
-Linearization yields the aforementioned mathematical model.
+`evaluate` searches triangles in order and returns a barycentric interpolation or `null`. Solver registration introduces one-hot triangle selection and lambda variables and does not itself repair overlapping, inconsistent, or degenerate geometry. A solver model should therefore be given a coherent triangulation whose covered domain matches the intended input range.
 
-## Code Example
+## Minimal current example
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.BivariateLinearPiecewiseFunction
+import fuookami.ospf.kotlin.core.variable.RealVar
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.geometry.*
+import fuookami.ospf.kotlin.math.symbol.Symbol
+import fuookami.ospf.kotlin.math.symbol.inequality.eq
+import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 
-val x = URealVar("x")
-val y = URealVar("y")
-x.range.leq(Flt64.two)
-y.range.leq(Flt64.two)
-
+val x = RealVar("x")
+val y = RealVar("y")
+val xPoly = LinearPolynomial(listOf(LinearMonomial(Flt64.one, x)), Flt64.zero)
+val yPoly = LinearPolynomial(listOf(LinearMonomial(Flt64.one, y)), Flt64.zero)
 val blp = BivariateLinearPiecewiseFunction(
-    x = x,
-    y = y,
-    points = listOf(
-        point3(),
-        point3(x = Flt64.two),
-        point3(y = Flt64.two),
-        point3(x = Flt64.two, y = Flt64.two),
-        point3(x = Flt64.one, y = Flt64.one, z = Flt64.one)
+    x = xPoly,
+    y = yPoly,
+    triangles = listOf(
+        Triangle(
+            point3(Flt64.zero, Flt64.zero, Flt64.zero),
+            point3(Flt64.one, Flt64.zero, Flt64.one),
+            point3(Flt64.zero, Flt64.one, Flt64.one)
+        )
     ),
-    name = "z"
+    converter = IntoValue.Identity,
+    name = "blp"
 )
+val value = blp.evaluate(
+    mapOf<Symbol, Flt64>(x to Flt64(0.25), y to Flt64(0.25))
+)
+check(value != null && (value eq Flt64(0.75)))
+```
 
-val model = LinearMetaModel()
-model.add(x)
-model.add(y)
-model.add(blp)
-model.maximize(blp)
+```rust [Rust]
+use ospf_rust_core::symbol::flatten::Linear;
+use ospf_rust_core::symbol::function::{BivariateLinearPiecewiseFunction, Point3};
+use ospf_rust_core::symbol::FunctionSymbol;
+use ospf_rust_core::token::{MutableTokenList, Token, VecTokenList};
 
-val solver = ScipLinearSolver()
-val result = runBlocking { solver(model) }
-assert(result.value!!.solution[0] eq Flt64.one)
-assert(result.value!!.solution[1] eq Flt64.one)
+let blp = BivariateLinearPiecewiseFunction::new(
+    1,
+    "blp",
+    Linear::new(vec![], 0.25),
+    Linear::new(vec![], 0.25),
+    vec![
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(1.0, 0.0, 1.0),
+        Point3::new(0.0, 1.0, 1.0),
+    ],
+);
+let mut tokens = VecTokenList::new();
+for (lambda, value) in blp.lambda_variables().iter().zip([0.5, 0.25, 0.25]) {
+    let token = Token::from_generic(lambda.clone(), lambda.index());
+    token.set_result(value);
+    tokens.add_token(token);
+}
+let value = <BivariateLinearPiecewiseFunction as FunctionSymbol>::calculate_value(
+    &blp,
+    &tokens,
+    false,
+);
+assert_eq!(value, Some(0.5));
 ```
 
 :::
 
-**Complete Implementation Reference:**
+Complete example: [`BLPTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/BLPTest.kt)
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/BivariateLinearPiecewise.kt)
+Core validation: [`TrigonometricAndBivariateGenericEvaluateTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/TrigonometricAndBivariateGenericEvaluateTest.kt)
 
-**Complete Example Reference:**
+Rust implementation and coverage: [`bivariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/bivariate_linear_piecewise.rs), [`gurobi_linear_function_kotlin_parity.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/gurobi_linear_function_kotlin_parity.rs)
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/BLPTest.kt)
+## Related pages
+
+- [`ulp`](./ulp): one-input piecewise interpolation from ordered points.
+- [`max`](./max) and [`min`](./min): selector-based linear functions.
+- [`masking`](./masking): binary gating of a linear input.

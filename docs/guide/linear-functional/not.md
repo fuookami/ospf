@@ -1,187 +1,140 @@
 # Logical NOT
 
+## Contract
+
+`NotFunction<V>` accepts one linear polynomial and exposes a binary result. The result is `1` exactly when the polynomial is zero, and `0` when it is nonzero. The API is generic over `V : RealNumber<V> & NumberField<V>`.
+
+The operation is the inverse of the current nonzero indicator. It is not a Boolean negation that assumes a pre-existing binary input variable.
+
+## Definition and truth table
+
+For a linear polynomial (p), let (a) be its nonzero indicator:
+
 $$
-y = \text{Not}(x) = \begin{cases}
-1, & \neg x \\ \; \\
-0, & x
+a = \begin{cases}
+1, & p \ne 0 \\
+0, & p = 0
+\end{cases},
+\qquad
+y = 1-a = \begin{cases}
+1, & p = 0 \\
+0, & p \ne 0
 \end{cases}
 $$
 
-## Discrete Case
+| (p) | (y=\operatorname{Not}(p)) |
+| --- | --- |
+| zero | 1 |
+| nonzero | 0 |
 
-### Constants
+## Boundary, tolerance, and Undefined
 
-$$
-m = \max(x)
-$$
+`evaluate()` compares the evaluated polynomial with exact zero and returns `null` if the input is missing. It has no `Undefined` return branch.
 
-### Additional Variables
+The solver's nonzero indicator uses tolerance (t) for the zero band and strict boundary (g) for the nonzero branch: `indicatorVar = 0` represents $\lvert p\rvert\le t$, while `indicatorVar = 1` requires $p\ge g$ or $p\le-g$. The interval (t<\lvert p\rvert<g) is unclassified and may make the model infeasible. The result is linked by (y+a=1).
 
-$y^{\prime} \in \{ 0, \, 1 \}$: Logical value indicating the polynomial is false.
+The current defaults are `NONZERO_TOLERANCE = 1e-10` and `STRICT_BOUNDARY = NONZERO_TOLERANCE * 16 + 16 * 2^-52`. Omitted `bigM` is inferred from the polynomial's finite range, with `BIG_M_DEFAULT = 1e6` as the fallback.
 
-### Derived Symbol
+## Current API
 
-$$
-y = y^{\prime}
-$$
+### Kotlin
 
-### Mathematical Model
+```kotlin
+NotFunction(
+    polynomial: LinearPolynomial<V>,
+    converter: IntoValue<V>,
+    bigM: V? = null,
+    tolerance: V? = null,
+    strictBoundary: V? = null,
+    name: String = "not",
+    displayName: String? = null
+)
+```
 
-$$
-\begin{align}
-\text{s.t.} \quad & m \cdot (1 - y^{\prime}) & \geq & \, x \\ \; \\
-& 1 - y^{\prime} & \leq & \, x
-\end{align}
-$$
+The companion `invoke` accepts `polynomial`, `converter`, `bigM`, `name`, and `displayName`; use the primary constructor to set `tolerance` or `strictBoundary` explicitly.
 
-That is:
+### Rust
 
-$$
-y = \begin{cases}
-1, & x = 0 \\ \; \\
-0, & x \geq 1
-\end{cases}
-$$
+Rust exposes [`NotFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/and.rs) in the same module as `OrFunction` and `XorFunction`:
 
-## Continuous (Non-Precise) Case
+```rust
+NotFunction::new(id: u64, name: &str, polynomial: Linear<V>) -> NotFunction<V>
+```
 
-### Constants
+The result, nonzero indicator, and side helper are available through `result_variable()`, `indicator_variable()`, and `side_variable()`. Rust uses the shared nonzero-indicator defaults and does not expose Kotlin's per-instance `tolerance` or `strictBoundary` parameters; `evaluate` still treats an exact zero as true for NOT.
 
-$$
-m = \max(x)
-$$
+## Auxiliary variables and registration model
 
-### Additional Variables
+For `name`, the implementation creates:
 
-$b \in [0, \, 1]$: Normalized value of the polynomial.
+- `name_not_nz`: the nonzero indicator (a);
+- `name_not_side`: the sign-side helper used by the nonzero test;
+- `name_not`: the binary result (y).
 
-$y^{\prime} \in \{ 0, \, 1 \}$: Logical value indicating the polynomial is false.
-
-### Derived Symbol
-
-$$
-y = y^{\prime}
-$$
-
-### Mathematical Model
+All three are in `helperVariables`. `registerAuxiliaryTokens` adds them. `registerConstraints` adds the shared four nonzero-indicator inequalities and the equality:
 
 $$
-\begin{align}
-\text{s.t.} \quad & x & = & \, m \cdot b \\ \; \\
-& 1 - y^{\prime} & \geq & \, b \\ \; \\
-& \epsilon \cdot (1 - y^{\prime}) & \leq & b
-\end{align}
+y+a=1.
 $$
 
-That is:
+The public `resultPolynomial` is the unit-coefficient polynomial of `name_not`; constraints are registered on `AbstractLinearMechanismModel`.
 
-$$
-y = \begin{cases}
-1, & x = 0 \\ \; \\
-0, & x \geq \epsilon
-\end{cases}
-$$
+## `evaluate()` versus the solver model
 
-## Continuous (Precise) Case
+The evaluator treats every exact nonzero value as false for NOT, even when its magnitude is below `strictBoundary`. The solver has a zero band, a strict nonzero band, and an unclassified gap. Do not use a value from the gap as a solver input without changing the boundaries or the model's value lattice.
 
-### Derived Symbol
-
-$$
-y = \text{Ulp}(x)
-$$
-
-$\text{Ulp}(x)$ can refer to [Unit Linear Piecewise Function](/guide/linear-functional/ulp), using the sampling points $\{ (0, \, 1), \; (p - \epsilon, \, 1), \; (p, \, 0), \; (\max(x), \, 0) \}$.
-
-That is:
-
-$$
-y = \begin{cases}
-1, & 0 \leq x < p \\ \; \\
-0, & x \geq p
-\end{cases}
-$$
-
-## Code Example
-
-### Discrete Case
+## Examples and tests
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.NotFunction
+import fuookami.ospf.kotlin.core.variable.RealVar
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.symbol.Symbol
+import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 
-val x = BinVar("x")
-val not = NotFunction(x, name = "not")
-val solver = ScipLinearSolver()
+fun main() {
+    val x = RealVar("x")
+    val xPoly = LinearPolynomial(
+        monomials = listOf(LinearMonomial(Flt64.one, x)),
+        constant = Flt64.zero
+    )
+    val function = NotFunction(
+        polynomial = xPoly,
+        converter = IntoValue.Identity,
+        name = "not"
+    )
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(not)
-model1.addConstraint(not)
-model1.maximize(x)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.zero)
+    check(function.evaluate(mapOf<Symbol, Flt64>(x to Flt64.zero)) == Flt64.one)
+    check(function.evaluate(mapOf<Symbol, Flt64>(x to Flt64(3.0))) == Flt64.zero)
+}
+```
 
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(not)
-model2.addConstraint(!not)
-model2.minimize(x)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.one)
+```rust [Rust]
+use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::function::NotFunction;
+
+let input = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
+let not = NotFunction::new(1, "not", input);
+let _result = not.result_variable();
 ```
 
 :::
 
-### Continuous Case
+Source and core tests:
 
-::: code-group
+- [Implementation: `And.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/And.kt)
+- [Core generic registration test: `FunctionSymbolGenericRegistrationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/FunctionSymbolGenericRegistrationTest.kt)
+- [Complete example: `NotTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/NotTest.kt)
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+Rust source and regression coverage: [`and.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/and.rs) and [`gurobi_linear_function_kotlin_parity.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/gurobi_linear_function_kotlin_parity.rs).
 
-val x = URealVar("x")
-x.range.leq(Flt64.one)
-val not = NotFunction(x, name = "not")
-val solver = ScipLinearSolver()
+## Related pages
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(not)
-model1.addConstraint(not)
-model1.maximize(x)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.zero)
-
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(not)
-model2.addConstraint(!not)
-model2.minimize(x)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj geq Flt64(1e-6))
-```
-
-:::
-
-**Complete Implementation Reference:**
-
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/Not.kt)
-
-**Complete Example Reference:**
-
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/NotTest.kt)
+- [Logical AND](/guide/linear-functional/and)
+- [Logical OR](/guide/linear-functional/or)
+- [Binaryzation](/guide/linear-functional/bin)
+- [Exactly-one result (`XorFunction`)](/guide/linear-functional/xor)

@@ -1,176 +1,161 @@
 # Logical XOR
 
-## Function Form
+## Contract
+
+`XorFunction<V>` counts the nonzero input polynomials. Its evaluator returns one exactly when one input is nonzero, and zero for every other count. Therefore this is an exact-one function; for two binary inputs it agrees with the usual XOR, but for more inputs it is not parity XOR.
+
+The solver registration currently does not fully enforce that evaluator contract. The executable inequalities are documented below so that the distinction is explicit.
+
+## Definition and truth table
+
+For input values `p_i`, the evaluator computes:
 
 $$
-y = \text{Xor}(x_{1}, \, x_{2}, \, \ldots, \, x_{i}) = \begin{cases}
-1, & \neg \bigvee_{i} x_{i} \wedge \neg \bigwedge_{i} x_{i} \\ \; \\
-0, & \bigvee_{i} x_{i} \vee \bigwedge_{i} x_{i}
+a_i =
+\begin{cases}
+1, & p_i\ne0 \\
+0, & p_i=0
+\end{cases}
+\qquad
+y_{\mathrm{eval}} =
+\begin{cases}
+1, & \sum_i a_i=1 \\
+0, & \sum_i a_i\ne1
 \end{cases}
 $$
 
-## Two Polynomials
+For three inputs, the current evaluator and the solver result permitted by the final constraints are:
 
-### Additional Variables
+| Number `s=\sum_i a_i` | Evaluator | Parity XOR | Solver result |
+| ---: | ---: | ---: | --- |
+| 0 | 0 | 0 | 0 |
+| 1 | 1 | 1 | 0 or 1 |
+| 2 | 0 | 0 | 0 |
+| 3 | 0 | 1 | infeasible |
 
-$y^{\prime} \in \{0, 1 \}$: Logical XOR value.
+The parity column is included only to show why the current function is not parity XOR. The source comments describe a parity encoding, but the executable evaluator and constraints do not implement that definition.
 
-### Derived Symbol
+## Boundary, tolerance, and Undefined
+
+`evaluate(values)` compares each evaluated value with `converter.zero` exactly; it does not apply `tolerance` or `strictBoundary`. A missing input or failed polynomial evaluation returns `null`.
+
+Constraint registration creates a nonzero indicator for every input. With tolerance `t` and strict boundary `g`, the current indicator constraints model the zero band `|p_i|\le t` when the indicator is zero, and an outside value `p_i\le-g` or `p_i\ge g` when it is one. Values in the open gaps `(-g,-t)` and `(t,g)` have no valid indicator assignment when `t<g`.
+
+The defaults are `NONZERO_TOLERANCE = 1e-10` for `tolerance` and `STRICT_BOUNDARY = NONZERO_TOLERANCE * 16 + 16 * 2^-52` for `strictBoundary`. Thus a tiny nonzero value can count as nonzero in `evaluate` while having no solver assignment.
+
+## Current API
+
+### Kotlin
+
+```kotlin
+XorFunction(
+    polynomials: List<LinearPolynomial<V>>,
+    converter: IntoValue<V>,
+    bigM: V? = null,
+    tolerance: V? = null,
+    strictBoundary: V? = null,
+    name: String = "xor",
+    displayName: String? = null
+)
+```
+
+The companion `invoke` overload accepts `polynomials`, `converter`, `bigM`, `name`, and `displayName`, but does not expose `tolerance` or `strictBoundary`. Use the constructor when those boundaries must be set.
+
+### Rust
+
+Rust exposes [`XorFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/and.rs):
+
+```rust
+XorFunction::new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> XorFunction<V>
+```
+
+The constructor asserts at least two inputs and creates `result_variable()`, `indicator_variables()`, and `side_variables()`. There are no per-instance `bigM`, tolerance, or strict-boundary arguments; the shared indicator policy is used. Rust's current evaluator returns `1` when the inputs contain both a zero and a nonzero value (the usual two-input XOR case), so for more than two inputs it is not Kotlin's exact-one evaluator and is not parity XOR.
+
+## Auxiliary variables and registration model
+
+For `name`, the implementation creates:
+
+- result binary variable `name_xor`;
+- one nonzero indicator `name_xor_nz{i}` per input;
+- one binary side variable `name_xor_side{i}` per input.
+
+All of them are returned by `helperVariables`; `resultPolynomial` is the unit-coefficient polynomial of `name_xor`. Each input indicator is registered through the shared nonzero-indicator helper, using the explicit `bigM` or that polynomial's default Big-M.
+
+After the indicator constraints, the current final XOR inequalities are, with `s=\sum_i a_i` and binary result `y`:
 
 $$
-y = y^{\prime}
+0\le s-y,
+\qquad
+s-y\le n-1,
+\qquad
+s+(n-1)y\le n.
 $$
 
-### Mathematical Model
+They imply `y=1\Rightarrow s=1`, but they allow `y=0` whenever `s\le n-1`; in particular `s=1` does not force `y=1`, and `s=n` is infeasible. This is a high-risk solver/evaluator mismatch, not parity behavior.
 
-$$
-\begin{align}
-\text{s.t.} \quad & y^{\prime} & \geq & \, \text{Bin}(x_{i}) - \sum_{i^{\prime} \in \{ i^{\prime} \in P | i^{\prime} \neq i \}} \text{Bin}(x_{i^{\prime}}), & \; \forall i \in P \\ \; \\
-& y & \leq & \, \sum_{i \in P} \text{Bin}(x_{i}) \\ \; \\
-& y & \leq & \, |P| - \sum_{i \in P} \text{Bin}(x_{i})
-& 
-\end{align}
-$$
+## `evaluate()` versus the solver model
 
-$\text{Bin}(x)$ can refer to [Binarization](/guide/linear-functional/bin).
+The evaluator implements exact-one counting and returns `null` only for missing or failed inputs. The solver additionally imposes tolerance bands and the final inequalities above. Consequently, an assignment can evaluate to one but permit solver result zero, and an assignment with every input outside the nonzero band can make the solver model infeasible. Do not describe the current solver encoding as parity XOR or as a complete exact-one equivalence.
 
-## Arbitrary Number of Polynomials
-
-### Derived Symbol
-
-$$
-y = \text{Xor}(\min(x_{i}), \max(x_{i}))
-$$
-
-$\min(x)$ can refer to [Minimum Value](/guide/linear-functional/min), $\max(x)$ can refer to [Maximum Value](/guide/linear-functional/max).
-
-## Code Example
-
-### Two Polynomials
+## Examples and tests
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 
-val x = BinVar("x")
-val y = BinVar("y")
-val xor = XorFunction(listOf(x, y), name = "xor")
-val solver = ScipLinearSolver()
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.symbol.inequality.eq
+import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(y)
-model1.add(xor)
-model1.addConstraint(xor)
-model1.minimize(x + y)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.one)
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.XorFunction
+import fuookami.ospf.kotlin.core.variable.BinVar
 
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(y)
-model2.add(xor)
-model2.addConstraint(xor)
-model2.maximize(x + y)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.one)
+class XorTest {
+    @Test
+    fun xorEvaluate() {
+        val x = BinVar("x")
+        val y = BinVar("y")
+        val px = LinearPolynomial(listOf(LinearMonomial(Flt64.one, x)), Flt64.zero)
+        val py = LinearPolynomial(listOf(LinearMonomial(Flt64.one, y)), Flt64.zero)
+        val xor = XorFunction(listOf(px, py), converter = IntoValue.Identity, name = "xor")
 
-val model3 = LinearMetaModel()
-model3.add(x)
-model3.add(y)
-model3.add(xor)
-model3.addConstraint(!xor)
-model3.minimize(x + y)
-val result3 = runBlocking { solver(model3) }
-assert(result3.value!!.obj eq Flt64.zero)
+        val r10 = xor.evaluate(mapOf(x to Flt64.one, y to Flt64.zero))
+        val r11 = xor.evaluate(mapOf(x to Flt64.one, y to Flt64.one))
+        assertTrue(r10 != null && (r10 eq Flt64.one))
+        assertTrue(r11 != null && (r11 eq Flt64.zero))
+    }
+}
+```
 
-val model4 = LinearMetaModel()
-model4.add(x)
-model4.add(y)
-model4.add(xor)
-model4.addConstraint(!xor)
-model4.maximize(x + y)
-val result4 = runBlocking { solver(model4) }
-assert(result4.value!!.obj eq Flt64.two)
+```rust [Rust]
+use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::function::XorFunction;
+
+let x = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
+let y = Linear::new(vec![LinearMonomial::new(1.0, 1)], 0.0);
+let xor = XorFunction::new(1, "xor", vec![x, y]);
+assert_eq!(xor.indicator_variables().len(), 2);
+let _result = xor.result_variable();
 ```
 
 :::
 
-### Arbitrary Number of Polynomials
+Rust source and parity coverage: [`and.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/and.rs) and [`gurobi_linear_function_kotlin_parity.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/gurobi_linear_function_kotlin_parity.rs).
 
-::: code-group
+## Source and core tests
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+- [Implementation: `And.kt` (contains `XorFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/And.kt)
+- [Core generic registration test: `FunctionSymbolGenericRegistrationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/FunctionSymbolGenericRegistrationTest.kt)
+- [Complete example: `XorTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/XorTest.kt)
 
-val x = BinVar("x")
-val y = BinVar("y")
-val z = BinVar("z")
-val xor = XorFunction(listOf(x, y, z), name = "xor")
-val solver = ScipLinearSolver()
+## Related pages
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(y)
-model1.add(z)
-model1.add(xor)
-model1.addConstraint(xor)
-model1.minimize(x + y + z)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.one)
-
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(y)
-model2.add(z)
-model2.add(xor)
-model2.addConstraint(xor)
-model2.maximize(x + y + z)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.two)
-
-val model3 = LinearMetaModel()
-model3.add(x)
-model3.add(y)
-model3.add(z)
-model3.add(xor)
-model3.addConstraint(!xor)
-model3.minimize(x + y + z)
-val result3 = runBlocking { solver(model3) }
-assert(result3.value!!.obj eq Flt64.zero)
-
-val model4 = LinearMetaModel()
-model4.add(x)
-model4.add(y)
-model4.add(z)
-model4.add(xor)
-model4.addConstraint(!xor)
-model4.maximize(x + y + z)
-val result4 = runBlocking { solver(model4) }
-assert(result4.value!!.obj eq Flt64.three)
-```
-
-:::
-
-**Complete Implementation Reference:**
-
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/Xor.kt)
-
-**Complete Example Reference:**
-
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/XorTest.kt)
+- [AND](/guide/linear-functional/and)
+- [OR](/guide/linear-functional/or)
+- [NOT](/guide/linear-functional/not)
+- [One-of constraint](/guide/linear-functional/one-of)
+- [Binarization](/guide/linear-functional/bin)

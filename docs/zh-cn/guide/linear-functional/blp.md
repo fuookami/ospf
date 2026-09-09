@@ -1,157 +1,159 @@
-# 二元分段线性函数
+# 二元线性分段函数
 
-## 形式
+`BivariateLinearPiecewiseFunction` 表示覆盖一组三角形的分段线性曲面。当前模型是三角剖分加重心插值，而不是独立点的矩形列表。
 
-$$
-z = Blp(x, y) = k_{i} x + k^{\prime}_{i} y + b_{i}, \; x \in [a_{i}, b_{i}], \; y \in [a^{\prime}_{i}, b^{\prime}_{i}] \; i = 0, 1, 2, ...
-$$
+## 契约
 
-## 常量
+- 输入：`x` 与 `y`，二者都是 `LinearPolynomial<V>`。
+- 几何数据：非空的 `List<Triangle<Point<Dim3, Flt64>, Dim3, Flt64>>`；每个顶点存储 `(x, y, z)`。
+- 输出：由重心权重和顶点 z 坐标构成的线性多项式。
+- `evaluate` 返回首个包含输入点且非退化三角形的插值 z 值；任一输入缺失、点在所有三角形外，或所有候选三角形退化时返回 `null`。
+- `V` 必须实现 `RealNumber<V>` 与 `NumberField<V>`；几何坐标是 `Flt64`，并通过 `IntoValue<V>` 转换。
 
-$$
-M = \max_{t \in T}{({\max{(\max_{x \in \mathbb{R}, \, y \in \mathbb{R}} fu_{t}(x, y), \, \max_{x \in \mathbb{R}, \, y \in \mathbb{R}} fv_{t}(x, y))}})}
-$$
+## 数学定义
 
-## 额外变量
-
-$u_{t} \in [0, 1]$ ：在第 $i$ 个三角形中 $\vec{A_{i}B_{i}}$ 向量的权重。
-
-$v_{t} \in [0, 1]$ ：在第 $i$ 个三角形中 $\vec{A_{i}C_{i}}$ 向量的权重。
-
-$w_{t} \in \{ 0, \, 1\}$ ：在第 $i$ 个三角形中的判定。
-
-## 导出符号
+对于顶点为 $P_1=(x_1,y_1,z_1)$、$P_2=(x_2,y_2,z_2)$、$P_3=(x_3,y_3,z_3)$ 的三角形，三角形内的点用重心权重表示：
 
 $$
-z = \sum_{t \in T} (w_{t} \cdot z_{t, 0} + u_{t} \cdot (z_{t, 1} - z_{t, 0}) + v_{t} \cdot (z_{t, 2} - z_{t, 0}))
+\lambda_1=1-u-v,\qquad \lambda_2=u,\qquad \lambda_3=v,
 $$
 
-## 数学模型
+其中 $u\ge0$、$v\ge0$、$u+v\le1$。插值结果为
 
 $$
-\begin{align}
-\text{s.t.} \quad & u_{t} + M \cdot (1 - w_{t}) & \geq & \; fu_{t}(x, y), & \; \forall t \in T \\ \; \\
-& u_{t} - M \cdot (1 - w_{t}) & \leq & \; fu_{t}(x, y), & \; \forall t \in T \\ \; \\
-& v_{t} + M \cdot (1 - w_{t}) & \geq & \; fv_{t}(x, y), & \; \forall t \in T \\ \; \\
-& v_{t} - M \cdot (1 - w_{t}) & \leq & \; fv_{t}(x, y), & \; \forall t \in T \\ \; \\
-& \sum_{t \in T} w_{t} & = & \; 1 \\
-& u_{t} + v_{t} & \leq & \; w_{t}, & \; \forall t \in T
-\end{align}
+z=\lambda_1z_1+\lambda_2z_2+\lambda_3z_3
+ =z_1+(z_2-z_1)u+(z_3-z_1)v.
 $$
 
-其中�?
+实现从 x/y 坐标计算 `u`、`v`，并以包含边界的方式接受三角形边界。
 
-$$
-\begin{align}
-S_{t} = \frac{1}{2} \cdot (-y_{t, 1} \cdot x_{t, 2} + y_{t, 0} \cdot (-x_{t, 1} + x_{t, 2}) + x_{t, 0} \cdot (y_{t, 1} - y_{t, 2}) + x_{t, 1} \cdot y_{t, 2}), \; \forall t \in T \\
-fu_{t}(x, y) = \frac{1}{2S_{t}} \cdot (y_{t, 0} \cdot x_{t, 2} - x_{t, 0} \cdot y_{t, 2} + (y_{t, 2} - y_{t, 0}) \cdot x + (x_{t, 0} - x_{t, 2}) \cdot y), \; \forall t \in T \\
-fv_{t}(x, y) = \frac{1}{2S_{t}} \cdot (x_{t, 0} \cdot y_{t, 1} - y_{t, 0} \cdot x_{t, 1} + (y_{t, 0} - y_{t, 1}) \cdot x + (x_{t, 1} - x_{t, 0}) \cdot y), \; \forall t \in T
-\end{align}
-$$
+## 适用域与边界
 
-## 推理过程
+构造至少要求一个三角形。二维行列式绝对值不大于 $10^{-12}$ 的三角形视为退化，不能产生求值结果。点在所有三角形外时返回 `null`。三角形重叠时，求值使用列表中首个包含该点的三角形；如果相邻三角形的 z 值不一致，共享边界的结果会依赖列表顺序。solver 注册恰好选择一个三角形，并假定所列几何数据描述了预期域。
 
-### 基本原理
+## 当前 API
 
-$$
-(\vec{P_{0}P} = u \cdot \vec{P_{0}P_{1}} + v \cdot \vec{P_{0}P_{2}}) \wedge (u \geq 0) \wedge (v \geq 0) \wedge (u + v \leq 1)) \Rightarrow (P \in \triangle P_{0}P_{1}P_{2})
-$$
+### Kotlin
 
-$$
-(\exists t \in T((P \in t) \wedge (\not \exists t^{\prime} \in T((t \neq t^{\prime}) \wedge (P \in t^{\prime})))))
-$$
+源码：[`BivariateLinearPiecewise.kt`（构造、重心求值与约束）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/BivariateLinearPiecewise.kt#L58-L264)
 
-### 代数化基本原理
+```kotlin
+BivariateLinearPiecewiseFunction(
+    x: LinearPolynomial<V>,
+    y: LinearPolynomial<V>,
+    triangles: List<Triangle<Point<Dim3, Flt64>, Dim3, Flt64>>,
+    converter: IntoValue<V>,
+    name: String,
+    displayName: String? = null
+)
+```
 
-$$
-\begin{align}
-S_{t} = \frac{1}{2} \cdot (-y_{t, 1} \cdot x_{t, 2} + y_{t, 0} \cdot (-x_{t, 1} + x_{t, 2}) + x_{t, 0} \cdot (y_{t, 1} - y_{t, 2}) + x_{t, 1} \cdot y_{t, 2}), \; \forall t \in T \\
-fu_{t}(x, y) = \frac{1}{2S_{t}} \cdot (y_{t, 0} \cdot x_{t, 2} - x_{t, 0} \cdot y_{t, 2} + (y_{t, 2} - y_{t, 0}) \cdot x + (x_{t, 0} - x_{t, 2}) \cdot y), \; \forall t \in T \\
-fv_{t}(x, y) = \frac{1}{2S_{t}} \cdot (x_{t, 0} \cdot y_{t, 1} - y_{t, 0} \cdot x_{t, 1} + (y_{t, 0} - y_{t, 1}) \cdot x + (x_{t, 1} - x_{t, 0}) \cdot y), \; \forall t \in T
-\end{align}
-$$
+### Rust
 
-### 逻辑特性：
+源码：[`bivariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/bivariate_linear_piecewise.rs)
 
-$$
-\forall t \in T(w_{t} \in \{ 0, 1 \})
-$$
+Rust 使用非空的 `Point3<V>` 列表和凸组合模型，不同于 Kotlin 的三角形列表。主要构造器和访问器为：
 
-$$
-\exists t \in T((w_{t} = 1) \wedge (\not \exists t ^{\prime} \in T((t \neq t^{\prime}) \wedge (w_{t} = 1))))
-$$
+```rust
+Point3::new(x: V, y: V, z: V) -> Point3<V>
+BivariateLinearPiecewiseFunction::new(
+    id: u64,
+    name: &str,
+    x_input: Linear<V>,
+    y_input: Linear<V>,
+    points: Vec<Point3<V>>,
+) -> Self
+```
 
-$$
-\forall t \in T((u_{t} \in ([0, 1] \cap \mathbb{R}_{+})) \wedge (v_{t} \in ([0, 1] \cap \mathbb{R}_{+})))
-$$
+`result_variable()`、`lambda_variables()`、`x_input_polynomial()`、`y_input_polynomial()` 和 `points()` 暴露已注册的模型部分。Rust 求值器从 token 读取 lambda 变量并返回 z 的加权和；x/y 几何关系由机理约束保证。
 
-$$
-\forall t \in T(((w_{t} = 1) \Rightarrow ((u_{t} = fu_{t}(x, y)) \wedge (v_{t} = fv_{t}(x, y)))) \wedge ((w_{t} = 0) \Rightarrow ((u_{t} = 0) \wedge (v_{t} = 0))))
-$$
+## 辅助变量与注册模型
 
-### （二次型）数学模型：
+每个三角形的 `lambdaVars` 是形状为 3 的 `PctVariable1`，`zVars` 是三角形选择用的 `BinVariable1`。注册会约束 x、y 等于按 lambda 加权的顶点坐标，约束结果等于加权 z 坐标，将所有 lambda 之和设为 1，用选择变量门控每个三角形的 lambda 和，并将选择变量之和设为 1。百分比变量提供 `[0, 1]` 范围。
 
-$$
-\begin{align}
-\text{s.t.} \quad & u_{t} & = & \; w_{t} \cdot fu_{t}(x, y), & \; \forall t \in T \\ \; \\
-& v_{t} & = & \; w_{t} \cdot fv_{t}(x, y), & \; \forall t \in T \\ \; \\
-& \sum_{t \in T} w_{t} & = & \; 1 \\
-& u_{t} + v_{t} & \leq & \; w_{t}, & \; \forall t \in T
-\end{align}
-$$
+## `evaluate` 与 solver 的差异
 
-线性化即可得到前述数学模型。
+`evaluate` 按顺序搜索三角形并返回重心插值或 `null`。solver 注册引入 one-hot 三角形选择和 lambda 变量，但不会修复重叠、不一致或退化的几何数据。因此 solver 模型应使用覆盖域与预期输入范围一致的连贯三角剖分。
 
-## 代码示例
+## 当前最小示例
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.BivariateLinearPiecewiseFunction
+import fuookami.ospf.kotlin.core.variable.RealVar
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.geometry.*
+import fuookami.ospf.kotlin.math.symbol.Symbol
+import fuookami.ospf.kotlin.math.symbol.inequality.eq
+import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 
-val x = URealVar("x")
-val y = URealVar("y")
-x.range.leq(Flt64.two)
-y.range.leq(Flt64.two)
-
+val x = RealVar("x")
+val y = RealVar("y")
+val xPoly = LinearPolynomial(listOf(LinearMonomial(Flt64.one, x)), Flt64.zero)
+val yPoly = LinearPolynomial(listOf(LinearMonomial(Flt64.one, y)), Flt64.zero)
 val blp = BivariateLinearPiecewiseFunction(
-    x = x,
-    y = y,
-    points = listOf(
-        point3(),
-        point3(x = Flt64.two),
-        point3(y = Flt64.two),
-        point3(x = Flt64.two, y = Flt64.two),
-        point3(x = Flt64.one, y = Flt64.one, z = Flt64.one)
+    x = xPoly,
+    y = yPoly,
+    triangles = listOf(
+        Triangle(
+            point3(Flt64.zero, Flt64.zero, Flt64.zero),
+            point3(Flt64.one, Flt64.zero, Flt64.one),
+            point3(Flt64.zero, Flt64.one, Flt64.one)
+        )
     ),
-    name = "z"
+    converter = IntoValue.Identity,
+    name = "blp"
 )
+val value = blp.evaluate(
+    mapOf<Symbol, Flt64>(x to Flt64(0.25), y to Flt64(0.25))
+)
+check(value != null && (value eq Flt64(0.75)))
+```
 
-val model = LinearMetaModel()
-model.add(x)
-model.add(y)
-model.add(blp)
-model.maximize(blp)
+```rust [Rust]
+use ospf_rust_core::symbol::flatten::Linear;
+use ospf_rust_core::symbol::function::{BivariateLinearPiecewiseFunction, Point3};
+use ospf_rust_core::symbol::FunctionSymbol;
+use ospf_rust_core::token::{MutableTokenList, Token, VecTokenList};
 
-val solver = ScipLinearSolver()
-val result = runBlocking { solver(model) }
-assert(result.value!!.solution[0] eq Flt64.one)
-assert(result.value!!.solution[1] eq Flt64.one)
+let blp = BivariateLinearPiecewiseFunction::new(
+    1,
+    "blp",
+    Linear::new(vec![], 0.25),
+    Linear::new(vec![], 0.25),
+    vec![
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(1.0, 0.0, 1.0),
+        Point3::new(0.0, 1.0, 1.0),
+    ],
+);
+let mut tokens = VecTokenList::new();
+for (lambda, value) in blp.lambda_variables().iter().zip([0.5, 0.25, 0.25]) {
+    let token = Token::from_generic(lambda.clone(), lambda.index());
+    token.set_result(value);
+    tokens.add_token(token);
+}
+let value = <BivariateLinearPiecewiseFunction as FunctionSymbol>::calculate_value(
+    &blp,
+    &tokens,
+    false,
+);
+assert_eq!(value, Some(0.5));
 ```
 
 :::
 
-完整实现参考：
+完整示例：[`BLPTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/BLPTest.kt)
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/BivariateLinearPiecewise.kt)
+Core 验证：[`TrigonometricAndBivariateGenericEvaluateTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/TrigonometricAndBivariateGenericEvaluateTest.kt)
 
-完整样例参考：
+Rust 实现与覆盖：[`bivariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/bivariate_linear_piecewise.rs)、[`gurobi_linear_function_kotlin_parity.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/gurobi_linear_function_kotlin_parity.rs)
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/BLPTest.kt)
+## 相关页面
+
+- [`ulp`](./ulp)：从有序点进行一元分段插值。
+- [`max`](./max) 与 [`min`](./min)：基于选择变量的线性函数。
+- [`masking`](./masking)：线性输入的二进制门控。

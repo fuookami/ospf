@@ -1,157 +1,150 @@
-# Selection (One-Of)
+# One-of constraint
 
-## Function Form
+## Contract
+
+`OneOfFunction<V>` accepts one or more linear polynomials. Its direct evaluator returns `1` exactly when one input is nonzero and `0` otherwise. During solver registration it is stronger than a free Boolean indicator: it imposes that exactly one input is nonzero and fixes the result to `1`.
+
+This function selects no branch value and does not implement the old branch/payload API. It counts nonzero input polynomials.
+
+## Definition and truth table
+
+For inputs $p_1,\ldots,p_n$, let:
 
 $$
-y = \text{OneOf}((x_{1}, \, c_{1}), \, (x_{2}, \, c_{2}), \, \ldots, \, (x_{i}, \, c_{i})) = \begin{cases}
-x_{1}, & c_{1} \\ \; \\
-x_{2}, & c_{2} \\ \; \\
-\vdots \\ \; \\
-x_{i}, & c_{i}
+a_i = \begin{cases}
+1, & p_i \ne 0 \\
+0, & p_i = 0
+\end{cases},
+\qquad
+y = \begin{cases}
+1, & \sum_{i=1}^{n} a_i = 1 \\
+0, & \sum_{i=1}^{n} a_i \ne 1
 \end{cases}
 $$
 
-where exactly one $c_{i}$ should hold true.
-
-## Derived Symbol
+The registered model additionally requires:
 
 $$
-y = \sum_{i} \text{masking}(x_{i}, \, c_{i})
+\sum_{i=1}^{n} a_i = 1,
+\qquad
+y=1.
 $$
 
-$\text{masking}(x_{i}, \, c_{i})$ can refer to [Masking Function](/guide/linear-functional/masking).
+For two inputs, the evaluator table is:
 
-## Mathematical Model
+| $p_1$ nonzero | $p_2$ nonzero | $y$ |
+| --- | --- | --- |
+| no | no | 0 |
+| no | yes | 1 |
+| yes | no | 1 |
+| yes | yes | 0 |
 
-$$
-\text{s.t.} \quad \sum_{i} c_{i} = 1
-$$
+The constructor requires at least one input polynomial.
 
-## Code Example
+## Boundary, tolerance, and Undefined
 
-### Selection
+`evaluate()` uses exact `v != 0`; a missing input value returns `null`. It does not return `Undefined`.
+
+Each solver nonzero indicator uses tolerance $t$ as its zero band $\lvert p_i\rvert\le t$ and strict boundary $g$ as its nonzero band $p_i\ge g$ or $p_i\le-g$. The gap $t<\lvert p_i\rvert<g$ has no valid indicator assignment and can make the model infeasible. The current defaults are `NONZERO_TOLERANCE = 1e-10` and `STRICT_BOUNDARY = NONZERO_TOLERANCE * 16 + 16 * 2^-52`; omitted `bigM` is inferred from finite input bounds and otherwise falls back to `BIG_M_DEFAULT = 1e6`.
+
+## Current API
+
+### Kotlin
+
+```kotlin
+OneOfFunction(
+    polynomials: List<LinearPolynomial<V>>,
+    bigM: V? = null,
+    tolerance: V? = null,
+    strictBoundary: V? = null,
+    converter: IntoValue<V>,
+    name: String = "oneof",
+    displayName: String? = null
+)
+```
+
+The companion `invoke` accepts `polynomials`, `bigM`, `converter`, `name`, and `displayName`; use the primary constructor to set `tolerance` or `strictBoundary`.
+
+### Rust
+
+Rust's [`OneOfFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/one_of.rs) has a different contract from Kotlin's exactly-one nonzero test:
+
+```rust
+OneOfFunction::new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> OneOfFunction<V>
+```
+
+It creates `selection_variables()` and returns the selected weighted sum in a continuous `result_variable()`. The selectors are model variables; Rust does not inspect whether each candidate polynomial is zero. There is therefore no one-to-one Rust API for Kotlin's `OneOfFunction` truth table; use `XorFunction` or `SatisfiedAmountFunction` when counting nonzero/binary indicators is the intended meaning.
+
+## Auxiliary variables and registration model
+
+For `name`, the implementation creates `name_oneof` as the result, `name_oneof_nz{i}` as one nonzero indicator per input, and `name_oneof_side{i}` as one sign-side helper per input. All are in `helperVariables`; `resultPolynomial` is the unit-coefficient polynomial of `name_oneof`.
+
+`registerAuxiliaryTokens` adds these variables. `registerConstraints` adds the shared four nonzero-indicator inequalities for every input, then the equality `sum(indicators) = 1` and the equality `resultVar = 1`. The constraints are registered on `AbstractLinearMechanismModel`.
+
+## `evaluate()` versus the solver model
+
+Before registration, `evaluate()` is a total exactly-one indicator (or `null` for missing input). After registration, any assignment with zero or multiple solver nonzero indicators is infeasible rather than merely producing result `0`. This distinction is intentional in the current implementation and should be stated wherever the function is used as a model constraint.
+
+## Examples and tests
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.OneOfFunction
+import fuookami.ospf.kotlin.core.variable.RealVar
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.symbol.Symbol
+import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 
-val x = URealVar("x")
-x.range.geq(Flt64.two)
-x.range.leq(Flt64.five)
-val condition1 = IfFunction(x geq Flt64.three, name = "c1")
-val condition2 = IfFunction(x leq Flt64.one, name = "c2")
-val oneOf = OneOfFunction(
-    listOf(
-        AbstractOneOfFunction.Branch(
-            condition1,
-            LinearPolynomial(Flt64.zero),
-            "ifc1"
-        ),
-        AbstractOneOfFunction.Branch(
-            condition2,
-            LinearPolynomial(Flt64.one),
-            "ifc2"
-        )
-    ),
-    name = "one_of"
-)
-val solver = ScipLinearSolver()
+fun main() {
+    val x = RealVar("x")
+    val y = RealVar("y")
+    val xPoly = LinearPolynomial(
+        monomials = listOf(LinearMonomial(Flt64.one, x)),
+        constant = Flt64.zero
+    )
+    val yPoly = LinearPolynomial(
+        monomials = listOf(LinearMonomial(Flt64.one, y)),
+        constant = Flt64.zero
+    )
+    val function = OneOfFunction(
+        polynomials = listOf(xPoly, yPoly),
+        converter = IntoValue.Identity,
+        name = "oneof"
+    )
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(condition1)
-model1.add(condition2)
-model1.add(oneOf)
-model1.minimize(x)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.three)
+    check(function.evaluate(mapOf<Symbol, Flt64>(x to Flt64.one, y to Flt64.zero)) == Flt64.one)
+    check(function.evaluate(mapOf<Symbol, Flt64>(x to Flt64.one, y to Flt64(2.0))) == Flt64.zero)
+}
+```
 
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(condition1)
-model2.add(condition2)
-model2.add(oneOf)
-model2.maximize(oneOf)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.zero)
+```rust [Rust]
+use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::function::OneOfFunction;
+
+let x = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
+let y = Linear::new(vec![LinearMonomial::new(1.0, 1)], 0.0);
+let one_of = OneOfFunction::new(1, "one_of", vec![x, y]);
+assert_eq!(one_of.selection_variables().len(), 2);
+let _result = one_of.result_variable();
 ```
 
 :::
 
-### If-Else (Binary Selection)
+Source and core tests:
 
-::: code-group
+- [Implementation: `OneOf.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/OneOf.kt)
+- [Core conditional registration test: `FunctionSymbolConditionalGenericRegistrationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/FunctionSymbolConditionalGenericRegistrationTest.kt)
+- [Core conditional regression test: `ConditionalFunctionRegressionTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/ConditionalFunctionRegressionTest.kt)
+- [Complete example: `OneOfTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/OneOfTest.kt)
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+Rust source: [`one_of.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/one_of.rs).
 
-val x = URealVar("x")
-x.range.geq(Flt64.two)
-x.range.leq(Flt64.five)
-val condition = IfFunction(x geq Flt64.three, name = "c")
-val ifElse = IfElseFunction(
-    IfElseFunction.Branch(
-        polynomial = x,
-        name = "if"
-    ),
-    IfElseFunction.Branch(
-        polynomial = LinearPolynomial(Flt64.zero),
-        name = "else"
-    ),
-    condition,
-    name = "if_else"
-)
-val solver = ScipLinearSolver()
+## Related pages
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(condition)
-model1.add(ifElse)
-model1.addConstraint(x geq Flt64.three)
-model1.maximize(ifElse)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.five)
-
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(condition)
-model2.add(ifElse)
-model2.minimize(ifElse)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.zero)
-assert(result2.value!!.solution[0] ls Flt64.three)
-
-val model3 = LinearMetaModel()
-model3.add(x)
-model3.add(condition)
-model3.add(ifElse)
-model3.addConstraint(x eq Flt64.two)
-model3.maximize(ifElse)
-val result3 = runBlocking { solver(model3) }
-assert(result3.value!!.obj eq Flt64.zero)
-```
-
-:::
-
-**Complete Implementation Reference:**
-
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/OneOf.kt)
-
-**Complete Example Reference:**
-
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/OneOfTest.kt)
+- [Logical AND](/guide/linear-functional/and)
+- [Logical OR](/guide/linear-functional/or)
+- [Exactly-one result (`XorFunction`)](/guide/linear-functional/xor)
+- [Conditional IF](/guide/linear-functional/if)

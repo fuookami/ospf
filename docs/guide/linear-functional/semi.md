@@ -1,95 +1,105 @@
-# Semi-Function (Positive Part)
+# Semi-Continuous Marker
 
-## Function Form
+## Current API
 
-$$
-y = \text{semi}(x) = \max(0, \, x) = \begin{cases}
-x, & x > 0 \\ \; \\
-0, & x \leq 0
-\end{cases}
-$$
+### Kotlin
 
-## Constants
+`SemiFunction<V>` is a marker carrying the active interval of a semi-continuous variable:
 
 $$
-m = \max(|x|)
+y = 0 \quad\text{or}\quad lb \le y \le ub.
 $$
 
-## Additional Variables
+It is **not** the positive-part function `max(0,x)` and has no input expression. The implementation is [`Semi.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Semi.kt#L37-L107). Its constructors are:
 
-$u \in \{ 0, 1 \}$: Indicator for $x > 0$.
+```kotlin
+SemiFunction(
+    lb: V? = null,
+    ub: V? = null,
+    converter: IntoValue<V>,
+    name: String = "semi",
+    displayName: String? = null
+)
 
-$y^{\prime} \in \mathbb{R} - \mathbb{R}^{-}$: Represents $\max(0, x)$.
+SemiFunction.from(
+    variable: AbstractVariableItem<*, *>,
+    lb: V? = null,
+    ub: V? = null,
+    converter: IntoValue<V>,
+    name: String = "semi",
+    displayName: String? = null
+)
+```
 
-## Derived Symbol
+The defaults are `lb = 0` and `ub = 1e6` (`Semi.kt:37-50`); `lb <= ub` is required. `from` infers missing bounds from `variable.range.valueRange` (`Semi.kt:89-106`).
 
-$$
-y = y^{\prime}
-$$
+### Rust
 
-## Mathematical Model
+Rust provides an executable [`SemiFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/semi.rs), not a no-op marker:
 
-$$
-\begin{align}
-\text{s.t.} \quad & y \geq x \\ \; \\
-& y \leq x + m \cdot u \\ \; \\
-& y \leq m \cdot (1 - u)
-\end{align}
-$$
+```rust
+SemiFunction::new(
+    id: u64,
+    name: &str,
+    lower: V,
+    upper: V,
+) -> SemiFunction<V>
 
-## Code Example
+SemiFunction::try_from_variable(
+    id: u64,
+    name: &str,
+    variable: &ContinuousVariableItem,
+    lower: Option<V>,
+    upper: Option<V>,
+) -> Result<SemiFunction<V>>
+```
+
+The symbol creates a continuous `result_variable()` and a binary `indicator_variable()`, then registers `result <= upper * indicator` and `result >= lower * indicator`. `try_from_variable` (also aliased as `from_variable`) can infer missing finite bounds from a `ContinuousVariableItem`. This is a semantic difference from Kotlin, whose `SemiFunction` has no helpers and does not register domain constraints.
+
+## Runtime and registration semantics
+
+The marker creates no helper variables (`helperVariables` is empty), `evaluate` always returns `null`, and both `registerAuxiliaryTokens` and `registerConstraints` return success without adding anything (`Semi.kt:53-65`). It therefore does not compute `max(0,x)`, does not attach to a linear expression, and does not itself enforce a semi-continuous domain. A solver/backend integration that understands this marker must consume it separately; merely constructing or retaining `SemiFunction` does not change a model.
+
+## References
+
+- Implementation: [`Semi.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Semi.kt)
+- Complete example: [`SemiTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SemiTest.kt)
+
+## Examples and tests
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.SemiFunction
 
-val x = URealVar("x")
-x.range.leq(Flt64.three)
-val y = URealVar("y")
-y.range.geq(Flt64.two)
-y.range.leq(Flt64.five)
 val semi = SemiFunction(
-    x - y,
+    lb = Flt64.two,
+    ub = Flt64.five,
+    converter = IntoValue.Identity,
     name = "semi"
 )
-val solver = ScipLinearSolver()
+check(semi.lb == Flt64.two)
+check(semi.ub == Flt64.five)
+check(semi.helperVariables.isEmpty())
+check(semi.evaluate(emptyMap()) == null)
+```
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(y)
-model1.add(semi)
-model1.minimize(semi)
+```rust [Rust]
+use ospf_rust_core::symbol::function::SemiFunction;
 
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.zero)
-assert(result1.value!!.solution[1] geq result1.value!!.solution[0])
-
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(y)
-model2.add(semi)
-model2.maximize(semi)
-
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.one)
-assert(result2.value!!.solution[0] eq Flt64.three)
-assert(result2.value!!.solution[1] eq Flt64.two)
+let semi = SemiFunction::new(1, "semi", 2.0_f64, 5.0_f64);
+assert_eq!(semi.lower_bound(), &2.0);
+assert_eq!(semi.upper_bound(), &5.0);
+let _result = semi.result_variable();
+let _indicator = semi.indicator_variable();
 ```
 
 :::
 
-**Complete Implementation Reference:**
+The current smoke test checks the bounds, empty helper list, and unresolved evaluation ([`SemiTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SemiTest.kt#L16-L24)):
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/Semi.kt)
+To model `max(0,x)`, use an explicit positive-part formulation; do not pass an expression to `SemiFunction`, because no such parameter exists.
 
-**Complete Example Reference:**
-
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SemiTest.kt)
+Rust source: [`semi.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/semi.rs).

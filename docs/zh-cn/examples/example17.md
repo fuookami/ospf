@@ -1,450 +1,229 @@
-# 示例 17：车辆路径问题
+# 示例 17：带时间窗的车辆路径问题
 
-## 问题描述
+## 问题与数据
 
-车辆路径问题（Vehicle Routing Problem，VRP）是经典的运筹学优化问题，在离散组合优化中研究较多，在物流行业有很强的应用价值，通过优化车辆行驶路径，能有效节省物流配送成本。车辆路线问题最早由 Dantzig 和 Ramser 于1959年首次提出，该问题涉及一定数量（$n$ 个）的客户，各自有不同数量的货物需求（$q_i$），配送中心或车场（depot）向客户提供货物，由一个车队（$K$ 辆车）负责分送货物，组织适当的行车路线，目标是在满足客户需求的同时，在一定的约束下（例如车辆存在载重上限 $Q_k$、里程长度上限 $L$），使得总旅行成本最小、耗费时间最少。
+本示例建模带服务时间窗的容量约束车辆路径问题。当前源码包含一个起点、100 个需求节点、一个终点和 25 辆相同车辆，共 102 个节点。起点和终点都位于 $(40,50)$，时间窗为 $[0,1236]$。每辆车容量为 200，固定使用成本为 500。每个需求节点都有源码提供的正整数需求量、时间窗和 90 个单位的服务时长。
 
-对于 VRPTW 问题，首先给出基本定义：给定图 $G(V, A)$，其中 $V = \{ 0, 1, 2, \dots, n + 1 \}$ 为图中所有节点的集合，为了方便建模，虚拟配送中心为 $0$ 和 $n + 1$，分别表示起点和终点。$A$ 为图中所有弧的集合，$(i, j) \in A$，且 $\forall i, j \in V, \; i \neq j$。弧 $(i, j)$ 的单位运输费用为 $c_{ij}$，单位运输时间为 $t_{ij}$，节点 $i$ 的物资需求为 $q_{i}$，节点 $i$ 的服务时间窗为 $[e_{i}, l_{i}]$，节点 $i$ 的需要的服务时长为 $h_i$。在配送中心（depot）的车辆集合为 $K$，每辆车 $k \in K$ 的载重量为 $Q_k$，同时规定每辆车的固定使用成本为 $F_k$。
+源码使用欧氏几何：Node.distance 返回两个 Point2 位置之间的距离，Node.cost 和 Node.time 都返回该距离。因此旅行成本和旅行时间共用同一距离单位，没有独立的成本矩阵或速度矩阵。
 
-## 数学模型
+## 集合与参数
 
-### 集合
-
-$V$ ：节点集合。
-
-$O$ ：起点的集合。
-
-$E$ ：终点的集合。
-
-$K$ ：配送中心（ $depot$ ）的车辆集合。
-
-### 参数
-
-$c_{ij}$ ：弧 $(i, j)$ 的运输费用。
-
-$t_{ij}$ ：弧 $(i, j)$ 运输时间，与 $c_{ij}$ 正相关。
-
-$h_{i}$ ：节点 $i$ 需要的服务时长。
-
-$q_{i}$ ：节点 $i$ 的物资需求数量。
-
-$[e_{i}, \; l_{i}]$ ：节点 $i$ 的服务时间窗。
-
-$Q_{k}$ ：每辆车 $k \in K$ 的载重量。
-
-$F_{k}$ ：每辆车的固定使用成本。
-
-### 变量
-
-$x_{ijk}$ ：车辆 $k$ 是否经过弧 $(i, j)$ ，即代表车辆 $k$ 是否服务节点 $i$ 和节点 $j$ 。
-
-$s_{ik}$ ：车辆 $k$ 在节点 $i$ 的开始服务时间。
-
-### 中间值
-
-中间值
-
-#### 1. 从配送中心出发（隐含车辆是否使用）
+令 $N$ 为全部 102 个节点，$O=\{o\}$ 为起点，$E=\{e\}$ 为终点，$D=N\setminus(O\cup E)$ 为 100 个需求节点，$K$ 为 25 辆车集合。源码实现的允许弧集合为
 
 $$
-Origin_{k} = \sum_{i \in O} \sum_{j \in V} x_{ijk}, \; \forall k \in K
+A=\{(i,j)\in N^2:i\notin E,\ j\notin O,\ i\ne j\}.
 $$
 
-#### 2. 返回配送中心
+对需求节点 $j$，$q_j$ 是整数需求量，$h_j=90$ 是服务时长；$q_o=q_e=0$，起点和终点服务时长为零。每个节点有源码数据 $(position_i,[e_i,l_i])$。对车辆 $k$，$Q_k=200$，$F_k=500$。
+
+## 决策变量
+
+对 $(i,j)\in A$ 和 $k\in K$：
 
 $$
-Destination_{k} = \sum_{i \in V} \sum_{j \in E} x_{ijk}, \; \forall k \in K
+x_{ijk}\in\{0,1\}
 $$
 
-#### 3. 车辆进入节点的流量
+表示车辆 k 是否使用弧 $i\to j$。源码在所有节点对和车辆上创建 BinVariable3，将不允许的项固定为 false，只把允许项注册到模型。
+
+对每个 $i\in N,k\in K$，$s_{ik}\in\mathbb R_{\ge0}$ 是服务开始时间，由 URealVariable2 实现。每个 $s_{ik}$ 还会通过节点时间窗约束再次限制。
+
+## 中间值
+
+对每辆车 $k$ 和需求节点 $d$：
 
 $$
-In_{jk} = \sum_{i \in V - E}  x_{ijk}, \; \forall j \in (V - (O \cup E)), \; \forall k \in K
+Origin_k=\sum_{j:(o,j)\in A}x_{ojk},\qquad
+Destination_k=\sum_{i:(i,e)\in A}x_{iek},
+$$
+$$
+In_{dk}=\sum_{i:(i,d)\in A}x_{idk},\qquad
+Out_{dk}=\sum_{j:(d,j)\in A}x_{djk}.
 $$
 
-#### 4. 车辆流出节点的流量
+对每个需求节点 $d$：
 
 $$
-Out_{ik} = \sum_{j \in V - O} x_{ijk}, \; \forall i \in (V - (O \cup E)), \; \forall k \in K
+Service_d=\sum_{k\in K}\sum_{j:(d,j)\in A}x_{djk}.
 $$
 
-#### 5. 节点得到的服务
+对每辆车：
 
 $$
-Service_{i} = \sum_{k \in K} \sum_{j \in V - O} x_{ijk}, \; \forall i \in (V - (O \cup E))
+Capacity_k=\sum_{i\in N}\sum_{j\in N}q_jx_{ijk}.
 $$
 
-#### 6. 车辆载重量限制
+源码注册两个目标：
 
 $$
-Capcity_{k} = \sum_{i \in V} \sum_{j \in V} q_{j} \cdot x_{ijk}, \; \forall k \in K
+UsedCost=\sum_{k\in K}F_kOrigin_k,\qquad
+TravelCost=\sum_{k\in K}\sum_{(i,j)\in A}distance_{ij}x_{ijk}.
 $$
 
-### 目标函数
+## 目标
 
-#### 1. 车辆使用成本最少
+Demo17 分别调用两次 minimize，先注册 UsedCost，再注册 TravelCost。源码没有构造加权和，也没有定义二者之间的标量系数；具体的多目标处理交由当前模型/求解器策略。
 
-$$
-\min \quad \sum_{k \in K} \text{Origin}_{k} \cdot F_k
-$$
+## 约束与定义域
 
-#### 2. 运输成本最低
+车辆使用和路线流量：
 
 $$
-\min \quad \sum_{k \in K} \sum_{i \in V} \sum_{j \in V} c_{ij} \cdot x_{ijk}
+Origin_k\le1,\qquad Destination_k\le1\quad(\forall k\in K),
+$$
+$$
+In_{dk}=Out_{dk}\quad(\forall d\in D,\ k\in K),
+$$
+$$
+Service_d=1\quad(\forall d\in D).
 $$
 
-### 约束
-
-#### 1. 表示车辆从配送中心出发只能到达一个节点（车辆必须从配送中心出发或者不使用）
+源码用大于等于和小于等于两条约束实现 $In=Out$ 等式。对每个 $i,j\in N$ 和 $k\in K$，添加使用源码大 M 的时间蕴含约束：
 
 $$
-\text{s.t.} \quad Origin_{k} \leq 1, \; \forall k \in K
+s_{ik}+h_i+distance_{ij}-M(1-x_{ijk})\le s_{jk},
+\qquad M=1236.
 $$
 
-#### 2. 表示流量平衡约束，即车辆到达一个节点，则必须从该节点出来
+对每个节点和车辆：
 
 $$
-\text{s.t.} \quad In_{ik} - Out_{ik} = 0, \; \forall k \in K, \; \forall i \in (V - (O \cup E))
+e_i\le s_{ik}\le l_i\quad(\forall i\in N,\ k\in K),
 $$
 
-#### 3. 表示如果车辆被使用，则必须回到配送中心
+对每辆车：
 
 $$
-\text{s.t.} \quad Destination_{k} \leq 1, \; \forall k \in K
+Capacity_k\le Q_k=200.
 $$
 
-#### 4. 表示每个节点必须得到服务
+不允许的弧在表达式注册前被固定为零。源码仍然对所有节点对创建时间约束，固定为零的项使不允许弧上的蕴含约束失效。
 
-$$
-\text{s.t.} \quad Service_{i} = 1, \; \forall i \in (V - (O \cup E))
-$$
+## 实现差异与注意事项
 
-#### 5. 表示每两个节点访问之间的到达时间关系（该约束同时起到了去除回路的作用，消除了单车辆行驶中生成的不可行回路）
+源码依次通过 initVariable、initSymbol、initObject、initConstraint、solve 和 analyzeSolution 构建模型。它使用当前 core 符号，并用配置为 300 秒时间限制的 ScipLinearSolver 求解。两个目标注册、1236 的大 M、允许弧过滤、非负实数时间变量都是实现事实。本示例不是允许选客的通用 VRPTW 模型：每个需求节点都必须恰好服务一次。
 
-$$
-\text{s.t.} \quad s_{ik} + h_{i} + t_{ij} - M(1 - x_{ijk}) \leq s_{jk}, \; \forall k \in K, \; \forall i \in V, \; \forall j \in V
-$$
+## 预期结果
 
-#### 6. 表示节点接收服务的时间窗约束
+成功求解后会返回覆盖全部 100 个需求节点的路线和服务时间，并满足每个源码时间窗及每辆车容量。当前构建测试只验证模型构建，不断言路线列表、目标值或唯一最优解。实例可能求解耗时较长，并受五分钟求解器时间限制影响。
 
-$$
-\text{s.t.} \quad e_{i} \leq s_{ik} \leq l_{i}, \; \forall i \in V
-$$
+## 当前 Kotlin 最小示例
 
-#### 7. 表示不能违反的车辆载重约束
+~~~kotlin
+import kotlin.time.Duration.Companion.seconds
+import fuookami.ospf.kotlin.utils.concept.*
+import fuookami.ospf.kotlin.multiarray.*
+import fuookami.ospf.kotlin.math.*
+import fuookami.ospf.kotlin.math.algebra.number.*
+import fuookami.ospf.kotlin.math.algebra.value_range.*
+import fuookami.ospf.kotlin.math.geometry.*
+import fuookami.ospf.kotlin.math.geometry.point2
+import fuookami.ospf.kotlin.math.symbol.operation.*
+import fuookami.ospf.kotlin.math.symbol.polynomial.*
+import fuookami.ospf.kotlin.core.model.intermediate.*
+import fuookami.ospf.kotlin.core.model.mechanism.*
+import fuookami.ospf.kotlin.core.solver.config.*
+import fuookami.ospf.kotlin.core.solver.scip.*
+import fuookami.ospf.kotlin.core.symbol.*
+import fuookami.ospf.kotlin.core.variable.*
+import fuookami.ospf.kotlin.example.solveLinearMetaModel
 
-$$
-\text{s.t.} \quad Capcity_{k} \leq Q_{k}, \; \forall k \in K
-$$
+val model = LinearMetaModel<Flt64>("demo17", converter = flt64Converter)
+val x = BinVariable3("x", Shape3(nodes.size, nodes.size, vehicles.size))
+for (from in nodes) for (to in nodes) for (vehicle in vehicles) {
+    val xi = x[from, to, vehicle]
+    if (from !is EndNode && to !is OriginNode && from != to) model.add(xi)
+    else xi.range.eq(false)
+}
+val s = URealVariable2("s", Shape2(nodes.size, vehicles.size))
+model.add(s)
+val origin = LinearIntermediateSymbols1<Flt64>("origin", Shape1(vehicles.size)) { i, _ ->
+    LinearExpressionSymbol(
+        sum(nodes.filterIsInstance<OriginNode>().flatMap { node -> x[node, _a, vehicles[i]] }),
+        name = "origin_$i"
+    )
+}
+val destination = LinearIntermediateSymbols1<Flt64>("destination", Shape1(vehicles.size)) { i, _ ->
+    LinearExpressionSymbol(
+        sum(nodes.filterIsInstance<EndNode>().flatMap { node -> x[_a, node, vehicles[i]] }),
+        name = "destination_$i"
+    )
+}
+val service = LinearIntermediateSymbols1<Flt64>("service", Shape1(nodes.size)) { i, _ ->
+    LinearExpressionSymbol(
+        sum(nodes.filterIsNotInstance<OriginNode, Node>().flatMap { node -> x[nodes[i], node, _a] }),
+        name = "service_$i"
+    )
+}
+val capacity = LinearIntermediateSymbols1<Flt64>("capacity", Shape1(vehicles.size)) { i, _ ->
+    LinearExpressionSymbol(
+        sum(nodes.flatMap { from ->
+            nodes.mapNotNull { to -> (to as? DemandNode)?.demand?.let { it * x[from, to, vehicles[i]] } }
+        }),
+        name = "capacity_$i"
+    )
+}
+model.add(origin)
+model.add(destination)
+model.add(service)
+model.add(capacity)
+model.minimize(sum(vehicles.map { it.fixedUsedCost * origin[it] }), "used cost")
+model.minimize(
+    sum(nodes.flatMap { from -> nodes.map { to -> from.cost(to) * sum(x[from, to, _a]) } }),
+    "trans cost"
+)
+for (vehicle in vehicles) model.addConstraint(origin[vehicle] leq 1)
+for (node in nodes.filterIsInstance<DemandNode>()) {
+    model.addConstraint(service[node] eq 1)
+    for (vehicle in vehicles) {
+        model.addConstraint(inFlow[node, vehicle] geq outFlow[node, vehicle])
+        model.addConstraint(inFlow[node, vehicle] leq outFlow[node, vehicle])
+    }
+}
+for (vehicle in vehicles) {
+    model.addConstraint(destination[vehicle] leq 1)
+    model.addConstraint(capacity[vehicle] leq vehicle.capacity)
+}
+val m = nodes.filterIsInstance<EndNode>().maxOf { it.timeWindow.upperBound.value.unwrap() }
+for (from in nodes) for (to in nodes) for (vehicle in vehicles) {
+    model.addConstraint(
+        s[from, vehicle] +
+            ((from as? DemandNode)?.serviceTime ?: UInt64.zero).toFlt64() +
+            from.time(to) -
+            m.toFlt64() * (1 - x[from, to, vehicle]) leq s[to, vehicle]
+    )
+}
+for (node in nodes) for (vehicle in vehicles) {
+    model.addConstraint(s[node, vehicle] geq node.timeWindow.lowerBound.value.unwrap())
+    model.addConstraint(s[node, vehicle] leq node.timeWindow.upperBound.value.unwrap())
+}
 
-## 代码实现
+suspend fun solve() = solveLinearMetaModel(
+    ScipLinearSolver(config = SolverConfig(time = 300.seconds)),
+    model
+)
+~~~
+
+## 源码与验证
+
+### Kotlin/Rust 对照
+
+这是两个独立模型：Rust 是 4 个客户的紧凑 VRPTW，Kotlin 当前 core 实现是 100 个客户、102 个节点；两者不共享数据、Big-M 或目标组织，API 也独立。
+
+- [Rust 对照实现：demo17.rs](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-example/src/core/demo17.rs)
+
+- [当前实现：Demo17.kt](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo17.kt)
+- [核心构建结构测试：CoreDemoBuildOnlyStructureTest.kt](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/core_demo/CoreDemoBuildOnlyStructureTest.kt)
 
 ::: code-group
 
-```kotlin
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.concept.*
-import fuookami.ospf.kotlin.utils.functional.*
-import fuookami.ospf.kotlin.utils.multi_array.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+// See the linked Kotlin implementation for the complete model.
+`` 
 
-sealed interface Node : Indexed {
-    val demand: UInt64 get() = UInt64.zero
-    val position: Point2
-    val timeWindow: ValueRange<UInt64>
-
-    fun distance(other: Node): Flt64 {
-        return position.distance(other.position)
-    }
-
-    fun cost(other: Node): Flt64 {
-        return distance(other)
-    }
-
-    fun time(other: Node): Flt64 {
-        return distance(other)
-    }
-}
-
-data class OriginNode(
-    override val position: Point2,
-    override val timeWindow: ValueRange<UInt64>
-) : Node, AutoIndexed(Node::class)
-
-data class EndNode(
-    override val position: Point2,
-    override val timeWindow: ValueRange<UInt64>
-) : Node, AutoIndexed(Node::class)
-
-data class DemandNode(
-    override val position: Point2,
-    override val timeWindow: ValueRange<UInt64>,
-    override val demand: UInt64,
-    val serviceTime: UInt64
-) : Node, AutoIndexed(Node::class)
-
-data class Vehicle(
-    val capacity: UInt64,
-    val fixedUsedCost: UInt64,
-) : AutoIndexed(Vehicle::class)
-
-val nodes: List<Node> = ... // 节点列表
-val vehicles: List<Vehicle> = ... // 车辆列表
-
-// 创建模型实例
-val metaModel = LinearMetaModel("demo17")
-
-// 定义变量
-val x = BinVariable3(
-    "x",
-    Shape3(nodes.size, nodes.size, vehicles.size)
-)
-for (n1 in nodes) {
-    for (n2 in nodes) {
-        for (v in vehicles) {
-            val xi = x[n1, n2, v]
-            if (n1 !is EndNode && n2 !is OriginNode && n1 != n2) {
-                xi.name = "${x.name}_(${n1.index},${n2.index},${v.index})"
-                metaModel.add(xi)
-            } else {
-                xi.range.eq(false)
-            }
-        }
-    }
-}
-
-val s = URealVariable2(
-    "s",
-    Shape2(nodes.size, vehicles.size)
-)
-for (n in nodes) {
-    for (v in vehicles) {
-        val si = s[n, v]
-        si.name = "${s.name}_(${n.index}_${v.index})"
-    }
-}
-metaModel.add(s)
-
-// 定义中间值
-val origin = LinearIntermediateSymbols1(
-    "origin",
-    Shape1(vehicles.size)
-) { i, _ ->
-    val v = vehicles[i]
-    LinearExpressionSymbol(
-        sum(nodes.filterIsInstance<OriginNode>().flatMap { n1 -> x[n1, _a, v] }), 
-        "origin_${v.index}"
-    )
-}
-metaModel.add(origin)
-
-val destination = LinearIntermediateSymbols1(
-    "destination",
-    Shape1(vehicles.size)
-) { i, _ ->
-    val v = vehicles[i]
-    LinearExpressionSymbol(
-        sum(nodes.filterIsInstance<EndNode>().flatMap { n2 -> x[_a, n2, v] }), 
-        "destination_${v.index}"
-    )
-}
-metaModel.add(destination)
-
-val inFlow = LinearIntermediateSymbols2(
-    "in",
-    Shape2(nodes.size, vehicles.size)
-) { _, vec ->
-    val n2 = nodes[vec[0]]
-    val v = vehicles[vec[1]]
-    if (n2 is OriginNode) {
-        LinearExpressionSymbol(
-            LinearPolynomial(), 
-            "in_(${n2.index},${v.index})"
-        )
-    } else {
-        LinearExpressionSymbol(
-            sum(nodes.filterIsNotInstance<EndNode, Node>().map { n1 -> x[n1, n2, v] }), 
-            "in_(${n2.index},${v.index})"
-        )
-    }
-}
-metaModel.add(inFlow)
-
-val outFlow = LinearIntermediateSymbols2(
-    "out",
-    Shape2(nodes.size, vehicles.size)
-) { _, vec ->
-    val n1 = nodes[vec[0]]
-    val v = vehicles[vec[1]]
-    if (n1 is EndNode) {
-        LinearExpressionSymbol(
-            LinearPolynomial(), 
-            "out_(${n1.index},${v.index})"
-        )
-    } else {
-        LinearExpressionSymbol(
-            sum(nodes.filterIsNotInstance<OriginNode, Node>().map { n2 -> x[n1, n2, v] }), 
-            "out_(${n1.index},${v.index})"
-        )
-    }
-}
-metaModel.add(outFlow)
-
-val service = LinearIntermediateSymbols1(
-    "service",
-    Shape1(nodes.size)
-) { i, _ ->
-    val n1 = nodes[i]
-    if (n1 is OriginNode || n1 is EndNode) {
-        LinearExpressionSymbol(
-            LinearPolynomial(), 
-            "service_(${n1.index})"
-        )
-    } else {
-        LinearExpressionSymbol(
-            sum(nodes.filterIsNotInstance<OriginNode, Node>().flatMap { n2 -> x[n1, n2, _a] }), 
-            "service_(${n1.index})"
-        )
-    }
-}
-metaModel.add(service)
-
-val capacity = LinearIntermediateSymbols1(
-    "capacity",
-    Shape1(vehicles.size)
-) { i, _ ->
-    val v = vehicles[i]
-    LinearExpressionSymbol(
-        sum(nodes.flatMap { n1 ->
-            nodes.mapNotNull { n2 ->
-                (n2 as? DemandNode)?.demand?.let { it * x[n1, n2, v] }
-            }
-        }),
-        "capacity_${v.index}"
-    )
-}
-metaModel.add(capacity)
-
-// 定义目标函数
-metaModel.minimize(
-    sum(vehicles.map { v -> v.fixedUsedCost * origin[v] }),
-    "used cost"
-)
-
-metaModel.minimize(
-    sum(nodes.flatMap { n1 ->
-        nodes.map { n2 ->
-            n1.cost(n2) * sum(x[n1, n2, _a])
-        }
-    }),
-    "trans cost"
-)
-
-// 定义约束
-for (v in vehicles) {
-    metaModel.addConstraint(
-        origin[v] leq 1,
-        "origin_${v.index}"
-    )
-}
-
-for (n in nodes.filterIsInstance<DemandNode>()) {
-    for (v in vehicles) {
-        metaModel.addConstraint(
-            inFlow[n, v] eq outFlow[n, v],
-            "balance_${n.index}_${v.index}",
-        )
-    }
-}
-
-for (v in vehicles) {
-    metaModel.addConstraint(
-        destination[v] leq 1,
-        "destination_${v.index}"
-    )
-}
-
-for (n in nodes.filterIsInstance<DemandNode>()) {
-    metaModel.addConstraint(
-        service[n] eq 1,
-        "service_${n.index}"
-    )
-}
-
-val m = nodes.filterIsInstance<EndNode>().maxOf { it.timeWindow.upperBound.value.unwrap() }
-for (n1 in nodes) {
-    for (n2 in nodes) {
-        for (v in vehicles) {
-            metaModel.addConstraint(
-                s[n1, v] + ((n1 as? DemandNode)?.serviceTime ?: UInt64.zero) + n1.time(n2) - m * (1 - x[n1, n2, v]) leq s[n2, v],
-                "time_window_${n1.index}_${n2.index}_${v.index}"
-            )
-        }
-    }
-}
-
-for (n in nodes) {
-    for (v in vehicles) {
-        metaModel.addConstraint(
-            s[n, v] geq n.timeWindow.lowerBound.value.unwrap(),
-            "time_window_lb_${n.index}_${v.index}"
-        )
-        metaModel.addConstraint(
-            s[n, v] leq n.timeWindow.upperBound.value.unwrap(),
-            "time_window_ub_${n.index}_${v.index}"
-        )
-    }
-}
-
-for (v in vehicles) {
-    metaModel.addConstraint(
-        capacity[v] leq v.capacity,
-        "capacity_${v.index}"
-    )
-}
-
-// 调用求解器求解
-val solver = ScipLinearSolver()
-when (val ret = solver(metaModel)) {
-    is Ok -> {
-        metaModel.tokens.setSolution(ret.value.solution)
-    }
-
-    is Failed -> {
-        return Failed(ret.error)
-    }
-}
-
-// 解析结果
-val route: MutableMap<Vehicle, MutableList<Pair<Node, Node>>> = HashMap()
-val time: MutableMap<Vehicle, MutableMap<Node, UInt64>> = HashMap()
-for (token in metaModel.tokens.tokens) {
-    if (token.result!! geq Flt64.one && token.variable belongsTo x) {
-        val vector = token.variable.vectorView
-        val n1 = nodes[vector[0]]
-        val n2 = nodes[vector[1]]
-        val v = vehicles[vector[2]]
-        route.getOrPut(v) { ArrayList() }.add(n1 to n2)
-    }
-}
-for (token in metaModel.tokens.tokens) {
-    if (token.result!! geq Flt64.one && token.variable belongsTo s) {
-        val vector = token.variable.vectorView
-        val n = nodes[vector[0]]
-        val v = vehicles[vector[1]]
-        time.getOrPut(v) { HashMap() }[n] = token.result!!.round().toUInt64()
-    }
-}
-```
+```rust [Rust]
+// See the linked Rust implementation for the equivalent model.
+`` 
 
 :::
 
-完整实现参考：
-
-- [Kotlin](https://github.com/fuookami/ospf/blob/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/core_demo/Demo17.kt)

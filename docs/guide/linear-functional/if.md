@@ -1,146 +1,167 @@
-# If Function
+# Conditional IF
 
-## Function Form
+## Contract
+
+`IfFunction<V>` evaluates a linear condition against zero and exposes a binary result. For a condition difference $d$, the result is `1` on the relation's true branch and `0` on its false branch. The supported relations are `GT`, `GE`, `LT`, and `LE`; `EQ` and `NE` are rejected by the shared classifier.
+
+The condition is a `LinearPolynomial<V>`, not a pre-built Boolean expression. `IfFunction` is generic over `V : RealNumber<V> & NumberField<V>`.
+
+## Definition and truth table
+
+The condition polynomial is interpreted as $d = \mathrm{lhs}-\mathrm{rhs}$, or simply as the supplied difference polynomial. Let $g$ be `strictBoundary`:
+
+| Relation | True branch | False branch | Undefined gap |
+| --- | --- | --- | --- |
+| `GT` | $d\ge g$ | $d\le0$ | $0<d<g$ |
+| `GE` | $d\ge0$ | $d\le-g$ | $-g<d<0$ |
+| `LT` | $d\le-g$ | $d\ge0$ | $-g<d<0$ |
+| `LE` | $d\le0$ | $d\ge g$ | $0<d<g$ |
+
+The result is:
 
 $$
-y = \text{If}(x \cdot rhs) = \begin{cases}
-1, & x \cdot rhs \\ \; \\
-0, & \neg (x \cdot rhs) 
+y = \begin{cases}
+1, & \text{true branch} \\
+0, & \text{false branch} \\
+\text{undefined}, & \text{inside the gap}
 \end{cases}
 $$
 
-where $\cdot$ can be $\leq$, $\geq$, or $=$.
+## Boundary, tolerance, and Undefined
 
-## Additional Variables
+`classify` returns `TruthValue.True`, `TruthValue.False`, or `TruthValue.Undefined`. `evaluate()` maps the first two to `1` and `0`, and maps `Undefined`, missing input, or a failed classification to `null`.
 
-$k_{i} \in [0, 1]$: Linear piecewise weights.
+`strictBoundary` defaults to the compatibility `tolerance`, which defaults to `NONZERO_TOLERANCE = 1e-10`. `delta` defaults to `strictBoundary` and is used when a discrete condition is normalized for constraints. Both must be finite, representable, and positive.
 
-$y^{\prime} \in \{ 0, \, 1 \}$: Logical value of the inequality.
+Registration requires a finite closed `ConditionBounds(lower, upper)`, either explicitly through `conditionBounds`/`bounds` or inferred from `condition.finiteBounds(converter)`. The legacy `bigM` parameter is checked for compatibility but cannot replace these bounds. If the supplied range covers only one branch, the implementation folds the indicator and result to a fixed value.
 
-## Derived Symbol
+## Current API
 
-$$
-y = y^{\prime}
-$$
+### Kotlin
 
-## Mathematical Model
+Source: [`If.kt` (`IfFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/If.kt)
 
-If $\cdot$ is $\leq$, we have:
+```kotlin
+IfFunction(
+    condition: LinearPolynomial<V>,
+    converter: IntoValue<V>,
+    bigM: V? = null,
+    tolerance: V? = null,
+    strictBoundary: V? = null,
+    name: String = "if",
+    displayName: String? = null,
+    relation: Comparison = Comparison.GT,
+    bounds: ConditionBounds<V>? = null,
+    conditionBounds: ConditionBounds<V>? = null,
+    delta: V? = null
+)
+```
 
-$$
-\text{s.t.} \quad \begin{cases}
-  \begin{cases}
-    x = k_{0} \cdot \min(x) + k_{1} \cdot rhs + k_{2} \cdot \max(x) \\ \; \\
-    k_{0} \leq y^{\prime} \\ \; \\
-    k_{2} \leq 1 - y^{\prime} \\ \; \\
-    k_{2} \geq \epsilon \cdot (1 - y^{\prime})
-  \end{cases}, & \; rhs \in [\min(x), \, \max(x)] \\ \; \\
-  \quad y^{\prime} = \text{bin}(\max(x) \leq rhs), & \; rhs \notin [\min(x), \, \max(x)]
-\end{cases}
-$$
+The companion `invoke` has the same condition parameters. `IfFunction.from` accepts a `LinearConstraintInput<V>`, extracts its flattened difference polynomial, preserves its comparison relation, and returns a `LinearFunctionSymbolAdapter<V>`.
 
-If $\cdot$ is $\geq$, we have:
+### Rust
 
-$$
-\text{s.t.} \quad \begin{cases}
-  \begin{cases}
-    x = k_{0} \cdot \min(x) + k_{1} \cdot rhs + k_{2} \cdot \max(x) \\ \; \\
-    k_{0} \leq 1 - y^{\prime} \\ \; \\
-    k_{0} \geq \epsilon \cdot (1 - y^{\prime}) \\ \; \\
-    k_{2} \geq y^{\prime}
-  \end{cases}, & \; rhs \in [\min(x), \, \max(x)] \\ \; \\
-  \quad y^{\prime} = \text{bin}(\max(x) \leq rhs), & \; rhs \notin [\min(x), \, \max(x)]
-\end{cases}
-$$
+Source: [`if_function.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/if_function.rs)
 
-If $\cdot$ is $=$, we have:
+Rust has a same-named helper, but it is not a one-to-one replacement for Kotlin's relation classifier. Rust `IfFunction` is a ternary value selector: it tests whether `condition` is nonzero and returns `then_expr` or `else_expr`; it has no `Comparison`, `strictBoundary`, `ConditionBounds`, or `Undefined` gap. The selector uses an internal `16 * f64::EPSILON` zero test. For Kotlin-style `0/1` relation indicators, use `ConditionalIndicatorFunction::new` with `ConditionRelation`, a positive strict boundary, and finite `ConditionBounds`, then compose its result variable with the desired expression.
 
-$$
-\text{s.t.} \quad \begin{cases}
-  \begin{cases}
-    x = k_{0} \cdot \min(x) + k_{1} \cdot rhs + k_{2} \cdot \max(x) \\ \; \\
-    k_{0} + k_{2} \leq 1 - y^{\prime} \\ \; \\
-    k_{0} + k_{2} \geq \epsilon \cdot (1 - y^{\prime})
-  \end{cases}, & \; rhs \in [\min(x), \, \max(x)] \\ \; \\
-  \quad y^{\prime} = \text{bin}(\max(x) \leq rhs), & \; rhs \notin [\min(x), \, \max(x)]
-\end{cases}
-$$
+```rust
+IfFunction::new(
+    id: u64,
+    name: &str,
+    condition: Linear<V>,
+    then_expr: Linear<V>,
+    else_expr: Linear<V>,
+) -> Self
+IfFunction::named(
+    name: impl AsRef<str>,
+    condition: Linear<V>,
+    then_expr: Linear<V>,
+    else_expr: Linear<V>,
+) -> Self
+IfFunction::condition_indicator_variable(&self) -> &BinaryVariableItem
+IfFunction::result_variable(&self) -> &ContinuousVariableItem
+```
 
-where,
+## Auxiliary variables and registration model
 
-$$
-\text{bin}(cond) = \begin{cases}
-1, \; cond \\ \; \\
-0, \; \neg cond
-\end{cases}
-$$
+For `name`, the implementation creates `name_if` as the result variable and `name_if_nz` as the condition indicator. Both are in `helperVariables`; `resultPolynomial` is the unit-coefficient polynomial of the result variable.
 
-and $\epsilon$ satisfies the following property:
+`registerAuxiliaryTokens` validates the condition, boundaries, `strictBoundary`, and `delta`, then adds the two variables. `registerConstraints` normalizes the declared relation over the finite bounds, folds a single branch when possible, otherwise adds two range-driven indicator inequalities and the equality `resultVar = indicatorVar`. No universal `bin(max(x) <= rhs)` out-of-range rule is used.
 
-$$
-(\epsilon = 0) \Leftrightarrow ((x = rhs) \Rightarrow \neg(x \cdot rhs))
-$$
+## `evaluate()` versus the solver model
 
-## Code Example
+The direct evaluator classifies one supplied value; it can return `null` for the gap. The solver has to represent the entire declared range, so a value in the gap has no binary branch and can make the model infeasible. The old page formula that uses the maximum input value for every out-of-range case is not the current implementation.
+
+## Minimal current example
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.ConditionBounds
+import fuookami.ospf.kotlin.core.symbol.function.IfFunction
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.symbol.Symbol
+import fuookami.ospf.kotlin.math.symbol.inequality.Comparison
+import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
+import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
+import fuookami.ospf.kotlin.core.variable.RealVar
 
-val x = URealVar("x")
-x.range.geq(Flt64.two)
-x.range.leq(Flt64.five)
-val condition1 = IfFunction(x geq Flt64.three, name = "c1")
-val condition2 = IfFunction(x geq Flt64.three, epsilon = Flt64.zero, name = "c2")
-val condition3 = IfFunction(x leq Flt64.one, name = "c3")
-val solver = ScipLinearSolver()
+fun main() {
+    val x = RealVar("x")
+    val condition = LinearPolynomial(
+        monomials = listOf(LinearMonomial(Flt64.one, x)),
+        constant = Flt64(-2.0)
+    )
+    val function = IfFunction(
+        condition = condition,
+        converter = IntoValue.Identity,
+        relation = Comparison.GT,
+        strictBoundary = Flt64(0.1),
+        conditionBounds = ConditionBounds(Flt64(-2.0), Flt64(3.0)),
+        name = "if"
+    )
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(condition1)
-model1.addConstraint(condition1 eq true)
-model1.minimize(x)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.three)
+    check(function.evaluate(mapOf<Symbol, Flt64>(x to Flt64(3.0))) == Flt64.one)
+    check(function.evaluate(mapOf<Symbol, Flt64>(x to Flt64(1.0))) == Flt64.zero)
+}
+```
 
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(condition1)
-model2.addConstraint(condition1 eq false)
-model2.maximize(x)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj ls Flt64.three)
+```rust [Rust]
+use ospf_rust_core::symbol::flatten::Linear;
+use ospf_rust_core::symbol::function::IfFunction;
+use ospf_rust_core::symbol::FunctionSymbol;
+use ospf_rust_core::token::VecTokenList;
 
-val model3 = LinearMetaModel()
-model3.add(x)
-model3.add(condition2)
-model3.addConstraint(condition2 eq false)
-model3.maximize(x)
-val result3 = runBlocking { solver(model3) }
-assert(result3.value!!.obj eq Flt64.three)
-
-val model4 = LinearMetaModel()
-model4.add(x)
-model4.add(condition3)
-model4.maximize(condition3)
-val result4 = runBlocking { solver(model4) }
-assert(result4.value!!.obj eq Flt64.zero)
+let function = IfFunction::named(
+    "if",
+    Linear::new(vec![], 1.0),
+    Linear::new(vec![], 7.0),
+    Linear::new(vec![], 0.0),
+);
+let value = <IfFunction as FunctionSymbol>::calculate_value(
+    &function,
+    &VecTokenList::<f64>::new(),
+    false,
+);
+assert_eq!(value, Some(7.0));
 ```
 
 :::
 
-**Complete Implementation Reference:**
+## Source and core tests
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/If.kt)
+- [Implementation: `If.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/If.kt)
+- [Core conditional regression test: `ConditionalFunctionRegressionTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/ConditionalFunctionRegressionTest.kt)
+- [Core generic registration test: `FunctionSymbolGenericRegistrationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/FunctionSymbolGenericRegistrationTest.kt)
+- [Complete example: `ConditionalFunctionSolveTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/ConditionalFunctionSolveTest.kt)
+- [Rust implementation and unit tests: `if_function.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/if_function.rs)
+- [Rust range-driven conditional regression: `conditional_function_solver_regression.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/conditional_function_solver_regression.rs)
 
-**Complete Example Reference:**
+## Related pages
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/IfTest.kt)
+- [Interval condition](/guide/linear-functional/if-in)
+- [If-Then](/guide/linear-functional/if-then)
+- [Binaryzation](/guide/linear-functional/bin)
+- [One-of constraint](/guide/linear-functional/one-of)

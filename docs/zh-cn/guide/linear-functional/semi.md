@@ -1,95 +1,105 @@
-# 半函数
+# 半连续标记
 
-## 形式
+## 当前 API
 
-$$
-y = semi(x) = max(0, \, x) = \begin{cases}
-x, & x > 0 \\ \; \\
-0, & x \leq 0
-\end{cases}
-$$
+### Kotlin
 
-## 常量
+`SemiFunction<V>` 是携带半连续变量激活区间的标记：
 
 $$
-m = \max(|x|)
+y = 0 \quad\text{or}\quad lb \le y \le ub.
 $$
 
-## 额外变量
+它**不是**正部函数 `max(0,x)`，也没有输入表达式。实现位于 [`Semi.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Semi.kt#L37-L107)。构造函数为：
 
-$u \in \{ 0, 1 \}$：$x > 0$ 的判定。
+```kotlin
+SemiFunction(
+    lb: V? = null,
+    ub: V? = null,
+    converter: IntoValue<V>,
+    name: String = "semi",
+    displayName: String? = null
+)
 
-$y^{\prime} \in \mathbb{R} - \mathbb{R}^{-}$：表示 $max(0, x)$。
+SemiFunction.from(
+    variable: AbstractVariableItem<*, *>,
+    lb: V? = null,
+    ub: V? = null,
+    converter: IntoValue<V>,
+    name: String = "semi",
+    displayName: String? = null
+)
+```
 
-## 导出符号
+默认值是 `lb = 0`、`ub = 1e6`（`Semi.kt:37-50`），并要求 `lb <= ub`。`from` 会从 `variable.range.valueRange` 推断未显式提供的边界（`Semi.kt:89-106`）。
 
-$$
-y = y^{\prime}
-$$
+### Rust
 
-## 数学模型
+Rust 提供的是可执行的 [`SemiFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/semi.rs)，而不是空操作标记：
 
-$$
-\begin{align}
-\text{s.t.} \quad & y \geq x \\ \; \\
-& y \leq x + m \cdot u \\ \; \\
-& y \leq m \cdot (1 - u)
-\end{align}
-$$
+```rust
+SemiFunction::new(
+    id: u64,
+    name: &str,
+    lower: V,
+    upper: V,
+) -> SemiFunction<V>
 
-## 样例
+SemiFunction::try_from_variable(
+    id: u64,
+    name: &str,
+    variable: &ContinuousVariableItem,
+    lower: Option<V>,
+    upper: Option<V>,
+) -> Result<SemiFunction<V>>
+```
+
+该符号创建连续 `result_variable()` 和二值 `indicator_variable()`，并注册 `result <= upper * indicator` 与 `result >= lower * indicator`。`try_from_variable`（别名 `from_variable`）可从 `ContinuousVariableItem` 推导缺失的有限边界。这与 Kotlin 不同：Kotlin 的 `SemiFunction` 没有辅助变量，也不会注册域约束。
+
+## 运行时与注册语义
+
+该标记不创建辅助变量（`helperVariables` 为空），`evaluate` 始终返回 `null`，`registerAuxiliaryTokens` 与 `registerConstraints` 都只返回成功而不添加任何内容（`Semi.kt:53-65`）。因此它不计算 `max(0,x)`，不绑定线性表达式，也不会自行强制半连续域。只有理解该标记的求解器/后端集成才会消费它；仅构造或保留 `SemiFunction` 不会改变模型。
+
+## 参考
+
+- 实现：[`Semi.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Semi.kt)
+- 完整样例：[`SemiTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SemiTest.kt)
+
+## 示例与测试
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.SemiFunction
 
-val x = URealVar("x")
-x.range.leq(Flt64.three)
-val y = URealVar("y")
-y.range.geq(Flt64.two)
-y.range.leq(Flt64.five)
 val semi = SemiFunction(
-    x - y,
+    lb = Flt64.two,
+    ub = Flt64.five,
+    converter = IntoValue.Identity,
     name = "semi"
 )
-val solver = ScipLinearSolver()
+check(semi.lb == Flt64.two)
+check(semi.ub == Flt64.five)
+check(semi.helperVariables.isEmpty())
+check(semi.evaluate(emptyMap()) == null)
+```
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(y)
-model1.add(semi)
-model1.minimize(semi)
+```rust [Rust]
+use ospf_rust_core::symbol::function::SemiFunction;
 
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.zero)
-assert(result1.value!!.solution[1] geq result1.value!!.solution[0])
-
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(y)
-model2.add(semi)
-model2.maximize(semi)
-
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.one)
-assert(result2.value!!.solution[0] eq Flt64.three)
-assert(result2.value!!.solution[1] eq Flt64.two)
+let semi = SemiFunction::new(1, "semi", 2.0_f64, 5.0_f64);
+assert_eq!(semi.lower_bound(), &2.0);
+assert_eq!(semi.upper_bound(), &5.0);
+let _result = semi.result_variable();
+let _indicator = semi.indicator_variable();
 ```
 
 :::
 
-完整实现请参考：
+当前 smoke test 检查边界、空辅助变量列表和未解析时的求值结果（[`SemiTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SemiTest.kt#L16-L24)）：
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/Semi.kt)
+若要建模 `max(0,x)`，应使用明确的正部公式；不要向 `SemiFunction` 传入表达式，因为当前 API 没有该参数。
 
-完整样例请参考：
-
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SemiTest.kt)
+Rust 源码：[`semi.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/semi.rs)。
