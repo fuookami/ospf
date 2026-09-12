@@ -30,9 +30,32 @@ $$
 
 Thus the default is a five-point linear interpolation of sine, with no periodic extension and no exact $\sin(x)$ evaluation.
 
-## Implementation, helper variables, and constraints
+## Solver mathematical model
 
-`SinFunction` lazily constructs a `UnivariateLinearPiecewiseFunction` whose internal name is the supplied `name` followed by `_impl`. Its helper variables, auxiliary-token registration, and segment constraints are delegated to that implementation. The selected segment is represented by the usual piecewise formulation; the public result remains the delegated linear result.
+Kotlin delegates to the binary-selector model. For every sampled segment $[t_i,t_{i+1}]$ with affine interpolation $f_i(x)=a_ix+b_i$, it registers
+
+$$
+\sum_i z_i=1,
+$$
+
+$$
+t_i-M_i^L(1-z_i)\le x\le t_{i+1}+M_i^U(1-z_i),
+$$
+
+$$
+f_i(x)-M_i^-(1-z_i)\le y\le f_i(x)+M_i^+(1-z_i),
+\qquad z_i\in\{0,1\}.
+$$
+
+Rust fixes 32 segments. With segment width $h$, selector $z_i\in\{0,1\}$, and gated offset $0\le\delta_i\le h z_i$, its equivalent registered form is
+
+$$
+\sum_i z_i=1,\qquad
+x=\sum_i(t_i z_i+\delta_i),\qquad
+y=\sum_i(\sin t_i\,z_i+a_i\delta_i).
+$$
+
+Neither solver receives an exact trigonometric constraint.
 
 ## Current API
 

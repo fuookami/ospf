@@ -20,9 +20,27 @@ $$
 
 For `EQ`, the solver uses a zero-band with tolerance and a side binary variable. For the other supported signs, two Big-M inequalities link the flag to the satisfied and violated branches. The exact direct-evaluation comparison is separate from the solver tolerance encoding.
 
-## Implementation, helper variables, and constraints
+## Solver mathematical model
 
-The implementation creates `name` followed by `_flag` for every sign and additionally `name` followed by `_side` for `EQ`. Big-M defaults to the finite range of `lhs-rhs` and otherwise follows the current default fallback. Registration adds two indicator inequalities for LE/LT/GE/GT; EQ delegates to the zero-indicator encoding; NE returns a failed Result before model write.
+Let $d=lhs-rhs$ and normalize the requested relation to $q\ge T$ for the true branch and $q\le F$ for the false branch:
+
+| Relation | $q$ | $T$ | $F$ |
+| --- | ---: | ---: | ---: |
+| `GT` | $d$ | $g$ | $0$ |
+| `GE` | $d$ | $0$ | $-g$ |
+| `LT` | $-d$ | $g$ | $0$ |
+| `LE` | $-d$ | $0$ | $-g$ |
+
+For finite $L\le q\le U$ and result $y\in\{0,1\}$, the relation-indicator path passes these two rows to the solver:
+
+$$
+\begin{aligned}
+q+(L-T)y&\ge L,\\
+q+(F-U)y&\le F.
+\end{aligned}
+$$
+
+Hence $y=1\Rightarrow q\ge T$ and $y=0\Rightarrow q\le F$; the open interval $(F,T)$ is intentionally infeasible. For `EQ`, the implementation additionally creates a side binary and uses the shared four-row zero/nonzero Big-M encoding, with the equality flag equal to the complement of the nonzero flag. Kotlin rejects `NE` before writing the model; Rust implements `NE` with the opposite zero-band result flag.
 
 ## Current API
 

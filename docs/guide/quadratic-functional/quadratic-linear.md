@@ -7,7 +7,7 @@
 - Input: `polynomial: QuadraticPolynomial<V>`.
 - Direct evaluation returns the value of the wrapped polynomial.
 - If the polynomial has no quadratic monomials, the symbol is categorized as linear and registers no helper variable or constraint.
-- If a quadratic monomial exists, the implementation creates a non-negative real helper named by appending `_y` to `name` and registers $y=polynomial$.
+- If a quadratic monomial exists, the implementation creates a signed real helper named by appending `_y` to `name` and registers $y=polynomial$.
 - Generic values require `V : RealNumber<V>, V : Ring<V>, V : NumberField<V>` and an `IntoValue<V>` converter.
 
 ## Definition and mathematical model
@@ -20,9 +20,27 @@ $$
 
 is the registered equality only in the genuinely quadratic case. The public polynomial remains $p(x)$; the helper variable is a solver-side equality target, not a change to the mathematical expression.
 
-## Implementation, helper variables, and constraints
+## Solver mathematical model
 
-The implementation checks `monomial.isQuadratic`. Purely linear input has category `Linear` and no helper registration. Otherwise it creates `URealVar` whose name is `name` + `_y`, registers one quadratic equality with the helper variable, and evaluates the original polynomial through token tables.
+### Kotlin
+
+Let the input be $p(x)$. If it contains no quadratic monomial, Kotlin creates no auxiliary variable and submits no bridge row; it keeps the linear expression directly. If a quadratic monomial exists, it creates a signed continuous variable $y\in\mathbb R$ and submits:
+
+$$
+y-p(x)=0.
+$$
+
+Negative quadratic values are therefore represented without an artificial domain restriction.
+
+### Rust
+
+Rust creates a signed continuous variable $y\in\mathbb R$ only when the input contains a genuine quadratic term. A purely linear input is returned directly as a linear expression and emits no helper token or bridge row. A quadratic input emits one quadratic bridge equality of the form:
+
+$$
+p(x)-y=0.
+$$
+
+Both implementations therefore use the same conditional helper rule and signed bridge.
 
 ## Current API
 
@@ -68,14 +86,14 @@ tokens.close()
 
 ### Rust
 
-Rust's [`QuadraticLinearFunction<V>`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_linear.rs) is an explicit bridge from a `Quadratic<V>` expression to a result variable:
+Rust's [`QuadraticLinearFunction<V>`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_linear.rs) conditionally bridges a `Quadratic<V>` expression to a result variable:
 
 ```rust
 QuadraticLinearFunction::new(id: u64, name: &str, input: Quadratic<V>)
     -> QuadraticLinearFunction<V>
 ```
 
-The result variable is named `name + "_lin_y"`. `calculate_value` evaluates the input quadratic directly; `prepare` first uses a supplied result-variable value and otherwise evaluates the input. The mechanism emits a linear equality when the input has no quadratic monomials and a quadratic equality otherwise. Unlike the Kotlin implementation, Rust creates this bridge for every input rather than conditionally omitting it for a purely linear polynomial.
+The result variable is named `name + "_lin_y"`. `calculate_value` and `prepare` evaluate the original input directly. For a purely linear input, `register_tokens` and both mechanism paths emit nothing and `to_linear_polynomial` returns the original expression. For a genuine quadratic input, one signed helper and one quadratic equality are emitted.
 
 ```rust
 use ospf_rust_core::symbol::flatten::{Quadratic, QuadraticMonomial};
@@ -94,11 +112,11 @@ assert!(bridge.result_variable().name().contains("quadratic_linear_lin_y"));
 
 ## Evaluate versus solver
 
-Direct evaluation and `prepare` always evaluate the original polynomial. Solver registration adds the equality only for a genuinely quadratic input, so the helper variable and its non-negative domain can impose solver restrictions that are not present in a direct negative evaluation of the same polynomial.
+Direct evaluation and `prepare` always evaluate the original polynomial. Both implementations register the signed bridge only for genuinely quadratic input; purely linear expressions remain expression-only.
 
 ## Boundaries, tolerance, and Undefined
 
-The input polynomial must be evaluable and representable; missing symbols return `null`. There is no tolerance or three-valued undefined state. A negative quadratic value is valid for direct evaluation but cannot be represented by the generated `URealVar` helper without an appropriate model/domain change.
+The input polynomial must be evaluable and representable; missing symbols return `null`. There is no tolerance or three-valued undefined state. The generated helper is a signed `RealVar`, so negative quadratic values are represented without clipping.
 
 ## Examples and tests
 
@@ -174,9 +192,12 @@ assert_eq!(bridge.calculate_value(&tokens, false), Some(13.0));
 
 - Core evaluation: [`QuadraticFunctionGenericEvaluationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/QuadraticFunctionGenericEvaluationTest.kt)
 - Core registration: [`FunctionSymbolGenericRegistrationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/FunctionSymbolGenericRegistrationTest.kt)
+- Kotlin focused helper/row test: [`QuadraticLinearFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/QuadraticLinearFunctionDedicatedTest.kt)
 - Example directory (no dedicated quadratic-linear file): [quadratic_function](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/quadratic_function)
 
-- Rust implementation and tests: [`quadratic_linear.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_linear.rs) and [`quadratic_function.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_function.rs)
+- Rust implementation: [`quadratic_linear.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_linear.rs)
+- Rust focused helper/row test: [`function_symbol_quadratic_linear.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_quadratic_linear.rs)
+- Rust wrapper regression tests: [`quadratic_function.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_function.rs)
 
 ## Related pages
 

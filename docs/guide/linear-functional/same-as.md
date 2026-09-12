@@ -32,9 +32,21 @@ $$
 
 For one input, measurement mode fixes $y=1$.
 
-## Implementation, helper variables, and constraints
+## Solver mathematical model
 
-Each inequality receives a binary flag whose name is formed by appending `_u` and its index to `name`. Equality comparisons additionally receive a side flag. Measurement mode creates adjacent difference flags formed by appending `_diff` and the index; all flags and the result are registered before the input-indicator and linking constraints.
+Kotlin first registers one satisfaction indicator $u_i\in\{0,1\}$ per inequality using the relation rows documented on [Inequality Indicator](./inequality). In constraint mode it then passes
+
+$$
+u_0-u_i=0\quad(1\le i<n),\qquad y-u_0=0.
+$$
+
+In measurement mode it creates $d_i=|u_i-u_0|$ with binary absolute-difference rows and passes
+
+$$
+y+\sum_{i=1}^{n-1}d_i=1.
+$$
+
+Rust's narrower pairwise function instead applies the shared zero-band Big-M encoding to $p-q$ and exposes the equality flag; it has no Kotlin-style list or hard-constraint mode.
 
 ## Current API
 

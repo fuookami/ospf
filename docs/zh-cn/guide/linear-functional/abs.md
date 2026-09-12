@@ -71,9 +71,19 @@ AbsFunction::named(name: impl AsRef<str>, input: Linear<V>) -> Self
 AbsFunction::auto(input: Linear<V>) -> Self
 ```
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
-`registerAuxiliaryTokens` 添加四个变量。`registerConstraints` 添加上面的分解等式与两条 Big-M 门控不等式。输入自身的范围约束不会由 `AbsFunction` 添加；范围只用于推导默认 Big-M。
+令 $p^+,p^-\ge0$，$s\in\{0,1\}$，结果 $y\ge0$。实际传给求解器的约束为
+
+$$
+p-p^++p^-=0,\qquad y-p^+-p^-=0,
+$$
+
+$$
+p^+\le Ms,\qquad p^-\le M(1-s).
+$$
+
+Kotlin 注册全部四个辅助变量；Rust 对外暴露的辅助变量较少，但使用同一个符号析取模型。输入边界只用于推断 $M$，函数本身不会把输入边界作为约束注册。
 
 ## `evaluate` 与 solver 的差异
 

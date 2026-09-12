@@ -32,9 +32,27 @@ $$
 
 Consequently, an all-false list returns $n$, not `null`.
 
-## Implementation, helper variables, and constraints
+## Solver mathematical model
 
-For each input, the implementation creates a `BinaryzationFunction`. It also creates a binary array `name` followed by `_first` with one entry per input. The binaryization flags and first-hit flags are linked by upper/lower/monotonic constraints; `result` is the weighted expression above. Registration therefore needs a valid Big-M range for every input polynomial (inferred by the binaryization helper unless explicitly supplied there).
+Kotlin first links $b_i\in\{0,1\}$ to $p_i>0$ with the two-row positive-indicator model. The intended first-hit variables $h_i\in\{0,1\}$ can be written as
+
+$$
+h_i\le b_i,
+\qquad
+h_i\le1-b_j\quad(j<i),
+\qquad
+h_i\ge b_i-\sum_{j<i}b_j,
+$$
+
+and the public result is
+
+$$
+r=\sum_{i=0}^{n-1}i\,h_i+n\left(1-\sum_{i=0}^{n-1}h_i\right).
+$$
+
+The current Kotlin registration also emits a monotonic row $h_i\le h_{i-1}$. That extra row is part of what the solver actually receives and conflicts with a later first hit; for example $b=(0,1)$ can become infeasible. This is an implementation defect, not part of the intended formula.
+
+Rust does not create the $b_i$ indicators. It receives external condition binaries, creates first-active selectors, and gates a continuous result to the selected candidate polynomial; with no active selector it fixes the result to zero only when `zero_if_none` is enabled. Consequently the Rust symbol returns a selected value, not Kotlin's first index.
 
 ## Current API
 

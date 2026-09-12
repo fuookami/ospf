@@ -83,11 +83,19 @@ IfFunction::condition_indicator_variable(&self) -> &BinaryVariableItem
 IfFunction::result_variable(&self) -> &ContinuousVariableItem
 ```
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
-对于 `name`，实现创建 `name_if` 作为结果变量，创建 `name_if_nz` 作为条件指示量。两者都在 `helperVariables` 中；`resultPolynomial` 是结果变量的单位系数多项式。
+令规范化条件为 $q$、真阈值为 $T$、假阈值为 $F$，且 $L\le q\le U$、$a\in\{0,1\}$。Kotlin 实际传入
 
-`registerAuxiliaryTokens` 校验条件、边界、`strictBoundary` 和 `delta`，然后添加两个变量。`registerConstraints` 在有限范围上规范化声明的关系，必要时折叠单一分支，否则添加两条范围驱动的指示不等式以及 `resultVar = indicatorVar` 等式。实现没有统一的 `bin(max(x) <= rhs)` 越界规则。
+$$
+q+(L-T)a\ge L,
+\qquad
+q+(F-U)a\le F,
+\qquad
+y-a=0.
+$$
+
+其中 $y$ 是 `name_if`；前两条约束保证 $a=1\Rightarrow q\ge T$、$a=0\Rightarrow q\le F$。Rust 的同名三元选择器则用非零条件标志 $a$，通过四条 Big-M 边界分别门控 $a=1$ 时 $y=t$、$a=0$ 时 $y=e$。Rust `ConditionalIndicatorFunction` 才是上述三条 Kotlin 约束的直接对应物。
 
 ## `evaluate()` 与求解器模型的差异
 

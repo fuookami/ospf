@@ -32,9 +32,24 @@ The implication result is:
 | True | False | False |
 | Undefined | not inspected | Undefined |
 
-## Implementation, helper variables, and constraints
+## Solver mathematical model
 
-The implementation creates binary `name` followed by `_ant_nz` and `name` followed by `_con_nz` indicators. Registration validates/normalizes both finite condition ranges, folds constant branches when possible, and emits shared relation-indicator constraints. A false antecedent short-circuits evaluation, but registration still prechecks the consequent bounds and can fail before writing tokens or constraints.
+Let $a,b\in\{0,1\}$ be the antecedent and consequent relation flags. Each is linked to its normalized condition $q_j\in[L_j,U_j]$ by
+
+$$
+q_j+(L_j-T_j)u_j\ge L_j,
+\qquad
+q_j+(F_j-U_j)u_j\le F_j,
+\qquad (u_0,u_1)=(a,b).
+$$
+
+Kotlin then passes the implication row
+
+$$
+a-b\le0.
+$$
+
+Thus a true antecedent forces a true consequent; a false antecedent imposes no consequent truth requirement. Rust `ConditionalImplyFunction` is the corresponding relation-based implementation; the legacy Rust same-named helper has a different contract.
 
 ## Current API
 

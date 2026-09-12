@@ -78,9 +78,19 @@ MaskingFunction::with_big_m(
 
 Rust requires the mask itself to be a `BinaryVariableItem`, while Kotlin accepts an abstract variable item and relies on the caller's binary contract. The Rust module also has direct counterparts for the two Kotlin variants: [`MaskingWithPolyMaskFunction::new`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/masking.rs) / `with_big_m` take a `Linear<V>` mask expression and create a binary bridge, while [`MaskingRangeFunction::new`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/masking.rs) takes a linear mask plus `lower` and `upper`. `result_variable()`, `mask_variable()`/`mask_bridge_variable()`, and `big_m()` expose the Rust state; there is no Kotlin converter or `displayName` argument.
 
-## Auxiliary variables and registration
+## Solver mathematical model
 
-Only `resultVar` is created and registered. `registerConstraints` adds the four Big-M inequalities. The implementation uses the input's finite lower/upper bounds when available, and otherwise uses the supplied/default Big-M symmetrically.
+For binary mask $z$, signed result $y$, and finite $L\le p\le U$, the exact rows are
+
+$$
+y\le Uz,\qquad y\ge Lz,
+$$
+
+$$
+y-p\le-L(1-z),\qquad y-p\ge-U(1-z).
+$$
+
+Kotlin and Rust use this four-row product linearization. Kotlin relies on the caller to supply a binary mask; Rust's type requires it. Missing input bounds are replaced by $[-M,M]$.
 
 ## `evaluate` versus solver
 
@@ -134,7 +144,7 @@ let _result = masking.result_variable();
 
 Complete example: [`MaskingTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/MaskingTest.kt)
 
-Core validation: [`MaxAndMaskingFunctionGenericEvaluateTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/MaxAndMaskingFunctionGenericEvaluateTest.kt)
+Core validation: [`MaxAndMaskingFunctionGenericEvaluateTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/MaxAndMaskingFunctionGenericEvaluateTest.kt) and [`MaskingRangeFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/MaskingRangeFunctionDedicatedTest.kt). Rust's dedicated range coverage is [`function_symbol_masking_range.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_masking_range.rs).
 
 Rust source and parity coverage: [`masking.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/masking.rs) and [`gurobi_linear_function_kotlin_parity.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/gurobi_linear_function_kotlin_parity.rs).
 
@@ -181,7 +191,7 @@ $$
 lower\cdot m\le y\le upper\cdot m.
 $$
 
-The constructor requires `lower <= upper`, creates `resultVar` as a `URealVar`, and registers only those two inequalities; the mask expression is expected to be binary, but this class neither creates nor enforces a binary mask. With binary `m`, `m=0` gives `y=0` and `m=1` gives `lower\le y\le upper`.
+The constructor requires `lower <= upper`, creates a signed `RealVar`/continuous result, and registers only those two inequalities; the mask expression is expected to be binary, but this class neither creates nor enforces a binary mask. Negative lower bounds are valid. With binary `m`, `m=0` gives `y=0` and `m=1` gives `lower\le y\le upper`.
 
 Source: [`Masking.kt` (`MaskingRangeFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L432-L567)
 
@@ -204,7 +214,7 @@ val value = rangeMask.evaluate(
 check(value != null && (value eq Flt64(4.0)))
 ```
 
-Direct evaluation returns zero for a missing or zero mask; for a nonzero mask it reads `resultVar`, returns zero when that value is missing, and clamps to the scaled interval (swapping endpoints when the mask is negative). Solver registration does not swap negative endpoints, so use a binary, nonnegative mask in a model. There is no dedicated current example/test; use the source and the actual [`linear_function` example directory](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function).
+Direct evaluation returns `null`/`None` when either the mask or `resultVar` is missing; a zero mask returns zero, and a nonzero mask clamps to the scaled interval (swapping endpoints when the mask is negative). The registered rows use the signed lower bound directly, so `lower < 0` is supported for the intended binary mask contract. Rust's `zero_if_none = true` evaluation option can still substitute zero for missing polynomial tokens, as with the rest of its function symbols. The dedicated tests cover signed bounds, missing values, and both registered rows.
 
 ## Related pages
 

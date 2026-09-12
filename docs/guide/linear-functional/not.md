@@ -8,7 +8,7 @@ The operation is the inverse of the current nonzero indicator. It is not a Boole
 
 ## Definition and truth table
 
-For a linear polynomial (p), let (a) be its nonzero indicator:
+For a linear polynomial $p$, let $a$ be its nonzero indicator:
 
 $$
 a = \begin{cases}
@@ -22,7 +22,7 @@ y = 1-a = \begin{cases}
 \end{cases}
 $$
 
-| (p) | (y=\operatorname{Not}(p)) |
+| $p$ | $y=\operatorname{Not}(p)$ |
 | --- | --- |
 | zero | 1 |
 | nonzero | 0 |
@@ -31,7 +31,7 @@ $$
 
 `evaluate()` compares the evaluated polynomial with exact zero and returns `null` if the input is missing. It has no `Undefined` return branch.
 
-The solver's nonzero indicator uses tolerance (t) for the zero band and strict boundary (g) for the nonzero branch: `indicatorVar = 0` represents $\lvert p\rvert\le t$, while `indicatorVar = 1` requires $p\ge g$ or $p\le-g$. The interval (t<\lvert p\rvert<g) is unclassified and may make the model infeasible. The result is linked by (y+a=1).
+The solver's nonzero indicator uses tolerance $t$ for the zero band and strict boundary $g$ for the nonzero branch: `indicatorVar = 0` represents $\lvert p\rvert\le t$, while `indicatorVar = 1` requires $p\ge g$ or $p\le-g$. The interval $t<\lvert p\rvert<g$ is unclassified and may make the model infeasible. The result is linked by $y+a=1$.
 
 The current defaults are `NONZERO_TOLERANCE = 1e-10` and `STRICT_BOUNDARY = NONZERO_TOLERANCE * 16 + 16 * 2^-52`. Omitted `bigM` is inferred from the polynomial's finite range, with `BIG_M_DEFAULT = 1e6` as the fallback.
 
@@ -63,7 +63,7 @@ NotFunction::new(id: u64, name: &str, polynomial: Linear<V>) -> NotFunction<V>
 
 The result, nonzero indicator, and side helper are available through `result_variable()`, `indicator_variable()`, and `side_variable()`. Rust uses the shared nonzero-indicator defaults and does not expose Kotlin's per-instance `tolerance` or `strictBoundary` parameters; `evaluate` still treats an exact zero as true for NOT.
 
-## Auxiliary variables and registration model
+## Solver mathematical model
 
 For `name`, the implementation creates:
 
@@ -71,13 +71,27 @@ For `name`, the implementation creates:
 - `name_not_side`: the sign-side helper used by the nonzero test;
 - `name_not`: the binary result (y).
 
-All three are in `helperVariables`. `registerAuxiliaryTokens` adds them. `registerConstraints` adds the shared four nonzero-indicator inequalities and the equality:
+All three are in `helperVariables`. For zero tolerance $t$ and strict boundary $g$, the four-row Big-M block represents
+
+$$
+a=0\Rightarrow -t\le p\le t,
+$$
+
+$$
+(a,s)=(1,1)\Rightarrow p\ge g,
+\qquad
+(a,s)=(1,0)\Rightarrow p\le-g.
+$$
+
+After expanding those implications into linear inequalities, registration appends
 
 $$
 y+a=1.
 $$
 
 The public `resultPolynomial` is the unit-coefficient polynomial of `name_not`; constraints are registered on `AbstractLinearMechanismModel`.
+
+Rust likewise registers a nonzero indicator and the complement equality $y+a=1$, using Rust's fixed numerical threshold policy.
 
 ## `evaluate()` versus the solver model
 

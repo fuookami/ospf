@@ -24,7 +24,7 @@ $$
 
 两个输入时：
 
-| (p_1) nonzero | (p_2) nonzero | (y) |
+| $p_1$ 非零 | $p_2$ 非零 | $y$ |
 | --- | --- | --- |
 | no | no | 0 |
 | no | yes | 1 |
@@ -69,11 +69,23 @@ OrFunction::new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> OrFunction<
 
 同时提供 `named` 和 `auto`。生成的二值变量可通过 `result_variable()`、`indicator_variables()` 和 `side_variables()` 取得。Rust 构造器没有 Kotlin 风格的 converter、`bigM`、tolerance 或 strict-boundary 参数；它使用共享的非零指示策略，并在可能时从已注册边界推导 Big-M。
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
 对于 `name`，实现创建 `name_or` 作为结果、每个输入一个 `name_or_nz{i}` 非零指示量，以及每个输入一个 `name_or_side{i}` 符号侧辅助量。它们全部由 `helperVariables` 返回。
 
-`registerAuxiliaryTokens` 添加这些变量。`registerConstraints` 为每个多项式添加四条共享非零指示不等式，然后添加：
+对每个输入，四约束 Big-M 模型表示
+
+$$
+a_i=0\Rightarrow -t\le p_i\le t,
+$$
+
+$$
+(a_i,s_i)=(1,1)\Rightarrow p_i\ge g,
+\qquad
+(a_i,s_i)=(1,0)\Rightarrow p_i\le-g.
+$$
+
+实现把这些蕴含展开成线性不等式后，再添加 OR 约束：
 
 $$
 \sum_i a_i \ge y,
@@ -82,6 +94,8 @@ y \ge a_i\quad(1\le i\le n).
 $$
 
 公开的 `resultPolynomial` 是 `name_or` 的单位系数多项式。该符号向 `AbstractLinearMechanismModel` 注册。
+
+Rust 同样先注册非零指标块，再注册相同的 OR 约束，但使用 Rust 自己的固定阈值与范围推断。
 
 ## `evaluate()` 与求解器模型的差异
 

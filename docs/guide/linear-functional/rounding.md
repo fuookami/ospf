@@ -78,9 +78,19 @@ RoundingFunction::round(id: u64, name: &str, input: Linear<V>) -> RoundingFuncti
 
 `RoundingKind` is `Floor`, `Ceil`, `Round`, or `Trunc`; `named_round` and the analogous helpers are also provided. Rust keeps an integer helper but exposes a continuous `result_variable()`, and it has no Kotlin `bigM`/converter parameter. Its round boundary is implemented by the Rust function's own `ROUNDING_EPSILON` rules, so do not assume half-integer tie behavior is identical across languages.
 
-## Auxiliary variables and registration
+## Solver mathematical model
 
-`helperVariables` registers `kVar` (`IntVar`), `rVar` (`BinVar`), `bVar` (`URealVar`), and `resultVar` (`IntVar`). Registration adds the floor decomposition, `b = x-k`, the fractional upper bound, the two indicator inequalities, and `result = k+r`.
+Kotlin introduces $k\in\mathbb Z$, $r\in\{0,1\}$, $b\ge0$, and integer result $y$, then passes
+
+$$
+p-k\ge0,\qquad p-k\le1-\varepsilon,\qquad b-p+k=0,
+$$
+
+$$
+b-0.5r\ge0,\qquad b-Mr\le0.5-\varepsilon,\qquad y-k-r=0.
+$$
+
+Rust uses the row family belonging to its selected `RoundingKind`; the `Round` variant likewise links a continuous result to an integer helper, but uses Rust's own fixed boundary epsilon.
 
 ## `evaluate` versus solver
 

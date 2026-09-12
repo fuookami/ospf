@@ -8,7 +8,7 @@
 
 ## 定义与真值表
 
-对于线性多项式 (p)，令 (a) 为其非零指示量：
+对于线性多项式 $p$，令 $a$ 为其非零指示量：
 
 $$
 a = \begin{cases}
@@ -22,7 +22,7 @@ y = 1-a = \begin{cases}
 \end{cases}
 $$
 
-| (p) | (y=\operatorname{Not}(p)) |
+| $p$ | $y=\operatorname{Not}(p)$ |
 | --- | --- |
 | zero | 1 |
 | nonzero | 0 |
@@ -31,7 +31,7 @@ $$
 
 `evaluate()` 将求值结果与精确的零比较，缺少输入时返回 `null`。它没有 `Undefined` 返回分支。
 
-求解器的非零指示量使用 tolerance (t) 表示零带，使用严格边界 (g) 表示非零分支：`indicatorVar = 0` 表示 $\lvert p\rvert\le t$，`indicatorVar = 1` 要求 $p\ge g$ 或 $p\le-g$。区间 (t<\lvert p\rvert<g) 不可分类，可能使模型不可行。结果通过 (y+a=1) 连接。
+求解器的非零指示量使用 tolerance $t$ 表示零带，使用严格边界 $g$ 表示非零分支：`indicatorVar = 0` 表示 $\lvert p\rvert\le t$，`indicatorVar = 1` 要求 $p\ge g$ 或 $p\le-g$。区间 $t<\lvert p\rvert<g$ 不可分类，可能使模型不可行。结果通过 $y+a=1$ 连接。
 
 当前默认值为 `NONZERO_TOLERANCE = 1e-10` 和 `STRICT_BOUNDARY = NONZERO_TOLERANCE * 16 + 16 * 2^-52`。省略 `bigM` 时根据多项式有限范围推导，没有范围时回退到 `BIG_M_DEFAULT = 1e6`。
 
@@ -63,7 +63,7 @@ NotFunction::new(id: u64, name: &str, polynomial: Linear<V>) -> NotFunction<V>
 
 结果、非零指示量和 side 辅助量分别通过 `result_variable()`、`indicator_variable()` 和 `side_variable()` 取得。Rust 使用共享的非零指示默认值，没有 Kotlin 的逐实例 `tolerance` 或 `strictBoundary` 参数；`evaluate` 仍把精确零作为 NOT 的真值。
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
 对于 `name`，实现创建：
 
@@ -71,13 +71,27 @@ NotFunction::new(id: u64, name: &str, polynomial: Linear<V>) -> NotFunction<V>
 - `name_not_side`：非零检测使用的符号侧辅助量；
 - `name_not`：二值结果 (y)。
 
-三个变量都在 `helperVariables` 中。`registerAuxiliaryTokens` 添加它们；`registerConstraints` 添加共享的四条非零指示不等式以及：
+三个变量都在 `helperVariables` 中。令零值容差为 $t$、严格边界为 $g$，四约束 Big-M 模型表示
+
+$$
+a=0\Rightarrow -t\le p\le t,
+$$
+
+$$
+(a,s)=(1,1)\Rightarrow p\ge g,
+\qquad
+(a,s)=(1,0)\Rightarrow p\le-g.
+$$
+
+实现把这些蕴含展开成线性不等式后，再添加
 
 $$
 y+a=1.
 $$
 
 公开的 `resultPolynomial` 是 `name_not` 的单位系数多项式；约束注册到 `AbstractLinearMechanismModel`。
+
+Rust 同样注册非零指标和补关系 $y+a=1$，但使用 Rust 固定的数值阈值策略。
 
 ## `evaluate()` 与求解器模型的差异
 

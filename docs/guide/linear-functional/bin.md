@@ -74,11 +74,17 @@ BinaryzationFunction::named_big_m(name: impl AsRef<str>, input: Linear<V>, big_m
 BinaryzationFunction::named_threshold(name: impl AsRef<str>, input: Linear<V>, threshold: V) -> Self
 ```
 
-## Auxiliary variables and registration model
+## Solver mathematical model
 
-For `name`, the only helper is `name_bin`, which is also `resultVar`. `helperVariables` contains this binary variable, and `resultPolynomial` is its unit-coefficient polynomial.
+For binary result $a$ and positive tolerance $\varepsilon$, the rows passed to the solver are
 
-`registerAuxiliaryTokens` adds the result variable. `registerConstraints` calls the shared positive-indicator builder with the chosen Big-M and the fixed tolerance, then adds its linear inequalities to `AbstractLinearMechanismModel`.
+$$
+p-Ma\le0,
+\qquad
+p-M'a\ge\varepsilon-M'.
+$$
+
+Thus $a=0\Rightarrow p\le0$ and $a=1\Rightarrow p\ge\varepsilon$. Kotlin creates only `name_bin`; Rust uses the same two-branch idea, with its constructor-selected threshold and Big-M/method. The interval $0<p<\varepsilon$ has no feasible branch.
 
 ## `evaluate()` versus the solver model
 

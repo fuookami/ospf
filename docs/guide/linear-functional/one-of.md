@@ -75,11 +75,29 @@ OneOfFunction::new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> OneOfFun
 
 It creates `selection_variables()` and returns the selected weighted sum in a continuous `result_variable()`. The selectors are model variables; Rust does not inspect whether each candidate polynomial is zero. There is therefore no one-to-one Rust API for Kotlin's `OneOfFunction` truth table; use `XorFunction` or `SatisfiedAmountFunction` when counting nonzero/binary indicators is the intended meaning.
 
-## Auxiliary variables and registration model
+## Solver mathematical model
 
 For `name`, the implementation creates `name_oneof` as the result, `name_oneof_nz{i}` as one nonzero indicator per input, and `name_oneof_side{i}` as one sign-side helper per input. All are in `helperVariables`; `resultPolynomial` is the unit-coefficient polynomial of `name_oneof`.
 
-`registerAuxiliaryTokens` adds these variables. `registerConstraints` adds the shared four nonzero-indicator inequalities for every input, then the equality `sum(indicators) = 1` and the equality `resultVar = 1`. The constraints are registered on `AbstractLinearMechanismModel`.
+For every input, the shared four-row Big-M block represents
+
+$$
+a_i=0\Rightarrow -t\le p_i\le t,
+$$
+
+$$
+(a_i,s_i)=(1,1)\Rightarrow p_i\ge g,
+\qquad
+(a_i,s_i)=(1,0)\Rightarrow p_i\le-g.
+$$
+
+The implementation expands those implications and then passes
+
+$$
+\sum_i a_i=1,\qquad y=1.
+$$
+
+Rust's same-named selection function instead passes $\sum_i z_i=1$ and $y=\sum_i z_i p_i$; it does not create nonzero flags.
 
 ## `evaluate()` versus the solver model
 

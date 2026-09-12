@@ -61,9 +61,15 @@ ModFunction::new(id: u64, name: &str, input: Linear<V>, divisor: V) -> ModFuncti
 
 The Rust symbol creates a continuous remainder (`result_variable()`) and an integer quotient (`quotient_variable()`). It rejects a non-finite or zero divisor during mechanism injection, but unlike Kotlin it does not require the divisor to be positive; negative divisors use the alternate signed bounds in the Rust implementation. There is no Rust `bigM` parameter.
 
-## Auxiliary variables and registration
+## Solver mathematical model
 
-`helperVariables` registers `qVar`, `rVar`, and `resultVar`. Constraint registration adds `r = x - d*q`, `r <= d - epsilon`, and `result = r`; non-negativity comes from `URealVar`. There is no Big-M constraint in this current encoding.
+With quotient $q\in\mathbb Z$, non-negative remainder $r\ge0$, and result $y\ge0$, Kotlin passes
+
+$$
+r-p+dq=0,\qquad r\le d-\varepsilon,\qquad y-r=0.
+$$
+
+Rust uses the same quotient equality and signed divisor-dependent remainder bounds; for $d>0$ they reduce to $0\le r\le d-\varepsilon$. No Big-M row is used.
 
 ## `evaluate` versus solver
 

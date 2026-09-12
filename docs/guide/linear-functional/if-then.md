@@ -91,11 +91,21 @@ IfThenFunction::new(
 ) -> Self
 ```
 
-## Auxiliary variables and registration model
+## Solver mathematical model
 
 For `name`, the implementation creates `name_ind` as a binary condition indicator and `name_y` as a real result variable. Both are in `helperVariables`; `resultPolynomial` is the unit-coefficient polynomial of `name_y`.
 
 After adding the helper variables, `registerConstraints` normalizes the relation over the condition range. It adds two range-driven indicator inequalities, then gates `thenPoly` with the indicator. For then bounds $L\le q\le U$, the four gating inequalities are:
+
+For normalized condition $c\in[L_c,U_c]$, true threshold $T$, and false threshold $F$, the two condition rows are
+
+$$
+c+(L_c-T)i\ge L_c,
+\qquad
+c+(F-U_c)i\le F.
+$$
+
+The four result rows are
 
 $$
 y\le U\,i,
@@ -107,7 +117,7 @@ y-q\le-L(1-i),
 y-q\ge-U(1-i).
 $$
 
-If the condition range proves one branch, the implementation folds the indicator and result (and commits the result range from the then bounds). Registration is atomic and rolls back on failure.
+Together these rows enforce $i=0\Rightarrow y=0$ and $i=1\Rightarrow y=q$. If the condition range proves one branch, Kotlin folds the indicator and result instead. Rust's conditional counterpart uses the same indicator-plus-gating construction.
 
 ## `evaluate()` versus the solver model
 

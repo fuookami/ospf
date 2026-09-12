@@ -61,9 +61,15 @@ ModFunction::new(id: u64, name: &str, input: Linear<V>, divisor: V) -> ModFuncti
 
 Rust 符号创建连续余数（`result_variable()`）和整数商（`quotient_variable()`）。机制注入时拒绝非有限或零除数；但与 Kotlin 不同，它没有要求除数为正，负除数会使用 Rust 实现中的带符号边界。Rust 没有 `bigM` 参数。
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
-`helperVariables` 注册 `qVar`、`rVar` 和 `resultVar`。约束注册添加 `r = x - d*q`、`r <= d - epsilon` 与 `result = r`；非负性来自 `URealVar`。当前编码没有 Big-M 约束。
+令商 $q\in\mathbb Z$、余数 $r\ge0$、结果 $y\ge0$。Kotlin 实际传入
+
+$$
+r-p+dq=0,\qquad r\le d-\varepsilon,\qquad y-r=0.
+$$
+
+Rust 使用相同的商等式以及随除数符号变化的余数边界；当 $d>0$ 时同样化为 $0\le r\le d-\varepsilon$。这里没有 Big-M 约束。
 
 ## `evaluate` 与 solver 的差异
 

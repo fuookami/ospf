@@ -90,11 +90,27 @@ IfInRangeFunction::registerable(
 ) -> Result<RegisterableIfInRangeFunction<V>>
 ```
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
-对于 `name`，实现创建 `name_ifin` 作为结果，创建 `name_ge` 表示 `x - lower >= 0`，创建 `name_le` 表示 `upper - x >= 0`。三个变量都是 `helperVariables` 中的二值变量；`resultPolynomial` 是结果的单位系数多项式。
+Kotlin 构造 $q_l=x-lower$ 与 $q_u=upper-x$。对每一侧 $j\in\{l,u\}$，令 $L_j\le q_j\le U_j$、真阈值为 $T_j$、假阈值为 $F_j$、指标为 $a_j$，实际传入
 
-`registerAuxiliaryTokens` 校验端点、条件多项式、x 的有限范围、`strictBoundary` 和 `delta`，然后添加辅助变量。`registerConstraints` 将两个 `GE` 条件规范化；范围能够证明固定分支时进行折叠，否则把结果连接为两侧指示量的合取。
+$$
+q_j+(L_j-T_j)a_j\ge L_j,
+\qquad
+q_j+(F_j-U_j)a_j\le F_j.
+$$
+
+然后注册 AND 结果 $y$：
+
+$$
+a_l+a_u\ge2y,
+\qquad
+y\le a_l,
+\qquad
+y\le a_u.
+$$
+
+Rust `RegisterableIfInRangeFunction` 同样使用两个关系指标和一个 AND 结果。Rust 较旧的同名 `IfInFunction` 表示离散列表成员关系，不是这里的区间模型。
 
 ## `evaluate()` 与求解器模型的差异
 

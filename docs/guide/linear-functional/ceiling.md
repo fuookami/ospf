@@ -62,9 +62,15 @@ CeilingFunction::named(name: impl AsRef<str>, input: Linear<V>) -> Self
 CeilingFunction::auto(input: Linear<V>) -> Self
 ```
 
-## Auxiliary variables and registration
+## Solver mathematical model
 
-`helperVariables` registers `kVar` and `resultVar`. Registration adds the two epsilon-adjusted bounds and the equality `resultVar = kVar`. No `d` argument and no Big-M constraint belong to the current implementation.
+With integer helper $k$ and result $y$, both implementations pass the following rows (with their own fixed $\varepsilon$) to the solver:
+
+$$
+p-k\le0,\qquad p-k\ge-1+\varepsilon,\qquad y-k=0.
+$$
+
+There is no Big-M row. Kotlin makes both $k$ and $y$ integer; Rust exposes a continuous $y$ linked to integer $k$, so the equality makes the solved value integral.
 
 ## `evaluate` versus solver
 

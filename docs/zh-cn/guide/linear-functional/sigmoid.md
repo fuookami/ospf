@@ -27,9 +27,17 @@ $$
 
 `LT` 使用反向不等式，`GE` 和 `LE` 使用相应的同一矩阵。
 
-## 实现、辅助变量与约束
+## 求解器数学模型
 
-函数创建名称在 `name` 后追加 `_sig_ind` 的二值指标，通过共享离散条件工具校验并规范化条件，然后生成关系指标约束。条件规范化为常量时，注册会把指标折叠为 one 或 zero；否则使用有限条件范围提供两个分支边界，不会添加 logistic 非线性项。
+令规范化条件 $q\in[L,U]$、真阈值为 $T$、假阈值为 $F$，且 $y\in\{0,1\}$。Kotlin 实际传入
+
+$$
+q+(L-T)y\ge L,
+\qquad
+q+(F-U)y\le F.
+$$
+
+非恒定情况下只有这两条关系约束：$y=1\Rightarrow q\ge T$，$y=0\Rightarrow q\le F$。Rust `SigmoidStepFunction` 使用同一关系指标模型。Rust `SigmoidFunction::new` 则注册采样的 logistic 分段线性模型，不能解释为这两条约束。
 
 ## 当前 API
 
@@ -83,7 +91,7 @@ SigmoidFunction::new(
 ) -> SigmoidFunction<V>
 ```
 
-`SigmoidStepFunction` 是最接近的 Rust API：它对关系进行 `True`/`False`/`Undefined` 三值判定，并暴露二值 `result_variable()`。也可以通过 `SigmoidFunction::step`/`relation` 以及别名 `SigmoidRelationFunction`、`ConditionalSigmoidFunction` 使用。Rust 的 `SigmoidFunction::new` 则构造采样的连续 logistic 分段线性函数；其直接求值为 (1/(1+e^{-x}))，因此不是 Kotlin 阶跃指标的一一对应实现。
+`SigmoidStepFunction` 是最接近的 Rust API：它对关系进行 `True`/`False`/`Undefined` 三值判定，并暴露二值 `result_variable()`。也可以通过 `SigmoidFunction::step`/`relation` 以及别名 `SigmoidRelationFunction`、`ConditionalSigmoidFunction` 使用。Rust 的 `SigmoidFunction::new` 则构造采样的连续 logistic 分段线性函数；其直接求值为 $1/(1+e^{-x})$，因此不是 Kotlin 阶跃指标的一一对应实现。
 
 ## evaluate 与 solver 的差异
 

@@ -30,9 +30,32 @@ $$
 
 因此默认实现是五点正弦线性插值，没有周期扩展，也不会精确计算 $\sin(x)$。
 
-## 实现、辅助变量与约束
+## 求解器数学模型
 
-`SinFunction` 延迟构造一个 `UnivariateLinearPiecewiseFunction`，其内部名称是传入的 `name` 后接 `_impl`。辅助变量、辅助 token 注册和分段约束全部委托给该实现；分段选择使用普通分段建模，公开结果仍是委托实现的线性结果。
+Kotlin 委托给二值分段选择模型。对每个采样段 $[t_i,t_{i+1}]$ 及其仿射插值 $f_i(x)=a_ix+b_i$，实际注册
+
+$$
+\sum_i z_i=1,
+$$
+
+$$
+t_i-M_i^L(1-z_i)\le x\le t_{i+1}+M_i^U(1-z_i),
+$$
+
+$$
+f_i(x)-M_i^-(1-z_i)\le y\le f_i(x)+M_i^+(1-z_i),
+\qquad z_i\in\{0,1\}.
+$$
+
+Rust 固定使用 32 段。令段宽为 $h$、选择变量 $z_i\in\{0,1\}$、段内偏移满足 $0\le\delta_i\le h z_i$，其等价注册形式为
+
+$$
+\sum_i z_i=1,\qquad
+x=\sum_i(t_i z_i+\delta_i),\qquad
+y=\sum_i(\sin t_i\,z_i+a_i\delta_i).
+$$
+
+两种实现都不会向求解器传入精确三角函数约束。
 
 ## 当前 API
 

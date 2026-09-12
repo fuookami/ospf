@@ -62,9 +62,15 @@ FloorFunction::named(name: impl AsRef<str>, input: Linear<V>) -> Self
 FloorFunction::auto(input: Linear<V>) -> Self
 ```
 
-## Auxiliary variables and registration
+## Solver mathematical model
 
-`helperVariables` registers `kVar` and `resultVar`. Registration adds `k <= p`, the epsilon-adjusted `p <= k+1-epsilon`, and the equality `resultVar = k`. No `d` argument and no Big-M constraint belong to the current implementation.
+With integer helper $k$ and result $y$, the rows passed to the solver are
+
+$$
+p-k\ge0,\qquad p-k\le1-\varepsilon,\qquad y-k=0.
+$$
+
+There is no Big-M row. Kotlin makes both $k$ and $y$ integer; Rust links its continuous result to integer $k$ by the last equality.
 
 ## `evaluate` versus solver
 

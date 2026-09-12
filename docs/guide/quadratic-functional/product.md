@@ -2,8 +2,8 @@
 
 `ProductFunction` represents the product of two linear polynomials as a quadratic intermediate expression.
 
-> [!WARNING]
-> The normal intermediate expression is $left\cdot right$ and has no public result variable. Calling its `registerConstraints` method explicitly adds the equation $left\cdot right=0$; that method is therefore an explicit zero-product constraint, not a generic “create y = product” operation.
+> [!NOTE]
+> The intermediate expression is $left\cdot right$ and has no public result variable. `registerConstraints` is a no-op: the expanded polynomial is consumed by the objective or by an enclosing constraint.
 
 ## Contract
 
@@ -30,9 +30,21 @@ $$
 
 The intermediate's polynomial is this expansion. No auxiliary $y$ is needed merely to represent the expression.
 
-## Implementation, helper variables, and constraints
+## Solver mathematical model
 
-`ProductFunction` expands the two linear inputs into quadratic monomials and evaluates by multiplying the inputs. It registers no auxiliary tokens. Its explicit `registerConstraints` implementation constructs one quadratic equality with the expanded polynomial on the left and zero on the right, so callers should invoke it only when that zero-product equation is intended.
+### Kotlin
+
+When used as an intermediate expression, the function creates no auxiliary variable and submits no standalone row. The solver receives the quadratic expansion directly wherever the expression is used:
+
+$$
+p(x)=left(x)\,right(x).
+$$
+
+`registerConstraints` emits no standalone row. It does not create a bridge variable satisfying $y=p(x)$; callers that need such a relation must use a dedicated bridge symbol.
+
+### Rust
+
+Rust likewise creates no auxiliary variable and passes the quadratic expansion of $left(x)right(x)$ directly to the objective or constraint that consumes it. The two implementations therefore have the same expression-only solver contract.
 
 ## Current API
 
@@ -84,7 +96,7 @@ Rust exposes the same expression-level product as [`ProductFunction<V>`](https:/
 ProductFunction::new(id: u64, name: &str, left: Linear<V>, right: Linear<V>) -> ProductFunction<V>
 ```
 
-`left_polynomial`, `right_polynomial`, `prepare`, `FunctionSymbol::calculate_value`, and `QuadraticIntermediateSymbol::to_quadratic_polynomial` are the relevant public operations. The Rust implementation registers no helper tokens and returns no mechanism constraints; unlike the Kotlin implementation, it has no public `registerConstraints` operation that emits a zero-product equality.
+`left_polynomial`, `right_polynomial`, `prepare`, `FunctionSymbol::calculate_value`, and `QuadraticIntermediateSymbol::to_quadratic_polynomial` are the relevant public operations. The Rust implementation registers no helper tokens and returns no mechanism constraints, matching Kotlin's no-op `registerConstraints` contract.
 
 ```rust
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
@@ -102,7 +114,7 @@ The generic bounds are the Rust arithmetic traits used by the implementation (`C
 
 ## Evaluate versus solver
 
-The intermediate evaluation APIs (`prepare`, token-table `evaluate`, and result-list `evaluate`) calculate the product directly. Quadratic mechanism registration consumes the expanded polynomial as a quadratic expression. If `registerConstraints` is called directly, the solver receives the zero-product equality described above; it does not create a free product-result variable.
+The intermediate evaluation APIs (`prepare`, token-table `evaluate`, and result-list `evaluate`) calculate the product directly. Quadratic mechanism registration consumes the expanded polynomial as a quadratic expression. Calling `registerConstraints` directly does not add a row or create a free product-result variable.
 
 ## Boundaries, tolerance, and Undefined
 
@@ -177,9 +189,11 @@ assert_eq!(product.calculate_value(&tokens, false), Some(16.0));
 
 - Core evaluation: [`ProductFunctionGenericEvaluationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/ProductFunctionGenericEvaluationTest.kt)
 - Core expansion/registration: [`ProductFunctionTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/ProductFunctionTest.kt)
+- Kotlin focused expression-only test: [`ProductFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/ProductFunctionDedicatedTest.kt)
 - Complete example: [`QuadraticProductEvaluateTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/quadratic_function/QuadraticProductEvaluateTest.kt)
 
 - Rust implementation and unit tests: [`product.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/product.rs)
+- Rust focused expression-only test: [`function_symbol_product.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_product.rs)
 
 ## Related pages
 

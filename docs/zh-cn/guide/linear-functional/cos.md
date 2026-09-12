@@ -30,9 +30,32 @@ $$
 
 因此默认实现是五点余弦线性插值，没有周期扩展，也不会精确计算 $\cos(x)$。
 
-## 实现、辅助变量与约束
+## 求解器数学模型
 
-`CosFunction` 延迟构造一个 `UnivariateLinearPiecewiseFunction`，其内部名称是传入的 `name` 后接 `_impl`。辅助变量、辅助 token 注册和分段约束全部委托给该实现；分段选择使用普通分段建模，公开结果仍是委托实现的线性结果。
+Kotlin 委托给二值分段选择模型。对每个采样段 $[t_i,t_{i+1}]$ 及其仿射插值 $f_i(x)=a_ix+b_i$，实际注册
+
+$$
+\sum_i z_i=1,
+$$
+
+$$
+t_i-M_i^L(1-z_i)\le x\le t_{i+1}+M_i^U(1-z_i),
+$$
+
+$$
+f_i(x)-M_i^-(1-z_i)\le y\le f_i(x)+M_i^+(1-z_i),
+\qquad z_i\in\{0,1\}.
+$$
+
+Rust 固定使用 32 段。令段宽为 $h$、选择变量 $z_i\in\{0,1\}$、段内偏移满足 $0\le\delta_i\le h z_i$，其等价注册形式为
+
+$$
+\sum_i z_i=1,\qquad
+x=\sum_i(t_i z_i+\delta_i),\qquad
+y=\sum_i(\cos t_i\,z_i+a_i\delta_i).
+$$
+
+两种实现都不会向求解器传入精确三角函数约束。
 
 ## 当前 API
 
@@ -56,7 +79,7 @@ CosFunction(
 
 源码：[`cos.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/cos.rs)
 
-Rust 使用平展后的 `Linear<V>` 输入提供 `CosFunction::new(id, name, input)`，并支持 `with_declared_dependencies`。`result_variable()` 和 `input_polynomial()` 暴露已注册的结果与输入。Rust 没有公开的采样点参数：机理层固定在 ([-pi,pi]) 上使用 32 段。Rust token 求值器调用精确的 `f64::cos()`，而注册的机理约束使用 32 段分段近似；这不同于 Kotlin（Kotlin 的求值器遵循调用方提供的采样点插值）。
+Rust 使用平展后的 `Linear<V>` 输入提供 `CosFunction::new(id, name, input)`，并支持 `with_declared_dependencies`。`result_variable()` 和 `input_polynomial()` 暴露已注册的结果与输入。Rust 没有公开的采样点参数：机理层固定在 $[-\pi,\pi]$ 上使用 32 段。Rust token 求值器调用精确的 `f64::cos()`，而注册的机理约束使用 32 段分段近似；这不同于 Kotlin（Kotlin 的求值器遵循调用方提供的采样点插值）。
 
 ```rust
 CosFunction::new(id: u64, name: &str, input: Linear<V>) -> Self

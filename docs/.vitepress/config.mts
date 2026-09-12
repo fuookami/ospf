@@ -106,7 +106,7 @@ export default withMermaid({
                   items: [
                     { text: 'Slack (Linear Expressions)', link: '/guide/quadratic-functional/slack' },
                     { text: 'Slack Range (Linear Expressions)', link: '/guide/quadratic-functional/slack-range' },
-                    { text: 'Semi-Continuous Marker', link: '/guide/quadratic-functional/semi' },
+                    { text: 'Positive Part', link: '/guide/quadratic-functional/positive-part' },
                     { text: 'Quadratic Product', link: '/guide/quadratic-functional/product' },
                     { text: 'Quadratic Linear', link: '/guide/quadratic-functional/quadratic-linear' },
                     { text: 'Quadratic In-Step Range', link: '/guide/quadratic-functional/quadratic-in-step-range' },
@@ -116,8 +116,6 @@ export default withMermaid({
                 },
                 { text: 'Use Domain Driven Design Architecture With Column Generation Algorithm', link: '/guide/use-ddd-architecture-with-column-generation' },
                 { text: 'Use Domain Driven Design Architecture With Benders Decomposition Algorithm', link: '/guide/use-ddd-architecture-with-benders' },
-                { text: 'Linear Functional Intermediate Expression', link: '/guide/linear-functional-intermediate-expression' },
-                { text: 'Quadratic Functional Intermediate Expression', link: '/guide/quadratic-functional-intermediate-expression' },
                 { text: 'The Deductive Logic Expression of the Mathematical Model', link: '/guide/deductive-logic-expression' },
                 { text: 'Formal Design and Formal Verification', link: '/guide/formal-design-and-formal-verification' },
                 { text: 'Remote Solver', link: '/guide/remote-solver' },
@@ -276,7 +274,7 @@ export default withMermaid({
                   items: [
                     { text: '松弛（仅线性表达式）', link: '/zh-cn/guide/quadratic-functional/slack' },
                     { text: '松弛范围（仅线性表达式）', link: '/zh-cn/guide/quadratic-functional/slack-range' },
-                    { text: '半连续标记', link: '/zh-cn/guide/quadratic-functional/semi' },
+                    { text: '正部函数', link: '/zh-cn/guide/quadratic-functional/positive-part' },
                     { text: '二次乘积', link: '/zh-cn/guide/quadratic-functional/product' },
                     { text: '二次线性', link: '/zh-cn/guide/quadratic-functional/quadratic-linear' },
                     { text: '二次步进区间', link: '/zh-cn/guide/quadratic-functional/quadratic-in-step-range' },

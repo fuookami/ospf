@@ -78,9 +78,19 @@ RoundingFunction::round(id: u64, name: &str, input: Linear<V>) -> RoundingFuncti
 
 `RoundingKind` 包含 `Floor`、`Ceil`、`Round` 和 `Trunc`，同时提供 `named_round` 等快捷构造器。Rust 保留整数辅助变量，但通过 `result_variable()` 暴露连续结果；它没有 Kotlin 的 `bigM`/converter 参数。取整边界由 Rust 自己的 `ROUNDING_EPSILON` 规则实现，因此不要假定两种语言在半整数处的行为完全一致。
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
-`helperVariables` 注册 `kVar`（`IntVar`）、`rVar`（`BinVar`）、`bVar`（`URealVar`）和 `resultVar`（`IntVar`）。注册添加 floor 分解、`b = x-k`、小数上界、两条指示不等式以及 `result = k+r`。
+Kotlin 引入 $k\in\mathbb Z$、$r\in\{0,1\}$、$b\ge0$ 和整数结果 $y$，实际传入
+
+$$
+p-k\ge0,\qquad p-k\le1-\varepsilon,\qquad b-p+k=0,
+$$
+
+$$
+b-0.5r\ge0,\qquad b-Mr\le0.5-\varepsilon,\qquad y-k-r=0.
+$$
+
+Rust 使用所选 `RoundingKind` 对应的约束组；`Round` 同样把连续结果连接到整数辅助变量，但使用 Rust 自己的固定边界 epsilon。
 
 ## `evaluate` 与 solver 的差异
 

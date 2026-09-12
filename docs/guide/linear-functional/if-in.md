@@ -90,11 +90,27 @@ IfInRangeFunction::registerable(
 ) -> Result<RegisterableIfInRangeFunction<V>>
 ```
 
-## Auxiliary variables and registration model
+## Solver mathematical model
 
-For `name`, the implementation creates `name_ifin` as the result, `name_ge` for `x - lower >= 0`, and `name_le` for `upper - x >= 0`. All three are binary variables in `helperVariables`; `resultPolynomial` is the unit-coefficient polynomial of the result.
+Kotlin forms $q_l=x-lower$ and $q_u=upper-x$. For each side $j\in\{l,u\}$, with finite $L_j\le q_j\le U_j$, true threshold $T_j$, false threshold $F_j$, and binary $a_j$, it passes
 
-`registerAuxiliaryTokens` validates the endpoints, condition polynomial, finite x bounds, `strictBoundary`, and `delta`, then adds the helper variables. `registerConstraints` normalizes both `GE` conditions, folds fixed branches when the range proves them, and otherwise links the result to the conjunction of the two side indicators.
+$$
+q_j+(L_j-T_j)a_j\ge L_j,
+\qquad
+q_j+(F_j-U_j)a_j\le F_j.
+$$
+
+It then registers the AND result $y$:
+
+$$
+a_l+a_u\ge2y,
+\qquad
+y\le a_l,
+\qquad
+y\le a_u.
+$$
+
+Rust `RegisterableIfInRangeFunction` uses the same two relation indicators plus an AND result. Rust's older same-named `IfInFunction` instead models membership in a discrete list and is not this interval model.
 
 ## `evaluate()` versus the solver model
 

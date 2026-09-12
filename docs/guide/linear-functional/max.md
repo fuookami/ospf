@@ -65,9 +65,21 @@ MaxFunction::new(
 
 `exact = true` creates one binary selector per candidate and registers an exactly-one selector model. With `exact = false`, Rust registers only the lower bounds `result >= p_i`; an objective or another upper bound is then needed to make the result equal the maximum. `result_variable()`, `polynomials()`, and `exact()` expose the state. Unlike Kotlin's `URealVar` result, Rust's result is a continuous variable; callers must provide suitable bounds when the model requires them. Rust's [`MinMaxFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/min_max.rs) and [`MaxMinFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/min_max.rs) are the corresponding wrapper symbols without the `exact` flag.
 
-## Auxiliary variables and registration
+## Solver mathematical model
 
-`helperVariables` contains `resultVar` followed by one binary `selectorVar` per candidate. Registration adds the lower bounds `result >= p_i`, one Big-M upper/equality gate per candidate, and the exactly-one selector equality. Big-M values are inferred per candidate from finite bounds when possible.
+With result $y$, candidates $p_i$, and selectors $s_i\in\{0,1\}$, Kotlin and Rust `exact = true` pass
+
+$$
+y-p_i\ge0\quad(1\le i\le n),
+$$
+
+$$
+y-p_i+M_i s_i\le M_i\quad(1\le i\le n),
+\qquad
+\sum_{i=1}^{n}s_i=1.
+$$
+
+Rust `exact = false` registers only $y-p_i\ge0$; equality with the maximum then depends on minimization or another upper bound. Kotlin always registers the exact selector form.
 
 ## `evaluate` versus solver
 

@@ -37,9 +37,17 @@ The convenience variants are:
 | `NotAllFunction` | $[1,n-1]$ when $n>1$ | not all |
 | `NumerableFunction(amount)` | caller supplied | count in a range |
 
-## Implementation, helper variables, and constraints
+## Solver mathematical model
 
-The base creates one binary flag whose name appends `_u_` and an index to `name`. When `amount` is present it also creates binary `name` + `_y`. For a finite input range containing zero, the solver links each flag to the flattened relation with two Big-M inequalities and epsilon; when zero is outside the range, the flag can be fixed to the trivially satisfied/violated value for supported signs. The amount range is enforced with two relaxed inequalities controlled by the amount indicator.
+Kotlin creates one $u_i\in\{0,1\}$ per flattened constraint and links it with the two normalized relation rows from [Inequality Indicator](./inequality). Let $c=\sum_i u_i$. Without an amount range, $c$ is the result. For range $[l,u]$, Kotlin additionally creates $y\in\{0,1\}$ and passes the relaxed range rows
+
+$$
+c\ge l\,y,
+\qquad
+c\le u+n(1-y).
+$$
+
+Thus $y=1\Rightarrow l\le c\le u$; the reverse implication is not forced by these two rows alone. Rust wrappers instead receive existing indicators, register $r-\sum_i u_i=0$, and apply the requested count range as hard bounds, without Kotlin's separate $y$.
 
 > [!WARNING]
 > The current registration loop only encodes an input when both range bounds are present. An input with a missing bound can leave its flag without a corresponding solver constraint; provide finite, ordered `lhsRange` values.

@@ -60,9 +60,21 @@ MinFunction::new(id: u64, name: &str, polynomials: Vec<Linear<V>>, exact: bool) 
 
 `exact = true` creates one binary selector per candidate and registers the exact selector model. `exact = false` keeps only the inequality envelope; unlike Kotlin, Rust has no `bigM` or converter argument on this constructor. The result is exposed by `result_variable()`.
 
-## Auxiliary variables and registration
+## Solver mathematical model
 
-`helperVariables` contains the non-negative `resultVar` and one binary selector for each candidate. Constraint registration adds `result <= p_i`, a Big-M lower/equality gate for each candidate, and `sum(selectorVars) = 1`.
+With result $y$, candidates $p_i$, and selectors $s_i\in\{0,1\}$, Kotlin and Rust `exact = true` pass
+
+$$
+y-p_i\le0\quad(1\le i\le n),
+$$
+
+$$
+y-p_i-M_i s_i\ge-M_i\quad(1\le i\le n),
+\qquad
+\sum_{i=1}^{n}s_i=1.
+$$
+
+Here the selected candidate has $s_i=0$. Rust `exact = false` keeps only $y-p_i\le0$; equality with the minimum then requires maximization or another lower bound. Kotlin always registers the exact selector form.
 
 ## `evaluate` versus solver
 

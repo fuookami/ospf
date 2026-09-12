@@ -32,9 +32,24 @@ $$
 | True | False | False |
 | Undefined | 不检查 | Undefined |
 
-## 实现、辅助变量与约束
+## 求解器数学模型
 
-实现创建名称 `name` 后接 `_ant_nz` 和 `name` 后接 `_con_nz` 的二值指标。注册时校验并规范化两个有限条件范围；在可能时折叠常量分支，并生成共享的关系指标约束。false 前件会短路求值，但注册仍会预检后件范围，因此可能在写入 token 或约束前失败。
+令 $a,b\in\{0,1\}$ 分别表示前件与后件的关系指标。每个指标都通过下列约束连接到规范化条件 $q_j\in[L_j,U_j]$：
+
+$$
+q_j+(L_j-T_j)u_j\ge L_j,
+\qquad
+q_j+(F_j-U_j)u_j\le F_j,
+\qquad (u_0,u_1)=(a,b).
+$$
+
+Kotlin 随后实际传入蕴含约束
+
+$$
+a-b\le0.
+$$
+
+因此真前件强制后件为真；假前件不要求后件为真。Rust `ConditionalImplyFunction` 是对应的关系实现；Rust 旧版同名辅助函数具有不同契约。
 
 ## 当前 API
 

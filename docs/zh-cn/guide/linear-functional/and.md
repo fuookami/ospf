@@ -73,7 +73,7 @@ AndFunction::named(name: impl AsRef<str>, polynomials: Vec<Linear<V>>) -> Self
 AndFunction::auto(polynomials: Vec<Linear<V>>) -> Self
 ```
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
 函数名称为 `name` 时，当前实现创建：
 
@@ -81,7 +81,19 @@ AndFunction::auto(polynomials: Vec<Linear<V>>) -> Self
 - `name_and_nz{i}`：每个输入对应一个非零指示量；
 - `name_and_side{i}`：每个非零指示量对应一个符号侧辅助量。
 
-`helperVariables` 包含结果、全部非零指示量和全部侧辅助量。注册先通过 `registerAuxiliaryTokens` 添加这些变量；`registerConstraints` 为每个输入添加共享的四条非零检测不等式，然后添加：
+`helperVariables` 包含结果、全部非零指示量和全部侧辅助量。对每个 $p_i$，令非零标志为 $a_i$、方向标志为 $s_i$、零值容差为 $t$、严格边界为 $g$。共享的四约束 Big-M 模型表示
+
+$$
+a_i=0\Rightarrow -t\le p_i\le t,
+$$
+
+$$
+(a_i,s_i)=(1,1)\Rightarrow p_i\ge g,
+\qquad
+(a_i,s_i)=(1,0)\Rightarrow p_i\le-g.
+$$
+
+实现把这些蕴含展开成四条线性不等式，再添加 AND 约束：
 
 $$
 \sum_i a_i \ge n y,
@@ -90,6 +102,8 @@ y \le a_i\quad(1\le i\le n).
 $$
 
 公开的 `resultPolynomial` 是 `name_and` 的单位系数多项式。实现位于 `And.kt`，并向 `AbstractLinearMechanismModel` 注册。
+
+Rust 同样先注册非零指标块，再注册相同的 AND 约束；其数值阈值和 Big-M 由 Rust 机理层选择，而不是由 Kotlin 构造参数指定。
 
 ## `evaluate()` 与求解器模型的差异
 

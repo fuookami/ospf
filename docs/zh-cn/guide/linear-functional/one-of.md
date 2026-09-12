@@ -75,11 +75,29 @@ OneOfFunction::new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> OneOfFun
 
 它创建 `selection_variables()`，并在连续的 `result_variable()` 中返回被选择候选的加权和。选择器是模型变量；Rust 不检查每个候选多项式是否为零。因此它不是 Kotlin 真值表的一一对应 API；如果语义是统计非零/二值指示量，应使用 `XorFunction` 或 `SatisfiedAmountFunction`。
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
 对于 `name`，实现创建 `name_oneof` 作为结果、每个输入一个 `name_oneof_nz{i}` 非零指示量，以及每个输入一个 `name_oneof_side{i}` 符号侧辅助量。它们都在 `helperVariables` 中；`resultPolynomial` 是 `name_oneof` 的单位系数多项式。
 
-`registerAuxiliaryTokens` 添加这些变量。`registerConstraints` 为每个输入添加共享的四条非零指示不等式，然后添加 `sum(indicators) = 1` 和 `resultVar = 1`。约束注册到 `AbstractLinearMechanismModel`。
+对每个输入，共享的四约束 Big-M 模型表示
+
+$$
+a_i=0\Rightarrow -t\le p_i\le t,
+$$
+
+$$
+(a_i,s_i)=(1,1)\Rightarrow p_i\ge g,
+\qquad
+(a_i,s_i)=(1,0)\Rightarrow p_i\le-g.
+$$
+
+实现展开这些蕴含后，再实际传入
+
+$$
+\sum_i a_i=1,\qquad y=1.
+$$
+
+Rust 的同名选择函数则传入 $\sum_i z_i=1$ 和 $y=\sum_i z_i p_i$，不会创建非零标志。
 
 ## `evaluate()` 与求解器模型的差异
 

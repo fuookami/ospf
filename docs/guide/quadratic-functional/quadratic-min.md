@@ -29,9 +29,49 @@ $$
 
 The direct evaluator always computes $\min_i p_i$, independent of `exact`.
 
-## Implementation, helper variables, and constraints
+## Solver mathematical model
 
-The implementation creates `name` + `_min` as a real result variable. In exact mode it creates `name` + `_u_` + index binary selectors, infers each Big-M from candidate bounds when possible, and registers the upper/lower selector constraints and exactly-one equality. Relaxed mode omits selector variables and the Big-M lower constraints.
+### Kotlin
+
+Let the quadratic candidates be $p_i$ and let the result be a signed continuous variable $y\in\mathbb R$. Every mode submits:
+
+$$
+y-p_i\le0,
+\qquad \forall i.
+$$
+
+With `exact = false`, these are the only upper-bound rows; an objective or another constraint must push $y$ to the actual minimum. With `exact = true`, the function also creates $u_i\in\{0,1\}$ and submits:
+
+$$
+y-p_i-M_i u_i\ge-M_i,
+\qquad \forall i,
+$$
+
+$$
+\sum_i u_i=1.
+$$
+
+Equivalently, $y\ge p_i-M_i(1-u_i)$. An explicit $M_i$ takes precedence; otherwise candidate bounds are used before falling back to each candidate's default Big-M.
+
+### Rust
+
+Rust first creates a signed continuous bridge $b_i$ for every quadratic candidate and submits $b_i=p_i(x)$. It then applies the same Min model to the bridges:
+
+$$
+y\le b_i,
+$$
+
+and, in exact mode:
+
+$$
+y\ge b_i-M_i(1-u_i),
+\qquad
+u_i\in\{0,1\},
+\qquad
+\sum_i u_i=1.
+$$
+
+The minimum rows therefore agree across the languages; the main structural difference is Rust's explicit bridge for every quadratic candidate.
 
 ## Current API
 
@@ -109,7 +149,7 @@ assert!(minimum.result_variable().name().contains("quadratic_min_min"));
 
 ## Evaluate versus solver
 
-Direct evaluation is always the exact minimum. Exact solver mode needs valid Big-M ranges for all candidates; relaxed mode only guarantees an upper bound on y for every candidate. A non-negative result variable can also conflict with a negative mathematical minimum, so compare the candidate domains with the variable domains before registration.
+Direct evaluation is always the exact minimum. Exact solver mode needs valid Big-M ranges for all candidates; relaxed mode only guarantees an upper bound on $y$ for every candidate. The result bridge is signed, so negative candidate minima are representable.
 
 ## Boundaries, tolerance, and Undefined
 

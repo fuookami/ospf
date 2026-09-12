@@ -1,186 +1,96 @@
 # Slack in a Quadratic Model
 
-## Availability
+`QuadraticSlackFunction` is the exact absolute-distance function
 
-Kotlin has no quadratic-specific `SlackFunction` and no overload accepting `QuadraticPolynomial<V>`. Its only implementation is the linear [`SlackFunction`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Slack.kt#L42-L280), whose inputs are `LinearPolynomial<V>` (or a linear intermediate/conversion view). Rust has a direct `QuadraticSlackFunction` counterpart, documented below.
+$$
+s=|L(x)-R(x)|.
+$$
 
-This distinction matters when the surrounding model is quadratic. In Kotlin, `QuadraticMechanismModel` first dispatches quadratic function symbols and then has a fallback for `MathFunctionSymbolBase` (`MechanismModel.kt:1350-1355`). A linear `SlackFunction` can therefore be registered in a quadratic model through `LinearFunctionSymbolAdapter`; this is still a linear slack encoding, not a quadratic one. A quadratic expression such as `x * y` cannot be passed to Kotlin's `SlackFunction`.
+Both language implementations evaluate the original quadratic expressions
+and register an exact absolute-value formulation, so correctness does not
+depend on minimizing the result. Rust creates a linear bridge only for a
+genuinely quadratic input; purely linear inputs remain direct expressions.
 
-## Formula and semantics
+## Solver mathematical model
 
-For linear expressions `x` and `y`, let `d = x - y`. The linear implementation provides:
+Let $l=L(x)$, $r=R(x)$, $d=l-r$, $s\ge0$ be the result, $z\in\{0,1\}$ a
+side selector, and $M$ a valid bound on $|d|$. The rows sent to the solver are
 
-```text
-both helpers:  |d|      (when the helper result is minimized)
-negative:      max(0,-d)
-positive:      max(0, d)
-```
+$$
+\begin{aligned}
+s-d&\ge0,\\
+s+d&\ge0,\\
+s-d+Mz&\le M,\\
+s+d-Mz&\le0.
+\end{aligned}
+$$
 
-Its model expression is `polyX = x + neg - pos`; `threshold` and `constraint` control the registered equality/inequality as described in [Linear Slack](/guide/linear-functional/slack). Without minimizing the exposed helper expression, the relation permits inflated slack. `SlackFunction` uses `type` to choose integer (`UIntVar`) or continuous (`URealVar`) helpers and requires a converter.
+They force $s=|d|$. An explicit `bigM` must bound the whole difference.
 
-## Current API
+## Kotlin API
 
-### Kotlin
-
-The adapter is a linear intermediate symbol, so it can be added to `QuadraticMetaModel` and is then registered by the quadratic mechanism fallback:
-
-The adapter is required because a bare `MathFunctionSymbol` is not a model `IntermediateSymbol`. The fallback registers its linear helper constraints; it does not make a quadratic slack operator available in Kotlin.
+Kotlin provides a native quadratic symbol; no linear adapter is required:
 
 ```kotlin
-import kotlinx.coroutines.runBlocking
-import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
-import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
-import fuookami.ospf.kotlin.core.model.mechanism.QuadraticMechanismModel
-import fuookami.ospf.kotlin.core.model.mechanism.QuadraticMetaModel
-import fuookami.ospf.kotlin.core.solver.value.IntoValue
-import fuookami.ospf.kotlin.core.symbol.LinearFunctionSymbolAdapter
-import fuookami.ospf.kotlin.core.symbol.function.SlackFunction
-import fuookami.ospf.kotlin.core.variable.RealVar
-import fuookami.ospf.kotlin.utils.functional.Ok
-
-val x = RealVar("x")
-val xPoly = LinearPolynomial(
-    listOf(LinearMonomial(Flt64.one, x)), Flt64.zero
-)
-val slack = SlackFunction(
-    x = xPoly,
-    y = LinearPolynomial<Flt64>(emptyList(), Flt64.zero),
+val slack = QuadraticSlackFunction(
+    left = leftQuadratic,
+    right = rightQuadratic,
+    bigM = Flt64(100.0),
     converter = IntoValue.Identity,
-    name = "quadratic-model-slack"
+    name = "quadratic-slack"
 )
-val symbol = LinearFunctionSymbolAdapter(slack, IntoValue.Identity)
-val model = QuadraticMetaModel<Flt64>(
-    name = "quadratic-model-with-linear-slack",
-    converter = IntoValue.Identity
-)
-check(model.add(x) is Ok)
-check(model.add(symbol) is Ok)
-val mechanism = runBlocking {
-    QuadraticMechanismModel.invoke<Flt64>(metaModel = model, concurrent = false)
-}
-check(mechanism is Ok)
-model.close()
 ```
 
-### Rust
+The implementation is the sum of two exact positive-part functions for
+$L-R$ and $R-L$; `evaluate` returns the absolute difference and registration
+registers both delegates.
 
-Rust provides [`QuadraticSlackFunction<V>`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_function.rs), which bridges two quadratic inputs and applies the absolute-difference slack encoding:
+## Rust API
 
 ```rust
-QuadraticSlackFunction::new(
-    id: u64,
-    name: &str,
-    left: Quadratic<V>,
-    right: Quadratic<V>,
-) -> QuadraticSlackFunction<V>
-
-QuadraticSlackFunction::with_target(
-    id: u64,
-    name: &str,
-    left: Quadratic<V>,
-    right_value: V,
-) -> QuadraticSlackFunction<V>
-
-QuadraticSlackFunction::with_big_m(
-    id: u64,
-    name: &str,
-    left: Quadratic<V>,
-    right: Quadratic<V>,
-    big_m: V,
-) -> QuadraticSlackFunction<V>
+let slack = QuadraticSlackFunction::with_big_m(
+    21, "quadratic_slack", left, right, 100.0_f64,
+);
+assert_eq!(slack.calculate_value(&tokens, false), Some(1.0));
 ```
 
-It creates quadratic-linear bridges for both inputs, then applies the inner `SlackFunction` to those bridge variables. `calculate_value` returns `abs(left - right)`, `result_variable` exposes the inner `name + "_slack"` variable, and the quadratic mechanism registers the bridge constraints plus the four linear slack constraints. With token bounds, the implementation can infer a tighter Big-M for the inner encoding.
+`new` uses the default Big-M policy and `with_target` uses a constant
+right-hand side. `with_big_m` overrides the policy. The result variable is
+continuous; the mechanism registers the four absolute-value rows and adds a
+quadratic bridge row only for each genuinely quadratic input.
 
-```rust
-use ospf_rust_core::symbol::flatten::{Quadratic, QuadraticMonomial};
-use ospf_rust_core::symbol::function::QuadraticSlackFunction;
-
-let left = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 1)], 0.0);
-let right = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
-let slack = QuadraticSlackFunction::with_big_m(21, "qslack", left, right, 100.0);
-assert!(slack.result_variable().name().contains("qslack_slack"));
-```
-
-There is no Kotlin/Rust constructor-level parity here: Kotlin exposes only the linear function plus an adapter, while Rust's `QuadraticSlackFunction` accepts `Quadratic<V>` directly.
-
-## Examples and tests
+## Kotlin/Rust example
 
 ::: code-group
 
 ```kotlin [Kotlin]
-import kotlinx.coroutines.runBlocking
-import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
-import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
-import fuookami.ospf.kotlin.core.model.mechanism.QuadraticMechanismModel
-import fuookami.ospf.kotlin.core.model.mechanism.QuadraticMetaModel
 import fuookami.ospf.kotlin.core.solver.value.IntoValue
-import fuookami.ospf.kotlin.core.symbol.LinearFunctionSymbolAdapter
-import fuookami.ospf.kotlin.core.symbol.function.SlackFunction
-import fuookami.ospf.kotlin.core.variable.RealVar
-import fuookami.ospf.kotlin.utils.functional.Ok
+import fuookami.ospf.kotlin.core.symbol.function.QuadraticSlackFunction
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
 
-val x = RealVar("x")
-val xPoly = LinearPolynomial(
-    listOf(LinearMonomial(Flt64.one, x)), Flt64.zero
-)
-val slack = SlackFunction(
-    x = xPoly,
-    y = LinearPolynomial<Flt64>(emptyList(), Flt64.zero),
+val slack = QuadraticSlackFunction(
+    left = leftQuadratic,
+    right = rightQuadratic,
+    bigM = Flt64(100.0),
     converter = IntoValue.Identity,
-    name = "quadratic-model-slack"
+    name = "quadratic-slack"
 )
-val symbol = LinearFunctionSymbolAdapter(slack, IntoValue.Identity)
-val model = QuadraticMetaModel<Flt64>(
-    name = "quadratic-model-with-linear-slack",
-    converter = IntoValue.Identity
-)
-check(model.add(x) is Ok)
-check(model.add(symbol) is Ok)
-val mechanism = runBlocking {
-    QuadraticMechanismModel.invoke<Flt64>(metaModel = model, concurrent = false)
-}
-check(mechanism is Ok)
-model.close()
+check(slack.evaluate(values) == Flt64(1.0))
 ```
 
 ```rust [Rust]
 use ospf_rust_core::symbol::FunctionSymbol;
-use ospf_rust_core::symbol::flatten::{Quadratic, QuadraticMonomial};
 use ospf_rust_core::symbol::function::QuadraticSlackFunction;
-use ospf_rust_core::token::{MutableTokenList, Token, VecTokenList};
-use ospf_rust_core::variable::{ContinuousVariableItem, VariableId};
 
-let x = ContinuousVariableItem::create(VariableId::standalone(0), "x");
-let y = ContinuousVariableItem::create(VariableId::standalone(1), "y");
-let mut tokens = VecTokenList::<f64>::new();
-let tx = Token::from_generic(x, 0);
-tx.set_result(2.0);
-tokens.add_token(tx);
-let ty = Token::from_generic(y, 1);
-ty.set_result(1.5);
-tokens.add_token(ty);
-let slack = QuadraticSlackFunction::new(
-    22,
-    "qslack",
-    Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 1)], 0.0),
-    Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0),
-);
+let slack = QuadraticSlackFunction::with_big_m(21, "quadratic_slack", left, right, 100.0_f64);
 assert_eq!(slack.calculate_value(&tokens, false), Some(1.0));
 ```
 
 :::
 
-- Linear-in-quadratic-model example: [`SlackTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SlackTest.kt)
-- Adapter/fallback validation: [`MechanismModelTokenSynchronizationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/model/mechanism/MechanismModelTokenSynchronizationTest.kt#L254-L301)
+## Tests and references
 
-- Rust implementation and focused tests: [`quadratic_function.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_function.rs)
-
-## References
-
-- Linear API: [Slack](/guide/linear-functional/slack) and [`Slack.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Slack.kt)
-- Mechanism fallback: [`MechanismModel.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/model/mechanism/MechanismModel.kt#L1350-L1355)
-- Adapter/fallback test: [`MechanismModelTokenSynchronizationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/model/mechanism/MechanismModelTokenSynchronizationTest.kt#L254-L301)
-- Related complete example (linear API; no dedicated quadratic Slack example): [`SlackTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SlackTest.kt)
+- Kotlin: [`QuadraticSlackFunctionTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/QuadraticSlackFunctionTest.kt)
+- Kotlin implementation: [`QuadraticSlack.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/QuadraticSlack.kt)
+- Rust implementation: [`quadratic_function.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_function.rs)
+- Rust test: [`function_symbol_quadratic_slack.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_quadratic_slack.rs)

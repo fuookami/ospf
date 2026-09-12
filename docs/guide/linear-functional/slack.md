@@ -9,7 +9,7 @@ For two linear polynomials `x` and `y`, let `d = x - y`. `SlackFunction<V>` expo
 ```text
 withNegative = true,  withPositive = false: max(0, -d)
 withNegative = false, withPositive = true:  max(0,  d)
-withNegative = true,  withPositive = true:  |d|   (when the result is minimized)
+withNegative = true,  withPositive = true:  |d|
 ```
 
 The implementation is [`Slack.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Slack.kt#L42-L196). Its primary constructor is:
@@ -29,7 +29,7 @@ SlackFunction(
 )
 ```
 
-Overloads accept `LinearIntermediateSymbol<V>` and `ToLinearPolynomial<V>` (`Slack.kt:173-280`). At least one of `withNegative` and `withPositive` must be true (`Slack.kt:54-56`). Integer `type` creates `UIntVar` helpers; a continuous type creates `URealVar` helpers (`Slack.kt:98-100`).
+Overloads accept `LinearIntermediateSymbol<V>` and `ToLinearPolynomial<V>` (`Slack.kt:173-280`). At least one of `withNegative` and `withPositive` must be true (`Slack.kt:54-56`). Integer `type` creates `UIntVar` helpers; a continuous type creates `URealVar` helpers (`Slack.kt:98-100`). When both directions are enabled, Kotlin also creates one binary branch helper (`<name>_side`), so the helper list is `neg`, `pos`, and `side`.
 
 ### Rust
 
@@ -59,7 +59,7 @@ SlackFunction::with_big_m(
 ) -> SlackFunction<V>
 ```
 
-The Rust result is always |left - right| and exposes `result_variable()`. It has no Kotlin `withNegative`/`withPositive`, `threshold`, `constraint`, or variable-type parameters; use `with_target` for a constant right side and `with_big_m` when the default (10^6) is not suitable.
+The Rust result is always |left - right| and exposes `result_variable()`. It has no Kotlin `withNegative`/`withPositive`, `threshold`, `constraint`, or variable-type parameters; use `with_target` for a constant right side and `with_big_m` when the unbounded default ($2\times10^6$) is not suitable.
 
 ## Derived symbol and evaluation
 
@@ -72,14 +72,33 @@ $$
 
 `neg` and `pos` are exposed as nullable linear polynomials, and `resultPolynomial` is the sum of whichever helpers were requested (`Slack.kt:58-90`). Direct evaluation uses only `x` and `y`: both helpers give `|x-y|`, only `neg` gives `max(0,y-x)`, and only `pos` gives `max(0,x-y)` (`Slack.kt:102-115`). It returns `null` when either input is unresolved.
 
-## Constraint modes and non-minimized models
+## Solver mathematical model
 
 With `constraint = true`:
 
-- `threshold = false` registers `x + neg - pos = y` (`Slack.kt:125-134`). This determines a difference but does not prevent the non-negative helpers from being larger than the minimum.
-- `threshold = true` registers `x + neg >= y` when `withNegative` is enabled; otherwise it registers `x - pos <= y` when `withPositive` is enabled (`Slack.kt:135-141`). When both flags are true, the negative branch wins the implementation's `if/else` order; both threshold inequalities are not registered.
+- when both `withNegative` and `withPositive` are enabled, Kotlin registers the exact four-row absolute-value model below, regardless of `threshold`:
+
+  $$
+  s-d\ge0,\qquad s+d\ge0,\qquad
+  s-d+Mu\le M,\qquad s+d-Mu\le0,
+  $$
+
+  where $s=neg+pos$, $d=x-y$, and $u$ is the binary side helper. These rows force $s=|d|$ without an objective.
+- with only one helper enabled, `threshold = false` registers the equality `x + neg - pos = y`; `threshold = true` registers the corresponding one-sided inequality (`x + neg >= y` for `neg`, `x - pos <= y` for `pos`).
 
 With `constraint = false`, no relation between the inputs and helpers is registered (`Slack.kt:125-128`). `evaluate` always computes the mathematical violation from the inputs, independently of registered helper values. The model-side value is therefore exact only when the relevant helper expression is minimized or otherwise constrained to its minimum; without minimization, the relation permits inflated slack.
+
+Rust creates signed result $s$, binary selector $u$, and $d=x-y$, and uses the same exact absolute-difference rows
+
+$$
+s-d\ge0,\qquad s+d\ge0,
+$$
+
+$$
+s-d+Mu\le M,\qquad s+d-Mu\le0.
+$$
+
+For valid $M$, these enforce $s=|x-y|$ without requiring an objective. The unbounded default is $2\times10^6$ because an inactive branch can expose twice the maximum absolute difference; `with_big_m` accepts an explicit bound.
 
 ## References
 

@@ -1,141 +1,82 @@
 # 一元线性分段函数
 
-`UnivariateLinearPiecewiseFunction` 表示一个输入的一元分段线性函数。当前最方便的工厂方法是从有序采样点构造。
+`UnivariateLinearPiecewiseFunction` 表示对连续采样点 $(t_i,f_i)$ 逐段线性插值得到的函数图形。采样点至少有两个，$t_i$ 必须有限且严格递增；$[t_0,t_m]$ 之外的求值未定义。
 
-## 契约
+## 求解器数学模型
 
-- 输入：`x: LinearPolynomial<V>`，以及至少两个二维点 `(x_i, y_i)`。
-- 输出：`RealVar`（`resultVar`），通过 `resultPolynomial` 暴露。
-- `.fromPoints` 为每一对相邻点计算斜率和截距。
-- 当输入落在某个闭区间段内时，`evaluate` 返回首个匹配线段的仿射值；输入超出全部断点区间或无法求值时返回 `null`。
-- `V` 还必须实现 `FloatingNumber<V>`，因为 `.fromPoints` 计算斜率和截距需要除法。
+Kotlin 为每条线段创建二元选择变量 $z_j$。令该段的仿射公式为 $g_j(x)=a_jx+b_j$，实现强制 $\sum_jz_j=1$，用有限 Big-M 把 $x$ 限制到所选区间，并门控 $y=g_j(x)$。
 
-## 数学定义
-
-对于严格递增的断点 $t_0<t_1<\cdots<t_m$，相邻点定义
+Rust 使用采样点权重 $\lambda_i\in[0,1]$ 和相同的一热段选择变量 $z_j\in\{0,1\}$，并强制
 
 $$
-a_i=\frac{y_{i+1}-y_i}{t_{i+1}-t_i},\qquad b_i=y_i-a_i t_i,
+\begin{aligned}
+\sum_i\lambda_i&=1,&\sum_j z_j&=1,\\
+x&=\sum_i t_i\lambda_i,&y&=\sum_i f_i\lambda_i.
+\end{aligned}
 $$
 
-线段函数为
+相邻性约束为
 
 $$
-f(x)=a_i x+b_i\quad\text{for }t_i\le x\le t_{i+1}
+\lambda_0\le z_0,
+\qquad
+\lambda_m\le z_{m-1},
+\qquad
+\lambda_i\le z_{i-1}+z_i\quad(0<i<m).
 $$
 
-实现按列表顺序检查线段，因此共享断点属于首个匹配线段。对于来自普通函数图像的点，相邻公式在该边界处一致。
+因此只有所选线段的两个端点可以具有正权重。两边内部公式虽然不同，但现在都表示单一激活线段，并排除任意混合不相邻采样点的凸包行为。
 
-## 适用域与边界
-
-`.fromPoints` 要求至少两个点且 x 坐标严格递增。重复或降序 x 坐标会使 `fromPointsResult` 返回 `Failed`；便捷的 `.fromPoints` 会返回一个无效占位对象，之后在注册或结果边界处报告失败。需要显式处理构造错误时应使用 `.fromPointsResult`。求值定义在闭区间 `[t_0, t_m]` 上；低于 `t_0` 或高于 `t_m` 时返回 `null`。
-
-直接构造器还要求 `breakpoints.size = slopes.size + 1 = intercepts.size + 1`。注册 solver 时，只有能证明输入范围有限才可省略 `m`；否则传入有效的 `m` Big-M。函数会从线段推导输出界，并校验值是否有限且可表示。
-
-## 当前 API
-
-### Kotlin
-
-源码：[`UnivariateLinearPiecewise.kt`（构造与求值）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewise.kt#L60-L94) 与 [`fromPoints`/`fromPointsResult`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewise.kt#L921-L1047)
-
-```kotlin
-UnivariateLinearPiecewiseFunction.fromPoints(
-    x: LinearPolynomial<V>,
-    points: List<Point<Dim2, V>>,
-    m: V? = null,
-    converter: IntoValue<V>,
-    name: String,
-    displayName: String? = null
-)
-```
-
-如果已经计算好表示，也可使用接受 `breakpoints`、`slopes` 和 `intercepts` 的直接构造器/工厂；`.fromPointsResult` 是安全的 `Ret` 返回版本。
-
-### Rust
-
-Rust 暴露 [`Point2`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/univariate_linear_piecewise.rs) 与 [`UnivariateLinearPiecewiseFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/univariate_linear_piecewise.rs)：
-
-```rust
-Point2::new(x: V, y: V) -> Point2<V>
-
-UnivariateLinearPiecewiseFunction::new(
-    id: u64,
-    name: &str,
-    input: Linear<V>,
-    points: Vec<Point2<V>>,
-) -> UnivariateLinearPiecewiseFunction<V>
-```
-
-Rust 符号按 x 排序采样点，创建凸组合 `lambda_variables()`，并暴露连续 `result_variable()`。其直接求值会把低于首点或高于末点的输入钳制到相应端点；Kotlin 的 `evaluate` 则在断点区间外返回 `null`。Rust 没有 Kotlin 的 `fromPoints`/`m` converter 参数，调用方直接构造 `Point2`。
-
-## 辅助变量与注册模型
-
-`helperVariables` 包含实数 `resultVar` 和每条线段一个二进制 `selectorVar`。注册要求恰好激活一条线段，用 Big-M 门控每段断点区间，并在激活段上门控 `result = slope * x + intercept`。提交 token 与约束前，还会校验或推导输入/输出范围。
-
-## `evaluate` 与 solver 的差异
-
-`evaluate` 是简单的闭区间线段扫描，超出断点区间返回 `null`。solver 注册更严格：省略 `m` 时需要有限输入范围，必须计算有限输出界，并添加 Big-M 线段门控。因此直接求值可用，并不意味着 solver 注册一定能证明有限范围或生成有效约束。
-
-## 示例与测试
+## Kotlin/Rust 示例
 
 ::: code-group
 
 ```kotlin [Kotlin]
-import fuookami.ospf.kotlin.core.solver.value.IntoValue
-import fuookami.ospf.kotlin.core.symbol.function.UnivariateLinearPiecewiseFunction
-import fuookami.ospf.kotlin.core.variable.RealVar
-import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.geometry.*
-import fuookami.ospf.kotlin.math.symbol.Symbol
-import fuookami.ospf.kotlin.math.symbol.inequality.eq
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
-import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
-
-val x = RealVar("x")
-val xPoly = LinearPolynomial(listOf(LinearMonomial(Flt64.one, x)), Flt64.zero)
-val ulp = UnivariateLinearPiecewiseFunction.fromPoints(
-    x = xPoly,
-    points = listOf(
-        point2(),
-        point2(x = Flt64.one, y = Flt64.two),
-        point2(x = Flt64.two, y = Flt64.one)
-    ),
+val piecewise = UnivariateLinearPiecewiseFunction.fromPoints(
+    x = input,
+    points = points,
     converter = IntoValue.Identity,
-    name = "y"
+    name = "ulp"
 )
-val value = ulp.evaluate(mapOf<Symbol, Flt64>(x to Flt64.one))
-check(value != null && (value eq Flt64.two))
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
-use ospf_rust_core::symbol::function::{Point2, UnivariateLinearPiecewiseFunction};
-
-let input = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
-let ulp = UnivariateLinearPiecewiseFunction::new(
+let piecewise = UnivariateLinearPiecewiseFunction::new(
     1,
-    "y",
+    "ulp",
     input,
     vec![
-        Point2::new(0.0_f64, 0.0_f64),
-        Point2::new(1.0_f64, 2.0_f64),
-        Point2::new(2.0_f64, 1.0_f64),
+        Point2::new(0.0, 0.0),
+        Point2::new(1.0, 2.0),
+        Point2::new(2.0, 0.0),
     ],
 );
-assert_eq!(ulp.points().len(), 3);
-let _result = ulp.result_variable();
+assert_eq!(piecewise.selector_variables().len(), 2);
 ```
 
 :::
 
-完整示例：[`ULPTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/ULPTest.kt)
+## 求值与边界
 
-Core 验证：[`UnivariateLinearPiecewiseGenericEvaluateTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewiseGenericEvaluateTest.kt) 与 [`UnivariateLinearPiecewiseFailureBoundaryTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewiseFailureBoundaryTest.kt)
+在 $[t_i,t_{i+1}]$ 上，直接求值采用
 
-Rust 源码：[`univariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/univariate_linear_piecewise.rs)。
+$$
+y=f_i+\frac{x-t_i}{t_{i+1}-t_i}(f_{i+1}-f_i).
+$$
 
-## 相关页面
+输入缺失或超出采样点定义域时，Kotlin 返回 `null`，Rust 返回 `None`。重复、降序、非有限或数量不足的采样点会被拒绝。
 
-- [`blp`](./blp)：基于三角剖分的双输入分段插值。
-- [`max`](./max) 与 [`min`](./min)：在仿射候选之间离散选择。
-- [`rounding`](./rounding)：整数输出而非连续插值。
+## 测试与参考
+
+- Kotlin 独立聚焦测试：[`UnivariateLinearPiecewiseFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewiseFunctionDedicatedTest.kt)
+- Kotlin 边界/注册测试：[`UnivariateLinearPiecewiseFailureBoundaryTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewiseFailureBoundaryTest.kt)
+- Kotlin 实现：[`UnivariateLinearPiecewise.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewise.kt)
+- Rust 实现：[`univariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/univariate_linear_piecewise.rs)
+- Rust 独立测试：[`function_symbol_univariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_univariate_linear_piecewise.rs)
+
+独立聚焦测试会断言辅助变量数量和每一条选择/分段图形约束行，并覆盖端点、定义域外求值及非法采样点校验。
+
+点形式和线段形式共享严格递增的断点契约。Kotlin 直接接收
+breakpoints/slopes/intercepts；Rust 还提供
+UnivariateLinearPiecewiseFunction::from_segments，并要求每个相邻断点对
+对应一个斜率和截距。非法值会在注册辅助变量前拒绝。

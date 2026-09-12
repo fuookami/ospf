@@ -83,11 +83,19 @@ IfFunction::condition_indicator_variable(&self) -> &BinaryVariableItem
 IfFunction::result_variable(&self) -> &ContinuousVariableItem
 ```
 
-## Auxiliary variables and registration model
+## Solver mathematical model
 
-For `name`, the implementation creates `name_if` as the result variable and `name_if_nz` as the condition indicator. Both are in `helperVariables`; `resultPolynomial` is the unit-coefficient polynomial of the result variable.
+For normalized condition $q$, true threshold $T$, false threshold $F$, finite range $L\le q\le U$, and binary indicator $a$, Kotlin passes
 
-`registerAuxiliaryTokens` validates the condition, boundaries, `strictBoundary`, and `delta`, then adds the two variables. `registerConstraints` normalizes the declared relation over the finite bounds, folds a single branch when possible, otherwise adds two range-driven indicator inequalities and the equality `resultVar = indicatorVar`. No universal `bin(max(x) <= rhs)` out-of-range rule is used.
+$$
+q+(L-T)a\ge L,
+\qquad
+q+(F-U)a\le F,
+\qquad
+y-a=0.
+$$
+
+Here $y$ is `name_if`; the first two rows imply $a=1\Rightarrow q\ge T$ and $a=0\Rightarrow q\le F$. Rust's same-named ternary selector instead uses a nonzero condition flag $a$ and gates $y=t$ when $a=1$ and $y=e$ when $a=0$ with four Big-M bounds. Rust `ConditionalIndicatorFunction` is the direct counterpart of the three Kotlin rows above.
 
 ## `evaluate()` versus the solver model
 

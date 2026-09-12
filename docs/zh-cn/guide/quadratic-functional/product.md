@@ -2,8 +2,8 @@
 
 `ProductFunction` 将两个线性多项式的乘积表示为二次中间表达式。
 
-> [!WARNING]
-> 普通中间表达式是 $left\cdot right$，没有公开结果变量。显式调用 `registerConstraints` 会加入 $left\cdot right=0$ 等式；因此该方法表示显式的零乘积约束，不是通用的“创建 y = product”操作。
+> [!NOTE]
+> 普通中间表达式是 $left\cdot right$，没有公开结果变量。`registerConstraints` 不提交独立约束；展开后的多项式由目标函数或外层约束直接消费。
 
 ## 契约
 
@@ -30,9 +30,21 @@ $$
 
 中间符号的多项式就是该展开式；仅表示表达式不需要辅助 $y$。
 
-## 实现、辅助变量与约束
+## 求解器数学模型
 
-`ProductFunction` 将两个线性输入展开为二次单项式，并通过相乘求值。不注册辅助 token。其显式 `registerConstraints` 实现把展开多项式放在左侧、零放在右侧构造一个二次等式，因此只有在确实需要零乘积等式时才应调用它。
+### Kotlin
+
+作为中间表达式使用时不创建辅助变量，也不独立提交约束；求解器直接在目标函数或其他约束中接收二次展开式
+
+$$
+p(x)=left(x)\,right(x).
+$$
+
+`registerConstraints` 不提交独立约束，也不创建 $y=p(x)$ 的桥接变量；如果需要这种关系，应使用专用桥接符号。
+
+### Rust
+
+Rust 同样不创建辅助变量，直接把 $left(x)right(x)$ 的二次展开式交给使用它的目标或约束；两边现在具有一致的表达式级求解器契约。
 
 ## 当前 API
 
@@ -84,7 +96,7 @@ Rust 通过 [`ProductFunction<V>`](https://github.com/fuookami/ospf-rust/blob/ma
 ProductFunction::new(id: u64, name: &str, left: Linear<V>, right: Linear<V>) -> ProductFunction<V>
 ```
 
-相关公开操作包括 `left_polynomial`、`right_polynomial`、`prepare`、`FunctionSymbol::calculate_value` 和 `QuadraticIntermediateSymbol::to_quadratic_polynomial`。Rust 实现不注册辅助 token，也不返回机理约束；与 Kotlin 实现不同，它没有发出零乘积等式的公开 `registerConstraints` 操作。
+相关公开操作包括 `left_polynomial`、`right_polynomial`、`prepare`、`FunctionSymbol::calculate_value` 和 `QuadraticIntermediateSymbol::to_quadratic_polynomial`。Rust 实现不注册辅助 token，也不返回机理约束，与 Kotlin 的 `registerConstraints` 空操作契约一致。
 
 ```rust
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
@@ -102,7 +114,7 @@ assert_eq!(*expanded.constant(), -2.0);
 
 ## evaluate 与 solver 的差异
 
-中间求值 API（`prepare`、带 token 表的 `evaluate` 和结果列表 `evaluate`）直接计算乘积。二次机制注册把展开后的多项式作为二次表达式使用。若直接调用 `registerConstraints`，solver 会收到上面所述的零乘积等式，不会创建自由的乘积结果变量。
+中间求值 API（`prepare`、带 token 表的 `evaluate` 和结果列表 `evaluate`）直接计算乘积。二次机制注册把展开后的多项式作为二次表达式使用。直接调用 `registerConstraints` 不会增加约束行，也不会创建自由的乘积结果变量。
 
 ## 边界、tolerance 与 Undefined
 
@@ -177,9 +189,11 @@ assert_eq!(product.calculate_value(&tokens, false), Some(16.0));
 
 - Core 求值：[`ProductFunctionGenericEvaluationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/ProductFunctionGenericEvaluationTest.kt)
 - Core 展开/注册：[`ProductFunctionTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/ProductFunctionTest.kt)
+- Kotlin 表达式级聚焦测试：[`ProductFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/ProductFunctionDedicatedTest.kt)
 - 完整示例：[`QuadraticProductEvaluateTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/quadratic_function/QuadraticProductEvaluateTest.kt)
 
 - Rust 实现与单元测试：[`product.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/product.rs)
+- Rust 表达式级聚焦测试：[`function_symbol_product.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_product.rs)
 
 ## 相关页面
 

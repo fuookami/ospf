@@ -9,7 +9,7 @@
 ```text
 withNegative = true,  withPositive = false: max(0, -d)
 withNegative = false, withPositive = true:  max(0,  d)
-withNegative = true,  withPositive = true:  |d|   (when the result is minimized)
+withNegative = true,  withPositive = true:  |d|
 ```
 
 实现位于 [`Slack.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Slack.kt#L42-L196)。主构造函数为：
@@ -29,7 +29,7 @@ SlackFunction(
 )
 ```
 
-同一文件还提供 `LinearIntermediateSymbol<V>` 与 `ToLinearPolynomial<V>` 重载（`Slack.kt:173-280`）。`withNegative` 与 `withPositive` 至少有一个必须为 `true`（`Slack.kt:54-56`）。整数 `type` 创建 `UIntVar` 辅助变量，连续类型创建 `URealVar`（`Slack.kt:98-100`）。
+同一文件还提供 `LinearIntermediateSymbol<V>` 与 `ToLinearPolynomial<V>` 重载（`Slack.kt:173-280`）。`withNegative` 与 `withPositive` 至少有一个必须为 `true`（`Slack.kt:54-56`）。整数 `type` 创建 `UIntVar` 辅助变量，连续类型创建 `URealVar`（`Slack.kt:98-100`）。两个方向同时启用时，Kotlin 还创建一个二值分支变量（`<name>_side`），因此辅助变量为 `neg`、`pos`、`side`。
 
 ### Rust
 
@@ -59,7 +59,7 @@ SlackFunction::with_big_m(
 ) -> SlackFunction<V>
 ```
 
-Rust 结果始终是 |left - right|，并通过 `result_variable()` 暴露。它没有 Kotlin 的 `withNegative`/`withPositive`、`threshold`、`constraint` 或变量类型参数；右侧为常数时使用 `with_target`，默认 (10^6) 不合适时使用 `with_big_m`。
+Rust 结果始终是 |left - right|，并通过 `result_variable()` 暴露。它没有 Kotlin 的 `withNegative`/`withPositive`、`threshold`、`constraint` 或变量类型参数；右侧为常数时使用 `with_target`，无界默认值 ($2\times10^6$) 不合适时使用 `with_big_m`。
 
 ## 导出符号与求值
 
@@ -72,14 +72,33 @@ $$
 
 `neg`、`pos` 以可空线性多项式公开，`resultPolynomial` 是所启用辅助变量之和（`Slack.kt:58-90`）。直接求值只使用 `x`、`y`：两类辅助变量返回 `|x-y|`，仅 `neg` 返回 `max(0,y-x)`，仅 `pos` 返回 `max(0,x-y)`（`Slack.kt:102-115`）；任一输入未解析时返回 `null`。
 
-## 约束模式与非最小化模型
+## 求解器数学模型
 
 当 `constraint = true` 时：
 
-- `threshold = false` 注册 `x + neg - pos = y`（`Slack.kt:125-134`）。这确定差值，但不会阻止非负辅助变量大于最小值。
-- `threshold = true`：启用 `withNegative` 时注册 `x + neg >= y`；否则启用 `withPositive` 时注册 `x - pos <= y`（`Slack.kt:135-141`）。两个标志都为 `true` 时，按实现的 `if/else` 顺序只走负松弛分支，不会同时注册两个阈值不等式。
+- 两个方向同时启用时，无论 `threshold` 为何，Kotlin 都注册以下精确四行绝对值模型：
+
+  $$
+  s-d\ge0,\qquad s+d\ge0,\qquad
+  s-d+Mu\le M,\qquad s+d-Mu\le0,
+  $$
+
+  其中 $s=neg+pos$、$d=x-y$，$u$ 为二值分支变量。这些行无需目标函数即可强制 $s=|d|$。
+- 只启用一个辅助变量时，`threshold = false` 注册等式 `x + neg - pos = y`；`threshold = true` 注册对应的单向不等式（`neg` 为 `x + neg >= y`，`pos` 为 `x - pos <= y`）。
 
 当 `constraint = false` 时，不注册输入与辅助变量之间的关系（`Slack.kt:125-128`）。`evaluate` 始终根据输入计算数学违约量，与注册的辅助变量值无关。因此，模型侧的值只有在最小化相应辅助表达式或另加最小性约束时才精确；不最小化时，关系允许出现被放大的松弛量。
+
+Rust 同样创建有符号结果 $s$、二值选择变量 $u$，并令 $d=x-y$，实际传入精确绝对差约束
+
+$$
+s-d\ge0,\qquad s+d\ge0,
+$$
+
+$$
+s-d+Mu\le M,\qquad s+d-Mu\le0.
+$$
+
+只要 $M$ 有效，这些约束无需目标函数就能保证 $s=|x-y|$。无界默认值为 $2\times10^6$，因为未激活分支可能暴露两倍最大绝对差；可用 `with_big_m` 指定更紧的界。
 
 ## 参考
 

@@ -91,11 +91,19 @@ IfThenFunction::new(
 ) -> Self
 ```
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
 对于名称 `name`，实现会创建二进制条件指示变量 `name_ind` 和实数结果变量 `name_y`。二者都放入 `helperVariables`；`resultPolynomial` 是 `name_y` 的单位系数多项式。
 
-加入辅助变量后，`registerConstraints` 会在条件范围上规范化关系。它先加入两个由范围驱动的指示变量不等式，再用该指示变量门控 `thenPoly`。对 `L\le q\le U`，四个门控不等式是：
+加入辅助变量后，`registerConstraints` 会在条件范围上规范化关系。令规范化条件 $c\in[L_c,U_c]$、真阈值为 $T$、假阈值为 $F$，两条条件约束为
+
+$$
+c+(L_c-T)i\ge L_c,
+\qquad
+c+(F-U_c)i\le F.
+$$
+
+再令 then 表达式满足 $L\le q\le U$，四条结果门控约束为：
 
 $$
 y\le U\,i,
@@ -107,7 +115,7 @@ y-q\le-L(1-i),
 y-q\ge-U(1-i).
 $$
 
-如果条件范围已经证明某个分支必然成立，实现会折叠指示变量与结果（并依据 then 范围提交结果范围）。注册过程具有原子性，失败时会回滚。
+这些约束共同保证 $i=0\Rightarrow y=0$、$i=1\Rightarrow y=q$。如果条件范围已证明某个分支必然成立，Kotlin 会折叠指标与结果。Rust 的条件对应物使用相同的指标加门控结构。
 
 ## `evaluate()` 与求解器模型的差异
 

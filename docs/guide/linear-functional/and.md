@@ -73,7 +73,7 @@ AndFunction::named(name: impl AsRef<str>, polynomials: Vec<Linear<V>>) -> Self
 AndFunction::auto(polynomials: Vec<Linear<V>>) -> Self
 ```
 
-## Auxiliary variables and registration model
+## Solver mathematical model
 
 For a function named `name`, the current implementation creates:
 
@@ -83,6 +83,20 @@ For a function named `name`, the current implementation creates:
 
 `helperVariables` contains the result, all nonzero indicators, and all side helpers. Registration first adds these variables through `registerAuxiliaryTokens`; `registerConstraints` adds the shared four-inequality nonzero test for every input, then adds:
 
+For each $p_i$, with nonzero flag $a_i$, side flag $s_i$, zero tolerance $t$, and strict boundary $g$, that shared block is
+
+$$
+a_i=0\Rightarrow -t\le p_i\le t,
+$$
+
+$$
+(a_i,s_i)=(1,1)\Rightarrow p_i\ge g,
+\qquad
+(a_i,s_i)=(1,0)\Rightarrow p_i\le-g.
+$$
+
+The implementation expands these implications into four Big-M linear inequalities before appending the AND rows:
+
 $$
 \sum_i a_i \ge n y,
 \qquad
@@ -90,6 +104,8 @@ y \le a_i\quad(1\le i\le n).
 $$
 
 The public `resultPolynomial` is the unit-coefficient polynomial of `name_and`. The implementation is in `And.kt` and uses `AbstractLinearMechanismModel` registration.
+
+Rust registers the same nonzero-indicator block followed by the same AND rows; its numerical threshold and Big-M are selected by the Rust mechanism rather than Kotlin constructor arguments.
 
 ## `evaluate()` versus the solver model
 

@@ -1,159 +1,67 @@
 # 二元线性分段函数
 
-`BivariateLinearPiecewiseFunction` 表示覆盖一组三角形的分段线性曲面。当前模型是三角剖分加重心插值，而不是独立点的矩形列表。
+`BivariateLinearPiecewiseFunction` 表示定义在三角剖分上的分片平面。每个单元包含三个顶点 $(x_{tk},y_{tk},z_{tk})$。
 
-## 契约
+## 求解器数学模型
 
-- 输入：`x` 与 `y`，二者都是 `LinearPolynomial<V>`。
-- 几何数据：非空的 `List<Triangle<Point<Dim3, Flt64>, Dim3, Flt64>>`；每个顶点存储 `(x, y, z)`。
-- 输出：由重心权重和顶点 z 坐标构成的线性多项式。
-- `evaluate` 返回首个包含输入点且非退化三角形的插值 z 值；任一输入缺失、点在所有三角形外，或所有候选三角形退化时返回 `null`。
-- `V` 必须实现 `RealNumber<V>` 与 `NumberField<V>`；几何坐标是 `Flt64`，并通过 `IntoValue<V>` 转换。
-
-## 数学定义
-
-对于顶点为 $P_1=(x_1,y_1,z_1)$、$P_2=(x_2,y_2,z_2)$、$P_3=(x_3,y_3,z_3)$ 的三角形，三角形内的点用重心权重表示：
+令 $s_t\in\{0,1\}$ 选择三角形，$\lambda_{tk}\in[0,1]$ 为该三角形的重心权重。精确公式为
 
 $$
-\lambda_1=1-u-v,\qquad \lambda_2=u,\qquad \lambda_3=v,
+\begin{aligned}
+\sum_t s_t&=1,\\
+\sum_{k=0}^{2}\lambda_{tk}&=s_t &&\forall t,\\
+x&=\sum_{t,k}x_{tk}\lambda_{tk},\\
+y&=\sum_{t,k}y_{tk}\lambda_{tk},\\
+z&=\sum_{t,k}z_{tk}\lambda_{tk}.
+\end{aligned}
 $$
 
-其中 $u\ge0$、$v\ge0$、$u+v\le1$。插值结果为
+只有一个三角形可以具有非零权重。该模型不是所有顶点的无约束凸包，因此能够保留非共面单元之间的分段曲面。
+
+## 直接求值
+
+求值器对每个三角形计算重心坐标 $(\lambda_0,\lambda_1,\lambda_2)$。两种实现使用相同的几何容差 `1e-12`，允许权重低至 `-1e-12`。第一个满足所有权重在该容差内的三角形包含输入点，此时
 
 $$
-z=\lambda_1z_1+\lambda_2z_2+\lambda_3z_3
- =z_1+(z_2-z_1)u+(z_3-z_1)v.
+z=\lambda_0z_0+\lambda_1z_1+\lambda_2z_2.
 $$
 
-实现从 x/y 坐标计算 `u`、`v`，并以包含边界的方式接受三角形边界。
+输入不属于任何三角形时返回 `null`/`None`。两种实现都会在构造时拒绝坐标非有限或二维行列式绝对值不大于 `1e-12` 的三角形，因此退化三角形无法进入求值。
 
-## 适用域与边界
-
-构造至少要求一个三角形。二维行列式绝对值不大于 $10^{-12}$ 的三角形视为退化，不能产生求值结果。点在所有三角形外时返回 `null`。三角形重叠时，求值使用列表中首个包含该点的三角形；如果相邻三角形的 z 值不一致，共享边界的结果会依赖列表顺序。solver 注册恰好选择一个三角形，并假定所列几何数据描述了预期域。
-
-## 当前 API
-
-### Kotlin
-
-源码：[`BivariateLinearPiecewise.kt`（构造、重心求值与约束）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/BivariateLinearPiecewise.kt#L58-L264)
-
-```kotlin
-BivariateLinearPiecewiseFunction(
-    x: LinearPolynomial<V>,
-    y: LinearPolynomial<V>,
-    triangles: List<Triangle<Point<Dim3, Flt64>, Dim3, Flt64>>,
-    converter: IntoValue<V>,
-    name: String,
-    displayName: String? = null
-)
-```
-
-### Rust
-
-源码：[`bivariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/bivariate_linear_piecewise.rs)
-
-Rust 使用非空的 `Point3<V>` 列表和凸组合模型，不同于 Kotlin 的三角形列表。主要构造器和访问器为：
-
-```rust
-Point3::new(x: V, y: V, z: V) -> Point3<V>
-BivariateLinearPiecewiseFunction::new(
-    id: u64,
-    name: &str,
-    x_input: Linear<V>,
-    y_input: Linear<V>,
-    points: Vec<Point3<V>>,
-) -> Self
-```
-
-`result_variable()`、`lambda_variables()`、`x_input_polynomial()`、`y_input_polynomial()` 和 `points()` 暴露已注册的模型部分。Rust 求值器从 token 读取 lambda 变量并返回 z 的加权和；x/y 几何关系由机理约束保证。
-
-## 辅助变量与注册模型
-
-每个三角形的 `lambdaVars` 是形状为 3 的 `PctVariable1`，`zVars` 是三角形选择用的 `BinVariable1`。注册会约束 x、y 等于按 lambda 加权的顶点坐标，约束结果等于加权 z 坐标，将所有 lambda 之和设为 1，用选择变量门控每个三角形的 lambda 和，并将选择变量之和设为 1。百分比变量提供 `[0, 1]` 范围。
-
-## `evaluate` 与 solver 的差异
-
-`evaluate` 按顺序搜索三角形并返回重心插值或 `null`。solver 注册引入 one-hot 三角形选择和 lambda 变量，但不会修复重叠、不一致或退化的几何数据。因此 solver 模型应使用覆盖域与预期输入范围一致的连贯三角剖分。
-
-## 当前最小示例
+## Kotlin/Rust 示例
 
 ::: code-group
 
 ```kotlin [Kotlin]
-import fuookami.ospf.kotlin.core.solver.value.IntoValue
-import fuookami.ospf.kotlin.core.symbol.function.BivariateLinearPiecewiseFunction
-import fuookami.ospf.kotlin.core.variable.RealVar
-import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.math.geometry.*
-import fuookami.ospf.kotlin.math.symbol.Symbol
-import fuookami.ospf.kotlin.math.symbol.inequality.eq
-import fuookami.ospf.kotlin.math.symbol.monomial.LinearMonomial
-import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
-
-val x = RealVar("x")
-val y = RealVar("y")
-val xPoly = LinearPolynomial(listOf(LinearMonomial(Flt64.one, x)), Flt64.zero)
-val yPoly = LinearPolynomial(listOf(LinearMonomial(Flt64.one, y)), Flt64.zero)
-val blp = BivariateLinearPiecewiseFunction(
-    x = xPoly,
-    y = yPoly,
-    triangles = listOf(
-        Triangle(
-            point3(Flt64.zero, Flt64.zero, Flt64.zero),
-            point3(Flt64.one, Flt64.zero, Flt64.one),
-            point3(Flt64.zero, Flt64.one, Flt64.one)
-        )
-    ),
+val surface = BivariateLinearPiecewiseFunction(
+    x = xPolynomial,
+    y = yPolynomial,
+    triangles = triangles,
     converter = IntoValue.Identity,
-    name = "blp"
+    name = "surface"
 )
-val value = blp.evaluate(
-    mapOf<Symbol, Flt64>(x to Flt64(0.25), y to Flt64(0.25))
-)
-check(value != null && (value eq Flt64(0.75)))
 ```
 
 ```rust [Rust]
-use ospf_rust_core::symbol::flatten::Linear;
-use ospf_rust_core::symbol::function::{BivariateLinearPiecewiseFunction, Point3};
-use ospf_rust_core::symbol::FunctionSymbol;
-use ospf_rust_core::token::{MutableTokenList, Token, VecTokenList};
-
-let blp = BivariateLinearPiecewiseFunction::new(
+let surface = BivariateLinearPiecewiseFunction::new(
     1,
-    "blp",
-    Linear::new(vec![], 0.25),
-    Linear::new(vec![], 0.25),
-    vec![
+    "surface",
+    x_input,
+    y_input,
+    vec![Triangle3::new(
         Point3::new(0.0, 0.0, 0.0),
-        Point3::new(1.0, 0.0, 1.0),
-        Point3::new(0.0, 1.0, 1.0),
-    ],
+        Point3::new(1.0, 0.0, 10.0),
+        Point3::new(0.0, 1.0, 20.0),
+    )],
 );
-let mut tokens = VecTokenList::new();
-for (lambda, value) in blp.lambda_variables().iter().zip([0.5, 0.25, 0.25]) {
-    let token = Token::from_generic(lambda.clone(), lambda.index());
-    token.set_result(value);
-    tokens.add_token(token);
-}
-let value = <BivariateLinearPiecewiseFunction as FunctionSymbol>::calculate_value(
-    &blp,
-    &tokens,
-    false,
-);
-assert_eq!(value, Some(0.5));
+assert_eq!(surface.selector_variables().len(), 1);
 ```
 
 :::
 
-完整示例：[`BLPTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/BLPTest.kt)
+## 测试与参考
 
-Core 验证：[`TrigonometricAndBivariateGenericEvaluateTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/TrigonometricAndBivariateGenericEvaluateTest.kt)
-
-Rust 实现与覆盖：[`bivariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/bivariate_linear_piecewise.rs)、[`gurobi_linear_function_kotlin_parity.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/gurobi_linear_function_kotlin_parity.rs)
-
-## 相关页面
-
-- [`ulp`](./ulp)：从有序点进行一元分段插值。
-- [`max`](./max) 与 [`min`](./min)：基于选择变量的线性函数。
-- [`masking`](./masking)：线性输入的二进制门控。
+- Kotlin 实现：[`BivariateLinearPiecewise.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/BivariateLinearPiecewise.kt)
+- Kotlin 独立测试：[`BivariateLinearPiecewiseFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/BivariateLinearPiecewiseFunctionDedicatedTest.kt)
+- Rust 实现：[`bivariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/bivariate_linear_piecewise.rs)
+- Rust 独立测试：[`function_symbol_bivariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_bivariate_linear_piecewise.rs)

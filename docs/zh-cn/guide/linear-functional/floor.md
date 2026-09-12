@@ -62,9 +62,15 @@ FloorFunction::named(name: impl AsRef<str>, input: Linear<V>) -> Self
 FloorFunction::auto(input: Linear<V>) -> Self
 ```
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
-`helperVariables` 注册 `kVar` 与 `resultVar`。注册会添加 `k <= p`、带 epsilon 的 `p <= k+1-epsilon`，以及等式 `resultVar = k`。当前实现没有 `d` 参数，也没有 Big-M 约束。
+令 $k$ 为整数辅助变量、$y$ 为结果变量。实际传给求解器的约束为
+
+$$
+p-k\ge0,\qquad p-k\le1-\varepsilon,\qquad y-k=0.
+$$
+
+这里没有 Big-M 约束。Kotlin 的 $k$、$y$ 都是整数变量；Rust 通过最后一条等式把连续结果变量连接到整数变量 $k$。
 
 ## `evaluate` 与 solver 的差异
 

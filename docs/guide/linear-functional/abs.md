@@ -71,9 +71,19 @@ AbsFunction::named(name: impl AsRef<str>, input: Linear<V>) -> Self
 AbsFunction::auto(input: Linear<V>) -> Self
 ```
 
-## Auxiliary variables and registration
+## Solver mathematical model
 
-`registerAuxiliaryTokens` adds the four variables. `registerConstraints` adds the equality decomposition and the two Big-M gating inequalities above. The input's own bounds are not added by `AbsFunction`; they are only used to infer the default Big-M value.
+With $p^+,p^-\ge0$, $s\in\{0,1\}$, and result $y\ge0$, the rows passed to the solver are
+
+$$
+p-p^++p^-=0,\qquad y-p^+-p^-=0,
+$$
+
+$$
+p^+\le Ms,\qquad p^-\le M(1-s).
+$$
+
+Kotlin registers all four helpers; Rust can expose a reduced helper surface but uses the same sign-disjunction model. Input bounds are used only to infer $M$ and are not added as rows by the function itself.
 
 ## `evaluate` versus solver
 

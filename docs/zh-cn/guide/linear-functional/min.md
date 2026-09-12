@@ -60,9 +60,21 @@ MinFunction::new(id: u64, name: &str, polynomials: Vec<Linear<V>>, exact: bool) 
 
 `exact = true` 为每个候选创建一个二值选择器并注册精确选择模型；`exact = false` 只保留不等式包络。与 Kotlin 不同，Rust 构造器没有 `bigM` 或 converter 参数，结果通过 `result_variable()` 暴露。
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
-`helperVariables` 包含非负的 `resultVar` 和每个候选对应的一个二进制选择变量。约束注册会添加 `result <= p_i`、每个候选的一条 Big-M 下界/等值门控约束，以及 `sum(selectorVars) = 1`。
+令结果为 $y$、候选为 $p_i$、选择变量 $s_i\in\{0,1\}$。Kotlin 与 Rust 的 `exact = true` 实际传入
+
+$$
+y-p_i\le0\quad(1\le i\le n),
+$$
+
+$$
+y-p_i-M_i s_i\ge-M_i\quad(1\le i\le n),
+\qquad
+\sum_{i=1}^{n}s_i=1.
+$$
+
+被选候选的 $s_i=0$。Rust 的 `exact = false` 只保留 $y-p_i\le0$；此时需要最大化或其他下界才能得到最小值。Kotlin 始终注册精确选择模型。
 
 ## `evaluate` 与 solver 的差异
 

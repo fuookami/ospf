@@ -78,9 +78,19 @@ MaskingFunction::with_big_m(
 
 Rust 要求掩码本身是 `BinaryVariableItem`，而 Kotlin 接收抽象变量项并依赖调用方遵守二值契约。Rust 模块也直接提供两个 Kotlin 变体的对应物：[`MaskingWithPolyMaskFunction::new`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/masking.rs) / `with_big_m` 接收 `Linear<V>` 掩码表达式并创建二值桥接变量；[`MaskingRangeFunction::new`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/masking.rs) 接收线性掩码以及 `lower`、`upper`。`result_variable()`、`mask_variable()`/`mask_bridge_variable()` 和 `big_m()` 暴露 Rust 状态；没有 Kotlin 的 converter 或 `displayName` 参数。
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
-只创建并注册 `resultVar`。`registerConstraints` 添加四条 Big-M 不等式。实现会在可能时使用输入的有限下界/上界，否则对称地使用传入或默认的 Big-M。
+令掩码 $z$ 为二值变量、$y$ 为有符号结果，并给定有限范围 $L\le p\le U$。实际约束为
+
+$$
+y\le Uz,\qquad y\ge Lz,
+$$
+
+$$
+y-p\le-L(1-z),\qquad y-p\ge-U(1-z).
+$$
+
+Kotlin 与 Rust 都使用这四条乘积线性化约束。Kotlin 依赖调用者保证掩码为二值变量；Rust 由类型直接保证。输入缺少有限界时以 $[-M,M]$ 代替。
 
 ## `evaluate` 与 solver 的差异
 
@@ -134,7 +144,7 @@ let _result = masking.result_variable();
 
 完整示例：[`MaskingTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/MaskingTest.kt)
 
-Core 验证：[`MaxAndMaskingFunctionGenericEvaluateTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/MaxAndMaskingFunctionGenericEvaluateTest.kt)
+Core 验证：[`MaxAndMaskingFunctionGenericEvaluateTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/MaxAndMaskingFunctionGenericEvaluateTest.kt) 与 [`MaskingRangeFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/MaskingRangeFunctionDedicatedTest.kt)。Rust 的范围独立测试为 [`function_symbol_masking_range.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_masking_range.rs)。
 
 Rust 源码与 parity 覆盖：[`masking.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/masking.rs) 和 [`gurobi_linear_function_kotlin_parity.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/gurobi_linear_function_kotlin_parity.rs)。
 
@@ -181,7 +191,7 @@ $$
 lower\cdot m\le y\le upper\cdot m.
 $$
 
-构造器要求 `lower <= upper`，创建 `resultVar`（`URealVar`），并且只注册上述两个不等式；掩码表达式应当是二值的，但该类既不创建也不强制掩码为二值。当 `m` 为二值变量时，`m=0` 给出 `y=0`，`m=1` 给出 `lower\le y\le upper`。
+构造器要求 `lower <= upper`，创建有符号的 `RealVar`/连续结果，并且只注册上述两个不等式；掩码表达式应当是二值的，但该类既不创建也不强制掩码为二值。负下界是合法的。当 `m` 为二值变量时，`m=0` 给出 `y=0`，`m=1` 给出 `lower\le y\le upper`。
 
 源码：[`Masking.kt`（`MaskingRangeFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L432-L567)
 
@@ -204,7 +214,7 @@ val value = rangeMask.evaluate(
 check(value != null && (value eq Flt64(4.0)))
 ```
 
-直接求值在掩码缺失或为零时返回零；掩码非零时读取 `resultVar`，若该值缺失则返回零，并将结果截断到缩放后的区间（掩码为负时交换端点）。求解器注册约束不会交换负端点，因此模型中应使用二值且非负的掩码。当前没有专用示例或测试；可参考源码和实际的[`linear_function` 示例目录](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function)。
+直接求值在掩码或 `resultVar` 缺失时返回 `null`/`None`；掩码为零时返回零，掩码非零时读取 `resultVar`，并将结果截断到缩放后的区间（掩码为负时交换端点）。注册约束直接使用有符号下界，因此在预期的二值掩码契约下支持负下界。Rust 的 `zero_if_none = true` 选项仍可像其他函数一样将缺失的多项式 token 代为零。专用测试覆盖负下界、缺失值和两条注册约束。
 
 ## 相关页面
 

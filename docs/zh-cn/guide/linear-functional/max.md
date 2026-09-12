@@ -65,9 +65,21 @@ MaxFunction::new(
 
 `exact = true` 为每个候选创建二值选择器，并注册恰好一个选择器的模型。`exact = false` 时，Rust 只注册 `result >= p_i` 下界；此时需要目标函数或其他上界才能让结果等于最大值。`result_variable()`、`polynomials()` 和 `exact()` 暴露内部状态。与 Kotlin 的 `URealVar` 结果不同，Rust 结果是连续变量；若模型有边界要求，调用方必须提供合适的变量范围。Rust 的 [`MinMaxFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/min_max.rs) 和 [`MaxMinFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/min_max.rs) 是对应的包装符号，但没有 `exact` 参数。
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
-`helperVariables` 包含 `resultVar`，以及每个候选对应的一个二进制 `selectorVar`。注册会添加 `result >= p_i`、每个候选的一条 Big-M 上界/等值门控约束，以及选择变量和为 1 的等式。可能时 Big-M 会按候选有限界分别推导。
+令结果为 $y$、候选为 $p_i$、选择变量 $s_i\in\{0,1\}$。Kotlin 与 Rust 的 `exact = true` 实际传入
+
+$$
+y-p_i\ge0\quad(1\le i\le n),
+$$
+
+$$
+y-p_i+M_i s_i\le M_i\quad(1\le i\le n),
+\qquad
+\sum_{i=1}^{n}s_i=1.
+$$
+
+Rust 的 `exact = false` 只注册 $y-p_i\ge0$；此时必须通过最小化或其他上界使结果等于最大值。Kotlin 始终注册精确选择模型。
 
 ## `evaluate` 与 solver 的差异
 

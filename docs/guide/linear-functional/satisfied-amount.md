@@ -31,9 +31,21 @@ $$
 
 The threshold mode is “at least”, not exact-count equality.
 
-## Implementation, helper variables, and constraints
+## Solver mathematical model
 
-The implementation creates flags formed by appending `_u_` and an index to `name` and, for EQ inputs, flags formed by appending `_eq_side_` and an index. Registration links LE/GE flags with two Big-M inequalities, delegates EQ to zero-indicator constraints, and adds $\sum u_i\ge amount$ when a threshold is requested. No result variable is introduced for the raw-count form; `result` is the sum of flags.
+Kotlin creates $u_i\in\{0,1\}$ and links every supported inequality to $u_i$ using the two relation rows (or the four-row zero-band model for `EQ`). It exposes
+
+$$
+c=\sum_i u_i.
+$$
+
+When `amount = k`, the only additional solver row is
+
+$$
+\sum_i u_i\ge k.
+$$
+
+The solver result remains the count $c$; Kotlin does **not** create the binary threshold result suggested by the direct-evaluation formula above. Rust receives already-created indicators, registers $y-\sum_i u_i=0$, and `with_amount_range` adds hard lower/upper bounds on that count.
 
 ## Current API
 

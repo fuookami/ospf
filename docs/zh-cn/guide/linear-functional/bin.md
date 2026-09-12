@@ -74,11 +74,17 @@ BinaryzationFunction::named_big_m(name: impl AsRef<str>, input: Linear<V>, big_m
 BinaryzationFunction::named_threshold(name: impl AsRef<str>, input: Linear<V>, threshold: V) -> Self
 ```
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
-对于 `name`，唯一辅助变量是同时作为 `resultVar` 的 `name_bin`。`helperVariables` 包含这个二值变量，`resultPolynomial` 是它的单位系数多项式。
+令结果变量 $a$ 为二值变量，$\varepsilon$ 为正值容差。实际传给求解器的约束为
 
-`registerAuxiliaryTokens` 添加结果变量。`registerConstraints` 使用选定 Big-M 和固定 tolerance 调用共享的正值指示构造器，然后把线性不等式添加到 `AbstractLinearMechanismModel`。
+$$
+p-Ma\le0,
+\qquad
+p-M'a\ge\varepsilon-M'.
+$$
+
+因此 $a=0\Rightarrow p\le0$，$a=1\Rightarrow p\ge\varepsilon$。Kotlin 只创建 `name_bin`；Rust 使用相同的两分支思想，但阈值、Big-M 与方法由构造器选择。区间 $0<p<\varepsilon$ 没有可行分支。
 
 ## `evaluate()` 与求解器模型的差异
 

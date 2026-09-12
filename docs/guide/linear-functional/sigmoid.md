@@ -27,9 +27,17 @@ $$
 
 The corresponding reversed inequalities are used for `LT`, and the analogous matrix is used for `GE` and `LE`.
 
-## Implementation, helper variables, and constraints
+## Solver mathematical model
 
-The function creates one binary indicator whose name appends `_sig_ind` to `name`, validates/normalizes the condition through the shared discrete-condition utilities, and then emits relation-indicator constraints. If the normalized condition is constant, registration folds the indicator to one or zero. Otherwise the finite condition range supplies the two branch bounds; no logistic nonlinear terms are added.
+For normalized condition $q\in[L,U]$, true threshold $T$, false threshold $F$, and $y\in\{0,1\}$, Kotlin passes
+
+$$
+q+(L-T)y\ge L,
+\qquad
+q+(F-U)y\le F.
+$$
+
+These are the only nonconstant rows: $y=1\Rightarrow q\ge T$ and $y=0\Rightarrow q\le F$. Rust `SigmoidStepFunction` uses the same relation-indicator model. Rust `SigmoidFunction::new` instead registers a sampled logistic piecewise-linear model and must not be interpreted as these two rows.
 
 ## Current API
 
@@ -83,7 +91,7 @@ SigmoidFunction::new(
 ) -> SigmoidFunction<V>
 ```
 
-`SigmoidStepFunction` is the closest Rust API: it classifies a relation with `True`/`False`/`Undefined` and exposes a binary `result_variable()`. It is also available through `SigmoidFunction::step`/`relation` and the aliases `SigmoidRelationFunction` and `ConditionalSigmoidFunction`. Rust's `SigmoidFunction::new` instead builds a sampled continuous logistic PWL function; its direct evaluator is (1/(1+e^{-x})), so it is not a one-to-one replacement for the Kotlin step indicator.
+`SigmoidStepFunction` is the closest Rust API: it classifies a relation with `True`/`False`/`Undefined` and exposes a binary `result_variable()`. It is also available through `SigmoidFunction::step`/`relation` and the aliases `SigmoidRelationFunction` and `ConditionalSigmoidFunction`. Rust's `SigmoidFunction::new` instead builds a sampled continuous logistic PWL function; its direct evaluator is $1/(1+e^{-x})$, so it is not a one-to-one replacement for the Kotlin step indicator.
 
 ## Evaluate versus solver
 

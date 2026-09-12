@@ -30,9 +30,32 @@ $$
 
 Thus the default is a five-point linear interpolation of cosine, with no periodic extension and no exact $\cos(x)$ evaluation.
 
-## Implementation, helper variables, and constraints
+## Solver mathematical model
 
-`CosFunction` lazily constructs a `UnivariateLinearPiecewiseFunction` whose internal name is the supplied `name` followed by `_impl`. Its helper variables, auxiliary-token registration, and segment constraints are delegated to that implementation. The selected segment is represented by the usual piecewise formulation; the public result remains the delegated linear result.
+Kotlin delegates to the binary-selector model. For every sampled segment $[t_i,t_{i+1}]$ with affine interpolation $f_i(x)=a_ix+b_i$, it registers
+
+$$
+\sum_i z_i=1,
+$$
+
+$$
+t_i-M_i^L(1-z_i)\le x\le t_{i+1}+M_i^U(1-z_i),
+$$
+
+$$
+f_i(x)-M_i^-(1-z_i)\le y\le f_i(x)+M_i^+(1-z_i),
+\qquad z_i\in\{0,1\}.
+$$
+
+Rust fixes 32 segments. With segment width $h$, selector $z_i\in\{0,1\}$, and gated within-segment offset $0\le\delta_i\le h z_i$, its equivalent registered form is
+
+$$
+\sum_i z_i=1,\qquad
+x=\sum_i(t_i z_i+\delta_i),\qquad
+y=\sum_i(\cos t_i\,z_i+a_i\delta_i).
+$$
+
+Neither solver receives an exact trigonometric constraint.
 
 ## Current API
 
@@ -56,7 +79,7 @@ The factory also accepts an explicit `samplingPoints` list. Points must be finit
 
 Source: [`cos.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/cos.rs)
 
-Rust provides `CosFunction::new(id, name, input)` with the flattened `Linear<V>` input, plus `with_declared_dependencies`. `result_variable()` and `input_polynomial()` expose the registered result and input. There is no public Rust sampling-point argument: the mechanism fixes 32 segments over ([-pi,pi]). Rust's token evaluator calls exact `f64::cos()`, while its registered mechanism constraints use the 32-segment piecewise approximation; this differs from Kotlin, whose evaluator follows the supplied sampling-point interpolation.
+Rust provides `CosFunction::new(id, name, input)` with the flattened `Linear<V>` input, plus `with_declared_dependencies`. `result_variable()` and `input_polynomial()` expose the registered result and input. There is no public Rust sampling-point argument: the mechanism fixes 32 segments over $[-\pi,\pi]$. Rust's token evaluator calls exact `f64::cos()`, while its registered mechanism constraints use the 32-segment piecewise approximation; this differs from Kotlin, whose evaluator follows the supplied sampling-point interpolation.
 
 ```rust
 CosFunction::new(id: u64, name: &str, input: Linear<V>) -> Self

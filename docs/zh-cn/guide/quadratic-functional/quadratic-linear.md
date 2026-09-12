@@ -7,7 +7,7 @@
 - 输入：`polynomial: QuadraticPolynomial<V>`。
 - 直接求值返回封装多项式的值。
 - 若多项式没有二次单项式，符号分类为线性，不注册辅助变量或约束。
-- 若存在二次单项式，实现创建名称追加 `_y` 的非负实数辅助变量，并注册 $y=polynomial$。
+- 若存在二次单项式，实现创建名称追加 `_y` 的有符号实数辅助变量，并注册 $y=polynomial$。
 - 泛型值要求 `V : RealNumber<V>, V : Ring<V>, V : NumberField<V>`，并配合 `IntoValue<V>` 转换器。
 
 ## 定义与数学模型
@@ -20,9 +20,27 @@ $$
 
 等式。公开多项式仍是 $p(x)$；辅助变量是 solver 侧的等式目标，不改变数学表达式。
 
-## 实现、辅助变量与约束
+## 求解器数学模型
 
-实现检查 `monomial.isQuadratic`。纯线性输入分类为 `Linear`，不注册辅助变量。否则创建 `URealVar`，其名称为 `name` + `_y`，用一个二次等式把辅助变量与多项式连接，并通过 token 表对原始多项式求值。
+### Kotlin
+
+令输入为 $p(x)$。若没有二次单项式，Kotlin 不创建辅助变量，也不提交桥接约束，直接保留线性表达式。若存在二次单项式，则创建有符号连续变量 $y\in\mathbb R$，并提交：
+
+$$
+y-p(x)=0.
+$$
+
+因此负的二次表达式值可以直接表示，不会受到额外的非负域限制。
+
+### Rust
+
+Rust 仅在输入确实含二次项时创建有符号连续变量 $y\in\mathbb R$。纯线性输入直接返回原始线性表达式，不注册辅助 token 或桥接行；含二次项时才提交二次桥接等式：
+
+$$
+p(x)-y=0.
+$$
+
+两种实现现在都使用相同的条件式辅助变量规则与有符号桥接。
 
 ## 当前 API
 
@@ -75,7 +93,7 @@ QuadraticLinearFunction::new(id: u64, name: &str, input: Quadratic<V>)
     -> QuadraticLinearFunction<V>
 ```
 
-结果变量名称为 `name + "_lin_y"`。`calculate_value` 直接求值输入二次式；`prepare` 优先使用传入的结果变量值，否则求值输入。输入没有二次单项式时，机理会生成线性等式；否则生成二次等式。与 Kotlin 实现不同，Rust 对每个输入都创建桥接变量，不会因为输入纯线性而省略它。
+结果变量名称为 `name + "_lin_y"`。`calculate_value` 与 `prepare` 始终直接求值原始输入。输入没有二次单项式时，不注册 helper token 或桥接行，并直接返回线性表达式；否则注册一个 helper 并生成二次等式。两种实现的 helper 创建规则一致。
 
 ```rust
 use ospf_rust_core::symbol::flatten::{Quadratic, QuadraticMonomial};
@@ -94,11 +112,11 @@ assert!(bridge.result_variable().name().contains("quadratic_linear_lin_y"));
 
 ## evaluate 与 solver 的差异
 
-直接求值和 `prepare` 始终计算原始多项式。solver 只对确实含二次项的输入注册等式，因此辅助变量及其非负域可能限制 solver，但直接对同一多项式得到负值仍然是允许的。
+直接求值和 `prepare` 始终计算原始多项式。两种实现都只对确实含二次项的输入注册有符号桥接等式。
 
 ## 边界、tolerance 与 Undefined
 
-输入多项式必须可求值且可表示；符号缺失时返回 `null`。该函数没有 tolerance 或三值未定义状态。二次值为负时直接求值合法，但生成的 `URealVar` 辅助变量无法表示它，除非改变模型/变量域。
+输入多项式必须可求值且可表示；符号缺失时返回 `null`。该函数没有 tolerance 或三值未定义状态。生成的辅助变量是有符号的 `RealVar`，因此可以直接表示负的二次值，不会发生截断。
 
 ## 示例与测试
 
@@ -174,9 +192,12 @@ assert_eq!(bridge.calculate_value(&tokens, false), Some(13.0));
 
 - Core 求值：[`QuadraticFunctionGenericEvaluationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/QuadraticFunctionGenericEvaluationTest.kt)
 - Core 注册：[`FunctionSymbolGenericRegistrationTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/FunctionSymbolGenericRegistrationTest.kt)
+- Kotlin 辅助/行聚焦测试：[`QuadraticLinearFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/QuadraticLinearFunctionDedicatedTest.kt)
 - 示例目录（当前没有专门的二次线性文件）：[quadratic_function](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/quadratic_function)
 
-- Rust 实现与测试：[`quadratic_linear.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_linear.rs) 与 [`quadratic_function.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_function.rs)
+- Rust 实现：[`quadratic_linear.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_linear.rs)
+- Rust 辅助/行聚焦测试：[`function_symbol_quadratic_linear.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_quadratic_linear.rs)
+- Rust 包装器回归测试：[`quadratic_function.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/quadratic_function.rs)
 
 ## 相关页面
 

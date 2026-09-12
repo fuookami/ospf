@@ -24,7 +24,7 @@ $$
 
 For two inputs:
 
-| (p_1) nonzero | (p_2) nonzero | (y) |
+| $p_1$ nonzero | $p_2$ nonzero | $y$ |
 | --- | --- | --- |
 | no | no | 0 |
 | no | yes | 1 |
@@ -37,7 +37,7 @@ The constructor requires at least one input polynomial.
 
 `evaluate()` uses exact `v != 0` for the first nonzero input and returns `null` if an input cannot be evaluated. It does not expose an `Undefined` value.
 
-The solver's shared nonzero indicators use two numerical bands. Indicator `0` denotes $\lvert p_i\rvert\le t$, where `tolerance` is (t). Indicator `1` requires one of $p_i\ge g$ or $p_i\le-g$, where `strictBoundary` is (g). The open gap (t<\lvert p_i\rvert<g) has no indicator assignment and can make registration or solving infeasible.
+The solver's shared nonzero indicators use two numerical bands. Indicator `0` denotes $\lvert p_i\rvert\le t$, where `tolerance` is $t$. Indicator `1` requires one of $p_i\ge g$ or $p_i\le-g$, where `strictBoundary` is $g$. The open gap $t<\lvert p_i\rvert<g$ has no indicator assignment and can make registration or solving infeasible.
 
 The source constants are `NONZERO_TOLERANCE = 1e-10` and `STRICT_BOUNDARY = NONZERO_TOLERANCE * 16 + 16 * 2^-52`. The default `bigM` is inferred per polynomial from finite bounds and otherwise falls back to `BIG_M_DEFAULT = 1e6`.
 
@@ -69,11 +69,23 @@ OrFunction::new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> OrFunction<
 
 `named` and `auto` are also available. `result_variable()`, `indicator_variables()`, and `side_variables()` expose the generated binary variables. The Rust constructor has no Kotlin-style converter, `bigM`, tolerance, or strict-boundary arguments; it uses the shared nonzero-indicator policy and infers Big-M from registered bounds when possible.
 
-## Auxiliary variables and registration model
+## Solver mathematical model
 
 For `name`, the implementation creates `name_or` as the result, `name_or_nz{i}` as one nonzero indicator per input, and `name_or_side{i}` as one sign-side helper per input. All are returned by `helperVariables`.
 
-`registerAuxiliaryTokens` adds these variables. `registerConstraints` adds the four shared nonzero-indicator inequalities for each polynomial, followed by:
+For each input, the four-row Big-M block represents
+
+$$
+a_i=0\Rightarrow -t\le p_i\le t,
+$$
+
+$$
+(a_i,s_i)=(1,1)\Rightarrow p_i\ge g,
+\qquad
+(a_i,s_i)=(1,0)\Rightarrow p_i\le-g.
+$$
+
+After expanding these implications into linear inequalities, registration appends the OR rows:
 
 $$
 \sum_i a_i \ge y,
@@ -82,6 +94,8 @@ y \ge a_i\quad(1\le i\le n).
 $$
 
 The public `resultPolynomial` is the unit-coefficient polynomial of `name_or`. The symbol registers against `AbstractLinearMechanismModel`.
+
+Rust registers the same nonzero-indicator block followed by the same OR rows, with Rust's own fixed threshold and bound inference.
 
 ## `evaluate()` versus the solver model
 

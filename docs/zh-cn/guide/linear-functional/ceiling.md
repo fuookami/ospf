@@ -62,9 +62,15 @@ CeilingFunction::named(name: impl AsRef<str>, input: Linear<V>) -> Self
 CeilingFunction::auto(input: Linear<V>) -> Self
 ```
 
-## 辅助变量与注册模型
+## 求解器数学模型
 
-`helperVariables` 注册 `kVar` 与 `resultVar`。注册会添加两条带 epsilon 的边界和等式 `resultVar = kVar`。当前实现没有 `d` 参数，也没有 Big-M 约束。
+令 $k$ 为整数辅助变量、$y$ 为结果变量。两种实现都会向求解器传入下列约束，但使用各自固定的 $\varepsilon$：
+
+$$
+p-k\le0,\qquad p-k\ge-1+\varepsilon,\qquad y-k=0.
+$$
+
+这里没有 Big-M 约束。Kotlin 的 $k$、$y$ 都是整数变量；Rust 对外暴露连续变量 $y$，但通过等式与整数变量 $k$ 相连，因此求解值仍为整数。
 
 ## `evaluate` 与 solver 的差异
 

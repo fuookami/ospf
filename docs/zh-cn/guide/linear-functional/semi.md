@@ -1,105 +1,75 @@
-# 半连续标记
+# 半连续变量
 
-## 当前 API
+`SemiFunction<V>` 表示一个变量只能为零，或落在激活区间 `[lb, ub]` 内。
 
-### Kotlin
+## 求解器数学模型
 
-`SemiFunction<V>` 是携带半连续变量激活区间的标记：
+符号创建连续结果变量 $y$ 和二元激活变量 $b$，实际传给求解器的约束为
 
 $$
-y = 0 \quad\text{or}\quad lb \le y \le ub.
+y-ub\,b\le0,
+\qquad
+y-lb\,b\ge0.
 $$
 
-它**不是**正部函数 `max(0,x)`，也没有输入表达式。实现位于 [`Semi.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Semi.kt#L37-L107)。构造函数为：
+当 $b=0$ 时两条约束共同强制 $y=0$；当 $b=1$ 时得到
+$lb\le y\le ub$。构造器检查 `lb <= ub`，并将结果变量和指示变量注册为辅助变量。
+
+## Kotlin API
 
 ```kotlin
-SemiFunction(
-    lb: V? = null,
-    ub: V? = null,
-    converter: IntoValue<V>,
-    name: String = "semi",
-    displayName: String? = null
-)
-
-SemiFunction.from(
-    variable: AbstractVariableItem<*, *>,
-    lb: V? = null,
-    ub: V? = null,
-    converter: IntoValue<V>,
-    name: String = "semi",
-    displayName: String? = null
+val semi = SemiFunction(
+    lb = Flt64(2.0),
+    ub = Flt64(5.0),
+    converter = IntoValue.Identity,
+    name = "semi"
 )
 ```
 
-默认值是 `lb = 0`、`ub = 1e6`（`Semi.kt:37-50`），并要求 `lb <= ub`。`from` 会从 `variable.range.valueRange` 推断未显式提供的边界（`Semi.kt:89-106`）。
+`SemiFunction.from(variable, ...)` 可从连续变量推导缺失的有限边界；`resultVar`、`indicatorVar` 和 `resultPolynomial` 暴露模型表示。
 
-### Rust
-
-Rust 提供的是可执行的 [`SemiFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/semi.rs)，而不是空操作标记：
+## Rust API
 
 ```rust
-SemiFunction::new(
-    id: u64,
-    name: &str,
-    lower: V,
-    upper: V,
-) -> SemiFunction<V>
-
-SemiFunction::try_from_variable(
-    id: u64,
-    name: &str,
-    variable: &ContinuousVariableItem,
-    lower: Option<V>,
-    upper: Option<V>,
-) -> Result<SemiFunction<V>>
+let semi = SemiFunction::new(1, "semi", 2.0_f64, 5.0_f64);
+assert_eq!(semi.lower_bound(), &2.0);
+assert_eq!(semi.upper_bound(), &5.0);
 ```
 
-该符号创建连续 `result_variable()` 和二值 `indicator_variable()`，并注册 `result <= upper * indicator` 与 `result >= lower * indicator`。`try_from_variable`（别名 `from_variable`）可从 `ContinuousVariableItem` 推导缺失的有限边界。这与 Kotlin 不同：Kotlin 的 `SemiFunction` 没有辅助变量，也不会注册域约束。
+Rust 还提供 `try_from_variable`/`from_variable` 推导有限边界。两种实现注册相同的两条域约束。
 
-## 运行时与注册语义
-
-该标记不创建辅助变量（`helperVariables` 为空），`evaluate` 始终返回 `null`，`registerAuxiliaryTokens` 与 `registerConstraints` 都只返回成功而不添加任何内容（`Semi.kt:53-65`）。因此它不计算 `max(0,x)`，不绑定线性表达式，也不会自行强制半连续域。只有理解该标记的求解器/后端集成才会消费它；仅构造或保留 `SemiFunction` 不会改变模型。
-
-## 参考
-
-- 实现：[`Semi.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Semi.kt)
-- 完整样例：[`SemiTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SemiTest.kt)
-
-## 示例与测试
+## Kotlin/Rust 示例
 
 ::: code-group
 
 ```kotlin [Kotlin]
-import fuookami.ospf.kotlin.math.algebra.number.Flt64
-import fuookami.ospf.kotlin.core.solver.value.IntoValue
-import fuookami.ospf.kotlin.core.symbol.function.SemiFunction
-
 val semi = SemiFunction(
-    lb = Flt64.two,
-    ub = Flt64.five,
+    lb = Flt64(2.0),
+    ub = Flt64(5.0),
     converter = IntoValue.Identity,
     name = "semi"
 )
-check(semi.lb == Flt64.two)
-check(semi.ub == Flt64.five)
-check(semi.helperVariables.isEmpty())
-check(semi.evaluate(emptyMap()) == null)
+check(semi.helperVariables.size == 2)
 ```
 
 ```rust [Rust]
-use ospf_rust_core::symbol::function::SemiFunction;
-
 let semi = SemiFunction::new(1, "semi", 2.0_f64, 5.0_f64);
 assert_eq!(semi.lower_bound(), &2.0);
 assert_eq!(semi.upper_bound(), &5.0);
-let _result = semi.result_variable();
-let _indicator = semi.indicator_variable();
 ```
 
 :::
 
-当前 smoke test 检查边界、空辅助变量列表和未解析时的求值结果（[`SemiTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SemiTest.kt#L16-L24)）：
+## 测试与参考
 
-若要建模 `max(0,x)`，应使用明确的正部公式；不要向 `SemiFunction` 传入表达式，因为当前 API 没有该参数。
+- Kotlin 独立聚焦测试：[`SemiFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/SemiFunctionDedicatedTest.kt)
+- Kotlin 回归测试：[`SemiFunctionTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/SemiFunctionTest.kt)
+- Kotlin 实现：[`Semi.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Semi.kt)
+- Rust 实现：[`semi.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/semi.rs)
+- Rust 独立聚焦测试：[`function_symbol_semi.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_semi.rs)
 
-Rust 源码：[`semi.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/semi.rs)。
+独立聚焦测试会断言辅助 token 和两条实际域约束行，并覆盖共享默认区间以及反向/非有限边界的提前校验。
+
+上下界会提前校验，必须有限且下界不大于上界。Kotlin 省略边界时使用共享
+区间 [0, 1e6]；Rust 通过 SemiFunction::with_default_bounds 提供相同默认值。
+缺失 token 的语义保持显式：Kotlin 返回 null，Rust 遵循 zero_if_none。
