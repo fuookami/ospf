@@ -1,8 +1,4 @@
-# Crew Domain Model
-
-:us: English | :cn: [简体中文](../../../zh-cn/examples/framework-example4/domain-crew/domain-model)
-
-[toc]
+# Crew context model
 
 ## 1. Overview
 
@@ -19,11 +15,14 @@ Manages crew members, schedules, and transit times in the flight recovery schedu
 
 ### 1. Crew Member (CrewMember)
 
-A crew member with identity information,分为 pilots and non-pilots.
+A crew member with identity information, divided into pilots and non-pilots.
 
 **$\text{type}_{m}$** : Type of crew member $m$ (Operator, Attendant, Other).
+
 **$\text{workerNo}_{m}$** : Worker number of crew member $m$.
+
 **$\text{name}_{m}$** : Name of crew member $m$.
+
 **$\text{nationality}_{m}$** : Nationality of crew member $m$.
 
 ### 2. Pilot (CrewPilotMember)
@@ -31,6 +30,7 @@ A crew member with identity information,分为 pilots and non-pilots.
 A crew member who is a pilot, delegating identity fields to the underlying `Pilot`.
 
 **$\text{rank}_{p}$** : Rank of pilot $p$ (`PilotRank`).
+
 **$\text{pilot}_{p}$** : Underlying `Pilot` object of pilot $p$.
 
 ### 3. Crew
@@ -38,6 +38,7 @@ A crew member who is a pilot, delegating identity fields to the underlying `Pilo
 A crew assigned to a flight task, composed of pilot and non-pilot members.
 
 **$\text{flight}_{c}$** : Flight task assigned to crew $c$.
+
 **$\text{members}_{c}$** : Member list of crew $c$.
 
 ### 4. Crew Schedule (CrewSchedule)
@@ -45,6 +46,7 @@ A crew assigned to a flight task, composed of pilot and non-pilot members.
 A crew member's schedule mapping flight tasks to their assigned rank.
 
 **$\text{crewMan}_{s}$** : Crew member of schedule $s$.
+
 **$\text{schedules}_{s}$** : Flight task to rank mapping of schedule $s$.
 
 ### 5. Transit Time (TransitTime)
@@ -52,6 +54,7 @@ A crew member's schedule mapping flight tasks to their assigned rank.
 Transit time scenario and its required duration based on aircraft and airport relationships.
 
 **$\text{scene}_{t}$** : Scene of transit time $t$.
+
 **$\text{duration}_{t}$** : Required duration of transit time $t$.
 
 ---
@@ -67,12 +70,15 @@ Transit time scenario and its required duration based on aircraft and airport re
 ### 1. Crew Member Type
 
 **isPilot** : Crew member $m$ is a pilot (`CrewPilotMember`).
+
 **isNotPilot** : Crew member $m$ is not a pilot (`CrewNotPilotMember`).
 
 ### 2. Transit Time Scene
 
 **isSameAircraft** : Previous and next tasks use the same aircraft.
+
 **isDomesticNotSameAircraft** : Different aircraft but domestic airport.
+
 **isInternationalNotSameAircraft** : Different aircraft and international airport.
 
 ---
@@ -90,7 +96,9 @@ Transit time scenario and its required duration based on aircraft and airport re
 **$M$** : Universal set of all crew members.
 
 **$M^{P}$** : Subset of pilot members.
+
 **$M^{N}$** : Subset of non-pilot members.
+
 **$M_{c}$** : Subset of members in crew $c$, $\forall c \in C$.
 
 ### 3. Schedules
@@ -148,7 +156,7 @@ $$
 
 ---
 
-## 9. Objective Function
+## 9. Objective Function (if applicable)
 
 > The crew context does not directly define an objective function.
 
@@ -156,7 +164,7 @@ $$
 
 ## 10. Algorithm References
 
-> No独立 algorithm references in this context.
+> No independent algorithm references in this context.
 
 ---
 

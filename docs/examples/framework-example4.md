@@ -1,51 +1,56 @@
 # Framework Example 4: Flight Recovery Branch-and-Price — Overview
 
-[中文](../zh-cn/examples/framework-example4)
+[中文](/zh-cn/examples/framework-example4)
 
 ## 1. Overview
 
 Demo4 is an architecture sample. `Application` is empty, while the generic quantity sample is executable; context pages describe implemented contracts without claiming that one production model is assembled.
 
-## 2. Context map and dependencies
+## 2. Contexts and Dependencies
 
-Task, rule, crew, and cargo data feed bunch generation; generated bunches feed bunch compilation; bunch selection coordinates branch-and-price policy. Passenger contributes optional compilation pipelines.
+| Context | Responsibility | Dependency |
+|---|---|---|
+| Task and rule | Tasks, connections, and business rules | Input configuration |
+| Crew, cargo, passenger | Resources and transport demand | Tasks and corresponding resource data |
+| Bunch generation | Searches policy-compatible flight bunches | Task, rule, and resource contexts |
+| Bunch compilation | Compiles columns into coverage, capacity, and objective expressions | Generated bunches and business pipelines |
+| Bunch selection | Coordinates column selection and branch-and-price policy | Generation and compilation contracts |
 
-## 3. Concepts, sets, and predicates
+## 3. Concepts, Sets, and Predicates
 
-The vocabulary includes flight tasks, links, crew members, cargo, passengers, feasible bunches, generated columns, and selected columns. Predicates classify feasible task transitions, compatible resources, and columns accepted by compilation.
+The vocabulary includes flight tasks, connections, crews, cargo, passengers, and flight bunches. Predicates express feasible transitions, resource compatibility, and column acceptance. Each context defines its own sets rather than merging all resources into an unowned global set.
 
-## 4. Variables and intermediate values
+## 4. Variables and Intermediate Values
 
-The compilation context may select bunch columns `x_b` and expose task/aircraft/link coverage expressions. Generation and selection contexts are services and callbacks; they do not create an independent master variable family.
+Bunch compilation owns column usage and derives task-, aircraft-, and connection-related expressions from column coefficients. Generation and selection describe service and callback contracts without duplicating master variables. The context pages define precise notation and domains.
 
-## 5. Assertions, constraints, and objective
+## 5. Assertions, Constraints, and Objectives
 
-Implemented compilation limits cover task/link/fleet/capacity relationships and generated-column consistency. Passenger pipelines add constraints and objective terms when registered. A complete global branch-and-price objective is not present in `Application`.
+Compilation provides task, connection, aircraft, and related resource contracts. Passenger and other business pipelines add their rows and objectives when enabled. An empty top-level `Application` defines no complete global objective; these contracts must not be presented as an assembled end-to-end model.
 
-## 6. Algorithms and lifecycle
+## 6. Algorithms and Lifecycle
 
-The intended flow is policy construction, shadow-price initialization, bunch generation, master compilation, reduced-cost evaluation, and branching. The generic quantity sample demonstrates quantity and linear-symbol APIs only.
+The architectural sequence is to build business policies, initialize dual information, generate bunches, compile the master, and continue according to reduced costs and branch policies. The generic-quantity example separately demonstrates quantity types and linear-symbol APIs.
 
-## 7. Register → construct → solve → analyze
+## 7. Register → Construct → Solve → Analyze
 
-Each context registers its own contract. Because the top-level `Application` is empty, there is no current end-to-end register/solve/analyze path for a runnable model.
+Each child page explains its registrable symbols, pipelines, and callbacks. Kotlin's top-level `Application` is a placeholder, so this page describes context composition rather than an unavailable end-to-end solver call chain.
 
-## 8. Source and verification
+## 8. Source Entry Points
 
 - [Kotlin Demo4 source](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo4)
-- [Rust Demo4 source](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/core/demo4.rs)
+- [Rust Demo4 source](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/framework/demo4)
 
-## 9. Kotlin/Rust comparison and design decisions
+## 9. Kotlin/Rust Comparison and Design Decisions
 
-Both implementations are architecture references. Context registration and generic quantity behavior must be checked from each source; no unimplemented global solver model is inferred.
+Both languages have framework-example directories, but matching names do not establish equal top-level completeness. The pages use Kotlin context contracts as the reference and distinguish architectural composition from an executed global model.
 
-## 10. Context model pages
+## 10. Context Model Pages
 
-[Open the Demo4 context index](framework-example4/domain-models), which links task, rule, crew, cargo, passenger, bunch generation, bunch compilation, and bunch selection.
+[Open the context index](framework-example4/domain-models) for task, rule, crew, cargo, passenger, bunch generation, bunch compilation, and bunch selection.
 
-## 11. Change log
+## 11. Change Log
 
 | Version | Change | Reason |
 |---|---|---|
-| 1.0 | Standardized architecture overview and implementation boundary | Avoid implying an unimplemented global model |
-
+| 1.1 | Aligned bilingual overviews, notation, and source entry points | Keep the overview consistent with its context models |

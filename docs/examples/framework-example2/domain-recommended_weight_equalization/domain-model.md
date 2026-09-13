@@ -1,8 +1,5 @@
-# Recommended Weight Equalization Domain Model
+# Recommended weight equalization context model
 
-[中文](../../../zh-cn/examples/framework-example2/domain-recommended_weight_equalization/domain-model)
-
-[toc]
 
 ## 1. Overview
 
@@ -22,21 +19,53 @@ Manages recommended weight equalization — ensuring cargo weight is distributed
 Priority-based appointment of items to positions with weight equalization.
 
 **$appointment$** : Item-to-position appointment mapping.
+
 **$priority$** : Item priority.
 
 ---
 
 ## 3. Variables
 
+### 1. Decision Variables
+
 This context reuses decision variables from the stowage context and does not define independent decision variables.
+
+### 2. Auxiliary Variables
+
+This context does not define independent auxiliary variables.
 
 ---
 
-## 4. Constraints
+## 4. Predicates
+
+This context does not define independent predicates.
+
+---
+
+## 5. Sets
+
+This context does not define independent sets; its limits range over items and positions from the stowage context.
+
+---
+
+## 6. Intermediate Values
+
+This context does not define independent intermediate values.
+
+---
+
+## 7. Assertions
+
+This context does not define independent assertions.
+
+---
+
+## 8. Constraints
 
 ### 1. Item Order Limit
 
 **[CN]**: 货物顺序限制
+
 **Description**: Items must be loaded in priority order.
 
 $$
@@ -46,6 +75,7 @@ $$
 ### 2. Priority Appointment Limit
 
 **[CN]**: 优先级预约限制
+
 **Description**: Priority appointments must be respected.
 
 $$
@@ -55,6 +85,7 @@ $$
 ### 3. Recommended Weight Equalization Limit
 
 **[CN]**: 推荐重量均衡限制
+
 **Description**: Load weight should equalize across positions.
 
 $$
@@ -63,7 +94,7 @@ $$
 
 ---
 
-## 5. Objective Function
+## 9. Objective Function (if applicable)
 
 Minimize weight deviation from recommended values.
 
@@ -73,17 +104,29 @@ $$
 
 ---
 
-## 6. Ubiquitous Language
+## 10. Algorithm References
 
-| Term | Symbol | English | Definition |
-|------|--------|---------|------------|
-| 优先级预约 | PriorityAppointment | Priority Appointment | Priority-based item-to-position appointment |
-| 重量均衡 | WeightEqualization | Weight Equalization | Even distribution of cargo weight |
+This context does not define an independent algorithm reference.
 
 ---
 
-## 7. Design Decisions
+## 11. Ubiquitous Language
 
-| Decision | Alternatives | Rationale | Date |
-|----------|--------------|-----------|------|
-| Equalization strategy | Absolute vs Relative | Relative equalization is more flexible | 2024 |
+| Term | Symbol | Definition |
+|------|--------|------------|
+| Priority Appointment | `PriorityAppointment` | Priority-based item-to-position appointment |
+| Weight Equalization | `WeightEqualization` | Even distribution of cargo weight |
+
+---
+
+## 12. Design Decisions
+
+| Decision | Alternatives | Rationale |
+|----------|--------------|-----------|
+| Equalization strategy | Absolute vs Relative | Relative equalization is more flexible |
+
+---
+
+## 13. Change Log
+
+No context-specific change entries are recorded on this page.

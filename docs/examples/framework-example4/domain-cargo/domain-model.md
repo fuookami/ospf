@@ -1,12 +1,8 @@
-# Cargo Domain Model
-
-:us: English | :cn: [简体中文](../../../zh-cn/examples/framework-example4/domain-cargo/domain-model)
-
-[toc]
+# Cargo context model
 
 ## 1. Overview
 
-Manages cargo domain operations in the flight recovery scheduling system, including cargo capacity tracking and disruption handling. Currently a placeholder context预留 for future cargo routing and capacity optimization.
+Manages cargo domain operations in the flight recovery scheduling system, including cargo capacity tracking and disruption handling. It is currently a placeholder context reserved for future cargo routing and capacity optimization.
 
 ### 1. Dependent Contexts
 
@@ -22,6 +18,7 @@ Manages cargo domain operations in the flight recovery scheduling system, includ
 The cargo transport capacity of an aircraft, measured by weight or volume.
 
 **$\text{capacity}_{a}$** : Cargo capacity of aircraft $a$.
+
 **$\text{cargo\_task}_{i}$** : Whether flight task $i$ is a cargo flight.
 
 ---
@@ -65,6 +62,7 @@ The cargo transport capacity of an aircraft, measured by weight or volume.
 ### 1. Cargo Capacity Constraint
 
 **[CN]**: 货物容量约束
+
 **Description**: The total load of each cargo flight must not exceed the aircraft's cargo capacity.
 
 $$
@@ -73,9 +71,9 @@ $$
 
 ---
 
-## 9. Objective Function
+## 9. Objective Function (if applicable)
 
-> This context is currently a placeholder; no独立 objective function is defined yet.
+> This context is currently a placeholder; no independent objective function is defined yet.
 
 ---
 
@@ -98,7 +96,7 @@ $$
 
 | Decision | Alternatives | Rationale | Date |
 |----------|--------------|-----------|------|
-| Placeholder cargo context | Direct modeling in task | Follows bounded context separation principle,便于 future extension | - |
+| Placeholder cargo context | Direct modeling in task | Follows the bounded-context separation principle and supports future extension | - |
 
 ---
 

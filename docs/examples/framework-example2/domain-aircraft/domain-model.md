@@ -1,8 +1,5 @@
-# Aircraft Domain Model
+# Aircraft context model
 
-[中文](../../../zh-cn/examples/framework-example2/domain-aircraft/domain-model)
-
-[toc]
 
 ## 1. Overview
 
@@ -21,7 +18,9 @@ No upstream dependencies.
 Aircraft type classification (B737/B757/B767/B747) with physical unit definitions.
 
 **$type$** : Aircraft type enumeration (B737, B757, B767, B747).
+
 **$model$** : Aircraft model string.
+
 **$minorModel$** : Aircraft minor model.
 
 ### 2. Fuselage
@@ -29,8 +28,11 @@ Aircraft type classification (B737/B757/B767/B747) with physical unit definition
 Aircraft fuselage properties including DOW, balanced arm, DOI, and liferaft.
 
 **$dow$** : Dry Operating Weight, unit kg.
+
 **$balancedArm$** : Balanced arm, unit inch.
+
 **$doi$** : Dry Operating Index.
+
 **$liferaft$** : Liferaft information (optional).
 
 ### 3. Deck
@@ -38,8 +40,11 @@ Aircraft fuselage properties including DOW, balanced arm, DOI, and liferaft.
 Physical deck on the aircraft with doors, cargo positions, and door proximity mappings.
 
 **$location$** : Deck location (Main / LowForward / LowAft).
+
 **$doors$** : List of hatch doors on the deck.
+
 **$positions$** : List of cargo positions on the deck.
+
 **$doorUbieties$** : Door-to-position proximity mapping.
 
 ### 4. Position
@@ -47,11 +52,17 @@ Physical deck on the aircraft with doors, cargo positions, and door proximity ma
 Cargo position with coordinates (longitudinal/lateral arm), shape, location tags, and loading order.
 
 **$id$** : Position unique identifier.
+
 **$spaceName$** : Space name (e.g., "1L", "2R").
+
 **$sizeCode$** : Size code.
+
 **$coordinate$** : Coordinate (longitudinal arm, lateral arm).
+
 **$shape$** : Physical dimensions (length, width, volume, area).
+
 **$location$** : Set of location tags (Main/Low/Bulk/Head/Tail).
+
 **$linearLoadingOrder$** : Linear loading order.
 
 ### 5. Fuel
@@ -59,6 +70,7 @@ Cargo position with coordinates (longitudinal/lateral arm), shape, location tags
 Fuel constants per flight phase.
 
 **$weight$** : Fuel weight.
+
 **$index$** : Fuel index.
 
 ### 6. ULD
@@ -66,6 +78,7 @@ Fuel constants per flight phase.
 Unit Load Device.
 
 **$code$** : ULD code.
+
 **$sizeCode$** : Size code.
 
 ### 7. Neighbour
@@ -73,6 +86,7 @@ Unit Load Device.
 Adjacency relationships between positions for constraint generation.
 
 **$type$** : Neighbour type.
+
 **$positions$** : Adjacent position pairs.
 
 ### 8. Loading Order
@@ -89,16 +103,23 @@ Defines the order in which positions should be loaded.
 
 This context does not define decision variables; it only provides configuration data.
 
+### 2. Auxiliary Variables
+
+This context does not define auxiliary variables.
+
 ---
 
 ## 4. Predicates
 
 ### 1. Aircraft Type Predicates
 
-**narrowBody(type)** : Narrow-body aircraft (B737, B757).
-**wideBody(type)** : Wide-body aircraft (B767, B747).
-**ballastNeeded(type)** : Ballast required (B757, B767).
-**mainDeckDoorEmptyPrefer(type)** : Main deck door empty preference (B757, B767).
+**`narrowBody(type)`** : Narrow-body aircraft (B737, B757).
+
+**`wideBody(type)`** : Wide-body aircraft (B767, B747).
+
+**`ballastNeeded(type)`** : Ballast required (B757, B767).
+
+**`mainDeckDoorEmptyPrefer(type)`** : Main deck door empty preference (B757, B767).
 
 ---
 
@@ -109,6 +130,7 @@ This context does not define decision variables; it only provides configuration 
 **$D$** : Set of all decks.
 
 **$D^{main}$** : Main deck subset.
+
 **$D^{low}$** : Lower deck subset.
 
 ### 2. Positions
@@ -116,41 +138,67 @@ This context does not define decision variables; it only provides configuration 
 **$J$** : Set of all cargo positions.
 
 **$J^{main}$** : Main deck position subset.
+
 **$J^{low}$** : Lower deck position subset.
+
 **$J^{bulk}$** : Bulk position subset.
 
 ---
 
-## 6. Constraints
+## 6. Intermediate Values
+
+This context does not define intermediate values.
+
+---
+
+## 7. Assertions
+
+This context does not define independent assertions; it supplies configuration data for downstream contexts.
+
+---
+
+## 8. Constraints
 
 This context does not define constraints.
 
 ---
 
-## 7. Objective Function
+## 9. Objective Function (if applicable)
 
 This context does not define an objective function.
 
 ---
 
-## 8. Ubiquitous Language
+## 10. Algorithm References
 
-| Term | Symbol | English | Definition |
-|------|--------|---------|------------|
-| 飞机型号 | AircraftModel | Aircraft Model | Aircraft type classification with physical unit definitions |
-| 机身 | Fuselage | Fuselage | Aircraft fuselage properties |
-| 甲板 | Deck | Deck | Physical deck on the aircraft |
-| 货物位置 | Position | Position | Cargo loading position on the aircraft |
-| 燃油 | Fuel | Fuel | Fuel constants per flight phase |
-| 集装器 | ULD | Unit Load Device | Standardized cargo container |
-| 邻接关系 | Neighbour | Neighbour | Adjacency relationship between positions |
-| 装载顺序 | LoadingOrder | Loading Order | Loading order of positions |
+This context does not define an independent algorithm reference.
 
 ---
 
-## 9. Design Decisions
+## 11. Ubiquitous Language
 
-| Decision | Alternatives | Rationale | Date |
-|----------|--------------|-----------|------|
-| Physical unit system | Imperial (inch/ft/lb) vs Metric | Aviation industry standard uses imperial | 2024 |
-| Location tag system | Enum vs Bitmap | Enum is more intuitive, facilitates predicate definitions | 2024 |
+| Term | Symbol | Definition |
+|------|--------|------------|
+| Aircraft Model | `AircraftModel` | Aircraft type classification with physical unit definitions |
+| Fuselage | `Fuselage` | Aircraft fuselage properties |
+| Deck | `Deck` | Physical deck on the aircraft |
+| Position | `Position` | Cargo loading position on the aircraft |
+| Fuel | `Fuel` | Fuel constants per flight phase |
+| ULD | `ULD` | Standardized cargo container |
+| Neighbour | `Neighbour` | Adjacency relationship between positions |
+| Loading Order | `LoadingOrder` | Loading order of positions |
+
+---
+
+## 12. Design Decisions
+
+| Decision | Alternatives | Rationale |
+|----------|--------------|-----------|
+| Physical unit system | Imperial (inch/ft/lb) vs Metric | Aviation industry standard uses imperial |
+| Location tag system | Enum vs Bitmap | Enum is more intuitive, facilitates predicate definitions |
+
+---
+
+## 13. Change Log
+
+No context-specific change entries are recorded on this page.

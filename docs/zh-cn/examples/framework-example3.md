@@ -1,52 +1,58 @@
 # 复杂示例 3：一维分切 — 总览
 
-[English](../../examples/framework-example3)
+[English](/examples/framework-example3)
 
 ## 1. 概述
 
-本示例使用 csp1d framework API 建立受限主问题并执行列生成。Material 和 Produce 是核心领域上下文，定价和目标策略在其上扩展。
+本示例通过一维分切（CSP1D）框架，把产品和材料数据、切割方案主问题、方案定价分开组织。总览说明列生成流程；材料与生产子页分别定义数据契约和主问题数学模型。
 
-## 2. 上下文图与依赖
+## 2. 上下文与依赖
 
-依赖方向为 `material → produce → cutting-plan-generation`；length assignment 和 wasting minimization 提供可选约束及目标项。应用客户端负责注册和列生成循环。
+| 上下文 | 职责 | 依赖 |
+|---|---|---|
+| 材料 | 产品、需求、材料与切割方案数据 | 输入配置 |
+| 生产 | 方案使用变量、产出和资源表达式、主问题管线 | 材料、已生成方案 |
+| 切割方案生成 | 初始方案和改进列搜索 | 材料、主问题对偶价格 |
+| 长度分配与废料最小化 | 可选长度规则及损耗相关目标 | 材料、生产、配置 |
+
+应用层负责组装上下文和列生成循环，不能把算法角色当作另一组独立产量变量。
 
 ## 3. 概念、集合与谓词
 
-`P` 是产品集合，`M` 是材料集合，`E` 是机器/资源集合，`K` 是当前切割计划列集合。谓词区分有需求产品、可行计划、有效列和使用某种材料的产品。
+$P$ 是产品集合，$M$ 是材料集合，$J_t$ 是第 $t$ 次主问题求解可用的切割方案集合。产品需求为 $d_p$，方案对产品的产出贡献为 $a_{pj}$。谓词区分可行方案、已插入列及带可选长度规则的产品。
 
 ## 4. 变量与中间值
 
-生产量是非负整数 `x_p`，RMP 列变量是 `lambda_k`。中间值包括材料用量 `u_m`、机器工时 `H_e`、容量 `C_e`、需求贡献 `a_{pk}` 和废料 `w_k`。
+$x_j$ 表示方案 $j$ 的使用次数，而不是产品 $p$ 的产量。产品产出由 $q_p=\sum_{j\in J_t}a_{pj}x_j$ 定义。每个方案的余料是由该方案决定的系数，总余料再按 $x_j$ 加权汇总；不能用全局产品产量重新计算每个方案的余料。
 
 ## 5. 断言、约束与目标
 
-有效列必须覆盖需求，机器工时不得超过容量，计划废料不得为负，并满足可选长度规则。当前 Produce 与 wasting-minimization Pipeline 注册生产、材料和废料成本目标。
+需求约束逐产品写为 $q_p\ge d_p$。带松弛或资源限制的配置使用所属管线定义的形式；不将可选规则一律视为小示例的约束。主问题变量在列生成的 LP 阶段连续，在整数求解阶段取非负整数。
 
 ## 6. 算法与生命周期
 
-客户端创建初始可行计划，注册 RMP，求解并读取对偶价格，定价新计划，加入改进列，直到不存在负约化成本计划。
+生成初始方案，求解受限主问题并读取对偶价格，搜索负约化成本方案，去重后加入列池并重新求解。终止应区分完整定价无改进列与时间、迭代等限制导致的提前返回。
 
-## 7. Register → construct → solve → analyze
+## 7. 注册 → 构造 → 求解 → 分析
 
-上下文构建器注册变量和 Pipeline；框架构造 RMP 与定价模型；求解器交替执行主问题和定价迭代；分析阶段输出生产量和废料。
+注册阶段创建生产聚合及其管线；构造阶段把已有方案编译成主问题列；求解阶段交替执行主问题和定价；分析阶段将方案使用量转换为产品产出及材料使用结果。
 
-## 8. 源码与验证
+## 8. 源码入口
 
 - [Kotlin Demo3 源码](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo3)
-- [Rust Demo3 源码](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/core/demo3.rs)
+- [Rust Demo3 源码](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/framework/demo3)
 
 ## 9. Kotlin/Rust 对照与设计决策
 
-两个版本共享列生成词汇，但系数名称、数值域和有效目标包装器必须以对应语言源码为准。
+两种语言的示例入口均调用各自的 CSP1D 框架，而非在 Demo 目录内重复实现全部上下文。数学记号统一按方案索引 $j$ 定义变量，避免把语言中的不同命名误解为不同模型。
 
 ## 10. 上下文模型页面
 
-- [Material 上下文](framework-example3/domain-material/domain-model)
-- [Produce 上下文](framework-example3/domain-produce/domain-model)
+- [材料上下文](framework-example3/domain-material/domain-model)
+- [生产上下文](framework-example3/domain-produce/domain-model)
 
 ## 11. 变更记录
 
 | 版本 | 变更 | 原因 |
 |---|---|---|
-| 1.0 | 统一总览结构和 RMP 生命周期 | 与上下文页面保持一致 |
-
+| 1.1 | 统一中英文总览、数学记号和源码入口 | 与所属上下文模型保持一致 |

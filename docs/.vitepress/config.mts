@@ -55,12 +55,19 @@ export default withMermaid({
               items: [
                 { text: 'What is OSPF?', link: '/guide/what-is-ospf' },
                 { text: 'Getting Started', link: '/guide/getting-started' },
+                { text: 'The Language of Operations Research', link: '/guide/operations-research-language' },
+                { text: 'The Modeling and Solving Workflow', link: '/guide/modeling-workflow' },
+                { text: 'Understanding Solver Results', link: '/guide/solving-results' },
                 { text: 'Use Domain Driven Design Architecture', link: '/guide/use-ddd-architecture' }
               ]
             },
             {
               text: 'Advanced Applications',
               items: [
+                {
+                  text: 'Modeling',
+                  collapsed: true,
+                  items: [
                 { 
                   text: 'Linear Function Symbols',
                   collapsed: true,
@@ -114,12 +121,55 @@ export default withMermaid({
                     { text: 'Quadratic Minimum', link: '/guide/quadratic-functional/quadratic-min' },
                   ]
                 },
+                { text: 'Constraint Programming and Global Constraints', link: '/guide/constraint-programming' },
+                { text: 'Multi-Objective Optimization and Soft Constraints', link: '/guide/multi-objective-optimization' },
+                { text: 'Numerical Stability and Modeling Quality', link: '/guide/numerical-modeling' }
+                  ]
+                },
+                {
+                  text: 'Language and Model Architecture',
+                  collapsed: true,
+                  items: [
+                { text: 'Symbolic Expressions and Symbolic Operations', link: '/guide/symbolic-expressions' },
+                { text: 'Compiler-Like Architecture and Model Transformation', link: '/guide/compiler-architecture' },
+                { text: 'The Deductive Logic Expression of the Mathematical Model', link: '/guide/deductive-logic-expression' },
+                { text: 'Formal Design and Formal Verification', link: '/guide/formal-design-and-formal-verification' }
+                  ]
+                },
+                {
+                  text: 'Solving Strategies',
+                  collapsed: true,
+                  items: [
                 { text: 'Use Domain Driven Design Architecture With Column Generation Algorithm', link: '/guide/use-ddd-architecture-with-column-generation' },
                 { text: 'Use Domain Driven Design Architecture With Benders Decomposition Algorithm', link: '/guide/use-ddd-architecture-with-benders' },
-                { text: 'The Deductive Logic Expression of the Mathematical Model', link: '/guide/deductive-logic-expression' },
-                { text: 'Formal Design and Formal Verification', link: '/guide/formal-design-and-formal-verification' },
+                { text: 'Rolling Optimization and Reoptimization', link: '/guide/rolling-optimization' }
+                  ]
+                },
+                {
+                  text: 'Diagnosis and Decision Analysis',
+                  collapsed: true,
+                  items: [
+                { text: 'Infeasibility Analysis and Constraint Relaxation', link: '/guide/infeasibility-analysis' },
+                { text: 'Automatic Critical Constraint Analysis', link: '/guide/critical-constraint-analysis' },
+                { text: 'Scenario Analysis and Plan Comparison', link: '/guide/scenario-analysis' }
+                  ]
+                },
+                {
+                  text: 'Integration and Execution',
+                  collapsed: true,
+                  items: [
                 { text: 'Remote Solver', link: '/guide/remote-solver' },
-                { text: 'Time Slice Cycle Solver', link: '/guide/time-slice-cycle-solver' }
+                { text: 'Time Slice Round Robin Solver', link: '/guide/time-slice-cycle-solver' },
+                {
+                  text: 'Integrating OSPF with LLMs',
+                  collapsed: true,
+                  items: [
+                    { text: 'Business Path', link: '/guide/integrating-llms' },
+                    { text: 'Technical Path', link: '/guide/integrating-llms-technical' }
+                  ]
+                }
+                  ]
+                }
               ]
             }
           ],
@@ -154,37 +204,37 @@ export default withMermaid({
                   { text: 'Route context model', link: '/examples/framework-example1/domain-route/domain-model' },
                   { text: 'Bandwidth context model', link: '/examples/framework-example1/domain-bandwidth/domain-model' }
                 ] },
-                { text: 'Framework Example 2: Aircraft Cargo Load Planning Problem (with benders decomposition algorithm)', collapsed: true, items: [
+                { text: 'Framework Example 2: Aircraft Cargo Load Planning Problem (with Benders Decomposition)', collapsed: true, items: [
                   { text: 'Overview', link: '/examples/framework-example2' },
                   { text: 'Context model index', link: '/examples/framework-example2/domain-models' },
-                  { text: 'Aircraft', link: '/examples/framework-example2/domain-aircraft/domain-model' },
-                  { text: 'Stowage', link: '/examples/framework-example2/domain-stowage/domain-model' },
-                  { text: 'MAC', link: '/examples/framework-example2/domain-mac/domain-model' },
-                  { text: 'Airworthiness security', link: '/examples/framework-example2/domain-airworthiness_security/domain-model' },
-                  { text: 'Soft security', link: '/examples/framework-example2/domain-soft_security/domain-model' },
-                  { text: 'MAC optimization', link: '/examples/framework-example2/domain-mac_optimization/domain-model' },
-                  { text: 'Express effectiveness', link: '/examples/framework-example2/domain-express_effectiveness/domain-model' },
-                  { text: 'Loading effectiveness', link: '/examples/framework-example2/domain-loading_effectiveness/domain-model' },
-                  { text: 'Redundancy', link: '/examples/framework-example2/domain-redundancy/domain-model' },
-                  { text: 'Recommended weight equalization', link: '/examples/framework-example2/domain-recommended_weight_equalization/domain-model' },
-                  { text: 'Payload maximization', link: '/examples/framework-example2/domain-payload_maximization/domain-model' }
+                  { text: 'Aircraft context model', link: '/examples/framework-example2/domain-aircraft/domain-model' },
+                  { text: 'Stowage context model', link: '/examples/framework-example2/domain-stowage/domain-model' },
+                  { text: 'MAC context model', link: '/examples/framework-example2/domain-mac/domain-model' },
+                  { text: 'Airworthiness security context model', link: '/examples/framework-example2/domain-airworthiness_security/domain-model' },
+                  { text: 'Soft security context model', link: '/examples/framework-example2/domain-soft_security/domain-model' },
+                  { text: 'MAC optimization context model', link: '/examples/framework-example2/domain-mac_optimization/domain-model' },
+                  { text: 'Express effectiveness context model', link: '/examples/framework-example2/domain-express_effectiveness/domain-model' },
+                  { text: 'Loading effectiveness context model', link: '/examples/framework-example2/domain-loading_effectiveness/domain-model' },
+                  { text: 'Redundancy context model', link: '/examples/framework-example2/domain-redundancy/domain-model' },
+                  { text: 'Recommended weight equalization context model', link: '/examples/framework-example2/domain-recommended_weight_equalization/domain-model' },
+                  { text: 'Payload maximization context model', link: '/examples/framework-example2/domain-payload_maximization/domain-model' }
                 ] },
-                { text: 'Framework Example 3: Cutting Stock Problem 1D (with column generation algorithm)', collapsed: true, items: [
+                { text: 'Framework Example 3: Cutting Stock Problem 1D (with Column Generation)', collapsed: true, items: [
                   { text: 'Overview', link: '/examples/framework-example3' },
                   { text: 'Material context model', link: '/examples/framework-example3/domain-material/domain-model' },
                   { text: 'Produce context model', link: '/examples/framework-example3/domain-produce/domain-model' }
                 ] },
-                { text: 'Framework Example 4: Flight Recovery Problem (with column generation algorithm)', collapsed: true, items: [
+                { text: 'Framework Example 4: Flight Recovery Problem (with Column Generation)', collapsed: true, items: [
                   { text: 'Overview', link: '/examples/framework-example4' },
                   { text: 'Context model index', link: '/examples/framework-example4/domain-models' },
-                  { text: 'Task', link: '/examples/framework-example4/domain-task/domain-model' },
-                  { text: 'Rule', link: '/examples/framework-example4/domain-rule/domain-model' },
-                  { text: 'Crew', link: '/examples/framework-example4/domain-crew/domain-model' },
-                  { text: 'Cargo', link: '/examples/framework-example4/domain-cargo/domain-model' },
-                  { text: 'Passenger', link: '/examples/framework-example4/domain-passenger/domain-model' },
-                  { text: 'Bunch generation', link: '/examples/framework-example4/domain-bunch_generation/domain-model' },
-                  { text: 'Bunch compilation', link: '/examples/framework-example4/domain-bunch_compilation/domain-model' },
-                  { text: 'Bunch selection', link: '/examples/framework-example4/domain-bunch_selection/domain-model' }
+                  { text: 'Task context model', link: '/examples/framework-example4/domain-task/domain-model' },
+                  { text: 'Rule context model', link: '/examples/framework-example4/domain-rule/domain-model' },
+                  { text: 'Crew context model', link: '/examples/framework-example4/domain-crew/domain-model' },
+                  { text: 'Cargo context model', link: '/examples/framework-example4/domain-cargo/domain-model' },
+                  { text: 'Passenger context model', link: '/examples/framework-example4/domain-passenger/domain-model' },
+                  { text: 'Bunch generation context model', link: '/examples/framework-example4/domain-bunch_generation/domain-model' },
+                  { text: 'Bunch compilation context model', link: '/examples/framework-example4/domain-bunch_compilation/domain-model' },
+                  { text: 'Bunch selection context model', link: '/examples/framework-example4/domain-bunch_selection/domain-model' }
                 ] },
                 { text: 'Framework Example 5: VRPTW Branch-and-Price', collapsed: true, items: [
                   { text: 'Overview', link: '/examples/framework-example5' },
@@ -208,6 +258,11 @@ export default withMermaid({
       label: '简体中文',
       lang: 'zh-cn',
       themeConfig: {
+        outline: { label: '本页目录', level: [2, 5] },
+        docFooter: { prev: '上一页', next: '下一页' },
+        sidebarMenuLabel: '菜单',
+        returnToTopLabel: '返回顶部',
+        langMenuLabel: '切换语言',
         search: {
           provider: "local"
         },
@@ -223,12 +278,19 @@ export default withMermaid({
               items: [
                 { text: 'OSPF 是什么?', link: '/zh-cn/guide/what-is-ospf' },
                 { text: '快速开始', link: '/zh-cn/guide/getting-started' },
+                { text: '运筹学领域语言', link: '/zh-cn/guide/operations-research-language' },
+                { text: '建模与求解的完整流程', link: '/zh-cn/guide/modeling-workflow' },
+                { text: '理解求解结果', link: '/zh-cn/guide/solving-results' },
                 { text: '使用领域驱动设计架构', link: '/zh-cn/guide/use-ddd-architecture' }
               ]
             },
             {
               text: '高级应用',
               items: [
+                {
+                  text: '建模表达',
+                  collapsed: true,
+                  items: [
                 { 
                   text: '线性函数符号',
                   collapsed: true,
@@ -282,12 +344,55 @@ export default withMermaid({
                     { text: '二次最小值', link: '/zh-cn/guide/quadratic-functional/quadratic-min' },
                   ]
                 },
+                { text: '约束规划与全局约束', link: '/zh-cn/guide/constraint-programming' },
+                { text: '多目标优化与软约束', link: '/zh-cn/guide/multi-objective-optimization' },
+                { text: '数值稳定性与建模质量', link: '/zh-cn/guide/numerical-modeling' }
+                  ]
+                },
+                {
+                  text: '语言与模型架构',
+                  collapsed: true,
+                  items: [
+                { text: '符号表达式与符号运算', link: '/zh-cn/guide/symbolic-expressions' },
+                { text: '类编译器架构与模型转换', link: '/zh-cn/guide/compiler-architecture' },
+                { text: '数学模型的演绎逻辑表达', link: '/zh-cn/guide/deductive-logic-expression' },
+                { text: '形式化设计与形式化验证', link: '/zh-cn/guide/formal-design-and-formal-verification' }
+                  ]
+                },
+                {
+                  text: '求解策略',
+                  collapsed: true,
+                  items: [
                 { text: '使用领域驱动设计架构（列生成算法）', link: '/zh-cn/guide/use-ddd-architecture-with-column-generation' },
                 { text: '使用领域驱动设计架构（Benders 分解算法）', link: '/zh-cn/guide/use-ddd-architecture-with-benders' },
-                { text: '数学模型的演绎逻辑表达', link: '/zh-cn/guide/deductive-logic-expression' },
-                { text: '形式化设计与形式化验证', link: '/zh-cn/guide/formal-design-and-formal-verification' },
-                { text: '云端求解器', link: '/zh-cn/guide/remote-solver' },
-                { text: '时间片轮转求解器', link: '/zh-cn/guide/time-slice-cycle-solver' }
+                { text: '滚动优化与重优化', link: '/zh-cn/guide/rolling-optimization' }
+                  ]
+                },
+                {
+                  text: '诊断与决策分析',
+                  collapsed: true,
+                  items: [
+                { text: '不可行性分析与约束放宽', link: '/zh-cn/guide/infeasibility-analysis' },
+                { text: '临界约束自动分析', link: '/zh-cn/guide/critical-constraint-analysis' },
+                { text: '场景分析与方案比较', link: '/zh-cn/guide/scenario-analysis' }
+                  ]
+                },
+                {
+                  text: '系统集成与执行',
+                  collapsed: true,
+                  items: [
+                { text: '远端求解', link: '/zh-cn/guide/remote-solver' },
+                { text: '时间片轮转求解器', link: '/zh-cn/guide/time-slice-cycle-solver' },
+                {
+                  text: 'OSPF 与 LLM 融合',
+                  collapsed: true,
+                  items: [
+                    { text: '业务路径', link: '/zh-cn/guide/integrating-llms' },
+                    { text: '技术路径', link: '/zh-cn/guide/integrating-llms-technical' }
+                  ]
+                }
+                  ]
+                }
               ]
             }
           ],
@@ -317,48 +422,48 @@ export default withMermaid({
             {
               text: '复杂示例（使用领域驱动设计架构）',
               items: [
-                { text: '复杂示例 1：服务器放置问题', collapsed: true, items: [
+                { text: '复杂示例 1：服务放置问题', collapsed: true, items: [
                   { text: '总览', link: '/zh-cn/examples/framework-example1' },
-                  { text: 'Route 上下文模型', link: '/zh-cn/examples/framework-example1/domain-route/domain-model' },
-                  { text: 'Bandwidth 上下文模型', link: '/zh-cn/examples/framework-example1/domain-bandwidth/domain-model' }
+                  { text: '路由上下文模型', link: '/zh-cn/examples/framework-example1/domain-route/domain-model' },
+                  { text: '带宽上下文模型', link: '/zh-cn/examples/framework-example1/domain-bandwidth/domain-model' }
                 ] },
                 { text: '复杂示例 2：航空货运装载规划问题（使用 Benders 分解算法）', collapsed: true, items: [
                   { text: '总览', link: '/zh-cn/examples/framework-example2' },
                   { text: '上下文模型索引', link: '/zh-cn/examples/framework-example2/domain-models' },
-                  { text: 'Aircraft', link: '/zh-cn/examples/framework-example2/domain-aircraft/domain-model' },
-                  { text: 'Stowage', link: '/zh-cn/examples/framework-example2/domain-stowage/domain-model' },
-                  { text: 'MAC', link: '/zh-cn/examples/framework-example2/domain-mac/domain-model' },
-                  { text: 'Airworthiness security', link: '/zh-cn/examples/framework-example2/domain-airworthiness_security/domain-model' },
-                  { text: 'Soft security', link: '/zh-cn/examples/framework-example2/domain-soft_security/domain-model' },
-                  { text: 'MAC optimization', link: '/zh-cn/examples/framework-example2/domain-mac_optimization/domain-model' },
-                  { text: 'Express effectiveness', link: '/zh-cn/examples/framework-example2/domain-express_effectiveness/domain-model' },
-                  { text: 'Loading effectiveness', link: '/zh-cn/examples/framework-example2/domain-loading_effectiveness/domain-model' },
-                  { text: 'Redundancy', link: '/zh-cn/examples/framework-example2/domain-redundancy/domain-model' },
-                  { text: 'Recommended weight equalization', link: '/zh-cn/examples/framework-example2/domain-recommended_weight_equalization/domain-model' },
-                  { text: 'Payload maximization', link: '/zh-cn/examples/framework-example2/domain-payload_maximization/domain-model' }
+                  { text: '飞机上下文模型', link: '/zh-cn/examples/framework-example2/domain-aircraft/domain-model' },
+                  { text: '装载分配上下文模型', link: '/zh-cn/examples/framework-example2/domain-stowage/domain-model' },
+                  { text: '平均气动弦（MAC）上下文模型', link: '/zh-cn/examples/framework-example2/domain-mac/domain-model' },
+                  { text: '适航安全上下文模型', link: '/zh-cn/examples/framework-example2/domain-airworthiness_security/domain-model' },
+                  { text: '软安全上下文模型', link: '/zh-cn/examples/framework-example2/domain-soft_security/domain-model' },
+                  { text: 'MAC 优化上下文模型', link: '/zh-cn/examples/framework-example2/domain-mac_optimization/domain-model' },
+                  { text: '快件效能上下文模型', link: '/zh-cn/examples/framework-example2/domain-express_effectiveness/domain-model' },
+                  { text: '装载效能上下文模型', link: '/zh-cn/examples/framework-example2/domain-loading_effectiveness/domain-model' },
+                  { text: '冗余上下文模型', link: '/zh-cn/examples/framework-example2/domain-redundancy/domain-model' },
+                  { text: '建议载重量均衡上下文模型', link: '/zh-cn/examples/framework-example2/domain-recommended_weight_equalization/domain-model' },
+                  { text: '载荷最大化上下文模型', link: '/zh-cn/examples/framework-example2/domain-payload_maximization/domain-model' }
                 ] },
                 { text: '复杂示例 3：一维分切问题（使用列生成算法）', collapsed: true, items: [
                   { text: '总览', link: '/zh-cn/examples/framework-example3' },
-                  { text: 'Material 上下文模型', link: '/zh-cn/examples/framework-example3/domain-material/domain-model' },
-                  { text: 'Produce 上下文模型', link: '/zh-cn/examples/framework-example3/domain-produce/domain-model' }
+                  { text: '材料上下文模型', link: '/zh-cn/examples/framework-example3/domain-material/domain-model' },
+                  { text: '生产上下文模型', link: '/zh-cn/examples/framework-example3/domain-produce/domain-model' }
                 ] },
                 { text: '复杂示例 4：航班恢复问题（使用列生成算法）', collapsed: true, items: [
                   { text: '总览', link: '/zh-cn/examples/framework-example4' },
                   { text: '上下文模型索引', link: '/zh-cn/examples/framework-example4/domain-models' },
-                  { text: 'Task', link: '/zh-cn/examples/framework-example4/domain-task/domain-model' },
-                  { text: 'Rule', link: '/zh-cn/examples/framework-example4/domain-rule/domain-model' },
-                  { text: 'Crew', link: '/zh-cn/examples/framework-example4/domain-crew/domain-model' },
-                  { text: 'Cargo', link: '/zh-cn/examples/framework-example4/domain-cargo/domain-model' },
-                  { text: 'Passenger', link: '/zh-cn/examples/framework-example4/domain-passenger/domain-model' },
-                  { text: 'Bunch generation', link: '/zh-cn/examples/framework-example4/domain-bunch_generation/domain-model' },
-                  { text: 'Bunch compilation', link: '/zh-cn/examples/framework-example4/domain-bunch_compilation/domain-model' },
-                  { text: 'Bunch selection', link: '/zh-cn/examples/framework-example4/domain-bunch_selection/domain-model' }
+                  { text: '任务上下文模型', link: '/zh-cn/examples/framework-example4/domain-task/domain-model' },
+                  { text: '规则上下文模型', link: '/zh-cn/examples/framework-example4/domain-rule/domain-model' },
+                  { text: '机组上下文模型', link: '/zh-cn/examples/framework-example4/domain-crew/domain-model' },
+                  { text: '货物上下文模型', link: '/zh-cn/examples/framework-example4/domain-cargo/domain-model' },
+                  { text: '旅客上下文模型', link: '/zh-cn/examples/framework-example4/domain-passenger/domain-model' },
+                  { text: '航班串生成上下文模型', link: '/zh-cn/examples/framework-example4/domain-bunch_generation/domain-model' },
+                  { text: '航班串编译上下文模型', link: '/zh-cn/examples/framework-example4/domain-bunch_compilation/domain-model' },
+                  { text: '航班串选择上下文模型', link: '/zh-cn/examples/framework-example4/domain-bunch_selection/domain-model' }
                 ] },
                 { text: '复杂示例 5：VRPTW 分支定价', collapsed: true, items: [
                   { text: '总览', link: '/zh-cn/examples/framework-example5' },
-                  { text: 'VRP 上下文模型', link: '/zh-cn/examples/framework-example5/domain-vrp/domain-model' },
-                  { text: 'Route generation 上下文模型', link: '/zh-cn/examples/framework-example5/domain-route-generation/domain-model' },
-                  { text: 'Route compilation 上下文模型', link: '/zh-cn/examples/framework-example5/domain-route-compilation/domain-model' }
+                  { text: '车辆路径（VRP）上下文模型', link: '/zh-cn/examples/framework-example5/domain-vrp/domain-model' },
+                  { text: '路线生成上下文模型', link: '/zh-cn/examples/framework-example5/domain-route-generation/domain-model' },
+                  { text: '路线编译上下文模型', link: '/zh-cn/examples/framework-example5/domain-route-compilation/domain-model' }
                 ] }
               ]
             }
@@ -366,10 +471,7 @@ export default withMermaid({
         },
         socialLinks: [
           { icon: 'github', link: 'https://github.com/fuookami/ospf' }
-        ],
-        outline: {
-          level: [2, 5]
-        }
+        ]
       }
     }
   }

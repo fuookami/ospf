@@ -2,6 +2,12 @@
 
 OSPF is a solution and development component for modeling and coding processes in complex operations research optimization algorithms. OSPF aims to provide a modeling approach based on **Domain-Driven Design (DDD)**, enabling users to simply and efficiently develop and maintain mathematical models, solution algorithms, and their implementation code throughout the entire software lifecycle.
 
+## Reading paths
+
+Start with [Getting Started](./getting-started) to run a complete model, then read [The Language of Operations Research](./operations-research-language), [The Modeling and Solving Workflow](./modeling-workflow), and [Understanding Solver Results](./solving-results). These explain why intermediates belong to the modeling language, how a model is assembled, and what its results mean.
+
+For complex business organization, continue with [DDD Architecture](./use-ddd-architecture). For the path from expressions to different backends, read [Symbolic Expressions](./symbolic-expressions) and [Compiler-Like Architecture](./compiler-architecture). The discussion below explains OSPF's role through the motivation for abstraction and contrasting model examples.
+
 Implementations for various host languages can be found in the following code repository directories:
 
 - C++: https://github.com/fuookami/ospf-cpp
@@ -89,70 +95,13 @@ Traditional operations research algorithm development lacks abstraction methods.
 
 ## Intermediate Values
 
-OSPF provides a concept named "Intermediate Values" to implement DDD-based modeling. Intermediate values in mathematical models represent intermediate results of operations, helping to simplify model representation and make models easier to understand and maintain. Intermediate values have the following characteristics:
+An intermediate value gives an expression a business name so constraints, objectives, and reports can share its definition. Compartment weight, for example, can serve capacity, area-loading, and line-loading rules without repeating the aggregation in each rule.
 
-- Refer to a stored, named expression
-- Semantically equivalent to anonymous expressions
-- Grammatically equivalent to variables, with global scope and static lifetime
+Arithmetic intermediates encapsulate arithmetic relationships; function intermediates encapsulate functions with explicit mathematical semantics. They can compose like variables at reference sites, but are not freely selectable values or process-global objects. A solver representation may expand expressions or introduce auxiliary variables and constraints.
 
-### Arithmetic Intermediate Values
+[The Language of Operations Research](./operations-research-language) explains primitives, composition, and abstraction. [Compiler-Like Architecture](./compiler-architecture) explains semantic preservation during conversion. Individual function-symbol pages provide their definitions and actual constraints.
 
-The initial design purpose of intermediate values was to reduce duplication in mathematical models, so the most basic arithmetic intermediate values are constructed through a polynomial. Users can then use this intermediate value anywhere in the model to replace all identical polynomials.
-
-$$
-\text{ExprSymbol} = \sum_{i} x_{i}
-$$
-
-$$
-\min \quad \text{ExprSymbol}
-$$
-
-$$
-\text{s.t.} \quad \text{ExprSymbol} \leq 1
-$$
-
-OSPF automatically replaces each arithmetic intermediate value with the specific polynomial when translating the model to the specific solver interface. This translation process is transparent to users, so users do not need to know how this arithmetic intermediate value is implemented through which variables and operations.
-
-Thus, we can divide mathematical model maintainers into two roles: "Intermediate Value Maintainers" and "Mathematical Model Maintainers Using Intermediate Values". Intermediate value maintainers are responsible for defining and implementing intermediate values. Mathematical model maintainers using intermediate values do not focus on the implementation of intermediate values, only on their definition and behavior, and use these intermediate values to describe business logic in mathematical models.
-
-This engineering practice is the same as defining a class in Object-Oriented Design (OOD) to encapsulate variables and functions with the same semantics, where users only need to focus on its behavior, not its implementation. With this foundation, we can begin introducing DDD.
-
-### Functional Intermediate Values
-
-Based on the concept of arithmetic intermediate values, OSPF can similarly encapsulate non-arithmetic expressions like logical operation expressions into intermediate values.
-
-$$
-\text{FuncSymbol} = \bigvee_{i} x_{i} = \text{Or}(x_{1}, \, x_{2}, \, .. \, , \, x_{i})
-$$
-
-$$
-\text{s.t.} \quad \text{FuncSymbol} = 1
-$$
-
-OSPF automatically adds the required intermediate variables and constraints for each functional intermediate value when translating the model to the specific solver interface. This translation process is transparent to users, so users do not need to know how this functional intermediate value is implemented through which intermediate variables and constraints. For example, the above $\text{FuncSymbol} = \bigvee_{i} x_{i}$ would be translated to:
-
-$$
-\text{s.t.} \quad y = 1
-$$
-
-$$
-\begin{cases}
-  y \geq \frac{x_{i}}{\max(x_{i})}, & \max(x_{i}) > 1 \\ \; \\
-  y \geq x_{i}, & \text{else}
-\end{cases}
-$$
-
-$$
-y \leq \sum_{i} x_{i}
-$$
-
-$$
-y \in \{ 0, 1 \}
-$$
-
-Of course, you can also extend these functional intermediate values based on your business needs. At this point, you need to implement some interfaces to let OSPF know which intermediate variables and constraints this functional intermediate value requires.
-
-OSPF-core itself only maintains arithmetic operators and logical operators. In fact, we can completely design and implement functional intermediate values based on domains as part of domain engineering. For specifics, refer to the development packages for specific problems in ospf-framework.
+The example below contrasts traditional modeling with intermediate-value abstraction to show how it supports maintenance.
 
 ## Changes in Modeling with OSPF
 
@@ -507,7 +456,7 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>MIQCQP</td>
@@ -515,7 +464,7 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>MINLP</td>
@@ -524,6 +473,14 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
+      </tr>
+      <tr>
+        <td>CP</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td colspan=6>Solver Interfaces</td>
@@ -558,15 +515,15 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
-        <td>GUROBI-11</td>
+        <td>GUROBI-11+</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>HEXALY</td>
@@ -614,7 +571,7 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>Others</td>
@@ -629,7 +586,7 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>GA</td>
@@ -637,7 +594,7 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>MVO</td>
@@ -645,7 +602,7 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>SAA</td>
@@ -653,7 +610,7 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>HCA</td>
@@ -701,7 +658,7 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td></td>
       </tr>
       <tr>
@@ -711,9 +668,9 @@ Each OSPF implementation includes the following components:
         <td>IIS</td>
         <td>❗</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td></td>
       </tr>
       <tr>
@@ -722,7 +679,7 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td></td>
       </tr>
       <tr>
@@ -731,7 +688,7 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td></td>
       </tr>
       <tr>
@@ -770,16 +727,16 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
         <td>✔️</td>
       </tr>
       <tr>
         <td>1D Cutting Stock</td>
         <td>❌</td>
         <td>❌</td>
-        <td>⭕</td>
+        <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
         <td>✔️</td>
       </tr>
       <tr>
@@ -797,16 +754,16 @@ Each OSPF implementation includes the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
         <td>✔️</td>
       </tr>
       <tr>
         <td>Network Flow Scheduling</td>
         <td>❌</td>
         <td>❌</td>
+        <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
         <td>❌</td>
       </tr>
       <tr>
@@ -830,7 +787,7 @@ Each OSPF implementation includes the following components:
     <tbody>
       <tr>
         <td>Solver Server</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>Meta-Heuristic Algorithm Server</td>
@@ -838,7 +795,7 @@ Each OSPF implementation includes the following components:
       </tr>
       <tr>
         <td>Scheduler</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>Time Slice Round Robin</td>

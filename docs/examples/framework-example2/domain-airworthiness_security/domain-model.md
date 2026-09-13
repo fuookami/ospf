@@ -1,8 +1,5 @@
-# Airworthiness Security Domain Model
+# Airworthiness security context model
 
-[中文](../../../zh-cn/examples/framework-example2/domain-airworthiness_security/domain-model)
-
-[toc]
 
 ## 1. Overview
 
@@ -23,6 +20,7 @@ Enforces airworthiness and safety constraints including linear/surface density l
 Linear weight density per fuselage zone with upper/lower limits.
 
 **$limitZones$** : List of limit zones.
+
 **$density_{zone}$** : Zone linear density value.
 
 ### 2. Surface Density
@@ -30,6 +28,7 @@ Linear weight density per fuselage zone with upper/lower limits.
 Surface weight density per zone with upper/lower limits.
 
 **$limitZones$** : List of limit zones.
+
 **$density_{zone}$** : Zone surface density value.
 
 ### 3. Max Zone Load Weight
@@ -43,6 +42,7 @@ Maximum allowable load weight per fuselage zone.
 Maximum cumulative load weight from nose/tail.
 
 **$maxWeight_{fromNose}$** : Maximum cumulative weight from nose.
+
 **$maxWeight_{fromTail}$** : Maximum cumulative weight from tail.
 
 ### 5. Max Unsymmetrical Linear Density
@@ -73,11 +73,29 @@ Weight-CG envelope constraints per flight phase.
 
 ## 3. Variables
 
+### 1. Decision Variables
+
 This context reuses decision variables from the stowage context and does not define independent decision variables.
+
+### 2. Auxiliary Variables
+
+This context does not define independent auxiliary variables.
 
 ---
 
-## 4. Intermediate Values
+## 4. Predicates
+
+This context does not define independent predicates.
+
+---
+
+## 5. Sets
+
+This context does not define independent sets; its limits range over the aircraft, stowage, and flight-phase sets.
+
+---
+
+## 6. Intermediate Values
 
 ### 1. Linear Density
 
@@ -97,11 +115,18 @@ $$
 
 ---
 
-## 5. Constraints
+## 7. Assertions
+
+This context does not define independent assertions; it consumes the aircraft, stowage, and MAC context data used by its limits.
+
+---
+
+## 8. Constraints
 
 ### 1. Linear Density Limit
 
 **[CN]**: 线密度限制
+
 **Description**: Linear density per zone must be within limits.
 
 $$
@@ -111,6 +136,7 @@ $$
 ### 2. Surface Density Limit
 
 **[CN]**: 面密度限制
+
 **Description**: Surface density per zone must be within limits.
 
 $$
@@ -120,6 +146,7 @@ $$
 ### 3. Zone Load Weight Limit
 
 **[CN]**: 区域载荷重量限制
+
 **Description**: Zone load weight must not exceed maximum.
 
 $$
@@ -129,6 +156,7 @@ $$
 ### 4. Cumulative Load Weight Limit
 
 **[CN]**: 累积载荷重量限制
+
 **Description**: Cumulative load weight from nose/tail must not exceed maximum.
 
 $$
@@ -138,6 +166,7 @@ $$
 ### 5. Envelope Limit
 
 **[CN]**: 包络线限制
+
 **Description**: Weight-CG combination must be within the envelope per flight phase.
 
 $$
@@ -147,6 +176,7 @@ $$
 ### 6. Payload Limit
 
 **[CN]**: 载荷限制
+
 **Description**: Payload must be within planned and maximum bounds.
 
 $$
@@ -156,6 +186,7 @@ $$
 ### 7. Total Weight Limit
 
 **[CN]**: 总重量限制
+
 **Description**: Total weight per flight phase must not exceed maximum.
 
 $$
@@ -164,22 +195,40 @@ $$
 
 ---
 
-## 6. Ubiquitous Language
+## 9. Objective Function (if applicable)
 
-| Term | Symbol | English | Definition |
-|------|--------|---------|------------|
-| 线密度 | LinearDensity | Linear Density | Weight per unit length |
-| 面密度 | SurfaceDensity | Surface Density | Weight per unit area |
-| 包络线 | Envelope | Envelope | Weight-CG feasible region |
-| CLIM | CLIM | Center of Gravity Index Moment | Center of gravity index moment |
-| 区域载荷 | ZoneLoadWeight | Zone Load Weight | Load weight per fuselage zone |
-| 累积载荷 | CumulativeLoadWeight | Cumulative Load Weight | Cumulative load from endpoint |
+This context does not define an independent objective function.
 
 ---
 
-## 7. Design Decisions
+## 10. Algorithm References
 
-| Decision | Alternatives | Rationale | Date |
-|----------|--------------|-----------|------|
-| Envelope modeling | Linearized vs Piecewise linear | Piecewise linear is more accurate | 2024 |
-| Benders decomposition | Airworthiness in sub problem | Airworthiness constraints strongly coupled with stowage | 2024 |
+This context does not define an independent algorithm reference.
+
+---
+
+## 11. Ubiquitous Language
+
+| Term | Symbol | Definition |
+|------|--------|------------|
+| Linear Density | `LinearDensity` | Weight per unit length |
+| Surface Density | `SurfaceDensity` | Weight per unit area |
+| Envelope | `Envelope` | Weight-CG feasible region |
+| CLIM | `CLIM` | Center of gravity index moment |
+| Zone Load Weight | `ZoneLoadWeight` | Load weight per fuselage zone |
+| Cumulative Load Weight | `CumulativeLoadWeight` | Cumulative load from endpoint |
+
+---
+
+## 12. Design Decisions
+
+| Decision | Alternatives | Rationale |
+|----------|--------------|-----------|
+| Envelope modeling | Linearized vs Piecewise linear | Piecewise linear is more accurate |
+| Benders decomposition | Airworthiness in sub problem | Airworthiness constraints strongly coupled with stowage |
+
+---
+
+## 13. Change Log
+
+No context-specific change entries are recorded on this page.

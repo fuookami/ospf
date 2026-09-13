@@ -1,32 +1,36 @@
-# 装载分配 领域模型
+# 装载分配上下文模型
 
-[English](../../../examples/framework-example2/domain-stowage/domain-model)
 
-[toc]
-
-## 一、概述
+## 1. 概述
 
 管理货物装载分配决策——确定各货物项装载到哪个位置——包括载荷重量计算、载荷量计算、总重量和最大装载重量。
 
 ### 1. 依赖上下文
 
-1. 飞机（aircraft）
+1. 飞机上下文（`aircraft`）
 
 ---
 
-## 二、概念/实体
+## 2. 概念 / 实体
 
 ### 1. 货物项
 
 货物项，含目的地、重量、ULD、位置标签、货物类型、优先级和状态。
 
 **$id_{i}$** ：货物项唯一标识。
+
 **$dest_{i}$** ：目的地（IATA 代码）。
+
 **$weight_{i}$** ：货物重量，单位 kg。
+
 **$uld_{i}$** ：所属集装器（可选）。
+
 **$location_{i}$** ：位置标签（Main/Low/Bulk/Head/Tail）。
+
 **$cargo_{i}$** ：货物类型和优先级。
+
 **$status_{i}$** ：状态（Loaded/Preassigned/Optional/Reserved/AdjustmentNeeded）。
+
 **$order_{i}$** ：排序信息（hardstand 时间、reweigh 时间、car-board 信息）。
 
 ### 2. 装载位置
@@ -34,10 +38,15 @@
 装载位置，含最大装载数量（MLA）、谓词装载重量（PLW）、推荐装载重量和状态。
 
 **$spaceName_{j}$** ：空间名称。
+
 **$mla_{j}$** ：最大装载数量（Max Load Amount）。
+
 **$plw_{j}$** ：谓词装载重量（Predicate Load Weight），其定义另参考《装载分配》。
+
 **$mlw_{j}$** ：最大装载重量（Max Load Weight），其定义另参考《适航安全》。
+
 **$coordinate_{j}$** ：坐标（纵向臂、横向臂）。
+
 **$location_{j}$** ：位置标签集合。
 
 ### 3. 航班
@@ -45,7 +54,9 @@
 航班信息。
 
 **$flightNo$** ：航班号。
+
 **$departure$** ：出发机场（IATA 代码）。
+
 **$arrival$** ：到达机场（IATA 代码）。
 
 ### 4. 预约
@@ -62,7 +73,7 @@
 
 ---
 
-## 三、变量
+## 3. 变量
 
 ### 1. 决策变量
 
@@ -78,31 +89,38 @@
 
 ---
 
-## 四、谓词
+## 4. 谓词
 
 ### 1. 货物状态谓词
 
-**stowageNeeded(item)** ：货物需要分配位置（状态为 Preassigned 或 Optional）。
-**adjustmentNeeded(item)** ：货物需要调整位置（状态为 AdjustmentNeeded）。
-**loaded(item)** ：货物已装载（状态为 Loaded 或 AdjustmentNeeded）。
+**`stowageNeeded(item)`** ：货物需要分配位置（状态为 `Preassigned` 或 `Optional`）。
+
+**`adjustmentNeeded(item)`** ：货物需要调整位置（状态为 `AdjustmentNeeded`）。
+
+**`loaded(item)`** ：货物已装载（状态为 `Loaded` 或 `AdjustmentNeeded`）。
 
 ### 2. 位置状态谓词
 
-**stowageNeeded(position)** ：位置需要分配货物。
-**available(position)** ：位置可用于装载。
-**predicateWeightNeeded(position)** ：位置需要谓词重量变量。
-**recommendedWeightNeeded(position)** ：位置需要推荐重量变量。
+**`stowageNeeded(position)`** ：位置需要分配货物。
+
+**`available(position)`** ：位置可用于装载。
+
+**`predicateWeightNeeded(position)`** ：位置需要谓词重量变量。
+
+**`recommendedWeightNeeded(position)`** ：位置需要推荐重量变量。
 
 ---
 
-## 五、集合
+## 5. 集合
 
 ### 1. 货物项
 
 **$I$** ：所有货物项集合。
 
 **$I^{pre}$** ：满足谓词 stowageNeeded 的货物子集，需要分配位置的货物。
+
 **$I^{adj}$** ：满足谓词 adjustmentNeeded 的货物子集，需要调整位置的货物。
+
 **$I^{opt}$** ：Optional 状态的货物子集，可选装载的货物。
 
 ### 2. 装载位置
@@ -110,7 +128,9 @@
 **$J$** ：所有装载位置集合。
 
 **$J^{avl}$** ：满足谓词 available 的位置子集，可用于装载的位置。
+
 **$J^{pw}$** ：满足谓词 predicateWeightNeeded 的位置子集，需要谓词重量的位置。
+
 **$J^{rw}$** ：满足谓词 recommendedWeightNeeded 的位置子集，需要推荐重量的位置。
 
 ### 3. 货物-位置对
@@ -119,7 +139,7 @@
 
 ---
 
-## 六、中间值
+## 6. 中间值
 
 ### 1. 装载数量
 
@@ -149,18 +169,19 @@ $$
 $s_{ij}=x_{ij}+u_{ij}+loaded_{ij}$；不适用的对为零。源码依据位置谓词
 `predicateWeightNeeded` 与 `recommendedWeightNeeded` 固定 `y` 和 `z`。
 
-## 6.1 断言
+## 7. 断言
 
 数据模型要求货物/位置标识唯一且飞机重量单位有效。已装货物和不可用位置的贡献是固定值，不是自由求解变量。
 预约对必须属于可行对，且 $I^{pre}$ 中每件货物至少有一个可行位置。
 
 ---
 
-## 七、约束
+## 8. 约束
 
 ### 1. 货物分配限制
 
 **[英]**：Item Assignment Limit
+
 **描述**：每个需要装载的货物必须分配到恰好一个位置。
 
 $$
@@ -170,6 +191,7 @@ $$
 ### 2. 装载数量限制
 
 **[英]**：Load Amount Limit
+
 **描述**：每个位置的装载数量不得超过最大装载数量（MLA）。
 
 $$
@@ -179,6 +201,7 @@ $$
 ### 3. 装载重量限制
 
 **[英]**：Load Weight Limit
+
 **描述**：每个位置的装载重量不得超过最大装载重量（MLW）。
 
 $$
@@ -188,6 +211,7 @@ $$
 ### 4. 预约限制
 
 **[英]**：Appointment Limit
+
 **描述**：预分配的货物-位置预约必须被遵守。
 
 $$
@@ -196,44 +220,48 @@ $$
 
 ---
 
-## 八、目标函数
+## 9. 目标函数（如适用）
 
 本上下文不定义独立目标函数，仅提供约束。
 
 ---
 
-## 九、通用语言
-
-| 术语 | 符号 | 英文 | 定义 |
-|------|------|------|------|
-| 货物项 | Item | Item | 待装载的货物单元 |
-| 装载位置 | Position | Position | 飞机上的货物装载位置 |
-| 装载分配 | Stowage | Stowage | 货物到位置的分配决策 |
-| 装载量 | Load | Load | 位置的装载重量和数量 |
-| 载荷 | Payload | Payload | 飞机的总货物重量 |
-| 总重量 | TotalWeight | Total Weight | 飞机各阶段的总重量 |
-| 最大装载重量 | MaxLoadWeight | Max Load Weight | 位置的最大允许装载重量 |
-| 压舱物 | Ballast | Ballast | 用于平衡的压舱物重量 |
-| 谓词装载重量 | PLW | Predicate Load Weight | 预测的装载重量 |
-| 最大装载数量 | MLA | Max Load Amount | 位置的最大装载数量 |
-
----
-
-## 十、设计决策
-
-| 决策 | 备选方案 | 选择原因 | 日期 |
-|------|----------|----------|------|
-| 装载模式选择 | FullLoad / Predistribution / WeightRecommendation | 根据业务场景选择不同装载模式 | 2024 |
-| Benders 分解 | 主问题/子问题分离 | 适航安全约束放入子问题，其余放入主问题 | 2024 |
-
-## 十一、算法引用
+## 10. 算法引用
 
 | 算法 | 源码边界 | 用途 |
 | --- | --- | --- |
 | Benders 分解 | 按模式的应用主问题/子问题注册 | 分离装载和适航管线 |
 
-## 十二、演进记录
+---
+
+## 11. 通用语言
+
+| 术语 | 符号 | 英文 | 定义 |
+|------|------|------|------|
+| 货物项 | `Item` | Item | 待装载的货物单元 |
+| 装载位置 | `Position` | Position | 飞机上的货物装载位置 |
+| 装载分配 | `Stowage` | Stowage | 货物到位置的分配决策 |
+| 装载量 | `Load` | Load | 位置的装载重量和数量 |
+| 载荷 | `Payload` | Payload | 飞机的总货物重量 |
+| 总重量 | `TotalWeight` | Total Weight | 飞机各阶段的总重量 |
+| 最大装载重量 | `MaxLoadWeight` | Max Load Weight | 位置的最大允许装载重量 |
+| 压舱物 | `Ballast` | Ballast | 用于平衡的压舱物重量 |
+| 谓词装载重量 | `PLW` | Predicate Load Weight | 预测的装载重量 |
+| 最大装载数量 | `MLA` | Max Load Amount | 位置的最大装载数量 |
+
+---
+
+## 12. 设计决策
+
+| 决策 | 备选方案 | 选择原因 |
+|------|----------|----------|
+| 装载模式选择 | FullLoad / Predistribution / WeightRecommendation | 根据业务场景选择不同装载模式 |
+| Benders 分解 | 主问题/子问题分离 | 适航安全约束放入子问题，其余放入主问题 |
+
+---
+
+## 13. 变更记录
 
 | 版本 | 变更 | 原因 |
 | --- | --- | --- |
-| 1.1 | 明确状态谓词、平衡三值调整及本地模型边界 | 对齐当前 `Stowage` 聚合与管线注册 |
+| 1.1 | 明确状态谓词、平衡三值调整及本地模型边界 | 对齐 `Stowage` 聚合与管线注册 |

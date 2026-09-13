@@ -1,8 +1,5 @@
-# Express Effectiveness Domain Model
+# Express effectiveness context model
 
-[中文](../../../zh-cn/examples/framework-example2/domain-express_effectiveness/domain-model)
-
-[toc]
 
 ## 1. Overview
 
@@ -39,15 +36,46 @@ Items that must be shipped regardless of priority.
 
 ## 3. Variables
 
+### 1. Decision Variables
+
 This context reuses decision variables from the stowage context and does not define independent decision variables.
+
+### 2. Auxiliary Variables
+
+This context does not define independent auxiliary variables.
 
 ---
 
-## 4. Constraints
+## 4. Predicates
+
+This context does not define independent predicates.
+
+---
+
+## 5. Sets
+
+This context does not define independent sets; its limits range over items and positions from the stowage context.
+
+---
+
+## 6. Intermediate Values
+
+This context does not define independent intermediate values.
+
+---
+
+## 7. Assertions
+
+This context does not define independent assertions.
+
+---
+
+## 8. Constraints
 
 ### 1. Must-Ship Limit
 
 **[CN]**: 必须发运限制
+
 **Description**: Must-ship items must be loaded.
 
 $$
@@ -57,6 +85,7 @@ $$
 ### 2. Item Priority Limit
 
 **[CN]**: 货物优先级限制
+
 **Description**: Higher priority items should be loaded before lower priority items.
 
 $$
@@ -65,7 +94,7 @@ $$
 
 ---
 
-## 5. Objective Function
+## 9. Objective Function (if applicable)
 
 Minimize priority violation cost.
 
@@ -75,18 +104,30 @@ $$
 
 ---
 
-## 6. Ubiquitous Language
+## 10. Algorithm References
 
-| Term | Symbol | English | Definition |
-|------|--------|---------|------------|
-| 绝对排序 | AbsoluteOrder | Absolute Order | Priority ordering for predistribution mode |
-| 相对排序 | RelativeOrder | Relative Order | Priority ordering for full-load mode |
-| 必须发运项 | MustShip | Must-Ship Items | Items that must be shipped |
+This context does not define an independent algorithm reference.
 
 ---
 
-## 7. Design Decisions
+## 11. Ubiquitous Language
 
-| Decision | Alternatives | Rationale | Date |
-|----------|--------------|-----------|------|
-| Ordering mode | Absolute vs Relative | Different stowage modes use different ordering strategies | 2024 |
+| Term | Symbol | Definition |
+|------|--------|------------|
+| Absolute Order | `AbsoluteOrder` | Priority ordering for predistribution mode |
+| Relative Order | `RelativeOrder` | Priority ordering for full-load mode |
+| Must-Ship Items | `MustShip` | Items that must be shipped |
+
+---
+
+## 12. Design Decisions
+
+| Decision | Alternatives | Rationale |
+|----------|--------------|-----------|
+| Ordering mode | Absolute vs Relative | Different stowage modes use different ordering strategies |
+
+---
+
+## 13. Change Log
+
+No context-specific change entries are recorded on this page.

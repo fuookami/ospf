@@ -1,8 +1,4 @@
-# Bandwidth Context Domain Model
-
-> English | [中文](../../../zh-cn/examples/framework-example1/domain-bandwidth/domain-model)
-
-[toc]
+# Bandwidth context model
 
 ## 1. Overview
 
@@ -21,8 +17,11 @@ The Bandwidth Context consumes the Route Context's graph, services, and assignme
 A directed edge from the Route Context graph. Only edges whose source is a normal node can receive a nonzero bandwidth variable in this context.
 
 **$from(e)$** : The source node of edge $e$.
+
 **$to(e)$** : The target node of edge $e$.
+
 **$maxBandwidth_{e}$** : The maximum bandwidth bound of edge $e$, an unsigned integer.
+
 **$costPerBandwidth_{e}$** : The per-unit bandwidth cost of edge $e$, an unsigned integer.
 
 ### 2. Service
@@ -30,6 +29,7 @@ A directed edge from the Route Context graph. Only edges whose source is a norma
 A Route Context service whose traffic is allocated on graph edges.
 
 **$capacity_{s}$** : The service's bandwidth capacity, an unsigned integer.
+
 **$cost_{s}$** : The service-use cost used by the Route Context objective, an unsigned integer.
 
 ### 3. Node
@@ -37,6 +37,7 @@ A Route Context service whose traffic is allocated on graph edges.
 A Route Context graph node, either normal or client.
 
 **$demand_{n}$** : The incoming bandwidth requirement, defined for client nodes.
+
 **$x_{n,s}$** : The imported Route Context assignment variable; it is not redeclared by this context.
 
 ### 4. Assignment Counts
@@ -44,6 +45,7 @@ A Route Context graph node, either normal or client.
 The Route Context exposes the registered intermediate values used here.
 
 **$A_s$** : The number of normal nodes assigned to service $s$.
+
 **$A_n$** : The number of services assigned to normal node $n$ (and the zero polynomial for a client node).
 
 ---
@@ -52,7 +54,7 @@ The Route Context exposes the registered intermediate values used here.
 
 ### 1. Decision Variables
 
-**$y_{e,s}$** : Bandwidth allocated to service $s$ on edge $e$, a dimensionless nonnegative unsigned integer, with domain and registration bounds
+**$y_{e,s}$** : Bandwidth allocated to service $s$ on edge $e$, a nonnegative integer measured in the input bandwidth unit, with domain and registration bounds
 
 $$
 0 \le y_{e,s} \le maxBandwidth_e,\quad \forall e \in E^{normal},\ \forall s \in S;
@@ -74,12 +76,15 @@ No separate auxiliary decision variables are declared. All bandwidth totals and 
 > Predicates classify entity sets; each predicate defines a subset.
 
 **$normal(n)$** : Node $n$ is a `NormalNode`.
+
 **$client(n)$** : Node $n$ is a `ClientNode`.
 
 ### 2. Edge Incidence
 
 **$from(e)=n$** : Edge $e$ leaves node $n$.
+
 **$to(e)=n$** : Edge $e$ enters node $n$.
+
 **$from\_normal(e)$** : The source of $e$ satisfies $normal$; this is the derived filter used by all active edge bandwidth and cost pipelines.
 
 ---
@@ -91,6 +96,7 @@ No separate auxiliary decision variables are declared. All bandwidth totals and 
 **$N$** : The universal set of nodes in the Route Context graph.
 
 **$N^{normal}$** : The normal/transit nodes, satisfying $normal$.
+
 **$N^{client}$** : The client/terminal nodes, satisfying $client$.
 
 ### 2. Edges
@@ -98,6 +104,7 @@ No separate auxiliary decision variables are declared. All bandwidth totals and 
 **$E$** : The universal set of directed graph edges.
 
 **$E^{normal}$** : The subset $\{e \in E \mid from(e) \in N^{normal}\}$, whose $y_{e,s}$ variables have the edge maximum as their registration upper bound.
+
 **$E^{client}$** : The subset $E \setminus E^{normal}$, whose $y_{e,s}$ variables are fixed to zero. The source code uses `!from(normal)` for this range assignment.
 
 ### 3. Services
@@ -235,6 +242,7 @@ $$
 ### 1. Edge Bandwidth Constraint
 
 **Edge Bandwidth Constraint [边带宽约束]**
+
 **Description**: The service-level assignment count gates bandwidth on every normal-source edge. If a service is not assigned to any normal node, its bandwidth on each such edge is zero; if it is assigned once, the edge range still caps the bandwidth at the edge maximum.
 
 $$
@@ -252,6 +260,7 @@ $$
 ### 2. Demand Constraint
 
 **Demand Constraint [需求约束]**
+
 **Description**: Every client node receives at least its declared demand through incoming service bandwidth.
 
 $$
@@ -261,6 +270,7 @@ $$
 ### 3. Service Capacity Constraint
 
 **Service Capacity Constraint [服务容量约束]**
+
 **Description**: At a normal node, service net out-flow is gated by the imported node-service assignment variable. The code permits negative net out-flow; it registers only this upper-bound inequality.
 
 $$
@@ -278,6 +288,7 @@ $$
 ### 4. Transfer Node Bandwidth Constraint (Not Registered)
 
 **Transfer Node Bandwidth Constraint [传输节点带宽约束]**
+
 **Description**: `TransferNodeBandwidthConstraint` exists and would gate a normal node's aggregate net out-flow by the sum of its outgoing edge maxima. However, `PipelineListGenerator` returns only `EdgeBandwidthConstraint`, `DemandConstraint`, `ServiceCapacityConstraint`, and `BandwidthCostObjective`; it does not return this class. The following inequality is therefore not active in the current Demo1 model.
 
 $$
@@ -342,4 +353,4 @@ The only standalone algorithm-like operation used by this context after solving 
 
 | Version | Change | Reason |
 |---------|--------|--------|
-| Current | Rewritten as a 13-section, source-aligned domain model | Replace invented transfer formulas and incorrect assignment gates with the exact registered variables, intermediates, constraints, objective, and inactive-class status. |
+| 1.0 | Rewritten as a 13-section, source-aligned domain model | Replace invented transfer formulas and incorrect assignment gates with the exact registered variables, intermediates, constraints, objective, and inactive-class status. |

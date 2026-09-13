@@ -1,8 +1,4 @@
-# Bunch Compilation Domain Model
-
-:us: English | :cn: [简体中文](../../../zh-cn/examples/framework-example4/domain-bunch_compilation/domain-model)
-
-[toc]
+# Bunch compilation context model
 
 ## 1. Overview
 
@@ -23,7 +19,9 @@ Compiles flight task bunches into the column generation optimization model, mana
 The set of decision variables for flight task bunches in column generation, specialized as `BunchCompilation<FlightTaskBunch, FltX, FlightTask, Aircraft, FlightTaskAssignment>`.
 
 **$x_{b}^{(k)}$** : Decision variable for bunch $b$ in iteration $k$, taking values 0 or 1, indicating whether bunch $b$ is selected.
+
 **$y_{i}$** : Auxiliary decision variable for flight task $i$, used in link and fleet balance constraints.
+
 **$z_{a}$** : Auxiliary decision variable for aircraft $a$, used in fleet balance constraints.
 
 ### 2. Flight Link (FlightLink)
@@ -31,7 +29,9 @@ The set of decision variables for flight task bunches in column generation, spec
 Represents a connection between two consecutive unrecovered flight legs with a split cost.
 
 **$\text{prevTask}_{l}$** : Predecessor task of link $l$.
+
 **$\text{succTask}_{l}$** : Successor task of link $l$.
+
 **$\text{splitCost}_{l}$** : Split cost of link $l$.
 
 ### 3. Fleet Balance CheckPoint
@@ -39,6 +39,7 @@ Represents a connection between two consecutive unrecovered flight legs with a s
 A combination of airport and aircraft minor type, used to track aircraft distribution across airports.
 
 **$\text{airport}_{c}$** : Airport of checkpoint $c$.
+
 **$\text{aircraftMinorType}_{c}$** : Aircraft minor type of checkpoint $c$.
 
 ### 4. Flight Capacity
@@ -46,6 +47,7 @@ A combination of airport and aircraft minor type, used to track aircraft distrib
 Tracks passenger and cargo capacity expressions across flight task bunches.
 
 **$\text{passenger}_{i,cls}$** : Passenger capacity expression for flight task $i$ at class $cls$.
+
 **$\text{cargo}_{i}$** : Cargo capacity expression for flight task $i$.
 
 ---
@@ -73,11 +75,13 @@ Tracks passenger and cargo capacity expressions across flight task bunches.
 ### 1. Task Type
 
 **isFlight** : Task $i$ is of flight type (Flight or VirtualFlight).
+
 **isRecoveryNeeded** : Task $i$ requires recovery within the recovery time window.
 
 ### 2. Capacity Type
 
 **hasPassenger** : Aircraft of flight task $i$ has passenger capacity.
+
 **hasCargo** : Aircraft of flight task $i$ has cargo capacity.
 
 ---
@@ -89,7 +93,9 @@ Tracks passenger and cargo capacity expressions across flight task bunches.
 **$B$** : Universal set of all generated flight task bunches.
 
 **$B^{(k)}$** : Subset of bunches generated in iteration $k$.
+
 **$B_{a}$** : Subset of bunches assigned to aircraft $a$, $\forall a \in A$.
+
 **$B_{i}$** : Subset of bunches containing task $i$, $\forall i \in I$.
 
 ### 2. Tasks
@@ -97,6 +103,7 @@ Tracks passenger and cargo capacity expressions across flight task bunches.
 **$I$** : Universal set of all flight tasks.
 
 **$I^{R}$** : Subset of tasks requiring recovery.
+
 **$I^{F}$** : Subset of flight-type tasks.
 
 ### 3. Links
@@ -104,7 +111,9 @@ Tracks passenger and cargo capacity expressions across flight task bunches.
 **$L$** : Universal set of all flight links.
 
 **$L^{C}$** : Subset of connecting links.
+
 **$L^{S}$** : Subset of stopover links.
+
 **$L^{I}$** : Subset of connection-time-ignoring links.
 
 ### 4. Checkpoints
@@ -174,7 +183,8 @@ $$
 ### 1. Task Coverage Constraint
 
 **[CN]**: 任务覆盖约束
-**描述**：每个需要恢复的航班任务必须被恰好一个选中的束覆盖。
+
+**Description**: Every flight task that requires recovery must be covered by exactly one selected bunch.
 
 $$
 s.t. \quad \sum_{b \in B_{i}} x_{b} = 1, \; \forall i \in I^{R}
@@ -183,7 +193,8 @@ $$
 ### 2. Link Slack Constraint
 
 **[CN]**: 链接松弛约束
-**描述**：链接的覆盖数量加上松弛变量应大于等于阈值。
+
+**Description**: The link coverage count plus its slack variable must be at least the threshold.
 
 $$
 s.t. \quad \text{link}_{l} + \text{link\_slack}_{l} \geq 1, \; \forall l \in L
@@ -192,7 +203,8 @@ $$
 ### 3. Fleet Balance Constraint
 
 **[CN]**: 车队平衡约束
-**描述**：到达每个检查点的飞机数量加上松弛变量应等于预期数量。
+
+**Description**: The number of aircraft arriving at each checkpoint plus its slack variable must equal the expected amount.
 
 $$
 s.t. \quad \text{fleet}_{c} + \text{fleet\_slack}_{c} = \text{expected\_amount}_{c}, \; \forall c \in C
@@ -200,7 +212,7 @@ $$
 
 ---
 
-## 9. Objective Function
+## 9. Objective Function (if applicable)
 
 **Description**: Minimize total recovery cost including bunch costs and slack penalties.
 

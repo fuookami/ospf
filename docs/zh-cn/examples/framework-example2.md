@@ -1,51 +1,59 @@
 # 复杂示例 2：航空货运装载规划 — 总览
 
-[English](../../examples/framework-example2)
+[English](/examples/framework-example2)
 
 ## 1. 概述
 
 本示例说明航空货运装载领域及其按模式注册的上下文。本文是总览，11 个有界上下文的契约分别维护在子页面中。
 
-## 2. 上下文图与依赖
+## 2. 上下文与依赖
 
-公共依赖方向为 `aircraft → stowage → {mac, airworthiness_security, soft_security, mac_optimization, express_effectiveness, loading_effectiveness, redundancy, recommended_weight_equalization, payload_maximization}`。LoadingOrder、FullLoad、Predistribution 和 WeightRecommendation 注册不同子集。
+| 上下文 | 职责 | 依赖 |
+|---|---|---|
+| 飞机 | 飞机、机位、阶段与限制数据 | 输入配置 |
+| 装载 | 分配、调整、载荷及建议载重量 | 飞机 |
+| MAC 与适航安全 | 力矩、重心及硬安全限制 | 飞机、装载 |
+| 软安全与 MAC 优化 | 安全偏差和重心偏好 | 飞机、装载及相关中间值 |
+| 快件效能与装载效能 | 业务模式下的装载偏好 | 装载 |
+| 冗余、建议载重量均衡、载荷最大化 | 对应模式的目标与限制 | 装载 |
+
+装载顺序（LoadingOrder）、满载（FullLoad）、预分配（Predistribution）和重量建议（WeightRecommendation）四种模式注册不同的上下文子集。
 
 ## 3. 概念、集合与谓词
 
-`I` 是货物集合，`J` 是机位集合，`P` 是飞行阶段集合。谓词区分已分配货物、空机位、装载区域、有效阶段和当前模式 Pipeline。Aircraft 是配置数据，Stowage 及安全相关上下文提供优化符号。
+$I$ 是货物集合，$J$ 是机位集合，$P$ 是飞行阶段集合。谓词区分已分配货物、空机位、装载区域、有效阶段和当前模式的管线。飞机上下文提供配置数据，装载与安全相关上下文提供模型符号。
 
 ## 4. 变量与中间值
 
-核心符号包括分配 `x_{ij}`、调整 `u_{ij}`、装载量 `y_j` 和建议量 `z_j`。中间值包括机位载荷 `L_j`、各阶段力矩/MAC、区域密度、载荷总量、空位指示量和建议偏差。有效符号由应用模式决定。
+核心符号包括分配 $x_{ij}$、调整 $u_{ij}$、装载量 $y_j$ 和建议量 $z_j$。中间值包括机位载荷、各阶段力矩与 MAC、区域密度、载荷总量、空位指示量和建议偏差。实际变量域、单位及启用条件分别在所属上下文中定义。
 
 ## 5. 断言、约束与目标
 
-有效约束包括货物分配、调整范围、装载限制、MAC/力矩和适航包络、软安全惩罚、装载顺序、冗余、建议重量均衡和最大载荷。上下文页面不表示其 Pipeline 在所有模式中都被注册。
+约束和目标覆盖货物分配、调整范围、装载限制、力矩与适航包络、软安全偏差、装载顺序、冗余、建议载重量均衡和载荷最大化。它们由应用模式选择，并非一次求解同时启用所有上下文。
 
 ## 6. 算法与生命周期
 
 应用选择模式，初始化 aircraft/stowage 数据，注册模式相关 Pipeline，可选构造 Benders 分解，求解 MILP，并分析装载方案。
 
-## 7. Register → construct → solve → analyze
+## 7. 注册 → 构造 → 求解 → 分析
 
-模式选择决定注册边界。`register` 只创建该模式的变量和 Pipeline；`construct` 构造元模型；`solve` 执行 MILP/Benders 路径；`analyze` 返回机位、载荷、MAC 和安全结果。
+模式选择决定注册范围。`register` 添加该模式的变量与管线；`construct` 构造模型；`solve` 执行配置的 MILP 或分解路径；`analyze` 返回机位、载荷、MAC 与安全结果。
 
-## 8. 源码与验证
+## 8. 源码入口
 
 - [Kotlin Demo2 源码](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo2)
-- [Rust Demo2 源码](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/core/demo2.rs)
+- [Rust Demo2 源码](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/framework/demo2)
 
 ## 9. Kotlin/Rust 对照与设计决策
 
-两个实现共享上下文词汇，但模式注册和变量边界必须以各语言的 Pipeline 生成器为准。子页面描述的是有效数学边界，而不是单一全局模型。
+两种语言的入口均属于航空货运装载框架示例。子页按 Kotlin 的上下文职责和模式注册边界说明数学模型；不同模式不能合并成一个默认全量模型。
 
 ## 10. 上下文模型页面
 
-[打开 Demo2 上下文索引](framework-example2/domain-models)，其中包含 aircraft、stowage、MAC、安全、效果、冗余、建议重量和载荷上下文。
+[打开上下文索引](framework-example2/domain-models)，按依赖顺序阅读 11 个上下文：飞机、装载、MAC、适航安全、软安全、MAC 优化、快件效能、装载效能、冗余、建议载重量均衡、载荷最大化。
 
 ## 11. 变更记录
 
 | 版本 | 变更 | 原因 |
 |---|---|---|
-| 1.0 | 统一总览结构并明确模式边界 | 使上下文注册关系可审查 |
-
+| 1.1 | 统一中英文总览、数学记号和源码入口 | 与所属上下文模型保持一致 |

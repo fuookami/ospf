@@ -1,16 +1,12 @@
-# Route 上下文领域模型
-
-> [English](../../../examples/framework-example1/domain-route/domain-model) | 中文
-
-[toc]
+# 路由上下文模型
 
 ## 1. 概述
 
-Route 上下文根据 Demo 输入构造 `Graph`、生成 `Service` 列表和服务到节点的分配聚合，并提供由 Bandwidth 上下文消费的路由变量与路由管线。权威实现是 Kotlin `demo1` 源码，重点包括 [`RouteContext.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1/route_context/RouteContext.kt)、[`Assignment.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1/route_context/model/Assignment.kt) 和 [`PipelineListGenerator.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1/route_context/service/PipelineListGenerator.kt)。
+路由上下文根据 Demo 输入构造 `Graph`、生成 `Service` 列表和服务到节点的分配聚合，并提供由 带宽上下文消费的路由变量与路由管线。权威实现是 Kotlin `demo1` 源码，重点包括 [`RouteContext.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1/route_context/RouteContext.kt)、[`Assignment.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1/route_context/model/Assignment.kt) 和 [`PipelineListGenerator.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1/route_context/service/PipelineListGenerator.kt)。
 
 ### 1. 依赖上下文
 
-无上游依赖。Bandwidth 上下文依赖本上下文提供的图、服务、分配变量以及分配中间值。
+无上游依赖。带宽上下文依赖本上下文提供的图、服务、分配变量以及分配中间值。
 
 ---
 
@@ -21,6 +17,7 @@ Route 上下文根据 Demo 输入构造 `Graph`、生成 `Service` 列表和服�
 图中的顶点。节点要么是可承载服务的 `NormalNode`，要么是具有带宽需求的 `ClientNode`。Kotlin 对象身份用于区分图节点；不能假设输入客户端标识符与普通节点标识符在全局范围内唯一。
 
 **$id_{n}$**：节点 $n$ 上保存的输入标识符，物理量为无符号整数，用作节点数据。
+
 **$edges_{n}$**：`RouteContext.init` 连接到节点 $n$ 的有向出边可变列表。
 
 #### 1.1 普通节点 (NormalNode)
@@ -38,16 +35,21 @@ Route 上下文根据 Demo 输入构造 `Graph`、生成 `Service` 列表和服�
 有向图边。对每条输入 `EdgeDTO`，初始化会以相同的最大带宽和单位成本建立两个方向的边。对每个客户端，初始化还会从其关联的普通节点添加一条到客户端的边，该边最大带宽等于客户端需求且单位成本为零。
 
 **$from(e)$**：有向边 $e$ 的源节点。
+
 **$to(e)$**：有向边 $e$ 的目标节点。
+
 **$maxBandwidth_{e}$**：边 $e$ 的最大带宽，无符号整数。
+
 **$costPerBandwidth_{e}$**：边 $e$ 的单位带宽成本，无符号整数。
 
 ### 3. 服务 (Service)
 
-可以分配给一个普通节点、并由依赖的 Bandwidth 上下文分配带宽的候选服务。
+可以分配给一个普通节点、并由依赖的 带宽上下文分配带宽的候选服务。
 
 **$id_{s}$**：生成的服务标识符，无符号整数。
+
 **$capacity_{s}$**：服务 $s$ 的带宽容量，无符号整数。在 `RouteContext.init` 中，每个生成服务都取客户端需求总和。
+
 **$cost_{s}$**：服务 $s$ 的使用成本，无符号整数。在 Demo 输入中，每个生成服务都取 `input.serviceCost`。
 
 ### 4. 图 (Graph)
@@ -55,6 +57,7 @@ Route 上下文根据 Demo 输入构造 `Graph`、生成 `Service` 列表和服�
 路由聚合的网络容器，保存节点列表和有向边列表。
 
 **$nodes$**：所有普通节点和客户端节点对象的有序列表。
+
 **$edges$**：所有生成的有向边对象的有序列表。
 
 ---
@@ -78,11 +81,13 @@ Route 上下文根据 Demo 输入构造 `Graph`、生成 `Service` 列表和服�
 > 谓词用于对实体集合分类；每个谓词定义一个子集。
 
 **$normal(n)$**：节点 $n$ 是 `NormalNode` 实例。
+
 **$client(n)$**：节点 $n$ 是 `ClientNode` 实例。
 
 ### 2. 边关联
 
 **$from(e)=n$**：边 $e$ 的源节点是 $n$；实现同时提供匹配指定节点或节点谓词的谓词函数。
+
 **$to(e)=n$**：边 $e$ 的目标节点是 $n$。
 
 ---
@@ -94,14 +99,16 @@ Route 上下文根据 Demo 输入构造 `Graph`、生成 `Service` 列表和服�
 **$N$**：`Graph.nodes` 中所有图节点对象的全集。
 
 **$N^{normal}$**：满足 $normal$ 的子集，即可以承载服务的普通节点。
+
 **$N^{client}$**：满足 $client$ 的子集，即带有需求、需要由带宽模型接收带宽的客户端节点。
 
 ### 2. 边
 
 **$E$**：`Graph.edges` 中所有有向图边的全集，包括每条输入边生成的两个方向以及生成的普通节点到客户端边。
 
-**$E^{normal}$**：满足 $from(e) \in N^{normal}$ 的边子集，即 Bandwidth 上下文允许其带宽变量非零的边。
-**$E^{client}$**：子集 $E \setminus E^{normal}$，其带宽变量由 Bandwidth 上下文固定为零。
+**$E^{normal}$**：满足 $from(e) \in N^{normal}$ 的边子集，即 带宽上下文允许其带宽变量非零的边。
+
+**$E^{client}$**：子集 $E \setminus E^{normal}$，其带宽变量由 带宽上下文固定为零。
 
 ### 3. 服务
 
@@ -184,6 +191,7 @@ $$
 ### 1. 节点分配约束
 
 **Node Assignment Constraint [节点分配约束]**
+
 **描述**：每个普通节点至多承载一个服务。
 
 $$
@@ -193,6 +201,7 @@ $$
 ### 2. 服务分配约束
 
 **Service Assignment Constraint [服务分配约束]**
+
 **描述**：每个服务至多分配给一个普通节点。在本上下文中服务可以保持未分配；客户端需求和边门控由依赖的 Bandwidth 管线处理。
 
 $$
@@ -213,7 +222,7 @@ $$
 
 ## 10. 算法引用
 
-Route 上下文领域模型没有引用独立算法文档。路由初始化和管线构造是 `RouteContext.kt` 与 `PipelineListGenerator.kt` 中的普通上下文操作。
+路由上下文领域模型没有引用独立算法文档。路由初始化和管线构造是 `RouteContext.kt` 与 `PipelineListGenerator.kt` 中的普通上下文操作。
 
 | 算法名称 | 文件路径 | 引用位置 | 简要说明 |
 |----------|----------|----------|----------|
@@ -252,4 +261,4 @@ Route 上下文领域模型没有引用独立算法文档。路由初始化和�
 
 | 版本 | 变更 | 原因 |
 |------|------|------|
-| Current | 重写为 13 节、与源码一致的领域模型 | 用实际 Kotlin 注册语义替换简略内容和未被支持的路由公式。 |
+| 1.0 | 重写为 13 节、与源码一致的领域模型 | 用实际 Kotlin 注册语义替换简略内容和未被支持的路由公式。 |

@@ -1,51 +1,56 @@
 # 复杂示例 4：航班恢复分支定价 — 总览
 
-[English](../../examples/framework-example4)
+[English](/examples/framework-example4)
 
 ## 1. 概述
 
 Demo4 是架构示例。`Application` 为空类，通用量示例可运行；上下文页面描述已经实现的契约，不宣称已经组装了完整生产模型。
 
-## 2. 上下文图与依赖
+## 2. 上下文与依赖
 
-Task、rule、crew 和 cargo 数据输入 bunch generation；生成的 bunch 输入 bunch compilation；bunch selection 协调分支定价策略。Passenger 可选地提供编译 Pipeline。
+| 上下文 | 职责 | 依赖 |
+|---|---|---|
+| 任务与规则 | 任务数据、连接和业务规则 | 输入配置 |
+| 机组、货物、旅客 | 资源与运输需求 | 任务及相应资源数据 |
+| 航班串生成 | 搜索符合策略的航班串 | 任务、规则及资源上下文 |
+| 航班串编译 | 将列编译为覆盖、容量与目标表达式 | 已生成航班串、相关业务管线 |
+| 航班串选择 | 协调列选择与分支定价策略 | 生成与编译契约 |
 
 ## 3. 概念、集合与谓词
 
-词汇包括航班任务、航段、机组、货物、乘客、可行 bunch、生成列和选中列。谓词区分可行任务转移、兼容资源和被编译上下文接受的列。
+领域词汇包括航班任务、连接、机组、货物、旅客和航班串（bunch）。谓词表达可行任务转移、资源兼容性及列的接纳条件。相应集合由各上下文定义，不把所有资源合成一个无归属的集合。
 
 ## 4. 变量与中间值
 
-编译上下文可以选择 bunch 列 `x_b`，并计算任务/飞机/航段覆盖表达式。Generation 和 selection 是服务与回调，不创建独立主问题变量族。
+航班串编译上下文拥有列使用量，并根据各列系数计算任务、飞机和连接相关表达式。航班串生成与选择描述服务及回调契约，不重复声明主问题变量；具体记号和定义域见各上下文子页。
 
 ## 5. 断言、约束与目标
 
-已实现编译限制覆盖任务、航段、机队、容量关系和生成列一致性。注册 Passenger Pipeline 时会增加相应约束及目标项。`Application` 中不存在完整全局分支定价目标。
+编译上下文提供任务、连接、飞机及相关资源的模型契约；启用旅客等业务管线时再加入对应约束与目标。顶层空的 `Application` 并不定义完整全局目标，不能把这些契约误写成已组装的统一求解模型。
 
 ## 6. 算法与生命周期
 
-预期流程是构造策略、初始化影子价格、生成 bunch、编译主问题、计算约化成本并执行分支。通用量示例只演示量类型和线性符号 API。
+架构上的协作顺序为：构造业务策略，初始化对偶信息，生成航班串，编译主问题，再根据约化成本和分支策略继续迭代。通用量示例单独演示量类型与线性符号 API。
 
-## 7. Register → construct → solve → analyze
+## 7. 注册 → 构造 → 求解 → 分析
 
-每个上下文只注册自己的契约。由于顶层 `Application` 为空，目前没有可运行模型的端到端注册、求解和分析流程。
+子页分别说明可注册的符号、管线和回调。Kotlin 顶层 `Application` 是占位入口，因此这里描述上下文的组合方式，不提供一个并不存在的端到端求解调用链。
 
-## 8. 源码与验证
+## 8. 源码入口
 
 - [Kotlin Demo4 源码](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo4)
-- [Rust Demo4 源码](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/core/demo4.rs)
+- [Rust Demo4 源码](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/framework/demo4)
 
 ## 9. Kotlin/Rust 对照与设计决策
 
-两个实现都是架构参考。上下文注册状态和通用量行为必须分别核对源码，不能推导未实现的全局求解模型。
+Kotlin 与 Rust 均有相应框架示例目录，但不能由同名目录推断相同的顶层完成度。本文以 Kotlin 上下文契约为基准，明确区分架构组合与已经执行的全局模型。
 
 ## 10. 上下文模型页面
 
-[打开 Demo4 上下文索引](framework-example4/domain-models)，其中包含 task、rule、crew、cargo、passenger、bunch generation、bunch compilation 和 bunch selection。
+[打开上下文索引](framework-example4/domain-models)，分别阅读任务、规则、机组、货物、旅客、航班串生成、航班串编译与航班串选择。
 
 ## 11. 变更记录
 
 | 版本 | 变更 | 原因 |
 |---|---|---|
-| 1.0 | 统一架构总览和实现边界 | 避免暗示不存在的全局模型 |
-
+| 1.1 | 统一中英文总览、数学记号和源码入口 | 与所属上下文模型保持一致 |

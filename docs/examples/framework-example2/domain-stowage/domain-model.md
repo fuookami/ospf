@@ -1,8 +1,5 @@
-# Stowage Domain Model
+# Stowage context model
 
-[中文](../../../zh-cn/examples/framework-example2/domain-stowage/domain-model)
-
-[toc]
 
 ## 1. Overview
 
@@ -21,12 +18,19 @@ Manages cargo stowage assignment decisions — which items go to which positions
 A cargo item with destination, weight, ULD, location tags, cargo type, priority, and status.
 
 **$id_{i}$** : Item unique identifier.
+
 **$dest_{i}$** : Destination (IATA code).
+
 **$weight_{i}$** : Item weight, unit kg.
+
 **$uld_{i}$** : Associated ULD (optional).
+
 **$location_{i}$** : Location tags (Main/Low/Bulk/Head/Tail).
+
 **$cargo_{i}$** : Cargo type and priority.
+
 **$status_{i}$** : Status (Loaded/Preassigned/Optional/Reserved/AdjustmentNeeded).
+
 **$order_{i}$** : Order information (hardstand time, reweigh time, car-board info).
 
 ### 2. Position
@@ -34,10 +38,15 @@ A cargo item with destination, weight, ULD, location tags, cargo type, priority,
 Stowage position with max load amount (MLA), predicate load weight (PLW), recommended load weight, and status.
 
 **$spaceName_{j}$** : Space name.
+
 **$mla_{j}$** : Max Load Amount.
+
 **$plw_{j}$** : Predicate Load Weight, its definition is further specified in *Stowage*.
+
 **$mlw_{j}$** : Max Load Weight, its definition is further specified in *Airworthiness Security*.
+
 **$coordinate_{j}$** : Coordinate (longitudinal arm, lateral arm).
+
 **$location_{j}$** : Set of location tags.
 
 ### 3. Flight
@@ -45,7 +54,9 @@ Stowage position with max load amount (MLA), predicate load weight (PLW), recomm
 Flight information.
 
 **$flightNo$** : Flight number.
+
 **$departure$** : Departure airport (IATA code).
+
 **$arrival$** : Arrival airport (IATA code).
 
 ### 4. Appointment
@@ -82,16 +93,21 @@ Ballast weight for balance correction.
 
 ### 1. Item Status Predicates
 
-**stowageNeeded(item)** : Item requires position assignment (status is Preassigned or Optional).
-**adjustmentNeeded(item)** : Item requires position adjustment (status is AdjustmentNeeded).
-**loaded(item)** : Item is loaded (status is Loaded or AdjustmentNeeded).
+**`stowageNeeded(item)`** : Item requires position assignment (status is `Preassigned` or `Optional`).
+
+**`adjustmentNeeded(item)`** : Item requires position adjustment (status is `AdjustmentNeeded`).
+
+**`loaded(item)`** : Item is loaded (status is `Loaded` or `AdjustmentNeeded`).
 
 ### 2. Position Status Predicates
 
-**stowageNeeded(position)** : Position requires item assignment.
-**available(position)** : Position is available for loading.
-**predicateWeightNeeded(position)** : Position requires predicate weight variable.
-**recommendedWeightNeeded(position)** : Position requires recommended weight variable.
+**`stowageNeeded(position)`** : Position requires item assignment.
+
+**`available(position)`** : Position is available for loading.
+
+**`predicateWeightNeeded(position)`** : Position requires predicate weight variable.
+
+**`recommendedWeightNeeded(position)`** : Position requires recommended weight variable.
 
 ---
 
@@ -102,7 +118,9 @@ Ballast weight for balance correction.
 **$I$** : Set of all cargo items.
 
 **$I^{pre}$** : Subset of items satisfying predicate stowageNeeded, items requiring position assignment.
+
 **$I^{adj}$** : Subset of items satisfying predicate adjustmentNeeded, items requiring position adjustment.
+
 **$I^{opt}$** : Subset of items with Optional status, optionally loaded items.
 
 ### 2. Positions
@@ -110,7 +128,9 @@ Ballast weight for balance correction.
 **$J$** : Set of all stowage positions.
 
 **$J^{avl}$** : Subset of positions satisfying predicate available, positions available for loading.
+
 **$J^{pw}$** : Subset of positions satisfying predicate predicateWeightNeeded, positions requiring predicate weight.
+
 **$J^{rw}$** : Subset of positions satisfying predicate recommendedWeightNeeded, positions requiring recommended weight.
 
 ### 3. Item-Position Pairs
@@ -147,10 +167,10 @@ $$
 
 The `stowage` expression is the status-aware bridge
 $s_{ij}=x_{ij}+u_{ij}+loaded_{ij}$ for pairs that need stowage and is zero for
-inapplicable pairs. The source fixes `y` and `z` according to the
+inapplicable pairs. The model fixes `y` and `z` according to the
 `predicateWeightNeeded` and `recommendedWeightNeeded` position predicates.
 
-## 6.1 Assertions
+## 7. Assertions
 
 The data model requires unique item/position identifiers and a valid aircraft
 weight unit. Loaded items and unavailable positions have fixed contributions;
@@ -159,11 +179,12 @@ pairs, and every item in $I^{pre}$ has at least one feasible position.
 
 ---
 
-## 7. Constraints
+## 8. Constraints
 
 ### 1. Item Assignment Limit
 
 **[CN]**: 货物分配限制
+
 **Description**: Each item requiring stowage must be assigned to exactly one position.
 
 $$
@@ -173,6 +194,7 @@ $$
 ### 2. Load Amount Limit
 
 **[CN]**: 装载数量限制
+
 **Description**: Load amount per position must not exceed the maximum load amount (MLA).
 
 $$
@@ -182,6 +204,7 @@ $$
 ### 3. Load Weight Limit
 
 **[CN]**: 装载重量限制
+
 **Description**: Load weight per position must not exceed the maximum load weight (MLW).
 
 $$
@@ -191,6 +214,7 @@ $$
 ### 4. Appointment Limit
 
 **[CN]**: 预约限制
+
 **Description**: Pre-assigned item-to-position appointments must be respected.
 
 $$
@@ -199,44 +223,48 @@ $$
 
 ---
 
-## 8. Objective Function
+## 9. Objective Function (if applicable)
 
 This context does not define an independent objective function; it only provides constraints.
 
 ---
 
-## 9. Ubiquitous Language
-
-| Term | Symbol | English | Definition |
-|------|--------|---------|------------|
-| 货物项 | Item | Item | Cargo unit to be loaded |
-| 装载位置 | Position | Position | Cargo loading position on aircraft |
-| 装载分配 | Stowage | Stowage | Item-to-position assignment decision |
-| 装载量 | Load | Load | Load weight and amount at position |
-| 载荷 | Payload | Payload | Total cargo weight on aircraft |
-| 总重量 | TotalWeight | Total Weight | Aircraft total weight per flight phase |
-| 最大装载重量 | MaxLoadWeight | Max Load Weight | Maximum allowable load weight at position |
-| 压舱物 | Ballast | Ballast | Ballast weight for balance |
-| 谓词装载重量 | PLW | Predicate Load Weight | Predicted load weight |
-| 最大装载数量 | MLA | Max Load Amount | Maximum load amount at position |
-
----
-
-## 10. Design Decisions
-
-| Decision | Alternatives | Rationale | Date |
-|----------|--------------|-----------|------|
-| Stowage Mode Selection | FullLoad / Predistribution / WeightRecommendation | Different modes for different business scenarios | 2024 |
-| Benders Decomposition | Master/Sub problem separation | Airworthiness constraints in sub problem, others in master | 2024 |
-
-## 11. Algorithm References
+## 10. Algorithm References
 
 | Algorithm | Source boundary | Used for |
 | --- | --- | --- |
 | Benders decomposition | mode-specific application master/subproblem registration | separating stowage and airworthiness pipelines |
 
-## 12. Change Log
+---
+
+## 11. Ubiquitous Language
+
+| Term | Symbol | Definition |
+|------|--------|------------|
+| Item | `Item` | Cargo unit to be loaded |
+| Position | `Position` | Cargo loading position on aircraft |
+| Stowage | `Stowage` | Item-to-position assignment decision |
+| Load | `Load` | Load weight and amount at position |
+| Payload | `Payload` | Total cargo weight on aircraft |
+| Total Weight | `TotalWeight` | Aircraft total weight per flight phase |
+| Max Load Weight | `MaxLoadWeight` | Maximum allowable load weight at position |
+| Ballast | `Ballast` | Ballast weight for balance |
+| Predicate Load Weight | `PLW` | Predicted load weight |
+| Max Load Amount | `MLA` | Maximum load amount at position |
+
+---
+
+## 12. Design Decisions
+
+| Decision | Alternatives | Rationale |
+|----------|--------------|-----------|
+| Stowage Mode Selection | FullLoad / Predistribution / WeightRecommendation | Different modes for different business scenarios |
+| Benders Decomposition | Master/Sub problem separation | Airworthiness constraints in sub problem, others in master |
+
+---
+
+## 13. Change Log
 
 | Version | Change | Reason |
 | --- | --- | --- |
-| 1.1 | Clarified status predicates, balance-ternary adjustment, and local model boundary | Match the current `Stowage` aggregate and pipeline registration |
+| 1.1 | Clarified status predicates, balance-ternary adjustment, and local model boundary | Match the `Stowage` aggregate and pipeline registration |

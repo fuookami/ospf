@@ -1,8 +1,4 @@
-# Route Context Domain Model
-
-> English | [中文](../../../zh-cn/examples/framework-example1/domain-route/domain-model)
-
-[toc]
+# Route context model
 
 ## 1. Overview
 
@@ -21,6 +17,7 @@ None. The Bandwidth Context depends on this context's graph, services, assignmen
 A graph vertex. A node is either a `NormalNode`, which can host a service, or a `ClientNode`, which has a bandwidth demand. The Kotlin object identity distinguishes graph nodes; the input client identifier is not assumed to be globally unique with normal-node identifiers.
 
 **$id_{n}$** : The input identifier stored on node $n$, an unsigned integer used as node data.
+
 **$edges_{n}$** : The mutable list of outgoing graph edges attached to node $n$ by `RouteContext.init`.
 
 #### 1.1 Normal Node
@@ -38,8 +35,11 @@ A terminal node created from a `ClientNodeDTO`; it consumes bandwidth and has no
 A directed graph edge. For each input `EdgeDTO`, initialization creates one edge in each direction with the same maximum bandwidth and unit cost. For each client, initialization adds one edge from its linked normal node to the client, with maximum bandwidth equal to the client demand and zero unit cost.
 
 **$from(e)$** : The source node of directed edge $e$.
+
 **$to(e)$** : The target node of directed edge $e$.
+
 **$maxBandwidth_{e}$** : The edge's maximum bandwidth, an unsigned integer.
+
 **$costPerBandwidth_{e}$** : The cost per unit of bandwidth on edge $e$, an unsigned integer.
 
 ### 3. Service
@@ -47,7 +47,9 @@ A directed graph edge. For each input `EdgeDTO`, initialization creates one edge
 A candidate service that may be assigned to one normal node and whose bandwidth is allocated by the dependent Bandwidth Context.
 
 **$id_{s}$** : The generated service identifier, an unsigned integer.
+
 **$capacity_{s}$** : The service bandwidth capacity, an unsigned integer. In `RouteContext.init`, every generated service receives the total client demand.
+
 **$cost_{s}$** : The service-use cost, an unsigned integer. In the demo input, every generated service receives `input.serviceCost`.
 
 ### 4. Graph
@@ -55,6 +57,7 @@ A candidate service that may be assigned to one normal node and whose bandwidth 
 The route aggregate's network container, holding the node and directed-edge lists.
 
 **$nodes$** : The ordered list of all normal and client node objects.
+
 **$edges$** : The ordered list of all generated directed edge objects.
 
 ---
@@ -78,11 +81,13 @@ No separate auxiliary decision variables are declared. The registered assignment
 > Predicates classify entity sets; each predicate defines a subset.
 
 **$normal(n)$** : Node $n$ is an instance of `NormalNode`.
+
 **$client(n)$** : Node $n$ is an instance of `ClientNode`.
 
 ### 2. Edge Incidence
 
 **$from(e)=n$** : Edge $e$ has source node $n$; the implementation also exposes predicates matching a specified node or a node predicate.
+
 **$to(e)=n$** : Edge $e$ has target node $n$.
 
 ---
@@ -94,6 +99,7 @@ No separate auxiliary decision variables are declared. The registered assignment
 **$N$** : The universal set of graph node objects in `Graph.nodes`.
 
 **$N^{normal}$** : The subset satisfying $normal$, the normal nodes that may host services.
+
 **$N^{client}$** : The subset satisfying $client$, the client nodes whose demands must be received by the bandwidth model.
 
 ### 2. Edges
@@ -101,6 +107,7 @@ No separate auxiliary decision variables are declared. The registered assignment
 **$E$** : The universal set of directed graph edges in `Graph.edges`, including both generated directions for each input edge and the generated normal-to-client edges.
 
 **$E^{normal}$** : The subset of edges satisfying $from(e) \in N^{normal}$, the edges eligible for nonzero bandwidth variables in the Bandwidth Context.
+
 **$E^{client}$** : The subset $E \setminus E^{normal}$, whose bandwidth variables are fixed to zero by the Bandwidth Context.
 
 ### 3. Services
@@ -184,6 +191,7 @@ $$
 ### 1. Node Assignment Constraint
 
 **Node Assignment Constraint [节点分配约束]**
+
 **Description**: A normal node hosts at most one service.
 
 $$
@@ -193,6 +201,7 @@ $$
 ### 2. Service Assignment Constraint
 
 **Service Assignment Constraint [服务分配约束]**
+
 **Description**: A service is assigned to at most one normal node. It may remain unassigned in this context; client demand and edge gating are enforced by the dependent bandwidth pipelines.
 
 $$
@@ -252,4 +261,4 @@ No standalone algorithm document is referenced by the Route Context domain model
 
 | Version | Change | Reason |
 |---------|--------|--------|
-| Current | Rewritten as a 13-section, source-aligned domain model | Replace shorthand and unsupported route formulas with the actual Kotlin registration semantics. |
+| 1.0 | Rewritten as a 13-section, source-aligned domain model | Replace shorthand and unsupported route formulas with the actual Kotlin registration semantics. |

@@ -1,16 +1,12 @@
-# Bandwidth 上下文领域模型
-
-> [English](../../../examples/framework-example1/domain-bandwidth/domain-model) | 中文
-
-[toc]
+# 带宽上下文模型
 
 ## 1. 概述
 
-Bandwidth 上下文消费 Route 上下文的图、服务和分配聚合；它注册每条边/每个服务的带宽变量、带宽中间值、需求与容量管线以及带宽成本目标。权威实现是 [`BandwidthContext.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1/bandwidth_context/BandwidthContext.kt)、[`EdgeBandwidth.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1/bandwidth_context/model/EdgeBandwidth.kt) 和 [`PipelineListGenerator.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1/bandwidth_context/service/PipelineListGenerator.kt)。
+带宽上下文消费 路由上下文的图、服务和分配聚合；它注册每条边/每个服务的带宽变量、带宽中间值、需求与容量管线以及带宽成本目标。权威实现是 [`BandwidthContext.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1/bandwidth_context/BandwidthContext.kt)、[`EdgeBandwidth.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1/bandwidth_context/model/EdgeBandwidth.kt) 和 [`PipelineListGenerator.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo1/bandwidth_context/service/PipelineListGenerator.kt)。
 
 ### 1. 依赖上下文
 
-1. Route 上下文 — 提供 `Graph`、`Service`、分配变量 $x_{n,s}$ 以及服务/节点分配中间值 $A_s$ 和 $A_n$。
+1. 路由上下文 — 提供 `Graph`、`Service`、分配变量 $x_{n,s}$ 以及服务/节点分配中间值 $A_s$ 和 $A_n$。
 
 ---
 
@@ -18,32 +14,38 @@ Bandwidth 上下文消费 Route 上下文的图、服务和分配聚合；它注
 
 ### 1. 边 (Edge)
 
-来自 Route 上下文图的有向边。只有源节点为普通节点的边可以在本上下文中获得非零带宽变量。
+来自 路由上下文图的有向边。只有源节点为普通节点的边可以在本上下文中获得非零带宽变量。
 
 **$from(e)$**：边 $e$ 的源节点。
+
 **$to(e)$**：边 $e$ 的目标节点。
+
 **$maxBandwidth_{e}$**：边 $e$ 的最大带宽上界，无符号整数。
+
 **$costPerBandwidth_{e}$**：边 $e$ 的单位带宽成本，无符号整数。
 
 ### 2. 服务 (Service)
 
-来自 Route 上下文、需要在图边上分配流量的服务。
+来自 路由上下文、需要在图边上分配流量的服务。
 
 **$capacity_{s}$**：服务 $s$ 的带宽容量，无符号整数。
-**$cost_{s}$**：Route 上下文目标使用的服务成本，无符号整数。
+
+**$cost_{s}$**：路由上下文目标使用的服务成本，无符号整数。
 
 ### 3. 节点 (Node)
 
-Route 上下文图节点，可以是普通节点或客户端节点。
+路由上下文图节点，可以是普通节点或客户端节点。
 
 **$demand_{n}$**：入带宽需求，仅对客户端节点定义。
-**$x_{n,s}$**：导入的 Route 上下文分配变量，本上下文不重新声明它。
+
+**$x_{n,s}$**：导入的 路由上下文分配变量，本上下文不重新声明它。
 
 ### 4. 分配计数
 
-Route 上下文暴露本上下文使用的已注册中间值。
+路由上下文暴露本上下文使用的已注册中间值。
 
 **$A_s$**：分配给服务 $s$ 的普通节点数量。
+
 **$A_n$**：分配给普通节点 $n$ 的服务数量（对客户端节点则为零多项式）。
 
 ---
@@ -52,14 +54,14 @@ Route 上下文暴露本上下文使用的已注册中间值。
 
 ### 1. 决策变量
 
-**$y_{e,s}$**：边 $e$ 上分配给服务 $s$ 的带宽，无量纲非负无符号整数，其定义域和注册边界为：
+**$y_{e,s}$**：边 $e$ 上分配给服务 $s$ 的带宽，按输入带宽单位计量的非负整数，其定义域和注册边界为：
 
 $$
 0 \le y_{e,s} \le maxBandwidth_e,\quad \forall e \in E^{normal},\ \forall s \in S;
 \qquad y_{e,s}=0,\quad \forall e \in E^{client},\ \forall s \in S.
 $$
 
-Kotlin 声明是 `UIntVariable2("y", Shape2(edges.size, services.size))`；`EdgeBandwidth.register` 按边设置范围。Route 上下文变量 $x_{n,s}$ 是导入的决策变量，不是 Bandwidth 上下文的声明。
+Kotlin 声明是 `UIntVariable2("y", Shape2(edges.size, services.size))`；`EdgeBandwidth.register` 按边设置范围。路由上下文变量 $x_{n,s}$ 是导入的决策变量，不是 带宽上下文的声明。
 
 ### 2. 辅助变量
 
@@ -74,12 +76,15 @@ Kotlin 声明是 `UIntVariable2("y", Shape2(edges.size, services.size))`；`Edge
 > 谓词用于对实体集合分类；每个谓词定义一个子集。
 
 **$normal(n)$**：节点 $n$ 是 `NormalNode`。
+
 **$client(n)$**：节点 $n$ 是 `ClientNode`。
 
 ### 2. 边关联
 
 **$from(e)=n$**：边 $e$ 从节点 $n$ 离开。
+
 **$to(e)=n$**：边 $e$ 进入节点 $n$。
+
 **$from\_normal(e)$**：$e$ 的源节点满足 $normal$；这是所有生效边带宽与成本管线使用的派生过滤条件。
 
 ---
@@ -88,9 +93,10 @@ Kotlin 声明是 `UIntVariable2("y", Shape2(edges.size, services.size))`；`Edge
 
 ### 1. 节点
 
-**$N$**：Route 上下文图中的节点全集。
+**$N$**：路由上下文图中的节点全集。
 
 **$N^{normal}$**：满足 $normal$ 的普通/中转节点。
+
 **$N^{client}$**：满足 $client$ 的客户端/终端节点。
 
 ### 2. 边
@@ -98,11 +104,12 @@ Kotlin 声明是 `UIntVariable2("y", Shape2(edges.size, services.size))`；`Edge
 **$E$**：有向图边全集。
 
 **$E^{normal}$**：子集 $\{e \in E \mid from(e) \in N^{normal}\}$，其 $y_{e,s}$ 变量的注册上界是边最大带宽。
+
 **$E^{client}$**：子集 $E \setminus E^{normal}$，其 $y_{e,s}$ 变量固定为零。源码在该范围设置中使用 `!from(normal)`。
 
 ### 3. 服务
 
-**$S$**：Route 上下文生成的服务集合。
+**$S$**：路由上下文生成的服务集合。
 
 ### 4. 实体对 / 关系
 
@@ -230,11 +237,12 @@ $$
 
 ## 8. 约束
 
-> 生效约束恰好是 `bandwidth_context/service/PipelineListGenerator.kt` 返回的管线。`service/limits` 中存在某个类，并不表示生成器返回它后该约束才生效。
+> 生效约束恰好是 `bandwidth_context/service/PipelineListGenerator.kt` 返回的管线。仅在 `service/limits` 中定义约束类并不会使其生效；该类还必须由生成器返回并完成注册。
 
 ### 1. 边带宽约束
 
 **Edge Bandwidth Constraint [边带宽约束]**
+
 **描述**：服务级分配计数控制每条源节点为普通节点的边上的带宽。服务未分配给任何普通节点时，其在每条此类边上的带宽为零；服务分配一次时，边变量范围仍将其限制在边最大值内。
 
 $$
@@ -242,7 +250,7 @@ s.t.\quad (1-A_s)\,maxBandwidth_e+y_{e,s}\le maxBandwidth_e,
 \qquad \forall e \in E^{normal},\ \forall s \in S
 $$
 
-**推论**：由于 Route 上下文约束给出 $A_s \le 1$，在生效定义域上该不等式等价于 $y_{e,s}\le maxBandwidth_e A_s$。
+**推论**：由于 路由上下文约束给出 $A_s \le 1$，在生效定义域上该不等式等价于 $y_{e,s}\le maxBandwidth_e A_s$。
 
 $$
 (1-A_s)\,maxBandwidth_e+y_{e,s}\le maxBandwidth_e
@@ -252,6 +260,7 @@ $$
 ### 2. 需求约束
 
 **Demand Constraint [需求约束]**
+
 **描述**：每个客户端节点通过服务入带宽至少接收其声明的需求量。
 
 $$
@@ -261,6 +270,7 @@ $$
 ### 3. 服务容量约束
 
 **Service Capacity Constraint [服务容量约束]**
+
 **描述**：普通节点上的服务净流出量受导入的节点-服务分配变量门控。代码允许净流出量为负；它只注册该上界不等式。
 
 $$
@@ -278,6 +288,7 @@ $$
 ### 4. 传输节点带宽约束（未注册）
 
 **Transfer Node Bandwidth Constraint [传输节点带宽约束]**
+
 **描述**：`TransferNodeBandwidthConstraint` 类确实存在，并且会用节点出边最大值之和门控普通节点的聚合净流出量。但是 `PipelineListGenerator` 只返回 `EdgeBandwidthConstraint`、`DemandConstraint`、`ServiceCapacityConstraint` 和 `BandwidthCostObjective`，没有返回该类。因此下面的不等式在当前 Demo1 模型中不生效。
 
 $$
@@ -291,7 +302,7 @@ $$
 
 ## 9. 目标函数（如适用）
 
-**描述**：`BandwidthCostObjective` 最小化所有源节点为普通节点的边上的带宽总成本，包括生成的普通节点到客户端边。Route 上下文另外注册服务成本目标。
+**描述**：`BandwidthCostObjective` 最小化所有源节点为普通节点的边上的带宽总成本，包括生成的普通节点到客户端边。路由上下文另外注册服务成本目标。
 
 $$
 \min\quad Z_{bandwidth}=\sum_{e \in E^{normal}} costPerBandwidth_e\,B_e
@@ -342,4 +353,4 @@ $$
 
 | 版本 | 变更 | 原因 |
 |------|------|------|
-| Current | 重写为 13 节、与源码一致的领域模型 | 用实际注册的变量、中间值、约束、目标和未注册类状态替换臆造的传输公式及错误分配门控。 |
+| 1.0 | 重写为 13 节、与源码一致的领域模型 | 用实际注册的变量、中间值、约束、目标和未注册类状态替换臆造的传输公式及错误分配门控。 |

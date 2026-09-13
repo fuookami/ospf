@@ -1,125 +1,170 @@
-# Demo5 路线生成上下文领域模型
-
-[toc]
+# 路线生成上下文模型
 
 ## 1. 概述
 
-Route generation 上下文构建资源图，使用 ESPPRC 标签定价可行路线并向主问题返回新列。
+路线生成上下文搜索满足资源与分支规则的初等路线，并向[路线编译上下文](../domain-route-compilation/domain-model)返回改进列。定价问题是带资源约束的初等最短路问题（ESPPRC）。
 
 ### 1. 依赖上下文
 
-1. VRPTW 上下文提供客户、车辆和可行性规则。
-2. Route compilation 提供主问题对偶价格。
+[VRP 上下文](../domain-vrp/domain-model)提供客户、车型、资源和计算策略；路线编译提供当前阶段及客户、车队行的对偶价格；应用层提供分支规则。
 
 ## 2. 概念 / 实体
 
-### 1. Label
+### 1. 标签
 
-标签记录当前节点、已访问客户、载荷、时间和累计成本。
+一个标签记录当前节点、已访问客户集合、累计载荷、服务时刻和累计定价成本。标签是搜索状态，不是求解器变量。
 
-### 2. Pricing result
+### 2. 路线与价格
 
-定价结果包含路线和约化成本，用于判断是否应加入受限主问题。
+**$c_r$**：路线 $r$ 的真实成本。
+
+**$\pi_i$**：客户 $i$ 的覆盖等式对偶价格。
+
+**$\mu_v$**：车型 $v$ 的车队上限行对偶价格。本文使用主问题最小化模型中对应行的有符号对偶值，不预先取绝对值。
+
+**$\varepsilon_{rc}$**：判断负约化成本的非负数值容差。
 
 ## 3. 变量
 
 ### 1. 决策变量
 
-路线生成上下文不注册持久决策变量；标签扩展产生候选路线 $r$。
+本上下文不复制主问题的路线使用量 $x_r$。定价搜索的结果是候选路线 $r$。
 
 ### 2. 辅助变量
 
-**$d_r$**：路线 $r$ 的约化成本，成本单位。
-
-**$load_r$**：标签路线载荷，需求单位，$load_r\ge0$。
+标签状态 $(n,S,L,t,\gamma)$ 分别表示当前节点、已访问客户、载荷、服务开始时刻和累计定价成本。它们是算法状态，不是声明给主问题的辅助变量。
 
 ## 4. 谓词
 
-**Extendable**：标签扩展后仍满足容量和时间窗。
+**$\operatorname{extendable}(\ell,j)$**：标签 $\ell$ 可以扩展到节点 $j$。
 
-**ImprovingRoute**：路线约化成本小于零。
+**$\operatorname{compatible}(r,b)$**：路线满足分支节点 $b$ 的要求与禁止规则。
+
+**$\operatorname{improving}(r)$**：路线约化成本小于 $-\varepsilon_{rc}$。
+
+**$\operatorname{complete}$**：定价已经充分搜索，能够确认不存在改进列；仅达到返回列数上限不满足该条件。
 
 ## 5. 集合
 
-**$N$**：客户与仓库节点集合；**$A$**：有向弧集合；**$L$**：当前标签集合。
+**$C$**：客户集合；**$V$**：车型集合；**$N$**：客户与仓库节点。
 
-**$R^{-}$**：约化成本为负的路线集合。
+**$A_v$**：车型 $v$ 的可行弧；**$\mathcal L_v$**：该车型的搜索标签集合。
+
+**$\mathcal R_b^v$**：满足资源与节点 $b$ 分支规则的全部车型 $v$ 路线，区别于主问题中已经插入的有限列池。
+
+**$\mathcal R_b^{-}$**：定价发现的负约化成本路线集合。
 
 ## 6. 中间值
 
-### 1. 标签约化成本
+### 1. 资源递推
+
+从标签 $\ell=(i,S,L,t,\gamma)$ 扩展到未访问客户 $j$ 时，需求、服务时长和行驶时间分别为 $q_j,s_i,\tau^v_{ij}$：
 
 $$
-d_r=routeCost_r-\sum_{i\in C}dual_i\,cover_{i,r},\qquad r\in R.
+L'=L+q_j,\qquad
+t'=\max\{e_j,t+s_i+\tau^v_{ij}\},\qquad
+S'=S\cup\{j\}.
 $$
 
-### 2. 标签资源
+$t'$ 是服务开始时刻，不是未经等待的到达时刻。
+
+### 2. 约化成本
+
+令路线的阶段目标系数为：
 
 $$
-load_{\ell'}=load_\ell+q_j,\qquad time_{\ell'}=\max(e_j,time_\ell+service_\ell+travelTime_{ij}).
+c_r^{phase}=
+\begin{cases}
+0,&\text{第一阶段},\\
+c_r,&\text{第二阶段}.
+\end{cases}
 $$
+
+对车型 $v$ 的路线，客户与车队两类对偶价格均需计入：
+
+$$
+\bar c_r=c_r^{phase}-\sum_{i\in C_r}\pi_i-\mu_v,
+\qquad r\in\mathcal R_b^v.
+$$
+
+成本和对偶值必须采用相同的数值归一化约定；分支要求通过路线兼容性限定搜索空间。
 
 ## 7. 断言
 
-### 1. 资源单调
+成功扩展必须保持不重复访问和资源可行性：
 
 $$
-\forall \ell\in L\;(load_\ell\ge0\wedge time_\ell\ge0).
+\operatorname{extendable}(\ell,j)\Rightarrow
+j\notin S\ \wedge\ (i,j)\in A_v\ \wedge\
+L'\le Q_v\ \wedge\ t'\le l_j.
 $$
 
-### 2. 路线改进
-
-$$
-\forall r\in R^{-}\;(d_r<0).
-$$
+该蕴含式描述“允许的扩展必须满足什么”，并不要求任意标签都能扩展到所有客户。
 
 ## 8. 约束
 
-### 1. 容量扩展 [Capacity Extension]
+### 1. 路线可行性（Route Feasibility）
+
+**描述**：定价只在仓库到仓库、客户不重复、满足容量、时间窗及分支规则的路线中搜索。
 
 $$
-s.t.\quad load_\ell+q_j\le Q_v,\qquad \forall\ell\in L,\ j\in N.
+r\in\mathcal R_b^v\Rightarrow
+\operatorname{elementary}(r)\wedge
+L_r\le Q_v\wedge
+\operatorname{timeFeasible}(r)\wedge
+\operatorname{compatible}(r,b).
 $$
 
-### 2. 时间窗扩展 [Time-window Extension]
+这些是标签扩展、筛选与完整路线验证条件，不是向主问题注册另一套弧变量和约束。
+
+### 2. 改进列筛选（Improving Column Filter）
 
 $$
-s.t.\quad arrival_j\le l_j,\qquad \forall j\in N.
+\mathcal R_b^{-}=
+\{r\text{ 已被找到}:\bar c_r<-\varepsilon_{rc}\}.
 $$
 
-## 9. 目标函数
+## 9. 目标函数（如适用）
 
-定价子问题寻找最小约化成本路线：
+**描述**：对允许的车型搜索阶段约化成本最小的路线。
 
 $$
-\min_{r\in R}d_r.
+\min_{v\in V,\ r\in\mathcal R_b^v}\bar c_r.
 $$
+
+只有完整定价确认没有负约化成本路线，才能支持列生成收敛判断。时间、列数或搜索限制导致的提前返回，不等价于此最优性结论。
 
 ## 10. 算法引用
 
-| 算法 | 用途 |
-|---|---|
-| ESPPRC | 在资源约束下枚举并定价路线 |
+| 算法 | 引用位置 | 说明 |
+|---|---|---|
+| 初始路线生成 | 主问题初始化 | 提供种子路线；人工覆盖负责可行性初始化 |
+| ESPPRC 标签扩展与支配 | 第 6—8 节 | 维护资源、访问集合和约化成本，淘汰被支配状态 |
+| 分支兼容性筛选 | 第 4、8 节 | 将要求与禁止规则作用于搜索图和候选路线 |
+| 定价完成状态 | 第 9 节 | 区分完整搜索与因限制而提前返回 |
 
-## 11. 统一语言
+[Kotlin 路线生成源码](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-framework-network-scheduling/network-scheduling-domain-route-generation-context)；[Kotlin/Rust 示例入口](/zh-cn/examples/framework-example5)。
+
+## 11. 通用语言
 
 | 术语 | 符号 | 定义 |
 |---|---|---|
-| 标签 | $\ell$ | 路线扩展的状态 |
-| 对偶价格 | $dual_i$ | 主问题覆盖约束的价格 |
+| 标签 | $\ell$ | 一条部分路线的搜索状态 |
+| 已访问集合 | $S$ | 标签已经服务的客户 |
+| 约化成本 | $\bar c_r$ | 阶段目标系数减去对应约束行的对偶贡献 |
+| 车队对偶 | $\mu_v$ | 车型可用数量约束的对偶值 |
+| 定价完成 | $\operatorname{complete}$ | 可以可靠判断是否仍有改进列的搜索状态 |
 
 ## 12. 设计决策
 
-| 决策 | 依据 |
-|---|---|
-| 只返回负约化成本列 | 与列生成停止条件一致 |
+| 决策 | 备选方案 | 原因 |
+|---|---|---|
+| 使用 ESPPRC 标签搜索 | 枚举所有路线 | 在资源和初等性限制下增量搜索 |
+| 计入客户与车队对偶 | 只减去客户对偶 | 与受限主问题全部基础行保持一致 |
+| 明确完成状态 | 把每次返回视为搜索结束 | 防止受限搜索被误报为收敛 |
 
 ## 13. 变更记录
 
 | 版本 | 变更 | 原因 |
 |---|---|---|
-| 1.0 | 翻译并补齐路线生成模型 | 中文页面与英文页面语义对应 |
-
-## 源码与验证
-
-[路线生成上下文源码](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-framework-network-scheduling/network-scheduling-domain-route-generation-context)
+| 1.1 | 对齐双语资源递推、阶段价格与定价边界 | 补全车队对偶并区分算法状态和模型变量 |

@@ -6,6 +6,8 @@ This approach is suitable for optimization systems that must evolve over time, c
 
 ## 1. From a business problem to contexts
 
+This chapter builds on variables and intermediate values in [The Domain Language](./operations-research-language) and focuses on business responsibilities, not expression syntax. See [The Modeling Workflow](./modeling-workflow) for a single run's object sequence and [Compiler-Like Architecture](./compiler-architecture) for backend conversion.
+
 Start with relatively independent decision topics in the business language, then choose boundaries. Do not begin by creating packages for formula types or solver objects.
 
 For example, a service-placement problem contains two dependent but nearly orthogonal contexts:

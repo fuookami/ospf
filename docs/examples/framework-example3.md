@@ -1,52 +1,58 @@
 # Framework Example 3: One-Dimensional Cutting Stock — Overview
 
-[中文](../zh-cn/examples/framework-example3)
+[中文](/zh-cn/examples/framework-example3)
 
 ## 1. Overview
 
-This example uses the csp1d framework API for a restricted master problem and column generation. Material and Produce are the core domain contexts; pricing and objective policies extend them.
+This example uses the one-dimensional cutting-stock (CSP1D) framework to separate product/material data, the cutting-plan master, and pricing. The overview explains column generation; the material and produce pages define the data contract and master model separately.
 
-## 2. Context map and dependencies
+## 2. Contexts and Dependencies
 
-`material → produce → cutting-plan-generation`; length assignment and wasting minimization contribute optional constraints and objective terms. The application client coordinates registration and the column-generation loop.
+| Context | Responsibility | Dependency |
+|---|---|---|
+| Material | Products, demand, materials, and cutting-plan data | Input configuration |
+| Produce | Plan-usage variables, yield/resource expressions, and master pipelines | Material, generated plans |
+| Cutting-plan generation | Initial plans and improving-column search | Material, master duals |
+| Length assignment and wasting minimization | Optional length rules and loss-related objectives | Material, produce, configuration |
 
-## 3. Concepts, sets, and predicates
+The application assembles contexts and controls column generation. Algorithm roles must not be treated as a second independent production-variable family.
 
-`P` is the product set, `M` the material set, `E` the machine/resource set, and `K` the active cutting-plan columns. Predicates identify demanded products, feasible plans, active columns, and products using a material.
+## 3. Concepts, Sets, and Predicates
 
-## 4. Variables and intermediate values
+$P$ is the product set, $M$ the material set, and $J_t$ the cutting plans available at master solve $t$. Product demand is $d_p$ and plan yield contribution is $a_{pj}$. Predicates distinguish feasible plans, inserted columns, and products with optional length rules.
 
-Production quantities are integer non-negative `x_p`; RMP column variables are `lambda_k`. Intermediate values include material usage `u_m`, machine hours `H_e`, capacity `C_e`, demand contribution `a_{pk}`, and waste `w_k`.
+## 4. Variables and Intermediate Values
 
-## 5. Assertions, constraints, and objective
+$x_j$ is the usage count of plan $j$, not the production quantity of product $p$. Product yield is $q_p=\sum_{j\in J_t}a_{pj}x_j$. Each plan's remaining width is a plan coefficient; total remaining width is its usage-weighted sum. Global product output must not be substituted into every plan's waste calculation.
 
-Active columns cover demand, machine hours stay within capacity, plan waste is non-negative, and optional length rules are respected. The RMP minimizes production/material/waste costs registered by the current Produce and wasting-minimization pipelines.
+## 5. Assertions, Constraints, and Objectives
 
-## 6. Algorithms and lifecycle
+Demand is imposed per product as $q_p\ge d_p$. Configured slack and resource limits follow their owning pipelines; optional rules are not automatically active in the small example. Master variables are continuous during column-generation LP solves and nonnegative integers during integer solving.
 
-The client creates initial feasible plans, registers the RMP, solves it, reads dual prices, prices new plans, adds improving columns, and stops when no negative reduced-cost plan remains.
+## 6. Algorithms and Lifecycle
 
-## 7. Register → construct → solve → analyze
+Generate initial plans, solve the restricted master, extract dual prices, search for negative-reduced-cost plans, deduplicate and insert columns, and solve again. Termination must distinguish complete pricing with no improving columns from an early return caused by time or iteration limits.
 
-Context builders register variables and pipelines; the framework constructs the RMP and pricing model; the solver alternates restricted-master and pricing iterations; analysis reports production and waste.
+## 7. Register → Construct → Solve → Analyze
 
-## 8. Source and verification
+Registration creates the produce aggregate and its pipelines. Construction compiles available plans into master columns. Solving alternates the master and pricing. Analysis converts plan usage into product yields and material usage.
+
+## 8. Source Entry Points
 
 - [Kotlin Demo3 source](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo3)
-- [Rust Demo3 source](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/core/demo3.rs)
+- [Rust Demo3 source](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/framework/demo3)
 
-## 9. Kotlin/Rust comparison and design decisions
+## 9. Kotlin/Rust Comparison and Design Decisions
 
-Both versions expose the same column-generation vocabulary, while coefficient names, numeric domains, and active objective wrappers must be verified from language-specific source.
+Both language entry points call their CSP1D frameworks rather than reimplement every context inside the Demo directory. Mathematical notation consistently indexes variables by plan $j$, so language-level naming differences do not imply different models.
 
-## 10. Context model pages
+## 10. Context Model Pages
 
 - [Material context](framework-example3/domain-material/domain-model)
 - [Produce context](framework-example3/domain-produce/domain-model)
 
-## 11. Change log
+## 11. Change Log
 
 | Version | Change | Reason |
 |---|---|---|
-| 1.0 | Standardized overview structure and RMP lifecycle | Align the overview with context pages |
-
+| 1.1 | Aligned bilingual overviews, notation, and source entry points | Keep the overview consistent with its context models |

@@ -1,53 +1,58 @@
 # Framework Example 5: VRPTW Branch-and-Price — Overview
 
-[中文](../zh-cn/examples/framework-example5)
+[中文](/zh-cn/examples/framework-example5)
 
 ## 1. Overview
 
 Demo5 is the runnable VRPTW integration. It builds a route-based restricted master, prices elementary resource-constrained routes, and applies branch-and-price through the network-scheduling framework.
 
-## 2. Context map and dependencies
+## 2. Contexts and Dependencies
 
-VRP owns customers, vehicles, routes, units, and validators. Route generation consumes the VRP vocabulary and master dual prices; route compilation owns customer coverage, fleet, artificial coverage, and route-cost pipelines.
+| Context | Responsibility | Dependency |
+|---|---|---|
+| VRP | Customers, vehicle types, routes, resources, and validation | Normalized input and calculation policies |
+| Route generation | Resource-constrained elementary-route pricing | VRP, dual prices, branch rules |
+| Route compilation | Customer/fleet rows, artificial coverage, and phase objectives | VRP, generated routes |
 
-## 3. Concepts, sets, and predicates
+The application coordinates branch nodes and phase transitions. Generation and compilation exchange route columns and dual prices.
 
-`C` is the customer set, `V` the vehicle-type set, `R` the route-column set, and `A` the directed arc set. Predicates classify feasible routes, customer coverage, capacity-feasible labels, and improving pricing results.
+## 3. Concepts, Sets, and Predicates
 
-## 4. Variables and intermediate values
+$C$ is the customer set, $V$ the vehicle-type set, and $R_{b,t}$ the inserted compatible routes at branch node $b$, iteration $t$. Predicates express customer coverage, elementarity, resource feasibility, and branch compatibility.
 
-Compilation selects route columns `x_r` and Phase-I artificial coverage `a_i`. Generation derives label load, arrival time, route cost, and reduced cost. VRP supplies demand, service windows, capacity, and policy-specific distance/cost values.
+## 4. Variables and Intermediate Values
 
-## 5. Assertions, constraints, and objective
+$x_r$ is route usage and $u_i$ is phase-I artificial coverage. The master derives customer coverage $Y_i$ and fleet usage $F_v$. Generation computes label load, service-start time, and reduced cost. The child pages distinguish input attributes, algorithm state, linear expressions, and solver variables.
 
-Routes begin/end at a depot and satisfy visitation, capacity, and time-window rules. The master enforces customer coverage and fleet limits, penalizes artificial coverage in Phase I, and minimizes route cost in Phase II.
+## 5. Assertions, Constraints, and Objectives
 
-## 6. Algorithms and lifecycle
+Customer coverage satisfies $Y_i+u_i=1$ and fleet usage cannot exceed availability. Phase I minimizes artificial coverage; phase II fixes $u_i=0$ and minimizes route cost. This is not a mixed objective using an arbitrary large constant. Pricing and validation enforce route capacity and time windows.
 
-The application initializes the instance and policies, builds initial routes, solves the restricted master, prices ESPPRC routes, adds improving columns, and branches until the configured termination condition is met.
+## 6. Algorithms and Lifecycle
 
-## 7. Register → construct → solve → analyze
+The application seeds routes, solves node LPs, searches improving columns with ESPPRC, and handles fractional solutions and branch nodes. Pricing includes customer and fleet duals. A return constrained by a column limit is not automatically complete pricing.
 
-VRP validates input; route generation builds the pricing graph; route compilation registers the master; branch-and-price alternates master and pricing solves; analysis returns selected routes and customer/fleet results.
+## 7. Register → Construct → Solve → Analyze
 
-## 8. Source and verification
+VRP validates and normalizes input. Generation builds the pricing graph. Compilation registers the restricted master. Branch-and-price coordinates master solves, pricing, and phase transitions. Analysis turns integer route usage into a validated solution.
+
+## 8. Source Entry Points
 
 - [Kotlin Demo5 source](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo5)
-- [Rust Demo5 source](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/core/demo5.rs)
-- [Kotlin network-scheduling contexts](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-framework-network-scheduling)
+- [Rust Demo5 source](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/framework/demo5)
 
-## 9. Kotlin/Rust comparison and design decisions
+## 9. Kotlin/Rust Comparison and Design Decisions
 
-The route/master vocabulary is shared, while adapters, numeric domains, cost policies, and branching details are language-specific. The context pages identify the registered mathematical boundary.
+Both framework examples use route columns. The equations distinguish node LPs from integer solutions and phase-I feasibility restoration from phase-II cost optimization. A direct arc-model test oracle does not replace the route-column production master.
 
-## 10. Context model pages
+## 10. Context Model Pages
 
 - [VRP context](framework-example5/domain-vrp/domain-model)
 - [Route generation context](framework-example5/domain-route-generation/domain-model)
 - [Route compilation context](framework-example5/domain-route-compilation/domain-model)
 
-## 11. Change log
+## 11. Change Log
 
 | Version | Change | Reason |
 |---|---|---|
-| 1.0 | Standardized VRPTW overview structure | Align the overview with the other complex examples |
+| 1.1 | Aligned bilingual overviews, notation, and source entry points | Keep the overview consistent with its context models |

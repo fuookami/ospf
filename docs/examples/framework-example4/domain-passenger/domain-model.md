@@ -1,8 +1,4 @@
-# Passenger Domain Model
-
-:us: English | :cn: [简体中文](../../../zh-cn/examples/framework-example4/domain-passenger/domain-model)
-
-[toc]
+# Passenger context model
 
 ## 1. Overview
 
@@ -22,8 +18,11 @@ Manages passenger cancellations, class changes, flight changes, and amount track
 A passenger with an amount and a multi-leg flight list, each leg assigned a passenger class.
 
 **$\text{id}_{p}$** : Unique identifier of passenger $p$.
+
 **$\text{amount}_{p}$** : Amount of passenger $p$ (greater than 1 for group passengers).
+
 **$\text{flights}_{p}$** : Leg list of passenger $p$, each entry is a (flight task, class) pair.
+
 **$\text{route}_{p}$** : Airport route of passenger $p$.
 
 ### 2. Flight Passenger (FlightPassenger)
@@ -31,9 +30,13 @@ A passenger with an amount and a multi-leg flight list, each leg assigned a pass
 An association linking a passenger to a specific flight with an optional previous leg.
 
 **$\text{flight}_{fp}$** : Associated flight task.
+
 **$\text{passenger}_{fp}$** : Associated passenger.
+
 **$\text{prev}_{fp}$** : Previous leg's flight passenger association (optional).
+
 **$\text{cls}_{fp}$** : Passenger's class on this flight.
+
 **$\text{amount}_{fp}$** : Passenger amount.
 
 ### 3. Passenger Cancel (PassengerCancel)
@@ -47,6 +50,7 @@ Tracks passenger cancellation decision variables in the column generation formul
 Tracks passenger class change and flight change decision variables in the column generation formulation.
 
 **$\text{passengerClassChange}_{fp,cls}$** : Variable for flight passenger $fp$ changing to class $cls$.
+
 **$\text{passengerFlightChange}_{fp,f',cls}$** : Variable for flight passenger $fp$ changing to flight $f'$ and class $cls$.
 
 ### 5. Passenger Amount (PassengerAmount)
@@ -78,8 +82,11 @@ Computes passenger amount expressions per flight and class, accounting for cance
 ### 1. Passenger Status
 
 **isCancelled** : Flight passenger $fp$ is cancelled ($c_{fp} > 0$).
+
 **isClassChanged** : Flight passenger $fp$ has a class change.
+
 **isFlightChanged** : Flight passenger $fp$ has a flight change.
+
 **isTransfer** : Passenger $p$ is a transfer passenger (route contains more than 2 airports).
 
 ---
@@ -91,6 +98,7 @@ Computes passenger amount expressions per flight and class, accounting for cance
 **$FP$** : Universal set of all flight passenger associations.
 
 **$FP_{f}$** : Subset of flight passengers on flight $f$, $\forall f \in F$.
+
 **$FP_{p}$** : Subset of flight passengers for passenger $p$, $\forall p \in P$.
 
 ### 2. Flights
@@ -142,6 +150,7 @@ $$
 ### 1. Passenger Cancel Minimization
 
 **[CN]**: 乘客取消最小化
+
 **Description**: Minimize the total number of cancelled passengers (objective function term).
 
 $$
@@ -151,6 +160,7 @@ $$
 ### 2. Passenger Class Change Minimization
 
 **[CN]**: 乘客舱位变更最小化
+
 **Description**: Minimize the total number of class-changed passengers (objective function term).
 
 $$
@@ -160,6 +170,7 @@ $$
 ### 3. Passenger Flight Change Minimization
 
 **[CN]**: 乘客航班变更最小化
+
 **Description**: Minimize the total number of flight-changed passengers (objective function term).
 
 $$
@@ -169,6 +180,7 @@ $$
 ### 4. Passenger Flight Capacity Constraint
 
 **[CN]**: 航班乘客容量约束
+
 **Description**: The passenger amount per flight per class must not exceed available capacity.
 
 $$
@@ -178,6 +190,7 @@ $$
 ### 5. Passenger Route Cancel Constraint
 
 **[CN]**: 路线取消约束
+
 **Description**: If any leg of a passenger is cancelled, all legs of the entire route are cancelled.
 
 $$
@@ -186,7 +199,7 @@ $$
 
 ---
 
-## 9. Objective Function
+## 9. Objective Function (if applicable)
 
 **Description**: Minimize the weighted sum of passenger cancellations, class changes, and flight changes.
 
@@ -198,7 +211,7 @@ $$
 
 ## 10. Algorithm References
 
-> No独立 algorithm references in this context.
+> No independent algorithm references in this context.
 
 ---
 

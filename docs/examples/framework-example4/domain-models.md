@@ -1,11 +1,11 @@
-# Framework example 4: context domain-model index
+# Framework Example 4: Context Model Index
 
-[中文](../../zh-cn/examples/framework-example4/domain-models.md)
+[中文](/zh-cn/examples/framework-example4/domain-models)
 
 Demo4 is an architecture sample rather than a complete Kotlin application:
 `Application` is empty and only `Demo4GenericQuantitySample` is executable.
 This index therefore separates context contracts from application wiring. The
-the local model pages below are maintained model prose; data-only and
+local model pages below are maintained model prose; data-only and
 orchestration contexts explicitly document their absence of independent solver
 variables rather than inventing a global model.
 
@@ -35,29 +35,10 @@ The directed arrows describe data and service dependencies, not a claim that
 
 ## 3. Shared notation and master contract
 
-Let `B_k` be the set of generated bunches available at iteration `k`, `T` the
-flight-task set, `A` the aircraft/executor set, and `L` the flight-link set.
-For a selected bunch `b`, `cover(t,b)`, `use(a,b)`, and `link(l,b)` are source-
-provided incidence coefficients. The compilation context may register:
-
-$$
-x_b\in\{0,1\}\ (b\in B_k),\qquad
-y_t\in\{0,1\}\ (t\in T),\qquad
-z_a\in\{0,1\}\ (a\in A).
-$$
-
-The two explicitly implemented limit families are represented by non-negative
-slacks:
-
-$$
-slack^{link}_l\ge 1 \quad(l\in L^{selected}),
-\qquad
-slack^{fleet}_c\ge amount(c) \quad(c\in C^{checkpoint}).
-$$
-
-Their weighted minimization is registered by the corresponding compilation
-pipeline. Coefficients and generated-column shapes come from the aggregate at
-registration time; they are not fixed by this index.
+Shared symbols (`B_k`, `T`, `A`, `L`) and generated-column incidence coefficients are
+defined in the linked context pages. The compilation page is the source of truth
+for registered variables, slacks, constraints, and objective; this index does not
+duplicate those formulas.
 
 ## 4. Context boundaries and evidence
 
@@ -74,7 +55,9 @@ registration time; they are not fixed by this index.
    generated columns. It supplies algorithm state, not an additional domain
    variable family.
 
-The parent page documents the generic-quantity executable and the Kotlin/Rust
-implementation status. Use these split pages for context-level vocabulary and
-formula review, and the source links on the parent page for implementation
-line evidence.
+The parent page documents the generic-quantity executable and provides Kotlin/Rust
+source entry points. Use these split pages for context-level vocabulary and
+formula review, and the source links below for implementation line evidence.
+
+5. [Kotlin Demo4 source](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo4)
+6. [Rust Demo4 source](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/core/demo4.rs)

@@ -1,8 +1,5 @@
-# Payload Maximization Domain Model
+# Payload maximization context model
 
-[中文](../../../zh-cn/examples/framework-example2/domain-payload_maximization/domain-model)
-
-[toc]
 
 ## 1. Overview
 
@@ -27,15 +24,46 @@ Total cargo weight to be maximized.
 
 ## 3. Variables
 
+### 1. Decision Variables
+
 This context reuses decision variables from the stowage context and does not define independent decision variables.
+
+### 2. Auxiliary Variables
+
+This context does not define independent auxiliary variables.
 
 ---
 
-## 4. Constraints
+## 4. Predicates
+
+This context does not define independent predicates.
+
+---
+
+## 5. Sets
+
+This context does not define independent sets; the objective ranges over the item and position sets from the stowage context.
+
+---
+
+## 6. Intermediate Values
+
+This context does not define independent intermediate values.
+
+---
+
+## 7. Assertions
+
+This context does not define independent assertions.
+
+---
+
+## 8. Constraints
 
 ### 1. Max Payload Limit
 
 **[CN]**: 最大载荷限制
+
 **Description**: Payload must not exceed aircraft maximum payload capacity.
 
 $$
@@ -44,7 +72,7 @@ $$
 
 ---
 
-## 5. Objective Function
+## 9. Objective Function (if applicable)
 
 Maximize total payload.
 
@@ -54,17 +82,29 @@ $$
 
 ---
 
-## 6. Ubiquitous Language
+## 10. Algorithm References
 
-| Term | Symbol | English | Definition |
-|------|--------|---------|------------|
-| 载荷 | Payload | Payload | Total cargo weight on aircraft |
-| 最大载荷 | MaxPayload | Max Payload | Maximum aircraft payload capacity |
+This context does not define an independent algorithm reference.
 
 ---
 
-## 7. Design Decisions
+## 11. Ubiquitous Language
 
-| Decision | Alternatives | Rationale | Date |
-|----------|--------------|-----------|------|
-| Objective function | Payload maximization vs Cost minimization | Payload maximization is the primary business goal | 2024 |
+| Term | Symbol | Definition |
+|------|--------|------------|
+| Payload | `Payload` | Total cargo weight on aircraft |
+| Max Payload | `MaxPayload` | Maximum aircraft payload capacity |
+
+---
+
+## 12. Design Decisions
+
+| Decision | Alternatives | Rationale |
+|----------|--------------|-----------|
+| Objective function | Payload maximization vs Cost minimization | Payload maximization is the primary business goal |
+
+---
+
+## 13. Change Log
+
+No context-specific change entries are recorded on this page.

@@ -1,6 +1,4 @@
-# Route Context Domain Model (compatibility entry)
-
-> English | [中文](../../../zh-cn/examples/framework-example1/domain-route/domain-model)
+# Route context model
 
 The canonical, source-aligned Route Context domain model has moved to [Route Context](../domain-route/domain-model). This legacy path is retained so existing links do not break; it intentionally contains no duplicate equations.
 
