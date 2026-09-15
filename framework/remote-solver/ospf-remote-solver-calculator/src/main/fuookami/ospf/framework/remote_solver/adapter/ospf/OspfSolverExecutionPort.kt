@@ -51,6 +51,14 @@ class OspfSolverExecutionPort(
     private val bridge: OspfExecutionBridge
 ) : fuookami.ospf.framework.remote_solver.protocol.port.SolverExecutionPort {
 
+    /** Conservative bridge capability declaration for scheduler integration. */
+    val capabilities: OspfExecutionCapabilities
+        get() = bridge.capabilities
+
+    /** Resolve capabilities for the normalized payload model type. */
+    fun capabilitiesFor(payload: SolvePayload): OspfExecutionCapabilities =
+        bridge.capabilitiesFor(injectNormalizedModelType(payload))
+
     /**
      * 从任务元数据的 targetType 推断规范化模型类型
      * Infer normalized model type from task meta targetType

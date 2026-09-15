@@ -99,7 +99,35 @@ data class RemoteSolverConfig(
     val performanceLearningEnabled: Boolean = true,
     val performanceLearningRate: Double = 0.2,
     val performanceScoreMin: Double = 0.1,
-    val performanceScoreMax: Double = 10.0
+    val performanceScoreMax: Double = 10.0,
+    /** Waiting age after which a queued task receives the starvation guard. */
+    val schedulerStarvationAgeMs: Long = 30_000L,
+    /** Minimum relative score improvement required before moving a suspended task. */
+    val schedulerMigrationHysteresisRatio: Double = 0.15,
+    /** Minimum number of completed slices before a sticky task may migrate. */
+    val schedulerMinSlicesBeforeMigration: Int = 1,
+    /** Weight applied to the estimated cost of moving a resumable task. */
+    val schedulerMigrationCostWeight: Double = 0.25,
+    /** Base cost component used by node scoring. */
+    val schedulerCostWeight: Double = 0.6,
+    /** Deadline-risk component used by node scoring. */
+    val schedulerDeadlineRiskWeight: Double = 0.3,
+    /** Queue-delay component used by node scoring. */
+    val schedulerQueueDelayWeight: Double = 0.1,
+    /** Score band for weighted round-robin candidates. */
+    val schedulerRoundRobinScoreTolerance: Double = 0.05,
+    /** Enables smooth weighted round-robin for complex tasks. */
+    val schedulerWeightedRoundRobinEnabled: Boolean = true,
+    /** Remaining-progress component used by node scoring. */
+    val schedulerProgressWeight: Double = 0.25,
+    /** Gap at which progress pressure prefers a faster node. */
+    val schedulerProgressFastGapThreshold: Double = 0.75,
+    /** Gap below which progress pressure may prefer a cheaper node. */
+    val schedulerProgressCheapGapThreshold: Double = 0.20,
+    /** Minimum gap improvement considered meaningful. */
+    val schedulerProgressMinImprovement: Double = 0.01,
+    /** Consecutive flat observations before a progress policy switch. */
+    val schedulerProgressNoImprovementSlices: Int = 1
 )
 
 /**
@@ -121,5 +149,41 @@ data class RemoteSolverConfig(
 data class SchedulerWeights(
     val costWeight: Double = 0.6,
     val deadlineRiskWeight: Double = 0.3,
-    val queueDelayWeight: Double = 0.1
-)
+    val queueDelayWeight: Double = 0.1,
+    /** Complex tasks within this score band participate in weighted RR. */
+    val roundRobinScoreTolerance: Double = 0.05,
+    /** Minimum relative improvement needed to migrate a running task. */
+    val migrationHysteresisRatio: Double = 0.15,
+    /** Enables deterministic smooth weighted round robin for complex tasks. */
+    val weightedRoundRobinEnabled: Boolean = true,
+    /** Weight for remaining-progress performance in node selection. */
+    val progressWeight: Double = 0.25,
+    /** Gap level at which a measured lack of progress justifies a fast node. */
+    val progressFastGapThreshold: Double = 0.75,
+    /** Gap level below which a good incumbent may use a cheaper node. */
+    val progressCheapGapThreshold: Double = 0.20,
+    /** Minimum gap reduction counted as meaningful progress. */
+    val progressMinImprovement: Double = 0.01,
+    /** Number of consecutive flat observations required for a policy switch. */
+    val progressNoImprovementSlices: Int = 1
+) {
+    companion object {
+        /** Builds scoring weights from the canonical remote-solver config. */
+        fun from(config: RemoteSolverConfig): SchedulerWeights = from(SchedulerRuntimeConfig.from(config))
+
+        /** Builds scoring weights from a hot-reloadable runtime snapshot. */
+        fun from(config: SchedulerRuntimeConfig): SchedulerWeights = SchedulerWeights(
+            costWeight = config.schedulerCostWeight,
+            deadlineRiskWeight = config.schedulerDeadlineRiskWeight,
+            queueDelayWeight = config.schedulerQueueDelayWeight,
+            roundRobinScoreTolerance = config.schedulerRoundRobinScoreTolerance,
+            migrationHysteresisRatio = config.schedulerMigrationHysteresisRatio,
+            weightedRoundRobinEnabled = config.schedulerWeightedRoundRobinEnabled,
+            progressWeight = config.schedulerProgressWeight,
+            progressFastGapThreshold = config.schedulerProgressFastGapThreshold,
+            progressCheapGapThreshold = config.schedulerProgressCheapGapThreshold,
+            progressMinImprovement = config.schedulerProgressMinImprovement,
+            progressNoImprovementSlices = config.schedulerProgressNoImprovementSlices
+        )
+    }
+}

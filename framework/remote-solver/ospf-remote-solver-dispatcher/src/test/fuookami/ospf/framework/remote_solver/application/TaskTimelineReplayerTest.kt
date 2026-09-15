@@ -34,7 +34,8 @@ class TaskTimelineReplayerTest {
             )
             val task = runtime.service.submitTask(
                 payload = SolvePayload(
-                    modelRef = ObjectRef.of(path = "model/replay")
+                    modelRef = ObjectRef.of(path = "model/replay"),
+                    extension = mapOf("modelType" to "LINEAR")
                 ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME
@@ -79,7 +80,8 @@ class TaskTimelineReplayerTest {
             )
             val task = runtime.service.submitTask(
                 payload = SolvePayload(
-                    modelRef = ObjectRef.of(path = "model/replay-event")
+                    modelRef = ObjectRef.of(path = "model/replay-event"),
+                    extension = mapOf("modelType" to "LINEAR")
                 ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME

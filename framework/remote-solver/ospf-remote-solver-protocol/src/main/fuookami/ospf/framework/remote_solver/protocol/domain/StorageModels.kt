@@ -109,7 +109,9 @@ data class CheckpointMetadata(
     val modelFingerprint: String? = null,
     val configurationFingerprint: String? = null,
     val solverFingerprint: String? = null,
-    val integritySha256: String? = null
+    val integritySha256: String? = null,
+    val provenance: Map<String, String> = emptyMap(),
+    val cancellationChain: List<CancellationRecord> = emptyList()
 ) {
     constructor(
         taskId: String,

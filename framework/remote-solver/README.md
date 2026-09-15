@@ -602,6 +602,7 @@ Worker parameters:
 Additional options:
 - `--state-dir <dir>` - Local state directory (default: `target/remote-solver-worker-state`)
 - `--total-runtime-ms <ms>` - Compatibility progress runtime for non-CP payloads (default: `12000`)
+- `--elapsed-before-ms <ms>` - Elapsed task budget before this CP slice (default: `0`)
 
 When `--model-format ospf-cp-snapshot-json` is supplied, the worker reads the snapshot, invokes
 `OspfCpSnapshotExecutor` and the configured SCIP runtime in this independent process, and writes a
@@ -1062,6 +1063,7 @@ Bridge command must accept:
 Worker optional args in this repo:
 1. `--state-dir <dir>` (default `target/remote-solver-worker-state`)
 2. `--total-runtime-ms <long>` (default `12000`)
+3. `--elapsed-before-ms <long>` (default `0`, CP snapshots only)
 
 Expected stdout key-value format:
 

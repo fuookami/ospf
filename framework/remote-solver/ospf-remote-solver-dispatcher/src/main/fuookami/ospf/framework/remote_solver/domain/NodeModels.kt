@@ -53,6 +53,9 @@ import kotlin.time.toDuration
  *                            节点是否支持检查点。
  * @param supportsWarmStart Whether the node supports warm start from checkpoint.
  *                           节点是否支持从检查点热启动。
+ * @param supportsNativeCheckpoint Whether the node supports backend-native
+ *                                 checkpoint restore.
+ *                                 节点是否支持后端原生检查点恢复。
  * @param parallelUnits Number of parallel solving units available.
  *                       可用的并行求解单元数。
  * @param licenseCostPerSlice License cost per slice execution (optional, default 0.0).
@@ -70,6 +73,7 @@ data class NodeCapabilityProfile(
     val supportsCheckpoint: Boolean,
     val supportsWarmStart: Boolean,
     val parallelUnits: Int,
+    val supportsNativeCheckpoint: Boolean = false,
     val licenseCostPerSlice: Flt64 = Flt64.zero,
     val supportedModelTypes: Set<NormalizedModelType> = setOf(
         NormalizedModelType.LINEAR,
@@ -98,7 +102,8 @@ fun NodeCapabilityProfile(
     supportsCheckpoint: Boolean,
     supportsWarmStart: Boolean,
     parallelUnits: Int,
-    licenseCostPerSlice: Double = 0.0
+    licenseCostPerSlice: Double = 0.0,
+    supportsNativeCheckpoint: Boolean = false
 ): NodeCapabilityProfile = NodeCapabilityProfile(
     nodeId = NodeId.of(nodeId),
     solverType = SolverTypeName.of(solverType),
@@ -109,6 +114,7 @@ fun NodeCapabilityProfile(
     supportsCheckpoint = supportsCheckpoint,
     supportsWarmStart = supportsWarmStart,
     parallelUnits = parallelUnits,
+    supportsNativeCheckpoint = supportsNativeCheckpoint,
     licenseCostPerSlice = Flt64(licenseCostPerSlice)
 )
 

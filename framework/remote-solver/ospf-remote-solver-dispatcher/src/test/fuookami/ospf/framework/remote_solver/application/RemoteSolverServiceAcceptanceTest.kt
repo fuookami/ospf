@@ -33,7 +33,10 @@ class RemoteSolverServiceAcceptanceTest {
 
             val simpleTaskIds = (1..7).map {
                 runtime.service.submitTask(
-                    payload = SolvePayload(modelRef = ObjectRef.of(path = "model/mix-simple-$it")),
+                    payload = SolvePayload(
+                        modelRef = ObjectRef.of(path = "model/mix-simple-$it"),
+                        extension = mapOf("modelType" to "LINEAR")
+                    ),
                     complexity = TaskComplexity.SIMPLE,
                     timeSensitivity = TimeSensitivity.NON_REALTIME,
                     priority = 5
@@ -41,7 +44,10 @@ class RemoteSolverServiceAcceptanceTest {
             }
             val complexTaskIds = (1..3).map {
                 runtime.service.submitTask(
-                    payload = SolvePayload(modelRef = ObjectRef.of(path = "model/mix-complex-$it")),
+                    payload = SolvePayload(
+                        modelRef = ObjectRef.of(path = "model/mix-complex-$it"),
+                        extension = mapOf("modelType" to "LINEAR")
+                    ),
                     complexity = TaskComplexity.COMPLEX,
                     timeSensitivity = TimeSensitivity.NON_REALTIME,
                     priority = 5
@@ -86,7 +92,10 @@ class RemoteSolverServiceAcceptanceTest {
 
             val taskIds = (1..120).map {
                 runtime.service.submitTask(
-                    payload = SolvePayload(modelRef = ObjectRef.of(path = "model/burst-$it")),
+                    payload = SolvePayload(
+                        modelRef = ObjectRef.of(path = "model/burst-$it"),
+                        extension = mapOf("modelType" to "LINEAR")
+                    ),
                     complexity = TaskComplexity.SIMPLE,
                     timeSensitivity = TimeSensitivity.NON_REALTIME,
                     priority = 1

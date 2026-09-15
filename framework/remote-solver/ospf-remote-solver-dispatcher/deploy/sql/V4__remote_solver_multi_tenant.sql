@@ -29,7 +29,13 @@ CREATE INDEX IF NOT EXISTS idx_remote_solver_task_state_tenant
 
 -- Update request_id unique constraint to be tenant-scoped
 -- Historically request_id was globally unique; now we make it tenant-scoped
--- This is a no-op if the constraint already exists in the desired form
+ALTER TABLE remote_solver_task_state
+    DROP CONSTRAINT IF EXISTS remote_solver_task_state_request_id_key;
+
+DROP INDEX IF EXISTS remote_solver_task_state_request_id_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_remote_solver_task_state_tenant_request
+    ON remote_solver_task_state (tenant_id, request_id);
 
 -- Add tenant_id column to cost_ledger table for consistent tracking
 -- 为成本账本表添加 tenant_id 列以保持一致性

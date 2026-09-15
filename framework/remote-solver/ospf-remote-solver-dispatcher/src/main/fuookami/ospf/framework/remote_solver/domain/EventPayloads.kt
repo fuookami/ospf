@@ -111,7 +111,14 @@ data class SliceLifecyclePayload(
     val taskStatus: String,
     val nodeId: String? = null,
     val quantumMs: Long? = null,
-    val reason: String? = null
+    val reason: String? = null,
+    /** Dispatcher-side audit fields; all are optional for additive evolution. */
+    val admissionClass: String? = null,
+    val selectionReason: String? = null,
+    val selectionScore: Double? = null,
+    val quantumReason: String? = null,
+    val migrationDecision: String? = null,
+    val eligibleNodeIds: List<String> = emptyList()
 ) {
     /**
      * Serializes this payload to a byte array.

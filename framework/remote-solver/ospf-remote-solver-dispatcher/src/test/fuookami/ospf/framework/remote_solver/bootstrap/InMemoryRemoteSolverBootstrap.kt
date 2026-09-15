@@ -19,6 +19,7 @@ import fuookami.ospf.framework.remote_solver.application.RemoteSolverApiFacade
 import fuookami.ospf.framework.remote_solver.application.RemoteSolverConfig
 import fuookami.ospf.framework.remote_solver.application.RemoteSolverService
 import fuookami.ospf.framework.remote_solver.application.SchedulerEngine
+import fuookami.ospf.framework.remote_solver.application.SchedulerWeights
 import fuookami.ospf.framework.remote_solver.domain.EventSchemaRegistry
 import fuookami.ospf.framework.remote_solver.domain.EventSchemaValidationMode
 import fuookami.ospf.framework.remote_solver.port.BudgetPort
@@ -63,7 +64,10 @@ object InMemoryRemoteSolverBootstrap {
         val metricsPort: MetricsPort = InMemoryMetricsPort()
         val tracingPort = InMemoryTracingPort()
         val schedulerConfigAuditPort: SchedulerConfigAuditPort = InMemorySchedulerConfigAuditPort()
-        val schedulerEngine = SchedulerEngine(clock)
+        val schedulerEngine = SchedulerEngine(
+            clock = clock,
+            weights = SchedulerWeights.from(config)
+        )
 
         val objectStoragePort: ObjectStoragePort = InMemoryObjectStoragePort(clock)
         val checkpointPort: CheckpointPort = InMemoryCheckpointPort(0)

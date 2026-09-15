@@ -12,6 +12,7 @@
 package fuookami.ospf.framework.remote_solver.adapter.inmemory
 
 import fuookami.ospf.framework.remote_solver.domain.BudgetSnapshot
+import fuookami.ospf.framework.remote_solver.domain.BudgetReservation
 import fuookami.ospf.framework.remote_solver.port.BudgetPort
 import java.util.concurrent.ConcurrentHashMap
 
@@ -25,6 +26,11 @@ import java.util.concurrent.ConcurrentHashMap
  * Uses in-memory storage for budget snapshots, supporting budget lifecycle management.
  */
 class InMemoryBudgetPort : BudgetPort {
+    private data class ReservationState(
+        val reservation: BudgetReservation,
+        val actual: Double? = null
+    )
+
     /**
      * 预算存储映射
      *
@@ -35,6 +41,9 @@ class InMemoryBudgetPort : BudgetPort {
      * Keyed by budget scope identifier, valued by budget snapshot.
      */
     private val budgets = ConcurrentHashMap<String, BudgetSnapshot>()
+
+    /** Reservation ledger used to make settlement retries idempotent. */
+    private val reservations = ConcurrentHashMap<String, ReservationState>()
 
     /**
      * 配置预算
@@ -96,7 +105,7 @@ class InMemoryBudgetPort : BudgetPort {
      *         Whether reservation was successful
      */
     override suspend fun reserve(scope: String, amount: Double): Boolean {
-        if (amount < 0) {
+        if (!amount.isFinite() || amount < 0) {
             return false
         }
         synchronized(budgets) {
@@ -105,6 +114,29 @@ class InMemoryBudgetPort : BudgetPort {
                 return false
             }
             budgets[scope] = current.copy(reserved = current.reserved + amount)
+            return true
+        }
+    }
+
+    /**
+     * Reserves an identified amount and records the identity atomically with
+     * the budget update.  Repeating the same reservation is a no-op, while a
+     * reused id with different contents is rejected.
+     */
+    override suspend fun reserve(reservation: BudgetReservation): Boolean {
+        synchronized(budgets) {
+            val previous = reservations[reservation.reservationId]
+            if (previous != null) {
+                return previous.reservation == reservation
+            }
+            val current = budgets[reservation.scope] ?: return false
+            if (current.remaining < reservation.amount) {
+                return false
+            }
+            budgets[reservation.scope] = current.copy(
+                reserved = current.reserved + reservation.amount
+            )
+            reservations[reservation.reservationId] = ReservationState(reservation)
             return true
         }
     }
@@ -128,7 +160,7 @@ class InMemoryBudgetPort : BudgetPort {
      *         Whether commitment was successful
      */
     override suspend fun commit(scope: String, amount: Double): Boolean {
-        if (amount < 0) {
+        if (!amount.isFinite() || amount < 0) {
             return false
         }
         synchronized(budgets) {
@@ -166,13 +198,51 @@ class InMemoryBudgetPort : BudgetPort {
      *         Whether refund was successful
      */
     override suspend fun refund(scope: String, amount: Double): Boolean {
-        if (amount < 0) {
+        if (!amount.isFinite() || amount < 0) {
             return false
         }
         synchronized(budgets) {
             val current = budgets[scope] ?: return false
             val consumed = (current.consumed - amount).coerceAtLeast(0.0)
             budgets[scope] = current.copy(consumed = consumed)
+            return true
+        }
+    }
+
+    /**
+     * Reconciles a reservation in one critical section.  The budget update
+     * and ledger transition are committed together, so no intermediate
+     * commit/refund state can be observed by another operation.
+     */
+    override suspend fun settle(reservation: BudgetReservation, actual: Double): Boolean {
+        if (!actual.isFinite() || actual < 0.0) {
+            return false
+        }
+        synchronized(budgets) {
+            val previous = reservations[reservation.reservationId] ?: return false
+            if (previous.reservation != reservation) {
+                return false
+            }
+            previous.actual?.let { settledActual ->
+                return settledActual == actual
+            }
+            val current = budgets[reservation.scope] ?: return false
+            if (current.reserved < reservation.amount) {
+                return false
+            }
+            // Releasing the reservation and charging actual are one state
+            // transition.  The post-transition remaining balance must stay
+            // non-negative, including the over-estimate case.
+            val nextReserved = current.reserved - reservation.amount
+            val nextConsumed = current.consumed + actual
+            if (current.limit - nextReserved - nextConsumed < 0.0) {
+                return false
+            }
+            budgets[reservation.scope] = current.copy(
+                reserved = nextReserved,
+                consumed = nextConsumed
+            )
+            reservations[reservation.reservationId] = previous.copy(actual = actual)
             return true
         }
     }

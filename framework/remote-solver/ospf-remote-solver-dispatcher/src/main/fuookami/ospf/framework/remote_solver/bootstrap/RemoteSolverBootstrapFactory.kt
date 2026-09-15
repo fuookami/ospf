@@ -57,6 +57,7 @@ import fuookami.ospf.framework.remote_solver.application.RemoteSolverConfig
 import fuookami.ospf.framework.remote_solver.application.RemoteSolverApiFacade
 import fuookami.ospf.framework.remote_solver.application.RemoteSolverService
 import fuookami.ospf.framework.remote_solver.application.SchedulerEngine
+import fuookami.ospf.framework.remote_solver.application.SchedulerWeights
 import fuookami.ospf.framework.remote_solver.domain.EventSchemaRegistry
 import fuookami.ospf.framework.remote_solver.domain.EventSchemaValidationMode
 import fuookami.ospf.framework.remote_solver.port.BudgetPort
@@ -518,6 +519,7 @@ data class RemoteSolverBootstrapOptions(
             config: RemoteSolverConfig = RemoteSolverConfig(),
             eventRetryPolicy: InMemoryEventRetryPolicy? = null
         ): RemoteSolverBootstrapOptions {
+            val resolvedConfig = RemoteSolverBootstrapFactory.mergeConfigFromProperties(properties, config)
             val localFsRoot = properties["storage.localfs.root"]
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
@@ -528,7 +530,7 @@ data class RemoteSolverBootstrapOptions(
             val mirrorEnabled = parseBoolean(properties["event.mirror.enabled"], defaultValue = false)
             val mirrorFailOpen = parseBoolean(properties["event.mirror.fail-open"], defaultValue = true)
             return fromAdapterKeys(
-                config = config,
+                config = resolvedConfig,
                 eventRetryPolicy = resolvedRetryPolicy,
                 eventAdapterKey = properties["event.adapter"],
                 eventKafkaBootstrapServers = properties["event.kafka.bootstrap-servers"],
@@ -993,7 +995,10 @@ object RemoteSolverBootstrapFactory {
                 snapshotTableName = options.schedulerAuditKtormSnapshotTable
             )
         }
-        val schedulerEngine = SchedulerEngine(clock)
+        val schedulerEngine = SchedulerEngine(
+            clock = clock,
+            weights = SchedulerWeights.from(options.config)
+        )
 
         val objectStoragePort: ObjectStoragePort
         val checkpointPort: CheckpointPort
@@ -1124,7 +1129,7 @@ object RemoteSolverBootstrapFactory {
         )
     }
 
-    private fun mergeConfigFromProperties(
+    internal fun mergeConfigFromProperties(
         properties: Map<String, String>,
         base: RemoteSolverConfig
     ): RemoteSolverConfig {
@@ -1137,6 +1142,94 @@ object RemoteSolverBootstrapFactory {
                 properties = properties,
                 key = "scheduler.hot-reload.enabled",
                 fallback = base.schedulerHotReloadEnabled
+            ),
+            schedulerStarvationAgeMs = parseLongProperty(
+                properties = properties,
+                key = "scheduler.starvation-age-ms",
+                fallback = base.schedulerStarvationAgeMs,
+                minValue = 1L
+            ),
+            schedulerMigrationHysteresisRatio = parseDoubleInRangeProperty(
+                properties = properties,
+                key = "scheduler.migration-hysteresis-ratio",
+                fallback = base.schedulerMigrationHysteresisRatio,
+                minValue = 0.0,
+                maxValue = 1.0
+            ),
+            schedulerMinSlicesBeforeMigration = parseIntProperty(
+                properties = properties,
+                key = "scheduler.min-slices-before-migration",
+                fallback = base.schedulerMinSlicesBeforeMigration,
+                minValue = 0
+            ),
+            schedulerMigrationCostWeight = parseDoubleProperty(
+                properties = properties,
+                key = "scheduler.migration-cost-weight",
+                fallback = base.schedulerMigrationCostWeight,
+                minValue = 0.0
+            ),
+            schedulerCostWeight = parseDoubleProperty(
+                properties = properties,
+                key = "scheduler.cost-weight",
+                fallback = base.schedulerCostWeight,
+                minValue = 0.0
+            ),
+            schedulerDeadlineRiskWeight = parseDoubleProperty(
+                properties = properties,
+                key = "scheduler.deadline-risk-weight",
+                fallback = base.schedulerDeadlineRiskWeight,
+                minValue = 0.0
+            ),
+            schedulerQueueDelayWeight = parseDoubleProperty(
+                properties = properties,
+                key = "scheduler.queue-delay-weight",
+                fallback = base.schedulerQueueDelayWeight,
+                minValue = 0.0
+            ),
+            schedulerRoundRobinScoreTolerance = parseDoubleInRangeProperty(
+                properties = properties,
+                key = "scheduler.round-robin-score-tolerance",
+                fallback = base.schedulerRoundRobinScoreTolerance,
+                minValue = 0.0,
+                maxValue = 1.0
+            ),
+            schedulerWeightedRoundRobinEnabled = parseBooleanProperty(
+                properties = properties,
+                key = "scheduler.weighted-round-robin.enabled",
+                fallback = base.schedulerWeightedRoundRobinEnabled
+            ),
+            schedulerProgressWeight = parseDoubleProperty(
+                properties = properties,
+                key = "scheduler.progress-weight",
+                fallback = base.schedulerProgressWeight,
+                minValue = 0.0
+            ),
+            schedulerProgressFastGapThreshold = parseDoubleInRangeProperty(
+                properties = properties,
+                key = "scheduler.progress.fast-gap-threshold",
+                fallback = base.schedulerProgressFastGapThreshold,
+                minValue = 0.0,
+                maxValue = 1.0
+            ),
+            schedulerProgressCheapGapThreshold = parseDoubleInRangeProperty(
+                properties = properties,
+                key = "scheduler.progress.cheap-gap-threshold",
+                fallback = base.schedulerProgressCheapGapThreshold,
+                minValue = 0.0,
+                maxValue = 1.0
+            ),
+            schedulerProgressMinImprovement = parseDoubleInRangeProperty(
+                properties = properties,
+                key = "scheduler.progress.min-improvement",
+                fallback = base.schedulerProgressMinImprovement,
+                minValue = 0.0,
+                maxValue = 1.0
+            ),
+            schedulerProgressNoImprovementSlices = parseIntProperty(
+                properties = properties,
+                key = "scheduler.progress.no-improvement-slices",
+                fallback = base.schedulerProgressNoImprovementSlices,
+                minValue = 1
             ),
             simpleTaskQuantumMs = parseLongProperty(
                 properties = properties,
@@ -1293,6 +1386,11 @@ object RemoteSolverBootstrapFactory {
                 "scheduler.performance-learning.score-max must be >= scheduler.performance-learning.score-min"
             )
         }
+        if (resolved.schedulerProgressCheapGapThreshold > resolved.schedulerProgressFastGapThreshold) {
+            throw IllegalArgumentException(
+                "scheduler.progress.cheap-gap-threshold must be <= scheduler.progress.fast-gap-threshold"
+            )
+        }
         return resolved
     }
 
@@ -1329,6 +1427,9 @@ object RemoteSolverBootstrapFactory {
         val rawValue = properties[key]?.trim()?.takeIf { it.isNotEmpty() } ?: return fallback
         val parsed = rawValue.toDoubleOrNull()
             ?: throw IllegalArgumentException("Invalid double value for '$key': '$rawValue'")
+        if (!parsed.isFinite()) {
+            throw IllegalArgumentException("Invalid double value for '$key': '$rawValue'")
+        }
         return parsed.coerceAtLeast(minValue)
     }
 

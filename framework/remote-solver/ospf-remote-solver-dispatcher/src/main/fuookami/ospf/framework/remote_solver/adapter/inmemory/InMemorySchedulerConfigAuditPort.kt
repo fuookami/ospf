@@ -27,6 +27,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * Uses in-memory storage for audit records and config snapshots, supporting concurrent access.
  */
 class InMemorySchedulerConfigAuditPort : SchedulerConfigAuditPort {
+    private val lock = Any()
     /**
      * 审计记录列表
      *
@@ -62,7 +63,12 @@ class InMemorySchedulerConfigAuditPort : SchedulerConfigAuditPort {
      *               Audit record
      */
     override suspend fun append(record: SchedulerHotReloadAuditRecord) {
-        audits.add(record)
+        synchronized(lock) {
+            check(audits.none { it.version == record.version }) {
+                "scheduler version '${record.version}' already exists"
+            }
+            audits.add(record)
+        }
     }
 
     /**
@@ -103,7 +109,12 @@ class InMemorySchedulerConfigAuditPort : SchedulerConfigAuditPort {
      *               Runtime config
      */
     override suspend fun saveSnapshot(version: String, config: SchedulerRuntimeConfig) {
-        snapshots[version] = config
+        synchronized(lock) {
+            check(!snapshots.containsKey(version)) {
+                "scheduler version '$version' already exists"
+            }
+            snapshots[version] = config
+        }
     }
 
     /**

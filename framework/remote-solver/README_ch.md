@@ -602,6 +602,7 @@ Worker 参数：
 额外参数：
 - `--state-dir <dir>` - 本地状态目录（默认：`target/remote-solver-worker-state`）
 - `--total-runtime-ms <ms>` - 非 CP 兼容进度模式的运行时间（默认：`12000`）
+- `--elapsed-before-ms <ms>` - CP 切片开始前任务已消耗的时间（默认：`0`）
 
 传入 `--model-format ospf-cp-snapshot-json` 时，worker 会读取 snapshot，在独立进程中调用
 `OspfCpSnapshotExecutor` 和配置的 SCIP runtime，并写出带版本的 `SerializedSolution` JSON 结果及
@@ -1061,6 +1062,7 @@ Windows:
 本仓库 worker 额外支持参数：
 1. `--state-dir <dir>`（默认 `target/remote-solver-worker-state`）
 2. `--total-runtime-ms <long>`（默认 `12000`）
+3. `--elapsed-before-ms <long>`（默认 `0`，仅 CP snapshot）
 
 标准输出需返回 key-value：
 

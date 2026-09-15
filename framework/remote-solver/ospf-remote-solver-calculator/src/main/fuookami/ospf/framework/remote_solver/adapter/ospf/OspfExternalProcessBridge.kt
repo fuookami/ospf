@@ -40,6 +40,7 @@ import fuookami.ospf.framework.remote_solver.protocol.port.ObjectStoragePort
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.core.solver.scip.scipRuntimeFingerprint
 import fuookami.ospf.kotlin.core.solver.scip.scipRuntimeFingerprintLegacyV1Candidates
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * OSPF 外部进程桥接器
@@ -100,6 +101,26 @@ class OspfExternalProcessBridge(
     private val args: Map<String, String> = emptyMap()
 ) : OspfExecutionBridge {
     /**
+     * Generic external workers cannot prove native search-state recovery. CP
+     * payloads opt into controlled return through capabilitiesFor below.
+    */
+    override val capabilities: OspfExecutionCapabilities =
+        OspfExecutionCapabilities.nonPreemptible(
+            supportedModelTypes = setOf(
+                fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType.LINEAR,
+                fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType.QUADRATIC,
+                fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType.CP
+            )
+        )
+
+    override fun capabilitiesFor(payload: SolvePayload): OspfExecutionCapabilities =
+        if (isConstraintProgramming(payload)) {
+            OspfExecutionCapabilities.controlledReturn()
+        } else {
+            capabilities
+        }
+
+    /**
      * 执行上下文
      * Execution context
      *
@@ -136,11 +157,13 @@ class OspfExternalProcessBridge(
         var artifactDigest: String? = null,
         var objectiveValueInt64: Long? = null,
         var modelFingerprint: String? = null,
+        var incumbentRef: ObjectRef? = payload.scheduling?.incumbentRef,
         var snapshotJson: String? = null,
         var inputCheckpointId: String? = null
     )
 
     private val contexts = linkedMapOf<String, Context>()
+    private val taskElapsedMs = ConcurrentHashMap<String, Long>()
 
     /**
      * 启动求解任务
@@ -153,13 +176,15 @@ class OspfExternalProcessBridge(
         nodeId: String,
         tenantId: String
     ): ExecutionHandle {
+        taskElapsedMs.putIfAbsent(taskId, 0L)
         val handle = newHandle(taskId, sliceId, nodeId)
         contexts[handle.handleId.value] = Context(
             payload = payload,
             tenantId = tenantId,
             taskId = taskId,
             sliceId = sliceId,
-            nodeId = nodeId
+            nodeId = nodeId,
+            elapsedMs = taskElapsedMs[taskId] ?: 0L
         )
         return handle
     }
@@ -176,6 +201,7 @@ class OspfExternalProcessBridge(
         nodeId: String,
         tenantId: String
     ): ExecutionHandle {
+        taskElapsedMs.putIfAbsent(taskId, 0L)
         val handle = newHandle(taskId, sliceId, nodeId)
         contexts[handle.handleId.value] = Context(
             payload = payload.copy(snapshotRef = checkpoint),
@@ -183,6 +209,7 @@ class OspfExternalProcessBridge(
             taskId = taskId,
             sliceId = sliceId,
             nodeId = nodeId,
+            elapsedMs = taskElapsedMs[taskId] ?: 0L,
             checkpointRef = checkpoint
         )
         return handle
@@ -251,9 +278,17 @@ class OspfExternalProcessBridge(
                 add("--config-json")
                 add(Json { encodeDefaults = true }.encodeToString(SolverConfig.serializer(), it))
             }
-            context.payload.taskMeta.timeLimitMs?.let {
+            taskTimeLimitMs(context.payload)?.let {
                 add("--task-time-limit-ms")
                 add(it.toString())
+                // The worker uses this value as the task-level budget while
+                // --quantum-ms remains the limit for this slice.
+                add("--total-runtime-ms")
+                add(it.toString())
+            }
+            if (context.payload.modelData.format == "ospf-cp-snapshot-json") {
+                add("--elapsed-before-ms")
+                add(context.elapsedMs.coerceAtLeast(0L).toString())
             }
             context.payload.taskMeta.solutionLimit?.let {
                 add("--task-solution-limit")
@@ -476,7 +511,8 @@ class OspfExternalProcessBridge(
                 )
             )
         }
-        context.elapsedMs += canonicalElapsedMs
+        context.elapsedMs = safeAdd(context.elapsedMs, canonicalElapsedMs)
+        taskElapsedMs[context.taskId] = context.elapsedMs
         context.checkpointRef = checkpointRef
         context.resultRef = effectiveResultRef ?: context.resultRef
         context.message = message
@@ -525,7 +561,10 @@ class OspfExternalProcessBridge(
             diagnostics = context.diagnostics,
             runId = context.runId,
             attemptId = context.attemptId,
-            artifactDigest = context.artifactDigest
+            artifactDigest = context.artifactDigest,
+            checkpointRef = context.checkpointRef,
+            incumbentRef = context.incumbentRef,
+            modelFingerprint = context.modelFingerprint
         )
     }
 
@@ -573,7 +612,9 @@ class OspfExternalProcessBridge(
             diagnostics = context.diagnostics,
             runId = context.runId,
             attemptId = context.attemptId,
-            artifactDigest = context.artifactDigest
+            artifactDigest = context.artifactDigest,
+            incumbentRef = context.incumbentRef,
+            modelFingerprint = context.modelFingerprint
         )
     }
 
@@ -584,8 +625,20 @@ class OspfExternalProcessBridge(
      * 从上下文映射中移除对应的执行状态。
      * Removes corresponding execution state from context map.
      */
-    override suspend fun stop(handle: ExecutionHandle): Boolean =
-        contexts.remove(handle.handleId.value) != null
+    override suspend fun stop(handle: ExecutionHandle): Boolean {
+        val context = contexts.remove(handle.handleId.value) ?: return false
+        if (contexts.values.none { it.taskId == context.taskId }) {
+            taskElapsedMs.remove(context.taskId)
+        }
+        return true
+    }
+
+    private fun safeAdd(left: Long, right: Long): Long {
+        if (right <= 0L) {
+            return left
+        }
+        return if (Long.MAX_VALUE - left < right) Long.MAX_VALUE else left + right
+    }
 
     private fun backendFailureSliceResult(
         context: Context? = null,
@@ -604,6 +657,7 @@ class OspfExternalProcessBridge(
             objectiveValue = retainedIncumbent?.objectiveValue?.toDouble()
             objectiveValueInt64 = retainedIncumbent?.objectiveValueInt64
             gap = retainedIncumbent?.gap?.toDouble()
+            modelFingerprint = retainedIncumbent?.fingerprints?.get("model") ?: modelFingerprint
             elapsedMs = retainedElapsed.inWholeMilliseconds
             checkpointRef = null
             resultRef = null
@@ -658,7 +712,9 @@ class OspfExternalProcessBridge(
             statistics = retainedIncumbent?.statistics ?: emptyMap(),
             diagnostics = retainedIncumbent?.diagnostics ?: emptyMap(),
             runId = retainedIncumbent?.runId ?: context?.taskId,
-            attemptId = retainedIncumbent?.attemptId ?: context?.sliceId
+            attemptId = retainedIncumbent?.attemptId ?: context?.sliceId,
+            incumbentRef = context?.incumbentRef,
+            modelFingerprint = retainedIncumbent?.fingerprints?.get("model") ?: context?.modelFingerprint
         )
     }
 
@@ -847,6 +903,13 @@ class OspfExternalProcessBridge(
         Files.write(path, bytes)
         return path.toString()
     }
+
+    private fun taskTimeLimitMs(payload: SolvePayload): Long? =
+        (payload.config?.timeLimitMs ?: payload.taskMeta.timeLimitMs)?.coerceAtLeast(0L)
+
+    private fun isConstraintProgramming(payload: SolvePayload): Boolean =
+        payload.modelData.format == "ospf-cp-snapshot-json" ||
+            payload.extension["normalizedModelType"]?.equals("cp", ignoreCase = true) == true
 
     /**
      * Validate an input CP checkpoint before invoking an external process.

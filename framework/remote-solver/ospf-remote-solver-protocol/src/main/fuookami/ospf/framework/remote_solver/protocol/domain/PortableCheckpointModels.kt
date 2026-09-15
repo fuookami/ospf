@@ -41,6 +41,8 @@ data class PortableCheckpointEnvelope(
     val modelFingerprint: String,
     val configurationFingerprint: String? = null,
     val solverFingerprint: String? = null,
+    val provenance: Map<String, String> = emptyMap(),
+    val cancellationChain: List<CancellationRecord> = emptyList(),
     val runId: String? = null,
     val attemptId: String? = null,
     val parentCheckpointId: String? = null,

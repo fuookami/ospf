@@ -168,8 +168,14 @@ class FaultInjectionRegressionTest {
         val error = assertFailsWith<RemoteSolverException> {
             runSuspend {
                 fixture.service.submitAndAwait(
-                    payload = SolvePayload(modelRef = ObjectRef.of(path = "model/fault-checkpoint")),
-                    complexity = TaskComplexity.SIMPLE,
+                    payload = SolvePayload(
+                        modelRef = ObjectRef.of(path = "model/fault-checkpoint"),
+                        extension = mapOf("modelType" to "LINEAR")
+                    ),
+                    // Checkpoint export is exercised only by preemptible
+                    // complex tasks; SIMPLE tasks run to completion without
+                    // producing a checkpoint.
+                    complexity = TaskComplexity.COMPLEX,
                     timeSensitivity = TimeSensitivity.NON_REALTIME,
                     maxRounds = UInt64(2),
                     throwIfFailed = true

@@ -51,6 +51,7 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.ModelData
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceResult
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolveResult
 import java.nio.file.Files
+import java.nio.file.Path
 import java.sql.DriverManager
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -397,6 +398,7 @@ class RemoteSolverBootstrapFactoryTest {
                 stmt.execute("INSERT INTO remote_solver_migration_history(version, description, applied_at_epoch_ms) VALUES ('5', 'cp2', 0)")
                 stmt.execute("INSERT INTO remote_solver_migration_history(version, description, applied_at_epoch_ms) VALUES ('6', 'cp2_payload_config', 0)")
                 stmt.execute("INSERT INTO remote_solver_migration_history(version, description, applied_at_epoch_ms) VALUES ('7', 'object_ref_etag_persistence', 0)")
+                stmt.execute("INSERT INTO remote_solver_migration_history(version, description, applied_at_epoch_ms) VALUES ('8', 'scheduling_payload_and_version_uniqueness', 0)")
             }
         }
         val runtime = RemoteSolverBootstrapFactory.create(
@@ -406,6 +408,27 @@ class RemoteSolverBootstrapFactoryTest {
             )
         )
         assertTrue(runtime.nodeStatePort is KtormNodeStatePort)
+    }
+
+    @Test
+    fun migrationScriptsShouldIncludeTenantUniquenessAndSchedulingVersionMigration() {
+        val roots = listOf(
+            Path.of("deploy"),
+            Path.of("framework", "remote-solver", "ospf-remote-solver-dispatcher", "deploy")
+        )
+        val deployRoot = roots.firstOrNull { Files.exists(it.resolve("sql/V8__remote_solver_scheduling_payload.sql")) }
+            ?: error("Remote solver migration directory not found")
+        val v4 = Files.readString(deployRoot.resolve("sql/V4__remote_solver_multi_tenant.sql"))
+        val v8 = Files.readString(deployRoot.resolve("sql/V8__remote_solver_scheduling_payload.sql"))
+        val shell = Files.readString(deployRoot.resolve("scripts/apply-migrations.sh"))
+        val powershell = Files.readString(deployRoot.resolve("scripts/apply-migrations.ps1"))
+
+        assertTrue(v4.contains("DROP CONSTRAINT IF EXISTS remote_solver_task_state_request_id_key"))
+        assertTrue(v4.contains("idx_remote_solver_task_state_tenant_request"))
+        assertTrue(v8.contains("payload_scheduling_json"))
+        assertTrue(v8.contains("idx_remote_solver_scheduler_audit_version"))
+        assertTrue(shell.contains("V8__remote_solver_scheduling_payload.sql"))
+        assertTrue(powershell.contains("V8__remote_solver_scheduling_payload.sql"))
     }
 
     @Test
@@ -573,7 +596,10 @@ class RemoteSolverBootstrapFactoryTest {
             )
 
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/config-learning-disabled")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/config-learning-disabled"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME
             )
@@ -944,7 +970,10 @@ class RemoteSolverBootstrapFactoryTest {
                 )
 
                 val task = runtime.service.submitTask(
-                    payload = SolvePayload(modelRef = ObjectRef.of(path = "models/factory")),
+                    payload = SolvePayload(
+                        modelRef = ObjectRef.of(path = "models/factory"),
+                        extension = mapOf("modelType" to "LINEAR")
+                    ),
                     complexity = TaskComplexity.COMPLEX,
                     timeSensitivity = TimeSensitivity.NON_REALTIME,
                     budgetLimit = Flt64(50.0)

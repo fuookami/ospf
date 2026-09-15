@@ -16,5 +16,6 @@ psql "${DB_URL}" -f "${ROOT_DIR}/deploy/sql/V4__remote_solver_multi_tenant.sql"
 psql "${DB_URL}" -f "${ROOT_DIR}/deploy/sql/V5__remote_solver_cp2.sql"
 psql "${DB_URL}" -f "${ROOT_DIR}/deploy/sql/V6__remote_solver_cp2_payload_config.sql"
 psql "${DB_URL}" -f "${ROOT_DIR}/deploy/sql/V7__remote_solver_object_ref_etag.sql"
+psql "${DB_URL}" -f "${ROOT_DIR}/deploy/sql/V8__remote_solver_scheduling_payload.sql"
 
-echo "Applied migrations: V1, V2, V3, V4, V5, V6, V7"
+echo "Applied migrations: V1, V2, V3, V4, V5, V6, V7, V8"

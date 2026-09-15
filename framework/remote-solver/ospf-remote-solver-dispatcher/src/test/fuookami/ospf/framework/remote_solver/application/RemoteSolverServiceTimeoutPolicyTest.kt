@@ -59,7 +59,8 @@ class RemoteSolverServiceTimeoutPolicyTest {
             val task = fixture.service.submitTask(
                 payload = SolvePayload(
                     modelRef = ObjectRef.of(path = "model/hard-timeout"),
-                    taskMeta = TaskMeta(timeLimitMs = 500L)
+                    taskMeta = TaskMeta(timeLimitMs = 500L),
+                    extension = mapOf("modelType" to "LINEAR")
                 ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME
@@ -96,7 +97,10 @@ class RemoteSolverServiceTimeoutPolicyTest {
         runSuspend {
             fixture.service.registerNode(defaultNodeProfile("node-slice-timeout", supportsCheckpoint = false))
             val task = fixture.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/slice-timeout")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/slice-timeout"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME
             )
@@ -131,7 +135,10 @@ class RemoteSolverServiceTimeoutPolicyTest {
         runSuspend {
             fixture.service.registerNode(defaultNodeProfile("node-invalid-result", supportsCheckpoint = false))
             val task = fixture.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/invalid-result")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/invalid-result"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME
             )
@@ -160,7 +167,8 @@ class RemoteSolverServiceTimeoutPolicyTest {
             fixture.service.submitTask(
                 payload = SolvePayload(
                     modelRef = ObjectRef.of(path = "model/hard-timeout-await"),
-                    taskMeta = TaskMeta(timeLimitMs = 500L)
+                    taskMeta = TaskMeta(timeLimitMs = 500L),
+                    extension = mapOf("modelType" to "LINEAR")
                 ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
@@ -174,7 +182,8 @@ class RemoteSolverServiceTimeoutPolicyTest {
                 fixture.service.submitAndAwait(
                     payload = SolvePayload(
                         modelRef = ObjectRef.of(path = "model/hard-timeout-await"),
-                        taskMeta = TaskMeta(timeLimitMs = 500L)
+                        taskMeta = TaskMeta(timeLimitMs = 500L),
+                        extension = mapOf("modelType" to "LINEAR")
                     ),
                     complexity = TaskComplexity.SIMPLE,
                     timeSensitivity = TimeSensitivity.NON_REALTIME,
@@ -210,7 +219,10 @@ class RemoteSolverServiceTimeoutPolicyTest {
         val error = assertFailsWith<RemoteSolverException> {
             runSuspend {
                 fixture.service.submitAndAwait(
-                    payload = SolvePayload(modelRef = ObjectRef.of(path = "model/slice-timeout-await")),
+                    payload = SolvePayload(
+                        modelRef = ObjectRef.of(path = "model/slice-timeout-await"),
+                        extension = mapOf("modelType" to "LINEAR")
+                    ),
                     complexity = TaskComplexity.SIMPLE,
                     timeSensitivity = TimeSensitivity.NON_REALTIME,
                     maxRounds = UInt64(2),
@@ -236,7 +248,10 @@ class RemoteSolverServiceTimeoutPolicyTest {
         val error = assertFailsWith<RemoteSolverException> {
             runSuspend {
                 fixture.service.submitAndAwait(
-                    payload = SolvePayload(modelRef = ObjectRef.of(path = "model/execution-throws")),
+                    payload = SolvePayload(
+                        modelRef = ObjectRef.of(path = "model/execution-throws"),
+                        extension = mapOf("modelType" to "LINEAR")
+                    ),
                     complexity = TaskComplexity.SIMPLE,
                     timeSensitivity = TimeSensitivity.NON_REALTIME,
                     maxRounds = UInt64(2),
@@ -262,8 +277,14 @@ class RemoteSolverServiceTimeoutPolicyTest {
         val error = assertFailsWith<RemoteSolverException> {
             runSuspend {
                 fixture.service.submitAndAwait(
-                    payload = SolvePayload(modelRef = ObjectRef.of(path = "model/checkpoint-export-fail")),
-                    complexity = TaskComplexity.SIMPLE,
+                    payload = SolvePayload(
+                        modelRef = ObjectRef.of(path = "model/checkpoint-export-fail"),
+                        extension = mapOf("modelType" to "LINEAR")
+                    ),
+                    // Checkpoint export is exercised only by preemptible
+                    // complex tasks; SIMPLE tasks run to completion without
+                    // producing a checkpoint.
+                    complexity = TaskComplexity.COMPLEX,
                     timeSensitivity = TimeSensitivity.NON_REALTIME,
                     maxRounds = UInt64(2),
                     throwIfFailed = true
