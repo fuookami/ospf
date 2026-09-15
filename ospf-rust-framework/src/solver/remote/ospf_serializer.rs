@@ -12,10 +12,13 @@ use ospf_rust_core::model::constraint_programming::{
 use ospf_rust_core::model::{ConstraintRelation, ObjectiveCategory};
 use ospf_rust_core::solver::constraint_programming::ConstraintProgrammingCheckpointArtifact;
 use ospf_rust_core::solver::{
-    AuditFingerprint, CancellationRecord, ProblemStatus, SolveCheckpointArtifact, SolveReport,
-    SolverOutput, SolverProvenance, SolverStatus, TerminationReason, stable_element_id,
+    AuditFingerprint, CancellationRecord, ProblemStatus, SolveCheckpoint, SolveCheckpointArtifact,
+    SolveReport,
+    SolverOutput, SolverProvenance, SolverStatus, TerminationReason, sha256_fingerprint,
+    stable_element_id,
 };
 use ospf_rust_core::variable::VariableType;
+use sha2::{Digest, Sha256};
 
 use super::super::logic_based_benders_checkpoint::{
     LogicBasedBendersCheckpointArtifact, LogicBasedBendersResumeIdentity,
@@ -35,7 +38,7 @@ use super::storage::validate_object_ref_etag;
 
 /// 当前 portable checkpoint artifact 的远程 schema 版本。
 /// Current remote schema version for portable checkpoint artifacts.
-pub const CURRENT_REMOTE_CHECKPOINT_ARTIFACT_SCHEMA_VERSION: &str = "1.0";
+pub const CURRENT_REMOTE_CHECKPOINT_ARTIFACT_SCHEMA_VERSION: &str = "2.0";
 
 /// 远程 typed CP/LBB checkpoint schema 版本。
 /// Remote schema version for typed CP/LBB checkpoints.
@@ -46,6 +49,14 @@ pub const CURRENT_REMOTE_CONSTRAINT_PROGRAMMING_RESULT_SCHEMA_VERSION: &str = "1
 
 const REMOTE_CONSTRAINT_PROGRAMMING_RESULT_DIGEST_DOMAIN: &str =
     "ospf.remote.constraint-programming.result";
+
+fn default_remote_checkpoint_schema_version() -> String {
+    CURRENT_REMOTE_CHECKPOINT_ARTIFACT_SCHEMA_VERSION.to_owned()
+}
+
+fn default_remote_checkpoint_source_format() -> String {
+    "v2".to_owned()
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -513,20 +524,79 @@ pub fn validate_logic_based_benders_checkpoint_for_resume(
         })
 }
 
-/// 远程 portable checkpoint artifact 封装。
-/// Remote envelope for a portable checkpoint artifact.
+const RUST_CHECKPOINT_PRIVATE_METADATA_PREFIX: &str = "ospf-rust-private-v2:";
+
+fn hex_sha256(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Rust-only values that have no corresponding field in the Kotlin envelope.  They are carried
+/// in one reserved `assumptions` string so the wire envelope remains the published Kotlin shape.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RustCheckpointPrivateMetadata {
+    metadata: BTreeMap<String, String>,
+    provenance: SolverProvenance,
+    model_fingerprint: AuditFingerprint,
+    configuration_fingerprint: AuditFingerprint,
+    solver_fingerprint: AuditFingerprint,
+    state_digest: AuditFingerprint,
+    state: Vec<u8>,
+    iteration: usize,
+    cancellation_chain: Vec<CancellationRecord>,
+}
+
+/// Portable checkpoint envelope shared with the Kotlin CP codec.
+///
+/// The field list intentionally mirrors `ConstraintProgrammingCheckpointEnvelope` exactly.  In
+/// particular, there is no private `{ schemaVersion, artifact }` wrapper and all nullable/default
+/// fields are serialized, matching Kotlin's `encodeDefaults = true` configuration.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteCheckpointArtifactDto {
-    /// artifact schema 版本 / Artifact schema version.
+    #[serde(default = "default_remote_checkpoint_schema_version")]
     pub schema_version: String,
-    /// 被摘要保护的 checkpoint 和状态载荷 / Digest-protected checkpoint and state payload.
-    pub artifact: SolveCheckpointArtifact,
+    #[serde(default = "default_remote_checkpoint_source_format")]
+    pub source_format: String,
+    #[serde(default)]
+    pub migrated_from_legacy: bool,
+    pub checkpoint_id: String,
+    pub identity_schema_version: String,
+    pub identity_namespace: String,
+    pub model_name: String,
+    pub model_fingerprint: String,
+    #[serde(default)]
+    pub configuration_fingerprint: Option<String>,
+    #[serde(default)]
+    pub solver_fingerprint: Option<String>,
+    #[serde(default)]
+    pub run_id: Option<String>,
+    #[serde(default)]
+    pub attempt_id: Option<String>,
+    #[serde(default)]
+    pub parent_checkpoint_id: Option<String>,
+    pub created_at_epoch_ms: u64,
+    pub snapshot_json: String,
+    #[serde(default)]
+    pub incumbent: Option<serde_json::Value>,
+    #[serde(default)]
+    pub best_bound: Option<String>,
+    #[serde(default)]
+    pub gap: Option<String>,
+    #[serde(default)]
+    pub assumptions: Vec<String>,
+    #[serde(default)]
+    pub conflicts: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub benders: Option<serde_json::Value>,
+    #[serde(default)]
+    pub integrity_sha256: String,
 }
 
 impl RemoteCheckpointArtifactDto {
-    /// 从核心 artifact 创建远程封装。
-    /// Create a remote envelope from a core artifact.
     pub fn new(artifact: SolveCheckpointArtifact) -> RemoteSolverResult<Self> {
         artifact.validate().map_err(|error| {
             RemoteSolverError::new(
@@ -534,14 +604,95 @@ impl RemoteCheckpointArtifactDto {
                 format!("checkpoint artifact failed validation: {}", error),
             )
         })?;
-        Ok(Self {
+
+        let checkpoint = &artifact.checkpoint;
+        let private = RustCheckpointPrivateMetadata {
+            metadata: checkpoint.metadata.clone(),
+            provenance: checkpoint.provenance.clone(),
+            model_fingerprint: checkpoint.model_fingerprint.clone(),
+            configuration_fingerprint: checkpoint.configuration_fingerprint.clone(),
+            solver_fingerprint: checkpoint.solver_fingerprint.clone(),
+            state_digest: checkpoint.state_digest.clone(),
+            state: artifact.state.clone(),
+            iteration: checkpoint.iteration,
+            cancellation_chain: checkpoint.cancellation_chain.clone(),
+        };
+        let private = serde_json::to_string(&private).map_err(|error| {
+            RemoteSolverError::new(
+                super::domain::RemoteSolverErrorCode::CheckpointExportFailed,
+                format!("failed to encode Rust checkpoint compatibility metadata: {}", error),
+            )
+        })?;
+        let mut dto = Self {
             schema_version: CURRENT_REMOTE_CHECKPOINT_ARTIFACT_SCHEMA_VERSION.to_owned(),
-            artifact,
-        })
+            source_format: "v2".to_owned(),
+            migrated_from_legacy: false,
+            checkpoint_id: checkpoint
+                .metadata
+                .get("checkpointId")
+                .cloned()
+                .unwrap_or_else(|| checkpoint.attempt_id.clone()),
+            identity_schema_version: checkpoint
+                .metadata
+                .get("identitySchemaVersion")
+                .cloned()
+                .unwrap_or_else(|| "1.0".to_owned()),
+            identity_namespace: checkpoint
+                .metadata
+                .get("identityNamespace")
+                .cloned()
+                .unwrap_or_else(|| "ospf-rust".to_owned()),
+            model_name: checkpoint
+                .metadata
+                .get("modelName")
+                .cloned()
+                .unwrap_or_else(|| "remote".to_owned()),
+            // Kotlin's v2 envelope defines modelFingerprint as SHA-256(snapshotJson).  The
+            // original Rust checkpoint identity remains in the reserved private metadata below.
+            model_fingerprint: String::new(),
+            configuration_fingerprint: Some(checkpoint.configuration_fingerprint.value.clone()),
+            solver_fingerprint: Some(checkpoint.solver_fingerprint.value.clone()),
+            run_id: Some(checkpoint.run_id.clone()),
+            attempt_id: Some(checkpoint.attempt_id.clone()),
+            parent_checkpoint_id: checkpoint.parent_attempt_id.clone(),
+            created_at_epoch_ms: checkpoint
+                .metadata
+                .get("createdAtEpochMs")
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(0),
+            snapshot_json: String::from_utf8(artifact.state.clone()).unwrap_or_else(|_| {
+                format!("{}binary-state", RUST_CHECKPOINT_PRIVATE_METADATA_PREFIX)
+            }),
+            incumbent: checkpoint.incumbent_objective.map(|objective| {
+                serde_json::json!({
+                    "valuesById": {},
+                    "intervalsById": {},
+                    "objective": objective.to_string(),
+                })
+            }),
+            best_bound: checkpoint.best_bound.map(|value| value.to_string()),
+            gap: checkpoint.relative_gap.map(|value| value.to_string()),
+            assumptions: vec![format!(
+                "{}{}",
+                RUST_CHECKPOINT_PRIVATE_METADATA_PREFIX, private
+            )],
+            conflicts: Vec::new(),
+            benders: None,
+            integrity_sha256: String::new(),
+        };
+        // Invalid UTF-8 state is kept in the reserved metadata and the snapshot field remains a
+        // JSON string, which preserves the Kotlin envelope's scalar type.
+        if !artifact.state.is_ascii() && std::str::from_utf8(&artifact.state).is_err() {
+            dto.snapshot_json = format!(
+                "{}binary-state",
+                RUST_CHECKPOINT_PRIVATE_METADATA_PREFIX
+            );
+        }
+        dto.model_fingerprint = hex_sha256(dto.snapshot_json.as_bytes());
+        dto.integrity_sha256 = dto.digest()?;
+        Ok(dto)
     }
 
-    /// 校验 schema 和 artifact 完整性。
-    /// Validate schema and artifact integrity.
     pub fn validate(&self) -> RemoteSolverResult<()> {
         if self.schema_version != CURRENT_REMOTE_CHECKPOINT_ARTIFACT_SCHEMA_VERSION {
             return Err(RemoteSolverError::new(
@@ -552,7 +703,130 @@ impl RemoteCheckpointArtifactDto {
                 ),
             ));
         }
-        self.artifact.validate().map_err(|error| {
+        if self.source_format != "v2" {
+            return Err(RemoteSolverError::new(
+                super::domain::RemoteSolverErrorCode::UnsupportedProtocolVersion,
+                format!(
+                    "unsupported checkpoint source format '{}', expected 'v2'",
+                    self.source_format
+                ),
+            ));
+        }
+        if (!self.migrated_from_legacy && self.checkpoint_id == "legacy-v1")
+            || (self.migrated_from_legacy && self.checkpoint_id != "legacy-v1-migrated")
+        {
+            return Err(RemoteSolverError::checkpoint_restore(
+                "checkpoint envelope legacy migration marker does not match checkpointId",
+            ));
+        }
+        for (field, value) in [
+            ("checkpointId", self.checkpoint_id.as_str()),
+            ("identitySchemaVersion", self.identity_schema_version.as_str()),
+            ("identityNamespace", self.identity_namespace.as_str()),
+            ("modelName", self.model_name.as_str()),
+            ("modelFingerprint", self.model_fingerprint.as_str()),
+            ("integritySha256", self.integrity_sha256.as_str()),
+        ] {
+            if value.trim().is_empty() {
+                return Err(RemoteSolverError::checkpoint_restore(format!(
+                    "checkpoint envelope {} cannot be blank",
+                    field
+                )));
+            }
+        }
+        let expected_digest = self.digest()?;
+        if self.integrity_sha256 != expected_digest {
+            return Err(RemoteSolverError::checkpoint_restore(format!(
+                "checkpoint envelope integrity digest mismatch: expected {}, got {}",
+                expected_digest, self.integrity_sha256
+            )));
+        }
+        let expected_model_fingerprint = hex_sha256(self.snapshot_json.as_bytes());
+        if self.model_fingerprint != expected_model_fingerprint {
+            return Err(RemoteSolverError::checkpoint_restore(format!(
+                "checkpoint envelope model fingerprint does not match snapshotJson: expected {}, got {}",
+                expected_model_fingerprint, self.model_fingerprint
+            )));
+        }
+        Ok(())
+    }
+
+    fn digest(&self) -> RemoteSolverResult<String> {
+        let mut unsigned = self.clone();
+        unsigned.integrity_sha256.clear();
+        let bytes = serde_json::to_vec(&unsigned).map_err(|error| {
+            RemoteSolverError::checkpoint_restore(format!(
+                "failed to canonicalize checkpoint envelope: {}",
+                error
+            ))
+        })?;
+        Ok(hex_sha256(&bytes))
+    }
+
+    fn into_artifact(self) -> RemoteSolverResult<SolveCheckpointArtifact> {
+        let private = self
+            .assumptions
+            .iter()
+            .find_map(|value| value.strip_prefix(RUST_CHECKPOINT_PRIVATE_METADATA_PREFIX))
+            .and_then(|value| serde_json::from_str::<RustCheckpointPrivateMetadata>(value).ok());
+        let state = private
+            .as_ref()
+            .map(|private| private.state.clone())
+            .unwrap_or_else(|| self.snapshot_json.as_bytes().to_vec());
+        let fingerprint = |value: String| AuditFingerprint {
+            schema_version: "1.0".to_owned(),
+            algorithm: "sha256".to_owned(),
+            value,
+        };
+        let checkpoint = SolveCheckpoint::new(
+            self.run_id.unwrap_or_default(),
+            self.attempt_id.unwrap_or_else(|| self.checkpoint_id.clone()),
+            self.parent_checkpoint_id,
+            private
+                .as_ref()
+                .map(|private| private.model_fingerprint.clone())
+                .unwrap_or_else(|| fingerprint(self.model_fingerprint)),
+            private
+                .as_ref()
+                .map(|private| private.configuration_fingerprint.clone())
+                .unwrap_or_else(|| fingerprint(self.configuration_fingerprint.unwrap_or_default())),
+            private
+                .as_ref()
+                .map(|private| private.solver_fingerprint.clone())
+                .unwrap_or_else(|| fingerprint(self.solver_fingerprint.unwrap_or_default())),
+            private
+                .as_ref()
+                .map(|private| private.provenance.clone())
+                .unwrap_or_default(),
+            private.as_ref().map(|private| private.iteration).unwrap_or(0),
+            self.incumbent
+                .as_ref()
+                .and_then(|value| value.get("objective"))
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| value.parse::<f64>().ok()),
+            self.best_bound
+                .as_deref()
+                .and_then(|value| value.parse::<f64>().ok()),
+            self.gap
+                .as_deref()
+                .and_then(|value| value.parse::<f64>().ok()),
+            private
+                .as_ref()
+                .map(|private| private.state_digest.clone())
+                .unwrap_or_else(|| sha256_fingerprint("ospf.solve.checkpoint.state", &state)),
+        )
+        .map_err(|error| {
+            RemoteSolverError::checkpoint_restore(format!(
+                "checkpoint envelope identity is invalid: {}",
+                error
+            ))
+        })?;
+        let mut checkpoint = checkpoint;
+        if let Some(private) = private {
+            checkpoint.metadata = private.metadata;
+            checkpoint.cancellation_chain = private.cancellation_chain;
+        }
+        SolveCheckpointArtifact::new(checkpoint, state).map_err(|error| {
             RemoteSolverError::checkpoint_restore(format!(
                 "checkpoint artifact failed integrity validation: {}",
                 error
@@ -621,7 +895,7 @@ pub fn checkpoint_artifact_from_json(bytes: &[u8]) -> RemoteSolverResult<SolveCh
         ))
     })?;
     dto.validate()?;
-    Ok(dto.artifact)
+    dto.into_artifact()
 }
 
 /// 按 resume 请求校验 checkpoint artifact 的身份链。
@@ -2096,6 +2370,7 @@ mod tests {
             solver_status: "TIME_LIMIT".to_string(),
             report: None,
             message: None,
+            ..Default::default()
         };
 
         let output = serialized_solution_to_solver_output(&solution);
@@ -2124,6 +2399,7 @@ mod tests {
             report: None,
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
 
         let output = solve_result_to_solver_output(&result, None);
@@ -2322,6 +2598,37 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    #[test]
+    fn kotlin_v2_checkpoint_fixture_round_trips_and_rejects_identity_tampering() {
+        let bytes = include_bytes!("../../../tests/fixtures/remote-cp-checkpoint-v2.json");
+        let dto: RemoteCheckpointArtifactDto =
+            serde_json::from_slice(bytes).expect("Kotlin v2 envelope should decode");
+        dto.validate().expect("Kotlin v2 envelope should validate");
+
+        let artifact = checkpoint_artifact_from_json(bytes)
+            .expect("Kotlin v2 envelope should materialize as a Rust artifact");
+        assert_eq!(artifact.checkpoint.run_id, "run-kotlin");
+        assert_eq!(artifact.checkpoint.attempt_id, "attempt-kotlin");
+
+        let reencoded = checkpoint_artifact_to_json(&artifact).expect("artifact should re-encode");
+        let reencoded_dto: RemoteCheckpointArtifactDto =
+            serde_json::from_slice(&reencoded).expect("re-encoded v2 envelope should decode");
+        assert_eq!(reencoded_dto.schema_version, "2.0");
+        assert_eq!(reencoded_dto.source_format, "v2");
+        assert_eq!(reencoded_dto.run_id.as_deref(), Some("run-kotlin"));
+        assert_eq!(reencoded_dto.attempt_id.as_deref(), Some("attempt-kotlin"));
+        reencoded_dto
+            .validate()
+            .expect("re-encoded v2 envelope should retain integrity");
+
+        let mut tampered: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+        tampered["checkpointId"] = serde_json::Value::from("other-checkpoint");
+        let tampered = serde_json::to_vec(&tampered).unwrap();
+        let error = checkpoint_artifact_from_json(&tampered)
+            .expect_err("identity tampering must invalidate the Kotlin envelope");
+        assert_eq!(error.code, RemoteSolverErrorCode::CheckpointRestoreFailed);
+    }
+
     #[tokio::test]
     async fn checkpoint_object_storage_resume_preserves_three_attempt_chain() {
         let root = std::env::temp_dir().join(format!(
@@ -2433,6 +2740,7 @@ mod tests {
             report: Some(solve_report_to_remote_report(report, None, None, None)),
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
 
         let error = solve_result_to_solve_report(&result)
@@ -2469,6 +2777,7 @@ mod tests {
             )),
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
 
         let error = solve_result_to_solve_report(&result)
@@ -2501,6 +2810,7 @@ mod tests {
             )),
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
 
         let error = solve_result_to_solve_report(&result)

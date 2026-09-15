@@ -5,7 +5,7 @@ use ospf_rust_core::solver::{
     AuditFingerprint, CancellationRecord, SolveCheckpoint, SolverProvenance,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -74,6 +74,10 @@ remote_string_id!(
 remote_string_id!(
     /// 请求 ID / Request ID.
     RequestId
+);
+remote_string_id!(
+    /// 调度分发 ID / Dispatch ID.
+    DispatchId
 );
 remote_string_id!(
     /// 句柄 ID / Handle ID.
@@ -274,6 +278,9 @@ pub enum TaskComplexity {
     Simple,
     /// 复杂 / Complex
     Complex,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
 }
 
 /// 时间敏感度。
@@ -285,6 +292,9 @@ pub enum TimeSensitivity {
     Realtime,
     /// 非实时 / Non-realtime
     NonRealtime,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
 }
 
 /// 任务状态。
@@ -314,6 +324,9 @@ pub enum TaskStatus {
     Failed,
     /// 等待预算 / Waiting for budget
     WaitingForBudget,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
 }
 
 /// 切片状态。
@@ -333,6 +346,138 @@ pub enum SliceStatus {
     Completed,
     /// 已失败 / Failed
     Failed,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
+}
+
+/// 抢占模式 / Preemption mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum PreemptionMode {
+    /// 不可安全抢占 / Cannot be safely preempted.
+    NonPreemptible,
+    /// 在 solver 安全边界返回 / Return at a solver-safe boundary.
+    ControlledReturn,
+    /// 原生中断和原生 checkpoint / Native interrupt and checkpoint.
+    Native,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
+}
+
+/// 恢复模式 / Resume mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ResumeMode {
+    /// 无可恢复状态 / No resumable state.
+    None,
+    /// 使用 warm start 继续 / Continue with a warm start.
+    WarmStart,
+    /// 使用 LP basis 或等价状态继续 / Continue with an LP basis or equivalent state.
+    Basis,
+    /// 使用后端原生 checkpoint 继续 / Continue from a native backend checkpoint.
+    NativeCheckpoint,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
+}
+
+/// 切片结果类型 / Slice outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum SliceOutcome {
+    /// 到达终态求解结果 / Reached a terminal solve result.
+    Completed,
+    /// 被调度器停止，可继续执行 / Stopped by the scheduler and may continue.
+    Preempted,
+    /// 停止时已导出 checkpoint / Stopped after exporting a checkpoint.
+    Checkpointed,
+    /// 无 checkpoint 但保留了可恢复 incumbent / Resumable without a checkpoint.
+    Resumable,
+    /// 已取消且不得恢复 / Cancelled and must not be resumed.
+    Cancelled,
+    /// 执行失败 / Execution failed.
+    Failed,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
+}
+
+/// 远程问题结论 / Remote problem status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RemoteProblemStatus {
+    /// 存在可行解 / A feasible solution exists.
+    Feasible,
+    /// 已证明不可行 / Proven infeasible.
+    Infeasible,
+    /// 已证明无界 / Proven unbounded.
+    Unbounded,
+    /// 不可行或无界 / Infeasible or unbounded.
+    InfeasibleOrUnbounded,
+    /// 未知 / Unknown.
+    #[serde(other)]
+    Unknown,
+}
+
+/// 远程终止原因 / Remote termination reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RemoteTerminationReason {
+    /// 正常完成 / Completed normally.
+    Completed,
+    /// 时间限制 / Time limit.
+    TimeLimit,
+    /// 节点限制 / Node limit.
+    NodeLimit,
+    /// 迭代限制 / Iteration limit.
+    IterationLimit,
+    /// 解数量限制 / Solution limit.
+    SolutionLimit,
+    /// 目标限制 / Objective limit.
+    ObjectiveLimit,
+    /// 已取消 / Cancelled.
+    Cancelled,
+    /// 已中断 / Interrupted.
+    Interrupted,
+    /// 数值失败 / Numerical failure.
+    NumericalFailure,
+    /// 后端失败 / Backend failure.
+    BackendFailure,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
+}
+
+/// 远程解存在性 / Remote solution presence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RemoteSolutionPresence {
+    /// 无解 / No solution.
+    None,
+    /// 存在 incumbent / An incumbent exists.
+    Incumbent,
+    /// 已证明最优解 / A proven optimal solution exists.
+    Optimal,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
+}
+
+/// 远程证明状态 / Remote proof status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum RemoteProofStatus {
+    /// 无证明 / No proof.
+    None,
+    /// 未独立验证的声明 / Claimed without independent verification.
+    Claimed,
+    /// 已完成后端和协议复验 / Verified by backend and protocol checks.
+    Verified,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
 }
 
 /// 求解器类型。
@@ -346,6 +491,9 @@ pub enum SolverType {
     Gurobi,
     /// 自动选择 / Auto select
     Auto,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
 }
 
 /// 标准化模型类型。
@@ -357,8 +505,51 @@ pub enum NormalizedModelType {
     Linear,
     /// 二次 / Quadratic
     Quadratic,
+    /// 约束规划 / Constraint programming
+    Cp,
     /// 未知 / Unknown
+    #[serde(other)]
     Unknown,
+}
+
+/// 远程求解器能力与协议版本摘要 / Remote solver capability and protocol version summary.
+///
+/// 客户端可在提交任务前使用该摘要确认服务端是否声明了所需协议和模型类型。
+/// Clients may use this summary before task submission to verify the advertised protocol and model type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteSolverCapabilities {
+    /// 能力摘要 schema 版本 / Capability-summary schema version.
+    #[serde(default = "default_capability_schema_version")]
+    pub schema_version: String,
+    /// 服务端支持的远程协议版本 / Remote protocol versions supported by the server.
+    #[serde(default)]
+    pub protocol_versions: BTreeSet<String>,
+    /// 服务端支持的标准化模型类型 / Normalized model types supported by the server.
+    #[serde(default)]
+    pub supported_model_types: BTreeSet<String>,
+    /// 是否支持 portable checkpoint / Whether portable checkpoints are supported.
+    #[serde(default)]
+    pub supports_portable_checkpoint: bool,
+    /// 是否支持原生 checkpoint / Whether native checkpoints are supported.
+    #[serde(default)]
+    pub supports_native_checkpoint: bool,
+}
+
+impl Default for RemoteSolverCapabilities {
+    fn default() -> Self {
+        Self {
+            schema_version: default_capability_schema_version(),
+            protocol_versions: BTreeSet::new(),
+            supported_model_types: BTreeSet::new(),
+            supports_portable_checkpoint: false,
+            supports_native_checkpoint: false,
+        }
+    }
+}
+
+fn default_capability_schema_version() -> String {
+    "1.0".to_owned()
 }
 
 /// 对象引用。
@@ -538,6 +729,12 @@ impl ModelData {
             NormalizedModelType::Quadratic
         } else if self.linear_model.is_some() {
             NormalizedModelType::Linear
+        } else if self
+            .format
+            .as_deref()
+            .is_some_and(|format| format.eq_ignore_ascii_case("ospf-cp-snapshot-json"))
+        {
+            NormalizedModelType::Cp
         } else {
             NormalizedModelType::Unknown
         }
@@ -582,6 +779,200 @@ pub struct SolverConfig {
     pub solver_params: BTreeMap<String, String>,
 }
 
+/// 调度估计值 / Scheduling estimate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SchedulingEstimate {
+    /// 预估运行时间 / Estimated runtime.
+    #[serde(
+        rename = "estimatedRuntimeMs",
+        default,
+        with = "option_duration_millis",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub runtime: Option<Duration>,
+    /// 预估 checkpoint 时间 / Estimated checkpoint time.
+    #[serde(
+        rename = "estimatedCheckpointMs",
+        default,
+        with = "option_duration_millis",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub checkpoint: Option<Duration>,
+    /// 预估排队等待时间 / Estimated queue wait.
+    #[serde(
+        rename = "estimatedQueueWaitMs",
+        default,
+        with = "option_duration_millis",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub queue_wait: Option<Duration>,
+    /// 预估成本 / Estimated cost.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
+}
+
+/// 调度质量目标 / Scheduling quality target.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct QualityTarget {
+    /// 最大允许 gap / Maximum allowed gap.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_gap: Option<f64>,
+    /// 目标界限 / Objective limit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub objective_limit: Option<f64>,
+    /// 是否必须有可行解 / Whether a feasible solution is required.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_feasible: Option<bool>,
+    /// 是否必须达到最优 / Whether an optimal solution is required.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub require_optimal: Option<bool>,
+    /// 质量目标扩展元数据 / Quality-target metadata.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub metadata: BTreeMap<String, String>,
+}
+
+/// 任务提交时的可选调度信息 / Optional scheduling information on a solve request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SchedulingRequest {
+    /// 任务复杂度 / Task complexity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub complexity: Option<TaskComplexity>,
+    /// 时间敏感度 / Time sensitivity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_sensitivity: Option<TimeSensitivity>,
+    /// 任务优先级 / Task priority.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i32>,
+    /// 截止时间 / Deadline.
+    #[serde(
+        rename = "deadlineEpochMs",
+        default,
+        with = "option_epoch_millis",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub deadline: Option<SystemTime>,
+    /// 预算范围 / Budget scope.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget_scope: Option<BudgetScopeId>,
+    /// 预算上限 / Budget limit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget_limit: Option<f64>,
+    /// 运行、checkpoint 和排队估计 / Runtime, checkpoint, and queue estimates.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimate: Option<SchedulingEstimate>,
+    /// 模型指纹 / Model fingerprint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_fingerprint: Option<String>,
+    /// 模型指纹 schema / Model fingerprint schema.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_fingerprint_schema: Option<String>,
+    /// checkpoint 引用 / Checkpoint reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkpoint_ref: Option<ObjectRef>,
+    /// incumbent 引用 / Incumbent reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub incumbent_ref: Option<ObjectRef>,
+    /// 质量目标 / Quality target.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality_target: Option<QualityTarget>,
+    /// 抢占模式 / Preemption mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preemption_mode: Option<PreemptionMode>,
+    /// 恢复模式 / Resume mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resume_mode: Option<ResumeMode>,
+    /// 调度扩展元数据 / Scheduling metadata.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub metadata: BTreeMap<String, String>,
+}
+
+/// 实际生效的调度信息 / Effective scheduling information.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SchedulingDecision {
+    /// 分发 ID / Dispatch ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dispatch_id: Option<DispatchId>,
+    /// 任务 ID / Task ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_id: Option<TaskId>,
+    /// 切片 ID / Slice ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slice_id: Option<SliceId>,
+    /// 节点 ID / Node ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<NodeId>,
+    /// 优先级 / Priority.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i32>,
+    /// 截止时间 / Deadline.
+    #[serde(
+        rename = "deadlineEpochMs",
+        default,
+        with = "option_epoch_millis",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub deadline: Option<SystemTime>,
+    /// 预算范围 / Budget scope.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget_scope: Option<BudgetScopeId>,
+    /// 预算上限 / Budget limit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget_limit: Option<f64>,
+    /// 生效时间片 / Effective quantum.
+    #[serde(
+        rename = "quantumMs",
+        default,
+        with = "option_duration_millis",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub quantum: Option<Duration>,
+    /// 排队等待时间 / Queue wait.
+    #[serde(
+        rename = "queueWaitMs",
+        default,
+        with = "option_duration_millis",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub queue_wait: Option<Duration>,
+    /// 调度估计 / Scheduling estimate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimate: Option<SchedulingEstimate>,
+    /// 模型指纹 / Model fingerprint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_fingerprint: Option<String>,
+    /// 模型指纹 schema / Model fingerprint schema.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_fingerprint_schema: Option<String>,
+    /// checkpoint 引用 / Checkpoint reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkpoint_ref: Option<ObjectRef>,
+    /// incumbent 引用 / Incumbent reference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub incumbent_ref: Option<ObjectRef>,
+    /// 质量目标 / Quality target.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quality_target: Option<QualityTarget>,
+    /// 生效抢占模式 / Effective preemption mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preemption_mode: Option<PreemptionMode>,
+    /// 生效恢复模式 / Effective resume mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resume_mode: Option<ResumeMode>,
+    /// 切片结果 / Slice outcome.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<SliceOutcome>,
+    /// 调度原因 / Scheduling reason.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// 调度扩展元数据 / Scheduling metadata.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub metadata: BTreeMap<String, String>,
+}
+
 /// 求解载荷。
 /// Solve payload.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -601,6 +992,9 @@ pub struct SolvePayload {
     /// 快照的可校验身份 / Validatable checkpoint identity
     #[serde(skip_serializing_if = "Option::is_none")]
     pub checkpoint_metadata: Option<SolveCheckpoint>,
+    /// 可选调度请求 / Optional scheduling request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduling: Option<SchedulingRequest>,
     /// 任务元数据 / Task metadata
     #[serde(default)]
     pub task_meta: TaskMeta,
@@ -619,6 +1013,7 @@ impl SolvePayload {
             config: None,
             snapshot_ref: None,
             checkpoint_metadata: None,
+            scheduling: None,
             task_meta: TaskMeta::default(),
             extension: BTreeMap::new(),
         }
@@ -662,6 +1057,12 @@ impl SolvePayload {
         self
     }
 
+    /// 设置调度请求 / Set the scheduling request.
+    pub fn with_scheduling(mut self, scheduling: SchedulingRequest) -> Self {
+        self.scheduling = Some(scheduling);
+        self
+    }
+
     /// 补齐默认 target type。
     /// Fill the default target type.
     pub fn with_default_target_type(mut self, target_type: &str) -> RemoteSolverResult<Self> {
@@ -697,7 +1098,7 @@ impl SolvePayload {
 
 /// 执行句柄。
 /// Execution handle.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionHandle {
     /// 句柄 ID / Handle ID
@@ -711,6 +1112,9 @@ pub struct ExecutionHandle {
     /// 启动时间 / Started at
     #[serde(rename = "startedAtEpochMs", with = "epoch_millis")]
     pub started_at: SystemTime,
+    /// 实际生效调度信息 / Effective scheduling information.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduling: Option<SchedulingDecision>,
 }
 
 /// 远程停止确认。
@@ -841,11 +1245,74 @@ pub struct SliceResult {
     /// 附加消息 / Additional message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// 结果 schema 版本 / Result schema version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_version: Option<String>,
+    /// 问题结论 / Problem status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem_status: Option<RemoteProblemStatus>,
+    /// 终止原因 / Termination reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub termination_reason: Option<RemoteTerminationReason>,
+    /// 解存在性 / Solution presence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solution_presence: Option<RemoteSolutionPresence>,
+    /// 证明状态 / Proof status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof_status: Option<RemoteProofStatus>,
+    /// 结果 artifact 引用 / Result artifact reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result_ref: Option<ObjectRef>,
+    /// 脱敏执行来源 / Redacted execution provenance.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub provenance: BTreeMap<String, String>,
+    /// 审计指纹 / Audit fingerprints.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fingerprints: BTreeMap<String, String>,
+    /// 指纹 schema / Fingerprint schemas.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fingerprint_schemas: BTreeMap<String, String>,
+    /// 求解统计 / Solve statistics.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub statistics: BTreeMap<String, String>,
+    /// 结构化诊断 / Structured diagnostics.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub diagnostics: BTreeMap<String, String>,
+    /// 求解运行 ID / Solve run ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    /// 求解 attempt ID / Solve attempt ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_id: Option<String>,
+    /// 结果 artifact 摘要 / Result artifact digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_digest: Option<String>,
+    /// CP 精确整数目标值 / Exact CP integer objective value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objective_value_int64: Option<i64>,
+    /// 切片 checkpoint 引用 / Slice checkpoint reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_ref: Option<ObjectRef>,
+    /// incumbent 引用 / Incumbent reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub incumbent_ref: Option<ObjectRef>,
+    /// 模型指纹 / Model fingerprint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_fingerprint: Option<String>,
+    /// 实际生效调度信息 / Effective scheduling information.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduling: Option<SchedulingDecision>,
+    /// 明确切片结果 / Explicit slice outcome.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<SliceOutcome>,
+    /// 跨 attempt 累积的取消事实 / Cancellation facts accumulated across attempts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cancellation_chain: Vec<CancellationRecord>,
 }
 
 /// 求解结果。
 /// Solve result.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SolveResult {
     /// 是否可行 / Whether feasible
@@ -886,6 +1353,54 @@ pub struct SolveResult {
     /// 扩展字段 / Extension fields
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extension: BTreeMap<String, String>,
+    /// 结果 schema 版本 / Result schema version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_version: Option<String>,
+    /// 问题结论 / Problem status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem_status: Option<RemoteProblemStatus>,
+    /// 终止原因 / Termination reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub termination_reason: Option<RemoteTerminationReason>,
+    /// 解存在性 / Solution presence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solution_presence: Option<RemoteSolutionPresence>,
+    /// 证明状态 / Proof status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof_status: Option<RemoteProofStatus>,
+    /// 脱敏执行来源 / Redacted execution provenance.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub provenance: BTreeMap<String, String>,
+    /// 审计指纹 / Audit fingerprints.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fingerprints: BTreeMap<String, String>,
+    /// 指纹 schema / Fingerprint schemas.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fingerprint_schemas: BTreeMap<String, String>,
+    /// 求解统计 / Solve statistics.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub statistics: BTreeMap<String, String>,
+    /// 结构化诊断 / Structured diagnostics.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub diagnostics: BTreeMap<String, String>,
+    /// CP 精确整数目标值 / Exact CP integer objective value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objective_value_int64: Option<i64>,
+    /// incumbent 引用 / Incumbent reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub incumbent_ref: Option<ObjectRef>,
+    /// 模型指纹 / Model fingerprint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_fingerprint: Option<String>,
+    /// 实际生效调度信息 / Effective scheduling information.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduling: Option<SchedulingDecision>,
+    /// 明确切片结果 / Explicit slice outcome.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<SliceOutcome>,
+    /// 跨 attempt 累积的取消事实 / Cancellation facts accumulated across attempts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cancellation_chain: Vec<CancellationRecord>,
 }
 
 impl SolveResult {
@@ -913,6 +1428,22 @@ impl SolveResult {
             report: None,
             message: slice_result.message.clone(),
             extension: BTreeMap::new(),
+            schema_version: slice_result.schema_version.clone(),
+            problem_status: slice_result.problem_status,
+            termination_reason: slice_result.termination_reason,
+            solution_presence: slice_result.solution_presence,
+            proof_status: slice_result.proof_status,
+            provenance: slice_result.provenance.clone(),
+            fingerprints: slice_result.fingerprints.clone(),
+            fingerprint_schemas: slice_result.fingerprint_schemas.clone(),
+            statistics: slice_result.statistics.clone(),
+            diagnostics: slice_result.diagnostics.clone(),
+            objective_value_int64: slice_result.objective_value_int64,
+            incumbent_ref: slice_result.incumbent_ref.clone(),
+            model_fingerprint: slice_result.model_fingerprint.clone(),
+            scheduling: slice_result.scheduling.clone(),
+            outcome: slice_result.outcome,
+            cancellation_chain: slice_result.cancellation_chain.clone(),
         }
     }
 }
@@ -1085,6 +1616,9 @@ pub enum SerializedVariableType {
     SemiContinuous,
     /// 半整数 / Semi-integer
     SemiInteger,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
 }
 
 /// 序列化约束符号。
@@ -1098,6 +1632,9 @@ pub enum SerializedConstraintSign {
     GreaterEqual,
     /// 等于 / Equal
     Equal,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
 }
 
 /// 序列化目标类型。
@@ -1109,6 +1646,9 @@ pub enum SerializedObjectiveCategory {
     Minimize,
     /// 最大化 / Maximize
     Maximize,
+    /// 未知值；用于兼容未来协议 / Unknown value for forward-compatible decoding.
+    #[serde(other)]
+    Unknown,
 }
 
 /// 当前远程模型 schema 版本 / Current remote model schema version.
@@ -1428,6 +1968,26 @@ fn validate_non_blank_id(kind: &str, id: &str) -> RemoteSolverResult<()> {
 /// Serialized solution.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SerializedIntervalValue {
+    /// 区间起点 / Interval start.
+    pub start: i64,
+    /// 区间长度 / Interval size.
+    pub size: i64,
+    /// 区间终点 / Interval end.
+    pub end: i64,
+    /// 是否存在 / Whether present.
+    #[serde(default = "default_true")]
+    pub present: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// 序列化解。
+/// Serialized solution.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SerializedSolution {
     /// 是否可行 / Whether feasible
     pub feasible: bool,
@@ -1440,6 +2000,36 @@ pub struct SerializedSolution {
     /// 变量取值 / Variable values
     #[serde(default)]
     pub variable_values: Vec<f64>,
+    /// CP 稳定变量取值 / CP stable variable values by ID.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub variable_values_by_id: BTreeMap<String, i64>,
+    /// CP 区间取值 / CP interval values by ID.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub interval_values: BTreeMap<String, SerializedIntervalValue>,
+    /// 问题结论 / Problem conclusion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem_status: Option<RemoteProblemStatus>,
+    /// 解存在性 / Solution presence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solution_presence: Option<RemoteSolutionPresence>,
+    /// 证明状态 / Proof status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof_status: Option<RemoteProofStatus>,
+    /// 终止原因 / Termination reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub termination_reason: Option<RemoteTerminationReason>,
+    /// 结果 schema 版本 / Result schema version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_version: Option<String>,
+    /// 脱敏执行来源 / Redacted execution provenance.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub provenance: BTreeMap<String, String>,
+    /// 审计指纹 / Audit fingerprints.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fingerprints: BTreeMap<String, String>,
+    /// 指纹 schema / Fingerprint schemas.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fingerprint_schemas: BTreeMap<String, String>,
     /// 已用时间 / Elapsed time
     #[serde(rename = "elapsedMs", with = "duration_millis")]
     pub elapsed: Duration,
@@ -1449,6 +2039,24 @@ pub struct SerializedSolution {
     /// 版本化统一求解报告 / Versioned unified solve report
     #[serde(skip_serializing_if = "Option::is_none")]
     pub report: Option<RemoteSolveReportDto>,
+    /// 求解统计 / Solve statistics.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub statistics: BTreeMap<String, String>,
+    /// 结构化诊断 / Structured diagnostics.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub diagnostics: BTreeMap<String, String>,
+    /// 求解运行 ID / Solve run ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    /// 求解 attempt ID / Solve attempt ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_id: Option<String>,
+    /// 结果 artifact 摘要 / Result artifact digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_digest: Option<String>,
+    /// CP 精确整数目标值 / Exact CP integer objective value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objective_value_int64: Option<i64>,
     /// 附加消息 / Additional message
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
@@ -1464,9 +2072,25 @@ impl SerializedSolution {
             objective_value: None,
             gap: None,
             variable_values: Vec::new(),
+            variable_values_by_id: BTreeMap::new(),
+            interval_values: BTreeMap::new(),
+            problem_status: Some(RemoteProblemStatus::Infeasible),
+            solution_presence: Some(RemoteSolutionPresence::None),
+            proof_status: Some(RemoteProofStatus::None),
+            termination_reason: Some(RemoteTerminationReason::Completed),
+            schema_version: None,
+            provenance: BTreeMap::new(),
+            fingerprints: BTreeMap::new(),
+            fingerprint_schemas: BTreeMap::new(),
             elapsed: Duration::ZERO,
             solver_status: String::new(),
             report: None,
+            statistics: BTreeMap::new(),
+            diagnostics: BTreeMap::new(),
+            run_id: None,
+            attempt_id: None,
+            artifact_digest: None,
+            objective_value_int64: None,
             message: Some(message.unwrap_or_else(|| "Model is infeasible".to_string())),
         }
     }
@@ -1480,9 +2104,25 @@ impl SerializedSolution {
             objective_value: None,
             gap: None,
             variable_values: Vec::new(),
+            variable_values_by_id: BTreeMap::new(),
+            interval_values: BTreeMap::new(),
+            problem_status: Some(RemoteProblemStatus::Unbounded),
+            solution_presence: Some(RemoteSolutionPresence::None),
+            proof_status: Some(RemoteProofStatus::None),
+            termination_reason: Some(RemoteTerminationReason::Completed),
+            schema_version: None,
+            provenance: BTreeMap::new(),
+            fingerprints: BTreeMap::new(),
+            fingerprint_schemas: BTreeMap::new(),
             elapsed: Duration::ZERO,
             solver_status: String::new(),
             report: None,
+            statistics: BTreeMap::new(),
+            diagnostics: BTreeMap::new(),
+            run_id: None,
+            attempt_id: None,
+            artifact_digest: None,
+            objective_value_int64: None,
             message: Some(message.unwrap_or_else(|| "Model is unbounded".to_string())),
         }
     }
@@ -1496,9 +2136,25 @@ impl SerializedSolution {
             objective_value: None,
             gap: None,
             variable_values: Vec::new(),
+            variable_values_by_id: BTreeMap::new(),
+            interval_values: BTreeMap::new(),
+            problem_status: Some(RemoteProblemStatus::Unknown),
+            solution_presence: Some(RemoteSolutionPresence::None),
+            proof_status: Some(RemoteProofStatus::None),
+            termination_reason: Some(RemoteTerminationReason::BackendFailure),
+            schema_version: None,
+            provenance: BTreeMap::new(),
+            fingerprints: BTreeMap::new(),
+            fingerprint_schemas: BTreeMap::new(),
             elapsed: Duration::ZERO,
             solver_status: String::new(),
             report: None,
+            statistics: BTreeMap::new(),
+            diagnostics: BTreeMap::new(),
+            run_id: None,
+            attempt_id: None,
+            artifact_digest: None,
+            objective_value_int64: None,
             message: Some(message.into()),
         }
     }
@@ -1630,6 +2286,15 @@ mod tests {
     }
 
     #[test]
+    fn model_data_type_recognizes_constraint_programming_snapshot_format() {
+        let data = ModelData::raw(Vec::new(), "ospf-cp-snapshot-json");
+        assert_eq!(data.model_type(), NormalizedModelType::Cp);
+
+        let mixed_case = ModelData::raw(Vec::new(), "OSPF-CP-SNAPSHOT-JSON");
+        assert_eq!(mixed_case.model_type(), NormalizedModelType::Cp);
+    }
+
+    #[test]
     fn current_model_schema_rejects_missing_or_unknown_stable_identity() {
         let mut model = SerializedLinearModel::empty("identity");
         model.objective.stable_id.clear();
@@ -1708,6 +2373,162 @@ mod tests {
                 .as_ref()
                 .map(|provenance| provenance.solver_id.as_str()),
             Some("fake/1")
+        );
+    }
+
+    #[test]
+    fn v12_scheduling_and_cp_results_round_trip_with_millisecond_fields() {
+        let deadline = UNIX_EPOCH + Duration::from_millis(1_700_000_000_123);
+        let payload = SolvePayload::from_model_ref(ObjectRef::of("models/cp-1").unwrap())
+            .with_scheduling(SchedulingRequest {
+                complexity: Some(TaskComplexity::Complex),
+                time_sensitivity: Some(TimeSensitivity::Realtime),
+                priority: Some(7),
+                deadline: Some(deadline),
+                budget_scope: Some(BudgetScopeId::of("budget-1").unwrap()),
+                budget_limit: Some(4.5),
+                estimate: Some(SchedulingEstimate {
+                    runtime: Some(Duration::from_millis(125)),
+                    checkpoint: Some(Duration::from_millis(9)),
+                    queue_wait: Some(Duration::from_millis(3)),
+                    cost: Some(1.25),
+                }),
+                model_fingerprint: Some("model-fp".to_owned()),
+                model_fingerprint_schema: Some("sha256".to_owned()),
+                checkpoint_ref: Some(ObjectRef::of("checkpoints/cp-1").unwrap()),
+                incumbent_ref: Some(ObjectRef::of("incumbents/cp-1").unwrap()),
+                quality_target: Some(QualityTarget {
+                    max_gap: Some(0.01),
+                    objective_limit: None,
+                    require_feasible: Some(true),
+                    require_optimal: Some(false),
+                    metadata: BTreeMap::from([(String::from("kind"), String::from("cp"))]),
+                }),
+                preemption_mode: Some(PreemptionMode::ControlledReturn),
+                resume_mode: Some(ResumeMode::NativeCheckpoint),
+                metadata: BTreeMap::from([(String::from("queue"), String::from("realtime"))]),
+            });
+        let payload_json = serde_json::to_value(&payload).unwrap();
+        assert_eq!(
+            payload_json["scheduling"]["estimate"]["estimatedRuntimeMs"],
+            125
+        );
+        assert_eq!(
+            payload_json["scheduling"]["deadlineEpochMs"],
+            1_700_000_000_123u64
+        );
+        assert_eq!(
+            payload_json["scheduling"]["preemptionMode"],
+            "CONTROLLED_RETURN"
+        );
+        let decoded_payload: SolvePayload = serde_json::from_value(payload_json).unwrap();
+        assert_eq!(decoded_payload, payload);
+
+        let scheduling = SchedulingDecision {
+            dispatch_id: Some(DispatchId::of("dispatch-1").unwrap()),
+            task_id: Some(TaskId::of("task-1").unwrap()),
+            slice_id: Some(SliceId::of("slice-1").unwrap()),
+            node_id: Some(NodeId::of("node-1").unwrap()),
+            priority: Some(7),
+            deadline: Some(deadline),
+            budget_scope: Some(BudgetScopeId::of("budget-1").unwrap()),
+            budget_limit: Some(4.5),
+            quantum: Some(Duration::from_millis(250)),
+            queue_wait: Some(Duration::from_millis(12)),
+            estimate: None,
+            model_fingerprint: Some("model-fp".to_owned()),
+            model_fingerprint_schema: Some("sha256".to_owned()),
+            checkpoint_ref: None,
+            incumbent_ref: None,
+            quality_target: None,
+            preemption_mode: Some(PreemptionMode::ControlledReturn),
+            resume_mode: Some(ResumeMode::NativeCheckpoint),
+            outcome: Some(SliceOutcome::Preempted),
+            reason: Some("quantum expired".to_owned()),
+            metadata: BTreeMap::new(),
+        };
+        let slice = SliceResult {
+            slice_id: SliceId::of("slice-1").unwrap(),
+            completed: false,
+            feasible: true,
+            objective_value: None,
+            gap: None,
+            elapsed: Duration::from_millis(250),
+            message: Some("preempted".to_owned()),
+            schema_version: Some("1.2".to_owned()),
+            problem_status: Some(RemoteProblemStatus::Feasible),
+            termination_reason: Some(RemoteTerminationReason::Interrupted),
+            solution_presence: Some(RemoteSolutionPresence::Incumbent),
+            proof_status: Some(RemoteProofStatus::None),
+            result_ref: None,
+            provenance: BTreeMap::from([(String::from("backend"), String::from("cp"))]),
+            fingerprints: BTreeMap::from([(String::from("model"), String::from("model-fp"))]),
+            fingerprint_schemas: BTreeMap::from([(String::from("model"), String::from("sha256"))]),
+            statistics: BTreeMap::from([(String::from("nodes"), String::from("4"))]),
+            diagnostics: BTreeMap::new(),
+            run_id: Some("run-1".to_owned()),
+            attempt_id: Some("attempt-1".to_owned()),
+            artifact_digest: None,
+            objective_value_int64: Some(i64::MAX),
+            checkpoint_ref: Some(ObjectRef::of("checkpoints/cp-1").unwrap()),
+            incumbent_ref: None,
+            model_fingerprint: Some("model-fp".to_owned()),
+            scheduling: Some(scheduling.clone()),
+            outcome: Some(SliceOutcome::Preempted),
+            cancellation_chain: Vec::new(),
+        };
+        let slice_json = serde_json::to_value(&slice).unwrap();
+        assert_eq!(slice_json["elapsedMs"], 250);
+        assert_eq!(slice_json["objectiveValueInt64"], i64::MAX);
+        assert_eq!(
+            slice_json["scheduling"]["deadlineEpochMs"],
+            1_700_000_000_123u64
+        );
+        assert_eq!(slice_json["outcome"], "PREEMPTED");
+        assert_eq!(
+            serde_json::from_value::<SliceResult>(slice_json).unwrap(),
+            slice
+        );
+
+        let result = SolveResult {
+            feasible: true,
+            optimal: false,
+            objective_value: None,
+            gap: None,
+            elapsed: Duration::from_millis(263),
+            checkpoint_ref: None,
+            checkpoint_metadata: None,
+            result_ref: Some(ObjectRef::of("results/cp-1.json").unwrap()),
+            run_id: Some("run-1".to_owned()),
+            attempt_id: Some("attempt-1".to_owned()),
+            artifact_digest: Some("digest-1".to_owned()),
+            report: None,
+            message: None,
+            extension: BTreeMap::new(),
+            schema_version: Some("1.2".to_owned()),
+            problem_status: Some(RemoteProblemStatus::Feasible),
+            termination_reason: Some(RemoteTerminationReason::Completed),
+            solution_presence: Some(RemoteSolutionPresence::Incumbent),
+            proof_status: Some(RemoteProofStatus::Claimed),
+            provenance: BTreeMap::from([(String::from("backend"), String::from("cp"))]),
+            fingerprints: BTreeMap::from([(String::from("model"), String::from("model-fp"))]),
+            fingerprint_schemas: BTreeMap::from([(String::from("model"), String::from("sha256"))]),
+            statistics: BTreeMap::from([(String::from("nodes"), String::from("4"))]),
+            diagnostics: BTreeMap::new(),
+            objective_value_int64: Some(i64::MAX),
+            incumbent_ref: Some(ObjectRef::of("incumbents/cp-1").unwrap()),
+            model_fingerprint: Some("model-fp".to_owned()),
+            scheduling: Some(scheduling),
+            outcome: Some(SliceOutcome::Completed),
+            cancellation_chain: Vec::new(),
+        };
+        let result_json = serde_json::to_value(&result).unwrap();
+        assert_eq!(result_json["elapsedMs"], 263);
+        assert_eq!(result_json["objectiveValueInt64"], i64::MAX);
+        assert_eq!(result_json["outcome"], "COMPLETED");
+        assert_eq!(
+            serde_json::from_value::<SolveResult>(result_json).unwrap(),
+            result
         );
     }
 }

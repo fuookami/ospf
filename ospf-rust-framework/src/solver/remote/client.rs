@@ -40,7 +40,9 @@ impl Default for RemoteSolveOptions {
     fn default() -> Self {
         Self {
             quantum: Duration::from_secs(4),
-            max_rounds: 64,
+            // The remote dispatcher owns task lifetime; the default must not truncate a
+            // legitimate server-managed solve after an arbitrary number of polls.
+            max_rounds: u64::MAX,
             export_checkpoint_each_round: true,
         }
     }
@@ -154,13 +156,43 @@ fn validate_remote_result_identity(
     context: &RemoteSolveContext,
 ) -> RemoteSolverResult<()> {
     validate_solve_result_identity(result)?;
+    let is_v2 = result
+        .schema_version
+        .as_deref()
+        .is_some_and(|version| version.split('.').next() == Some("2"));
+
+    // V2 identities are facts produced by the remote solve/report.  They are deliberately
+    // independent from the caller's request ID and from the canonical task ID allocated by the
+    // dispatcher.  A V2 result without both identities is therefore not safely attributable.
+    if is_v2 {
+        for (field, value) in [
+            ("run_id", result.run_id.as_deref()),
+            ("attempt_id", result.attempt_id.as_deref()),
+        ] {
+            if value.is_none_or(|value| value.trim().is_empty()) {
+                return Err(RemoteSolverError::invalid_argument(format!(
+                    "remote V2 solve result is missing {}",
+                    field
+                )));
+            }
+        }
+    }
+
     if let Some(report) = result.report.as_ref() {
+        if is_v2
+            && (report.run_id.as_deref() != result.run_id.as_deref()
+                || report.attempt_id.as_deref() != result.attempt_id.as_deref())
+        {
+            return Err(RemoteSolverError::invalid_argument(
+                "remote V2 result and nested report identities do not match",
+            ));
+        }
         report.validate_identity(
-            Some(context.task_id.value()),
-            Some(context.slice_id.value()),
+            (!is_v2).then_some(context.task_id.value()),
+            (!is_v2).then_some(context.slice_id.value()),
             None,
         )?;
-    } else {
+    } else if !is_v2 {
         for (field, expected, actual) in [
             (
                 "run_id",
@@ -187,8 +219,17 @@ fn validate_remote_result_identity(
         checkpoint
             .validate()
             .map_err(|error| RemoteSolverError::invalid_argument(error.to_string()))?;
-        if checkpoint.run_id != context.task_id.value()
-            || checkpoint.attempt_id != context.slice_id.value()
+        let expected_run_id = if is_v2 {
+            result.run_id.as_deref().unwrap_or_default()
+        } else {
+            context.task_id.value()
+        };
+        let expected_attempt_id = if is_v2 {
+            result.attempt_id.as_deref().unwrap_or_default()
+        } else {
+            context.slice_id.value()
+        };
+        if checkpoint.run_id != expected_run_id || checkpoint.attempt_id != expected_attempt_id
         {
             return Err(RemoteSolverError::invalid_argument(
                 "remote checkpoint identity does not match the solve context",
@@ -254,6 +295,7 @@ fn task_status_name(status: TaskStatus) -> &'static str {
         TaskStatus::Stopped => "STOPPED",
         TaskStatus::Failed => "FAILED",
         TaskStatus::WaitingForBudget => "WAITING_FOR_BUDGET",
+        TaskStatus::Unknown => "UNKNOWN",
     }
 }
 
@@ -382,6 +424,28 @@ fn attach_stop_metadata_to_error(
     error
 }
 
+fn stop_was_already_acknowledged(error: &RemoteSolverError) -> bool {
+    error.metadata.get("stopAcknowledged").map(String::as_str) == Some("true")
+}
+
+fn is_dispatcher_suspended_slice(slice: &super::domain::SliceResult) -> bool {
+    if slice.completed {
+        return false;
+    }
+    let message = slice.message.as_deref().unwrap_or_default().to_ascii_lowercase();
+    message.contains("suspended")
+        || message.contains("dispatcher")
+        || matches!(
+            slice.outcome,
+            Some(
+                super::domain::SliceOutcome::Checkpointed
+                    | super::domain::SliceOutcome::Resumable
+            )
+        )
+}
+
+const MAX_DISPATCHER_SUSPENSION_ROUNDS: u64 = 256;
+
 impl<P> RemoteSolverClient<P>
 where
     P: SolverExecutionPort,
@@ -425,11 +489,6 @@ where
                         "resuming a snapshot requires checkpoint metadata",
                     )
                 })?;
-                if checkpoint.run_id != task_id.value() {
-                    return Err(RemoteSolverError::invalid_argument(
-                        "checkpoint run identity does not match the task",
-                    ));
-                }
                 Some(
                     checkpoint
                         .fork_for_resume(slice_id.value())
@@ -471,6 +530,8 @@ where
 
         let mut total_elapsed = Duration::ZERO;
         let mut latest_checkpoint = payload.snapshot_ref.clone();
+        let mut dispatcher_suspended = false;
+        let mut dispatcher_suspension_rounds = 0_u64;
         let solve_result = async {
             for _round in 0..options.max_rounds {
                 if let Some(cancellation) = cancellation_handle.as_ref()
@@ -489,6 +550,30 @@ where
                     .await_slice_end(&handle, options.quantum)
                     .await?;
                 total_elapsed += slice_result.elapsed;
+                if is_dispatcher_suspended_slice(&slice_result) {
+                    dispatcher_suspended = true;
+                    dispatcher_suspension_rounds = dispatcher_suspension_rounds.saturating_add(1);
+                    if dispatcher_suspension_rounds >= MAX_DISPATCHER_SUSPENSION_ROUNDS {
+                        return Err(RemoteSolverError::new(
+                            RemoteSolverErrorCode::RemoteSolveNotCompletedWithinMaxRounds,
+                            "remote dispatcher remained suspended beyond the bounded client wait",
+                        )
+                        .with_metadata([
+                            ("taskId", handle.task_id.value()),
+                            ("dispatcherSuspended", "true"),
+                            (
+                                "suspensionRounds",
+                                &dispatcher_suspension_rounds.to_string(),
+                            ),
+                        ]));
+                    }
+                    // A SUSPENDED response is an observation, not a terminal transition.  Give
+                    // the dispatcher a bounded scheduling window before asking for the canonical
+                    // task again so a requeue/new slice can become visible.
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                } else {
+                    dispatcher_suspension_rounds = 0;
+                }
 
                 if let Some(cancellation) = cancellation_handle.as_ref()
                     && cancellation.is_cancelled()
@@ -565,13 +650,17 @@ where
                 Ok(result)
             }
             Err(error) => {
-                let error = match self.execution_port.stop(&handle).await {
-                    Ok(acknowledgement) => attach_stop_metadata_to_error(
-                        error,
-                        stop_acknowledgement_metadata(&acknowledgement),
-                    ),
-                    Err(stop_error) => {
-                        attach_stop_metadata_to_error(error, stop_failure_metadata(&stop_error))
+                let error = if dispatcher_suspended || stop_was_already_acknowledged(&error) {
+                    error
+                } else {
+                    match self.execution_port.stop(&handle).await {
+                        Ok(acknowledgement) => attach_stop_metadata_to_error(
+                            error,
+                            stop_acknowledgement_metadata(&acknowledgement),
+                        ),
+                        Err(stop_error) => {
+                            attach_stop_metadata_to_error(error, stop_failure_metadata(&stop_error))
+                        }
                     }
                 };
                 Err(error)
@@ -619,6 +708,10 @@ fn cancelled_remote_result_with_checkpoint(
             Ok::<_, RemoteSolverError>(checkpoint)
         })
         .transpose()?;
+    let cancellation_chain = checkpoint_metadata
+        .as_ref()
+        .map(|checkpoint| checkpoint.cancellation_chain.clone())
+        .unwrap_or_else(|| cancellation_handle.cancellation().into_iter().collect());
     let mut report = report;
     if let Some(checkpoint) = checkpoint_metadata.as_ref() {
         report.provenance = checkpoint.provenance.clone();
@@ -653,6 +746,22 @@ fn cancelled_remote_result_with_checkpoint(
         report: Some(report_dto),
         message: Some("Remote solve cancelled".to_owned()),
         extension: BTreeMap::new(),
+        schema_version: None,
+        problem_status: None,
+        termination_reason: None,
+        solution_presence: None,
+        proof_status: None,
+        provenance: BTreeMap::new(),
+        fingerprints: BTreeMap::new(),
+        fingerprint_schemas: BTreeMap::new(),
+        statistics: BTreeMap::new(),
+        diagnostics: BTreeMap::new(),
+        objective_value_int64: None,
+        incumbent_ref: None,
+        model_fingerprint: None,
+        scheduling: None,
+        outcome: None,
+        cancellation_chain,
     })
 }
 
@@ -1101,7 +1210,7 @@ where
     }
 }
 
-fn next_remote_context(target: &str) -> RemoteSolveContext {
+pub(crate) fn next_remote_context(target: &str) -> RemoteSolveContext {
     let counter = REMOTE_CONTEXT_COUNTER.fetch_add(1, Ordering::Relaxed);
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1156,7 +1265,7 @@ fn validate_solve_report_model_fingerprint(
     Ok(())
 }
 
-fn block_on_remote<F, T>(future: F) -> ospf_rust_core::error::Result<T>
+pub(crate) fn block_on_remote<F, T>(future: F) -> ospf_rust_core::error::Result<T>
 where
     F: Future<Output = RemoteSolverResult<T>>,
 {
@@ -1183,7 +1292,7 @@ where
     result.map_err(remote_error_to_core)
 }
 
-fn remote_error_to_core(error: RemoteSolverError) -> CoreError {
+pub(crate) fn remote_error_to_core(error: RemoteSolverError) -> CoreError {
     let message = format!("{:?}: {}", error.code, error.message);
     let solver_error = match error.code {
         RemoteSolverErrorCode::InvalidArgument => SolverError::InvalidInput(message),
@@ -1282,6 +1391,7 @@ mod tests {
                 slice_id: slice_id.clone(),
                 node_id: node_id.clone(),
                 started_at: SystemTime::UNIX_EPOCH,
+                scheduling: None,
             }
         }
 
@@ -1474,6 +1584,27 @@ mod tests {
             gap: Some(0.0),
             elapsed: Duration::from_millis(elapsed_ms),
             message: None,
+            schema_version: None,
+            problem_status: None,
+            termination_reason: None,
+            solution_presence: None,
+            proof_status: None,
+            result_ref: None,
+            provenance: BTreeMap::new(),
+            fingerprints: BTreeMap::new(),
+            fingerprint_schemas: BTreeMap::new(),
+            statistics: BTreeMap::new(),
+            diagnostics: BTreeMap::new(),
+            run_id: None,
+            attempt_id: None,
+            artifact_digest: None,
+            objective_value_int64: None,
+            checkpoint_ref: None,
+            incumbent_ref: None,
+            model_fingerprint: None,
+            scheduling: None,
+            outcome: None,
+            cancellation_chain: Vec::new(),
         }
     }
 
@@ -1584,6 +1715,38 @@ mod tests {
                 Event::Stop
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn remote_client_bounds_dispatcher_suspension_without_stop() {
+        let mut suspended = slice(false, 1);
+        suspended.message = Some("dispatcher SUSPENDED".to_owned());
+        let port = FakePort::new(vec![suspended.clone(), suspended.clone(), suspended]);
+        let events = port.events.clone();
+        let client = RemoteSolverClient::new(port);
+        let (task_id, slice_id, node_id, tenant_id) = ids();
+
+        let error = client
+            .solve(
+                payload(),
+                task_id,
+                slice_id,
+                node_id,
+                tenant_id,
+                RemoteSolveOptions::new()
+                    .with_max_rounds(3)
+                    .with_export_checkpoint_each_round(false),
+            )
+            .await
+            .expect_err("a dispatcher suspension sequence must remain bounded");
+
+        assert_eq!(
+            error.code,
+            RemoteSolverErrorCode::RemoteSolveNotCompletedWithinMaxRounds
+        );
+        let events = events.lock().unwrap();
+        assert_eq!(events.iter().filter(|event| **event == Event::Await).count(), 3);
+        assert_eq!(events.iter().filter(|event| **event == Event::Stop).count(), 0);
     }
 
     #[tokio::test]
@@ -1777,6 +1940,7 @@ mod tests {
             report: None,
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
         let client = RemoteSolverClient::new(
             FakePort::new(vec![slice(true, 1)]).with_final_result(final_result),
@@ -1983,6 +2147,7 @@ mod tests {
             report: None,
             message: Some("final".to_string()),
             extension: BTreeMap::new(),
+            ..Default::default()
         };
         let port = FakePort::new(vec![slice(true, 1)]).with_final_result(final_result.clone());
         let client = RemoteSolverClient::new(port);
@@ -2124,6 +2289,7 @@ mod tests {
             report: None,
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
         let port = FakePort::new(vec![slice(true, 1)]).with_final_result(final_result);
         let solver = RemoteLinearSolver::with_execution_port(DummyDelegate, port);
@@ -2181,6 +2347,7 @@ mod tests {
             ),
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
         let port = FakePort::new(vec![slice(true, 1)]).with_final_result(final_result);
         let solver =
@@ -2232,6 +2399,7 @@ mod tests {
             ),
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
         let solver = RemoteLinearSolver::with_execution_port(
             DummyDelegate,
@@ -2261,6 +2429,7 @@ mod tests {
             report: None,
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
         let solver = RemoteLinearSolver::with_execution_port(
             DummyDelegate,
@@ -2289,6 +2458,7 @@ mod tests {
             report: None,
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
         let port = FakePort::new(vec![slice(true, 1)]).with_final_result(final_result);
         let solver = RemoteQuadraticSolver::with_execution_port(DummyDelegate, port);
@@ -2318,6 +2488,7 @@ mod tests {
             report: None,
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
         let solver = RemoteQuadraticSolver::with_execution_port(
             DummyDelegate,
