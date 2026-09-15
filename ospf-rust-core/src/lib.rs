@@ -29,6 +29,7 @@
 ))]
 compile_error!("Only one Gurobi version feature can be enabled: gurobi10, gurobi11, or gurobi12.");
 
+pub mod analysis;
 pub mod error;
 pub mod model;
 pub mod prelude;
@@ -37,6 +38,39 @@ pub mod symbol;
 pub mod token;
 pub mod variable;
 
+pub use analysis::{
+    ACTIVITY_REPORT_SCHEMA_VERSION, ADAPTIVE_PERTURBATION_REPORT_SCHEMA_VERSION, ActivityConfig,
+    ActivityEvidence, ActivityGroupSummary, ActivityStatus, ActivitySummary,
+    AdaptivePerturbationConfig, AdaptivePerturbationOutcome, AnalysisCacheKind, AnalysisCapability,
+    AnalysisCapabilitySupport, AnalysisStatus, BoundSide, ConstraintActivity,
+    ConstraintActivityAdapter, ConstraintActivityAnalyzer, ConstraintActivityReport, ConstraintId,
+    CriticalityKind, CriticalityObservation, CriticalityProfile, analyze_criticality_targets,
+    build_criticality_profile,
+    CONFLICT_REPORT_SCHEMA_VERSION, ConflictAnalysisOptions, ConflictAnalyzer, ConflictCache,
+    ConflictExplanation, ConflictGroupSummary, ConflictMinimality, ConflictValidity,
+    ConflictVerification, MinimalBlockingSet, MinimalConflictAnalyzer,
+    AlternativeImprovementPlan, CorrectionCandidate, CorrectionSet, RelaxabilityPolicy,
+    RelaxationCost, alternative_improvement_plans_from_conflict, correction_sets_from_conflict,
+    minimal_correction_set, relaxation_recommendations_from_conflict, weighted_correction_set,
+    weighted_correction_sets_from_conflict,
+    MULTI_TARGET_ANALYSIS_REPORT_SCHEMA_VERSION, MultiTargetAnalysisOptions,
+    MultiTargetAnalysisReport, MultiTargetAnalysisResult, MultiTargetAnalyzer, analyze_targets,
+    relaxation_plans_for_result,
+    ConstraintPerturbationAnalyzer, ConstraintPerturbationCache, ConstraintPerturbationObservation,
+    ConstraintPerturbationPolicy, ConstraintPerturbationReport, ConstraintPerturbationAdapter,
+    ConstraintPerturbationAnalysisAdapter, ConstraintPerturbationAnalysisRequest,
+    ConstraintProgrammingFeature, ConstraintProgrammingFixedIntegerLpAdapter,
+    CriticalConstraintAnalysisOptions, CriticalConstraintAnalysisPipeline,
+    CriticalConstraintAnalysisSession, DiagnosticSource, FIXED_INTEGER_LP_REPORT_SCHEMA_VERSION,
+    FixedIntegerIncumbentScope, FixedIntegerLpModel, FixedIntegerLpScope,
+    FixedIntegerLpAdapter, FixedIntegerLpAnalysisAdapter, FixedIntegerLpAnalysisRequest,
+    FixedIntegerLpSensitivityAnalyzer, FixedIntegerLpSensitivityCache,
+    FixedIntegerLpSensitivityConfig, LocalConstraintSensitivity, LocalConstraintSensitivityReport,
+    ObjectiveId, ObjectiveTarget, ObjectiveTargetRelation, PERTURBATION_REPORT_SCHEMA_VERSION,
+    PerturbationObservation, PerturbationPolicy, RemovalTestObservation, SensitivityScope,
+    SolverModelType, VariableBoundActivity, VariableBoundRef, VariableDomainRef,
+    linear_constraint_ids,
+};
 pub use error::*;
 #[allow(ambiguous_glob_reexports)]
 pub use model::*;

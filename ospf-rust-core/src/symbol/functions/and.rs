@@ -1,15 +1,15 @@
 //! 逻辑函数符号 / Logic function symbols
 
 use super::super::{
-    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id, Category, FunctionSymbol,
-    IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol, LogicFunctionSymbol,
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    LogicFunctionSymbol, auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
-use super::big_m::{infer_big_m_for_polynomials, infer_linear_abs_bound_from_tokens, BigMPolicy};
+use super::big_m::{BigMPolicy, infer_big_m_for_polynomials, infer_linear_abs_bound_from_tokens};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{new_group_id, BinaryVariableItem, VariableId};
+use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
 use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;

@@ -1,12 +1,12 @@
 //! Token 表 Trait 和实现
 //! Token Table Trait and Implementations
 
-use std::collections::{HashMap, HashSet};
-use std::sync::RwLock;
-use ospf_rust_base::{read_unwrap, write_unwrap};
 use crate::error::{ModelError, Result, VariableError};
 use crate::token::{MutableTokenList, Token, TokenList, TokenListSnapshot, VecTokenList};
 use crate::variable::{VariableId, VariableType};
+use ospf_rust_base::{read_unwrap, write_unwrap};
+use std::collections::{HashMap, HashSet};
+use std::sync::RwLock;
 
 /// Token 表的可恢复状态 / Restorable token-table state.
 ///
@@ -232,9 +232,7 @@ impl<V: Clone + std::fmt::Debug + Send + Sync + 'static> VecTokenTable<V> {
         if solver_index == usize::MAX {
             return;
         }
-        self.next_solver_index = self
-            .next_solver_index
-            .max(solver_index.saturating_add(1));
+        self.next_solver_index = self.next_solver_index.max(solver_index.saturating_add(1));
     }
 }
 
@@ -610,19 +608,30 @@ mod tests {
     fn token_table_explicit_indices_advance_registration_cursor() {
         let mut table = VecTokenTableF64::new();
         table.add_token(test_token(90_016, "explicit_zero", 0));
-        assert_eq!(table.register(test_token(90_017, "after_zero", 0)).unwrap(), 1);
+        assert_eq!(
+            table.register(test_token(90_017, "after_zero", 0)).unwrap(),
+            1
+        );
 
         table
             .try_add_tokens(vec![test_token(90_018, "explicit_high", 7)])
             .unwrap();
-        assert_eq!(table.register(test_token(90_019, "after_high", 0)).unwrap(), 8);
+        assert_eq!(
+            table.register(test_token(90_019, "after_high", 0)).unwrap(),
+            8
+        );
     }
 
     #[test]
     fn token_table_explicit_index_sentinel_and_overflow_are_handled() {
         let mut table = VecTokenTableF64::new();
         table.add_token(test_token(90_020, "unassigned", usize::MAX));
-        assert_eq!(table.register(test_token(90_021, "after_unassigned", 0)).unwrap(), 0);
+        assert_eq!(
+            table
+                .register(test_token(90_021, "after_unassigned", 0))
+                .unwrap(),
+            0
+        );
 
         table.add_token(test_token(90_022, "last_index", usize::MAX - 1));
         assert_eq!(table.snapshot().next_solver_index(), usize::MAX);
@@ -751,9 +760,7 @@ mod tests {
             guard.add_token(test_token(90_024, "explicit_zero", 0));
         }
         assert_eq!(
-            table
-                .register(test_token(90_025, "after_zero", 0))
-                .unwrap(),
+            table.register(test_token(90_025, "after_zero", 0)).unwrap(),
             1
         );
 
@@ -764,9 +771,7 @@ mod tests {
                 .unwrap();
         }
         assert_eq!(
-            table
-                .register(test_token(90_027, "after_high", 0))
-                .unwrap(),
+            table.register(test_token(90_027, "after_high", 0)).unwrap(),
             8
         );
     }

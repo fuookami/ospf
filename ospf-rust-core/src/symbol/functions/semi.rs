@@ -7,7 +7,7 @@ use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{new_group_id, BinaryVariableItem, ContinuousVariableItem, VariableId};
+use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
 use num_traits::{FromPrimitive, ToPrimitive};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;

@@ -1,11 +1,11 @@
 //! 离散条件的关系转换 / Relation conversion for discrete conditions
 
-use std::fmt::Debug;
-use num_traits::{FromPrimitive, ToPrimitive};
+use super::conditional::ConditionRelation;
 use crate::error::{ModelError, Result};
 use crate::symbol::flatten::Linear;
 use crate::token::Token;
-use super::conditional::ConditionRelation;
+use num_traits::{FromPrimitive, ToPrimitive};
+use std::fmt::Debug;
 
 /// 严格正条件的线性化信息 / Strict-positive condition linearization
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -448,13 +448,15 @@ mod tests {
             validate_discrete_parameters_with_proven_lattice_step(&1e-6, &5.0, &lattice_proof,)
                 .is_ok()
         );
-        assert!(to_strict_positive_condition_with_proven_lattice_step(
-            ConditionRelation::GreaterEqual,
-            &1e-6,
-            &5.0,
-            &lattice_proof,
-        )
-        .is_ok());
+        assert!(
+            to_strict_positive_condition_with_proven_lattice_step(
+                ConditionRelation::GreaterEqual,
+                &1e-6,
+                &5.0,
+                &lattice_proof,
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -467,13 +469,15 @@ mod tests {
             validate_discrete_parameters_with_proven_lattice_step(&1e-6, &5.0, &lattice_proof,)
                 .is_err()
         );
-        assert!(to_strict_positive_condition_with_proven_lattice_step(
-            ConditionRelation::GreaterEqual,
-            &1e-6,
-            &5.0,
-            &lattice_proof,
-        )
-        .is_err());
+        assert!(
+            to_strict_positive_condition_with_proven_lattice_step(
+                ConditionRelation::GreaterEqual,
+                &1e-6,
+                &5.0,
+                &lattice_proof,
+            )
+            .is_err()
+        );
     }
 
     #[test]

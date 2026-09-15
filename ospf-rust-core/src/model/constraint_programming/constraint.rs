@@ -439,15 +439,22 @@ impl ConstraintProgrammingConstraint {
                 {
                     return Err(invalid("Reservoir levels are inconsistent"));
                 }
-                let mut changes = Vec::<(i64, usize, i128)>::with_capacity(events.len());
-                for (order, event) in events.iter().enumerate() {
+                // Reservoir events at one timestamp are simultaneous. Aggregate their level
+                // changes before checking the bound so the result is independent of input order
+                // and cannot reject a transient ordering that has no semantic meaning.
+                // Reservoir 同一时间点的事件是同时发生的；先聚合液位变化再检查边界，确保
+                // 结果不依赖输入顺序，也不会把无语义的中间顺序误判为越界。
+                let mut changes = BTreeMap::<i64, i128>::new();
+                for event in events {
                     let time = event.time.evaluate(values)?;
                     let change = event.level_change.evaluate(values)?;
-                    changes.push((time, order, i128::from(change)));
+                    let entry = changes.entry(time).or_insert(0);
+                    *entry = entry
+                        .checked_add(i128::from(change))
+                        .ok_or_else(|| invalid("Reservoir event change overflow"))?;
                 }
-                changes.sort_by_key(|(time, order, _)| (*time, *order));
                 let mut level = i128::from(*initial_level);
-                for (_, _, change) in changes {
+                for change in changes.into_values() {
                     level = level
                         .checked_add(change)
                         .ok_or_else(|| invalid("Reservoir level overflow"))?;
@@ -983,6 +990,26 @@ impl ConstraintProgrammingConstraint {
                     initial_state: *initial_state,
                     final_states: final_states.clone(),
                     transitions,
+                }
+            }
+            Self::Reservoir {
+                events,
+                initial_level,
+                minimum_level,
+                maximum_level,
+            } => {
+                let mut events = events.clone();
+                events.sort_by_key(|event| {
+                    let mut key = Vec::new();
+                    event.time.append_canonical_bytes(&mut key);
+                    event.level_change.append_canonical_bytes(&mut key);
+                    key
+                });
+                Self::Reservoir {
+                    events,
+                    initial_level: *initial_level,
+                    minimum_level: *minimum_level,
+                    maximum_level: *maximum_level,
                 }
             }
             _ => self.clone(),
@@ -1566,7 +1593,7 @@ mod tests {
     }
 
     #[test]
-    fn reservoir_applies_same_time_events_in_input_order() {
+    fn reservoir_aggregates_same_time_events_before_bounds() {
         let increasing_then_decreasing = ConstraintProgrammingConstraint::Reservoir {
             events: vec![
                 ReservoirEvent {
@@ -1604,7 +1631,7 @@ mod tests {
             maximum_level: 1,
         };
         assert!(
-            !decreasing_then_increasing
+            decreasing_then_increasing
                 .evaluate(&BTreeMap::new(), &BTreeMap::new())
                 .expect("reservoir evaluation")
         );
@@ -1799,7 +1826,7 @@ mod tests {
     }
 
     #[test]
-    fn canonical_fingerprint_preserves_ordered_automaton_and_reservoir_sequences() {
+    fn canonical_fingerprint_preserves_ordered_automaton_and_reservoir_times() {
         let x = IntegerVariable::new("x");
         let y = IntegerVariable::new("y");
         let build = |constraint: ConstraintProgrammingConstraint| {
@@ -1873,6 +1900,64 @@ mod tests {
             minimum_level: 0,
             maximum_level: 1,
         });
-        assert_ne!(reservoir_a.fingerprint, reservoir_b.fingerprint);
+        assert_eq!(reservoir_a.fingerprint, reservoir_b.fingerprint);
+
+        let reservoir_c = build(ConstraintProgrammingConstraint::Reservoir {
+            events: vec![
+                ReservoirEvent {
+                    time: IntegerExpression::constant(0),
+                    level_change: IntegerExpression::constant(1),
+                },
+                ReservoirEvent {
+                    time: IntegerExpression::constant(1),
+                    level_change: IntegerExpression::constant(-1),
+                },
+            ],
+            initial_level: 0,
+            minimum_level: 0,
+            maximum_level: 1,
+        });
+        assert_ne!(reservoir_a.fingerprint, reservoir_c.fingerprint);
+    }
+
+    #[test]
+    fn reservoir_same_time_events_are_aggregated_before_bounds() {
+        let first = ConstraintProgrammingConstraint::Reservoir {
+            events: vec![
+                ReservoirEvent {
+                    time: IntegerExpression::constant(0),
+                    level_change: IntegerExpression::constant(1),
+                },
+                ReservoirEvent {
+                    time: IntegerExpression::constant(0),
+                    level_change: IntegerExpression::constant(-1),
+                },
+            ],
+            initial_level: 0,
+            minimum_level: 0,
+            maximum_level: 1,
+        };
+        let second = ConstraintProgrammingConstraint::Reservoir {
+            events: vec![
+                ReservoirEvent {
+                    time: IntegerExpression::constant(0),
+                    level_change: IntegerExpression::constant(-1),
+                },
+                ReservoirEvent {
+                    time: IntegerExpression::constant(0),
+                    level_change: IntegerExpression::constant(1),
+                },
+            ],
+            initial_level: 0,
+            minimum_level: 0,
+            maximum_level: 1,
+        };
+        let values = BTreeMap::new();
+        let intervals = BTreeMap::new();
+        assert_eq!(
+            first.evaluate(&values, &intervals).expect("first reservoir"),
+            second.evaluate(&values, &intervals).expect("second reservoir")
+        );
+        assert!(first.evaluate(&values, &intervals).expect("aggregated reservoir"));
     }
 }

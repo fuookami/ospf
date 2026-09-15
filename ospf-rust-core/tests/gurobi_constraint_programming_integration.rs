@@ -2,6 +2,11 @@
 
 #![cfg(any(feature = "gurobi10", feature = "gurobi11", feature = "gurobi12"))]
 
+use ospf_rust_core::analysis::{
+    AnalysisCapability, AnalysisStatus, CapabilityMatrix, CapabilitySupport,
+    ConflictAnalysisOptions, ConflictExtractionTier, ConflictMinimality, ConflictAnalyzer,
+    ObjectiveTarget,
+};
 use ospf_rust_core::model::constraint_programming::{
     ConstraintDefinition, ConstraintProgrammingConstraint, ConstraintProgrammingModel,
     IntegerDomain, IntegerExpression, IntegerObjective, IntegerRelation, IntegerTerm,
@@ -10,7 +15,7 @@ use ospf_rust_core::model::constraint_programming::{
 use ospf_rust_core::solver::constraint_programming::MipBackedConstraintProgrammingSolver;
 use ospf_rust_core::solver::solvers::gurobi::{GurobiConfig, GurobiSolver};
 use ospf_rust_core::solver::{
-    ConstraintProgrammingSolver, ProblemStatus, SolveReport, StableVariableId,
+    ConstraintProgrammingSolver, ProblemStatus, SolveReport, SolverInfo, StableVariableId,
 };
 
 fn expression(
@@ -262,4 +267,94 @@ fn gurobi_cp_capability_reports_the_exact_subset_before_solving() {
             .iter()
             .any(|note| note.contains("exact finite"))
     );
+}
+
+#[test]
+fn gurobi_cp_capability_matrix_keeps_rebuild_conflict_out_of_native_route() {
+    let x = IntegerVariable::new("capability-route/x");
+    let mut model = ConstraintProgrammingModel::new("gurobi-capability-route");
+    model
+        .register_variable(x.clone(), IntegerDomain::boolean())
+        .expect("x variable");
+    model
+        .add_constraint(ConstraintDefinition::new(
+            "capability-route/force",
+            ConstraintProgrammingConstraint::integer(
+                IntegerExpression::variable(x),
+                IntegerRelation::Equal,
+                1,
+            ),
+        ))
+        .expect("force constraint");
+    let snapshot = model.freeze().expect("snapshot");
+    let solver = solver();
+    let support = solver.analyze_support(&snapshot);
+    let descriptor = solver.descriptor();
+    let matrix = CapabilityMatrix::from_constraint_programming_support(&descriptor, &support);
+
+    assert!(matrix.exact_cp_lowering);
+    assert!(!matrix.native_assumption_solving);
+    assert!(!matrix.native_unsat_core);
+    assert_eq!(
+        matrix.support(AnalysisCapability::AssumptionSolving),
+        CapabilitySupport::Conditional
+    );
+    assert_eq!(
+        matrix.support(AnalysisCapability::NativeUnsatCore),
+        CapabilitySupport::Unsupported
+    );
+    assert_eq!(
+        ConflictExtractionTier::select(&matrix),
+        ConflictExtractionTier::RepeatedSolving
+    );
+}
+
+#[test]
+fn gurobi_cp_target_conflict_returns_a_verified_source_mus() {
+    let x = IntegerVariable::new("conflict/x");
+    let mut model = ConstraintProgrammingModel::new("gurobi-conflict");
+    model
+        .register_variable(x.clone(), IntegerDomain::boolean())
+        .expect("x variable");
+    model
+        .add_constraint(ConstraintDefinition::new(
+            "conflict/upper",
+            ConstraintProgrammingConstraint::integer(
+                IntegerExpression::variable(x.clone()),
+                IntegerRelation::LessOrEqual,
+                0,
+            ),
+        ))
+        .expect("upper constraint");
+    model.set_objective(IntegerObjective::maximize(IntegerExpression::variable(x)));
+    let snapshot = model.freeze().expect("snapshot");
+    let solver = solver();
+    let target = ObjectiveTarget::at_least("objective", 1.0).expect("target");
+    let report = ConflictAnalyzer::new()
+        .analyze(
+            &solver,
+            &snapshot,
+            &target,
+            &ConflictAnalysisOptions::default(),
+        )
+        .expect("Gurobi target conflict");
+
+    assert_eq!(report.status, AnalysisStatus::Unreachable);
+    assert_eq!(report.minimality, ConflictMinimality::Irreducible);
+    assert_eq!(report.constraint_ids().len(), 1);
+    assert_eq!(
+        report
+            .constraint_ids()
+            .into_iter()
+            .next()
+            .expect("source MUS member")
+            .0,
+        "conflict/upper"
+    );
+    assert_eq!(
+        report.extraction_tier,
+        ConflictExtractionTier::RepeatedSolving
+    );
+    assert!(report.target_feasibility.target_fixed);
+    report.validate().expect("valid Gurobi conflict report");
 }

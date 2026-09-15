@@ -53,6 +53,36 @@ pub fn solver_provenance_fingerprint(
     sha256_fingerprint("ospf.solve.solver", &bytes)
 }
 
+/// 对 solver descriptor 生成稳定身份指纹 / Fingerprint a solver descriptor identity.
+///
+/// Analysis caches must distinguish backend versions and declared runtime capabilities even when
+/// two adapters expose the same short solver name. The descriptor is the common identity exposed
+/// by both legacy and native solver traits; warnings and runtime availability are included because
+/// they can change the meaning of a cached capability decision.
+/// 分析缓存必须区分后端版本和运行时能力，即使两个 adapter 使用相同短名称。descriptor 是
+/// legacy/native solver trait 都提供的公共身份；warning 和运行时可用性也可能改变缓存能力
+/// 结论，因此一并纳入。
+pub fn solver_descriptor_fingerprint(
+    descriptor: &crate::solver::SolverDescriptor,
+) -> AuditFingerprint {
+    let mut bytes = Vec::new();
+    append_string(&mut bytes, &descriptor.solver_id);
+    append_string(&mut bytes, &descriptor.display_name);
+    append_string(&mut bytes, &descriptor.backend_name);
+    append_optional_string(&mut bytes, descriptor.backend_version.as_deref());
+    append_optional_bool(&mut bytes, descriptor.runtime_available);
+    bytes.extend_from_slice(&(descriptor.capabilities.levels.len() as u64).to_le_bytes());
+    for (capability, support) in &descriptor.capabilities.levels {
+        append_string(&mut bytes, capability);
+        append_string(&mut bytes, &format!("{support:?}"));
+    }
+    bytes.extend_from_slice(&(descriptor.warnings.len() as u64).to_le_bytes());
+    for warning in &descriptor.warnings {
+        append_string(&mut bytes, warning);
+    }
+    sha256_fingerprint("ospf.solve.solver-descriptor", &bytes)
+}
+
 /// 生成线性模型指纹 / Create a fingerprint for a linear model.
 pub fn linear_model_fingerprint(model: &LinearTriadModel) -> Result<ModelFingerprint> {
     validate_linear_model(model)?;
@@ -71,6 +101,15 @@ pub fn linear_model_fingerprint(model: &LinearTriadModel) -> Result<ModelFingerp
         &model.basic.b,
         &model.basic.constraint_names,
     )?;
+    append_constraint_metadata(
+        &mut bytes,
+        &model.basic.constraint_group_ids,
+        &model.basic.constraint_lazy_flags,
+        &model.basic.constraint_priorities,
+        &model.basic.constraint_args,
+        &model.basic.constraint_source_symbol_ids,
+        model.basic.A.rows.len(),
+    );
     append_f64_slice(&mut bytes, &model.c);
     append_string(&mut bytes, &format!("{:?}", model.objective_category));
     Ok(sha256_fingerprint("ospf.solve.model", &bytes))
@@ -94,10 +133,59 @@ pub fn quadratic_model_fingerprint(model: &QuadraticTetradModel) -> Result<Model
         &model.basic.linear.b,
         &model.basic.linear.constraint_names,
     )?;
+    append_constraint_metadata(
+        &mut bytes,
+        &model.basic.linear.constraint_group_ids,
+        &model.basic.linear.constraint_lazy_flags,
+        &model.basic.linear.constraint_priorities,
+        &model.basic.linear.constraint_args,
+        &model.basic.linear.constraint_source_symbol_ids,
+        model.basic.linear.A.rows.len(),
+    );
     append_f64_slice(&mut bytes, &model.c);
     append_sparse_rows(&mut bytes, &model.Q.rows)?;
     append_string(&mut bytes, &format!("{:?}", model.objective_category));
-    for constraint in &model.quadratic_constraints {
+    for (index, constraint) in model.quadratic_constraints.iter().enumerate() {
+        append_string(
+            &mut bytes,
+            model
+                .quadratic_constraint_names
+                .get(index)
+                .map(String::as_str)
+                .unwrap_or(""),
+        );
+        append_optional_u64(
+            &mut bytes,
+            model
+                .quadratic_constraint_group_ids
+                .get(index)
+                .and_then(|group| *group),
+        );
+        append_optional_bool(
+            &mut bytes,
+            model
+                .quadratic_constraint_lazy_flags
+                .get(index)
+                .copied(),
+        );
+        append_optional_u32(
+            &mut bytes,
+            model.quadratic_constraint_priorities.get(index).copied(),
+        );
+        append_optional_string(
+            &mut bytes,
+            model
+                .quadratic_constraint_args
+                .get(index)
+                .and_then(Option::as_deref),
+        );
+        append_optional_u64(
+            &mut bytes,
+            model
+                .quadratic_constraint_source_symbol_ids
+                .get(index)
+                .and_then(|source| *source),
+        );
         append_string(&mut bytes, &format!("{:?}", constraint.relation));
         append_f64(&mut bytes, constraint.rhs);
         let mut monomials = constraint
@@ -170,6 +258,28 @@ fn append_rows(
         }
     }
     Ok(())
+}
+
+fn append_constraint_metadata(
+    bytes: &mut Vec<u8>,
+    group_ids: &[Option<u64>],
+    lazy_flags: &[bool],
+    priorities: &[u32],
+    args: &[Option<String>],
+    source_symbol_ids: &[Option<u64>],
+    row_count: usize,
+) {
+    bytes.extend_from_slice(&(row_count as u64).to_le_bytes());
+    for index in 0..row_count {
+        append_optional_u64(bytes, group_ids.get(index).and_then(|group| *group));
+        append_optional_bool(bytes, lazy_flags.get(index).copied());
+        append_optional_u32(bytes, priorities.get(index).copied());
+        append_optional_string(bytes, args.get(index).and_then(Option::as_deref));
+        append_optional_u64(
+            bytes,
+            source_symbol_ids.get(index).and_then(|source| *source),
+        );
+    }
 }
 
 fn append_sparse_rows(
@@ -294,6 +404,16 @@ fn append_optional_u64(bytes: &mut Vec<u8>, value: Option<u64>) {
     }
 }
 
+fn append_optional_u32(bytes: &mut Vec<u8>, value: Option<u32>) {
+    match value {
+        Some(value) => {
+            bytes.push(1);
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        None => bytes.push(0),
+    }
+}
+
 fn append_optional_bool(bytes: &mut Vec<u8>, value: Option<bool>) {
     match value {
         Some(value) => bytes.extend_from_slice(&[1, value as u8]),
@@ -368,6 +488,45 @@ mod tests {
         assert_eq!(
             linear_model_fingerprint(&first).unwrap(),
             linear_model_fingerprint(&second).unwrap()
+        );
+    }
+
+    #[test]
+    fn model_fingerprint_includes_constraint_group_and_origin_metadata() {
+        let mut model = LinearTriadModel::new("metadata");
+        model.basic.add_variable_with_bounds(
+            Token::from_generic(ContinuousVariableItem::auto("x"), 0),
+            0.0,
+            1.0,
+            VariableType::Continuous,
+        );
+        let mut row = crate::model::intermediate::SparseVector::new();
+        row.add(0, 1.0);
+        model.basic.add_constraint_with_metadata(
+            row,
+            1.0,
+            "capacity".to_owned(),
+            Some(7),
+            false,
+            0,
+            Some("airport".to_owned()),
+            Some(41),
+        );
+        model.c = vec![0.0];
+        let baseline = linear_model_fingerprint(&model).expect("baseline fingerprint");
+
+        let mut changed_group = model.clone();
+        changed_group.basic.constraint_group_ids[0] = Some(8);
+        assert_ne!(
+            baseline,
+            linear_model_fingerprint(&changed_group).expect("group fingerprint")
+        );
+
+        let mut changed_origin = model.clone();
+        changed_origin.basic.constraint_args[0] = Some("warehouse".to_owned());
+        assert_ne!(
+            baseline,
+            linear_model_fingerprint(&changed_origin).expect("origin fingerprint")
         );
     }
 

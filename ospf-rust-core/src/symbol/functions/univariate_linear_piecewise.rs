@@ -8,7 +8,7 @@ use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{
-    new_group_id, BinaryVariableItem, ContinuousVariableItem, VariableId, VariableRange,
+    BinaryVariableItem, ContinuousVariableItem, VariableId, VariableRange, new_group_id,
 };
 use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};

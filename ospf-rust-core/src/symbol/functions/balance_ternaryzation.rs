@@ -3,12 +3,12 @@
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
 };
-use super::big_m::{infer_linear_abs_bound_from_tokens, MIN_BIG_M};
+use super::big_m::{MIN_BIG_M, infer_linear_abs_bound_from_tokens};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{new_group_id, BinaryVariableItem, ContinuousVariableItem, VariableId};
+use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
 use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;

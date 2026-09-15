@@ -25,8 +25,8 @@ use ospf_rust_multiarray::{MultiArray, MultiArrayBuilder};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Add;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_META_MODEL_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -1907,20 +1907,26 @@ mod tests {
         let y_solver_index = mechanism.find_token(y_id).unwrap().solver_index;
 
         let feasible_zero = HashMap::from([(x_solver_index, 0.0), (y_solver_index, 0.0)]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_zero)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_zero))
+        );
 
         let feasible_positive = HashMap::from([(x_solver_index, 1.0), (y_solver_index, 1.0)]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_positive)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_positive))
+        );
 
         let infeasible_positive_zero =
             HashMap::from([(x_solver_index, 1.0), (y_solver_index, 0.0)]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_positive_zero)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_positive_zero))
+        );
     }
 
     #[test]
@@ -1961,19 +1967,25 @@ mod tests {
         let y_solver_index = mechanism.find_token(y_id).unwrap().solver_index;
 
         let feasible_less_equal = HashMap::from([(x_solver_index, 0.5), (y_solver_index, 1.0)]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_less_equal)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_less_equal))
+        );
 
         let feasible_greater = HashMap::from([(x_solver_index, 1.5), (y_solver_index, 0.0)]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_greater)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_greater))
+        );
 
         let infeasible_flag = HashMap::from([(x_solver_index, 1.5), (y_solver_index, 1.0)]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_flag)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_flag))
+        );
     }
 
     #[test]
@@ -2024,27 +2036,33 @@ mod tests {
             (y_solver_index, 1.0),
             (side_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_equal)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_equal))
+        );
 
         let feasible_not_equal = HashMap::from([
             (x_solver_index, 1.2),
             (y_solver_index, 0.0),
             (side_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_not_equal)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_not_equal))
+        );
 
         let infeasible_wrong_flag = HashMap::from([
             (x_solver_index, 1.2),
             (y_solver_index, 1.0),
             (side_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_flag)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_flag))
+        );
     }
 
     #[test]
@@ -2096,27 +2114,33 @@ mod tests {
             (y_solver_index, 0.0),
             (side_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_equal)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_equal))
+        );
 
         let feasible_not_equal = HashMap::from([
             (x_solver_index, 1.2),
             (y_solver_index, 1.0),
             (side_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_not_equal)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_not_equal))
+        );
 
         let infeasible_wrong_flag = HashMap::from([
             (x_solver_index, 0.5),
             (y_solver_index, 1.0),
             (side_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_flag)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_flag))
+        );
     }
 
     #[test]
@@ -2172,27 +2196,33 @@ mod tests {
             (y_solver_index, 1.0),
             (side_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_equal)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_equal))
+        );
 
         let feasible_not_equal = HashMap::from([
             (x_solver_index, 1.1),
             (y_solver_index, 0.0),
             (side_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_not_equal)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_not_equal))
+        );
 
         let infeasible_wrong_flag = HashMap::from([
             (x_solver_index, 1.1),
             (y_solver_index, 1.0),
             (side_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_flag)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_flag))
+        );
     }
 
     #[test]
@@ -2239,36 +2269,44 @@ mod tests {
             (sel0_solver_index, 0.0),
             (sel1_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_none)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_none))
+        );
 
         let feasible_select_first = HashMap::from([
             (y_solver_index, 5.0),
             (sel0_solver_index, 1.0),
             (sel1_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_select_first)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_select_first))
+        );
 
         let feasible_select_second = HashMap::from([
             (y_solver_index, 8.0),
             (sel0_solver_index, 0.0),
             (sel1_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_select_second)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_select_second))
+        );
 
         let infeasible_wrong_result = HashMap::from([
             (y_solver_index, 8.0),
             (sel0_solver_index, 1.0),
             (sel1_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_result)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_result))
+        );
     }
 
     #[test]
@@ -2310,20 +2348,26 @@ mod tests {
             .unwrap();
 
         let feasible_then = HashMap::from([(y_solver_index, 10.0), (condition_solver_index, 1.0)]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_then)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_then))
+        );
 
         let feasible_else = HashMap::from([(y_solver_index, 20.0), (condition_solver_index, 0.0)]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_else)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_else))
+        );
 
         let infeasible_branch =
             HashMap::from([(y_solver_index, 20.0), (condition_solver_index, 1.0)]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_branch)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_branch))
+        );
     }
 
     #[test]
@@ -2373,45 +2417,55 @@ mod tests {
             (cond0_solver_index, 0.0),
             (cond1_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_none)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_none))
+        );
 
         let feasible_first = HashMap::from([
             (y_solver_index, 3.0),
             (cond0_solver_index, 1.0),
             (cond1_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_first)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_first))
+        );
 
         let feasible_second = HashMap::from([
             (y_solver_index, 7.0),
             (cond0_solver_index, 0.0),
             (cond1_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_second)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_second))
+        );
 
         let feasible_first_wins = HashMap::from([
             (y_solver_index, 3.0),
             (cond0_solver_index, 1.0),
             (cond1_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_first_wins)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_first_wins))
+        );
 
         let infeasible_wrong_first = HashMap::from([
             (y_solver_index, 7.0),
             (cond0_solver_index, 1.0),
             (cond1_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_first)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_first))
+        );
     }
 
     #[test]
@@ -2467,9 +2521,11 @@ mod tests {
             (pos_solver_index, 0.0),
             (neg_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_zero)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_zero))
+        );
 
         let feasible_positive = HashMap::from([
             (x_index, 1.0),
@@ -2477,9 +2533,11 @@ mod tests {
             (pos_solver_index, 1.0),
             (neg_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_positive)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_positive))
+        );
 
         let feasible_negative = HashMap::from([
             (x_index, -1.0),
@@ -2487,9 +2545,11 @@ mod tests {
             (pos_solver_index, 0.0),
             (neg_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_negative)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_negative))
+        );
 
         let infeasible_conflict = HashMap::from([
             (x_index, 1.0),
@@ -2497,9 +2557,11 @@ mod tests {
             (pos_solver_index, 1.0),
             (neg_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_conflict)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_conflict))
+        );
     }
 
     #[test]
@@ -2532,20 +2594,26 @@ mod tests {
             .unwrap();
 
         let feasible_off = HashMap::from([(y_solver_index, 0.0), (ind_solver_index, 0.0)]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_off)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_off))
+        );
 
         let feasible_on = HashMap::from([(y_solver_index, 3.0), (ind_solver_index, 1.0)]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_on)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_on))
+        );
 
         let infeasible_below_lower =
             HashMap::from([(y_solver_index, 1.0), (ind_solver_index, 1.0)]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_below_lower)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_below_lower))
+        );
     }
 
     #[test]
@@ -2590,27 +2658,33 @@ mod tests {
             (ind0_solver_index, 0.0),
             (ind1_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_none)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_none))
+        );
 
         let feasible_two = HashMap::from([
             (y_solver_index, 2.0),
             (ind0_solver_index, 1.0),
             (ind1_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_two)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_two))
+        );
 
         let infeasible_count = HashMap::from([
             (y_solver_index, 1.0),
             (ind0_solver_index, 1.0),
             (ind1_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_count)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_count))
+        );
     }
 
     #[test]
@@ -2656,18 +2730,22 @@ mod tests {
             (ind0_solver_index, 1.0),
             (ind1_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_one)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_one))
+        );
 
         let infeasible_none = HashMap::from([
             (y_solver_index, 0.0),
             (ind0_solver_index, 0.0),
             (ind1_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_none)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_none))
+        );
     }
 
     #[test]
@@ -2758,9 +2836,11 @@ mod tests {
             (side1_solver_index, 0.0),
             (side2_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_on_step)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_on_step))
+        );
 
         let feasible_off_step = HashMap::from([
             (x_solver_index, 0.5),
@@ -2772,9 +2852,11 @@ mod tests {
             (side1_solver_index, 0.0),
             (side2_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_off_step)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_off_step))
+        );
 
         let infeasible_wrong_activation = HashMap::from([
             (x_solver_index, 0.5),
@@ -2786,9 +2868,11 @@ mod tests {
             (side1_solver_index, 0.0),
             (side2_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_activation)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_activation))
+        );
     }
 
     #[test]
@@ -2846,18 +2930,22 @@ mod tests {
             (min_u0_solver_index, 1.0),
             (min_u1_solver_index, 0.0),
         ]);
-        assert!(min_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &min_feasible_first)));
+        assert!(
+            min_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &min_feasible_first))
+        );
 
         let min_infeasible_wrong = HashMap::from([
             (min_y_solver_index, 5.0),
             (min_u0_solver_index, 1.0),
             (min_u1_solver_index, 0.0),
         ]);
-        assert!(min_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &min_infeasible_wrong)));
+        assert!(
+            min_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &min_infeasible_wrong))
+        );
 
         let max_constraints = mechanism
             .constraints()
@@ -2891,18 +2979,22 @@ mod tests {
             (max_u0_solver_index, 0.0),
             (max_u1_solver_index, 1.0),
         ]);
-        assert!(max_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &max_feasible_second)));
+        assert!(
+            max_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &max_feasible_second))
+        );
 
         let max_infeasible_wrong = HashMap::from([
             (max_y_solver_index, 3.0),
             (max_u0_solver_index, 0.0),
             (max_u1_solver_index, 1.0),
         ]);
-        assert!(max_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &max_infeasible_wrong)));
+        assert!(
+            max_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &max_infeasible_wrong))
+        );
     }
 
     #[test]
@@ -3029,18 +3121,24 @@ mod tests {
         assert_eq!(model.constraints().len(), 3);
         assert_eq!(model.remove_constraints_by_group_id(702), 1);
         assert_eq!(model.constraints().len(), 2);
-        assert!(model
-            .constraints()
-            .iter()
-            .all(|constraint| constraint.name != "remove_grouped"));
-        assert!(model
-            .constraints()
-            .iter()
-            .any(|constraint| constraint.name == "keep_grouped"));
-        assert!(model
-            .constraints()
-            .iter()
-            .any(|constraint| constraint.name == "keep_ungrouped"));
+        assert!(
+            model
+                .constraints()
+                .iter()
+                .all(|constraint| constraint.name != "remove_grouped")
+        );
+        assert!(
+            model
+                .constraints()
+                .iter()
+                .any(|constraint| constraint.name == "keep_grouped")
+        );
+        assert!(
+            model
+                .constraints()
+                .iter()
+                .any(|constraint| constraint.name == "keep_ungrouped")
+        );
     }
 
     #[test]
@@ -3496,14 +3594,18 @@ mod tests {
         let cos_token = mechanism.find_token(cos_id).unwrap();
         assert_eq!(cos_token.variable.lower_bound(), Some(-1.0));
         assert_eq!(cos_token.variable.upper_bound(), Some(1.0));
-        assert!(mechanism
-            .tokens()
-            .iter()
-            .any(|token| token.name() == "sin_piecewise_sin_z0"));
-        assert!(mechanism
-            .tokens()
-            .iter()
-            .any(|token| token.name() == "cos_piecewise_cos_z0"));
+        assert!(
+            mechanism
+                .tokens()
+                .iter()
+                .any(|token| token.name() == "sin_piecewise_sin_z0")
+        );
+        assert!(
+            mechanism
+                .tokens()
+                .iter()
+                .any(|token| token.name() == "cos_piecewise_cos_z0")
+        );
     }
 
     #[test]
@@ -3526,26 +3628,36 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert!(!sigmoid_constraints.is_empty());
-        assert!(sigmoid_constraints
-            .iter()
-            .any(|constraint| constraint.name.contains("_sigmoid_seg_sum")));
-        assert!(sigmoid_constraints
-            .iter()
-            .any(|constraint| constraint.name.contains("_sigmoid_lambda_link_")));
-        assert!(sigmoid_constraints
-            .iter()
-            .any(|constraint| constraint.name.contains("_sigmoid_y_ub")));
-        assert!(sigmoid_constraints
-            .iter()
-            .any(|constraint| constraint.name.contains("_sigmoid_y_lb")));
+        assert!(
+            sigmoid_constraints
+                .iter()
+                .any(|constraint| constraint.name.contains("_sigmoid_seg_sum"))
+        );
+        assert!(
+            sigmoid_constraints
+                .iter()
+                .any(|constraint| constraint.name.contains("_sigmoid_lambda_link_"))
+        );
+        assert!(
+            sigmoid_constraints
+                .iter()
+                .any(|constraint| constraint.name.contains("_sigmoid_y_ub"))
+        );
+        assert!(
+            sigmoid_constraints
+                .iter()
+                .any(|constraint| constraint.name.contains("_sigmoid_y_lb"))
+        );
 
         let sigmoid_token = mechanism.find_token(sigmoid_id).unwrap();
         assert!(sigmoid_token.variable.lower_bound().is_some());
         assert!(sigmoid_token.variable.upper_bound().is_some());
-        assert!(mechanism
-            .tokens()
-            .iter()
-            .any(|token| token.name() == "sigmoid_piece_sigmoid_b0"));
+        assert!(
+            mechanism
+                .tokens()
+                .iter()
+                .any(|token| token.name() == "sigmoid_piece_sigmoid_b0")
+        );
     }
 
     #[test]
@@ -3588,15 +3700,19 @@ mod tests {
 
         let floor_feasible =
             HashMap::from([(floor_y_solver_index, 1.0), (floor_int_solver_index, 1.0)]);
-        assert!(floor_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &floor_feasible)));
+        assert!(
+            floor_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &floor_feasible))
+        );
 
         let floor_infeasible =
             HashMap::from([(floor_y_solver_index, 2.0), (floor_int_solver_index, 2.0)]);
-        assert!(floor_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &floor_infeasible)));
+        assert!(
+            floor_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &floor_infeasible))
+        );
 
         let round_constraints = mechanism
             .constraints()
@@ -3630,18 +3746,22 @@ mod tests {
             (round_int_solver_index, -2.0),
             (round_sign_solver_index, 0.0),
         ]);
-        assert!(round_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &round_feasible)));
+        assert!(
+            round_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &round_feasible))
+        );
 
         let round_infeasible = HashMap::from([
             (round_y_solver_index, -1.0),
             (round_int_solver_index, -1.0),
             (round_sign_solver_index, 0.0),
         ]);
-        assert!(round_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &round_infeasible)));
+        assert!(
+            round_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &round_infeasible))
+        );
 
         let trunc_constraints = mechanism
             .constraints()
@@ -3675,18 +3795,22 @@ mod tests {
             (trunc_int_solver_index, -1.0),
             (trunc_sign_solver_index, 0.0),
         ]);
-        assert!(trunc_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &trunc_feasible)));
+        assert!(
+            trunc_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &trunc_feasible))
+        );
 
         let trunc_infeasible = HashMap::from([
             (trunc_y_solver_index, -2.0),
             (trunc_int_solver_index, -2.0),
             (trunc_sign_solver_index, 0.0),
         ]);
-        assert!(trunc_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &trunc_infeasible)));
+        assert!(
+            trunc_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &trunc_infeasible))
+        );
     }
 
     #[test]
@@ -3749,18 +3873,22 @@ mod tests {
             (y_solver_index, 1.0),
             (q_solver_index, 2.0),
         ]);
-        assert!(mod_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible)));
+        assert!(
+            mod_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible))
+        );
 
         let infeasible = HashMap::from([
             (x_solver_index, 5.0),
             (y_solver_index, 0.0),
             (q_solver_index, 2.0),
         ]);
-        assert!(mod_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible)));
+        assert!(
+            mod_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible))
+        );
 
         let mod_neg_constraints = mechanism
             .constraints()
@@ -3788,18 +3916,22 @@ mod tests {
             (y_neg_solver_index, -1.0),
             (q_neg_solver_index, -3.0),
         ]);
-        assert!(mod_neg_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_neg)));
+        assert!(
+            mod_neg_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_neg))
+        );
 
         let infeasible_neg = HashMap::from([
             (x_solver_index, 5.0),
             (y_neg_solver_index, 1.0),
             (q_neg_solver_index, -2.0),
         ]);
-        assert!(mod_neg_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_neg)));
+        assert!(
+            mod_neg_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_neg))
+        );
     }
 
     #[test]
@@ -3852,27 +3984,33 @@ mod tests {
             (y_solver_index, 2.0),
             (side_solver_index, 1.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_positive)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_positive))
+        );
 
         let feasible_negative = HashMap::from([
             (x_solver_index, -2.0),
             (y_solver_index, 2.0),
             (side_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &feasible_negative)));
+        assert!(
+            generated_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &feasible_negative))
+        );
 
         let infeasible_wrong_abs = HashMap::from([
             (x_solver_index, -2.0),
             (y_solver_index, -2.0),
             (side_solver_index, 0.0),
         ]);
-        assert!(generated_constraints
-            .iter()
-            .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_abs)));
+        assert!(
+            generated_constraints
+                .iter()
+                .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_abs))
+        );
     }
 
     #[test]
@@ -3954,9 +4092,11 @@ mod tests {
             (and_side0_solver_index, 1.0),
             (and_side1_solver_index, 0.0),
         ]);
-        assert!(and_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &and_feasible)));
+        assert!(
+            and_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &and_feasible))
+        );
 
         let xor_constraints = mechanism
             .constraints()
@@ -4004,9 +4144,11 @@ mod tests {
             (xor_side0_solver_index, 1.0),
             (xor_side1_solver_index, 0.0),
         ]);
-        assert!(xor_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &xor_feasible)));
+        assert!(
+            xor_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &xor_feasible))
+        );
 
         let or_constraints = mechanism
             .constraints()
@@ -4054,9 +4196,11 @@ mod tests {
             (or_side0_solver_index, 1.0),
             (or_side1_solver_index, 0.0),
         ]);
-        assert!(or_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &or_feasible)));
+        assert!(
+            or_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &or_feasible))
+        );
 
         let not_constraints = mechanism
             .constraints()
@@ -4090,9 +4234,11 @@ mod tests {
             (not_nz_solver_index, 0.0),
             (not_side_solver_index, 0.0),
         ]);
-        assert!(not_constraints
-            .iter()
-            .all(|constraint| satisfies_constraint(constraint, &not_feasible)));
+        assert!(
+            not_constraints
+                .iter()
+                .all(|constraint| satisfies_constraint(constraint, &not_feasible))
+        );
     }
 
     #[test]
@@ -4123,15 +4269,21 @@ mod tests {
 
         let statuses = statuses.lock().unwrap();
         assert!(!statuses.is_empty());
-        assert!(statuses
-            .iter()
-            .any(|status| status.stage == ModelBuildingStage::RegisterTokens));
-        assert!(statuses
-            .iter()
-            .any(|status| status.stage == ModelBuildingStage::RegisterLinearConstraints));
-        assert!(statuses
-            .iter()
-            .any(|status| status.stage == ModelBuildingStage::BuildObjective));
+        assert!(
+            statuses
+                .iter()
+                .any(|status| status.stage == ModelBuildingStage::RegisterTokens)
+        );
+        assert!(
+            statuses
+                .iter()
+                .any(|status| status.stage == ModelBuildingStage::RegisterLinearConstraints)
+        );
+        assert!(
+            statuses
+                .iter()
+                .any(|status| status.stage == ModelBuildingStage::BuildObjective)
+        );
     }
 
     #[test]
@@ -4161,12 +4313,16 @@ mod tests {
         assert_eq!(quadratic.num_variables(), 1);
 
         let statuses = statuses.lock().unwrap();
-        assert!(statuses
-            .iter()
-            .any(|status| status.stage == ModelBuildingStage::RegisterTokens));
-        assert!(statuses
-            .iter()
-            .any(|status| status.stage == ModelBuildingStage::FlattenQuadraticModel));
+        assert!(
+            statuses
+                .iter()
+                .any(|status| status.stage == ModelBuildingStage::RegisterTokens)
+        );
+        assert!(
+            statuses
+                .iter()
+                .any(|status| status.stage == ModelBuildingStage::FlattenQuadraticModel)
+        );
     }
 
     #[derive(Debug)]

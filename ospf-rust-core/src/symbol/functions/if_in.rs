@@ -1,17 +1,5 @@
 //! If-in 函数符号 / If-in function symbol
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-use crate::error::{ModelError, Result};
-use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
-use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
-use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{BinaryVariableItem, VariableId, VariableRange, new_group_id};
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
@@ -19,6 +7,18 @@ use super::super::{
 use super::ConditionalIndicatorFunction;
 use super::big_m::infer_linear_bounds_from_tokens;
 use super::conditional::{IfInRangeFunction, TruthValue};
+use crate::error::{ModelError, Result};
+use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
+use crate::token::{IntoValue, Token, TokenList};
+use crate::variable::{BinaryVariableItem, VariableId, VariableRange, new_group_id};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -840,7 +840,8 @@ where
 
     fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Result<Option<f64>> {
         self.validate_set_values()?;
-        let (input_lower, input_upper) = match infer_linear_bounds_from_tokens(&self.input, tokens) {
+        let (input_lower, input_upper) = match infer_linear_bounds_from_tokens(&self.input, tokens)
+        {
             Some(bounds) => bounds,
             None => return Ok(None),
         };
@@ -1372,8 +1373,9 @@ mod tests {
         tx.set_result(1.0);
         tokens.add_token(tx);
 
-        for (index, invalid_value) in
-            [f64::NAN, f64::INFINITY, f64::NEG_INFINITY].into_iter().enumerate()
+        for (index, invalid_value) in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY]
+            .into_iter()
+            .enumerate()
         {
             let f: IfInFunction<f64> = IfInFunction::new(
                 90015 + index as u64,
@@ -1559,9 +1561,11 @@ mod tests {
             (2usize, 1.0),
             (3usize, 0.0),
         ]);
-        assert!(constraints
-            .iter()
-            .all(|constraint| satisfies_at_precision(constraint, &member_at_lower_endpoint)));
+        assert!(
+            constraints
+                .iter()
+                .all(|constraint| satisfies_at_precision(constraint, &member_at_lower_endpoint))
+        );
 
         let non_member_at_upper_endpoint = HashMap::from([
             (0usize, 1.0_f64),
@@ -1569,9 +1573,12 @@ mod tests {
             (2usize, 0.0),
             (3usize, 1.0),
         ]);
-        assert!(constraints
-            .iter()
-            .all(|constraint| satisfies_at_precision(constraint, &non_member_at_upper_endpoint)));
+        assert!(
+            constraints.iter().all(|constraint| satisfies_at_precision(
+                constraint,
+                &non_member_at_upper_endpoint
+            ))
+        );
     }
 
     #[test]
@@ -1623,9 +1630,12 @@ mod tests {
             (2usize, 0.0),
             (3usize, 1.0),
         ]);
-        assert!(constraints
-            .iter()
-            .all(|constraint| satisfies_at_precision(constraint, &non_member_at_upper_endpoint)));
+        assert!(
+            constraints.iter().all(|constraint| satisfies_at_precision(
+                constraint,
+                &non_member_at_upper_endpoint
+            ))
+        );
 
         let x = ContinuousVariableItem::with_range(
             VariableId::standalone(90_047),
@@ -1674,9 +1684,12 @@ mod tests {
             (2usize, 0.0),
             (3usize, 0.0),
         ]);
-        assert!(constraints
-            .iter()
-            .all(|constraint| satisfies_at_precision(constraint, &non_member_at_lower_endpoint)));
+        assert!(
+            constraints.iter().all(|constraint| satisfies_at_precision(
+                constraint,
+                &non_member_at_lower_endpoint
+            ))
+        );
     }
 
     #[test]
@@ -1697,9 +1710,7 @@ mod tests {
         let error = f
             .infer_big_m_from_tokens(&tokens)
             .expect_err("an unsafe inferred Big-M should be rejected");
-        assert!(error
-            .to_string()
-            .contains("preserving strict boundary"));
+        assert!(error.to_string().contains("preserving strict boundary"));
     }
 
     #[test]
@@ -1788,10 +1799,7 @@ mod tests {
         let f: IfInFunction<f32> = IfInFunction::new(
             9016,
             "ifin_f32_big_m",
-            Linear::new(
-                vec![LinearMonomial::new(1.0e20_f32, 0)],
-                0.0_f32,
-            ),
+            Linear::new(vec![LinearMonomial::new(1.0e20_f32, 0)], 0.0_f32),
             vec![0.0_f32],
             100.0_f32,
         );
@@ -2224,15 +2232,21 @@ mod tests {
             .collect::<HashMap<_, _>>();
         let constraints = range.mechanism_constraints(&symbol_to_index).unwrap();
         assert_eq!(constraints.len(), 9);
-        assert!(constraints
-            .iter()
-            .any(|constraint| constraint.name.ends_with("_and_lower_ub")));
-        assert!(constraints
-            .iter()
-            .any(|constraint| constraint.name.ends_with("_and_upper_ub")));
-        assert!(constraints
-            .iter()
-            .any(|constraint| constraint.name.ends_with("_and_lb")));
+        assert!(
+            constraints
+                .iter()
+                .any(|constraint| constraint.name.ends_with("_and_lower_ub"))
+        );
+        assert!(
+            constraints
+                .iter()
+                .any(|constraint| constraint.name.ends_with("_and_upper_ub"))
+        );
+        assert!(
+            constraints
+                .iter()
+                .any(|constraint| constraint.name.ends_with("_and_lb"))
+        );
         assert_eq!(range.evaluate(&0.0, &0.0).unwrap(), Some(1.0));
     }
 
@@ -2318,9 +2332,11 @@ mod tests {
                 .collect::<Vec<_>>(),
             ids
         );
-        assert!(token_list
-            .tokens()
-            .iter()
-            .all(|token| token.solver_index == usize::MAX));
+        assert!(
+            token_list
+                .tokens()
+                .iter()
+                .all(|token| token.solver_index == usize::MAX)
+        );
     }
 }

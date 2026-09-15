@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use crate::error::{CoreError, ModelError, Result, SolverError};
 use crate::model::constraint_programming::{
-    BooleanLiteral, ConstraintProgrammingSnapshot, IntegerVariable,
+    BooleanLiteral, ConstraintProgrammingSnapshot, IntegerDomain, IntegerVariable,
 };
 use crate::solver::{
     ProblemStatus, SolveDiagnostics, SolveFingerprints, SolveHandle, SolveProgressReporter,
@@ -326,6 +326,8 @@ pub enum ConstraintProgrammingAssumption {
     LowerBound(IntegerVariable, i64),
     /// 收紧上界 / Tighten an upper bound.
     UpperBound(IntegerVariable, i64),
+    /// 激活一个精确稀疏值域 / Activate an exact sparse domain.
+    SparseDomain(IntegerVariable, IntegerDomain),
 }
 
 impl ConstraintProgrammingAssumption {
@@ -355,6 +357,10 @@ impl ConstraintProgrammingAssumption {
                 "upper-bound/{}/{}",
                 component(&variable.stable_id.0),
                 value
+            )),
+            Self::SparseDomain(variable, _) => ConstraintProgrammingAssumptionId(format!(
+                "sparse-domain/{}",
+                component(&variable.stable_id.0)
             )),
         }
     }
@@ -834,7 +840,7 @@ pub(crate) fn validate_complete_hint(
     Ok(Some(assignment))
 }
 
-fn validate_assumptions(
+pub(crate) fn validate_assumptions(
     snapshot: &ConstraintProgrammingSnapshot,
     assumptions: &[ConstraintProgrammingAssumption],
 ) -> Result<()> {
@@ -864,6 +870,9 @@ fn validate_assumptions(
                     )));
                 }
             }
+            ConstraintProgrammingAssumption::SparseDomain(variable, domain) => {
+                validate_assumption_domain(snapshot, variable, domain)?;
+            }
         }
     }
     Ok(())
@@ -892,6 +901,44 @@ fn validate_variable_value(
     if !entry.domain.contains(value) {
         return Err(invalid(format!(
             "assumption value is outside variable domain for {}",
+            variable.stable_id.0
+        )));
+    }
+    Ok(())
+}
+
+fn validate_assumption_domain(
+    snapshot: &ConstraintProgrammingSnapshot,
+    variable: &IntegerVariable,
+    domain: &IntegerDomain,
+) -> Result<()> {
+    let entry = validate_assumption_variable(snapshot, variable)?;
+    domain.validate()?;
+    let contained = match (&entry.domain, domain) {
+        (IntegerDomain::Range { lower, upper }, IntegerDomain::Range { lower: assumed_lower, upper: assumed_upper }) => {
+            lower <= assumed_lower && assumed_upper <= upper
+        }
+        (source, IntegerDomain::Values(values)) => {
+            values.iter().all(|value| source.contains(*value))
+        }
+        (IntegerDomain::Values(source_values), IntegerDomain::Range { lower, upper }) => {
+            // Endpoint checks are insufficient for a sparse source domain: [0, 2] does not
+            // contain the requested range [0, 2] because the latter also includes 1. Count the
+            // source values inside the range and compare it with the exact integer cardinality,
+            // using i128 so an extreme i64 range cannot overflow.
+            let cardinality = i128::from(*upper) - i128::from(*lower) + 1;
+            cardinality > 0
+                && cardinality <= source_values.len() as i128
+                && source_values
+                    .iter()
+                    .filter(|value| **value >= *lower && **value <= *upper)
+                    .count() as i128
+                    == cardinality
+        }
+    };
+    if !contained {
+        return Err(invalid(format!(
+            "sparse-domain assumption for {} is not contained in the source domain",
             variable.stable_id.0
         )));
     }
@@ -951,6 +998,9 @@ fn assumptions_hold(
             ConstraintProgrammingAssumption::UpperBound(variable, upper) => values
                 .get(&variable.stable_id)
                 .is_some_and(|value| value <= upper),
+            ConstraintProgrammingAssumption::SparseDomain(variable, domain) => values
+                .get(&variable.stable_id)
+                .is_some_and(|value| domain.contains(*value)),
         };
         if !satisfied {
             return Ok(false);
@@ -1431,6 +1481,35 @@ mod tests {
                 .to_string()
                 .contains("duplicate CP assumption identity")
         );
+    }
+
+    #[test]
+    fn sparse_domain_range_assumption_must_be_an_exact_subset() {
+        let x = IntegerVariable::new("sparse");
+        let mut model = crate::model::constraint_programming::ConstraintProgrammingModel::new(
+            "sparse-assumption-validation",
+        );
+        model
+            .register_variable(
+                x.clone(),
+                IntegerDomain::values([0, 2]).expect("source sparse domain"),
+            )
+            .expect("variable");
+        let snapshot = model.freeze().expect("snapshot");
+
+        let exact = ConstraintProgrammingAssumption::SparseDomain(
+            x.clone(),
+            IntegerDomain::values([0, 2]).expect("exact sparse domain"),
+        );
+        validate_assumptions(&snapshot, &[exact]).expect("exact sparse subset");
+
+        let range_with_gap = ConstraintProgrammingAssumption::SparseDomain(
+            x,
+            IntegerDomain::Range { lower: 0, upper: 2 },
+        );
+        let error = validate_assumptions(&snapshot, &[range_with_gap])
+            .expect_err("a range containing the missing value 1 must be rejected");
+        assert!(error.to_string().contains("not contained in the source domain"));
     }
 
     #[test]

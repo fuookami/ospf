@@ -17,7 +17,7 @@ use crate::model::{
 };
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{new_standalone_id, BinaryVariableItem, ContinuousVariableItem};
+use crate::variable::{BinaryVariableItem, ContinuousVariableItem, new_standalone_id};
 use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;

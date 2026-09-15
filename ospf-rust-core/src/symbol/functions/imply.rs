@@ -1,17 +1,5 @@
 //! 逻辑蕴含函数符号 / Logical implication function symbol
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-use crate::error::{ModelError, Result};
-use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
-use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
-use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::BinaryVariableItem;
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
@@ -21,6 +9,18 @@ use super::conditional::{
     classify as classify_condition, relation_indicator_constraints,
 };
 use super::{ConditionalIndicatorFunction, InequalityFunction, InequalityKind};
+use crate::error::{ModelError, Result};
+use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
+use crate::token::{IntoValue, Token, TokenList};
+use crate::variable::BinaryVariableItem;
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn evaluate_linear<V>(
     poly: &Linear<V>,
@@ -1214,7 +1214,8 @@ where
         f64: IntoValue<V>,
     {
         self.validate()?;
-        let premise_index = Self::index_of(symbol_to_index, self.premise.result_variable(), "premise")?;
+        let premise_index =
+            Self::index_of(symbol_to_index, self.premise.result_variable(), "premise")?;
         let consequence_index = Self::index_of(
             symbol_to_index,
             self.consequence.result_variable(),
@@ -1950,9 +1951,11 @@ mod tests {
                 .collect::<Vec<_>>(),
             ids
         );
-        assert!(token_list
-            .tokens()
-            .iter()
-            .all(|token| token.solver_index == usize::MAX));
+        assert!(
+            token_list
+                .tokens()
+                .iter()
+                .all(|token| token.solver_index == usize::MAX)
+        );
     }
 }

@@ -3,15 +3,15 @@
 //! - `SlackFunction`: 两个表达式之间的绝对偏差 / Absolute deviation between two expressions
 
 use super::super::{
-    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id, Category, FunctionSymbol,
-    IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
+    auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
 use super::big_m::infer_linear_difference_abs_bound_from_tokens;
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{new_group_id, BinaryVariableItem, ContinuousVariableItem, VariableId};
+use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
 use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;

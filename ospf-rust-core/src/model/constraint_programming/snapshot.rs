@@ -96,6 +96,35 @@ impl ConstraintProgrammingSnapshot {
         &self.fingerprint
     }
 
+    /// 从约束子集重建不可变快照 / Rebuild an immutable snapshot from a constraint subset.
+    ///
+    /// 派生快照只用于分析中的临时删除或追加操作；原始快照不会被修改。重建后重新
+    /// 规范化约束顺序、计算指纹并执行完整身份校验，避免把未经校验的模型交给后端。
+    /// Derived snapshots are used only for temporary analysis deletion or addition. The source
+    /// snapshot is never mutated. Rebuilding reorders constraints, recomputes the fingerprint,
+    /// and performs the full identity validation before a backend can receive the result.
+    pub(crate) fn with_constraint_set(
+        &self,
+        mut constraints: Vec<ConstraintSnapshot>,
+    ) -> Result<Self> {
+        constraints.sort_by(|left, right| left.id.cmp(&right.id));
+        let mut derived = self.clone();
+        derived.constraints = constraints;
+        derived.fingerprint = derived.compute_fingerprint();
+        derived.validate_identity()?;
+        Ok(derived)
+    }
+
+    /// 在快照中追加临时约束 / Append temporary constraints to an immutable snapshot.
+    pub(crate) fn with_additional_constraints(
+        &self,
+        additions: impl IntoIterator<Item = ConstraintSnapshot>,
+    ) -> Result<Self> {
+        let mut constraints = self.constraints.clone();
+        constraints.extend(additions);
+        self.with_constraint_set(constraints)
+    }
+
     /// 校验稳定身份和指纹 / Validate stable identities and fingerprint.
     pub fn validate_identity(&self) -> Result<()> {
         if self.identity_namespace.trim().is_empty() {
@@ -182,6 +211,7 @@ impl ConstraintProgrammingSnapshot {
                 .validate_structure(&domains, &variable_bindings)?;
         }
         if let Some(objective) = &self.objective {
+            objective.validate()?;
             objective.expression.validate_bindings(&variable_bindings)?;
             for variable in objective.expression.referenced_variables() {
                 if !domains.contains_key(&variable) {
@@ -386,6 +416,7 @@ impl ConstraintProgrammingSnapshot {
         }
         if let Some(objective) = &self.objective {
             bytes.push(1);
+            append_string(&mut bytes, &objective.id);
             bytes.push(if objective.category.is_minimum() {
                 0
             } else {
@@ -572,6 +603,19 @@ mod tests {
         model.freeze().expect("snapshot")
     }
 
+    fn objective_snapshot(id: &str) -> ConstraintProgrammingSnapshot {
+        let x = IntegerVariable::new("objective-x");
+        let mut model = ConstraintProgrammingModel::new("objective-identity");
+        model
+            .register_variable(x.clone(), IntegerDomain::boolean())
+            .expect("variable");
+        model.set_objective(IntegerObjective::maximize_with_id(
+            id,
+            IntegerExpression::variable(x),
+        ));
+        model.freeze().expect("snapshot")
+    }
+
     #[test]
     fn canonical_snapshot_round_trip_preserves_identity_and_digest() {
         let snapshot = snapshot();
@@ -706,5 +750,18 @@ mod tests {
                 .expect("second artifact")
                 .artifact_digest
         );
+    }
+
+    #[test]
+    fn snapshot_carries_and_validates_objective_identity() {
+        let named = objective_snapshot("payload");
+        assert_eq!(named.objective.as_ref().expect("objective").id, "payload");
+
+        let other = objective_snapshot("other");
+        assert_ne!(named.fingerprint, other.fingerprint);
+
+        let mut invalid = named;
+        invalid.objective.as_mut().expect("objective").id = " ".to_owned();
+        assert!(invalid.validate_identity().is_err());
     }
 }

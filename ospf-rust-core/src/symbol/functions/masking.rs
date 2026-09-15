@@ -14,7 +14,7 @@ use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 #[cfg(test)]
 use crate::variable::VariableId;
-use crate::variable::{new_standalone_id, BinaryVariableItem, ContinuousVariableItem};
+use crate::variable::{BinaryVariableItem, ContinuousVariableItem, new_standalone_id};
 use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;

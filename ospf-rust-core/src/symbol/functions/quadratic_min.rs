@@ -4,9 +4,9 @@ use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     QuadraticFunctionSymbol,
 };
+use super::MinFunction;
 use super::big_m::infer_big_m_for_quadratic_polynomials;
 use super::quadratic_linear::*;
-use super::MinFunction;
 use crate::error::{ModelError, Result};
 use crate::model::{LinearConstraint, QuadraticConstraint};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};

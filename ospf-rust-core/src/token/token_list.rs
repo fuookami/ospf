@@ -1,12 +1,12 @@
 //! Token 列表 Trait 和实现
 //! Token List Trait and Implementations
 
-use std::collections::{HashMap, HashSet};
-use std::sync::RwLock;
-use ospf_rust_base::{read_unwrap, write_unwrap};
 use crate::error::{ModelError, Result, VariableError};
 use crate::token::{AnyVariable, Token, TokenSnapshot};
 use crate::variable::VariableId;
+use ospf_rust_base::{read_unwrap, write_unwrap};
+use std::collections::{HashMap, HashSet};
+use std::sync::RwLock;
 
 /// Token 列表的可恢复状态 / Restorable token-list state.
 ///
@@ -547,24 +547,26 @@ mod tests {
         list.add_token(existing);
         let original_identity = list.tokens().as_ptr() as usize;
 
-        assert!(list
-            .try_add_tokens(vec![
+        assert!(
+            list.try_add_tokens(vec![
                 test_token(91, "first", 1),
                 test_token(90, "duplicate_existing", 2),
             ])
-            .is_err());
+            .is_err()
+        );
         assert_eq!(list.len(), 1);
         assert_eq!(list.tokens().as_ptr() as usize, original_identity);
         assert_eq!(list.tokens()[0].id(), VariableId::standalone(90));
         assert_eq!(list.tokens()[0].solver_index, 0);
         assert_eq!(list.tokens()[0].get_result(), Some(42.0));
 
-        assert!(list
-            .try_add_tokens(vec![
+        assert!(
+            list.try_add_tokens(vec![
                 test_token(91, "first_duplicate", 1),
                 test_token(91, "second_duplicate", 2),
             ])
-            .is_err());
+            .is_err()
+        );
         assert_eq!(list.tokens().as_ptr() as usize, original_identity);
         assert_eq!(list.tokens()[0].get_result(), Some(42.0));
     }
@@ -578,29 +580,32 @@ mod tests {
         let original_identity = list.tokens().as_ptr() as usize;
 
         let duplicate_name = test_token(93, "existing", 1);
-        assert!(list
-            .try_add_tokens(vec![test_token(94, "first", 2), duplicate_name])
-            .is_err());
+        assert!(
+            list.try_add_tokens(vec![test_token(94, "first", 2), duplicate_name])
+                .is_err()
+        );
         assert_eq!(list.len(), 1);
         assert_eq!(list.tokens().as_ptr() as usize, original_identity);
         assert_eq!(list.tokens()[0].id(), VariableId::standalone(92));
         assert_eq!(list.tokens()[0].get_result(), Some(42.0));
 
         let duplicate_solver_index = test_token(94, "duplicate_index", 0);
-        assert!(list
-            .try_add_tokens(vec![test_token(95, "second", 2), duplicate_solver_index])
-            .is_err());
+        assert!(
+            list.try_add_tokens(vec![test_token(95, "second", 2), duplicate_solver_index])
+                .is_err()
+        );
         assert_eq!(list.len(), 1);
         assert_eq!(list.tokens().as_ptr() as usize, original_identity);
         assert_eq!(list.tokens()[0].solver_index, 0);
         assert_eq!(list.tokens()[0].get_result(), Some(42.0));
 
-        assert!(list
-            .try_add_tokens(vec![
+        assert!(
+            list.try_add_tokens(vec![
                 test_token(96, "third", 2),
                 test_token(97, "fourth", 2),
             ])
-            .is_err());
+            .is_err()
+        );
         assert_eq!(list.len(), 1);
         assert_eq!(list.tokens().as_ptr() as usize, original_identity);
         assert_eq!(list.tokens()[0].get_result(), Some(42.0));
@@ -693,9 +698,10 @@ mod tests {
 
         assert_eq!(list.tokens_snapshot()[0].get_result(), None);
 
-        assert!(list
-            .try_add_tokens(vec![test_token(101, "x", 1), test_token(102, "new", 2),])
-            .is_err());
+        assert!(
+            list.try_add_tokens(vec![test_token(101, "x", 1), test_token(102, "new", 2),])
+                .is_err()
+        );
         assert_eq!(list.len(), 1);
     }
 

@@ -1,11 +1,11 @@
 //! Big-M 约束策略与多项式界推断工具 / Big-M constraint policy and polynomial bound inference utilities
 
-use std::fmt::Debug;
-use num_traits::{FromPrimitive, ToPrimitive};
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::Token;
+use num_traits::{FromPrimitive, ToPrimitive};
+use std::fmt::Debug;
 
 /// Big-M 策略配置，包含回退值与最小值。
 /// Big-M policy configuration with fallback and minimum values.

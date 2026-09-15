@@ -136,21 +136,14 @@ fn trigonometric_and_same_as_calculate_from_input_expression() {
 fn in_step_range_and_satisfied_amount_calculate_from_inputs() {
     let mut step_tokens = VecTokenList::new();
     add_continuous_token(&mut step_tokens, 6, 0, "x", 5.0);
-    let in_step = InStepRangeIndicatorFunction::new(
-        400,
-        "step",
-        linear_of(0, 1.0, 0.0),
-        1.0,
-        9.0,
-        2.0,
-    );
-    let in_step_value =
-        <InStepRangeIndicatorFunction as FunctionSymbol>::calculate_value(
-            &in_step,
-            &step_tokens,
-            false,
-        )
-        .unwrap();
+    let in_step =
+        InStepRangeIndicatorFunction::new(400, "step", linear_of(0, 1.0, 0.0), 1.0, 9.0, 2.0);
+    let in_step_value = <InStepRangeIndicatorFunction as FunctionSymbol>::calculate_value(
+        &in_step,
+        &step_tokens,
+        false,
+    )
+    .unwrap();
     assert_eq!(in_step_value, 1.0);
 
     let mut sat_tokens = VecTokenList::new();
@@ -210,13 +203,8 @@ fn first_one_of_if_else_balance_ternary_and_semi_calculate_from_inputs() {
         <IfElseFunction as FunctionSymbol>::calculate_value(&if_else, &tokens, false).unwrap();
     assert_eq!(if_else_value, 11.0);
 
-    let balance = BalanceTernaryzationFunction::new(
-        503,
-        "bal",
-        linear_of(0, 1.0, 0.0),
-        1e-6,
-        1_000_000.0,
-    );
+    let balance =
+        BalanceTernaryzationFunction::new(503, "bal", linear_of(0, 1.0, 0.0), 1e-6, 1_000_000.0);
     let balance_value =
         <BalanceTernaryzationFunction as FunctionSymbol>::calculate_value(&balance, &tokens, false)
             .unwrap();
@@ -325,16 +313,15 @@ fn more_p0_functions_register_declared_dependencies_in_model_graph() {
     model.add_symbol(Arc::new(same_as_fn)).unwrap();
     assert_eq!(model.symbol_dependency_ids(9550), vec![9500]);
 
-    let step_fn =
-        InStepRangeIndicatorFunction::new(
-            9560,
-            "step_dep",
-            Linear::new(vec![], 8.0),
-            0.0,
-            10.0,
-            2.0,
-        )
-        .with_declared_dependencies(vec![9500]);
+    let step_fn = InStepRangeIndicatorFunction::new(
+        9560,
+        "step_dep",
+        Linear::new(vec![], 8.0),
+        0.0,
+        10.0,
+        2.0,
+    )
+    .with_declared_dependencies(vec![9500]);
     model.add_symbol(Arc::new(step_fn)).unwrap();
     assert_eq!(model.symbol_dependency_ids(9560), vec![9500]);
 
@@ -360,7 +347,7 @@ fn more_p0_functions_register_declared_dependencies_in_model_graph() {
         1e-6,
         1_000_000.0,
     )
-        .with_declared_dependencies(vec![9500]);
+    .with_declared_dependencies(vec![9500]);
     model.add_symbol(Arc::new(balance_fn)).unwrap();
     assert_eq!(model.symbol_dependency_ids(9600), vec![9500]);
 
@@ -447,7 +434,6 @@ fn univariate_piecewise_interpolates_and_rejects_out_of_range_values() {
     let missing = VecTokenList::<f64>::new();
     assert_eq!(function.calculate_value(&missing, false), None);
     assert_eq!(function.calculate_value(&missing, true), Some(0.0));
-
 }
 
 #[test]
@@ -476,7 +462,11 @@ fn bivariate_piecewise_evaluates_barycentric_coordinates_and_handles_missing_inp
     );
     let mut registered = Vec::new();
     function.register_tokens(&mut registered).unwrap();
-    assert_eq!(registered.len(), 5, "result, three lambdas, and one selector");
+    assert_eq!(
+        registered.len(),
+        5,
+        "result, three lambdas, and one selector"
+    );
 
     let mut tokens = VecTokenList::new();
     add_continuous_token(&mut tokens, 9821, 0, "blp_x", 0.5);
