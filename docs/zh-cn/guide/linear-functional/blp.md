@@ -1,157 +1,67 @@
-# 二元分段线性函数
+# 二元线性分段函数
 
-## 形式
+`BivariateLinearPiecewiseFunction` 表示定义在三角剖分上的分片平面。每个单元包含三个顶点 $(x_{tk},y_{tk},z_{tk})$。
 
-$$
-z = Blp(x, y) = k_{i} x + k^{\prime}_{i} y + b_{i}, \; x \in [a_{i}, b_{i}], \; y \in [a^{\prime}_{i}, b^{\prime}_{i}] \; i = 0, 1, 2, ...
-$$
+## 求解器数学模型
 
-## 常量
+令 $s_t\in\{0,1\}$ 选择三角形，$\lambda_{tk}\in[0,1]$ 为该三角形的重心权重。精确公式为
 
 $$
-M = \max_{t \in T}{({\max{(\max_{x \in \mathbb{R}, \, y \in \mathbb{R}} fu_{t}(x, y), \, \max_{x \in \mathbb{R}, \, y \in \mathbb{R}} fv_{t}(x, y))}})}
+\begin{aligned}
+\sum_t s_t&=1,\\
+\sum_{k=0}^{2}\lambda_{tk}&=s_t &&\forall t,\\
+x&=\sum_{t,k}x_{tk}\lambda_{tk},\\
+y&=\sum_{t,k}y_{tk}\lambda_{tk},\\
+z&=\sum_{t,k}z_{tk}\lambda_{tk}.
+\end{aligned}
 $$
 
-## 额外变量
+只有一个三角形可以具有非零权重。该模型不是所有顶点的无约束凸包，因此能够保留非共面单元之间的分段曲面。
 
-$u_{t} \in [0, 1]$ ：在第 $i$ 个三角形中 $\vec{A_{i}B_{i}}$ 向量的权重。
+## 直接求值
 
-$v_{t} \in [0, 1]$ ：在第 $i$ 个三角形中 $\vec{A_{i}C_{i}}$ 向量的权重。
-
-$w_{t} \in \{ 0, \, 1\}$ ：在第 $i$ 个三角形中的判定。
-
-## 导出符号
+求值器对每个三角形计算重心坐标 $(\lambda_0,\lambda_1,\lambda_2)$。两种实现使用相同的几何容差 `1e-12`，允许权重低至 `-1e-12`。第一个满足所有权重在该容差内的三角形包含输入点，此时
 
 $$
-z = \sum_{t \in T} (w_{t} \cdot z_{t, 0} + u_{t} \cdot (z_{t, 1} - z_{t, 0}) + v_{t} \cdot (z_{t, 2} - z_{t, 0}))
+z=\lambda_0z_0+\lambda_1z_1+\lambda_2z_2.
 $$
 
-## 数学模型
+输入不属于任何三角形时返回 `null`/`None`。两种实现都会在构造时拒绝坐标非有限或二维行列式绝对值不大于 `1e-12` 的三角形，因此退化三角形无法进入求值。
 
-$$
-\begin{align}
-\text{s.t.} \quad & u_{t} + M \cdot (1 - w_{t}) & \geq & \; fu_{t}(x, y), & \; \forall t \in T \\ \; \\
-& u_{t} - M \cdot (1 - w_{t}) & \leq & \; fu_{t}(x, y), & \; \forall t \in T \\ \; \\
-& v_{t} + M \cdot (1 - w_{t}) & \geq & \; fv_{t}(x, y), & \; \forall t \in T \\ \; \\
-& v_{t} - M \cdot (1 - w_{t}) & \leq & \; fv_{t}(x, y), & \; \forall t \in T \\ \; \\
-& \sum_{t \in T} w_{t} & = & \; 1 \\
-& u_{t} + v_{t} & \leq & \; w_{t}, & \; \forall t \in T
-\end{align}
-$$
-
-其中�?
-
-$$
-\begin{align}
-S_{t} = \frac{1}{2} \cdot (-y_{t, 1} \cdot x_{t, 2} + y_{t, 0} \cdot (-x_{t, 1} + x_{t, 2}) + x_{t, 0} \cdot (y_{t, 1} - y_{t, 2}) + x_{t, 1} \cdot y_{t, 2}), \; \forall t \in T \\
-fu_{t}(x, y) = \frac{1}{2S_{t}} \cdot (y_{t, 0} \cdot x_{t, 2} - x_{t, 0} \cdot y_{t, 2} + (y_{t, 2} - y_{t, 0}) \cdot x + (x_{t, 0} - x_{t, 2}) \cdot y), \; \forall t \in T \\
-fv_{t}(x, y) = \frac{1}{2S_{t}} \cdot (x_{t, 0} \cdot y_{t, 1} - y_{t, 0} \cdot x_{t, 1} + (y_{t, 0} - y_{t, 1}) \cdot x + (x_{t, 1} - x_{t, 0}) \cdot y), \; \forall t \in T
-\end{align}
-$$
-
-## 推理过程
-
-### 基本原理
-
-$$
-(\vec{P_{0}P} = u \cdot \vec{P_{0}P_{1}} + v \cdot \vec{P_{0}P_{2}}) \wedge (u \geq 0) \wedge (v \geq 0) \wedge (u + v \leq 1)) \Rightarrow (P \in \triangle P_{0}P_{1}P_{2})
-$$
-
-$$
-(\exists t \in T((P \in t) \wedge (\not \exists t^{\prime} \in T((t \neq t^{\prime}) \wedge (P \in t^{\prime})))))
-$$
-
-### 代数化基本原理
-
-$$
-\begin{align}
-S_{t} = \frac{1}{2} \cdot (-y_{t, 1} \cdot x_{t, 2} + y_{t, 0} \cdot (-x_{t, 1} + x_{t, 2}) + x_{t, 0} \cdot (y_{t, 1} - y_{t, 2}) + x_{t, 1} \cdot y_{t, 2}), \; \forall t \in T \\
-fu_{t}(x, y) = \frac{1}{2S_{t}} \cdot (y_{t, 0} \cdot x_{t, 2} - x_{t, 0} \cdot y_{t, 2} + (y_{t, 2} - y_{t, 0}) \cdot x + (x_{t, 0} - x_{t, 2}) \cdot y), \; \forall t \in T \\
-fv_{t}(x, y) = \frac{1}{2S_{t}} \cdot (x_{t, 0} \cdot y_{t, 1} - y_{t, 0} \cdot x_{t, 1} + (y_{t, 0} - y_{t, 1}) \cdot x + (x_{t, 1} - x_{t, 0}) \cdot y), \; \forall t \in T
-\end{align}
-$$
-
-### 逻辑特性：
-
-$$
-\forall t \in T(w_{t} \in \{ 0, 1 \})
-$$
-
-$$
-\exists t \in T((w_{t} = 1) \wedge (\not \exists t ^{\prime} \in T((t \neq t^{\prime}) \wedge (w_{t} = 1))))
-$$
-
-$$
-\forall t \in T((u_{t} \in ([0, 1] \cap \mathbb{R}_{+})) \wedge (v_{t} \in ([0, 1] \cap \mathbb{R}_{+})))
-$$
-
-$$
-\forall t \in T(((w_{t} = 1) \Rightarrow ((u_{t} = fu_{t}(x, y)) \wedge (v_{t} = fv_{t}(x, y)))) \wedge ((w_{t} = 0) \Rightarrow ((u_{t} = 0) \wedge (v_{t} = 0))))
-$$
-
-### （二次型）数学模型：
-
-$$
-\begin{align}
-\text{s.t.} \quad & u_{t} & = & \; w_{t} \cdot fu_{t}(x, y), & \; \forall t \in T \\ \; \\
-& v_{t} & = & \; w_{t} \cdot fv_{t}(x, y), & \; \forall t \in T \\ \; \\
-& \sum_{t \in T} w_{t} & = & \; 1 \\
-& u_{t} + v_{t} & \leq & \; w_{t}, & \; \forall t \in T
-\end{align}
-$$
-
-线性化即可得到前述数学模型。
-
-## 代码示例
+## Kotlin/Rust 示例
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-
-val x = URealVar("x")
-val y = URealVar("y")
-x.range.leq(Flt64.two)
-y.range.leq(Flt64.two)
-
-val blp = BivariateLinearPiecewiseFunction(
-    x = x,
-    y = y,
-    points = listOf(
-        point3(),
-        point3(x = Flt64.two),
-        point3(y = Flt64.two),
-        point3(x = Flt64.two, y = Flt64.two),
-        point3(x = Flt64.one, y = Flt64.one, z = Flt64.one)
-    ),
-    name = "z"
+```kotlin [Kotlin]
+val surface = BivariateLinearPiecewiseFunction(
+    x = xPolynomial,
+    y = yPolynomial,
+    triangles = triangles,
+    converter = IntoValue.Identity,
+    name = "surface"
 )
+```
 
-val model = LinearMetaModel()
-model.add(x)
-model.add(y)
-model.add(blp)
-model.maximize(blp)
-
-val solver = ScipLinearSolver()
-val result = runBlocking { solver(model) }
-assert(result.value!!.solution[0] eq Flt64.one)
-assert(result.value!!.solution[1] eq Flt64.one)
+```rust [Rust]
+let surface = BivariateLinearPiecewiseFunction::new(
+    1,
+    "surface",
+    x_input,
+    y_input,
+    vec![Triangle3::new(
+        Point3::new(0.0, 0.0, 0.0),
+        Point3::new(1.0, 0.0, 10.0),
+        Point3::new(0.0, 1.0, 20.0),
+    )],
+);
+assert_eq!(surface.selector_variables().len(), 1);
 ```
 
 :::
 
-完整实现参考：
+## 测试与参考
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/BivariateLinearPiecewise.kt)
-
-完整样例参考：
-
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/BLPTest.kt)
+- Kotlin 实现：[`BivariateLinearPiecewise.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/BivariateLinearPiecewise.kt)
+- Kotlin 独立测试：[`BivariateLinearPiecewiseFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/BivariateLinearPiecewiseFunctionDedicatedTest.kt)
+- Rust 实现：[`bivariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/bivariate_linear_piecewise.rs)
+- Rust 独立测试：[`function_symbol_bivariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_bivariate_linear_piecewise.rs)

@@ -1,77 +1,93 @@
-# Slack (Range)
+# Slack Range
 
-## Function Form
-
-$$
-y = \text{slack\_range}(x, \, lb, \, ub) = \begin{cases}
-\max(0, \, x - ub), & \text{compute positive slack} \\ \; \\
-\max(0, \, lb - x), & \text{compute negative slack} \\ \; \\
-\min(|x - ub|, \, |x - lb|), & \text{compute both positive and negative slack}
-\end{cases}
-$$
-
-## Additional Variables
-
-$neg \in \mathbb{R} - \mathbb{R}^{-}$: Negative slack.
-
-$pos \in \mathbb{R} - \mathbb{R}^{-}$: Positive slack.
-
-## Derived Symbol
+`SlackRangeFunction` computes the exact distance of a linear expression from
+the closed interval $[lower,upper]$:
 
 $$
-y = neg + pos
+s=\max(lower-x,\ x-upper,\ 0).
 $$
 
-## Mathematical Model
+The constructor validates `lower <= upper` and accepts scalar bounds:
+
+```kotlin
+SlackRangeFunction(
+    input: LinearPolynomial<V>,
+    lower: V,
+    upper: V,
+    bigM: V? = null,
+    converter: IntoValue<V>,
+    name: String,
+    displayName: String? = null
+)
+```
+
+`fromLinearIntermediateSymbol` creates the adapter form when the input is a
+linear intermediate symbol. The result polynomial is the internal exact
+`MaxFunction` result, so it cannot be inflated by leaving it out of the
+objective.
+
+## Solver mathematical model
+
+For candidates $p_0=lower-x$, $p_1=x-upper$, and $p_2=0$, with result $s$,
+binary selectors $z_i$, and valid bounds $M_i$, the implementation registers
 
 $$
-\begin{align}
-\text{s.t.} \quad & x - pos \leq ub \\ \; \\
-& x + neg \geq lb
-\end{align}
+\begin{aligned}
+s-p_i&\ge0,\\
+s-p_i+M_i z_i&\le M_i\quad(i=0,1,2),\\
+z_0+z_1+z_2&=1.
+\end{aligned}
 $$
 
-## Code Example
+This is the exact maximum formulation: $s=0$ inside the interval, and
+$s=lower-x$ or $s=x-upper$ outside it.
+
+## Rust parity
+
+Rust exposes the same scalar-bound API:
+
+```rust
+let slack = SlackRangeFunction::new(
+    1, "slack_range", input, -2.0_f64, 2.0_f64,
+);
+assert_eq!(slack.lower_bound(), &-2.0);
+assert_eq!(slack.upper_bound(), &2.0);
+```
+
+Its `MaxFunction` encoding and direct evaluation implement the same formula.
+
+## Kotlin/Rust example
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-
-val x = RealVar("x")
-x.range.leq(Flt64.two)
-x.range.geq(-Flt64.three)
+```kotlin [Kotlin]
 val slack = SlackRangeFunction(
-    x = x,
-    lb = Flt64.five,
-    ub = Flt64(6.0),
-    name = "slack"
+    input = input,
+    lower = Flt64(-2.0),
+    upper = Flt64(2.0),
+    converter = IntoValue.Identity,
+    name = "slack-range"
 )
+check(slack.evaluate(values) == Flt64(0.0))
+```
 
-val model = LinearMetaModel()
-model.add(x)
-model.add(slack)
-model.minimize(slack)
-
-val solver = ScipLinearSolver()
-val result = runBlocking { solver(model) }
-assert(result.value!!.obj eq Flt64.three)
-assert(result.value!!.solution[0] eq Flt64.two)
+```rust [Rust]
+let slack = SlackRangeFunction::new(1, "slack_range", input, -2.0_f64, 2.0_f64);
+assert_eq!(slack.calculate_value(&tokens, false), Some(0.0));
 ```
 
 :::
 
-**Complete Implementation Reference:**
+## Tests and references
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/SlackRange.kt)
+- Kotlin: [`SlackRangeFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/SlackRangeFunctionDedicatedTest.kt)
+- Kotlin implementation: [`SlackRange.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/SlackRange.kt)
+- Rust implementation: [`slack_range.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/slack_range.rs)
+- Rust focused test: [`function_symbol_slack_range.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_slack_range.rs)
 
-**Complete Example Reference:**
+The focused tests assert all four helpers and the seven exact-Max rows with an
+explicit Big-M, while also covering all three distance regions and reversed bounds.
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SlackRangeTest.kt)
+Both implementations validate finite ordered bounds. Rust also provides
+SlackRangeFunction::with_big_m for an explicit positive finite Big-M; the
+default constructor delegates to the shared fallback or token-derived policy.

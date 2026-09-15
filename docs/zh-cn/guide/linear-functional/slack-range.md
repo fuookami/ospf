@@ -1,77 +1,83 @@
-# 松弛（范围）
+# 区间松弛
 
-## 形式
-
-$$
-y = slack \_ range(x, \, lb, \, ub) = \begin{cases}
-max(0, \, x - ub), & \text{计算正松弛} \\ \; \\
-max(0, \, lb - x), & \text{计算负松弛} \\ \; \\
-min(|x - ub|, \, |x - lb|), & \text{计算正负松弛}
-\end{cases}
-$$
-
-## 额外变量
-
-$neg \in \mathbb{R} - \mathbb{R}^{-}$：负松弛。
-
-$pos \in \mathbb{R} - \mathbb{R}^{-}$：正松弛。
-
-## 导出符号
+`SlackRangeFunction` 精确计算线性表达式到闭区间 $[lower,upper]$ 的距离：
 
 $$
-y = neg + pos
+s=\max(lower-x,\ x-upper,\ 0)
 $$
 
-## 数学模型
+构造器要求 `lower <= upper`，并接收标量上下界：
+
+```kotlin
+SlackRangeFunction(
+    input: LinearPolynomial<V>,
+    lower: V,
+    upper: V,
+    bigM: V? = null,
+    converter: IntoValue<V>,
+    name: String,
+    displayName: String? = null
+)
+```
+
+当输入是线性中间符号时，可以使用 `fromLinearIntermediateSymbol` 创建适配器。结果多项式是内部精确 `MaxFunction` 的结果，不会因为没有放入目标函数而被任意放大。
+
+## 求解器数学模型
+
+令候选值 $p_0=lower-x$、$p_1=x-upper$、$p_2=0$，令 $s$ 为结果，$z_i$ 为二元选择变量，$M_i$ 为有效上界。实现注册：
 
 $$
-\begin{align}
-\text{s.t.} \quad & x - pos \leq ub \\ \; \\
-& x + neg \geq lb
-\end{align}
+\begin{aligned}
+s-p_i&\ge0,\\
+s-p_i+M_i z_i&\le M_i\quad(i=0,1,2),\\
+z_0+z_1+z_2&=1.
+\end{aligned}
 $$
 
-## 样例
+这是精确最大值模型：区间内 $s=0$，区间外分别为 $lower-x$ 或 $x-upper$。
+
+## Rust 对齐 API
+
+```rust
+let slack = SlackRangeFunction::new(
+    1, "slack_range", input, -2.0_f64, 2.0_f64,
+);
+assert_eq!(slack.calculate_value(&tokens, false), Some(0.0));
+```
+
+Rust 同样使用标量上下界、最大值模型和相同的直接求值公式。
+
+## Kotlin/Rust 示例
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-
-val x = RealVar("x")
-x.range.leq(Flt64.two)
-x.range.geq(-Flt64.three)
+```kotlin [Kotlin]
 val slack = SlackRangeFunction(
-    x = x,
-    lb = Flt64.five,
-    ub = Flt64(6.0),
-    name = "slack"
+    input = input,
+    lower = Flt64(-2.0),
+    upper = Flt64(2.0),
+    converter = IntoValue.Identity,
+    name = "slack-range"
 )
+check(slack.evaluate(values) == Flt64(0.0))
+```
 
-val model = LinearMetaModel()
-model.add(x)
-model.add(slack)
-model.minimize(slack)
-
-val solver = ScipLinearSolver()
-val result = runBlocking { solver(model) }
-assert(result.value!!.obj eq Flt64.three)
-assert(result.value!!.solution[0] eq Flt64.two)
+```rust [Rust]
+let slack = SlackRangeFunction::new(1, "slack_range", input, -2.0_f64, 2.0_f64);
+assert_eq!(slack.calculate_value(&tokens, false), Some(0.0));
 ```
 
 :::
 
-完整实现请参考：
+## 测试与参考
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/SlackRange.kt)
+- Kotlin：[`SlackRangeFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/SlackRangeFunctionDedicatedTest.kt)
+- Kotlin 实现：[`SlackRange.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/SlackRange.kt)
+- Rust 实现：[`slack_range.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/slack_range.rs)
+- Rust 独立聚焦测试：[`function_symbol_slack_range.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_slack_range.rs)
 
-完整样例请参考：
+独立聚焦测试会断言四个辅助变量和显式 Big-M 下七条精确 Max 约束，并覆盖区间内外三种距离及反向边界。
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SlackRangeTest.kt)
+两端都会校验有限且有序的上下界。Rust 还提供
+SlackRangeFunction::with_big_m，要求显式 Big-M 为有限正数；默认构造器使用共享
+回退或 token 推导策略。

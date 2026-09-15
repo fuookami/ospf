@@ -1,208 +1,59 @@
-# Complex Example 2: Air Cargo Loading Planning Problem
+# Framework Example 2: Aircraft Cargo Load Planning — Overview
 
-## Problem Description
+[中文](/zh-cn/examples/framework-example2)
 
-## Business Architecture
+## 1. Overview
 
-```mermaid
-C4Context
-  System_Boundary(application_layer, "Application Layer") {
-    System(pre_loading_application, "Pre-Loading Application")
-    System(full_loading_application, "Full Loading Application")
-    System(cabin_adjustment_application, "Cabin Adjustment Application")
-    System(recommended_weight_application, "Recommended Weight Application")
-  }
+This example documents aircraft cargo loading domains and their mode-dependent registration. It is an overview; the eleven bounded-context contracts are maintained on separate pages.
 
-  System_Boundary(optimization_domain_layer, "Optimization Domain Layer") {
-    System(redundancy_domain, "Redundancy Domain")
-    System(center_of_gravity_optimization_domain, "Center of Gravity Optimization Domain")
-    System(soft_safety_domain, "Soft Safety Domain")
-    System(cargo_timeliness_domain, "Cargo Timeliness Domain")
-    System(loading_unloading_efficiency_domain, "Loading/Unloading Efficiency Domain")
-    System(payload_maximization_domain, "Payload Maximization Domain")
-  }
+## 2. Contexts and Dependencies
 
-  System_Boundary(basic_domain_layer, "Basic Domain Layer") {
-    System(aircraft_domain, "Aircraft Domain")
-    System(loading_domain, "Loading Domain")
-    System(center_of_gravity_domain, "Center of Gravity Domain")
-    System(recommended_weight_equalization_domain, "Recommended Weight Equalization Domain")
-  }
+| Context | Responsibility | Dependency |
+|---|---|---|
+| Aircraft | Aircraft, positions, phases, and limits | Input configuration |
+| Stowage | Assignment, adjustment, payload, and recommended weight | Aircraft |
+| MAC and airworthiness security | Moments, balance, and hard safety limits | Aircraft, stowage |
+| Soft security and MAC optimization | Safety deviations and balance preferences | Aircraft, stowage, and related expressions |
+| Express and loading effectiveness | Mode-dependent loading preferences | Stowage |
+| Redundancy, recommended-weight equalization, payload maximization | Mode-specific objectives and limits | Stowage |
 
-  Rel(pre_loading_application, redundancy_domain, "", "")
-  Rel(pre_loading_application, center_of_gravity_optimization_domain, "", "")
-  Rel(full_loading_application, center_of_gravity_optimization_domain, "", "")
-  Rel(cabin_adjustment_application, center_of_gravity_optimization_domain, "", "")
-  Rel(pre_loading_application, soft_safety_domain, "", "")
-  Rel(full_loading_application, soft_safety_domain, "", "")
-  Rel(cabin_adjustment_application, soft_safety_domain, "", "")
-  Rel(pre_loading_application, cargo_timeliness_domain, "", "")
-  Rel(full_loading_application, cargo_timeliness_domain, "", "")
-  Rel(cabin_adjustment_application, cargo_timeliness_domain, "", "")
-  Rel(pre_loading_application, loading_unloading_efficiency_domain, "", "")
-  Rel(full_loading_application, loading_unloading_efficiency_domain, "", "")
-  Rel(cabin_adjustment_application, loading_unloading_efficiency_domain, "", "")
-  Rel(recommended_weight_application, payload_maximization_domain, "", "")
-  Rel(loading_domain, aircraft_domain, "", "")
-  Rel(center_of_gravity_domain, loading_domain, "", "")
-  Rel(redundancy_domain, loading_domain, "", "")
-  Rel(center_of_gravity_optimization_domain, center_of_gravity_domain, "", "")
-  Rel(payload_maximization_domain, loading_domain, "", "")
-  Rel(soft_safety_domain, loading_domain, "", "")
-  Rel(cargo_timeliness_domain, loading_domain, "", "")
-  Rel(loading_unloading_efficiency_domain, loading_domain, "", "")
-  Rel(recommended_weight_application, recommended_weight_equalization_domain, "", "")
+LoadingOrder, FullLoad, Predistribution, and WeightRecommendation register different subsets.
 
-  UpdateLayoutConfig($c4ShapeInRow="5", $c4BoundaryInRow="1")
-```
+## 3. Concepts, Sets, and Predicates
 
-## Domain / Mathematical Model
+$I$ is the cargo set, $J$ the position set, and $P$ the flight-phase set. Predicates identify assigned cargo, empty positions, loading areas, valid phases, and mode-specific pipelines. Aircraft supplies configuration data; stowage and safety contexts supply model symbols.
 
-### Loading Domain
+## 4. Variables and Intermediate Values
 
-#### Decision Variables
+Core symbols include assignment $x_{ij}$, adjustment $u_{ij}$, payload $y_j$, and recommended weight $z_j$. Intermediate expressions include position load, phase moments and MAC, area density, total payload, empty-position indicators, and recommendation deviations. Their owning context defines the precise domains, units, and activation conditions.
 
-$x_{cp} \in \{0, 1\}$: Loading decision, dimensionless quantity, $1$ indicates placing cargo $c$ in compartment $p$.
+## 5. Assertions, Constraints, and Objectives
 
-$y_{p} \in \mathbb{R} - \mathbb{R}^{-}$: Estimated load weight, physical quantity is weight, represents the estimated load weight for compartment $p$.
+Constraints and objectives cover assignment, adjustment ranges, loading limits, moments and airworthiness envelopes, soft-safety deviations, loading order, redundancy, recommendation equalization, and payload maximization. The application mode selects them; one solve does not automatically enable every context.
 
-$z_{p} \in \mathbb{N}$: Recommended load weight, physical quantity is weight, represents the recommended load weight for compartment $p$.
+## 6. Algorithms and Lifecycle
 
-$u_{cp} \in \{-1, 0, 1\}$: Cabin adjustment decision, dimensionless quantity, $-1$ indicates removing cargo $c$ from compartment $p$, $1$ indicates placing cargo $c$ in compartment $p$.
+The application selects a mode, initializes aircraft/stowage data, registers mode-specific pipelines, optionally builds Benders decomposition, solves the MILP, and analyzes the selected load plan.
 
-#### Intermediate Values
+## 7. Register → Construct → Solve → Analyze
 
-##### Loading Decision
+Mode selection defines the registration scope. `register` adds its variables and pipelines; `construct` builds the model; `solve` executes the configured MILP or decomposition path; `analyze` returns positions, payload, MAC, and safety results.
 
-**Description**: For any cargo $c$ and any compartment $p$, the loading decision for whether this cargo is loaded into this compartment equals the sum of the loading decision and cabin adjustment decision.
+## 8. Source Entry Points
 
-$$
-\text{Loaded}_{cp} = \begin{cases}
-1,& c \in C^{\text{Loaded}}_{p} \\ \; \\
-0,& c \notin C^{\text{Loaded}}_{p}
-\end{cases}, \; \forall c \in C, \; \forall p \in P
-$$
+- [Kotlin Demo2 source](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo2)
+- [Rust Demo2 source](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/framework/demo2)
 
-$$
-\text{Stowage}_{cp} = \begin{cases}
-x_{cp} + u_{cp} + \text{Loaded}_{cp}, & \forall c \in C^{SN}, \; \forall p \in P^{SN} \\ \; \\
-\text{Loaded}_{cp},& \text{else}
-\end{cases}
-$$
+## 9. Kotlin/Rust Comparison and Design Decisions
 
-##### Compartment Cargo Quantity
+Both language entry points belong to the aircraft cargo-load framework example. The context pages follow Kotlin ownership and mode-registration boundaries; different modes must not be conflated into a default all-context model.
 
-**Description**: For any compartment $p$, its compartment cargo quantity is the sum of the number of cargos loaded in that compartment.
+## 10. Context Model Pages
 
-$$
-\text{LA}^{\text{Loaded}}_{p} = |C^{\text{Loaded}}_{p}|
-$$
+[Open the context index](framework-example2/domain-models) and read the 11 contexts in dependency order: aircraft, stowage, MAC, airworthiness security, soft security, MAC optimization, express effectiveness, loading effectiveness, redundancy, recommended-weight equalization, and payload maximization.
 
-$$
-\text{LA}^{\text{Estimate}}_{p} = \begin{cases}
-\text{LA}^{\text{Loaded}}_{p},& \forall p \in (P - P^{SN}) \\ \; \\
-\sum_{c \in C^{SN}} \text{Stowage}_{cp} + \text{LA}^{\text{Loaded}}_{p},& \forall p \in P^{SN}
-\end{cases}
-$$
+## 11. Change Log
 
-##### Compartment Load Weight
-
-**Description**: For any compartment $p$, its estimated compartment load weight is the sum of the weights of cargos loaded in that compartment, estimated load weight, and recommended load weight; its actual compartment load weight is the sum of the weights of cargos loaded in that compartment.
-
-$$
-\text{LW}^{\text{Loaded}}_{p} = \sum_{c \in C^{\text{Loaded}}_{p}} W_{c}
-$$
-
-$$
-\text{LW}^{\text{Estimate}}_{p} = \begin{cases}
-\text{LW}^{\text{Loaded}}_{p},& \forall p \in P^{\text{Unavailable}} \\ \; \\
-\sum_{c \in C^{SN}} W_{c} \cdot \text{Stowage}_{cp} + y_{p} + \text{LW}^{\text{Loaded}}_{p},& \forall p \in P^{SN} \cap P^{PWN} \\ \; \\
-\sum_{c \in C^{SN}} W_{c} \cdot \text{Stowage}_{cp} + z_{p} + \text{LW}^{\text{Loaded}}_{p},& \forall p \in P^{SN} \cap P^{RWN} \\ \; \\
-\sum_{c \in C^{SN}} W_{c} \cdot \text{Stowage}_{cp} + \text{LW}^{\text{Loaded}}_{p},& \forall p \in P^{SN} - P^{PWN} - P^{RWN} \\ \; \\
-y_{p} + \text{LW}^{\text{Loaded}}_{p},& \forall p \in P^{PWN} - P^{SN} \\ \; \\
-z_{p} + \text{LW}^{\text{Loaded}}_{p},& \forall p \in P^{RWN} - P^{SN}
-\end{cases}
-$$
-
-$$
-\text{LW}^{\text{Actual}}_{p} = \begin{cases}
-\text{LW}^{\text{Loaded}}_{p},& \forall p \in (P - P^{SN}) \\ \; \\
-\sum_{c \in C^{SN}} W_{c} \cdot \text{Stowage}_{cp} + \text{LW}^{\text{Loaded}}_{p},& \forall p \in P^{SN}
-\end{cases}
-$$
-
-##### Total Boarded Payload
-
-**Description**: Total weight of currently boarded cargos.
-$$
-\text{Payload}^{\text{Boarded}} = \sum_{c \in C}W_{c}
-$$
-
-##### Estimated Payload
-
-**Description**: Sum of current compartment calculated load weights.
-$$
-\text{Payload}^{\text{Estimate}}_{d} = \sum_{p \in P_{d}}\text{LW}^{\text{Estimate}}_{p}, \; \forall d \in D
-$$
-
-##### Actual Payload
-
-**Description**: Sum of current compartment actual load weights.
-$$
-\text{Payload}^{\text{Actual}}_{d} = \sum_{p \in P_{d}}\text{LW}^{\text{Actual}}_{p}, \; \forall d \in D
-$$
-
-##### Computed Total Payload
-
-**Description**: For pre-loading algorithm family, computed total payload uses estimated total payload; for full loading algorithm family, computed total payload uses real-time total payload.
-$$
-\text{Payload}^{\text{Computed}} = \begin{cases}
-\text{Payload}^{\text{Plan}},& \text{Predistribution} \\ \; \\
-\text{Payload}^{\text{Boarded}},& \text{FullLoad}
-\end{cases}
-$$
-
-##### Estimated Total Payload
-
-**Description**: Sum of current compartment calculated load weights.
-$$
-\text{Payload}^{\text{Estimate}} = \begin{cases}
-\text{Payload}^{\text{Computed}},& \text{FullLoad \; \& \; Predistribution} \\ \; \\
-\sum_{d \in D} \text{Payload}^{\text{Estimate}}_{d},& \text{otherwise}
-\end{cases}
-$$
-
-##### Actual Total Payload
-
-**Description**: Sum of current compartment actual load weights.
-
-$$
-\text{Payload}^{\text{Actual}} = \begin{cases}
-\text{Payload}^{\text{Boarded}},& \text{FullLoad \; \& \; RecommendWeight} \\ \; \\
-\sum_{d \in D} \text{Payload}^{\text{Actual}},& \text{otherwise}
-\end{cases}
-$$
-
-### Center of Gravity Domain
-
-### Airworthiness Safety Domain
-
-### Center of Gravity Optimization Domain
-
-### Soft Safety Domain
-
-### Cargo Timeliness Domain
-
-### Loading/Unloading Efficiency Domain
-
-### Payload Maximization Domain
-
-### Recommended Weight Equalization Domain
-
-### Redundancy Domain
-
-## Code Implementation
-
-**Complete Implementation Reference:**
-
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo2)
+| Version | Change | Reason |
+|---|---|---|
+| 1.1 | Aligned bilingual overviews, notation, and source entry points | Keep the overview consistent with its context models |

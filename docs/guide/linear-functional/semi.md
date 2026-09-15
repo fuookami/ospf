@@ -1,95 +1,82 @@
-# Semi-Function (Positive Part)
+# Semi-Continuous Variable
 
-## Function Form
+`SemiFunction<V>` models a variable that is either zero or lies in the
+active interval `[lb, ub]`.
 
-$$
-y = \text{semi}(x) = \max(0, \, x) = \begin{cases}
-x, & x > 0 \\ \; \\
-0, & x \leq 0
-\end{cases}
-$$
+## Solver mathematical model
 
-## Constants
+The symbol creates a continuous result $y$ and a binary activation variable
+$b$. The rows sent to the solver are
 
 $$
-m = \max(|x|)
+y-ub\,b\le0,
+\qquad
+y-lb\,b\ge0.
 $$
 
-## Additional Variables
+When $b=0$, these rows force $y=0$; when $b=1$, they enforce
+$lb\le y\le ub$. The constructor validates `lb <= ub` and the result and
+indicator are registered as auxiliary variables.
 
-$u \in \{ 0, 1 \}$: Indicator for $x > 0$.
+## Kotlin API
 
-$y^{\prime} \in \mathbb{R} - \mathbb{R}^{-}$: Represents $\max(0, x)$.
+```kotlin
+val semi = SemiFunction(
+    lb = Flt64(2.0),
+    ub = Flt64(5.0),
+    converter = IntoValue.Identity,
+    name = "semi"
+)
+```
 
-## Derived Symbol
+`SemiFunction.from(variable, ...)` infers missing finite bounds from a
+continuous variable. `resultVar`, `indicatorVar`, and `resultPolynomial`
+expose the model representation.
 
-$$
-y = y^{\prime}
-$$
+## Rust API
 
-## Mathematical Model
+```rust
+let semi = SemiFunction::new(1, "semi", 2.0_f64, 5.0_f64);
+assert!(semi.result_variable().name().contains("semi"));
+```
 
-$$
-\begin{align}
-\text{s.t.} \quad & y \geq x \\ \; \\
-& y \leq x + m \cdot u \\ \; \\
-& y \leq m \cdot (1 - u)
-\end{align}
-$$
+Rust also provides `try_from_variable`/`from_variable` for finite-bound
+inference. Both implementations register the same two domain rows.
 
-## Code Example
+## Kotlin/Rust example
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-
-val x = URealVar("x")
-x.range.leq(Flt64.three)
-val y = URealVar("y")
-y.range.geq(Flt64.two)
-y.range.leq(Flt64.five)
+```kotlin [Kotlin]
 val semi = SemiFunction(
-    x - y,
+    lb = Flt64(2.0),
+    ub = Flt64(5.0),
+    converter = IntoValue.Identity,
     name = "semi"
 )
-val solver = ScipLinearSolver()
+check(semi.helperVariables.size == 2)
+```
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(y)
-model1.add(semi)
-model1.minimize(semi)
-
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.zero)
-assert(result1.value!!.solution[1] geq result1.value!!.solution[0])
-
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(y)
-model2.add(semi)
-model2.maximize(semi)
-
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.one)
-assert(result2.value!!.solution[0] eq Flt64.three)
-assert(result2.value!!.solution[1] eq Flt64.two)
+```rust [Rust]
+let semi = SemiFunction::new(1, "semi", 2.0_f64, 5.0_f64);
+assert_eq!(semi.lower_bound(), &2.0);
+assert_eq!(semi.upper_bound(), &5.0);
 ```
 
 :::
 
-**Complete Implementation Reference:**
+## Tests and references
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/Semi.kt)
+- Kotlin focused test: [`SemiFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/SemiFunctionDedicatedTest.kt)
+- Kotlin regression test: [`SemiFunctionTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/SemiFunctionTest.kt)
+- Kotlin implementation: [`Semi.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Semi.kt)
+- Rust implementation: [`semi.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/semi.rs)
+- Rust focused test: [`function_symbol_semi.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_semi.rs)
 
-**Complete Example Reference:**
+The focused tests assert both helper tokens and both registered domain rows,
+plus the shared default interval and eager reversed/non-finite bound validation.
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SemiTest.kt)
+Bounds are validated eagerly and must be finite with lower no greater than
+upper. Omitting Kotlin bounds uses the shared interval [0, 1e6]; Rust exposes
+SemiFunction::with_default_bounds for the same interval. Missing token values
+remain explicit: Kotlin returns null, while Rust follows zero_if_none.

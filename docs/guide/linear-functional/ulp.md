@@ -1,82 +1,95 @@
 # Univariate Linear Piecewise Function
 
-## Function Form
+`UnivariateLinearPiecewiseFunction` represents the graph obtained by
+linearly interpolating consecutive points $(t_i,f_i)$. Points must contain at
+least two entries and their $t_i$ values must be finite and strictly
+increasing. Evaluation outside $[t_0,t_m]$ is undefined.
+
+## Solver mathematical model
+
+Kotlin uses one binary selector $z_j$ per segment. With the affine formula
+$g_j(x)=a_jx+b_j$, it enforces $\sum_jz_j=1$, gates $x$ to the selected
+interval, and gates $y=g_j(x)$ with finite Big-M bounds.
+
+Rust uses point weights $\lambda_i\in[0,1]$ and the same one-hot segment
+selectors $z_j\in\{0,1\}$. It enforces
 
 $$
-y = \text{Ulp}(x) = k_{i} x + b_{i}, \; x \in [a_{i}, b_{i}], \; i = 0, 1, 2, \ldots
+\begin{aligned}
+\sum_i\lambda_i&=1,&\sum_j z_j&=1,\\
+x&=\sum_i t_i\lambda_i,&y&=\sum_i f_i\lambda_i.
+\end{aligned}
 $$
 
-## Constants
-
-Let the point set of this linear piecewise function be $P$, where each point $i$ corresponds to the value $(x_{i}, y_{i})$.
-
-## Additional Variables
-
-$k_{i} \in [0, 1]$: Relative distance to point $i$.
-
-$b_{i} \in \{ 0, 1 \}$: Indicator for being on the line segment formed by points $i$ and $i + 1$.
-
-## Derived Symbol
+Adjacency is enforced by
 
 $$
-y = \sum_{i \in P} k_{i} \cdot y_{i}
+\lambda_0\le z_0,
+\qquad
+\lambda_m\le z_{m-1},
+\qquad
+\lambda_i\le z_{i-1}+z_i\quad(0<i<m).
 $$
 
-## Mathematical Model
+Consequently only the two endpoints of the selected segment may have
+positive weights. Although the internal formulas differ, both sides now
+represent the same single active segment and exclude arbitrary convex
+combinations of non-adjacent points.
 
-$$
-\begin{align}
-\text{s.t.} \quad & x & = & \; \sum_{i \in P} k_{i} \cdot x_{i} \\
-& \sum_{i \in P} k_{i} & = & \; 1 \\
-& \sum_{i \in P} b_{i} & = & \; 1 \\
-& k_{i} & \leq & \; b_{i - 1} + b_{i}, & \; \forall i \in P 
-\end{align}
-$$
-
-## Code Example
+## Kotlin/Rust example
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.math.geometry.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-
-val x = URealVar("x")
-x.range.leq(Flt64.two)
-
-val ulp = UnivariateLinearPiecewiseFunction(
-    x = x,
-    points = listOf(
-        point2(),
-        point2(x = Flt64.one, y = Flt64.two),
-        point2(x = Flt64.two, y = Flt64.one)
-    ),
-    name = "y"
+```kotlin [Kotlin]
+val piecewise = UnivariateLinearPiecewiseFunction.fromPoints(
+    x = input,
+    points = points,
+    converter = IntoValue.Identity,
+    name = "ulp"
 )
+```
 
-val model = LinearMetaModel()
-model.add(x)
-model.add(ulp)
-model.maximize(ulp)
-
-val solver = ScipLinearSolver()
-val result = runBlocking { solver(model) }
-assert(result.value!!.obj eq Flt64.two)
-assert(result.value!!.solution[0] eq Flt64.one)
+```rust [Rust]
+let piecewise = UnivariateLinearPiecewiseFunction::new(
+    1,
+    "ulp",
+    input,
+    vec![
+        Point2::new(0.0, 0.0),
+        Point2::new(1.0, 2.0),
+        Point2::new(2.0, 0.0),
+    ],
+);
+assert_eq!(piecewise.selector_variables().len(), 2);
 ```
 
 :::
 
-**Complete Implementation Reference:**
+## Evaluation and boundaries
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/UnivariateLinearPiecewise.kt)
+On segment $[t_i,t_{i+1}]$, direct evaluation uses
 
-**Complete Example Reference:**
+$$
+y=f_i+\frac{x-t_i}{t_{i+1}-t_i}(f_{i+1}-f_i).
+$$
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/ULPTest.kt)
+Missing input values and values outside the point domain return `null` in
+Kotlin and `None` in Rust. Duplicate, descending, non-finite, or insufficient
+points are rejected.
+
+## Tests and references
+
+- Kotlin focused test: [`UnivariateLinearPiecewiseFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewiseFunctionDedicatedTest.kt)
+- Kotlin boundary/registration test: [`UnivariateLinearPiecewiseFailureBoundaryTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewiseFailureBoundaryTest.kt)
+- Kotlin implementation: [`UnivariateLinearPiecewise.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewise.kt)
+- Rust implementation: [`univariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/univariate_linear_piecewise.rs)
+- Rust dedicated test: [`function_symbol_univariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_univariate_linear_piecewise.rs)
+
+The focused tests assert the helper counts and every selector/segment graph row,
+along with endpoint and out-of-domain behavior and invalid point validation.
+
+The point and segment forms share the same ordered-breakpoint contract. Kotlin
+uses breakpoints/slopes/intercepts directly; Rust also provides
+UnivariateLinearPiecewiseFunction::from_segments, with one slope and
+intercept for each adjacent breakpoint pair. Invalid values are rejected
+before helper registration.

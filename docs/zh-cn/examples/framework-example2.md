@@ -1,208 +1,59 @@
-# 复杂示例 2：航空货运装载规划问题
+# 复杂示例 2：航空货运装载规划 — 总览
 
-## 问题描述
+[English](/examples/framework-example2)
 
-## 业务架构
+## 1. 概述
 
-```mermaid
-C4Context
-  System_Boundary(应用层, "应用层") {
-    System(预配载应用, "预配载应用")
-    System(全配载应用, "全配载应用")
-    System(调舱应用, "调舱应用")
-    System(建议重量应用, "建议重量应用")
-  }
+本示例说明航空货运装载领域及其按模式注册的上下文。本文是总览，11 个有界上下文的契约分别维护在子页面中。
 
-  System_Boundary(优化领域层, "优化领域层") {
-    System(余度域, "余度域")
-    System(重心优化域, "重心优化域")
-    System(软性安全域, "软性安全域")
-    System(货物时效域, "货物时效域")
-    System(装卸效率域, "装卸效率域")
-    System(业载最大化域, "业载最大化域")
-  }
+## 2. 上下文与依赖
 
-  System_Boundary(基础领域层, "基础领域层") {
-    System(飞行器域, "飞行器域")
-    System(配载域, "配载域")
-    System(重心域, "重心域")
-    System(建议重量等值化域, "建议重量等值化域")
-  }
+| 上下文 | 职责 | 依赖 |
+|---|---|---|
+| 飞机 | 飞机、机位、阶段与限制数据 | 输入配置 |
+| 装载 | 分配、调整、载荷及建议载重量 | 飞机 |
+| MAC 与适航安全 | 力矩、重心及硬安全限制 | 飞机、装载 |
+| 软安全与 MAC 优化 | 安全偏差和重心偏好 | 飞机、装载及相关中间值 |
+| 快件效能与装载效能 | 业务模式下的装载偏好 | 装载 |
+| 冗余、建议载重量均衡、载荷最大化 | 对应模式的目标与限制 | 装载 |
 
-  Rel(预配载应用, 余度域, "", "")
-  Rel(预配载应用, 重心优化域, "", "")
-  Rel(全配载应用, 重心优化域, "", "")
-  Rel(调舱应用, 重心优化域, "", "")
-  Rel(预配载应用, 软性安全域, "", "")
-  Rel(全配载应用, 软性安全域, "", "")
-  Rel(调舱应用, 软性安全域, "", "")
-  Rel(预配载应用, 货物时效域, "", "")
-  Rel(全配载应用, 货物时效域, "", "")
-  Rel(调舱应用, 货物时效域, "", "")
-  Rel(预配载应用, 装卸效率域, "", "")
-  Rel(全配载应用, 装卸效率域, "", "")
-  Rel(调舱应用, 装卸效率域, "", "")
-  Rel(建议重量应用, 业载最大化域, "", "")
-  Rel(配载域, 飞行器域, "", "")
-  Rel(重心域, 配载域, "", "")
-  Rel(余度域, 配载域, "", "")
-  Rel(重心优化域, 重心域, "", "")
-  Rel(业载最大化域, 配载域, "", "")
-  Rel(软性安全域, 配载域, "", "")
-  Rel(货物时效域, 配载域, "", "")
-  Rel(装卸效率域, 配载域, "", "")
-  Rel(建议重量应用, 建议重量等值化域, "", "")
+装载顺序（LoadingOrder）、满载（FullLoad）、预分配（Predistribution）和重量建议（WeightRecommendation）四种模式注册不同的上下文子集。
 
-  UpdateLayoutConfig($c4ShapeInRow="5", $c4BoundaryInRow="1")
-```
+## 3. 概念、集合与谓词
 
-## 领域 / 数学模型
+$I$ 是货物集合，$J$ 是机位集合，$P$ 是飞行阶段集合。谓词区分已分配货物、空机位、装载区域、有效阶段和当前模式的管线。飞机上下文提供配置数据，装载与安全相关上下文提供模型符号。
 
-### 配载域
+## 4. 变量与中间值
 
-#### 决策变量
+核心符号包括分配 $x_{ij}$、调整 $u_{ij}$、装载量 $y_j$ 和建议量 $z_j$。中间值包括机位载荷、各阶段力矩与 MAC、区域密度、载荷总量、空位指示量和建议偏差。实际变量域、单位及启用条件分别在所属上下文中定义。
 
-$x_{cp} \in \{0, 1\}$ ：配载决策，无量纲量，$1$ 表示将货物 $c$ 放在舱位 $p$。
+## 5. 断言、约束与目标
 
-$y_{p} \in \mathbb{R} - \mathbb{R}^{-}$ ：预计载重量，物理量为重量，表示给舱位 $p$ 的预计载重量。
+约束和目标覆盖货物分配、调整范围、装载限制、力矩与适航包络、软安全偏差、装载顺序、冗余、建议载重量均衡和载荷最大化。它们由应用模式选择，并非一次求解同时启用所有上下文。
 
-$z_{p} \in \mathbb{N}$ ：建议载重量，物理量为重量，表示给舱位 $p$ 的建议载重量。
+## 6. 算法与生命周期
 
-$u_{cp} \in \{-1, 0, 1\}$ ：调舱决策，无量纲量，$-1$ 表示将货物 $c$ 从舱位 $p$ 移走， $1$ 表示将货物 $c$ 放在舱位 $p$。
+应用选择模式，初始化 aircraft/stowage 数据，注册模式相关 Pipeline，可选构造 Benders 分解，求解 MILP，并分析装载方案。
 
-#### 中间值
+## 7. 注册 → 构造 → 求解 → 分析
 
-##### 配载决策
+模式选择决定注册范围。`register` 添加该模式的变量与管线；`construct` 构造模型；`solve` 执行配置的 MILP 或分解路径；`analyze` 返回机位、载荷、MAC 与安全结果。
 
-**描述**：对于任意的货物 $c$ 与任意的舱位 $p$ ，该货物是否配载到该舱位上的配载决策等于配载决策与调舱决策的和。
+## 8. 源码入口
 
-$$
-Loaded_{cp} = \begin{cases}
-1,& c \in C^{Loaded}_{p} \\ \; \\
-0,& c \notin C^{Loaded}_{p}
-\end{cases}, \; \forall c \in C, \; \forall p \in P
-$$
+- [Kotlin Demo2 源码](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo2)
+- [Rust Demo2 源码](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src/framework/demo2)
 
-$$
-Stowage_{cp} = \begin{cases}
-x_{cp} + u_{cp} + Loaded_{cp}, & \forall c \in C^{SN}, \; \forall p \in P^{SN} \\ \; \\
-Loaded_{cp},& else
-\end{cases}
-$$
+## 9. Kotlin/Rust 对照与设计决策
 
-##### 舱位载货量
+两种语言的入口均属于航空货运装载框架示例。子页按 Kotlin 的上下文职责和模式注册边界说明数学模型；不同模式不能合并成一个默认全量模型。
 
-**描述**：对于任意舱位 $p$ ，其舱位载货量为配载在该舱位的货物数量之和。
+## 10. 上下文模型页面
 
-$$
-LA^{Loaded}_{p} = |C^{Loaded}_{p}|
-$$
+[打开上下文索引](framework-example2/domain-models)，按依赖顺序阅读 11 个上下文：飞机、装载、MAC、适航安全、软安全、MAC 优化、快件效能、装载效能、冗余、建议载重量均衡、载荷最大化。
 
-$$
-LA^{Estimate}_{p} = \begin{cases}
-LA^{Loaded}_{p},& \forall p \in (P - P^{SN}) \\ \; \\
-\sum_{c \in C^{SN}} Stowage_{cp} + LA^{Loaded}_{p},& \forall p \in P^{SN}
-\end{cases}
-$$
+## 11. 变更记录
 
-##### 舱位载重量
-
-**描述**：对于任意舱位 $p$ ，其舱位预估载重量为配载在该舱位的货物重量、预计载重量与建议载重量之和，其舱位实际载重量为配载在该舱位的货物重量之和。
-
-$$
-LW^{Loaded}_{p} = \sum_{c \in C^{Loaded}_{p}} W_{c}
-$$
-
-$$
-LW^{Estimate}_{p} = \begin{cases}
-LW^{Loaded}_{p},& \forall p \in P^{Unavailable} \\ \; \\
-\sum_{c \in C^{SN}} W_{c} \cdot Stowage_{cp} + y_{p} + LW^{Loaded}_{p},& \forall p \in P^{SN} \cap P^{PWN} \\ \; \\
-\sum_{c \in C^{SN}} W_{c} \cdot Stowage_{cp} + z_{p} + LW^{Loaded}_{p},& \forall p \in P^{SN} \cap P^{RWN} \\ \; \\
-\sum_{c \in C^{SN}} W_{c} \cdot Stowage_{cp} + LW^{Loaded}_{p},& \forall p \in P^{SN} - P^{PWN} - P^{RWN} \\ \; \\
-y_{p} + LW^{Loaded}_{p},& \forall p \in P^{PWN} - P^{SN} \\ \; \\
-z_{p} + LW^{Loaded}_{p},& \forall p \in P^{RWN} - P^{SN}
-\end{cases}
-$$
-
-$$
-LW^{Actual}_{p} = \begin{cases}
-LW^{Loaded}_{p},& \forall p \in (P - P^{SN}) \\ \; \\
-\sum_{c \in C^{SN}} W_{c} \cdot Stowage_{cp} + LW^{Loaded}_{p},& \forall p \in P^{SN}
-\end{cases}
-$$
-
-##### 已打板总业载
-
-**描述**：当前已打板货物的总重。
-$$
-Payload^{Boarded} = \sum_{c \in C}W_{c}
-$$
-
-##### 预估业载
-
-**描述**：当前舱位计算载重量之和。
-$$
-Payload^{Estimate}_{d} = \sum_{p \in P_{d}}LW^{Estimate}_{p}, \; \forall d \in D
-$$
-
-##### 实际业载
-
-**描述**：当前舱位实际载重量之和。
-$$
-Payload^{Actual}_{d} = \sum_{p \in P_{d}}LW^{Actual}_{p}, \; \forall d \in D
-$$
-
-##### 计算总业载
-
-**描述**：如果是预配算法族，计算总业载使用预计总业载；如果是全配算法族，计算总业载使用实时总业载。
-$$
-Payload^{Computed} = \begin{cases}
-Payload^{Plan},& \text{Predistribution} \\ \; \\
-Payload^{Boarded},& \text{FullLoad}
-\end{cases}
-$$
-
-##### 预估总业载
-
-**描述**：当前舱位计算载重量之和	。
-$$
-Payload^{Estimate} = \begin{cases}
-Payload^{Computed},& \text{FullLoad \; \& \; Predistribution} \\ \; \\
-\sum_{d \in D} Payload^{Estimate}_{d},& \text{otherwise}
-\end{cases}
-$$
-
-##### 实际总业载
-
-**描述**：当前舱位实际载重量之和。
-
-$$
-Payload^{Actual} = \begin{cases}
-Payload^{Boarded},& \text{FullLoad \; \& \; RecommendWeight} \\ \; \\
-\sum_{d \in D} Payload^{Actual},& \text{otherwise}
-\end{cases}
-$$
-
-### 重心域
-
-### 适航安全域
-
-### 重心优化域
-
-### 软性安全域
-
-### 货物时效域
-
-### 装卸效率域
-
-### 业载最大化域
-
-### 建议重量等值化域
-
-### 余度域
-
-## 代码实现
-
-完整实现参考：
-
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/main/fuookami/ospf/kotlin/example/framework_demo/demo2)
+| 版本 | 变更 | 原因 |
+|---|---|---|
+| 1.1 | 统一中英文总览、数学记号和源码入口 | 与所属上下文模型保持一致 |

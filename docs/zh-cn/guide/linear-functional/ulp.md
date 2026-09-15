@@ -1,82 +1,82 @@
-# 一元分段线性函数
+# 一元线性分段函数
 
-## 形式
+`UnivariateLinearPiecewiseFunction` 表示对连续采样点 $(t_i,f_i)$ 逐段线性插值得到的函数图形。采样点至少有两个，$t_i$ 必须有限且严格递增；$[t_0,t_m]$ 之外的求值未定义。
 
-$$
-y = Ulp(x) = k_{i} x + b_{i}, \; x \in [a_{i}, b_{i}], \; i = 0, 1, 2, ...
-$$
+## 求解器数学模型
 
-## 常量
+Kotlin 为每条线段创建二元选择变量 $z_j$。令该段的仿射公式为 $g_j(x)=a_jx+b_j$，实现强制 $\sum_jz_j=1$，用有限 Big-M 把 $x$ 限制到所选区间，并门控 $y=g_j(x)$。
 
-记该线性分段的点集为 $P$，且各点 $i$ 对应的值为 $(x_{i}, y_{i})$。
-
-## 额外变量
-
-$k_{i} \in [0, 1]$：与点 $i$ 的相对距离。
-
-$b_{i} \in \{ 0, 1 \}$：在点 $i$ 与点 $i + 1$ 构成的线段上的判定。
-
-## 导出符号
+Rust 使用采样点权重 $\lambda_i\in[0,1]$ 和相同的一热段选择变量 $z_j\in\{0,1\}$，并强制
 
 $$
-y = \sum_{i \in P} k_{i} \cdot y_{i}
+\begin{aligned}
+\sum_i\lambda_i&=1,&\sum_j z_j&=1,\\
+x&=\sum_i t_i\lambda_i,&y&=\sum_i f_i\lambda_i.
+\end{aligned}
 $$
 
-## 数学模型
+相邻性约束为
 
 $$
-\begin{align}
-\text{s.t.} \quad & x & = & \; \sum_{i \in P} k_{i} \cdot x_{i} \\
-& \sum_{i \in P} k_{i} & = & \; 1 \\
-& \sum_{i \in P} b_{i} & = & \; 1 \\
-& k_{i} & \leq & \; b_{i - 1} + b_{i}, & \; \forall i \in P 
-\end{align}
+\lambda_0\le z_0,
+\qquad
+\lambda_m\le z_{m-1},
+\qquad
+\lambda_i\le z_{i-1}+z_i\quad(0<i<m).
 $$
 
-## 样例
+因此只有所选线段的两个端点可以具有正权重。两边内部公式虽然不同，但现在都表示单一激活线段，并排除任意混合不相邻采样点的凸包行为。
+
+## Kotlin/Rust 示例
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.utils.math.geometry.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-
-val x = URealVar("x")
-x.range.leq(Flt64.two)
-
-val ulp = UnivariateLinearPiecewiseFunction(
-    x = x,
-    points = listOf(
-        point2(),
-        point2(x = Flt64.one, y = Flt64.two),
-        point2(x = Flt64.two, y = Flt64.one)
-    ),
-    name = "y"
+```kotlin [Kotlin]
+val piecewise = UnivariateLinearPiecewiseFunction.fromPoints(
+    x = input,
+    points = points,
+    converter = IntoValue.Identity,
+    name = "ulp"
 )
+```
 
-val model = LinearMetaModel()
-model.add(x)
-model.add(ulp)
-model.maximize(ulp)
-
-val solver = ScipLinearSolver()
-val result = runBlocking { solver(model) }
-assert(result.value!!.obj eq Flt64.two)
-assert(result.value!!.solution[0] eq Flt64.one)
+```rust [Rust]
+let piecewise = UnivariateLinearPiecewiseFunction::new(
+    1,
+    "ulp",
+    input,
+    vec![
+        Point2::new(0.0, 0.0),
+        Point2::new(1.0, 2.0),
+        Point2::new(2.0, 0.0),
+    ],
+);
+assert_eq!(piecewise.selector_variables().len(), 2);
 ```
 
 :::
 
-完整实现请参考：
+## 求值与边界
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/UnivariateLinearPiecewise.kt)
+在 $[t_i,t_{i+1}]$ 上，直接求值采用
 
-完整样例请参考：
+$$
+y=f_i+\frac{x-t_i}{t_{i+1}-t_i}(f_{i+1}-f_i).
+$$
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/ULPTest.kt)
+输入缺失或超出采样点定义域时，Kotlin 返回 `null`，Rust 返回 `None`。重复、降序、非有限或数量不足的采样点会被拒绝。
+
+## 测试与参考
+
+- Kotlin 独立聚焦测试：[`UnivariateLinearPiecewiseFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewiseFunctionDedicatedTest.kt)
+- Kotlin 边界/注册测试：[`UnivariateLinearPiecewiseFailureBoundaryTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewiseFailureBoundaryTest.kt)
+- Kotlin 实现：[`UnivariateLinearPiecewise.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/UnivariateLinearPiecewise.kt)
+- Rust 实现：[`univariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/univariate_linear_piecewise.rs)
+- Rust 独立测试：[`function_symbol_univariate_linear_piecewise.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_univariate_linear_piecewise.rs)
+
+独立聚焦测试会断言辅助变量数量和每一条选择/分段图形约束行，并覆盖端点、定义域外求值及非法采样点校验。
+
+点形式和线段形式共享严格递增的断点契约。Kotlin 直接接收
+breakpoints/slopes/intercepts；Rust 还提供
+UnivariateLinearPiecewiseFunction::from_segments，并要求每个相邻断点对
+对应一个斜率和截距。非法值会在注册辅助变量前拒绝。

@@ -1,275 +1,135 @@
-# Balanced Ternary Function
+# Balance ternaryzation
 
-## Function Form
+## Contract
+
+`BalanceTernaryzationFunction` maps a linear expression to the three values $-1$, $0$, and $1$. Kotlin and Rust use the same threshold semantics:
 
 $$
-y = \text{BTer}(x) = \begin{cases}
-1, & x \\ \; \\
--1, & \neg x \\ \; \\
-0, & \text{otherwise}
+y=\operatorname{BTer}_{\varepsilon}(x)=
+\begin{cases}
+-1, & x<-\varepsilon,\\
+0, & -\varepsilon\le x\le\varepsilon,\\
+1, & x>\varepsilon.
 \end{cases}
 $$
 
-## Discrete Case
+The endpoints $x=\pm\varepsilon$ belong to the zero branch. To represent the
+strict solver comparisons, both implementations use the same strict-boundary
+width $\delta=10^{-10}$: $x\ge\varepsilon+\delta$ is positive and
+$x\le-\varepsilon-\delta$ is negative. The open transition intervals
+$(\varepsilon,\varepsilon+\delta)$ and
+$(-\varepsilon-\delta,-\varepsilon)$ are undefined (`null`/`None`) in direct
+evaluation and infeasible in the registered model. Inputs outside every
+defined branch, including a missing variable value, also return no value.
 
-### Constants
-
-$$
-m = \max(|x|)
-$$
-
-### Additional Variables
-
-$y^{\prime}_{p} \in \{ 0, \, 1 \}$: Logical value indicating the polynomial is true.
-
-$y^{\prime}_{n} \in \{ 0, \, 1 \}$: Logical value indicating the polynomial is false.
-
-### Derived Symbol
-
-$$
-y = y^{\prime}_{p} - y^{\prime}_{n}
-$$
-
-### Mathematical Model
-
-$$
-\begin{align}
-\text{s.t.} \quad & m \cdot y^{\prime}_{p} & \geq & \, x \\ \; \\
-& -m \cdot y^{\prime}_{n} & \leq & \, x \\ \; \\
-& x & \geq & \, (-m - 1) \cdot (1 - y^{\prime}_{p}) + 1 \\ \; \\
-& x & \leq & \, (m + 1) \cdot (1 - y^{\prime}_{n}) - 1 \\ \; \\
-& y^{\prime}_{p} + y^{\prime}_{n} & = & 1
-\end{align}
-$$
-
-## Continuous (Non-Precise) Case
-
-### Constants
-
-$$
-m = \max(|x|)
-$$
-
-### Additional Variables
-
-$b_{p} \in [0, \, 1]$: Normalized value of the polynomial when positive.
-
-$b_{n} \in [0, \, 1]$: Normalized value of the polynomial when negative.
-
-$y^{\prime}_{p} \in \{ 0, \, 1 \}$: Logical value indicating the polynomial is true.
-
-$y^{\prime}_{n} \in \{ 0, \, 1 \}$: Logical value indicating the polynomial is false.
-
-### Derived Symbol
-
-$$
-y = y^{\prime}_{p} - y^{\prime}_{n}
-$$
-
-### Mathematical Model
-
-$$
-\begin{align}
-\text{s.t.} \quad & x & = & \, -m \cdot b_{n} + m \cdot b_{p} \\ \; \\
-& y_{p} & \geq & \, b_{p} \\ \; \\
-& \epsilon \cdot y_{p} & \leq & b \\ \; \\
-& y_{n} & \geq & \, b_{n} \\ \; \\
-& \epsilon \cdot y_{n} & \leq & b \\ \; \\
-& b_{n} + y_{p} & \leq & 1 \\ \; \\
-& b_{p} + y_{n} & \leq & 1
-\end{align}
-$$
-
-That is:
-
-$$
-y = \begin{cases}
-1, & x \geq \epsilon \\ \; \\
-0, & x = 0 \\ \; \\
--1, & x \leq -\epsilon
-\end{cases}
-$$
-
-## Continuous (Precise) Case
-
-### Derived Symbol
-
-$$
-y = \text{Ulp}(x)
-$$
-
-$\text{Ulp}(x)$ can refer to [Unit Linear Piecewise Function](/guide/linear-functional/ulp), using the sampling points $\{ (\min(x), \, -1) \; (-p, \, -1), \; (-p + \epsilon, \, 0), \; (0, \, 0), \; (p - \epsilon, \, 0), \; (p, \, 1), \; (\max(x), \, 1) \}$.
-
-That is:
-
-$$
-y = \begin{cases}
-1, & x \geq p \\ \; \\
-0, & -p < x < p \\ \; \\
--1, & x \leq -p
-\end{cases}
-$$
-
-## Code Example
-
-### Discrete Case
+## API
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+BalanceTernaryzationFunction(
+    x: LinearPolynomial<V>,
+    epsilon: Flt64 = Flt64(1e-6),
+    converter: IntoValue<V>,
+    name: String = "bter",
+    displayName: String? = null,
+    fallbackBigM: Flt64 = Flt64(1e6)
+)
+```
 
-val x = IntVar("x")
-x.range.leq(Int64.two)
-x.range.geq(-Int64.two)
-val bter = BalanceTernaryzationFunction(x, name = "bter")
-val solver = ScipLinearSolver()
-
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(bter)
-model1.minimize(bter)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq -Flt64.one)
-
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(bter)
-model2.maximize(bter)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.one)
-
-val model3 = LinearMetaModel()
-model3.add(x)
-model3.add(bter)
-model3.addConstraint(x geq Flt64.zero)
-model3.minimize(bter)
-val result3 = runBlocking { solver(model3) }
-assert(result3.value!!.obj eq Flt64.zero)
-
-val model4 = LinearMetaModel()
-model4.add(x)
-model4.add(bter)
-model4.addConstraint(x geq Flt64.zero)
-model4.maximize(bter)
-val result4 = runBlocking { solver(model4) }
-assert(result4.value!!.obj eq Flt64.one)
-
-val model5 = LinearMetaModel()
-model5.add(x)
-model5.add(bter)
-model5.addConstraint(x leq 0)
-model5.minimize(bter)
-val result5 = runBlocking { solver(model5) }
-assert(result5.value!!.obj eq -Flt64.one)
-
-val model6 = LinearMetaModel()
-model6.add(x)
-model6.add(bter)
-model6.addConstraint(x leq 0)
-model6.maximize(bter)
-val result6 = runBlocking { solver(model6) }
-assert(result6.value!!.obj eq Flt64.zero)
+```rust [Rust]
+BalanceTernaryzationFunction::new(
+    id: u64,
+    name: &str,
+    input: Linear<V>,
+    epsilon: V,
+    fallback_big_m: V,
+) -> Self
 ```
 
 :::
 
-### Continuous Case
+Both implementations expose the result variable and the mutually exclusive positive and negative binary variables. A finite bound inferred from the input is preferred; the fallback Big-M is used only when such a bound is unavailable.
+
+## Mathematical model passed to the solver
+
+Let $p,n\in\{0,1\}$ denote the positive and negative states, let $y$ be the result, and choose a small strict-boundary width $\delta>0$ (`1e-10` in the current implementations). The generated model is
+
+$$
+y=p-n,
+$$
+
+$$
+p+n\le 1,
+$$
+
+$$
+x-Mp\ge \varepsilon+\delta-M,
+\qquad
+x-Mp\le \varepsilon,
+$$
+
+$$
+x+Mn\le M-\varepsilon-\delta,
+\qquad
+x+Mn\ge-\varepsilon.
+$$
+
+Thus $p=1$ forces $x\ge\varepsilon+\delta$, $n=1$ forces $x\le-\varepsilon-\delta$, and $p=n=0$ forces $-\varepsilon\le x\le\varepsilon$. The open intervals immediately outside the zero band, whose width is $\delta$, are deliberately infeasible so that a linear solver can represent the strict comparisons without fractional transition values. Direct evaluation follows these same defined regions.
+
+$M$ must cover the absolute input range plus $\varepsilon+\delta$. Both implementations infer it from finite variable bounds when possible and otherwise use the configured fallback.
+
+## Minimal example
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+import fuookami.ospf.kotlin.core.solver.value.IntoValue
+import fuookami.ospf.kotlin.core.symbol.function.BalanceTernaryzationFunction
+import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import fuookami.ospf.kotlin.math.symbol.polynomial.LinearPolynomial
 
-val x = RealVar("x")
-x.range.leq(Flt64.two)
-x.range.geq(-Flt64.two)
-val bter = BalanceTernaryzationFunction(x, name = "bter")
-val solver = ScipLinearSolver()
+val function = BalanceTernaryzationFunction(
+    x = LinearPolynomial(emptyList(), Flt64(2.0)),
+    epsilon = Flt64(0.1),
+    converter = IntoValue.Identity,
+    name = "direction"
+)
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(bter)
-model1.minimize(bter)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq -Flt64.one)
+check(function.evaluate(emptyMap()) == Flt64.one)
+```
 
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(bter)
-model2.maximize(bter)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.one)
+```rust [Rust]
+use ospf_rust_core::symbol::FunctionSymbol;
+use ospf_rust_core::symbol::flatten::Linear;
+use ospf_rust_core::symbol::function::BalanceTernaryzationFunction;
+use ospf_rust_core::token::VecTokenList;
 
-val model3 = LinearMetaModel()
-model3.add(x)
-model3.add(bter)
-model3.addConstraint(x geq Flt64.zero)
-model3.minimize(bter)
-val result3 = runBlocking { solver(model3) }
-assert(result3.value!!.obj eq Flt64.zero)
+let function = BalanceTernaryzationFunction::new(
+    1,
+    "direction",
+    Linear::new(vec![], 2.0),
+    0.1,
+    1_000_000.0,
+);
+let tokens = VecTokenList::<f64>::new();
 
-val model4 = LinearMetaModel()
-model4.add(x)
-model4.add(bter)
-model4.addConstraint(x geq Flt64.zero)
-model4.maximize(bter)
-val result4 = runBlocking { solver(model4) }
-assert(result4.value!!.obj eq Flt64.one)
-
-val model5 = LinearMetaModel()
-model5.add(x)
-model5.add(bter)
-model5.addConstraint(x leq 0)
-model5.minimize(bter)
-val result5 = runBlocking { solver(model5) }
-assert(result5.value!!.obj eq -Flt64.one)
-
-val model6 = LinearMetaModel()
-model6.add(x)
-model6.add(bter)
-model6.addConstraint(x leq 0)
-model6.maximize(bter)
-val result6 = runBlocking { solver(model6) }
-assert(result6.value!!.obj eq Flt64.zero)
-
-val model7 = LinearMetaModel()
-model7.add(x)
-model7.add(bter)
-model7.addConstraint(x leq Flt64(0.3))
-model7.maximize(bter)
-val result7 = runBlocking { solver(model7) }
-assert(result7.value!!.obj eq Flt64.one)
-
-val model8 = LinearMetaModel()
-model8.add(x)
-model8.add(bter)
-model8.addConstraint(x geq -Flt64(0.3))
-model8.minimize(bter)
-val result8 = runBlocking { solver(model8) }
-assert(result8.value!!.obj eq -Flt64.one)
+assert_eq!(function.calculate_value(&tokens, false), Some(1.0));
 ```
 
 :::
 
-**Complete Implementation Reference:**
+## Source and tests
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/BalanceTernaryzation.kt)
+- [Kotlin implementation](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/BalanceTernaryzation.kt)
+- [Kotlin dedicated test](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/BalanceTernaryzationFunctionDedicatedTest.kt)
+- [Kotlin example](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example)
+- [Rust implementation](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/balance_ternaryzation.rs)
+- [Rust dedicated test](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_balance_ternaryzation.rs)
+- [Rust examples](https://github.com/fuookami/ospf-rust/tree/main/ospf-rust-example/src)
 
-**Complete Example Reference:**
+## Related pages
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/BTerTest.kt)
+- [Binaryzation](/guide/linear-functional/bin)
+- [Inequality indicator](/guide/linear-functional/inequality)
+- [Univariate linear piecewise function](/guide/linear-functional/ulp)

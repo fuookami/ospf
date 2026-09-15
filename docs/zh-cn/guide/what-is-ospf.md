@@ -2,6 +2,12 @@
 
 ospf 是一个针对复杂的运筹优化算法中建模与编码过程的解决方案及其开发组件。ospf 旨在提供一种基于<b><em>领域驱动设计</em></b>（DDD）的建模方式，以便使用者能够在整个软件生命周期都能简单、高效地开发、维护数学模型、求解算法及其实现代码。
 
+## 阅读路径
+
+第一次使用可以从[快速开始](./getting-started)运行一个完整模型，再阅读[运筹学领域语言](./operations-research-language)、[建模与求解的完整流程](./modeling-workflow)和[理解求解结果](./solving-results)。前者解释中间值为何成为建模语言的一部分，后两者解释模型如何组装以及结果意味着什么。
+
+需要组织复杂业务时，阅读[使用领域驱动设计架构](./use-ddd-architecture)；需要理解表达如何进入不同求解后端时，阅读[符号表达式与符号运算](./symbolic-expressions)和[类编译器架构与模型转换](./compiler-architecture)。下文通过抽象动机与模型对照示例解释 OSPF 的定位。
+
 各宿主语言的实现可以参考以下代码仓库目录：
 
 - C++：https://github.com/fuookami/ospf-cpp
@@ -89,70 +95,13 @@ fn main() {
 
 ## 中间值
 
-ospf 提供了一种命名为“中间值”的概念，以实现基于 DDD 的建模方式。中间值在数学模型中用于表示运算的中间结果，它可以帮助简化模型的表示，并使得模型更易于理解和维护。中间值有以下特性：
+中间值为表达式赋予业务名称，让多条约束、目标与报告共享同一个定义。例如，舱位载重量可以同时用于容量限制、面积载荷和线载荷计算。使用者依赖的是“载重量”这一业务含义，不必在每个规则中重复书写聚合表达式。
 
-- 指代一个被存储起来的具名的表达式
-- 语义上等价于匿名的表达式
-- 文法上等价于变量，拥有全局作用域以及静态生命周期
+算术中间值封装算术关系，函数中间值封装具有明确数学语义的函数关系。它们在引用时可以像变量一样组合，但不意味着拥有独立可选的值，也不意味着进程全局生命周期。具体求解表示可能展开表达式，或引入辅助变量与约束。
 
-### 算术中间值
+[运筹学领域语言](./operations-research-language)详细解释基本表达、组合和中间值抽象；[类编译器架构](./compiler-architecture)解释转换如何保持语义。具体函数的定义及实际约束见对应的函数符号页面。
 
-中间值最开始的设计目的是为了减少数学模型中的重复，所以最基本的算术中间值就是通过一个多项式来构建，然后使用者就可以在模型的任何地方使用该中间值替代所有同样的多项式。
-
-$$
-ExprSymbol = \sum_{i} x_{i}
-$$
-
-$$
-min \quad ExprSymbol
-$$
-
-$$
-\text{s.t.} \quad ExprSymbol \leq 1
-$$
-
-ospf 会在将模型翻译到具体求解器的接口时，自动将把每个算术中间值替换为具体的多项式，这个翻译过程对于使用者而言是无感知的，因此使用者并不需要知道这个算术中间值是通过什么变量通过什么运算实现的。
-
-那么，我们就可以把数学模型的维护者划分为“中间值维护者”以及“使用中间值维护数学模型者”两个角色。中间值维护者负责定义以及实现中间值，使用中间值维护数学模型者不关注中间值的实现，只关注中间值的定义与行为，并使用这些中间值在数学模型中描述业务逻辑。
-
-这个工程实践，和面向对象设计（OOD）中定义一个类把相同语义的变量、函数封装起来，使用者只需关注其行为，无需关注其实现，是一样的。有了这样的基础之后，我们就可以开始引入 DDD 了。
-
-### 函数中间值
-
-基于算术中间值的思想，ospf 同样可以把类似逻辑运算表达式等非算术表达式封装到中间值中。
-
-$$
-FuncSymbol = \bigvee_{i} x_{i} = Or(x_{1}, \, x_{2}, \, .. \, , \, x_{i})
-$$
-
-$$
-\text{s.t.} \quad FuncSymbol = 1
-$$
-
-ospf 会在将模型翻译到具体求解器的接口时，自动添加每个函数中间值所需的中间变量以及约束。这个翻译过程对于使用者而言是无感知的，因此使用者并不需要知道这个函数中间值是通过什么中间变量以及约束实现的。比如上面的这个 $FuncSymbol = \bigvee_{i} x_{i}$ 就会被翻译成：
-
-$$
-\text{s.t.} \quad y = 1
-$$
-
-$$
-\begin{cases}
-  y \geq \frac{x_{i}}{\max(x_{i})}, & \max(x_{i}) > 1 \\ \; \\
-  y \geq x_{i}, & else
-\end{cases}
-$$
-
-$$
-y \leq \sum_{i} x_{i}
-$$
-
-$$
-y \in \\{ 0, 1 \\}
-$$
-
-当然，你也可以根据自己的业务需求，拓展这些函数中间值。这个时候你要实现一些接口，以让 ospf 知道这个函数中间值需要添加哪些中间变量以及约束。
-
-ospf-core 本身只维护有算术运算符以及逻辑运算符，实际上我们完全可以基于领域去设计并实现函数中间值，以作为领域工程的一部分。具体可以参考 ospf-framework 中面向特定问题的开发包。
+下例保留传统写法与使用中间值后的对照，展示这种抽象如何支持模型维护。
 
 ## 使用 ospf 在建模时的变化
 
@@ -507,7 +456,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>MIQCQP</td>
@@ -515,7 +464,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>MINLP</td>
@@ -524,6 +473,14 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>❌</td>
         <td>❌</td>
+      </tr>
+      <tr>
+        <td>CP</td>
+        <td>❌</td>
+        <td>❌</td>
+        <td>✔️</td>
+        <td>❌</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td colspan=6>求解器接口</td>
@@ -558,15 +515,15 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
-        <td>GUROBI-11</td>
+        <td>GUROBI-11+</td>
         <td>❗</td>
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>HEXALY</td>
@@ -614,7 +571,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>其它</td>
@@ -629,7 +586,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>GA</td>
@@ -637,7 +594,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>MVO</td>
@@ -645,7 +602,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>SAA</td>
@@ -653,7 +610,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>HCA</td>
@@ -701,7 +658,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td></td>
       </tr>
       <tr>
@@ -711,9 +668,9 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>IIS</td>
         <td>❗</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td></td>
       </tr>
       <tr>
@@ -722,7 +679,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td></td>
       </tr>
       <tr>
@@ -731,7 +688,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td></td>
       </tr>
       <tr>
@@ -770,16 +727,16 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
         <td>✔️</td>
       </tr>
       <tr>
         <td>一维下料</td>
         <td>❌</td>
         <td>❌</td>
-        <td>⭕</td>
+        <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
         <td>✔️</td>
       </tr>
       <tr>
@@ -797,16 +754,16 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
         <td>✔️</td>
       </tr>
       <tr>
         <td>网络流调度</td>
         <td>❌</td>
         <td>❌</td>
+        <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
+        <td>✔️</td>
         <td>❌</td>
       </tr>
       <tr>
@@ -830,7 +787,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
     <tbody>
       <tr>
         <td>求解器服务端</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>元启发式算法服务端</td>
@@ -838,7 +795,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
       </tr>
       <tr>
         <td>调度器</td>
-        <td>❗</td>
+        <td>✔️</td>
       </tr>
       <tr>
         <td>时间片轮转</td>

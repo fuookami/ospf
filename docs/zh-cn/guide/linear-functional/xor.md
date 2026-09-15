@@ -1,176 +1,63 @@
-# 逻辑异或
+# Xor（恰好一个）
 
-## 形式
+`XorFunction` 当且仅当恰好一个输入表达式非零时返回一。对两个输入，它等同于通常的 XOR；对三个及以上输入，它是“恰好一个”谓词，不是奇数奇偶校验。
 
-$$
-y = Xor(x_{1}, \, x_{2}, \, .. \, , \, x_{i}) = \begin{cases}
-1, & \neg \bigvee_{i} x_{i} \wedge \neg \bigwedge_{i} x_{i} \\ \; \\
-0, & \bigvee_{i} x_{i} \vee \bigwedge_{i} x_{i}
-\end{cases}
-$$
+## 数学定义
 
-## 两个多项式
-
-### 额外变量
-
-$y^{\prime} \in \{0, 1 \}$ ：逻辑异或值。
-
-### 导出符号
+令非零指示变量为 $a_i\in\{0,1\}$，结果为 $y\in\{0,1\}$：
 
 $$
-y = y^{\prime}
+y=1\iff\sum_i a_i=1.
 $$
 
-### 数学模型
+Kotlin 与 Rust 使用相同的精确线性编码：
 
 $$
-\begin{align}
-\text{s.t.} \quad & y^{\prime} & \geq & \, Bin(x_{i}) - \sum_{i^{\prime} \in \{ i^{\prime} \in P | i^{\prime} \neq i \}} Bin(x_{i^{\prime}}), & \; \forall i \in P \\ \; \\
-& y & \leq & \, \sum_{i \in P} Bin(x_{i}) \\ \; \\
-& y & \leq & \, |P| - \sum_{i \in P} Bin(x_{i})
-& 
-\end{align}
+\begin{aligned}
+y&\le\sum_i a_i,\\
+y&\ge a_i-\sum_{j\ne i}a_j &&\forall i,\\
+y+a_i+a_j&\le2 &&\forall i<j.
+\end{aligned}
 $$
 
-$Bin(x)$ 可参考 [二值化](/zh-cn/guide/linear-functional/bin)。
+第一条在所有输入均为零时强制 $y=0$；第二组在只有一个指示变量激活时强制 $y=1$；成对约束在至少两个指示变量激活时强制 $y=0$。
 
-## 任意个多项式
+## 非零指示模型
 
-### 导出符号
+每个输入通过共享的非零 Big-M 公式连接到一个指示变量和一个符号侧辅助变量。两种实现的默认零带容差都是 `1e-10`，严格非零边界约为 `1.6e-9`。Kotlin 的直接构造器暴露 `bigM`、`tolerance` 和 `strictBoundary`；Rust 暴露对应的 `with_big_m`、`with_tolerance`、`with_strict_boundary` 和 `with_parameters` 构造器。`abs(input) <= tolerance` 视为零；`tolerance < abs(input) < strictBoundary` 的开放过渡区返回未定义（`null`/`None`），因为求解器会刻意拒绝这一区间；达到严格边界才视为非零。
 
-$$
-y = Xor(\min(x_{i}), \max(x_{i}))
-$$
-
-$\min(x)$ 可参考[最小值](/zh-cn/guide/linear-functional/min)，\max(x)$ 可参考[最大值](/zh-cn/guide/linear-functional/max)。
-
-## 样例
-
-### 两个多项式
+## Kotlin/Rust 示例
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
+```kotlin [Kotlin]
+val exactlyOne = XorFunction(
+    polynomials = listOf(a, b, c),
+    converter = IntoValue.Identity,
+    name = "exactly-one"
+)
+check(exactlyOne.evaluate(valuesWithOnlyA) == Flt64.one)
+check(exactlyOne.evaluate(valuesWithAAndB) == Flt64.zero)
+```
 
-val x = BinVar("x")
-val y = BinVar("y")
-val xor = XorFunction(listOf(x, y), name = "xor")
-val solver = ScipLinearSolver()
-
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(y)
-model1.add(xor)
-model1.addConstraint(xor)
-model1.minimize(x + y)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.one)
-
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(y)
-model2.add(xor)
-model2.addConstraint(xor)
-model2.maximize(x + y)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.one)
-
-val model3 = LinearMetaModel()
-model3.add(x)
-model3.add(y)
-model3.add(xor)
-model3.addConstraint(!xor)
-model3.minimize(x + y)
-val result3 = runBlocking { solver(model3) }
-assert(result3.value!!.obj eq Flt64.zero)
-
-val model4 = LinearMetaModel()
-model4.add(x)
-model4.add(y)
-model4.add(xor)
-model4.addConstraint(!xor)
-model4.maximize(x + y)
-val result4 = runBlocking { solver(model4) }
-assert(result4.value!!.obj eq Flt64.two)
+```rust [Rust]
+let exactly_one = XorFunction::new(1, "exactly_one", vec![a, b, c]);
+assert_eq!(exactly_one.calculate_value(&only_a_tokens, false), Some(1.0));
+assert_eq!(exactly_one.calculate_value(&a_and_b_tokens, false), Some(0.0));
 ```
 
 :::
 
-### 任意个多项式
+Rust 也可以一次配置全部数值策略：
 
-::: code-group
-
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-
-val x = BinVar("x")
-val y = BinVar("y")
-val z = BinVar("z")
-val xor = XorFunction(listOf(x, y, z), name = "xor")
-val solver = ScipLinearSolver()
-
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(y)
-model1.add(z)
-model1.add(xor)
-model1.addConstraint(xor)
-model1.minimize(x + y + z)
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.one)
-
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(y)
-model2.add(z)
-model2.add(xor)
-model2.addConstraint(xor)
-model2.maximize(x + y + z)
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.two)
-
-val model3 = LinearMetaModel()
-model3.add(x)
-model3.add(y)
-model3.add(z)
-model3.add(xor)
-model3.addConstraint(!xor)
-model3.minimize(x + y + z)
-val result3 = runBlocking { solver(model3) }
-assert(result3.value!!.obj eq Flt64.zero)
-
-val model4 = LinearMetaModel()
-model4.add(x)
-model4.add(y)
-model4.add(z)
-model4.add(xor)
-model4.addConstraint(!xor)
-model4.maximize(x + y + z)
-val result4 = runBlocking { solver(model4) }
-assert(result4.value!!.obj eq Flt64.three)
+```rust
+let configured = XorFunction::new(2, "configured_xor", vec![a, b])
+    .with_parameters(Some(100.0), 1e-8, 1e-6);
 ```
 
-:::
+## 测试与参考
 
-完整实现请参考：
-
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/Xor.kt)
-
-完整样例请参考：
-
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/XorTest.kt)
+- Kotlin：[`XorFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/XorFunctionDedicatedTest.kt)
+- Kotlin 实现：[`And.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/And.kt)
+- Rust：[`function_symbol_xor.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_xor.rs)
+- Rust 实现：[`and.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/and.rs)

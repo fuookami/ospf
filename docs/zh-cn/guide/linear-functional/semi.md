@@ -1,95 +1,75 @@
-# 半函数
+# 半连续变量
 
-## 形式
+`SemiFunction<V>` 表示一个变量只能为零，或落在激活区间 `[lb, ub]` 内。
 
-$$
-y = semi(x) = max(0, \, x) = \begin{cases}
-x, & x > 0 \\ \; \\
-0, & x \leq 0
-\end{cases}
-$$
+## 求解器数学模型
 
-## 常量
+符号创建连续结果变量 $y$ 和二元激活变量 $b$，实际传给求解器的约束为
 
 $$
-m = \max(|x|)
+y-ub\,b\le0,
+\qquad
+y-lb\,b\ge0.
 $$
 
-## 额外变量
+当 $b=0$ 时两条约束共同强制 $y=0$；当 $b=1$ 时得到
+$lb\le y\le ub$。构造器检查 `lb <= ub`，并将结果变量和指示变量注册为辅助变量。
 
-$u \in \{ 0, 1 \}$：$x > 0$ 的判定。
+## Kotlin API
 
-$y^{\prime} \in \mathbb{R} - \mathbb{R}^{-}$：表示 $max(0, x)$。
+```kotlin
+val semi = SemiFunction(
+    lb = Flt64(2.0),
+    ub = Flt64(5.0),
+    converter = IntoValue.Identity,
+    name = "semi"
+)
+```
 
-## 导出符号
+`SemiFunction.from(variable, ...)` 可从连续变量推导缺失的有限边界；`resultVar`、`indicatorVar` 和 `resultPolynomial` 暴露模型表示。
 
-$$
-y = y^{\prime}
-$$
+## Rust API
 
-## 数学模型
+```rust
+let semi = SemiFunction::new(1, "semi", 2.0_f64, 5.0_f64);
+assert_eq!(semi.lower_bound(), &2.0);
+assert_eq!(semi.upper_bound(), &5.0);
+```
 
-$$
-\begin{align}
-\text{s.t.} \quad & y \geq x \\ \; \\
-& y \leq x + m \cdot u \\ \; \\
-& y \leq m \cdot (1 - u)
-\end{align}
-$$
+Rust 还提供 `try_from_variable`/`from_variable` 推导有限边界。两种实现注册相同的两条域约束。
 
-## 样例
+## Kotlin/Rust 示例
 
 ::: code-group
 
-```kotlin
-import kotlinx.coroutines.*
-import fuookami.ospf.kotlin.utils.math.*
-import fuookami.ospf.kotlin.core.frontend.variable.*
-import fuookami.ospf.kotlin.core.frontend.expression.polynomial.*
-import fuookami.ospf.kotlin.core.frontend.expression.symbol.linear_function.*
-import fuookami.ospf.kotlin.core.frontend.inequality.*
-import fuookami.ospf.kotlin.core.frontend.model.mechanism.*
-import fuookami.ospf.kotlin.core.backend.plugins.scip.*
-
-val x = URealVar("x")
-x.range.leq(Flt64.three)
-val y = URealVar("y")
-y.range.geq(Flt64.two)
-y.range.leq(Flt64.five)
+```kotlin [Kotlin]
 val semi = SemiFunction(
-    x - y,
+    lb = Flt64(2.0),
+    ub = Flt64(5.0),
+    converter = IntoValue.Identity,
     name = "semi"
 )
-val solver = ScipLinearSolver()
+check(semi.helperVariables.size == 2)
+```
 
-val model1 = LinearMetaModel()
-model1.add(x)
-model1.add(y)
-model1.add(semi)
-model1.minimize(semi)
-
-val result1 = runBlocking { solver(model1) }
-assert(result1.value!!.obj eq Flt64.zero)
-assert(result1.value!!.solution[1] geq result1.value!!.solution[0])
-
-val model2 = LinearMetaModel()
-model2.add(x)
-model2.add(y)
-model2.add(semi)
-model2.maximize(semi)
-
-val result2 = runBlocking { solver(model2) }
-assert(result2.value!!.obj eq Flt64.one)
-assert(result2.value!!.solution[0] eq Flt64.three)
-assert(result2.value!!.solution[1] eq Flt64.two)
+```rust [Rust]
+let semi = SemiFunction::new(1, "semi", 2.0_f64, 5.0_f64);
+assert_eq!(semi.lower_bound(), &2.0);
+assert_eq!(semi.upper_bound(), &5.0);
 ```
 
 :::
 
-完整实现请参考：
+## 测试与参考
 
-- [Kotlin](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/frontend/expression/symbol/linear_function/Semi.kt)
+- Kotlin 独立聚焦测试：[`SemiFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/SemiFunctionDedicatedTest.kt)
+- Kotlin 回归测试：[`SemiFunctionTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/SemiFunctionTest.kt)
+- Kotlin 实现：[`Semi.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Semi.kt)
+- Rust 实现：[`semi.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/semi.rs)
+- Rust 独立聚焦测试：[`function_symbol_semi.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/function_symbol_semi.rs)
 
-完整样例请参考：
+独立聚焦测试会断言辅助 token 和两条实际域约束行，并覆盖共享默认区间以及反向/非有限边界的提前校验。
 
-- [Kotlin](https://github.com/fuookami/ospf/tree/main/examples/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function/SemiTest.kt)
+上下界会提前校验，必须有限且下界不大于上界。Kotlin 省略边界时使用共享
+区间 [0, 1e6]；Rust 通过 SemiFunction::with_default_bounds 提供相同默认值。
+缺失 token 的语义保持显式：Kotlin 返回 null，Rust 遵循 zero_if_none。
