@@ -445,7 +445,7 @@ These components have no adapter selection (fixed implementation):
 
 ### Prerequisites
 
-1. Java 11+ runtime
+1. Java 25+ runtime
 2. Database (PostgreSQL recommended) for production adapters
 3. Kafka cluster for event-driven mode
 4. Object storage (S3/MinIO or LocalFS) for model/checkpoint persistence
@@ -578,7 +578,7 @@ curl -s "http://127.0.0.1:18080/api/v1/tasks/$TASK_ID"
 
 ### Prerequisites
 
-1. Java 11+ runtime
+1. Java 25+ runtime
 2. Solver engine (Gurobi, SCIP, or other OSPF-compatible solver)
 3. Network access to scheduler and object storage
 
