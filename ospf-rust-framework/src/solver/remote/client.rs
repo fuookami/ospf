@@ -1642,6 +1642,7 @@ mod tests {
             .record_cancellation(CancellationRecord {
                 origin: CancellationOrigin::RemoteStop,
                 requested_at_epoch_ms: 10,
+                reason: None,
             })
             .expect("checkpoint cancellation should be valid");
         let mut result = SolveResult::from_slice_result(&slice(false, 0), Duration::ZERO, None);

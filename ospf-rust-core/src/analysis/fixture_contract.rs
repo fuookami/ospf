@@ -29,18 +29,91 @@ use crate::solver::report::ProblemStatus;
 
 /// 定位两端共同维护的 `analysis-fixtures`。
 ///
-/// 只检出单个仓库时返回 `None`，测试显式跳过而不是静默通过。
-/// Locate the shared `analysis-fixtures`. When only a single repository is checked out this
-/// returns `None` and the test skips explicitly instead of passing silently.
+/// 候选顺序：仓库同级检出、父仓库嵌套检出、仓内镜像。
+/// 仓内镜像保证单仓库检出（CI、外部贡献者）也能真实执行契约测试，
+/// 而不是静默通过。镜像与共享副本的一致性由 `fixture_mirror_matches_shared_copy` 守护。
+///
+/// Locate the shared `analysis-fixtures`. Candidates are: sibling checkout, parent
+/// checkout, and an in-repo mirror. The mirror keeps a single-repository checkout
+/// (CI, outside contributors) genuinely asserting the contract instead of passing
+/// silently. `fixture_mirror_matches_shared_copy` guards mirror/shared equality.
 fn fixture_root() -> Option<PathBuf> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     [
         manifest.join("../../analysis-fixtures"),
         manifest.join("../analysis-fixtures"),
         manifest.join("analysis-fixtures"),
+        manifest.join("tests/fixtures/analysis-fixtures"),
     ]
     .into_iter()
     .find(|candidate| candidate.is_dir())
+}
+
+/// 显式跳过开关：仅在明确设置时才允许跳过跨语言契约。
+/// Explicit skip switch: the cross-language contract may only be skipped when set.
+const SKIP_ENV: &str = "OSPF_SKIP_CROSS_LANGUAGE_FIXTURE";
+
+fn skip_requested() -> bool {
+    std::env::var(SKIP_ENV).is_ok_and(|value| !value.is_empty() && value != "0")
+}
+
+/// 仓内镜像目录（相对 crate 根）。 / In-repo mirror directory, relative to the crate root.
+const MIRROR_RELATIVE: &str = "tests/fixtures/analysis-fixtures";
+
+/// 契约文件清单。 / The contract file list.
+const CONTRACT_FILES: [&str; 4] = [
+    "analysis-contract.tsv",
+    "analysis-cases.tsv",
+    "checkpoint-wire-contract.tsv",
+    "checkpoint-envelope-v3.json",
+];
+
+/// 去掉行尾符差异后再比较。
+///
+/// 契约文件在三个仓库间以 `* text=auto` 管理，Windows 检出会把 LF 变成 CRLF。
+/// 两侧解析器都按行切分并 `trim_end()`，因此行尾符风格**不承载任何契约语义**；
+/// 若按原始字节比较，跨平台检出会产生"内容一致但字节不同"的假失败。
+///
+/// Compare after normalizing line terminators. The contract files are tracked with
+/// `* text=auto`, so a Windows checkout rewrites LF as CRLF. Both parsers split on lines
+/// and `trim_end()`, so line-ending style carries **no contract meaning**; comparing raw
+/// bytes would raise a false failure for identical content on a differently-configured clone.
+fn line_normalized(bytes: &[u8]) -> Vec<u8> {
+    String::from_utf8_lossy(bytes)
+        .replace("\r\n", "\n")
+        .into_bytes()
+}
+
+/// 守护仓内镜像与共享副本内容一致。
+///
+/// 单仓库检出的 CI 会读取镜像，而开发者本地读共享副本；两者漂移会导致
+/// "本地绿、CI 红"或更糟的相反情况。因此只要两者同时存在就强制比较内容。
+/// 单仓库检出时共享副本本就不存在（这正是镜像的意义），此时无事可比对，直接返回。
+///
+/// Guard that the in-repo mirror matches the shared copy. A single-repo CI checkout reads
+/// the mirror while a developer reads the shared copy; drift between them produces the
+/// worst outcome — one side green, the other red. Whenever both exist they must agree;
+/// in a single-repo checkout there is nothing to compare.
+#[test]
+fn fixture_mirror_matches_shared_copy() {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mirror = manifest.join(MIRROR_RELATIVE);
+    let shared = manifest.join("../../analysis-fixtures");
+
+    if !mirror.is_dir() || !shared.is_dir() {
+        return;
+    }
+
+    for name in CONTRACT_FILES {
+        let mirror_bytes = std::fs::read(mirror.join(name)).expect("mirror file should be readable");
+        let shared_bytes = std::fs::read(shared.join(name)).expect("shared file should be readable");
+        assert_eq!(
+            line_normalized(&mirror_bytes),
+            line_normalized(&shared_bytes),
+            "{name} differs between the in-repo mirror and the shared copy; \
+             they must stay in sync"
+        );
+    }
 }
 
 fn read_sections(name: &str) -> Option<BTreeMap<String, Vec<Vec<String>>>> {
@@ -75,16 +148,35 @@ fn read_sections(name: &str) -> Option<BTreeMap<String, Vec<Vec<String>>>> {
     Some(sections)
 }
 
+/// 取回 fixture 段落；缺失时**显式失败**，与 Kotlin 侧行为一致。
+///
+/// 跨语言契约只有在真正被断言时才有价值。这里绝不静默 `return`，
+/// 否则 fixture 缺失会伪装成"测试通过"（历史上确实发生过）。
+/// 唯一的跳过途径是显式设置 `OSPF_SKIP_CROSS_LANGUAGE_FIXTURE`，并打印醒目警告。
+///
+/// Fetch fixture sections; **fail loudly** when absent, matching the Kotlin side.
+/// A cross-language contract is only worth something when actually asserted, so this
+/// never silently `return`s — an absent fixture must not masquerade as a pass.
+/// The only skip path is an explicit `OSPF_SKIP_CROSS_LANGUAGE_FIXTURE`, with a warning.
 macro_rules! require_fixtures {
     ($sections:expr) => {
         match $sections {
             Some(sections) => sections,
             None => {
-                eprintln!(
-                    "skipping cross-language fixture contract: analysis-fixtures not found \
-                     (requires sibling ospf-kotlin and ospf-rust checkouts)"
+                if skip_requested() {
+                    eprintln!(
+                        "WARNING: skipping cross-language fixture contract because {SKIP_ENV} is set. \
+                         This contract is NOT being verified."
+                    );
+                    return;
+                }
+                panic!(
+                    "analysis-fixtures not found. The cross-language semantic contract cannot be \
+                     verified. Expected it at one of: <repo>/../../analysis-fixtures, \
+                     <repo>/../analysis-fixtures, <repo>/analysis-fixtures, \
+                     <repo>/tests/fixtures/analysis-fixtures. \
+                     Provide the shared directory, or set {SKIP_ENV}=1 to skip explicitly."
                 );
-                return;
             }
         }
     };

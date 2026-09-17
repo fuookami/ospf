@@ -106,6 +106,40 @@ cargo test -p ospf-rust-framework-csp1d
 
 solver-backed 测试需要对应 Cargo feature 和本地 solver 安装或 bundled 支持。core solver 说明见 [Gurobi](ospf-rust-core/src/solver/solvers/gurobi/README_ch.md) 与 [SCIP](ospf-rust-core/src/solver/solvers/scip/README_ch.md)。
 
+### feature 门控与测试口径
+
+各 crate 均声明 `default = []`，大量测试位于非默认 feature 之后：
+
+- `ospf-rust-math` 的 `scalar_parser` 及表达式解析测试需要 `parser`；`serde` 同理。
+- `ospf-rust-core` 的 `serde` 相关测试需要 `serde`。**`ospf-rust-core` 的整个 CP checkpoint 模块
+  （`solver::constraint_programming::checkpoint`）都在 `#[cfg(feature = "serde")]` 之后**，
+  因此单独运行 `cargo test -p ospf-rust-core` 会**静默跳过它的全部测试**（含
+  `complete_hint_*` 与若干取消链测试）。核对 CP checkpoint 覆盖时**必须**加 `--features serde`。
+- `ospf-rust-framework` 的 `remote` 模块（含 `RemoteSolverFailureDetail`）需要 `remote-solver`；
+  checkpoint envelope 的线格式契约测试 `tests/checkpoint_wire_contract.rs` 同样只在
+  `--features remote-solver` 下编译执行。
+
+因此**默认 `cargo test --workspace` 会静默跳过这些测试**，统计覆盖率时必须显式启用：
+
+```powershell
+# 全工作区（含 remote，不含 async）
+cargo test --workspace --features "ospf-rust-math/parser ospf-rust-math/serde ospf-rust-core/serde ospf-rust-framework/remote-solver"
+```
+
+`async` 会把求解器 trait 切换为返回 future 的异步形态。`remote-solver` **不再**隐含 `async`，
+因此 remote 相关测试可与全工作区一起运行。
+
+若要启用 `async`，**必须同时为所有下游 crate 打开各自的 `async`**。仅给 `ospf-rust-framework`
+打开会让仍按同步签名编写的 `bpp3d` 与 `gantt` 编译失败（feature 统一导致的半开状态）：
+
+```powershell
+cargo test --workspace --features "ospf-rust-framework/async ospf-rust-framework-bpp3d/async ospf-rust-framework-gantt-scheduling/async"
+```
+
+`solver-backed` 测试另需 Gurobi/SCIP feature 与本地库/许可证。
+
+**注意**：`gurobi10`、`gurobi11`、`gurobi12` 三者互斥，**不要使用 `--all-features`**，请按上面的显式 feature 列表运行。
+
 ## 当前边界
 
 本仓库正在把 Kotlin framework 能力迁移到 Rust。部分领域 crate 已暴露 Kotlin 对齐 public surface，但生命周期中的一些阶段仍使用 Rust 侧确定性、fake 或 feature-gated solver 路径。每个领域 crate README 会记录自身覆盖范围与已知差距。

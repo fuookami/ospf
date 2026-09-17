@@ -338,3 +338,200 @@ macro_rules! impl_try_to_canonical_from_to_canonical {
         }
     };
 }
+
+// ============================================================================
+// 测试 / Tests
+// ============================================================================
+
+/// 本模块声明转换 trait，实现分散在 `polynomial/{linear,quadratic,canonical}.rs`。
+/// 这里通过真实实现校验转换契约与错误语义。
+///
+/// This module declares the conversion traits; implementations live in
+/// `polynomial/{linear,quadratic,canonical}.rs`. The conversion contract and the error
+/// semantics are verified here through those real implementations.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::symbol::test_utils::SimpleSymbol;
+    use crate::symbol::{Linear, LinearMonomial, OwnedSymbol, Quadratic, QuadraticMonomial};
+
+    /// 构造一个具名测试符号 / Build a named test symbol.
+    fn sym(id: usize, name: &str) -> OwnedSymbol {
+        OwnedSymbol::new(SimpleSymbol::with_id(id, name))
+    }
+
+    #[test]
+    fn try_to_linear_error_messages_are_specific() {
+        // 两个变体必须有可区分的、面向人的消息，便于定位转换失败原因。
+        // The two variants must carry distinguishable, human-readable messages so the
+        // cause of a failed conversion is identifiable.
+        let higher = TryToLinearError::HasHigherOrderTerms.to_string();
+        let multiple = TryToLinearError::HasMultipleSymbols.to_string();
+
+        assert!(higher.contains("higher order"), "实际: {higher}");
+        assert!(multiple.contains("multiple symbols"), "实际: {multiple}");
+        assert_ne!(higher, multiple, "两个变体的消息必须不同");
+    }
+
+    #[test]
+    fn try_to_quadratic_error_messages_are_specific() {
+        // 同上，二次转换的两类错误必须可区分。
+        // Likewise, the two quadratic-conversion errors must be distinguishable.
+        let higher = TryToQuadraticError::HasHigherOrderTerms.to_string();
+        let degree = TryToQuadraticError::MonomialDegreeTooHigh.to_string();
+
+        assert!(higher.contains("higher order"), "实际: {higher}");
+        assert!(degree.contains("degree exceeds 2"), "实际: {degree}");
+        assert_ne!(higher, degree);
+    }
+
+    #[test]
+    fn try_to_canonical_error_message_is_descriptive() {
+        // 规范化转换目前只有一种失败原因，消息必须说明是"不支持"。
+        // Canonical conversion currently has a single failure cause; the message must say
+        // the conversion is unsupported.
+        let message = TryToCanonicalError::Unsupported.to_string();
+        assert!(message.contains("unsupported"), "实际: {message}");
+    }
+
+    #[test]
+    fn conversion_errors_are_usable_as_std_errors() {
+        // 必须能作为 std::error::Error 使用，才能接入 `?` 与错误链。
+        // They must be usable as std::error::Error so they compose with `?` and error chains.
+        let linear: &dyn std::error::Error = &TryToLinearError::HasHigherOrderTerms;
+        let quadratic: &dyn std::error::Error = &TryToQuadraticError::MonomialDegreeTooHigh;
+        let canonical: &dyn std::error::Error = &TryToCanonicalError::Unsupported;
+
+        assert!(!linear.to_string().is_empty());
+        assert!(!quadratic.to_string().is_empty());
+        assert!(!canonical.to_string().is_empty());
+        assert!(linear.source().is_none(), "当前没有下层错误来源");
+    }
+
+    #[test]
+    fn conversion_errors_compare_by_variant() {
+        // 错误类型派生 PartialEq，同变体相等、异变体不等。
+        // The error types derive PartialEq: same variant equal, different variant unequal.
+        assert_eq!(
+            TryToLinearError::HasHigherOrderTerms,
+            TryToLinearError::HasHigherOrderTerms
+        );
+        assert_ne!(
+            TryToLinearError::HasHigherOrderTerms,
+            TryToLinearError::HasMultipleSymbols
+        );
+        assert_ne!(
+            TryToQuadraticError::HasHigherOrderTerms,
+            TryToQuadraticError::MonomialDegreeTooHigh
+        );
+    }
+
+    #[test]
+    fn purely_linear_quadratic_converts_to_linear() {
+        // 只含线性项的 Quadratic 必须能转成 Linear，且系数与常数项原样保留。
+        // A Quadratic holding only linear terms must convert to Linear, preserving
+        // coefficients and the constant term.
+        let x = sym(1, "x");
+        let y = sym(2, "y");
+        let quadratic = Quadratic::new(
+            vec![
+                QuadraticMonomial::linear(3.0_f64, x.clone()),
+                QuadraticMonomial::linear(-2.0_f64, y.clone()),
+            ],
+            7.0,
+        );
+
+        let linear: Linear<f64> = quadratic
+            .try_to_linear()
+            .expect("纯线性项必须可以转换 / purely linear terms must convert");
+
+        assert_eq!(linear.constant, 7.0, "常数项必须保留");
+        assert_eq!(linear.monomials.len(), 2);
+        let terms: Vec<(String, f64)> = linear
+            .monomials
+            .iter()
+            .map(|m| (m.symbol.to_string(), m.coefficient))
+            .collect();
+        assert!(terms.contains(&("x".to_string(), 3.0)), "实际 {terms:?}");
+        assert!(terms.contains(&("y".to_string(), -2.0)), "实际 {terms:?}");
+    }
+
+    #[test]
+    fn genuinely_quadratic_cannot_convert_to_linear() {
+        // 含 x² 或 xy 的二次式必须拒绝转线性，并给出 HasHigherOrderTerms。
+        // A form containing x² or xy must refuse linear conversion with HasHigherOrderTerms.
+        let x = sym(1, "x");
+        let y = sym(2, "y");
+
+        let square = Quadratic::new(
+            vec![QuadraticMonomial::quadratic(1.0_f64, x.clone(), x.clone())],
+            0.0,
+        );
+        assert_eq!(
+            square.try_to_linear().unwrap_err(),
+            TryToLinearError::HasHigherOrderTerms,
+            "x² 不得转成线性"
+        );
+
+        let mixed = Quadratic::new(
+            vec![QuadraticMonomial::quadratic(1.0_f64, x, y)],
+            0.0,
+        );
+        assert_eq!(
+            mixed.try_to_linear().unwrap_err(),
+            TryToLinearError::HasHigherOrderTerms,
+            "xy 不得转成线性"
+        );
+    }
+
+    #[test]
+    fn reference_conversion_matches_owned_conversion() {
+        // &Quadratic 与 Quadratic 的转换结果必须一致（两者各自实现了 trait）。
+        // The &Quadratic and Quadratic conversions must agree; each has its own impl.
+        let x = sym(1, "x");
+        let quadratic = Quadratic::new(
+            vec![QuadraticMonomial::linear(4.0_f64, x.clone())],
+            1.5,
+        );
+
+        let owned: Linear<f64> = quadratic.clone().try_to_linear().expect("owned 转换成功");
+        let borrowed: Linear<f64> = (&quadratic).try_to_linear().expect("borrowed 转换成功");
+
+        assert_eq!(owned.constant, borrowed.constant);
+        assert_eq!(owned.monomials.len(), borrowed.monomials.len());
+        let owned_terms: Vec<(String, f64)> = owned
+            .monomials
+            .iter()
+            .map(|m| (m.symbol.to_string(), m.coefficient))
+            .collect();
+        let borrowed_terms: Vec<(String, f64)> = borrowed
+            .monomials
+            .iter()
+            .map(|m| (m.symbol.to_string(), m.coefficient))
+            .collect();
+        assert_eq!(owned_terms, borrowed_terms);
+    }
+
+    #[test]
+    fn linear_monomial_to_canonical_keeps_the_symbol() {
+        // 单项式转换到 Canonical 后必须保留符号身份（类型级转换的核心不变量）。
+        // Converting a monomial to Canonical must preserve symbol identity — the core
+        // invariant of the type-level conversions.
+        use crate::symbol::operation::ToCanonical;
+
+        let x = sym(1, "x");
+        let monomial = LinearMonomial::new(3.0_f64, x.clone());
+        let canonical: crate::symbol::Canonical<f64, i32> = monomial.to_canonical();
+
+        assert_eq!(canonical.constant, 0.0, "单项式转换不引入常数项");
+        assert_eq!(canonical.monomials.len(), 1);
+        let canonical_monomial = &canonical.monomials[0];
+        assert_eq!(canonical_monomial.coefficient, 3.0);
+        let symbols: Vec<String> = canonical_monomial
+            .powers
+            .keys()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(symbols, vec!["x".to_string()], "符号身份必须保留");
+    }
+}

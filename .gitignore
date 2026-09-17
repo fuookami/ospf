@@ -5,7 +5,9 @@
 *.ctxt
 
 Cargo.lock
-[Tt]arget/
+# 覆盖 target/ 与 target-*/（如 target-local-tests、target-gurobi-tests）
+# Covers target/ and target-*/ (e.g. target-local-tests, target-gurobi-tests)
+[Tt]arget*/
 [Dd]ebug/
 [Rr]elease/
 .vs/

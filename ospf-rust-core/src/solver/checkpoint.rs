@@ -683,6 +683,7 @@ mod tests {
         let cancellation = CancellationRecord {
             origin: super::super::CancellationOrigin::User,
             requested_at_epoch_ms: 1,
+            reason: None,
         };
         checkpoint
             .record_cancellation(cancellation.clone())
@@ -703,6 +704,7 @@ mod tests {
         let replacement = CancellationRecord {
             origin: super::super::CancellationOrigin::RemoteStop,
             requested_at_epoch_ms: 1,
+            reason: None,
         };
         assert!(
             checkpoint
@@ -727,6 +729,7 @@ mod tests {
         let cancellation = CancellationRecord {
             origin: super::super::CancellationOrigin::User,
             requested_at_epoch_ms: 1,
+            reason: None,
         };
         checkpoint
             .record_cancellation(cancellation.clone())
@@ -745,6 +748,7 @@ mod tests {
             .record_cancellation(CancellationRecord {
                 origin: super::super::CancellationOrigin::User,
                 requested_at_epoch_ms: 10,
+                reason: None,
             })
             .expect("first attempt cancellation should be recorded");
 
@@ -755,6 +759,7 @@ mod tests {
             .record_cancellation(CancellationRecord {
                 origin: super::super::CancellationOrigin::RemoteStop,
                 requested_at_epoch_ms: 20,
+                reason: None,
             })
             .expect("second attempt cancellation should extend the chain");
 

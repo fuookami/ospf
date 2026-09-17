@@ -158,5 +158,228 @@ where
 
 #[cfg(test)]
 mod tests {
-    // 单元测试将在实现 lazy_context 后添加
+    use super::*;
+    use crate::model::flatten::LazyLinearFlattenContext;
+    use crate::symbol::flatten::{Linear, LinearMonomial};
+    use crate::token::VecTokenList;
+    use std::sync::Arc;
+
+    /// 被测上下文类型别名 / Context type alias under test.
+    type Context = LazyLinearFlattenContext<f64, VecTokenList<f64>>;
+
+    /// 构建已初始化的线性平展上下文 / Build an initialized linear flatten context.
+    fn context() -> Context {
+        let context = Context::new();
+        context.init(Arc::new(VecTokenList::new()));
+        context
+    }
+
+    /// 线性多项式辅助构造 / Helper to build a linear polynomial.
+    fn linear(coefficient: f64, var_index: usize, constant: f64) -> Linear<f64> {
+        Linear::new(vec![LinearMonomial::new(coefficient, var_index)], constant)
+    }
+
+    /// 结构化比较线性多项式。
+    ///
+    /// `Linear` 以堆地址作为身份（`Cacheable`），因此不实现 `PartialEq`；
+    /// 这里按单项式与常数项逐项比较，才能断言"数值相等"。
+    ///
+    /// Structurally compare linear polynomials. `Linear` carries address identity
+    /// (`Cacheable`) and therefore does not implement `PartialEq`; comparing terms and
+    /// the constant is what actually asserts numeric equality.
+    fn assert_linear_eq(actual: &Linear<f64>, expected: &Linear<f64>) {
+        assert_eq!(
+            actual.constant_term(),
+            expected.constant_term(),
+            "constant term differs"
+        );
+        let actual_terms: Vec<(usize, f64)> = actual
+            .monomials()
+            .iter()
+            .map(|m| (m.var_index(), *m.coefficient()))
+            .collect();
+        let expected_terms: Vec<(usize, f64)> = expected
+            .monomials()
+            .iter()
+            .map(|m| (m.var_index(), *m.coefficient()))
+            .collect();
+        assert_eq!(actual_terms, expected_terms, "monomial terms differ");
+    }
+
+    /// 可平展的测试替身：带稳定标识、可计数、可声明依赖。
+    /// Flattenable stand-in: stable identifier, call counter, and declared dependencies.
+    struct Probe {
+        id: u64,
+        dependencies: Vec<u64>,
+        calls: std::cell::Cell<usize>,
+    }
+
+    impl Probe {
+        fn new(id: u64) -> Self {
+            Self {
+                id,
+                dependencies: Vec::new(),
+                calls: std::cell::Cell::new(0),
+            }
+        }
+
+        fn with_dependencies(id: u64, dependencies: Vec<u64>) -> Self {
+            Self {
+                id,
+                dependencies,
+                calls: std::cell::Cell::new(0),
+            }
+        }
+
+        fn calls(&self) -> usize {
+            self.calls.get()
+        }
+    }
+
+    impl Identified for Probe {
+        fn identifier(&self) -> u64 {
+            self.id
+        }
+    }
+
+    impl Flattenable<Context, f64> for Probe {
+        fn flatten(&self, _ctx: &mut Context) -> Linear<f64> {
+            self.calls.set(self.calls.get() + 1);
+            linear(1.0, self.id as usize, 0.0)
+        }
+    }
+
+    impl FlattenableWithDependencies<Context, f64> for Probe {
+        fn dependencies(&self) -> Vec<u64> {
+            self.dependencies.clone()
+        }
+    }
+
+    #[test]
+    fn cached_flatten_evaluates_only_once() {
+        // 缓存命中后不得重复平展：平展是热路径，重复执行会破坏缓存的意义。
+        // A cache hit must not re-flatten; flattening is a hot path and repeating it
+        // defeats the purpose of the cache.
+        let mut ctx = context();
+        let probe = Probe::new(101);
+
+        let first = probe.flatten_cached(&mut ctx);
+        let second = probe.flatten_cached(&mut ctx);
+
+        assert_eq!(probe.calls(), 1, "第二次调用必须命中缓存");
+        assert_linear_eq(&first, &second);
+        assert!(ctx.polynomial_cache().contains_key(&101));
+    }
+
+    #[test]
+    fn force_flatten_bypasses_the_cache_and_refreshes_it() {
+        // flatten_force 必须无视既有缓存重新计算，并覆盖缓存内容。
+        // flatten_force must recompute regardless of the cache and overwrite it.
+        let mut ctx = context();
+        let probe = Probe::new(102);
+
+        probe.flatten_cached(&mut ctx);
+        assert_eq!(probe.calls(), 1);
+
+        let forced = probe.flatten_force(&mut ctx);
+
+        assert_eq!(probe.calls(), 2, "force 必须真正重新平展");
+        assert_linear_eq(&forced, &linear(1.0, 102, 0.0));
+        assert!(ctx.polynomial_cache().contains_key(&102));
+    }
+
+    #[test]
+    fn distinct_identifiers_do_not_alias() {
+        // 不同标识必须占用独立缓存槽，否则会静默复用错误的平展结果。
+        // Distinct identifiers must occupy separate cache slots; otherwise a wrong
+        // flatten result is silently reused.
+        let mut ctx = context();
+        let first = Probe::new(201);
+        let second = Probe::new(202);
+
+        first.flatten_cached(&mut ctx);
+        second.flatten_cached(&mut ctx);
+        first.flatten_cached(&mut ctx);
+        second.flatten_cached(&mut ctx);
+
+        assert_eq!(first.calls(), 1);
+        assert_eq!(second.calls(), 1);
+        assert_eq!(ctx.polynomial_cache().len(), 2);
+        assert_linear_eq(&ctx.polynomial_cache().get(&201).expect("cached").polynomial, &linear(1.0, 201, 0.0));
+        assert_linear_eq(&ctx.polynomial_cache().get(&202).expect("cached").polynomial, &linear(1.0, 202, 0.0));
+    }
+
+    #[test]
+    fn dependency_readiness_requires_every_dependency() {
+        // 只要缺一个依赖就不得视为"依赖齐备"，否则会基于不完整的缓存平展。
+        // A single missing dependency must make readiness false; otherwise flattening
+        // proceeds on an incomplete cache.
+        let mut ctx = context();
+        let empty = Probe::with_dependencies(301, Vec::new());
+        let two = Probe::with_dependencies(302, vec![401, 402]);
+
+        assert!(empty.are_dependencies_cached(&ctx), "无依赖视为恒齐备");
+
+        assert!(!two.are_dependencies_cached(&ctx));
+        ctx.polynomial_cache_mut().insert(
+            401,
+            FlattenedPolynomial {
+                polynomial: linear(1.0, 401, 0.0),
+            },
+        );
+        assert!(!two.are_dependencies_cached(&ctx), "仅一半依赖不得视为齐备");
+
+        ctx.polynomial_cache_mut().insert(
+            402,
+            FlattenedPolynomial {
+                polynomial: linear(1.0, 402, 0.0),
+            },
+        );
+        assert!(two.are_dependencies_cached(&ctx), "依赖齐备后才可平展");
+    }
+
+    #[test]
+    fn clearing_dependencies_drops_every_dependency_entry() {
+        // 依赖失效必须一次性清掉全部依赖条目，且不得误伤无关条目。
+        // Dependency invalidation must drop every dependency entry and leave
+        // unrelated entries untouched.
+        let mut ctx = context();
+        let probe = Probe::with_dependencies(501, vec![601, 602]);
+
+        for id in [601u64, 602u64, 999u64] {
+            ctx.polynomial_cache_mut().insert(
+                id,
+                FlattenedPolynomial {
+                    polynomial: linear(1.0, id as usize, 0.0),
+                },
+            );
+        }
+        assert_eq!(ctx.polynomial_cache().len(), 3);
+
+        probe.clear_dependency_caches(&mut ctx);
+
+        assert_eq!(ctx.polynomial_cache().len(), 1, "只应保留无关条目 999");
+        assert!(!ctx.polynomial_cache().contains_key(&601));
+        assert!(!ctx.polynomial_cache().contains_key(&602));
+        assert!(ctx.polynomial_cache().contains_key(&999));
+        assert!(!probe.are_dependencies_cached(&ctx), "清理后依赖必须变为未就绪");
+    }
+
+    #[test]
+    fn clearing_dependencies_is_a_no_op_without_dependencies() {
+        // 无依赖对象清理不得影响任何缓存条目。
+        // Clearing a dependency-free object must not disturb any cache entry.
+        let mut ctx = context();
+        let probe = Probe::with_dependencies(701, Vec::new());
+        ctx.polynomial_cache_mut().insert(
+            801,
+            FlattenedPolynomial {
+                polynomial: linear(1.0, 801, 0.0),
+            },
+        );
+
+        probe.clear_dependency_caches(&mut ctx);
+
+        assert_eq!(ctx.polynomial_cache().len(), 1);
+    }
 }

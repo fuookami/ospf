@@ -11,13 +11,13 @@ use super::domain::{
 };
 use super::ospf_serializer::{
     CheckpointResumeExpectationWithAttempt, load_checkpoint_artifact_from,
-    store_checkpoint_artifact,
+    store_checkpoint_artifact, strip_identity_bookkeeping,
 };
 use super::port::{ObjectStoragePort, SolverExecutionPort};
 use super::storage::validate_object_ref_etag;
 use async_trait::async_trait;
 use ospf_rust_core::solver::{
-    AuditFingerprint, CancellationRecord, SolveCheckpoint, SolverProvenance,
+    AuditFingerprint, CancellationOrigin, CancellationRecord, SolveCheckpoint, SolverProvenance,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
@@ -333,7 +333,19 @@ where
         };
         let artifact =
             load_checkpoint_artifact_from(&self.object_storage, checkpoint, &expectation).await?;
-        if artifact.checkpoint != *expected_checkpoint {
+        // 身份比较必须剔除 Rust 侧的身份簿记：`into_artifact()` 会把
+        // checkpointId / identityNamespace / identitySchemaVersion / modelName / createdAtEpochMs
+        // 写进核心 `metadata`（那是跨物化唯一的字符串载体），而请求侧的 checkpoint 从未携带这些键。
+        // 若直接整结构比较，一次**身份完全匹配**的恢复会被误判为不匹配。
+        //
+        // The identity comparison must drop the Rust-side identity bookkeeping: `into_artifact()` writes
+        // checkpointId / identityNamespace / identitySchemaVersion / modelName / createdAtEpochMs into the
+        // core `metadata` (the only string carrier across materialization), while the request-side
+        // checkpoint never carried those keys. A direct whole-struct comparison would therefore reject a
+        // resume whose identity matches perfectly.
+        if strip_identity_bookkeeping(&artifact.checkpoint)
+            != strip_identity_bookkeeping(expected_checkpoint)
+        {
             return Err(RemoteSolverError::checkpoint_restore(
                 "checkpoint artifact identity does not match the resume payload",
             ));
@@ -1512,9 +1524,26 @@ where
                     "cancellationChain entry is missing requestedAtEpochMs",
                 )
             })?;
+        // 线格式契约把 `reason` 定义为可空字段，Kotlin 侧会实际填充它。此前解析器只读取
+        // origin 与时间戳，导致跨语言传输的取消原因被静默丢弃。
+        //
+        // The wire contract defines `reason` as nullable and the Kotlin side populates it. The
+        // parser previously read only the origin and timestamp, silently dropping a cancellation
+        // reason that had crossed languages.
+        let reason = object
+            .get("reason")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        // `origin` 按**规范代码**解析（`from_wire_code`），与序列化侧和 checkpoint 面共用同一词表。
+        // 直接 `into()` 只会落成 `Other("USER")`，让同一个来源在对端被当成未知代码。
+        //
+        // `origin` is parsed as the **canonical code** (`from_wire_code`), sharing one vocabulary with the
+        // serializer and the checkpoint face. A plain `into()` would only yield `Other("USER")`, making one
+        // origin look like an unknown code to a peer.
         chain.push(CancellationRecord {
-            origin: origin.to_owned().into(),
+            origin: CancellationOrigin::from_wire_code(origin),
             requested_at_epoch_ms,
+            reason,
         });
     }
     Ok(Some(chain))
@@ -1540,12 +1569,25 @@ where
         return serializer.serialize_none();
     };
     // Kotlin's `requestedAtEpochMs` is a Long, so do not encode it as a quoted string.
+    //
+    // `origin` 必须写**规范代码**（`to_wire_code()`），而不是 `Display`/`Debug` 的
+    // SCREAMING_SNAKE 变体名：两侧共用同一份取消来源词表，若这一面写 `USER` 而 checkpoint 面写
+    // `user`，同一个枚举就会在线格式上出现两种拼写，对端只能把前者当成未知代码兜底。
+    // `reason` 是契约定义的可空字段，必须一并输出，否则取消原因在这一面会被静默丢弃。
+    //
+    // `origin` must carry the **canonical code** (`to_wire_code()`), not the SCREAMING_SNAKE variant name
+    // from `Display`/`Debug`: both sides share one cancellation-origin vocabulary, and if this face writes
+    // `USER` while the checkpoint face writes `user`, a single enum would surface two spellings on the wire
+    // and a peer could only fall back to treating the former as an unknown code. `reason` is a nullable
+    // field defined by the contract and must be emitted as well, otherwise a cancellation reason is
+    // silently dropped on this face.
     let entries: Vec<serde_json::Value> = chain
         .iter()
         .map(|record| {
             serde_json::json!({
-                "origin": record.origin.to_string(),
+                "origin": record.origin.to_wire_code(),
                 "requestedAtEpochMs": record.requested_at_epoch_ms,
+                "reason": record.reason,
             })
         })
         .collect();
@@ -2523,8 +2565,8 @@ mod tests {
                 "environmentSummary":{"os":"linux","arch":"x86_64"}
             },
             "cancellationChain":[
-                {"origin":"USER","requestedAtEpochMs":10},
-                {"origin":"REMOTE_STOP","requestedAtEpochMs":20}
+                {"origin":"user","requestedAtEpochMs":10,"reason":"operator stopped it"},
+                {"origin":"remoteStop","requestedAtEpochMs":20,"reason":null}
             ]
         }"#;
         let action: RemoteTaskAction = serde_json::from_str(encoded).unwrap();
@@ -2532,11 +2574,15 @@ mod tests {
         assert_eq!(provenance.requested_configuration["threads"], "4");
         assert_eq!(provenance.effective_configuration["threads"], "2");
         assert_eq!(provenance.environment_summary["arch"], "x86_64");
-        assert_eq!(action.cancellation_chain.as_ref().unwrap().len(), 2);
-        assert_eq!(
-            action.cancellation_chain.as_ref().unwrap()[1].requested_at_epoch_ms,
-            20
-        );
+        let chain = action.cancellation_chain.as_ref().unwrap();
+        assert_eq!(chain.len(), 2);
+        assert_eq!(chain[1].requested_at_epoch_ms, 20);
+        // 规范代码必须映射回**专用变体**，而不是落成 `Other`。
+        // Canonical codes must map back to their **dedicated variants**, not fall into `Other`.
+        assert_eq!(chain[0].origin, CancellationOrigin::User);
+        assert_eq!(chain[1].origin, CancellationOrigin::RemoteStop);
+        assert_eq!(chain[0].reason.as_deref(), Some("operator stopped it"));
+        assert_eq!(chain[1].reason, None);
 
         let round_trip = serde_json::to_value(&action).unwrap();
         assert_eq!(round_trip["provenance"]["requestedConfiguration"]["seed"], "17");
@@ -2545,8 +2591,118 @@ mod tests {
             round_trip["cancellationChain"][1]["requestedAtEpochMs"],
             20
         );
+        // 这一面必须写**规范代码**，不能写 SCREAMING_SNAKE 变体名——否则同一枚举在线格式上会出现
+        // 两种拼写，对端只能把 `USER` 当作未知代码兜底。
+        //
+        // This face must emit the **canonical code**, never the SCREAMING_SNAKE variant name; otherwise one
+        // enum surfaces two spellings on the wire and a peer can only treat `USER` as an unknown code.
+        assert_eq!(round_trip["cancellationChain"][0]["origin"], "user");
+        assert_eq!(round_trip["cancellationChain"][1]["origin"], "remoteStop");
+        // `reason` 是契约定义的可空字段，必须实际输出（含显式 null）。
+        // `reason` is a contract-defined nullable field and must actually be emitted (explicit null included).
+        assert_eq!(
+            round_trip["cancellationChain"][0]["reason"],
+            "operator stopped it"
+        );
+        assert!(round_trip["cancellationChain"][1]["reason"].is_null());
         let decoded: RemoteTaskAction = serde_json::from_value(round_trip).unwrap();
         assert_eq!(decoded, action);
+    }
+
+    #[test]
+    fn task_action_cancellation_origin_uses_the_shared_canonical_vocabulary() {
+        // 这一面与 checkpoint 面必须共用**同一份**取消来源词表：每个专用变体都按 `to_wire_code()`
+        // 输出，并能由 `from_wire_code()` 无损读回；Rust 专有与他方未知的代码也不得被吞掉。
+        //
+        // This face and the checkpoint face must share **one** cancellation-origin vocabulary: every
+        // dedicated variant is emitted as its `to_wire_code()` and read back losslessly by
+        // `from_wire_code()`, and codes that are Rust-only or wholly unknown must not be swallowed either.
+        let origins = [
+            CancellationOrigin::User,
+            CancellationOrigin::External,
+            CancellationOrigin::Callback,
+            CancellationOrigin::FrameworkLoser,
+            CancellationOrigin::RemoteStop,
+            CancellationOrigin::TokioTaskAbort,
+            CancellationOrigin::Backend,
+            // 对端专有（Kotlin 的 `future` / `timeout`）与完全未知的代码：必须原样往返。
+            // Peer-specific codes (Kotlin's `future` / `timeout`) and wholly unknown ones: must round-trip
+            // verbatim.
+            CancellationOrigin::Other("future".to_owned()),
+            CancellationOrigin::Other("timeout".to_owned()),
+            CancellationOrigin::Other("wholly-unknown".to_owned()),
+        ];
+        let chain: Vec<CancellationRecord> = origins
+            .iter()
+            .enumerate()
+            .map(|(index, origin)| {
+                CancellationRecord::new(
+                    origin.clone(),
+                    index as u64 + 1,
+                    Some(format!("reason-{index}")),
+                )
+            })
+            .collect();
+        let action = RemoteTaskAction {
+            schema_version: None,
+            task_id: TaskId::new("task-vocabulary").expect("task id should be valid"),
+            tenant_id: None,
+            slice_id: None,
+            accepted: true,
+            status: TaskStatus::Running,
+            run_id: None,
+            attempt_id: None,
+            model_fingerprint: None,
+            configuration_fingerprint: None,
+            solver_fingerprint: None,
+            provenance: None,
+            cancellation_chain: Some(chain.clone()),
+            message: None,
+        };
+
+        let encoded = serde_json::to_value(&action).expect("task action should encode");
+        let entries = encoded["cancellationChain"]
+            .as_array()
+            .expect("cancellationChain should be an array");
+        assert_eq!(entries.len(), origins.len());
+
+        for (entry, origin) in entries.iter().zip(origins.iter()) {
+            // 输出的必须是规范代码，且**不是** SCREAMING_SNAKE 变体名。
+            //
+            // 注意不能拿 `origin.to_string()` 作对照：`Other(code)` 的 `Display` 就是其代码文本本身，
+            // 与规范代码天然相同；而专用变体的 `Display` 是 `USER` / `REMOTE_STOP` 这类名字。因此这里
+            // 直接断言"不含下划线且非全大写"，这正好刻画 SCREAMING_SNAKE 的形状。
+            //
+            // The output must be the canonical code and **not** the SCREAMING_SNAKE variant name.
+            //
+            // Note that `origin.to_string()` cannot serve as the control: `Other(code)`'s `Display` is the
+            // code text itself, which legitimately equals the canonical code, whereas a dedicated variant's
+            // `Display` is a name like `USER` / `REMOTE_STOP`. So assert "no underscore and not
+            // all-uppercase" directly, which is exactly the shape of SCREAMING_SNAKE.
+            let code = entry["origin"]
+                .as_str()
+                .expect("origin should be a string on the wire");
+            assert_eq!(
+                code,
+                origin.to_wire_code(),
+                "task-action wire must carry the canonical code for {origin:?}"
+            );
+            assert!(
+                !code.contains('_') && code != code.to_uppercase(),
+                "the SCREAMING_SNAKE variant name must never reach the wire, got {code:?} for {origin:?}"
+            );
+        }
+
+        let decoded: RemoteTaskAction =
+            serde_json::from_value(encoded).expect("task action should decode");
+        let decoded_chain = decoded
+            .cancellation_chain
+            .as_ref()
+            .expect("cancellation chain should survive");
+        assert_eq!(
+            decoded_chain, &chain,
+            "every origin and reason must round-trip losslessly"
+        );
     }
 
     #[tokio::test]

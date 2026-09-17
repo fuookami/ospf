@@ -108,6 +108,42 @@ cargo test -p ospf-rust-framework-csp1d
 
 Solver-backed tests require the corresponding Cargo feature and local solver installation or bundled support. See the core solver notes for [Gurobi](ospf-rust-core/src/solver/solvers/gurobi/README.md) and [SCIP](ospf-rust-core/src/solver/solvers/scip/README.md).
 
+### Feature gating and test coverage
+
+Every crate declares `default = []`, and a large share of the suite sits behind non-default features:
+
+- `ospf-rust-math`'s `scalar_parser` and expression-parsing tests need `parser`; likewise `serde`.
+- `serde`-dependent tests in `ospf-rust-core` need `serde`. **The whole CP checkpoint module in
+  `ospf-rust-core` (`solver::constraint_programming::checkpoint`) sits behind
+  `#[cfg(feature = "serde")]`**, so a plain `cargo test -p ospf-rust-core` **silently skips every
+  one of its tests** (including `complete_hint_*` and several cancellation-chain tests). Add
+  `--features serde` when checking CP checkpoint coverage.
+- `ospf-rust-framework`'s `remote` module (including `RemoteSolverFailureDetail`) needs `remote-solver`;
+  the checkpoint envelope wire-contract test `tests/checkpoint_wire_contract.rs` is also compiled and
+  run only under `--features remote-solver`.
+
+A plain `cargo test --workspace` therefore **silently skips** those tests. Enable them explicitly when measuring coverage:
+
+```powershell
+# Workspace-wide, including remote, excluding async
+cargo test --workspace --features "ospf-rust-math/parser ospf-rust-math/serde ospf-rust-core/serde ospf-rust-framework/remote-solver"
+```
+
+`async` switches the solver traits to a future-returning shape. `remote-solver` does **not** imply
+`async`, so remote tests can run alongside the whole workspace.
+
+To enable `async` you must turn on **each** downstream crate's own `async` at the same time.
+Enabling it only on `ospf-rust-framework` leaves `bpp3d` and `gantt` — which still use the synchronous
+signature — failing to compile (a half-open state caused by feature unification):
+
+```powershell
+cargo test --workspace --features "ospf-rust-framework/async ospf-rust-framework-bpp3d/async ospf-rust-framework-gantt-scheduling/async"
+```
+
+`solver-backed` tests additionally require the Gurobi/SCIP features plus local libraries and licenses.
+
+**Note**: `gurobi10`, `gurobi11`, and `gurobi12` are mutually exclusive — do **not** use `--all-features`; use the explicit feature list above.
+
 ## Current Boundaries
 
 This repository is actively migrating Kotlin framework capabilities into Rust. Some domain crates expose Kotlin-aligned public surfaces while still using Rust-side deterministic, fake, or feature-gated solver paths for parts of the lifecycle. Each domain crate README records its own current coverage and known gaps.

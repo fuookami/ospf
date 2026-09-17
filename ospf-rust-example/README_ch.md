@@ -37,7 +37,7 @@
 | --- | --- | --- |
 | `core:demo1` | core 建模 demo。 | Gurobi feature |
 | `core:all` | 运行 core demo set。 | Gurobi feature |
-| `core:generic-number` | generic-number 建模路径。 | Gurobi feature |
+| `core:capability-gate` | capability 门控建模路径。 | Gurobi feature |
 | `core:shortcuts` | `MetaModel` shortcut API demo。 | Gurobi feature |
 | `framework:demo1` | framework routing/bandwidth context demo。 | Gurobi feature |
 | `framework:demo2` | Adaptive Benders 和 MILP fallback demo。 | Gurobi feature |
@@ -74,7 +74,7 @@ cargo test -p ospf-rust-example
 ```powershell
 cargo run -p ospf-rust-example --features backend-gurobi -- core:demo1
 cargo run -p ospf-rust-example --features backend-gurobi -- core:all
-cargo run -p ospf-rust-example --features backend-gurobi -- core:generic-number
+cargo run -p ospf-rust-example --features backend-gurobi -- core:capability-gate
 cargo run -p ospf-rust-example --features backend-gurobi -- core:shortcuts
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo1
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo2

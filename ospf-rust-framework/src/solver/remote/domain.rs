@@ -2353,6 +2353,7 @@ mod tests {
             .record_cancellation(CancellationRecord {
                 origin: ospf_rust_core::solver::CancellationOrigin::RemoteStop,
                 requested_at_epoch_ms: 10,
+                reason: None,
             })
             .expect("checkpoint cancellation should be valid");
 
